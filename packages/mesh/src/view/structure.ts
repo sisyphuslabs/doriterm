@@ -1,7 +1,6 @@
 // R3 "Structure": what a record is on its own and in the DAG. Every function reads only the record, its past, and
 // views of strictly smaller sets; nothing here reads testimony.
 
-import { MAX_REVOKE_SUBJECTS } from "../records/types.ts";
 import { isAdmission, type Rec, subjectsOf } from "./dag.ts";
 import type { Engine } from "./engine.ts";
 import type { EngineView } from "./membership.ts";
@@ -28,8 +27,7 @@ function typeOk(e: Engine, r: Rec, before: EngineView | undefined): boolean {
           .filter(isAdmission)
           .map((a) => a.subject),
       );
-      const sized = subjects.length > 0 && subjects.length <= MAX_REVOKE_SUBJECTS;
-      return sized && new Set(subjects).size === subjects.length && subjects.every((k) => known.has(k));
+      return subjects.every((k) => known.has(k));
     }
     case "ack":
       return true;

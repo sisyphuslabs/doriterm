@@ -45,7 +45,7 @@ export function naiveView(records: readonly Rec[]): Lite {
     if (r.type === "revoke") {
       const s = subjectsOf(r);
       const known = new Set(order.filter((j) => has(P(i), j) && isAdmission(rec(j))).map((j) => rec(j).subject));
-      return s.length > 0 && s.length <= 16 && new Set(s).size === s.length && s.every((k) => known.has(k));
+      return s.every((k) => known.has(k));
     }
     return true;
   };

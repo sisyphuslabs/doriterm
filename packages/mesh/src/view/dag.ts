@@ -90,17 +90,37 @@ export class Dag {
     return a !== b && !this.past(a).has(b) && !this.past(b).has(a);
   }
 
-  /** Kahn's algorithm over a past-closed set, smallest id first among the ready records. */
+  /** The canonical order of a past-closed set. */
   canonicalOrder(S: ReadonlySet<string>): readonly string[] {
-    const remaining = new Set(S);
-    const out: string[] = [];
-    while (remaining.size > 0) {
-      const ready = [...remaining].filter((id) => this.rec(id).prev.every((p) => !remaining.has(p))).toSorted();
-      const next = ready[0];
-      if (next === undefined) throw new DagError("dangling prev", "no ready record");
-      out.push(next);
-      remaining.delete(next);
-    }
-    return out;
+    const order = kahn(new Map([...S].map((id) => [id, this.rec(id).prev.filter((p) => S.has(p))])));
+    if (order.length !== S.size) throw new DagError("dangling prev", "no ready record");
+    return order;
   }
+}
+
+/**
+ * Kahn's topological order of the ids of `parents` (each id's parents inside the set), smallest id first among the
+ * ready ones: the canonical order of the contract, for abstract and for signed records alike.
+ */
+export function kahn(parents: ReadonlyMap<string, readonly string[]>): readonly string[] {
+  const waiting = new Map<string, number>();
+  const children = new Map<string, string[]>();
+  for (const [id, prev] of parents) {
+    waiting.set(id, prev.length);
+    for (const p of prev) children.set(p, [...(children.get(p) ?? []), id]);
+  }
+  const ready = [...waiting].filter(([, count]) => count === 0).map(([id]) => id);
+  const order: string[] = [];
+  while (ready.length > 0) {
+    ready.sort();
+    const next = ready.shift();
+    if (next === undefined) break;
+    order.push(next);
+    for (const child of children.get(next) ?? []) {
+      const left = (waiting.get(child) ?? 1) - 1;
+      waiting.set(child, left);
+      if (left === 0) ready.push(child);
+    }
+  }
+  return order;
 }

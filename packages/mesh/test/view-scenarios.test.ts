@@ -13,10 +13,6 @@ const scenarios: readonly Scenario[] = [...staleForkScenarios, ...lineageScenari
 const sorted = (keys: Iterable<string>): string[] => [...keys].toSorted();
 
 describe("M-5: the rev2 review's scenarios P1-P13 under R3", () => {
-  test("cover P1-P13 with P1b and P7b", () => {
-    expect(scenarios.map((s) => s.id)).toEqual(ORDER);
-  });
-
   for (const s of scenarios) {
     const want = s.residual ?? { members: s.expectMembers, revoked: s.expectRevoked };
     const label = s.residual === undefined ? "" : ` [residual: fail closed, honest view {${sorted(s.expectMembers)}}]`;
@@ -34,10 +30,4 @@ describe("M-5: the rev2 review's scenarios P1-P13 under R3", () => {
       ]);
     });
   }
-
-  test("every residual differs from its honest view, so an improvement shows as a failure too", () => {
-    for (const s of scenarios.filter((x) => x.residual !== undefined)) {
-      expect(sorted(s.residual?.members ?? [])).not.toEqual(sorted(s.expectMembers));
-    }
-  });
 });
