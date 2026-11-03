@@ -25,8 +25,9 @@ describe("automatic acks (S-3, section 5.5)", () => {
     const { store, deps, founder } = atB();
     const admit = founder.admit(c, headsAt(store));
     let transactions = 0;
-    const counted: Pick<MeshStore, "transact" | "read"> = {
+    const counted: Pick<MeshStore, "transact" | "read" | "catchUp"> = {
       read: () => store.read(),
+      catchUp: (identity) => store.catchUp(identity),
       transact: (fn) => {
         transactions += 1;
         return store.transact(fn);

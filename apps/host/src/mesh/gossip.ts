@@ -51,7 +51,6 @@ export class Gossip implements SyncHost {
   readonly #ackWaiters = new Set<() => void>();
   #view: MeshView;
   /** The highest `n` of this host's own key any peer's hello named (section 10.1). */
-  #counterFloor = 0;
   #stopNet: () => void = () => undefined;
 
   constructor(options: GossipOptions) {
@@ -116,12 +115,14 @@ export class Gossip implements SyncHost {
   }
 
   merge(session: SyncSession, batch: readonly Signed[]): MergeResult {
-    const result = mergeBatch(this.#deps(), batch);
+    const result = mergeBatch(this.#options, batch);
     for (const refusal of result.refused) {
       this.#options.log(`mesh: refused record ${refusal.hash} from ${this.#nameOf(session.peer)}: ${refusal.reason}`);
     }
     if (result.counterBehind) {
-      this.#options.log(`mesh: counter behind its records (mesh ${this.#counterFloor}): syncing before signing`);
+      this.#options.log(
+        "mesh: counter behind its own records (a restored backup): caught up, signing from the next merge",
+      );
     }
     if (result.added.length > 0) {
       this.#options.log(`mesh: merged ${result.added.length} records from ${this.#nameOf(session.peer)}`);
@@ -139,7 +140,7 @@ export class Gossip implements SyncHost {
 
   /** Records this host produced itself outside sync (the join's admit, section 4.4): stored, then owed to all. */
   local(batch: readonly Signed[]): MergeResult {
-    const result = mergeBatch(this.#deps(), batch);
+    const result = mergeBatch(this.#options, batch);
     if (result.added.length > 0) this.#changed(result, true);
     return result;
   }
@@ -152,14 +153,14 @@ export class Gossip implements SyncHost {
 
   /** Signs and pushes one record of this host's own (a revoke, a leave, a rename). */
   append(draft: RecordDraft): MergeResult {
-    const result = appendOwn(this.#deps(), draft);
+    const result = appendOwn(this.#options, draft);
     this.#changed(result, true);
     return result;
   }
 
-  heard(peer: string, heads: readonly string[], n: Readonly<Record<string, number>>): void {
+  /** A peer's `hello.n` is its own claim, not a record: this host signs from the records it holds (section 10.1). */
+  heard(peer: string, heads: readonly string[]): void {
     this.#confirmed.set(peer, heads);
-    this.#counterFloor = Math.max(this.#counterFloor, n[this.self] ?? 0);
   }
 
   ended(session: SyncSession): void {
@@ -281,10 +282,6 @@ export class Gossip implements SyncHost {
     if (file?.index !== undefined) return meshViewOfIndex(file.index);
     const records = file?.records ?? [];
     return meshViewOf(records, viewOf(records));
-  }
-
-  #deps(): GossipOptions {
-    return { ...this.#options, counterFloor: this.#counterFloor };
   }
 
   #members(): readonly MemberEntry[] {

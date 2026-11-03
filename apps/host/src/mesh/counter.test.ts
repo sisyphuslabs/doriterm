@@ -15,31 +15,45 @@ const acksBy = (store: MeshStore, who: string): number =>
     return body?.type === "ack" && body.by === who;
   }).length;
 
-function behind() {
+const ownNs = (store: MeshStore): readonly number[] =>
+  (store.read()?.records ?? []).flatMap((record) => {
+    const body = parseRecord(record);
+    return body?.by === b.signPub ? [body.n] : [];
+  });
+
+/** b restored from a backup older than its own ack n = 1, which a peer still holds. */
+function restored() {
   const { records, meshId } = meshOf([a, b]);
+  const founder = new Signer(a, records);
+  const live = storeOf(b, records);
+  const deps = (store: MeshStore) => ({ store, identity: b.machine.identity, meshId });
+  const ownAck = mergeBatch(deps(live), [founder.admit(peer("c"), headsOfRecords(records))]).ack;
+  if (ownAck === undefined) throw new Error("b wrote no ack before its backup was restored");
   const store = storeOf(b, records);
-  return { records, store, deps: { store, identity: b.machine.identity, meshId, counterFloor: 4 } };
+  return { records, founder, store, deps: deps(store), peerHolds: live.read()?.records ?? [] };
 }
 
-describe("a counter behind what peers hold of this host's records signs nothing (section 10.1)", () => {
-  test("a merge with a peer's hello.n above this host's own records writes no ack", () => {
-    const { records, store, deps } = behind();
-    const admit = new Signer(a, records).admit(peer("c"), headsOfRecords(records));
-    const result = mergeBatch(deps, [admit]);
-    expect(result.added).toEqual([admit]);
-    expect(result.ack).toBeUndefined();
-    expect(result.counterBehind).toBe(true);
-    expect(acksBy(store, b.signPub)).toBe(0);
+describe("a host restored from an older backup (section 10.1)", () => {
+  test("merges a membership batch without signing, then catches its counter up and acks the next as n = 2", () => {
+    const { store, deps, founder, peerHolds } = restored();
+    const first = mergeBatch(deps, peerHolds.slice(2));
+    expect(first.counterBehind).toBe(true);
+    expect(first.ack).toBeUndefined();
+    expect(store.read()?.records.length).toBe(peerHolds.length);
+    const next = mergeBatch(deps, [founder.admit(peer("d"), headsOfRecords(peerHolds))]);
+    expect(next.ack).toBeDefined();
+    expect(ownNs(store)).toEqual([1, 2]);
   });
 
-  test("an own record (a revoke, a leave) is refused while behind", () => {
-    const { records, store, deps } = behind();
+  test("an own record (a revoke, a leave) is refused while behind, and nothing is stored", () => {
+    const { store, deps, peerHolds } = restored();
     const revoke = { type: "revoke", signPubs: [a.signPub], reason: "revoke" } as const;
+    store.transact((tx) => void tx.merge(peerHolds.slice(2)));
     expect(() => appendOwn(deps, revoke)).toThrow(CounterBehindError);
-    expect(store.read()?.records.length).toBe(records.length);
+    expect(store.read()?.records.length).toBe(peerHolds.length);
   });
 
-  test("a sync session's hello.n sets the floor below which the host signs nothing", async () => {
+  test("a peer's hello claiming n = 2^53 for this host does not silence it: the next admit is acked", async () => {
     const clock = new FakeClock();
     const net = new MeshNet(clock, seededRandom(29));
     const { records } = meshOf([a, b]);
@@ -47,13 +61,11 @@ describe("a counter behind what peers hold of this host's records signs nothing 
     const [ours, theirs] = memoryLinkPair(true);
     host.gossip.attach(a.signPub, a.signPub, ours);
     const send = (line: MeshLine): void => theirs.send(new TextEncoder().encode(`${JSON.stringify(line)}\n`));
-    send({ t: "hello", v: 2, mesh: host.gossip.meshId, heads: headsOfRecords(records), n: { [b.signPub]: 6 } });
+    const claim = { [b.signPub]: Number.MAX_SAFE_INTEGER };
+    send({ t: "hello", v: 2, mesh: host.gossip.meshId, heads: headsOfRecords(records), n: claim });
     send({ t: "records", records: [new Signer(a, records).admit(peer("c"), headsOfRecords(records))] });
     send({ t: "done", mesh: host.gossip.meshId });
     await settle();
-    expect(acksBy(host.store, b.signPub)).toBe(0);
-    expect(() => host.gossip.append({ type: "revoke", signPubs: [b.signPub], reason: "leave" })).toThrow(
-      CounterBehindError,
-    );
+    expect(acksBy(host.store, b.signPub)).toBe(1);
   });
 });
