@@ -14,6 +14,7 @@ interface Strip {
   readonly cutAtStart: readonly string[];
   /** Labels not wholly inside the strip, left to right. */
   readonly clipped: readonly string[];
+  readonly width: number;
 }
 
 const strip = (page: Page): Promise<Strip> =>
@@ -39,7 +40,7 @@ const strip = (page: Page): Promise<Strip> =>
       }
     }
     const startCue = list.parentElement?.querySelector('[data-tab-edge="start"]') !== null;
-    return { scrollLeft: list.scrollLeft, startCue, occluded, cutAtStart, clipped };
+    return { scrollLeft: list.scrollLeft, startCue, occluded, cutAtStart, clipped, width: box.width };
   });
 
 /** Clicks a paging cue and waits for the strip's scroll, snapping included, to end. */
@@ -71,5 +72,29 @@ test("no tab label is under a paging cue at rest, after paging to the end, or af
   expect(end.clipped).not.toContain("Keybindings");
 
   await pageTo(tab, "start");
-  expect(await strip(tab)).toMatchObject({ scrollLeft: 0, startCue: false, occluded: [], cutAtStart: [] });
+  const back = await strip(tab);
+  expect(back).toMatchObject({ scrollLeft: 0, startCue: false, occluded: [], cutAtStart: [] });
+  expect([end.width, back.width]).toEqual([rest.width, rest.width]);
+});
+
+test("a keyboard-focused tab's ring is drawn whole, inside the strip", async ({ page: tab }) => {
+  await tab.goto("/settings");
+  await tab.getByRole("tab", { name: "Connections" }).focus();
+  await tab.keyboard.press("ArrowRight");
+  const focused = tab.getByRole("tab", { name: "Mesh" });
+  await expect(focused).toBeFocused();
+  const ring = await focused.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const reach = Number.parseFloat(style.outlineOffset) + Number.parseFloat(style.outlineWidth);
+    const own = element.getBoundingClientRect();
+    const box = element.closest('[role="tablist"]')?.getBoundingClientRect();
+    return {
+      style: style.outlineStyle,
+      top: box === undefined ? -1 : own.top - reach - box.top,
+      bottom: box === undefined ? -1 : box.bottom - (own.bottom + reach),
+    };
+  });
+  expect(ring.style).toBe("solid");
+  expect(ring.top).toBeGreaterThanOrEqual(0);
+  expect(ring.bottom).toBeGreaterThanOrEqual(0);
 });

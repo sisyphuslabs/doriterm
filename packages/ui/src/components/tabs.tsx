@@ -8,13 +8,13 @@ type ClassNameless<T> = Omit<T, "className"> & { readonly className?: string };
 
 export const Tabs = BaseTabs.Root;
 
+const CUE_SLOT = "flex w-8 shrink-0 items-center justify-center";
+
 /**
  * A pointer cue that more tabs lie past an edge, and a way to reach them; keyboard users move between tabs with the
  * arrow keys, which scroll the focused tab into view, so the cue stays out of the tab order. It sits beside the
  * scrolling list, not over it, so no tab label is ever under it.
  */
-const CUE_SLOT = "flex w-8 shrink-0 items-center justify-center border-b border-border";
-
 function EdgeCue({ side, onPage }: { readonly side: "start" | "end"; readonly onPage: () => void }) {
   const Icon = side === "start" ? ChevronLeft : ChevronRight;
   return (
@@ -40,8 +40,9 @@ export function TabList({ className, ...props }: ClassNameless<ComponentProps<ty
   };
   const overflow = edges.start && edges.end ? "both" : edges.start ? "start" : edges.end ? "end" : "none";
   return (
-    // While the strip overflows both slots stay, so a cue that comes or goes never changes the list's width.
-    <div className="flex" data-tab-overflow={overflow}>
+    // While the strip overflows both slots stay, so a cue that comes or goes never changes the list's width. The rule
+    // under the strip is drawn once, under the slots and the list together.
+    <div className="flex border-b border-border" data-tab-overflow={overflow}>
       {edges.start ? (
         <EdgeCue side="start" onPage={page(-1)} />
       ) : overflow === "none" ? null : (
@@ -51,7 +52,7 @@ export function TabList({ className, ...props }: ClassNameless<ComponentProps<ty
         {...props}
         ref={list}
         className={cn(
-          "flex min-w-0 flex-1 snap-x snap-proximity items-center gap-1 overflow-x-auto border-b border-border [scrollbar-width:none]",
+          "flex min-w-0 flex-1 snap-x snap-proximity items-center gap-1 overflow-x-auto [scrollbar-width:none]",
           className,
         )}
       />
@@ -66,8 +67,9 @@ export function Tab({ className, ...props }: ClassNameless<ComponentProps<typeof
     <BaseTabs.Tab
       {...props}
       className={cn(
-        "-mb-px inline-flex h-(--control) shrink-0 snap-start items-center gap-1.5 rounded-t-sm px-3 text-sm text-muted-foreground outline-none",
-        "hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring",
+        "inline-flex h-(--control) shrink-0 snap-start items-center gap-1.5 rounded-t-sm px-3 text-sm text-muted-foreground outline-none",
+        // The ring is drawn inside the tab: the scrolling list clips anything outside it.
+        "hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring",
         "data-active:bg-raised data-active:font-medium data-active:text-foreground",
         className,
       )}
