@@ -27,6 +27,34 @@ describe("mesh status", () => {
     expect(memberNamed("tablet")?.fingerprint).toBe(fingerprintOf(ids.tablet.noise.publicKey));
   });
 
+  test("an over-cap member is listed after the members and marked over the cap", () => {
+    const { keys } = fixture;
+    const view = { ...fixture.sources.view };
+    const overCap = meshStatus(
+      {
+        ...fixture.sources,
+        view: { ...view, members: view.members.filter((key) => key !== keys.laptop), overCap: [keys.laptop] },
+      },
+      NOW,
+    );
+    expect(overCap.members.map((member) => [member.name, member.overCap])).toEqual([
+      ["studio", false],
+      ["build-box", false],
+      ["tablet", false],
+      ["laptop", true],
+    ]);
+  });
+
+  test("a member whose name fell back on this core shows the name it has here", () => {
+    const renamed = meshStatus(withLocal({ localNames: new Map([[ids.laptop.hostId, "laptop-q3zd"]]) }), NOW);
+    expect(renamed.members.map((member) => [member.name, member.localName])).toEqual([
+      ["studio", "studio"],
+      ["build-box", "build-box"],
+      ["laptop", "laptop-q3zd"],
+      ["tablet", "tablet"],
+    ]);
+  });
+
   test("carries presence, last sync, owed records and the 4404 gate of each peer", () => {
     expect(memberNamed("build-box")).toMatchObject({ presence: true, lastSync: "2026-11-03T11:58:00.000Z", owed: 0 });
     expect(memberNamed("tablet")).toMatchObject({ owed: 1, gate: null });
