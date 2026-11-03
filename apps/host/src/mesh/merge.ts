@@ -75,16 +75,19 @@ function admit(deps: MergeDeps, pending: Pending, incoming: readonly MeshRecord[
   }
 }
 
-/** Writes acks until every head fits in one `prev`, then returns the heads. */
-function fitHeads(deps: MergeDeps, pending: Pending): readonly string[] {
+const hasRoom = (pending: Pending): boolean => pending.records.length < MAX_RECORDS;
+
+/** Writes acks until every head fits in one `prev`, then returns the heads; undefined when the log fills first. */
+function fitHeads(deps: MergeDeps, pending: Pending): readonly string[] | undefined {
   let heads = deps.rules.headsOf(pending.records);
   while (heads.length > MAX_PREV) {
+    if (!hasRoom(pending)) return undefined;
     const merged = deps.signer.sign({ type: "ack", prev: heads.slice(0, MAX_PREV) });
     pending.records.push(merged);
     pending.added.push(merged);
     heads = deps.rules.headsOf(pending.records);
   }
-  return heads;
+  return hasRoom(pending) ? heads : undefined;
 }
 
 /** A membership record signed by someone else is acked once, by a member that is valid in the merged view. */
@@ -113,8 +116,9 @@ export function mergeBatch(deps: MergeDeps, batch: readonly MeshRecord[]): Merge
     admit(deps, pending, batch);
     let view = deps.rules.viewOf(pending.records);
     let ack: MeshRecord | undefined;
-    if (needsAck(deps, pending.added, view)) {
-      ack = deps.signer.sign({ type: "ack", prev: fitHeads(deps, pending) });
+    const prev = needsAck(deps, pending.added, view) ? fitHeads(deps, pending) : undefined;
+    if (prev !== undefined) {
+      ack = deps.signer.sign({ type: "ack", prev });
       pending.records.push(ack);
       pending.added.push(ack);
       view = deps.rules.viewOf(pending.records);
@@ -144,7 +148,9 @@ export function appendOwn(
       refused: [],
       wanted: new Set(),
     };
-    const record = deps.signer.sign(draft(fitHeads(deps, pending)));
+    const prev = fitHeads(deps, pending);
+    if (prev === undefined) throw new Error(`mesh log full (${MAX_RECORDS})`);
+    const record = deps.signer.sign(draft(prev));
     pending.records.push(record);
     pending.added.push(record);
     const view = deps.rules.viewOf(pending.records);
