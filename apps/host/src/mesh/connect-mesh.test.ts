@@ -70,7 +70,7 @@ describe("connect --mesh refusals (R-12)", () => {
       },
       waitMs: 50,
     });
-    const socket = local.serve(lines);
+    const socket = await local.serve(lines);
     try {
       const outsider = await bridge("--mesh", "--state-dir", local.stateDir, hostIdFor("zed"));
       expect(outsider).toEqual({ code: 1, reason: "doriface-host connect: not a member of this mesh" });

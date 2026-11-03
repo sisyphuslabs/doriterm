@@ -30,7 +30,7 @@ async function offlineMember() {
   const dial = (member: MeshMember): Promise<ByteLink> =>
     reach.online ? toCore(member) : Promise.reject(new SecureLinkError(4404, "host is not connected (4404)"));
   const lines = new MeshLines({ view: () => view, policy, dial });
-  local.serve(lines);
+  await local.serve(lines);
   const reconciler = new Reconciler({
     machines: self.control.machines,
     program: local.program,

@@ -54,7 +54,7 @@ export interface LocalHost {
   readonly program: string;
   /** This host's state dir (where line.sock lives), also with a space and a `'` in its path. */
   readonly stateDir: string;
-  serve(lines: MeshLines): LineSocket;
+  serve(lines: MeshLines): Promise<LineSocket>;
   dispose(): void;
 }
 
@@ -71,8 +71,8 @@ export function localHost(): LocalHost {
   return {
     program,
     stateDir,
-    serve(lines) {
-      const socket = listenLineSocket({
+    async serve(lines) {
+      const socket = await listenLineSocket({
         path: join(stateDir, "line.sock"),
         grant: (id) => lines.grant(id),
         log: () => undefined,

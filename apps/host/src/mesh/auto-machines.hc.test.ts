@@ -49,7 +49,7 @@ describe("machines follow the mesh by themselves (goal 1 and 2, R-13)", () => {
       (member, reason) => void holder.driver?.due(member, reason),
     );
     const lines = new MeshLines({ view: () => hostA.gossip.view, policy: hostA.policy, dial: recordLink });
-    local.serve(lines);
+    await local.serve(lines);
     holder.driver = new MeshDriver({ reconciler, lines, policy: hostA.policy, view: hostA.gossip.view });
     const hostB = net.add(b.member, base);
     net.add(e.member, base);
