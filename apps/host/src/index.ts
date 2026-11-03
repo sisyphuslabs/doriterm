@@ -5,6 +5,8 @@ export { HcPipe, readHcVersion, type HcPipeOptions } from "./hc-pipe.ts";
 export { HOST_VERSION, startHost, type E2eeEndpoint, type Host, type HostOptions } from "./host.ts";
 export { ByteQueue, type DataHandler, type Link } from "./link.ts";
 export { isLoopbackHost, parseListen, type ListenAddress } from "./listen.ts";
+export { meshStatus } from "./mesh/status.ts";
+export { docStoreOf, publishMeshStatus, type DocStore } from "./mesh/status-doc.ts";
 export { PairingSlots, type PairingSlotRegistrar } from "./pairing-slots.ts";
 export { deviceIdOf, DeviceStore, type PairedDevice } from "./state/devices.ts";
 export { defaultStateDir } from "./state/files.ts";
