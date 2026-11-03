@@ -1,8 +1,6 @@
 import { base64urlEncode, type HostIdentity } from "@doriface/crypto";
 import {
   type CardBody,
-  door,
-  hashOf,
   meshIdOf,
   parseRecord,
   type RecordBody,
@@ -20,6 +18,9 @@ import { createPrivateJson, ensureStateDir, readJson, writePrivateJson } from ".
 import { KnownHosts } from "./known-hosts.ts";
 import { DEFAULT_LOCK_TIMEOUT_MS, withStateLock } from "./lock.ts";
 import { MESH_FILE, type MeshFile, meshFileJson, parseMeshFile } from "./mesh-file.ts";
+import { type MergeResult, type MeshTx, ownN, Transaction } from "./mesh-tx.ts";
+
+export { CounterBehindError, type MergeResult, type MeshTx } from "./mesh-tx.ts";
 
 export interface MeshStoreOptions {
   readonly log: (line: string) => void;
@@ -28,23 +29,8 @@ export interface MeshStoreOptions {
   readonly lockTimeoutMs?: number | undefined;
 }
 
-/** This host's own records are ahead of the counter it persisted: a restore from an older backup (section 10.1). */
-export class CounterBehindError extends Error {
-  override readonly name = "CounterBehindError";
-}
-
-export interface MergeResult {
-  readonly added: readonly Signed[];
-  readonly refused: readonly { readonly record: Signed; readonly reason: string }[];
-}
-
 /** The card a host puts in its own `found`, `admit` or `rekey`: everything but the mesh, inviter and nonce. */
 export type OwnCard = Omit<CardBody, "v" | "mesh" | "inviter" | "nonce" | "hostId" | "signPub" | "noisePub">;
-
-const heads = (records: readonly Signed[]): string[] => {
-  const referenced = new Set(records.flatMap((record) => parseRecord(record)?.prev ?? []));
-  return records.map(hashOf).filter((hash) => !referenced.has(hash));
-};
 
 /**
  * `mesh.json` under the state lock (sections 8.4 and 10.1). Every write evaluates the view once, persists the
@@ -70,7 +56,8 @@ export class MeshStore {
 
   /**
    * The index of the current generation, for a handshake: re-read only when the file changed on disk, and taken from
-   * the file as its writer persisted it. A file whose index is missing or stale is refused rather than evaluated.
+   * the file as its writer persisted it, never from an earlier file (a replaced mesh.json starts again at generation
+   * 1). A file whose index is missing or stale is refused rather than evaluated.
    */
   authorizeIndex(): AuthorizeIndex | undefined {
     const stamp = this.#stamp();
@@ -81,7 +68,7 @@ export class MeshStore {
       this.#cache = undefined;
       return undefined;
     }
-    const index = cached?.index.generation === file.generation ? cached.index : persistedIndex(file);
+    const index = persistedIndex(file);
     this.#cache = { stamp, index };
     return index;
   }
@@ -97,69 +84,44 @@ export class MeshStore {
   adopt(records: readonly Signed[], identity: HostIdentity): boolean {
     const found = records.find((record) => parseRecord(record)?.type === "found");
     if (found === undefined) throw new Error("a welcome without a found record");
-    const self = base64urlEncode(identity.sign.publicKey);
-    const own = Math.max(0, ...records.flatMap((record) => ownN(record, self)));
+    const own = ownN(records, base64urlEncode(identity.sign.publicKey));
     return this.#locked(() => this.#create(meshIdOf(found), records, own));
   }
 
-  /** Runs each record through the door against the stored set and stores those it lets in, in one write. */
-  merge(records: readonly Signed[]): MergeResult {
+  /**
+   * One read-modify-write of mesh.json under the state lock: `fn` merges, reads the view and signs through `tx`,
+   * and what it changed is written once at the next generation with its index, and the device and known-host stores
+   * cleaned, in the same hold. Nothing `fn` merged is written if it throws; only a counter it persisted stays.
+   */
+  transact<T>(fn: (tx: MeshTx) => T): T {
     return this.#locked(() => {
-      const file = this.#require();
-      const stored = [...file.records];
-      const known = new Set(stored.map(hashOf));
-      const added: Signed[] = [];
-      const refused: { record: Signed; reason: string }[] = [];
-      for (const record of records) {
-        if (known.has(hashOf(record))) continue;
-        const verdict = door(record, stored);
-        if (!verdict.ok) {
-          refused.push({ record, reason: verdict.reason });
-          this.#options.log(`mesh: refused record ${hashOf(record)}: ${verdict.reason}`);
-          continue;
-        }
-        stored.push(record);
-        known.add(hashOf(record));
-        added.push(record);
-      }
-      if (added.length > 0) this.#write({ ...file, records: stored });
-      return { added, refused };
+      const tx = new Transaction(this.#require(), {
+        evaluate: this.#evaluate,
+        persistCounter: (file, selfN) => this.#persistCounter(file, selfN),
+        log: this.#options.log,
+      });
+      const value = fn(tx);
+      const next = tx.commit();
+      if (next !== undefined) this.#write(next.file, next.view);
+      return value;
     });
   }
 
-  /**
-   * Signs this host's next record. Under the lock: refuses while the persisted counter is behind this host's own
-   * records, persists the counter, and only then signs (`build` gets the counter and the heads) and stores.
-   */
+  /** Runs the dangling pool and `records` through the door; admitted records are stored, held ones kept in the pool. */
+  merge(records: readonly Signed[]): MergeResult {
+    return this.transact((tx) => tx.merge(records));
+  }
+
+  /** Signs this host's next record (`build` gets the counter and the heads), the counter persisted first. */
   sign(identity: HostIdentity, build: (n: number, prev: readonly string[]) => RecordBody): Signed {
-    return this.#locked(() => {
-      const file = this.#require();
-      const self = base64urlEncode(identity.sign.publicKey);
-      const own = Math.max(0, ...file.records.flatMap((record) => ownN(record, self)));
-      if (file.selfN < own) {
-        throw new CounterBehindError(
-          `counter behind its records (file ${file.selfN}, mesh ${own}): syncing before signing`,
-        );
-      }
-      const n = own + 1;
-      const generation = file.generation + 1;
-      const index = file.index === undefined ? undefined : { ...file.index, generation };
-      const counted = { ...file, selfN: n, generation, index };
-      writePrivateJson(this.#path, meshFileJson(counted));
-      const record = signRecord(build(n, heads(file.records)), identity.sign.secretKey);
-      const verdict = door(record, file.records);
-      if (!verdict.ok) throw new Error(`this host's own record was refused: ${verdict.reason}`);
-      this.#write({ ...counted, records: [...file.records, record] });
-      return record;
-    });
+    return this.transact((tx) => tx.sign(identity, build));
   }
 
   /** Raises the persisted counter to this host's own records, once sync showed no peer holds a later one. */
   catchUp(identity: HostIdentity): void {
     this.#locked(() => {
       const file = this.#require();
-      const self = base64urlEncode(identity.sign.publicKey);
-      const own = Math.max(0, ...file.records.flatMap((record) => ownN(record, self)));
+      const own = ownN(file.records, base64urlEncode(identity.sign.publicKey));
       if (file.selfN < own) this.#write({ ...file, selfN: own });
     });
   }
@@ -191,16 +153,32 @@ export class MeshStore {
   }
 
   /** Writes `file` at the next generation with its index, then cleans the device and known-host stores. */
-  #write(file: MeshFile): void {
-    const indexed = this.#indexed({ ...file, generation: file.generation + 1 });
+  #write(file: MeshFile, view?: View): void {
+    const indexed = this.#indexed({ ...file, generation: file.generation + 1 }, view);
     writePrivateJson(this.#path, meshFileJson(indexed));
     this.#cleanup(indexed);
   }
 
-  #indexed(file: MeshFile): MeshFile {
-    const view = (this.#options.evaluate ?? viewOf)(file.records);
+  /**
+   * Persists the counter alone at the next generation (section 10.1). The records are unchanged, so a current index
+   * is still exact and keeps its content; a stale or missing one is rebuilt, never re-tagged as current.
+   */
+  #persistCounter(file: MeshFile, selfN: number): MeshFile {
+    const generation = file.generation + 1;
+    const current = file.index !== undefined && file.index.generation === file.generation;
+    const counted = current
+      ? { ...file, selfN, generation, index: file.index === undefined ? undefined : { ...file.index, generation } }
+      : this.#indexed({ ...file, selfN, generation });
+    writePrivateJson(this.#path, meshFileJson(counted));
+    if (!current) this.#cleanup(counted);
+    return counted;
+  }
+
+  #indexed(file: MeshFile, view = this.#evaluate(file.records)): MeshFile {
     return { ...file, index: indexOf(file.records, view, file.generation) };
   }
+
+  readonly #evaluate = (records: readonly Signed[]): View => (this.#options.evaluate ?? viewOf)(records);
 
   #cleanup(file: MeshFile): void {
     if (file.index === undefined) return;
@@ -219,14 +197,10 @@ export class MeshStore {
     return file;
   }
 
+  /** Identifies one written file: every write renames a new one into place, so its inode and times change. */
   #stamp(): string | undefined {
-    try {
-      const stat = statSync(this.#path);
-      return `${stat.ino}:${stat.size}:${stat.mtimeMs}`;
-    } catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
-      throw error;
-    }
+    const stat = statSync(this.#path, { bigint: true, throwIfNoEntry: false });
+    return stat === undefined ? undefined : `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
   }
 
   #locked<T>(fn: () => T): T {
@@ -237,11 +211,6 @@ export class MeshStore {
 function persistedIndex(file: MeshFile): AuthorizeIndex {
   if (file.index?.generation !== file.generation) throw new Error(`${MESH_FILE}: its authorize index is stale`);
   return new AuthorizeIndex(file.index);
-}
-
-function ownN(record: Signed, self: string): number[] {
-  const body = parseRecord(record);
-  return body?.by === self ? [body.n] : [];
 }
 
 const nonce = (): string => base64urlEncode(crypto.getRandomValues(new Uint8Array(16)));
