@@ -26,15 +26,9 @@ interface Names {
 }
 
 function namesOf(sources: MeshSources): Names {
-  const hostIds = new Map<string, string>();
-  const hostId = (key: string): string => {
-    const known = hostIds.get(key) ?? hostIdOfKey(key);
-    hostIds.set(key, known);
-    return known;
-  };
   const name = (key: string): string =>
-    sources.view.name.get(key) ?? sources.view.revocations.get(key)?.name ?? hostId(key);
-  return { hostId, name };
+    sources.view.name.get(key) ?? sources.view.revocations.get(key)?.name ?? hostIdOfKey(key);
+  return { hostId: hostIdOfKey, name };
 }
 
 function member(sources: MeshSources, names: Names, key: string, now: Date): MeshMemberStatus {
@@ -46,7 +40,7 @@ function member(sources: MeshSources, names: Names, key: string, now: Date): Mes
   const since = peer?.unreachableSince ?? null;
   const stale = since !== null && now.getTime() - since.getTime() > UNREACHABLE_REVOKE_MS;
   const admitter = view.admitter.get(key);
-  const witness = sources.witnessPool(key);
+  const witness = self ? { pool: [], ask: null } : sources.witnessPool(key);
   const noise = view.noise.get(key);
   return {
     hostId,

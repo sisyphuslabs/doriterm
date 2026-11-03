@@ -87,6 +87,20 @@ describe("mesh status", () => {
     expect(unreachableFor(UNREACHABLE_REVOKE_MS + 1)?.revokeSuggested).toBe(true);
   });
 
+  test("computes no witness pool for this host, whose revoke it cannot write", () => {
+    const asked: string[] = [];
+    const sources: MeshSources = {
+      ...fixture.sources,
+      witnessPool: (subject) => {
+        asked.push(subject);
+        return fixture.sources.witnessPool(subject);
+      },
+    };
+    expect(meshStatus(sources, NOW).members[0]).toMatchObject({ line: "self", witnessPool: [], witnessAsk: null });
+    expect(asked).not.toContain(fixture.keys.studio);
+    expect(asked).toHaveLength(3);
+  });
+
   test("names the witness pool by hostId, and who to ask when it is empty here", () => {
     expect(memberNamed("laptop")).toMatchObject({ witnessPool: [], witnessAsk: ids["build-box"].hostId });
     expect(memberNamed("tablet")).toMatchObject({ witnessPool: [ids["build-box"].hostId], witnessAsk: null });
