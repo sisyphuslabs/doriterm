@@ -1,34 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { Dag, type Rec } from "../src/view/dag.ts";
+import { Dag } from "../src/view/dag.ts";
 import { Engine, ViewCache, viewOf } from "../src/view/engine.ts";
 import { bigMesh } from "./fixtures/big-mesh.ts";
 import { randomDag } from "./fixtures/random-dag.ts";
 import { ack, admit, found, name, revoke, withChainNumbers } from "./fixtures/records.ts";
-import type { Scenario } from "./fixtures/scenario.ts";
-import { cardScenarios } from "./fixtures/scenarios-cards.ts";
-import { colluderScenarios } from "./fixtures/scenarios-colluders.ts";
-import { conflictScenarios } from "./fixtures/scenarios-conflict.ts";
-import { lineageScenarios } from "./fixtures/scenarios-lineage.ts";
-import { reviewerScenarios } from "./fixtures/scenarios-reviewer.ts";
-import { selfForkScenarios } from "./fixtures/scenarios-self-fork.ts";
-import { staleForkScenarios } from "./fixtures/scenarios-stale.ts";
+import { SCENARIOS, stored } from "./fixtures/scenarios-all.ts";
 import { signScenario } from "./fixtures/signed.ts";
 import { SEEDS, same, sameEverywhere, shape } from "./oracle/differential.ts";
 import { viewOf as legacyViewOf } from "./oracle/legacy/engine.ts";
 import { attack, honestHistory, pick, rng } from "./sim/world.ts";
-
-const SCENARIOS: readonly Scenario[] = [
-  ...staleForkScenarios,
-  ...lineageScenarios,
-  ...reviewerScenarios,
-  ...conflictScenarios,
-  ...colluderScenarios,
-  ...cardScenarios,
-  ...selfForkScenarios,
-];
-
-/** What a host stores for a scenario: its records and what it wrote after the door refused the batch. */
-const stored = (s: Scenario): Rec[] => withChainNumbers([...s.records, ...(s.after ?? [])]);
 
 const SLOW = 120_000;
 
