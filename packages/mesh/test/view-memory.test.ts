@@ -23,6 +23,11 @@ const MERGES = 256;
 const NAMES_BUDGET_MB = 96;
 /** For the partition shape: a common past per accuser/record pair is n/32 words of bits, not a Set of ids. */
 const PARTITION_BUDGET_MB = 24;
+/**
+ * For 2048 admissions: per-record views keep governing, not admitter, names or hostIds of every governed key. Measured
+ * 210 MB with the trim and 433 MB without it.
+ */
+const ADMITS_BUDGET_MB = 320;
 
 /** The heap a cache holds after one cold view of `shape`, read in a fresh bun process (test/fixtures/cache-heap.ts). */
 async function heldMb(shape: string): Promise<number> {
@@ -78,5 +83,11 @@ describe("M-14: a ViewCache holds one mesh's history, not one engine per merge",
     const held = await heldMb("partition");
     expect(held).toBeGreaterThan(0);
     expect(held).toBeLessThan(PARTITION_BUDGET_MB);
+  }, 120_000);
+
+  test(`2048 admissions, most of them over the cap, keep under ${ADMITS_BUDGET_MB} MB in the cache`, async () => {
+    const held = await heldMb("admits-only-2048");
+    expect(held).toBeGreaterThan(0);
+    expect(held).toBeLessThan(ADMITS_BUDGET_MB);
   }, 120_000);
 });

@@ -1,17 +1,19 @@
 // The heap a ViewCache keeps after one cold view of a stress mesh (test/fixtures/heap-meshes.ts). Run as its own process,
 // `bun test/fixtures/cache-heap.ts <shape>`, so no other test's garbage or live objects move the reading; it prints
-// {"heldMb": n, ...}: what clear() releases. `partition-large` backs the figure in the design's section 8.4 and
-// residual 7; the tests use the others.
+// {"heldMb": n, ...}: what clear() releases. `admits-only` and `partition-large` back the figures in the design's
+// section 8.4 and residual 7; the tests use the others.
 
 import { heapStats } from "bun:jsc";
 import { MAX_RECORDS } from "../../src/records/types.ts";
 import { ViewCache } from "../../src/view/engine.ts";
 import type { Rec } from "../../src/view/dag.ts";
-import { namesOnly, partition } from "./heap-meshes.ts";
+import { admitsOnly, namesOnly, partition } from "./heap-meshes.ts";
 import { type Draft, withChainNumbers } from "./records.ts";
 
 const SHAPES: Readonly<Record<string, () => Draft[]>> = {
   "names-only": () => namesOnly(MAX_RECORDS),
+  "admits-only-2048": () => admitsOnly(2048),
+  "admits-only": () => admitsOnly(MAX_RECORDS),
   partition: () => partition({ common: 1000, branch: 400, revokes: 4 }),
   "partition-large": () => partition({ common: 1500, branch: 1200, revokes: 8 }),
 };

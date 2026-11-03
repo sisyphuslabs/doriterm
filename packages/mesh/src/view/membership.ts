@@ -21,6 +21,19 @@ export interface MemberView {
   readonly hostId: ReadonlyMap<string, string>;
 }
 
+/**
+ * What the rules read of a view: members, revoked keys, Noise keys and every governed key's admission. A ViewCache keeps
+ * one of these per record and per context, so it leaves out what only the full view reports (admitter, names, hostIds).
+ */
+export type RuleView = Pick<MemberView, "members" | "revoked" | "noise" | "governing">;
+
+export const ruleViewOf = (v: MemberView): RuleView => ({
+  members: v.members,
+  revoked: v.revoked,
+  noise: v.noise,
+  governing: v.governing,
+});
+
 export interface EngineView extends MemberView {
   readonly eff: ReadonlySet<string>;
 }

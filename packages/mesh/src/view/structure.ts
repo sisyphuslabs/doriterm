@@ -3,10 +3,10 @@
 
 import { type PastSet, type Rec, subjectsOf } from "./dag.ts";
 import type { Engine } from "./engine.ts";
-import type { MemberView } from "./membership.ts";
+import type { RuleView } from "./membership.ts";
 
 /** type_ok(x, view(past(x))). */
-function typeOk(e: Engine, r: Rec, before: MemberView | undefined): boolean {
+function typeOk(e: Engine, r: Rec, before: RuleView | undefined): boolean {
   const members = before?.members ?? [];
   switch (r.type) {
     case "found":
@@ -117,12 +117,7 @@ export function commonMembers(e: Engine, a: string, b: string): readonly string[
  * comes back to a key it passed never stops (an admitter cycle): undefined, which is not clean, does not silence and
  * excludes no voter (contract notation).
  */
-export function lineage(
-  e: Engine,
-  key: string,
-  view: MemberView | undefined,
-  C: PastSet,
-): readonly string[] | undefined {
+export function lineage(e: Engine, key: string, view: RuleView | undefined, C: PastSet): readonly string[] | undefined {
   const commonMembersSet = new Set(C.size === 0 ? [] : e.view(C).members);
   const out: string[] = [];
   const passed = new Set<string>();

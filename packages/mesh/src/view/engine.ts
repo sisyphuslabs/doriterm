@@ -15,7 +15,7 @@
 import type { Signed } from "../records/types.ts";
 import { bitsKey } from "./chain.ts";
 import { Dag, headsKey, type PastSet, type Rec, type RecordSet } from "./dag.ts";
-import { type EngineView, type MemberView, membership, withEff } from "./membership.ts";
+import { type EngineView, membership, type RuleView, withEff } from "./membership.ts";
 import { recordsOf } from "./rec-of.ts";
 import { type Evaluation, Shared } from "./shared.ts";
 import { type Status, status } from "./status.ts";
@@ -55,7 +55,7 @@ export class Engine {
   }
 
   /** view(past(x)) as the rules read it; undefined for the found record. */
-  before(id: string): MemberView | undefined {
+  before(id: string): RuleView | undefined {
     return this.#before(id);
   }
 
@@ -80,8 +80,8 @@ export class Engine {
     return headsKey(this.#headsOf(S));
   }
 
-  /** The view of a past-closed set. S must not change after it is passed: its heads are cached by the object. */
-  view(S: PastSet): MemberView {
+  /** The rule view of a past-closed set. S must not change after it is passed: its heads are cached by the object. */
+  view(S: PastSet): RuleView {
     const { heads, context } = this.#keysOf(S);
     return this.#shared.view(heads, context, () => this.#evaluateClosed(S));
   }
@@ -93,7 +93,7 @@ export class Engine {
     return { has: (p) => reach.inPast(id, p) };
   }
 
-  #before(id: string): MemberView | undefined {
+  #before(id: string): RuleView | undefined {
     return this.#shared.before(id, () => {
       const prev = [...new Set(this.dag.rec(id).prev)];
       const heads = prev.filter((p) => !prev.some((q) => this.dag.inPast(q, p)));

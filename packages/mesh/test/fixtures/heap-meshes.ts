@@ -23,6 +23,14 @@ export function namesOnly(records: number): Draft[] {
   return drafts;
 }
 
+/** The founder admits key after key: past the twelfth, every admitted key is over the cap but still governed. */
+export function admitsOnly(records: number): Draft[] {
+  const drafts = founded();
+  while (drafts.length < records)
+    drafts.push(admit(`z${drafts.length}`, "K0", `Z${drafts.length}`, [drafts.at(-1)?.id ?? "f"]));
+  return drafts;
+}
+
 export interface Partition {
   readonly common: number;
   readonly branch: number;
