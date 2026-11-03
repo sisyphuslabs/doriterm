@@ -43,29 +43,34 @@ function objectOf<T>(shape: Shape<T>): Guard<T> {
   };
 }
 
+type StuckKind = MeshStuckReason["kind"];
+type StuckOf<K extends StuckKind> = Extract<MeshStuckReason, { readonly kind: K }>;
+
+/** One guard per STUCK kind; `satisfies` makes a kind added to MeshStuckReason without a guard a type error. */
+const STUCK_REASONS = {
+  name_taken: objectOf<StuckOf<"name_taken">>({ kind: oneOf("name_taken"), member: isString, name: isString }),
+  invalid_name: objectOf<StuckOf<"invalid_name">>({
+    kind: oneOf("invalid_name"),
+    member: isString,
+    name: isString,
+    message: isString,
+  }),
+  copied_core: objectOf<StuckOf<"copied_core">>({ kind: oneOf("copied_core"), member: isString }),
+  line_idle: objectOf<StuckOf<"line_idle">>({ kind: oneOf("line_idle"), member: isString }),
+  possibly_revoked: objectOf<StuckOf<"possibly_revoked">>({ kind: oneOf("possibly_revoked") }),
+  read_only: objectOf<StuckOf<"read_only">>({ kind: oneOf("read_only"), until: isString }),
+  removed_undecidable: objectOf<StuckOf<"removed_undecidable">>({ kind: oneOf("removed_undecidable") }),
+  log_full: objectOf<StuckOf<"log_full">>({ kind: oneOf("log_full"), records: isCount }),
+  counter_behind: objectOf<StuckOf<"counter_behind">>({ kind: oneOf("counter_behind"), file: isCount, mesh: isCount }),
+} satisfies { readonly [K in StuckKind]: Guard<StuckOf<K>> };
+
+const isStuckKind = (kind: unknown): kind is StuckKind =>
+  typeof kind === "string" && Object.hasOwn(STUCK_REASONS, kind);
+
 function isStuckReason(value: unknown): value is MeshStuckReason {
   if (!isJsonObject(value)) return false;
-  const member = isString(value["member"]);
-  switch (value["kind"]) {
-    case "name_taken":
-      return member && isString(value["name"]);
-    case "invalid_name":
-      return member && isString(value["name"]) && isString(value["message"]);
-    case "copied_core":
-    case "line_idle":
-      return member;
-    case "possibly_revoked":
-    case "removed_undecidable":
-      return true;
-    case "read_only":
-      return isString(value["until"]);
-    case "log_full":
-      return isCount(value["records"]);
-    case "counter_behind":
-      return isCount(value["file"]) && isCount(value["mesh"]);
-    default:
-      return false;
-  }
+  const kind = value["kind"];
+  return isStuckKind(kind) && STUCK_REASONS[kind](value);
 }
 
 const isLineState: Guard<MeshLineState> = oneOf(
