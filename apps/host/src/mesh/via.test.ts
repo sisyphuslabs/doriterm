@@ -25,6 +25,12 @@ describe("the pinned via (R-1)", () => {
     expect(meshHostOf(via, program, stateDir)).toBe(hostId);
   });
 
+  test("refuses a hostId that is not one, so nothing reaches the shell unquoted", () => {
+    for (const hostId of ["x$(touch PWN)", "x; touch PWN #", hostIdFor("b").toUpperCase(), ""]) {
+      expect(() => meshVia("/opt/doriface-host", "/state", hostId)).toThrow(TypeError);
+    }
+  });
+
   test("only this binary's exact mesh form is a mesh machine", () => {
     const hostId = hostIdFor("b");
     const via = meshVia("/opt/doriface-host", "/state", hostId);

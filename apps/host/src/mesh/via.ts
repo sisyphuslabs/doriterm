@@ -6,8 +6,12 @@ export const shellQuote = (text: string): string => `'${text.replaceAll("'", `'\
 const prefixOf = (program: string, stateDir: string): string =>
   `${shellQuote(program)} connect --mesh --state-dir ${shellQuote(stateDir)} `;
 
-/** The pinned `via` of a mesh line (section 7.2). */
+/**
+ * The pinned `via` of a mesh line (section 7.2). The hostId goes into herdr's `sh -c` unquoted, so it must be one:
+ * `[a-z2-7]` only, which the shell cannot read as anything but a word.
+ */
 export function meshVia(program: string, stateDir: string, hostId: string): string {
+  if (!HOST_ID_PATTERN.test(hostId)) throw new TypeError(`not a hostId: ${JSON.stringify(hostId)}`);
   return `${prefixOf(program, stateDir)}${hostId}`;
 }
 
