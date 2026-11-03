@@ -93,6 +93,15 @@ describe("publishing the status document", () => {
     expect(docs.value).toBe(3);
   });
 
+  test("the attempt bound is not a parameter a caller can turn off", async () => {
+    const docs = new Docs();
+    docs.racing = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    // @ts-expect-error the attempt counter is internal: publishMeshStatus takes no third argument
+    const failed = await publishMeshStatus(docs, () => status, Number.NaN).catch((error: unknown) => error);
+    expect(failed).toBeInstanceOf(HcRpcError);
+    expect(docs.sets).toBe(3);
+  });
+
   test("any other refusal is not retried", async () => {
     const refusing: DocStore = {
       get: async () => ({ value: null, version: 0 }),

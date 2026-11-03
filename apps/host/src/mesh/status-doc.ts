@@ -23,10 +23,14 @@ const ATTEMPTS = 3;
  * attempt therefore reads the document and asks `current` for the status as it is now: a retry never writes the
  * snapshot an earlier attempt started with over a newer one.
  */
-export async function publishMeshStatus(
+export function publishMeshStatus(store: DocStore, current: () => MeshStatus): Promise<"written" | "unchanged"> {
+  return attemptPublish(store, current, 1);
+}
+
+async function attemptPublish(
   store: DocStore,
   current: () => MeshStatus,
-  attempt = 1,
+  attempt: number,
 ): Promise<"written" | "unchanged"> {
   const doc = await store.get(MESH_STATUS_DOC);
   const status = current();
@@ -36,6 +40,6 @@ export async function publishMeshStatus(
     return "written";
   } catch (error) {
     if (!isConflict(error) || attempt >= ATTEMPTS) throw error;
-    return publishMeshStatus(store, current, attempt + 1);
+    return attemptPublish(store, current, attempt + 1);
   }
 }
