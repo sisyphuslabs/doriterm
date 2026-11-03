@@ -1,16 +1,44 @@
 import { describe, expect, test } from "bun:test";
+import { base64urlEncode } from "@doriface/crypto";
 import { hashOf, MAX_RECORDS, type Signed } from "@doriface/mesh";
 import type { MeshLine } from "./lines.ts";
 import { headsOfRecords, meshOf, peer, Signer } from "./testing/mesh-peers.ts";
 import { sessionAtB } from "./testing/scripted.ts";
 
-const junk = (from: number, count: number): readonly Signed[] =>
-  Array.from({ length: count }, (_, i) => ({ body: `{"junk":${from + i}}`, sig: "x" }));
+/** A well-shaped hash (43 base64url characters) for index `i`, so only the count or the size can close a session. */
+const hashLike = (i: number): string =>
+  base64urlEncode(new Uint8Array(new Uint32Array([i, 0, 0, 0, 0, 0, 0, 0]).buffer));
+const SIG = "A".repeat(86);
 
-const heads = (from: number): readonly string[] => Array.from({ length: 1024 }, (_, i) => `head-${from + i}`);
+const junk = (from: number, count: number): readonly Signed[] =>
+  Array.from({ length: count }, (_, i) => ({ body: `{"junk":${from + i}}`, sig: SIG }));
+
+const heads = (from: number): readonly string[] => Array.from({ length: 1024 }, (_, i) => hashLike(from + i));
 
 const recordsIn = (lines: readonly MeshLine[]): readonly string[] =>
   lines.flatMap((line) => (line.t === "records" ? line.records.map(hashOf) : []));
+
+describe("sync lines carry the contract's shapes, checked as they are parsed (abuse, section 5.2)", () => {
+  const big = "x".repeat(200 * 1024);
+  test.each<[string, (mesh: string) => MeshLine]>([
+    ["a record body over 2048 bytes", () => ({ t: "records", records: [{ body: big, sig: SIG }] })],
+    [
+      "a record signature that is not 64 bytes of base64url",
+      () => ({ t: "records", records: [{ body: "{}", sig: "x" }] }),
+    ],
+    ["a 200 KiB head", (mesh) => ({ t: "hello", v: 2, mesh, heads: [big], n: {} })],
+    [
+      "a counter keyed by something other than a key",
+      (mesh) => ({ t: "hello", v: 2, mesh, heads: [], n: { [big]: 1 } }),
+    ],
+    ["a want of something other than hashes", () => ({ t: "want", hashes: ["not-a-hash"] })],
+  ])("%s closes the session 4400 before anything is held", async (_name, line) => {
+    const peerA = sessionAtB();
+    peerA.receive(line(peerA.meshId));
+    await peerA.settled();
+    expect(peerA.closedWith()).toBe(4400);
+  });
+});
 
 describe("what one sync session holds for a peer is bounded (abuse, section 5.2)", () => {
   test("records past 4096 before done close the session 4400, and nothing is merged", async () => {

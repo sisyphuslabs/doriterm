@@ -72,14 +72,14 @@ describe("section 10.2: a known line the join cannot consume closes the session 
 });
 
 describe("the welcome a joiner reads is bounded in bytes", () => {
-  test("more than 8 MiB of welcome records closes the joiner's session with 4400 before done", async () => {
+  test("a welcome record over a record's 2048-byte body closes the joiner's session with 4400 before done", async () => {
     const [a, b] = [side("alpha"), side("beta")];
     const [inviterEnd, joinerEnd] = memoryLinkPair();
     const inviter = new MeshLines(inviterEnd, INVITER_EXPECTS);
     const joined = failure(runJoiner(new MeshLines(joinerEnd, JOINER_EXPECTS), joinerContext(b, a)));
     inviter.send({ t: "offer", mesh: "m", inviter: signPubOf(a.m), nonce: "n" });
     await inviter.next();
-    const record = { body: "x".repeat(200 * 1024), sig: "s" };
+    const record = { body: "x".repeat(200 * 1024), sig: "A".repeat(86) };
     const paced = async (left: number): Promise<void> => {
       if (left === 0 || inviterEnd.closeCode !== undefined || joinerEnd.closeCode !== undefined) return;
       inviter.send({ t: "records", records: [record] });
@@ -87,7 +87,7 @@ describe("the welcome a joiner reads is bounded in bytes", () => {
       return paced(left - 1);
     };
     await paced(48);
-    expect(await joined).toBe("the welcome is larger than a mesh may be");
+    expect(await joined).toBe("malformed mesh line");
     expect(joinerEnd.closeCode).toBe(CloseCode.CryptoFailure);
   });
 });

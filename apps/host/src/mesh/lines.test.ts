@@ -14,11 +14,12 @@ describe("the sync lines (section 5.2)", () => {
   test("hello and want are read with their members", async () => {
     const [sender, receiver] = memoryLinkPair();
     const lines = new MeshLines(receiver, SYNC_EXPECTS);
-    const n = { ["sign-a"]: 3 };
-    sender.send(encode(`${JSON.stringify({ t: "hello", v: 2, mesh: "m", heads: ["h1"], n })}\n`));
-    sender.send(encode('{"t":"want","hashes":["h0"]}\n'));
-    expect(await lines.next()).toEqual({ t: "hello", v: 2, mesh: "m", heads: ["h1"], n });
-    expect(await lines.next()).toEqual({ t: "want", hashes: ["h0"] });
+    const [h1, h0, key] = ["A".repeat(43), "E".repeat(43), "I".repeat(43)];
+    const n = { [key]: 3 };
+    sender.send(encode(`${JSON.stringify({ t: "hello", v: 2, mesh: "m", heads: [h1], n })}\n`));
+    sender.send(encode(`${JSON.stringify({ t: "want", hashes: [h0] })}\n`));
+    expect(await lines.next()).toEqual({ t: "hello", v: 2, mesh: "m", heads: [h1], n });
+    expect(await lines.next()).toEqual({ t: "want", hashes: [h0] });
   });
 
   test.each([

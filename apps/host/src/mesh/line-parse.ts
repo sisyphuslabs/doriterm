@@ -1,5 +1,17 @@
-import type { Signed } from "@doriface/mesh";
+import { base64urlDecode, base64urlEncode } from "@doriface/crypto";
+import { MAX_BODY_BYTES, type Signed } from "@doriface/mesh";
 import type { MeshLine } from "./lines.ts";
+
+// The contract's shapes (transport section on mesh lines, design section 3.1), checked as a line is parsed so that a
+// session's count caps are also its byte bounds: a record is at most 2048 bytes of body and 86 characters of
+// signature, a hash or key is 43. The spelling must be the one canonical unpadded base64url form.
+const HASH_CHARS = 43;
+const SIG_CHARS = 86;
+const encoder = new TextEncoder();
+const canonical = (value: string, chars: number): boolean =>
+  value.length === chars && /^[A-Za-z0-9_-]*$/.test(value) && base64urlEncode(base64urlDecode(value)) === value;
+const fitsBody = (text: string): boolean =>
+  text.length <= MAX_BODY_BYTES && encoder.encode(text).byteLength <= MAX_BODY_BYTES;
 
 const isObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -15,12 +27,16 @@ const signedOf = (value: unknown): Signed | undefined => {
 
 const stringsOf = (value: unknown): string[] | undefined =>
   Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
+const hashesOf = (value: unknown): string[] | undefined => {
+  const hashes = stringsOf(value);
+  return hashes?.every((hash) => canonical(hash, HASH_CHARS)) === true ? hashes : undefined;
+};
 
 function countersOf(value: unknown): Readonly<Record<string, number>> | undefined {
   if (!isObject(value)) return undefined;
   const counters: Record<string, number> = {};
   for (const [key, n] of Object.entries(value)) {
-    if (typeof n !== "number" || !Number.isSafeInteger(n) || n < 0) return undefined;
+    if (!canonical(key, HASH_CHARS) || typeof n !== "number" || !Number.isSafeInteger(n) || n < 0) return undefined;
     counters[key] = n;
   }
   return counters;
@@ -31,7 +47,7 @@ function recordsOf(value: unknown): Signed[] | undefined {
   const records: Signed[] = [];
   for (const item of value) {
     const record = signedOf(item);
-    if (record === undefined) return undefined;
+    if (record === undefined || !fitsBody(record.body) || !canonical(record.sig, SIG_CHARS)) return undefined;
     records.push(record);
   }
   return records;
@@ -49,13 +65,13 @@ export function parseLine(text: string): MeshLine | "unknown" | undefined {
   const get = (key: string): string | undefined => stringOf(value, key);
   switch (value["t"]) {
     case "hello": {
-      const [mesh, heads, n] = [get("mesh"), stringsOf(value["heads"]), countersOf(value["n"])];
+      const [mesh, heads, n] = [get("mesh"), hashesOf(value["heads"]), countersOf(value["n"])];
       return value["v"] !== 2 || mesh === undefined || heads === undefined || n === undefined
         ? undefined
         : { t: "hello", v: 2, mesh, heads, n };
     }
     case "want": {
-      const hashes = stringsOf(value["hashes"]);
+      const hashes = hashesOf(value["hashes"]);
       return hashes === undefined ? undefined : { t: "want", hashes };
     }
     case "offer": {
