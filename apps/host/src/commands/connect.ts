@@ -2,6 +2,7 @@ import { DEFAULT_RELAY_URL } from "@doriface/crypto";
 import { hostname } from "node:os";
 import { parseArgs } from "node:util";
 import { dial, type Dialed } from "../connect/dial.ts";
+import { meshBridge } from "../connect/mesh-bridge.ts";
 import { type Output, pipe } from "../connect/pipe.ts";
 import { parseTarget } from "../connect/target.ts";
 import { defaultStateDir } from "../state/files.ts";
@@ -22,7 +23,9 @@ export const CONNECT_USAGE = `usage: doriface-host connect <hostId | pairing lin
   --name <name>      what the host lists this machine as when it pairs (default this machine's hostname)
   --fingerprint <fp> with a typed code: the host's fingerprint as \`doriface-host pair\` printed it there (at least
                      its first 4 groups), checked before pairing
-  --replace          let a link or code replace a saved host whose key or relay changed (refused otherwise)`;
+  --replace          let a link or code replace a saved host whose key or relay changed (refused otherwise)
+  --mesh             reach a mesh member through the running host here, which dials with its own key; the mesh
+                     adds these lines itself, with --state-dir and the member's hostId`;
 
 /** hc gives a dial 20 s for the hello reply; failing earlier leaves it a clear reason on stderr. */
 const DIAL_TIMEOUT_MS = 15_000;
@@ -54,6 +57,7 @@ export async function connectCommand(args: readonly string[], log: (line: string
       name: { type: "string" },
       fingerprint: { type: "string" },
       replace: { type: "boolean" },
+      mesh: { type: "boolean" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -65,6 +69,12 @@ export async function connectCommand(args: readonly string[], log: (line: string
   if (given === undefined) throw new Error("connect needs a hostId, a pairing link or a pairing code");
   const target = parseTarget(given);
   const stateDir = values["state-dir"] ?? defaultStateDir();
+  if (values.mesh === true) {
+    if (values.replace === true) throw new Error("--mesh takes no --replace: a member's key comes from the mesh");
+    if (target.kind !== "host") throw new Error("--mesh takes a member's hostId, not a pairing link or code");
+    const output = stdoutOutput();
+    return meshBridge({ stateDir, hostId: target.hostId, input: Bun.stdin.stream(), output, log });
+  }
   const options = {
     stateDir,
     device: loadDeviceKey(stateDir),
