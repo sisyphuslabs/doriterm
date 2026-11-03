@@ -96,7 +96,10 @@ export async function startMeshHost(options: MeshHostOptions): Promise<MeshHost>
   };
   void textOf(proc.stderr, onText);
   void textOf(proc.stdout, onText);
+  let disposed = false;
   const dispose = async (): Promise<void> => {
+    if (disposed) return;
+    disposed = true;
     proc.kill("SIGTERM");
     const timer = setTimeout(() => proc.kill("SIGKILL"), STOP_MS);
     await proc.exited;
