@@ -113,7 +113,7 @@ export interface SignedGraph {
 }
 
 /**
- * Signs a shape's attack edge for edge. `prev` is the graph's own, with `FORK` as the revoked key's last own record,
+ * Signs a shape's attack edge for edge. `prev` is the graph's own, with `FORK` as the fork record (`fork.hash`),
  * and each counter is the one an honest signer would have used: 1 + the highest of its own records in the past, so
  * concurrent records by one signer share a counter, as they do in the model.
  */

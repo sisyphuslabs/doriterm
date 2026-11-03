@@ -5,6 +5,7 @@ interface Parsed {
   readonly hash: string;
   readonly type: string;
   readonly by: string;
+  readonly n: number;
   readonly prev: readonly string[];
   /** admit: the card's signPub. revoke: the revoked keys. name: the renamed key. */
   readonly about: readonly string[];
@@ -38,6 +39,7 @@ export class StoredSet {
         hash,
         type: body["type"],
         by: body["by"],
+        n: typeof body["n"] === "number" ? body["n"] : 0,
         prev: strings(body["prev"]),
         about: aboutOf(body["subject"]),
       });
@@ -67,6 +69,12 @@ export class StoredSet {
       if (parsed.type === step.type && parsed.by === keyOf(step.by) && sameAbout) return parsed.hash;
     }
     return undefined;
+  }
+
+  /** The highest counter `signPub` used in `hash` and its past: where its chain continues from there (0: none). */
+  counterAt(hash: string, signPub: string): number {
+    const own = [hash, ...this.#past(hash)].map((each) => this.#byHash.get(each));
+    return Math.max(0, ...own.map((parsed) => (parsed?.by === signPub ? parsed.n : 0)));
   }
 
   /** Whether `signPub` wrote an ack that has `after` in its past: the automatic ack of section 5.5. */

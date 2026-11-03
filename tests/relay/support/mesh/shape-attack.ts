@@ -1,10 +1,11 @@
 import { type ForbiddenWatch, watchForbidden } from "./forbidden-watch.ts";
 import { deliver, type Delivery, type Judgement, untilJudged } from "./inject.ts";
+import { StoredSet } from "./honest-records.ts";
 import { identityOf } from "./identity.ts";
 import { plantRecords } from "./plant.ts";
-import { lastOwn, signAttack } from "./records.ts";
+import { type Head, signAttack } from "./records.ts";
 import type { ShapeRun } from "./shape-setup.ts";
-import { meshFileOf, type Status, statusOf, storedRecords } from "./status.ts";
+import { meshFileOf, type SignedRecord, type Status, statusOf, storedRecords } from "./status.ts";
 
 export interface AttackResult {
   /** How each judge's own session served the injection (member channel only). */
@@ -20,6 +21,18 @@ export interface AttackResult {
 const MEMBERS_MS = 120_000;
 
 /**
+ * FORK as the model has it: the honest record the shape names (`fork`, e.g. the revoked key's own admission), with the
+ * revoked key's highest counter in its past. A revoked key that never wrote a record continues from 0.
+ */
+function forkOf(run: ShapeRun, records: readonly SignedRecord[], signPub: string): Head {
+  const set = new StoredSet(records, run.lib.hashOf);
+  const step = run.shape.honest.find((each) => each.id === run.shape.fork);
+  const hash = step === undefined ? undefined : set.find(step, (key) => run.actors.get(key)?.signPub ?? "");
+  if (hash === undefined) throw new Error(`${run.shape.id}: the revoked host holds no ${run.shape.fork}`);
+  return { hash, n: set.counterAt(hash, signPub) };
+}
+
+/**
  * Signs the shape's attack with the revoked key and the keys it mints, gets it to every judge through the shape's
  * channel, waits until each judge has judged every record (the door's refusal line or the hash in `mesh.json`), then
  * until each judge's view is the shape's. A minted key seen on a judge at any point in that window is reported.
@@ -31,7 +44,7 @@ export async function runAttack(run: ShapeRun): Promise<AttackResult> {
   const revokedActor = run.actors.get(shape.revoked);
   if (revokedActor === undefined) throw new Error(`${shape.id}: no keys for ${shape.revoked}`);
   const meshId = meshFileOf(revoked).meshId;
-  const fork = lastOwn(lib, storedRecords(revoked), revokedActor.signPub);
+  const fork = forkOf(run, storedRecords(revoked), revokedActor.signPub);
   const graph = signAttack(lib, meshId, shape, run.actors, fork);
   const hashes = shape.attack.map((step) => graph.hashes.get(step.id) ?? "");
   const judges = shape.judges.map(keyHost);
