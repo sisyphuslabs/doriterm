@@ -13,7 +13,7 @@ const signed = signScenario(withChainNumbers(partition)).records;
 test("canonicalOrder of signed records is the order the view evaluates, whatever order they arrive in", () => {
   const records = recordsOf(signed) ?? [];
   const dag = new Dag(records);
-  const want = dag.canonicalOrder(dag.all());
+  const want = dag.index.order;
   for (const arrival of [signed, signed.toReversed(), [...signed.slice(7), ...signed.slice(0, 7)]]) {
     expect(canonicalOrder(arrival).map(hashOf)).toEqual([...want]);
   }

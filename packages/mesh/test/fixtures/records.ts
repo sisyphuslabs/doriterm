@@ -110,7 +110,7 @@ export const rekey = (id: string, by: string, prev: readonly string[], noise: st
 export function withChainNumbers(drafts: readonly Draft[]): Rec[] {
   const dag = new Dag(drafts.map((d) => ({ ...d, n: d.n ?? 0 })));
   const out = new Map<string, Rec>();
-  for (const id of dag.canonicalOrder(dag.all())) {
+  for (const id of dag.index.order) {
     const d = drafts.find((x) => x.id === id);
     if (d === undefined) continue;
     const mine = [...dag.past(id)].flatMap((p) => {

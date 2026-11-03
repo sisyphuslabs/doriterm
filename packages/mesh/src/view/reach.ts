@@ -1,6 +1,8 @@
 // The reachability of a DAG as one bitset per record. Bitsets are indexed by arrival, so a grown record set extends
 // them instead of rebuilding them.
 
+import { DagError } from "./dag-error.ts";
+
 export type Bits = Uint32Array;
 
 export const bitAt = (bits: Bits, i: number): boolean => ((bits[i >>> 5] ?? 0) & (1 << (i & 31))) !== 0;
@@ -23,7 +25,7 @@ export class Reach {
     return this.#arrival.get(id);
   }
 
-  /** Adds a record whose prev records were all appended before it. */
+  /** Adds a record whose prev records were all appended before it; a prev that was not is a broken caller. */
   append(id: string, prev: readonly string[]): void {
     const i = this.#rows.length;
     if (i >= this.#words * 32) this.#grow();
@@ -31,7 +33,7 @@ export class Reach {
     for (const p of prev) {
       const at = this.#arrival.get(p);
       const parent = at === undefined ? undefined : this.#rows[at];
-      if (at === undefined || parent === undefined) continue;
+      if (at === undefined || parent === undefined) throw new DagError("dangling prev", `${id} -> ${p} before it`);
       for (let w = 0; w < row.length; w++) row[w] = (row[w] ?? 0) | (parent[w] ?? 0);
       setBit(row, at);
     }

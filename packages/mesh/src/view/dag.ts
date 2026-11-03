@@ -3,6 +3,7 @@
 
 import type { RecordType } from "../records/types.ts";
 import { History } from "./chain.ts";
+import { DagError } from "./dag-error.ts";
 
 /** The subject's self-signed member card, as the view reads it: `by` is the card's subject (its signPub). */
 export interface Card {
@@ -32,7 +33,6 @@ export interface Rec {
 
 export const subjectsOf = (r: Rec): readonly string[] => r.subjects ?? (r.subject === undefined ? [] : [r.subject]);
 export const isAdmission = (r: Rec): boolean => r.type === "found" || r.type === "admit";
-export const revokesKey = (v: Rec, k: string): boolean => v.type === "revoke" && subjectsOf(v).includes(k);
 
 /** A past-closed set of record ids as the rules read it: membership only. */
 export interface RecordSet {
@@ -42,16 +42,7 @@ export interface RecordSet {
 /** The cache key of a past-closed set: its maximal records, sorted. A past-closed set is its heads and their past. */
 export const headsKey = (heads: Iterable<string>): string => [...heads].toSorted().join("\u0000");
 
-export type DagProblem = "duplicate id" | "found count" | "dangling prev" | "unknown id";
-
-export class DagError extends Error {
-  readonly problem: DagProblem;
-
-  constructor(problem: DagProblem, detail: string) {
-    super(`${problem}: ${detail}`);
-    this.problem = problem;
-  }
-}
+export { DagError, type DagProblem } from "./dag-error.ts";
 
 export class Dag {
   readonly byId: ReadonlyMap<string, Rec>;
@@ -124,15 +115,6 @@ export class Dag {
   inPast(of: string, id: string): boolean {
     if (this.#index === undefined) void this.index;
     return this.history.reach.inPast(of, id);
-  }
-
-  /** The canonical order of a past-closed set. */
-  canonicalOrder(S: ReadonlySet<string>): readonly string[] {
-    if ([...S].every((id) => this.byId.get(id)?.prev.every((p) => S.has(p)) === true))
-      return this.index.order.filter((id) => S.has(id));
-    const order = kahn(new Map([...S].map((id) => [id, this.rec(id).prev.filter((p) => S.has(p))])));
-    if (order.length !== S.size) throw new DagError("dangling prev", "no ready record");
-    return order;
   }
 }
 

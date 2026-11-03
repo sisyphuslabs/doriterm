@@ -48,11 +48,6 @@ function ownChain(e: Engine, id: string): boolean {
   const r = e.dag.rec(id);
   const top = e.dag.history.ownTop(id);
   if (top === undefined) return r.n === 1;
-  if (Number.isNaN(top.n)) {
-    const own = ownPast(e, id);
-    if (own.some((p) => p.n >= r.n)) return false;
-    return r.n === 1 ? own.length === 0 : own.some((p) => p.n === r.n - 1);
-  }
   if (top.n >= r.n) return false;
   if (r.n === 1) return false;
   if (top.n === r.n - 1) return true;
