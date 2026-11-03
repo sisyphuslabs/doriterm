@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { MAX_RECORDS } from "../src/records/types.ts";
 import { Dag } from "../src/view/dag.ts";
 import { ViewCache, viewOfRecords } from "../src/view/engine.ts";
 import { bigMesh } from "./fixtures/big-mesh.ts";
@@ -20,8 +19,25 @@ function reachable(classes: readonly string[]): Record<string, number> {
 
 const MERGES = 256;
 
-/** Heap a cache may keep for one cold view at the cap: the history and per-record views, not per-context statuses. */
+/** Heap one cold view at the cap may leave in a cache for a names-only mesh: views and history, no per-context statuses. */
 const NAMES_BUDGET_MB = 96;
+/** For the partition shape: a common past per accuser/record pair is n/32 words of bits, not a Set of ids. */
+const PARTITION_BUDGET_MB = 24;
+
+/** The heap a cache holds after one cold view of `shape`, read in a fresh bun process (test/fixtures/cache-heap.ts). */
+async function heldMb(shape: string): Promise<number> {
+  const child = Bun.spawn([process.execPath, new URL("./fixtures/cache-heap.ts", import.meta.url).pathname, shape], {
+    stdout: "pipe",
+    stderr: "inherit",
+  });
+  const [text, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+  expect(code).toBe(0);
+  const reading: unknown = JSON.parse(text);
+  if (typeof reading !== "object" || reading === null || !("heldMb" in reading) || typeof reading.heldMb !== "number")
+    throw new Error(`unreadable heap reading: ${text}`);
+  console.log(`${shape}: the cache holds ${reading.heldMb.toFixed(1)} MB`);
+  return reading.heldMb;
+}
 
 describe("M-14: a ViewCache holds one mesh's history, not one engine per merge", () => {
   test("the heap probe sees a Dag that is still held (positive control)", () => {
@@ -53,17 +69,14 @@ describe("M-14: a ViewCache holds one mesh's history, not one engine per merge",
   });
 
   test(`a cold view of a names-only mesh at the cap keeps under ${NAMES_BUDGET_MB} MB in its cache`, async () => {
-    const child = Bun.spawn([process.execPath, new URL("./fixtures/names-only-heap.ts", import.meta.url).pathname], {
-      stdout: "pipe",
-      stderr: "inherit",
-    });
-    const [text, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
-    expect(code).toBe(0);
-    const reading: unknown = JSON.parse(text);
-    if (typeof reading !== "object" || reading === null || !("heldMb" in reading) || typeof reading.heldMb !== "number")
-      throw new Error(`unreadable heap reading: ${text}`);
-    console.log(`names-only mesh at ${MAX_RECORDS}: the cache holds ${reading.heldMb.toFixed(0)} MB`);
-    expect(reading.heldMb).toBeGreaterThan(0);
-    expect(reading.heldMb).toBeLessThan(NAMES_BUDGET_MB);
+    const held = await heldMb("names-only");
+    expect(held).toBeGreaterThan(0);
+    expect(held).toBeLessThan(NAMES_BUDGET_MB);
+  }, 120_000);
+
+  test(`a partition with revokes across it keeps under ${PARTITION_BUDGET_MB} MB in its cache`, async () => {
+    const held = await heldMb("partition");
+    expect(held).toBeGreaterThan(0);
+    expect(held).toBeLessThan(PARTITION_BUDGET_MB);
   }, 120_000);
 });

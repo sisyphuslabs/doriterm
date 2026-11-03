@@ -14,7 +14,7 @@
 
 import type { Signed } from "../records/types.ts";
 import { bitsKey } from "./chain.ts";
-import { Dag, headsKey, type Rec, type RecordSet } from "./dag.ts";
+import { Dag, headsKey, type PastSet, type Rec, type RecordSet } from "./dag.ts";
 import { type EngineView, type MemberView, membership, withEff } from "./membership.ts";
 import { recordsOf } from "./rec-of.ts";
 import { type Evaluation, Shared } from "./shared.ts";
@@ -76,11 +76,12 @@ export class Engine {
   }
 
   /** The cache key of a past-closed set: its records that no other record of the set names as prev. */
-  keyOf(S: ReadonlySet<string>): string {
+  keyOf(S: PastSet): string {
     return headsKey(this.#headsOf(S));
   }
 
-  view(S: ReadonlySet<string>): MemberView {
+  /** The view of a past-closed set. S must not change after it is passed: its heads are cached by the object. */
+  view(S: PastSet): MemberView {
     const { heads, context } = this.#keysOf(S);
     return this.#shared.view(heads, context, () => this.#evaluateClosed(S));
   }
@@ -103,15 +104,16 @@ export class Engine {
     });
   }
 
-  #headsOf(S: ReadonlySet<string>): readonly string[] {
+  #headsOf(S: PastSet): readonly string[] {
     return this.#shared.headsOf(S, () => {
-      const named = new Set([...S].flatMap((id) => this.dag.rec(id).prev));
-      return [...S].filter((id) => !named.has(id));
+      const ids = this.dag.index.order.filter((id) => S.has(id));
+      const named = new Set(ids.flatMap((id) => this.dag.rec(id).prev));
+      return ids.filter((id) => !named.has(id));
     });
   }
 
   /** A set's cache key (its heads) and, on demand, its context. */
-  #keysOf(S: ReadonlySet<string>): { readonly heads: string; readonly context: () => string } {
+  #keysOf(S: PastSet): { readonly heads: string; readonly context: () => string } {
     const heads = this.#headsOf(S);
     const h = this.dag.history;
     // The context reads the history's summaries, so every record of this DAG is appended to it first.
@@ -122,7 +124,7 @@ export class Engine {
     };
   }
 
-  #evaluateClosed(S: ReadonlySet<string>): Evaluation {
+  #evaluateClosed(S: PastSet): Evaluation {
     // Ancestors first, so each record's own past is evaluated before a later record asks for it (no deep recursion).
     for (const id of this.dag.index.order) if (S.has(id)) valid(this, id);
     return this.#evaluate(S);

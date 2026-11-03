@@ -1,7 +1,7 @@
 // R3 "Structure": what a record is on its own and in the DAG. Every function reads only the record, its past, and
 // views of strictly smaller sets; nothing here reads testimony.
 
-import { type Rec, subjectsOf } from "./dag.ts";
+import { type PastSet, type Rec, subjectsOf } from "./dag.ts";
 import type { Engine } from "./engine.ts";
 import type { MemberView } from "./membership.ts";
 
@@ -100,13 +100,9 @@ function forksOnce(e: Engine, v: string, x: string): boolean {
   return false;
 }
 
-/** C(a, b) = past(a) ∩ past(b). */
-export function common(e: Engine, a: string, b: string): ReadonlySet<string> {
-  return e.once(
-    "c",
-    `${a}:${b}`,
-    (): ReadonlySet<string> => new Set(e.dag.index.order.filter((id) => e.dag.inPast(a, id) && e.dag.inPast(b, id))),
-  );
+/** C(a, b) = past(a) ∩ past(b), kept as bits: a cache keeps one per accuser/record pair for the mesh's life. */
+export function common(e: Engine, a: string, b: string): PastSet {
+  return e.once("c", `${a}:${b}`, () => e.dag.common(a, b));
 }
 
 /** CM(a, b) = members(view(C(a, b))). */
@@ -125,7 +121,7 @@ export function lineage(
   e: Engine,
   key: string,
   view: MemberView | undefined,
-  C: ReadonlySet<string>,
+  C: PastSet,
 ): readonly string[] | undefined {
   const commonMembersSet = new Set(C.size === 0 ? [] : e.view(C).members);
   const out: string[] = [];

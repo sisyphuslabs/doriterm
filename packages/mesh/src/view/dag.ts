@@ -39,6 +39,11 @@ export interface RecordSet {
   has(id: string): boolean;
 }
 
+/** A past-closed set the rules ask about by membership and size: a Set of ids, or the bits of a common past. */
+export interface PastSet extends RecordSet {
+  readonly size: number;
+}
+
 /** The cache key of a past-closed set: its maximal records, sorted. A past-closed set is its heads and their past. */
 export const headsKey = (heads: Iterable<string>): string => [...heads].toSorted().join("\u0000");
 
@@ -109,6 +114,12 @@ export class Dag {
     }
     this.#index = indexOf(this, order);
     return this.#index;
+  }
+
+  /** C(a, b) = past(a) ∩ past(b), as bits of the shared history. */
+  common(a: string, b: string): PastSet {
+    if (this.#index === undefined) void this.index;
+    return this.history.reach.common(a, b);
   }
 
   /** id ∈ past(of). */

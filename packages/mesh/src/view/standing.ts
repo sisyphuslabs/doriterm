@@ -1,7 +1,7 @@
 // R3 "Level 0" accusers and "Standing": which revokes may accuse. Level 0 lets every structurally valid concurrent
 // revoke accuse; level 1 keeps only the accusers whose provenance survives level 0. Reads level 0 only.
 
-import type { RecordSet } from "./dag.ts";
+import type { PastSet, RecordSet } from "./dag.ts";
 import type { Engine } from "./engine.ts";
 import { common, lineage, valid } from "./structure.ts";
 import { verdict } from "./testimony.ts";
@@ -23,7 +23,7 @@ export const defeats0 = (e: Engine, S: RecordSet, v: string, x: string): boolean
   verdict(e, S, v, x, 0, accusers0) === "defeated";
 
 /** clean0(r, C) = ∀ g ∈ lineage(r.by, view(past(r)), C): ¬∃ u ∈ accusers0(g): defeats0(u, g). */
-export function clean0(e: Engine, S: RecordSet, r: string, C: ReadonlySet<string>): boolean {
+export function clean0(e: Engine, S: RecordSet, r: string, C: PastSet): boolean {
   return e.cached(S, "c0", `${r}:${e.keyOf(C)}`, () => {
     const chain = lineage(e, e.dag.rec(r).by, e.before(r), C);
     return chain !== undefined && chain.every((g) => !accusers0(e, S, g).some((u) => defeats0(e, S, u, g)));

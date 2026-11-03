@@ -4,7 +4,7 @@
 // merge builds a new Dag of the whole set.
 
 import type { History } from "./chain.ts";
-import type { RecordSet } from "./dag.ts";
+import type { PastSet, RecordSet } from "./dag.ts";
 import type { MemberView } from "./membership.ts";
 import type { Status } from "./status.ts";
 
@@ -26,7 +26,7 @@ export class Shared {
   readonly history: History;
   readonly #once: Tables = new Map();
   readonly #perSet = new WeakMap<RecordSet, Tables>();
-  readonly #heads = new WeakMap<ReadonlySet<string>, readonly string[]>();
+  readonly #heads = new WeakMap<PastSet, readonly string[]>();
   readonly #before = new Map<string, MemberView | undefined>();
   readonly #members = new Map<string, ReadonlySet<string>>();
   /** The view of each set evaluated so far, under the set's heads, and of each context. Views only: no statuses. */
@@ -86,7 +86,7 @@ export class Shared {
     return Shared.memo(Shared.table(tables, kind), key, compute);
   }
 
-  headsOf(S: ReadonlySet<string>, compute: () => readonly string[]): readonly string[] {
+  headsOf(S: PastSet, compute: () => readonly string[]): readonly string[] {
     const known = this.#heads.get(S);
     if (known !== undefined) return known;
     const heads = compute();
