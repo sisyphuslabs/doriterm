@@ -69,6 +69,16 @@ function saw(t: Testimony, p: string, a: string, b: string): boolean {
 const support = (t: Testimony, a: string, b: string, pool: readonly string[]): number =>
   pool.filter((p) => saw(t, p, a, b) && !saw(t, p, b, a)).length;
 
+export const supportAt = (
+  e: Engine,
+  S: ReadonlySet<string>,
+  a: string,
+  b: string,
+  pool: readonly string[],
+  level: Level,
+  acc: AccusersOf,
+): number => support({ e, S, level, acc }, a, b, pool);
+
 /**
  * verdict(v, x): defeated on a fork or strictly more testimony for v; at level 1 a non-revoke with no testimony either
  * way (0:0) is a tie (fail closed); otherwise it stands.
