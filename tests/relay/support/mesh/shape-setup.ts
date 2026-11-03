@@ -59,15 +59,18 @@ async function untilWritten(run: ShapeRun, step: Step, online: readonly string[]
   );
 }
 
-/** `mesh revoke <member>`: without `--yes` first, which section 6.1 refuses exactly when the witness pool is empty. */
+/**
+ * `mesh revoke <hostId>`: without `--yes` first, which section 6.1 refuses exactly when the witness pool is empty. The
+ * member is named by hostId: a founder's mesh name is its core's name, not the harness's host name.
+ */
 async function revokeWithWarning(run: ShapeRun, step: Step): Promise<ShapeRun["warning"]> {
   const revoker = run.mesh.host(run.host(step.by));
   const subject = run.mesh.host(run.host(step.subjects?.[0] ?? ""));
   const member = (await statusOf(revoker)).members.find((entry) => entry.hostId === subject.hostId);
   const poolEmpty = member?.pool?.length === 0;
-  const plain = await revoker.cli("mesh", "revoke", subject.name);
+  const plain = await revoker.cli("mesh", "revoke", subject.hostId);
   if (plain.exit === 0) return { poolEmpty, neededYes: false };
-  const confirmed = await revoker.cli("mesh", "revoke", subject.name, "--yes");
+  const confirmed = await revoker.cli("mesh", "revoke", subject.hostId, "--yes");
   if (confirmed.exit !== 0)
     throw new Error(`mesh revoke ${subject.name} failed: ${confirmed.stderr}${confirmed.stdout}`);
   return { poolEmpty, neededYes: true };
