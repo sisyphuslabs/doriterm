@@ -5,21 +5,27 @@
 
 import type { Signed } from "./records/types.ts";
 import { Dag, isAdmission, type Rec } from "./view/dag.ts";
-import { Engine } from "./view/engine.ts";
+import { Engine, type ViewCache } from "./view/engine.ts";
 import { recordsOf } from "./view/rec-of.ts";
 import { lineage } from "./view/structure.ts";
+
+/** X's last own record, or its admission if it never wrote: the position a revoke of X is judged from. */
+function positionOf(records: readonly Rec[], X: string): Rec | undefined {
+  const own = records.filter((r) => r.by === X && r.type !== "found").toSorted((a, b) => b.n - a.n)[0];
+  return own ?? records.find((r) => isAdmission(r) && r.subject === X);
+}
 
 export function witnessPoolOfRecords(
   records: readonly Rec[],
   revoker: string,
   subjects: readonly string[],
+  cache?: ViewCache,
 ): ReadonlyMap<string, readonly string[]> {
-  const e = new Engine(new Dag(records));
+  const e = new Engine(new Dag(records), cache);
   const now = e.full();
   const out = new Map<string, readonly string[]>();
   for (const X of subjects) {
-    const own = records.filter((r) => r.by === X && r.type !== "found").toSorted((a, b) => b.n - a.n)[0];
-    const L = own ?? records.find((r) => isAdmission(r) && r.subject === X);
+    const L = positionOf(records, X);
     if (L === undefined) continue;
     const C = new Set([L.id, ...e.dag.past(L.id)]);
     const minted = new Set((lineage(e, revoker, now, C) ?? []).map((g) => e.dag.rec(g).by));
@@ -33,12 +39,30 @@ export function witnessPoolOfRecords(
   return out;
 }
 
-/** Per subject, the members that could witness a backdating conflict against a revoke `revoker` writes now. */
+/**
+ * Per subject, the members that could witness a backdating conflict against a revoke `revoker` writes now. `cache`
+ * lets several calls on one set share their views.
+ */
 export function witnessPool(
   set: readonly Signed[],
   revoker: string,
   subjects: readonly string[],
+  cache?: ViewCache,
 ): ReadonlyMap<string, readonly string[]> {
   const records = recordsOf(set);
-  return records === undefined ? new Map() : witnessPoolOfRecords(records, revoker, subjects);
+  return records === undefined ? new Map() : witnessPoolOfRecords(records, revoker, subjects, cache);
+}
+
+/** The members at X's position other than X: whom a backdated record of X's key could eject (design 6.1). */
+export function presentAtOfRecords(records: readonly Rec[], X: string, cache?: ViewCache): readonly string[] {
+  const L = positionOf(records, X);
+  if (L === undefined) return [];
+  const e = new Engine(new Dag(records), cache);
+  const past = e.dag.past(L.id);
+  return past.size === 0 ? [] : e.view(past).members.filter((k) => k !== X);
+}
+
+export function presentAt(set: readonly Signed[], X: string, cache?: ViewCache): readonly string[] {
+  const records = recordsOf(set);
+  return records === undefined ? [] : presentAtOfRecords(records, X, cache);
 }
