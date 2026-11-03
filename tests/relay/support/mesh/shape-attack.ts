@@ -1,5 +1,5 @@
 import { type ForbiddenWatch, watchForbidden } from "./forbidden-watch.ts";
-import { deliver, type Delivery, type Judgement, untilJudged } from "./inject.ts";
+import { deliver, type Delivery, type Judgement, judgementOf, untilJudged } from "./inject.ts";
 import { StoredSet } from "./honest-records.ts";
 import { identityOf } from "./identity.ts";
 import { isolate } from "./isolate.ts";
@@ -13,8 +13,8 @@ import { meshFileOf, type SignedRecord, type Status, statusOf, storedRecords } f
 export interface AttackResult {
   /** How each judge's own session served the injection (member channel only). */
   readonly deliveries: readonly Delivery["kind"][];
-  /** Each judge's judgement of every attack record, by judge host name. */
-  readonly judgements: ReadonlyMap<string, readonly Judgement[]>;
+  /** Each judge's judgement of every attack record, by judge host name; `absent` when it never received one. */
+  readonly judgements: ReadonlyMap<string, readonly (Judgement | "absent")[]>;
   /** Every sighting of a minted key on a judge, from the first injected byte to the settled view. */
   readonly sightings: readonly string[];
   /** Each judge's status once its view is the expected one. */
@@ -22,6 +22,8 @@ export interface AttackResult {
 }
 
 const MEMBERS_MS = 120_000;
+/** A member that answered 4404 is probed at most every 5 minutes (section 5.4); one probe reaches the returned host. */
+const PROBE_MS = 6 * 60_000;
 
 /**
  * FORK as the model has it: the honest record the shape names (`fork`), which must be the revoked key's last own
@@ -58,6 +60,18 @@ async function injectThroughMembers(
 }
 
 /**
+ * The sync point of an unreachable shape: the returned revoked host has refused a judge's session as a revoked
+ * member's (section 9.2). The judges' only channel to it is then shown closed, and what they hold is final.
+ */
+async function untilRefusedBy(mesh: Mesh, host: MeshHost, from: number): Promise<void> {
+  await mesh.until(
+    `${host.name} refuses a judge's session as a revoked member's`,
+    () => host.logs.slice(from).some((line) => line.includes("mesh: refused a session: revoked mesh member")),
+    PROBE_MS,
+  );
+}
+
+/**
  * Signs the shape's attack with the revoked key and the keys it mints, gets it to every judge through the shape's
  * channel, waits until each judge has judged every record (the door's refusal line or the hash in `mesh.json`), then
  * until each judge's view is the shape's. A minted key seen on a judge at any point in that window is reported.
@@ -88,16 +102,27 @@ export async function runAttack(run: ShapeRun): Promise<AttackResult> {
       sessions.push(...(await injectThroughMembers(mesh, judges, meshId, graph.records)));
     } else {
       plantRecords(revoked, revokedActor.signPub, graph.records);
+      const from = revoked.logs.length;
       await revoked.start();
+      if (shape.unreachable === true) await untilRefusedBy(mesh, revoked, from);
     }
-    const judged = await Promise.all(judges.map((judge) => untilJudged(mesh, judge, hashes, lib.hashOf)));
-    const judgements = new Map<string, readonly Judgement[]>(
-      judges.map((judge, index) => [judge.name, hashes.map((hash) => judged[index]?.get(hash) ?? "refused")]),
+    const judged = await Promise.all(
+      judges.map((judge) =>
+        shape.unreachable === true ? new Map<string, Judgement>() : untilJudged(mesh, judge, hashes, lib.hashOf),
+      ),
     );
-    const want = JSON.stringify(shape.members.map((key) => keyHost(key).hostId).toSorted());
+    const judgements = new Map<string, readonly (Judgement | "absent")[]>(
+      judges.map((judge, index) => [
+        judge.name,
+        hashes.map((hash) => judged[index]?.get(hash) ?? judgementOf(judge, hash, lib.hashOf) ?? "absent"),
+      ]),
+    );
+    const honest = Object.keys(shape.hosts).filter((key) => key !== shape.revoked);
+    const viewKeys = shape.unreachable === true ? honest : shape.members;
+    const want = JSON.stringify(viewKeys.map((key) => keyHost(key).hostId).toSorted());
     const statuses = new Map<string, Status>();
     await mesh.until(
-      `${shape.id}: every judge's view is ${JSON.stringify(shape.members)}`,
+      `${shape.id}: every judge's view is ${JSON.stringify(viewKeys)}`,
       async () => {
         const seen = await Promise.all(judges.map((judge) => statusOf(judge)));
         for (const [index, judge] of judges.entries())

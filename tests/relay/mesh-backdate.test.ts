@@ -33,18 +33,19 @@ for (const shape of BACKDATE_SHAPES) {
       expect(shaped().warning).toEqual({ poolEmpty: shape.emptyPool, neededYes: shape.emptyPool });
     });
 
-    test("every judge stores the backdated records, and no minted key is ever listed, dialed or logged by one", async () => {
+    const judged = shape.unreachable === true ? "absent" : "stored";
+    test(`every judge's set holds the backdated records as ${judged}, and no minted key is ever listed, dialed or logged by one`, async () => {
       const result = await runAttack(shaped());
       expect(result.deliveries).toEqual(shape.channel === "member" ? shape.judges.map(() => "answered") : []);
-      expect([...result.judgements.values()]).toEqual(shape.judges.map(() => shape.attack.map(() => "stored")));
+      expect([...result.judgements.values()]).toEqual(shape.judges.map(() => shape.attack.map(() => judged)));
       expect(result.sightings).toEqual([]);
       for (const status of result.statuses.values()) {
-        expect(status.stuck.includes(FAIL_CLOSED)).toBe(shape.failClosed);
+        expect(status.stuck.includes(FAIL_CLOSED)).toBe(shape.failClosed && shape.unreachable !== true);
         for (const [key, name] of Object.entries(shape.names ?? {})) {
           const hostId = shaped().mesh.host(shaped().host(key)).hostId;
           expect(status.members.find((member) => member.hostId === hostId)?.name).toBe(name);
         }
       }
-    }, 240_000);
+    }, 480_000);
   });
 }

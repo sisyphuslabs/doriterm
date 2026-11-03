@@ -58,6 +58,11 @@ export interface BackdateShape {
   readonly channel: Channel;
   /** Stop the revoked key's host before this honest step, so it never acks it or merges it. */
   readonly offlineBefore?: string;
+  /**
+   * The attack can reach no judge: the shape revokes each side from the other's view, and section 9.2 refuses a
+   * revoked member's key on the mesh stream, so no session between them can exist. The judges keep their honest view.
+   */
+  readonly unreachable?: true;
 }
 
 export const FORK = "@fork";
@@ -144,12 +149,18 @@ const P1: BackdateShape = {
   offlineBefore: "vB_byA",
 };
 
+/**
+ * The model's verdict on these records is fail-closed `{}` (section 3.6). On the hosts the records never form that
+ * set: B's own `xA_byB` revokes A in B's view and `vB_byA` revokes B in A's, so each refuses the other (section 9.2)
+ * and nothing of B's reaches A ("nothing of B's gets in"). A keeps its honest view, `{A}`.
+ */
 const P1b: BackdateShape = {
   ...P1,
   id: "P1b",
   attack: [...P1.attack, revoke("xA_byB", "B", ["A"], ["xZ_byB"])],
   members: [],
   failClosed: true,
+  unreachable: true,
 };
 
 const P2: BackdateShape = {
