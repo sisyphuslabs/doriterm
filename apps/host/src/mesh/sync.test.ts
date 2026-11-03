@@ -1,31 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import {
-  MAX_LINE_BYTES,
-  type MeshChannel,
-  type MeshMessage,
-  MeshStreamError,
-  parseMessage,
-  recordLines,
-} from "./sync-lines.ts";
+import { MAX_LINE_BYTES, MeshStreamError, parseMessage, recordLines } from "./sync-lines.ts";
 import { mergeBatch } from "./merge.ts";
 import { type SyncHost, SyncSession } from "./sync.ts";
 import { FakeClock } from "./testing/fake-clock.ts";
 import { FakeSigner, fakeRules, hashOfRecord, MemoryFile, MESH_ID, meshOf, member } from "./testing/fake-mesh.ts";
-
-function scripted(): { channel: MeshChannel; sent: MeshMessage[]; receive: (message: MeshMessage) => void } {
-  const sent: MeshMessage[] = [];
-  const listeners = new Set<(message: MeshMessage) => void>();
-  const channel: MeshChannel = {
-    send: (message) => void sent.push(message),
-    onMessage: (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    onClose: () => () => undefined,
-    close: () => undefined,
-  };
-  return { channel, sent, receive: (message) => listeners.forEach((listener) => listener(message)) };
-}
+import { scripted } from "./testing/scripted.ts";
 
 describe("mesh stream lines (S-1)", () => {
   test("a large set goes as several records lines of at most 256 KiB, then done", () => {
