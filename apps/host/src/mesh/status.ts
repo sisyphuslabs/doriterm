@@ -65,7 +65,7 @@ function member(sources: MeshSources, names: Names, key: string, now: Date): Mes
         : { kind: "offline", refusals: peer.gate.refusals, nextProbeS: Math.ceil(peer.gate.nextProbeInMs / 1000) },
     witness: { pool: witness.pool.map(names.hostId), ask: witness.ask === null ? null : names.hostId(witness.ask) },
     unreachableSince: iso(since),
-    revokeCommand: stale ? `doriface-host mesh revoke ${name}` : null,
+    revokeSuggested: stale,
   };
 }
 

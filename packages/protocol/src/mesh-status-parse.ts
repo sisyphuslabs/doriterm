@@ -83,7 +83,7 @@ const isMember = objectOf<MeshMemberStatus>({
   gate: nullable(isGate),
   witness: isWitness,
   unreachableSince: nullable(isTime),
-  revokeCommand: nullable(isString),
+  revokeSuggested: isBoolean,
 });
 const isRevoked = objectOf<MeshRevokedStatus>({
   hostId: isId,
@@ -137,6 +137,9 @@ function isConsistent(status: MeshStatus): boolean {
     hostIds.size === status.members.length &&
     onSelfLine.length === 1 &&
     onSelfLine[0]?.hostId === status.self &&
+    status.members.every(
+      (member) => !member.revokeSuggested || (member.line !== "self" && member.unreachableSince !== null),
+    ) &&
     status.stuck.every((reason) => !("member" in reason) || hostIds.has(reason.member))
   );
 }

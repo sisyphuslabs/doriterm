@@ -1,4 +1,4 @@
-import type { MeshMemberStatus, MeshStatus, MeshStuckReason } from "@doriface/protocol";
+import { type MeshMemberStatus, type MeshStatus, type MeshStuckReason, meshRevokeCommand } from "@doriface/protocol";
 
 function stuckLine(reason: MeshStuckReason, nameOf: (hostId: string) => string): string {
   switch (reason.kind) {
@@ -40,9 +40,8 @@ function memberLine(member: MeshMemberStatus, nameOf: (hostId: string) => string
       member.witness.ask === null ? "re-found if its key is compromised" : `ask ${nameOf(member.witness.ask)}`;
     lines.push(`    revoke of ${member.name} would be undecidable from here; ${ask}`);
   }
-  if (member.revokeCommand !== null) {
-    lines.push(`    unreachable since ${member.unreachableSince}; to remove it: ${member.revokeCommand}`);
-  }
+  const revoke = member.revokeSuggested ? meshRevokeCommand(member.name) : undefined;
+  if (revoke !== undefined) lines.push(`    unreachable since ${member.unreachableSince}; to remove it: ${revoke}`);
   return lines.join("\n");
 }
 

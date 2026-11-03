@@ -60,8 +60,11 @@ export type MeshMemberStatus = {
   readonly gate: MeshGate | null;
   readonly witness: MeshWitness;
   readonly unreachableSince: string | null;
-  /** Prefilled when it has been unreachable for more than 7 days. */
-  readonly revokeCommand: string | null;
+  /**
+   * It has been unreachable for more than 7 days: readers offer `meshRevokeCommand(name)`. The document carries no
+   * command, since any client can rewrite it.
+   */
+  readonly revokeSuggested: boolean;
 };
 
 export type MeshRevokedStatus = {

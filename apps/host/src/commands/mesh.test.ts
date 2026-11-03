@@ -44,7 +44,7 @@ describe("doriface-host mesh status", () => {
     for (const member of status.members) {
       expect(text).toContain(`${member.name} ${member.hostId} ${member.fingerprint}`);
     }
-    expect(text).toContain(status.members[2]?.revokeCommand ?? "missing");
+    expect(text).toContain("to remove it: doriface-host mesh revoke laptop");
   });
 
   test("a host in no mesh exits 1", async () => {

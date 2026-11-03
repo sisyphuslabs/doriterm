@@ -64,9 +64,9 @@ describe("mesh status", () => {
   test("offers a prefilled revoke only for a member unreachable for more than 7 days", () => {
     expect(memberNamed("laptop")).toMatchObject({
       unreachableSince: "2026-10-25T12:00:00.000Z",
-      revokeCommand: "doriface-host mesh revoke laptop",
+      revokeSuggested: true,
     });
-    expect(memberNamed("build-box")?.revokeCommand).toBeNull();
+    expect(memberNamed("build-box")?.revokeSuggested).toBe(false);
   });
 
   test("the revoke offer starts only past 7 days unreachable", () => {
@@ -82,9 +82,9 @@ describe("mesh status", () => {
       });
       return meshStatus({ ...fixture.sources, peers }, NOW).members.find((member) => member.name === "build-box");
     };
-    expect(unreachableFor(60_000)?.revokeCommand).toBeNull();
-    expect(unreachableFor(UNREACHABLE_REVOKE_MS)?.revokeCommand).toBeNull();
-    expect(unreachableFor(UNREACHABLE_REVOKE_MS + 1)?.revokeCommand).toBe("doriface-host mesh revoke build-box");
+    expect(unreachableFor(60_000)?.revokeSuggested).toBe(false);
+    expect(unreachableFor(UNREACHABLE_REVOKE_MS)?.revokeSuggested).toBe(false);
+    expect(unreachableFor(UNREACHABLE_REVOKE_MS + 1)?.revokeSuggested).toBe(true);
   });
 
   test("names the witness pool by hostId, and who to ask when it is empty here", () => {

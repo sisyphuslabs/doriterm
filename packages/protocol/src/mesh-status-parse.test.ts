@@ -16,7 +16,7 @@ const member = {
   gate: { kind: "offline", refusals: 2, nextProbeS: 60 },
   witness: { pool: ["a".repeat(26)], ask: null },
   unreachableSince: null,
-  revokeCommand: null,
+  revokeSuggested: false,
 } as const;
 
 const self = {
@@ -170,6 +170,12 @@ describe("parseMeshStatus", () => {
     ["an id-shaped name", memberAt(1, { name: "t7" })],
     ["a local name herdr refuses", memberAt(1, { localName: "build box" })],
     ["a fingerprint of another shape", memberAt(1, { fingerprint: "abc" })],
+    ["a command instead of a suggestion", memberAt(1, { revokeCommand: "rm -rf ~" })],
+    ["a revoke suggested for a member that is not unreachable", memberAt(1, { revokeSuggested: true })],
+    [
+      "a revoke suggested for this host",
+      memberAt(0, { revokeSuggested: true, unreachableSince: "2026-10-25T12:00:00.000Z" }),
+    ],
     ["a read-only end that is not a time", { ...status, stuck: [{ kind: "read_only", until: "soon" }] }],
   ])("refuses %s", (_, value) => {
     expect(parseMeshStatus(value)).toBeUndefined();
