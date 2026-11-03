@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "types",
+    "rootDir": ".",
+    "types": ["bun"]
+  },
+  "include": ["."],
+  "exclude": ["types"],
+  "references": [
+    {
+      "path": "../../tests/relay"
+    },
+    {
+      "path": "../../packages/crypto"
+    }
+  ]
+}
