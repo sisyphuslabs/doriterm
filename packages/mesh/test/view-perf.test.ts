@@ -14,8 +14,9 @@ import { signScenario } from "./fixtures/signed.ts";
  * slows both sides together. On a 40-core host at load average 52-58, 16 runs of this file 8 at a time: the merge
  * median was 24-59 ms against a cold view of 2.0-4.1 s, 0.7-2.9% of it, and the gate is 10%. The old absolute 50 ms
  * gate failed 2 of those 16 runs. A merge that re-evaluates the whole set (no state carried across merges) costs
- * 97-114% of a cold view and fails. The absolute median is logged against the design's 50 ms honest-mesh budget. The previous engine grew with the cube of the set: 0.16 s at 128 records, 0.88 s at 256,
- * 7.1 s at 512, so it misses both.
+ * 97-114% of a cold view and fails. The absolute median is also held under ten times the design's 50 ms honest-mesh
+ * budget, so a cold-path slowdown cannot widen the ratio's window. The previous engine grew with the cube of the set:
+ * 0.16 s at 128 records, 0.88 s at 256, 7.1 s at 512, so it misses both.
  */
 const COLD_BUDGET_MS = 10_000;
 /** A merge must cost under this share of a cold view of the same set. */
@@ -58,4 +59,5 @@ test("M-14: one merge at 4096 records costs under a tenth of a cold view of the 
       `(gate ${MERGE_SHARE_OF_COLD})`,
   );
   expect(median / coldMs).toBeLessThan(MERGE_SHARE_OF_COLD);
+  expect(median).toBeLessThan(10 * DESIGN_MERGE_MS);
 }, 120_000);
