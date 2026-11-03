@@ -13,12 +13,13 @@ async function openMesh(page: Page): Promise<void> {
     .or(page.getByRole("button", { name: "Mesh" }))
     .first()
     .click();
-  await expect(page.getByRole("heading", { name: "Mesh", level: 2 }).first()).toBeVisible();
+  await expect(page.locator("[data-mesh-group]").first()).toBeVisible({ timeout: 20_000 });
 }
 
 test("the mesh panel groups every machine of the host's status document", async ({ page }) => {
   await openMesh(page);
-  await expect(group(page, "pending")).toContainText("ci-runner asks to join", { timeout: 20_000 });
+  await expect(group(page, "pending").locator('[data-mesh-answer="open"]')).toHaveCount(1);
+  await expect(group(page, "pending")).toContainText("ci-runner");
   await expect(group(page, "online")).toContainText("studio");
   await expect(group(page, "online")).toContainText("build-box");
   await expect(group(page, "offline")).toContainText("laptop");
@@ -27,9 +28,10 @@ test("the mesh panel groups every machine of the host's status document", async 
   await expect(group(page, "revoked")).toContainText("kiosk");
   await expect(group(page, "revoked")).not.toContainText("spare");
   await expect(page.locator('[data-mesh-group^="removed-"]')).toContainText("spare");
-  await expect(page.getByText("tablet joined the mesh")).toBeVisible();
+  await expect(page.locator('[data-mesh-banner="notice"]')).toHaveCount(1);
+  await expect(page.locator('[data-mesh-banner="notice"]')).toContainText("tablet");
   // build-box is connected both in the document and in this core's machine.list, so nothing disagrees.
-  await expect(page.getByText("disagrees with machine.list")).toHaveCount(0);
+  await expect(page.locator('[data-mesh-banner="disagreement"]')).toHaveCount(0);
 });
 
 test("a copy the clipboard refuses says so beside the command", async ({ page }) => {
@@ -57,9 +59,9 @@ test("an expired join offers no answer", async ({ page }) => {
 test("approving a pending join writes the answer and shows it in place", async ({ page }) => {
   await openMesh(page);
   const pending = group(page, "pending");
-  await pending.getByRole("button", { name: "Approve" }).click();
-  await expect(pending).toContainText("Approved; studio admits it next", { timeout: 15_000 });
+  await pending.locator('[data-mesh-answer="open"] [data-mesh-verdict="approve"]').click();
+  await expect(pending.locator('[data-mesh-answer="approve"]')).toHaveCount(1, { timeout: 15_000 });
   await page.reload();
   await openMesh(page);
-  await expect(group(page, "pending")).toContainText("Approved; studio admits it next", { timeout: 20_000 });
+  await expect(group(page, "pending").locator('[data-mesh-answer="approve"]')).toHaveCount(1, { timeout: 20_000 });
 });

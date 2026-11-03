@@ -54,7 +54,7 @@ const meshLoaded = async (page: Page) => {
   await page.goto("/");
   await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
   await section(page, "Mesh");
-  await expect(page.getByText("ci-runner asks to join")).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('[data-mesh-group="pending"] [data-mesh-answer]').first()).toBeVisible({ timeout: 20_000 });
 };
 
 export const SHOTS: readonly Shot[] = [

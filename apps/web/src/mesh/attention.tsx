@@ -53,12 +53,19 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
       control={
         state === "open" ? (
           <div className="flex gap-2" data-mesh-answer={state}>
-            <Button size="sm" loading={busy === "deny"} disabled={busy !== undefined} onClick={() => send("deny")}>
+            <Button
+              size="sm"
+              data-mesh-verdict="deny"
+              loading={busy === "deny"}
+              disabled={busy !== undefined}
+              onClick={() => send("deny")}
+            >
               Deny
             </Button>
             <Button
               size="sm"
               variant="primary"
+              data-mesh-verdict="approve"
               loading={busy === "approve"}
               disabled={busy !== undefined}
               onClick={() => send("approve")}
@@ -142,31 +149,39 @@ export function MeshBanners({ status, disagreement, nameOf }: BannersProps) {
   return (
     <>
       {disagreement === undefined ? null : (
-        <Notice tone="warning" title="The status document disagrees with machine.list">
-          {disagreement.otherHost ? "It was written for another host. " : ""}
-          {disagreement.names.length === 0 ? "" : `machine.list shows ${disagreement.names.join(", ")} differently. `}
-          Anyone connected to this host can rewrite the document, so trust what the machines list shows.
-        </Notice>
+        <div data-mesh-banner="disagreement">
+          <Notice tone="warning" title="The status document disagrees with machine.list">
+            {disagreement.otherHost ? "It was written for another host. " : ""}
+            {disagreement.names.length === 0 ? "" : `machine.list shows ${disagreement.names.join(", ")} differently. `}
+            Anyone connected to this host can rewrite the document, so trust what the machines list shows.
+          </Notice>
+        </div>
       )}
       {status.stuck.length === 0 ? null : (
-        <Notice tone="error" title="Mesh sync is stuck">
-          {status.stuck.map((reason) => (
-            <span key={`${reason.kind}-${"member" in reason ? reason.member : ""}`} className="block">
-              {stuckText(reason, nameOf)}
-            </span>
-          ))}
-        </Notice>
+        <div data-mesh-banner="stuck">
+          <Notice tone="error" title="Mesh sync is stuck">
+            {status.stuck.map((reason) => (
+              <span key={`${reason.kind}-${"member" in reason ? reason.member : ""}`} className="block">
+                {stuckText(reason, nameOf)}
+              </span>
+            ))}
+          </Notice>
+        </div>
       )}
       {status.budget.halvedUntil === null ? null : (
-        <Notice tone="warning" title="The relay is limiting this address">
-          Other hosts behind the same address share its limit, so new lines open more slowly for now.
-        </Notice>
+        <div data-mesh-banner="rate-limit">
+          <Notice tone="warning" title="The relay is limiting this address">
+            Other hosts behind the same address share its limit, so new lines open more slowly for now.
+          </Notice>
+        </div>
       )}
       {status.notices.map((notice) => (
-        <Notice key={notice.hostId} tone="info" title={`${notice.name} joined the mesh`}>
-          {`Admitted by ${nameOf(notice.admittedBy)} on ${dayOf(notice.seenAt)}. Its key is `}
-          <span className="font-mono tabular-nums">{notice.fingerprint}</span>.
-        </Notice>
+        <div key={notice.hostId} data-mesh-banner="notice" data-mesh-notice={notice.hostId}>
+          <Notice tone="info" title={`${notice.name} joined the mesh`}>
+            {`Admitted by ${nameOf(notice.admittedBy)} on ${dayOf(notice.seenAt)}. Its key is `}
+            <span className="font-mono tabular-nums">{notice.fingerprint}</span>.
+          </Notice>
+        </div>
       ))}
     </>
   );
