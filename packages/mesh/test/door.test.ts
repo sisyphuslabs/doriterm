@@ -214,6 +214,19 @@ describe("M-2: the door refuses each rule of design section 3.3", () => {
   ];
   for (const [what, run, want] of cases) test(`${what}: ${want}`, () => expect(run()).toBe(want));
 
+  test("the stored index follows the array: appended records count, a shrunk or different array is re-read", () => {
+    const ack = record({ type: "ack", by: A.pub, n: 3, prev: [hashOf(aB)] });
+    const growing: Signed[] = [F];
+    expect(reason(ack, growing)).toBe("dangling");
+    growing.push(aB);
+    expect(reason(ack, growing)).toBeUndefined();
+    growing.push(ack);
+    expect(reason(ack, growing)).toBe("already stored");
+    growing.length = 2;
+    expect(reason(ack, growing)).toBeUndefined();
+    expect(reason(ack, [F])).toBe("dangling");
+  });
+
   test("missingFor names exactly the prev hashes the set lacks", () => {
     const ghost = base64urlEncode(new Uint8Array(32).fill(7));
     expect(missingFor(record({ type: "ack", by: A.pub, n: 3, prev: [hashOf(aB), ghost] }), stored)).toEqual([ghost]);

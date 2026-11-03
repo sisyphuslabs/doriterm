@@ -2,7 +2,7 @@
 // no view, only the record and the stored set.
 
 import { bodyBytes, cardOf, hashOf, meshIdOf, parseRecord, verifies, verifyCard } from "./records/codec.ts";
-import { type CardBody, MAX_BODY_BYTES, MAX_RECORDS, type RecordBody, type Signed } from "./records/types.ts";
+import { MAX_BODY_BYTES, MAX_RECORDS, type RecordBody, type Signed } from "./records/types.ts";
 
 export type DoorReason =
   | "malformed"
@@ -24,42 +24,74 @@ export type DoorResult = { readonly ok: true } | { readonly ok: false; readonly 
 const OK: DoorResult = { ok: true };
 const refuse = (reason: DoorReason): DoorResult => ({ ok: false, reason });
 
-interface Stored {
-  readonly hashes: ReadonlySet<string>;
-  readonly found: Signed | undefined;
-  readonly signers: ReadonlySet<string>;
-  readonly nonces: ReadonlySet<string>;
+/** What the door needs from the stored set, built once per stored array and extended as the array grows. */
+interface StoredIndex {
+  readonly hashes: Set<string>;
+  readonly signers: Set<string>;
+  readonly nonces: Set<string>;
+  meshId: string | undefined;
+  /** The array elements already indexed, to tell an append (index only the new tail) from a different set. */
+  count: number;
+  first: Signed | undefined;
+  last: Signed | undefined;
 }
 
-function index(stored: readonly Signed[]): Stored {
-  const signers = new Set<string>();
-  const nonces = new Set<string>();
-  let found: Signed | undefined;
-  for (const record of stored) {
-    const body = parseRecord(record);
-    if (body?.type === "found") found = record;
-    const card = body === undefined ? undefined : verifiedCardOf(body);
-    if (card === undefined || body === undefined) continue;
-    nonces.add(card.nonce);
-    if (body.type !== "rekey") signers.add(card.signPub);
+const indexes = new WeakMap<readonly Signed[], StoredIndex>();
+
+function add(index: StoredIndex, record: Signed): void {
+  index.hashes.add(hashOf(record));
+  const body = parseRecord(record);
+  if (body === undefined) return;
+  if (body.type === "found") index.meshId = meshIdOf(record);
+  const raw = cardOf(body);
+  const card = raw === undefined ? undefined : verifyCard(raw);
+  if (card === undefined) return;
+  index.nonces.add(card.nonce);
+  if (body.type !== "rekey") index.signers.add(card.signPub);
+}
+
+/**
+ * The index of `stored`. A stored set only grows, so a call with the same array as before indexes just the records
+ * appended since; a different array (or one whose indexed prefix changed) is indexed from scratch, once.
+ */
+function indexOf(stored: readonly Signed[]): StoredIndex {
+  let index = indexes.get(stored);
+  const reused =
+    index !== undefined &&
+    index.count <= stored.length &&
+    (index.count === 0 || (stored[0] === index.first && stored[index.count - 1] === index.last));
+  if (index === undefined || !reused) {
+    index = {
+      hashes: new Set(),
+      signers: new Set(),
+      nonces: new Set(),
+      meshId: undefined,
+      count: 0,
+      first: undefined,
+      last: undefined,
+    };
+    indexes.set(stored, index);
   }
-  return { hashes: new Set(stored.map(hashOf)), found, signers, nonces };
+  for (let i = index.count; i < stored.length; i++) {
+    const record = stored[i];
+    if (record !== undefined) add(index, record);
+  }
+  index.count = stored.length;
+  index.first = stored[0];
+  index.last = stored.at(-1);
+  return index;
 }
-
-const verifiedCardOf = (body: RecordBody): CardBody | undefined => {
-  const card = cardOf(body);
-  return card === undefined ? undefined : verifyCard(card);
-};
 
 /** The prev hashes of `record` that `stored` does not hold (a record with any is dangling and waits). */
 export function missingFor(record: Signed, stored: readonly Signed[]): readonly string[] {
-  const hashes = new Set(stored.map(hashOf));
+  const { hashes } = indexOf(stored);
   return (parseRecord(record)?.prev ?? []).filter((hash) => !hashes.has(hash));
 }
 
 function cardCheck(body: RecordBody, meshId: string, nonces: ReadonlySet<string>): DoorResult {
   if (body.type !== "found" && body.type !== "admit" && body.type !== "rekey") return OK;
-  const card = verifiedCardOf(body);
+  const raw = cardOf(body);
+  const card = raw === undefined ? undefined : verifyCard(raw);
   if (card === undefined || card.mesh !== meshId) return refuse("bad card");
   switch (body.type) {
     case "found":
@@ -77,14 +109,14 @@ export function door(record: Signed, stored: readonly Signed[]): DoorResult {
   if (body === undefined) return refuse("malformed");
   if (bodyBytes(record) > MAX_BODY_BYTES) return refuse("too large");
   if (!verifies("record", record, body.by)) return refuse("bad signature");
-  const set = index(stored);
+  const set = indexOf(stored);
   if (set.hashes.has(hashOf(record))) return refuse("already stored");
   if (set.hashes.size >= MAX_RECORDS) return refuse("mesh log full");
   if (body.type === "found") {
-    if (set.found !== undefined) return refuse("a second found");
+    if (set.meshId !== undefined) return refuse("a second found");
     return body.mesh === "-" ? cardCheck(body, "-", set.nonces) : refuse("another mesh");
   }
-  if (set.found === undefined || body.mesh !== meshIdOf(set.found)) return refuse("another mesh");
+  if (set.meshId === undefined || body.mesh !== set.meshId) return refuse("another mesh");
   if (!set.signers.has(body.by)) return refuse("unknown signer");
   if (body.prev.some((hash) => !set.hashes.has(hash))) return refuse("dangling");
   return cardCheck(body, body.mesh, set.nonces);
