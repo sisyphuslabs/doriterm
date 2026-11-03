@@ -28,6 +28,8 @@ const AHEAD = {
   "a ping request": '{"jsonrpc":"2.0","id":0,"method":"ping"}\n',
   "a hello with params hc refuses": '{"jsonrpc":"2.0","id":0,"method":"hello","params":5}\n',
   "a hello without jsonrpc or id": '{"method":"hello"}\n',
+  "a hello without an id": '{"jsonrpc":"2.0","method":"hello","params":{}}\n',
+  "a hello without jsonrpc": '{"id":0,"method":"hello","params":{}}\n',
 } as const;
 
 describe("HIGH-1: no line hc would read past reaches it ahead of the gated hello", () => {
