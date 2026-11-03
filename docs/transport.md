@@ -1,4 +1,4 @@
-# doriface transport contract v1.4
+# doriface transport contract v1.5
 
 This is the binding wire contract for every doriface package. Each rule below is the current one; the change log at the end records what each revision changed.
 
@@ -17,10 +17,14 @@ Layering, outermost first:
 - What a non-extractable key protects: same-origin script can still _use_ the key while the page is open, but it cannot copy the key bytes out. The raw-bytes fallback offers no such protection.
 - Host fingerprint shown to people: the first 20 bytes of SHA-256(noiseStaticPub) (160 bits), uppercase hex, as 10 groups of 4 characters (`3FA9 4C0E ...`). `doriface-host pair` and `doriface-host fingerprint` print it in that form.
 - Pairing secrets, one set per pairing offer: the 8-character typed code (25 secret bits, used only as a CPace password) and a 32-byte random link secret (carried only in the pairing URL fragment). Neither is ever used directly as a key. Typed-code pairing binds `hostId`, the host Noise static key and the slot into the PAKE, so a code typed for one host cannot be used against another.
+- Mesh id: lowercase base32 (RFC 4648, no padding) of the first 16 bytes of SHA-256 of the mesh's founding record body (26 characters).
+- Mesh signatures, all Ed25519 by a host signing key: records over `doriface-mesh/1` || SHA-256(body); member cards, by the card's subject, over `doriface-mesh/1 card` || SHA-256(body). With the relay's `doriface-relay-v1`, the three prefixes keep the uses apart.
 
 ## Pairing
 
 - `doriface-host pair` opens one pairing offer (replacing any pending one) and prints a QR code, the URL `<web origin>/pair#h=<hostId>&k=<noiseStaticPub b64url>&s=<signPub b64url>&p=<link secret b64url>&r=<relay url>`, the typed code, the fingerprint, the hostId and the expiry. The fragment never reaches a server. The link secret is 32 random bytes (43 base64url characters without padding).
+- `doriface-host mesh pair` opens the same kind of offer for a machine join: its URL adds `&m=1`, and the offer admits a host into the mesh (see "Mesh") instead of pairing a device. A device pairing on a mesh offer, or a join on a device offer, is closed with 4401 before any answer. On a mesh offer, success stores no device: the inviting member shows the joiner's name, hostId and fingerprint and admits it only after approval on that member (its terminal, or a client device paired to it), unless the offer was opened with `--auto`.
+- A paired-device store never holds a key that belongs to a mesh member or a revoked mesh member (their Noise key or the device key their card names).
 - An offer lives 10 minutes and is single use: the first pairing that completes, by either path, burns the code and the link secret together.
 - Typed code: 8 characters from the Crockford base32 alphabet `0123456789ABCDEFGHJKMNPQRSTVWXYZ`, displayed as `XXXX XXXX`. Input is normalized: uppercase, spaces and `-` dropped, `O` read as `0`, `I` and `L` read as `1`. The first 3 characters are the relay pairing slot; the last 5 are the secret (2^25 values), which never leaves the two devices and is never sent in any form an observer can test offline.
 - While the typed code is open, the host's relay uplink registers the slot with a PAIR_SLOT control frame (see "Relay"). A client that has only the typed code calls `GET /v1/pair/<slot>` and gets `{hostId, noiseStaticPub, signPub}`: `hostId` is the 26-character lowercase base32 string defined above, and the two public keys are base64url strings without padding. That answer is untrusted; the client checks that `hostId` matches `signPub`, the person confirms the fingerprint, and the PAKE below authenticates it. The relay answers each PAIR_SLOT with a PAIR_SLOT_ACK (see "Relay"); on a collision the host draws a new code and registers again. A QR/URL pairing already carries hostId and keys, so it skips the slot lookup.
@@ -42,7 +46,7 @@ The first message a client sends on every session (relay or direct) starts with 
 
 A v1.2 first message is never answered. It has no kind byte, so its first byte is the first byte of a random ephemeral key: an unknown kind, or a message outside the kind's size bounds, is closed before any crypto; a v1.2 message that passes the size bounds of kind `0x02` or `0x03` fails message-1 authentication under the v1.3 prologue; one that starts with `0x01` fails message 1 because the IK prologue now ends in `0x01`. Each is closed with 4400.
 
-- Session (`0x01`): every session after pairing. The host rejects a client static key that is not in the store (4401). A relay session opened with `?pair` carries only pairing; kind `0x01` on it is closed with 4401 without an answer.
+- Session (`0x01`): with `stream` absent or `"hc"`, the host admits a current mesh member's Noise static key (an hc line; the first hc line's `core.id` must be that member's card `hcId`) or a key in its paired-devices store, checked in that order. It refuses a key of a revoked mesh member, and on the device path any device session whose first hc line claims a member's `hcId` (4401). With `stream:"mesh"` it admits only a current mesh member (4401). These sessions are accepted on the direct path too. A relay session opened with `?pair` carries only pairing; kind `0x01` on it is 4401.
 - Pair-link (`0x03`, the QR/URL path): psk = HKDF-SHA512(ikm = link secret, salt = empty, info = lv_cat(`doriface/1.3 pair-link psk`, UTF-8 hostId, noiseStaticPub), 32 bytes). The client dials an ordinary relay session (no `?pair`), or the direct path.
 - Pair-code (`0x02`, the typed path): CPace, cipher suite CPACE-RISTR255-SHA512 of draft-irtf-cfrg-cpace-21 (section 8.3), initiator-responder mode with the client as initiator A and the host as responder B:
   - PRS = UTF-8 of the 8 normalized code characters.
@@ -57,8 +61,8 @@ Message sizes: a client's first message is at most 4449 bytes for kind `0x01`, 4
 ### Handshake payloads
 
 - Every handshake payload starts with one JSON line: a UTF-8 JSON object followed by LF (0x0A), at most 256 bytes including the LF, whose `v` member is the number `1`. Receivers ignore unknown members. A payload that breaks a rule below fails the handshake with 4400.
-- Message 1 of a session (`0x01`): `{"v":1}`, then up to 4096 early stream bytes (normally the `hc` hello line), which the host delivers only after key confirmation.
-- Message 1 of a pairing (`0x02`, `0x03`): `{"v":1,"name":"<device name>"}` and nothing after the line. After trimming leading and trailing white space (ECMAScript `String.prototype.trim`), the name is 1 to 64 UTF-16 code units, well-formed (no lone surrogates), and contains no character of the Unicode categories Cc, Cf, Zl or Zp. The host stores the trimmed name.
+- Message 1 may carry `stream`. On a session (`0x01`): absent or `"hc"` (the plaintext after the handshake is the `hc connect` byte stream; up to 4096 early stream bytes) or `"mesh"` (the mesh stream; no early bytes, else 4400). On a pairing (`0x02`, `0x03`): absent (a device pairing) or `"mesh"` (a machine join). Any other value, or `"hc"` on a pairing, is 4400.
+- Message 1 of a pairing: `{"v":1,"name":"<name>"}` or `{"v":1,"name":"<mesh name>","stream":"mesh"}` and nothing after the line. A device name follows the v1.4 rule. A mesh name follows herdr-core's machine-name rule: 1 to 32 characters of `a-z`, `0-9`, `-`, `_`, `.`, starting with a letter or digit, and not shaped like a terminal id (`t` followed by `1`-`9` and then only `0123456789bcdfghjkmnpqrstvwxyz`).
 - Message 2 (every kind): `{"v":1,"lan":[...]}` and nothing after the line. `lan` holds at most 8 strings, each `ws://<IPv4 literal or bracketed IPv6 literal>:<port 1-65535>/v1/e2ee` that parses as a WHATWG URL; never a host name. The host sends the longest leading run of its LAN URLs that keeps the line within 256 bytes. A client refuses the whole reply if any entry breaks this rule.
 - A handshake that has not completed within 10 s is closed with 4408, and so is one that buffers more than 4 MiB of unread bytes.
 
@@ -142,11 +146,120 @@ The suites in `tests/relay` check a relay against this section. They start it wi
 - The host also serves `GET /v1/e2ee` (WebSocket) on its LAN listener, speaking the same record layer without the relay header. Because every byte is authenticated, this endpoint may bind non-loopback. The plaintext `/v1/hc` stays loopback-only. It accepts session kinds `0x01` and `0x03`; it closes kind `0x02` (typed-code pairing, which needs the relay's budget) with 4401 without answering.
 - Clients try direct (when a LAN URL is known and reachable within 300 ms) and the relay in parallel. The relay is the default; once a direct session's handshake completes, it is preferred. The session swap reattaches terminals with `resumed: true`.
 
+## Mesh
+
+A mesh is a set of hosts that trust each other fully: a host admitted by any member is reached by every member, and each member's core adds every other member as a herdr machine on its own. Mesh traffic is ordinary sessions between hosts; the relay stores nothing and needs no mesh-specific behaviour.
+
+### Records
+
+- A mesh is a grow-only set of records `{body, sig}`. `body` is an I-JSON (RFC 7493) object of at most 2048 bytes, signed and hashed as the exact bytes its signer produced; its hash is base64url (no padding) of SHA-256(body).
+- Body: `v` (2), `mesh` (the mesh id; `"-"` only in the founding record), `type` (`found`, `admit`, `revoke`, `name`, `rekey`, `ack`), `by` (the signer's signPub), `n` (the signer's counter: 1 for its first record; every other record of the signer has the signer's record `n - 1` in its past and no record of the signer with a counter of `n` or more), `prev` (1 to 64 hashes of the signer's heads; empty only in `found`), `subject`, and optionally `at` (display only). `found`, `admit` and `rekey` embed a member card; `revoke` names 1 to 16 distinct signPubs; `name` names a member and a mesh name.
+- A member card is `{body, sig}` signed by its subject: `{"v":1,"mesh","inviter","nonce","hostId","signPub","noisePub","devicePub"?,"name","hcId"}`. In an `admit`, the card names this mesh and the admitting member; in a `rekey`, the signer's own new Noise key. A card's nonce admits once.
+- A host stores a record only if it is well formed and verifies, its card verifies under its subject and matches the record, its signer is a key the set admits, and it belongs to this mesh. A record whose past is incomplete waits (at most 256); a mesh holds at most 4096 records.
+- On merging an `admit`, `revoke` or `rekey` signed by another member, a member signs an `ack` (prev = its heads) in the same step.
+
+### Membership
+
+The view of a record set is computed by the algorithm below. It reads only views of strictly smaller sets and the order of the records, so every set has exactly one view, whatever order its records arrived in. No clock takes part.
+
+Notation. The input S is a past-closed record set containing exactly one `found` F. `past(x)` is every record reachable from x through `prev`. `a ∥ b` (concurrent) means neither is in the other's past. The canonical order is Kahn's topological order of S, smallest hash first among ready records. `view(T)` is this algorithm applied to the past-closed set T, and `members(V)` and `revoked(V)` are its member and revoked sets. `M(x)` = `members(view(past(x)))`. `gov(k in V)` is k's governing admission in view V. `pred(x)` is the signer's record with counter `x.n - 1`. Comments that mention "revision 2" are informative: they name the draft rule a line was carried over from.
+
+```
+# Structure (revision 2, plus one line)
+valid(x)        = x.by ∈ M(x) and type_ok(x) and own_chain(x)
+                  and (x.n == 1 or valid(pred(x)))                       # the own chain is a chain of VALID records
+C(v, x)         = past(v) ∩ past(x);   CM(v, x) = members(view(C(v, x)))  # the common past and its members
+lineage(k, V, C) = the admissions on k's admitter chain in view V that lie outside C
+                  (stop at a member of view(C), at an admission inside C, or at the found record)
+
+# Level 0: every structurally valid concurrent revoke accuses (revision 2's accusers)
+accusers0(x)    = { v ∈ S : v.type == revoke, x.by ∈ v.subjects, v ∥ x, valid(v) }
+voters(v, x)    = CM(v, x) \ {x.by, v.by}
+                  \ { g.by : g ∈ lineage(x.by, view(past(x)), C) ∪ lineage(v.by, view(past(v)), C) }
+                  # the common past only (nobody can pad it); neither party, nor whoever admitted either party
+                  # after the fork (the minter of v.by is a voter in name only: P13)
+silences0(r, w) = r.by ∉ revoked(view(past(w))) and accusers0(r) = ∅
+                  and ∀ g ∈ lineage(r.by, view(past(r)), C(r, w)): accusers0(g) = ∅   # the WHOLE lineage (P3)
+testifies0(w)   = valid(w) and ¬∃ r ∈ accusers0(w): silences0(r, w)
+support0, saw0  = as revision 2, with testifies0
+defeats0(v, x)  = forks(v, x) or support0(v, x) > support0(x, v)
+
+# Standing: a revoke may accuse only if its signer's provenance survives level 0
+clean0(r, C)    = ∀ g ∈ lineage(r.by, view(past(r)), C): ¬∃ u ∈ accusers0(g): defeats0(u, g)
+standing(v, x)  = clean0(v, C(v, x)) and ¬∃ u ∈ accusers0(v): clean0(u, C(u, v)) and defeats0(u, v)
+
+# Level 1: what the view uses
+accusers(x)     = { v ∈ accusers0(x) : standing(v, x) }
+voters1(v, x)   = voters(v, x) \ v.subjects                              # a batch's mates do not vote on the batch
+silences(r, w)  = accusers(r) = ∅ and ∀ g ∈ lineage(r.by, view(past(r)), C(r, w)): accusers(g) = ∅
+                  # no "r.by already revoked in past(w)" escape: the attacker makes that true itself
+testifies(w)    = valid(w) and ¬∃ r ∈ accusers(w): silences(r, w)
+verdict(v, x)   = defeated  if forks(v, x) or support(v, x) > support(x, v)
+                = tie       if x.type ≠ revoke and support(v, x) = support(x, v) = 0     # fail closed
+                = stands    otherwise
+own(x)          = invalid if ¬valid(x); defeated if ∃ v ∈ accusers(x): verdict(v, x) = defeated;
+                  tie if ∃ v: verdict(v, x) = tie; else clear
+
+status(x), in canonical order:
+  found                         → eff
+  own(x) ∈ {invalid, defeated}  → void
+  x.type == revoke              → void unless every g ∈ lineage(x.by, view(past(x)), ∅) has own(g) ∈ {clear, tie}
+                                  # a revocation survives uncertainty on its lineage; a defeated lineage voids it
+  otherwise                     → void unless status(gov(x.by in view(past(x)))) == eff
+  else                          → tie if own(x) == tie, else eff
+eff = { x : status(x) == eff };  return membership(S, eff)                 # membership() as revision 2
+
+# Unchanged from revision 2
+forks(v, x)     = some counter n names one record of x.by in {x} ∪ past(x) and another in past(v)
+own_chain(x)    = every record of x.by in past(x) has a counter < x.n, and x.n - 1 is one of them (x.n = 1: none)
+saw(p, a, b)    = ∃ w ∈ S, w.by == p, a ∈ past(w), b ∉ past(w), testifies(w)       # saw0: with testifies0
+support(a, b)   = |{ p ∈ pool : saw(p, a, b) and not saw(p, b, a) }|
+                  # pool = voters1(v, x) of the conflict at level 1, voters(v, x) at level 0 (same pool both ways)
+type_ok(x, V)   = admit:  subject ∉ V.members, or the card's noisePub == V.noise[subject]
+                  name:   subject ∈ V.members
+                  rekey:  by == subject
+                  revoke: every subject is the subject of some found/admit in past(x)
+                  ack:    true
+
+membership(S, eff):
+  for each key k admitted in S:
+    gov(k) = the first record in canonical order among eff found/admit of k
+             that has every eff revoke of k in its past              # re-admission follows every revoke
+  members  = keys with a gov, ordered by the canonical position of gov; the first 12 are members,
+             the rest are over-cap (not dialed, cannot sign; M5)
+  revoked  = keys with no gov and at least one eff revoke
+  noise[k] = the card of the latest eff rekey by k with gov(k) in its past, else gov(k)'s card
+             (latest = no other such record in its future; ties: smallest hash)
+  name[k]  = the latest eff name about k with gov(k) in its past, else gov(k)'s card name;
+             then, in member order, a name already taken gets the section 7.4 fallback
+  admitter[k] = gov(k).by                             # lineage (H2)
+```
+
+- Both directions of one conflict use the same pool, the voters of (accuser v, accused x): `voters` at level 0 and `voters1` at level 1. The revoke lineage walk in `status` is taken hop by hop: it starts at the governing admission of the revoke's signer in `view(past(x))`, and each later hop looks up the governing admission of the previous admission's signer in the view of that admission's own past (`view(past(g))`, the view it was written under), not in one fixed view. A key with no governing admission on the way voids the revoke, and the walk goes all the way to the founding record.
+- A conflict that no independent member present at the revoked key's last own record can decide is resolved fail-closed: the revoked key's admits and other non-revokes fall, and its revokes stand.
+- A member's Noise key comes from its admission's card or a later `rekey` it signed; an admit never changes a current member's key. A member's governing admission is the first effective one, in canonical order, that follows every effective revoke of it. Its admitter is that admission's signer (the lineage). At most 12 members: members past the twelfth in canonical order are over-cap, are not dialed and cannot sign.
+
+### Joining, sync and connectivity
+
+- `doriface-host mesh join <url|code>` runs the pairing handshake as the client with the host's own Noise key and `stream:"mesh"`; the member sends `{"t":"offer","mesh","inviter","nonce"}`, the joiner answers `{"t":"card",...}`, the member admits after approval and sends the whole set as `records` lines of at most 256 KiB and a final `{"t":"done","mesh"}`. The joiner checks the founding record against the mesh id, that the member it dialed is in the view with the key it authenticated, and that it is itself a member, before it stores anything.
+- Sync sessions (`0x01`, `stream:"mesh"`) are opened on demand (to push, after this host's own outage, and every 10 minutes as a safety net) and closed after 60 s idle. Lines: `hello` (heads and counters), `want`, `records`, `done`; at most 256 KiB each.
+- Every member's core adds every other member with `machine.add --via '<doriface-host> connect --mesh --state-dir <dir> <hostId>'`; the running host dials each such line with its own Noise key. A host keeps `machine.list` equal to the view and handles herdr's `name_taken` with the fallback names `<name cut to 31-k>-<first k hostId characters>`, k = 4, 8, 12.
+- Dialing: a host starts at most 12 relay upgrades per 60 s for the mesh (sessions on the direct path are not counted), does not redial a member that answered 4404 until that member shows presence (any authenticated session from it) or a probe is due (30 s doubling to 5 minutes), jitters additions and presence dials, and after its own uplink returns waits 10-20 s before dialing members that have not shown presence. A 4429 halves the budget for 10 minutes. This keeps four co-located hosts within the relay's per-address connection limit, with room left for clients.
+
+### Revocation
+
+- `doriface-host mesh revoke <member>` signs a `revoke`; `--compromised` names the member and everyone it admitted, transitively, in one record. Every member closes the revoked keys' sessions (4401), removes the machine, removes the keys from its paired-devices store and the hostId from its known hosts, and refuses those keys on every path. `mesh leave` signs a revoke of the leaving host first. A host acts on its own revocation only when its computed view says so, and stays read-only for 7 days.
+- Compromise of any member's keys, of a device paired to any member, or of an open offer is compromise of the mesh until revoked; the records name who did what.
+
+### What the relay learns from a mesh
+
+- Which hostIds open sessions to which, from which addresses, and when; not the records, names or rules, and nothing it can forge, replay or splice.
+
 ## Close codes
 
-- 4400: crypto failure, including an unknown session kind, a malformed first message, an invalid CPace share, or a key confirmation that does not decrypt
+- 4400: crypto failure, including an unknown session kind, a malformed first message, an invalid CPace share, or a key confirmation that does not decrypt; an unknown or misplaced `stream`, early bytes on a mesh session, or a malformed mesh stream line
 - 1011: the host failed internally (for example it could not record a typed-code attempt); nothing was answered
-- 4401: unknown device, or a pairing the host does not accept here: no live offer, an offer already used, a typed-code pairing on the direct path or without `?pair`, a slot that is not the offer's, or a session kind `0x01` on a `?pair` session
+- 4401: unknown device, or a pairing the host does not accept here: no live offer, an offer already used, a typed-code pairing on the direct path or without `?pair`, a slot that is not the offer's, or a session kind `0x01` on a `?pair` session; a device pairing on a mesh offer or a join on a device offer, a mesh stream from another mesh, a refused member card, a revoked mesh member, or a first hc line whose `core.id` does not match
 - 4402: relay protocol error (for example an invalid `a:<n>` acknowledgement, credit for bytes never sent, or a malformed `c:`)
 - 4403: relay auth failed
 - 4404: host offline
@@ -157,6 +270,7 @@ The suites in `tests/relay` check a relay against this section. They start it wi
 
 ## Change log
 
+- v1.5: a machine mesh over the relay with no relay change. Membership is a grow-only set of signed, hash-linked, per-signer-chained records (`found`, `admit`, `revoke`, `name`, `rekey`, `ack`) whose admissions embed the subject's self-signed card; the view is a total function of the set (rule R3, two levels), conflicts between a record and a concurrent revoke of its signer are decided by the signed testimony (automatic acks) of the members of their common past who are neither party nor a party's post-fork admitter, only revokes with standing may accuse, an undecidable conflict fails closed, and every set has exactly one view. A host joins through the existing pairing flow against one member, with that member's fingerprint confirmation, and is then trusted by every member, which shows a new-member notice. Gossip runs over on-demand sync sessions; each core adds every other member through `doriface-host connect --mesh`, dialed by the host with its own key, under a per-host dial budget sized for the relay's per-address limit. Revocation from any member, including `--compromised` subtree revocation, closes sessions with 4401 and removes the member from every paired-devices store. New: the `stream` payload member, `&m=1`, the mesh stream lines, `mesh.json`, `line.sock`, the 12-member cap and the `mesh pair|join|status|revoke|rename|leave` commands.
 - v1.4 (documentation, no wire change): the relay section now states rules the relay already enforced and the public suites check, so another server can stand in: the per-source rates (60 upgrades, 20 lookups per minute), the `cf-connecting-ip` source and its IPv4 / IPv6 /64 key, the 4404 for a replaced uplink's sessions, no PAIR_SLOT_ACK for a clear without a slot, and the test-only timeout variables.
 - v1.4: end-to-end session credit on top of v1.3.1: the `?credit=1` opt-in, the CREDIT mux frame (type 6) and the relay's coalesced `c:<bytes>` text, with a 512 KiB per-session window that always lets a send go below one 64 KiB credit step. The host still acks the uplink on arrival and keeps the 4 MiB per-session bound and its 4408; credit only keeps a cooperating client below that bound, so the 160 MiB per-uplink and 4 MiB per-socket bounds are unchanged. Peers without the opt-in keep v1.3.1 exactly.
 - v1.3.1: the host uplink acks each relay frame on arrival and bounds each session's undelivered bytes at 4 MiB, closing only that session with 4408 (at most 160 MiB per uplink); acks no longer wait for a session's reader, so one slow session cannot stall the uplink.
