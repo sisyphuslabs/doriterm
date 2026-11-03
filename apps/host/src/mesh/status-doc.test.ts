@@ -1,4 +1,4 @@
-import { HcRpcError, type JsonValue, MESH_STATUS_DOC } from "@doriface/protocol";
+import { HcRpcError, isJsonObject, type JsonValue, MESH_STATUS_DOC } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
 import { meshFixture } from "../testing/mesh-fixture.ts";
 import { type DocStore, publishMeshStatus } from "./status-doc.ts";
@@ -14,6 +14,9 @@ class Docs implements DocStore {
   sets = 0;
   /** Writes another client makes right after each of our reads, before our set lands. */
   racing: JsonValue[] = [];
+  /** When set, the next set waits for it; `held` resolves once that set has been called. */
+  hold: Promise<void> | undefined;
+  readonly held = Promise.withResolvers<void>();
 
   async get(name: string) {
     expect(name).toBe(MESH_STATUS_DOC);
@@ -29,6 +32,12 @@ class Docs implements DocStore {
   async set(name: string, value: JsonValue, version: number) {
     expect(name).toBe(MESH_STATUS_DOC);
     this.sets += 1;
+    const hold = this.hold;
+    this.hold = undefined;
+    if (hold !== undefined) {
+      this.held.resolve();
+      await hold;
+    }
     if (version !== this.version)
       throw new HcRpcError({ code: -32000, message: "conflict", data: { kind: "conflict" } });
     this.value = value;
@@ -40,7 +49,7 @@ class Docs implements DocStore {
 describe("publishing the status document", () => {
   test("writes the status at the current version", async () => {
     const docs = new Docs();
-    expect(await publishMeshStatus(docs, status)).toBe("written");
+    expect(await publishMeshStatus(docs, () => status)).toBe("written");
     expect(docs.value).toEqual(status);
     expect(docs.version).toBe(1);
   });
@@ -48,22 +57,37 @@ describe("publishing the status document", () => {
   test("leaves a document that already holds the status alone, whatever its key order", async () => {
     const docs = new Docs();
     docs.value = Object.fromEntries(Object.entries(status).toReversed());
-    expect(await publishMeshStatus(docs, status)).toBe("unchanged");
+    expect(await publishMeshStatus(docs, () => status)).toBe("unchanged");
     expect(docs.sets).toBe(0);
   });
 
   test("a client that wrote between our read and our write: read again and write at the new version", async () => {
     const docs = new Docs();
     docs.racing = [{ approve: "someone else" }];
-    expect(await publishMeshStatus(docs, status)).toBe("written");
+    expect(await publishMeshStatus(docs, () => status)).toBe("written");
     expect(docs.value).toEqual(status);
     expect(docs.sets).toBe(2);
+  });
+
+  test("two publishes on one host: the newer status survives the older one's set landing late", async () => {
+    const docs = new Docs();
+    const gate = Promise.withResolvers<void>();
+    docs.hold = gate.promise;
+    let generation = 41;
+    const current = () => ({ ...status, generation });
+    const older = publishMeshStatus(docs, current);
+    await docs.held.promise;
+    generation = 42;
+    expect(await publishMeshStatus(docs, current)).toBe("written");
+    gate.resolve();
+    expect(await older).toBe("unchanged");
+    expect(isJsonObject(docs.value) ? docs.value["generation"] : undefined).toBe(42);
   });
 
   test("gives up with the conflict after three racing writers in a row", async () => {
     const docs = new Docs();
     docs.racing = [1, 2, 3];
-    const failed = await publishMeshStatus(docs, status).catch((error: unknown) => error);
+    const failed = await publishMeshStatus(docs, () => status).catch((error: unknown) => error);
     expect(failed).toBeInstanceOf(HcRpcError);
     expect(docs.sets).toBe(3);
     expect(docs.value).toBe(3);
@@ -76,6 +100,6 @@ describe("publishing the status document", () => {
         throw new HcRpcError({ code: -32000, message: "unavailable", data: { kind: "unavailable" } });
       },
     };
-    expect(publishMeshStatus(refusing, status)).rejects.toThrow("unavailable");
+    expect(publishMeshStatus(refusing, () => status)).rejects.toThrow("unavailable");
   });
 });

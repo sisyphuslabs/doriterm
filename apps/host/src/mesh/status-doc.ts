@@ -18,21 +18,24 @@ const isConflict = (error: unknown): boolean => error instanceof HcRpcError && e
 const ATTEMPTS = 3;
 
 /**
- * Writes the status to the `doriface-mesh` document unless it already holds exactly that. Any client can write the
- * document, so a `conflict` means it moved since the read: read it again and retry with the new version.
+ * Writes this host's status to the `doriface-mesh` document unless it already holds exactly that. Any client can write
+ * the document, so a `conflict` means it moved since the read, possibly by a newer publish of this host's own. Each
+ * attempt therefore reads the document and asks `current` for the status as it is now: a retry never writes the
+ * snapshot an earlier attempt started with over a newer one.
  */
 export async function publishMeshStatus(
   store: DocStore,
-  status: MeshStatus,
+  current: () => MeshStatus,
   attempt = 1,
 ): Promise<"written" | "unchanged"> {
-  const current = await store.get(MESH_STATUS_DOC);
-  if (isJsonObject(current.value) && Bun.deepEquals(current.value, status)) return "unchanged";
+  const doc = await store.get(MESH_STATUS_DOC);
+  const status = current();
+  if (isJsonObject(doc.value) && Bun.deepEquals(doc.value, status)) return "unchanged";
   try {
-    await store.set(MESH_STATUS_DOC, status, current.version);
+    await store.set(MESH_STATUS_DOC, status, doc.version);
     return "written";
   } catch (error) {
     if (!isConflict(error) || attempt >= ATTEMPTS) throw error;
-    return publishMeshStatus(store, status, attempt + 1);
+    return publishMeshStatus(store, current, attempt + 1);
   }
 }
