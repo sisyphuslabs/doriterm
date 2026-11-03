@@ -99,7 +99,11 @@ export async function dial(
   const closed = Promise.withResolvers<void>();
   client.onClose(() => closed.resolve());
   const received: Uint8Array[] = [];
-  client.onData((bytes) => void received.push(bytes));
+  const answered = Promise.withResolvers<void>();
+  client.onData((bytes) => {
+    received.push(bytes);
+    answered.resolve();
+  });
   const send = (text: string): void => client.send(encoder.encode(text));
-  return { client, hostEnd, send, received, closed: closed.promise };
+  return { client, hostEnd, send, received, answered: answered.promise, closed: closed.promise };
 }

@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CLIENT, dial, gatewayOn, peerHello, PROBE } from "../testing/gateway-harness.ts";
+import { MeshStore } from "../state/mesh.ts";
 import { type Machine, machine } from "../testing/mesh-history.ts";
 import { hcLineOf } from "./hc-line.ts";
 
@@ -58,6 +59,27 @@ describe("H-6: the gateway gates the hc hello", () => {
     (await dial(ok, phone.identity.noise, founder)).send(CLIENT);
     await ok.pipe.reached;
     expect(ok.pipe.text()).toStartWith(CLIENT);
+  });
+
+  test("MEDIUM-3: a mesh state the gate cannot read closes 1011, starts no hc connect and pipes no early byte", async () => {
+    const [founder, member] = [machine("founder"), machine("member")];
+    const dir = mkdtempSync(join(tmpdir(), "dh-first-line-"));
+    dirs.push(dir);
+    let reads = 0;
+    class GateReadFails extends MeshStore {
+      override authorizeIndex() {
+        // Reads 1 and 2 are authorize and the live-session re-check; read 3 is the gate's.
+        if (++reads === 3) throw new Error("mesh.json: cannot stat");
+        return super.authorizeIndex();
+      }
+    }
+    const setup = gatewayOn(founder, member, { dir, mesh: new GateReadFails(dir, { log: () => {} }) });
+    const run = await dial(setup, member.identity.noise, founder, peerHello("someone-else"));
+    await run.closed;
+    expect(reads).toBe(3);
+    expect(run.hostEnd.closeCode).toBe(1011);
+    expect(setup.opened()).toBe(0);
+    expect(setup.pipe.piped).toEqual([]);
   });
 
   test("a member's probe hello without a core id passes, as early bytes in message 1", async () => {
