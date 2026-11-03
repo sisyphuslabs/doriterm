@@ -5,6 +5,7 @@ import { checkName } from "../names.ts";
 import { isObject, type JsonObject, parseIJsonObject } from "./json.ts";
 import {
   type CardBody,
+  MAX_BODY_BYTES,
   MAX_PREV,
   MAX_REVOKE_SUBJECTS,
   RECORD_TYPES,
@@ -26,16 +27,25 @@ function signWith(prefix: string, body: string, secret: Uint8Array): Signed {
   return { body, sig: base64urlEncode(ed25519.sign(digest(prefix, body), secret)) };
 }
 
-function decodes(text: string, bytes: number): boolean {
-  if (!/^[A-Za-z0-9_-]*$/.test(text)) return false;
-  return base64urlDecode(text).byteLength === bytes;
+/**
+ * The one spelling of `bytes` bytes in unpadded base64url: exactly ceil(4 * bytes / 3) characters of the alphabet
+ * (22, 43 or 86), with zero trailing bits, so a peer cannot make the decoder throw or name one key two ways.
+ */
+function decodes(value: unknown, bytes: 16 | 32 | 64): value is string {
+  if (typeof value !== "string" || value.length !== Math.ceil((4 * bytes) / 3)) return false;
+  return /^[A-Za-z0-9_-]*$/.test(value) && base64urlEncode(base64urlDecode(value)) === value;
 }
 
-export const isKey = (value: unknown): value is string => typeof value === "string" && decodes(value, 32);
+export const isKey = (value: unknown): value is string => decodes(value, 32);
 const isHash = isKey;
+export const isSignature = (value: unknown): value is string => decodes(value, 64);
+
+/** At most MAX_BODY_BYTES of UTF-8 (a UTF-16 length over the limit is over it in UTF-8 too, so it is never encoded). */
+export const fitsBody = (text: string): boolean =>
+  text.length <= MAX_BODY_BYTES && encoder.encode(text).byteLength <= MAX_BODY_BYTES;
 
 export function verifies(prefix: "record" | "card", signed: Signed, signPub: string): boolean {
-  if (!isKey(signPub) || !decodes(signed.sig, 64)) return false;
+  if (!isKey(signPub) || !isSignature(signed.sig)) return false;
   const message = digest(prefix === "record" ? RECORD_PREFIX : CARD_PREFIX, signed.body);
   return ed25519.verify(base64urlDecode(signed.sig), message, base64urlDecode(signPub));
 }
@@ -43,14 +53,13 @@ export function verifies(prefix: "record" | "card", signed: Signed, signPub: str
 export const encodeBody = (body: RecordBody | CardBody): string => JSON.stringify(body);
 export const hashOf = (record: Signed): string => base64urlEncode(sha256(encoder.encode(record.body)));
 export const meshIdOf = (found: Signed): string => base32Encode(sha256(encoder.encode(found.body)).subarray(0, 16));
-export const bodyBytes = (signed: Signed): number => encoder.encode(signed.body).byteLength;
 
 export const signRecord = (body: RecordBody, signSecret: Uint8Array): Signed =>
   signWith(RECORD_PREFIX, encodeBody(body), signSecret);
 export const signCard = (body: CardBody, signSecret: Uint8Array): Signed =>
   signWith(CARD_PREFIX, encodeBody(body), signSecret);
 
-const isSigned = (value: unknown): value is Signed =>
+export const isSigned = (value: unknown): value is Signed =>
   isObject(value) && typeof value["body"] === "string" && typeof value["sig"] === "string";
 const isRecordType = (value: unknown): value is RecordType => RECORD_TYPES.some((type) => type === value);
 const distinct = (items: readonly string[]): boolean => new Set(items).size === items.length;
@@ -99,6 +108,7 @@ function recordBodyOf(body: JsonObject): RecordBody | undefined {
 
 /** The record's body when it is a well-formed v2 record body (shape only: no signature or card check). */
 export function parseRecord(record: Signed): RecordBody | undefined {
+  if (!isSigned(record) || !fitsBody(record.body)) return undefined;
   const body = parseIJsonObject(record.body);
   return body === undefined ? undefined : recordBodyOf(body);
 }
@@ -128,6 +138,7 @@ function cardBodyOf(body: JsonObject): CardBody | undefined {
 
 /** The card's body when it is well formed and its signature verifies under its own signPub; otherwise undefined. */
 export function verifyCard(card: Signed): CardBody | undefined {
+  if (!isSigned(card) || !fitsBody(card.body)) return undefined;
   const raw = parseIJsonObject(card.body);
   const body = raw === undefined ? undefined : cardBodyOf(raw);
   return body !== undefined && verifies("card", card, body.signPub) ? body : undefined;

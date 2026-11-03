@@ -1,8 +1,18 @@
 // The door (contract v1.5 "Records"; design section 3.3): the checks a record passes before it is stored. They need
 // no view, only the record and the stored set.
 
-import { bodyBytes, cardOf, hashOf, meshIdOf, parseRecord, verifies, verifyCard } from "./records/codec.ts";
-import { MAX_BODY_BYTES, MAX_RECORDS, type RecordBody, type Signed } from "./records/types.ts";
+import {
+  cardOf,
+  fitsBody,
+  hashOf,
+  isSignature,
+  isSigned,
+  meshIdOf,
+  parseRecord,
+  verifies,
+  verifyCard,
+} from "./records/codec.ts";
+import { MAX_RECORDS, type RecordBody, type Signed } from "./records/types.ts";
 
 export type DoorReason =
   | "malformed"
@@ -112,10 +122,13 @@ function cardCheck(body: RecordBody, meshId: string, nonces: ReadonlySet<string>
   }
 }
 
+/** The size and the signature's shape are checked before the body is parsed, so an oversize record costs nothing. */
 export function door(record: Signed, stored: readonly Signed[]): DoorResult {
+  if (!isSigned(record)) return refuse("malformed");
+  if (!fitsBody(record.body)) return refuse("too large");
+  if (!isSignature(record.sig)) return refuse("bad signature");
   const body = parseRecord(record);
   if (body === undefined) return refuse("malformed");
-  if (bodyBytes(record) > MAX_BODY_BYTES) return refuse("too large");
   if (!verifies("record", record, body.by)) return refuse("bad signature");
   const set = indexOf(stored);
   if (set.hashes.has(hashOf(record))) return refuse("already stored");

@@ -1,61 +1,24 @@
 import { describe, expect, test } from "bun:test";
-import { base64urlEncode, concatBytes } from "@doriface/crypto";
-import { ed25519 } from "@noble/curves/ed25519.js";
-import { sha256 } from "@noble/hashes/sha2.js";
+import { base64urlEncode } from "@doriface/crypto";
 import { door, missingFor } from "../src/door.ts";
-import { encodeBody, hashOf, meshIdOf, signCard, signRecord } from "../src/records/codec.ts";
-import type { CardBody, RecordBody, Signed } from "../src/records/types.ts";
-import { keyOf, type TestKey } from "./fixtures/signed.ts";
-
-const A = keyOf("A");
-const B = keyOf("B");
-const C = keyOf("C");
-const nonce = (i: number): string => base64urlEncode(new Uint8Array(16).fill(i));
-const noise = (i: number): string => base64urlEncode(new Uint8Array(32).fill(i));
-
-function cardBody(k: TestKey, mesh: string, inviter: string, i: number, name = k.name.toLowerCase()): CardBody {
-  return {
-    v: 1,
-    mesh,
-    inviter,
-    nonce: nonce(i),
-    hostId: k.hostId,
-    signPub: k.pub,
-    noisePub: noise(i),
-    name,
-    hcId: `core-${i}`,
-  };
-}
-
-/** Signs exact body text, as the contract specifies: Ed25519 over "doriface-mesh/1" || SHA-256(body). */
-function signRaw(body: string, k: TestKey): Signed {
-  const message = concatBytes(new TextEncoder().encode("doriface-mesh/1"), sha256(new TextEncoder().encode(body)));
-  return { body, sig: base64urlEncode(ed25519.sign(message, k.secret)) };
-}
-
-const F = signRecord(
-  {
-    v: 2,
-    mesh: "-",
-    type: "found",
-    by: A.pub,
-    n: 1,
-    prev: [],
-    subject: { card: signCard(cardBody(A, "-", "-", 1), A.secret) },
-  },
-  A.secret,
-);
-const MESH = meshIdOf(F);
-const admitOf = (card: Signed, n = 2, prev = [hashOf(F)]): Signed =>
-  signRecord({ v: 2, mesh: MESH, type: "admit", by: A.pub, n, prev, subject: { card } }, A.secret);
-const aB = admitOf(signCard(cardBody(B, MESH, A.pub, 2), B.secret));
-const stored: readonly Signed[] = [F, aB];
-const record = (body: Omit<RecordBody, "v" | "mesh">, k: TestKey = A): Signed =>
-  signRecord({ v: 2, mesh: MESH, ...body }, k.secret);
-const reason = (r: Signed, set: readonly Signed[] = stored): string | undefined => {
-  const result = door(r, set);
-  return result.ok ? undefined : result.reason;
-};
+import { encodeBody, hashOf, signCard, signRecord } from "../src/records/codec.ts";
+import { MAX_RECORDS, type Signed } from "../src/records/types.ts";
+import {
+  A,
+  aB,
+  admitOf,
+  B,
+  C,
+  cardBody,
+  F,
+  MESH,
+  noise,
+  reason,
+  record,
+  signRaw,
+  stored,
+} from "./fixtures/door-set.ts";
+import { keyOf } from "./fixtures/signed.ts";
 
 describe("M-2: the door refuses each rule of design section 3.3", () => {
   test("a found into an empty set and an admit with a fresh card are let in", () => {
@@ -100,7 +63,7 @@ describe("M-2: the door refuses each rule of design section 3.3", () => {
       "dangling",
     ],
     [
-      "65 prev",
+      "65 prev (3112 bytes: the size bound comes first; at most 41 prev fit in it)",
       () =>
         reason(
           record({
@@ -110,7 +73,7 @@ describe("M-2: the door refuses each rule of design section 3.3", () => {
             prev: Array.from({ length: 65 }, (_, i) => base64urlEncode(new Uint8Array(32).fill(i))),
           }),
         ),
-      "malformed",
+      "too large",
     ],
     [
       "17 revoke subjects",
@@ -199,7 +162,40 @@ describe("M-2: the door refuses each rule of design section 3.3", () => {
         ),
       "rekey of another member",
     ],
+    [
+      "a signer key of 41 characters",
+      () =>
+        reason(
+          signRaw(encodeBody({ v: 2, mesh: MESH, type: "ack", by: A.pub.slice(0, 41), n: 3, prev: [hashOf(aB)] }), A),
+        ),
+      "malformed",
+    ],
+    [
+      "a card whose signPub has 41 characters",
+      () =>
+        reason(
+          admitOf(
+            signRaw(
+              encodeBody({ ...cardBody(C, MESH, A.pub, 3), signPub: C.pub.slice(0, 41) }),
+              C,
+              "doriface-mesh/1 card",
+            ),
+            3,
+            [hashOf(aB)],
+          ),
+        ),
+      "bad card",
+    ],
     ["a record already stored", () => reason(aB), "already stored"],
+    [
+      `a full log (${MAX_RECORDS} records)`,
+      () =>
+        reason(record({ type: "ack", by: A.pub, n: 3, prev: [hashOf(aB)] }), [
+          ...stored,
+          ...Array.from({ length: MAX_RECORDS - 2 }, (_, i) => ({ body: `filler ${i}`, sig: "" })),
+        ]),
+      "mesh log full",
+    ],
     [
       "a body over 2048 bytes",
       () =>

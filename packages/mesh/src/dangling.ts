@@ -16,6 +16,9 @@ export interface DoorMerge {
   readonly dropped: readonly Signed[];
 }
 
+/** One delivery of a record: a copy with another signature is another delivery, so a forged copy never shadows the real one. */
+const copy = (record: Signed): string => `${hashOf(record)} ${record.sig}`;
+
 /** The signPub a stored found or admit lets sign: the subject of its card. */
 function admittedKey(record: Signed): string | undefined {
   const body = parseRecord(record);
@@ -34,7 +37,7 @@ export function mergeAtDoor(
   incoming: readonly Signed[],
 ): DoorMerge {
   const set: Signed[] = [...stored];
-  const seen = new Set(stored.map(hashOf));
+  const seen = new Set(stored.map(copy));
   const held = new Map<string, { readonly record: Signed; readonly age: number }>();
   const waiting = new Map<string, string[]>();
   const added: Signed[] = [];
@@ -42,9 +45,9 @@ export function mergeAtDoor(
   const queue: { readonly record: Signed; readonly age: number }[] = [];
   let age = 0;
   for (const record of [...dangling, ...incoming]) {
-    const hash = hashOf(record);
-    if (seen.has(hash)) continue;
-    seen.add(hash);
+    const key = copy(record);
+    if (seen.has(key)) continue;
+    seen.add(key);
     queue.push({ record, age: age++ });
   }
   const wake = (key: string): void => {
