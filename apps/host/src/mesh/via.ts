@@ -1,0 +1,23 @@
+import { HOST_ID_PATTERN } from "@doriface/relay-client";
+
+/** POSIX single quotes: herdr runs `sh -c "<via> \"$1\""`, so both paths must survive any character. */
+export const shellQuote = (text: string): string => `'${text.replaceAll("'", `'\\''`)}'`;
+
+const prefixOf = (program: string, stateDir: string): string =>
+  `${shellQuote(program)} connect --mesh --state-dir ${shellQuote(stateDir)} `;
+
+/** The pinned `via` of a mesh line (section 7.2). */
+export function meshVia(program: string, stateDir: string, hostId: string): string {
+  return `${prefixOf(program, stateDir)}${hostId}`;
+}
+
+/**
+ * The member a machine's `via` reaches, when it is exactly this host's mesh form: this binary, `--mesh`, this state
+ * dir. Any other command, a bare `doriface-host connect` among them, is not a mesh machine.
+ */
+export function meshHostOf(target: string, program: string, stateDir: string): string | undefined {
+  const prefix = prefixOf(program, stateDir);
+  if (!target.startsWith(prefix)) return undefined;
+  const hostId = target.slice(prefix.length);
+  return HOST_ID_PATTERN.test(hostId) ? hostId : undefined;
+}
