@@ -92,6 +92,8 @@ export interface View {
   readonly noise: ReadonlyMap<string, string>;
   /** signPub -> the signPub of the member that admitted it (the lineage). */
   readonly admitter: ReadonlyMap<string, string>;
+  /** signPub -> the hash of the member's governing admission (members only, not over-cap keys). */
+  readonly governing: ReadonlyMap<string, string>;
   /** signPub -> the member's mesh name after the fallback for taken names. */
   readonly name: ReadonlyMap<string, string>;
   /** Hashes of the records that count. */
@@ -104,6 +106,7 @@ const EMPTY: View = {
   revoked: new Set(),
   noise: new Map(),
   admitter: new Map(),
+  governing: new Map(),
   name: new Map(),
   eff: new Set(),
 };
@@ -122,6 +125,7 @@ export function viewOf(set: readonly Signed[], cache?: ViewCache): View {
     revoked: new Set(v.revoked),
     noise: v.noise,
     admitter: v.admitter,
+    governing: v.governing,
     name: v.name,
     eff: v.eff,
   };
