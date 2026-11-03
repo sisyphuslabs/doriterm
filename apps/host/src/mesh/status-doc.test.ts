@@ -103,12 +103,15 @@ describe("publishing the status document", () => {
   });
 
   test("any other refusal is not retried", async () => {
+    let sets = 0;
     const refusing: DocStore = {
       get: async () => ({ value: null, version: 0 }),
       set: async () => {
+        sets += 1;
         throw new HcRpcError({ code: -32000, message: "unavailable", data: { kind: "unavailable" } });
       },
     };
-    expect(publishMeshStatus(refusing, () => status)).rejects.toThrow("unavailable");
+    await expect(publishMeshStatus(refusing, () => status)).rejects.toThrow("unavailable");
+    expect(sets).toBe(1);
   });
 });
