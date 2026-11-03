@@ -38,7 +38,7 @@ async function mesh(names: readonly string[]) {
   const clock = new FakeClock();
   let current = viewOf(self.member, ...members.map((core) => core.member));
   const policy = new DialPolicy({ clock, random: seededRandom(5), onDue: () => undefined });
-  local.serve(new MeshLines({ view: () => current, policy, dial: dialCore(members) }));
+  await local.serve(new MeshLines({ view: () => current, policy, dial: dialCore(members) }));
   const machines = recorded(self.control.machines);
   const reconciler = new Reconciler({
     machines,
