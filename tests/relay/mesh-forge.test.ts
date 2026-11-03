@@ -4,6 +4,7 @@ import { type Forbidden, watchForbidden } from "./support/mesh/forbidden-watch.t
 import { untilGone } from "./support/mesh/gone.ts";
 import { identityOf, mintIdentity } from "./support/mesh/identity.ts";
 import { deliver, type Judgement, untilJudged } from "./support/mesh/inject.ts";
+import { isolate } from "./support/mesh/isolate.ts";
 import { type Mesh, startMesh } from "./support/mesh/mesh.ts";
 import { needLib, scenario } from "./support/mesh/present.ts";
 import { actorOf, cardIn, cardOf, foundRecord, lastOwn, signAdmit } from "./support/mesh/records.ts";
@@ -38,13 +39,14 @@ async function injected(carrier: string, target: string, records: readonly Signe
   expect(hashes.filter((hash) => held.has(hash))).toEqual([]);
   const before = await snapshot(hosts);
   const watch = watchForbidden(hosts, WATCHERS, forbidden);
+  const heal = await isolate(hosts, [{ carrier: hosts.host(carrier), target: hosts.host(target) }]);
   const session = await deliver({
     mesh: hosts,
     carrier: identityOf(hosts.host(carrier)),
     target: hosts.host(target),
     meshId: meshIdOf(hosts.host(target)),
     records,
-  });
+  }).finally(heal);
   try {
     expect(session.kind).toBe("answered");
     const judged = await untilJudged(hosts, hosts.host(target), hashes, lib.hashOf);

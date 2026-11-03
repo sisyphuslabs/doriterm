@@ -15,6 +15,8 @@ export interface Tap {
   bytes(): number;
   /** Connections currently open through the tap. */
   open(): number;
+  /** Connections currently open through the tap that are this host's dials to `hostId`. */
+  openTo(hostId: string): number;
   /** Every host this host dialed through the tap (sync sessions and hc lines alike), refused dials included. */
   dials(): readonly string[];
   /** Calls `wake` whenever a connection opens or closes, until the returned function is called. */
@@ -115,6 +117,7 @@ export function makeTap(upstreamPort: number, ip: string): Tap {
     ip,
     bytes: () => forwarded,
     open: () => conns.size,
+    openTo: (hostId) => [...conns].filter((socket) => socket.data.target === hostId).length,
     dials: () => dialed,
     onChange(wake) {
       wakes.add(wake);

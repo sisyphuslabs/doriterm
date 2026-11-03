@@ -2,6 +2,9 @@ import { type ForbiddenWatch, watchForbidden } from "./forbidden-watch.ts";
 import { deliver, type Delivery, type Judgement, untilJudged } from "./inject.ts";
 import { StoredSet } from "./honest-records.ts";
 import { identityOf } from "./identity.ts";
+import { isolate } from "./isolate.ts";
+import type { Mesh } from "./mesh.ts";
+import type { MeshHost } from "./mesh-host.ts";
 import { plantRecords } from "./plant.ts";
 import { type Head, signAttack } from "./records.ts";
 import type { ShapeRun } from "./shape-setup.ts";
@@ -32,6 +35,24 @@ function forkOf(run: ShapeRun, records: readonly SignedRecord[], signPub: string
   return { hash, n: set.counterAt(hash, signPub) };
 }
 
+/** Injects through member sessions, each judge's carrier being the next judge, with every pair isolated (5.1). */
+async function injectThroughMembers(
+  mesh: Mesh,
+  judges: readonly MeshHost[],
+  meshId: string,
+  records: readonly SignedRecord[],
+): Promise<Delivery[]> {
+  const pairs = judges.map((target, index) => ({ carrier: judges[(index + 1) % judges.length] ?? target, target }));
+  const heal = await isolate(mesh, pairs);
+  try {
+    return await Promise.all(
+      pairs.map(({ carrier, target }) => deliver({ mesh, carrier: identityOf(carrier), target, meshId, records })),
+    );
+  } finally {
+    heal();
+  }
+}
+
 /**
  * Signs the shape's attack with the revoked key and the keys it mints, gets it to every judge through the shape's
  * channel, waits until each judge has judged every record (the door's refusal line or the hash in `mesh.json`), then
@@ -60,13 +81,7 @@ export async function runAttack(run: ShapeRun): Promise<AttackResult> {
   const sessions: Delivery[] = [];
   try {
     if (shape.channel === "member") {
-      const opened = await Promise.all(
-        judges.map((target, index) => {
-          const carrier = judges[(index + 1) % judges.length] ?? target;
-          return deliver({ mesh, carrier: identityOf(carrier), target, meshId, records: graph.records });
-        }),
-      );
-      sessions.push(...opened);
+      sessions.push(...(await injectThroughMembers(mesh, judges, meshId, graph.records)));
     } else {
       plantRecords(revoked, revokedActor.signPub, graph.records);
       await revoked.start();
