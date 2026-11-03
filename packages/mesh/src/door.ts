@@ -19,10 +19,18 @@ export type DoorReason =
   | "rekey of another member"
   | "card nonce reused";
 
-export type DoorResult = { readonly ok: true } | { readonly ok: false; readonly reason: DoorReason };
+/** Reasons that hold a record in the dangling pool (design section 3.3 steps 4-5) instead of refusing it. */
+export type HoldReason = Extract<DoorReason, "dangling" | "unknown signer">;
+export type RefusalReason = Exclude<DoorReason, HoldReason>;
+
+export type DoorResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly held: true; readonly reason: HoldReason }
+  | { readonly ok: false; readonly held: false; readonly reason: RefusalReason };
 
 const OK: DoorResult = { ok: true };
-const refuse = (reason: DoorReason): DoorResult => ({ ok: false, reason });
+const refuse = (reason: RefusalReason): DoorResult => ({ ok: false, held: false, reason });
+const hold = (reason: HoldReason): DoorResult => ({ ok: false, held: true, reason });
 
 /** What the door needs from the stored set, built once per stored array and extended as the array grows. */
 interface StoredIndex {
@@ -117,7 +125,7 @@ export function door(record: Signed, stored: readonly Signed[]): DoorResult {
     return body.mesh === "-" ? cardCheck(body, "-", set.nonces) : refuse("another mesh");
   }
   if (set.meshId === undefined || body.mesh !== set.meshId) return refuse("another mesh");
-  if (!set.signers.has(body.by)) return refuse("unknown signer");
-  if (body.prev.some((hash) => !set.hashes.has(hash))) return refuse("dangling");
+  if (!set.signers.has(body.by)) return hold("unknown signer");
+  if (body.prev.some((hash) => !set.hashes.has(hash))) return hold("dangling");
   return cardCheck(body, body.mesh, set.nonces);
 }

@@ -1,4 +1,5 @@
-export { door, type DoorReason, type DoorResult, missingFor } from "./door.ts";
+export { type DoorMerge, mergeAtDoor } from "./dangling.ts";
+export { door, type DoorReason, type DoorResult, type HoldReason, missingFor, type RefusalReason } from "./door.ts";
 export { checkName, FALLBACK_LENGTHS, fallbacks, idShaped } from "./names.ts";
 export { witnessPool } from "./pool.ts";
 export {
