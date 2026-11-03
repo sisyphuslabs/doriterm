@@ -3,7 +3,7 @@ import type { MeshStatus } from "@doriface/protocol";
 import { Notice, SettingRow, Skeleton, cn } from "@doriface/ui";
 import type { ReactNode } from "react";
 import { connectionStore, useConnection } from "../connection/store.ts";
-import { MeshBanners, PendingRow, RemovedRows } from "../mesh/attention.tsx";
+import { ExpiredJoinRow, MeshBanners, PendingRow, RemovedRows } from "../mesh/attention.tsx";
 import { disagreement, meshGroups } from "../mesh/groups.ts";
 import { MemberRow, RevokedRow } from "../mesh/mesh-rows.tsx";
 import { useMesh } from "../mesh/use-mesh.ts";
@@ -45,9 +45,6 @@ function namesIn(status: MeshStatus): (hostId: string) => string {
   for (const removal of status.removed) names.set(removal.revokedKey.hostId, removal.revokedKey.name);
   return (hostId) => names.get(hostId) ?? hostId;
 }
-
-/** An expired join takes no answer (its row offers none), so its row is never asked to send one. */
-const answerNone = (): Promise<void> => Promise.resolve();
 
 function MeshBody({ connection }: { readonly connection: HcConnection }) {
   const { read, answer } = useMesh(connection);
@@ -130,7 +127,7 @@ function MeshBody({ connection }: { readonly connection: HcConnection }) {
       </MeshGroup>
       <MeshGroup id="expired" title="Expired join requests" count={groups.expired.length}>
         {groups.expired.map((join) => (
-          <PendingRow key={join.nonce} join={join} self={self} now={now} answered={undefined} onAnswer={answerNone} />
+          <ExpiredJoinRow key={join.nonce} join={join} self={self} now={now} />
         ))}
       </MeshGroup>
     </div>

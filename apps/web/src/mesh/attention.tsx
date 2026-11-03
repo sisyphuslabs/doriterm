@@ -9,6 +9,27 @@ import type { Verdict } from "./use-mesh.ts";
 /** What an owner runs on an affected machine to found a fresh mesh after a fail-closed removal (design section 3.7). */
 export const REFOUND_COMMAND = "doriface-host mesh leave && doriface-host mesh pair";
 
+export interface ExpiredJoinRowProps {
+  readonly join: MeshPendingJoin;
+  readonly self: string;
+  readonly now: number;
+}
+
+/** A join whose offer ended: it takes no answer, so the row has none to give. */
+export function ExpiredJoinRow({ join, self, now }: ExpiredJoinRowProps) {
+  return (
+    <SettingRow
+      title={`${join.name} asked to join`}
+      description={`through ${self}; its offer ended ${formatAge(Date.parse(join.expiresAt), now)} ago`}
+      control={
+        <span className="text-sm text-muted-foreground" data-mesh-answer="expired">
+          Expired
+        </span>
+      }
+    />
+  );
+}
+
 export interface PendingRowProps {
   readonly join: MeshPendingJoin;
   readonly self: string;
@@ -35,19 +56,8 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
   };
   const left = Date.parse(join.expiresAt) - now;
   const state = pendingAnswer(join, now, answered);
-  if (state === "expired") {
-    return (
-      <SettingRow
-        title={`${join.name} asked to join`}
-        description={`through ${self}; its offer ended ${formatAge(0, -left)} ago, so it needs no answer`}
-        control={
-          <span className="text-sm text-muted-foreground" data-mesh-answer={state}>
-            Expired
-          </span>
-        }
-      />
-    );
-  }
+  // The offer can end while the row is up, before the groups move it.
+  if (state === "expired") return <ExpiredJoinRow join={join} self={self} now={now} />;
   return (
     <SettingRow
       title={`${join.name} asks to join`}
