@@ -2,7 +2,7 @@
 // waits in a pool of at most MAX_DANGLING records, oldest dropped first, and joins the set when what it waits for lands.
 
 import { door, holds, missingFor, type RefusalReason, shareIndex } from "./door.ts";
-import { cardOf, hashOf, parseRecord, verifyCard } from "./records/codec.ts";
+import { cardOf, hashOf, isSigned, parseRecord, verifyCard } from "./records/codec.ts";
 import { MAX_DANGLING, type Signed } from "./records/types.ts";
 
 export interface DoorMerge {
@@ -39,6 +39,7 @@ export function mergeAtDoor(
   const set: Signed[] = [...stored];
   shareIndex(stored, set);
   const seen = new Set<string>();
+  // Held records are keyed by body hash: two valid signatures over one body are one record, so either may wait for it.
   const held = new Map<string, { readonly record: Signed; readonly age: number }>();
   const waiting = new Map<string, string[]>();
   const added: Signed[] = [];
@@ -46,6 +47,10 @@ export function mergeAtDoor(
   const queue: { readonly record: Signed; readonly age: number }[] = [];
   let age = 0;
   for (const record of [...dangling, ...incoming]) {
+    if (!isSigned(record)) {
+      refused.push({ record, reason: "malformed" });
+      continue;
+    }
     const key = copy(record);
     if (seen.has(key) || holds(set, record)) continue;
     seen.add(key);

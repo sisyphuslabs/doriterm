@@ -108,4 +108,30 @@ describe("the door bounds its work before it parses (design section 3.3 step 1)"
       expect(verifyCard(x)).toBeUndefined();
     }
   });
+
+  test("mergeAtDoor and canonicalOrder take a non-record as door does: refused, never thrown, never shadowing", () => {
+    const [body, sig] = [JSON.stringify(ack.body), JSON.stringify(ack.sig)];
+    const shapes = [
+      "null",
+      '{"body":5,"sig":"x"}',
+      `{"body":${body},"sig":{"toString":1}}`,
+      `{"body":${body},"sig":[${sig}]}`,
+      `{"body":[${body}],"sig":${sig}}`,
+    ];
+    for (const x of shapes.map(fromWire)) {
+      expect(door(x, stored)).toEqual({ ok: false, held: false, reason: "malformed" });
+      for (const [dangling, incoming] of [
+        [[], [x, ack]],
+        [[x], [ack]],
+      ]) {
+        const merged = mergeAtDoor(stored, dangling ?? [], incoming ?? []);
+        expect([merged.added, merged.refused, merged.dangling]).toEqual([
+          [ack],
+          [{ record: x, reason: "malformed" }],
+          [],
+        ]);
+      }
+      expect(canonicalOrder([...stored, x])).toEqual(stored);
+    }
+  });
 });
