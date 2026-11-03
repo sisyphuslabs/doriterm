@@ -55,6 +55,7 @@ export function meshFixture(now: Date): MeshFixture {
       revoked: new Set([key("kiosk"), key("spare")]),
       noise: new Map(members.map((name) => [key(name), noise(name)])),
       admitter: new Map([
+        [key("studio"), key("studio")],
         [key("build-box"), key("studio")],
         [key("laptop"), key("studio")],
         [key("tablet"), key("build-box")],

@@ -24,7 +24,8 @@ export interface FailClosedFact {
 
 /**
  * The part of PR 2's `View` that status reads. `noise`, `admitter` and `name` cover the 12 members only: an over-cap
- * key (section 3.5) has none of them, and the founder has no admitter.
+ * key (section 3.5) has none of them. `admitter` maps the founder to itself, since its governing admission is its own
+ * `found` record; status reads that as no admitter.
  */
 export type ViewFacts = Pick<View, "members" | "overCap" | "revoked" | "noise" | "admitter" | "name">;
 

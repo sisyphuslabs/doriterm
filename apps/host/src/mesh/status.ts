@@ -21,6 +21,15 @@ export const hostIdOfKey = (signPub: string): string => hostIdOf(base64urlDecode
 export const fingerprintOfKey = (noisePub: string): string => fingerprintOf(base64urlDecode(noisePub));
 const iso = (date: Date | null): string | null => (date === null ? null : date.toISOString());
 
+/**
+ * Who admitted `key`, if anyone did: the view maps the founder to itself (its governing admission is its own `found`
+ * record, design section 3.5), and the founder has no admitter.
+ */
+function admitterOf(sources: MeshSources, key: string): string | undefined {
+  const admitter = sources.view.admitter.get(key);
+  return admitter === key ? undefined : admitter;
+}
+
 interface Names {
   readonly hostId: (key: string) => string;
   readonly name: (key: string) => string;
@@ -46,7 +55,7 @@ function member(sources: MeshSources, names: Names, key: string, now: Date): Mes
   const line = self ? undefined : sources.lines.get(key);
   const since = peer?.unreachableSince ?? null;
   const stale = since !== null && now.getTime() - since.getTime() > UNREACHABLE_REVOKE_MS;
-  const admitter = view.admitter.get(key);
+  const admitter = admitterOf(sources, key);
   const witness = self ? { pool: [], ask: null } : sources.witnessPool(key);
   return {
     hostId,
@@ -103,7 +112,7 @@ function removedOf(sources: MeshSources, names: Names): MeshRemovedStatus[] {
 function noticesOf(sources: MeshSources, names: Names, now: Date): MeshNotice[] {
   return [...sources.view.members].flatMap((key) => {
     const seen = sources.local.noticed.get(key);
-    const admitter = sources.view.admitter.get(key);
+    const admitter = admitterOf(sources, key);
     const noise = sources.view.noise.get(key);
     if (key === sources.local.self || seen === undefined || admitter === undefined || noise === undefined) return [];
     const until = seen.getTime() + NOTICE_MS;
