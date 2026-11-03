@@ -64,7 +64,7 @@ export class HostSync {
    * A mesh session HostMesh hands over (its sync hook): a member's sync session (sections 5.1 and 9.2), or the session
    * a join ran on once the join is over (section 4.4). On a join's session the inviter's side, the responder of the
    * pairing (the one that received the joiner's name), waits for the joiner's hello: its first line could otherwise
-   * reach a joiner still reading the welcome, whose join lines close 4400 on it.
+   * reach a joiner still reading the welcome, whose join lines close 4400 on it. The joiner acks its admission there.
    */
   adopt(secure: SecureLink): void {
     this.changed();
@@ -74,6 +74,7 @@ export class HostSync {
     if (secure.kind === SessionKind.Session) return void gossip.attach(member.signPub, member.signPub, secure);
     const inviter = secure.peerName !== undefined;
     gossip.attach(member.signPub, inviter ? member.signPub : gossip.self, secure, false, inviter);
+    if (!inviter) gossip.ackAdmission();
   }
 
   /** This host's relay uplink closed; it reconnects by itself. */

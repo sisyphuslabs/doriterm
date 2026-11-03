@@ -84,7 +84,7 @@ export class FakeRelay {
         open: (ws) => {
           this.#host = ws;
           this.sentToHost = 0;
-          this.#send(ws.data.challenge);
+          this.#sendOrThrow(ws.data.challenge);
         },
         message: (ws, message) => this.#receive(ws, message),
         close: (ws) => {
@@ -98,10 +98,12 @@ export class FakeRelay {
   open(sessionId: number, pairSlot?: string): ByteLink & { readonly closed: Promise<number> } {
     const session: Session = { data: new Set(), closed: Promise.withResolvers() };
     this.#sessions.set(sessionId, session);
-    this.#send(encodeOpen(sessionId, pairSlot));
+    if (!this.#send(encodeOpen(sessionId, pairSlot))) session.closed.resolve(4404);
     return {
       closed: session.closed.promise,
-      send: (bytes) => this.#send(encodeData(sessionId, bytes)),
+      send: (bytes) => {
+        if (!this.#send(encodeData(sessionId, bytes))) session.closed.resolve(4404);
+      },
       onData: (listener): Unsubscribe => {
         session.data.add(listener);
         return () => session.data.delete(listener);
@@ -125,7 +127,7 @@ export class FakeRelay {
   }
 
   sendRaw(bytes: Uint8Array): void {
-    this.#send(bytes);
+    this.#sendOrThrow(bytes);
   }
 
   dropUplink(code: number): void {
@@ -136,11 +138,17 @@ export class FakeRelay {
     await this.#server.stop(true);
   }
 
-  #send(bytes: Uint8Array): void {
+  /** False when no uplink is connected: a client session then ends 4404, as the relay answers for an offline host. */
+  #send(bytes: Uint8Array): boolean {
     const host = this.#host;
-    if (host === undefined) throw new Error("no uplink is connected");
+    if (host === undefined) return false;
     this.sentToHost += bytes.byteLength;
     host.send(bytes);
+    return true;
+  }
+
+  #sendOrThrow(bytes: Uint8Array): void {
+    if (!this.#send(bytes)) throw new Error("no uplink is connected");
   }
 
   #receive(ws: ServerWebSocket<Uplink>, message: string | Uint8Array): void {
@@ -167,6 +175,6 @@ export class FakeRelay {
     if (request === undefined) throw new Error("malformed PAIR_SLOT");
     if (request !== "clear") this.#lastSlot = request.slot;
     this.pairSlots.push(request);
-    this.#send(encodePairSlotAck(this.#lastSlot, PairSlotAckStatus.Registered));
+    this.#sendOrThrow(encodePairSlotAck(this.#lastSlot, PairSlotAckStatus.Registered));
   }
 }

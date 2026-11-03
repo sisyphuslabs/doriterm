@@ -13,7 +13,7 @@ import {
   type Subject,
 } from "@doriface/mesh";
 import { CounterBehindError, type MeshStore, type MeshTx } from "../state/mesh.ts";
-import { headsOf } from "../state/mesh-tx.ts";
+import { headsOf, ownN } from "../state/mesh-tx.ts";
 import { ownHeadFirst } from "./fold.ts";
 import { type MeshView, meshViewOf } from "./mesh-view.ts";
 
@@ -163,5 +163,31 @@ export function appendOwn(deps: MergeDeps, draft: RecordDraft): MergeResult {
     tx.sign(deps.identity, (n, prev) => bodyOf(deps, n, prev, draft));
     const view = meshViewOf(tx.records, tx.view());
     return { added: tx.records.slice(before), refused: [], wanted: [], ack: undefined, counterBehind: false, view };
+  });
+}
+
+/**
+ * The joiner's side of section 5.5: a member admitted by another stores its admit from the welcome, not from a merge,
+ * so it acks its admission once, as its first own record, when its sync starts. Undefined when there is nothing to ack.
+ */
+export function ackAdmission(deps: MergeDeps): MergeResult | undefined {
+  return deps.store.transact((tx) => {
+    if (ownN(tx.records, selfOf(deps)) > 0) return undefined;
+    const view = viewOnce(tx);
+    if (!view().members.some((member) => member.signPub === selfOf(deps))) return undefined;
+    const before = tx.records.length;
+    if (!fitHeads(deps, tx)) return undefined;
+    const ack = tx.sign(deps.identity, (n, prev) => bodyOf(deps, n, prev));
+    view();
+    return {
+      added: tx.records.slice(before),
+      refused: [],
+      wanted: [],
+      ack,
+      counterBehind: false,
+      get view(): MeshView {
+        return view();
+      },
+    };
   });
 }

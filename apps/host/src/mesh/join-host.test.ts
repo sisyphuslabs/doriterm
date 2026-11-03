@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { generateToken } from "../auth.ts";
 import { requestControl } from "../control.ts";
 import { type Host, startHost } from "../host.ts";
+import { parseRecord } from "@doriface/mesh";
 import { loadHostIdentity } from "../state/host-keys.ts";
 import { MeshStore } from "../state/mesh.ts";
 import { pendingFromWire } from "../state/pairing.ts";
@@ -61,7 +62,7 @@ afterAll(async () => {
 const records = (dir: string) => new MeshStore(dir, { log: () => {} }).read()?.records;
 
 describe("J-1: a link join run by the joiner's running host", () => {
-  test("mesh pair on A, mesh join on B's host: both files are equal and both keep the session for sync", async () => {
+  test("mesh pair on A, mesh join on B's host: both hold the welcome, the joiner acks its admission, and both keep the session for sync", async () => {
     const a = await start("alpha", true);
     await relay.answers.next();
     const b = await start("beta", false);
@@ -86,8 +87,14 @@ describe("J-1: a link join run by the joiner's running host", () => {
     });
     const meshId = new MeshStore(a.dir, { log: () => {} }).read()?.meshId;
     expect(joined).toEqual({ meshId, hostId: identity.hostId });
-    expect(records(b.dir)).toEqual(records(a.dir));
-    expect(records(a.dir)).toHaveLength(2);
+    const welcome = records(a.dir)?.slice(0, 2);
+    expect(welcome).toHaveLength(2);
+    expect(records(b.dir)?.slice(0, 2)).toEqual(welcome);
+    const [ownAck] = records(b.dir)?.slice(2) ?? [];
+    expect(ownAck === undefined ? undefined : parseRecord(ownAck)).toMatchObject({
+      type: "ack",
+      by: Buffer.from(loadHostIdentity(b.dir).sign.publicKey).toString("base64url"),
+    });
     expect(
       new MeshStore(b.dir, { log: () => {} })
         .authorizeIndex()

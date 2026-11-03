@@ -9,7 +9,7 @@ import type { LineLink } from "./lines.ts";
 import type { MeshView } from "./mesh-view.ts";
 import { MemberBook, StoredMesh } from "./stored-mesh.ts";
 import { RevokedLast } from "./revoked-last.ts";
-import { appendOwn, type MergeDeps, type MergeResult, mergeBatch, type RecordDraft } from "./merge.ts";
+import { ackAdmission, appendOwn, type MergeDeps, type MergeResult, mergeBatch, type RecordDraft } from "./merge.ts";
 import { type SyncHost, SyncSession } from "./sync.ts";
 
 /** Section 5.1 and 5.3's timings, production values. */
@@ -80,6 +80,13 @@ export class Gossip implements SyncHost {
 
   start(): void {
     this.#armSafetyNet();
+  }
+
+  /** The joiner's ack of its own admission (section 5.5), once, owed to every member; false when nothing was signed. */
+  ackAdmission(): boolean {
+    const admitted = ackAdmission(this.#options);
+    if (admitted !== undefined) this.#changed(admitted, true);
+    return admitted !== undefined;
   }
 
   stop(): void {
