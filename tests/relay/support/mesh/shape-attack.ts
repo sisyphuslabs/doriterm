@@ -1,14 +1,12 @@
 import { type ForbiddenWatch, watchForbidden } from "./forbidden-watch.ts";
 import { deliver, type Delivery, type Judgement, judgementOf, untilJudged } from "./inject.ts";
-import { StoredSet } from "./honest-records.ts";
 import { identityOf } from "./identity.ts";
 import { isolate } from "./isolate.ts";
 import type { Mesh } from "./mesh.ts";
 import type { MeshHost } from "./mesh-host.ts";
-import { plantRecords } from "./plant.ts";
-import { type Head, lastOwn, signAttack } from "./records.ts";
+import { attackGraph } from "./revoked-return.ts";
 import type { ShapeRun } from "./shape-setup.ts";
-import { meshFileOf, type SignedRecord, type Status, statusOf, storedRecords } from "./status.ts";
+import { meshFileOf, type SignedRecord, type Status, statusOf } from "./status.ts";
 
 export interface AttackResult {
   /** How each judge's own session served the injection (member channel only). */
@@ -24,22 +22,6 @@ export interface AttackResult {
 const MEMBERS_MS = 120_000;
 /** A member that answered 4404 is probed at most every 5 minutes (section 5.4); one probe reaches the returned host. */
 const PROBE_MS = 6 * 60_000;
-
-/**
- * FORK as the model has it: the honest record the shape names (`fork`), which must be the revoked key's last own
- * record on its own host (section 3.7's L). A chain continuing from any earlier record would reuse a counter, and the
- * view voids such a record whatever the shape, so the attack would test nothing.
- */
-function forkOf(run: ShapeRun, records: readonly SignedRecord[], signPub: string): Head {
-  const set = new StoredSet(records, run.lib.hashOf);
-  const step = run.shape.honest.find((each) => each.id === run.shape.fork);
-  const hash = step === undefined ? undefined : set.find(step, (key) => run.actors.get(key)?.signPub ?? "");
-  if (hash === undefined) throw new Error(`${run.shape.id}: the revoked host holds no ${run.shape.fork}`);
-  if (lastOwn(run.lib, records, signPub).hash !== hash) {
-    throw new Error(`${run.shape.id}: the revoked key wrote after ${run.shape.fork}, which the model does not have`);
-  }
-  return { hash, n: set.counterAt(hash, signPub) };
-}
 
 /** Injects through member sessions, each judge's carrier being the next judge, with every pair isolated (5.1). */
 async function injectThroughMembers(
@@ -72,19 +54,16 @@ async function untilRefusedBy(mesh: Mesh, host: MeshHost, from: number): Promise
 }
 
 /**
- * Signs the shape's attack with the revoked key and the keys it mints, gets it to every judge through the shape's
- * channel, waits until each judge has judged every record (the door's refusal line or the hash in `mesh.json`), then
+ * Signs the shape's attack with the revoked key and the keys it mints (on the revoked channel the setup already
+ * planted it on the returned host), gets it to every judge through the shape's channel, waits until each judge has judged every record (the door's refusal line or the hash in `mesh.json`), then
  * until each judge's view is the shape's. A minted key seen on a judge at any point in that window is reported.
  */
 export async function runAttack(run: ShapeRun): Promise<AttackResult> {
   const { mesh, lib, shape } = run;
   const keyHost = (key: string) => mesh.host(run.host(key));
   const revoked = keyHost(shape.revoked);
-  const revokedActor = run.actors.get(shape.revoked);
-  if (revokedActor === undefined) throw new Error(`${shape.id}: no keys for ${shape.revoked}`);
   const meshId = meshFileOf(revoked).meshId;
-  const fork = forkOf(run, storedRecords(revoked), revokedActor.signPub);
-  const graph = signAttack(lib, meshId, shape, run.actors, fork);
+  const graph = run.planted ?? attackGraph(run);
   const hashes = shape.attack.map((step) => graph.hashes.get(step.id) ?? "");
   const judges = shape.judges.map(keyHost);
   const minted = shape.minted.flatMap((key) => {
@@ -100,11 +79,12 @@ export async function runAttack(run: ShapeRun): Promise<AttackResult> {
   try {
     if (shape.channel === "member") {
       sessions.push(...(await injectThroughMembers(mesh, judges, meshId, graph.records)));
-    } else {
-      plantRecords(revoked, revokedActor.signPub, graph.records);
-      const from = revoked.logs.length;
-      await revoked.start();
-      if (shape.unreachable === true) await untilRefusedBy(mesh, revoked, from);
+    } else if (shape.unreachable === true) {
+      await untilRefusedBy(
+        mesh,
+        revoked,
+        revoked.logs.findLastIndex((line) => line.includes("relay: connected")),
+      );
     }
     const judged = await Promise.all(
       judges.map((judge) =>

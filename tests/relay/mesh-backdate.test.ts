@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { BACKDATE_SHAPES } from "./support/mesh/backdate-graphs.ts";
 import { type Mesh, startMesh } from "./support/mesh/mesh.ts";
 import { needLib, scenario } from "./support/mesh/present.ts";
+import { returnRevoked } from "./support/mesh/revoked-return.ts";
 import { runAttack } from "./support/mesh/shape-attack.ts";
 import { type ShapeRun, setUpShape } from "./support/mesh/shape-setup.ts";
 
@@ -22,7 +23,7 @@ for (const shape of BACKDATE_SHAPES) {
 
     beforeAll(async () => {
       mesh = await startMesh({ names });
-      run = await setUpShape(mesh, needLib(), shape);
+      run = await setUpShape(mesh, needLib(), shape, shape.channel === "revoked" ? returnRevoked : undefined);
     }, 300_000);
 
     afterAll(async () => {

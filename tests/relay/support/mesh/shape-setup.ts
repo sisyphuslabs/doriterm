@@ -8,7 +8,7 @@ import { identityOf } from "./identity.ts";
 import type { Mesh } from "./mesh.ts";
 import type { MeshHost } from "./mesh-host.ts";
 import type { MeshLib } from "./mesh-lib.ts";
-import { type Actor, actorOf } from "./records.ts";
+import { type Actor, actorOf, type SignedGraph } from "./records.ts";
 import { statusOf, storedRecords, viewOf } from "./status.ts";
 
 /** A shape on real hosts: who is who, and what the honest revoke's warning did. */
@@ -21,6 +21,8 @@ export interface ShapeRun {
   readonly host: (key: string) => string;
   /** For the honest revoke: whether its witness pool (status `witnessPool`) was empty, and whether `--yes` was needed. */
   readonly warning: { readonly poolEmpty: boolean; readonly neededYes: boolean } | undefined;
+  /** The attack the setup planted on the revoked host when it brought it back (the revoked channel). */
+  readonly planted: SignedGraph | undefined;
 }
 
 const hostKeys = (shape: BackdateShape): readonly string[] => Object.keys(shape.hosts);
@@ -76,8 +78,16 @@ async function revokeWithWarning(run: ShapeRun, step: Step): Promise<ShapeRun["w
   return { poolEmpty, neededYes: true };
 }
 
-/** Writes the shape's honest part with the operators' real commands, in order, waiting for each to spread. */
-export async function setUpShape(mesh: Mesh, lib: MeshLib, shape: BackdateShape): Promise<ShapeRun> {
+/**
+ * Writes the shape's honest part with the operators' real commands, in order, waiting for each to spread. Once the
+ * revoke is written everywhere, `afterRevoke` runs (the revoked channel brings the revoked host back there).
+ */
+export async function setUpShape(
+  mesh: Mesh,
+  lib: MeshLib,
+  shape: BackdateShape,
+  afterRevoke?: (run: ShapeRun) => Promise<SignedGraph>,
+): Promise<ShapeRun> {
   const host = (key: string): string => {
     const name = shape.hosts[key];
     if (name === undefined) throw new Error(`${shape.id}: ${key} has no host`);
@@ -85,7 +95,8 @@ export async function setUpShape(mesh: Mesh, lib: MeshLib, shape: BackdateShape)
   };
   const actors = await actorsOf(mesh, shape);
   let warning: ShapeRun["warning"];
-  const run = (): ShapeRun => ({ mesh, lib, shape, actors, host, warning });
+  let planted: SignedGraph | undefined;
+  const run = (): ShapeRun => ({ mesh, lib, shape, actors, host, warning, planted });
   const online = new Set<string>();
   let revoked = false;
   const write = async (step: Step): Promise<void> => {
@@ -112,6 +123,7 @@ export async function setUpShape(mesh: Mesh, lib: MeshLib, shape: BackdateShape)
     }
     const holders = [...online].filter((key) => !revoked || key !== shape.revoked);
     await untilWritten(run(), step, holders.map(host));
+    if (step.type === "revoke" && afterRevoke !== undefined) planted = await afterRevoke(run());
   };
   await inOrder(shape.honest, write);
   await untilViews(
