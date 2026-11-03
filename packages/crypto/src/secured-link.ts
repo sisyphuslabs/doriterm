@@ -1,4 +1,5 @@
 import type { SessionKind } from "./kinds.ts";
+import type { Stream } from "./payloads.ts";
 import { type ByteLink, CloseCode, closeCodeOf, Listeners, SecureLinkError, type Unsubscribe } from "./link.ts";
 import type { Transport } from "./transport.ts";
 
@@ -13,6 +14,8 @@ export interface SessionInfo {
   readonly peerName: string | undefined;
   /** Initiator: the host's LAN URLs from message 2 (IP literals). */
   readonly lanUrls: readonly string[];
+  /** What the plaintext carries: absent (the hc stream, or a device pairing), `"hc"` or `"mesh"`. */
+  readonly stream: Stream | undefined;
 }
 
 /** A ByteLink whose bytes travel as Noise transport records over another ByteLink. */
@@ -29,6 +32,7 @@ export class SecuredLink implements SecureLink {
   readonly handshakeHash: Uint8Array;
   readonly peerName: string | undefined;
   readonly lanUrls: readonly string[];
+  readonly stream: Stream | undefined;
   readonly #link: ByteLink;
   readonly #transport: Transport;
   readonly #data = new Listeners<Uint8Array>();
@@ -47,6 +51,7 @@ export class SecuredLink implements SecureLink {
     this.handshakeHash = info.handshakeHash;
     this.peerName = info.peerName;
     this.lanUrls = info.lanUrls;
+    this.stream = info.stream;
   }
 
   get closed(): boolean {

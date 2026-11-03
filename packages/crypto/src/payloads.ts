@@ -46,29 +46,48 @@ function splitLine(payload: Uint8Array): {
   return { fields: Object.fromEntries(Object.entries(fields)), rest: payload.subarray(end + 1) };
 }
 
-/** Pairing message 1: `{"v":1,"name":"<device name>"}\n` and nothing after it. */
-export const encodePairingHello = (name: string): Uint8Array => line({ name: deviceName(name) });
+/**
+ * What the plaintext of a session carries (contract v1.5): absent or `"hc"` is the `hc connect` stream, `"mesh"` the
+ * mesh stream. On a pairing, absent is a device pairing and `"mesh"` a machine join.
+ */
+export type Stream = "hc" | "mesh";
 
-/** IK message 1: `{"v":1}\n` followed by up to {@link MAX_EARLY_BYTES} early stream bytes. */
-export function encodeSessionHello(early: Uint8Array = new Uint8Array(0)): Uint8Array {
+const streamField = (stream: Stream | undefined): { readonly stream?: Stream } =>
+  stream === undefined ? {} : { stream };
+
+/** Pairing message 1: `{"v":1,"name":"<name>"}\n` (with `"stream":"mesh"` for a join) and nothing after it. */
+export const encodePairingHello = (name: string, stream?: "mesh"): Uint8Array =>
+  line({ name: deviceName(name), ...streamField(stream) });
+
+/** IK message 1: `{"v":1}\n` followed by up to {@link MAX_EARLY_BYTES} early stream bytes (none on the mesh stream). */
+export function encodeSessionHello(early: Uint8Array = new Uint8Array(0), stream?: Stream): Uint8Array {
   if (early.byteLength > MAX_EARLY_BYTES) throw new PayloadError(`at most ${MAX_EARLY_BYTES} early bytes`);
-  return concatBytes(line({}), early);
+  if (stream === "mesh" && early.byteLength > 0) throw new PayloadError("the mesh stream carries no early bytes");
+  return concatBytes(line(streamField(stream)), early);
 }
 
 export type Hello =
-  | { readonly kind: "pairing"; readonly name: string }
-  | { readonly kind: "session"; readonly early: Uint8Array };
+  | { readonly kind: "pairing"; readonly name: string; readonly stream: "mesh" | undefined }
+  | { readonly kind: "session"; readonly early: Uint8Array; readonly stream: Stream | undefined };
+
+function streamOf(value: unknown, pairing: boolean): Stream | undefined {
+  if (value === undefined || value === "mesh" || (value === "hc" && !pairing)) return value;
+  throw new PayloadError(`stream ${JSON.stringify(value)} is not valid on a ${pairing ? "pairing" : "session"}`);
+}
 
 export function decodeHello(pattern: "IK" | "IKpsk2", payload: Uint8Array): Hello {
   const { fields, rest } = splitLine(payload);
   if (pattern === "IK") {
+    const stream = streamOf(fields["stream"], false);
     if (rest.byteLength > MAX_EARLY_BYTES) throw new PayloadError(`at most ${MAX_EARLY_BYTES} early bytes`);
-    return { kind: "session", early: rest.slice() };
+    if (stream === "mesh" && rest.byteLength > 0) throw new PayloadError("the mesh stream carries no early bytes");
+    return { kind: "session", early: rest.slice(), stream };
   }
+  const stream = streamOf(fields["stream"], true);
   const name = fields["name"];
   if (typeof name !== "string") throw new PayloadError('a pairing hello carries {"name": string}');
   if (rest.byteLength > 0) throw new PayloadError("a pairing hello carries nothing after its line");
-  return { kind: "pairing", name: deviceName(name) };
+  return { kind: "pairing", name: deviceName(name), stream: stream === "mesh" ? stream : undefined };
 }
 
 /** `ws://`, an IPv4 or bracketed IPv6 literal, an explicit port, `/v1/e2ee`, and nothing else. */

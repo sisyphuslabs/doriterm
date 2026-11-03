@@ -4,7 +4,7 @@ import { prologueFor } from "./identity.ts";
 import { checkReplySize, SessionKind, SID_LENGTH } from "./kinds.ts";
 import { Handshake } from "./noise/handshake.ts";
 import { codePairingInputs, codePairingPsk, linkPairingPsk } from "./pairing-keys.ts";
-import { decodeReply, encodePairingHello, encodeSessionHello } from "./payloads.ts";
+import { decodeReply, encodePairingHello, encodeSessionHello, PayloadError, type Stream } from "./payloads.ts";
 import type { StaticKey } from "./static-key.ts";
 
 /** How a device pairs: with the typed code (CPace) or with the link secret from the pairing URL. */
@@ -21,6 +21,8 @@ export interface ClientFlightOptions {
   readonly pairing?: PairingSecret | undefined;
   /** Session only: the first stream bytes (at most 4096), sent inside message 1. */
   readonly early?: Uint8Array | undefined;
+  /** What the session carries (absent: the hc stream; a pairing takes only `"mesh"`, a machine join). */
+  readonly stream?: Stream | undefined;
 }
 
 /** Fixed randomness, for tests only (not exported from the package). */
@@ -51,11 +53,12 @@ export async function clientFlight(
     const handshake = new Handshake({ ...base, pattern: "IK", prologue, ephemeralSecret });
     const first = concatBytes(
       Uint8Array.of(SessionKind.Session),
-      await handshake.writeMessage(encodeSessionHello(opts.early)),
+      await handshake.writeMessage(encodeSessionHello(opts.early, opts.stream)),
     );
     return finishing(SessionKind.Session, handshake, first);
   }
-  const hello = encodePairingHello(pairing.name);
+  if (opts.stream === "hc") throw new PayloadError('stream "hc" is not valid on a pairing');
+  const hello = encodePairingHello(pairing.name, opts.stream);
   if (pairing.mode === "link") {
     const prologue = prologueFor(opts.hostId, SessionKind.PairLink);
     const psk = linkPairingPsk(pairing.linkSecret, opts.hostId, opts.remoteStatic);

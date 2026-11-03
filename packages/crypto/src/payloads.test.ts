@@ -7,6 +7,7 @@ import {
   encodeSessionHello,
   fitLanUrls,
   MAX_EARLY_BYTES,
+  PayloadError,
 } from "./payloads.ts";
 
 const text = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
@@ -15,7 +16,11 @@ const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
 describe("handshake payloads: one JSON line, then raw stream bytes", () => {
   test("a pairing hello is exactly {v:1,name} and a line feed", () => {
     expect(text(encodePairingHello("  Pixel 9 "))).toBe('{"v":1,"name":"Pixel 9"}\n');
-    expect(decodeHello("IKpsk2", encodePairingHello("Pixel 9"))).toEqual({ kind: "pairing", name: "Pixel 9" });
+    expect(decodeHello("IKpsk2", encodePairingHello("Pixel 9"))).toEqual({
+      kind: "pairing",
+      name: "Pixel 9",
+      stream: undefined,
+    });
   });
 
   test("a name made of lone surrogates is refused when encoding, not by the line limit later", () => {
@@ -26,7 +31,38 @@ describe("handshake payloads: one JSON line, then raw stream bytes", () => {
     const early = bytes('{"jsonrpc":"2.0","id":0,"method":"hello"}\n');
     const payload = encodeSessionHello(early);
     expect(text(payload)).toBe(`{"v":1}\n${text(early)}`);
-    expect(decodeHello("IK", payload)).toEqual({ kind: "session", early });
+    expect(decodeHello("IK", payload)).toEqual({ kind: "session", early, stream: undefined });
+  });
+
+  test("stream: a session carries hc or mesh, a pairing only mesh", () => {
+    expect(text(encodeSessionHello(undefined, "mesh"))).toBe('{"v":1,"stream":"mesh"}\n');
+    expect(decodeHello("IK", encodeSessionHello(undefined, "mesh"))).toEqual({
+      kind: "session",
+      early: new Uint8Array(0),
+      stream: "mesh",
+    });
+    expect(decodeHello("IK", bytes('{"v":1,"stream":"hc"}\nX'))).toEqual({
+      kind: "session",
+      early: bytes("X"),
+      stream: "hc",
+    });
+    expect(text(encodePairingHello("laptop", "mesh"))).toBe('{"v":1,"name":"laptop","stream":"mesh"}\n');
+    expect(decodeHello("IKpsk2", encodePairingHello("laptop", "mesh"))).toEqual({
+      kind: "pairing",
+      name: "laptop",
+      stream: "mesh",
+    });
+    expect(() => encodeSessionHello(bytes("x"), "mesh")).toThrow("no early bytes");
+  });
+
+  test.each([
+    ["IK", '{"v":1,"stream":"mesh"}\nearly'],
+    ["IK", '{"v":1,"stream":"other"}\n'],
+    ["IK", '{"v":1,"stream":7}\n'],
+    ["IKpsk2", '{"v":1,"name":"a","stream":"hc"}\n'],
+    ["IKpsk2", '{"v":1,"name":"a","stream":"other"}\n'],
+  ] as const)("stream: %s refuses %p", (pattern, payload) => {
+    expect(() => decodeHello(pattern, bytes(payload))).toThrow(PayloadError);
   });
 
   test("a reply lists IP-literal LAN URLs", () => {

@@ -12,6 +12,7 @@ function fakeSecure(): SecureLink & { readonly emit: (bytes: Uint8Array) => void
     handshakeHash: new Uint8Array(32),
     peerName: undefined,
     lanUrls: [],
+    stream: undefined,
     send() {},
     onData(listener) {
       data = listener;

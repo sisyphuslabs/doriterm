@@ -60,6 +60,7 @@ export {
   MAX_EARLY_BYTES,
   PayloadError,
   type Hello,
+  type Stream,
 } from "./payloads.ts";
 export { relayChallengeMessage, relayOriginOf, signRelayChallenge, verifyRelayAnswer } from "./relay-auth.ts";
 export {

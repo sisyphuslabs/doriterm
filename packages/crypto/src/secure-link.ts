@@ -8,7 +8,7 @@ import {
 import { SessionKind } from "./kinds.ts";
 import { type ByteLink, CloseCode, closeCodeOf, SecureLinkError } from "./link.ts";
 import type { Handshake } from "./noise/handshake.ts";
-import { PayloadError } from "./payloads.ts";
+import { PayloadError, type Stream } from "./payloads.ts";
 import { MAX_HELD_BYTES, type SecureLink, SecuredLink, type SessionInfo } from "./secured-link.ts";
 import type { StaticKey } from "./static-key.ts";
 import { REKEY_INTERVAL, Transport } from "./transport.ts";
@@ -34,6 +34,8 @@ export interface InitiatorOptions extends CommonOptions {
   readonly pairing?: PairingSecret | undefined;
   /** Session only: the first stream bytes (at most 4096), sent inside message 1. */
   readonly early?: Uint8Array | undefined;
+  /** What the session carries: absent or `"hc"` (the hc stream) or `"mesh"`; a pairing takes only `"mesh"`. */
+  readonly stream?: Stream | undefined;
   /** For tests only: fixed randomness. */
   readonly testRandomness?: ClientFlightTestOptions | undefined;
 }
@@ -43,6 +45,8 @@ export interface ClientHello {
   readonly remoteStatic: Uint8Array;
   /** The device name of a pairing hello. */
   readonly name: string | undefined;
+  /** The `stream` member of message 1. */
+  readonly stream: Stream | undefined;
 }
 
 /**
@@ -105,7 +109,7 @@ export function secureLink(link: ByteLink, options: SecureLinkOptions): Promise<
   const establish = (
     kind: SessionKind,
     handshake: Handshake,
-    info: Pick<SessionInfo, "peerName" | "lanUrls">,
+    info: Pick<SessionInfo, "peerName" | "lanUrls" | "stream">,
   ): SecuredLink => {
     const { send, receive, handshakeHash, remoteStatic } = handshake.finish(rekeyInterval);
     return new SecuredLink(link, new Transport(send, receive), {
@@ -163,7 +167,7 @@ export function secureLink(link: ByteLink, options: SecureLinkOptions): Promise<
       const flight = await clientFlight(opts, opts.testRandomness);
       step = guarded(async (bytes) => {
         const { handshake, lanUrls } = await flight.reply(bytes);
-        const secured = establish(flight.kind, handshake, { peerName: undefined, lanUrls });
+        const secured = establish(flight.kind, handshake, { peerName: undefined, lanUrls, stream: opts.stream });
         resolve(secured);
         secured.send(EMPTY);
       });
@@ -185,7 +189,7 @@ export function secureLink(link: ByteLink, options: SecureLinkOptions): Promise<
       const flight = await readClientFlight(bytes, opts.hostId, opts.staticKey, opts.testRandomness);
       const { message, handshake, hello, remoteStatic } = flight;
       const name = hello.kind === "pairing" ? hello.name : undefined;
-      const verdict = opts.authorize({ kind: message.kind, remoteStatic, name });
+      const verdict = opts.authorize({ kind: message.kind, remoteStatic, name, stream: hello.stream });
       if (!verdict.accept) throw failure(verdict.closeCode ?? CloseCode.UnknownDevice, verdict.reason ?? "refused");
       if (message.kind !== SessionKind.Session && verdict.secret === undefined) {
         throw failure(CloseCode.UnknownDevice, "no pairing is pending");
@@ -199,7 +203,7 @@ export function secureLink(link: ByteLink, options: SecureLinkOptions): Promise<
         lanUrls,
         opts.testRandomness,
       );
-      pending = establish(message.kind, handshake, { peerName: name, lanUrls: [] });
+      pending = establish(message.kind, handshake, { peerName: name, lanUrls: [], stream: hello.stream });
       if (hello.kind === "session") pending.hold(hello.early);
       step = confirm;
       link.send(reply);
