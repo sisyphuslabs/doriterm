@@ -53,7 +53,9 @@ export function Button({ className, variant, size, loading = false, disabled, ch
           <Spinner />
         </span>
       ) : null}
-      <span className={cn("inline-flex items-center justify-center gap-2", loading && "opacity-0")}>{children}</span>
+      <span className={cn("inline-flex items-center justify-center gap-[inherit]", loading && "opacity-0")}>
+        {children}
+      </span>
     </BaseButton>
   );
 }
