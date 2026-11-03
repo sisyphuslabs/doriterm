@@ -3,7 +3,7 @@ import type { MeshStuckReason } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
 import { meshFixture } from "../testing/mesh-fixture.ts";
 import type { LocalFacts, MeshSources } from "./status-sources.ts";
-import { MAX_MESH_RECORDS, meshStatus, NOTICE_MS } from "./status.ts";
+import { MAX_MESH_RECORDS, meshStatus, NOTICE_MS, UNREACHABLE_REVOKE_MS } from "./status.ts";
 
 const NOW = new Date("2026-11-03T12:00:00.000Z");
 const fixture = meshFixture(NOW);
@@ -67,6 +67,24 @@ describe("mesh status", () => {
       revokeCommand: "doriface-host mesh revoke laptop",
     });
     expect(memberNamed("build-box")?.revokeCommand).toBeNull();
+  });
+
+  test("the revoke offer starts only past 7 days unreachable", () => {
+    const { keys } = fixture;
+    const unreachableFor = (ms: number) => {
+      const peers = new Map(fixture.sources.peers);
+      peers.set(keys["build-box"], {
+        presence: false,
+        lastSync: null,
+        owed: 0,
+        gate: null,
+        unreachableSince: new Date(NOW.getTime() - ms),
+      });
+      return meshStatus({ ...fixture.sources, peers }, NOW).members.find((member) => member.name === "build-box");
+    };
+    expect(unreachableFor(60_000)?.revokeCommand).toBeNull();
+    expect(unreachableFor(UNREACHABLE_REVOKE_MS)?.revokeCommand).toBeNull();
+    expect(unreachableFor(UNREACHABLE_REVOKE_MS + 1)?.revokeCommand).toBe("doriface-host mesh revoke build-box");
   });
 
   test("names the witness pool by hostId, and who to ask when it is empty here", () => {
@@ -142,6 +160,24 @@ describe("mesh status", () => {
     const stuck = meshStatus(sources, NOW);
     expect(stuck.sync).toBe("stuck");
     expect(stuck.stuck).toEqual([reason]);
+  });
+
+  test.each([
+    ["ends", 0],
+    ["has ended", -1],
+  ])("read-only is no STUCK reason once its grace period %s", (_, offset) => {
+    const ended = meshStatus(withLocal({ readOnlyUntil: new Date(NOW.getTime() + offset) }), NOW);
+    expect(ended.stuck).toEqual([]);
+  });
+
+  test.each([
+    ["ends", 0],
+    ["has ended", -1],
+  ])("a halved budget is whole again once the halving %s", (_, offset) => {
+    const until = new Date(NOW.getTime() + offset);
+    expect(
+      meshStatus({ ...fixture.sources, budget: { waiting: 0, halvedUntil: until } }, NOW).budget.halvedUntil,
+    ).toBeNull();
   });
 
   test("a halved budget shows until when, and a waiting dial count", () => {
