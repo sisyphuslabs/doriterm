@@ -22,9 +22,10 @@ export const defeats0 = (e: Engine, S: ReadonlySet<string>, v: string, x: string
 
 /** clean0(r, C) = ∀ g ∈ lineage(r.by, view(past(r)), C): ¬∃ u ∈ accusers0(g): defeats0(u, g). */
 export function clean0(e: Engine, S: ReadonlySet<string>, r: string, C: ReadonlySet<string>): boolean {
-  return e.cached(S, `c0:${r}:${setKey(C)}`, () =>
-    lineage(e, e.dag.rec(r).by, e.before(r), C).every((g) => !accusers0(e, S, g).some((u) => defeats0(e, S, u, g))),
-  );
+  return e.cached(S, `c0:${r}:${setKey(C)}`, () => {
+    const chain = lineage(e, e.dag.rec(r).by, e.before(r), C);
+    return chain !== undefined && chain.every((g) => !accusers0(e, S, g).some((u) => defeats0(e, S, u, g)));
+  });
 }
 
 /** standing(v, x) = clean0(v, C(v, x)) and ¬∃ u ∈ accusers0(v): clean0(u, C(u, v)) and defeats0(u, v). */

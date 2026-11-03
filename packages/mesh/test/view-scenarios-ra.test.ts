@@ -9,6 +9,7 @@ import type { Scenario } from "./fixtures/scenario.ts";
 import { cardScenarios } from "./fixtures/scenarios-cards.ts";
 import { conflictScenarios } from "./fixtures/scenarios-conflict.ts";
 import { reviewerScenarios } from "./fixtures/scenarios-reviewer.ts";
+import { selfForkScenarios } from "./fixtures/scenarios-self-fork.ts";
 import { noiseOf, signScenario } from "./fixtures/signed.ts";
 import { naiveView } from "./oracle/naive.ts";
 
@@ -78,9 +79,9 @@ function throughTheDoor(s: Scenario): void {
   expectOracle(recordsOf(stored) ?? [], [...v.members], [...v.revoked], v.eff);
 }
 
-const rows: readonly Scenario[] = [...reviewerScenarios, ...conflictScenarios, ...cardScenarios];
+const rows: readonly Scenario[] = [...reviewerScenarios, ...conflictScenarios, ...cardScenarios, ...selfForkScenarios];
 
-describe("M-5: the reviewer's R1-R5b, and the adversarial A1-A21 under R3", () => {
+describe("M-5: the reviewer's R1-R5b, the adversarial A1-A21 and the merged self-fork under R3", () => {
   for (const s of rows) {
     const residual =
       s.residual === undefined ? "" : ` [residual: fail closed, honest view {${sorted(s.expectMembers)}}]`;

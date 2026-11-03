@@ -22,7 +22,7 @@ export function witnessPoolOfRecords(
     const L = own ?? records.find((r) => isAdmission(r) && r.subject === X);
     if (L === undefined) continue;
     const C = new Set([L.id, ...e.dag.past(L.id)]);
-    const minted = new Set(lineage(e, revoker, now, C).map((g) => e.dag.rec(g).by));
+    const minted = new Set((lineage(e, revoker, now, C) ?? []).map((g) => e.dag.rec(g).by));
     const present = e.dag.past(L.id).size === 0 ? [] : e.view(e.dag.past(L.id)).members;
     const excluded = (k: string): boolean => k === X || k === revoker || minted.has(k) || subjects.includes(k);
     out.set(

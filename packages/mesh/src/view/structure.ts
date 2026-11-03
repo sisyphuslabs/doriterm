@@ -52,15 +52,18 @@ function ownChain(e: Engine, id: string): boolean {
   return r.n === 1 ? own.length === 0 : own.some((p) => p.n === r.n - 1);
 }
 
-/** valid(x) = x.by ∈ M(x) and type_ok(x) and own_chain(x) and (x.n == 1 or valid(pred(x))). Set-independent. */
+/**
+ * valid(x) = x.by ∈ M(x) and type_ok(x) and own_chain(x) and (x.n == 1 or valid(pred(x))). Set-independent. When the
+ * signer merged its own fork, past(x) holds several records with counter x.n - 1: valid(pred(x)) needs every one valid.
+ */
 export function valid(e: Engine, id: string): boolean {
   return e.once(`va:${id}`, () => {
     if (id === e.dag.found.id) return true;
     if (!authorized(e, id) || !ownChain(e, id)) return false;
     const r = e.dag.rec(id);
     if (r.n <= 1) return true;
-    const pred = [...e.dag.past(id)].find((p) => e.dag.rec(p).by === r.by && e.dag.rec(p).n === r.n - 1);
-    return pred !== undefined && valid(e, pred);
+    const preds = [...e.dag.past(id)].filter((p) => e.dag.rec(p).by === r.by && e.dag.rec(p).n === r.n - 1);
+    return preds.length > 0 && preds.every((p) => valid(e, p));
   });
 }
 
@@ -97,23 +100,26 @@ export function commonMembers(e: Engine, a: string, b: string): readonly string[
 
 /**
  * lineage(k, V, C): the admissions on k's admitter chain in view V that lie outside C, admitter by admitter; it
- * stops at a member of view(C), at an admission inside C, or at a key with no governing admission in V.
+ * stops at a member of view(C), at an admission inside C, or at a key with no governing admission in V. A walk that
+ * comes back to a key it passed never stops (an admitter cycle): undefined, which is not clean, does not silence and
+ * excludes no voter (contract notation).
  */
 export function lineage(
   e: Engine,
   key: string,
   view: EngineView | undefined,
   C: ReadonlySet<string>,
-): readonly string[] {
+): readonly string[] | undefined {
   const commonMembersSet = new Set(C.size === 0 ? [] : e.view(C).members);
   const out: string[] = [];
-  let k = key;
-  for (let hops = 0; hops < 64; hops++) {
+  const passed = new Set<string>();
+  for (let k = key; !passed.has(k);) {
+    passed.add(k);
     if (commonMembersSet.has(k)) return out;
     const gov = view?.governing.get(k);
     if (gov === undefined || C.has(gov)) return out;
     out.push(gov);
     k = e.dag.rec(gov).by;
   }
-  return out;
+  return undefined;
 }

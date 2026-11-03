@@ -62,26 +62,29 @@ export function naiveView(records: readonly Rec[]): Lite {
     const r = rec(i);
     let ok = r.type === "found" || (pauth(i) && chained(i));
     if (ok && r.type !== "found" && r.n > 1) {
-      const pred = order.find((j) => has(P(i), j) && rec(j).by === r.by && rec(j).n === r.n - 1);
-      ok = pred !== undefined && valid(pred);
+      const preds = order.filter((j) => has(P(i), j) && rec(j).by === r.by && rec(j).n === r.n - 1);
+      ok = preds.length > 0 && preds.every(valid);
     }
     validMemo.set(i, ok);
     return ok;
   };
   const meet = (a: number, b: number): bigint => P(a) & P(b);
   const conc = (a: number, b: number): boolean => a !== b && !has(P(a), b) && !has(P(b), a);
-  const lineage = (key: string, view: Lite, C: bigint): number[] => {
+  // A walk that meets a key twice is an admitter cycle: it never stops, so it has no lineage (contract notation).
+  const lineage = (key: string, view: Lite, C: bigint): number[] | undefined => {
     const cm = viewOf(C).members;
     const out: number[] = [];
+    const seen: string[] = [];
     let k = key;
-    for (let hops = 0; hops < 64; hops++) {
+    while (!seen.includes(k)) {
+      seen.push(k);
       if (cm.includes(k)) return out;
       const g = view.governing.get(k);
       if (g === undefined || has(C, g)) return out;
       out.push(g);
       k = rec(g).by;
     }
-    return out;
+    return undefined;
   };
   const forks = (v: number, x: number): boolean => {
     const by = rec(x).by;
@@ -101,7 +104,7 @@ export function naiveView(records: readonly Rec[]): Lite {
         [rec(x).by, x],
         [rec(v).by, v],
       ] as const) {
-        for (const g of lineage(k, before(i), C)) out.add(rec(g).by);
+        for (const g of lineage(k, before(i), C) ?? []) out.add(rec(g).by);
       }
       return viewOf(C).members.filter((k) => !out.has(k));
     };
@@ -109,7 +112,7 @@ export function naiveView(records: readonly Rec[]): Lite {
       const silences = (r: number, w: number): boolean => {
         if (lvl === 0 && before(w).revoked.includes(rec(r).by)) return false;
         if (acc(r).length > 0) return false;
-        return lineage(rec(r).by, before(r), meet(r, w)).every((g) => acc(g).length === 0);
+        return lineage(rec(r).by, before(r), meet(r, w))?.every((g) => acc(g).length === 0) ?? false;
       };
       const testifies = (w: number): boolean => valid(w) && !acc(w).some((r) => silences(r, w));
       const saw = (p: string, a: number, b: number): boolean =>
@@ -127,7 +130,7 @@ export function naiveView(records: readonly Rec[]): Lite {
     };
     const verdict0 = level(accusers0, 0);
     const clean0 = (r: number, C: bigint): boolean =>
-      lineage(rec(r).by, before(r), C).every((g) => !accusers0(g).some((u) => verdict0(u, g) === "defeated"));
+      lineage(rec(r).by, before(r), C)?.every((g) => !accusers0(g).some((u) => verdict0(u, g) === "defeated")) ?? false;
     const standing = (v: number, x: number): boolean =>
       clean0(v, meet(v, x)) && !accusers0(v).some((u) => clean0(u, meet(u, v)) && verdict0(u, v) === "defeated");
     const accusers1 = (x: number): number[] => accusers0(x).filter((v) => standing(v, x));

@@ -31,7 +31,7 @@ export function voters(e: Engine, v: string, x: string, level: Level): readonly 
     [rx.by, x],
     [rv.by, v],
   ] as const) {
-    for (const g of lineage(e, k, e.before(id), C)) excluded.add(e.dag.rec(g).by);
+    for (const g of lineage(e, k, e.before(id), C) ?? []) excluded.add(e.dag.rec(g).by);
   }
   return commonMembers(e, v, x).filter((k) => !excluded.has(k));
 }
@@ -45,7 +45,8 @@ function silences(t: Testimony, r: string, w: string): boolean {
   const by = e.dag.rec(r).by;
   if (t.level === 0 && (e.before(w)?.revoked ?? []).includes(by)) return false;
   if (acc(e, S, r).length > 0) return false;
-  return lineage(e, by, e.before(r), common(e, r, w)).every((g) => acc(e, S, g).length === 0);
+  const chain = lineage(e, by, e.before(r), common(e, r, w));
+  return chain !== undefined && chain.every((g) => acc(e, S, g).length === 0);
 }
 
 /** testifies(w) = valid(w) and ¬∃ r ∈ accusers(w): silences(r, w). */
