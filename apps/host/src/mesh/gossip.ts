@@ -1,4 +1,4 @@
-import { base64urlEncode, closeCodeOf } from "@doriface/crypto";
+import { base64urlEncode } from "@doriface/crypto";
 import { parseRecord, type Signed } from "@doriface/mesh";
 import { type Clock, type Random, uniform } from "./clock.ts";
 import { type DialPolicy, type DialPurpose, type DueReason } from "./dial-policy.ts";
@@ -7,6 +7,7 @@ import type { MemberEntry } from "./authorize-index.ts";
 import type { MeshStore } from "../state/mesh.ts";
 import type { LineLink } from "./lines.ts";
 import type { MeshView } from "./mesh-view.ts";
+import { MemberDialer } from "./member-dialer.ts";
 import { MemberBook, StoredMesh } from "./stored-mesh.ts";
 import { RevokedLast } from "./revoked-last.ts";
 import { ackAdmission, appendOwn, type MergeDeps, type MergeResult, mergeBatch, type RecordDraft } from "./merge.ts";
@@ -47,7 +48,9 @@ export class Gossip implements SyncHost {
   readonly #options: GossipOptions;
   readonly #timings: GossipTimings;
   readonly #stored: StoredMesh;
-  readonly #dialing = new Map<string, Promise<boolean>>();
+  /** Per peer, the counter of this host's key its `hello` claimed, until its batch arrives. */
+  readonly #claims = new Map<string, number>();
+  readonly #dialer: MemberDialer;
   readonly #sessions = new Map<string, SyncSession>();
   readonly #confirmed = new Map<string, readonly string[]>();
   readonly #lastSync = new Map<string, number>();
@@ -60,6 +63,13 @@ export class Gossip implements SyncHost {
   constructor(options: GossipOptions) {
     this.#options = options;
     this.#stored = new StoredMesh(options.store);
+    this.#dialer = new MemberDialer({
+      policy: options.policy,
+      dial: options.dial,
+      flushOpen: (peer) => this.#flushOpen(peer),
+      attach: (member, link, sweeping) => void this.attach(member.signPub, this.self, link, sweeping),
+      log: options.log,
+    });
     this.meshId = options.meshId;
     this.self = base64urlEncode(options.identity.sign.publicKey);
     this.#timings = options.timings ?? GOSSIP_TIMINGS;
@@ -128,6 +138,7 @@ export class Gossip implements SyncHost {
   }
 
   merge(session: SyncSession, batch: readonly Signed[]): MergeResult {
+    this.#claims.delete(session.peer);
     const result = mergeBatch(this.#options, batch);
     for (const refusal of result.refused) {
       this.#options.log(
@@ -162,18 +173,27 @@ export class Gossip implements SyncHost {
 
   /** Signs and pushes one record of this host's own (a revoke, a leave, a rename). */
   append(draft: RecordDraft): MergeResult {
-    const result = appendOwn(this.#options, draft);
+    const counterFloor = Math.max(0, ...this.#claims.values());
+    const result = appendOwn({ ...this.#options, counterFloor }, draft);
     this.#changed(result, true);
     return result;
   }
 
-  /** A peer's `hello.n` is its own claim, not a record: this host signs from the records it holds (section 10.1). */
-  heard(peer: string, heads: readonly string[]): void {
+  /**
+   * A peer's `hello`: the heads it holds, and the highest counter it holds of this host's own key. Until that peer's
+   * batch arrives (or its session ends) this host signs no own record below that counter (section 10.1); at `done`
+   * the claim is resolved, since the batch carries every record of this host's the peer holds.
+   */
+  heard(peer: string, heads: readonly string[], n: Readonly<Record<string, number>>): void {
     this.#confirmed.set(peer, heads);
+    const claim = n[this.self];
+    if (claim !== undefined && claim > 0) this.#claims.set(peer, claim);
   }
 
   ended(session: SyncSession): void {
-    if (this.#sessions.get(session.peer) === session) this.#sessions.delete(session.peer);
+    if (this.#sessions.get(session.peer) !== session) return;
+    this.#sessions.delete(session.peer);
+    this.#claims.delete(session.peer);
   }
 
   /** Members that are owed records: their confirmed heads do not cover this host's set. */
@@ -207,18 +227,8 @@ export class Gossip implements SyncHost {
     void this.#sweep(recent);
   }
 
-  /**
-   * Syncs with `member` over its open session, or dials one under the budget. One dial per member at a time: a push,
-   * a sweep and a probe for the same member share it, and a session that came up while it waited for a token is used
-   * instead, giving the token back (section 8.2).
-   */
   sync(member: MemberEntry, purpose: DialPurpose): Promise<boolean> {
-    if (this.#flushOpen(member.signPub)) return Promise.resolve(true);
-    const pending = this.#dialing.get(member.signPub);
-    if (pending !== undefined) return pending;
-    const dial = this.#dial(member, purpose).finally(() => this.#dialing.delete(member.signPub));
-    this.#dialing.set(member.signPub, dial);
-    return dial;
+    return this.#dialer.sync(member, purpose);
   }
 
   #flushOpen(peer: string): boolean {
@@ -226,26 +236,6 @@ export class Gossip implements SyncHost {
     if (open === undefined || open.closed) return false;
     open.flush();
     return true;
-  }
-
-  async #dial(member: MemberEntry, purpose: DialPurpose): Promise<boolean> {
-    const grant = await this.#options.policy.acquire(member.signPub, purpose);
-    if (!grant.ok) return false;
-    if (this.#flushOpen(member.signPub)) {
-      this.#options.policy.release();
-      return true;
-    }
-    try {
-      const link = await this.#options.dial(member);
-      this.#options.policy.report(member.signPub, "connected");
-      this.attach(member.signPub, this.self, link, purpose === "sweep" || purpose === "probe");
-      return true;
-    } catch (error) {
-      const code = error instanceof Error ? closeCodeOf(error) : undefined;
-      this.#options.policy.report(member.signPub, code === 4429 ? 4429 : 4404);
-      this.#options.log(`mesh: sync with ${member.name} failed: ${String(error)}`);
-      return false;
-    }
   }
 
   async #sweep(candidates: readonly MemberEntry[]): Promise<void> {

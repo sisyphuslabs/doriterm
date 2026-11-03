@@ -21,6 +21,11 @@ export interface MergeDeps {
   readonly store: Pick<MeshStore, "transact" | "read" | "catchUp">;
   readonly identity: HostIdentity;
   readonly meshId: string;
+  /**
+   * The highest `n` of this host's key that a peer's `hello` claims and whose records have not arrived yet (section
+   * 10.1): below it this host signs no record of its own. A merge needs none: at `done` the claim is resolved.
+   */
+  readonly counterFloor?: number;
 }
 
 export interface Refusal {
@@ -158,6 +163,13 @@ export function mergeBatch(deps: MergeDeps, batch: readonly Signed[]): MergeResu
 /** Signs one record of this host's own (a revoke, a leave, a rename) in a transaction, after fitting its heads. */
 export function appendOwn(deps: MergeDeps, draft: RecordDraft): MergeResult {
   return deps.store.transact((tx) => {
+    const own = ownN(tx.records, selfOf(deps));
+    const floor = deps.counterFloor ?? 0;
+    if (own < floor) {
+      throw new CounterBehindError(
+        `a peer holds counter ${floor} of this host's key, here ${own}: syncing before signing`,
+      );
+    }
     const before = tx.records.length;
     if (!fitHeads(deps, tx, draft)) throw new Error(`mesh log full (${MAX_RECORDS})`);
     tx.sign(deps.identity, (n, prev) => bodyOf(deps, n, prev, draft));

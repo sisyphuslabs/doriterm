@@ -68,4 +68,23 @@ describe("a host restored from an older backup (section 10.1)", () => {
     await settle();
     expect(acksBy(host.store, b.signPub)).toBe(1);
   });
+
+  test("between a peer's hello and its records, an own record waits for the counter the hello claims (section 10.1)", async () => {
+    const { records, peerHolds } = restored();
+    const clock = new FakeClock();
+    const net = new MeshNet(clock, seededRandom(43));
+    const host = net.add(b, records);
+    const [ours, theirs] = memoryLinkPair(true);
+    host.gossip.attach(a.signPub, a.signPub, ours);
+    const send = (line: MeshLine): void => theirs.send(new TextEncoder().encode(`${JSON.stringify(line)}\n`));
+    send({ t: "hello", v: 2, mesh: host.gossip.meshId, heads: headsOfRecords(peerHolds), n: { [b.signPub]: 1 } });
+    await settle();
+    const revoke = { type: "revoke", signPubs: [a.signPub], reason: "revoke" } as const;
+    expect(() => host.gossip.append(revoke)).toThrow(CounterBehindError);
+    send({ t: "records", records: peerHolds.slice(2) });
+    send({ t: "done", mesh: host.gossip.meshId });
+    await settle();
+    host.gossip.append(revoke);
+    expect(ownNs(host.store)).toEqual([1, 2]);
+  });
 });
