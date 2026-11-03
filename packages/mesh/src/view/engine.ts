@@ -90,9 +90,9 @@ export interface View {
   readonly revoked: ReadonlySet<string>;
   /** signPub -> the member's current Noise key. */
   readonly noise: ReadonlyMap<string, string>;
-  /** signPub -> the signPub of the member that admitted it (the lineage). */
+  /** signPub -> the signPub that admitted it (the lineage), for every key with a governing admission, over-cap keys too. */
   readonly admitter: ReadonlyMap<string, string>;
-  /** signPub -> the hash of the member's governing admission (members only, not over-cap keys). */
+  /** signPub -> the hash of its governing admission, for every key that has one, over-cap keys too. */
   readonly governing: ReadonlyMap<string, string>;
   /** signPub -> the member's mesh name after the fallback for taken names. */
   readonly name: ReadonlyMap<string, string>;
