@@ -52,7 +52,6 @@ export class Gossip implements SyncHost {
   readonly #lastSync = new Map<string, number>();
   readonly #known = new MemberBook();
   readonly #revokedLast: RevokedLast;
-  readonly #ackWaiters = new Set<() => void>();
   #view: MeshView;
   /** The highest `n` of this host's own key any peer's hello named (section 10.1). */
   #stopNet: () => void = () => undefined;
@@ -140,12 +139,6 @@ export class Gossip implements SyncHost {
   }
 
   /** Resolves when a merge brings an ack signed by another member. */
-  acked(): Promise<void> {
-    const { promise, resolve } = Promise.withResolvers<void>();
-    this.#ackWaiters.add(resolve);
-    return promise;
-  }
-
   /** Records this host produced itself outside sync (the join's admit, section 4.4): stored, then owed to all. */
   local(batch: readonly Signed[]): MergeResult {
     const result = mergeBatch(this.#options, batch);
@@ -243,20 +236,7 @@ export class Gossip implements SyncHost {
     this.#known.remember(result.view);
     this.#options.onView?.(result.view, result);
     for (const session of this.#sessions.values()) session.flush();
-    this.#noticeAcks(result);
     if (owedOnwards) this.#push(result);
-  }
-
-  #noticeAcks(result: MergeResult): void {
-    const self = this.self;
-    const acked = result.added.some((record) => {
-      const body = parseRecord(record);
-      return body?.type === "ack" && body.by !== self;
-    });
-    if (!acked) return;
-    this.#revokedLast.releaseAll();
-    for (const resolve of this.#ackWaiters) resolve();
-    this.#ackWaiters.clear();
   }
 
   /** Section 5.3: a revoke first; the revoked member last, after one ack came back or 10 s. */

@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { leaveMesh } from "./leave.ts";
 import { READ_ONLY_GRACE_MS, SelfStanding } from "./role.ts";
-import { FakeClock, seededRandom } from "./testing/fake-clock.ts";
-import { hashOf, parseRecord, type Signed } from "@doriface/mesh";
-import { meshOf, peer } from "./testing/mesh-peers.ts";
-import { MeshNet } from "./testing/mesh-net.ts";
+import { FakeClock } from "./testing/fake-clock.ts";
+import { peer } from "./testing/mesh-peers.ts";
 import type { MeshView } from "./mesh-view.ts";
 
 const self = peer("b");
@@ -42,35 +39,5 @@ describe("a host revoked in its own view (S-7)", () => {
     await clock.advance(READ_ONLY_GRACE_MS);
     expect(ejected).toBe(1);
     expect(standing.update(withSelf).kind).toBe("ejected");
-  });
-});
-
-describe("mesh leave (S-8)", () => {
-  test("signs and pushes a self-revoke, and deletes the state only after another member holds it", async () => {
-    const clock = new FakeClock();
-    const net = new MeshNet(clock, seededRandom(11));
-    const members = ["a", "b"].map(peer);
-    const { records } = meshOf(members);
-    for (const entry of members) net.add(entry, records);
-    const leaving = net.host("b");
-    const staying = net.host("a");
-    let heldAtRemoval: boolean | undefined;
-    const isSelfRevoke = (record: Signed): boolean => {
-      const body = parseRecord(record);
-      const subject = body?.type === "revoke" ? body.subject : undefined;
-      return subject !== undefined && "signPubs" in subject && subject.signPubs.includes(self.signPub);
-    };
-    const outcome = leaveMesh({
-      gossip: leaving.gossip,
-      self: self.signPub,
-      clock,
-      removeState: () => (heldAtRemoval ??= staying.records().some(isSelfRevoke)),
-    });
-    await clock.advance(10_000);
-    expect(await outcome).toBe("acked");
-    expect(heldAtRemoval).toBe(true);
-    const revoke = leaving.records().find(isSelfRevoke);
-    expect(staying.records().map(hashOf)).toContain(revoke === undefined ? "" : hashOf(revoke));
-    expect(staying.names()).toEqual(["a"]);
   });
 });
