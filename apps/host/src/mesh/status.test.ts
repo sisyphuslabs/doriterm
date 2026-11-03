@@ -88,8 +88,8 @@ describe("mesh status", () => {
   });
 
   test("names the witness pool by hostId, and who to ask when it is empty here", () => {
-    expect(memberNamed("laptop")?.witness).toEqual({ pool: [], ask: ids["build-box"].hostId });
-    expect(memberNamed("tablet")?.witness).toEqual({ pool: [ids["build-box"].hostId], ask: null });
+    expect(memberNamed("laptop")).toMatchObject({ witnessPool: [], witnessAsk: ids["build-box"].hostId });
+    expect(memberNamed("tablet")).toMatchObject({ witnessPool: [ids["build-box"].hostId], witnessAsk: null });
   });
 
   test("shows revoked members with who revoked them, and the members an undecidable revoke removed", () => {

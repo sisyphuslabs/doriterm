@@ -90,5 +90,5 @@ export interface MeshSources {
   readonly lines: ReadonlyMap<string, LineFacts>;
   readonly budget: BudgetFacts;
   /** The revoke-time witness pool of a revoke of `subject` written by this host (design section 6.1). */
-  readonly witness: (subject: string) => WitnessFacts;
+  readonly witnessPool: (subject: string) => WitnessFacts;
 }

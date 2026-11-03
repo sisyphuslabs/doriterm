@@ -14,7 +14,8 @@ const member = {
   lastSync: "2026-11-03T11:58:00.000Z",
   owed: 0,
   gate: { kind: "offline", refusals: 2, nextProbeS: 60 },
-  witness: { pool: ["a".repeat(26)], ask: null },
+  witnessPool: ["a".repeat(26)],
+  witnessAsk: null,
   unreachableSince: null,
   revokeSuggested: false,
 } as const;
@@ -28,7 +29,8 @@ const self = {
   presence: false,
   lastSync: null,
   gate: null,
-  witness: { pool: [], ask: null },
+  witnessPool: [],
+  witnessAsk: null,
 } as const;
 
 const status: MeshStatus = {

@@ -33,12 +33,6 @@ export type MeshStuckReason =
 /** After a 4404 from a member, this host dials it again only on presence or when its probe is due. */
 export type MeshGate = { readonly kind: "offline"; readonly refusals: number; readonly nextProbeS: number };
 
-/**
- * Who could witness a revoke of this member written here (design section 6.1). An empty pool makes such a revoke
- * undecidable from here; `ask` is then a member from whose position it would not be, or null when none is.
- */
-export type MeshWitness = { readonly pool: readonly string[]; readonly ask: string | null };
-
 /** Times are ISO 8601 and display only. Every key is a hostId. */
 export type MeshMemberStatus = {
   readonly hostId: string;
@@ -58,7 +52,10 @@ export type MeshMemberStatus = {
   /** Records it has not confirmed yet. */
   readonly owed: number;
   readonly gate: MeshGate | null;
-  readonly witness: MeshWitness;
+  /** Who could witness a revoke of this member written here (design section 6.1); empty makes it undecidable here. */
+  readonly witnessPool: readonly string[];
+  /** With an empty pool, a member from whose position the revoke would be decidable; null when there is none. */
+  readonly witnessAsk: string | null;
   readonly unreachableSince: string | null;
   /**
    * It has been unreachable for more than 7 days: readers offer `meshRevokeCommand(name)`. The document carries no

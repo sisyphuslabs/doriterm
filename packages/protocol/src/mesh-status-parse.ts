@@ -26,7 +26,6 @@ import {
   type MeshRevokedStatus,
   type MeshStatus,
   type MeshStuckReason,
-  type MeshWitness,
 } from "./mesh-status.ts";
 
 type StuckKind = MeshStuckReason["kind"];
@@ -68,7 +67,6 @@ const isLineState: Guard<MeshLineState> = oneOf(
   "absent",
 );
 const isGate = objectOf<MeshGate>({ kind: oneOf("offline"), refusals: isCount, nextProbeS: isCount });
-const isWitness = objectOf<MeshWitness>({ pool: listOf(isId), ask: nullable(isId) });
 const isMember = objectOf<MeshMemberStatus>({
   hostId: isId,
   name: isName,
@@ -81,7 +79,8 @@ const isMember = objectOf<MeshMemberStatus>({
   lastSync: nullable(isTime),
   owed: isCount,
   gate: nullable(isGate),
-  witness: isWitness,
+  witnessPool: listOf(isId),
+  witnessAsk: nullable(isId),
   unreachableSince: nullable(isTime),
   revokeSuggested: isBoolean,
 });

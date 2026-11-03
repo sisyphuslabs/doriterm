@@ -35,9 +35,8 @@ function memberLine(member: MeshMemberStatus, nameOf: (hostId: string) => string
   if (member.gate !== null)
     parts.push(`offline 4404 x${member.gate.refusals}, next probe in ${member.gate.nextProbeS} s`);
   const lines = [`  ${member.name} ${member.hostId} ${member.fingerprint}`, `    ${parts.join(", ")}`];
-  if (member.witness.pool.length === 0 && member.line !== "self") {
-    const ask =
-      member.witness.ask === null ? "re-found if its key is compromised" : `ask ${nameOf(member.witness.ask)}`;
+  if (member.witnessPool.length === 0 && member.line !== "self") {
+    const ask = member.witnessAsk === null ? "re-found if its key is compromised" : `ask ${nameOf(member.witnessAsk)}`;
     lines.push(`    revoke of ${member.name} would be undecidable from here; ${ask}`);
   }
   const revoke = member.revokeSuggested ? meshRevokeCommand(member.name) : undefined;

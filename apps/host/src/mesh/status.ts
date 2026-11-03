@@ -46,7 +46,7 @@ function member(sources: MeshSources, names: Names, key: string, now: Date): Mes
   const since = peer?.unreachableSince ?? null;
   const stale = since !== null && now.getTime() - since.getTime() > UNREACHABLE_REVOKE_MS;
   const admitter = view.admitter.get(key);
-  const witness = sources.witness(key);
+  const witness = sources.witnessPool(key);
   const noise = view.noise.get(key);
   return {
     hostId,
@@ -63,7 +63,8 @@ function member(sources: MeshSources, names: Names, key: string, now: Date): Mes
       peer?.gate === undefined || peer.gate === null
         ? null
         : { kind: "offline", refusals: peer.gate.refusals, nextProbeS: Math.ceil(peer.gate.nextProbeInMs / 1000) },
-    witness: { pool: witness.pool.map(names.hostId), ask: witness.ask === null ? null : names.hostId(witness.ask) },
+    witnessPool: witness.pool.map(names.hostId),
+    witnessAsk: witness.ask === null ? null : names.hostId(witness.ask),
     unreachableSince: iso(since),
     revokeSuggested: stale,
   };

@@ -99,7 +99,7 @@ export function meshFixture(now: Date): MeshFixture {
       [key("tablet"), { state: "connecting", stuck: null }],
     ]),
     budget: { waiting: 0, halvedUntil: null },
-    witness: (subject) =>
+    witnessPool: (subject) =>
       subject === key("laptop") ? { pool: [], ask: key("build-box") } : { pool: [key("build-box")], ask: null },
   };
   return { sources, ids, keys };
