@@ -3,9 +3,9 @@ import { DialPolicy, type DialLimits, type DueReason } from "./dial-policy.ts";
 import { MeshDriver } from "./driver.ts";
 import { Gossip, type GossipOptions } from "./gossip.ts";
 import type { HcMachines } from "./hc-machines.ts";
-import { MeshLines } from "./mesh-lines.ts";
+import { LineGrants } from "./line-grants.ts";
 import { Reconciler } from "./reconciler.ts";
-import type { MeshMember } from "./upstream.ts";
+import type { MemberEntry } from "./authorize-index.ts";
 
 export interface MeshRuntimeOptions extends Omit<GossipOptions, "policy"> {
   readonly machines: HcMachines;
@@ -13,7 +13,7 @@ export interface MeshRuntimeOptions extends Omit<GossipOptions, "policy"> {
   readonly program: string;
   readonly stateDir: string;
   /** Dials a member's hc stream with this host's Noise key (section 7.2). */
-  readonly dialLine: (member: MeshMember) => Promise<ByteLink>;
+  readonly dialLine: (member: MemberEntry) => Promise<ByteLink>;
   readonly limits?: DialLimits;
 }
 
@@ -24,7 +24,7 @@ export interface MeshRuntimeOptions extends Omit<GossipOptions, "policy"> {
 export class MeshRuntime {
   readonly policy: DialPolicy;
   readonly gossip: Gossip;
-  readonly lines: MeshLines;
+  readonly lines: LineGrants;
   readonly reconciler: Reconciler;
   readonly driver: MeshDriver;
 
@@ -44,12 +44,12 @@ export class MeshRuntime {
         options.onView?.(view, result);
       },
     });
-    this.lines = new MeshLines({ view: () => this.gossip.view, policy: this.policy, dial: options.dialLine });
+    this.lines = new LineGrants({ view: () => this.gossip.view, policy: this.policy, dial: options.dialLine });
     this.reconciler = new Reconciler({
       machines: options.machines,
       program: options.program,
       stateDir: options.stateDir,
-      selfHostId: options.self.hostId,
+      selfHostId: options.identity.hostId,
       clock,
       log,
     });

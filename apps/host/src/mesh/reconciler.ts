@@ -2,7 +2,9 @@ import { HcRpcError, type MachineView } from "@doriface/protocol";
 import type { Clock } from "./clock.ts";
 import { DIAL_LIMITS } from "./dial-policy.ts";
 import type { HcMachines } from "./hc-machines.ts";
-import { fallbacks, type MeshMember, type MeshView } from "./upstream.ts";
+import { fallbacks } from "@doriface/mesh";
+import type { MemberEntry } from "./authorize-index.ts";
+import type { MeshView } from "./mesh-view.ts";
 import { meshHostOf, meshVia } from "./via.ts";
 
 /** Section 8.1: a named STUCK state is retried when the view or `machine.list` changes, or every 10 minutes. */
@@ -102,7 +104,7 @@ export class Reconciler {
    * Presence of a member: herdr dials a line that is not connected now (`machine.connect`), and a member with no line
    * yet (its add failed while it was offline) is added now.
    */
-  async presence(member: MeshMember): Promise<void> {
+  async presence(member: MemberEntry): Promise<void> {
     const entry = (await this.#entries()).find((candidate) => candidate.hostId === member.hostId);
     if (entry === undefined) {
       if (this.#latest?.members.some((candidate) => candidate.hostId === member.hostId)) {
@@ -164,7 +166,7 @@ export class Reconciler {
     this.#armRetry(view);
   }
 
-  async #rename(entry: MeshEntry, member: MeshMember | undefined): Promise<void> {
+  async #rename(entry: MeshEntry, member: MemberEntry | undefined): Promise<void> {
     if (member === undefined) return;
     const allowed = [member.name, ...fallbacks(member.name, member.hostId)];
     if (allowed.includes(entry.machine.name)) return;
@@ -183,7 +185,7 @@ export class Reconciler {
     }
   }
 
-  async #add(member: MeshMember, list: readonly MachineView[], key: string): Promise<void> {
+  async #add(member: MemberEntry, list: readonly MachineView[], key: string): Promise<void> {
     const stuck = this.#stuck.get(member.hostId);
     if (stuck !== undefined && stuck.key === key && this.#options.clock.now() < stuck.until) return;
     this.#stuck.delete(member.hostId);
@@ -197,7 +199,7 @@ export class Reconciler {
   }
 
   /** Tries each name in turn: `name_taken` moves to the next fallback; every other refusal is a named state. */
-  async #addAs(member: MeshMember, attempt: Attempt, names: readonly string[]): Promise<void> {
+  async #addAs(member: MemberEntry, attempt: Attempt, names: readonly string[]): Promise<void> {
     const [name, ...rest] = names;
     if (name === undefined) {
       return this.#stick(member, attempt.key, `name_taken: "${member.name}" and its fallbacks are used on this core`);
@@ -235,7 +237,7 @@ export class Reconciler {
   }
 
   /** The member's core is already here under a #30 `doriface-host connect` entry: replace it with the mesh line. */
-  async #migrate(member: MeshMember, attempt: Attempt, name: string): Promise<void> {
+  async #migrate(member: MemberEntry, attempt: Attempt, name: string): Promise<void> {
     const { program, stateDir, machines } = this.#options;
     const old = attempt.list.find((machine) => machine.id === member.hcId);
     if (old === undefined || meshHostOf(old.target, program, stateDir) !== undefined) {
@@ -249,7 +251,7 @@ export class Reconciler {
     this.#options.log(`mesh: ${note}`);
   }
 
-  #stick(member: MeshMember, key: string, reason: string): void {
+  #stick(member: MemberEntry, key: string, reason: string): void {
     this.#stuck.set(member.hostId, { key, until: this.#options.clock.now() + STUCK_RETRY_MS });
     this.status.set(member.hostId, { state: "stuck", reason });
     this.#options.log(`mesh: STUCK ${member.name}: ${reason}`);

@@ -3,19 +3,21 @@ import type { ByteLink } from "@doriface/crypto";
 import { join } from "node:path";
 import { monotonicClock } from "./clock.ts";
 import { DialPolicy } from "./dial-policy.ts";
-import { MeshLines } from "./mesh-lines.ts";
+import { LineGrants } from "./line-grants.ts";
 import { seededRandom } from "./testing/fake-clock.ts";
 import { hostIdFor, localHost } from "./testing/hc-mesh.ts";
-import type { MeshMember, MeshView } from "./upstream.ts";
+import type { MemberEntry } from "./authorize-index.ts";
+import type { MeshView } from "./mesh-view.ts";
 
 const CLI = join(import.meta.dir, "..", "cli.ts");
 const local = localHost();
 afterAll(() => local.dispose());
 
-const member = (name: string): MeshMember => ({
+const member = (name: string): MemberEntry => ({
   signPub: `sign-${name}`,
   hostId: hostIdFor(name),
   noisePub: `noise-${name}`,
+  devicePub: undefined,
   name,
   hcId: `hc-${name}`,
 });
@@ -61,7 +63,7 @@ describe("connect --mesh refusals (R-12)", () => {
   test("not a member, offline-gated, out of budget: exit 1 with the reason, never 127, and no dial", async () => {
     const policy = new DialPolicy({ clock: monotonicClock, random: seededRandom(1), onDue: () => undefined });
     const dialed: string[] = [];
-    const lines = new MeshLines({
+    const lines = new LineGrants({
       view: () => view,
       policy,
       dial: (target) => {
@@ -103,7 +105,7 @@ describe("revocation closes outbound lines (R-13)", () => {
   test("a granted line is registered under the member, and a view without it closes the line with 4401", async () => {
     const policy = new DialPolicy({ clock: monotonicClock, random: seededRandom(2), onDue: () => undefined });
     const link = fakeLink();
-    const lines = new MeshLines({ view: () => view, policy, dial: () => Promise.resolve(link) });
+    const lines = new LineGrants({ view: () => view, policy, dial: () => Promise.resolve(link) });
     expect((await lines.grant(b.hostId)).ok).toBe(true);
     lines.closeRevoked({ members: [member("a")], overCap: [], revoked: [b.signPub] });
     expect(link.closes).toEqual([4401]);

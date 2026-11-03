@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { listenLineSocket, MAX_EARLY_BYTES, MAX_QUEUED_BYTES } from "./line-socket.ts";
-import type { LineGrant } from "./mesh-lines.ts";
+import type { LineGrant } from "./line-grants.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ls-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
