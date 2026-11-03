@@ -34,12 +34,16 @@ export interface IndexData {
   readonly revoked: readonly RevokedEntry[];
 }
 
+const cardOfRecord = (record: Signed): CardBody | undefined => {
+  const body = parseRecord(record);
+  const signed = body === undefined ? undefined : cardOf(body);
+  return signed === undefined ? undefined : verifyCard(signed);
+};
+
 const cardsBySigner = (records: readonly Signed[], eff: ReadonlySet<string> | undefined) => {
   const cards = new Map<string, CardBody[]>();
   for (const record of canonicalOrder(records)) {
-    const body = parseRecord(record);
-    const signed = body === undefined ? undefined : cardOf(body);
-    const card = signed === undefined ? undefined : verifyCard(signed);
+    const card = cardOfRecord(record);
     if (card === undefined) continue;
     if (eff !== undefined && !eff.has(hashOf(record))) continue;
     cards.set(card.signPub, [...(cards.get(card.signPub) ?? []), card]);
@@ -47,18 +51,33 @@ const cardsBySigner = (records: readonly Signed[], eff: ReadonlySet<string> | un
   return cards;
 };
 
-/** Derives the index from the records and their view: current cards for members, every card ever for the revoked. */
+const entryOf = (card: CardBody, noisePub: string, name: string): MemberEntry => ({
+  signPub: card.signPub,
+  hostId: card.hostId,
+  noisePub,
+  devicePub: card.devicePub,
+  name,
+  hcId: card.hcId,
+});
+
+/**
+ * Derives the index from the records and their view. A member's core id, device key and hostId come from its
+ * governing admission's card (a later re-admit or rekey card cannot change them), its Noise key and name from the
+ * view. An over-cap key has no governing admission in the view, so every effective card it holds is refused, and
+ * a revoked key's every card ever.
+ */
 export function indexOf(records: readonly Signed[], view: View, generation: number): IndexData {
+  const byHash = new Map(records.map((record) => [hashOf(record), record]));
   const effective = cardsBySigner(records, view.eff);
   const everything = cardsBySigner(records, undefined);
-  const entry = (signPub: string): MemberEntry[] => {
-    const card = effective.get(signPub)?.at(-1);
+  const member = (signPub: string): MemberEntry[] => {
+    const governing = byHash.get(view.governing.get(signPub) ?? "");
+    const card = governing === undefined ? undefined : cardOfRecord(governing);
     if (card === undefined) return [];
-    const noisePub = view.noise.get(signPub) ?? card.noisePub;
-    const name = view.name.get(signPub) ?? card.name;
-    return [{ signPub, hostId: card.hostId, noisePub, devicePub: card.devicePub, name, hcId: card.hcId }];
+    return [entryOf(card, view.noise.get(signPub) ?? card.noisePub, view.name.get(signPub) ?? card.name)];
   };
-  const active = [...view.members].filter((key) => !view.overCap.has(key));
+  const overCap = (signPub: string): MemberEntry[] =>
+    (effective.get(signPub) ?? []).map((card) => entryOf(card, card.noisePub, card.name));
   const revoked = [...view.revoked].flatMap((signPub): RevokedEntry[] => {
     const cards = everything.get(signPub) ?? [];
     const first = cards[0];
@@ -68,7 +87,12 @@ export function indexOf(records: readonly Signed[], view: View, generation: numb
     );
     return [{ signPub, hostId: first.hostId, keys: [...new Set(keys)] }];
   });
-  return { generation, members: active.flatMap(entry), overCap: [...view.overCap].flatMap(entry), revoked };
+  return {
+    generation,
+    members: [...view.members].flatMap(member),
+    overCap: [...view.overCap].flatMap(overCap),
+    revoked,
+  };
 }
 
 /** The in-memory lookups over one {@link IndexData}: everything a handshake asks, by base64url key. */
