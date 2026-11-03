@@ -6,7 +6,7 @@ import { isolate } from "./isolate.ts";
 import type { Mesh } from "./mesh.ts";
 import type { MeshHost } from "./mesh-host.ts";
 import { plantRecords } from "./plant.ts";
-import { type Head, signAttack } from "./records.ts";
+import { type Head, lastOwn, signAttack } from "./records.ts";
 import type { ShapeRun } from "./shape-setup.ts";
 import { meshFileOf, type SignedRecord, type Status, statusOf, storedRecords } from "./status.ts";
 
@@ -24,14 +24,18 @@ export interface AttackResult {
 const MEMBERS_MS = 120_000;
 
 /**
- * FORK as the model has it: the honest record the shape names (`fork`, e.g. the revoked key's own admission), with the
- * revoked key's highest counter in its past. A revoked key that never wrote a record continues from 0.
+ * FORK as the model has it: the honest record the shape names (`fork`), which must be the revoked key's last own
+ * record on its own host (section 3.7's L). A chain continuing from any earlier record would reuse a counter, and the
+ * view voids such a record whatever the shape, so the attack would test nothing.
  */
 function forkOf(run: ShapeRun, records: readonly SignedRecord[], signPub: string): Head {
   const set = new StoredSet(records, run.lib.hashOf);
   const step = run.shape.honest.find((each) => each.id === run.shape.fork);
   const hash = step === undefined ? undefined : set.find(step, (key) => run.actors.get(key)?.signPub ?? "");
   if (hash === undefined) throw new Error(`${run.shape.id}: the revoked host holds no ${run.shape.fork}`);
+  if (lastOwn(run.lib, records, signPub).hash !== hash) {
+    throw new Error(`${run.shape.id}: the revoked key wrote after ${run.shape.fork}, which the model does not have`);
+  }
   return { hash, n: set.counterAt(hash, signPub) };
 }
 

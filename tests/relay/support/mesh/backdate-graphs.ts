@@ -39,7 +39,10 @@ export interface BackdateShape {
   readonly attack: readonly Step[];
   /** The key whose stolen secret signs the attack. */
   readonly revoked: string;
-  /** In the model, the record `FORK` stands for (the revoked key's last record it is part of). */
+  /**
+   * The record `FORK` stands for: the revoked key's last own record (design section 3.7's L), which the attack must
+   * continue from. A joiner acks its own admission (section 5.5), so that is its ack unless it wrote later.
+   */
   readonly fork: string;
   readonly minted: readonly string[];
   /** Model keys the honest hosts judge with; each must end with `members` as its view. */
@@ -84,14 +87,15 @@ const name = (id: string, by: string, subject: string, prev: readonly string[], 
 });
 const ack = (id: string, by: string, prev: readonly string[]): Step => ({ id, type: "ack", by, prev });
 
-/** A founds; A admits G, C; C admits B; G acks. G revokes B; A and C ack. */
+/** A founds; A admits G, C; C admits B, who acks its admission; G acks. G revokes B; A and C ack. */
 const honest3: readonly Step[] = [
   found("F", "A"),
   admit("aG", "A", "G", ["F"]),
   admit("aC", "A", "C", ["aG"]),
   admit("aB", "C", "B", ["aC"]),
+  ack("kB", "B", ["aB"]),
   ack("kG", "G", ["aB"]),
-  revoke("vB_byG", "G", ["B"], ["kG"]),
+  revoke("vB_byG", "G", ["B"], ["kG", "kB"]),
   ack("kA", "A", ["vB_byG"]),
   ack("kC", "C", ["vB_byG"]),
 ];
@@ -104,7 +108,8 @@ const R2: BackdateShape = {
     found("F", "A"),
     admit("aB", "A", "B", ["F"]),
     admit("aX", "A", "X", ["aB"]),
-    revoke("vX_byB", "B", ["X"], ["aX"]),
+    ack("kX", "X", ["aX"]),
+    revoke("vX_byB", "B", ["X"], ["kX"]),
     name("nB_byA", "A", "B", ["vX_byB"], "b-2"),
   ],
   attack: [
@@ -113,7 +118,7 @@ const R2: BackdateShape = {
     admit("aZ_byX", "X", "Z", [FORK]),
   ],
   revoked: "X",
-  fork: "aX",
+  fork: "kX",
   minted: ["Z"],
   judges: ["A", "B"],
   members: ["A", "B"],
@@ -126,10 +131,10 @@ const R2: BackdateShape = {
 const P1: BackdateShape = {
   id: "P1",
   hosts: { A: "a", B: "b" },
-  honest: [found("F", "A"), admit("aB", "A", "B", ["F"]), revoke("vB_byA", "A", ["B"], ["aB"])],
+  honest: [found("F", "A"), admit("aB", "A", "B", ["F"]), ack("kB", "B", ["aB"]), revoke("vB_byA", "A", ["B"], ["kB"])],
   attack: [admit("xZ_byB", "B", "Z", [FORK])],
   revoked: "B",
-  fork: "aB",
+  fork: "kB",
   minted: ["Z"],
   judges: ["A"],
   members: ["A"],
@@ -153,7 +158,8 @@ const P2: BackdateShape = {
   honest: [
     found("F", "A"),
     admit("aB", "A", "B", ["F"]),
-    revoke("vB_byA", "A", ["B"], ["aB"]),
+    ack("kB", "B", ["aB"]),
+    revoke("vB_byA", "A", ["B"], ["kB"]),
     admit("aC", "A", "C", ["vB_byA"]),
     ack("kC", "C", ["aC"]),
     admit("aD", "A", "D", ["kC"]),
@@ -161,7 +167,7 @@ const P2: BackdateShape = {
   ],
   attack: [admit("xZ_byB", "B", "Z", [FORK]), revoke("xA_byB", "B", ["A"], ["xZ_byB"])],
   revoked: "B",
-  fork: "aB",
+  fork: "kB",
   minted: ["Z"],
   judges: ["A", "C", "D"],
   members: [],
@@ -183,7 +189,7 @@ const P3: BackdateShape = {
     ack("xk_byZ1", "Z1", ["xG_byB"]),
   ],
   revoked: "B",
-  fork: "aB",
+  fork: "kB",
   minted: ["Z0", "Z1"],
   judges: ["A", "G", "C"],
   members: ["A", "C", "G"],
@@ -211,7 +217,8 @@ const P8: BackdateShape = {
   honest: [
     found("F", "G"),
     admit("aB", "G", "B", ["F"]),
-    admit("aA", "G", "A", ["aB"]),
+    ack("kB", "B", ["aB"]),
+    admit("aA", "G", "A", ["kB"]),
     revoke("vB_byG", "G", ["B"], ["aA"]),
     ack("kA", "A", ["vB_byG"]),
   ],
@@ -222,7 +229,7 @@ const P8: BackdateShape = {
     ack("xk_byZ0", "Z0", ["xA_byZ0"]),
   ],
   revoked: "B",
-  fork: "aB",
+  fork: "kB",
   minted: ["Z0"],
   judges: ["G", "A"],
   members: [],
