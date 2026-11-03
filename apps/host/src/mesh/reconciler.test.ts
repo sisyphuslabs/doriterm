@@ -33,6 +33,8 @@ function reconciler(): { clock: FakeClock; machines: FakeMachines; reconcile: Re
   return { clock, machines, reconcile: new Reconciler(options), logs };
 }
 
+const budget = () => hcError("unreachable", "doriface-host connect: waiting for the dial budget");
+
 describe("a member that could not be added (section 8.1, H-54-1)", () => {
   test("an unreachable add is retried on the 30 s backoff, doubling, until it lands, and then left alone", async () => {
     const { clock, machines, reconcile } = reconciler();
@@ -43,6 +45,16 @@ describe("a member that could not be added (section 8.1, H-54-1)", () => {
     await reconcile.idle();
     expect(machines.calls).toEqual(["0 add b", "30000 add b", "90000 add b"]);
     expect(reconcile.status.get(b.hostId)?.state).toBe("ok");
+  });
+
+  test("an add refused for the dial budget keeps the first backoff: the budget's own due re-adds, not a doubled clock", async () => {
+    const { clock, machines, reconcile } = reconciler();
+    machines.failAdds.set("b", [budget(), budget()]);
+    await reconcile.reconcile(viewOf(b));
+    await reconcile.reconcile(viewOf(b));
+    await clock.advance(30 * 60_000);
+    await reconcile.idle();
+    expect(machines.calls).toEqual(["0 add b", "0 add b", "30000 add b"]);
   });
 
   test("presence of a member with no machine entry adds it at once", async () => {

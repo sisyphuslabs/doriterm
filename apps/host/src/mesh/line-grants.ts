@@ -3,6 +3,9 @@ import { DIAL_LIMITS, type DialPolicy } from "./dial-policy.ts";
 import type { MemberEntry } from "./authorize-index.ts";
 import type { MeshView } from "./mesh-view.ts";
 
+/** The bridge's refusal when no dial token freed in time; the reconciler re-adds on the budget's due, not a backoff. */
+export const BUDGET_REFUSAL = "waiting for the dial budget";
+
 export type LineGrant =
   | { readonly ok: true; readonly link: ByteLink }
   | { readonly ok: false; readonly code: number; readonly reason: string };
@@ -42,7 +45,7 @@ export class LineGrants {
       waitMs: this.#options.waitMs ?? DIAL_LIMITS.lineWaitMs,
     });
     if (!grant.ok) {
-      if (grant.reason === "budget") return { ok: false, code: 4429, reason: "waiting for the dial budget" };
+      if (grant.reason === "budget") return { ok: false, code: 4429, reason: BUDGET_REFUSAL };
       const next = seconds(grant.nextInMs);
       if (grant.reason === "settling")
         return {

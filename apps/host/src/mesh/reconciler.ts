@@ -5,6 +5,7 @@ import type { HcMachines } from "./hc-machines.ts";
 import { fallbacks } from "@doriface/mesh";
 import type { MemberEntry } from "./authorize-index.ts";
 import type { MeshView } from "./mesh-view.ts";
+import { BUDGET_REFUSAL } from "./line-grants.ts";
 import { meshHostOf, meshVia } from "./via.ts";
 
 /** Section 8.1: a named STUCK state is retried when the view or `machine.list` changes, or every 10 minutes. */
@@ -224,13 +225,17 @@ export class Reconciler {
       if (kind === "already_added") return this.#migrate(member, attempt, name);
       this.status.set(member.hostId, { state: "retrying", reason: `${kind}: ${messageOf(error)}` });
       this.#options.log(`mesh: adding machine ${name} failed (${kind}): ${messageOf(error)}; retrying`);
-      this.#retryLater(member.hostId);
+      this.#retryLater(member.hostId, messageOf(error).includes(BUDGET_REFUSAL));
     }
   }
 
-  /** Unreachable, hc_missing, incompatible: retried 30 s later, doubling to 5 minutes, and at once on presence. */
-  #retryLater(hostId: string): void {
-    const attempts = (this.#retries.get(hostId)?.attempts ?? 0) + 1;
+  /**
+   * Unreachable, hc_missing, incompatible: retried 30 s later, doubling to 5 minutes, and at once on presence. A line
+   * refused for the dial budget does not double the wait: the policy's "budget" due re-adds it once the window frees.
+   */
+  #retryLater(hostId: string, forBudget: boolean): void {
+    const previous = this.#retries.get(hostId)?.attempts ?? 0;
+    const attempts = forBudget ? Math.max(previous, 1) : previous + 1;
     this.#retries.get(hostId)?.cancel();
     const wait = Math.min(DIAL_LIMITS.probeFirstMs * 2 ** (attempts - 1), DIAL_LIMITS.probeMaxMs);
     const cancel = this.#options.clock.after(wait, () => {
