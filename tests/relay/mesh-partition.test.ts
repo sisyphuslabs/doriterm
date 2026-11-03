@@ -19,7 +19,12 @@ const running = (): Mesh => {
   return mesh;
 };
 
-const viewText = async (hosts: Mesh, name: string): Promise<string> => JSON.stringify(await viewOf(hosts.host(name)));
+/**
+ * The view every host converges on: who is a member, under which mesh name. A member's `witnessPool` is left out: it
+ * is the host's own reading of who could witness a revoke written there (empty for itself), so it differs per host.
+ */
+const viewText = async (hosts: Mesh, name: string): Promise<string> =>
+  JSON.stringify((await viewOf(hosts.host(name))).map((member) => ({ hostId: member.hostId, name: member.name })));
 
 scenario(
   "E-PART (a partition between groups, an admit and a rename on either side, heal)",
