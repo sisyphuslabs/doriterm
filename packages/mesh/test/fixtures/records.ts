@@ -6,13 +6,13 @@ import { type Card, Dag, type Rec } from "../../src/view/dag.ts";
 export type Draft = Omit<Rec, "n"> & { readonly n?: number };
 
 let nonces = 0;
-export const card = (subject: string, inviter: string, noise = `${subject}-key`): Card => ({
+export const card = (subject: string, inviter: string, noise = `${subject}-key`, nonce = `n${++nonces}`): Card => ({
   by: subject,
   hostId: `h${subject.toLowerCase()}`,
   inviter,
   noise,
   name: subject.toLowerCase(),
-  nonce: `n${++nonces}`,
+  nonce,
 });
 
 export const found = (id: string, by: string): Draft => ({
@@ -27,6 +27,48 @@ export const found = (id: string, by: string): Draft => ({
 export const admit = (id: string, by: string, subject: string, prev: readonly string[], noise?: string): Draft => ({
   id,
   type: "admit",
+  by,
+  subject,
+  prev,
+  card: card(subject, by, noise),
+});
+
+/** An admit that reuses an existing card (a replay of the subject's old card). */
+export const admitWithCard = (id: string, by: string, c: Card, prev: readonly string[]): Draft => ({
+  id,
+  type: "admit",
+  by,
+  subject: c.by,
+  prev,
+  card: c,
+});
+
+/** An admit whose card the admitter signed instead of its subject: the door refuses it. */
+export const forgedAdmit = (
+  id: string,
+  by: string,
+  subject: string,
+  prev: readonly string[],
+  noise: string,
+): Draft => ({
+  id,
+  type: "admit",
+  by,
+  subject,
+  prev,
+  card: { ...card(subject, by, noise), by },
+});
+
+/** A rekey of `subject` signed by someone else: the door refuses it. */
+export const foreignRekey = (
+  id: string,
+  by: string,
+  subject: string,
+  prev: readonly string[],
+  noise: string,
+): Draft => ({
+  id,
+  type: "rekey",
   by,
   subject,
   prev,
