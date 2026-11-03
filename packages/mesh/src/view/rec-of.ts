@@ -5,7 +5,21 @@ import { cardOf, hashOf, parseRecord, verifyCard } from "../records/codec.ts";
 import type { Signed } from "../records/types.ts";
 import type { Card, Rec } from "./dag.ts";
 
+/**
+ * Each stored record's abstract form, parsed once: a stored record is immutable, so a merge parses, hashes and
+ * verifies only the records it adds. Keeping the same objects also lets the engine carry its per-record results over.
+ */
+const parsed = new WeakMap<Signed, Rec | null>();
+
 function recOf(record: Signed): Rec | undefined {
+  const known = parsed.get(record);
+  if (known !== undefined) return known ?? undefined;
+  const r = parse(record);
+  parsed.set(record, r ?? null);
+  return r;
+}
+
+function parse(record: Signed): Rec | undefined {
   const body = parseRecord(record);
   if (body === undefined) return undefined;
   const base = { id: hashOf(record), type: body.type, by: body.by, n: body.n, prev: body.prev };

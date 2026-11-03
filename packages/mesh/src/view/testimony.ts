@@ -2,18 +2,18 @@
 // level 0 (every valid accuser) or level 1 (accusers with standing). The level's accusers come in as `acc`, so this
 // module reads no level's outcome itself.
 
-import { subjectsOf } from "./dag.ts";
+import { type RecordSet, subjectsOf } from "./dag.ts";
 import type { Engine } from "./engine.ts";
 import { common, commonMembers, forks, lineage, valid } from "./structure.ts";
 
 export type Level = 0 | 1;
 export type Verdict = "defeated" | "tie" | "stands";
 /** The accusers of a level: accusers0 at level 0, the accusers with standing at level 1. */
-export type AccusersOf = (e: Engine, S: ReadonlySet<string>, id: string) => readonly string[];
+export type AccusersOf = (e: Engine, S: RecordSet, id: string) => readonly string[];
 
 interface Testimony {
   readonly e: Engine;
-  readonly S: ReadonlySet<string>;
+  readonly S: RecordSet;
   readonly level: Level;
   readonly acc: AccusersOf;
 }
@@ -23,6 +23,10 @@ interface Testimony {
  * voters1(v, x) = voters(v, x) \ v.subjects.
  */
 export function voters(e: Engine, v: string, x: string, level: Level): readonly string[] {
+  return e.once("vo", `${level}:${v}:${x}`, () => votersOnce(e, v, x, level));
+}
+
+function votersOnce(e: Engine, v: string, x: string, level: Level): readonly string[] {
   const rv = e.dag.rec(v);
   const rx = e.dag.rec(x);
   const C = common(e, v, x);
@@ -51,7 +55,7 @@ function silences(t: Testimony, r: string, w: string): boolean {
 
 /** testifies(w) = valid(w) and ¬∃ r ∈ accusers(w): silences(r, w). */
 function testifies(t: Testimony, w: string): boolean {
-  return t.e.cached(t.S, `t${t.level}:${w}`, () => {
+  return t.e.cached(t.S, `t${t.level}`, w, () => {
     if (!valid(t.e, w)) return false;
     return !t.acc(t.e, t.S, w).some((r) => silences(t, r, w));
   });
@@ -59,12 +63,12 @@ function testifies(t: Testimony, w: string): boolean {
 
 /** saw(p, a, b) = ∃ w ∈ S, w.by == p, a ∈ past(w), b ∉ past(w), testifies(w). */
 function saw(t: Testimony, p: string, a: string, b: string): boolean {
-  for (const w of t.S) {
-    const past = t.e.dag.past(w);
-    if (t.e.dag.rec(w).by === p && past.has(a) && !past.has(b) && testifies(t, w)) return true;
-  }
-  return false;
+  return witnesses(t.e, p, a, b).some((w) => t.S.has(w) && testifies(t, w));
 }
+
+/** The records anywhere in the history by p with a in their past and b not: saw's candidates, kept if in S. */
+const witnesses = (e: Engine, p: string, a: string, b: string): readonly string[] =>
+  e.growing(`wi:${p}:${a}:${b}`, e.dag.history.signedBy(p), (w) => e.dag.inPast(w, a) && !e.dag.inPast(w, b));
 
 /** support(a, b) = |{ p ∈ pool : saw(p, a, b) and not saw(p, b, a) }|. */
 const support = (t: Testimony, a: string, b: string, pool: readonly string[]): number =>
@@ -72,7 +76,7 @@ const support = (t: Testimony, a: string, b: string, pool: readonly string[]): n
 
 export const supportAt = (
   e: Engine,
-  S: ReadonlySet<string>,
+  S: RecordSet,
   a: string,
   b: string,
   pool: readonly string[],
@@ -84,15 +88,8 @@ export const supportAt = (
  * verdict(v, x): defeated on a fork or strictly more testimony for v; at level 1 a non-revoke with no testimony either
  * way (0:0) is a tie (fail closed); otherwise it stands.
  */
-export function verdict(
-  e: Engine,
-  S: ReadonlySet<string>,
-  v: string,
-  x: string,
-  level: Level,
-  acc: AccusersOf,
-): Verdict {
-  return e.cached(S, `vd${level}:${v}:${x}`, (): Verdict => {
+export function verdict(e: Engine, S: RecordSet, v: string, x: string, level: Level, acc: AccusersOf): Verdict {
+  return e.cached(S, `vd${level}`, `${v}:${x}`, (): Verdict => {
     if (forks(e, v, x)) return "defeated";
     const t: Testimony = { e, S, level, acc };
     const pool = voters(e, v, x, level);

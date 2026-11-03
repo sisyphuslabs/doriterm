@@ -1,7 +1,7 @@
 // R3 "Structure": what a record is on its own and in the DAG. Every function reads only the record, its past, and
 // views of strictly smaller sets; nothing here reads testimony.
 
-import { isAdmission, type Rec, subjectsOf } from "./dag.ts";
+import { type Rec, subjectsOf } from "./dag.ts";
 import type { Engine } from "./engine.ts";
 import type { EngineView } from "./membership.ts";
 
@@ -22,10 +22,7 @@ function typeOk(e: Engine, r: Rec, before: EngineView | undefined): boolean {
     case "revoke": {
       const subjects = subjectsOf(r);
       const known = new Set(
-        [...e.dag.past(r.id)]
-          .map((p) => e.dag.rec(p))
-          .filter(isAdmission)
-          .map((a) => a.subject),
+        e.dag.index.admissions.filter((a) => e.dag.inPast(r.id, a)).map((a) => e.dag.rec(a).subject),
       );
       return subjects.every((k) => known.has(k));
     }
@@ -36,18 +33,43 @@ function typeOk(e: Engine, r: Rec, before: EngineView | undefined): boolean {
 
 /** x.by ∈ M(x) and type_ok(x). */
 function authorized(e: Engine, id: string): boolean {
-  return e.once(`pa:${id}`, () => {
+  return e.once("pa", id, () => {
     const r = e.dag.rec(id);
     return e.membersBefore(id).has(r.by) && typeOk(e, r, e.before(id));
   });
 }
 
+/** The signer's own records in past(x). */
+const ownPast = (e: Engine, id: string): readonly Rec[] =>
+  (e.dag.index.bySigner.get(e.dag.rec(id).by) ?? []).filter((p) => e.dag.inPast(id, p)).map((p) => e.dag.rec(p));
+
 /** own_chain(x): every own record in the past has a smaller n, and n - 1 is one of them (n = 1: none). */
 function ownChain(e: Engine, id: string): boolean {
   const r = e.dag.rec(id);
-  const own = [...e.dag.past(id)].map((p) => e.dag.rec(p)).filter((p) => p.by === r.by);
-  if (own.some((p) => p.n >= r.n)) return false;
-  return r.n === 1 ? own.length === 0 : own.some((p) => p.n === r.n - 1);
+  const top = e.dag.history.ownTop(id);
+  if (top === undefined) return r.n === 1;
+  if (Number.isNaN(top.n)) {
+    const own = ownPast(e, id);
+    if (own.some((p) => p.n >= r.n)) return false;
+    return r.n === 1 ? own.length === 0 : own.some((p) => p.n === r.n - 1);
+  }
+  if (top.n >= r.n) return false;
+  if (r.n === 1) return false;
+  if (top.n === r.n - 1) return true;
+  if (top.n < r.n - 1) return false;
+  return ownPast(e, id).some((p) => p.n === r.n - 1);
+}
+
+/**
+ * The signer's records with counter n - 1 in past(x): pred(x), or every branch of a merged self-fork. When n - 1 is
+ * the top of the signer's chain in past(x) (always, after own_chain(x), unless counters are fractional), they are
+ * exactly the records at that top.
+ */
+function preds(e: Engine, id: string): readonly string[] {
+  const r = e.dag.rec(id);
+  const top = e.dag.history.ownTop(id);
+  if (top !== undefined && top.n === r.n - 1) return top.at;
+  return ownPast(e, id).flatMap((p) => (p.n === r.n - 1 ? [p.id] : []));
 }
 
 /**
@@ -55,18 +77,21 @@ function ownChain(e: Engine, id: string): boolean {
  * signer merged its own fork, past(x) holds several records with counter x.n - 1: valid(pred(x)) needs every one valid.
  */
 export function valid(e: Engine, id: string): boolean {
-  return e.once(`va:${id}`, () => {
+  return e.once("va", id, () => {
     if (id === e.dag.found.id) return true;
     if (!authorized(e, id) || !ownChain(e, id)) return false;
-    const r = e.dag.rec(id);
-    if (r.n <= 1) return true;
-    const preds = [...e.dag.past(id)].filter((p) => e.dag.rec(p).by === r.by && e.dag.rec(p).n === r.n - 1);
-    return preds.length > 0 && preds.every((p) => valid(e, p));
+    if (e.dag.rec(id).n <= 1) return true;
+    const before = preds(e, id);
+    return before.length > 0 && before.every((p) => valid(e, p));
   });
 }
 
 /** forks(v, x): some counter names one record of x.by in {x} ∪ past(x) and another in past(v). */
 export function forks(e: Engine, v: string, x: string): boolean {
+  return e.once("fk", `${v}:${x}`, () => forksOnce(e, v, x));
+}
+
+function forksOnce(e: Engine, v: string, x: string): boolean {
   const by = e.dag.rec(x).by;
   const seen = new Map<number, string[]>();
   for (const p of e.dag.past(v)) {
@@ -82,10 +107,11 @@ export function forks(e: Engine, v: string, x: string): boolean {
 
 /** C(a, b) = past(a) ∩ past(b). */
 export function common(e: Engine, a: string, b: string): ReadonlySet<string> {
-  return e.once(`c:${a}:${b}`, () => {
-    const pb = e.dag.past(b);
-    return new Set([...e.dag.past(a)].filter((id) => pb.has(id)));
-  });
+  return e.once(
+    "c",
+    `${a}:${b}`,
+    (): ReadonlySet<string> => new Set(e.dag.index.order.filter((id) => e.dag.inPast(a, id) && e.dag.inPast(b, id))),
+  );
 }
 
 /** CM(a, b) = members(view(C(a, b))). */

@@ -1,12 +1,24 @@
 // The R3 engine: the record set, the views of its sub-sets with their caches, and the public viewOf. The rules are
 // split by responsibility: structure.ts, standing.ts, testimony.ts, status.ts, membership.ts. No rule reads its own
 // level's effectiveness, so view(S) is defined by induction on |S| and the canonical order: one view per set.
+//
+// Evaluation is incremental (M-14). Every set the rules ask about is past-closed, so a view is cached under the set's
+// heads and view(past(x)) per record; per-record results depend only on the record's past and survive a merge (a
+// grown set, evaluated through the same ViewCache). A view decides the statuses of the records membership() reads
+// (every type but ack) and leaves the rest of `eff` to the first read. Those statuses depend on the set only through
+// its context: its non-ack records, and the acks concurrent with one of them. Every R3 rule a status reaches asks the
+// set about a revoke, a record on an admitter lineage, or a witness of a conflict between two concurrent non-ack
+// records, and a witness that is an ack is concurrent with one of the two. So sets with one context share one
+// evaluation, and only records concurrent with a revoke are ever re-evaluated: through a new context.
 
 import type { Signed } from "../records/types.ts";
-import { Dag, type Rec, setKey } from "./dag.ts";
-import { type EngineView, membership } from "./membership.ts";
+import { bitsKey } from "./chain.ts";
+import { Dag, headsKey, type Rec, type RecordSet } from "./dag.ts";
+import { type EngineView, membership, withEff } from "./membership.ts";
 import { recordsOf } from "./rec-of.ts";
+import { Shared } from "./shared.ts";
 import { type Status, status } from "./status.ts";
+import { valid } from "./structure.ts";
 
 /** Views keyed by their record set; shareable across calls, because a view depends only on its set. */
 export type ViewCache = Map<string, EngineView>;
@@ -14,28 +26,32 @@ export type ViewCache = Map<string, EngineView>;
 export class Engine {
   readonly dag: Dag;
   readonly #views: ViewCache;
-  readonly #members = new Map<string, ReadonlySet<string>>();
-  readonly #once = new Map<string, unknown>();
-  readonly #perSet = new WeakMap<ReadonlySet<string>, Map<string, unknown>>();
+  readonly #shared: Shared;
 
-  constructor(dag: Dag, views: ViewCache = new Map()) {
+  constructor(dag: Dag, views: ViewCache = new Map(), shared = new Shared(dag.history)) {
+    if (shared.history !== dag.history) throw new Error("an engine shares state only with its own history");
     this.dag = dag;
     this.#views = views;
+    this.#shared = shared;
   }
 
-  /** A set-independent result (per record or record pair), computed once. */
-  once<T>(key: string, compute: () => T): T {
-    return memo(this.#once, key, compute);
+  /** A result about records and their pasts (per record or record pair), computed once for every set. */
+  once<T>(kind: string, key: string, compute: () => T): T {
+    return this.#shared.once(kind, key, compute);
   }
 
-  /** A result that depends on the set S, keyed by the identity of S (view() keeps it for one evaluation). */
-  cached<T>(S: ReadonlySet<string>, key: string, compute: () => T): T {
-    let m = this.#perSet.get(S);
-    if (m === undefined) {
-      m = new Map();
-      this.#perSet.set(S, m);
-    }
-    return memo(m, key, compute);
+  /** The records of a growing history list that pass `test`; see Shared.growing. */
+  growing(key: string, source: readonly string[], test: (id: string) => boolean): readonly string[] {
+    return this.#shared.growing(key, source, test);
+  }
+
+  /** A result that depends on the set S, keyed by the identity of S (a context or the set itself). */
+  cached<T>(S: RecordSet, kind: string, key: string, compute: () => T): T {
+    return this.#shared.cached(S, kind, key, compute);
+  }
+
+  static sharedOf(e: Engine): Shared {
+    return e.#shared;
   }
 
   full(): EngineView {
@@ -44,43 +60,80 @@ export class Engine {
 
   /** view(past(x)); undefined for the found record. */
   before(id: string): EngineView | undefined {
-    const past = this.dag.past(id);
-    return past.size === 0 ? undefined : this.view(past);
+    return this.#shared.before(id, () => {
+      const prev = [...new Set(this.dag.rec(id).prev)];
+      const heads = prev.filter((p) => !prev.some((q) => this.dag.inPast(q, p)));
+      if (heads.length === 0) return undefined;
+      const h = this.dag.history;
+      const context = `${headsKey(h.relevantHeads(id))}|${bitsKey(h.witnessable(id))}`;
+      return this.#evaluate({ has: (p) => this.dag.inPast(id, p) }, headsKey(heads), context);
+    });
   }
 
   /** M(x). */
   membersBefore(id: string): ReadonlySet<string> {
-    const cached = this.#members.get(id);
-    if (cached !== undefined) return cached;
-    const out: ReadonlySet<string> = new Set(this.before(id)?.members ?? []);
-    this.#members.set(id, out);
-    return out;
+    return this.#shared.membersBefore(id, () => new Set(this.before(id)?.members ?? []));
+  }
+
+  /** The cache key of a past-closed set: its records that no other record of the set names as prev. */
+  keyOf(S: ReadonlySet<string>): string {
+    return headsKey(this.#headsOf(S));
+  }
+
+  #headsOf(S: ReadonlySet<string>): readonly string[] {
+    return this.#shared.headsOf(S, () => {
+      const named = new Set([...S].flatMap((id) => this.dag.rec(id).prev));
+      return [...S].filter((id) => !named.has(id));
+    });
   }
 
   view(S: ReadonlySet<string>): EngineView {
-    const key = setKey(S);
+    const key = this.keyOf(S);
     const cached = this.#views.get(key);
     if (cached !== undefined) return cached;
-    const statuses = new Map<string, Status>();
-    for (const id of this.dag.canonicalOrder(S)) statuses.set(id, status(this, S, id, statuses));
-    const eff = new Set([...statuses].filter(([, st]) => st === "eff").map(([id]) => id));
-    const view = membership(this.dag, S, eff);
+    // Ancestors first, so each record's own past is evaluated before a later record asks for it (no deep recursion).
+    for (const id of this.dag.index.order) if (S.has(id)) valid(this, id);
+    const heads = this.#headsOf(S);
+    const h = this.dag.history;
+    return this.#evaluate(S, key, `${headsKey(h.maximalRelevant(heads))}|${bitsKey(h.witnessableOf(heads))}`);
+  }
+
+  #evaluate(S: RecordSet, key: string, context: string): EngineView {
+    const cached = this.#views.get(key);
+    if (cached !== undefined) return cached;
+    const { set, core } = this.#shared.core(S, context, (ctx) => {
+      const statuses = new Map<string, Status>();
+      for (const id of this.dag.index.relevant) if (ctx.has(id)) statuses.set(id, status(this, ctx, id, statuses));
+      return { view: membership(this.dag, ctx, statuses, () => this.#eff(ctx, statuses)), statuses };
+    });
+    const view = set === S ? core.view : withEff(core.view, () => this.#eff(S, core.statuses));
     this.#views.set(key, view);
     return view;
   }
+
+  /** The records of S that count, in canonical order; `decided` already holds every non-ack record of S. */
+  #eff(S: RecordSet, decided: ReadonlyMap<string, Status>): ReadonlySet<string> {
+    const out = new Set<string>();
+    for (const id of this.dag.index.order) {
+      if (!S.has(id)) continue;
+      if ((decided.get(id) ?? status(this, S, id, decided)) === "eff") out.add(id);
+    }
+    return out;
+  }
 }
 
-function memo<T>(store: Map<string, unknown>, key: string, compute: () => T): T {
-  // A key is only ever stored by the computation that names it, so its value has that computation's type.
-  if (store.has(key)) return store.get(key) as T;
-  const value = compute();
-  store.set(key, value);
-  return value;
-}
+/** Per cache, the engine of the last call: its per-record results carry over to the next set evaluated through it. */
+const engines = new WeakMap<ViewCache, Engine>();
 
 /** The R3 view of abstract records (one found, past-closed). */
-export const viewOfRecords = (records: readonly Rec[], cache?: ViewCache): EngineView =>
-  new Engine(new Dag(records), cache).full();
+export function viewOfRecords(records: readonly Rec[], cache?: ViewCache): EngineView {
+  const prior = cache === undefined ? undefined : engines.get(cache);
+  const shared = prior === undefined ? undefined : Engine.sharedOf(prior);
+  const dag = shared?.history.accepts(records) === true ? new Dag(records, shared.history) : new Dag(records);
+  const engine = new Engine(dag, cache, shared?.history === dag.history ? shared : undefined);
+  if (cache !== undefined) engines.set(cache, engine);
+  return engine.full();
+}
 
 export interface View {
   /** At most 12 members, in the canonical order of their governing admissions. */
