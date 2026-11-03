@@ -76,7 +76,8 @@ export function meshLineHostId(machine: MachineView): string | undefined {
  * Any client can overwrite the document, so the panel checks it against what it sees itself (design section 8.6),
  * both ways. A member's machine is its mesh line (found by the hostId it dials), else the machine with its local
  * name. A member the document calls connected must be connected here and one it calls anything else must not be,
- * except `connecting`: a line that just came up is connected here before the host republishes;
+ * except a `connecting` line the document itself says just came up (no `unreachableSince`, no revoke offered): it is
+ * connected here before the host republishes. A member kept `connecting` since it went unreachable still disagrees;
  * a connected mesh line must belong to a member the document lists (a forged omission otherwise); a revoked member's
  * machine must not be connected. The document must also be this host's. An offline member may be missing from
  * machine.list: herdr keeps a machine only after its first hello.
@@ -99,7 +100,8 @@ export function disagreement(
     ...status.members
       .filter((m) => {
         const here = connectedHere(m.hostId, m.localName);
-        return m.line === "connected" ? !here : here && m.line !== "self" && m.line !== "connecting";
+        const justUp = m.line === "connecting" && m.unreachableSince === null && !m.revokeSuggested;
+        return m.line === "connected" ? !here : here && m.line !== "self" && !justUp;
       })
       .map((m) => m.name ?? m.hostId),
     ...[...lines]

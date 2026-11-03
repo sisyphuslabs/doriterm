@@ -1,6 +1,6 @@
 import { meshStatus } from "@doriface/host";
 import { meshFixture } from "@doriface/host/testing";
-import type { MachineView, MeshStatus } from "@doriface/protocol";
+import type { MachineView, MeshMemberStatus, MeshStatus } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
 import { disagreement, meshGroups, pendingAnswer } from "./groups.ts";
 
@@ -25,6 +25,12 @@ const { ids } = fixture;
 const without = (name: string): MeshStatus => ({ ...status, members: status.members.filter((m) => m.name !== name) });
 
 const names = (entries: readonly { readonly name: string | null }[]) => entries.map((entry) => entry.name);
+
+/** The fixture status with tablet's entry patched. */
+const stale = (patch: Partial<MeshMemberStatus>): MeshStatus => ({
+  ...status,
+  members: status.members.map((member) => (member.name === "tablet" ? { ...member, ...patch } : member)),
+});
 
 describe("meshGroups", () => {
   test("joins first, then the fail-closed removal, members by line, and revoked keys", () => {
@@ -133,6 +139,14 @@ describe("disagreement with machine.list", () => {
   test("a line that just came up, connecting in the document and connected here, is no disagreement yet", () => {
     const machines = [machine("build-box", "connected"), machine("tablet", "connected", ids.tablet.hostId)];
     expect(disagreement(status, machines, undefined)).toBeUndefined();
+  });
+
+  test("a member the document has kept connecting since it went unreachable, connected here, disagrees", () => {
+    const since = new Date(NOW.getTime() - 9 * 24 * 60 * 60 * 1000).toISOString();
+    const machines = [machine("build-box", "connected"), machine("tablet", "connected", ids.tablet.hostId)];
+    expect(disagreement(stale({ unreachableSince: since }), machines, undefined)?.names).toEqual(["tablet"]);
+    const forged = stale({ unreachableSince: since, revokeSuggested: true });
+    expect(disagreement(forged, machines, undefined)?.names).toEqual(["tablet"]);
   });
 
   test("a mesh line dialing a word that is no hostId is no mesh line", () => {
