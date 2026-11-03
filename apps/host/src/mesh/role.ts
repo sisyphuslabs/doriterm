@@ -10,9 +10,9 @@ export type SelfRole =
   | { readonly kind: "ejected" };
 
 /**
- * This host's own standing in its computed view. A view that drops it makes it read-only (it signs nothing) for the
- * grace period, and a later view that has it again makes it a member again (R5a to R5b). Only the grace running out
- * ejects it, never a single record.
+ * This host's own standing in its computed view. A view that drops it, revoked or past the 12-member cap (section
+ * 6.4), makes it read-only (it signs nothing) for the grace period, and a later view that has it again makes it a
+ * member again (R5a to R5b). Only the grace running out ejects it, never a single record.
  */
 export class SelfStanding {
   readonly #self: string;
@@ -39,7 +39,7 @@ export class SelfStanding {
 
   update(view: MeshView): SelfRole {
     if (this.#role.kind === "ejected") return this.#role;
-    const member = [...view.members, ...view.overCap].some((entry) => entry.signPub === this.#self);
+    const member = view.members.some((entry) => entry.signPub === this.#self);
     if (member) {
       this.#cancel();
       this.#role = { kind: "member" };

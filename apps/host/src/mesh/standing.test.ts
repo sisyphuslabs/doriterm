@@ -25,6 +25,13 @@ describe("a host revoked in its own view (S-7)", () => {
     expect(standing.canSign).toBe(true);
   });
 
+  test("past the 12-member cap it is read-only too: an over-cap host signs nothing (section 6.4)", () => {
+    const standing = new SelfStanding({ self: self.signPub, clock: new FakeClock(), onEject: () => undefined });
+    const overCap: MeshView = { members: [member("a")], overCap: [self], revoked: [] };
+    expect(standing.update(overCap).kind).toBe("read-only");
+    expect(standing.canSign).toBe(false);
+  });
+
   test("is ejected only once the grace ran out with the view still revoking it", async () => {
     const clock = new FakeClock();
     let ejected = 0;
