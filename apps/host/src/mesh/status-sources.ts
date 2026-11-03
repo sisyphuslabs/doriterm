@@ -61,7 +61,13 @@ export interface PeerFacts {
 
 export interface LineFacts {
   readonly state: Exclude<MeshLineState, "self">;
+  /** herdr's reason for `unreachable`, `hc_missing` and `incompatible`. */
+  readonly reason: string | null;
   readonly stuck: MeshLineStuck | null;
+  /** The core id of the latest line hello from the member, logged for the card's hcId check (design section 7.6). */
+  readonly helloCoreId: string | null;
+  /** The non-mesh machine (from `doriface-host connect`) this line replaced for the same core (design section 8.1). */
+  readonly replaced: string | null;
 }
 
 export interface PendingJoinFact {

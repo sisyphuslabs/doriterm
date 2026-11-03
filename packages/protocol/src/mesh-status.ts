@@ -11,8 +11,22 @@ export const MESH_APPROVAL_DOC = "doriface-mesh-approve";
 /** The `v` of the status document; a reader refuses any other value. */
 export const MESH_STATUS_VERSION = 1;
 
-/** A member's herdr line as this host's machine.list shows it; `self` is this host, `absent` is not added (yet). */
-export type MeshLineState = "self" | "connected" | "connecting" | "unreachable" | "needs_login" | "absent";
+/**
+ * A member's herdr line as this host's machine.list and the reconciler see it (design section 8.1); `self` is this
+ * host, `absent` is not added (yet). `hc_missing` and `incompatible` are herdr's refusals to add or dial it.
+ */
+export type MeshLineState =
+  | "self"
+  | "connected"
+  | "connecting"
+  | "unreachable"
+  | "hc_missing"
+  | "incompatible"
+  | "needs_login"
+  | "absent";
+
+/** The line states section 8.1 shows with herdr's reason. */
+export const MESH_LINE_STATES_WITH_REASON: readonly MeshLineState[] = ["unreachable", "hc_missing", "incompatible"];
 
 /** Why the reconciler cannot make one member's line match the view (design section 8.1). */
 export type MeshLineStuck =
@@ -50,6 +64,15 @@ export type MeshMemberStatus = {
   readonly admittedBy: string | null;
   readonly overCap: boolean;
   readonly line: MeshLineState;
+  /** herdr's reason, for the states in MESH_LINE_STATES_WITH_REASON only. */
+  readonly lineReason: string | null;
+  /** The core id of the latest line hello from it; the card's `hcId` check uses it (design section 7.6). */
+  readonly helloCoreId: string | null;
+  /**
+   * The machine a `doriface-host connect` had added for the same core, which the reconciler replaced with the mesh
+   * line (design section 8.1, migration).
+   */
+  readonly replacedMachine: string | null;
   /** An authenticated session from it is open now. */
   readonly presence: boolean;
   readonly lastSync: string | null;

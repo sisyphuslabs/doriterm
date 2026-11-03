@@ -45,6 +45,9 @@ describe("doriface-host mesh status", () => {
       expect(text).toContain(`${member.name} ${member.hostId} ${member.fingerprint}`);
     }
     expect(text).toContain("to remove it: doriface-host mesh revoke laptop");
+    expect(text).toContain("unreachable: no route to host");
+    expect(text).toContain('replaced machine "build-box-old" (doriface-host connect) with the mesh line');
+    expect(text).toContain("line hello from core core-build-box");
   });
 
   test("the text form says who revoked this host and when it stops reading", async () => {

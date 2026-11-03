@@ -1,7 +1,7 @@
 // A mesh with one member in every state the status shows, keyed by real host identities derived from fixed seeds so
 // hostIds and fingerprints are the same on every run (tests and screenshot captures depend on that).
 import { base64urlEncode, type HostIdentity, hostIdentityFromSecrets } from "@doriface/crypto";
-import type { MeshSources, PeerFacts } from "../mesh/status-sources.ts";
+import type { LineFacts, MeshSources, PeerFacts } from "../mesh/status-sources.ts";
 
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
@@ -33,6 +33,7 @@ function recordOf<T>(make: (name: FixtureName) => T): Record<FixtureName, T> {
   };
 }
 
+const line: LineFacts = { state: "absent", reason: null, stuck: null, helloCoreId: null, replaced: null };
 const idle: PeerFacts = { presence: false, lastSync: null, owed: 0, gate: null, unreachableSince: null };
 
 /**
@@ -100,10 +101,10 @@ export function meshFixture(now: Date): MeshFixture {
       ],
       [key("tablet"), { ...idle, presence: true, lastSync: ago(DAY), owed: 1 }],
     ]),
-    lines: new Map([
-      [key("build-box"), { state: "connected", stuck: null }],
-      [key("laptop"), { state: "unreachable", stuck: null }],
-      [key("tablet"), { state: "connecting", stuck: null }],
+    lines: new Map<string, LineFacts>([
+      [key("build-box"), { ...line, state: "connected", helloCoreId: "core-build-box", replaced: "build-box-old" }],
+      [key("laptop"), { ...line, state: "unreachable", reason: "no route to host" }],
+      [key("tablet"), { ...line, state: "connecting" }],
     ]),
     budget: { waiting: 0, halvedUntil: null },
     witnessPool: (subject) =>

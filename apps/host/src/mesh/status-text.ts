@@ -25,7 +25,11 @@ function stuckLine(reason: MeshStuckReason, nameOf: (hostId: string) => string):
 
 function memberLine(member: MeshMemberStatus, nameOf: (hostId: string) => string): string {
   const parts = [
-    member.line === "self" ? "this host" : member.line,
+    member.line === "self"
+      ? "this host"
+      : member.lineReason === null
+        ? member.line
+        : `${member.line}: ${member.lineReason}`,
     member.admittedBy === null ? "founder" : `admitted by ${nameOf(member.admittedBy)}`,
   ];
   if (member.overCap) parts.push("over the 12-member cap");
@@ -34,7 +38,11 @@ function memberLine(member: MeshMemberStatus, nameOf: (hostId: string) => string
   if (member.owed > 0) parts.push(`${member.owed} records owed`);
   if (member.gate !== null)
     parts.push(`offline 4404 x${member.gate.refusals}, next probe at ${member.gate.nextProbeAt}`);
+  if (member.helloCoreId !== null) parts.push(`line hello from core ${member.helloCoreId}`);
   const lines = [`  ${member.name} ${member.hostId} ${member.fingerprint}`, `    ${parts.join(", ")}`];
+  if (member.replacedMachine !== null) {
+    lines.push(`    replaced machine "${member.replacedMachine}" (doriface-host connect) with the mesh line`);
+  }
   if (member.witnessPool.length === 0 && member.line !== "self") {
     const ask = member.witnessAsk === null ? "re-found if its key is compromised" : `ask ${nameOf(member.witnessAsk)}`;
     lines.push(`    revoke of ${member.name} would be undecidable from here; ${ask}`);

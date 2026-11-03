@@ -1,5 +1,6 @@
 import { base64urlDecode, fingerprintOf, hostIdOf } from "@doriface/crypto";
 import {
+  MESH_LINE_STATES_WITH_REASON,
   MESH_STATUS_VERSION,
   type MeshMemberStatus,
   type MeshNotice,
@@ -37,6 +38,7 @@ function member(sources: MeshSources, names: Names, key: string, now: Date): Mes
   const name = names.name(key);
   const self = key === local.self;
   const peer = self ? undefined : sources.peers.get(key);
+  const line = self ? undefined : sources.lines.get(key);
   const since = peer?.unreachableSince ?? null;
   const stale = since !== null && now.getTime() - since.getTime() > UNREACHABLE_REVOKE_MS;
   const admitter = view.admitter.get(key);
@@ -49,7 +51,10 @@ function member(sources: MeshSources, names: Names, key: string, now: Date): Mes
     fingerprint: noise === undefined ? "" : fingerprintOfKey(noise),
     admittedBy: admitter === undefined ? null : names.hostId(admitter),
     overCap: view.overCap.includes(key),
-    line: self ? "self" : (sources.lines.get(key)?.state ?? "absent"),
+    line: self ? "self" : (line?.state ?? "absent"),
+    lineReason: line !== undefined && MESH_LINE_STATES_WITH_REASON.includes(line.state) ? line.reason : null,
+    helloCoreId: line?.helloCoreId ?? null,
+    replacedMachine: line?.replaced ?? null,
     presence: peer?.presence ?? false,
     lastSync: iso(peer?.lastSync ?? null),
     owed: peer?.owed ?? 0,

@@ -55,6 +55,29 @@ describe("mesh status", () => {
     ]);
   });
 
+  test("shows herdr's reason for a line that is down, the latest hello's core id, and a migrated machine", () => {
+    expect(memberNamed("laptop")).toMatchObject({
+      line: "unreachable",
+      lineReason: "no route to host",
+      helloCoreId: null,
+    });
+    expect(memberNamed("build-box")).toMatchObject({
+      lineReason: null,
+      helloCoreId: "core-build-box",
+      replacedMachine: "build-box-old",
+    });
+    expect(memberNamed("tablet")).toMatchObject({ lineReason: null, replacedMachine: null });
+  });
+
+  test.each(["hc_missing", "incompatible"] as const)("a line in state %s is shown with herdr's reason", (state) => {
+    const lines = new Map(fixture.sources.lines);
+    lines.set(fixture.keys.tablet, { state, reason: "herdr says why", stuck: null, helloCoreId: null, replaced: null });
+    expect(meshStatus({ ...fixture.sources, lines }, NOW).members.find((m) => m.name === "tablet")).toMatchObject({
+      line: state,
+      lineReason: "herdr says why",
+    });
+  });
+
   test("carries presence, last sync, owed records and the 4404 gate of each peer", () => {
     expect(memberNamed("build-box")).toMatchObject({ presence: true, lastSync: "2026-11-03T11:58:00.000Z", owed: 0 });
     expect(memberNamed("tablet")).toMatchObject({ owed: 1, gate: null });
@@ -187,7 +210,18 @@ describe("mesh status", () => {
   };
   const stuckLine = {
     ...fixture.sources,
-    lines: new Map([[fixture.keys.tablet, { state: "connecting" as const, stuck: { kind: "line_idle" as const } }]]),
+    lines: new Map([
+      [
+        fixture.keys.tablet,
+        {
+          state: "connecting" as const,
+          reason: null,
+          stuck: { kind: "line_idle" as const },
+          helloCoreId: null,
+          replaced: null,
+        },
+      ],
+    ]),
   };
   const rows: readonly (readonly [string, MeshSources, MeshStuckReason])[] = [
     ["possibly revoked", withLocal({ possiblyRevoked: true }), { kind: "possibly_revoked" }],

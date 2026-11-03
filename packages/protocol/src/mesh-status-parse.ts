@@ -15,6 +15,7 @@ import {
   type Shape,
 } from "./mesh-status-guards.ts";
 import {
+  MESH_LINE_STATES_WITH_REASON,
   MESH_STATUS_VERSION,
   type MeshBudget,
   type MeshGate,
@@ -68,9 +69,12 @@ const isLineState: Guard<MeshLineState> = oneOf(
   "connected",
   "connecting",
   "unreachable",
+  "hc_missing",
+  "incompatible",
   "needs_login",
   "absent",
 );
+const isText = (value: unknown): value is string => isString(value) && value.length > 0;
 const isGate = objectOf<MeshGate>({ kind: oneOf("offline"), refusals: isCount, nextProbeAt: isTime });
 const isMember = objectOf<MeshMemberStatus>({
   hostId: isId,
@@ -80,6 +84,9 @@ const isMember = objectOf<MeshMemberStatus>({
   admittedBy: nullable(isId),
   overCap: isBoolean,
   line: isLineState,
+  lineReason: nullable(isText),
+  helloCoreId: nullable(isText),
+  replacedMachine: nullable(isName),
   presence: isBoolean,
   lastSync: nullable(isTime),
   owed: isCount,
@@ -141,6 +148,9 @@ function isConsistent(status: MeshStatus): boolean {
     hostIds.size === status.members.length &&
     onSelfLine.length === 1 &&
     onSelfLine[0]?.hostId === status.self &&
+    status.members.every(
+      (member) => member.lineReason === null || MESH_LINE_STATES_WITH_REASON.includes(member.line),
+    ) &&
     status.members.every(
       (member) => !member.revokeSuggested || (member.line !== "self" && member.unreachableSince !== null),
     ) &&

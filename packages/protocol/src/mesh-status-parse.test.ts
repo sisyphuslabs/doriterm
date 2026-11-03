@@ -10,6 +10,9 @@ const member = {
   admittedBy: null,
   overCap: false,
   line: "connected",
+  lineReason: null,
+  helloCoreId: "core-build-box",
+  replacedMachine: null,
   presence: true,
   lastSync: "2026-11-03T11:58:00.000Z",
   owed: 0,
@@ -151,7 +154,7 @@ describe("parseMeshStatus", () => {
 
   test.each([
     ["another version", { ...status, v: 2 }],
-    ["an unknown line state", { ...status, members: [{ ...member, line: "online" }] }],
+    ["an unknown line state", memberAt(1, { line: "online" })],
     ["a negative count", { ...status, members: [{ ...member, owed: -1 }] }],
     ["an unknown STUCK reason", { ...status, stuck: [{ kind: "melted" }] }],
     ["a member STUCK reason without its member", { ...status, stuck: [{ kind: "line_idle" }] }],
@@ -178,6 +181,10 @@ describe("parseMeshStatus", () => {
       "a revoke suggested for this host",
       memberAt(0, { revokeSuggested: true, unreachableSince: "2026-10-25T12:00:00.000Z" }),
     ],
+    ["herdr's reason on a line that is up", memberAt(1, { lineReason: "why" })],
+    ["an empty line reason", memberAt(1, { line: "unreachable", lineReason: "" })],
+    ["a replaced machine name herdr refuses", memberAt(1, { replacedMachine: "old box" })],
+    ["an empty hello core id", memberAt(1, { helloCoreId: "" })],
     [
       "a read-only end that is not a time",
       { ...status, stuck: [{ kind: "read_only", until: "soon", by: [], at: null }] },
