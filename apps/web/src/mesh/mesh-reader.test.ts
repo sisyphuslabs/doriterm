@@ -9,76 +9,89 @@ const status = meshStatus(meshFixture(NOW).sources, NOW);
 const OPEN = status.pending[0]?.nonce ?? "";
 const OTHER = "ZXhwaXJlZCBqb2lu";
 
-/** A core whose documents answer at once, and whose machine.list replies wait until the test releases them. */
+type Reply = (machines: readonly MachineView[]) => void;
+
+/**
+ * A core whose documents answer at once and whose machine.list replies are held: `nextRequest` resolves with the
+ * reply of the next machine.list call the reader makes, and the test sends it when the ordering under test says so.
+ */
 function heldCore() {
   const docs = new Map<string, { value: JsonValue; version: number }>([
     [MESH_STATUS_DOC, { value: status, version: 1 }],
     [MESH_APPROVAL_DOC, { value: { deny: OTHER }, version: 1 }],
   ]);
-  const held: ((machines: readonly MachineView[]) => void)[] = [];
+  const unclaimed: Reply[] = [];
+  const claims: ((reply: Reply) => void)[] = [];
   const calls: MeshCalls = {
     doc: async (name) => docs.get(name) ?? { value: null, version: 0 },
     setDoc: async (name, value, version) => {
       docs.set(name, { value, version: version + 1 });
     },
-    machines: () => new Promise((resolve) => held.push(resolve)),
+    machines: () =>
+      new Promise((resolve) => {
+        const claim = claims.shift();
+        if (claim === undefined) unclaimed.push(resolve);
+        else claim(resolve);
+      }),
   };
-  return { calls, held };
+  const nextRequest = (): Promise<Reply> =>
+    new Promise((resolve) => {
+      const reply = unclaimed.shift();
+      if (reply === undefined) claims.push(resolve);
+      else resolve(reply);
+    });
+  return { calls, nextRequest };
+}
+
+function shownBy(reader: MeshReader): { readonly reads: MeshRead[]; readonly stop: () => void } {
+  const reads: MeshRead[] = [];
+  return { reads, stop: reader.subscribe((read) => reads.push(read)) };
 }
 
 const answeredOf = (read: MeshRead | undefined) => (read?.phase === "ready" ? read.answered : undefined);
-
-/** Lets queued promise jobs run until `count` machine.list replies are held. */
-async function heldReplies(held: readonly unknown[], count: number): Promise<void> {
-  if (held.length >= count) return;
-  await Promise.resolve();
-  return heldReplies(held, count);
-}
+const APPROVED = { nonce: OPEN, verdict: "approve" } as const;
 
 describe("MeshReader", () => {
   test("a read that started before an answer never replaces the answer's own read", async () => {
-    const { calls, held } = heldCore();
-    const reads: MeshRead[] = [];
-    const reader = new MeshReader(calls, (read) => reads.push(read));
+    const { calls, nextRequest } = heldCore();
+    const reader = new MeshReader(calls);
+    const { reads } = shownBy(reader);
     const periodic = reader.refresh();
+    const periodicReply = await nextRequest();
     const answer = reader.answer(OPEN, "approve");
-    await heldReplies(held, 2);
-    held[1]?.([]);
+    const answerReply = await nextRequest();
+    answerReply([]);
     await answer;
-    expect(answeredOf(reads.at(-1))).toEqual({ nonce: OPEN, verdict: "approve" });
-    held[0]?.([]);
+    expect(answeredOf(reads.at(-1))).toEqual(APPROVED);
+    periodicReply([]);
     await periodic;
-    expect(answeredOf(reads.at(-1))).toEqual({ nonce: OPEN, verdict: "approve" });
+    expect([reads.length, answeredOf(reads.at(-1))]).toEqual([1, APPROVED]);
   });
 
-  test("an answer settles only once a read started after its write has been shown", async () => {
-    const { calls, held } = heldCore();
-    const reads: MeshRead[] = [];
-    const reader = new MeshReader(calls, (read) => reads.push(read));
-    let settled = false;
-    const answer = (async () => {
-      await reader.answer(OPEN, "approve");
-      settled = true;
-    })();
-    await heldReplies(held, 1);
+  test("an answer settles with its own read shown, and a later read landing after it keeps the answer", async () => {
+    const { calls, nextRequest } = heldCore();
+    const reader = new MeshReader(calls);
+    const { reads } = shownBy(reader);
+    const answer = reader.answer(OPEN, "approve");
+    const ownReply = await nextRequest();
     const later = reader.refresh();
-    await heldReplies(held, 2);
-    held[0]?.([]);
-    await Promise.resolve();
-    expect(settled).toBe(false);
-    held[1]?.([]);
-    await Promise.all([answer, later]);
-    expect([settled, answeredOf(reads.at(-1))]).toEqual([true, { nonce: OPEN, verdict: "approve" }]);
+    const laterReply = await nextRequest();
+    ownReply([]);
+    await answer;
+    expect([reads.length, answeredOf(reads.at(-1))]).toEqual([1, APPROVED]);
+    laterReply([]);
+    await later;
+    expect([reads.length, answeredOf(reads.at(-1))]).toEqual([2, APPROVED]);
   });
 
-  test("a closed reader shows nothing more", async () => {
-    const { calls, held } = heldCore();
-    const reads: MeshRead[] = [];
-    const reader = new MeshReader(calls, (read) => reads.push(read));
+  test("a reader whose subscriber stopped shows nothing more", async () => {
+    const { calls, nextRequest } = heldCore();
+    const reader = new MeshReader(calls);
+    const { reads, stop } = shownBy(reader);
     const read = reader.refresh();
-    await heldReplies(held, 1);
-    reader.close();
-    held[0]?.([]);
+    const reply = await nextRequest();
+    stop();
+    reply([]);
     await read;
     expect(reads).toEqual([]);
   });

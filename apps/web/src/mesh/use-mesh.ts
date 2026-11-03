@@ -1,5 +1,5 @@
 import type { HcConnection } from "@doriface/client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { MACHINE_REFRESH_MS } from "../workspace/use-machines.ts";
 import { meshCallsOf, type MeshRead, MeshReader, type Verdict } from "./mesh-reader.ts";
 
@@ -17,25 +17,18 @@ export interface Mesh {
  */
 export function useMesh(connection: HcConnection): Mesh {
   const [read, setRead] = useState<MeshRead>({ phase: "loading" });
-  const [reader, setReader] = useState<MeshReader | undefined>(undefined);
+  const reader = useMemo(() => new MeshReader(meshCallsOf(connection)), [connection]);
   useEffect(() => {
-    const next = new MeshReader(meshCallsOf(connection), setRead);
-    setReader(next);
-    void next.refresh();
+    const stop = reader.subscribe(setRead);
+    void reader.refresh();
     const timer = setInterval(() => {
-      if (document.visibilityState === "visible") void next.refresh();
+      if (document.visibilityState === "visible") void reader.refresh();
     }, MACHINE_REFRESH_MS);
     return () => {
       clearInterval(timer);
-      next.close();
+      stop();
     };
-  }, [connection]);
-  const answer = useCallback(
-    async (nonce: string, verdict: Verdict): Promise<void> => {
-      if (reader === undefined) throw new Error("the mesh status has not been read yet");
-      await reader.answer(nonce, verdict);
-    },
-    [reader],
-  );
+  }, [reader]);
+  const answer = useCallback((nonce: string, verdict: Verdict) => reader.answer(nonce, verdict), [reader]);
   return { read, answer };
 }

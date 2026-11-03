@@ -65,33 +65,32 @@ async function readMesh(calls: MeshCalls): Promise<MeshRead> {
 /**
  * Reads the `doriface-mesh` document with machine.list and the approval document beside it, and answers joins. The
  * core answers calls concurrently, so reads can land out of order: a read is shown only if no read started after it
- * has been shown, and `refresh` settles once a read at least as new as its own is on screen.
+ * has been shown. When `refresh` settles, its own read or a newer one is on screen.
  */
 export class MeshReader {
   readonly #calls: MeshCalls;
-  readonly #onRead: (read: MeshRead) => void;
-  #closed = false;
+  #onRead: ((read: MeshRead) => void) | undefined;
   #started = 0;
   #shown = 0;
-  #waiting: { readonly read: number; readonly resolve: () => void }[] = [];
 
-  constructor(calls: MeshCalls, onRead: (read: MeshRead) => void) {
+  constructor(calls: MeshCalls) {
     this.#calls = calls;
+  }
+
+  /** Shows each read to `onRead` until the returned stop is called. */
+  subscribe(onRead: (read: MeshRead) => void): () => void {
     this.#onRead = onRead;
+    return () => {
+      if (this.#onRead === onRead) this.#onRead = undefined;
+    };
   }
 
   async refresh(): Promise<void> {
     const read = ++this.#started;
     const next = await readMesh(this.#calls).catch(failedRead);
-    if (this.#closed) return;
-    if (read > this.#shown) {
-      this.#shown = read;
-      this.#onRead(next);
-      const shown = this.#waiting.filter((entry) => entry.read <= read);
-      this.#waiting = this.#waiting.filter((entry) => entry.read > read);
-      for (const entry of shown) entry.resolve();
-    }
-    if (read > this.#shown) await new Promise<void>((resolve) => this.#waiting.push({ read, resolve }));
+    if (read <= this.#shown) return;
+    this.#shown = read;
+    this.#onRead?.(next);
   }
 
   async answer(nonce: string, verdict: Verdict): Promise<void> {
@@ -102,11 +101,5 @@ export class MeshReader {
     } finally {
       await this.refresh();
     }
-  }
-
-  close(): void {
-    this.#closed = true;
-    for (const entry of this.#waiting) entry.resolve();
-    this.#waiting = [];
   }
 }
