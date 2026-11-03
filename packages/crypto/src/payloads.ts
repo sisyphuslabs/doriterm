@@ -1,4 +1,5 @@
 import { concatBytes, utf8 } from "./encoding.ts";
+import { checkName } from "./machine-name.ts";
 
 /** Handshake payloads are one JSON line (at most 256 bytes with its LF), then raw stream bytes where allowed. */
 const MAX_LINE = 256;
@@ -23,6 +24,12 @@ function deviceName(name: string): string {
   if (UNSAFE_NAME_CHARACTER.test(trimmed)) throw new PayloadError("a device name cannot contain control characters");
   if (!trimmed.isWellFormed()) throw new PayloadError("a device name cannot contain a lone surrogate");
   return trimmed;
+}
+
+/** A join's name is a mesh name: herdr-core's machine-name rule, untrimmed (contract v1.5 "Handshake payloads"). */
+function meshName(name: string): string {
+  if (!checkName(name)) throw new PayloadError("a mesh name is 1-32 of a-z 0-9 . _ -, starting with a letter or digit");
+  return name;
 }
 
 const line = (value: object): Uint8Array => utf8(`${JSON.stringify({ v: 1, ...value })}\n`);
@@ -57,7 +64,7 @@ const streamField = (stream: Stream | undefined): { readonly stream?: Stream } =
 
 /** Pairing message 1: `{"v":1,"name":"<name>"}\n` (with `"stream":"mesh"` for a join) and nothing after it. */
 export const encodePairingHello = (name: string, stream?: "mesh"): Uint8Array =>
-  line({ name: deviceName(name), ...streamField(stream) });
+  line({ name: stream === "mesh" ? meshName(name) : deviceName(name), ...streamField(stream) });
 
 /** IK message 1: `{"v":1}\n` followed by up to {@link MAX_EARLY_BYTES} early stream bytes (none on the mesh stream). */
 export function encodeSessionHello(early: Uint8Array = new Uint8Array(0), stream?: Stream): Uint8Array {
@@ -87,7 +94,8 @@ export function decodeHello(pattern: "IK" | "IKpsk2", payload: Uint8Array): Hell
   const name = fields["name"];
   if (typeof name !== "string") throw new PayloadError('a pairing hello carries {"name": string}');
   if (rest.byteLength > 0) throw new PayloadError("a pairing hello carries nothing after its line");
-  return { kind: "pairing", name: deviceName(name), stream: stream === "mesh" ? stream : undefined };
+  if (stream === "mesh") return { kind: "pairing", name: meshName(name), stream };
+  return { kind: "pairing", name: deviceName(name), stream: undefined };
 }
 
 /** `ws://`, an IPv4 or bracketed IPv6 literal, an explicit port, `/v1/e2ee`, and nothing else. */

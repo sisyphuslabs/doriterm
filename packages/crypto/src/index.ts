@@ -21,6 +21,7 @@ export {
   type CloseCodeValue,
   type Unsubscribe,
 } from "./link.ts";
+export { checkName, idShaped } from "./machine-name.ts";
 export { PROTOCOL_NAMES, type Pattern } from "./noise/handshake.ts";
 export { SessionKind } from "./kinds.ts";
 export type { PairingSecret } from "./client-flight.ts";

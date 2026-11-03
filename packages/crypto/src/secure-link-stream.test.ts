@@ -45,6 +45,7 @@ describe("the stream member of message 1 (contract v1.5)", () => {
     ["the mesh stream with early bytes", SessionKind.Session, '{"v":1,"stream":"mesh"}\nearly'],
     ['"hc" on a link pairing', SessionKind.PairLink, '{"v":1,"name":"laptop","stream":"hc"}\n'],
     ["an unknown stream on a session", SessionKind.Session, '{"v":1,"stream":"files"}\n'],
+    ["a join whose mesh name breaks herdr's rule", SessionKind.PairLink, '{"v":1,"name":"My Mac","stream":"mesh"}\n'],
   ])("%s closes 4400 before the host is asked to authorize", async (_, kind, payload) => {
     const { responder, asked, hostEnd } = await sendRaw(kind, payload);
     expect((await settledError(responder)).code).toBe(CloseCode.CryptoFailure);

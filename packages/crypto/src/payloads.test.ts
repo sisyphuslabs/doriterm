@@ -61,8 +61,25 @@ describe("handshake payloads: one JSON line, then raw stream bytes", () => {
     ["IK", '{"v":1,"stream":7}\n'],
     ["IKpsk2", '{"v":1,"name":"a","stream":"hc"}\n'],
     ["IKpsk2", '{"v":1,"name":"a","stream":"other"}\n'],
+    ["IKpsk2", '{"v":1,"name":"My Mac","stream":"mesh"}\n'],
+    ["IKpsk2", '{"v":1,"name":"t7","stream":"mesh"}\n'],
+    ["IKpsk2", `{"v":1,"name":"${"a".repeat(33)}","stream":"mesh"}\n`],
   ] as const)("stream: %s refuses %p", (pattern, payload) => {
     expect(() => decodeHello(pattern, bytes(payload))).toThrow(PayloadError);
+  });
+
+  test("a mesh name follows herdr's machine-name rule; a device name keeps its own rule", () => {
+    expect(() => encodePairingHello("My Mac", "mesh")).toThrow(PayloadError);
+    expect(decodeHello("IKpsk2", bytes('{"v":1,"name":"t0.mac_1","stream":"mesh"}\n'))).toEqual({
+      kind: "pairing",
+      name: "t0.mac_1",
+      stream: "mesh",
+    });
+    expect(decodeHello("IKpsk2", encodePairingHello("My Mac"))).toEqual({
+      kind: "pairing",
+      name: "My Mac",
+      stream: undefined,
+    });
   });
 
   test("a reply lists IP-literal LAN URLs", () => {
