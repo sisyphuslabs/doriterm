@@ -14,8 +14,6 @@ export type HcLine =
   | { readonly kind: "hello"; readonly coreId: string | undefined; readonly framed: boolean }
   | { readonly kind: "malformed"; readonly reason: string };
 
-class NotAnInteger {}
-
 const isObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -35,14 +33,17 @@ function depthOf(text: string): number {
   return deepest;
 }
 
-/** JSON both parsers read alike: well-formed strings and keys, and only small integer literals as numbers. */
+/**
+ * JSON both parsers read alike: well-formed strings and keys, and only small integer literals as numbers, anywhere in
+ * the line (serde_json refuses a whole line over one number like `1e400`, even in a field hc ignores).
+ */
 function parseStrict(bytes: Uint8Array): unknown {
   const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   if (depthOf(text) > MAX_DEPTH) throw new Error("nested too deeply");
   return JSON.parse(text, (key: string, value: unknown, context?: { source?: string }) => {
     if (!key.isWellFormed()) throw new Error("a key with a lone surrogate");
     if (typeof value === "string" && !value.isWellFormed()) throw new Error("a string with a lone surrogate");
-    if (typeof value === "number" && !INTEGER.test(context?.source ?? "")) return new NotAnInteger();
+    if (typeof value === "number" && !INTEGER.test(context?.source ?? "")) throw new Error("not a small integer");
     return value;
   });
 }
@@ -84,7 +85,7 @@ export function hcLineOf(bytes: Uint8Array): HcLine {
     return { kind: "malformed", reason: "not a JSON-RPC request" };
   }
   const { id, method } = request;
-  if (id === null || id instanceof NotAnInteger || (id !== undefined && typeof id !== "string" && typeof id !== "number")) {
+  if (id === null || (id !== undefined && typeof id !== "string" && typeof id !== "number")) {
     return { kind: "malformed", reason: "a JSON-RPC id must be a string or an integer" };
   }
   if (method !== "hello") return { kind: "call", method };
