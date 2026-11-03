@@ -8,6 +8,11 @@ export const HOST_NAMES = ["a", "b", "c", "d"] as const;
 export type HostName = (typeof HOST_NAMES)[number];
 
 const WAIT_MS = 60_000;
+/**
+ * How often `until` re-reads its condition between wakes. Some state changes nothing reports: hc's event feed carries
+ * terminal, status and doc events only, so a machine's line turning `connected` is seen by reading `machine.list` again.
+ */
+export const REREAD_MS = 500;
 const OFFER_URL = /https:\/\/\S*pair#\S+/;
 
 export interface Receipt {
@@ -26,7 +31,7 @@ export interface Mesh {
   core(name: string): Promise<HcConnection>;
   /** Calls `wake` on every host log line, state write, core event and tap open or close, until the returned function is called. */
   onWake(wake: () => void): () => void;
-  /** Waits for `check` to hold, re-evaluating it on every wake; never on a timer. */
+  /** Waits for `check` to hold, re-evaluating it on every wake and re-reading it every {@link REREAD_MS} meanwhile. */
   until(what: string, check: () => Promise<boolean> | boolean, ms?: number): Promise<void>;
   /** `mesh pair --auto` on `inviter`, then `mesh join` on `joiner`: the only operator steps a join takes. */
   join(inviter: string, joiner: string): Promise<void>;
@@ -63,6 +68,32 @@ export function coalesce(check: () => Promise<void>, failed: (error: unknown) =>
     }
   };
   return () => void evaluate();
+}
+
+/**
+ * Waits up to `ms` for `check` to hold. It is evaluated at once, on every wake, and every `rereadMs` in between, for
+ * state that changes without a wake; one evaluation runs at a time, and the re-reads stop when the wait ends.
+ */
+export async function untilHolds(
+  onWake: (wake: () => void) => () => void,
+  what: string,
+  check: () => Promise<boolean> | boolean,
+  ms = WAIT_MS,
+  rereadMs = REREAD_MS,
+): Promise<void> {
+  const done = Promise.withResolvers<void>();
+  const wake = coalesce(async () => {
+    if (await check()) done.resolve();
+  }, done.reject);
+  const off = onWake(wake);
+  const reread = setInterval(wake, rereadMs);
+  wake();
+  try {
+    await within(done.promise, what, ms);
+  } finally {
+    clearInterval(reread);
+    off();
+  }
 }
 
 async function portListens(port: number): Promise<boolean> {
@@ -150,19 +181,8 @@ export async function startMesh(options: MeshOptions = {}): Promise<Mesh> {
     wakes.add(wake);
     return () => wakes.delete(wake);
   };
-  const until = async (what: string, check: () => Promise<boolean> | boolean, ms = WAIT_MS): Promise<void> => {
-    const done = Promise.withResolvers<void>();
-    const wake = coalesce(async () => {
-      if (await check()) done.resolve();
-    }, done.reject);
-    const off = onWake(wake);
-    wake();
-    try {
-      await within(done.promise, what, ms);
-    } finally {
-      off();
-    }
-  };
+  const until = (what: string, check: () => Promise<boolean> | boolean, ms = WAIT_MS): Promise<void> =>
+    untilHolds(onWake, what, check, ms);
   const join = async (inviter: string, joiner: string): Promise<void> => {
     const from = host(inviter);
     const relayUrl = from.tap?.url ?? options.relayUrl ?? "";
