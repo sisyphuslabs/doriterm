@@ -11,7 +11,17 @@ export async function seedMeshDoc(
   env: Readonly<Record<string, string | undefined>>,
 ): Promise<void> {
   const now = new Date();
-  const value = meshStatus(meshFixture(now).sources, now);
+  const status = meshStatus(meshFixture(now).sources, now);
+  const open = status.pending[0];
+  if (open === undefined) throw new Error("the mesh fixture has no pending join");
+  // A join whose offer ended before the panel opened: the document can outlive its offer (design 4.3, 10.1).
+  const expired = {
+    ...open,
+    nonce: "ZXhwaXJlZCBqb2lu",
+    name: "old-runner",
+    expiresAt: new Date(now.getTime() - 60_000).toISOString(),
+  };
+  const value = { ...status, pending: [...status.pending, expired] };
   const request = { jsonrpc: "2.0", id: 1, method: "doc.set", params: { name: MESH_STATUS_DOC, value, version: 0 } };
   const control = Bun.spawn([hc, "connect", "--session", session], { env, stdin: "pipe", stdout: "pipe" });
   control.stdin.write(`${JSON.stringify(request)}\n`);

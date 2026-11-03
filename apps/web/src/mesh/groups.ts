@@ -7,6 +7,22 @@ import type {
   MeshStatus,
 } from "@doriface/protocol";
 
+/** What a pending join's row offers: the two answers, nothing (expired), or the answer this device gave. */
+export type PendingAnswer = "open" | "expired" | "approve" | "deny";
+
+/**
+ * A join dies with its offer (design 4.3), and the document can outlive the host that wrote it, so an expired offer
+ * takes no answer and never reads as admitted, even if this device approved it before it expired.
+ */
+export function pendingAnswer(
+  join: MeshPendingJoin,
+  now: number,
+  answered: "approve" | "deny" | undefined,
+): PendingAnswer {
+  if (now >= Date.parse(join.expiresAt)) return "expired";
+  return answered ?? "open";
+}
+
 export interface MeshGroups {
   readonly pending: readonly MeshPendingJoin[];
   readonly removed: readonly MeshRemovedStatus[];

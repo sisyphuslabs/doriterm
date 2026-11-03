@@ -2,7 +2,7 @@ import { meshStatus } from "@doriface/host";
 import { meshFixture } from "@doriface/host/testing";
 import type { MachineView, MeshStatus } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
-import { disagreement, meshGroups } from "./groups.ts";
+import { disagreement, meshGroups, pendingAnswer } from "./groups.ts";
 
 const NOW = new Date("2026-11-03T12:00:00.000Z");
 const fixture = meshFixture(NOW);
@@ -41,6 +41,27 @@ describe("meshGroups", () => {
       members: status.members.map((member) => (member.name === "build-box" ? { ...member, overCap: true } : member)),
     };
     expect(names(meshGroups(overCap).offline)).toContain("build-box");
+  });
+});
+
+describe("a pending join's answer", () => {
+  const join = status.pending[0];
+  if (join === undefined) throw new Error("the fixture has a pending join");
+  const expires = Date.parse(join.expiresAt);
+
+  test("is open until the offer expires, and expired from then on, so nobody can approve a join that is gone", () => {
+    expect(pendingAnswer(join, expires - 1, undefined)).toBe("open");
+    expect(pendingAnswer(join, expires, undefined)).toBe("expired");
+    expect(pendingAnswer(join, expires + 60_000, undefined)).toBe("expired");
+  });
+
+  test("shows what this device answered while the offer is open", () => {
+    expect(pendingAnswer(join, expires - 1, "approve")).toBe("approve");
+    expect(pendingAnswer(join, expires - 1, "deny")).toBe("deny");
+  });
+
+  test("an approval of an offer that has since expired does not read as admitted", () => {
+    expect(pendingAnswer(join, expires, "approve")).toBe("expired");
   });
 });
 

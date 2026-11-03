@@ -2,7 +2,7 @@ import type { MeshPendingJoin, MeshRemovedStatus, MeshStatus, MeshStuckReason } 
 import { Button, Fingerprint, Notice, SettingRow } from "@doriface/ui";
 import { useState } from "react";
 import { formatAge } from "../workspace/model.ts";
-import type { Disagreement } from "./groups.ts";
+import { type Disagreement, pendingAnswer } from "./groups.ts";
 import { Command, type NameOf } from "./mesh-rows.tsx";
 import type { Verdict } from "./use-mesh.ts";
 
@@ -23,8 +23,9 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
   const send = (verdict: Verdict): void => {
     setBusy(verdict);
     setFailure(undefined);
+    // On success the buttons stay disabled until the refreshed document shows the answer in their place.
     onAnswer(verdict).then(
-      () => setBusy(undefined),
+      () => undefined,
       (error: unknown) => {
         setBusy(undefined);
         setFailure(error instanceof Error ? error.message : String(error));
@@ -32,6 +33,7 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
     );
   };
   const left = Date.parse(join.expiresAt) - now;
+  const state = pendingAnswer(join, now, answered);
   return (
     <SettingRow
       title={`${join.name} asks to join`}
@@ -49,8 +51,8 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
         </>
       }
       control={
-        answered === undefined ? (
-          <div className="flex gap-2">
+        state === "open" ? (
+          <div className="flex gap-2" data-mesh-answer={state}>
             <Button size="sm" loading={busy === "deny"} disabled={busy !== undefined} onClick={() => send("deny")}>
               Deny
             </Button>
@@ -65,8 +67,8 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
             </Button>
           </div>
         ) : (
-          <span className="text-sm text-muted-foreground">
-            {answered === "approve" ? `Approved; ${self} admits it next` : "Denied"}
+          <span className="text-sm text-muted-foreground" data-mesh-answer={state}>
+            {state === "approve" ? `Approved; ${self} admits it next` : state === "deny" ? "Denied" : "Expired"}
           </span>
         )
       }

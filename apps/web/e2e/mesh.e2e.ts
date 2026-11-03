@@ -32,6 +32,14 @@ test("the mesh panel groups every machine of the host's status document", async 
   await expect(page.getByText("disagrees with machine.list")).toHaveCount(0);
 });
 
+test("an expired join offers no answer", async ({ page }) => {
+  await openMesh(page);
+  const pending = group(page, "pending");
+  await expect(pending.locator('[data-mesh-answer="expired"]')).toHaveCount(1, { timeout: 20_000 });
+  await expect(pending.locator('[data-mesh-answer="expired"] button')).toHaveCount(0);
+  await expect(pending.locator('[data-mesh-answer="open"] button')).toHaveCount(2);
+});
+
 test("approving a pending join writes the answer and shows it in place", async ({ page }) => {
   await openMesh(page);
   const pending = group(page, "pending");
