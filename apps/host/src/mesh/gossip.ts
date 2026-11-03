@@ -96,7 +96,7 @@ export class Gossip implements SyncHost {
   }
 
   /** An authenticated sync session, inbound or outbound; one per peer, as section 5.1 picks it. */
-  attach(peer: string, dialer: string, link: LineLink, sweeping = false): SyncSession {
+  attach(peer: string, dialer: string, link: LineLink, sweeping = false, waitForHello = false): SyncSession {
     const ends = { peer, dialer, sweeping };
     const session = new SyncSession(ends, link, this, this.#options.clock, this.#timings.lingerMs);
     const existing = this.#sessions.get(peer);
@@ -111,7 +111,7 @@ export class Gossip implements SyncHost {
     this.#sessions.set(peer, session);
     this.#lastSync.set(peer, this.#options.clock.now());
     if (dialer === peer) this.#options.policy.presence(peer);
-    session.start();
+    session.start(waitForHello);
     return session;
   }
 
@@ -123,7 +123,10 @@ export class Gossip implements SyncHost {
     if (result.counterBehind) {
       this.#options.log(`mesh: counter behind its records (mesh ${this.#counterFloor}): syncing before signing`);
     }
-    if (result.added.length > 0) this.#changed(result, session.sweeping);
+    if (result.added.length > 0) {
+      this.#options.log(`mesh: merged ${result.added.length} records from ${this.#nameOf(session.peer)}`);
+      this.#changed(result, session.sweeping);
+    }
     return result;
   }
 

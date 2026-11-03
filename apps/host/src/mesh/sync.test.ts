@@ -4,6 +4,17 @@ import { MAX_LINE_BYTES } from "./lines.ts";
 import { headsOfRecords, meshOf, peer, Signer } from "./testing/mesh-peers.ts";
 import { sessionAtB } from "./testing/scripted.ts";
 
+describe("a join's session kept for sync (section 4.4)", () => {
+  test("the inviter's side says nothing until the joiner's hello, so the joiner reads its welcome undisturbed", async () => {
+    const peerA = sessionAtB(undefined, { waitForHello: true });
+    await peerA.settled();
+    expect(peerA.sent).toEqual([]);
+    peerA.receive({ t: "hello", v: 2, mesh: peerA.meshId, heads: [], n: {} });
+    await peerA.settled();
+    expect(peerA.sent[0]?.t).toBe("hello");
+  });
+});
+
 describe("a sync session (S-1)", () => {
   test("asks once per session for a dangling record's past, and stores both when it comes", async () => {
     const [a, b] = [peer("a"), peer("b")];

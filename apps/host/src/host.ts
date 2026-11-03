@@ -15,6 +15,7 @@ import { DeviceStore } from "./state/devices.ts";
 import { loadHostIdentity } from "./state/host-keys.ts";
 import { MeshStore } from "./state/mesh.ts";
 import { HostMesh } from "./mesh/host-mesh.ts";
+import { HostSync } from "./mesh/host-sync.ts";
 import { PairingStore, pendingToWire } from "./state/pairing.ts";
 
 export const HOST_VERSION = packageJson.version;
@@ -174,6 +175,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
     relayUrl: uplink === undefined ? undefined : options.relay?.url,
     stop() {
       e2ee?.slots.stop();
+      e2ee?.sync.stop();
       control?.stop();
       stopping ??= Promise.resolve(uplink?.stop())
         .then(() => gateway.closeAll())
@@ -193,7 +195,9 @@ function openControl(
   return listenControl(stateDir, async (request, closed) => {
     switch (request.op) {
       case "devices-changed":
+        return e2ee.sessions.closeRevoked();
       case "mesh-changed":
+        e2ee.sync.changed();
         return e2ee.sessions.closeRevoked();
       case "pair":
         return pendingToWire(await e2ee.hostMesh.pairDevice());
@@ -227,7 +231,19 @@ function e2eeDeps(
   const sessions = new LiveSessions(devices, options.log, mesh);
   const hc = { hc: options.hc, session: options.session, env: options.env };
   const relay = { url: options.relay?.url, createSocket: options.relay?.createSocket };
-  const hostMesh = new HostMesh({ stateDir, identity, mesh, slots, sessions, hc, relay, log: options.log });
+  const sync = new HostSync({ identity, mesh, relay, log: options.log });
+  sync.changed();
+  const hostMesh = new HostMesh({
+    stateDir,
+    identity,
+    mesh,
+    slots,
+    sessions,
+    hc,
+    relay,
+    sync: (session) => sync.adopt(session),
+    log: options.log,
+  });
   return {
     identity,
     lanUrls,
@@ -237,6 +253,7 @@ function e2eeDeps(
     slots,
     sessions,
     hostMesh,
+    sync,
     meshStream: (secure: SecureLink) => hostMesh.serve(secure),
     rekeyInterval: options.rekeyInterval,
     log: options.log,

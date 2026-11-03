@@ -19,7 +19,7 @@ export interface ScriptedSession {
   settled(): Promise<void>;
 }
 
-export function sessionAtB(records?: readonly Signed[]): ScriptedSession {
+export function sessionAtB(records?: readonly Signed[], options: { waitForHello?: boolean } = {}): ScriptedSession {
   const [a, b] = [peer("a"), peer("b")];
   const set = records ?? meshOf([a, b]).records;
   const meshId = meshIdOfRecords(set);
@@ -48,7 +48,7 @@ export function sessionAtB(records?: readonly Signed[]): ScriptedSession {
     return [bytes];
   };
   const session = new SyncSession({ peer: a.signPub, dialer: a.signPub, sweeping: false }, ours, host, new FakeClock());
-  session.start();
+  session.start(options.waitForHello === true);
   const encoder = new TextEncoder();
   return {
     session,

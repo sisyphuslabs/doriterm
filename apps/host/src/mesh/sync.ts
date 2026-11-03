@@ -39,6 +39,7 @@ export class SyncSession {
   readonly #sent = new Set<string>();
   readonly #wanted = new Set<string>();
   #incoming: Signed[] = [];
+  #saidHello = false;
   #idle: () => void = () => undefined;
   #closed = false;
 
@@ -63,9 +64,10 @@ export class SyncSession {
     return this.#closed;
   }
 
-  start(): void {
-    this.#hello();
-    void this.#read();
+  /** With `waitForHello` (the inviter's side of a join's session), it speaks only once the peer said hello. */
+  start(waitForHello = false): void {
+    if (!waitForHello) this.#hello();
+    this.#read();
   }
 
   /** Sends every stored record the peer's known heads do not cover and that this session has not sent yet. */
@@ -83,19 +85,18 @@ export class SyncSession {
     this.#ended();
   }
 
-  async #read(): Promise<void> {
-    for (;;) {
-      let line: MeshLine;
-      try {
-        line = await this.#lines.next();
-      } catch {
-        return this.#ended();
-      }
-      this.#receive(line);
-    }
+  #read(): void {
+    this.#lines.next().then(
+      (line) => {
+        this.#receive(line);
+        return this.#read();
+      },
+      () => this.#ended(),
+    );
   }
 
   #hello(): void {
+    this.#saidHello = true;
     const records = this.#host.records();
     this.#send({ t: "hello", v: 2, mesh: this.#host.meshId, heads: headsOf(records), n: countersOf(records) });
   }
@@ -139,6 +140,7 @@ export class SyncSession {
     }
     for (const head of heads) this.#peerHeads.add(head);
     this.#host.heard(this.peer, heads, n);
+    if (!this.#saidHello) this.#hello();
     this.flush();
   }
 
