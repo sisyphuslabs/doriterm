@@ -2,11 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mergeBatch } from "./merge.ts";
 import { FakeSigner, fakeRules, hashOfRecord, MemoryFile, meshOf, member } from "./testing/fake-mesh.ts";
 
-const [a, b, c] = ["a", "b", "c"].map(member) as [
-  ReturnType<typeof member>,
-  ReturnType<typeof member>,
-  ReturnType<typeof member>,
-];
+const a = member("a");
+const b = member("b");
+const c = member("c");
 
 function atB(): { file: MemoryFile; deps: Parameters<typeof mergeBatch>[0]; founder: FakeSigner } {
   const base = meshOf([a, b]);
