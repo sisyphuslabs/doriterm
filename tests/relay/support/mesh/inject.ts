@@ -1,6 +1,6 @@
 import { type HostIdentity, rawStaticKey, SecureLinkError, secureLink, type SecureLinkOptions } from "@doriface/crypto";
 import { connectRelayClient } from "@doriface/relay-client";
-import { socketFrom } from "../probe.ts";
+import { socketFrom, testIp } from "../probe.ts";
 import { within } from "../watch.ts";
 import { identityOf } from "./identity.ts";
 import type { Mesh } from "./mesh.ts";
@@ -44,7 +44,8 @@ export async function deliver(options: DeliverOptions): Promise<Delivery> {
   const link = await connectRelayClient({
     relayUrl: relay.url,
     hostId: target.hostId,
-    createSocket: socketFrom(relay.ip),
+    // Not a mesh host: its own address, so the relay's per-source lookup quota (3) is not the hosts' to share.
+    createSocket: socketFrom(testIp()),
   });
   // `stream` is PR 3's handshake member; this branch's SecureLinkOptions does not declare it yet.
   const handshake: SecureLinkOptions & { readonly stream: "mesh" } = {
