@@ -14,6 +14,7 @@ import {
 } from "@doriface/mesh";
 import { CounterBehindError, type MeshStore, type MeshTx } from "../state/mesh.ts";
 import { headsOf, ownN } from "../state/mesh-tx.ts";
+import { ownHeadFirst } from "./fold.ts";
 import { type MeshView, meshViewOf } from "./mesh-view.ts";
 
 export interface MergeDeps {
@@ -68,7 +69,10 @@ const counterBehind = (deps: MergeDeps, records: readonly Signed[]): number | un
 const encoder = new TextEncoder();
 const fits = (body: RecordBody): boolean => encoder.encode(encodeBody(body)).byteLength <= MAX_BODY_BYTES;
 
-/** The most of `heads` one ack can name: at most MAX_PREV, and few enough that its body stays within 2048 bytes. */
+/**
+ * The most of `heads` one ack can name, from the front: at most MAX_PREV, and few enough that its body stays within
+ * 2048 bytes. The caller puts the head covering this host's own latest record first.
+ */
 function foldable(deps: MergeDeps, n: number, heads: readonly string[]): readonly string[] {
   let count = Math.min(heads.length, MAX_PREV);
   while (count > 1 && !fits(bodyOf(deps, n, heads.slice(0, count)))) count -= 1;
@@ -84,7 +88,9 @@ function fitHeads(deps: MergeDeps, tx: MeshTx, draft?: RecordDraft): boolean {
     heads.length <= MAX_PREV && fits(bodyOf(deps, Number.MAX_SAFE_INTEGER, heads, draft));
   while (!fitsOne(headsOf(tx.records))) {
     if (tx.records.length >= MAX_RECORDS) return false;
-    tx.sign(deps.identity, (n, prev) => bodyOf(deps, n, foldable(deps, n, prev)));
+    tx.sign(deps.identity, (n, prev) =>
+      bodyOf(deps, n, foldable(deps, n, ownHeadFirst(tx.records, prev, selfOf(deps)))),
+    );
   }
   return tx.records.length < MAX_RECORDS;
 }

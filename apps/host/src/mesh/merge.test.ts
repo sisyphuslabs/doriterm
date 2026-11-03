@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { hashOf, parseRecord, type Signed } from "@doriface/mesh";
+import { hashOf, parseRecord, type Signed, viewOf } from "@doriface/mesh";
 import type { MeshStore } from "../state/mesh.ts";
-import { mergeBatch } from "./merge.ts";
+import { appendOwn, mergeBatch } from "./merge.ts";
 import { headsOfRecords, meshOf, peer, Signer, storeOf } from "./testing/mesh-peers.ts";
 
 const [a, b, c] = [peer("a"), peer("b"), peer("c")];
@@ -55,19 +55,44 @@ describe("automatic acks (S-3, section 5.5)", () => {
     expect(acksBy(store, b.signPub)).toEqual([]);
   });
 
-  test("more heads than one record can name are folded by acks first, every one within the door's limits", () => {
+  test.each([70, 120, 200])(
+    "%i heads are folded by acks within the door's limits, and every record b signs stays effective (section 3.2)",
+    (width) => {
+      const { store, deps, founder } = atB();
+      const start = headsAt(store);
+      mergeBatch(
+        deps,
+        Array.from({ length: width }, () => founder.ack(start)),
+      );
+      expect(headsAt(store).length).toBe(width);
+      mergeBatch(deps, [founder.admit(c, start)]);
+      expect(headsAt(store).length).toBeLessThanOrEqual(1);
+      const own = acksBy(store, b.signPub);
+      expect(own.length).toBeGreaterThan(1);
+      for (const record of own) expect(parseRecord(record)?.prev.length).toBeLessThanOrEqual(64);
+      const view = viewOf(recordsOf(store));
+      expect(own.filter((record) => !view.eff.has(hashOf(record)))).toEqual([]);
+      appendOwn(deps, { type: "name", signPub: b.signPub, name: `b${width}` });
+      expect(viewOf(recordsOf(store)).name.get(b.signPub)).toBe(`b${width}`);
+    },
+  );
+
+  test("the first fold names the head that covers b's own latest record, wherever it sits among the heads", () => {
     const { store, deps, founder } = atB();
     const start = headsAt(store);
     mergeBatch(
       deps,
-      Array.from({ length: 70 }, () => founder.ack(start)),
+      Array.from({ length: 90 }, () => founder.ack(start)),
     );
-    expect(headsAt(store).length).toBe(70);
     mergeBatch(deps, [founder.admit(c, start)]);
-    expect(headsAt(store).length).toBeLessThanOrEqual(1);
-    const own = acksBy(store, b.signPub);
-    expect(own.length).toBeGreaterThan(1);
-    for (const record of own) expect(parseRecord(record)?.prev.length).toBeLessThanOrEqual(64);
+    const covering = founder.ack(headsAt(store));
+    mergeBatch(
+      deps,
+      Array.from({ length: 90 }, () => founder.ack(start)),
+    );
+    mergeBatch(deps, [covering, founder.admit(peer("d"), start)]);
+    const view = viewOf(recordsOf(store));
+    expect(acksBy(store, b.signPub).filter((record) => !view.eff.has(hashOf(record)))).toEqual([]);
   });
 });
 
