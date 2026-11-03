@@ -223,6 +223,7 @@ export class Reconciler {
       }
       if (kind === "already_added") return this.#migrate(member, attempt, name);
       this.status.set(member.hostId, { state: "retrying", reason: `${kind}: ${messageOf(error)}` });
+      this.#options.log(`mesh: adding machine ${name} failed (${kind}): ${messageOf(error)}; retrying`);
       this.#retryLater(member.hostId);
     }
   }
