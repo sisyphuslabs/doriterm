@@ -83,13 +83,13 @@ export function disagreement(
     if (hostId !== undefined) lines.set(hostId, machine);
   }
   const named = new Map(machines.map((machine) => [machine.name, machine]));
-  const connectedHere = (hostId: string, localName: string): boolean =>
-    (lines.get(hostId) ?? named.get(localName))?.state === "connected";
+  const connectedHere = (hostId: string, localName: string | null): boolean =>
+    (lines.get(hostId) ?? (localName === null ? undefined : named.get(localName)))?.state === "connected";
   const listed = new Set([status.self, ...status.members.map((m) => m.hostId), ...status.revoked.map((r) => r.hostId)]);
   const names = new Set([
     ...status.members
       .filter((m) => m.line !== "self" && (m.line === "connected") !== connectedHere(m.hostId, m.localName))
-      .map((m) => m.name),
+      .map((m) => m.name ?? m.hostId),
     ...[...lines]
       .filter(([hostId, machine]) => machine.state === "connected" && !listed.has(hostId))
       .map(([, machine]) => machine.name),

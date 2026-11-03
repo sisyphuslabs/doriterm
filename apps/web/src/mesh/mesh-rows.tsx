@@ -79,7 +79,9 @@ const Key = ({ fingerprint }: { readonly fingerprint: string }) => (
 );
 
 function memberFacts(member: MeshMemberStatus, nameOf: NameOf, now: number): string[] {
-  const parts = [member.admittedBy === null ? "founder" : `admitted by ${nameOf(member.admittedBy)}`];
+  const parts: string[] = [];
+  if (member.admittedBy !== null) parts.push(`admitted by ${nameOf(member.admittedBy)}`);
+  else if (!member.overCap) parts.push("founder");
   if (member.overCap) parts.push("over the 12-member cap");
   if (member.unreachableSince === null && member.lastSync !== null) {
     parts.push(`last sync ${formatAge(Date.parse(member.lastSync), now)} ago`);
@@ -101,14 +103,15 @@ export function MemberRow({ member, nameOf, now }: MemberRowProps) {
   const Icon = member.line === "self" ? Monitor : Server;
   const undecidable = member.line !== "self" && member.witnessPool.length === 0;
   const ask = member.witnessAsk;
-  const revoke = member.revokeSuggested ? meshRevokeCommand(member.name) : undefined;
+  const name = member.name ?? member.hostId;
+  const revoke = member.revokeSuggested && member.name !== null ? meshRevokeCommand(member.name) : undefined;
   return (
     <SettingRow
       inline
       title={
         <span className="flex items-center gap-2 [&_svg]:size-4 [&_svg]:text-muted-foreground">
           <Icon aria-hidden />
-          {member.name}
+          {name}
         </span>
       }
       description={
@@ -123,19 +126,17 @@ export function MemberRow({ member, nameOf, now }: MemberRowProps) {
               .map((part) => ` · ${part}`)
               .join("")}
           </span>
-          <Key fingerprint={member.fingerprint} />
+          {member.fingerprint === null ? null : <Key fingerprint={member.fingerprint} />}
           {undecidable ? (
             <span className="mt-1 block">
-              {`A revoke of ${member.name} written here could not be decided`}
+              {`A revoke of ${name} written here could not be decided`}
               {ask === null ? "; if its key is compromised, re-found the mesh." : `; revoke it from ${nameOf(ask)}.`}
             </span>
           ) : null}
           {member.replacedMachine === null ? null : (
             <span className="mt-1 block">{`Replaced the machine "${member.replacedMachine}" (doriface-host connect) with the mesh line.`}</span>
           )}
-          {revoke === undefined ? null : (
-            <Command command={revoke} label={`Copy the command that revokes ${member.name}`} />
-          )}
+          {revoke === undefined ? null : <Command command={revoke} label={`Copy the command that revokes ${name}`} />}
         </>
       }
       control={null}

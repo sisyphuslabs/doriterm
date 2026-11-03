@@ -39,7 +39,9 @@ function MeshGroup({ id, title, count, urgent = false, children }: MeshGroupProp
 
 function namesIn(status: MeshStatus): (hostId: string) => string {
   const names = new Map<string, string>();
-  for (const entry of [...status.members, ...status.revoked, ...status.pending]) names.set(entry.hostId, entry.name);
+  for (const entry of [...status.members, ...status.revoked, ...status.pending]) {
+    names.set(entry.hostId, entry.name ?? entry.hostId);
+  }
   for (const removal of status.removed) names.set(removal.revokedKey.hostId, removal.revokedKey.name);
   return (hostId) => names.get(hostId) ?? hostId;
 }

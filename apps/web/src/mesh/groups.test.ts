@@ -24,7 +24,7 @@ const machine = (name: string, state: string, hostId?: string): MachineView => (
 const { ids } = fixture;
 const without = (name: string): MeshStatus => ({ ...status, members: status.members.filter((m) => m.name !== name) });
 
-const names = (entries: readonly { readonly name: string }[]) => entries.map((entry) => entry.name);
+const names = (entries: readonly { readonly name: string | null }[]) => entries.map((entry) => entry.name);
 
 describe("meshGroups", () => {
   test("joins first, then the fail-closed removal, members by line, and revoked keys", () => {
@@ -47,6 +47,25 @@ describe("meshGroups", () => {
       members: status.members.map((member) => (member.name === "build-box" ? { ...member, overCap: true } : member)),
     };
     expect(names(meshGroups(overCap).offline)).toContain("build-box");
+  });
+});
+
+describe("an over-cap member the view gives no name, key or lineage", () => {
+  const nameless: MeshStatus = {
+    ...status,
+    members: status.members.map((member) =>
+      member.name === "tablet"
+        ? { ...member, overCap: true, name: null, localName: null, fingerprint: null, admittedBy: null }
+        : member,
+    ),
+  };
+
+  test("is offline, and machine.list is matched to it by its mesh line only", () => {
+    expect(meshGroups(nameless).offline.map((member) => member.hostId)).toContain(ids.tablet.hostId);
+    const base = [machine("build-box", "connected")];
+    expect(disagreement(nameless, [...base, machine("tablet", "connected")], undefined)).toBeUndefined();
+    const line = [...base, machine("tablet", "connected", ids.tablet.hostId)];
+    expect(disagreement(nameless, line, undefined)?.names).toEqual([ids.tablet.hostId]);
   });
 });
 
