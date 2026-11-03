@@ -6,7 +6,7 @@ import {
 } from "@doriface/protocol";
 import { IconButton, SettingRow, cn } from "@doriface/ui";
 import { Check, Copy, Monitor, Server } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatAge } from "../workspace/model.ts";
 
 export type NameOf = (hostId: string) => string;
@@ -29,23 +29,42 @@ const REVOKE_REASON: Readonly<Record<MeshRevokedStatus["reason"], string>> = {
   leave: "left the mesh",
 };
 
-export function CopyCommand({ command, label }: { readonly command: string; readonly label: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async (): Promise<void> => {
-    await navigator.clipboard.writeText(command);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-  return <IconButton label={label} icon={copied ? <Check /> : <Copy />} onClick={() => void copy()} />;
-}
+type CopyState = "idle" | "copied" | "failed";
 
-/** A command to run elsewhere, with its copy button right beside it. */
-export const Command = ({ command, label }: { readonly command: string; readonly label: string }) => (
-  <span className="mt-1 flex items-center gap-1">
-    <code className="min-w-0 font-mono text-xs [overflow-wrap:anywhere] text-foreground select-all">{command}</code>
-    <CopyCommand command={command} label={label} />
-  </span>
-);
+/**
+ * A command to run elsewhere, with its copy button right beside it. A clipboard that refuses (no permission, no
+ * clipboard API) says so in place: the command is selectable, so the owner can copy it by hand.
+ */
+export function Command({ command, label }: { readonly command: string; readonly label: string }) {
+  const [state, setState] = useState<CopyState>("idle");
+  useEffect(() => {
+    if (state !== "copied") return undefined;
+    const timer = setTimeout(() => setState("idle"), 1500);
+    return () => clearTimeout(timer);
+  }, [state]);
+  const copy = (): void => {
+    // A browser without the clipboard API throws instead of rejecting, so the call runs inside the promise chain.
+    Promise.resolve(command)
+      .then((text) => navigator.clipboard.writeText(text))
+      .then(
+        () => setState("copied"),
+        () => setState("failed"),
+      );
+  };
+  return (
+    <span className="mt-1 block" data-copy-state={state}>
+      <span className="flex items-center gap-1">
+        <code className="min-w-0 font-mono text-xs [overflow-wrap:anywhere] text-foreground select-all">{command}</code>
+        <IconButton label={label} icon={state === "copied" ? <Check /> : <Copy />} onClick={copy} />
+      </span>
+      {state === "failed" ? (
+        <span role="status" className="block text-xs text-status-blocked-text">
+          Could not copy: select the command and copy it.
+        </span>
+      ) : null}
+    </span>
+  );
+}
 
 const Key = ({ fingerprint }: { readonly fingerprint: string }) => (
   <span className="mt-1 block font-mono text-xs tracking-wide text-muted-foreground tabular-nums">{fingerprint}</span>

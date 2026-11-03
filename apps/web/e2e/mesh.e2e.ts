@@ -32,6 +32,20 @@ test("the mesh panel groups every machine of the host's status document", async 
   await expect(page.getByText("disagrees with machine.list")).toHaveCount(0);
 });
 
+test("a copy the clipboard refuses says so beside the command", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: () => Promise.reject(new DOMException("denied", "NotAllowedError")) },
+    });
+  });
+  await openMesh(page);
+  const command = group(page, "offline").locator("[data-copy-state]").first();
+  await expect(command).toHaveAttribute("data-copy-state", "idle", { timeout: 20_000 });
+  await command.getByRole("button").click();
+  await expect(command).toHaveAttribute("data-copy-state", "failed");
+  await expect(command.getByRole("status")).toBeVisible();
+});
+
 test("an expired join offers no answer", async ({ page }) => {
   await openMesh(page);
   const pending = group(page, "pending");
