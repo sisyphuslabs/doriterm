@@ -92,13 +92,22 @@ function fitHeads(deps: MergeDeps, tx: MeshTx, draft?: RecordDraft): boolean {
 }
 
 /** A membership record signed by someone else is acked once, by a member that is valid in the merged view. */
-function needsAck(deps: MergeDeps, added: readonly Signed[], view: MeshView): boolean {
+function needsAck(deps: MergeDeps, added: readonly Signed[], view: () => MeshView): boolean {
   const self = selfOf(deps);
-  if (!view.members.some((member) => member.signPub === self)) return false;
-  return added.some((record) => {
+  const membership = added.some((record) => {
     const body = parseRecord(record);
     return body !== undefined && body.by !== self && MEMBERSHIP.has(body.type);
   });
+  return membership && view().members.some((member) => member.signPub === self);
+}
+
+/** The view of `tx`'s records, evaluated once and only if asked: a batch that adds nothing never evaluates one. */
+function viewOnce(tx: MeshTx): () => MeshView {
+  let view: { readonly records: readonly Signed[]; readonly view: MeshView } | undefined;
+  return () => {
+    if (view?.records !== tx.records) view = { records: tx.records, view: meshViewOf(tx.records, tx.view()) };
+    return view.view;
+  };
 }
 
 function wantedBy(tx: MeshTx): readonly string[] {
@@ -116,7 +125,7 @@ export function mergeBatch(deps: MergeDeps, batch: readonly Signed[]): MergeResu
   const result = deps.store.transact((tx) => {
     const before = tx.records.length;
     const merged = tx.merge(batch);
-    let view = meshViewOf(tx.records, tx.view());
+    const view = viewOnce(tx);
     let behind = false;
     let ack: Signed | undefined;
     if (needsAck(deps, merged.added, view)) {
@@ -126,11 +135,21 @@ export function mergeBatch(deps: MergeDeps, batch: readonly Signed[]): MergeResu
         if (!(error instanceof CounterBehindError)) throw error;
         behind = true;
       }
-      if (ack !== undefined) view = meshViewOf(tx.records, tx.view());
     }
     const refused = merged.refused.map(({ record, reason }) => ({ hash: hashOf(record), reason }));
     const added = tx.records.slice(before);
-    return { added, refused, wanted: wantedBy(tx), ack, counterBehind: behind, view };
+    const wanted = wantedBy(tx);
+    if (added.length > 0) view();
+    return {
+      added,
+      refused,
+      wanted,
+      ack,
+      counterBehind: behind,
+      get view(): MeshView {
+        return view();
+      },
+    };
   });
   if (result.counterBehind) deps.store.catchUp(deps.identity);
   return result;

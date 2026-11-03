@@ -97,6 +97,27 @@ describe("automatic acks (S-3, section 5.5)", () => {
   });
 });
 
+describe("what a replayed batch costs (abuse, section 5.2)", () => {
+  test("records this host already stores evaluate no view, so a replay costs no view under the lock", () => {
+    const { records, meshId } = meshOf([a, b]);
+    let evaluations = 0;
+    const store = storeOf(b, records, {
+      evaluate: (set) => {
+        evaluations += 1;
+        return viewOf(set);
+      },
+    });
+    const deps = { store, identity: b.machine.identity, meshId };
+    const admit = new Signer(a, records).admit(c, headsOfRecords(records));
+    mergeBatch(deps, [admit]);
+    const stored = recordsOf(store);
+    evaluations = 0;
+    const replay = mergeBatch(deps, [admit, ...stored]);
+    expect(replay.added).toEqual([]);
+    expect(evaluations).toBe(0);
+  });
+});
+
 describe("the dangling pool (S-1)", () => {
   test("a record whose past is missing is held out of the view, wanted, and stored once its past arrives", () => {
     const { store, deps, founder } = atB();

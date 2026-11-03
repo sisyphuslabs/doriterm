@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { hashOf, meshIdOf, parseRecord, type RecordBody, type Signed, signRecord, type Subject } from "@doriface/mesh";
-import { MeshStore } from "../../state/mesh.ts";
+import { MeshStore, type MeshStoreOptions } from "../../state/mesh.ts";
 import { headsOf, ownN } from "../../state/mesh-tx.ts";
 import {
   cardFor,
@@ -62,8 +62,8 @@ export const meshIdOfRecords = (records: readonly Signed[]): string => {
 };
 
 /** `owner`'s own mesh.json, holding `records`, in a fresh state dir. */
-export function storeOf(owner: Peer, records: readonly Signed[]): MeshStore {
-  const store = new MeshStore(scratch(), { log: () => undefined });
+export function storeOf(owner: Peer, records: readonly Signed[], options: Partial<MeshStoreOptions> = {}): MeshStore {
+  const store = new MeshStore(scratch(), { log: () => undefined, ...options });
   if (!store.adopt(records, owner.machine.identity)) throw new Error("a mesh already exists here");
   return store;
 }
