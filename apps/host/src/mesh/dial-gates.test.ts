@@ -33,7 +33,7 @@ describe("this host's own outage drops only the 4404s it saw while down (section
     await clock.advance(60_000);
     const downSince = clock.now();
     await clock.advance(1_000);
-    dials.uplinkReturned(["dead"], downSince);
+    dials.uplinkReturned(() => ["dead"], downSince);
     expect(dials.gate("dead")?.misses).toBe(2);
     expect(dials.unreachableSince("dead")).toBe(0);
   });
@@ -46,7 +46,7 @@ describe("this host's own outage drops only the 4404s it saw while down (section
     dials.report("m", 4404);
     dials.report("fresh", 4404);
     await clock.advance(30_000);
-    dials.uplinkReturned(["m", "fresh"], downSince);
+    dials.uplinkReturned(() => ["m", "fresh"], downSince);
     expect(dials.gate("m")).toBeUndefined();
     expect(dials.unreachableSince("m")).toBe(0);
     expect(dials.gate("fresh")).toBeUndefined();

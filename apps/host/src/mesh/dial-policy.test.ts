@@ -96,7 +96,7 @@ describe("settle after this host's own outage (S-6)", () => {
   test("lines to members without presence wait 10-20 s; a member that showed presence is dialed at once", async () => {
     const { clock, dials, due } = policy();
     dials.report("quiet", 4404);
-    dials.uplinkReturned(["quiet", "seen"], 0);
+    dials.uplinkReturned(() => ["quiet", "seen"], 0);
     dials.presence("seen");
     expect(granted(await dials.acquire("seen", "line"))).toBe(true);
     const waiting = await dials.acquire("quiet", "line");
@@ -106,5 +106,16 @@ describe("settle after this host's own outage (S-6)", () => {
     expect(settled.map((entry) => entry.member)).toEqual(["quiet"]);
     expect(settled[0]?.at).toBeGreaterThanOrEqual(10_000);
     expect(granted(await dials.acquire("quiet", "line"))).toBe(true);
+  });
+
+  test("a member admitted during the settle is due when it ends, not on a later probe", async () => {
+    const { clock, dials, due } = policy();
+    const members = ["old"];
+    dials.uplinkReturned(() => members, 0);
+    members.push("joined");
+    const refused = await dials.acquire("joined", "line");
+    expect(refused.ok === false && refused.reason).toBe("settling");
+    await clock.advance(20_000);
+    expect(due.filter((entry) => entry.reason === "settle").map((entry) => entry.member)).toEqual(["old", "joined"]);
   });
 });

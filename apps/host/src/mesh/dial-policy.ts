@@ -156,16 +156,17 @@ export class DialPolicy {
   /**
    * This host's uplink answered after a drop that began at `downSince`. The misses it saw while it was itself offline
    * say nothing about the members, so the gates they set go, and so does a first miss inside the drop. Gates set
-   * before the drop stay, with their backoff. Members without presence are dialed after a 10-20 s settle.
+   * before the drop stay, with their backoff. Members without presence are dialed after a 10-20 s settle: the members
+   * at its end, so one admitted meanwhile is not left to a later probe.
    */
-  uplinkReturned(members: readonly string[], downSince: number): void {
+  uplinkReturned(members: () => readonly string[], downSince: number): void {
     const delay = uniform(this.#random, this.#limits.settleMinMs, this.#limits.settleMaxMs);
     this.#settleUntil = this.#clock.now() + delay;
     this.#present.clear();
     for (const [member, gate] of this.#gates) if (gate.lastMissAt >= downSince) this.#gates.delete(member);
     for (const [member, at] of this.#firstMiss) if (at >= downSince) this.#firstMiss.delete(member);
     this.#clock.after(delay, () => {
-      for (const member of members) if (!this.#present.has(member)) this.#onDue(member, "settle");
+      for (const member of members()) if (!this.#present.has(member)) this.#onDue(member, "settle");
     });
   }
 

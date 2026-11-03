@@ -191,10 +191,7 @@ export class Gossip implements SyncHost {
   uplinkReturned(downMs: number): void {
     const others = this.#members();
     const downSince = this.#options.clock.now() - downMs;
-    this.#options.policy.uplinkReturned(
-      others.map((member) => member.signPub),
-      downSince,
-    );
+    this.#options.policy.uplinkReturned(() => this.#members().map((member) => member.signPub), downSince);
     if (downMs <= this.#timings.sweepAfterDownMs) return;
     const recent = others.toSorted(
       (a, b) => (this.#lastSync.get(b.signPub) ?? -1) - (this.#lastSync.get(a.signPub) ?? -1),
