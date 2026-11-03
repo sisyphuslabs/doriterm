@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { BAD_LINK, fakeRelay, PAIR_CODE, PAIR_LINK } from "./capture-relay.ts";
 import { expect } from "./fixtures.ts";
+import { machineRow, STATE_BOUND_MS } from "./machine-switch.ts";
 
 export type Width = "1440" | "390";
 /** Which stored connection a shot starts from: the e2e host, pairing against the fake relay, or none. */
@@ -48,6 +49,13 @@ const refusedWith = (closeCode: number) => async (page: Page) => {
   await expect(page.getByText("Pairing did not finish")).toBeVisible({ timeout: 15_000 });
 };
 const SETTINGS = ["Appearance", "Terminal", "Keybindings"] as const;
+/** The mesh panel once its document and the added machine it is checked against have both arrived. */
+const meshLoaded = async (page: Page) => {
+  await page.goto("/");
+  await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
+  await section(page, "Mesh");
+  await expect(page.getByText("ci-runner asks to join")).toBeVisible({ timeout: 20_000 });
+};
 
 export const SHOTS: readonly Shot[] = [
   {
@@ -170,6 +178,15 @@ export const SHOTS: readonly Shot[] = [
       await scrollToEnd(page);
     },
   })),
+  { name: "settings-mesh", start: "connected", run: meshLoaded },
+  {
+    name: "settings-mesh-end",
+    start: "connected",
+    run: async (page) => {
+      await meshLoaded(page);
+      await scrollToEnd(page);
+    },
+  },
   {
     name: "storage-error",
     start: "connected",

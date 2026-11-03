@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { E2E_HOST_ENV, E2E_HOST_PORT, E2E_LAYOUT_PORT, E2E_TOKEN } from "./config.ts";
 import { LAYOUT_CORE, LAYOUT_DIR, LAYOUT_MACHINE_SPEC, LAYOUT_TERMINALS } from "./layout-seed.ts";
 import { addMachine, runSeeds } from "./machine.ts";
+import { seedMeshDoc } from "./mesh-doc.ts";
 import { seed } from "./seed.ts";
 
 const layout = process.argv[2] === "layout";
@@ -87,6 +88,7 @@ try {
   } else {
     const capture = process.env["CAPTURE"] === "1";
     if (capture) await seed(hc, env, join(dir, "work"));
+    await seedMeshDoc(hc, session, env);
     stopMachine = await addMachine(hc, env, join(dir, "machine"), capture);
   }
 } catch (error) {
