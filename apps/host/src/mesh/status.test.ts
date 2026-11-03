@@ -45,7 +45,7 @@ describe("mesh status", () => {
   });
 
   test("a member whose name fell back on this core shows the name it has here", () => {
-    const renamed = meshStatus(withLocal({ localNames: new Map([[ids.laptop.hostId, "laptop-q3zd"]]) }), NOW);
+    const renamed = meshStatus(withLocal({ localNames: new Map([[fixture.keys.laptop, "laptop-q3zd"]]) }), NOW);
     expect(renamed.members.map((member) => [member.name, member.localName])).toEqual([
       ["studio", "studio"],
       ["build-box", "build-box"],
@@ -75,6 +75,18 @@ describe("mesh status", () => {
       line: state,
       lineReason: "herdr says why",
     });
+  });
+
+  test("a view that revokes a key with no revoke record is a broken snapshot, not a silent omission", () => {
+    expect(() => meshStatus({ ...fixture.sources, revocations: new Map() }, NOW)).toThrow("no revoke record");
+  });
+
+  test("a member without a Noise key in the view is a broken snapshot, not an empty fingerprint", () => {
+    const noise = new Map(fixture.sources.view.noise);
+    noise.delete(fixture.keys.tablet);
+    expect(() => meshStatus({ ...fixture.sources, view: { ...fixture.sources.view, noise } }, NOW)).toThrow(
+      "no Noise key",
+    );
   });
 
   test("carries presence, last sync, owed records and the 4404 gate of each peer", () => {

@@ -28,7 +28,7 @@ interface Names {
 
 function namesOf(sources: MeshSources): Names {
   const name = (key: string): string =>
-    sources.view.name.get(key) ?? sources.view.revocations.get(key)?.name ?? hostIdOfKey(key);
+    sources.view.name.get(key) ?? sources.revocations.get(key)?.name ?? hostIdOfKey(key);
   return { hostId: hostIdOfKey, name };
 }
 
@@ -44,11 +44,12 @@ function member(sources: MeshSources, names: Names, key: string, now: Date): Mes
   const admitter = view.admitter.get(key);
   const witness = self ? { pool: [], ask: null } : sources.witnessPool(key);
   const noise = view.noise.get(key);
+  if (noise === undefined) throw new Error(`mesh status: the view has no Noise key for member ${hostId}`);
   return {
     hostId,
     name,
-    localName: local.localNames.get(hostId) ?? name,
-    fingerprint: noise === undefined ? "" : fingerprintOfKey(noise),
+    localName: local.localNames.get(key) ?? name,
+    fingerprint: fingerprintOfKey(noise),
     admittedBy: admitter === undefined ? null : names.hostId(admitter),
     overCap: view.overCap.includes(key),
     line: self ? "self" : (line?.state ?? "absent"),
@@ -71,8 +72,9 @@ function member(sources: MeshSources, names: Names, key: string, now: Date): Mes
 
 function revokedOf(sources: MeshSources, names: Names): MeshRevokedStatus[] {
   return sources.view.revoked.flatMap((key) => {
-    const fact = sources.view.revocations.get(key);
-    if (fact === undefined) return [];
+    const fact = sources.revocations.get(key);
+    if (fact === undefined)
+      throw new Error(`mesh status: the view revokes ${names.hostId(key)} but has no revoke record`);
     return [
       {
         hostId: names.hostId(key),
@@ -88,7 +90,7 @@ function revokedOf(sources: MeshSources, names: Names): MeshRevokedStatus[] {
 
 function removedOf(sources: MeshSources, names: Names): MeshRemovedStatus[] {
   const entry = (key: string) => ({ hostId: names.hostId(key), name: names.name(key) });
-  return sources.view.failClosed.map((fact) => ({
+  return sources.failClosed.map((fact) => ({
     members: fact.removed.map(entry),
     revokedKey: entry(fact.revokedKey),
   }));
@@ -120,7 +122,7 @@ function stuckOf(sources: MeshSources, names: Names, now: Date): MeshStuckReason
   const reasons: MeshStuckReason[] = [];
   if (local.possiblyRevoked) reasons.push({ kind: "possibly_revoked" });
   if (local.readOnlyUntil !== null && local.readOnlyUntil.getTime() > now.getTime()) {
-    const revocation = view.revocations.get(local.self);
+    const revocation = sources.revocations.get(local.self);
     reasons.push({
       kind: "read_only",
       until: local.readOnlyUntil.toISOString(),
@@ -128,7 +130,8 @@ function stuckOf(sources: MeshSources, names: Names, now: Date): MeshStuckReason
       at: revocation?.at ?? null,
     });
   }
-  if (view.failClosed.some((fact) => fact.removed.includes(local.self))) reasons.push({ kind: "removed_undecidable" });
+  if (sources.failClosed.some((fact) => fact.removed.includes(local.self)))
+    reasons.push({ kind: "removed_undecidable" });
   if (local.records >= MAX_MESH_RECORDS) reasons.push({ kind: "log_full", records: local.records });
   if (local.counter.file < local.counter.mesh) {
     reasons.push({ kind: "counter_behind", file: local.counter.file, mesh: local.counter.mesh });

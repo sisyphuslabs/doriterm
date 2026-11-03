@@ -24,26 +24,23 @@ describe("mesh status: sync and the dial budget", () => {
   const later = new Date(NOW.getTime() + 60_000);
   const revokedSelf: MeshSources = {
     ...withLocal({ readOnlyUntil: later }),
-    view: {
-      ...fixture.sources.view,
-      revocations: new Map([
-        ...fixture.sources.view.revocations,
-        [
-          fixture.keys.studio,
-          {
-            name: "studio",
-            noisePub: base64urlEncode(ids.studio.noise.publicKey),
-            by: [fixture.keys["build-box"]],
-            reason: "revoke",
-            at: "2026-11-03T11:00:00.000Z",
-          },
-        ],
-      ]),
-    },
+    revocations: new Map([
+      ...fixture.sources.revocations,
+      [
+        fixture.keys.studio,
+        {
+          name: "studio",
+          noisePub: base64urlEncode(ids.studio.noise.publicKey),
+          by: [fixture.keys["build-box"]],
+          reason: "revoke",
+          at: "2026-11-03T11:00:00.000Z",
+        },
+      ],
+    ]),
   };
   const removedSelf = {
     ...fixture.sources,
-    view: { ...fixture.sources.view, failClosed: [{ removed: [fixture.keys.studio], revokedKey: fixture.keys.kiosk }] },
+    failClosed: [{ removed: [fixture.keys.studio], revokedKey: fixture.keys.kiosk }],
   };
   const stuckLine = {
     ...fixture.sources,

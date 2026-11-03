@@ -1,6 +1,6 @@
 import type { MeshLineState, MeshLineStuck } from "@doriface/protocol";
 
-// What `mesh status` reads, one snapshot per call. Keys are signing public keys (base64url) unless named otherwise.
+// What `mesh status` reads, one snapshot per call. Every key is a signing public key (base64url).
 // Each part is owned by another module of the mesh (design section 11): the view by `packages/mesh`, the stored state
 // by `state/mesh.ts`, pending joins by `mesh/join.ts`, sessions and the dial budget by `mesh/sync.ts` and
 // `mesh/dial-policy.ts`, and the lines by `mesh/reconciler.ts`. These types are the narrow face status needs of them.
@@ -21,18 +21,20 @@ export interface FailClosedFact {
   readonly revokedKey: string;
 }
 
+/**
+ * The part of PR 2's `View` (`viewOf`: members, overCap, revoked, noise, admitter, name, eff) that status reads,
+ * field for field, so a View is a ViewFacts and this type is deleted once PR 2 lands.
+ */
 export interface ViewFacts {
-  /** In member order. */
+  /** In member order. Over-cap keys are not in it (section 3.5: the first 12 are members, the rest over-cap). */
   readonly members: readonly string[];
   readonly overCap: readonly string[];
   readonly revoked: readonly string[];
-  /** Noise public key (base64url) per member. */
+  /** Noise public key (base64url) of every member and over-cap key. */
   readonly noise: ReadonlyMap<string, string>;
   /** Who admitted each member; the founder has no entry. */
   readonly admitter: ReadonlyMap<string, string>;
   readonly name: ReadonlyMap<string, string>;
-  readonly revocations: ReadonlyMap<string, RevocationFact>;
-  readonly failClosed: readonly FailClosedFact[];
 }
 
 export interface LocalFacts {
@@ -42,7 +44,7 @@ export interface LocalFacts {
   readonly records: number;
   /** `self.n` in mesh.json, and the highest counter of this host's key seen in the records or a peer's hello. */
   readonly counter: { readonly file: number; readonly mesh: number };
-  /** The name each member has on this core, by hostId (mesh.json `local`). */
+  /** The name each member has on this core (mesh.json `local`, which state/mesh.ts keys by hostId). */
   readonly localNames: ReadonlyMap<string, string>;
   /** When this host first saw each admission (mesh.json `notices`). */
   readonly noticed: ReadonlyMap<string, Date>;
@@ -90,6 +92,13 @@ export interface WitnessFacts {
 
 export interface MeshSources {
   readonly view: ViewFacts;
+  /**
+   * The revoke record behind every key in `view.revoked`. Not part of View: PR 2 exports it beside View from the
+   * record set (the revoke's signers, reason and time, and the revoked card's Noise key).
+   */
+  readonly revocations: ReadonlyMap<string, RevocationFact>;
+  /** The fail-closed removals the view evaluation found (section 3.7); PR 2 exports these beside View too. */
+  readonly failClosed: readonly FailClosedFact[];
   readonly local: LocalFacts;
   readonly pending: readonly PendingJoinFact[];
   readonly peers: ReadonlyMap<string, PeerFacts>;

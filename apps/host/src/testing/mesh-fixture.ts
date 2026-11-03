@@ -60,15 +60,12 @@ export function meshFixture(now: Date): MeshFixture {
         [key("tablet"), key("build-box")],
       ]),
       name: new Map(members.map((name) => [key(name), name])),
-      revocations: new Map([
-        [
-          key("kiosk"),
-          { name: "kiosk", noisePub: noise("kiosk"), by: [key("studio")], reason: "compromised", at: null },
-        ],
-        [key("spare"), { name: "spare", noisePub: noise("spare"), by: [key("kiosk")], reason: "revoke", at: null }],
-      ]),
-      failClosed: [{ removed: [key("spare")], revokedKey: key("kiosk") }],
     },
+    revocations: new Map([
+      [key("kiosk"), { name: "kiosk", noisePub: noise("kiosk"), by: [key("studio")], reason: "compromised", at: null }],
+      [key("spare"), { name: "spare", noisePub: noise("spare"), by: [key("kiosk")], reason: "revoke", at: null }],
+    ]),
+    failClosed: [{ removed: [key("spare")], revokedKey: key("kiosk") }],
     local: {
       meshId: "q7m2k4xw2d3b5n6r6t7v3c2z4a",
       self: key("studio"),
