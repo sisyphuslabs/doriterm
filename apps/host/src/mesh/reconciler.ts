@@ -1,5 +1,6 @@
 import { HcRpcError, type MachineView } from "@doriface/protocol";
 import type { Clock } from "./clock.ts";
+import { DIAL_LIMITS } from "./dial-policy.ts";
 import type { HcMachines } from "./hc-machines.ts";
 import { fallbacks, type MeshMember, type MeshView } from "./upstream.ts";
 import { meshHostOf, meshVia } from "./via.ts";
@@ -38,6 +39,11 @@ interface Stuck {
   readonly until: number;
 }
 
+interface Retry {
+  readonly attempts: number;
+  readonly cancel: () => void;
+}
+
 const DIFFERENT_CORE = "a different core answers there";
 const kindOf = (error: unknown): string => (error instanceof HcRpcError ? error.kind : "unreachable");
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
@@ -50,6 +56,10 @@ export class Reconciler {
   readonly status = new Map<string, LineStatus>();
   readonly #options: ReconcilerOptions;
   readonly #stuck = new Map<string, Stuck>();
+  /** Members whose add failed with herdr's retryable kinds, on section 8.2's probe backoff. */
+  readonly #retries = new Map<string, Retry>();
+  /** Newly admitted members whose add waits for the 0-5 s jitter (section 8.2). */
+  readonly #held = new Set<string>();
   #latest: MeshView | undefined;
   #running: Promise<void> = Promise.resolve();
   #queued = false;
@@ -72,10 +82,35 @@ export class Reconciler {
     return this.#running;
   }
 
-  /** Presence of a member whose line is not connected: herdr dials it now (`machine.connect`). */
+  /** The host is stopping: no retry fires after this. */
+  stop(): void {
+    this.#cancelRetry();
+    for (const hostId of this.#retries.keys()) this.#retried(hostId);
+    this.#latest = undefined;
+  }
+
+  holdAdd(hostId: string): void {
+    this.#held.add(hostId);
+  }
+
+  releaseAdd(hostId: string): Promise<void> {
+    this.#held.delete(hostId);
+    return this.#latest === undefined ? this.#running : this.reconcile(this.#latest);
+  }
+
+  /**
+   * Presence of a member: herdr dials a line that is not connected now (`machine.connect`), and a member with no line
+   * yet (its add failed while it was offline) is added now.
+   */
   async presence(member: MeshMember): Promise<void> {
     const entry = (await this.#entries()).find((candidate) => candidate.hostId === member.hostId);
-    if (entry === undefined || entry.machine.state === "connected") return;
+    if (entry === undefined) {
+      if (this.#latest?.members.some((candidate) => candidate.hostId === member.hostId)) {
+        await this.reconcile(this.#latest);
+      }
+      return;
+    }
+    if (entry.machine.state === "connected") return;
     try {
       await this.#options.machines.connect(entry.machine.name);
     } catch (error) {
@@ -107,6 +142,7 @@ export class Reconciler {
   async #run(view: MeshView): Promise<void> {
     const { machines, selfHostId } = this.#options;
     const desired = new Map(view.members.filter((m) => m.hostId !== selfHostId).map((m) => [m.hostId, m]));
+    for (const hostId of this.#retries.keys()) if (!desired.has(hostId)) this.#retried(hostId);
     const entries = await this.#entries();
     const stale = entries.filter(
       (entry) => !desired.has(entry.hostId) || (entry.machine.why ?? "").includes(DIFFERENT_CORE),
@@ -120,7 +156,9 @@ export class Reconciler {
     const kept = entries.filter((entry) => !stale.includes(entry));
     await Promise.all(kept.map((entry) => this.#rename(entry, desired.get(entry.hostId))));
     const list = await machines.list();
-    const missing = [...desired.values()].filter((member) => !kept.some((entry) => entry.hostId === member.hostId));
+    const missing = [...desired.values()].filter(
+      (member) => !this.#held.has(member.hostId) && !kept.some((entry) => entry.hostId === member.hostId),
+    );
     const key = JSON.stringify([view.members.map((m) => [m.hostId, m.name]), list.map((m) => m.name).toSorted()]);
     await Promise.all(missing.map((member) => this.#add(member, list, key)));
     this.#armRetry(view);
@@ -149,7 +187,12 @@ export class Reconciler {
     const stuck = this.#stuck.get(member.hostId);
     if (stuck !== undefined && stuck.key === key && this.#options.clock.now() < stuck.until) return;
     this.#stuck.delete(member.hostId);
-    const via = meshVia(this.#options.program, this.#options.stateDir, member.hostId);
+    let via: string;
+    try {
+      via = meshVia(this.#options.program, this.#options.stateDir, member.hostId);
+    } catch (error) {
+      return this.#stick(member, key, `invalid_host: ${messageOf(error)}`);
+    }
     await this.#addAs(member, { list, key, via }, [member.name, ...fallbacks(member.name, member.hostId)]);
   }
 
@@ -161,6 +204,7 @@ export class Reconciler {
     }
     try {
       await this.#options.machines.add(name, attempt.via);
+      this.#retried(member.hostId);
       this.status.set(member.hostId, { state: "ok" });
     } catch (error) {
       const kind = kindOf(error);
@@ -170,7 +214,24 @@ export class Reconciler {
       }
       if (kind === "already_added") return this.#migrate(member, attempt, name);
       this.status.set(member.hostId, { state: "retrying", reason: `${kind}: ${messageOf(error)}` });
+      this.#retryLater(member.hostId);
     }
+  }
+
+  /** Unreachable, hc_missing, incompatible: retried 30 s later, doubling to 5 minutes, and at once on presence. */
+  #retryLater(hostId: string): void {
+    const attempts = (this.#retries.get(hostId)?.attempts ?? 0) + 1;
+    this.#retries.get(hostId)?.cancel();
+    const wait = Math.min(DIAL_LIMITS.probeFirstMs * 2 ** (attempts - 1), DIAL_LIMITS.probeMaxMs);
+    const cancel = this.#options.clock.after(wait, () => {
+      if (this.#latest !== undefined) void this.reconcile(this.#latest);
+    });
+    this.#retries.set(hostId, { attempts, cancel });
+  }
+
+  #retried(hostId: string): void {
+    this.#retries.get(hostId)?.cancel();
+    this.#retries.delete(hostId);
   }
 
   /** The member's core is already here under a #30 `doriface-host connect` entry: replace it with the mesh line. */
@@ -182,6 +243,7 @@ export class Reconciler {
     }
     await machines.rm(old.name);
     await machines.add(name, attempt.via);
+    this.#retried(member.hostId);
     const note = `replaced machine "${old.name}" (doriface-host connect) with the mesh line`;
     this.status.set(member.hostId, { state: "ok", note });
     this.#options.log(`mesh: ${note}`);
