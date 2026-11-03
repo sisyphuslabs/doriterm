@@ -1,5 +1,5 @@
 import { base64urlEncode } from "@doriface/crypto";
-import { hashOf, MAX_DANGLING, parseRecord, type Signed, signRecord } from "@doriface/mesh";
+import { hashOf, MAX_DANGLING, parseRecord, type Signed, signRecord, viewOf } from "@doriface/mesh";
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -163,4 +163,70 @@ describe("MeshStore.transact: one read-modify-write of mesh.json under the state
     expect(founderNs).toEqual(Array.from({ length: founderNs.length }, (_, i) => i + 1));
     expect(fileOf(dir).selfN).toBe(founderNs.length);
   }, 60_000);
+});
+
+/** A founded mesh with a member, and a store over it that counts its view evaluations. */
+function counted() {
+  const dir = scratch();
+  const [founder, member, joiner] = [machine("founder"), machine("member"), machine("joiner")];
+  const mesh = new MeshFixture(dir, founder);
+  mesh.admit(founder, member);
+  mesh.store.catchUp(founder.identity);
+  let evaluations = 0;
+  const store = new MeshStore(dir, {
+    log: () => {},
+    evaluate: (records) => {
+      evaluations++;
+      return viewOf(records);
+    },
+  });
+  const by = signPubOf(founder);
+  const ackOf = (n: number, prev: readonly string[]) =>
+    ({ v: 2, mesh: mesh.meshId, type: "ack", by, n, prev }) as const;
+  return { dir, mesh, store, founder, member, joiner, ackOf, evaluations: () => evaluations };
+}
+
+describe("LOW-10: the counter write evaluates no view it does not need", () => {
+  test("a merge that adds nothing, then a signature: one evaluation, at the commit", () => {
+    const { store, founder, ackOf, evaluations } = counted();
+    store.transact((tx) => {
+      tx.merge([]);
+      return tx.sign(founder.identity, ackOf);
+    });
+    expect(evaluations()).toBe(1);
+  });
+
+  test("a merge, the caller's view, then a signature: the counter write reuses that view", () => {
+    const { mesh, store, founder, member, joiner, ackOf, evaluations } = counted();
+    store.transact((tx) => {
+      tx.merge([admitOf(mesh, member, joiner)]);
+      expect(tx.view().members.has(signPubOf(joiner))).toBe(true);
+      return tx.sign(founder.identity, ackOf);
+    });
+    expect(evaluations()).toBe(2);
+  });
+
+  test("two signatures in one transaction: the second counter write indexes the first one's revoke", () => {
+    const { dir, mesh, store, founder, member } = counted();
+    const by = signPubOf(founder);
+    expect(() =>
+      store.transact((tx) => {
+        tx.sign(founder.identity, (n, prev) => ({
+          v: 2,
+          mesh: mesh.meshId,
+          type: "revoke",
+          by,
+          n,
+          prev,
+          subject: { signPubs: [signPubOf(member)], reason: "revoke" },
+        }));
+        return tx.sign(founder.identity, () => {
+          throw new Error("crashed after the second counter write");
+        });
+      }),
+    ).toThrow("crashed");
+    const index = new MeshStore(dir, { log: () => {} }).authorizeIndex();
+    expect(index?.member(noiseOf(member))).toBeUndefined();
+    expect(index?.deviceRefusal(noiseOf(member))).toBe("revoked mesh member");
+  });
 });

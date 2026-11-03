@@ -58,6 +58,8 @@ export class Transaction implements MeshTx {
   #dangling: readonly Signed[];
   #view: { readonly records: readonly Signed[]; readonly view: View } | undefined;
   #changed = false;
+  /** Records this transaction added that the file does not hold yet: the index on disk does not cover them. */
+  #unwritten = false;
   readonly #deps: TxDeps;
 
   constructor(file: MeshFile, deps: TxDeps) {
@@ -90,7 +92,10 @@ export class Transaction implements MeshTx {
       merged.dangling.length !== this.#dangling.length ||
       merged.dangling.some((record, i) => record !== this.#dangling[i]);
     if (merged.added.length > 0 || poolChanged) this.#changed = true;
-    this.#records = merged.stored;
+    if (merged.added.length > 0) {
+      this.#records = merged.stored;
+      this.#unwritten = true;
+    }
     this.#dangling = merged.dangling;
     return { added: merged.added, refused: merged.refused, dropped: merged.dropped };
   }
@@ -108,19 +113,25 @@ export class Transaction implements MeshTx {
         `counter behind its records (file ${this.#disk.selfN}, mesh ${own}): syncing before signing`,
       );
     }
-    const merged = this.#records !== this.#disk.records;
     // The counter is derived from the merged records, so it is written with them: a failure after this write
     // leaves a counter the stored records explain, and the next signature never reuses one a peer already holds.
     this.#disk = this.#deps.persistCounter(
-      { ...this.#disk, records: this.#records, dangling: this.#dangling, index: merged ? undefined : this.#disk.index },
+      {
+        ...this.#disk,
+        records: this.#records,
+        dangling: this.#dangling,
+        index: this.#unwritten ? undefined : this.#disk.index,
+      },
       own + 1,
       this.#view?.records === this.#records ? this.#view.view : undefined,
     );
+    this.#unwritten = false;
     const record = signRecord(build(own + 1, headsOf(this.#records)), identity.sign.secretKey);
     const verdict = door(record, this.#records);
     if (!verdict.ok) throw new Error(`this host's own record was refused: ${verdict.reason}`);
     this.#records = [...this.#records, record];
     this.#changed = true;
+    this.#unwritten = true;
     return record;
   }
 
