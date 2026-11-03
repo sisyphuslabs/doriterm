@@ -20,7 +20,7 @@ export type DialLimits = { readonly [K in keyof typeof DIAL_LIMITS]: number };
 export type DialPurpose = "revoke-push" | "push" | "sweep" | "line" | "probe";
 const PRIORITY: Readonly<Record<DialPurpose, number>> = { "revoke-push": 0, push: 1, sweep: 1, line: 2, probe: 3 };
 
-export type DueReason = "presence" | "probe" | "added" | "settle";
+export type DueReason = "presence" | "probe" | "added" | "settle" | "budget";
 
 export type Grant =
   | { readonly ok: true }
@@ -68,6 +68,8 @@ export class DialPolicy {
   /** Each member's first miss since it was last reached: the evidence section 8.6's 7-day unreachable flag reads. */
   readonly #firstMiss = new Map<string, number>();
   readonly #present = new Set<string>();
+  readonly #budgetRefused = new Set<string>();
+  #budgetWake: (() => void) | undefined;
   #halvedUntil = Number.NEGATIVE_INFINITY;
   #settleUntil = Number.NEGATIVE_INFINITY;
   #seq = 0;
@@ -112,7 +114,32 @@ export class DialPolicy {
       return Promise.resolve({ ok: false, reason: "settling", nextInMs: this.#settleUntil - now });
     }
     if (options.direct === true) return Promise.resolve({ ok: true });
-    return this.#take(PRIORITY[purpose], options.waitMs);
+    const taken = this.#take(PRIORITY[purpose], options.waitMs);
+    if (purpose !== "line") return taken;
+    return taken.then((grant) => {
+      if (!grant.ok && grant.reason === "budget") this.#lineRefused(member);
+      return grant;
+    });
+  }
+
+  /** A line refused for the budget is due again once the window frees (herdr cannot wait past its own deadline). */
+  #lineRefused(member: string): void {
+    this.#budgetRefused.add(member);
+    if (this.#budgetWake !== undefined) return;
+    const oldest = this.#charged[0] ?? this.#clock.now();
+    const at = Math.max(0, oldest + this.#limits.windowMs - this.#clock.now());
+    this.#budgetWake = this.#clock.after(at, () => {
+      this.#budgetWake = undefined;
+      const members = [...this.#budgetRefused];
+      this.#budgetRefused.clear();
+      for (const refused of members) this.#onDue(refused, "budget");
+    });
+  }
+
+  /** A granted dial that was not needed after all (a session came up while it waited) gives its token back. */
+  release(): void {
+    this.#charged.pop();
+    this.#serve();
   }
 
   /**

@@ -47,6 +47,7 @@ export class Gossip implements SyncHost {
   readonly #options: GossipOptions;
   readonly #timings: GossipTimings;
   readonly #stored: StoredMesh;
+  readonly #dialing = new Map<string, Promise<boolean>>();
   readonly #sessions = new Map<string, SyncSession>();
   readonly #confirmed = new Map<string, readonly string[]>();
   readonly #lastSync = new Map<string, number>();
@@ -206,14 +207,34 @@ export class Gossip implements SyncHost {
     void this.#sweep(recent);
   }
 
-  async sync(member: MemberEntry, purpose: DialPurpose): Promise<boolean> {
-    const open = this.#sessions.get(member.signPub);
-    if (open !== undefined && !open.closed) {
-      open.flush();
-      return true;
-    }
+  /**
+   * Syncs with `member` over its open session, or dials one under the budget. One dial per member at a time: a push,
+   * a sweep and a probe for the same member share it, and a session that came up while it waited for a token is used
+   * instead, giving the token back (section 8.2).
+   */
+  sync(member: MemberEntry, purpose: DialPurpose): Promise<boolean> {
+    if (this.#flushOpen(member.signPub)) return Promise.resolve(true);
+    const pending = this.#dialing.get(member.signPub);
+    if (pending !== undefined) return pending;
+    const dial = this.#dial(member, purpose).finally(() => this.#dialing.delete(member.signPub));
+    this.#dialing.set(member.signPub, dial);
+    return dial;
+  }
+
+  #flushOpen(peer: string): boolean {
+    const open = this.#sessions.get(peer);
+    if (open === undefined || open.closed) return false;
+    open.flush();
+    return true;
+  }
+
+  async #dial(member: MemberEntry, purpose: DialPurpose): Promise<boolean> {
     const grant = await this.#options.policy.acquire(member.signPub, purpose);
     if (!grant.ok) return false;
+    if (this.#flushOpen(member.signPub)) {
+      this.#options.policy.release();
+      return true;
+    }
     try {
       const link = await this.#options.dial(member);
       this.#options.policy.report(member.signPub, "connected");

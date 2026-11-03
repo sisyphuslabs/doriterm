@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DialPolicy, type DueReason, type Grant } from "./dial-policy.ts";
+import { DIAL_LIMITS, DialPolicy, type DueReason, type Grant } from "./dial-policy.ts";
 import { FakeClock, seededRandom } from "./testing/fake-clock.ts";
 
 function policy(): { clock: FakeClock; dials: DialPolicy; due: { member: string; reason: DueReason; at: number }[] } {
@@ -117,5 +117,21 @@ describe("settle after this host's own outage (S-6)", () => {
     expect(refused.ok === false && refused.reason).toBe("settling");
     await clock.advance(20_000);
     expect(due.filter((entry) => entry.reason === "settle").map((entry) => entry.member)).toEqual(["old", "joined"]);
+  });
+});
+
+describe("a line refused for the budget (section 8.2, H-D1)", () => {
+  test("is due again when the window frees, not on a later probe", async () => {
+    const { clock, dials, due } = policy();
+    await fill(dials, DIAL_LIMITS.budget);
+    const refused = dials.acquire("late", "line", { waitMs: DIAL_LIMITS.lineWaitMs });
+    await clock.advance(DIAL_LIMITS.lineWaitMs);
+    const grant = await refused;
+    expect(grant.ok === false && grant.reason).toBe("budget");
+    expect(due.filter((entry) => entry.reason === "budget")).toEqual([]);
+    await clock.advance(DIAL_LIMITS.windowMs - DIAL_LIMITS.lineWaitMs);
+    expect(due.filter((entry) => entry.reason === "budget")).toEqual([
+      { member: "late", reason: "budget", at: DIAL_LIMITS.windowMs },
+    ]);
   });
 });
