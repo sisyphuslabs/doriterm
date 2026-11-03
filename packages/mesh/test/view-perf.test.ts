@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { MAX_RECORDS } from "../src/records/types.ts";
-import { type ViewCache, viewOf, viewOfRecords } from "../src/view/engine.ts";
+import { ViewCache, viewOf, viewOfRecords } from "../src/view/engine.ts";
 import { bigMesh } from "./fixtures/big-mesh.ts";
 import { signScenario } from "./fixtures/signed.ts";
 
@@ -32,7 +32,7 @@ test("M-14: a cold view of 4096 records with 64 revokes stays within its budget"
 
 test("M-14: one merge at 4096 records re-evaluates within 50 ms (median of 64 merges through one cache)", () => {
   const signed = signScenario(mesh).records;
-  const cache: ViewCache = new Map();
+  const cache = new ViewCache();
   viewOf(signed.slice(0, signed.length - MERGES), cache);
   const merges: number[] = [];
   for (let n = signed.length - MERGES + 1; n <= signed.length; n++)

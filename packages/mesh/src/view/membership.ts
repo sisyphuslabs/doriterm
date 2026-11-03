@@ -1,24 +1,28 @@
 // membership(S, eff) of contract v1.5 "Membership": from the effective records of S to the view (members, cap,
 // revoked keys, Noise keys, admitter lineage, names). It reads every record type but ack, so the engine decides only
-// those statuses before calling it.
+// those statuses before calling it, and the view it returns has no `eff`: a caller that needs eff adds it.
 
 import { MAX_MESH_MEMBERS } from "../records/types.ts";
 import { fallbacks } from "../names.ts";
 import { type Dag, isAdmission, type Rec, type RecordSet, subjectsOf } from "./dag.ts";
 import type { Status } from "./status.ts";
 
-export interface EngineView {
+/** The view the rules read: everything membership() decides, without the set's effective records. */
+export interface MemberView {
   /** The first 12 keys with a governing admission, in the canonical order of those admissions. */
   readonly members: readonly string[];
   /** Keys past the cap, in the same order: not dialed, cannot sign. */
   readonly overCap: readonly string[];
   readonly revoked: readonly string[];
-  readonly eff: ReadonlySet<string>;
   readonly noise: ReadonlyMap<string, string>;
   readonly admitter: ReadonlyMap<string, string>;
   readonly governing: ReadonlyMap<string, string>;
   readonly name: ReadonlyMap<string, string>;
   readonly hostId: ReadonlyMap<string, string>;
+}
+
+export interface EngineView extends MemberView {
+  readonly eff: ReadonlySet<string>;
 }
 
 /** The maximal records of a list in canonical order (none of the others has it in its past); ties by smallest id. */
@@ -58,12 +62,7 @@ function governingAdmissions(dag: Dag, order: readonly Rec[], effective: readonl
 
 type Grouped = ReadonlyMap<string, readonly Rec[]>;
 
-export function membership(
-  dag: Dag,
-  S: RecordSet,
-  statuses: ReadonlyMap<string, Status>,
-  effOf: () => ReadonlySet<string>,
-): EngineView {
+export function membership(dag: Dag, S: RecordSet, statuses: ReadonlyMap<string, Status>): MemberView {
   const order = dag.index.relevant.filter((id) => S.has(id)).map((id) => dag.rec(id));
   const effective = order.filter((r) => statuses.get(r.id) === "eff");
   const revokes = group(
@@ -104,24 +103,17 @@ export function membership(
     taken.add(chosen);
     name.set(k, chosen);
   }
-  return withEff({ members, overCap, revoked, noise, admitter, governing, name, hostId }, effOf);
+  return { members, overCap, revoked, noise, admitter, governing, name, hostId };
 }
 
-/** A view with these members, keys and names whose `eff` is computed on first read. */
-export function withEff(v: Omit<EngineView, "eff">, effOf: () => ReadonlySet<string>): EngineView {
-  let eff: ReadonlySet<string> | undefined;
-  return {
-    members: v.members,
-    overCap: v.overCap,
-    revoked: v.revoked,
-    get eff() {
-      eff ??= effOf();
-      return eff;
-    },
-    noise: v.noise,
-    admitter: v.admitter,
-    governing: v.governing,
-    name: v.name,
-    hostId: v.hostId,
-  };
-}
+export const withEff = (v: MemberView, eff: ReadonlySet<string>): EngineView => ({
+  members: v.members,
+  overCap: v.overCap,
+  revoked: v.revoked,
+  eff,
+  noise: v.noise,
+  admitter: v.admitter,
+  governing: v.governing,
+  name: v.name,
+  hostId: v.hostId,
+});

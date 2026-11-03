@@ -21,7 +21,7 @@ export function witnessPoolOfRecords(
   subjects: readonly string[],
   cache?: ViewCache,
 ): ReadonlyMap<string, readonly string[]> {
-  const e = new Engine(new Dag(records), cache);
+  const e = cache?.engineFor(records) ?? new Engine(new Dag(records));
   const now = e.full();
   const out = new Map<string, readonly string[]>();
   for (const X of subjects) {
@@ -57,7 +57,7 @@ export function witnessPool(
 export function presentAtOfRecords(records: readonly Rec[], X: string, cache?: ViewCache): readonly string[] {
   const L = positionOf(records, X);
   if (L === undefined) return [];
-  const e = new Engine(new Dag(records), cache);
+  const e = cache?.engineFor(records) ?? new Engine(new Dag(records));
   const past = e.dag.past(L.id);
   return past.size === 0 ? [] : e.view(past).members.filter((k) => k !== X);
 }

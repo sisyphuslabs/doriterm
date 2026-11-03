@@ -1,14 +1,16 @@
 // The engine state that outlives one evaluation: results about records and their pasts, which no later record can
 // change, and the evaluations of contexts (see the header of engine.ts). Engines over sets of one History share it.
+// Nothing here may hold an Engine, a Dag or a closure over one: a ViewCache keeps this for a mesh's life, and each
+// merge builds a new Dag of the whole set.
 
 import type { History } from "./chain.ts";
 import type { RecordSet } from "./dag.ts";
-import type { EngineView } from "./membership.ts";
+import type { MemberView } from "./membership.ts";
 import type { Status } from "./status.ts";
 
-/** One evaluation of a context: its view and the statuses of its non-ack records. */
+/** One evaluation of a context: its view and the statuses of its non-ack records, plain data. */
 export interface Core {
-  readonly view: EngineView;
+  readonly view: MemberView;
   readonly statuses: ReadonlyMap<string, Status>;
 }
 
@@ -19,10 +21,10 @@ export class Shared {
   readonly #once: Tables = new Map();
   readonly #perSet = new WeakMap<RecordSet, Tables>();
   readonly #heads = new WeakMap<ReadonlySet<string>, readonly string[]>();
-  readonly #before = new Map<string, EngineView | undefined>();
+  readonly #before = new Map<string, Core | undefined>();
   readonly #members = new Map<string, ReadonlySet<string>>();
-  /** context -> the first set evaluated with it, which stands for every set with that context. */
-  readonly #contexts = new Map<string, RecordSet>();
+  /** The evaluation of each set evaluated so far, under the set's heads. */
+  readonly #views = new Map<string, Core>();
   readonly #cores = new Map<string, Core>();
   readonly #growing = new Map<string, { readonly list: string[]; scanned: number }>();
 
@@ -85,7 +87,7 @@ export class Shared {
     return heads;
   }
 
-  before(id: string, compute: () => EngineView | undefined): EngineView | undefined {
+  before(id: string, compute: () => Core | undefined): Core | undefined {
     if (this.#before.has(id)) return this.#before.get(id);
     const view = compute();
     this.#before.set(id, view);
@@ -100,15 +102,17 @@ export class Shared {
     return members;
   }
 
-  /** The evaluation of `context`, made with S the first time; `set` is the set it was made with. */
-  core(S: RecordSet, context: string, compute: (set: RecordSet) => Core): { set: RecordSet; core: Core } {
-    const set = this.#contexts.get(context) ?? S;
-    let core = this.#cores.get(context);
+  /** The evaluation of the set with these heads: the one of its context, evaluated once with the first such set. */
+  view(heads: string, context: () => string, compute: () => Core): Core {
+    const known = this.#views.get(heads);
+    if (known !== undefined) return known;
+    const key = context();
+    let core = this.#cores.get(key);
     if (core === undefined) {
-      this.#contexts.set(context, set);
-      core = compute(set);
-      this.#cores.set(context, core);
+      core = compute();
+      this.#cores.set(key, core);
     }
-    return { set, core };
+    this.#views.set(heads, core);
+    return core;
   }
 }

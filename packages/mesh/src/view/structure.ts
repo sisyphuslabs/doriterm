@@ -3,10 +3,10 @@
 
 import { type Rec, subjectsOf } from "./dag.ts";
 import type { Engine } from "./engine.ts";
-import type { EngineView } from "./membership.ts";
+import type { MemberView } from "./membership.ts";
 
 /** type_ok(x, view(past(x))). */
-function typeOk(e: Engine, r: Rec, before: EngineView | undefined): boolean {
+function typeOk(e: Engine, r: Rec, before: MemberView | undefined): boolean {
   const members = before?.members ?? [];
   switch (r.type) {
     case "found":
@@ -129,7 +129,7 @@ export function commonMembers(e: Engine, a: string, b: string): readonly string[
 export function lineage(
   e: Engine,
   key: string,
-  view: EngineView | undefined,
+  view: MemberView | undefined,
   C: ReadonlySet<string>,
 ): readonly string[] | undefined {
   const commonMembersSet = new Set(C.size === 0 ? [] : e.view(C).members);

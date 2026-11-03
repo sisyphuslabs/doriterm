@@ -1,8 +1,8 @@
 // Seeded random histories for the property tests: honest hosts that write concurrently from partial knowledge,
 // gossip, and ack every membership record they merge, plus attackers that sign anything with any prev.
 
-import { Dag, type Rec } from "../../src/view/dag.ts";
-import { Engine, type ViewCache } from "../../src/view/engine.ts";
+import type { Rec } from "../../src/view/dag.ts";
+import { ViewCache, viewOfRecords } from "../../src/view/engine.ts";
 import type { EngineView } from "../../src/view/membership.ts";
 import { ack, admit, type Draft, name, rekey, revoke } from "../fixtures/records.ts";
 
@@ -39,7 +39,7 @@ export const headsOf = (records: readonly Rec[]): string[] => {
 export class World {
   readonly records: Rec[] = [];
   readonly know = new Map<string, Set<string>>();
-  readonly memo: ViewCache = new Map();
+  readonly memo = new ViewCache();
   readonly acks: boolean;
   #n = 0;
 
@@ -56,7 +56,7 @@ export class World {
   }
 
   viewOf(ids: ReadonlySet<string>): EngineView {
-    return new Engine(new Dag(this.subset(ids)), this.memo).full();
+    return viewOfRecords(this.subset(ids), this.memo);
   }
 
   full(): EngineView {
