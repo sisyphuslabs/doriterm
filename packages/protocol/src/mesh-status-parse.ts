@@ -43,7 +43,12 @@ const STUCK_REASONS = {
   copied_core: objectOf<StuckOf<"copied_core">>({ kind: oneOf("copied_core"), member: isId }),
   line_idle: objectOf<StuckOf<"line_idle">>({ kind: oneOf("line_idle"), member: isId }),
   possibly_revoked: objectOf<StuckOf<"possibly_revoked">>({ kind: oneOf("possibly_revoked") }),
-  read_only: objectOf<StuckOf<"read_only">>({ kind: oneOf("read_only"), until: isTime }),
+  read_only: objectOf<StuckOf<"read_only">>({
+    kind: oneOf("read_only"),
+    until: isTime,
+    by: listOf(isId),
+    at: nullable(isTime),
+  }),
   removed_undecidable: objectOf<StuckOf<"removed_undecidable">>({ kind: oneOf("removed_undecidable") }),
   log_full: objectOf<StuckOf<"log_full">>({ kind: oneOf("log_full"), records: isCount }),
   counter_behind: objectOf<StuckOf<"counter_behind">>({ kind: oneOf("counter_behind"), file: isCount, mesh: isCount }),

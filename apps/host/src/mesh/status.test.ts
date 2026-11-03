@@ -1,4 +1,4 @@
-import { fingerprintOf } from "@doriface/crypto";
+import { base64urlEncode, fingerprintOf } from "@doriface/crypto";
 import type { MeshStuckReason } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
 import { meshFixture } from "../testing/mesh-fixture.ts";
@@ -162,6 +162,25 @@ describe("mesh status", () => {
   });
 
   const later = new Date(NOW.getTime() + 60_000);
+  const revokedSelf: MeshSources = {
+    ...withLocal({ readOnlyUntil: later }),
+    view: {
+      ...fixture.sources.view,
+      revocations: new Map([
+        ...fixture.sources.view.revocations,
+        [
+          fixture.keys.studio,
+          {
+            name: "studio",
+            noisePub: base64urlEncode(ids.studio.noise.publicKey),
+            by: [fixture.keys["build-box"]],
+            reason: "revoke",
+            at: "2026-11-03T11:00:00.000Z",
+          },
+        ],
+      ]),
+    },
+  };
   const removedSelf = {
     ...fixture.sources,
     view: { ...fixture.sources.view, failClosed: [{ removed: [fixture.keys.studio], revokedKey: fixture.keys.kiosk }] },
@@ -172,7 +191,11 @@ describe("mesh status", () => {
   };
   const rows: readonly (readonly [string, MeshSources, MeshStuckReason])[] = [
     ["possibly revoked", withLocal({ possiblyRevoked: true }), { kind: "possibly_revoked" }],
-    ["read-only", withLocal({ readOnlyUntil: later }), { kind: "read_only", until: later.toISOString() }],
+    [
+      "read-only",
+      revokedSelf,
+      { kind: "read_only", until: later.toISOString(), by: [ids["build-box"].hostId], at: "2026-11-03T11:00:00.000Z" },
+    ],
     ["removed by an undecidable revoke", removedSelf, { kind: "removed_undecidable" }],
     ["log full", withLocal({ records: MAX_MESH_RECORDS }), { kind: "log_full", records: MAX_MESH_RECORDS }],
     ["counter behind", withLocal({ counter: { file: 5, mesh: 9 } }), { kind: "counter_behind", file: 5, mesh: 9 }],

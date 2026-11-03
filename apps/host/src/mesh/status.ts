@@ -115,7 +115,13 @@ function stuckOf(sources: MeshSources, names: Names, now: Date): MeshStuckReason
   const reasons: MeshStuckReason[] = [];
   if (local.possiblyRevoked) reasons.push({ kind: "possibly_revoked" });
   if (local.readOnlyUntil !== null && local.readOnlyUntil.getTime() > now.getTime()) {
-    reasons.push({ kind: "read_only", until: local.readOnlyUntil.toISOString() });
+    const revocation = view.revocations.get(local.self);
+    reasons.push({
+      kind: "read_only",
+      until: local.readOnlyUntil.toISOString(),
+      by: (revocation?.by ?? []).map(names.hostId),
+      at: revocation?.at ?? null,
+    });
   }
   if (view.failClosed.some((fact) => fact.removed.includes(local.self))) reasons.push({ kind: "removed_undecidable" });
   if (local.records >= MAX_MESH_RECORDS) reasons.push({ kind: "log_full", records: local.records });

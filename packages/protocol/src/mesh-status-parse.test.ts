@@ -45,7 +45,7 @@ const status: MeshStatus = {
     { kind: "copied_core", member: member.hostId },
     { kind: "line_idle", member: member.hostId },
     { kind: "possibly_revoked" },
-    { kind: "read_only", until: "2026-11-10T12:00:00.000Z" },
+    { kind: "read_only", until: "2026-11-10T12:00:00.000Z", by: [member.hostId], at: null },
     { kind: "removed_undecidable" },
     { kind: "log_full", records: 4096 },
     { kind: "counter_behind", file: 5, mesh: 9 },
@@ -178,7 +178,10 @@ describe("parseMeshStatus", () => {
       "a revoke suggested for this host",
       memberAt(0, { revokeSuggested: true, unreachableSince: "2026-10-25T12:00:00.000Z" }),
     ],
-    ["a read-only end that is not a time", { ...status, stuck: [{ kind: "read_only", until: "soon" }] }],
+    [
+      "a read-only end that is not a time",
+      { ...status, stuck: [{ kind: "read_only", until: "soon", by: [], at: null }] },
+    ],
   ])("refuses %s", (_, value) => {
     expect(parseMeshStatus(value)).toBeUndefined();
   });

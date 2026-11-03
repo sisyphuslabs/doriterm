@@ -47,6 +47,13 @@ describe("doriface-host mesh status", () => {
     expect(text).toContain("to remove it: doriface-host mesh revoke laptop");
   });
 
+  test("the text form says who revoked this host and when it stops reading", async () => {
+    const readOnly = { by: [status.members[1]?.hostId ?? ""], at: "2026-11-03T11:00:00.000Z" };
+    const reason = { kind: "read_only", until: "2026-11-10T12:00:00.000Z", ...readOnly } as const;
+    const { text } = await run(["status"], { ...status, sync: "stuck", stuck: [reason] });
+    expect(text).toContain("revoked by build-box (2026-11-03T11:00:00.000Z); read-only until 2026-11-10T12:00:00.000Z");
+  });
+
   test("a host in no mesh exits 1", async () => {
     expect((await run(["status"], null)).code).toBe(1);
   });

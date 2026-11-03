@@ -25,7 +25,8 @@ export type MeshLineStuck =
 export type MeshStuckReason =
   | (MeshLineStuck & { readonly member: string })
   | { readonly kind: "possibly_revoked" }
-  | { readonly kind: "read_only"; readonly until: string }
+  /** This host was revoked (design section 6.4): by whom (hostIds), when (display only), and the grace period's end. */
+  | { readonly kind: "read_only"; readonly until: string; readonly by: readonly string[]; readonly at: string | null }
   | { readonly kind: "removed_undecidable" }
   | { readonly kind: "log_full"; readonly records: number }
   | { readonly kind: "counter_behind"; readonly file: number; readonly mesh: number };

@@ -13,7 +13,7 @@ function stuckLine(reason: MeshStuckReason, nameOf: (hostId: string) => string):
     case "possibly_revoked":
       return "possibly revoked";
     case "read_only":
-      return `read-only (revoked) until ${reason.until}`;
+      return `revoked by ${reason.by.map(nameOf).join(", ") || "another member"} (${reason.at ?? "time unknown"}); read-only until ${reason.until}`;
     case "removed_undecidable":
       return "removed by an undecidable revoke";
     case "log_full":
