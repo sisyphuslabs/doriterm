@@ -1,70 +1,144 @@
-import { existsSync, readFileSync } from "node:fs";
+import { generateHostIdentity } from "@doriface/crypto";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { type CliProbe, type MeshCommand, probeBridge, probeCli } from "./cli-probes.ts";
+import { loadMeshLib } from "./mesh-lib.ts";
+import { actorOf, cardOf, foundRecord } from "./records.ts";
 
-const ROOT = join(import.meta.dir, "..", "..", "..", "..");
-const CLI = join(ROOT, "apps", "host", "src", "cli.ts");
+export const ROOT = join(import.meta.dir, "..", "..", "..", "..");
 
-export const CAPABILITIES = ["cli", "bridge", "records", "wire", "reconciler"] as const;
+export const CAPABILITIES = [
+  "join",
+  "status",
+  "revoke",
+  "rename",
+  "leave",
+  "bridge",
+  "records",
+  "wire",
+  "sync",
+  "reconciler",
+] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
-const RECORD_API = ["encodeBody", "signRecord", "signCard", "hashOf", "viewOf"] as const;
-const MESH_COMMANDS = ["pair", "join", "revoke", "status", "leave", "rename"] as const;
+/** Whether a capability works, judged by what it does; `why` says what the probe saw when it does not. */
+export type Verdict = { readonly works: true } | { readonly works: false; readonly why: string };
+export type Present = Readonly<Record<Capability, Verdict>>;
 
-async function run(args: readonly string[]): Promise<string> {
-  const proc = Bun.spawn([process.execPath, CLI, ...args], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
-  return (await proc.exited) === 0 ? `${stdout}${stderr}` : "";
+/**
+ * Any of these on the branch means the mesh stack (PR 2-8) is, at least in part, here. From then on nothing is
+ * skipped: a capability that is missing or does not behave is a failure, so drift can never turn into a silent skip.
+ */
+export const MESH_ARTIFACTS = [
+  ["packages", "mesh"],
+  ["apps", "host", "src", "mesh"],
+  ["apps", "host", "src", "commands", "mesh.ts"],
+  ["apps", "host", "src", "commands", "mesh-join.ts"],
+] as const;
+
+const WORKS: Verdict = { works: true };
+const fails = (why: string): Verdict => ({ works: false, why });
+
+/** Signs a founding record and a card with a fresh key, and checks the founder is the one member of its view. */
+async function probeRecords(root: string): Promise<Verdict> {
+  const lib = await loadMeshLib(root);
+  if (lib === undefined) return fails("no packages/mesh");
+  if (typeof lib === "string") return fails(lib);
+  try {
+    const founder = actorOf(generateHostIdentity(), "probe", "hc-probe");
+    const found = foundRecord(lib, founder);
+    const view = lib.viewOf([found]);
+    if (lib.verifyCard(cardOf(lib, "-", "-", founder)) === undefined) return fails("verifyCard refuses a fresh card");
+    if (lib.hashOf(found).length !== 43) return fails("hashOf is not a 43-character hash");
+    if (lib.meshIdOf(found).length !== 26) return fails("meshIdOf is not a 26-character id");
+    if (!view.members.has(founder.signPub)) return fails("viewOf leaves the founder out of its own mesh");
+    return WORKS;
+  } catch (error) {
+    return fails(`packages/mesh throws: ${String(error)}`);
+  }
 }
 
-/** `doriface-host mesh --help` lists every command the scenarios drive. */
-async function hasMeshCli(): Promise<boolean> {
-  const help = await run(["mesh", "--help"]);
-  return MESH_COMMANDS.every((command) => help.includes(`mesh ${command}`));
+interface Payloads {
+  encodeSessionHello(early: Uint8Array, stream?: string): Uint8Array;
+  decodeHello(pattern: "IK", payload: Uint8Array): unknown;
 }
 
-async function hasBridge(): Promise<boolean> {
-  return (await run(["connect", "--help"])).includes("--mesh");
+const isPayloads = (value: unknown): value is Payloads =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof Reflect.get(value, "encodeSessionHello") === "function" &&
+  typeof Reflect.get(value, "decodeHello") === "function";
+
+/** A session hello written with the `"mesh"` stream (section 10.2) decodes with that stream. */
+async function probeWire(root: string): Promise<Verdict> {
+  const loaded: unknown = await import(join(root, "packages", "crypto", "src", "payloads.ts")).catch(() => undefined);
+  if (!isPayloads(loaded)) return fails("packages/crypto has no session hello codec");
+  try {
+    const hello: unknown = loaded.decodeHello("IK", loaded.encodeSessionHello(new Uint8Array(0), "mesh"));
+    const stream = typeof hello === "object" && hello !== null ? Reflect.get(hello, "stream") : undefined;
+    return stream === "mesh" ? WORKS : fails("a session hello does not carry the mesh stream");
+  } catch (error) {
+    return fails(`the mesh stream is refused: ${String(error)}`);
+  }
 }
 
-/** `packages/mesh` (PR 2) exports what signing and the door need, loaded by path so this file builds without it. */
-export async function loadMeshLib(): Promise<Readonly<Record<string, unknown>> | undefined> {
-  const entry = join(ROOT, "packages", "mesh", "src", "index.ts");
-  if (!existsSync(entry)) return undefined;
-  const loaded: unknown = await import(entry);
-  if (typeof loaded !== "object" || loaded === null) return undefined;
-  const lib: Readonly<Record<string, unknown>> = Object.fromEntries(Object.entries(loaded));
-  return RECORD_API.every((name) => typeof lib[name] === "function") ? lib : undefined;
-}
+const artifact = (root: string, path: readonly string[], what: string): Verdict =>
+  existsSync(join(root, ...path)) ? WORKS : fails(`no ${what} (${path.join("/")})`);
 
-/** The mesh stream is a handshake payload value (PR 3): the crypto package must know it before a test may open one. */
-function hasMeshStream(): boolean {
-  const payloads = join(ROOT, "packages", "crypto", "src", "payloads.ts");
-  return existsSync(payloads) && readFileSync(payloads, "utf8").includes('"mesh"');
-}
+const NO_CLI: CliProbe = {
+  join: ["mesh pair"],
+  status: ["mesh status"],
+  revoke: ["mesh revoke"],
+  rename: ["mesh rename"],
+  leave: ["mesh leave"],
+};
 
-export type Present = Readonly<Record<Capability, boolean>>;
+const commandVerdict = (commands: CliProbe, name: MeshCommand): Verdict => {
+  const missingHere = commands[name];
+  return missingHere.length === 0 ? WORKS : fails(`never reaches the running host: ${missingHere.join(", ")}`);
+};
 
-export async function detect(): Promise<Present> {
-  const [cli, bridge, lib] = await Promise.all([hasMeshCli(), hasBridge(), loadMeshLib()]);
+export async function detect(root: string = ROOT): Promise<Present> {
+  const cli = join(root, "apps", "host", "src", "cli.ts");
+  const [commands, bridge, records, wire] = await Promise.all([
+    existsSync(cli) ? probeCli(cli) : NO_CLI,
+    existsSync(cli) && probeBridge(cli),
+    probeRecords(root),
+    probeWire(root),
+  ]);
   return {
-    cli,
-    bridge,
-    records: lib !== undefined,
-    wire: hasMeshStream(),
-    reconciler: cli && bridge && existsSync(join(ROOT, "apps", "host", "src", "mesh", "reconciler.ts")),
+    join: commandVerdict(commands, "join"),
+    status: commandVerdict(commands, "status"),
+    revoke: commandVerdict(commands, "revoke"),
+    rename: commandVerdict(commands, "rename"),
+    leave: commandVerdict(commands, "leave"),
+    bridge: bridge ? WORKS : fails("connect --mesh never asks the running host for a line"),
+    records,
+    wire,
+    sync: artifact(root, ["apps", "host", "src", "mesh", "sync.ts"], "mesh sync"),
+    reconciler: artifact(root, ["apps", "host", "src", "mesh", "reconciler.ts"], "reconciler"),
   };
 }
 
-/** `DORIFACE_MESH_E2E=require` turns a missing capability into a failure, which is how the final stack runs them. */
-export const REQUIRED = process.env["DORIFACE_MESH_E2E"] === "require";
-
-export function missing(present: Present, needs: readonly Capability[]): readonly Capability[] {
-  return needs.filter((need) => !present[need]);
+/** `env` is DORIFACE_MESH_E2E: `require`, or any mesh artifact on the branch, makes a capability that does not work fail. */
+export function isRequired(root: string, env: string | undefined): boolean {
+  return env === "require" || MESH_ARTIFACTS.some((path) => existsSync(join(root, ...path)));
 }
 
-export function gate(present: Present, needs: readonly Capability[]): { readonly run: boolean; readonly why: string } {
+export function missing(present: Present, needs: readonly Capability[]): readonly string[] {
+  return needs.flatMap((need) => {
+    const verdict = present[need];
+    return verdict.works ? [] : [`${need} (${verdict.why})`];
+  });
+}
+
+/** `skip` only while the stack is absent and nothing requires it; otherwise a capability that does not work fails. */
+export type Gate = { readonly kind: "run" } | { readonly kind: "skip" | "fail"; readonly why: string };
+
+export function gate(present: Present, needs: readonly Capability[], required: boolean): Gate {
   const absent = missing(present, needs);
-  if (absent.length === 0) return { run: true, why: "" };
-  if (REQUIRED) throw new Error(`DORIFACE_MESH_E2E=require but these capabilities are missing: ${absent.join(", ")}`);
-  return { run: false, why: `needs ${absent.join(", ")} (PR 1-8 not on this branch yet)` };
+  if (absent.length === 0) return { kind: "run" };
+  if (required)
+    return { kind: "fail", why: `the mesh e2e requires capabilities that do not work: ${absent.join("; ")}` };
+  return { kind: "skip", why: `needs ${absent.join("; ")}: the mesh stack (PR 2-8) is not on this branch` };
 }

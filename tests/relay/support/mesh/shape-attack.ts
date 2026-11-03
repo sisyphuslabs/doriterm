@@ -1,0 +1,81 @@
+import { type ForbiddenWatch, watchForbidden } from "./forbidden-watch.ts";
+import { deliver, type Delivery, type Judgement, untilJudged } from "./inject.ts";
+import { identityOf } from "./identity.ts";
+import { plantRecords } from "./plant.ts";
+import { lastOwn, signAttack } from "./records.ts";
+import type { ShapeRun } from "./shape-setup.ts";
+import { meshFileOf, type Status, statusOf, storedRecords } from "./status.ts";
+
+export interface AttackResult {
+  /** How each judge's own session served the injection (member channel only). */
+  readonly deliveries: readonly Delivery["kind"][];
+  /** Each judge's judgement of every attack record, by judge host name. */
+  readonly judgements: ReadonlyMap<string, readonly Judgement[]>;
+  /** Every sighting of a minted key on a judge, from the first injected byte to the settled view. */
+  readonly sightings: readonly string[];
+  /** Each judge's status once its view is the expected one. */
+  readonly statuses: ReadonlyMap<string, Status>;
+}
+
+const MEMBERS_MS = 120_000;
+
+/**
+ * Signs the shape's attack with the revoked key and the keys it mints, gets it to every judge through the shape's
+ * channel, waits until each judge has judged every record (the door's refusal line or the hash in `mesh.json`), then
+ * until each judge's view is the shape's. A minted key seen on a judge at any point in that window is reported.
+ */
+export async function runAttack(run: ShapeRun): Promise<AttackResult> {
+  const { mesh, lib, shape } = run;
+  const keyHost = (key: string) => mesh.host(run.host(key));
+  const revoked = keyHost(shape.revoked);
+  const revokedActor = run.actors.get(shape.revoked);
+  if (revokedActor === undefined) throw new Error(`${shape.id}: no keys for ${shape.revoked}`);
+  const meshId = meshFileOf(revoked).meshId;
+  const fork = lastOwn(lib, storedRecords(revoked), revokedActor.signPub);
+  const graph = signAttack(lib, meshId, shape, run.actors, fork);
+  const hashes = shape.attack.map((step) => graph.hashes.get(step.id) ?? "");
+  const judges = shape.judges.map(keyHost);
+  const minted = shape.minted.flatMap((key) => {
+    const actor = run.actors.get(key);
+    return actor === undefined ? [] : [actor];
+  });
+  const watch: ForbiddenWatch = watchForbidden(
+    mesh,
+    judges.map((judge) => judge.name),
+    { hostIds: minted.map((actor) => actor.keys.hostId), coreIds: minted.map((actor) => actor.hcId) },
+  );
+  const sessions: Delivery[] = [];
+  try {
+    if (shape.channel === "member") {
+      const opened = await Promise.all(
+        judges.map((target, index) => {
+          const carrier = judges[(index + 1) % judges.length] ?? target;
+          return deliver({ mesh, carrier: identityOf(carrier), target, meshId, records: graph.records });
+        }),
+      );
+      sessions.push(...opened);
+    } else {
+      plantRecords(revoked, revokedActor.signPub, graph.records);
+      await revoked.start();
+    }
+    const judged = await Promise.all(judges.map((judge) => untilJudged(mesh, judge, hashes, lib.hashOf)));
+    const judgements = new Map<string, readonly Judgement[]>(
+      judges.map((judge, index) => [judge.name, hashes.map((hash) => judged[index]?.get(hash) ?? "refused")]),
+    );
+    const want = JSON.stringify(shape.members.map((key) => keyHost(key).hostId).toSorted());
+    const statuses = new Map<string, Status>();
+    await mesh.until(
+      `${shape.id}: every judge's view is ${JSON.stringify(shape.members)}`,
+      async () => {
+        const seen = await Promise.all(judges.map((judge) => statusOf(judge)));
+        for (const [index, judge] of judges.entries())
+          statuses.set(judge.name, seen[index] ?? { sync: "", members: [], stuck: [] });
+        return seen.every((status) => JSON.stringify(status.members.map((member) => member.hostId)) === want);
+      },
+      MEMBERS_MS,
+    );
+    return { deliveries: sessions.map((session) => session.kind), judgements, sightings: await watch.stop(), statuses };
+  } finally {
+    for (const session of sessions) session.close();
+  }
+}

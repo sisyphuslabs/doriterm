@@ -1,35 +1,25 @@
-import type { Socket } from "bun";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { relayDir } from "../../private-relay.ts";
 import { testIp } from "../probe.ts";
+import { within } from "../watch.ts";
+import { processTable, signalAll, treeOf } from "./processes.ts";
+import { makeTap, type Tap } from "./tap.ts";
+
+export type { Tap } from "./tap.ts";
 
 const READY = /Ready on (http:\/\/\S+)/;
 const START_TIMEOUT_MS = 90_000;
-const CRLF = "\r\n";
-
-/** One host's door to the relay: a TCP forwarder that names the host's source IP and can be cut and healed. */
-export interface Tap {
-  /** What the host is given as `--relay`. Its port is part of the origin the host signs over. */
-  readonly url: string;
-  /** The `cf-connecting-ip` this tap sets, so the relay's per-IP budgets see it as the host's address. */
-  readonly ip: string;
-  /** Bytes forwarded in both directions. */
-  bytes(): number;
-  /** Connections currently open through the tap. */
-  open(): number;
-  /** Closes every connection and refuses new ones, as a network partition from this host's side. */
-  cut(): void;
-  heal(): void;
-  stop(): void;
-}
+const STOP_MS = 15_000;
 
 export interface MeshRelay {
   /** The relay itself, for dials that are not a mesh host (an outsider's). */
   readonly url: string;
   /** The one source IP every tap gives: the design's H5 configuration has all hosts behind one address. */
   readonly ip: string;
+  /** The `wrangler dev` process; its tree is the relay in the teardown receipt. */
+  readonly pid: number;
   tapFor(): Tap;
   output(): string;
   stop(): Promise<void>;
@@ -54,97 +44,6 @@ function routeFreeConfig(dir: string): string {
     throw new Error("the relay's wrangler.jsonc has no main");
   const kept = Object.entries(parsed).filter(([name]) => name !== "routes" && name !== "$schema");
   return JSON.stringify({ ...Object.fromEntries(kept), main: join(dir, parsed["main"]) });
-}
-
-interface Conn {
-  up: Socket<undefined> | undefined;
-  head: string;
-  headDone: boolean;
-  queue: Uint8Array[];
-}
-
-function makeTap(upstreamPort: number, ip: string): Tap {
-  const conns = new Set<Socket<Conn>>();
-  let forwarded = 0;
-  let cut = false;
-  const forward = (conn: Conn, bytes: Uint8Array): void => {
-    forwarded += bytes.length;
-    if (conn.up === undefined) conn.queue.push(bytes);
-    else conn.up.write(bytes);
-  };
-  const listener = Bun.listen<Conn>({
-    hostname: "127.0.0.1",
-    port: 0,
-    socket: {
-      open(socket) {
-        if (cut) return void socket.end();
-        const conn: Conn = { up: undefined, head: "", headDone: false, queue: [] };
-        socket.data = conn;
-        conns.add(socket);
-        void Bun.connect({
-          hostname: "127.0.0.1",
-          port: upstreamPort,
-          socket: {
-            data(_up, bytes) {
-              forwarded += bytes.length;
-              socket.write(bytes);
-            },
-            close() {
-              socket.end();
-            },
-            error() {
-              socket.end();
-            },
-          },
-        }).then(
-          (up) => {
-            conn.up = up;
-            for (const queued of conn.queue.splice(0)) up.write(queued);
-            if (cut) up.end();
-            return undefined;
-          },
-          () => socket.end(),
-        );
-      },
-      data(socket, bytes) {
-        const conn = socket.data;
-        if (conn.headDone) return forward(conn, bytes);
-        // The IP header goes in right after the request line, before the first header.
-        conn.head += Buffer.from(bytes).toString("latin1");
-        const end = conn.head.indexOf(CRLF);
-        if (end < 0) return;
-        conn.headDone = true;
-        const line = conn.head.slice(0, end + CRLF.length);
-        forward(conn, Buffer.from(`${line}cf-connecting-ip: ${ip}${CRLF}${conn.head.slice(line.length)}`, "latin1"));
-        conn.head = "";
-      },
-      close(socket) {
-        conns.delete(socket);
-        socket.data.up?.end();
-      },
-      error(socket) {
-        socket.end();
-      },
-    },
-  });
-  return {
-    url: `http://127.0.0.1:${listener.port}`,
-    ip,
-    bytes: () => forwarded,
-    open: () => conns.size,
-    cut() {
-      cut = true;
-      for (const socket of conns) socket.end();
-    },
-    heal() {
-      cut = false;
-    },
-    stop() {
-      cut = true;
-      for (const socket of conns) socket.end();
-      listener.stop(true);
-    },
-  };
 }
 
 /** Runs the pinned private relay under `wrangler dev` with a route-free config, and hands out taps to it. */
@@ -193,15 +92,21 @@ export async function startMeshRelay(): Promise<MeshRelay> {
       if (url !== undefined) ready.resolve(url);
     }
   };
-  void Promise.all([drain(proc.stdout), drain(proc.stderr)]);
+  // Every process wrangler starts inherits these pipes, so they end only once the whole relay tree has exited.
+  const drained = Promise.all([drain(proc.stdout), drain(proc.stderr)]);
   void proc.exited.then((code) => ready.reject(new Error(`wrangler dev exited ${code} before ready:\n${output}`)));
   const timer = setTimeout(() => ready.reject(new Error(`wrangler dev not ready:\n${output}`)), START_TIMEOUT_MS);
   const taps: Tap[] = [];
   const ip = testIp();
   const stop = async (): Promise<void> => {
     for (const tap of taps) tap.stop();
-    proc.kill("SIGTERM");
+    const tree = treeOf(await processTable(), proc.pid);
+    signalAll(tree.toReversed(), "SIGTERM");
     await proc.exited;
+    await within(drained, "the relay's processes exiting", STOP_MS).catch((error: unknown) => {
+      signalAll(tree, "SIGKILL");
+      throw error;
+    });
     rmSync(scratch, { recursive: true, force: true });
   };
   try {
@@ -209,6 +114,7 @@ export async function startMeshRelay(): Promise<MeshRelay> {
     return {
       url,
       ip,
+      pid: proc.pid,
       output: () => output,
       stop,
       tapFor() {

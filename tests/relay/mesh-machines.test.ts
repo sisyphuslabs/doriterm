@@ -1,10 +1,9 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { untilFullMesh } from "./support/mesh/echo.ts";
 import { HOST_NAMES, type Mesh, startMesh } from "./support/mesh/mesh.ts";
-import { runs } from "./support/mesh/present.ts";
+import { scenario } from "./support/mesh/present.ts";
 import { machineIds } from "./support/mesh/status.ts";
 
-const ENABLED = runs("automatic machine add and remove in hc", ["cli", "bridge", "reconciler"]);
 let mesh: Mesh | undefined;
 
 const running = (): Mesh => {
@@ -16,7 +15,7 @@ async function coreIdOf(hosts: Mesh, name: string): Promise<string> {
   return (await hosts.core(name)).hello.core.id;
 }
 
-describe.skipIf(!ENABLED)("the reconciler keeps each core's machines equal to the mesh", () => {
+scenario("automatic machine add and remove in hc", ["join", "revoke", "leave", "bridge", "reconciler", "sync"], () => {
   beforeAll(async () => {
     mesh = await startMesh();
     await mesh.join("a", "b");
@@ -28,25 +27,26 @@ describe.skipIf(!ENABLED)("the reconciler keeps each core's machines equal to th
     await mesh?.dispose();
   });
 
-  test("members appear as machines on every core with no `hc machine add` run by anyone", async () => {
+  test("a new member appears as a machine on every core, and every core lists exactly the other members", async () => {
     const hosts = running();
-    const adds = hosts.hosts.map((host) => host.cliCalls());
     await hosts.join("a", "d");
     await untilFullMesh(hosts, HOST_NAMES);
     const ids = await Promise.all(HOST_NAMES.map((name) => coreIdOf(hosts, name)));
     const lists = await Promise.all(HOST_NAMES.map((name) => machineIds(hosts, name)));
     expect(lists).toEqual(HOST_NAMES.map((_, index) => ids.filter((__, other) => other !== index).toSorted()));
-    expect(hosts.host("b").cliCalls()).toBe(adds[1] ?? -1);
   }, 120_000);
 
-  test("each mesh machine is reached through the pinned `connect --mesh` line of its own host", async () => {
+  test("the reconciler added each machine: the pinned `connect --mesh --state-dir <dir> <hostId>` of its member", async () => {
     const hosts = running();
     const machines = (await (await hosts.core("a")).call("machine.list")).machines;
     const stateDir = hosts.host("a").stateDir;
-    expect(
-      machines.every((machine) => machine.via === true && machine.target.includes("connect --mesh --state-dir")),
-    ).toBe(true);
-    expect(machines.every((machine) => machine.target.includes(stateDir))).toBe(true);
+    const others = hosts.hosts.filter((host) => host.name !== "a");
+    const reached = machines.map((machine) => others.find((host) => machine.target.endsWith(` ${host.hostId}`))?.name);
+    expect(reached.toSorted()).toEqual(others.map((host) => host.name).toSorted());
+    for (const machine of machines) {
+      const pinned = machine.target.includes(" connect --mesh --state-dir ") && machine.target.includes(stateDir);
+      expect([machine.via, pinned]).toEqual([true, true]);
+    }
   });
 
   test("a revoked member is removed from the other cores, and a leaving member removes its own machines", async () => {
