@@ -47,34 +47,57 @@ const switched = (reply: Record<string, unknown> | undefined): boolean => {
 };
 
 const hello = (params: string) => `{"jsonrpc":"2.0","id":7,"method":"hello","params":${params}}`;
-const LINES = [
-  CLIENT.trimEnd(),
-  peerHello("core-a").trimEnd(),
-  PROBE.trimEnd().replace('"id":1', '"id":7'),
-  '{"jsonrpc":"2.0","id":7,"method":"server.status"}',
-  hello('{"framed":true,"generation":1.0}'),
-  hello('{"framed":true,"generation":2}'),
-  hello('{"framed":true,"calls_you":"\\ud800"}'),
-  hello(`{"framed":true,"x":${"[".repeat(130)}${"]".repeat(130)}}`),
-  hello('{"framed":true,"x":1e400}'),
-  hello('{"framed":true,"features":null}'),
-  hello('{"framed":true,"core":{"id":"x"}}'),
-  hello('{"framed":true,"unknown":{"a":[1,2]}}'),
-  hello('{"framed":true,"framed":false}'),
-  hello('{"framed":false,"framed":true}'),
-  hello("[null,true]"),
+const call = (head: string) => `{"jsonrpc":"2.0",${head},"params":{"framed":true}}`;
+/** Each line, and whether the gate refuses it (a line it does not refuse must be read as hc reads it). */
+const LINES: readonly (readonly [string, boolean])[] = [
+  [CLIENT.trimEnd(), false],
+  [peerHello("core-a").trimEnd(), false],
+  [PROBE.trimEnd().replace('"id":1', '"id":7'), false],
+  ['{"jsonrpc":"2.0","id":7,"method":"server.status"}', false],
+  [hello('{"framed":true,"generation":1.0}'), true],
+  [hello('{"framed":true,"generation":2}'), true],
+  [hello('{"framed":true,"calls_you":"\\ud800"}'), true],
+  [hello(`{"framed":true,"x":${"[".repeat(130)}${"]".repeat(130)}}`), true],
+  [hello('{"framed":true,"x":1e400}'), true],
+  [hello('{"framed":true,"features":null}'), true],
+  [hello('{"framed":true,"core":{"id":"x"}}'), true],
+  [hello('{"framed":true,"unknown":{"a":[1,2]}}'), false],
+  [hello('{"framed":true,"framed":false}'), false],
+  [hello('{"framed":false,"framed":true}'), false],
+  [hello("[null,true]"), true],
+  [`\ufeff${CLIENT.trimEnd().replace('"id":0', '"id":7')}`, true],
+];
+/** A duplicate key at every level whose overwritten value serde refuses (hc keeps the last value of a duplicate). */
+const DUPLICATES: readonly (readonly [string, boolean])[] = [
+  ['{"jsonrpc":"2.0","id":7,"method":"hello","params":"\\ud800","params":{"framed":true}}', true],
+  ['{"jsonrpc":"2.0","id":7,"method":"hello","params":1e400,"params":{"framed":true}}', true],
+  [hello('{"core":"\\ud800","core":null,"framed":true}'), true],
+  [hello('{"core":{"deep":{"deepest":1e400}},"core":{"id":"victim","name":"mac"},"framed":true}'), true],
+  [call('"id":1e400,"id":7,"method":"hello"'), true],
+  [call('"id":"\\ud800","id":7,"method":"hello"'), true],
+  [call('"id":7,"method":"\\ud800","method":"hello"'), true],
+  [call('"id":7,"method":1.5,"method":"hello"'), true],
+  [hello('{"framed":1e400,"framed":true}'), true],
+  [hello('{"framed":"\\udc00","framed":true}'), true],
+  [hello('{"generation":1e400,"generation":1,"framed":true}'), true],
+  [hello('{"generation":1.0,"generation":1,"framed":true}'), true],
+  [hello('{"x":1e400,"x":1,"framed":true}'), true],
+  [hello('{"x":{"y":["\\ud800"]},"x":0,"framed":true}'), true],
+  ['{"jsonrpc":"\\ud800","jsonrpc":"2.0","id":7,"method":"hello","params":{"framed":true}}', true],
+  [hello('{"framed":false,"framed":true,"core":{"id":"a","name":"b"},"core":{"id":"c","name":"d"}}'), false],
+  [hello('{"x":"\\ud83d\\ude00","x":"ok","framed":true}'), false],
 ];
 
 describe("HIGH-1 against a real hc 0.1.17", () => {
-  test.each(LINES)("the gate reads %p as switching to frames exactly when hc does, or refuses it", async (line) => {
-    const read = hcLineOf(encoder.encode(line));
-    const reply = await firstReply(line);
-    if (read.kind !== "malformed") expect(read.kind === "hello" && read.framed).toBe(switched(reply));
-  });
-
-  test("the lines hc refuses or reads otherwise are the ones the gate refuses", () => {
-    expect(LINES.filter((line) => hcLineOf(encoder.encode(line)).kind === "malformed")).toHaveLength(8);
-  });
+  test.each([...LINES, ...DUPLICATES])(
+    "the gate reads %p as switching to frames exactly when hc does, or refuses it (%p)",
+    async (line, refused) => {
+      const read = hcLineOf(encoder.encode(line));
+      expect(read.kind === "malformed").toBe(refused);
+      const reply = await firstReply(line);
+      if (!refused) expect(read.kind === "hello" && read.framed).toBe(switched(reply));
+    },
+  );
 
   const AHEAD = ["\n", "[]\n", "not json\n", '{"jsonrpc":"2.0","id":0,"method":"ping"}\n'];
   const SHAPES = [...AHEAD, '{"jsonrpc":"2.0","id":0,"method":"hello","params":5}\n', '{"method":"hello"}\n'].map(

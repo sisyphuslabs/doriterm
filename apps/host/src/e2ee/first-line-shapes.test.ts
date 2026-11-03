@@ -68,6 +68,11 @@ describe("HIGH-1: no line hc would read past reaches it ahead of the gated hello
     "generation 1.0": '{"jsonrpc":"2.0","id":0,"method":"hello","params":{"framed":true,"generation":1.0}}\n',
     "a lone surrogate": '{"jsonrpc":"2.0","id":0,"method":"hello","params":{"framed":true,"calls_you":"\\ud800"}}\n',
     "1e400 in a field hc ignores": '{"jsonrpc":"2.0","id":0,"method":"hello","params":{"framed":true,"x":1e400}}\n',
+    "a leading byte order mark": '\ufeff{"jsonrpc":"2.0","id":0,"method":"hello","params":{"framed":true}}\n',
+    "1e400 overwritten by a duplicate key":
+      '{"jsonrpc":"2.0","id":0,"method":"hello","params":{"x":1e400,"x":1,"framed":true}}\n',
+    "a lone surrogate overwritten by a duplicate key":
+      '{"jsonrpc":"2.0","id":0,"method":"hello","params":{"core":"\\ud800","core":null,"framed":true}}\n',
   } as const;
   for (const [what, hello] of Object.entries(unswitched)) {
     test(`a framed hello with ${what} (hc refuses it and stays plain), then a member's peer hello: 4400`, async () => {

@@ -2,7 +2,7 @@
 const HC_GENERATION = 1;
 /** serde_json refuses nesting deeper than 128; anything past this is refused here first, so hc never parses more. */
 const MAX_DEPTH = 64;
-/** Integers small enough that serde_json and JSON.parse read the same value; anything else is refused. */
+/** Integer literals small enough that serde_json and JSON.parse read the same value; any other number is refused. */
 const INTEGER = /^-?(?:0|[1-9]\d{0,14})$/;
 
 /**
@@ -17,35 +17,54 @@ export type HcLine =
 const isObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-function depthOf(text: string): number {
-  let depth = 0;
-  let deepest = 0;
-  let inString = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inString) {
-      if (c === "\\") i++;
-      else if (c === '"') inString = false;
-    } else if (c === '"') inString = true;
-    else if (c === "{" || c === "[") deepest = Math.max(deepest, ++depth);
-    else if (c === "}" || c === "]") depth--;
-  }
-  return deepest;
-}
+const NUMBER = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
+const HIGH = /^\\u[dD][89abAB][0-9a-fA-F]{2}$/;
+const LOW = /^\\u[dD][c-fC-F][0-9a-fA-F]{2}$/;
 
 /**
- * JSON both parsers read alike: well-formed strings and keys, and only small integer literals as numbers, anywhere in
- * the line (serde_json refuses a whole line over one number like `1e400`, even in a field hc ignores).
+ * Why serde_json would refuse `text` where JSON.parse would not, checked over every token rather than the parsed
+ * value, so a value a duplicate key overwrites is checked too (hc keeps the last value of a duplicate key, as
+ * JSON.parse does, but serde refuses the whole line over any token): nesting past {@link MAX_DEPTH}, a lone surrogate
+ * escape, or a number that is not a small integer literal.
  */
+function lexicalRefusal(text: string): string | undefined {
+  let depth = 0;
+  for (let i = 0; i < text.length;) {
+    const c = text[i];
+    if (c === '"') {
+      let j = i + 1;
+      while (j < text.length && text[j] !== '"') {
+        if (text[j] !== "\\") j++;
+        else if (text[j + 1] !== "u") j += 2;
+        else {
+          const escape = text.slice(j, j + 6);
+          const pairs = HIGH.test(escape) && LOW.test(text.slice(j + 6, j + 12));
+          if ((HIGH.test(escape) && !pairs) || LOW.test(escape)) return "a lone surrogate";
+          j += pairs ? 12 : 6;
+        }
+      }
+      i = j + 1;
+    } else if (c === "-" || (c !== undefined && c >= "0" && c <= "9")) {
+      NUMBER.lastIndex = i;
+      const token = NUMBER.exec(text)?.[0] ?? c;
+      if (!INTEGER.test(token)) return "not a small integer";
+      i += token.length;
+    } else {
+      if (c === "{" || c === "[") depth++;
+      else if (c === "}" || c === "]") depth--;
+      if (depth > MAX_DEPTH) return "nested too deeply";
+      i++;
+    }
+  }
+  return undefined;
+}
+
+/** JSON both parsers read alike; a leading byte order mark is kept, so JSON.parse refuses it as serde does. */
 function parseStrict(bytes: Uint8Array): unknown {
-  const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  if (depthOf(text) > MAX_DEPTH) throw new Error("nested too deeply");
-  return JSON.parse(text, (key: string, value: unknown, context?: { source?: string }) => {
-    if (!key.isWellFormed()) throw new Error("a key with a lone surrogate");
-    if (typeof value === "string" && !value.isWellFormed()) throw new Error("a string with a lone surrogate");
-    if (typeof value === "number" && !INTEGER.test(context?.source ?? "")) throw new Error("not a small integer");
-    return value;
-  });
+  const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  const refusal = lexicalRefusal(text);
+  if (refusal !== undefined) throw new Error(refusal);
+  return JSON.parse(text);
 }
 
 const optional = (value: unknown, is: (value: unknown) => boolean): boolean =>
