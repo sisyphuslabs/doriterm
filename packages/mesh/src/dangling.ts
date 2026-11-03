@@ -1,7 +1,7 @@
 // The dangling pool (design section 3.3 steps 4-5): a record whose past, or whose signer's admission, has not arrived
 // waits in a pool of at most MAX_DANGLING records, oldest dropped first, and joins the set when what it waits for lands.
 
-import { door, missingFor, type RefusalReason } from "./door.ts";
+import { door, holds, missingFor, type RefusalReason, shareIndex } from "./door.ts";
 import { cardOf, hashOf, parseRecord, verifyCard } from "./records/codec.ts";
 import { MAX_DANGLING, type Signed } from "./records/types.ts";
 
@@ -37,7 +37,8 @@ export function mergeAtDoor(
   incoming: readonly Signed[],
 ): DoorMerge {
   const set: Signed[] = [...stored];
-  const seen = new Set(stored.map(copy));
+  shareIndex(stored, set);
+  const seen = new Set<string>();
   const held = new Map<string, { readonly record: Signed; readonly age: number }>();
   const waiting = new Map<string, string[]>();
   const added: Signed[] = [];
@@ -46,7 +47,7 @@ export function mergeAtDoor(
   let age = 0;
   for (const record of [...dangling, ...incoming]) {
     const key = copy(record);
-    if (seen.has(key)) continue;
+    if (seen.has(key) || holds(set, record)) continue;
     seen.add(key);
     queue.push({ record, age: age++ });
   }

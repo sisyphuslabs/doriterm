@@ -69,8 +69,9 @@ function add(index: StoredIndex, record: Signed): void {
 }
 
 /**
- * The index of `stored`. A stored set only grows, so a call with the same array as before indexes just the records
- * appended since; a different array (or one whose indexed prefix changed) is indexed from scratch, once.
+ * The index of `stored`, kept per array. Callers treat a stored array as append-only: a call with the same array
+ * indexes just the records appended since, and an array that shrank or whose first or last indexed element changed is
+ * indexed from scratch. Replacing an interior element in place is not detected; never do it.
  */
 function indexOf(stored: readonly Signed[]): StoredIndex {
   let index = indexes.get(stored);
@@ -99,6 +100,24 @@ function indexOf(stored: readonly Signed[]): StoredIndex {
   index.last = stored.at(-1);
   return index;
 }
+
+/**
+ * Lets `copy`, a new array that starts with every element of `source`, reuse the index `source` already has; the
+ * next call with `copy` indexes only what follows the indexed prefix.
+ */
+export function shareIndex(source: readonly Signed[], copy: readonly Signed[]): void {
+  const index = indexes.get(source);
+  if (index === undefined || indexes.has(copy)) return;
+  indexes.set(copy, {
+    ...index,
+    hashes: new Set(index.hashes),
+    signers: new Set(index.signers),
+    nonces: new Set(index.nonces),
+  });
+}
+
+/** Whether `stored` holds a record with the body of `record`. */
+export const holds = (stored: readonly Signed[], record: Signed): boolean => indexOf(stored).hashes.has(hashOf(record));
 
 /** The prev hashes of `record` that `stored` does not hold (a record with any is dangling and waits). */
 export function missingFor(record: Signed, stored: readonly Signed[]): readonly string[] {

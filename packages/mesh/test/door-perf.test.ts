@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { base64urlEncode } from "@doriface/crypto";
+import { mergeAtDoor } from "../src/dangling.ts";
 import { door } from "../src/door.ts";
 import { hashOf, meshIdOf, parseRecord, signCard, signRecord, verifies } from "../src/records/codec.ts";
 import { MAX_MESH_MEMBERS, MAX_RECORDS, type Signed } from "../src/records/types.ts";
@@ -9,9 +10,10 @@ import { keyOf } from "./fixtures/signed.ts";
  * The door's budget is a multiple of the work it cannot avoid: parsing each record once and verifying its signature
  * once, timed in the same process so a slow or loaded runner moves both sides together. Measured (4096 records,
  * a heavily loaded development machine): the incremental door ran at 0.8-1.09x that floor, 4.66x in the worst load spike;
- * the previous per-call re-index ran at 9-33x already at 1024 records, and grows with the set size.
+ * the previous per-call re-index ran at 9-33x already at 1024 records and 65x at 4096. The budget leaves 3.4x over the
+ * worst spike, so a contended runner does not fail it, and stays 4x under the quadratic door it exists to catch.
  */
-const BUDGET_PER_FLOOR = 8;
+const BUDGET_PER_FLOOR = 16;
 
 function welcome(): readonly Signed[] {
   const keys = Array.from({ length: MAX_MESH_MEMBERS }, (_, i) => keyOf(`perf${i}`));
@@ -78,4 +80,21 @@ test("M-14 (door): a 4096-record welcome through the door costs a bounded multip
   console.log(`door: ${records.length} records in ${doorMs.toFixed(0)} ms; floor ${floorMs.toFixed(0)} ms`);
   expect(records.length).toBe(MAX_RECORDS);
   expect(doorMs).toBeLessThan(BUDGET_PER_FLOOR * floorMs);
+}, 300_000);
+
+test("M-14 (door): a merge into a set the door has indexed re-reads none of it", () => {
+  const records = welcome();
+  const last = records.at(-1);
+  if (last === undefined) throw new Error("empty welcome");
+  const indexed = mergeAtDoor([], [], records.slice(0, -1)).stored;
+  const merge = (): void => {
+    if (mergeAtDoor(indexed, [], [last]).added.length !== 1) throw new Error("the last welcome record was not added");
+  };
+  const fresh = (): void => void door(last, [...indexed]);
+  const mergeMs = Math.min(timed(merge), timed(merge), timed(merge));
+  const freshMs = Math.min(timed(fresh), timed(fresh), timed(fresh));
+  console.log(
+    `merge into ${indexed.length} indexed records: ${mergeMs.toFixed(1)} ms; fresh index ${freshMs.toFixed(1)} ms`,
+  );
+  expect(mergeMs).toBeLessThan(freshMs / 4);
 }, 300_000);
