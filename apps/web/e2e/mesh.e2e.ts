@@ -1,6 +1,11 @@
+import { MESH_APPROVAL_DOC } from "@doriface/protocol";
 import type { Page } from "@playwright/test";
+import { setCoreDoc } from "./core-doc.ts";
 import { expect, test } from "./fixtures.ts";
 import { machineRow, STATE_BOUND_MS } from "./machine-switch.ts";
+
+/** The fixture's expired join; an answer to it leaves ci-runner's open. */
+const OLD_RUNNER_NONCE = "ZXhwaXJlZCBqb2lu";
 
 const group = (page: Page, id: string) => page.locator(`[data-mesh-group="${id}"]`);
 
@@ -64,4 +69,17 @@ test("approving a pending join writes the answer and shows it in place", async (
   await page.reload();
   await openMesh(page);
   await expect(group(page, "pending").locator('[data-mesh-answer="approve"]')).toHaveCount(1, { timeout: 20_000 });
+});
+
+test("a join whose answer another writer replaced takes an answer again", async ({ page }) => {
+  setCoreDoc(MESH_APPROVAL_DOC, { deny: OLD_RUNNER_NONCE });
+  await openMesh(page);
+  const pending = group(page, "pending");
+  await pending.locator('[data-mesh-answer="open"] [data-mesh-verdict="approve"]').click();
+  await expect(pending.locator('[data-mesh-answer="approve"]')).toHaveCount(1, { timeout: 15_000 });
+  setCoreDoc(MESH_APPROVAL_DOC, { deny: OLD_RUNNER_NONCE });
+  const open = pending.locator('[data-mesh-answer="open"]');
+  await expect(open).toHaveCount(1, { timeout: STATE_BOUND_MS });
+  await expect(open.locator("button:enabled")).toHaveCount(2);
+  await expect(open.locator('[aria-busy="true"]')).toHaveCount(0);
 });

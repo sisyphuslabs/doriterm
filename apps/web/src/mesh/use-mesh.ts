@@ -40,6 +40,11 @@ function answeredIn(value: JsonValue): { nonce: string; verdict: Verdict } | und
   return undefined;
 }
 
+const failedRead = (error: unknown): MeshRead => ({
+  phase: "failed",
+  message: error instanceof Error ? error.message : String(error),
+});
+
 async function readMesh(connection: HcConnection): Promise<MeshRead> {
   const [doc, list, answer] = await Promise.all([
     connection.call("doc.get", { name: MESH_STATUS_DOC }),
@@ -68,7 +73,7 @@ export function useMesh(connection: HcConnection): Mesh {
         return result;
       },
       (error: unknown) => {
-        if (current) setRead({ phase: "failed", message: error instanceof Error ? error.message : String(error) });
+        if (current) setRead(failedRead(error));
       },
     );
     return () => {
@@ -82,6 +87,7 @@ export function useMesh(connection: HcConnection): Mesh {
     const timer = setInterval(whenVisible, MACHINE_REFRESH_MS);
     return () => clearInterval(timer);
   }, [refresh]);
+  // An answer settles only once the documents have been read again, so the row shows what they hold now.
   const answer = useCallback(
     async (nonce: string, verdict: Verdict): Promise<void> => {
       const { version } = await connection.call("doc.get", { name: MESH_APPROVAL_DOC });
@@ -89,10 +95,10 @@ export function useMesh(connection: HcConnection): Mesh {
       try {
         await connection.call("doc.set", { name: MESH_APPROVAL_DOC, value, version });
       } finally {
-        refresh();
+        setRead(await readMesh(connection).catch(failedRead));
       }
     },
-    [connection, refresh],
+    [connection],
   );
   return { read, answer };
 }

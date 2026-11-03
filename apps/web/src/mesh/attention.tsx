@@ -23,9 +23,10 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
   const send = (verdict: Verdict): void => {
     setBusy(verdict);
     setFailure(undefined);
-    // On success the buttons stay disabled until the refreshed document shows the answer in their place.
+    // onAnswer settles after the documents are read again, so the buttons stay disabled until the row shows what the
+    // approval document holds now; if another writer replaced the answer by then, the row takes an answer again.
     onAnswer(verdict).then(
-      () => undefined,
+      () => setBusy(undefined),
       (error: unknown) => {
         setBusy(undefined);
         setFailure(error instanceof Error ? error.message : String(error));
