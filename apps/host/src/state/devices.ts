@@ -84,6 +84,14 @@ export class DeviceStore {
     });
   }
 
+  /** Removes every device whose key is in `keys`; the caller holds the state lock. Returns what was removed. */
+  removeKeysHeld(keys: ReadonlySet<string>): readonly PairedDevice[] {
+    const devices = this.list();
+    const removed = devices.filter((device) => keys.has(device.clientStaticPub));
+    if (removed.length > 0) this.#save(devices.filter((device) => !keys.has(device.clientStaticPub)));
+    return removed;
+  }
+
   #locked<T>(fn: () => T): T {
     return withStateLock(this.#dir, fn, this.#lockTimeoutMs);
   }

@@ -61,15 +61,27 @@ export class KnownHosts {
       this.#dir,
       () => {
         const others = this.#read().filter((known) => known.hostId !== host.hostId);
-        const hosts = [...others, host].map(({ hostId, hostKey, relayUrl }) => ({
-          hostId,
-          hostKey: base64urlEncode(hostKey),
-          relayUrl,
-        }));
-        writePrivateJson(this.#path, { version: 1, hosts });
+        this.#write([...others, host]);
       },
       this.#lockTimeoutMs,
     );
+  }
+
+  /** Removes every saved host whose hostId is in `hostIds`; the caller holds the state lock. Returns the removed ids. */
+  removeHostsHeld(hostIds: ReadonlySet<string>): readonly string[] {
+    const hosts = this.#read();
+    const removed = hosts.filter((host) => hostIds.has(host.hostId)).map((host) => host.hostId);
+    if (removed.length > 0) this.#write(hosts.filter((host) => !hostIds.has(host.hostId)));
+    return removed;
+  }
+
+  #write(hosts: readonly KnownHost[]): void {
+    const entries = hosts.map(({ hostId, hostKey, relayUrl }) => ({
+      hostId,
+      hostKey: base64urlEncode(hostKey),
+      relayUrl,
+    }));
+    writePrivateJson(this.#path, { version: 1, hosts: entries });
   }
 
   #read(): KnownHost[] {
