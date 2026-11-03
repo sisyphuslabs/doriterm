@@ -1,5 +1,6 @@
 import {
   type Authorization,
+  base64urlEncode,
   type ByteLink,
   type ClientHello,
   CloseCode,
@@ -10,8 +11,11 @@ import {
   secureLink,
   SessionKind,
 } from "@doriface/crypto";
+import type { AuthorizeIndex } from "../mesh/authorize-index.ts";
 import type { DeviceStore } from "../state/devices.ts";
+import type { MeshStore } from "../state/mesh.ts";
 import type { ClaimRefusal, PairingClaim, PairingStore } from "../state/pairing.ts";
+import { authorizationOf, sessionPeer } from "./authorize.ts";
 
 /** Where a session arrived: the direct listener, or a relay session (`openSlot` is the slot a `?pair` session named). */
 export type E2eeTransport =
@@ -22,6 +26,8 @@ export interface E2eeDeps {
   readonly identity: HostIdentity;
   readonly devices: DeviceStore;
   readonly pairing: PairingStore;
+  /** The mesh membership, when this host keeps one; its authorize index is consulted before the devices. */
+  readonly mesh?: MeshStore | undefined;
   readonly log: (line: string) => void;
   /** IP-literal LAN URLs of this host's `/v1/e2ee`, sent to clients in message 2. */
   readonly lanUrls: readonly string[];
@@ -60,18 +66,22 @@ export async function acceptE2ee(
   };
   const authorize = (hello: ClientHello): Authorization => {
     deviceName = hello.name ?? "";
+    const mesh = hello.stream === "mesh";
     if (hello.kind === SessionKind.Session) {
       if (pairSession) return refuse(CloseCode.UnknownDevice, "a ?pair session carries only pairing");
-      return deps.devices.has(hello.remoteStatic)
-        ? { accept: true }
-        : refuse(CloseCode.UnknownDevice, "unknown device");
+      const index = meshIndex(deps);
+      if ("refused" in index) return refuse(1011, index.refused);
+      const peer = sessionPeer(hello.stream, hello.remoteStatic, index.index, deps.devices);
+      if (peer.kind === "refused" && peer.reason !== "unknown device")
+        deps.log(`mesh: refused a session: ${peer.reason}`);
+      return authorizationOf(peer);
     }
-    if (hello.kind === SessionKind.PairLink) return claimWith(() => deps.pairing.claimLink());
+    if (hello.kind === SessionKind.PairLink) return claimWith(() => deps.pairing.claimLink(Date.now(), mesh));
     if (transport.kind !== "relay" || transport.openSlot === undefined) {
       return refuse(CloseCode.UnknownDevice, "typed-code pairing runs over the relay with ?pair");
     }
     const openSlot = transport.openSlot;
-    return claimWith(() => deps.pairing.claimCode(openSlot));
+    return claimWith(() => deps.pairing.claimCode(openSlot, Date.now(), mesh));
   };
   let secure: SecureLink;
   try {
@@ -87,9 +97,19 @@ export async function acceptE2ee(
     deps.log(`e2ee handshake refused: ${error instanceof Error ? error.message : String(error)}`);
     return undefined;
   }
-  if (secure.kind !== SessionKind.Session) {
+  if (secure.kind !== SessionKind.Session && secure.stream === "mesh") {
+    if (claim?.complete() !== true) {
+      deps.log("mesh join refused: the offer was already used");
+      secure.close(CloseCode.UnknownDevice, "the pairing offer was already used");
+      return undefined;
+    }
+    deps.log(`mesh join from "${deviceName}"`);
+  } else if (secure.kind !== SessionKind.Session) {
+    const index = meshIndex(deps);
     const admitted =
-      claim === undefined ? REFUSED_CLAIM : admitPairing(claim, deps.devices, secure.remoteStatic, deviceName);
+      claim === undefined || "refused" in index
+        ? REFUSED_CLAIM
+        : admitPairing(claim, deps.devices, secure.remoteStatic, deviceName, index.index);
     if (!admitted.ok) {
       deps.log(`pairing refused: ${admitted.reason}`);
       secure.close(admitted.code, admitted.reason);
@@ -98,6 +118,16 @@ export async function acceptE2ee(
     deps.log(`paired device "${deviceName}"`);
   }
   return secure;
+}
+
+/** The mesh's authorize index (never an evaluation), or why it cannot be read. */
+function meshIndex(deps: E2eeDeps): { readonly index: AuthorizeIndex | undefined } | { readonly refused: string } {
+  try {
+    return { index: deps.mesh?.authorizeIndex() };
+  } catch (error) {
+    deps.log(`cannot read the mesh state: ${String(error)}`);
+    return { refused: "cannot read the mesh state" };
+  }
 }
 
 function logRetired(deps: E2eeDeps): void {
@@ -121,9 +151,13 @@ export function admitPairing(
   devices: DeviceStore,
   clientStatic: Uint8Array,
   name: string,
+  mesh?: AuthorizeIndex | undefined,
 ): Admission {
   if (!claim.complete())
     return { ok: false, code: CloseCode.UnknownDevice, reason: "the pairing offer was already used" };
+  if (mesh?.claimsKey(base64urlEncode(clientStatic)) === true) {
+    return { ok: false, code: CloseCode.UnknownDevice, reason: "this key belongs to a mesh member" };
+  }
   try {
     devices.add(clientStatic, name);
   } catch (error) {

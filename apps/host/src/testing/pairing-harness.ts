@@ -14,16 +14,26 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acceptE2ee, type E2eeDeps, type E2eeTransport } from "../e2ee/accept.ts";
 import { DeviceStore } from "../state/devices.ts";
+import type { MeshStore } from "../state/mesh.ts";
 import { PairingStore } from "../state/pairing.ts";
 
 /** A host with a fresh state dir and one open offer, and a way to run one client session against it. */
-export function pairingHost() {
-  const dir = mkdtempSync(join(tmpdir(), "dh-accept-"));
+export function pairingHost(
+  options: { readonly mesh?: (dir: string) => MeshStore; readonly meshOffer?: boolean; readonly dir?: string } = {},
+) {
+  const dir = options.dir ?? mkdtempSync(join(tmpdir(), "dh-accept-"));
   const logs: string[] = [];
   const log = (line: string): void => void logs.push(line);
   const pairing = new PairingStore(dir, log);
-  const offer = pairing.offer();
-  const deps: E2eeDeps = { identity: generateHostIdentity(), devices: new DeviceStore(dir), pairing, log, lanUrls: [] };
+  const offer = pairing.offer(Date.now(), options.meshOffer === true);
+  const deps: E2eeDeps = {
+    identity: generateHostIdentity(),
+    devices: new DeviceStore(dir),
+    pairing,
+    mesh: options.mesh?.(dir),
+    log,
+    lanUrls: [],
+  };
   const relay: E2eeTransport = { kind: "relay", openSlot: pairingSlotOf(offer.code) };
   return { dir, logs, pairing, offer, deps, relay };
 }
@@ -42,7 +52,7 @@ export function runSession(
   host: PairingHost,
   transport: E2eeTransport,
   pairing: PairingSecret | undefined,
-  extra: Partial<Pick<InitiatorOptions, "testRandomness" | "staticKey">> = {},
+  extra: Partial<Pick<InitiatorOptions, "testRandomness" | "staticKey" | "stream" | "early">> = {},
   tap?: (bytes: Uint8Array) => readonly Uint8Array[],
 ): SessionRun {
   const [clientEnd, hostEnd] = memoryLinkPair();
@@ -54,6 +64,8 @@ export function runSession(
     staticKey: extra.staticKey ?? rawStaticKey(generateX25519()),
     remoteStatic: host.deps.identity.noise.publicKey,
     pairing,
+    stream: extra.stream,
+    early: extra.early,
     testRandomness: extra.testRandomness,
   }).then(
     (link) => link,

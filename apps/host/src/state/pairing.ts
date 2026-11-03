@@ -23,6 +23,8 @@ export interface PendingPairing extends PairingOffer {
   readonly slot: SlotStatus;
   /** Typed-code attempts the host has answered for this offer; at {@link PAIRING_CODE_ATTEMPTS} the code is retired. */
   readonly codeAttempts: number;
+  /** A mesh offer admits a machine into the mesh (a join); otherwise it pairs a device (contract v1.5). */
+  readonly mesh: boolean;
 }
 
 export const codeRetired = (pending: PendingPairing): boolean => pending.codeAttempts >= PAIRING_CODE_ATTEMPTS;
@@ -34,22 +36,24 @@ export const pendingToWire = (pending: PendingPairing) => ({
   expiresAt: pending.expiresAt,
   slot: pending.slot,
   codeAttempts: pending.codeAttempts,
+  mesh: pending.mesh,
 });
 
 export function pendingFromWire(value: unknown): PendingPairing {
   if (!isRecord(value)) throw new Error("the running host sent a malformed pairing");
-  const { code, linkSecret, expiresAt, slot, codeAttempts } = value;
+  const { code, linkSecret, expiresAt, slot, codeAttempts, mesh } = value;
   const knownSlot = slot === "pending" || slot === "registered" || slot === "unavailable";
   if (
     typeof code !== "string" ||
     typeof linkSecret !== "string" ||
     typeof expiresAt !== "number" ||
     typeof codeAttempts !== "number" ||
+    (mesh !== undefined && typeof mesh !== "boolean") ||
     !knownSlot
   ) {
     throw new Error("the running host sent a malformed pairing");
   }
-  return { code, linkSecret: base64urlDecode(linkSecret), expiresAt, slot, codeAttempts };
+  return { code, linkSecret: base64urlDecode(linkSecret), expiresAt, slot, codeAttempts, mesh: mesh === true };
 }
 
 /** A claim on the live offer: the secret the handshake finishes with, and the step that burns the offer on success. */
@@ -66,6 +70,12 @@ export interface PairingClaim {
 }
 
 export type ClaimRefusal = { readonly refused: number; readonly reason: string };
+
+/** A device pairing on a mesh offer, or a join on a device offer: refused before any answer, and not counted. */
+const kindRefusal = (mesh: boolean): ClaimRefusal => ({
+  refused: CloseCode.UnknownDevice,
+  reason: mesh ? "a machine join on a device pairing offer" : "a device pairing on a mesh offer",
+});
 
 /**
  * The one pending pairing offer (pairing.json, 0600). `doriface-host pair` writes it, replacing any earlier one; the
@@ -85,8 +95,8 @@ export class PairingStore {
     this.#log = log;
   }
 
-  offer(now = Date.now()): PendingPairing {
-    const pending = { ...createPairingOffer(now), slot: "pending" as const, codeAttempts: 0 };
+  offer(now = Date.now(), mesh = false): PendingPairing {
+    const pending = { ...createPairingOffer(now), slot: "pending" as const, codeAttempts: 0, mesh };
     withStateLock(this.#dir, () => this.#write(pending));
     return pending;
   }
@@ -114,10 +124,11 @@ export class PairingStore {
    * offer under the lock, requires it live, on `openSlot` and not retired, then writes the incremented count. A
    * failed write throws, so the caller answers nothing.
    */
-  claimCode(openSlot: string, now = Date.now()): PairingClaim | ClaimRefusal {
+  claimCode(openSlot: string, now = Date.now(), mesh = false): PairingClaim | ClaimRefusal {
     return withStateLock(this.#dir, () => {
       const pending = this.#live(now, (expired) => this.#removeIfHeld(expired));
       if ("refused" in pending) return pending;
+      if (pending.mesh !== mesh) return kindRefusal(mesh);
       if (pairingSlotOf(pending.code) !== openSlot) {
         return { refused: CloseCode.UnknownDevice, reason: "the session's slot is not the offer's" };
       }
@@ -129,9 +140,10 @@ export class PairingStore {
   }
 
   /** Claims the live offer's link secret; link attempts are not counted (the secret has 256 bits). */
-  claimLink(now = Date.now()): PairingClaim | ClaimRefusal {
+  claimLink(now = Date.now(), mesh = false): PairingClaim | ClaimRefusal {
     const pending = this.#live(now, (expired) => this.#removeIf(expired));
     if ("refused" in pending) return pending;
+    if (pending.mesh !== mesh) return kindRefusal(mesh);
     return this.#claim(pending, { mode: "link", linkSecret: pending.linkSecret }, false);
   }
 
@@ -159,7 +171,8 @@ export class PairingStore {
     }
     if (slot !== "pending" && slot !== "registered" && slot !== "unavailable") throw new Error(`${FILE}: bad slot`);
     if (linkSecret.byteLength !== 32) throw new Error(`${FILE}: bad link secret`);
-    return { code: stringField(value, "code", FILE), linkSecret, expiresAt, slot, codeAttempts };
+    const mesh = value["mesh"] === true;
+    return { code: stringField(value, "code", FILE), linkSecret, expiresAt, slot, codeAttempts, mesh };
   }
 
   /** Reports every change this store makes (a pairing used up or burned, a code redrawn, an attempt reserved). */
@@ -202,6 +215,7 @@ export class PairingStore {
       expiresAt: new Date(pending.expiresAt).toISOString(),
       slot: pending.slot,
       codeAttempts: pending.codeAttempts,
+      ...(pending.mesh ? { mesh: true } : {}),
     });
     this.#changed();
   }
