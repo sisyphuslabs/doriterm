@@ -42,7 +42,7 @@ export function CopyCommand({ command, label }: { readonly command: string; read
 /** A command to run elsewhere, with its copy button right beside it. */
 export const Command = ({ command, label }: { readonly command: string; readonly label: string }) => (
   <span className="mt-1 flex items-center gap-1">
-    <code className="min-w-0 font-mono text-xs break-all text-foreground select-all">{command}</code>
+    <code className="min-w-0 font-mono text-xs [overflow-wrap:anywhere] text-foreground select-all">{command}</code>
     <CopyCommand command={command} label={label} />
   </span>
 );
