@@ -69,7 +69,7 @@ export function meshFixture(now: Date): MeshFixture {
       failClosed: [{ removed: [key("spare")], revokedKey: key("kiosk") }],
     },
     local: {
-      meshId: "q7m2k4xw9d3b5n8r6t1v0c2z4a",
+      meshId: "q7m2k4xw2d3b5n6r6t7v3c2z4a",
       self: key("studio"),
       generation: 41,
       records: 23,

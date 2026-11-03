@@ -1,5 +1,20 @@
 import { isJsonObject } from "./json.ts";
 import {
+  type Guard,
+  isBoolean,
+  isCount,
+  isFingerprint,
+  isId,
+  isName,
+  isString,
+  isTime,
+  listOf,
+  nullable,
+  objectOf,
+  oneOf,
+  type Shape,
+} from "./mesh-status-guards.ts";
+import {
   MESH_STATUS_VERSION,
   type MeshBudget,
   type MeshGate,
@@ -14,51 +29,22 @@ import {
   type MeshWitness,
 } from "./mesh-status.ts";
 
-type Guard<T> = (value: unknown) => value is T;
-type Shape<T> = { readonly [K in keyof T]-?: Guard<T[K]> };
-
-const isString = (value: unknown): value is string => typeof value === "string";
-const isCount = (value: unknown): value is number =>
-  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
-const nullable =
-  <T>(guard: Guard<T>): Guard<T | null> =>
-  (value): value is T | null =>
-    value === null || guard(value);
-const listOf =
-  <T>(guard: Guard<T>): Guard<readonly T[]> =>
-  (value): value is readonly T[] =>
-    Array.isArray(value) && value.every(guard);
-const oneOf =
-  <T extends string>(...values: readonly T[]): Guard<T> =>
-  (value): value is T =>
-    values.some((allowed) => allowed === value);
-
-/** Checks every member the shape names; members it does not name are allowed, for newer writers. */
-function objectOf<T>(shape: Shape<T>): Guard<T> {
-  return (value): value is T => {
-    if (!isJsonObject(value)) return false;
-    for (const key in shape) if (!shape[key](value[key])) return false;
-    return true;
-  };
-}
-
 type StuckKind = MeshStuckReason["kind"];
 type StuckOf<K extends StuckKind> = Extract<MeshStuckReason, { readonly kind: K }>;
 
 /** One guard per STUCK kind; `satisfies` makes a kind added to MeshStuckReason without a guard a type error. */
 const STUCK_REASONS = {
-  name_taken: objectOf<StuckOf<"name_taken">>({ kind: oneOf("name_taken"), member: isString, name: isString }),
+  name_taken: objectOf<StuckOf<"name_taken">>({ kind: oneOf("name_taken"), member: isId, name: isName }),
   invalid_name: objectOf<StuckOf<"invalid_name">>({
     kind: oneOf("invalid_name"),
-    member: isString,
+    member: isId,
     name: isString,
     message: isString,
   }),
-  copied_core: objectOf<StuckOf<"copied_core">>({ kind: oneOf("copied_core"), member: isString }),
-  line_idle: objectOf<StuckOf<"line_idle">>({ kind: oneOf("line_idle"), member: isString }),
+  copied_core: objectOf<StuckOf<"copied_core">>({ kind: oneOf("copied_core"), member: isId }),
+  line_idle: objectOf<StuckOf<"line_idle">>({ kind: oneOf("line_idle"), member: isId }),
   possibly_revoked: objectOf<StuckOf<"possibly_revoked">>({ kind: oneOf("possibly_revoked") }),
-  read_only: objectOf<StuckOf<"read_only">>({ kind: oneOf("read_only"), until: isString }),
+  read_only: objectOf<StuckOf<"read_only">>({ kind: oneOf("read_only"), until: isTime }),
   removed_undecidable: objectOf<StuckOf<"removed_undecidable">>({ kind: oneOf("removed_undecidable") }),
   log_full: objectOf<StuckOf<"log_full">>({ kind: oneOf("log_full"), records: isCount }),
   counter_behind: objectOf<StuckOf<"counter_behind">>({ kind: oneOf("counter_behind"), file: isCount, mesh: isCount }),
@@ -82,54 +68,54 @@ const isLineState: Guard<MeshLineState> = oneOf(
   "absent",
 );
 const isGate = objectOf<MeshGate>({ kind: oneOf("offline"), refusals: isCount, nextProbeS: isCount });
-const isWitness = objectOf<MeshWitness>({ pool: listOf(isString), ask: nullable(isString) });
+const isWitness = objectOf<MeshWitness>({ pool: listOf(isId), ask: nullable(isId) });
 const isMember = objectOf<MeshMemberStatus>({
-  hostId: isString,
-  name: isString,
-  localName: isString,
-  fingerprint: isString,
-  admittedBy: nullable(isString),
+  hostId: isId,
+  name: isName,
+  localName: isName,
+  fingerprint: isFingerprint,
+  admittedBy: nullable(isId),
   overCap: isBoolean,
   line: isLineState,
   presence: isBoolean,
-  lastSync: nullable(isString),
+  lastSync: nullable(isTime),
   owed: isCount,
   gate: nullable(isGate),
   witness: isWitness,
-  unreachableSince: nullable(isString),
+  unreachableSince: nullable(isTime),
   revokeCommand: nullable(isString),
 });
 const isRevoked = objectOf<MeshRevokedStatus>({
-  hostId: isString,
-  name: isString,
-  fingerprint: isString,
-  revokedBy: listOf(isString),
+  hostId: isId,
+  name: isName,
+  fingerprint: isFingerprint,
+  revokedBy: listOf(isId),
   reason: oneOf("revoke", "compromised", "leave"),
-  at: nullable(isString),
+  at: nullable(isTime),
 });
-const isEntry = objectOf<{ readonly hostId: string; readonly name: string }>({ hostId: isString, name: isString });
+const isEntry = objectOf<{ readonly hostId: string; readonly name: string }>({ hostId: isId, name: isName });
 const isRemoved = objectOf<MeshRemovedStatus>({ members: listOf(isEntry), revokedKey: isEntry });
 const isNotice = objectOf<MeshNotice>({
-  hostId: isString,
-  name: isString,
-  admittedBy: isString,
-  fingerprint: isString,
-  seenAt: isString,
-  until: isString,
+  hostId: isId,
+  name: isName,
+  admittedBy: isId,
+  fingerprint: isFingerprint,
+  seenAt: isTime,
+  until: isTime,
 });
 const isPending = objectOf<MeshPendingJoin>({
   nonce: isString,
-  name: isString,
-  hostId: isString,
-  fingerprint: isString,
-  expiresAt: isString,
+  name: isName,
+  hostId: isId,
+  fingerprint: isFingerprint,
+  expiresAt: isTime,
 });
-const isBudget = objectOf<MeshBudget>({ waiting: isCount, halvedUntil: nullable(isString) });
+const isBudget = objectOf<MeshBudget>({ waiting: isCount, halvedUntil: nullable(isTime) });
 
-const isMeshStatus = objectOf<MeshStatus>({
+const STATUS: Shape<MeshStatus> = {
   v: (value): value is typeof MESH_STATUS_VERSION => value === MESH_STATUS_VERSION,
-  meshId: isString,
-  self: isString,
+  meshId: isId,
+  self: isId,
   generation: isCount,
   sync: oneOf("ok", "stuck"),
   stuck: listOf(isStuckReason),
@@ -139,7 +125,32 @@ const isMeshStatus = objectOf<MeshStatus>({
   notices: listOf(isNotice),
   pending: listOf(isPending),
   budget: isBudget,
-});
+};
+const isMeshStatus = objectOf(STATUS);
 
-/** The status in a `doriface-mesh` document or a `mesh-status` reply, or undefined when it has another shape. */
-export const parseMeshStatus = (value: unknown): MeshStatus | undefined => (isMeshStatus(value) ? value : undefined);
+/** What the fields' forms cannot say: one fact in one place, and every member a reason names is in the list. */
+function isConsistent(status: MeshStatus): boolean {
+  const hostIds = new Set(status.members.map((member) => member.hostId));
+  const onSelfLine = status.members.filter((member) => member.line === "self");
+  return (
+    status.sync === (status.stuck.length === 0 ? "ok" : "stuck") &&
+    hostIds.size === status.members.length &&
+    onSelfLine.length === 1 &&
+    onSelfLine[0]?.hostId === status.self &&
+    status.stuck.every((reason) => !("member" in reason) || hostIds.has(reason.member))
+  );
+}
+
+/**
+ * The status in a `doriface-mesh` document or a `mesh-status` reply, or undefined when it has another shape or
+ * contradicts itself. Top-level members a newer writer added are dropped; nested objects are closed.
+ */
+export function parseMeshStatus(value: unknown): MeshStatus | undefined {
+  if (!isJsonObject(value)) return undefined;
+  const known = Object.fromEntries(
+    Object.keys(STATUS)
+      .filter((key) => Object.hasOwn(value, key))
+      .map((key) => [key, value[key]]),
+  );
+  return isMeshStatus(known) && isConsistent(known) ? known : undefined;
+}
