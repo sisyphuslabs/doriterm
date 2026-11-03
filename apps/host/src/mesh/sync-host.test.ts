@@ -136,6 +136,9 @@ const machinesOf = async (entry: Running): Promise<readonly string[]> => {
 
 const added = (entry: Running): number => entry.logged.filter((line) => line.startsWith("mesh: added machine")).length;
 
+/** Design section 8.2: `machine.list` on every online member reflects a join within 60 s. */
+const JOIN_BOUND_MS = 60_000;
+
 describe("sync runs in the running host (sections 5.1 and 5.3)", () => {
   test("b joins a, c joins b: all three converge by sync alone, and every core lists the other two as mesh machines", async () => {
     const [a, b, c] = [await start("alpha"), await start("beta"), await start("gamma")];
@@ -156,4 +159,22 @@ describe("sync runs in the running host (sections 5.1 and 5.3)", () => {
     const listed = await Promise.all([a, b, c].map(async (entry) => [await machinesOf(entry), others(entry)]));
     for (const [got, want] of listed) expect(got).toEqual(want);
   });
+
+  test("a fifth member joining a converged four adds every machine on every core within the 60 s bound (8.2, H-D1)", async () => {
+    const hosts = await Promise.all(["one", "two", "three", "four"].map((name) => start(name)));
+    const [first, ...rest] = hosts;
+    if (first === undefined) throw new Error("no first host");
+    await rest.reduce((joins, entry) => joins.then(() => joinVia(entry, first)), Promise.resolve());
+    await Promise.all(hosts.map((entry) => entry.logsUntil(() => added(entry) >= 3)));
+    const fifth = await start("five");
+    const all = [...hosts, fifth];
+    const joined = performance.now();
+    await joinVia(fifth, first);
+    const everyone = Promise.all(all.map((entry) => entry.logsUntil(() => added(entry) >= 4)));
+    const bound = new Promise<"late">((resolve) => setTimeout(() => resolve("late"), JOIN_BOUND_MS));
+    expect(await Promise.race([everyone.then(() => "in time" as const), bound])).toBe("in time");
+    console.log(
+      `five-host join: every core added every member ${Math.round(performance.now() - joined)} ms after the join`,
+    );
+  }, 300_000);
 });
