@@ -200,7 +200,11 @@ export async function startMesh(options: MeshOptions = {}): Promise<Mesh> {
     if (offer.exit !== 0 || link === undefined) {
       throw new Error(`mesh pair on ${inviter} failed: ${offer.stderr}${offer.stdout}`);
     }
-    const joined = await host(joiner).cli("mesh", "join", link, "--yes", "--name", joiner);
+    // The joiner dials through its own tap, as every host's traffic does, so a block or a cut sees its join and the
+    // sync session the join keeps (the link names the inviter's tap).
+    const own = host(joiner).tap?.url;
+    const via = own === undefined ? [] : ["--relay", own];
+    const joined = await host(joiner).cli("mesh", "join", link, "--yes", "--name", joiner, ...via);
     if (joined.exit !== 0) throw new Error(`mesh join on ${joiner} failed: ${joined.stderr}${joined.stdout}`);
   };
   return { relay, hosts, host, core, onWake, until, join, dispose };
