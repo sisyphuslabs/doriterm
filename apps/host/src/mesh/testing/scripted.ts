@@ -14,6 +14,7 @@ export interface ScriptedSession {
   readonly meshId: string;
   readonly batchSizes: number[];
   readonly sent: MeshLine[];
+  readonly clock: FakeClock;
   closedWith(): number | undefined;
   receive(line: MeshLine): void;
   settled(): Promise<void>;
@@ -50,7 +51,8 @@ export function sessionAtB(
       sent.push(JSON.parse(text));
     return [bytes];
   };
-  const session = new SyncSession({ peer: a.signPub, dialer: a.signPub, sweeping: false }, ours, host, new FakeClock());
+  const clock = new FakeClock();
+  const session = new SyncSession({ peer: a.signPub, dialer: a.signPub, sweeping: false }, ours, host, clock);
   session.start(options.waitForHello === true);
   const encoder = new TextEncoder();
   return {
@@ -59,6 +61,7 @@ export function sessionAtB(
     meshId,
     batchSizes,
     sent,
+    clock,
     closedWith: () => ours.closeCode,
     receive: (line) => theirs.send(encoder.encode(`${JSON.stringify(line)}\n`)),
     settled: () => settle(),

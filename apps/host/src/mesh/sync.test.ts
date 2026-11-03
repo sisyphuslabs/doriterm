@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { hashOf, type Signed } from "@doriface/mesh";
 import { CounterBehindError } from "../state/mesh.ts";
 import { MAX_LINE_BYTES } from "./lines.ts";
+import { LINGER_MS } from "./sync.ts";
 import { headsOfRecords, meshOf, peer, Signer } from "./testing/mesh-peers.ts";
 import { sessionAtB } from "./testing/scripted.ts";
 
@@ -13,6 +14,14 @@ describe("a join's session kept for sync (section 4.4)", () => {
     peerA.receive({ t: "hello", v: 2, mesh: peerA.meshId, heads: [], n: {} });
     await peerA.settled();
     expect(peerA.sent[0]?.t).toBe("hello");
+  });
+
+  test("a joiner that never says hello is closed after the linger, like any idle session", async () => {
+    const peerA = sessionAtB(undefined, { waitForHello: true });
+    await peerA.clock.advance(LINGER_MS - 1);
+    expect(peerA.closedWith()).toBeUndefined();
+    await peerA.clock.advance(1);
+    expect(peerA.closedWith()).toBe(1000);
   });
 });
 

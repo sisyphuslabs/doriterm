@@ -69,6 +69,7 @@ export class SyncSession {
 
   /** With `waitForHello` (the inviter's side of a join's session), it speaks only once the peer said hello. */
   start(waitForHello = false): void {
+    this.#touch();
     if (!waitForHello) this.#hello();
     this.#read();
   }
