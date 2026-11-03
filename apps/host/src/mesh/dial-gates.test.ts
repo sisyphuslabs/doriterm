@@ -72,6 +72,17 @@ describe("this host's own outage drops only the 4404s it saw while down (section
   });
 });
 
+describe("a gated member's due probe (section 8.2)", () => {
+  test("a line to a gated member is refused until its probe is due, then goes as that probe", async () => {
+    const { clock, dials } = policy();
+    dials.report("m", 4404);
+    await clock.advance(29_999);
+    expect((await dials.acquire("m", "line")).ok).toBe(false);
+    await clock.advance(1);
+    expect((await dials.acquire("m", "line")).ok).toBe(true);
+  });
+});
+
 describe("a 4429 and other failed dials (section 8.2)", () => {
   test("a 4429 gates the member as rate limited: refused for 30 s, then probed", async () => {
     const { clock, dials, due } = policy();

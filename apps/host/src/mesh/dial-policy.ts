@@ -95,14 +95,15 @@ export class DialPolicy {
   }
 
   /**
-   * Asks to dial `member`. A direct (LAN) dial is not charged. A gated member is refused unless this is its due probe
-   * or a sweep; a line to a member with no presence waits for settle. `waitMs` bounds the wait for a token.
+   * Asks to dial `member`. A direct (LAN) dial is not charged. A gated member is refused until its probe is due (any
+   * dial then goes as that probe) unless this is a sweep; a line to a member with no presence waits for settle.
+   * `waitMs` bounds the wait for a token.
    */
   acquire(member: string, purpose: DialPurpose, options: { direct?: boolean; waitMs?: number } = {}): Promise<Grant> {
     const now = this.#clock.now();
     const gate = this.#gates.get(member);
-    const probing = purpose === "probe" && gate !== undefined && now >= gate.nextAt;
-    if (gate !== undefined && purpose !== "sweep" && !probing) {
+    const probeDue = gate !== undefined && now >= gate.nextAt;
+    if (gate !== undefined && purpose !== "sweep" && !probeDue) {
       const nextInMs = gate.nextAt - now;
       if (gate.cause === "rate-limited") return Promise.resolve({ ok: false, reason: "rate-limited", nextInMs });
       return Promise.resolve({ ok: false, reason: "offline", misses: gate.misses, nextInMs });
