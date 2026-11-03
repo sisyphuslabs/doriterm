@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CLIENT, dial, gatewayOn, peerHello } from "../testing/gateway-harness.ts";
+import { CLIENT, dial, gatewayOn, peerHello, PROBE } from "../testing/gateway-harness.ts";
 import { machine } from "../testing/mesh-history.ts";
 
 const dirs: string[] = [];
@@ -93,5 +93,30 @@ describe("HIGH-1: no line hc would read past reaches it ahead of the gated hello
     await setup.pipe.reached;
     expect(setup.pipe.text()).toBe(CLIENT + frame);
     expect(run.hostEnd.closeCode).toBeUndefined();
+  });
+});
+
+describe("MEDIUM-5: the gate follows its lines across the device's messages", () => {
+  test("the probe hello in one message, then a member's peer hello in the next: 4401, only the probe piped", async () => {
+    const { setup, founder, member, phone } = deviceSession();
+    const run = await dial(setup, phone.identity.noise, founder);
+    run.send(PROBE);
+    await setup.pipe.reached;
+    run.send(peerHello(member.hcId));
+    await run.closed;
+    expect(run.hostEnd.closeCode).toBe(CloseCode.UnknownDevice);
+    expect(setup.pipe.text()).toBe(PROBE);
+  });
+
+  test("the probe split inside its line, then a member's peer hello split across two more messages: 4401", async () => {
+    const { setup, founder, member, phone } = deviceSession();
+    const claim = peerHello(member.hcId);
+    const run = await dial(setup, phone.identity.noise, founder);
+    run.send(PROBE.slice(0, 20));
+    run.send(PROBE.slice(20) + claim.slice(0, 30));
+    run.send(claim.slice(30));
+    await run.closed;
+    expect(run.hostEnd.closeCode).toBe(CloseCode.UnknownDevice);
+    expect(setup.pipe.text()).not.toContain(member.hcId);
   });
 });
