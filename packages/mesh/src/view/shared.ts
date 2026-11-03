@@ -9,9 +9,15 @@ import type { MemberView } from "./membership.ts";
 import type { Status } from "./status.ts";
 
 /** One evaluation of a context: its view and the statuses of its non-ack records, plain data. */
-export interface Core {
+export interface Evaluation {
   readonly view: MemberView;
   readonly statuses: ReadonlyMap<string, Status>;
+}
+
+/** The statuses of the last full view's context: the only ones kept, because only a full view reads eff. */
+interface Decided {
+  readonly context: string;
+  readonly evaluation: Evaluation;
 }
 
 type Tables = Map<string, Map<string, unknown>>;
@@ -21,11 +27,12 @@ export class Shared {
   readonly #once: Tables = new Map();
   readonly #perSet = new WeakMap<RecordSet, Tables>();
   readonly #heads = new WeakMap<ReadonlySet<string>, readonly string[]>();
-  readonly #before = new Map<string, Core | undefined>();
+  readonly #before = new Map<string, MemberView | undefined>();
   readonly #members = new Map<string, ReadonlySet<string>>();
-  /** The evaluation of each set evaluated so far, under the set's heads. */
-  readonly #views = new Map<string, Core>();
-  readonly #cores = new Map<string, Core>();
+  /** The view of each set evaluated so far, under the set's heads, and of each context. Views only: no statuses. */
+  readonly #views = new Map<string, MemberView>();
+  readonly #cores = new Map<string, MemberView>();
+  #decided: Decided | undefined;
   readonly #growing = new Map<string, { readonly list: string[]; scanned: number }>();
 
   constructor(history: History) {
@@ -87,7 +94,7 @@ export class Shared {
     return heads;
   }
 
-  before(id: string, compute: () => Core | undefined): Core | undefined {
+  before(id: string, compute: () => MemberView | undefined): MemberView | undefined {
     if (this.#before.has(id)) return this.#before.get(id);
     const view = compute();
     this.#before.set(id, view);
@@ -102,17 +109,32 @@ export class Shared {
     return members;
   }
 
-  /** The evaluation of the set with these heads: the one of its context, evaluated once with the first such set. */
-  view(heads: string, context: () => string, compute: () => Core): Core {
+  /** The view of the set with these heads: the one of its context, evaluated once with the first such set. */
+  view(heads: string, context: () => string, evaluate: () => Evaluation): MemberView {
     const known = this.#views.get(heads);
     if (known !== undefined) return known;
     const key = context();
-    let core = this.#cores.get(key);
-    if (core === undefined) {
-      core = compute();
-      this.#cores.set(key, core);
+    let view = this.#cores.get(key);
+    if (view === undefined) {
+      view = evaluate().view;
+      this.#cores.set(key, view);
     }
-    this.#views.set(heads, core);
-    return core;
+    this.#views.set(heads, view);
+    return view;
+  }
+
+  /**
+   * A full view's evaluation with its statuses. A merge that leaves the context as it was (an ack that witnesses no
+   * conflict) reuses the last one; any other context is evaluated again, and replaces it.
+   */
+  decide(heads: string, context: string, evaluate: () => Evaluation): Evaluation {
+    if (this.#decided?.context !== context) {
+      const evaluation = evaluate();
+      this.#decided = { context, evaluation };
+      if (!this.#cores.has(context)) this.#cores.set(context, evaluation.view);
+    }
+    const { evaluation } = this.#decided;
+    this.#views.set(heads, evaluation.view);
+    return evaluation;
   }
 }

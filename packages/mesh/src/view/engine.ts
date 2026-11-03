@@ -17,7 +17,7 @@ import { bitsKey } from "./chain.ts";
 import { Dag, headsKey, type Rec, type RecordSet } from "./dag.ts";
 import { type EngineView, type MemberView, membership, withEff } from "./membership.ts";
 import { recordsOf } from "./rec-of.ts";
-import { type Core, Shared } from "./shared.ts";
+import { type Evaluation, Shared } from "./shared.ts";
 import { type Status, status } from "./status.ts";
 import { valid } from "./structure.ts";
 
@@ -49,19 +49,25 @@ export class Engine {
   /** The view of the whole set, with its effective records. */
   full(): EngineView {
     const S = this.dag.all();
-    const core = this.#core(S);
-    return withEff(core.view, this.#eff(S, core.statuses));
+    const { heads, context } = this.#keysOf(S);
+    const decided = this.#shared.decide(heads, context(), () => this.#evaluateClosed(S));
+    return withEff(decided.view, this.#eff(S, decided.statuses));
   }
 
   /** view(past(x)) as the rules read it; undefined for the found record. */
   before(id: string): MemberView | undefined {
-    return this.#before(id)?.view;
+    return this.#before(id);
   }
 
-  /** view(past(x)) with its effective records, for callers outside the rules; undefined for the found record. */
+  /**
+   * view(past(x)) with its effective records, for callers outside the rules; undefined for the found record. The
+   * cache keeps no statuses for sub-views, so this evaluates past(x) again.
+   */
   pastView(id: string): EngineView | undefined {
-    const core = this.#before(id);
-    return core === undefined ? undefined : withEff(core.view, this.#eff(this.#past(id), core.statuses));
+    if (this.#before(id) === undefined) return undefined;
+    const past = this.#past(id);
+    const { view, statuses } = this.#evaluate(past);
+    return withEff(view, this.#eff(past, statuses));
   }
 
   /** M(x). */
@@ -75,7 +81,8 @@ export class Engine {
   }
 
   view(S: ReadonlySet<string>): MemberView {
-    return this.#core(S).view;
+    const { heads, context } = this.#keysOf(S);
+    return this.#shared.view(heads, context, () => this.#evaluateClosed(S));
   }
 
   /** past(x) as a set that reads only the shared history, so a cached evaluation never holds this engine. */
@@ -85,7 +92,7 @@ export class Engine {
     return { has: (p) => reach.inPast(id, p) };
   }
 
-  #before(id: string): Core | undefined {
+  #before(id: string): MemberView | undefined {
     return this.#shared.before(id, () => {
       const prev = [...new Set(this.dag.rec(id).prev)];
       const heads = prev.filter((p) => !prev.some((q) => this.dag.inPast(q, p)));
@@ -103,20 +110,25 @@ export class Engine {
     });
   }
 
-  #core(S: ReadonlySet<string>): Core {
+  /** A set's cache key (its heads) and, on demand, its context. */
+  #keysOf(S: ReadonlySet<string>): { readonly heads: string; readonly context: () => string } {
     const heads = this.#headsOf(S);
     const h = this.dag.history;
     // The context reads the history's summaries, so every record of this DAG is appended to it first.
     void this.dag.index;
-    const context = () => `${headsKey(h.maximalRelevant(heads))}|${bitsKey(h.witnessableOf(heads))}`;
-    return this.#shared.view(headsKey(heads), context, () => {
-      // Ancestors first, so each record's own past is evaluated before a later record asks for it (no deep recursion).
-      for (const id of this.dag.index.order) if (S.has(id)) valid(this, id);
-      return this.#evaluate(S);
-    });
+    return {
+      heads: headsKey(heads),
+      context: () => `${headsKey(h.maximalRelevant(heads))}|${bitsKey(h.witnessableOf(heads))}`,
+    };
   }
 
-  #evaluate(S: RecordSet): Core {
+  #evaluateClosed(S: ReadonlySet<string>): Evaluation {
+    // Ancestors first, so each record's own past is evaluated before a later record asks for it (no deep recursion).
+    for (const id of this.dag.index.order) if (S.has(id)) valid(this, id);
+    return this.#evaluate(S);
+  }
+
+  #evaluate(S: RecordSet): Evaluation {
     const statuses = new Map<string, Status>();
     for (const id of this.dag.index.relevant) if (S.has(id)) statuses.set(id, status(this, S, id, statuses));
     return { view: membership(this.dag, S, statuses), statuses };
