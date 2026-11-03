@@ -1,7 +1,7 @@
 import { CloseCode } from "@doriface/crypto";
 import { memoryLinkPair } from "@doriface/crypto/testing";
 import { describe, expect, test } from "bun:test";
-import { type LineLink, MAX_LINE_BYTES, MAX_QUEUED_BYTES, MeshLines } from "./lines.ts";
+import { type LineLink, MAX_LINE_BYTES, MAX_QUEUED_BYTES, MeshLines, SYNC_EXPECTS } from "./lines.ts";
 
 const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
 
@@ -9,6 +9,34 @@ function pair() {
   const [sender, receiver] = memoryLinkPair();
   return { sender, receiver, lines: new MeshLines(receiver, ["done", "refused"]) };
 }
+
+describe("the sync lines (section 5.2)", () => {
+  test("hello and want are read with their members", async () => {
+    const [sender, receiver] = memoryLinkPair();
+    const lines = new MeshLines(receiver, SYNC_EXPECTS);
+    const n = { ["sign-a"]: 3 };
+    sender.send(encode(`${JSON.stringify({ t: "hello", v: 2, mesh: "m", heads: ["h1"], n })}\n`));
+    sender.send(encode('{"t":"want","hashes":["h0"]}\n'));
+    expect(await lines.next()).toEqual({ t: "hello", v: 2, mesh: "m", heads: ["h1"], n });
+    expect(await lines.next()).toEqual({ t: "want", hashes: ["h0"] });
+  });
+
+  test.each([
+    ["a hello of another version", '{"t":"hello","v":1,"mesh":"m","heads":[],"n":{}}\n'],
+    ["a hello without counters", '{"t":"hello","v":2,"mesh":"m","heads":[]}\n'],
+    ["a hello with a fractional counter", '{"t":"hello","v":2,"mesh":"m","heads":[],"n":{"k":1.5}}\n'],
+    ["a want of numbers", '{"t":"want","hashes":[1]}\n'],
+  ])("%s closes the session with 4400", async (_, text) => {
+    const [sender, receiver] = memoryLinkPair();
+    const read = new MeshLines(receiver, SYNC_EXPECTS).next().then(
+      () => "read",
+      () => "closed",
+    );
+    sender.send(encode(text));
+    expect(await read).toBe("closed");
+    expect(receiver.closeCode).toBe(CloseCode.CryptoFailure);
+  });
+});
 
 describe("mesh stream lines (section 10.2)", () => {
   test("lines split across chunks are read whole, and an unknown type is skipped", async () => {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DialPolicy, type DueReason } from "./dial-policy.ts";
 import { FakeClock, seededRandom } from "./testing/fake-clock.ts";
-import { fakeRules, meshOf, member } from "./testing/fake-mesh.ts";
+import { meshOf, peer } from "./testing/mesh-peers.ts";
 import { MeshNet } from "./testing/mesh-net.ts";
 
 function policy(): { clock: FakeClock; dials: DialPolicy; due: { member: string; reason: DueReason; at: number }[] } {
@@ -18,9 +18,9 @@ function policy(): { clock: FakeClock; dials: DialPolicy; due: { member: string;
 function net(): { clock: FakeClock; mesh: MeshNet } {
   const clock = new FakeClock();
   const mesh = new MeshNet(clock, seededRandom(17));
-  const members = ["a", "b", "c", "d"].map(member);
-  const base = meshOf(members);
-  for (const entry of members) mesh.add(entry, base);
+  const members = ["a", "b", "c", "d"].map(peer);
+  const { records } = meshOf(members);
+  for (const entry of members) mesh.add(entry, records);
   return { clock, mesh };
 }
 
@@ -97,11 +97,11 @@ describe("a 4429 and other failed dials (section 8.2)", () => {
     const a = mesh.host("a");
     const d = mesh.host("d");
     mesh.breakDials("d");
-    const [admit] = a.gossip.local([a.signer.admit(member("e"), fakeRules.headsOf(a.file.read().records))]).added;
+    const admit = a.admit(peer("e"));
     await clock.advance(1_000);
     expect(a.policy.gate(d.member.signPub)?.misses).toBe(1);
     mesh.mendDials("d");
-    const has = (): boolean => d.file.read().records.some((record) => record.body === admit?.body);
+    const has = (): boolean => d.records().some((record) => record.body === admit.body);
     const took = await clock.until(has, 35_000);
     expect(took).toBeGreaterThanOrEqual(29_000);
   });

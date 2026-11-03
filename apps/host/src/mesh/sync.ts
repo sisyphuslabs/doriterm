@@ -1,42 +1,35 @@
 import { CloseCode } from "@doriface/crypto";
+import { hashOf, MAX_RECORDS, type Signed } from "@doriface/mesh";
+import { headsOf } from "../state/mesh-tx.ts";
+import { countersOf, missingSince } from "./anti-entropy.ts";
 import type { Clock } from "./clock.ts";
-import { type MeshChannel, type MeshMessage, recordLines } from "./sync-lines.ts";
-import { MAX_RECORDS, type MergeResult } from "./merge.ts";
-import type { MeshRecord, MeshRules } from "./upstream.ts";
+import { type LineLink, type MeshLine, MeshLines, recordLines, SYNC_EXPECTS } from "./lines.ts";
+import type { MergeResult } from "./merge.ts";
 
 /** Section 5.1: a sync session closes after 60 s without a line. */
 export const LINGER_MS = 60_000;
 
 export interface SyncHost {
   readonly meshId: string;
-  readonly rules: MeshRules;
-  records(): readonly MeshRecord[];
-  merge(session: SyncSession, batch: readonly MeshRecord[]): MergeResult;
+  records(): readonly Signed[];
+  merge(session: SyncSession, batch: readonly Signed[]): MergeResult;
   /** The peer said which heads it holds, and the highest `n` it holds of each signer (its `hello`). */
   heard(peer: string, heads: readonly string[], n: Readonly<Record<string, number>>): void;
   ended(session: SyncSession): void;
-}
-
-export function countersOf(rules: MeshRules, records: readonly MeshRecord[]): Record<string, number> {
-  const n: Record<string, number> = {};
-  for (const record of records) {
-    const { by, n: counter } = rules.headerOf(record);
-    n[by] = Math.max(n[by] ?? 0, counter);
-  }
-  return n;
 }
 
 /**
  * One sync session (section 5.2): both sides say their heads, each sends what the other's heads do not cover, in
  * lines of at most 256 KiB ending with `done`, and asks once per session (`want`) for the past of a dangling record.
  * After any change it sends what the peer is still missing, so an ack goes back on the session that brought the batch.
+ * What it holds for the peer is bounded: past MAX_RECORDS records before `done`, or claimed heads, it closes 4400.
  */
 export class SyncSession {
   readonly peer: string;
   readonly dialer: string;
   /** This host opened it to sweep or probe: what it merges here is owed onwards (section 5.3). */
   readonly sweeping: boolean;
-  readonly #channel: MeshChannel;
+  readonly #lines: MeshLines;
   readonly #host: SyncHost;
   readonly #clock: Clock;
   readonly #lingerMs: number;
@@ -45,13 +38,13 @@ export class SyncSession {
   readonly #claimed = new Set<string>();
   readonly #sent = new Set<string>();
   readonly #wanted = new Set<string>();
-  #incoming: MeshRecord[] = [];
+  #incoming: Signed[] = [];
   #idle: () => void = () => undefined;
   #closed = false;
 
   constructor(
     ends: { readonly peer: string; readonly dialer: string; readonly sweeping: boolean },
-    channel: MeshChannel,
+    link: LineLink,
     host: SyncHost,
     clock: Clock,
     lingerMs = LINGER_MS,
@@ -59,12 +52,11 @@ export class SyncSession {
     this.peer = ends.peer;
     this.dialer = ends.dialer;
     this.sweeping = ends.sweeping;
-    this.#channel = channel;
+    this.#lines = new MeshLines(link, SYNC_EXPECTS);
     this.#host = host;
     this.#clock = clock;
     this.#lingerMs = lingerMs;
-    channel.onMessage((message) => this.#receive(message));
-    channel.onClose(() => this.#ended());
+    void this.#lines.ended.then(() => this.#ended());
   }
 
   get closed(): boolean {
@@ -73,77 +65,88 @@ export class SyncSession {
 
   start(): void {
     this.#hello();
+    void this.#read();
   }
 
   /** Sends every stored record the peer's known heads do not cover and that this session has not sent yet. */
   flush(): void {
     if (this.#closed) return;
-    const { rules } = this.#host;
-    const records = this.#host.records();
-    const missing = rules
-      .missingFor(records, [...this.#peerHeads])
-      .filter((record) => !this.#sent.has(rules.headerOf(record).hash));
-    if (missing.length === 0) return;
-    for (const record of missing) this.#sent.add(rules.headerOf(record).hash);
-    this.#sendAll(recordLines(missing));
+    const missing = missingSince(this.#host.records(), this.#peerHeads).filter(
+      (record) => !this.#sent.has(hashOf(record)),
+    );
+    if (missing.length > 0) this.#sendRecords(missing);
   }
 
   close(code = 1000, reason = "sync done"): void {
     if (this.#closed) return;
-    this.#channel.close(code, reason);
+    this.#lines.close(code, reason);
     this.#ended();
+  }
+
+  async #read(): Promise<void> {
+    for (;;) {
+      let line: MeshLine;
+      try {
+        line = await this.#lines.next();
+      } catch {
+        return this.#ended();
+      }
+      this.#receive(line);
+    }
   }
 
   #hello(): void {
     const records = this.#host.records();
-    const { rules, meshId } = this.#host;
-    this.#send({ t: "hello", v: 2, mesh: meshId, heads: rules.headsOf(records), n: countersOf(rules, records) });
+    this.#send({ t: "hello", v: 2, mesh: this.#host.meshId, heads: headsOf(records), n: countersOf(records) });
   }
 
-  #receive(message: MeshMessage): void {
+  #receive(line: MeshLine): void {
     if (this.#closed) return;
     this.#touch();
-    switch (message.t) {
+    switch (line.t) {
       case "hello":
-        if (message.mesh !== this.#host.meshId) {
-          this.close(4401, "a mesh stream from another mesh");
-          return;
-        }
-        for (const head of message.heads) this.#claimed.add(head);
-        if (this.#claimed.size > MAX_RECORDS) {
-          this.close(CloseCode.CryptoFailure, `a peer claimed more than ${MAX_RECORDS} heads`);
-          return;
-        }
-        for (const head of message.heads) this.#peerHeads.add(head);
-        this.#host.heard(this.peer, message.heads, message.n);
-        this.flush();
-        return;
+        return this.#heard(line.mesh, line.heads, line.n);
       case "records":
-        if (this.#incoming.length + message.records.length > MAX_RECORDS) {
-          this.close(CloseCode.CryptoFailure, `more than ${MAX_RECORDS} records before done`);
-          return;
+        if (this.#incoming.length + line.records.length > MAX_RECORDS) {
+          return this.close(CloseCode.CryptoFailure, `more than ${MAX_RECORDS} records before done`);
         }
-        this.#incoming.push(...message.records);
+        this.#incoming.push(...line.records);
         return;
       case "want":
-        this.#answerWant(message.hashes);
-        return;
+        return this.#answerWant(line.hashes);
       case "done":
-        this.#merge();
-        return;
+        return this.#merge();
+      case "refused":
+        return this.close(1000, `the peer refused: ${line.reason}`);
+      case "offer":
+      case "card":
+        return this.close(CloseCode.CryptoFailure, `a ${line.t} line on a sync session`);
       default: {
-        const unknown: never = message;
+        const unknown: never = line;
         return unknown;
       }
     }
+  }
+
+  #heard(mesh: string, heads: readonly string[], n: Readonly<Record<string, number>>): void {
+    if (mesh !== this.#host.meshId) {
+      this.#lines.refuse(CloseCode.UnknownDevice, "a mesh stream from another mesh");
+      return this.#ended();
+    }
+    for (const head of heads) this.#claimed.add(head);
+    if (this.#claimed.size > MAX_RECORDS) {
+      return this.close(CloseCode.CryptoFailure, `a peer claimed more than ${MAX_RECORDS} heads`);
+    }
+    for (const head of heads) this.#peerHeads.add(head);
+    this.#host.heard(this.peer, heads, n);
+    this.flush();
   }
 
   #merge(): void {
     const batch = this.#incoming;
     this.#incoming = [];
     if (batch.length === 0) return;
-    const { rules } = this.#host;
-    const brought = batch.map((record) => rules.headerOf(record).hash);
+    const brought = batch.map(hashOf);
     for (const hash of brought) this.#peerHeads.add(hash);
     const result = this.#host.merge(this, batch);
     this.#forgetUnstored(brought);
@@ -156,32 +159,33 @@ export class SyncSession {
 
   /** The peer holds what it brought, but only stored hashes stay: refused ones would grow the set without bound. */
   #forgetUnstored(brought: readonly string[]): void {
-    const { rules } = this.#host;
-    const stored = new Set(this.#host.records().map((record) => rules.headerOf(record).hash));
+    const stored = new Set(this.#host.records().map(hashOf));
     for (const hash of brought) if (!stored.has(hash) && !this.#claimed.has(hash)) this.#peerHeads.delete(hash);
   }
 
   /** Each stored record goes to the peer at most once per session, however often it is wanted. */
   #answerWant(hashes: readonly string[]): void {
     const wanted = new Set(hashes);
-    const { rules } = this.#host;
-    const found = this.#host.records().filter((record) => {
-      const hash = rules.headerOf(record).hash;
-      return wanted.has(hash) && !this.#sent.has(hash);
-    });
-    if (found.length === 0) return;
-    for (const record of found) this.#sent.add(rules.headerOf(record).hash);
-    this.#sendAll(recordLines(found));
+    const found = this.#host
+      .records()
+      .filter((record) => wanted.has(hashOf(record)) && !this.#sent.has(hashOf(record)));
+    if (found.length > 0) this.#sendRecords(found);
   }
 
-  #sendAll(messages: readonly MeshMessage[]): void {
-    for (const message of messages) this.#send(message);
+  #sendRecords(records: readonly Signed[]): void {
+    for (const record of records) this.#sent.add(hashOf(record));
+    for (const line of recordLines(records)) this.#send(line);
+    this.#send({ t: "done", mesh: this.#host.meshId });
   }
 
-  #send(message: MeshMessage): void {
+  #send(line: MeshLine): void {
     if (this.#closed) return;
     this.#touch();
-    this.#channel.send(message);
+    try {
+      this.#lines.send(line);
+    } catch {
+      this.#ended();
+    }
   }
 
   #touch(): void {

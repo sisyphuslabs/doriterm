@@ -18,7 +18,7 @@ export interface LeaveDeps {
  */
 export async function leaveMesh(deps: LeaveDeps): Promise<"acked" | "timed out"> {
   const acked = deps.gossip.acked().then(() => "acked" as const);
-  deps.gossip.append((prev) => ({ type: "revoke", prev, signPubs: [deps.self], reason: "leave" }));
+  deps.gossip.append({ type: "revoke", signPubs: [deps.self], reason: "leave" });
   const { promise: timedOut, resolve } = Promise.withResolvers<"timed out">();
   const cancel = deps.clock.after(deps.waitMs ?? LEAVE_ACK_WAIT_MS, () => resolve("timed out"));
   const outcome = await Promise.race([acked, timedOut]);

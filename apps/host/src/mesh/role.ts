@@ -1,5 +1,5 @@
 import type { Clock } from "./clock.ts";
-import type { MeshView } from "./upstream.ts";
+import type { MeshView } from "./mesh-view.ts";
 
 /** Section 6.4: a host its own computed view revoked stays read-only this long before it ejects itself. */
 export const READ_ONLY_GRACE_MS = 7 * 24 * 60 * 60 * 1000;

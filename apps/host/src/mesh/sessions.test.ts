@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { FakeClock, seededRandom } from "./testing/fake-clock.ts";
-import { fakeRules, meshOf, member } from "./testing/fake-mesh.ts";
+import { headsOfRecords, meshOf, peer } from "./testing/mesh-peers.ts";
 import { MeshNet } from "./testing/mesh-net.ts";
 
 function mesh(names: readonly string[]): { clock: FakeClock; net: MeshNet } {
   const clock = new FakeClock();
   const net = new MeshNet(clock, seededRandom(23));
-  const members = names.map(member);
-  const base = meshOf(members);
-  for (const entry of members) net.add(entry, base);
+  const members = names.map(peer);
+  const { records } = meshOf(members);
+  for (const entry of members) net.add(entry, records);
   return { clock, net };
 }
 
@@ -18,14 +18,15 @@ describe("sync sessions (section 5.1)", () => {
     const [a, b] = [net.host("a"), net.host("b")];
     await Promise.all([a.gossip.sync(b.member, "push"), b.gossip.sync(a.member, "push")]);
     await clock.advance(1_000);
-    expect(a.gossip.session(b.member.signPub)?.dialer).toBe(a.member.signPub);
-    expect(b.gossip.session(a.member.signPub)?.dialer).toBe(a.member.signPub);
+    const smaller = a.member.hostId < b.member.hostId ? a.member.signPub : b.member.signPub;
+    expect(a.gossip.session(b.member.signPub)?.dialer).toBe(smaller);
+    expect(b.gossip.session(a.member.signPub)?.dialer).toBe(smaller);
   });
 
   test("after merging a push, a member says its new heads, so the pusher owes only the new, unreached member", async () => {
     const { clock, net } = mesh(["a", "b", "c", "d"]);
     const a = net.host("a");
-    a.gossip.local([a.signer.admit(member("e"), fakeRules.headsOf(a.file.read().records))]);
+    a.admit(peer("e"));
     await clock.advance(2_000);
     expect(net.converged()).toBe(true);
     expect(a.gossip.owed().map((entry) => entry.name)).toEqual(["e"]);
@@ -34,10 +35,16 @@ describe("sync sessions (section 5.1)", () => {
   test("with nothing else to wake it, the safety net syncs one member every 10 minutes give or take 2", async () => {
     const { clock, net } = mesh(["a", "b", "c"]);
     const a = net.host("a");
-    a.file.transact((state) => {
-      const record = a.signer.name(fakeRules.headsOf(state.records), "a2");
-      return { state: { ...state, records: [...state.records, record] }, result: undefined };
-    });
+    a.store.sign(a.member.machine.identity, (n, prev) => ({
+      v: 2,
+      mesh: a.gossip.meshId,
+      type: "name",
+      by: a.member.signPub,
+      n,
+      prev,
+      subject: { signPub: a.member.signPub, name: "a2" },
+    }));
+    expect(headsOfRecords(a.records()).length).toBe(1);
     await clock.advance(8 * 60_000 - 1);
     expect(net.converged()).toBe(false);
     const took = await clock.until(() => net.converged(), 30 * 60_000, 10_000);

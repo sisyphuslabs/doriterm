@@ -1,66 +1,52 @@
 import { describe, expect, test } from "bun:test";
+import { hashOf, parseRecord, type Signed } from "@doriface/mesh";
 import { FakeClock, seededRandom } from "./testing/fake-clock.ts";
-import { fakeRules, hashOfRecord, meshOf, member } from "./testing/fake-mesh.ts";
-import { MeshNet } from "./testing/mesh-net.ts";
+import { meshOf, peer } from "./testing/mesh-peers.ts";
+import { MeshNet, type NetHost } from "./testing/mesh-net.ts";
 
 function mesh(): { clock: FakeClock; net: MeshNet } {
   const clock = new FakeClock();
   const net = new MeshNet(clock, seededRandom(7));
-  const members = ["a", "b", "c", "d"].map(member);
-  const base = meshOf(members);
-  for (const entry of members) net.add(entry, base);
+  const members = ["a", "b", "c", "d"].map(peer);
+  const { records } = meshOf(members);
+  for (const entry of members) net.add(entry, records);
   return { clock, net };
 }
 
-const recordsLines = (net: MeshNet, to: string) =>
-  net.lines.filter((line) => line.to === net.host(to).member.signPub && line.message.t === "records");
+const isAck = (record: Signed): boolean => parseRecord(record)?.type === "ack";
+const holds = (host: NetHost, record: Signed): boolean => host.records().some((r) => hashOf(r) === hashOf(record));
 
 describe("push (S-2)", () => {
   test("a revoke goes to the others first and to the revoked member last, after an ack came back", async () => {
     const { clock, net } = mesh();
     const a = net.host("a");
-    const result = a.gossip.append((prev) => ({
-      type: "revoke",
-      prev,
-      signPubs: [member("d").signPub],
-      reason: "revoke",
-    }));
-    const revoke = result.added[0];
+    const [revoke] = a.gossip.append({ type: "revoke", signPubs: [peer("d").signPub], reason: "revoke" }).added;
     if (revoke === undefined) throw new Error("no revoke written");
-    await clock.until(
-      () =>
-        net
-          .host("d")
-          .file.read()
-          .records.some((r) => hashOfRecord(r) === hashOfRecord(revoke)),
-      11_000,
-    );
+    await clock.until(() => holds(net.host("d"), revoke), 11_000);
 
-    const firstToD = net.lines.findIndex((line) => line.to === member("d").signPub && line.message.t === "records");
+    const toD = (index: number): boolean => net.lines[index]?.to === peer("d").signPub;
+    const firstToD = net.lines.findIndex((entry, i) => toD(i) && entry.line.t === "records");
     const firstAck = net.lines.findIndex(
-      (line) =>
-        line.to === a.member.signPub &&
-        line.message.t === "records" &&
-        line.message.records.some((record) => fakeRules.headerOf(record).type === "ack"),
+      (entry) =>
+        entry.to === a.member.signPub &&
+        entry.line.t === "records" &&
+        entry.line.records.some((record) => isAck(record)),
     );
     expect(firstAck).toBeGreaterThanOrEqual(0);
     expect(firstToD).toBeGreaterThan(firstAck);
-    expect(recordsLines(net, "b").length).toBeGreaterThan(0);
+    expect(net.lines.some((entry) => entry.to === peer("b").signPub && entry.line.t === "records")).toBe(true);
   });
 
   test("acks reply on the pusher's session and the pusher forwards them: the others dial nobody", async () => {
     const { clock, net } = mesh();
     const a = net.host("a");
-    a.gossip.append((prev) => ({ type: "revoke", prev, signPubs: [member("d").signPub], reason: "revoke" }));
+    a.gossip.append({ type: "revoke", signPubs: [peer("d").signPub], reason: "revoke" });
     await clock.advance(15_000);
-    const ackBy = (name: string) =>
+    const ackBy = (name: string): boolean =>
       net
         .host("c")
-        .file.read()
-        .records.some((record) => {
-          const header = fakeRules.headerOf(record);
-          return header.type === "ack" && header.by === member(name).signPub;
-        });
+        .records()
+        .some((record) => isAck(record) && parseRecord(record)?.by === peer(name).signPub);
     expect(ackBy("b")).toBe(true);
     expect(net.host("b").dials).toEqual([]);
     expect(net.host("c").dials).toEqual([]);

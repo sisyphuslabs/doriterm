@@ -1,11 +1,14 @@
-import { closeCodeOf } from "@doriface/crypto";
+import { base64urlEncode, closeCodeOf } from "@doriface/crypto";
+import { parseRecord, type Signed, viewOf } from "@doriface/mesh";
 import { type Clock, type Random, uniform } from "./clock.ts";
 import { type DialPolicy, type DialPurpose, type DueReason } from "./dial-policy.ts";
-import type { MeshChannel } from "./sync-lines.ts";
+import { missingSince } from "./anti-entropy.ts";
+import type { MemberEntry } from "./authorize-index.ts";
+import type { LineLink } from "./lines.ts";
+import { type MeshView, meshViewOf, meshViewOfIndex } from "./mesh-view.ts";
 import { RevokedLast } from "./revoked-last.ts";
-import { appendOwn, type MergeDeps, type MergeResult, mergeBatch } from "./merge.ts";
+import { appendOwn, type MergeDeps, type MergeResult, mergeBatch, type RecordDraft } from "./merge.ts";
 import { type SyncHost, SyncSession } from "./sync.ts";
-import type { MeshMember, MeshRecord, MeshRules, MeshView, RecordDraft } from "./upstream.ts";
 
 /** Section 5.1 and 5.3's timings, production values. */
 export const GOSSIP_TIMINGS = {
@@ -19,13 +22,11 @@ export const GOSSIP_TIMINGS = {
 export type GossipTimings = { readonly [K in keyof typeof GOSSIP_TIMINGS]: number };
 
 export interface GossipOptions extends MergeDeps {
-  readonly meshId: string;
-  readonly self: MeshMember;
   readonly clock: Clock;
   readonly random: Random;
   readonly policy: DialPolicy;
   /** Opens a sync session (`stream:"mesh"`) to a member; rejects with the close code that refused it. */
-  readonly dial: (member: MeshMember) => Promise<MeshChannel>;
+  readonly dial: (member: MemberEntry) => Promise<LineLink>;
   readonly onView?: (view: MeshView, result: MergeResult) => void;
   readonly log: (line: string) => void;
   readonly timings?: GossipTimings;
@@ -38,13 +39,14 @@ export interface GossipOptions extends MergeDeps {
  */
 export class Gossip implements SyncHost {
   readonly meshId: string;
-  readonly rules: MeshRules;
+  /** This host's signPub. */
+  readonly self: string;
   readonly #options: GossipOptions;
   readonly #timings: GossipTimings;
   readonly #sessions = new Map<string, SyncSession>();
   readonly #confirmed = new Map<string, readonly string[]>();
   readonly #lastSync = new Map<string, number>();
-  readonly #known = new Map<string, MeshMember>();
+  readonly #known = new Map<string, MemberEntry>();
   readonly #revokedLast: RevokedLast;
   readonly #ackWaiters = new Set<() => void>();
   #view: MeshView;
@@ -55,7 +57,7 @@ export class Gossip implements SyncHost {
   constructor(options: GossipOptions) {
     this.#options = options;
     this.meshId = options.meshId;
-    this.rules = options.rules;
+    this.self = base64urlEncode(options.identity.sign.publicKey);
     this.#timings = options.timings ?? GOSSIP_TIMINGS;
     this.#revokedLast = new RevokedLast({
       clock: options.clock,
@@ -65,7 +67,7 @@ export class Gossip implements SyncHost {
         if (member !== undefined) void this.sync(member, "push");
       },
     });
-    this.#view = options.rules.viewOf(options.file.read().records);
+    this.#view = this.#storedView();
     this.#remember(this.#view);
   }
 
@@ -83,8 +85,8 @@ export class Gossip implements SyncHost {
     for (const session of this.#sessions.values()) session.close(1000, "host stopping");
   }
 
-  records(): readonly MeshRecord[] {
-    return this.#options.file.read().records;
+  records(): readonly Signed[] {
+    return this.#options.store.read()?.records ?? [];
   }
 
   /** The open sync session with `peer`, if one is up. */
@@ -94,9 +96,9 @@ export class Gossip implements SyncHost {
   }
 
   /** An authenticated sync session, inbound or outbound; one per peer, as section 5.1 picks it. */
-  attach(peer: string, dialer: string, channel: MeshChannel, sweeping = false): SyncSession {
+  attach(peer: string, dialer: string, link: LineLink, sweeping = false): SyncSession {
     const ends = { peer, dialer, sweeping };
-    const session = new SyncSession(ends, channel, this, this.#options.clock, this.#timings.lingerMs);
+    const session = new SyncSession(ends, link, this, this.#options.clock, this.#timings.lingerMs);
     const existing = this.#sessions.get(peer);
     if (existing !== undefined && !existing.closed) {
       const keepOld = existing.dialer !== dialer && this.#hostIdOf(existing.dialer) < this.#hostIdOf(dialer);
@@ -113,7 +115,7 @@ export class Gossip implements SyncHost {
     return session;
   }
 
-  merge(session: SyncSession, batch: readonly MeshRecord[]): MergeResult {
+  merge(session: SyncSession, batch: readonly Signed[]): MergeResult {
     const result = mergeBatch(this.#deps(), batch);
     for (const refusal of result.refused) {
       this.#options.log(`mesh: refused record ${refusal.hash} from ${this.#nameOf(session.peer)}: ${refusal.reason}`);
@@ -133,14 +135,20 @@ export class Gossip implements SyncHost {
   }
 
   /** Records this host produced itself outside sync (the join's admit, section 4.4): stored, then owed to all. */
-  local(batch: readonly MeshRecord[]): MergeResult {
+  local(batch: readonly Signed[]): MergeResult {
     const result = mergeBatch(this.#deps(), batch);
     if (result.added.length > 0) this.#changed(result, true);
     return result;
   }
 
-  /** Signs and pushes one record of this host's own (a revoke, a leave). */
-  append(draft: (prev: readonly string[]) => RecordDraft): MergeResult {
+  /** Records this host already signed through its store (a join's admit, a revoke): owed to every member. */
+  stored(records: readonly Signed[]): void {
+    const view = this.#storedView();
+    this.#changed({ added: records, refused: [], wanted: [], ack: undefined, counterBehind: false, view }, true);
+  }
+
+  /** Signs and pushes one record of this host's own (a revoke, a leave, a rename). */
+  append(draft: RecordDraft): MergeResult {
     const result = appendOwn(this.#deps(), draft);
     this.#changed(result, true);
     return result;
@@ -148,7 +156,7 @@ export class Gossip implements SyncHost {
 
   heard(peer: string, heads: readonly string[], n: Readonly<Record<string, number>>): void {
     this.#confirmed.set(peer, heads);
-    this.#counterFloor = Math.max(this.#counterFloor, n[this.#options.self.signPub] ?? 0);
+    this.#counterFloor = Math.max(this.#counterFloor, n[this.self] ?? 0);
   }
 
   ended(session: SyncSession): void {
@@ -156,12 +164,11 @@ export class Gossip implements SyncHost {
   }
 
   /** Members that are owed records: their confirmed heads do not cover this host's set. */
-  owed(): readonly MeshMember[] {
+  owed(): readonly MemberEntry[] {
     const records = this.records();
     return [...this.#known.values()].filter(
       (member) =>
-        member.signPub !== this.#options.self.signPub &&
-        this.rules.missingFor(records, this.#confirmed.get(member.signPub) ?? []).length > 0,
+        member.signPub !== this.self && missingSince(records, this.#confirmed.get(member.signPub) ?? []).length > 0,
     );
   }
 
@@ -188,7 +195,7 @@ export class Gossip implements SyncHost {
     void this.#sweep(recent);
   }
 
-  async sync(member: MeshMember, purpose: DialPurpose): Promise<boolean> {
+  async sync(member: MemberEntry, purpose: DialPurpose): Promise<boolean> {
     const open = this.#sessions.get(member.signPub);
     if (open !== undefined && !open.closed) {
       open.flush();
@@ -197,9 +204,9 @@ export class Gossip implements SyncHost {
     const grant = await this.#options.policy.acquire(member.signPub, purpose);
     if (!grant.ok) return false;
     try {
-      const channel = await this.#options.dial(member);
+      const link = await this.#options.dial(member);
       this.#options.policy.report(member.signPub, "connected");
-      this.attach(member.signPub, this.#options.self.signPub, channel, purpose === "sweep" || purpose === "probe");
+      this.attach(member.signPub, this.self, link, purpose === "sweep" || purpose === "probe");
       return true;
     } catch (error) {
       const code = error instanceof Error ? closeCodeOf(error) : undefined;
@@ -209,7 +216,7 @@ export class Gossip implements SyncHost {
     }
   }
 
-  async #sweep(candidates: readonly MeshMember[]): Promise<void> {
+  async #sweep(candidates: readonly MemberEntry[]): Promise<void> {
     for (const member of candidates) if (await this.sync(member, "sweep")) return;
   }
 
@@ -227,10 +234,10 @@ export class Gossip implements SyncHost {
   }
 
   #noticeAcks(result: MergeResult): void {
-    const self = this.#options.self.signPub;
+    const self = this.self;
     const acked = result.added.some((record) => {
-      const header = this.rules.headerOf(record);
-      return header.type === "ack" && header.by !== self;
+      const body = parseRecord(record);
+      return body?.type === "ack" && body.by !== self;
     });
     if (!acked) return;
     this.#revokedLast.releaseAll();
@@ -242,11 +249,12 @@ export class Gossip implements SyncHost {
   #push(result: MergeResult): void {
     const revoked = new Set<string>();
     for (const record of result.added) {
-      const header = this.rules.headerOf(record);
-      if (header.type === "revoke") for (const key of header.revokes) revoked.add(key);
+      const body = parseRecord(record);
+      const subject = body?.type === "revoke" ? body.subject : undefined;
+      if (subject !== undefined && "signPubs" in subject) for (const key of subject.signPubs) revoked.add(key);
     }
     const purpose: DialPurpose = revoked.size > 0 ? "revoke-push" : "push";
-    for (const key of revoked) if (key !== this.#options.self.signPub) this.#revokedLast.hold(key);
+    for (const key of revoked) if (key !== this.self) this.#revokedLast.hold(key);
     for (const member of this.owed()) {
       if (!this.#revokedLast.holds(member.signPub)) void this.sync(member, purpose);
     }
@@ -265,12 +273,19 @@ export class Gossip implements SyncHost {
     });
   }
 
+  #storedView(): MeshView {
+    const file = this.#options.store.read();
+    if (file?.index !== undefined) return meshViewOfIndex(file.index);
+    const records = file?.records ?? [];
+    return meshViewOf(records, viewOf(records));
+  }
+
   #deps(): GossipOptions {
     return { ...this.#options, counterFloor: this.#counterFloor };
   }
 
-  #members(): readonly MeshMember[] {
-    return this.#view.members.filter((member) => member.signPub !== this.#options.self.signPub);
+  #members(): readonly MemberEntry[] {
+    return this.#view.members.filter((member) => member.signPub !== this.self);
   }
 
   #remember(view: MeshView): void {

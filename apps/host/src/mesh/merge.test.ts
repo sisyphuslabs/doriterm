@@ -1,81 +1,101 @@
 import { describe, expect, test } from "bun:test";
+import { hashOf, parseRecord, type Signed } from "@doriface/mesh";
+import type { MeshStore } from "../state/mesh.ts";
 import { mergeBatch } from "./merge.ts";
-import { FakeSigner, fakeRules, hashOfRecord, MemoryFile, meshOf, member } from "./testing/fake-mesh.ts";
+import { headsOfRecords, meshOf, peer, Signer, storeOf } from "./testing/mesh-peers.ts";
 
-const a = member("a");
-const b = member("b");
-const c = member("c");
+const [a, b, c] = [peer("a"), peer("b"), peer("c")];
 
-function atB(): { file: MemoryFile; deps: Parameters<typeof mergeBatch>[0]; founder: FakeSigner } {
-  const base = meshOf([a, b]);
-  const file = new MemoryFile(base);
-  return { file, deps: { file, rules: fakeRules, signer: new FakeSigner(b, 1) }, founder: new FakeSigner(a, 2) };
+function atB() {
+  const { records, meshId } = meshOf([a, b]);
+  const store = storeOf(b, records);
+  return { store, deps: { store, identity: b.machine.identity, meshId }, founder: new Signer(a, records) };
 }
 
-const headsOf = (file: MemoryFile) => fakeRules.headsOf(file.read().records);
-const acksBy = (file: MemoryFile, who: string) =>
-  file.read().records.filter((record) => {
-    const header = fakeRules.headerOf(record);
-    return header.type === "ack" && header.by === who;
+const recordsOf = (store: MeshStore): readonly Signed[] => store.read()?.records ?? [];
+const headsAt = (store: MeshStore): readonly string[] => headsOfRecords(recordsOf(store));
+const acksBy = (store: MeshStore, who: string): readonly Signed[] =>
+  recordsOf(store).filter((record) => {
+    const body = parseRecord(record);
+    return body?.type === "ack" && body.by === who;
   });
 
-describe("automatic acks (S-3)", () => {
-  test("a merged admission is acked in the same transaction, the ack naming it", () => {
-    const { file, deps, founder } = atB();
-    const admit = founder.admit(c, headsOf(file));
-    const before = file.commits.length;
-    const result = mergeBatch(deps, [admit]);
-    expect(file.commits.length - before).toBe(1);
-    const committed = file.commits.at(-1)?.records.map(hashOfRecord) ?? [];
+describe("automatic acks (S-3, section 5.5)", () => {
+  test("a merged admission is acked in the same store transaction, the ack naming it", () => {
+    const { store, deps, founder } = atB();
+    const admit = founder.admit(c, headsAt(store));
+    let transactions = 0;
+    const counted: Pick<MeshStore, "transact" | "read"> = {
+      read: () => store.read(),
+      transact: (fn) => {
+        transactions += 1;
+        return store.transact(fn);
+      },
+    };
+    const result = mergeBatch({ ...deps, store: counted }, [admit]);
+    const after = store.read();
+    expect(transactions).toBe(1);
     const ack = result.ack;
     if (ack === undefined) throw new Error("no ack");
-    expect(committed).toContain(hashOfRecord(admit));
-    expect(committed).toContain(hashOfRecord(ack));
-    expect(fakeRules.headerOf(ack).prev).toContain(hashOfRecord(admit));
+    expect(after?.records.map(hashOf)).toEqual(expect.arrayContaining([hashOf(admit), hashOf(ack)]));
+    expect(parseRecord(ack)?.prev).toContain(hashOf(admit));
   });
 
   test("acks and names are never acked", () => {
-    const { file, deps, founder } = atB();
-    mergeBatch(deps, [founder.sign({ type: "ack", prev: headsOf(file) })]);
-    mergeBatch(deps, [founder.name(headsOf(file), "a2")]);
-    expect(acksBy(file, b.signPub)).toEqual([]);
+    const { store, deps, founder } = atB();
+    mergeBatch(deps, [founder.ack(headsAt(store))]);
+    mergeBatch(deps, [founder.name(headsAt(store), "a2")]);
+    expect(acksBy(store, b.signPub)).toEqual([]);
   });
 
   test("a member the merged view revoked writes nothing", () => {
-    const { file, deps, founder } = atB();
-    const revoke = founder.sign({ type: "revoke", prev: headsOf(file), signPubs: [b.signPub], reason: "revoke" });
-    const result = mergeBatch(deps, [revoke]);
+    const { store, deps, founder } = atB();
+    const result = mergeBatch(deps, [founder.revoke(headsAt(store), b)]);
     expect(result.ack).toBeUndefined();
-    expect(acksBy(file, b.signPub)).toEqual([]);
+    expect(acksBy(store, b.signPub)).toEqual([]);
   });
 
-  test("more than 64 heads are folded by acks first, so no record names more than 64", () => {
-    const { file, deps, founder } = atB();
-    const start = headsOf(file);
-    const wide = Array.from({ length: 70 }, () => founder.sign({ type: "ack", prev: start }));
-    mergeBatch(deps, wide);
+  test("more heads than one record can name are folded by acks first, every one within the door's limits", () => {
+    const { store, deps, founder } = atB();
+    const start = headsAt(store);
+    mergeBatch(
+      deps,
+      Array.from({ length: 70 }, () => founder.ack(start)),
+    );
+    expect(headsAt(store).length).toBe(70);
     mergeBatch(deps, [founder.admit(c, start)]);
-    expect(headsOf(file).length).toBeLessThanOrEqual(1);
-    const own = acksBy(file, b.signPub);
+    expect(headsAt(store).length).toBeLessThanOrEqual(1);
+    const own = acksBy(store, b.signPub);
     expect(own.length).toBeGreaterThan(1);
-    for (const record of own) expect(fakeRules.headerOf(record).prev.length).toBeLessThanOrEqual(64);
+    for (const record of own) expect(parseRecord(record)?.prev.length).toBeLessThanOrEqual(64);
   });
 });
 
 describe("the dangling pool (S-1)", () => {
   test("a record whose past is missing is held out of the view, wanted, and stored once its past arrives", () => {
-    const { file, deps, founder } = atB();
-    const parent = founder.admit(c, headsOf(file));
-    const child = founder.admit(member("e"), [hashOfRecord(parent)]);
+    const { store, deps, founder } = atB();
+    const parent = founder.admit(c, headsAt(store));
+    const child = founder.admit(peer("e"), [hashOf(parent)]);
     const held = mergeBatch(deps, [child]);
     expect(held.added).toEqual([]);
-    expect(held.wanted).toEqual([hashOfRecord(parent)]);
+    expect(held.wanted).toEqual([hashOf(parent)]);
     expect(held.view.members.map((entry) => entry.name)).toEqual(["a", "b"]);
-    expect(file.read().dangling.map(hashOfRecord)).toEqual([hashOfRecord(child)]);
+    expect(store.read()?.dangling.map(hashOf)).toEqual([hashOf(child)]);
 
     const healed = mergeBatch(deps, [parent]);
-    expect(healed.added.slice(0, 2).map(hashOfRecord)).toEqual([hashOfRecord(parent), hashOfRecord(child)]);
+    expect(healed.added.slice(0, 2).map(hashOf)).toEqual([hashOf(parent), hashOf(child)]);
     expect(healed.view.members.map((entry) => entry.name)).toEqual(["a", "b", "c", "e"]);
-    expect(file.read().dangling).toEqual([]);
+    expect(store.read()?.dangling).toEqual([]);
+  });
+
+  test("a record by a signer whose admission has not arrived is held, not refused, and stored after it", () => {
+    const { store, deps, founder } = atB();
+    const admit = founder.admit(c, headsAt(store));
+    const byC = new Signer(c, [...recordsOf(store), admit]).name([hashOf(admit)], "c2");
+    const held = mergeBatch(deps, [byC]);
+    expect(held.refused).toEqual([]);
+    expect(store.read()?.dangling.map(hashOf)).toEqual([hashOf(byC)]);
+    mergeBatch(deps, [admit]);
+    expect(recordsOf(store).map(hashOf)).toEqual(expect.arrayContaining([hashOf(admit), hashOf(byC)]));
   });
 });

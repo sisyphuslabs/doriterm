@@ -1,5 +1,6 @@
 import { CloseCode, type Unsubscribe } from "@doriface/crypto";
 import type { Signed } from "@doriface/mesh";
+import { parseLine } from "./line-parse.ts";
 
 /** Section 5.2: every mesh stream line is at most 256 KiB, LF included. */
 export const MAX_LINE_BYTES = 256 * 1024;
@@ -9,6 +10,14 @@ export const MAX_QUEUED_LINES = 256;
 export const MAX_QUEUED_BYTES = 4 * 1024 * 1024;
 
 export type MeshLine =
+  | {
+      readonly t: "hello";
+      readonly v: 2;
+      readonly mesh: string;
+      readonly heads: readonly string[];
+      readonly n: Readonly<Record<string, number>>;
+    }
+  | { readonly t: "want"; readonly hashes: readonly string[] }
   | { readonly t: "offer"; readonly mesh: string; readonly inviter: string; readonly nonce: string }
   | { readonly t: "card"; readonly body: string; readonly sig: string }
   | { readonly t: "records"; readonly records: readonly Signed[] }
@@ -20,6 +29,8 @@ export type LineType = MeshLine["t"];
 /** What each side of a join reads first (section 4.4): the inviter a card, the joiner the offer; or a refusal. */
 export const INVITER_EXPECTS: readonly LineType[] = ["card", "refused"];
 export const JOINER_EXPECTS: readonly LineType[] = ["offer", "refused"];
+/** What a sync session reads (section 5.2): heads and counters, asks, records, the end of a batch, or a refusal. */
+export const SYNC_EXPECTS: readonly LineType[] = ["hello", "want", "records", "done", "refused"];
 
 /** The decrypted session as the mesh stream sees it. */
 export interface LineLink {
@@ -30,66 +41,6 @@ export interface LineLink {
 }
 
 const encoder = new TextEncoder();
-const isObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-const stringOf = (value: Readonly<Record<string, unknown>>, key: string): string | undefined => {
-  const field = value[key];
-  return typeof field === "string" ? field : undefined;
-};
-const signedOf = (value: unknown): Signed | undefined => {
-  if (!isObject(value)) return undefined;
-  const [body, sig] = [stringOf(value, "body"), stringOf(value, "sig")];
-  return body === undefined || sig === undefined ? undefined : { body, sig };
-};
-
-function recordsOf(value: unknown): Signed[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const records: Signed[] = [];
-  for (const item of value) {
-    const record = signedOf(item);
-    if (record === undefined) return undefined;
-    records.push(record);
-  }
-  return records;
-}
-
-/** A known line, `"unknown"` for a `t` this host does not know (ignored), or undefined when malformed. */
-function parseLine(text: string): MeshLine | "unknown" | undefined {
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-  if (!isObject(value)) return undefined;
-  const get = (key: string): string | undefined => stringOf(value, key);
-  switch (value["t"]) {
-    case "offer": {
-      const [mesh, inviter, nonce] = [get("mesh"), get("inviter"), get("nonce")];
-      return mesh === undefined || inviter === undefined || nonce === undefined
-        ? undefined
-        : { t: "offer", mesh, inviter, nonce };
-    }
-    case "card": {
-      const card = signedOf(value);
-      return card === undefined ? undefined : { t: "card", ...card };
-    }
-    case "records": {
-      const records = recordsOf(value["records"]);
-      return records === undefined ? undefined : { t: "records", records };
-    }
-    case "done": {
-      const mesh = get("mesh");
-      return mesh === undefined ? undefined : { t: "done", mesh };
-    }
-    case "refused": {
-      const reason = get("reason");
-      return reason === undefined ? undefined : { t: "refused", reason };
-    }
-    default:
-      return typeof value["t"] === "string" ? "unknown" : undefined;
-  }
-}
 
 /** The welcome's `records` lines: as many records per line as fit {@link MAX_LINE_BYTES}, in the given order. */
 export function recordLines(records: readonly Signed[], maxBytes = MAX_LINE_BYTES): MeshLine[] {
