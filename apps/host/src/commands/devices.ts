@@ -9,7 +9,7 @@ export const DEVICES_USAGE = `usage: doriface-host devices list [--state-dir <di
   revoke removes the device; a running host on the same state dir closes its live sessions (close code 4401)`;
 
 /** Escapes control, format and line-separator characters, so a hand-edited name cannot rewrite the terminal. */
-const printable = (name: string): string =>
+export const printable = (name: string): string =>
   name.replaceAll(
     /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu,
     (char) => `\\u${(char.codePointAt(0) ?? 0).toString(16).padStart(4, "0")}`,

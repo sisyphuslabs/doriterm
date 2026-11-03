@@ -5,6 +5,7 @@ export type ControlRequest =
   | { readonly op: "pair" }
   | { readonly op: "devices-changed" }
   | { readonly op: "mesh-changed" }
+  | { readonly op: "mesh-status" }
   | { readonly op: "mesh-pair"; readonly auto: boolean }
   | { readonly op: "mesh-pending" }
   | { readonly op: "mesh-approve"; readonly nonce: string; readonly approve: boolean }
@@ -40,6 +41,7 @@ export function parseRequest(line: string): ControlRequest {
     case "devices-changed":
     case "mesh-changed":
     case "mesh-pending":
+    case "mesh-status":
       return { op };
     case "mesh-pair":
       return { op: "mesh-pair", auto: get("auto") === true };

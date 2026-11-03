@@ -6,6 +6,7 @@ import { CONNECT_USAGE, connectCommand } from "./commands/connect.ts";
 import { DEVICES_USAGE, devicesCommand } from "./commands/devices.ts";
 import { FINGERPRINT_USAGE, fingerprintCommand } from "./commands/fingerprint.ts";
 import { MESH_JOIN_USAGE, meshJoinCommand } from "./commands/mesh-join.ts";
+import { MESH_USAGE, meshCommand } from "./commands/mesh.ts";
 import { PAIR_USAGE, pairCommand } from "./commands/pair.ts";
 import { HOST_VERSION, startHost } from "./host.ts";
 import { parseListen } from "./listen.ts";
@@ -17,6 +18,7 @@ const USAGE = `usage: doriface-host [options]
        doriface-host fingerprint
        doriface-host connect <hostId | pairing link | code>
        doriface-host mesh pair | mesh join <mesh link | code>
+       doriface-host mesh status [--json]
 
   --listen <host:port>  where to listen (default 127.0.0.1:7766; loopback only)
   --hc <path>           the herdr-core binary (default hc)
@@ -43,13 +45,17 @@ async function main(args: readonly string[]): Promise<void> {
   if (command === "pair") return pairCommand(rest, out);
   if (command === "fingerprint") return fingerprintCommand(rest, out);
   if (command === "connect") return connect(rest);
-  if (command === "mesh") {
+  if (command === "mesh" && rest[0] !== "status") {
     // Exits itself, as connect does: the relay socket a join opened would keep the process alive.
     await meshJoinCommand(rest, out, log);
     process.exit(0);
   }
   if (command === "devices") {
     process.exitCode = await devicesCommand(rest, out);
+    return;
+  }
+  if (command === "mesh") {
+    process.exitCode = await meshCommand(rest, out);
     return;
   }
   return serve(args);
@@ -136,7 +142,7 @@ main(Bun.argv.slice(2)).catch((error: unknown) => {
     devices: DEVICES_USAGE,
     fingerprint: FINGERPRINT_USAGE,
     connect: CONNECT_USAGE,
-    mesh: MESH_JOIN_USAGE,
+    mesh: `${MESH_JOIN_USAGE}\n${MESH_USAGE}`,
   };
   const usage = usages[Bun.argv[2] ?? ""] ?? USAGE;
   process.stderr.write(`doriface-host: ${error instanceof Error ? error.message : String(error)}\n\n${usage}\n`);

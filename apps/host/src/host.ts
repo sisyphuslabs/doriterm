@@ -1,5 +1,6 @@
 import packageJson from "../package.json" with { type: "json" };
 import { fingerprintOf, type HostIdentity, type SecureLink } from "@doriface/crypto";
+import type { MeshStatus } from "@doriface/protocol";
 import type { CreateSocket } from "@doriface/relay-client";
 import { controlIsLive, listenControl } from "./control.ts";
 import { lanUrlsFor } from "./lan-urls.ts";
@@ -39,6 +40,8 @@ export interface HostOptions {
   readonly pairingSlots?: PairingSlotRegistrar | undefined;
   /** Keeps an authenticated uplink to this relay and answers E2EE sessions through it; needs `stateDir`. */
   readonly relay?: { readonly url: string; readonly createSocket?: CreateSocket | undefined } | undefined;
+  /** The mesh status `mesh status` asks for; undefined while this host is in no mesh. */
+  readonly meshStatus?: (() => MeshStatus | undefined) | undefined;
   readonly log: (line: string) => void;
 }
 
@@ -143,7 +146,10 @@ export async function startHost(options: HostOptions): Promise<Host> {
   }
   let control: ReturnType<typeof openControl> | undefined;
   try {
-    control = options.stateDir === undefined || e2ee === undefined ? undefined : openControl(options.stateDir, e2ee);
+    control =
+      options.stateDir === undefined || e2ee === undefined
+        ? undefined
+        : openControl(options.stateDir, e2ee, options.meshStatus);
   } catch (error) {
     await Promise.all([server.stop(true), lanServer?.stop(true)]);
     throw new Error(`cannot open the control socket that devices revoke uses: ${String(error)}`, { cause: error });
@@ -179,7 +185,11 @@ export async function startHost(options: HostOptions): Promise<Host> {
 }
 
 /** The control socket is how `devices revoke` closes live sessions, so a host that cannot open it does not start. */
-function openControl(stateDir: string, e2ee: ReturnType<typeof e2eeDeps>) {
+function openControl(
+  stateDir: string,
+  e2ee: ReturnType<typeof e2eeDeps>,
+  meshStatus: (() => MeshStatus | undefined) | undefined,
+) {
   return listenControl(stateDir, async (request, closed) => {
     switch (request.op) {
       case "devices-changed":
@@ -195,6 +205,8 @@ function openControl(stateDir: string, e2ee: ReturnType<typeof e2eeDeps>) {
         return { decided: e2ee.hostMesh.pending.decide(request.nonce, request.approve) };
       case "mesh-join":
         return e2ee.hostMesh.join(request);
+      case "mesh-status":
+        return meshStatus?.() ?? null;
     }
   });
 }
