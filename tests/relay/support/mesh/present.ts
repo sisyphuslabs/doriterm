@@ -1,22 +1,34 @@
-import { type Capability, detect, gate, loadMeshLib, type Present } from "./capabilities.ts";
-import { type RecordKit, recordKit } from "./records.ts";
+import { describe, test } from "bun:test";
+import { type Capability, detect, gate, isRequired, type Present, ROOT } from "./capabilities.ts";
+import { loadMeshLib, type MeshLib } from "./mesh-lib.ts";
 
 /** Detected once per test run; every scenario file imports it. */
 export const present: Present = await detect();
 
-const lib = await loadMeshLib();
+export const REQUIRED = isRequired(ROOT, process.env["DORIFACE_MESH_E2E"]);
 
-/** Signing and hashing from `packages/mesh`; only defined when that package is on this branch. */
-export const kit: RecordKit | undefined = lib === undefined ? undefined : recordKit(lib);
+const loaded = await loadMeshLib(ROOT);
 
-export function needKit(): RecordKit {
-  if (kit === undefined) throw new Error("packages/mesh is not on this branch");
-  return kit;
+/** Signing and hashing from `packages/mesh`; a scenario that needs it does not run unless the records probe passed. */
+export function needLib(): MeshLib {
+  if (loaded === undefined || typeof loaded === "string") {
+    throw new Error(loaded ?? "packages/mesh is not on this branch");
+  }
+  return loaded;
 }
 
-/** Whether a scenario's capabilities are all here; the reason is printed so a skipped scenario is never silent. */
-export function runs(id: string, needs: readonly Capability[]): boolean {
-  const verdict = gate(present, needs);
-  console.log(verdict.run ? `RUNS  ${id}` : `GATED ${id}: ${verdict.why}`);
-  return verdict.run;
+/**
+ * A scenario that needs these capabilities. It runs when they all work; it is skipped, with the reason printed, only
+ * while the mesh stack is absent and nothing requires it; otherwise it is one failing test naming what does not work.
+ */
+export function scenario(title: string, needs: readonly Capability[], body: () => void): void {
+  const verdict = gate(present, needs, REQUIRED);
+  if (verdict.kind === "run") return describe(title, body);
+  console.log(`${verdict.kind === "skip" ? "GATED" : "FAILS"} ${title}: ${verdict.why}`);
+  if (verdict.kind === "skip") return describe.skip(title, body);
+  return describe(title, () => {
+    test("the capabilities this scenario needs work", () => {
+      throw new Error(verdict.why);
+    });
+  });
 }

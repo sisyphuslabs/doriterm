@@ -1,46 +1,7 @@
 import { base64urlEncode, type HostIdentity } from "@doriface/crypto";
+import { type BackdateShape, FORK, type Step } from "./backdate-graphs.ts";
+import type { MeshLib } from "./mesh-lib.ts";
 import type { SignedRecord } from "./status.ts";
-
-/**
- * What the scenarios need from `packages/mesh` (PR 2, design section 11): sign a record body or a card with a signing
- * secret, and hash a signed record. Resolved by name at run time, so this file builds before that package exists.
- */
-export interface RecordKit {
-  signRecord(body: object, signSecret: Uint8Array): SignedRecord;
-  signCard(card: object, signSecret: Uint8Array): SignedRecord;
-  hashOf(record: SignedRecord): string;
-}
-
-const isSigned = (value: unknown): value is SignedRecord =>
-  typeof value === "object" &&
-  value !== null &&
-  "body" in value &&
-  "sig" in value &&
-  typeof value.body === "string" &&
-  typeof value.sig === "string";
-
-function call(lib: Readonly<Record<string, unknown>>, name: string, args: readonly unknown[]): unknown {
-  const fn = lib[name];
-  if (typeof fn !== "function") throw new Error(`packages/mesh does not export ${name}`);
-  return Reflect.apply(fn, undefined, args);
-}
-
-export function recordKit(lib: Readonly<Record<string, unknown>>): RecordKit {
-  const signed = (name: string, args: readonly unknown[]): SignedRecord => {
-    const result = call(lib, name, args);
-    if (!isSigned(result)) throw new Error(`${name} did not return {body, sig}`);
-    return result;
-  };
-  return {
-    signRecord: (body, secret) => signed("signRecord", [body, secret]),
-    signCard: (card, secret) => signed("signCard", [card, secret]),
-    hashOf(record) {
-      const hash = call(lib, "hashOf", [record]);
-      if (typeof hash !== "string") throw new Error("hashOf did not return a string");
-      return hash;
-    },
-  };
-}
 
 /** A key pair in the mesh, with the card fields a record about it needs. */
 export interface Actor {
@@ -57,101 +18,158 @@ export const actorOf = (keys: HostIdentity, name: string, hcId: string): Actor =
   signPub: base64urlEncode(keys.sign.publicKey),
 });
 
-/** A `found` of a mesh of one, signed by `founder`: a second, foreign mesh's root. */
-export function foundRecord(kit: RecordKit, founder: Actor): SignedRecord {
-  const card = kit.signCard(
-    {
-      v: 1,
-      mesh: "-",
-      inviter: "-",
-      nonce: base64urlEncode(crypto.getRandomValues(new Uint8Array(16))),
-      hostId: founder.keys.hostId,
-      signPub: founder.signPub,
-      noisePub: base64urlEncode(founder.keys.noise.publicKey),
-      name: founder.name,
-      hcId: founder.hcId,
-    },
-    founder.keys.sign.secretKey,
-  );
-  const body = { v: 2, mesh: "-", type: "found", by: founder.signPub, n: 1, prev: [], subject: { card } };
-  return kit.signRecord(body, founder.keys.sign.secretKey);
+/** A record's place in its signer's chain: what the next record by that signer continues from. */
+export interface Head {
+  readonly n: number;
+  readonly hash: string;
 }
 
-/** The newest record `signPub` wrote in `records`: its counter and hash (the head a backdated chain continues from). */
-export function lastOwn(
-  kit: RecordKit,
-  records: readonly SignedRecord[],
-  signPub: string,
-): { readonly n: number; readonly hash: string } {
-  let best: { n: number; hash: string } | undefined;
+const nonce = (): string => base64urlEncode(crypto.getRandomValues(new Uint8Array(16)));
+
+/** The subject's own card (H1), asking to join `mesh` through `inviter`. */
+export function cardOf(lib: MeshLib, mesh: string, inviter: string, subject: Actor): SignedRecord {
+  const card = {
+    v: 1,
+    mesh,
+    inviter,
+    nonce: nonce(),
+    hostId: subject.keys.hostId,
+    signPub: subject.signPub,
+    noisePub: base64urlEncode(subject.keys.noise.publicKey),
+    name: subject.name,
+    hcId: subject.hcId,
+  };
+  return lib.signCard(card, subject.keys.sign.secretKey);
+}
+
+export interface Signing {
+  readonly lib: MeshLib;
+  readonly mesh: string;
+  readonly by: Actor;
+  readonly n: number;
+  readonly prev: readonly string[];
+}
+
+const bodyOf = (s: Signing, type: string, subject?: object): object => ({
+  v: 2,
+  mesh: s.mesh,
+  type,
+  by: s.by.signPub,
+  n: s.n,
+  prev: s.prev,
+  ...(subject === undefined ? {} : { subject }),
+});
+
+export const signAdmit = (s: Signing, card: SignedRecord): SignedRecord =>
+  s.lib.signRecord(bodyOf(s, "admit", { card }), s.by.keys.sign.secretKey);
+
+export const signRevoke = (s: Signing, subjects: readonly Actor[]): SignedRecord =>
+  s.lib.signRecord(
+    bodyOf(s, "revoke", { signPubs: subjects.map((subject) => subject.signPub), reason: "revoke" }),
+    s.by.keys.sign.secretKey,
+  );
+
+export const signAck = (s: Signing): SignedRecord => s.lib.signRecord(bodyOf(s, "ack"), s.by.keys.sign.secretKey);
+
+/** The card an admit or found record embeds. */
+export function cardIn(record: SignedRecord): SignedRecord | undefined {
+  const body: unknown = JSON.parse(record.body);
+  const subject = typeof body === "object" && body !== null && "subject" in body ? body.subject : undefined;
+  const card = typeof subject === "object" && subject !== null && "card" in subject ? subject.card : undefined;
+  return typeof card === "object" &&
+    card !== null &&
+    "body" in card &&
+    "sig" in card &&
+    typeof card.body === "string" &&
+    typeof card.sig === "string"
+    ? { body: card.body, sig: card.sig }
+    : undefined;
+}
+
+/** A `found` of a mesh of one, signed by `founder`: a second, foreign mesh's root. */
+export function foundRecord(lib: MeshLib, founder: Actor): SignedRecord {
+  const s = { lib, mesh: "-", by: founder, n: 1, prev: [] };
+  return lib.signRecord(bodyOf(s, "found", { card: cardOf(lib, "-", "-", founder) }), founder.keys.sign.secretKey);
+}
+
+/** The newest record `signPub` wrote in `records`: where a chain of its own continues. */
+export function lastOwn(lib: MeshLib, records: readonly SignedRecord[], signPub: string): Head {
+  let best: Head | undefined;
   for (const record of records) {
     const body: unknown = JSON.parse(record.body);
     if (typeof body !== "object" || body === null || !("by" in body) || !("n" in body)) continue;
     if (body.by === signPub && typeof body.n === "number" && (best === undefined || body.n > best.n)) {
-      best = { n: body.n, hash: kit.hashOf(record) };
+      best = { n: body.n, hash: lib.hashOf(record) };
     }
   }
   if (best === undefined) throw new Error(`no record by ${signPub}`);
   return best;
 }
 
-/** One signer's chain of records, each continuing the last: what an honest signer's counter and `prev` look like. */
-export class Chain {
-  readonly #kit: RecordKit;
-  readonly #mesh: string;
-  readonly #by: Actor;
-  #n: number;
-  #head: string;
-  readonly written: SignedRecord[] = [];
+export interface SignedGraph {
+  /** In the graph's causal order. */
+  readonly records: readonly SignedRecord[];
+  readonly hashes: ReadonlyMap<string, string>;
+}
 
-  constructor(kit: RecordKit, mesh: string, by: Actor, from: { readonly n: number; readonly hash: string }) {
-    this.#kit = kit;
-    this.#mesh = mesh;
-    this.#by = by;
-    this.#n = from.n;
-    this.#head = from.hash;
-  }
-
-  admit(subject: Actor, inviter: Actor = this.#by): string {
-    const card = this.#kit.signCard(
-      {
-        v: 1,
-        mesh: this.#mesh,
-        inviter: inviter.signPub,
-        nonce: base64urlEncode(crypto.getRandomValues(new Uint8Array(16))),
-        hostId: subject.keys.hostId,
-        signPub: subject.signPub,
-        noisePub: base64urlEncode(subject.keys.noise.publicKey),
-        name: subject.name,
-        hcId: subject.hcId,
-      },
-      subject.keys.sign.secretKey,
+/**
+ * Signs a shape's attack edge for edge. `prev` is the graph's own, with `FORK` as the revoked key's last own record,
+ * and each counter is the one an honest signer would have used: 1 + the highest of its own records in the past, so
+ * concurrent records by one signer share a counter, as they do in the model.
+ */
+export function signAttack(
+  lib: MeshLib,
+  mesh: string,
+  shape: BackdateShape,
+  actors: ReadonlyMap<string, Actor>,
+  fork: Head,
+): SignedGraph {
+  const hashes = new Map<string, string>([[FORK, fork.hash]]);
+  const steps = new Map<string, Step>();
+  const actor = (key: string): Actor => {
+    const found = actors.get(key);
+    if (found === undefined) throw new Error(`${shape.id}: no keys for ${key}`);
+    return found;
+  };
+  const counterIn = (ids: readonly string[], by: string, seen = new Set<string>()): number =>
+    Math.max(
+      0,
+      ...ids.map((id) => {
+        if (seen.has(id)) return 0;
+        seen.add(id);
+        if (id === FORK) return by === shape.revoked ? fork.n : 0;
+        const step = steps.get(id);
+        if (step === undefined) throw new Error(`${shape.id}: ${id} is not before its successor`);
+        return Math.max(step.by === by ? counterOf(step) : 0, counterIn(step.prev, by, seen));
+      }),
     );
-    return this.#push("admit", { card });
+  const counters = new Map<string, number>();
+  const counterOf = (step: Step): number => counters.get(step.id) ?? 0;
+  const records: SignedRecord[] = [];
+  for (const step of shape.attack) {
+    const n = 1 + counterIn(step.prev, step.by);
+    counters.set(step.id, n);
+    steps.set(step.id, step);
+    const prev = step.prev.map((id) => hashes.get(id) ?? "");
+    const s: Signing = { lib, mesh, by: actor(step.by), n, prev };
+    const record = signStep(s, step, actor, mesh);
+    hashes.set(step.id, lib.hashOf(record));
+    records.push(record);
   }
+  hashes.delete(FORK);
+  return { records, hashes };
+}
 
-  revoke(...subjects: readonly Actor[]): string {
-    return this.#push("revoke", { signPubs: subjects.map((subject) => subject.signPub), reason: "compromised" });
-  }
-
-  ack(after: string = this.#head): string {
-    return this.#push("ack", undefined, [after]);
-  }
-
-  #push(type: string, subject: object | undefined, prev: readonly string[] = [this.#head]): string {
-    this.#n += 1;
-    const body = {
-      v: 2,
-      mesh: this.#mesh,
-      type,
-      by: this.#by.signPub,
-      n: this.#n,
-      prev,
-      ...(subject === undefined ? {} : { subject }),
-    };
-    const record = this.#kit.signRecord(body, this.#by.keys.sign.secretKey);
-    this.written.push(record);
-    this.#head = this.#kit.hashOf(record);
-    return this.#head;
+function signStep(s: Signing, step: Step, actor: (key: string) => Actor, mesh: string): SignedRecord {
+  switch (step.type) {
+    case "admit":
+      return signAdmit(s, cardOf(s.lib, mesh, s.by.signPub, actor(step.subject ?? "")));
+    case "revoke":
+      return signRevoke(s, (step.subjects ?? []).map(actor));
+    case "ack":
+      return signAck(s);
+    case "found":
+    case "name":
+      throw new Error(`no attack step writes a ${step.type}`);
   }
 }

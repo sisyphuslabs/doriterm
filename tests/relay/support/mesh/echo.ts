@@ -1,3 +1,4 @@
+import type { HcConnection } from "@doriface/client";
 import { inOrder } from "../sequential.ts";
 import type { Mesh } from "./mesh.ts";
 
@@ -7,6 +8,8 @@ export interface Echo {
   readonly nonce: string;
   /** The nonce came back, and the process that echoed it ran in the target's own hc session. */
   readonly ok: boolean;
+  /** `terminal.run {on: to}` on `from` started a terminal that `from`'s `terminal.list` shows as `<to>/t…`. */
+  readonly terminal: boolean;
   /** Bytes moved through both hosts' relay taps during the call; undefined when there are no taps (production). */
   readonly relayBytes: number | undefined;
 }
@@ -31,14 +34,27 @@ export async function echo(mesh: Mesh, from: string, to: string): Promise<Echo> 
   const nonce = crypto.randomUUID();
   const result = await source.call("machine.exec", { on: added.name, line: `echo ${nonce}; echo $HC_SESSION` });
   const [printed, session] = decode(result.stdout).split("\n");
+  const terminal = await runsTerminalOn(source, added.name);
   const moved = taps.map((tap, index) => (tap?.bytes() ?? 0) - (before[index] ?? 0));
   return {
     from,
     to,
     nonce,
     ok: result.code === 0 && printed === nonce && session === mesh.host(to).session.name,
+    terminal,
     relayBytes: taps.every((tap) => tap !== undefined) ? Math.min(...moved) : undefined,
   };
+}
+
+/** Design E-MESH: `terminal.run {on: Y}`, then `terminal.list` on X lists the terminal as `Y/t…`; killed afterwards. */
+async function runsTerminalOn(source: HcConnection, machine: string): Promise<boolean> {
+  const run = await source.call("terminal.run", { on: machine, argv: ["sleep", "120"] });
+  try {
+    const listed = (await source.call("terminal.list")).terminals.map((each) => each.address);
+    return run.address.startsWith(`${machine}/t`) && listed.includes(run.address);
+  } finally {
+    await source.call("terminal.kill", { terminal: run.address });
+  }
 }
 
 /** Runs every directed pair one after another, so each pair's relay bytes are its own. */
