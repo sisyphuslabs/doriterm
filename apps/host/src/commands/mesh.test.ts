@@ -52,13 +52,15 @@ describe("doriface-host mesh status", () => {
   });
 
   test("a reply this version cannot read is an error, not a status", async () => {
-    expect(run(["status"], { v: 2 })).rejects.toThrow("cannot read");
+    await expect(run(["status"], { v: 2 })).rejects.toThrow("cannot read");
   });
 
   test("without a running host it says so", async () => {
     const dir = mkdtempSync(join(tmpdir(), "dh-mesh-"));
     try {
-      expect(meshCommand(["status", "--state-dir", dir], () => {})).rejects.toThrow("no doriface-host is running");
+      await expect(meshCommand(["status", "--state-dir", dir], () => {})).rejects.toThrow(
+        "no doriface-host is running",
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
