@@ -24,7 +24,14 @@ export interface GatewayOptions {
   readonly openPipe: () => ChildLink;
   readonly log: (line: string) => void;
   /** Enables `/v1/e2ee`: the Noise record layer in front of the same `hc connect` pipe. */
-  readonly e2ee?: (E2eeDeps & { readonly sessions: LiveSessions; readonly meshStream?: MeshStreamHandler }) | undefined;
+  readonly e2ee?:
+    | (E2eeDeps & {
+        readonly sessions: LiveSessions;
+        readonly meshStream?: MeshStreamHandler;
+        /** Every authenticated session, so a member's hc line counts as its presence (section 8.2). */
+        readonly meshPresence?: MeshStreamHandler;
+      })
+    | undefined;
   /** For tests: the direct-path idle close (default {@link DIRECT_IDLE_MS}). */
   readonly directIdleMs?: number | undefined;
 }
@@ -104,6 +111,7 @@ export function createGateway(options: GatewayOptions): Gateway {
     if (e2ee === undefined) throw new Error("end-to-end encryption needs a state dir");
     const secure = await acceptE2ee(wire, e2ee, transport);
     if (secure === undefined) return;
+    e2ee.meshPresence?.(secure);
     if (secure.stream === "mesh") return serveMesh(secure);
     e2ee.sessions.add(secure);
     const gate = hcGate(secure);

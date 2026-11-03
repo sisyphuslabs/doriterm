@@ -24,11 +24,13 @@ const viewOf = (...members: readonly MemberEntry[]): MeshView => ({
   revoked: [],
 });
 
-function reconciler(): { clock: FakeClock; machines: FakeMachines; reconcile: Reconciler } {
+function reconciler(): { clock: FakeClock; machines: FakeMachines; reconcile: Reconciler; logs: string[] } {
   const clock = new FakeClock();
   const machines = new FakeMachines(clock);
-  const options = { machines, program: PROGRAM, stateDir: STATE, selfHostId: self.hostId, clock, log: () => undefined };
-  return { clock, machines, reconcile: new Reconciler(options) };
+  const logs: string[] = [];
+  const log = (line: string): void => void logs.push(line);
+  const options = { machines, program: PROGRAM, stateDir: STATE, selfHostId: self.hostId, clock, log };
+  return { clock, machines, reconcile: new Reconciler(options), logs };
 }
 
 describe("a member that could not be added (section 8.1, H-54-1)", () => {
@@ -71,6 +73,20 @@ describe("lines that exist (section 8.1)", () => {
     machines.seed({ name: "b", target: via, via: true, state: "unreachable", why: "a different core answers there" });
     await reconcile.reconcile(viewOf(b));
     expect(machines.calls).toEqual(["0 rm b", "0 add b"]);
+  });
+
+  test("presence while herdr cannot be reached reports it instead of failing the caller", async () => {
+    const { machines, reconcile, logs } = reconciler();
+    machines.list = () => Promise.reject(hcError("unreachable", "connection is closed"));
+    await reconcile.presence(b);
+    expect(logs.some((line) => line.includes("connection is closed"))).toBe(true);
+  });
+
+  test("presence leaves a line that is already connecting alone", async () => {
+    const { machines, reconcile } = reconciler();
+    machines.seed({ name: "b", target: meshVia(PROGRAM, STATE, b.hostId), via: true, state: "connecting" });
+    await reconcile.presence(b);
+    expect(machines.calls).toEqual([]);
   });
 
   test("presence of a member whose line is down connects it now", async () => {

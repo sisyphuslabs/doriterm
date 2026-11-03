@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { type SecureLink, SessionKind } from "@doriface/crypto";
 import { memoryLinkPair } from "@doriface/crypto/testing";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { HostSync } from "./host-sync.ts";
 import { FakeClock, seededRandom } from "./testing/fake-clock.ts";
 import { meshOf, peer, storeOf } from "./testing/mesh-peers.ts";
@@ -20,6 +23,9 @@ function hostSyncAtB() {
         throw new Error("no relay here");
       },
     },
+    hc: { hc: "hc-not-installed" },
+    stateDir: mkdtempSync(join(tmpdir(), "dh-host-sync-")),
+    program: "/opt/doriface-host",
     log: () => undefined,
     clock,
     random: seededRandom(31),
@@ -70,7 +76,7 @@ describe("this host's own uplink returning (section 5.1)", () => {
     sync.uplinkAnswered();
     await clock.advance(1);
     expect(dialed.slice(beforeAnswer).some((url) => url.includes(a.hostId))).toBe(true);
-    sync.stop();
+    await sync.stop();
   });
 });
 
@@ -90,6 +96,9 @@ describe("a host that keeps no relay uplink (M-D3)", () => {
           throw new Error("no relay here");
         },
       },
+      hc: { hc: "hc-not-installed" },
+      stateDir: mkdtempSync(join(tmpdir(), "dh-host-sync-")),
+      program: "/opt/doriface-host",
       log: (line) => void logs.push(line),
       clock,
       random: seededRandom(37),
