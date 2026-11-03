@@ -68,16 +68,14 @@ export function valid(e: Engine, id: string): boolean {
 /** forks(v, x): some counter names one record of x.by in {x} ∪ past(x) and another in past(v). */
 export function forks(e: Engine, v: string, x: string): boolean {
   const by = e.dag.rec(x).by;
-  const seen = new Map<number, string>();
+  const seen = new Map<number, string[]>();
   for (const p of e.dag.past(v)) {
     const r = e.dag.rec(p);
-    if (r.by === by) seen.set(r.n, p);
+    if (r.by === by) seen.set(r.n, [...(seen.get(r.n) ?? []), p]);
   }
   for (const p of [x, ...e.dag.past(x)]) {
     const r = e.dag.rec(p);
-    if (r.by !== by) continue;
-    const other = seen.get(r.n);
-    if (other !== undefined && other !== p) return true;
+    if (r.by === by && (seen.get(r.n) ?? []).some((other) => other !== p)) return true;
   }
   return false;
 }
