@@ -6,7 +6,7 @@ import {
 } from "@doriface/protocol";
 import { IconButton, SettingRow, cn } from "@doriface/ui";
 import { Check, Copy, Monitor, Server } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { formatAge } from "../workspace/model.ts";
 
 export type NameOf = (hostId: string) => string;
@@ -54,7 +54,15 @@ export function Command({ command, label }: { readonly command: string; readonly
   return (
     <span className="mt-1 block" data-copy-state={state}>
       <span className="flex items-center gap-1">
-        <code className="min-w-0 font-mono text-xs [overflow-wrap:anywhere] text-foreground select-all">{command}</code>
+        <code className="min-w-0 font-mono text-xs text-foreground select-all">
+          {/* Each word is one box, so a line breaks only at a space; a word wider than the line still wraps. */}
+          {command.split(" ").map((word, index) => (
+            <Fragment key={index}>
+              {index === 0 ? null : " "}
+              <span className="inline-block max-w-full [overflow-wrap:anywhere]">{word}</span>
+            </Fragment>
+          ))}
+        </code>
         <IconButton label={label} icon={state === "copied" ? <Check /> : <Copy />} onClick={copy} />
       </span>
       {state === "failed" ? (
