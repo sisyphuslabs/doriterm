@@ -21,6 +21,8 @@ interface Running {
   readonly session: HcSession;
   readonly host: Host;
   readonly logs: string[];
+  /** Resolves on the first log line from now on that matches `pattern`. */
+  logged(pattern: RegExp): Promise<string>;
 }
 
 let relay: FakeRelay;
@@ -31,6 +33,17 @@ async function start(name: string, withRelay: boolean): Promise<Running> {
   const dir = mkdtempSync(join(tmpdir(), `dh-join-host-${name}-`));
   const session = createHcSession(`mesh-${name}`);
   const logs: string[] = [];
+  const waiters = new Set<(line: string) => void>();
+  const logged = (pattern: RegExp): Promise<string> => {
+    const { promise, resolve } = Promise.withResolvers<string>();
+    const check = (line: string): void => {
+      if (!pattern.test(line)) return;
+      waiters.delete(check);
+      resolve(line);
+    };
+    waiters.add(check);
+    return promise;
+  };
   const host = await startHost({
     listen: { hostname: "127.0.0.1", port: 0 },
     token: generateToken(),
@@ -39,9 +52,12 @@ async function start(name: string, withRelay: boolean): Promise<Running> {
     env: session.env,
     stateDir: dir,
     ...(withRelay ? { relay: { url: relay.url } } : {}),
-    log: (line) => void logs.push(line),
+    log: (line) => {
+      logs.push(line);
+      for (const waiter of waiters) waiter(line);
+    },
   });
-  const started = { dir, session, host, logs };
+  const started = { dir, session, host, logs, logged };
   running.push(started);
   return started;
 }
@@ -62,7 +78,7 @@ afterAll(async () => {
 const records = (dir: string) => new MeshStore(dir, { log: () => {} }).read()?.records;
 
 describe("J-1: a link join run by the joiner's running host", () => {
-  test("mesh pair on A, mesh join on B's host: both hold the welcome, the joiner acks its admission, and both keep the session for sync", async () => {
+  test("mesh pair on A, mesh join on B's host: both hold the welcome, the joiner's ack of its admission reaches the inviter on the kept session, and both files are equal", async () => {
     const a = await start("alpha", true);
     await relay.answers.next();
     const b = await start("beta", false);
@@ -77,6 +93,7 @@ describe("J-1: a link join run by the joiner's running host", () => {
       relayUrl: bridge.url,
       mesh: true,
     });
+    const ackReached = a.logged(/^mesh: merged 1 records from /);
     const joined = await requestControl(b.dir, {
       op: "mesh-join",
       target: link,
@@ -91,6 +108,8 @@ describe("J-1: a link join run by the joiner's running host", () => {
     expect(welcome).toHaveLength(2);
     expect(records(b.dir)?.slice(0, 2)).toEqual(welcome);
     const [ownAck] = records(b.dir)?.slice(2) ?? [];
+    await ackReached;
+    expect(records(a.dir)).toEqual(records(b.dir));
     expect(ownAck === undefined ? undefined : parseRecord(ownAck)).toMatchObject({
       type: "ack",
       by: Buffer.from(loadHostIdentity(b.dir).sign.publicKey).toString("base64url"),

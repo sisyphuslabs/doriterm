@@ -26,6 +26,8 @@ export class RelaySessionClosed extends Error {
 export type PairSlotSeen = { readonly slot: string; readonly noiseStaticPub: Uint8Array } | "clear";
 
 interface Uplink {
+  /** False for a client socket (`/v1/client/<hostId>`): this relay serves no client of its own, so it answers 4404. */
+  readonly uplink: boolean;
   readonly hostId: string;
   readonly challenge: Uint8Array;
   readonly origin: string;
@@ -75,13 +77,20 @@ export class FakeRelay {
       hostname: "127.0.0.1",
       port: 0,
       fetch: (request, server) => {
-        const hostId = new URL(request.url).pathname.split("/")[3] ?? "";
+        const [, , role, hostId = ""] = new URL(request.url).pathname.split("/");
         const challenge = crypto.getRandomValues(new Uint8Array(CHALLENGE_BYTES));
-        const data = { hostId, challenge, origin: relayOriginOf(request.url), answered: false };
+        const data = {
+          uplink: role !== "client",
+          hostId,
+          challenge,
+          origin: relayOriginOf(request.url),
+          answered: false,
+        };
         return server.upgrade(request, { data }) ? undefined : new Response("upgrade", { status: 426 });
       },
       websocket: {
         open: (ws) => {
+          if (!ws.data.uplink) return ws.close(4404, "host offline");
           this.#host = ws;
           this.sentToHost = 0;
           this.#sendOrThrow(ws.data.challenge);
