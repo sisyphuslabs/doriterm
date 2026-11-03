@@ -33,3 +33,4 @@ export {
 } from "./records/types.ts";
 export { canonicalOrder } from "./view/canonical.ts";
 export { type View, type ViewCache, viewOf } from "./view/engine.ts";
+export type { EngineView } from "./view/membership.ts";
