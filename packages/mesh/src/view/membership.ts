@@ -67,9 +67,12 @@ export function membership(dag: Dag, S: ReadonlySet<string>, eff: ReadonlySet<st
   const name = new Map<string, string>();
   const hostId = new Map<string, string>();
   const taken = new Set<string>();
-  for (const [k, gov] of ordered.slice(0, MAX_MESH_MEMBERS)) {
+  // admitter and governing hold every key with a governing admission, over-cap keys too (contract membership()).
+  for (const [k, gov] of ordered) {
     admitter.set(k, gov.by);
     governing.set(k, gov.id);
+  }
+  for (const [k, gov] of ordered.slice(0, MAX_MESH_MEMBERS)) {
     const after = (type: Rec["type"]): readonly Rec[] =>
       effective.filter((r) => r.type === type && r.subject === k && dag.past(r.id).has(gov.id));
     const card = latest(dag, after("rekey"))?.card ?? gov.card;

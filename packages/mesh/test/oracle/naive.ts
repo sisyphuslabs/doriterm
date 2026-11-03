@@ -199,13 +199,12 @@ function lite(
     const g = canon.find((a) => admits(a) && effRev(k).every((v) => has(past[a] ?? 0n, v)));
     if (g !== undefined) gov.push([k, g]);
   }
-  const ranked = gov.toSorted((a, b) => canon.indexOf(a[1]) - canon.indexOf(b[1])).slice(0, MAX_MEMBERS);
+  const governed = gov.toSorted((a, b) => canon.indexOf(a[1]) - canon.indexOf(b[1]));
+  const ranked = governed.slice(0, MAX_MEMBERS);
   const noise = new Map<string, string>();
-  const admitter = new Map<string, string>();
-  const governing = new Map<string, number>();
+  const admitter = new Map<string, string>(governed.map(([k, g]) => [k, rec(g).by]));
+  const governing = new Map<string, number>(governed);
   for (const [k, g] of ranked) {
-    admitter.set(k, rec(g).by);
-    governing.set(k, g);
     const rekeys = eff.filter((r) => rec(r).type === "rekey" && rec(r).subject === k && has(past[r] ?? 0n, g));
     const tops = rekeys.filter((r) => !rekeys.some((o) => o !== r && has(past[o] ?? 0n, r)));
     const top = tops.map(rec).toSorted((a, b) => (a.id < b.id ? -1 : 1))[0];

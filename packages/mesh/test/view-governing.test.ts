@@ -6,6 +6,7 @@ import { withChainNumbers } from "./fixtures/records.ts";
 import { cardScenarios } from "./fixtures/scenarios-cards.ts";
 import { reviewerScenarios } from "./fixtures/scenarios-reviewer.ts";
 import { keyOf, signScenario } from "./fixtures/signed.ts";
+import { naiveView } from "./oracle/naive.ts";
 
 function signed(rows: typeof cardScenarios, id: string) {
   const scenario = signScenario(withChainNumbers(rows.find((s) => s.id === id)?.records ?? []));
@@ -28,10 +29,17 @@ test("View.governing: a re-admitted member is governed by its re-admission, not 
   );
 });
 
-test("View.governing names members only: the over-cap keys of A13 have none", () => {
+test("View.governing and View.admitter cover every governed key: A13's over-cap keys too", () => {
   const { view, hash } = signed(cardScenarios, "A13");
-  expect([...view.governing.keys()].toSorted()).toEqual([...view.members].toSorted());
-  expect(view.governing.get(keyOf("M4").pub)).toBe(hash("qM4"));
-  for (const k of view.overCap) expect(view.governing.has(k)).toBe(false);
+  const B = keyOf("B").pub;
+  expect([...view.governing.keys()].toSorted()).toEqual([...view.members, ...view.overCap].toSorted());
   expect(view.overCap.size).toBe(2);
+  expect([view.governing.get(keyOf("M5").pub), view.admitter.get(keyOf("M5").pub)]).toEqual([hash("qM5"), B]);
+  expect([view.governing.get(keyOf("M6").pub), view.admitter.get(keyOf("M6").pub)]).toEqual([hash("qM6"), B]);
+});
+
+test("the oracle reads the same over-cap admitters", () => {
+  const records = withChainNumbers(cardScenarios.find((s) => s.id === "A13")?.records ?? []);
+  const oracle = naiveView(records);
+  expect([oracle.admitter.get("M5"), oracle.admitter.get("M6"), oracle.members.length]).toEqual(["B", "B", 12]);
 });
