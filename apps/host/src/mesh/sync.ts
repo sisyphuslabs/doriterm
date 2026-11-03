@@ -9,6 +9,9 @@ import type { MergeResult } from "./merge.ts";
 /** Section 5.1: a sync session closes after 60 s without a line. */
 export const LINGER_MS = 60_000;
 
+/** A merge that threw (a counter behind, the state lock, mesh.json gone): this session ends, the host goes on. */
+const INTERNAL_ERROR = 1011;
+
 export interface SyncHost {
   readonly meshId: string;
   records(): readonly Signed[];
@@ -88,7 +91,12 @@ export class SyncSession {
   #read(): void {
     this.#lines.next().then(
       (line) => {
-        this.#receive(line);
+        try {
+          this.#receive(line);
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          return this.close(INTERNAL_ERROR, `sync failed: ${reason}`.slice(0, 120));
+        }
         return this.#read();
       },
       () => this.#ended(),

@@ -19,7 +19,10 @@ export interface ScriptedSession {
   settled(): Promise<void>;
 }
 
-export function sessionAtB(records?: readonly Signed[], options: { waitForHello?: boolean } = {}): ScriptedSession {
+export function sessionAtB(
+  records?: readonly Signed[],
+  options: { readonly waitForHello?: boolean; readonly merge?: SyncHost["merge"] } = {},
+): ScriptedSession {
   const [a, b] = [peer("a"), peer("b")];
   const set = records ?? meshOf([a, b]).records;
   const meshId = meshIdOfRecords(set);
@@ -29,9 +32,9 @@ export function sessionAtB(records?: readonly Signed[], options: { waitForHello?
   const host: SyncHost = {
     meshId,
     records: () => store.read()?.records ?? [],
-    merge: (_session, batch) => {
+    merge: (session, batch) => {
       batchSizes.push(batch.length);
-      return mergeBatch(deps, batch);
+      return options.merge?.(session, batch) ?? mergeBatch(deps, batch);
     },
     heard: () => undefined,
     ended: () => undefined,

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { hashOf, type Signed } from "@doriface/mesh";
+import { CounterBehindError } from "../state/mesh.ts";
 import { MAX_LINE_BYTES } from "./lines.ts";
 import { headsOfRecords, meshOf, peer, Signer } from "./testing/mesh-peers.ts";
 import { sessionAtB } from "./testing/scripted.ts";
@@ -12,6 +13,31 @@ describe("a join's session kept for sync (section 4.4)", () => {
     peerA.receive({ t: "hello", v: 2, mesh: peerA.meshId, heads: [], n: {} });
     await peerA.settled();
     expect(peerA.sent[0]?.t).toBe("hello");
+  });
+});
+
+describe("a merge that throws (a restored backup's counter, the state lock, a removed mesh.json)", () => {
+  test("closes only that session, 1011, and nothing reaches the process as an unhandled rejection", async () => {
+    const escaped: unknown[] = [];
+    const onEscape = (reason: unknown): void => void escaped.push(reason);
+    process.on("unhandledRejection", onEscape);
+    try {
+      const [a, b] = [peer("a"), peer("b")];
+      const { records } = meshOf([a, b]);
+      const peerA = sessionAtB(records, {
+        merge: () => {
+          throw new CounterBehindError("counter behind its records");
+        },
+      });
+      peerA.receive({ t: "records", records: [new Signer(a, records).admit(peer("c"), headsOfRecords(records))] });
+      peerA.receive({ t: "done", mesh: peerA.meshId });
+      await peerA.settled();
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(escaped).toEqual([]);
+      expect(peerA.closedWith()).toBe(1011);
+    } finally {
+      process.off("unhandledRejection", onEscape);
+    }
   });
 });
 
