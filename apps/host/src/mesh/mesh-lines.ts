@@ -49,6 +49,10 @@ export class MeshLines {
           code: 4404,
           reason: `${member.name}: the mesh settles for ${next} s after this host reconnected`,
         };
+      if (grant.reason === "rate-limited") {
+        const reason = `${member.name}: the relay is rate limiting this host (4429); next try in ${next} s`;
+        return { ok: false, code: 4429, reason };
+      }
       return {
         ok: false,
         code: 4404,
@@ -62,7 +66,7 @@ export class MeshLines {
       return { ok: true, link };
     } catch (error) {
       const code = error instanceof Error ? closeCodeOf(error) : undefined;
-      if (code === 4404 || code === 4429) policy.report(member.signPub, code);
+      policy.report(member.signPub, code === 4429 ? 4429 : 4404);
       return {
         ok: false,
         code: code ?? 4404,
@@ -73,9 +77,11 @@ export class MeshLines {
 
   closeRevoked(view: MeshView): void {
     const current = new Set(view.members.map((member) => member.signPub));
+    const capped = new Set(view.overCap.map((member) => member.signPub));
     for (const [key, links] of this.#open) {
       if (current.has(key)) continue;
-      for (const link of links) link.close(4401, "revoked from the mesh");
+      const reason = capped.has(key) ? "past the mesh's 12-member cap" : "revoked from the mesh";
+      for (const link of links) link.close(4401, reason);
     }
   }
 
