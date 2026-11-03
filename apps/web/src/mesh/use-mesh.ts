@@ -1,60 +1,14 @@
 import type { HcConnection } from "@doriface/client";
-import {
-  isJsonObject,
-  type JsonValue,
-  type MachineView,
-  MESH_APPROVAL_DOC,
-  MESH_STATUS_DOC,
-  type MeshStatus,
-  parseMeshStatus,
-} from "@doriface/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { MACHINE_REFRESH_MS } from "../workspace/use-machines.ts";
+import { meshCallsOf, type MeshRead, MeshReader, type Verdict } from "./mesh-reader.ts";
 
-export type Verdict = "approve" | "deny";
-
-export type MeshRead =
-  | { readonly phase: "loading" }
-  | { readonly phase: "none" }
-  | { readonly phase: "unreadable" }
-  | { readonly phase: "failed"; readonly message: string }
-  | {
-      readonly phase: "ready";
-      readonly status: MeshStatus;
-      readonly machines: readonly MachineView[];
-      /** This host's answer document: which pending join was approved or denied last. */
-      readonly answered: { readonly nonce: string; readonly verdict: Verdict } | undefined;
-    };
+export type { MeshRead, Verdict } from "./mesh-reader.ts";
 
 export interface Mesh {
   readonly read: MeshRead;
+  /** Settles once the documents, read again after the write, are shown. */
   readonly answer: (nonce: string, verdict: Verdict) => Promise<void>;
-}
-
-function answeredIn(value: JsonValue): { nonce: string; verdict: Verdict } | undefined {
-  if (!isJsonObject(value)) return undefined;
-  const approve = value["approve"];
-  const deny = value["deny"];
-  if (typeof approve === "string") return { nonce: approve, verdict: "approve" };
-  if (typeof deny === "string") return { nonce: deny, verdict: "deny" };
-  return undefined;
-}
-
-const failedRead = (error: unknown): MeshRead => ({
-  phase: "failed",
-  message: error instanceof Error ? error.message : String(error),
-});
-
-async function readMesh(connection: HcConnection): Promise<MeshRead> {
-  const [doc, list, answer] = await Promise.all([
-    connection.call("doc.get", { name: MESH_STATUS_DOC }),
-    connection.call("machine.list"),
-    connection.call("doc.get", { name: MESH_APPROVAL_DOC }),
-  ]);
-  if (doc.value === null) return { phase: "none" };
-  const status = parseMeshStatus(doc.value);
-  if (status === undefined) return { phase: "unreadable" };
-  return { phase: "ready", status, machines: list.machines, answered: answeredIn(answer.value) };
 }
 
 /**
@@ -63,42 +17,25 @@ async function readMesh(connection: HcConnection): Promise<MeshRead> {
  */
 export function useMesh(connection: HcConnection): Mesh {
   const [read, setRead] = useState<MeshRead>({ phase: "loading" });
-  const [reads, setReads] = useState(0);
-  const refresh = useCallback(() => setReads((count) => count + 1), []);
+  const [reader, setReader] = useState<MeshReader | undefined>(undefined);
   useEffect(() => {
-    let current = true;
-    readMesh(connection).then(
-      (result) => {
-        if (current) setRead(result);
-        return result;
-      },
-      (error: unknown) => {
-        if (current) setRead(failedRead(error));
-      },
-    );
+    const next = new MeshReader(meshCallsOf(connection), setRead);
+    setReader(next);
+    void next.refresh();
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") void next.refresh();
+    }, MACHINE_REFRESH_MS);
     return () => {
-      current = false;
+      clearInterval(timer);
+      next.close();
     };
-  }, [connection, reads]);
-  useEffect(() => {
-    const whenVisible = (): void => {
-      if (document.visibilityState === "visible") refresh();
-    };
-    const timer = setInterval(whenVisible, MACHINE_REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [refresh]);
-  // An answer settles only once the documents have been read again, so the row shows what they hold now.
+  }, [connection]);
   const answer = useCallback(
     async (nonce: string, verdict: Verdict): Promise<void> => {
-      const { version } = await connection.call("doc.get", { name: MESH_APPROVAL_DOC });
-      const value = verdict === "approve" ? { approve: nonce } : { deny: nonce };
-      try {
-        await connection.call("doc.set", { name: MESH_APPROVAL_DOC, value, version });
-      } finally {
-        setRead(await readMesh(connection).catch(failedRead));
-      }
+      if (reader === undefined) throw new Error("the mesh status has not been read yet");
+      await reader.answer(nonce, verdict);
     },
-    [connection],
+    [reader],
   );
   return { read, answer };
 }
