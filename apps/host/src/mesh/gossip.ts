@@ -2,6 +2,7 @@ import { closeCodeOf } from "@doriface/crypto";
 import { type Clock, type Random, uniform } from "./clock.ts";
 import { type DialPolicy, type DialPurpose, type DueReason } from "./dial-policy.ts";
 import type { MeshChannel } from "./sync-lines.ts";
+import { RevokedLast } from "./revoked-last.ts";
 import { appendOwn, type MergeDeps, type MergeResult, mergeBatch } from "./merge.ts";
 import { type SyncHost, SyncSession } from "./sync.ts";
 import type { MeshMember, MeshRecord, MeshRules, MeshView, RecordDraft } from "./upstream.ts";
@@ -44,7 +45,7 @@ export class Gossip implements SyncHost {
   readonly #confirmed = new Map<string, readonly string[]>();
   readonly #lastSync = new Map<string, number>();
   readonly #known = new Map<string, MeshMember>();
-  readonly #holdBack = new Map<string, () => void>();
+  readonly #revokedLast: RevokedLast;
   readonly #ackWaiters = new Set<() => void>();
   #view: MeshView;
   /** The highest `n` of this host's own key any peer's hello named (section 10.1). */
@@ -56,6 +57,14 @@ export class Gossip implements SyncHost {
     this.meshId = options.meshId;
     this.rules = options.rules;
     this.#timings = options.timings ?? GOSSIP_TIMINGS;
+    this.#revokedLast = new RevokedLast({
+      clock: options.clock,
+      waitMs: this.#timings.revokedLastMs,
+      release: (key) => {
+        const member = this.#known.get(key);
+        if (member !== undefined) void this.sync(member, "push");
+      },
+    });
     this.#view = options.rules.viewOf(options.file.read().records);
     this.#remember(this.#view);
   }
@@ -70,7 +79,7 @@ export class Gossip implements SyncHost {
 
   stop(): void {
     this.#stopNet();
-    for (const cancel of this.#holdBack.values()) cancel();
+    this.#revokedLast.stop();
     for (const session of this.#sessions.values()) session.close(1000, "host stopping");
   }
 
@@ -159,7 +168,7 @@ export class Gossip implements SyncHost {
   /** The dial policy's wake-up: deliver what the member is owed. */
   due(signPub: string, reason: DueReason): void {
     const member = this.#known.get(signPub);
-    if (member === undefined || this.#holdBack.has(signPub)) return;
+    if (member === undefined || this.#revokedLast.holds(signPub)) return;
     if (reason === "probe" || this.owed().includes(member))
       void this.sync(member, reason === "probe" ? "probe" : "push");
   }
@@ -224,7 +233,7 @@ export class Gossip implements SyncHost {
       return header.type === "ack" && header.by !== self;
     });
     if (!acked) return;
-    this.#releaseHeld();
+    this.#revokedLast.releaseAll();
     for (const resolve of this.#ackWaiters) resolve();
     this.#ackWaiters.clear();
   }
@@ -237,26 +246,10 @@ export class Gossip implements SyncHost {
       if (header.type === "revoke") for (const key of header.revokes) revoked.add(key);
     }
     const purpose: DialPurpose = revoked.size > 0 ? "revoke-push" : "push";
-    for (const key of revoked) this.#holdRevoked(key);
+    for (const key of revoked) if (key !== this.#options.self.signPub) this.#revokedLast.hold(key);
     for (const member of this.owed()) {
-      if (!this.#holdBack.has(member.signPub)) void this.sync(member, purpose);
+      if (!this.#revokedLast.holds(member.signPub)) void this.sync(member, purpose);
     }
-  }
-
-  #holdRevoked(key: string): void {
-    if (key === this.#options.self.signPub || this.#holdBack.has(key)) return;
-    const release = (): void => {
-      cancel();
-      this.#holdBack.delete(key);
-      const member = this.#known.get(key);
-      if (member !== undefined) void this.sync(member, "push");
-    };
-    const cancel = this.#options.clock.after(this.#timings.revokedLastMs, release);
-    this.#holdBack.set(key, release);
-  }
-
-  #releaseHeld(): void {
-    for (const release of this.#holdBack.values()) release();
   }
 
   #armSafetyNet(): void {
