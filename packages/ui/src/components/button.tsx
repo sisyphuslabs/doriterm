@@ -35,7 +35,7 @@ export interface ButtonProps
   extends Omit<ComponentProps<typeof BaseButton>, "className" | "children">, VariantProps<typeof buttonVariants> {
   readonly className?: string;
   readonly children?: ReactNode;
-  /** Keeps the label's box, swaps the leading icon for a spinner and blocks input. */
+  /** Keeps the label's box (the label stays in place, unseen, under a centred spinner) and blocks input. */
   readonly loading?: boolean;
 }
 
@@ -48,8 +48,12 @@ export function Button({ className, variant, size, loading = false, disabled, ch
       aria-busy={loading || undefined}
       className={cn(buttonVariants({ variant, size }), className)}
     >
-      {loading ? <Spinner /> : null}
-      {children}
+      {loading ? (
+        <span className="absolute inset-0 flex items-center justify-center">
+          <Spinner />
+        </span>
+      ) : null}
+      <span className={cn("inline-flex items-center justify-center gap-2", loading && "opacity-0")}>{children}</span>
     </BaseButton>
   );
 }

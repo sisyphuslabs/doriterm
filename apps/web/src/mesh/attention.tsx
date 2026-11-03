@@ -96,7 +96,11 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
             </Button>
           </div>
         ) : (
-          <span className="text-sm text-muted-foreground" data-mesh-answer={state}>
+          // As tall as the buttons it replaces, so the rows below stay where they were.
+          <span
+            className="inline-flex min-h-(--control-sm) items-center text-sm text-muted-foreground"
+            data-mesh-answer={state}
+          >
             {state === "approve" ? `Approved; ${self} admits it next` : "Denied"}
           </span>
         )
