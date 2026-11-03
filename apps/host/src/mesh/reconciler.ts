@@ -105,14 +105,20 @@ export class Reconciler {
    * yet (its add failed while it was offline) is added now.
    */
   async presence(member: MemberEntry): Promise<void> {
-    const entry = (await this.#entries()).find((candidate) => candidate.hostId === member.hostId);
+    let entries: readonly MeshEntry[];
+    try {
+      entries = await this.#entries();
+    } catch (error) {
+      return this.#options.log(`mesh: presence of ${member.name}: herdr did not answer: ${messageOf(error)}`);
+    }
+    const entry = entries.find((candidate) => candidate.hostId === member.hostId);
     if (entry === undefined) {
       if (this.#latest?.members.some((candidate) => candidate.hostId === member.hostId)) {
         await this.reconcile(this.#latest);
       }
       return;
     }
-    if (entry.machine.state === "connected") return;
+    if (entry.machine.state === "connected" || entry.machine.state === "connecting") return;
     try {
       await this.#options.machines.connect(entry.machine.name);
     } catch (error) {
@@ -208,6 +214,7 @@ export class Reconciler {
       await this.#options.machines.add(name, attempt.via);
       this.#retried(member.hostId);
       this.status.set(member.hostId, { state: "ok" });
+      this.#options.log(`mesh: added machine ${name}`);
     } catch (error) {
       const kind = kindOf(error);
       if (kind === "name_taken") return this.#addAs(member, attempt, rest);

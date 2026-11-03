@@ -27,6 +27,7 @@ export class MeshRuntime {
   readonly lines: LineGrants;
   readonly reconciler: Reconciler;
   readonly driver: MeshDriver;
+  #stopped = false;
 
   constructor(options: MeshRuntimeOptions) {
     const { clock, random, log } = options;
@@ -67,6 +68,7 @@ export class MeshRuntime {
   }
 
   stop(): void {
+    this.#stopped = true;
     this.gossip.stop();
     this.reconciler.stop();
   }
@@ -77,6 +79,7 @@ export class MeshRuntime {
   }
 
   #due(member: string, reason: DueReason): void {
+    if (this.#stopped) return;
     this.gossip.due(member, reason);
     void this.driver.due(member, reason);
   }

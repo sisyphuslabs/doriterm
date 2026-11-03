@@ -16,6 +16,7 @@ import { loadHostIdentity } from "./state/host-keys.ts";
 import { MeshStore } from "./state/mesh.ts";
 import { HostMesh } from "./mesh/host-mesh.ts";
 import { HostSync } from "./mesh/host-sync.ts";
+import { meshProgram } from "./mesh/program.ts";
 import { PairingStore, pendingToWire } from "./state/pairing.ts";
 
 export const HOST_VERSION = packageJson.version;
@@ -43,6 +44,8 @@ export interface HostOptions {
   readonly relay?: { readonly url: string; readonly createSocket?: CreateSocket | undefined } | undefined;
   /** The mesh status `mesh status` asks for; undefined while this host is in no mesh. */
   readonly meshStatus?: (() => MeshStatus | undefined) | undefined;
+  /** For tests: the program mesh lines' `via` names; defaults to this executable or a launcher of this entry point. */
+  readonly meshProgram?: string | undefined;
   readonly log: (line: string) => void;
 }
 
@@ -179,9 +182,9 @@ export async function startHost(options: HostOptions): Promise<Host> {
     relayUrl: uplink === undefined ? undefined : options.relay?.url,
     stop() {
       e2ee?.slots.stop();
-      e2ee?.sync.stop();
       control?.stop();
-      stopping ??= Promise.resolve(uplink?.stop())
+      stopping ??= Promise.resolve(e2ee?.sync.stop())
+        .then(() => uplink?.stop())
         .then(() => gateway.closeAll())
         .then(() => Promise.all([server.stop(true), lanServer?.stop(true)]))
         .then(() => undefined);
@@ -235,7 +238,8 @@ function e2eeDeps(
   const sessions = new LiveSessions(devices, options.log, mesh);
   const hc = { hc: options.hc, session: options.session, env: options.env };
   const relay = { url: options.relay?.url, createSocket: options.relay?.createSocket };
-  const sync = new HostSync({ identity, mesh, relay, log: options.log });
+  const program = options.meshProgram ?? meshProgram(stateDir);
+  const sync = new HostSync({ identity, mesh, relay, hc, stateDir, program, log: options.log });
   sync.changed();
   const hostMesh = new HostMesh({
     stateDir,
@@ -259,6 +263,7 @@ function e2eeDeps(
     hostMesh,
     sync,
     meshStream: (secure: SecureLink) => hostMesh.serve(secure),
+    meshPresence: (secure: SecureLink) => sync.presence(secure),
     rekeyInterval: options.rekeyInterval,
     log: options.log,
   };

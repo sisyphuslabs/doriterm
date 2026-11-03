@@ -64,6 +64,16 @@ describe("the running host's mesh wiring (sections 8.1 and 8.2)", () => {
     expect(connects[0]).toBeLessThanOrEqual(2_000);
   });
 
+  test("a stopped runtime acts on no wake-up still pending", async () => {
+    const { clock, machines, mesh } = runtime();
+    machines.seed({ name: "b", target: meshVia(PROGRAM, STATE, b.hostId), via: true, state: "unreachable" });
+    await mesh.start();
+    mesh.presence(b.signPub);
+    mesh.stop();
+    await clock.advance(10 * 60_000);
+    expect(timesOf(machines.calls, "connect b")).toEqual([]);
+  });
+
   test("a new admission is added after the 0-5 s jitter, not before", async () => {
     const { clock, machines, mesh, store } = runtime();
     machines.seed({ name: "b", target: meshVia(PROGRAM, STATE, b.hostId), via: true });

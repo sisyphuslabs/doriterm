@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { buildPairingUrl } from "@doriface/crypto";
 import { hashOf } from "@doriface/mesh";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateToken } from "../auth.ts";
@@ -13,24 +13,31 @@ import { pendingFromWire } from "../state/pairing.ts";
 import { FakeRelay } from "../testing/fake-relay.ts";
 import { createHcSession, type HcSession } from "../testing/hc-session.ts";
 import { RelayClientBridge } from "../testing/relay-client-bridge.ts";
+import { openHcControl } from "./hc-machines.ts";
+import { meshHostOf, shellQuote } from "./via.ts";
+
+const CLI = join(import.meta.dir, "..", "cli.ts");
 
 setDefaultTimeout(60_000);
 
 interface Running {
   readonly name: string;
   readonly dir: string;
+  readonly program: string;
   readonly session: HcSession;
   readonly relay: FakeRelay;
   readonly bridge: RelayClientBridge;
   readonly host: Host;
+  readonly logged: readonly string[];
   /** Resolves once `done` holds, checked on every line the host logs. */
   logsUntil(done: () => boolean): Promise<void>;
 }
 
 const running: Running[] = [];
 afterAll(async () => {
+  await Promise.all(running.map(({ bridge }) => bridge.stop()));
   await Promise.all(running.map(({ host }) => host.stop()));
-  await Promise.all(running.flatMap(({ bridge, relay, session }) => [bridge.stop(), relay.stop(), session.dispose()]));
+  await Promise.all(running.flatMap(({ relay, session }) => [relay.stop(), session.dispose()]));
   for (const { dir } of running.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -50,7 +57,12 @@ async function start(name: string): Promise<Running> {
   const relay = new FakeRelay();
   const bridge = new RelayClientBridge(relay);
   const waiters = new Set<() => void>();
+  const logged: string[] = [];
+  const program = join(dir, "doriface-host");
+  writeFileSync(program, `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(CLI)} "$@"\n`);
+  chmodSync(program, 0o700);
   const host = await startHost({
+    meshProgram: program,
     listen: { hostname: "127.0.0.1", port: 0 },
     token: generateToken(),
     hc: session.hc,
@@ -58,7 +70,8 @@ async function start(name: string): Promise<Running> {
     env: session.env,
     stateDir: dir,
     relay: { url: relay.url, createSocket: routeClients },
-    log: () => {
+    log: (line) => {
+      logged.push(line);
       for (const waiter of waiters) waiter();
     },
   });
@@ -73,7 +86,7 @@ async function start(name: string): Promise<Running> {
     check();
     return promise;
   };
-  const started = { name, dir, session, relay, bridge, host, logsUntil };
+  const started = { name, dir, program, session, relay, bridge, host, logged, logsUntil };
   running.push(started);
   await relay.answers.next();
   return started;
@@ -104,8 +117,27 @@ async function joinVia(joiner: Running, inviter: Running): Promise<void> {
 const setAt = (entry: Running): string =>
   (new MeshStore(entry.dir, { log: () => {} }).read()?.records ?? []).map(hashOf).toSorted().join(",");
 
+const machinesOf = async (entry: Running): Promise<readonly string[]> => {
+  const control = await openHcControl({
+    hc: entry.session.hc,
+    session: entry.session.name,
+    env: entry.session.env,
+  });
+  try {
+    const listed = await control.machines.list();
+    return listed
+      .filter((m) => meshHostOf(m.target, entry.program, entry.dir) !== undefined)
+      .map((m) => meshHostOf(m.target, entry.program, entry.dir) ?? "")
+      .toSorted();
+  } finally {
+    control.close();
+  }
+};
+
+const added = (entry: Running): number => entry.logged.filter((line) => line.startsWith("mesh: added machine")).length;
+
 describe("sync runs in the running host (sections 5.1 and 5.3)", () => {
-  test("a joins nobody, b joins a, c joins b: a learns of c by sync alone, and every host ends with the same set", async () => {
+  test("b joins a, c joins b: all three converge by sync alone, and every core lists the other two as mesh machines", async () => {
     const [a, b, c] = [await start("alpha"), await start("beta"), await start("gamma")];
     await joinVia(b, a);
     await joinVia(c, b);
@@ -114,5 +146,14 @@ describe("sync runs in the running host (sections 5.1 and 5.3)", () => {
     expect(converged()).toBe(true);
     const view = new MeshStore(a.dir, { log: () => {} }).authorizeIndex();
     expect(view?.member(Buffer.from(loadHostIdentity(c.dir).noise.publicKey).toString("base64url"))).toBeDefined();
+
+    const others = (entry: Running): readonly string[] =>
+      [a, b, c]
+        .filter((other) => other !== entry)
+        .map((other) => other.host.e2ee?.hostId ?? "")
+        .toSorted();
+    await Promise.all([a, b, c].map((entry) => entry.logsUntil(() => added(entry) >= 2)));
+    const listed = await Promise.all([a, b, c].map(async (entry) => [await machinesOf(entry), others(entry)]));
+    for (const [got, want] of listed) expect(got).toEqual(want);
   });
 });
