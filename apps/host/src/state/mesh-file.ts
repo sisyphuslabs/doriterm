@@ -62,8 +62,9 @@ function indexData(value: unknown): IndexData | undefined {
   const members = all(value["members"], memberEntry);
   const overCap = all(value["overCap"], memberEntry);
   const revoked = all(value["revoked"], revokedEntry);
-  if (members === undefined || overCap === undefined || revoked === undefined) return undefined;
-  return { generation: Number(value["generation"]), members, overCap, revoked };
+  const superseded = value["superseded"];
+  if (members === undefined || overCap === undefined || revoked === undefined || !strings(superseded)) return undefined;
+  return { generation: Number(value["generation"]), members, overCap, revoked, superseded };
 }
 
 const objectOr = (value: unknown): Readonly<Record<string, unknown>> => (isRecord(value) ? value : {});
