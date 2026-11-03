@@ -4,8 +4,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cardFor, type Machine, machine, MeshFixture, signPubOf } from "../testing/mesh-history.ts";
-import { parseMeshFile } from "./mesh-file.ts";
+import { cardFor, type Machine, machine, MeshFixture, noiseOf, signPubOf } from "../testing/mesh-history.ts";
+import { MeshStore } from "./mesh.ts";
+import { writePrivateJson } from "./files.ts";
+import { meshFileJson, parseMeshFile } from "./mesh-file.ts";
 
 const WORKER = join(import.meta.dir, "../testing/mesh-worker.ts");
 const dirs: string[] = [];
@@ -67,6 +69,51 @@ describe("MeshStore.transact: one read-modify-write of mesh.json under the state
     expect(parseRecord(signed)?.prev).toContain(hashOf(admit));
     expect(fileOf(dir).records.slice(-2)).toEqual([admit, signed]);
     expect(fileOf(dir).generation).toBe(before + 2);
+  });
+
+  test("MEDIUM-4: a restored host merges its own record back and fails after the counter write: no fork of its chain", () => {
+    const dir = scratch();
+    const [founder, member] = [machine("founder"), machine("member")];
+    const mesh = new MeshFixture(dir, founder);
+    mesh.admit(founder, member);
+    mesh.store.catchUp(founder.identity);
+    const by = signPubOf(founder);
+    const own = (n: number, prev: readonly string[]) =>
+      ({ v: 2, mesh: mesh.meshId, type: "ack", by, n, prev }) as const;
+    const backup = fileOf(dir);
+    const sent = mesh.store.sign(founder.identity, own);
+    const n = parseRecord(sent)?.n ?? 0;
+    writePrivateJson(join(dir, "mesh.json"), meshFileJson({ ...backup, selfN: n }));
+    expect(() =>
+      mesh.store.transact((tx) => {
+        tx.merge([sent]);
+        return tx.sign(founder.identity, () => {
+          throw new Error("crashed after the counter write");
+        });
+      }),
+    ).toThrow("crashed");
+    mesh.record(member, "ack");
+    const next = mesh.store.sign(founder.identity, own);
+    expect(parseRecord(next)?.n).toBe(n + 1);
+    expect(fileOf(dir).records).toContainEqual(sent);
+  });
+
+  test("MEDIUM-4: the counter write after a merged admit indexes the merged records, not the ones read first", () => {
+    const dir = scratch();
+    const [founder, member, joiner] = [machine("founder"), machine("member"), machine("joiner")];
+    const mesh = new MeshFixture(dir, founder);
+    mesh.admit(founder, member);
+    mesh.store.catchUp(member.identity);
+    const admit = admitOf(mesh, founder, joiner);
+    expect(() =>
+      mesh.store.transact((tx) => {
+        tx.merge([admit]);
+        return tx.sign(member.identity, () => {
+          throw new Error("crashed after the counter write");
+        });
+      }),
+    ).toThrow("crashed");
+    expect(new MeshStore(dir, { log: () => {} }).authorizeIndex()?.member(noiseOf(joiner))).toBeDefined();
   });
 
   test("a transaction that throws writes nothing it merged", () => {

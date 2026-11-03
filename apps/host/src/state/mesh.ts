@@ -91,13 +91,14 @@ export class MeshStore {
   /**
    * One read-modify-write of mesh.json under the state lock: `fn` merges, reads the view and signs through `tx`,
    * and what it changed is written once at the next generation with its index, and the device and known-host stores
-   * cleaned, in the same hold. Nothing `fn` merged is written if it throws; only a counter it persisted stays.
+   * cleaned, in the same hold. Nothing `fn` merged after its last signature is written if it throws; a counter it persisted stays, with
+   * the records and held pool it was derived from.
    */
   transact<T>(fn: (tx: MeshTx) => T): T {
     return this.#locked(() => {
       const tx = new Transaction(this.#require(), {
         evaluate: this.#evaluate,
-        persistCounter: (file, selfN) => this.#persistCounter(file, selfN),
+        persistCounter: (file, selfN, view) => this.#persistCounter(file, selfN, view),
         log: this.#options.log,
       });
       const value = fn(tx);
@@ -160,15 +161,16 @@ export class MeshStore {
   }
 
   /**
-   * Persists the counter alone at the next generation (section 10.1). The records are unchanged, so a current index
-   * is still exact and keeps its content; a stale or missing one is rebuilt, never re-tagged as current.
+   * Persists the counter at the next generation (section 10.1), with the records it was derived from. An index that
+   * is current for exactly these records keeps its content; a stale or missing one (the caller drops it when it
+   * merged records) is rebuilt, never re-tagged as current.
    */
-  #persistCounter(file: MeshFile, selfN: number): MeshFile {
+  #persistCounter(file: MeshFile, selfN: number, view?: View): MeshFile {
     const generation = file.generation + 1;
     const current = file.index !== undefined && file.index.generation === file.generation;
     const counted = current
       ? { ...file, selfN, generation, index: file.index === undefined ? undefined : { ...file.index, generation } }
-      : this.#indexed({ ...file, selfN, generation });
+      : this.#indexed({ ...file, selfN, generation }, view);
     writePrivateJson(this.#path, meshFileJson(counted));
     if (!current) this.#cleanup(counted);
     return counted;

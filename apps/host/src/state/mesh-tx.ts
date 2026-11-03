@@ -40,7 +40,7 @@ export interface MeshTx {
 export interface TxDeps {
   readonly evaluate: (records: readonly Signed[]) => View;
   /** Persists `selfN` (and nothing else of this transaction) and returns the file as written. */
-  readonly persistCounter: (file: MeshFile, selfN: number) => MeshFile;
+  readonly persistCounter: (file: MeshFile, selfN: number, view: View | undefined) => MeshFile;
   readonly log: (line: string) => void;
 }
 
@@ -108,7 +108,14 @@ export class Transaction implements MeshTx {
         `counter behind its records (file ${this.#disk.selfN}, mesh ${own}): syncing before signing`,
       );
     }
-    this.#disk = this.#deps.persistCounter(this.#disk, own + 1);
+    const merged = this.#records !== this.#disk.records;
+    // The counter is derived from the merged records, so it is written with them: a failure after this write
+    // leaves a counter the stored records explain, and the next signature never reuses one a peer already holds.
+    this.#disk = this.#deps.persistCounter(
+      { ...this.#disk, records: this.#records, dangling: this.#dangling, index: merged ? undefined : this.#disk.index },
+      own + 1,
+      this.#view?.records === this.#records ? this.#view.view : undefined,
+    );
     const record = signRecord(build(own + 1, headsOf(this.#records)), identity.sign.secretKey);
     const verdict = door(record, this.#records);
     if (!verdict.ok) throw new Error(`this host's own record was refused: ${verdict.reason}`);
