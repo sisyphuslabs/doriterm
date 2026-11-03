@@ -65,11 +65,10 @@ export function Command({ command, label }: { readonly command: string; readonly
         </code>
         <IconButton label={label} icon={state === "copied" ? <Check /> : <Copy />} onClick={copy} />
       </span>
-      {state === "failed" ? (
-        <span role="status" className="block text-xs text-status-blocked-text">
-          Could not copy: select the command and copy it.
-        </span>
-      ) : null}
+      {/* The live region stays mounted and is filled on failure, so screen readers announce the message. */}
+      <span role="status" className="block text-xs text-status-blocked-text">
+        {state === "failed" ? "Could not copy: select the command and copy it." : null}
+      </span>
     </span>
   );
 }

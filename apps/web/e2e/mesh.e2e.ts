@@ -48,17 +48,19 @@ test("a copy the clipboard refuses says so beside the command", async ({ page })
   await openMesh(page);
   const command = group(page, "offline").locator("[data-copy-state]").first();
   await expect(command).toHaveAttribute("data-copy-state", "idle", { timeout: 20_000 });
+  await expect(command.getByRole("status")).toBeAttached();
   await command.getByRole("button").click();
   await expect(command).toHaveAttribute("data-copy-state", "failed");
   await expect(command.getByRole("status")).toBeVisible();
 });
 
-test("an expired join offers no answer", async ({ page }) => {
+test("an expired join offers no answer and does not wait for approval", async ({ page }) => {
   await openMesh(page);
-  const pending = group(page, "pending");
-  await expect(pending.locator('[data-mesh-answer="expired"]')).toHaveCount(1, { timeout: 20_000 });
-  await expect(pending.locator('[data-mesh-answer="expired"] button')).toHaveCount(0);
-  await expect(pending.locator('[data-mesh-answer="open"] button')).toHaveCount(2);
+  const expired = group(page, "expired");
+  await expect(expired.locator('[data-mesh-answer="expired"]')).toHaveCount(1, { timeout: 20_000 });
+  await expect(expired.locator("button")).toHaveCount(0);
+  await expect(group(page, "pending").locator("[data-mesh-answer]")).toHaveCount(1);
+  await expect(group(page, "pending").locator('[data-mesh-answer="open"] button')).toHaveCount(2);
 });
 
 test("approving a pending join writes the answer and shows it in place", async ({ page }) => {

@@ -6,6 +6,7 @@ import type {
   MeshRevokedStatus,
   MeshStatus,
 } from "@doriface/protocol";
+import { HOST_ID_PATTERN } from "@doriface/relay-client";
 
 /** What a pending join's row offers: the two answers, nothing (expired), or the answer this device gave. */
 export type PendingAnswer = "open" | "expired" | "approve" | "deny";
@@ -24,7 +25,10 @@ export function pendingAnswer(
 }
 
 export interface MeshGroups {
+  /** Joins whose offer is still open: only these wait for the owner. */
   readonly pending: readonly MeshPendingJoin[];
+  /** Joins whose offer ended; they need nothing and come last. */
+  readonly expired: readonly MeshPendingJoin[];
   readonly removed: readonly MeshRemovedStatus[];
   readonly online: readonly MeshMemberStatus[];
   readonly offline: readonly MeshMemberStatus[];
@@ -39,10 +43,12 @@ export const isOnline = (member: MeshMemberStatus): boolean =>
  * the members by whether their line is up, then revoked keys. A member a fail-closed conflict removed is also revoked
  * in the view; it shows once, under the removal that explains it.
  */
-export function meshGroups(status: MeshStatus): MeshGroups {
+export function meshGroups(status: MeshStatus, now: number): MeshGroups {
   const removed = new Set(status.removed.flatMap((group) => group.members.map((entry) => entry.hostId)));
+  const open = (join: MeshPendingJoin): boolean => pendingAnswer(join, now, undefined) !== "expired";
   return {
-    pending: status.pending,
+    pending: status.pending.filter(open),
+    expired: status.pending.filter((join) => !open(join)),
     removed: status.removed,
     online: status.members.filter(isOnline),
     offline: status.members.filter((member) => !isOnline(member)),
@@ -57,17 +63,20 @@ export interface Disagreement {
   readonly names: readonly string[];
 }
 
-/** The pinned via form of a mesh line (design section 7.2); the hostId it dials is its last word. */
-const MESH_LINE = / connect --mesh --state-dir '(?:[^']|'\\'')*' ([a-z2-7]{26})$/;
+/** The pinned via form of a mesh line (design section 7.2); what it dials is its last word, a hostId. */
+const MESH_LINE = / connect --mesh --state-dir '(?:[^']|'\\'')*' (\S+)$/;
 
 /** The member a machine.list entry is the mesh line to, or undefined for any other machine. */
-export const meshLineHostId = (machine: MachineView): string | undefined =>
-  machine.via === true ? MESH_LINE.exec(machine.target)?.[1] : undefined;
+export function meshLineHostId(machine: MachineView): string | undefined {
+  const dialed = machine.via === true ? MESH_LINE.exec(machine.target)?.[1] : undefined;
+  return dialed !== undefined && HOST_ID_PATTERN.test(dialed) ? dialed : undefined;
+}
 
 /**
  * Any client can overwrite the document, so the panel checks it against what it sees itself (design section 8.6),
  * both ways. A member's machine is its mesh line (found by the hostId it dials), else the machine with its local
- * name. A member the document calls connected must be connected here and one it calls anything else must not be;
+ * name. A member the document calls connected must be connected here and one it calls anything else must not be,
+ * except `connecting`: a line that just came up is connected here before the host republishes;
  * a connected mesh line must belong to a member the document lists (a forged omission otherwise); a revoked member's
  * machine must not be connected. The document must also be this host's. An offline member may be missing from
  * machine.list: herdr keeps a machine only after its first hello.
@@ -88,7 +97,10 @@ export function disagreement(
   const listed = new Set([status.self, ...status.members.map((m) => m.hostId), ...status.revoked.map((r) => r.hostId)]);
   const names = new Set([
     ...status.members
-      .filter((m) => m.line !== "self" && (m.line === "connected") !== connectedHere(m.hostId, m.localName))
+      .filter((m) => {
+        const here = connectedHere(m.hostId, m.localName);
+        return m.line === "connected" ? !here : here && m.line !== "self" && m.line !== "connecting";
+      })
       .map((m) => m.name ?? m.hostId),
     ...[...lines]
       .filter(([hostId, machine]) => machine.state === "connected" && !listed.has(hostId))

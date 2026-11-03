@@ -28,8 +28,9 @@ const names = (entries: readonly { readonly name: string | null }[]) => entries.
 
 describe("meshGroups", () => {
   test("joins first, then the fail-closed removal, members by line, and revoked keys", () => {
-    const groups = meshGroups(status);
+    const groups = meshGroups(status, NOW.getTime());
     expect(names(groups.pending)).toEqual(["ci-runner"]);
+    expect(groups.expired).toEqual([]);
     expect(groups.removed.map((removal) => [names(removal.members), removal.revokedKey.name])).toEqual([
       [["spare"], "kiosk"],
     ]);
@@ -38,7 +39,7 @@ describe("meshGroups", () => {
   });
 
   test("a member a fail-closed conflict removed shows under the removal, not again as revoked", () => {
-    expect(names(meshGroups(status).revoked)).toEqual(["kiosk"]);
+    expect(names(meshGroups(status, NOW.getTime()).revoked)).toEqual(["kiosk"]);
   });
 
   test("an over-cap member is offline even with its line up", () => {
@@ -46,7 +47,19 @@ describe("meshGroups", () => {
       ...status,
       members: status.members.map((member) => (member.name === "build-box" ? { ...member, overCap: true } : member)),
     };
-    expect(names(meshGroups(overCap).offline)).toContain("build-box");
+    expect(names(meshGroups(overCap, NOW.getTime()).offline)).toContain("build-box");
+  });
+
+  test("a join whose offer ended no longer waits for approval: it moves to its own group", () => {
+    const ends = Date.parse(status.pending[0]?.expiresAt ?? "");
+    expect([names(meshGroups(status, ends - 1).pending), names(meshGroups(status, ends - 1).expired)]).toEqual([
+      ["ci-runner"],
+      [],
+    ]);
+    expect([names(meshGroups(status, ends).pending), names(meshGroups(status, ends).expired)]).toEqual([
+      [],
+      ["ci-runner"],
+    ]);
   });
 });
 
@@ -55,13 +68,13 @@ describe("an over-cap member the view gives no name, key or lineage", () => {
     ...status,
     members: status.members.map((member) =>
       member.name === "tablet"
-        ? { ...member, overCap: true, name: null, localName: null, fingerprint: null, admittedBy: null }
+        ? { ...member, overCap: true, line: "absent", name: null, localName: null, fingerprint: null, admittedBy: null }
         : member,
     ),
   };
 
   test("is offline, and machine.list is matched to it by its mesh line only", () => {
-    expect(meshGroups(nameless).offline.map((member) => member.hostId)).toContain(ids.tablet.hostId);
+    expect(meshGroups(nameless, NOW.getTime()).offline.map((member) => member.hostId)).toContain(ids.tablet.hostId);
     const base = [machine("build-box", "connected")];
     expect(disagreement(nameless, [...base, machine("tablet", "connected")], undefined)).toBeUndefined();
     const line = [...base, machine("tablet", "connected", ids.tablet.hostId)];
@@ -113,8 +126,19 @@ describe("disagreement with machine.list", () => {
   });
 
   test("a member the document calls offline whose mesh line is connected here", () => {
+    const machines = [machine("build-box", "connected"), machine("laptop", "connected", ids.laptop.hostId)];
+    expect(disagreement(status, machines, undefined)).toEqual({ otherHost: false, names: ["laptop"] });
+  });
+
+  test("a line that just came up, connecting in the document and connected here, is no disagreement yet", () => {
     const machines = [machine("build-box", "connected"), machine("tablet", "connected", ids.tablet.hostId)];
-    expect(disagreement(status, machines, undefined)).toEqual({ otherHost: false, names: ["tablet"] });
+    expect(disagreement(status, machines, undefined)).toBeUndefined();
+  });
+
+  test("a mesh line dialing a word that is no hostId is no mesh line", () => {
+    const line = machine("rogue", "connected", ids.laptop.hostId);
+    const fake = { ...line, target: line.target.replace(ids.laptop.hostId, "A".repeat(26)) };
+    expect(disagreement(status, [machine("build-box", "connected"), fake], undefined)).toBeUndefined();
   });
 
   test("a revoked member is matched by the name its machine has here, and by the hostId its mesh line dials", () => {

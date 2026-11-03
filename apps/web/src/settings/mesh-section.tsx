@@ -46,6 +46,9 @@ function namesIn(status: MeshStatus): (hostId: string) => string {
   return (hostId) => names.get(hostId) ?? hostId;
 }
 
+/** An expired join takes no answer (its row offers none), so its row is never asked to send one. */
+const answerNone = (): Promise<void> => Promise.resolve();
+
 function MeshBody({ connection }: { readonly connection: HcConnection }) {
   const { read, answer } = useMesh(connection);
   const now = useNow();
@@ -78,7 +81,7 @@ function MeshBody({ connection }: { readonly connection: HcConnection }) {
   const { status, machines, answered } = read;
   const settings = connectionStore.settings;
   const nameOf = namesIn(status);
-  const groups = meshGroups(status);
+  const groups = meshGroups(status, now);
   const self = nameOf(status.self);
   return (
     <div className="flex flex-col gap-6">
@@ -123,6 +126,11 @@ function MeshBody({ connection }: { readonly connection: HcConnection }) {
       <MeshGroup id="revoked" title="Revoked" count={groups.revoked.length}>
         {groups.revoked.map((entry) => (
           <RevokedRow key={entry.hostId} entry={entry} nameOf={nameOf} />
+        ))}
+      </MeshGroup>
+      <MeshGroup id="expired" title="Expired join requests" count={groups.expired.length}>
+        {groups.expired.map((join) => (
+          <PendingRow key={join.nonce} join={join} self={self} now={now} answered={undefined} onAnswer={answerNone} />
         ))}
       </MeshGroup>
     </div>

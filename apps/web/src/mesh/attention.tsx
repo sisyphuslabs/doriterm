@@ -35,14 +35,25 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
   };
   const left = Date.parse(join.expiresAt) - now;
   const state = pendingAnswer(join, now, answered);
+  if (state === "expired") {
+    return (
+      <SettingRow
+        title={`${join.name} asked to join`}
+        description={`through ${self}; its offer ended ${formatAge(0, -left)} ago, so it needs no answer`}
+        control={
+          <span className="text-sm text-muted-foreground" data-mesh-answer={state}>
+            Expired
+          </span>
+        }
+      />
+    );
+  }
   return (
     <SettingRow
       title={`${join.name} asks to join`}
       description={
         <>
-          <span className="block">
-            {left > 0 ? `through ${self}, offer open for ${formatAge(0, left)} more` : "the offer has expired"}
-          </span>
+          <span className="block">{`through ${self}, offer open for ${formatAge(0, left)} more`}</span>
           <Fingerprint
             className="mt-2"
             label={`${join.name}'s key: compare it with what mesh join shows there`}
@@ -76,7 +87,7 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
           </div>
         ) : (
           <span className="text-sm text-muted-foreground" data-mesh-answer={state}>
-            {state === "approve" ? `Approved; ${self} admits it next` : state === "deny" ? "Denied" : "Expired"}
+            {state === "approve" ? `Approved; ${self} admits it next` : "Denied"}
           </span>
         )
       }
