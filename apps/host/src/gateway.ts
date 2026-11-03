@@ -1,4 +1,4 @@
-import { base64urlEncode, CloseCode, type SecureLink, SessionKind } from "@doriface/crypto";
+import { base64urlEncode, type SecureLink, SessionKind } from "@doriface/crypto";
 import type { WebSocketHandler } from "bun";
 import { Hono } from "hono";
 import { type BunWebSocketData, upgradeWebSocket } from "hono/bun";
@@ -7,10 +7,11 @@ import { checkHandshake } from "./auth.ts";
 import { bridge } from "./bridge.ts";
 import { acceptE2ee, type E2eeDeps, type E2eeTransport } from "./e2ee/accept.ts";
 import { meshPeer } from "./e2ee/authorize.ts";
-import { firstLineRefusal, gateFirstLine } from "./e2ee/first-line.ts";
+import { firstLineRefusal, gateHello } from "./e2ee/first-line.ts";
 import { type E2eeWire, plaintextLink, WsByteLink } from "./e2ee/links.ts";
 import type { LiveSessions } from "./e2ee/sessions.ts";
 import type { Link } from "./link.ts";
+import type { AuthorizeIndex } from "./mesh/authorize-index.ts";
 import { DIRECT_IDLE_MS, WsLink } from "./ws-link.ts";
 
 /** A link backed by a child process; `exited` settles once the child is gone. */
@@ -105,7 +106,9 @@ export function createGateway(options: GatewayOptions): Gateway {
     if (secure === undefined) return;
     if (secure.stream === "mesh") return serveMesh(secure);
     e2ee.sessions.add(secure);
-    pipeTo(gateHc(secure, plaintextLink(secure, wire)), (code, reason) => secure.close(code, reason));
+    const gate = hcGate(secure);
+    if (gate === undefined) return;
+    pipeTo(gate(plaintextLink(secure, wire)), (code, reason) => secure.close(code, reason));
   };
 
   /** A join is no member's session yet, so only a member's sync session is registered for revocation. */
@@ -116,25 +119,30 @@ export function createGateway(options: GatewayOptions): Gateway {
     else e2ee.meshStream(secure);
   };
 
-  /** Section 7.6: the first hc line's `core.id` must be a member's own, and never a member's on a device session. */
-  const gateHc = (secure: SecureLink, link: Link): Link => {
-    let index;
+  /**
+   * Section 7.6: the gate for a session's hc lines, whose hellos may announce only a member's own `core.id`, and
+   * never a member's on a device session. Undefined when the mesh state cannot be read: the session is closed 1011
+   * before its plaintext is read, so nothing of it reaches an `hc connect`, and none is started.
+   */
+  const hcGate = (secure: SecureLink): ((link: Link) => Link) | undefined => {
+    let index: AuthorizeIndex | undefined;
     try {
       index = e2ee?.mesh?.authorizeIndex();
     } catch (error) {
       log(`cannot read the mesh state: ${String(error)}`);
       secure.close(1011, "cannot read the mesh state");
-      return link;
+      return undefined;
     }
     const peer = meshPeer(index, base64urlEncode(secure.remoteStatic)) ?? { kind: "device" as const };
-    return gateFirstLine(
-      link,
-      (coreId) => firstLineRefusal(peer, coreId, index),
-      (reason) => {
-        log(`mesh: closing a session: ${reason}`);
-        secure.close(CloseCode.UnknownDevice, reason);
-      },
-    );
+    return (link) =>
+      gateHello(
+        link,
+        (coreId) => firstLineRefusal(peer, coreId, index),
+        (code, reason) => {
+          log(`mesh: closing a session: ${reason}`);
+          secure.close(code, reason);
+        },
+      );
   };
 
   const websocket: WebSocketHandler<BunWebSocketData> = {
