@@ -25,12 +25,17 @@ export type DueReason = "presence" | "probe" | "added" | "settle";
 export type Grant =
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: "offline"; readonly misses: number; readonly nextInMs: number }
+  | { readonly ok: false; readonly reason: "rate-limited"; readonly nextInMs: number }
   | { readonly ok: false; readonly reason: "settling"; readonly nextInMs: number }
   | { readonly ok: false; readonly reason: "budget" };
 
 export interface Gate {
+  /** A 4404 (or a failed dial) says the member is offline; a 4429 says the relay limited this host. */
+  readonly cause: "offline" | "rate-limited";
   readonly misses: number;
   readonly nextAt: number;
+  /** When the last dial that set this gate failed: return from this host's own outage drops gates set during it. */
+  readonly lastMissAt: number;
 }
 
 interface Waiter {
@@ -60,6 +65,8 @@ export class DialPolicy {
   readonly #charged: number[] = [];
   readonly #waiters: Waiter[] = [];
   readonly #gates = new Map<string, Gate>();
+  /** Each member's first miss since it was last reached: the evidence section 8.6's 7-day unreachable flag reads. */
+  readonly #firstMiss = new Map<string, number>();
   readonly #present = new Set<string>();
   #halvedUntil = Number.NEGATIVE_INFINITY;
   #settleUntil = Number.NEGATIVE_INFINITY;
@@ -82,6 +89,11 @@ export class DialPolicy {
     return this.#gates.get(member);
   }
 
+  /** Since when `member` has failed every dial, while that was not this host's own outage. */
+  unreachableSince(member: string): number | undefined {
+    return this.#firstMiss.get(member);
+  }
+
   /**
    * Asks to dial `member`. A direct (LAN) dial is not charged. A gated member is refused unless this is its due probe
    * or a sweep; a line to a member with no presence waits for settle. `waitMs` bounds the wait for a token.
@@ -91,7 +103,9 @@ export class DialPolicy {
     const gate = this.#gates.get(member);
     const probing = purpose === "probe" && gate !== undefined && now >= gate.nextAt;
     if (gate !== undefined && purpose !== "sweep" && !probing) {
-      return Promise.resolve({ ok: false, reason: "offline", misses: gate.misses, nextInMs: gate.nextAt - now });
+      const nextInMs = gate.nextAt - now;
+      if (gate.cause === "rate-limited") return Promise.resolve({ ok: false, reason: "rate-limited", nextInMs });
+      return Promise.resolve({ ok: false, reason: "offline", misses: gate.misses, nextInMs });
     }
     if (purpose === "line" && !this.#present.has(member) && now < this.#settleUntil) {
       return Promise.resolve({ ok: false, reason: "settling", nextInMs: this.#settleUntil - now });
@@ -100,26 +114,35 @@ export class DialPolicy {
     return this.#take(PRIORITY[purpose], options.waitMs);
   }
 
-  /** What a dial ended with: connected, the member is offline (4404), or the relay rate limited (4429). */
+  /**
+   * What a dial ended with: connected, the relay rate limited it (4429), or it failed (4404, or any error without a
+   * close code: a timeout or a dropped connection), which gates the member until presence or its probe.
+   */
   report(member: string, outcome: "connected" | 4404 | 4429): void {
     const now = this.#clock.now();
     if (outcome === "connected") {
-      this.#gates.delete(member);
+      this.#reached(member);
       return;
     }
+    const misses = this.#gates.get(member)?.misses ?? 0;
     if (outcome === 4429) {
       this.#halvedUntil = now + this.#limits.halvedForMs;
-      this.#setGate(member, this.#gates.get(member)?.misses ?? 0, now + this.#limits.probeFirstMs);
+      this.#setGate(member, {
+        cause: "rate-limited",
+        misses,
+        nextAt: now + this.#limits.probeFirstMs,
+        lastMissAt: now,
+      });
       return;
     }
-    const misses = (this.#gates.get(member)?.misses ?? 0) + 1;
-    const wait = Math.min(this.#limits.probeFirstMs * 2 ** (misses - 1), this.#limits.probeMaxMs);
-    this.#setGate(member, misses, now + wait);
+    if (!this.#firstMiss.has(member)) this.#firstMiss.set(member, now);
+    const wait = Math.min(this.#limits.probeFirstMs * 2 ** misses, this.#limits.probeMaxMs);
+    this.#setGate(member, { cause: "offline", misses: misses + 1, nextAt: now + wait, lastMissAt: now });
   }
 
   /** Any authenticated session from `member` proves it is online: ungate it and dial after 0-2 s. */
   presence(member: string): void {
-    this.#gates.delete(member);
+    this.#reached(member);
     this.#present.add(member);
     this.#clock.after(uniform(this.#random, 0, this.#limits.presenceJitterMs), () => this.#onDue(member, "presence"));
   }
@@ -130,23 +153,30 @@ export class DialPolicy {
   }
 
   /**
-   * This host's uplink answered after a drop. The 4404s it saw while it was itself offline say nothing about the
-   * members, so their gates go; members without presence are dialed after a 10-20 s settle.
+   * This host's uplink answered after a drop that began at `downSince`. The misses it saw while it was itself offline
+   * say nothing about the members, so the gates they set go, and so does a first miss inside the drop. Gates set
+   * before the drop stay, with their backoff. Members without presence are dialed after a 10-20 s settle.
    */
-  uplinkReturned(members: readonly string[]): void {
+  uplinkReturned(members: readonly string[], downSince: number): void {
     const delay = uniform(this.#random, this.#limits.settleMinMs, this.#limits.settleMaxMs);
     this.#settleUntil = this.#clock.now() + delay;
     this.#present.clear();
-    this.#gates.clear();
+    for (const [member, gate] of this.#gates) if (gate.lastMissAt >= downSince) this.#gates.delete(member);
+    for (const [member, at] of this.#firstMiss) if (at >= downSince) this.#firstMiss.delete(member);
     this.#clock.after(delay, () => {
       for (const member of members) if (!this.#present.has(member)) this.#onDue(member, "settle");
     });
   }
 
-  #setGate(member: string, misses: number, nextAt: number): void {
-    this.#gates.set(member, { misses, nextAt });
-    this.#clock.after(nextAt - this.#clock.now(), () => {
-      if (this.#gates.get(member)?.nextAt === nextAt) this.#onDue(member, "probe");
+  #reached(member: string): void {
+    this.#gates.delete(member);
+    this.#firstMiss.delete(member);
+  }
+
+  #setGate(member: string, gate: Gate): void {
+    this.#gates.set(member, gate);
+    this.#clock.after(gate.nextAt - this.#clock.now(), () => {
+      if (this.#gates.get(member) === gate) this.#onDue(member, "probe");
     });
   }
 

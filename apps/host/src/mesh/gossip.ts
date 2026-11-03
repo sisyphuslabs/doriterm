@@ -155,7 +155,11 @@ export class Gossip implements SyncHost {
   /** This host's uplink answered again; after a drop of more than 2 minutes it sweeps with one member. */
   uplinkReturned(downMs: number): void {
     const others = this.#members();
-    this.#options.policy.uplinkReturned(others.map((member) => member.signPub));
+    const downSince = this.#options.clock.now() - downMs;
+    this.#options.policy.uplinkReturned(
+      others.map((member) => member.signPub),
+      downSince,
+    );
     if (downMs <= this.#timings.sweepAfterDownMs) return;
     const recent = others.toSorted(
       (a, b) => (this.#lastSync.get(b.signPub) ?? -1) - (this.#lastSync.get(a.signPub) ?? -1),
@@ -178,7 +182,7 @@ export class Gossip implements SyncHost {
       return true;
     } catch (error) {
       const code = error instanceof Error ? closeCodeOf(error) : undefined;
-      if (code === 4404 || code === 4429) this.#options.policy.report(member.signPub, code);
+      this.#options.policy.report(member.signPub, code === 4429 ? 4429 : 4404);
       this.#options.log(`mesh: sync with ${member.name} failed: ${String(error)}`);
       return false;
     }

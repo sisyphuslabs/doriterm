@@ -80,6 +80,7 @@ export class MeshNet {
   readonly #links: { a: string; b: string; end: MemoryEnd }[] = [];
   #groups: readonly (readonly string[])[] | undefined;
   readonly #offline = new Set<string>();
+  readonly #broken = new Set<string>();
   readonly lines: { from: string; to: string; message: MeshMessage }[] = [];
 
   constructor(clock: FakeClock, random: () => number, timings?: GossipTimings) {
@@ -150,6 +151,15 @@ export class MeshNet {
     this.#offline.delete(this.host(name).member.signPub);
   }
 
+  /** Dials to the host fail like a timeout or a dropped connection: an error with no close code. */
+  breakDials(name: string): void {
+    this.#broken.add(this.host(name).member.signPub);
+  }
+
+  mendDials(name: string): void {
+    this.#broken.delete(this.host(name).member.signPub);
+  }
+
   converged(): boolean {
     const sets = [...this.hosts.values()].map((host) => setOf(host).join(","));
     return sets.every((set) => set === sets[0]);
@@ -160,6 +170,7 @@ export class MeshNet {
   }
 
   async #connect(from: string, to: string): Promise<MeshChannel> {
+    if (this.#broken.has(to)) throw new Error("the dial timed out");
     const target = this.hosts.get(to);
     if (target === undefined || !this.reachable(from, to)) {
       throw new SecureLinkError(4404, "host is not connected to the relay (4404)");

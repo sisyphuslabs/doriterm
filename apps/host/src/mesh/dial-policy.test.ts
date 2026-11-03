@@ -96,7 +96,7 @@ describe("settle after this host's own outage (S-6)", () => {
   test("lines to members without presence wait 10-20 s; a member that showed presence is dialed at once", async () => {
     const { clock, dials, due } = policy();
     dials.report("quiet", 4404);
-    dials.uplinkReturned(["quiet", "seen"]);
+    dials.uplinkReturned(["quiet", "seen"], 0);
     dials.presence("seen");
     expect(granted(await dials.acquire("seen", "line"))).toBe(true);
     const waiting = await dials.acquire("quiet", "line");
