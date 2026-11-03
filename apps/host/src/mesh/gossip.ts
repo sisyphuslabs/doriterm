@@ -76,6 +76,12 @@ export class Gossip implements SyncHost {
     return this.#options.file.read().records;
   }
 
+  /** The open sync session with `peer`, if one is up. */
+  session(peer: string): SyncSession | undefined {
+    const open = this.#sessions.get(peer);
+    return open?.closed === false ? open : undefined;
+  }
+
   /** An authenticated sync session, inbound or outbound; one per peer, as section 5.1 picks it. */
   attach(peer: string, dialer: string, channel: MeshChannel, sweeping = false): SyncSession {
     const ends = { peer, dialer, sweeping };
