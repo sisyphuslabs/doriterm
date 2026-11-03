@@ -12,6 +12,7 @@ import { HostUplink } from "./relay/host-uplink.ts";
 import { RelaySessionWire } from "./relay/session-wire.ts";
 import { DeviceStore } from "./state/devices.ts";
 import { loadHostIdentity } from "./state/host-keys.ts";
+import { MeshStore } from "./state/mesh.ts";
 import { PairingStore, pendingToWire } from "./state/pairing.ts";
 
 export const HOST_VERSION = packageJson.version;
@@ -179,7 +180,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 /** The control socket is how `devices revoke` closes live sessions, so a host that cannot open it does not start. */
 function openControl(stateDir: string, e2ee: ReturnType<typeof e2eeDeps>) {
   return listenControl(stateDir, async (request) => {
-    if (request.op === "devices-changed") return e2ee.sessions.closeRevoked();
+    if (request.op === "devices-changed" || request.op === "mesh-changed") return e2ee.sessions.closeRevoked();
     return pendingToWire(await e2ee.slots.open());
   });
 }
@@ -192,6 +193,8 @@ function e2eeDeps(
 ) {
   const devices = new DeviceStore(stateDir);
   const pairing = new PairingStore(stateDir, options.log);
+  const mesh = new MeshStore(stateDir, { log: options.log });
+  mesh.ensureIndex();
   /** Filled in once the LAN listener has its port. */
   const lanUrls: string[] = [];
   return {
@@ -199,8 +202,9 @@ function e2eeDeps(
     lanUrls,
     devices,
     pairing,
+    mesh,
     slots: new PairingSlots(pairing, identity.noise.publicKey, registrar, options.log),
-    sessions: new LiveSessions(devices, options.log),
+    sessions: new LiveSessions(devices, options.log, mesh),
     rekeyInterval: options.rekeyInterval,
     log: options.log,
   };

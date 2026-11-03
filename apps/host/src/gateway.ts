@@ -1,3 +1,4 @@
+import { base64urlEncode, CloseCode, type SecureLink, SessionKind } from "@doriface/crypto";
 import type { WebSocketHandler } from "bun";
 import { Hono } from "hono";
 import { type BunWebSocketData, upgradeWebSocket } from "hono/bun";
@@ -5,6 +6,8 @@ import type { WSEvents } from "hono/ws";
 import { checkHandshake } from "./auth.ts";
 import { bridge } from "./bridge.ts";
 import { acceptE2ee, type E2eeDeps, type E2eeTransport } from "./e2ee/accept.ts";
+import { meshPeer } from "./e2ee/authorize.ts";
+import { firstLineRefusal, gateFirstLine } from "./e2ee/first-line.ts";
 import { type E2eeWire, plaintextLink, WsByteLink } from "./e2ee/links.ts";
 import type { LiveSessions } from "./e2ee/sessions.ts";
 import type { Link } from "./link.ts";
@@ -20,10 +23,13 @@ export interface GatewayOptions {
   readonly openPipe: () => ChildLink;
   readonly log: (line: string) => void;
   /** Enables `/v1/e2ee`: the Noise record layer in front of the same `hc connect` pipe. */
-  readonly e2ee?: (E2eeDeps & { readonly sessions: LiveSessions }) | undefined;
+  readonly e2ee?: (E2eeDeps & { readonly sessions: LiveSessions; readonly meshStream?: MeshStreamHandler }) | undefined;
   /** For tests: the direct-path idle close (default {@link DIRECT_IDLE_MS}). */
   readonly directIdleMs?: number | undefined;
 }
+
+/** Serves a session whose plaintext is the mesh stream (a member's sync session, or a machine join). */
+export type MeshStreamHandler = (secure: SecureLink) => void;
 
 export interface Gateway {
   /** Every route: healthz, the loopback-only plaintext `/v1/hc`, and `/v1/e2ee` when enabled. */
@@ -97,8 +103,38 @@ export function createGateway(options: GatewayOptions): Gateway {
     if (e2ee === undefined) throw new Error("end-to-end encryption needs a state dir");
     const secure = await acceptE2ee(wire, e2ee, transport);
     if (secure === undefined) return;
+    if (secure.stream === "mesh") return serveMesh(secure);
     e2ee.sessions.add(secure);
-    pipeTo(plaintextLink(secure, wire), (code, reason) => secure.close(code, reason));
+    pipeTo(gateHc(secure, plaintextLink(secure, wire)), (code, reason) => secure.close(code, reason));
+  };
+
+  /** A join is no member's session yet, so only a member's sync session is registered for revocation. */
+  const serveMesh = (secure: SecureLink): void => {
+    if (e2ee === undefined) return;
+    if (secure.kind === SessionKind.Session) e2ee.sessions.add(secure);
+    if (e2ee.meshStream === undefined) secure.close(1000, "this host serves no mesh stream");
+    else e2ee.meshStream(secure);
+  };
+
+  /** Section 7.6: the first hc line's `core.id` must be a member's own, and never a member's on a device session. */
+  const gateHc = (secure: SecureLink, link: Link): Link => {
+    let index;
+    try {
+      index = e2ee?.mesh?.authorizeIndex();
+    } catch (error) {
+      log(`cannot read the mesh state: ${String(error)}`);
+      secure.close(1011, "cannot read the mesh state");
+      return link;
+    }
+    const peer = meshPeer(index, base64urlEncode(secure.remoteStatic)) ?? { kind: "device" as const };
+    return gateFirstLine(
+      link,
+      (coreId) => firstLineRefusal(peer, coreId, index),
+      (reason) => {
+        log(`mesh: closing a session: ${reason}`);
+        secure.close(CloseCode.UnknownDevice, reason);
+      },
+    );
   };
 
   const websocket: WebSocketHandler<BunWebSocketData> = {
