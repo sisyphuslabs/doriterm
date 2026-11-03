@@ -1,10 +1,12 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { DialPolicy } from "./dial-policy.ts";
-import { MeshLines } from "./mesh-lines.ts";
+import { LineGrants } from "./line-grants.ts";
 import { Reconciler, STUCK_RETRY_MS } from "./reconciler.ts";
 import { FakeClock, seededRandom } from "./testing/fake-clock.ts";
 import { type Core, dialCore, directVia, hostIdFor, localHost, recorded, startCore } from "./testing/hc-mesh.ts";
-import { fallbacks, type MeshMember, type MeshView } from "./upstream.ts";
+import { fallbacks } from "@doriface/mesh";
+import type { MemberEntry } from "./authorize-index.ts";
+import type { MeshView } from "./mesh-view.ts";
 import { meshHostOf, meshVia } from "./via.ts";
 
 const LONG = 60_000;
@@ -15,11 +17,12 @@ afterAll(async () => {
   await Promise.all(started.map((core) => core.dispose()));
 });
 
-const viewOf = (...members: readonly MeshMember[]): MeshView => ({ members, overCap: [], revoked: [] });
-const fakeMember = (name: string): MeshMember => ({
+const viewOf = (...members: readonly MemberEntry[]): MeshView => ({ members, overCap: [], revoked: [] });
+const fakeMember = (name: string): MemberEntry => ({
   signPub: `sign-${name}`,
   hostId: hostIdFor(name),
   noisePub: `noise-${name}`,
+  devicePub: undefined,
   name,
   hcId: `hc-${name}`,
 });
@@ -38,7 +41,7 @@ async function mesh(names: readonly string[]) {
   const clock = new FakeClock();
   let current = viewOf(self.member, ...members.map((core) => core.member));
   const policy = new DialPolicy({ clock, random: seededRandom(5), onDue: () => undefined });
-  await local.serve(new MeshLines({ view: () => current, policy, dial: dialCore(members) }));
+  await local.serve(new LineGrants({ view: () => current, policy, dial: dialCore(members) }));
   const machines = recorded(self.control.machines);
   const reconciler = new Reconciler({
     machines,

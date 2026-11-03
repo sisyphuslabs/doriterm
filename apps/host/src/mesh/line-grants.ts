@@ -1,16 +1,17 @@
 import { type ByteLink, closeCodeOf } from "@doriface/crypto";
 import { DIAL_LIMITS, type DialPolicy } from "./dial-policy.ts";
-import type { MeshMember, MeshView } from "./upstream.ts";
+import type { MemberEntry } from "./authorize-index.ts";
+import type { MeshView } from "./mesh-view.ts";
 
 export type LineGrant =
   | { readonly ok: true; readonly link: ByteLink }
   | { readonly ok: false; readonly code: number; readonly reason: string };
 
-export interface MeshLinesOptions {
+export interface LineGrantsOptions {
   readonly view: () => MeshView;
   readonly policy: DialPolicy;
   /** Dials the member's hc stream with this host's Noise key (section 7.2), LAN first when one is known. */
-  readonly dial: (member: MeshMember) => Promise<ByteLink>;
+  readonly dial: (member: MemberEntry) => Promise<ByteLink>;
   readonly waitMs?: number;
 }
 
@@ -20,11 +21,11 @@ const seconds = (ms: number): number => Math.max(1, Math.ceil(ms / 1000));
  * The running host's side of `connect --mesh` (section 7.2): a grant checks the member, applies the dial policy,
  * dials, and keeps the line registered under the member's key, so a revocation closes outbound lines too (4401).
  */
-export class MeshLines {
-  readonly #options: MeshLinesOptions;
+export class LineGrants {
+  readonly #options: LineGrantsOptions;
   readonly #open = new Map<string, Set<ByteLink>>();
 
-  constructor(options: MeshLinesOptions) {
+  constructor(options: LineGrantsOptions) {
     this.#options = options;
   }
 

@@ -2,7 +2,7 @@ import type { ByteLink } from "@doriface/crypto";
 import type { Socket, UnixSocketListener } from "bun";
 import { chmodSync, existsSync, rmSync } from "node:fs";
 import { isRecord } from "../state/files.ts";
-import type { LineGrant } from "./mesh-lines.ts";
+import type { LineGrant } from "./line-grants.ts";
 
 export const LINE_SOCKET = "line.sock";
 /** The request line is `{"v":1,"hostId":"…"}`: anything longer is not one. */

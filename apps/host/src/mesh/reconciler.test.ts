@@ -3,20 +3,22 @@ import { Reconciler } from "./reconciler.ts";
 import { FakeClock } from "./testing/fake-clock.ts";
 import { FakeMachines, hcError } from "./testing/fake-machines.ts";
 import { hostIdFor } from "./testing/hc-mesh.ts";
-import type { MeshMember, MeshView } from "./upstream.ts";
+import type { MemberEntry } from "./authorize-index.ts";
+import type { MeshView } from "./mesh-view.ts";
 import { meshVia } from "./via.ts";
 
 const PROGRAM = "/opt/doriface-host";
 const STATE = "/state";
-const member = (name: string, hostId = hostIdFor(name)): MeshMember => ({
+const member = (name: string, hostId = hostIdFor(name)): MemberEntry => ({
   signPub: `sign-${name}`,
   hostId,
   noisePub: `noise-${name}`,
+  devicePub: undefined,
   name,
   hcId: `core-${name}`,
 });
 const [self, b, c] = [member("self"), member("b"), member("c")];
-const viewOf = (...members: readonly MeshMember[]): MeshView => ({
+const viewOf = (...members: readonly MemberEntry[]): MeshView => ({
   members: [self, ...members],
   overCap: [],
   revoked: [],

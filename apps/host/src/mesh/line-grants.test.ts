@@ -1,15 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import type { ByteLink } from "@doriface/crypto";
 import { DialPolicy } from "./dial-policy.ts";
-import { MeshLines } from "./mesh-lines.ts";
+import { LineGrants } from "./line-grants.ts";
 import { FakeClock, seededRandom } from "./testing/fake-clock.ts";
 import { hostIdFor } from "./testing/hc-mesh.ts";
-import type { MeshMember, MeshView } from "./upstream.ts";
+import type { MemberEntry } from "./authorize-index.ts";
+import type { MeshView } from "./mesh-view.ts";
 
-const member = (name: string): MeshMember => ({
+const member = (name: string): MemberEntry => ({
   signPub: `sign-${name}`,
   hostId: hostIdFor(name),
   noisePub: `noise-${name}`,
+  devicePub: undefined,
   name,
   hcId: `hc-${name}`,
 });
@@ -27,9 +29,9 @@ function closingLink(): ByteLink & { readonly closes: { code?: number; reason?: 
   };
 }
 
-function lines(view: MeshView, dial: (member: MeshMember) => Promise<ByteLink>) {
+function lines(view: MeshView, dial: (member: MemberEntry) => Promise<ByteLink>) {
   const policy = new DialPolicy({ clock: new FakeClock(), random: seededRandom(3), onDue: () => undefined });
-  return { policy, lines: new MeshLines({ view: () => view, policy, dial, waitMs: 10 }) };
+  return { policy, lines: new LineGrants({ view: () => view, policy, dial, waitMs: 10 }) };
 }
 
 describe("line grants (section 7.2)", () => {

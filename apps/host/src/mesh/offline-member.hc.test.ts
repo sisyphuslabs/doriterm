@@ -2,11 +2,12 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { type ByteLink, SecureLinkError } from "@doriface/crypto";
 import { DialPolicy } from "./dial-policy.ts";
 import { MeshDriver } from "./driver.ts";
-import { MeshLines } from "./mesh-lines.ts";
+import { LineGrants } from "./line-grants.ts";
 import { Reconciler } from "./reconciler.ts";
 import { FakeClock, seededRandom } from "./testing/fake-clock.ts";
 import { type Core, dialCore, localHost, startCore } from "./testing/hc-mesh.ts";
-import type { MeshMember, MeshView } from "./upstream.ts";
+import type { MemberEntry } from "./authorize-index.ts";
+import type { MeshView } from "./mesh-view.ts";
 
 const started: Core[] = [];
 const locals: ReturnType<typeof localHost>[] = [];
@@ -27,9 +28,9 @@ async function offlineMember() {
   const policy = new DialPolicy({ clock, random: seededRandom(13), onDue: () => undefined });
   const view: MeshView = { members: [self.member, x.member], overCap: [], revoked: [] };
   const toCore = dialCore([x]);
-  const dial = (member: MeshMember): Promise<ByteLink> =>
+  const dial = (member: MemberEntry): Promise<ByteLink> =>
     reach.online ? toCore(member) : Promise.reject(new SecureLinkError(4404, "host is not connected (4404)"));
-  const lines = new MeshLines({ view: () => view, policy, dial });
+  const lines = new LineGrants({ view: () => view, policy, dial });
   await local.serve(lines);
   const reconciler = new Reconciler({
     machines: self.control.machines,

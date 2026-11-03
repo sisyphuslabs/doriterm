@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { createHcSession, type HcSession } from "../../testing/hc-session.ts";
 import { type HcControl, type HcMachines, openHcControl, spawnHcLink } from "../hc-machines.ts";
 import { type LineSocket, listenLineSocket } from "../line-socket.ts";
-import type { MeshLines } from "../mesh-lines.ts";
-import type { MeshMember } from "../upstream.ts";
+import type { LineGrants } from "../line-grants.ts";
+import type { MemberEntry } from "../authorize-index.ts";
 import { shellQuote } from "../via.ts";
 
 const CLI = join(import.meta.dir, "..", "..", "cli.ts");
@@ -14,7 +14,7 @@ const CLI = join(import.meta.dir, "..", "..", "cli.ts");
 export interface Core {
   readonly session: HcSession;
   readonly control: HcControl;
-  readonly member: MeshMember;
+  readonly member: MemberEntry;
   dispose(): Promise<void>;
 }
 
@@ -24,10 +24,11 @@ export const hostIdFor = (name: string): string => `${name.replaceAll(/[^a-z2-7]
 export async function startCore(name: string): Promise<Core> {
   const session = createHcSession(`mesh-${name}`);
   const control = await openHcControl({ hc: session.hc, session: session.name, env: session.env });
-  const member: MeshMember = {
+  const member: MemberEntry = {
     signPub: `sign-${name}`,
     hostId: hostIdFor(name),
     noisePub: `noise-${name}`,
+    devicePub: undefined,
     name,
     hcId: control.coreId,
   };
@@ -54,7 +55,7 @@ export interface LocalHost {
   readonly program: string;
   /** This host's state dir (where line.sock lives), also with a space and a `'` in its path. */
   readonly stateDir: string;
-  serve(lines: MeshLines): Promise<LineSocket>;
+  serve(lines: LineGrants): Promise<LineSocket>;
   dispose(): void;
 }
 
@@ -89,7 +90,7 @@ export function localHost(): LocalHost {
 }
 
 /** Stands in for the relay and Noise hop: a granted line to a member is piped to that member's real core. */
-export const dialCore = (cores: readonly Core[]) => (member: MeshMember) => {
+export const dialCore = (cores: readonly Core[]) => (member: MemberEntry) => {
   const core = cores.find((candidate) => candidate.member.hostId === member.hostId);
   if (core === undefined) return Promise.reject(new Error(`no core for ${member.name}`));
   return Promise.resolve(spawnHcLink({ hc: core.session.hc, session: core.session.name, env: core.session.env }));

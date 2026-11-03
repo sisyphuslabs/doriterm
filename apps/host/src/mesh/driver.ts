@@ -1,11 +1,11 @@
 import type { DialPolicy, DueReason } from "./dial-policy.ts";
-import type { MeshLines } from "./mesh-lines.ts";
+import type { LineGrants } from "./line-grants.ts";
 import type { Reconciler } from "./reconciler.ts";
-import type { MeshView } from "./upstream.ts";
+import type { MeshView } from "./mesh-view.ts";
 
 export interface MeshDriverOptions {
   readonly reconciler: Reconciler;
-  readonly lines: MeshLines;
+  readonly lines: LineGrants;
   readonly policy: DialPolicy;
   readonly view: MeshView;
 }
@@ -18,7 +18,7 @@ export interface MeshDriverOptions {
  */
 export class MeshDriver {
   readonly #reconciler: Reconciler;
-  readonly #lines: MeshLines;
+  readonly #lines: LineGrants;
   readonly #policy: DialPolicy;
   #view: MeshView;
 
