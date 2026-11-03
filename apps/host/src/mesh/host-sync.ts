@@ -48,33 +48,49 @@ export class HostSync {
 
   /** mesh.json may have changed outside sync (a join, an admit, a CLI write): start, or push what is new. */
   changed(): void {
-    if (this.#stopped) return;
-    const file = this.#options.mesh.read();
-    if (file === undefined) return;
-    const fresh = file.records.filter((record) => !this.#seen.has(hashOf(record)));
-    for (const record of fresh) this.#seen.add(hashOf(record));
-    if (this.#gossip === undefined) {
-      this.#gossip = this.#start(file.meshId);
-      return;
-    }
-    if (fresh.length > 0) this.#gossip.stored(fresh);
+    this.#sync(undefined);
   }
 
   /**
    * A mesh session HostMesh hands over (its sync hook): a member's sync session (sections 5.1 and 9.2), or the session
-   * a join ran on once the join is over (section 4.4). On a join's session the inviter's side, the responder of the
+   * a join ran on once the join is over (section 4.4). It is attached before this host's start sweep or pushes can
+   * dial, so they go over it instead of replacing it. On a join's session the inviter's side, the responder of the
    * pairing (the one that received the joiner's name), waits for the joiner's hello: its first line could otherwise
    * reach a joiner still reading the welcome, whose join lines close 4400 on it. The joiner acks its admission there.
    */
   adopt(secure: SecureLink): void {
-    this.changed();
+    this.#sync(secure);
+  }
+
+  #sync(secure: SecureLink | undefined): void {
+    if (this.#stopped) return;
+    const file = this.#options.mesh.read();
+    if (file === undefined) return secure?.close(4401, "this host is in no mesh");
+    const fresh = file.records.filter((record) => !this.#seen.has(hashOf(record)));
+    for (const record of fresh) this.#seen.add(hashOf(record));
+    const created = this.#gossip === undefined;
+    const gossip = this.#gossip ?? this.#create(file.meshId);
+    this.#gossip = gossip;
+    const joiner = secure !== undefined && this.#attach(gossip, secure);
+    if (created) this.#begin(gossip, file.meshId);
+    else if (fresh.length > 0) gossip.stored(fresh);
+    if (joiner) gossip.ackAdmission();
+  }
+
+  /** Attaches `secure` for its member; true for the joiner's side of a join's session. */
+  #attach(gossip: Gossip, secure: SecureLink): boolean {
     const member = this.#memberOf(secure);
-    const gossip = this.#gossip;
-    if (member === undefined || gossip === undefined) return secure.close(4401, "not a member of this mesh");
-    if (secure.kind === SessionKind.Session) return void gossip.attach(member.signPub, member.signPub, secure);
+    if (member === undefined) {
+      secure.close(4401, "not a member of this mesh");
+      return false;
+    }
+    if (secure.kind === SessionKind.Session) {
+      gossip.attach(member.signPub, member.signPub, secure);
+      return false;
+    }
     const inviter = secure.peerName !== undefined;
     gossip.attach(member.signPub, inviter ? member.signPub : gossip.self, secure, false, inviter);
-    if (!inviter) gossip.ackAdmission();
+    return !inviter;
   }
 
   /** This host's relay uplink closed; it reconnects by itself. */
@@ -94,7 +110,7 @@ export class HostSync {
     this.#gossip?.stop();
   }
 
-  #start(meshId: string): Gossip {
+  #create(meshId: string): Gossip {
     const { identity, mesh, log } = this.#options;
     const clock = this.#clock();
     const random = this.#options.random ?? Math.random;
@@ -114,10 +130,13 @@ export class HostSync {
       },
     });
     holder.gossip = gossip;
+    return gossip;
+  }
+
+  #begin(gossip: Gossip, meshId: string): void {
     gossip.start();
     gossip.uplinkReturned(Number.POSITIVE_INFINITY);
-    log(`mesh: sync started for mesh ${meshId}`);
-    return gossip;
+    this.#options.log(`mesh: sync started for mesh ${meshId}`);
   }
 
   #clock(): Clock {
