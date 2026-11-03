@@ -1,9 +1,12 @@
 import { generateHostIdentity } from "@doriface/crypto";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { inOrder } from "../sequential.ts";
 import type { BackdateShape, Step } from "./backdate-graphs.ts";
 import { StoredSet } from "./honest-records.ts";
 import { identityOf } from "./identity.ts";
 import type { Mesh } from "./mesh.ts";
+import type { MeshHost } from "./mesh-host.ts";
 import type { MeshLib } from "./mesh-lib.ts";
 import { type Actor, actorOf } from "./records.ts";
 import { statusOf, storedRecords, viewOf } from "./status.ts";
@@ -36,13 +39,16 @@ export async function actorsOf(mesh: Mesh, shape: BackdateShape): Promise<Map<st
   return new Map([...hosted, ...minted]);
 }
 
+/** A host that has written no `mesh.json` yet holds no record. */
+const heldBy = (host: MeshHost) => (existsSync(join(host.stateDir, "mesh.json")) ? storedRecords(host) : []);
+
 /** Waits until every running honest host holds the step's record and, for an ack step, the ack itself (5.5). */
 async function untilWritten(run: ShapeRun, step: Step, online: readonly string[]): Promise<void> {
   const keyOf = (key: string): string => run.actors.get(key)?.signPub ?? "";
   const lib = run.lib;
   await run.mesh.until(`${run.shape.id}: ${step.id} on ${online.join(", ")}`, () =>
     online.every((name) => {
-      const set = new StoredSet(storedRecords(run.mesh.host(name)), lib.hashOf);
+      const set = new StoredSet(heldBy(run.mesh.host(name)), lib.hashOf);
       if (step.type !== "ack") return set.find(step, keyOf) !== undefined;
       const after = step.prev.map((id) => run.shape.honest.find((each) => each.id === id));
       return after.every((prior) => {
@@ -84,7 +90,11 @@ export async function setUpShape(mesh: Mesh, lib: MeshLib, shape: BackdateShape)
       await mesh.host(host(shape.revoked)).stop();
       online.delete(shape.revoked);
     }
-    if (step.type === "found") online.add(step.by);
+    // No command founds the mesh: the first admit's `mesh pair --auto` does, and an admit is only stored in a founded mesh.
+    if (step.type === "found") {
+      online.add(step.by);
+      return;
+    }
     if (step.type === "admit" && step.subject !== undefined) {
       await mesh.join(host(step.by), host(step.subject));
       online.add(step.subject);

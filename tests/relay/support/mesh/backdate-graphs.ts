@@ -35,7 +35,7 @@ export interface BackdateShape {
   readonly hosts: Readonly<Record<string, string>>;
   /** What the operators' commands and the hosts' automatic acks write, in order. */
   readonly honest: readonly Step[];
-  /** The backdated records, in causal order. `FORK` in `prev` is the revoked key's last own record. */
+  /** The backdated records, in causal order. `FORK` in `prev` is the honest record `fork` names. */
   readonly attack: readonly Step[];
   /** The key whose stolen secret signs the attack. */
   readonly revoked: string;
