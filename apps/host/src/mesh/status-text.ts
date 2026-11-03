@@ -33,7 +33,7 @@ function memberLine(member: MeshMemberStatus, nameOf: (hostId: string) => string
   if (member.lastSync !== null) parts.push(`last sync ${member.lastSync}`);
   if (member.owed > 0) parts.push(`${member.owed} records owed`);
   if (member.gate !== null)
-    parts.push(`offline 4404 x${member.gate.refusals}, next probe in ${member.gate.nextProbeS} s`);
+    parts.push(`offline 4404 x${member.gate.refusals}, next probe at ${member.gate.nextProbeAt}`);
   const lines = [`  ${member.name} ${member.hostId} ${member.fingerprint}`, `    ${parts.join(", ")}`];
   if (member.witnessPool.length === 0 && member.line !== "self") {
     const ask = member.witnessAsk === null ? "re-found if its key is compromised" : `ask ${nameOf(member.witnessAsk)}`;

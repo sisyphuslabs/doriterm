@@ -66,7 +66,7 @@ const isLineState: Guard<MeshLineState> = oneOf(
   "needs_login",
   "absent",
 );
-const isGate = objectOf<MeshGate>({ kind: oneOf("offline"), refusals: isCount, nextProbeS: isCount });
+const isGate = objectOf<MeshGate>({ kind: oneOf("offline"), refusals: isCount, nextProbeAt: isTime });
 const isMember = objectOf<MeshMemberStatus>({
   hostId: isId,
   name: isName,

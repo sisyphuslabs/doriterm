@@ -58,7 +58,15 @@ describe("mesh status", () => {
   test("carries presence, last sync, owed records and the 4404 gate of each peer", () => {
     expect(memberNamed("build-box")).toMatchObject({ presence: true, lastSync: "2026-11-03T11:58:00.000Z", owed: 0 });
     expect(memberNamed("tablet")).toMatchObject({ owed: 1, gate: null });
-    expect(memberNamed("laptop")?.gate).toEqual({ kind: "offline", refusals: 5, nextProbeS: 240 });
+    expect(memberNamed("laptop")?.gate).toEqual({
+      kind: "offline",
+      refusals: 5,
+      nextProbeAt: "2026-11-03T12:04:00.000Z",
+    });
+  });
+
+  test("a gated member does not change the status from one second to the next", () => {
+    expect(meshStatus(fixture.sources, new Date(NOW.getTime() + 1000))).toEqual(status);
   });
 
   test("offers a prefilled revoke only for a member unreachable for more than 7 days", () => {

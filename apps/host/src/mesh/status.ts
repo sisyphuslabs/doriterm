@@ -56,7 +56,7 @@ function member(sources: MeshSources, names: Names, key: string, now: Date): Mes
     gate:
       peer?.gate === undefined || peer.gate === null
         ? null
-        : { kind: "offline", refusals: peer.gate.refusals, nextProbeS: Math.ceil(peer.gate.nextProbeInMs / 1000) },
+        : { kind: "offline", refusals: peer.gate.refusals, nextProbeAt: peer.gate.nextProbeAt.toISOString() },
     witnessPool: witness.pool.map(names.hostId),
     witnessAsk: witness.ask === null ? null : names.hostId(witness.ask),
     unreachableSince: iso(since),

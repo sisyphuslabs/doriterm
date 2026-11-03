@@ -54,8 +54,8 @@ export interface PeerFacts {
   readonly presence: boolean;
   readonly lastSync: Date | null;
   readonly owed: number;
-  /** Set after a 4404: the 4404s in a row and the time left to the next probe. */
-  readonly gate: { readonly refusals: number; readonly nextProbeInMs: number } | null;
+  /** Set after a 4404: the 4404s in a row and when the next probe is due (the local timer's wall time). */
+  readonly gate: { readonly refusals: number; readonly nextProbeAt: Date } | null;
   readonly unreachableSince: Date | null;
 }
 

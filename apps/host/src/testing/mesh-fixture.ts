@@ -90,7 +90,14 @@ export function meshFixture(now: Date): MeshFixture {
     ],
     peers: new Map<string, PeerFacts>([
       [key("build-box"), { ...idle, presence: true, lastSync: ago(2 * MINUTE) }],
-      [key("laptop"), { ...idle, gate: { refusals: 5, nextProbeInMs: 240_000 }, unreachableSince: ago(9 * DAY) }],
+      [
+        key("laptop"),
+        {
+          ...idle,
+          gate: { refusals: 5, nextProbeAt: new Date(now.getTime() + 4 * MINUTE) },
+          unreachableSince: ago(9 * DAY),
+        },
+      ],
       [key("tablet"), { ...idle, presence: true, lastSync: ago(DAY), owed: 1 }],
     ]),
     lines: new Map([

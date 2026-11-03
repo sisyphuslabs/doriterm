@@ -13,7 +13,7 @@ const member = {
   presence: true,
   lastSync: "2026-11-03T11:58:00.000Z",
   owed: 0,
-  gate: { kind: "offline", refusals: 2, nextProbeS: 60 },
+  gate: { kind: "offline", refusals: 2, nextProbeAt: "2026-11-03T12:01:00.000Z" },
   witnessPool: ["a".repeat(26)],
   witnessAsk: null,
   unreachableSince: null,

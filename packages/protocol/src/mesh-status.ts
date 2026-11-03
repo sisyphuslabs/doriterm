@@ -30,8 +30,11 @@ export type MeshStuckReason =
   | { readonly kind: "log_full"; readonly records: number }
   | { readonly kind: "counter_behind"; readonly file: number; readonly mesh: number };
 
-/** After a 4404 from a member, this host dials it again only on presence or when its probe is due. */
-export type MeshGate = { readonly kind: "offline"; readonly refusals: number; readonly nextProbeS: number };
+/**
+ * After a 4404 from a member, this host dials it again only on presence or when its probe is due. `nextProbeAt` is an
+ * absolute time, display only (design section 8.5), so the document stays the same while the countdown runs.
+ */
+export type MeshGate = { readonly kind: "offline"; readonly refusals: number; readonly nextProbeAt: string };
 
 /** Times are ISO 8601 and display only. Every key is a hostId. */
 export type MeshMemberStatus = {
