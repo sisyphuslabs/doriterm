@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { heapStats } from "bun:jsc";
-import { MAX_MESH_MEMBERS, MAX_RECORDS } from "../src/records/types.ts";
+import { MAX_RECORDS } from "../src/records/types.ts";
 import { Dag } from "../src/view/dag.ts";
 import { ViewCache, viewOfRecords } from "../src/view/engine.ts";
 import { bigMesh } from "./fixtures/big-mesh.ts";
-import { admit, type Draft, found, name, withChainNumbers } from "./fixtures/records.ts";
 
 /** Instances of each class still reachable after a full collection, read from a JSC heap snapshot. */
 function reachable(classes: readonly string[]): Record<string, number> {
@@ -21,23 +19,6 @@ function reachable(classes: readonly string[]): Record<string, number> {
 }
 
 const MERGES = 256;
-
-const heapMb = (): number => {
-  Bun.gc(true);
-  return heapStats().heapSize / 1e6;
-};
-
-/** A full mesh whose every later record is a name: each record's past is a context of its own. */
-function namesOnly(records: number): Draft[] {
-  const drafts: Draft[] = [found("f", "K0")];
-  const last = (): string => drafts.at(-1)?.id ?? "f";
-  for (let i = 1; i < MAX_MESH_MEMBERS; i++) drafts.push(admit(`a${i}`, "K0", `K${i}`, [last()]));
-  while (drafts.length < records) {
-    const k = `K${drafts.length % MAX_MESH_MEMBERS}`;
-    drafts.push(name(`n${drafts.length}`, k, k, [last()], `${k}-${drafts.length}`));
-  }
-  return drafts;
-}
 
 /** Heap a cache may keep for one cold view at the cap: the history and per-record views, not per-context statuses. */
 const NAMES_BUDGET_MB = 96;
@@ -71,14 +52,18 @@ describe("M-14: a ViewCache holds one mesh's history, not one engine per merge",
     expect(viewOfRecords(mesh, cache).members).toEqual(viewOfRecords(mesh).members);
   });
 
-  test(`a cold view of a names-only mesh at the cap keeps under ${NAMES_BUDGET_MB} MB in its cache`, () => {
-    const records = withChainNumbers(namesOnly(MAX_RECORDS));
-    const base = heapMb();
-    const cache = new ViewCache();
-    expect(viewOfRecords(records, cache).members.length).toBe(MAX_MESH_MEMBERS);
-    const held = heapMb() - base;
-    console.log(`names-only mesh at ${records.length}: the cache holds ${held.toFixed(0)} MB`);
-    expect(held).toBeLessThan(NAMES_BUDGET_MB);
-    cache.clear();
+  test(`a cold view of a names-only mesh at the cap keeps under ${NAMES_BUDGET_MB} MB in its cache`, async () => {
+    const child = Bun.spawn([process.execPath, new URL("./fixtures/names-only-heap.ts", import.meta.url).pathname], {
+      stdout: "pipe",
+      stderr: "inherit",
+    });
+    const [text, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+    expect(code).toBe(0);
+    const reading: unknown = JSON.parse(text);
+    if (typeof reading !== "object" || reading === null || !("heldMb" in reading) || typeof reading.heldMb !== "number")
+      throw new Error(`unreadable heap reading: ${text}`);
+    console.log(`names-only mesh at ${MAX_RECORDS}: the cache holds ${reading.heldMb.toFixed(0)} MB`);
+    expect(reading.heldMb).toBeGreaterThan(0);
+    expect(reading.heldMb).toBeLessThan(NAMES_BUDGET_MB);
   }, 120_000);
 });
