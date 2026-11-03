@@ -150,7 +150,7 @@ export function naiveView(records: readonly Rec[]): Lite {
       if (rx.type === "revoke") {
         let key = rx.by;
         let b = before(x);
-        for (let hops = 0; hops < 64; hops++) {
+        for (;;) {
           const g = b.governing.get(key);
           if (g === undefined) return "void";
           if (rec(g).type === "found") break;

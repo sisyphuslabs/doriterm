@@ -26,21 +26,28 @@ export function own(e: Engine, S: ReadonlySet<string>, id: string): Own {
 
 /**
  * A revoke keeps its authority unless an admission on its signer's lineage is invalid or defeated: each hop looks the
- * signer up in the view of the previous admission's own past, up to the found record.
+ * signer up in the view of the previous admission's own past, all the way to the found record. That view is of a
+ * strictly smaller set at every hop, so the walk ends with no bound; each admission's answer is memoized for S, so
+ * the walks of all revokes together visit each admission once.
  */
 function revokeAuthority(e: Engine, S: ReadonlySet<string>, id: string): boolean {
-  let key = e.dag.rec(id).by;
-  let view = e.before(id);
-  for (let hops = 0; hops < 64 && view !== undefined; hops++) {
-    const gov = view.governing.get(key);
-    if (gov === undefined) return false;
-    if (gov === e.dag.found.id) return true;
-    const g = own(e, S, gov);
-    if (g === "invalid" || g === "defeated") return false;
-    key = e.dag.rec(gov).by;
-    view = e.before(gov);
+  const memo = e.cached(S, "authority", () => new Map<string, boolean>());
+  const walked: string[] = [];
+  let gov = e.before(id)?.governing.get(e.dag.rec(id).by);
+  let result: boolean | undefined;
+  while (result === undefined) {
+    if (gov === undefined) result = false;
+    else if (memo.has(gov)) result = memo.get(gov);
+    else if (gov === e.dag.found.id) result = true;
+    else {
+      walked.push(gov);
+      const g = own(e, S, gov);
+      if (g === "invalid" || g === "defeated") result = false;
+      else gov = e.before(gov)?.governing.get(e.dag.rec(gov).by);
+    }
   }
-  return true;
+  for (const g of walked) memo.set(g, result);
+  return result;
 }
 
 /** status(x), with `done` holding the status of every record before x in canonical order (all its ancestors). */
