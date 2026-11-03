@@ -1,7 +1,6 @@
 import {
   base64urlDecode,
   base64urlEncode,
-  DEFAULT_RELAY_URL,
   type HostIdentity,
   rawStaticKey,
   type SecureLink,
@@ -147,10 +146,12 @@ export class HostSync {
     return this.#options.mesh.authorizeIndex()?.member(base64urlEncode(secure.remoteStatic));
   }
 
+  /** Through this host's own relay only: a host that keeps no uplink dials no member rather than a default relay. */
   async #dial(member: MemberEntry): Promise<SecureLink> {
     const { relay, identity } = this.#options;
+    if (relay.url === undefined) throw new Error("this host keeps no relay uplink, so it dials no member");
     const link = await connectRelayClient({
-      relayUrl: relay.url ?? DEFAULT_RELAY_URL,
+      relayUrl: relay.url,
       hostId: member.hostId,
       ...(relay.createSocket === undefined ? {} : { createSocket: relay.createSocket }),
     });

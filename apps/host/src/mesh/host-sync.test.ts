@@ -73,3 +73,34 @@ describe("this host's own uplink returning (section 5.1)", () => {
     sync.stop();
   });
 });
+
+describe("a host that keeps no relay uplink (M-D3)", () => {
+  test("dials no member at all: nothing reaches a relay it was not given", async () => {
+    const [a, b] = [peer("a"), peer("b")];
+    const clock = new FakeClock();
+    const dialed: string[] = [];
+    const logs: string[] = [];
+    const sync = new HostSync({
+      identity: b.machine.identity,
+      mesh: storeOf(b, meshOf([a, b]).records),
+      relay: {
+        url: undefined,
+        createSocket: (url) => {
+          dialed.push(url);
+          throw new Error("no relay here");
+        },
+      },
+      log: (line) => void logs.push(line),
+      clock,
+      random: seededRandom(37),
+    });
+    sync.changed();
+    sync.uplinkDropped();
+    await clock.advance(121_000);
+    sync.uplinkAnswered();
+    await clock.advance(1);
+    expect(dialed).toEqual([]);
+    expect(logs.some((line) => line.includes("no relay"))).toBe(true);
+    sync.stop();
+  });
+});
