@@ -53,28 +53,48 @@ export function meshGroups(status: MeshStatus): MeshGroups {
 export interface Disagreement {
   /** The document names another host than the one this client paired with. */
   readonly otherHost: boolean;
-  /** Members whose line the document and machine.list tell differently. */
+  /** Machines whose line the document and machine.list tell differently. */
   readonly names: readonly string[];
 }
 
+/** The pinned via form of a mesh line (design section 7.2); the hostId it dials is its last word. */
+const MESH_LINE = / connect --mesh --state-dir '(?:[^']|'\\'')*' ([a-z2-7]{26})$/;
+
+/** The member a machine.list entry is the mesh line to, or undefined for any other machine. */
+export const meshLineHostId = (machine: MachineView): string | undefined =>
+  machine.via === true ? MESH_LINE.exec(machine.target)?.[1] : undefined;
+
 /**
- * Any client can overwrite the document, so the panel checks it against what it sees itself (design section 8.6):
- * a member the document calls connected must be connected in machine.list, a revoked one must not be, and the
- * document must be this host's. An offline member may be missing from machine.list: herdr keeps a machine only
- * after its first hello.
+ * Any client can overwrite the document, so the panel checks it against what it sees itself (design section 8.6),
+ * both ways. A member's machine is its mesh line (found by the hostId it dials), else the machine with its local
+ * name. A member the document calls connected must be connected here and one it calls anything else must not be;
+ * a connected mesh line must belong to a member the document lists (a forged omission otherwise); a revoked member's
+ * machine must not be connected. The document must also be this host's. An offline member may be missing from
+ * machine.list: herdr keeps a machine only after its first hello.
  */
 export function disagreement(
   status: MeshStatus,
   machines: readonly MachineView[],
   pairedHostId: string | undefined,
 ): Disagreement | undefined {
-  const state = new Map(machines.map((machine) => [machine.name, machine.state]));
-  const names = [
+  const lines = new Map<string, MachineView>();
+  for (const machine of machines) {
+    const hostId = meshLineHostId(machine);
+    if (hostId !== undefined) lines.set(hostId, machine);
+  }
+  const named = new Map(machines.map((machine) => [machine.name, machine]));
+  const connectedHere = (hostId: string, localName: string): boolean =>
+    (lines.get(hostId) ?? named.get(localName))?.state === "connected";
+  const listed = new Set([status.self, ...status.members.map((m) => m.hostId), ...status.revoked.map((r) => r.hostId)]);
+  const names = new Set([
     ...status.members
-      .filter((m) => m.line === "connected" && state.get(m.localName) !== "connected")
+      .filter((m) => m.line !== "self" && (m.line === "connected") !== connectedHere(m.hostId, m.localName))
       .map((m) => m.name),
-    ...status.revoked.filter((entry) => state.get(entry.name) === "connected").map((entry) => entry.name),
-  ];
+    ...[...lines]
+      .filter(([hostId, machine]) => machine.state === "connected" && !listed.has(hostId))
+      .map(([, machine]) => machine.name),
+    ...status.revoked.filter((entry) => connectedHere(entry.hostId, entry.localName)).map((entry) => entry.name),
+  ]);
   const otherHost = pairedHostId !== undefined && pairedHostId !== "" && pairedHostId !== status.self;
-  return names.length === 0 && !otherHost ? undefined : { otherHost, names };
+  return names.size === 0 && !otherHost ? undefined : { otherHost, names: [...names] };
 }

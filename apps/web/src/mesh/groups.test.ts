@@ -8,15 +8,21 @@ const NOW = new Date("2026-11-03T12:00:00.000Z");
 const fixture = meshFixture(NOW);
 const status = meshStatus(fixture.sources, NOW);
 
-const machine = (name: string, state: string): MachineView => ({
+/** A machine as machine.list shows it: a mesh line (the pinned via form, section 7.2) when a hostId is given. */
+const machine = (name: string, state: string, hostId?: string): MachineView => ({
   name,
   state,
   host: name,
   id: `${name}-id`,
-  target: "doriface-host connect --mesh x",
+  target:
+    hostId === undefined
+      ? "ssh build@10.0.0.2"
+      : `'/opt/doriface/bin/doriface-host' connect --mesh --state-dir '/var/lib/doriface' ${hostId}`,
   version: "0.1.17",
   via: true,
 });
+const { ids } = fixture;
+const without = (name: string): MeshStatus => ({ ...status, members: status.members.filter((m) => m.name !== name) });
 
 const names = (entries: readonly { readonly name: string }[]) => entries.map((entry) => entry.name);
 
@@ -80,6 +86,36 @@ describe("disagreement with machine.list", () => {
   test("a revoked member still connected here", () => {
     const machines = [machine("build-box", "connected"), machine("kiosk", "connected")];
     expect(disagreement(status, machines, undefined)).toEqual({ otherHost: false, names: ["kiosk"] });
+  });
+
+  test("a mesh line connected here for a member the document leaves out (a forged omission)", () => {
+    const machines = [machine("build-box", "connected", ids["build-box"].hostId)];
+    expect(disagreement(without("build-box"), machines, undefined)).toEqual({ otherHost: false, names: ["build-box"] });
+  });
+
+  test("a member the document calls offline whose mesh line is connected here", () => {
+    const machines = [machine("build-box", "connected"), machine("tablet", "connected", ids.tablet.hostId)];
+    expect(disagreement(status, machines, undefined)).toEqual({ otherHost: false, names: ["tablet"] });
+  });
+
+  test("a revoked member is matched by the name its machine has here, and by the hostId its mesh line dials", () => {
+    const renamed: MeshStatus = {
+      ...status,
+      revoked: status.revoked.map((entry) => (entry.name === "kiosk" ? { ...entry, localName: "kiosk-ab12" } : entry)),
+    };
+    const base = [machine("build-box", "connected")];
+    expect(disagreement(renamed, [...base, machine("kiosk-ab12", "connected")], undefined)?.names).toEqual(["kiosk"]);
+    expect(disagreement(renamed, [...base, machine("kiosk", "connected")], undefined)).toBeUndefined();
+    const byLine = [...base, machine("kiosk-other", "connected", ids.kiosk.hostId)];
+    expect(disagreement(renamed, byLine, undefined)?.names).toEqual(["kiosk"]);
+  });
+
+  test("a member the document calls connected is matched to its mesh line by hostId, not by a name", () => {
+    const machines = [
+      machine("build-box-q3zd", "connected", ids["build-box"].hostId),
+      machine("build-box", "unreachable"),
+    ];
+    expect(disagreement(status, machines, undefined)).toBeUndefined();
   });
 
   test("a document written for another host than the one this client paired with", () => {
