@@ -8,18 +8,13 @@ type ClassNameless<T> = Omit<T, "className"> & { readonly className?: string };
 
 export const Tabs = BaseTabs.Root;
 
-/** Fades only the edges that hide tabs, so a label that fits is never under a fade. */
-const MASK = {
-  none: "",
-  start: "[mask-image:linear-gradient(to_right,transparent,black_2.5rem)]",
-  end: "[mask-image:linear-gradient(to_left,transparent,black_2.5rem)]",
-  both: "[mask-image:linear-gradient(to_right,transparent,black_2.5rem,black_calc(100%-2.5rem),transparent)]",
-} as const;
-
 /**
  * A pointer cue that more tabs lie past an edge, and a way to reach them; keyboard users move between tabs with the
- * arrow keys, which scroll the focused tab into view, so the cue stays out of the tab order.
+ * arrow keys, which scroll the focused tab into view, so the cue stays out of the tab order. It sits beside the
+ * scrolling list, not over it, so no tab label is ever under it.
  */
+const CUE_SLOT = "flex w-8 shrink-0 items-center justify-center border-b border-border";
+
 function EdgeCue({ side, onPage }: { readonly side: "start" | "end"; readonly onPage: () => void }) {
   const Icon = side === "start" ? ChevronLeft : ChevronRight;
   return (
@@ -29,10 +24,7 @@ function EdgeCue({ side, onPage }: { readonly side: "start" | "end"; readonly on
       aria-hidden
       data-tab-edge={side}
       onClick={onPage}
-      className={cn(
-        "absolute top-0 bottom-px z-10 flex w-8 items-center justify-center bg-background text-muted-foreground hover:text-foreground",
-        side === "start" ? "left-0" : "right-0",
-      )}
+      className={cn(CUE_SLOT, "text-muted-foreground hover:text-foreground")}
     >
       <Icon className="size-4" />
     </button>
@@ -46,20 +38,24 @@ export function TabList({ className, ...props }: ClassNameless<ComponentProps<ty
     const element = list.current;
     if (element !== null) element.scrollBy({ left: direction * element.clientWidth * 0.8, behavior: "smooth" });
   };
-  const mask = edges.start && edges.end ? "both" : edges.start ? "start" : edges.end ? "end" : "none";
+  const overflow = edges.start && edges.end ? "both" : edges.start ? "start" : edges.end ? "end" : "none";
   return (
-    <div className="relative" data-tab-overflow={mask}>
+    // While the strip overflows both slots stay, so a cue that comes or goes never changes the list's width.
+    <div className="flex" data-tab-overflow={overflow}>
+      {edges.start ? (
+        <EdgeCue side="start" onPage={page(-1)} />
+      ) : overflow === "none" ? null : (
+        <span className={CUE_SLOT} />
+      )}
       <BaseTabs.List
         {...props}
         ref={list}
         className={cn(
-          "flex snap-x snap-proximity items-center gap-1 overflow-x-auto border-b border-border [scrollbar-width:none]",
-          MASK[mask],
+          "flex min-w-0 flex-1 snap-x snap-proximity items-center gap-1 overflow-x-auto border-b border-border [scrollbar-width:none]",
           className,
         )}
       />
-      {edges.start ? <EdgeCue side="start" onPage={page(-1)} /> : null}
-      {edges.end ? <EdgeCue side="end" onPage={page(1)} /> : null}
+      {edges.end ? <EdgeCue side="end" onPage={page(1)} /> : overflow === "none" ? null : <span className={CUE_SLOT} />}
     </div>
   );
 }

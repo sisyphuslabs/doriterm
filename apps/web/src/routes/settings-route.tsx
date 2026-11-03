@@ -47,7 +47,7 @@ export function SettingsRoute() {
           {back}
           <h1 className="text-xl font-semibold text-foreground">Settings</h1>
         </div>
-        <TabList className="px-2">
+        <TabList className="scroll-px-2 px-2">
           {SECTIONS.map((entry) => (
             <Tab key={entry.id} value={entry.id}>
               {entry.label}
