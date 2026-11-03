@@ -57,7 +57,6 @@ export class Gossip implements SyncHost {
   readonly #known = new MemberBook();
   readonly #revokedLast: RevokedLast;
   #view: MeshView;
-  /** The highest `n` of this host's own key any peer's hello named (section 10.1). */
   #stopNet: () => void = () => undefined;
 
   constructor(options: GossipOptions) {
@@ -154,14 +153,6 @@ export class Gossip implements SyncHost {
       this.#options.log(`mesh: merged ${result.added.length} records from ${this.#known.nameOf(session.peer)}`);
       this.#changed(result, session.sweeping);
     }
-    return result;
-  }
-
-  /** Resolves when a merge brings an ack signed by another member. */
-  /** Records this host produced itself outside sync (the join's admit, section 4.4): stored, then owed to all. */
-  local(batch: readonly Signed[]): MergeResult {
-    const result = mergeBatch(this.#options, batch);
-    if (result.added.length > 0) this.#changed(result, true);
     return result;
   }
 

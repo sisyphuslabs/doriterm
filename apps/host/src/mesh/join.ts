@@ -6,17 +6,7 @@ import {
   hostIdOf,
   PAIRING_TTL_MS,
 } from "@doriface/crypto";
-import {
-  door,
-  hashOf,
-  MAX_BODY_BYTES,
-  MAX_RECORDS,
-  meshIdOf,
-  parseRecord,
-  type Signed,
-  signCard,
-  viewOf,
-} from "@doriface/mesh";
+import { door, hashOf, MAX_RECORDS, meshIdOf, parseRecord, type Signed, signCard, viewOf } from "@doriface/mesh";
 import { cardBody, type MeshStore, type OwnCard } from "../state/mesh.ts";
 import { byDeadline, JoinRefused } from "./invite.ts";
 import type { MeshLine, MeshLines } from "./lines.ts";
@@ -37,22 +27,12 @@ export const JOIN_DEADLINE_MS = PAIRING_TTL_MS + 60_000;
 
 type Offer = Extract<MeshLine, { t: "offer" }>;
 
-/** An Ed25519 signature in base64url without padding: 64 bytes are 86 characters. */
-const SIGNATURE_CHARS = 86;
-/** The most a welcome can carry: every record of a full set at the door's body cap, with its signature (8.3 MiB). */
-const MAX_WELCOME_BYTES = MAX_RECORDS * (MAX_BODY_BYTES + SIGNATURE_CHARS);
-const encoder = new TextEncoder();
-const bytesOf = (records: readonly Signed[]): number =>
-  records.reduce(
-    (sum, record) => sum + encoder.encode(record.body).byteLength + encoder.encode(record.sig).byteLength,
-    0,
-  );
-
 /**
  * Reads `records` lines until `done`, then expects nothing more; a `refused` line ends the join with the inviter's
- * reason, and more records, or more bytes, than a mesh may hold close the session with 4400.
+ * reason, and more records than a mesh may hold close the session with 4400. The bytes are bounded by the parser:
+ * every record it admits is at most 2048 bytes of body and 86 characters of signature.
  */
-async function welcome(lines: MeshLines, records: Signed[] = [], bytes = 0): Promise<readonly Signed[]> {
+async function welcome(lines: MeshLines, records: Signed[] = []): Promise<readonly Signed[]> {
   const line = await lines.next();
   if (line.t === "done") {
     lines.expect();
@@ -61,10 +41,8 @@ async function welcome(lines: MeshLines, records: Signed[] = [], bytes = 0): Pro
   if (line.t === "refused") throw new JoinRefused(`the inviting member refused: ${line.reason}`);
   if (line.t !== "records") throw new JoinRefused(`unexpected ${line.t} line in the welcome`);
   records.push(...line.records);
-  const total = bytes + bytesOf(line.records);
   if (records.length > MAX_RECORDS) return tooLarge(lines, "the welcome holds more records than a mesh may");
-  if (total > MAX_WELCOME_BYTES) return tooLarge(lines, "the welcome is larger than a mesh may be");
-  return welcome(lines, records, total);
+  return welcome(lines, records);
 }
 
 function tooLarge(lines: MeshLines, reason: string): never {

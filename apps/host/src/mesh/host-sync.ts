@@ -132,8 +132,10 @@ export class HostSync {
     return gossip;
   }
 
+  /** Starts sync; a member that has signed nothing yet (a joiner whose kept session did not survive) acks first. */
   #begin(gossip: Gossip, meshId: string): void {
     gossip.start();
+    gossip.ackAdmission();
     gossip.uplinkReturned(Number.POSITIVE_INFINITY);
     this.#options.log(`mesh: sync started for mesh ${meshId}`);
   }

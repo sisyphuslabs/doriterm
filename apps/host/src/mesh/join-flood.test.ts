@@ -71,7 +71,7 @@ describe("section 10.2: a known line the join cannot consume closes the session 
   });
 });
 
-describe("the welcome a joiner reads is bounded in bytes", () => {
+describe("a welcome record over the record limits is refused as it is parsed", () => {
   test("a welcome record over a record's 2048-byte body closes the joiner's session with 4400 before done", async () => {
     const [a, b] = [side("alpha"), side("beta")];
     const [inviterEnd, joinerEnd] = memoryLinkPair();
