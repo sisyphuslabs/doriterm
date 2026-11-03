@@ -7,6 +7,7 @@ import { recordsOf } from "../src/view/rec-of.ts";
 import { ack, admit, found, withChainNumbers } from "./fixtures/records.ts";
 import type { Scenario } from "./fixtures/scenario.ts";
 import { cardScenarios } from "./fixtures/scenarios-cards.ts";
+import { colluderScenarios } from "./fixtures/scenarios-colluders.ts";
 import { conflictScenarios } from "./fixtures/scenarios-conflict.ts";
 import { reviewerScenarios } from "./fixtures/scenarios-reviewer.ts";
 import { selfForkScenarios } from "./fixtures/scenarios-self-fork.ts";
@@ -79,7 +80,13 @@ function throughTheDoor(s: Scenario): void {
   expectOracle(recordsOf(stored) ?? [], [...v.members], [...v.revoked], v.eff);
 }
 
-const rows: readonly Scenario[] = [...reviewerScenarios, ...conflictScenarios, ...cardScenarios, ...selfForkScenarios];
+const rows: readonly Scenario[] = [
+  ...reviewerScenarios,
+  ...conflictScenarios,
+  ...colluderScenarios,
+  ...cardScenarios,
+  ...selfForkScenarios,
+];
 
 describe("M-5: the reviewer's R1-R5b, the adversarial A1-A21 and the merged self-fork under R3", () => {
   for (const s of rows) {
