@@ -60,10 +60,7 @@ export type MeshMemberStatus = {
   readonly localName: string | null;
   /** The member's Noise key fingerprint, as `fingerprint` prints it; null only over the cap, as for `name`. */
   readonly fingerprint: string | null;
-  /**
-   * The member that admitted it; null for the founder (whose governing admission is its own found record), and over
-   * the cap when the view gives no lineage.
-   */
+  /** The member that admitted it, over the cap too; null for the founder, whose governing admission is its own found record. */
   readonly admittedBy: string | null;
   readonly overCap: boolean;
   readonly line: MeshLineState;

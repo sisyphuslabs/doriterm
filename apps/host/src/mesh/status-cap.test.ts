@@ -100,13 +100,18 @@ async function statusText(answer: unknown): Promise<{ code: number; text: string
 }
 
 describe("mesh status of a mesh past the 12-member cap, from PR 2's viewOf", () => {
-  test("lists the over-cap key last, with no name, key or lineage the view does not give it", () => {
+  test("lists the over-cap key last with its lineage, and no name or key the view does not give it", () => {
     expect([view.members.size, [...view.overCap]]).toEqual([MAX_MESH_MEMBERS, [over === undefined ? "" : keyOf(over)]]);
     const status = meshStatus(sources, NOW);
     expect(status.members.map((member) => [member.hostId, member.overCap])).toEqual(
       ids.map((id, at) => [id.hostId, at === MAX_MESH_MEMBERS]),
     );
-    expect(status.members.at(-1)).toMatchObject({ name: null, localName: null, fingerprint: null, admittedBy: null });
+    expect(status.members.at(-1)).toMatchObject({
+      name: null,
+      localName: null,
+      fingerprint: null,
+      admittedBy: founder.hostId,
+    });
     expect(status.members[0]).toMatchObject({ hostId: founder.hostId, name: "box-01", line: "self", admittedBy: null });
     expect(status.members[1]?.admittedBy).toBe(founder.hostId);
     expect(status.members.slice(0, MAX_MESH_MEMBERS).map((member) => member.name)).toEqual(
@@ -114,7 +119,7 @@ describe("mesh status of a mesh past the 12-member cap, from PR 2's viewOf", () 
     );
   });
 
-  test("mesh status prints the founder as the founder, and the over-cap member by its hostId, over the cap", async () => {
+  test("mesh status prints the founder as the founder, and the over-cap member by its hostId with its admitter", async () => {
     const { code, text } = await statusText(meshStatus(sources, NOW));
     expect(code).toBe(0);
     const lines = text.split("\n");
@@ -122,6 +127,6 @@ describe("mesh status of a mesh past the 12-member cap, from PR 2's viewOf", () 
     expect(lines[self + 1]).toBe("    this host, founder");
     const at = lines.indexOf(`  ${over?.hostId}`);
     expect(at).toBeGreaterThan(0);
-    expect(lines[at + 1]).toBe("    absent, over the 12-member cap");
+    expect(lines[at + 1]).toBe("    absent, admitted by box-01, over the 12-member cap");
   });
 });
