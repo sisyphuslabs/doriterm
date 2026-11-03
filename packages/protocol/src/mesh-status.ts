@@ -94,6 +94,8 @@ export type MeshMemberStatus = {
 export type MeshRevokedStatus = {
   readonly hostId: string;
   readonly name: string;
+  /** The name its machine had on this core (after a fallback it differs), which machine.list shows. */
+  readonly localName: string;
   readonly fingerprint: string;
   readonly revokedBy: readonly string[];
   readonly reason: "revoke" | "compromised" | "leave";

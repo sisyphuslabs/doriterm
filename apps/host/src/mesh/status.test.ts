@@ -148,6 +148,14 @@ describe("mesh status", () => {
     expect(memberNamed("tablet")).toMatchObject({ witnessPool: [ids["build-box"].hostId], witnessAsk: null });
   });
 
+  test("a revoked member carries the name it had on this core, to match machine.list by", () => {
+    const renamed = meshStatus(withLocal({ localNames: new Map([[fixture.keys.kiosk, "kiosk-ab12"]]) }), NOW);
+    expect(renamed.revoked.map((entry) => [entry.name, entry.localName])).toEqual([
+      ["kiosk", "kiosk-ab12"],
+      ["spare", "spare"],
+    ]);
+  });
+
   test("shows revoked members with who revoked them, and the members an undecidable revoke removed", () => {
     expect(status.revoked.map((entry) => [entry.name, entry.reason, entry.revokedBy])).toEqual([
       ["kiosk", "compromised", [ids.studio.hostId]],

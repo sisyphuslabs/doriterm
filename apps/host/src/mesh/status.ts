@@ -79,6 +79,7 @@ function revokedOf(sources: MeshSources, names: Names): MeshRevokedStatus[] {
       {
         hostId: names.hostId(key),
         name: fact.name,
+        localName: sources.local.localNames.get(key) ?? fact.name,
         fingerprint: fingerprintOfKey(fact.noisePub),
         revokedBy: fact.by.map(names.hostId),
         reason: fact.reason,

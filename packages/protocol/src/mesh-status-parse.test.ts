@@ -58,6 +58,7 @@ const status: MeshStatus = {
     {
       hostId: "k".repeat(26),
       name: "kiosk",
+      localName: "kiosk",
       fingerprint: member.fingerprint,
       revokedBy: [],
       reason: "compromised",

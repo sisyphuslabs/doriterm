@@ -99,6 +99,7 @@ const isMember = objectOf<MeshMemberStatus>({
 const isRevoked = objectOf<MeshRevokedStatus>({
   hostId: isId,
   name: isName,
+  localName: isName,
   fingerprint: isFingerprint,
   revokedBy: listOf(isId),
   reason: oneOf("revoke", "compromised", "leave"),
