@@ -47,6 +47,8 @@ export class Gossip implements SyncHost {
   readonly #holdBack = new Map<string, () => void>();
   readonly #ackWaiters = new Set<() => void>();
   #view: MeshView;
+  /** The highest `n` of this host's own key any peer's hello named (section 10.1). */
+  #counterFloor = 0;
   #stopNet: () => void = () => undefined;
 
   constructor(options: GossipOptions) {
@@ -103,9 +105,12 @@ export class Gossip implements SyncHost {
   }
 
   merge(session: SyncSession, batch: readonly MeshRecord[]): MergeResult {
-    const result = mergeBatch(this.#options, batch);
+    const result = mergeBatch(this.#deps(), batch);
     for (const refusal of result.refused) {
       this.#options.log(`mesh: refused record ${refusal.hash} from ${this.#nameOf(session.peer)}: ${refusal.reason}`);
+    }
+    if (result.counterBehind) {
+      this.#options.log(`mesh: counter behind its records (mesh ${this.#counterFloor}): syncing before signing`);
     }
     if (result.added.length > 0) this.#changed(result, session.sweeping);
     return result;
@@ -120,20 +125,21 @@ export class Gossip implements SyncHost {
 
   /** Records this host produced itself outside sync (the join's admit, section 4.4): stored, then owed to all. */
   local(batch: readonly MeshRecord[]): MergeResult {
-    const result = mergeBatch(this.#options, batch);
+    const result = mergeBatch(this.#deps(), batch);
     if (result.added.length > 0) this.#changed(result, true);
     return result;
   }
 
   /** Signs and pushes one record of this host's own (a revoke, a leave). */
   append(draft: (prev: readonly string[]) => RecordDraft): MergeResult {
-    const result = appendOwn(this.#options, draft);
+    const result = appendOwn(this.#deps(), draft);
     this.#changed(result, true);
     return result;
   }
 
-  heard(peer: string, heads: readonly string[]): void {
+  heard(peer: string, heads: readonly string[], n: Readonly<Record<string, number>>): void {
     this.#confirmed.set(peer, heads);
+    this.#counterFloor = Math.max(this.#counterFloor, n[this.#options.self.signPub] ?? 0);
   }
 
   ended(session: SyncSession): void {
@@ -264,6 +270,10 @@ export class Gossip implements SyncHost {
       void this.#sweep(oldest.slice(0, 1));
       this.#armSafetyNet();
     });
+  }
+
+  #deps(): GossipOptions {
+    return { ...this.#options, counterFloor: this.#counterFloor };
   }
 
   #members(): readonly MeshMember[] {

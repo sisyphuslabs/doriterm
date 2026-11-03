@@ -8,6 +8,8 @@ import type { MeshRecord } from "./upstream.ts";
 const junk = (from: number, count: number): readonly MeshRecord[] =>
   Array.from({ length: count }, (_, i) => ({ body: `{"junk":${from + i}}`, sig: "x" }));
 
+const heads = (from: number): readonly string[] => Array.from({ length: 1024 }, (_, i) => `head-${from + i}`);
+
 const recordsIn = (messages: readonly MeshMessage[]): readonly string[] =>
   messages.flatMap((message) => (message.t === "records" ? message.records.map(hashOfRecord) : []));
 
@@ -24,7 +26,6 @@ describe("what one sync session holds for a peer is bounded (abuse, section 5.2)
 
   test("a peer claiming more than 4096 distinct heads is closed 4400", () => {
     const peer = sessionAtB();
-    const heads = (from: number): readonly string[] => Array.from({ length: 1024 }, (_, i) => `head-${from + i}`);
     for (let line = 0; line < 4; line++) peer.receive({ t: "hello", v: 2, mesh: MESH_ID, heads: heads(0), n: {} });
     for (let line = 0; line < 4; line++) {
       peer.receive({ t: "hello", v: 2, mesh: MESH_ID, heads: heads(line * 1024), n: {} });

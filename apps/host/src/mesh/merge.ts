@@ -7,6 +7,11 @@ export const MAX_RECORDS = 4096;
 /** Section 5.2: a record names at most 64 heads; more are first merged by `ack` records. */
 export const MAX_PREV = 64;
 
+/** A peer holds a later record of this host's own than this host does: a restore from an older backup (10.1). */
+export class CounterBehindError extends Error {
+  override readonly name = "CounterBehindError";
+}
+
 export interface Refusal {
   readonly hash: string;
   readonly reason: string;
@@ -20,6 +25,8 @@ export interface MergeResult {
   readonly wanted: readonly string[];
   /** The ack this merge wrote (section 5.5), if any. */
   readonly ack: MeshRecord | undefined;
+  /** This host's counter is behind a peer's `hello.n`, so it signed nothing (section 10.1). */
+  readonly counterBehind: boolean;
   readonly view: MeshView;
 }
 
@@ -27,6 +34,8 @@ export interface MergeDeps {
   readonly file: MeshFile;
   readonly rules: MeshRules;
   readonly signer: MeshSigner;
+  /** The highest `n` of this host's key in any peer's `hello`: below it, this host signs nothing (section 10.1). */
+  readonly counterFloor?: number;
 }
 
 const MEMBERSHIP = new Set(["admit", "revoke", "rekey"]);
@@ -77,6 +86,18 @@ function admit(deps: MergeDeps, pending: Pending, incoming: readonly MeshRecord[
 
 const hasRoom = (pending: Pending): boolean => pending.records.length < MAX_RECORDS;
 
+/** The highest `n` of this host's own records in the set, when that is below the floor a peer reported. */
+function behindBy(deps: MergeDeps, records: readonly MeshRecord[]): number | undefined {
+  const floor = deps.counterFloor ?? 0;
+  const self = deps.signer.signPub;
+  let own = 0;
+  for (const record of records) {
+    const header = deps.rules.headerOf(record);
+    if (header.by === self) own = Math.max(own, header.n);
+  }
+  return own < floor ? own : undefined;
+}
+
 /** Writes acks until every head fits in one `prev`, then returns the heads; undefined when the log fills first. */
 function fitHeads(deps: MergeDeps, pending: Pending): readonly string[] | undefined {
   let heads = deps.rules.headsOf(pending.records);
@@ -116,7 +137,9 @@ export function mergeBatch(deps: MergeDeps, batch: readonly MeshRecord[]): Merge
     admit(deps, pending, batch);
     let view = deps.rules.viewOf(pending.records);
     let ack: MeshRecord | undefined;
-    const prev = needsAck(deps, pending.added, view) ? fitHeads(deps, pending) : undefined;
+    const counterBehind = behindBy(deps, pending.records) !== undefined;
+    const acks = needsAck(deps, pending.added, view) && !counterBehind;
+    const prev = acks ? fitHeads(deps, pending) : undefined;
     if (prev !== undefined) {
       ack = deps.signer.sign({ type: "ack", prev });
       pending.records.push(ack);
@@ -129,6 +152,7 @@ export function mergeBatch(deps: MergeDeps, batch: readonly MeshRecord[]): Merge
       refused: pending.refused,
       wanted: [...pending.wanted],
       ack,
+      counterBehind,
       view,
     };
     return { state: next, result };
@@ -141,6 +165,11 @@ export function appendOwn(
   draft: (prev: readonly string[]) => Parameters<MeshSigner["sign"]>[0],
 ): MergeResult {
   return deps.file.transact((state: MeshState) => {
+    const own = behindBy(deps, state.records);
+    if (own !== undefined) {
+      const floor = deps.counterFloor ?? 0;
+      throw new CounterBehindError(`counter behind its records (mesh ${floor}, here ${own}): syncing before signing`);
+    }
     const pending: Pending = {
       records: [...state.records],
       dangling: new Map(),
@@ -154,7 +183,14 @@ export function appendOwn(
     pending.records.push(record);
     pending.added.push(record);
     const view = deps.rules.viewOf(pending.records);
-    const result: MergeResult = { added: pending.added, refused: [], wanted: [], ack: undefined, view };
+    const result: MergeResult = {
+      added: pending.added,
+      refused: [],
+      wanted: [],
+      ack: undefined,
+      counterBehind: false,
+      view,
+    };
     return { state: { records: pending.records, dangling: state.dangling }, result };
   });
 }

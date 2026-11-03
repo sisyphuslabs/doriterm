@@ -12,8 +12,8 @@ export interface SyncHost {
   readonly rules: MeshRules;
   records(): readonly MeshRecord[];
   merge(session: SyncSession, batch: readonly MeshRecord[]): MergeResult;
-  /** The peer said which heads it holds (its `hello`). */
-  heard(peer: string, heads: readonly string[]): void;
+  /** The peer said which heads it holds, and the highest `n` it holds of each signer (its `hello`). */
+  heard(peer: string, heads: readonly string[], n: Readonly<Record<string, number>>): void;
   ended(session: SyncSession): void;
 }
 
@@ -115,7 +115,7 @@ export class SyncSession {
           return;
         }
         for (const head of message.heads) this.#peerHeads.add(head);
-        this.#host.heard(this.peer, message.heads);
+        this.#host.heard(this.peer, message.heads, message.n);
         this.flush();
         return;
       case "records":
