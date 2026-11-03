@@ -42,11 +42,17 @@ describe("machines follow the mesh by themselves (goal 1 and 2, R-13)", () => {
       log: () => undefined,
     });
     const holder: { driver?: MeshDriver } = {};
-    const hostA = net.add(a.member, base, (view) => void holder.driver?.viewChanged(view));
+    const hostA = net.add(
+      a.member,
+      base,
+      (view) => void holder.driver?.viewChanged(view),
+      (member, reason) => void holder.driver?.due(member, reason),
+    );
     const lines = new MeshLines({ view: () => hostA.gossip.view, policy: hostA.policy, dial: recordLink });
     local.serve(lines);
-    holder.driver = new MeshDriver({ reconciler, lines, view: hostA.gossip.view });
+    holder.driver = new MeshDriver({ reconciler, lines, policy: hostA.policy, view: hostA.gossip.view });
     const hostB = net.add(b.member, base);
+    net.add(e.member, base);
     await holder.driver.start();
     const names = async (): Promise<readonly string[]> =>
       (await a.control.machines.list())
