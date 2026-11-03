@@ -30,8 +30,9 @@ function memberLine(member: MeshMemberStatus, nameOf: (hostId: string) => string
       : member.lineReason === null
         ? member.line
         : `${member.line}: ${member.lineReason}`,
-    member.admittedBy === null ? "founder" : `admitted by ${nameOf(member.admittedBy)}`,
   ];
+  if (member.admittedBy !== null) parts.push(`admitted by ${nameOf(member.admittedBy)}`);
+  else if (!member.overCap) parts.push("founder");
   if (member.overCap) parts.push("over the 12-member cap");
   if (member.presence) parts.push("present");
   if (member.lastSync !== null) parts.push(`last sync ${member.lastSync}`);
@@ -39,21 +40,22 @@ function memberLine(member: MeshMemberStatus, nameOf: (hostId: string) => string
   if (member.gate !== null)
     parts.push(`offline 4404 x${member.gate.refusals}, next probe at ${member.gate.nextProbeAt}`);
   if (member.helloCoreId !== null) parts.push(`line hello from core ${member.helloCoreId}`);
-  const lines = [`  ${member.name} ${member.hostId} ${member.fingerprint}`, `    ${parts.join(", ")}`];
+  const title = [member.name, member.hostId, member.fingerprint].filter((part) => part !== null).join(" ");
+  const lines = [`  ${title}`, `    ${parts.join(", ")}`];
   if (member.replacedMachine !== null) {
     lines.push(`    replaced machine "${member.replacedMachine}" (doriface-host connect) with the mesh line`);
   }
   if (member.witnessPool.length === 0 && member.line !== "self") {
     const ask = member.witnessAsk === null ? "re-found if its key is compromised" : `ask ${nameOf(member.witnessAsk)}`;
-    lines.push(`    revoke of ${member.name} would be undecidable from here; ${ask}`);
+    lines.push(`    revoke of ${member.name ?? member.hostId} would be undecidable from here; ${ask}`);
   }
-  const revoke = member.revokeSuggested ? meshRevokeCommand(member.name) : undefined;
+  const revoke = member.revokeSuggested && member.name !== null ? meshRevokeCommand(member.name) : undefined;
   if (revoke !== undefined) lines.push(`    unreachable since ${member.unreachableSince}; to remove it: ${revoke}`);
   return lines.join("\n");
 }
 
 export function formatMeshStatus(status: MeshStatus): string {
-  const names = new Map(status.members.map((member) => [member.hostId, member.name]));
+  const names = new Map(status.members.map((member) => [member.hostId, member.name ?? member.hostId]));
   for (const revoked of status.revoked) names.set(revoked.hostId, revoked.name);
   const nameOf = (hostId: string): string => names.get(hostId) ?? hostId;
   const out = [`mesh ${status.meshId}, ${status.members.length} members`];

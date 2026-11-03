@@ -54,13 +54,13 @@ export type MeshGate = { readonly kind: "offline"; readonly refusals: number; re
 /** Times are ISO 8601 and display only. Every key is a hostId. */
 export type MeshMemberStatus = {
   readonly hostId: string;
-  /** The mesh name in the view. */
-  readonly name: string;
-  /** The name this host's core gives the machine, which differs after a name fallback. */
-  readonly localName: string;
-  /** The member's Noise key fingerprint, as `fingerprint` prints it. */
-  readonly fingerprint: string;
-  /** The member that admitted it; null for the founder. */
+  /** The mesh name in the view; null only over the cap, since the view names its first 12 members only. */
+  readonly name: string | null;
+  /** The name this host's core gives the machine, which differs after a name fallback; null only over the cap. */
+  readonly localName: string | null;
+  /** The member's Noise key fingerprint, as `fingerprint` prints it; null only over the cap, as for `name`. */
+  readonly fingerprint: string | null;
+  /** The member that admitted it; null for the founder, and over the cap when the view gives no lineage. */
   readonly admittedBy: string | null;
   readonly overCap: boolean;
   readonly line: MeshLineState;

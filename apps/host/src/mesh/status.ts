@@ -35,7 +35,12 @@ function namesOf(sources: MeshSources): Names {
 function member(sources: MeshSources, names: Names, key: string, now: Date): MeshMemberStatus {
   const { view, local } = sources;
   const hostId = names.hostId(key);
-  const name = names.name(key);
+  const overCap = view.overCap.has(key);
+  const name = view.name.get(key);
+  const noise = view.noise.get(key);
+  if (!overCap && (name === undefined || noise === undefined)) {
+    throw new Error(`mesh status: the view has no Noise key or name for member ${hostId}`);
+  }
   const self = key === local.self;
   const peer = self ? undefined : sources.peers.get(key);
   const line = self ? undefined : sources.lines.get(key);
@@ -43,15 +48,13 @@ function member(sources: MeshSources, names: Names, key: string, now: Date): Mes
   const stale = since !== null && now.getTime() - since.getTime() > UNREACHABLE_REVOKE_MS;
   const admitter = view.admitter.get(key);
   const witness = self ? { pool: [], ask: null } : sources.witnessPool(key);
-  const noise = view.noise.get(key);
-  if (noise === undefined) throw new Error(`mesh status: the view has no Noise key for member ${hostId}`);
   return {
     hostId,
-    name,
-    localName: local.localNames.get(key) ?? name,
-    fingerprint: fingerprintOfKey(noise),
+    name: name ?? null,
+    localName: local.localNames.get(key) ?? name ?? null,
+    fingerprint: noise === undefined ? null : fingerprintOfKey(noise),
     admittedBy: admitter === undefined ? null : names.hostId(admitter),
-    overCap: view.overCap.includes(key),
+    overCap,
     line: self ? "self" : (line?.state ?? "absent"),
     lineReason: line !== undefined && MESH_LINE_STATES_WITH_REASON.includes(line.state) ? line.reason : null,
     helloCoreId: line?.helloCoreId ?? null,
@@ -71,7 +74,7 @@ function member(sources: MeshSources, names: Names, key: string, now: Date): Mes
 }
 
 function revokedOf(sources: MeshSources, names: Names): MeshRevokedStatus[] {
-  return sources.view.revoked.flatMap((key) => {
+  return [...sources.view.revoked].flatMap((key) => {
     const fact = sources.revocations.get(key);
     if (fact === undefined)
       throw new Error(`mesh status: the view revokes ${names.hostId(key)} but has no revoke record`);
@@ -98,7 +101,7 @@ function removedOf(sources: MeshSources, names: Names): MeshRemovedStatus[] {
 }
 
 function noticesOf(sources: MeshSources, names: Names, now: Date): MeshNotice[] {
-  return sources.view.members.flatMap((key) => {
+  return [...sources.view.members].flatMap((key) => {
     const seen = sources.local.noticed.get(key);
     const admitter = sources.view.admitter.get(key);
     const noise = sources.view.noise.get(key);

@@ -50,9 +50,9 @@ export function meshFixture(now: Date): MeshFixture {
   const ago = (ms: number): Date => new Date(now.getTime() - ms);
   const sources: MeshSources = {
     view: {
-      members: members.map(key),
-      overCap: [],
-      revoked: [key("kiosk"), key("spare")],
+      members: new Set(members.map(key)),
+      overCap: new Set(),
+      revoked: new Set([key("kiosk"), key("spare")]),
       noise: new Map(members.map((name) => [key(name), noise(name)])),
       admitter: new Map([
         [key("build-box"), key("studio")],

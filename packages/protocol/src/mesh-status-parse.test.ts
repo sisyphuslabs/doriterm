@@ -118,6 +118,15 @@ const nestedRows = objectPaths(status).flatMap((path) =>
   Object.keys(nodeAt(status, path)).map((key) => [`${path.join(".")}.${key}`, path, key] as const),
 );
 
+const overCapMember = {
+  ...member,
+  hostId: "o".repeat(26),
+  name: null,
+  localName: null,
+  fingerprint: null,
+  overCap: true,
+} as const;
+
 const memberAt = (index: number, patch: Record<string, unknown>): unknown => ({
   ...status,
   members: status.members.map((entry, at) => (at === index ? { ...entry, ...patch } : entry)),
@@ -151,6 +160,16 @@ describe("parseMeshStatus", () => {
 
   test.each(nestedRows)("refuses a document without %s", (_, path, key) => {
     expect(parseMeshStatus(withoutNested(path, key))).toBeUndefined();
+  });
+
+
+  test("reads back an over-cap member the view gives no name, key or lineage", () => {
+    const withOverCap = { ...status, members: [...status.members, overCapMember] };
+    expect(parseMeshStatus(JSON.parse(JSON.stringify(withOverCap)))).toEqual(withOverCap);
+  });
+
+  test.each(["name", "localName", "fingerprint"])("refuses a member within the cap without its %s", (key) => {
+    expect(parseMeshStatus(memberAt(1, { [key]: null }))).toBeUndefined();
   });
 
   test.each([

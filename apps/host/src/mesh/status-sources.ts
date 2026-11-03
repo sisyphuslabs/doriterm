@@ -1,3 +1,4 @@
+import type { View } from "@doriface/mesh";
 import type { MeshLineState, MeshLineStuck } from "@doriface/protocol";
 
 // What `mesh status` reads, one snapshot per call. Every key is a signing public key (base64url).
@@ -22,20 +23,10 @@ export interface FailClosedFact {
 }
 
 /**
- * The part of PR 2's `View` (`viewOf`: members, overCap, revoked, noise, admitter, name, eff) that status reads,
- * field for field, so a View is a ViewFacts and this type is deleted once PR 2 lands.
+ * The part of PR 2's `View` that status reads. `noise`, `admitter` and `name` cover the 12 members only: an over-cap
+ * key (section 3.5) has none of them, and the founder has no admitter.
  */
-export interface ViewFacts {
-  /** In member order. Over-cap keys are not in it (section 3.5: the first 12 are members, the rest over-cap). */
-  readonly members: readonly string[];
-  readonly overCap: readonly string[];
-  readonly revoked: readonly string[];
-  /** Noise public key (base64url) of every member and over-cap key. */
-  readonly noise: ReadonlyMap<string, string>;
-  /** Who admitted each member; the founder has no entry. */
-  readonly admitter: ReadonlyMap<string, string>;
-  readonly name: ReadonlyMap<string, string>;
-}
+export type ViewFacts = Pick<View, "members" | "overCap" | "revoked" | "noise" | "admitter" | "name">;
 
 export interface LocalFacts {
   readonly meshId: string;

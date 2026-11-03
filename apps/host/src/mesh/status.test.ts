@@ -32,7 +32,11 @@ describe("mesh status", () => {
     const overCap = meshStatus(
       {
         ...fixture.sources,
-        view: { ...view, members: view.members.filter((key) => key !== keys.laptop), overCap: [keys.laptop] },
+        view: {
+          ...view,
+          members: new Set([...view.members].filter((key) => key !== keys.laptop)),
+          overCap: new Set([keys.laptop]),
+        },
       },
       NOW,
     );

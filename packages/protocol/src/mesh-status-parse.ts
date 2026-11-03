@@ -78,9 +78,9 @@ const isText = (value: unknown): value is string => isString(value) && value.len
 const isGate = objectOf<MeshGate>({ kind: oneOf("offline"), refusals: isCount, nextProbeAt: isTime });
 const isMember = objectOf<MeshMemberStatus>({
   hostId: isId,
-  name: isName,
-  localName: isName,
-  fingerprint: isFingerprint,
+  name: nullable(isName),
+  localName: nullable(isName),
+  fingerprint: nullable(isFingerprint),
   admittedBy: nullable(isId),
   overCap: isBoolean,
   line: isLineState,
@@ -151,6 +151,9 @@ function isConsistent(status: MeshStatus): boolean {
     onSelfLine[0]?.hostId === status.self &&
     status.members.every(
       (member) => member.lineReason === null || MESH_LINE_STATES_WITH_REASON.includes(member.line),
+    ) &&
+    status.members.every(
+      (member) => member.overCap || (member.name !== null && member.localName !== null && member.fingerprint !== null),
     ) &&
     status.members.every(
       (member) => !member.revokeSuggested || (member.line !== "self" && member.unreachableSince !== null),
