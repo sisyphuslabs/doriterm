@@ -64,7 +64,7 @@ export function TabBar({
                 role="tab"
                 aria-selected={active}
                 onClick={() => onSelect?.(tab.id)}
-                className="flex min-w-0 items-center gap-2 rounded-xs outline-none focus-visible:outline-2 focus-visible:outline-ring"
+                className="flex min-w-0 items-center gap-2 rounded-xs outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
               >
                 {tab.icon}
                 <span title={tab.title} className="truncate">

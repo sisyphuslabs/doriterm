@@ -43,7 +43,7 @@ export function ToastViewport({ className, container }: ToastViewportProps) {
             </BaseToast.Content>
             <BaseToast.Close
               aria-label="Dismiss"
-              className="rounded-xs p-0.5 text-muted-foreground outline-none hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring [&_svg]:size-3.5"
+              className="rounded-xs p-0.5 text-muted-foreground outline-none hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring [&_svg]:size-3.5"
             >
               <X />
             </BaseToast.Close>

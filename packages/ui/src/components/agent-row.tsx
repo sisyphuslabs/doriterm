@@ -59,7 +59,7 @@ export function AgentRow({
       onClick={() => onSelect?.(agent.id)}
       className={cn(
         "group flex h-(--row) w-full min-w-0 items-center gap-2.5 rounded-md px-2 text-left text-sm outline-none",
-        "hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+        "hover:bg-hover focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring",
         selected && "bg-selected",
         className,
       )}

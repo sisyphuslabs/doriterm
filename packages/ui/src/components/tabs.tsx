@@ -27,7 +27,7 @@ export function Tab({ className, ...props }: ClassNameless<ComponentProps<typeof
       {...props}
       className={cn(
         "-mb-px inline-flex h-(--control) shrink-0 snap-start items-center gap-1.5 rounded-t-sm px-3 text-sm text-muted-foreground outline-none",
-        "hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring",
+        "hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring",
         "data-active:bg-raised data-active:font-medium data-active:text-foreground",
         className,
       )}

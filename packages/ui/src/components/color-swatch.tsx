@@ -25,7 +25,7 @@ export function ColorSwatch({ color, label, value, selected = false, className, 
       aria-pressed={selected}
       className={cn(
         "group flex min-w-0 flex-col items-stretch gap-1 rounded-md p-1 text-left outline-none",
-        "hover:bg-hover active:bg-selected focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-45",
+        "hover:bg-hover active:bg-selected focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring disabled:opacity-45",
         selected && "bg-selected",
         className,
       )}

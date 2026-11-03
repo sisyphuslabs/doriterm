@@ -55,7 +55,7 @@ export function ExtraKeysBar({ keys = DEFAULT_EXTRA_KEYS, latched = [], onKey, c
             onClick={() => onKey?.(key.id)}
             className={cn(
               "relative flex h-11 min-w-0 flex-1 items-center justify-center rounded-md font-mono text-sm outline-none [&_svg]:size-4",
-              "focus-visible:outline-2 focus-visible:outline-ring",
+              "focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring",
               on
                 ? "bg-primary font-semibold text-primary-foreground after:absolute after:bottom-1.5 after:h-0.5 after:w-3 after:rounded-full after:bg-current active:opacity-80"
                 : "bg-raised text-foreground active:bg-selected",

@@ -8,7 +8,7 @@ export const buttonVariants = cva(
   [
     "relative inline-flex shrink-0 select-none items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium",
     "outline-none transition-[background-color,color,opacity,transform] duration-(--duration-micro) ease-out",
-    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+    "focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring",
     "active:scale-[0.97] data-disabled:pointer-events-none data-disabled:opacity-45",
     "[&_svg]:size-4 [&_svg]:shrink-0",
     "after:absolute after:-inset-1 coarse:after:min-h-11 coarse:after:min-w-11",

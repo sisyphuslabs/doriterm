@@ -54,7 +54,7 @@ export function ThemePicker({ options, value, onValueChange, className }: ThemeP
           value={option.id}
           className={cn(
             "group flex flex-col gap-2 rounded-lg border border-border p-2 text-left outline-none",
-            "hover:bg-hover focus-visible:outline-2 focus-visible:outline-ring data-checked:bg-selected",
+            "hover:bg-hover focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring data-checked:bg-selected",
           )}
         >
           <span aria-hidden className="flex h-14 overflow-hidden rounded-md border border-border">

@@ -16,7 +16,7 @@ export interface NumberStepperProps {
 
 const stepButton = cn(
   "flex size-(--control) items-center justify-center text-muted-foreground outline-none hover:bg-hover hover:text-foreground",
-  "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring data-disabled:opacity-45 [&_svg]:size-3.5",
+  "focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring data-disabled:opacity-45 [&_svg]:size-3.5",
 );
 
 /** − value + for small bounded numbers such as font size. */
