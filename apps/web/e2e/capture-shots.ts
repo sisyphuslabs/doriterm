@@ -180,6 +180,15 @@ export const SHOTS: readonly Shot[] = [
   })),
   { name: "settings-mesh", start: "connected", run: meshLoaded },
   {
+    // The fail-closed removal and its re-found command, which neither the top nor the end frame shows at 390.
+    name: "settings-mesh-removed",
+    start: "connected",
+    run: async (page) => {
+      await meshLoaded(page);
+      await page.locator('[data-mesh-group^="removed-"]').first().scrollIntoViewIfNeeded();
+    },
+  },
+  {
     name: "settings-mesh-end",
     start: "connected",
     run: async (page) => {
