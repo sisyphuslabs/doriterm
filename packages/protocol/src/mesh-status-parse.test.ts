@@ -18,7 +18,7 @@ const member = {
   owed: 0,
   gate: { kind: "offline", refusals: 2, nextProbeAt: "2026-11-03T12:01:00.000Z" },
   witnessPool: ["a".repeat(26)],
-  witnessAsk: null,
+  witnessAsk: "a".repeat(26),
   unreachableSince: null,
   revokeSuggested: false,
 } as const;
@@ -60,7 +60,7 @@ const status: MeshStatus = {
       name: "kiosk",
       localName: "kiosk",
       fingerprint: member.fingerprint,
-      revokedBy: [],
+      revokedBy: ["s".repeat(26)],
       reason: "compromised",
       at: null,
     },
@@ -87,7 +87,7 @@ const status: MeshStatus = {
       expiresAt: "2026-11-03T12:08:00Z",
     },
   ],
-  budget: { waiting: 1, halvedUntil: null },
+  budget: { waiting: 1, halvedUntil: "2026-11-03T12:30:00.000Z" },
 };
 
 const without = (key: string): Record<string, unknown> =>
@@ -117,6 +117,29 @@ function withoutNested(path: Path, key: string): unknown {
 const nestedRows = objectPaths(status).flatMap((path) =>
   Object.keys(nodeAt(status, path)).map((key) => [`${path.join(".")}.${key}`, path, key] as const),
 );
+
+const ID_FORM = /^[a-z2-7]{26}$/;
+const TIME_FORM = /^\d{4}-\d{2}-\d{2}T/;
+
+/** Every hostId, meshId and time in the status, each with a value of another form for its row. */
+function formLeaves(value: unknown, path: Path = []): (readonly [string, Path, string])[] {
+  if (typeof value === "string") {
+    if (ID_FORM.test(value)) return [[path.join("."), path, value.toUpperCase()]];
+    return TIME_FORM.test(value) ? [[path.join("."), path, "soon"]] : [];
+  }
+  if (typeof value !== "object" || value === null) return [];
+  return Object.entries(value).flatMap(([key, item]) =>
+    formLeaves(item, [...path, Array.isArray(value) ? Number(key) : key]),
+  );
+}
+
+/** A copy of the status with the value at `path` replaced. */
+function withValueAt(path: Path, replacement: string): unknown {
+  const copy: unknown = structuredClone(status);
+  const last = path.at(-1);
+  if (last !== undefined) nodeAt(copy, path.slice(0, -1))[last] = replacement;
+  return copy;
+}
 
 const overCapMember = {
   ...member,
@@ -162,6 +185,9 @@ describe("parseMeshStatus", () => {
     expect(parseMeshStatus(withoutNested(path, key))).toBeUndefined();
   });
 
+  test.each(formLeaves(status))("refuses %s in another form", (_, path, replacement) => {
+    expect(parseMeshStatus(withValueAt(path, replacement))).toBeUndefined();
+  });
 
   test("reads back an over-cap member the view gives no name, key or lineage", () => {
     const withOverCap = { ...status, members: [...status.members, overCapMember] };
