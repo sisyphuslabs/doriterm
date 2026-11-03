@@ -34,6 +34,7 @@ export interface HostSyncOptions {
 export class HostSync {
   readonly #options: HostSyncOptions;
   readonly #seen = new Set<string>();
+  #droppedAt: number | undefined;
   #gossip: Gossip | undefined;
   #stopped = false;
 
@@ -75,6 +76,18 @@ export class HostSync {
     gossip.attach(member.signPub, inviter ? member.signPub : gossip.self, secure, false, inviter);
   }
 
+  /** This host's relay uplink closed; it reconnects by itself. */
+  uplinkDropped(): void {
+    this.#droppedAt ??= this.#clock().now();
+  }
+
+  /** The uplink answered again: the misses seen while it was down go, and a long drop sweeps (section 5.1). */
+  uplinkAnswered(): void {
+    const since = this.#droppedAt;
+    this.#droppedAt = undefined;
+    if (since !== undefined) this.#gossip?.uplinkReturned(this.#clock().now() - since);
+  }
+
   stop(): void {
     this.#stopped = true;
     this.#gossip?.stop();
@@ -82,7 +95,7 @@ export class HostSync {
 
   #start(meshId: string): Gossip {
     const { identity, mesh, log } = this.#options;
-    const clock = this.#options.clock ?? monotonicClock;
+    const clock = this.#clock();
     const random = this.#options.random ?? Math.random;
     const holder: { gossip?: Gossip } = {};
     const policy = new DialPolicy({ clock, random, onDue: (member, reason) => holder.gossip?.due(member, reason) });
@@ -104,6 +117,10 @@ export class HostSync {
     gossip.uplinkReturned(Number.POSITIVE_INFINITY);
     log(`mesh: sync started for mesh ${meshId}`);
     return gossip;
+  }
+
+  #clock(): Clock {
+    return this.#options.clock ?? monotonicClock;
   }
 
   #memberOf(secure: SecureLink): MemberEntry | undefined {

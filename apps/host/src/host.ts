@@ -115,7 +115,11 @@ export async function startHost(options: HostOptions): Promise<Host> {
           session.close(1011, "internal error");
         });
     },
-    onConnected: () => e2ee?.slots.relayConnected(),
+    onConnected: () => {
+      e2ee?.slots.relayConnected();
+      e2ee?.sync.uplinkAnswered();
+    },
+    onDropped: () => e2ee?.sync.uplinkDropped(),
     onFinalClose: () => e2ee?.slots.relayGone(),
   });
   let server: ReturnType<typeof Bun.serve>;
