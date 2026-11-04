@@ -1,6 +1,6 @@
 import { DEFAULT_RELAY_URL, type HostIdentity, PAIRING_TTL_MS, type SecureLink, SessionKind } from "@doriface/crypto";
 import { PairingStore } from "../state/pairing.ts";
-import type { CreateSocket } from "@doriface/relay-client";
+import type { CreateSocket, RelayProofs } from "@doriface/relay-client";
 import { parseTarget } from "../connect/target.ts";
 import type { LiveSessions } from "../e2ee/sessions.ts";
 import type { PairingSlots } from "../pairing-slots.ts";
@@ -19,7 +19,11 @@ export interface HostMeshOptions {
   readonly slots: PairingSlots;
   readonly sessions: LiveSessions;
   readonly hc: HcCoreOptions;
-  readonly relay: { readonly url: string | undefined; readonly createSocket?: CreateSocket | undefined };
+  readonly relay: {
+    readonly url: string | undefined;
+    readonly createSocket?: CreateSocket | undefined;
+    readonly proofs?: RelayProofs | undefined;
+  };
   /**
    * The sync layer (section 5, PR 5): receives every authorized mesh session that is not a join, and the session a
    * join ran on once the join is over. It owns the session from then on. Without one, the session stays open and idle.
@@ -100,6 +104,7 @@ export class HostMesh {
       relayUrl: request.relay,
       defaultRelayUrl: relay.url ?? DEFAULT_RELAY_URL,
       createSocket: relay.createSocket,
+      proofs: relay.proofs,
       log,
     });
     this.#keep(joined.secure);

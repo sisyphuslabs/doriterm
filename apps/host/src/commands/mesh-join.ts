@@ -12,6 +12,7 @@ import { parseTarget } from "../connect/target.ts";
 import { controlIsLive, requestControl } from "../control.ts";
 import { readHcCore } from "../mesh/hc-core.ts";
 import { joinMesh } from "../mesh/join-dial.ts";
+import { openReadOnlyRelayPasses } from "../relay/relay-passes.ts";
 import { defaultStateDir, isRecord } from "../state/files.ts";
 import { loadHostIdentity } from "../state/host-keys.ts";
 import { pendingFromWire } from "../state/pairing.ts";
@@ -126,9 +127,10 @@ async function join(args: readonly string[], out: (text: string) => void, log: (
     return out(`joined mesh ${String(meshId)}; the running host keeps the session for sync\n`);
   }
   const core = await readHcCore({ hc: values.hc, session: values.session });
+  const identity = loadHostIdentity(stateDir);
   const joined = await joinMesh({
     stateDir,
-    identity: loadHostIdentity(stateDir),
+    identity,
     target,
     fingerprint: values.fingerprint,
     name: values.name ?? core.name,
@@ -137,6 +139,7 @@ async function join(args: readonly string[], out: (text: string) => void, log: (
     confirm: async () => false,
     relayUrl: values.relay,
     defaultRelayUrl: DEFAULT_RELAY_URL,
+    proofs: await openReadOnlyRelayPasses(stateDir, identity, log),
     log,
   });
   joined.secure.close();

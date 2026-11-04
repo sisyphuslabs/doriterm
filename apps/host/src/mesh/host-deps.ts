@@ -1,5 +1,5 @@
 import type { HostIdentity, SecureLink } from "@doriface/crypto";
-import type { CreateSocket } from "@doriface/relay-client";
+import type { CreateSocket, RelayProofs } from "@doriface/relay-client";
 import type { LiveSessions } from "../e2ee/sessions.ts";
 import type { PairingSlots } from "../pairing-slots.ts";
 import type { MeshStore } from "../state/mesh.ts";
@@ -23,7 +23,11 @@ export interface MeshDepsOptions {
     readonly session?: string | undefined;
     readonly env?: Readonly<Record<string, string | undefined>> | undefined;
   };
-  readonly relay: { readonly url: string | undefined; readonly createSocket?: CreateSocket | undefined };
+  readonly relay: {
+    readonly url: string | undefined;
+    readonly createSocket?: CreateSocket | undefined;
+    readonly proofs?: RelayProofs | undefined;
+  };
   /** The program mesh lines' `via` names; defaults to this executable or a launcher of this entry point. */
   readonly program?: string | undefined;
   /** The running mesh parts the commands and status reach; defaults to this host's own sync (`syncHooks`). */

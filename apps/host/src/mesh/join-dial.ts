@@ -8,7 +8,14 @@ import {
   secureLink,
 } from "@doriface/crypto";
 import { checkName } from "@doriface/mesh";
-import { connectRelayClient, type CreateSocket, lookupPairSlot, pairSlotOf } from "@doriface/relay-client";
+import {
+  connectRelayClient,
+  type CreateSocket,
+  lookupPairSlot,
+  pairSlotOf,
+  type RelayProofs,
+} from "@doriface/relay-client";
+import { withPassRetry } from "../relay/pass-retry.ts";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { confirmFingerprint, fingerprintGiven } from "../connect/dial.ts";
@@ -35,6 +42,8 @@ export interface JoinOptions {
   readonly relayUrl: string | undefined;
   readonly defaultRelayUrl: string;
   readonly createSocket?: CreateSocket | undefined;
+  /** This host's relay passes (contract v1.6): the pairing dial to the inviter carries a proof. */
+  readonly proofs?: RelayProofs | undefined;
   readonly log: (line: string) => void;
 }
 
@@ -105,20 +114,25 @@ async function inviterOf(options: JoinOptions): Promise<Inviter> {
 export async function joinMesh(options: JoinOptions): Promise<Joined> {
   await refuseEarly(options);
   const inviter = await inviterOf(options);
-  const link = await connectRelayClient({
-    relayUrl: inviter.relayUrl,
-    hostId: inviter.hostId,
-    ...(options.createSocket === undefined ? {} : { createSocket: options.createSocket }),
-    ...(inviter.pairSlot === undefined ? {} : { pairSlot: inviter.pairSlot }),
-  });
-  const secure = await secureLink(link, {
-    role: "initiator",
-    hostId: inviter.hostId,
-    staticKey: rawStaticKey(options.identity.noise),
-    remoteStatic: inviter.hostKey,
-    pairing: inviter.pairing,
-    stream: "mesh",
-  });
+  const dialInviter = async () => {
+    const link = await connectRelayClient({
+      relayUrl: inviter.relayUrl,
+      hostId: inviter.hostId,
+      ...(options.createSocket === undefined ? {} : { createSocket: options.createSocket }),
+      ...(options.proofs === undefined ? {} : { proofs: options.proofs }),
+      ...(inviter.pairSlot === undefined ? {} : { pairSlot: inviter.pairSlot }),
+    });
+    return secureLink(link, {
+      role: "initiator",
+      hostId: inviter.hostId,
+      staticKey: rawStaticKey(options.identity.noise),
+      remoteStatic: inviter.hostKey,
+      pairing: inviter.pairing,
+      stream: "mesh",
+    });
+  };
+  // A 4412 comes from the relay before the inviter sees anything, so the redial spends no pairing attempt.
+  const secure = await withPassRetry(dialInviter, options.proofs, inviter.relayUrl);
   const deadline = Date.now() + JOIN_DEADLINE_MS;
   const lines = new MeshLines(secure, JOINER_EXPECTS);
   const hasDevice = existsSync(join(options.stateDir, "device-key.json"));

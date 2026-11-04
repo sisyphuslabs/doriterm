@@ -20,7 +20,7 @@ export type DialLimits = { readonly [K in keyof typeof DIAL_LIMITS]: number };
 export type DialPurpose = "revoke-push" | "push" | "sweep" | "line" | "probe";
 const PRIORITY: Readonly<Record<DialPurpose, number>> = { "revoke-push": 0, push: 1, sweep: 1, line: 2, probe: 3 };
 
-export type DueReason = "presence" | "probe" | "added" | "settle" | "budget";
+export type DueReason = "presence" | "probe" | "added" | "settle" | "budget" | "pass";
 
 export type Grant =
   | { readonly ok: true }
@@ -69,6 +69,8 @@ export class DialPolicy {
   readonly #firstMiss = new Map<string, number>();
   readonly #present = new Set<string>();
   readonly #budgetRefused = new Set<string>();
+  /** Members whose dial met a refused relay pass (4412): due again when a new pass arrives, never gated. */
+  readonly #passRefused = new Set<string>();
   #budgetWake: (() => void) | undefined;
   #halvedUntil = Number.NEGATIVE_INFINITY;
   #settleUntil = Number.NEGATIVE_INFINITY;
@@ -143,13 +145,19 @@ export class DialPolicy {
   }
 
   /**
-   * What a dial ended with: connected, the relay rate limited it (4429), or it failed (4404, or any error without a
-   * close code: a timeout or a dropped connection), which gates the member until presence or its probe.
+   * What a dial ended with: connected, the relay rate limited it (4429), it failed (4404, or any error without a
+   * close code: a timeout or a dropped connection), which gates the member until presence or its probe, or the relay
+   * refused this host's pass (4412, contract v1.6), which says nothing about the member: no gate, no halving, and the
+   * member is due again once a new pass arrives.
    */
-  report(member: string, outcome: "connected" | 4404 | 4429): void {
+  report(member: string, outcome: "connected" | 4404 | 4412 | 4429): void {
     const now = this.#clock.now();
     if (outcome === "connected") {
       this.#reached(member);
+      return;
+    }
+    if (outcome === 4412) {
+      this.#passRefused.add(member);
       return;
     }
     const misses = this.#gates.get(member)?.misses ?? 0;
@@ -166,6 +174,13 @@ export class DialPolicy {
     if (!this.#firstMiss.has(member)) this.#firstMiss.set(member, now);
     const wait = Math.min(this.#limits.probeFirstMs * 2 ** misses, this.#limits.probeMaxMs);
     this.#setGate(member, { cause: "offline", misses: misses + 1, nextAt: now + wait, lastMissAt: now });
+  }
+
+  /** This host has a new relay pass: members whose dials met a refused pass are due now. */
+  passRenewed(): void {
+    const members = [...this.#passRefused];
+    this.#passRefused.clear();
+    for (const member of members) this.#onDue(member, "pass");
   }
 
   /** Any authenticated session from `member` proves it is online: ungate it and dial after 0-2 s. */

@@ -62,7 +62,7 @@ export function formatMeshStatus(status: MeshStatus): string {
   out.push(status.sync === "ok" ? "sync: ok" : "sync: STUCK");
   for (const reason of status.stuck) out.push(`  STUCK: ${stuckLine(reason, nameOf)}`);
   if (status.budget.waiting > 0) out.push(`waiting for dial budget: ${status.budget.waiting} dials`);
-  if (status.budget.halvedUntil !== null) out.push(`relay rate limit (shared IP?) until ${status.budget.halvedUntil}`);
+  if (status.budget.halvedUntil !== null) out.push(`relay rate limit until ${status.budget.halvedUntil}`);
   out.push("members:", ...status.members.map((member) => memberLine(member, nameOf)));
   for (const join of status.pending) {
     out.push(`pending join: "${join.name}" ${join.hostId} fingerprint ${join.fingerprint}, until ${join.expiresAt}`);

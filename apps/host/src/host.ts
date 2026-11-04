@@ -1,7 +1,7 @@
 import packageJson from "../package.json" with { type: "json" };
 import { fingerprintOf, type HostIdentity } from "@doriface/crypto";
 import type { MeshStatus } from "@doriface/protocol";
-import type { CreateSocket } from "@doriface/relay-client";
+import type { CreateSocket, RelayProofs } from "@doriface/relay-client";
 import { controlIsLive, listenControl } from "./control.ts";
 import { lanUrlsFor } from "./lan-urls.ts";
 import { LiveSessions } from "./e2ee/sessions.ts";
@@ -10,6 +10,7 @@ import { HcPipe, readHcVersion } from "./hc-pipe.ts";
 import { formatHost, isLoopbackHost, type ListenAddress } from "./listen.ts";
 import { type PairingSlotRegistrar, PairingSlots } from "./pairing-slots.ts";
 import { HostUplink } from "./relay/host-uplink.ts";
+import { openRelayPasses } from "./relay/relay-passes.ts";
 import { RelaySessionWire } from "./relay/session-wire.ts";
 import { DeviceStore } from "./state/devices.ts";
 import { loadHostIdentity } from "./state/host-keys.ts";
@@ -88,19 +89,24 @@ export async function startHost(options: HostOptions): Promise<Host> {
   const stateDir = options.stateDir;
   if (options.relay !== undefined && stateDir === undefined) throw new Error("the relay uplink needs a state dir");
   const identity = stateDir === undefined ? undefined : loadHostIdentity(stateDir);
+  const proofs =
+    options.relay === undefined || stateDir === undefined || identity === undefined
+      ? undefined
+      : await openRelayPasses(stateDir, identity, options.log);
   const uplink =
     options.relay === undefined || identity === undefined
       ? undefined
       : new HostUplink({
           relayUrl: options.relay.url,
           createSocket: options.relay.createSocket,
+          proofs,
           identity,
           log: options.log,
         });
   const e2ee =
     stateDir === undefined || identity === undefined
       ? undefined
-      : e2eeDeps(stateDir, identity, options.pairingSlots ?? uplink, options);
+      : e2eeDeps(stateDir, identity, options.pairingSlots ?? uplink, options, proofs);
   const gateway = createGateway({
     e2ee,
     token: options.token,
@@ -234,6 +240,7 @@ function e2eeDeps(
   identity: HostIdentity,
   registrar: PairingSlotRegistrar | undefined,
   options: HostOptions,
+  proofs: RelayProofs | undefined,
 ) {
   const devices = new DeviceStore(stateDir);
   const pairing = new PairingStore(stateDir, options.log);
@@ -250,7 +257,7 @@ function e2eeDeps(
     slots,
     sessions,
     hc: { hc: options.hc, session: options.session, env: options.env },
-    relay: { url: options.relay?.url, createSocket: options.relay?.createSocket },
+    relay: { url: options.relay?.url, createSocket: options.relay?.createSocket, proofs },
     program: options.meshProgram,
     hooks: options.meshHooks,
     log: options.log,

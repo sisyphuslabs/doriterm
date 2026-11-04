@@ -70,7 +70,7 @@ export class LineGrants {
       return { ok: true, link };
     } catch (error) {
       const code = error instanceof Error ? closeCodeOf(error) : undefined;
-      policy.report(member.signPub, code === 4429 ? 4429 : 4404);
+      policy.report(member.signPub, code === 4429 || code === 4412 ? code : 4404);
       return {
         ok: false,
         code: code ?? 4404,

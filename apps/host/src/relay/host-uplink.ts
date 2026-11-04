@@ -2,6 +2,7 @@ import type { HostIdentity } from "@doriface/crypto";
 import {
   type CreateSocket,
   ed25519Signer,
+  type RelayProofs,
   LinkClosedError,
   type SessionLink,
   Uplink,
@@ -14,6 +15,8 @@ export interface HostUplinkOptions {
   readonly identity: HostIdentity;
   readonly log: (line: string) => void;
   readonly createSocket?: CreateSocket | undefined;
+  /** This host's relay passes (contract v1.6): the uplink asks for passes and presents proofs. */
+  readonly proofs?: RelayProofs | undefined;
 }
 
 export interface UplinkHandlers {
@@ -42,7 +45,7 @@ export class HostUplink implements PairingSlotRegistrar {
   }
 
   async start(handlers: UplinkHandlers): Promise<void> {
-    const { relayUrl, identity, createSocket } = this.#options;
+    const { relayUrl, identity, createSocket, proofs } = this.#options;
     this.#uplink = await Uplink.start({
       relayUrl,
       signer: ed25519Signer(identity.sign.secretKey),
@@ -54,6 +57,7 @@ export class HostUplink implements PairingSlotRegistrar {
         if (state.state === "stopped" && state.code !== 1000) handlers.onFinalClose?.();
       },
       ...(createSocket === undefined ? {} : { createSocket }),
+      ...(proofs === undefined ? {} : { proofs }),
     });
   }
 

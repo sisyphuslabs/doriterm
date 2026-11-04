@@ -53,6 +53,17 @@ describe("the dial budget (S-4)", () => {
     expect(dials.budget).toBe(12);
   });
 
+  test("a refused relay pass (4412) gates nothing and halves nothing; the member is due when a new pass arrives", async () => {
+    const { dials, due } = policy();
+    dials.report("m", 4412);
+    expect(dials.budget).toBe(12);
+    expect(dials.gate("m")).toBeUndefined();
+    expect(granted(await dials.acquire("m", "push"))).toBe(true);
+    dials.passRenewed();
+    dials.passRenewed();
+    expect(due.filter((entry) => entry.member === "m").map((entry) => entry.reason)).toEqual(["pass"]);
+  });
+
   test("a direct (LAN) dial is never charged", async () => {
     const { dials } = policy();
     await fill(dials, 12);
