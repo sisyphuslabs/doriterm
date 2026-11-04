@@ -16,6 +16,8 @@ export const CloseCode = {
   PairSlotUnknown: 4410,
   /** The relay accepted a newer authenticated uplink for the same hostId. */
   UplinkReplaced: 4409,
+  /** The relay refused an upgrade's pass proof (contract v1.6); dial again without one. Never final. */
+  PassRefused: 4412,
   RateLimited: 4429,
 } as const;
 export type CloseCode = (typeof CloseCode)[keyof typeof CloseCode];

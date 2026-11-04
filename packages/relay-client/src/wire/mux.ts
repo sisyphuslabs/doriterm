@@ -5,9 +5,11 @@ import { PAIR_SLOT_LENGTH, PAIR_SLOT_PATTERN } from "./pair-code.ts";
  * OPEN has no payload, or the 3 slot characters for a pairing session; DATA carries opaque bytes; CLOSE carries a u16
  * LE close code. PAIR_SLOT and PAIR_SLOT_ACK are control frames on sessionId 0; their payloads are in pair-slot.ts.
  * CREDIT carries a u32 LE count of session bytes the peer consumed (credit.ts); only peers that opted in see it.
+ * PASS (sessionId 0) carries the relay's clock and a pass relay to host, and is empty host to relay (a request); only
+ * uplinks dialed with `?pass=1` see it (pass.ts).
  */
 
-export const MuxType = { Open: 1, Data: 2, Close: 3, PairSlot: 4, PairSlotAck: 5, Credit: 6 } as const;
+export const MuxType = { Open: 1, Data: 2, Close: 3, PairSlot: 4, PairSlotAck: 5, Credit: 6, Pass: 7 } as const;
 export type MuxType = (typeof MuxType)[keyof typeof MuxType];
 
 export const MUX_HEADER_BYTES = 5;
@@ -18,7 +20,8 @@ export type MuxFrame =
   | { readonly type: typeof MuxType.Close; readonly sessionId: number; readonly code: number }
   | { readonly type: typeof MuxType.PairSlot; readonly sessionId: number; readonly payload: Uint8Array }
   | { readonly type: typeof MuxType.PairSlotAck; readonly sessionId: number; readonly payload: Uint8Array }
-  | { readonly type: typeof MuxType.Credit; readonly sessionId: number; readonly bytes: number };
+  | { readonly type: typeof MuxType.Credit; readonly sessionId: number; readonly bytes: number }
+  | { readonly type: typeof MuxType.Pass; readonly sessionId: number; readonly payload: Uint8Array };
 
 export class MuxError extends Error {
   override readonly name = "MuxError";
@@ -57,6 +60,9 @@ export function encodeClose(sessionId: number, code: number): Uint8Array<ArrayBu
   return out;
 }
 
+/** The host's pass request: an empty PASS frame on sessionId 0. */
+export const encodePassRequest = (): Uint8Array<ArrayBuffer> => muxHeader(MuxType.Pass, 0, 0);
+
 export function encodeCredit(sessionId: number, bytes: number): Uint8Array<ArrayBuffer> {
   if (!Number.isInteger(bytes) || bytes < 0 || bytes > 0xffff_ffff) throw new MuxError(`credit ${bytes} is not a u32`);
   const out = muxHeader(MuxType.Credit, sessionId, 4);
@@ -86,6 +92,7 @@ export function decodeMux(bytes: Uint8Array): MuxFrame {
       return { type, sessionId, payload: bytes.subarray(MUX_HEADER_BYTES) };
     case MuxType.PairSlot:
     case MuxType.PairSlotAck:
+    case MuxType.Pass:
       if (sessionId !== 0) throw new MuxError(`type ${type} is a control frame on sessionId 0, got ${sessionId}`);
       return { type, sessionId, payload: bytes.subarray(MUX_HEADER_BYTES) };
     case MuxType.Close:

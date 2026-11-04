@@ -31,12 +31,28 @@ export {
   encodeCredit,
   encodeData,
   encodeOpen,
+  encodePassRequest,
   MUX_HEADER_BYTES,
   MuxError,
   type MuxFrame,
   muxHeader,
   MuxType,
 } from "./mux.ts";
+export {
+  decodePassPayload,
+  encodeProof,
+  PASS_BYTES,
+  PASS_QUERY,
+  type PassFields,
+  passFields,
+  type PassFrame,
+  PROOF_BYTES,
+  PROOF_CONTEXT,
+  PROOF_QUERY,
+  type ProofInput,
+  proofMessage,
+  type ProofRole,
+} from "./pass.ts";
 export {
   CROCKFORD_ALPHABET,
   normalizePairCode,
