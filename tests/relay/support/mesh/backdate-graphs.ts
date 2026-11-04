@@ -250,6 +250,11 @@ const P8: BackdateShape = {
   offlineBefore: "aA",
 };
 
+/**
+ * As P1b, the model's fail-closed `{}` is its verdict on a set the hosts never form: A's own records revoke D (its mint
+ * Z1's `xD_byZ1`, testified by A) and `vA_byD` revokes A in D's view, so each refuses the other (section 9.2) and D
+ * keeps its honest view, `{D}`.
+ */
 const P13: BackdateShape = {
   id: "P13",
   hosts: { A: "a", D: "b" },
@@ -268,6 +273,7 @@ const P13: BackdateShape = {
   emptyPool: true,
   channel: "revoked",
   offlineBefore: "vA_byD",
+  unreachable: true,
 };
 
 export const BACKDATE_SHAPES: readonly BackdateShape[] = [R2, P1, P1b, P2, P3, P4, P8, P13];
