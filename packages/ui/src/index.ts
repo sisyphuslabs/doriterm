@@ -17,7 +17,33 @@ export { FontFamilyList, type FontFamilyListProps } from "./components/font-fami
 export { IconButton, type IconButtonProps } from "./components/icon-button.tsx";
 export { Field, Input, inputClass, type FieldProps, type InputProps } from "./components/input.tsx";
 export { Kbd, type KbdProps } from "./components/kbd.tsx";
-export { Menu, MenuItem, MenuSeparator, type MenuItemProps, type MenuProps } from "./components/menu.tsx";
+export {
+  type ListDrag,
+  type ListDragOptions,
+  ROW_DRAG_THRESHOLD_PX,
+  ROW_TOUCH_HOLD_MS,
+  useListDrag,
+} from "./components/list-drag.ts";
+export { RowDropCaret, RowDropIndicator, rowPlacement } from "./components/list-drop.tsx";
+export {
+  type ListDragState,
+  type ListSettle,
+  type RowSlot,
+  rowCaretTop,
+  rowLandingIndex,
+  rowLandingTop,
+  rowShiftOf,
+} from "./components/list-drop-geometry.ts";
+export { skipMenuHandler } from "./components/menu.tsx";
+export {
+  ContextMenu,
+  Menu,
+  MenuItem,
+  MenuSeparator,
+  type ContextMenuProps,
+  type MenuItemProps,
+  type MenuProps,
+} from "./components/menu.tsx";
 export { Notice, type NoticeProps } from "./components/notice.tsx";
 export { NumberStepper, type NumberStepperProps } from "./components/number-stepper.tsx";
 export { PaletteEditor, type PaletteEditorProps } from "./components/palette-editor.tsx";

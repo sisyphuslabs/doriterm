@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { type ReactNode, type Ref, useId } from "react";
 import { cn } from "../lib/cn.ts";
 
 export interface SidebarSectionProps {
@@ -9,13 +9,15 @@ export interface SidebarSectionProps {
   readonly action?: ReactNode;
   readonly children: ReactNode;
   readonly className?: string;
+  /** The section element, e.g. for a list that measures its rows to drag them. */
+  readonly ref?: Ref<HTMLElement>;
 }
 
 /** A labelled group in the sidebar. The label names the group; the count is its size. */
-export function SidebarSection({ title, count, tone, action, children, className }: SidebarSectionProps) {
+export function SidebarSection({ title, count, tone, action, children, className, ref }: SidebarSectionProps) {
   const heading = useId();
   return (
-    <section aria-labelledby={heading} className={cn("flex flex-col gap-px", className)}>
+    <section ref={ref} aria-labelledby={heading} className={cn("flex flex-col gap-px", className)}>
       <header className="flex min-h-7 items-center gap-2 px-2 text-xs font-medium">
         <h2 id={heading} className={cn("min-w-0 flex-1 truncate text-muted-foreground", tone)}>
           {title}
