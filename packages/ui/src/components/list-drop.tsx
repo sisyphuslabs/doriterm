@@ -28,13 +28,16 @@ export function RowDropIndicator({ drag }: { readonly drag: ListDragState }) {
   );
 }
 
-/** The landing place under reduced motion, where neighbours stay put: a ring-coloured line between rows. */
+/**
+ * The landing place under reduced motion, where neighbours stay put: a ring-coloured line between rows, drawn over the
+ * lifted row (`z-10`), which covers the line whenever it is held across it.
+ */
 export function RowDropCaret({ drag }: { readonly drag: ListDragState }) {
   return (
     <span
       aria-hidden
       data-row-drop-caret
-      className="pointer-events-none absolute inset-x-2 hidden h-0.5 -translate-y-1/2 rounded-full bg-ring motion-reduce:block"
+      className="pointer-events-none absolute inset-x-2 z-20 hidden h-0.5 -translate-y-1/2 rounded-full bg-ring motion-reduce:block"
       style={{ top: rowCaretTop(drag) }}
     />
   );
