@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { cn } from "../../src/index.ts";
+import { TerminalPreview, cn, type TerminalLine } from "../../src/index.ts";
 
 /**
  * A phone-sized viewport drawn on the desktop board, so phone screens can be reviewed beside each other.
@@ -40,6 +40,42 @@ export function BoardFrame({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface lg:rounded-xl lg:border lg:border-border">
         {children}
       </div>
+    </section>
+  );
+}
+
+/** A cropped terminal for a states board: what a mockup pins over it (`overlay`) or docks under it (`dock`). */
+export function TerminalCrop({
+  lines,
+  overlay,
+  dock,
+  header,
+  className,
+}: {
+  readonly lines: readonly TerminalLine[];
+  readonly overlay?: ReactNode;
+  readonly dock?: ReactNode;
+  readonly header?: ReactNode;
+  readonly className?: string;
+}) {
+  return (
+    <div className={cn("flex h-80 min-h-0 flex-col overflow-hidden bg-card", className)}>
+      {header}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <TerminalPreview lines={lines} cursor label="Terminal output" className="flex-1 coarse:text-[0.75rem]" />
+        {overlay === undefined ? null : <div className="absolute inset-x-2 top-2 mx-auto max-w-[40rem]">{overlay}</div>}
+      </div>
+      {dock}
+    </div>
+  );
+}
+
+/** A labelled state on a phone-width page, where the board's frame labels are hidden. */
+export function StateSection({ label, children }: { readonly label: string; readonly children: ReactNode }) {
+  return (
+    <section aria-label={label} className="flex flex-col border-t border-border">
+      <p className="px-4 pt-4 pb-2 text-xs font-medium text-muted-foreground">{label}</p>
+      {children}
     </section>
   );
 }

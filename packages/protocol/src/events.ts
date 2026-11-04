@@ -76,6 +76,14 @@ export function parseStreamNotification(notification: JsonRpcNotification): HcSt
   }
 }
 
+/** Remote terminals are addressed `machine/t7`; local ones by their bare id. */
+export function eventAddress(event: HcEvent): string | undefined {
+  if (event.terminal === undefined) return undefined;
+  return event.machine === undefined || event.terminal.includes("/")
+    ? event.terminal
+    : `${event.machine}/${event.terminal}`;
+}
+
 export function isHcEvent(value: unknown): value is HcEvent {
   if (!isJsonObject(value)) return false;
   const type = value["type"];

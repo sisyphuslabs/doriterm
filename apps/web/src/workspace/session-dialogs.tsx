@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { terminalInput } from "./focus-targets.ts";
 import { terminalTitle } from "./model.ts";
 import { RenameDialog } from "./rename-dialog.tsx";
-import { endSession, renameSession, sessionCalls } from "./session-actions.ts";
+import { endSession, renameSession, sessionCalls, takeBackEnd } from "./session-actions.ts";
 import type { SessionAsk } from "./session-context.ts";
 
 export interface SessionDialogsProps {
@@ -65,6 +65,16 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onKeep }: S
     );
   };
   const end = (): void => run(() => endSession(sessionCalls(connection), ask.address), onDone);
+  // Left after a failed End, the session runs on: it must not keep End's mark, which a dropped link may have kept.
+  const dismiss = (): void => {
+    if (error !== null && live) {
+      const { address } = ask;
+      takeBackEnd(sessionCalls(connection), address).catch((cause: unknown) =>
+        console.error(`take End's mark off ${address}: ${String(cause)}`),
+      );
+    }
+    onDone();
+  };
   if (ask.kind === "rename") {
     return (
       <RenameDialog
@@ -85,14 +95,14 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onKeep }: S
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open) onDone();
+        if (!open) dismiss();
       }}
       finalFocus={backTo}
       title={ask.kind === "end" ? `End ${title}?` : `Close ${title}?`}
       description={COPY[ask.kind]}
       actions={
         <>
-          <Button variant="ghost" onClick={onDone}>
+          <Button variant="ghost" onClick={dismiss}>
             Cancel
           </Button>
           <Button variant="destructive" loading={busy} onClick={end}>

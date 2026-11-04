@@ -21,12 +21,32 @@ function onCore(address: string): boolean {
   return terminals.some((terminal) => JSON.stringify(terminal).includes(`"${address}"`));
 }
 
+/** The core's view of one terminal: its state, why it finished, and whether it carries End's mark. */
+function terminalOf(address: string) {
+  const shown: unknown = JSON.parse(hc("get", address, "--json"));
+  if (typeof shown !== "object" || shown === null) throw new Error(`hc get ${address} printed no terminal`);
+  const labels: unknown = Reflect.get(shown, "labels");
+  return {
+    state: Reflect.get(shown, "state"),
+    reason: Reflect.get(shown, "reason"),
+    marked: typeof labels === "object" && labels !== null && Object.hasOwn(labels, "herdr.end"),
+  };
+}
+
+/** A terminal started with hc, outside the page; returns its address. */
+function hcRun(...argv: string[]): string {
+  const started: unknown = JSON.parse(hc("run", "--bg", "--json", "--", ...argv));
+  const address = typeof started === "object" && started !== null ? Reflect.get(started, "address") : undefined;
+  if (typeof address !== "string") throw new Error("hc run printed no address");
+  return address;
+}
+
 // By tag, not role: an open dialog marks the page behind it aria-hidden, which a role query would read as absent.
 const agentsList = (page: Page) => page.locator("h1", { hasText: /^Agents$/ });
 const screenTitle = (page: Page) => page.locator("header h1");
 
-/** On the phone page: opens `name`, asks End, and has its terminal.rm leave the page but not reach the core yet. */
-async function endWithRemovalHeld(phone: Page, link: HcSocket, name: string): Promise<() => void> {
+/** On the phone page: opens `name`, asks End, and has these calls of it leave the page but not reach the core yet. */
+async function endHolding(phone: Page, link: HcSocket, name: string, ...methods: string[]): Promise<() => void> {
   await phone.getByText(name).first().click();
   await expect(screenTitle(phone)).toHaveText(name);
   await phone
@@ -34,12 +54,13 @@ async function endWithRemovalHeld(phone: Page, link: HcSocket, name: string): Pr
     .getByRole("button", { name: /^Session actions for / })
     .click();
   await phone.getByRole("menuitem", { name: "End session…" }).click();
-  const deliver = link.hold("terminal.rm");
+  const deliver = link.hold(...methods);
   await phone
     .getByRole("dialog", { name: `End ${name}?` })
     .getByRole("button", { name: "End session" })
     .click();
-  await expect.poll(() => link.sent().some((frame) => frame.includes('"method":"terminal.rm"'))).toBe(true);
+  const out = (method: string): boolean => link.sent().some((frame) => frame.includes(`"method":"${method}"`));
+  await expect.poll(() => methods.every(out)).toBe(true);
   return deliver;
 }
 
@@ -76,15 +97,8 @@ test("a session ended on a phone is removed even when the page closes as soon as
   const link = await routeHcSocket(phone);
   await phone.goto("/");
   await expect(agentsList(phone)).toBeVisible({ timeout: 20_000 });
-  const deliver = await endWithRemovalHeld(phone, link, name);
-  // The program has exited, but the removal is unanswered: End is still working and the phone keeps the session's
-  // screen, so there is no list (and no moment to close the page) yet.
-  const ask = phone.getByRole("dialog", { name: `End ${name}?` });
-  await expect(ask.getByRole("button", { name: "End session" })).toHaveAttribute("aria-busy", "true");
-  await expect(screenTitle(phone)).toHaveText(name);
-  await expect(agentsList(phone)).toHaveCount(0);
-  deliver();
-  await expect(ask).toHaveCount(0, { timeout: 15_000 });
+  await endHolding(phone, link, name);
+  await expect(phone.getByRole("dialog", { name: `End ${name}?` })).toHaveCount(0, { timeout: 15_000 });
   await expect(agentsList(phone)).toBeVisible({ timeout: 15_000 });
   await phone.close();
 
@@ -93,43 +107,119 @@ test("a session ended on a phone is removed even when the page closes as soon as
   await expect(page.getByText("This terminal didn't open")).toHaveCount(0);
 });
 
-test("an End whose removal fails says so, lets the phone leave, and a second End finishes it", async ({ page }) => {
+test("a session renamed and ended on a phone is removed even when the page closes as soon as End is confirmed", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const link = await routeHcSocket(page);
+  await page.goto("/");
+  await expect(agentsList(page)).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("banner").getByRole("button", { name: "New tab" }).click();
+  const terminal = page.locator("[data-terminal]");
+  await expect(terminal).toContainText("$", { timeout: 15_000 });
+  const address = await terminal.getAttribute("data-terminal");
+  if (address === null) throw new Error("the new terminal has no address");
+  const name = `end-at-once-${address}`;
+  const actions = page.getByRole("banner").getByRole("button", { name: /^Session actions for / });
+  await actions.click();
+  await page.getByRole("menuitem", { name: "Rename…" }).click();
+  await page
+    .getByRole("dialog", { name: /^Rename / })
+    .getByRole("textbox", { name: "Name" })
+    .fill(name);
+  await page.keyboard.press("Enter");
+  await expect(screenTitle(page)).toHaveText(name);
+  await actions.click();
+  await page.getByRole("menuitem", { name: "End session…" }).click();
+  // The kill's answer has not come back when the page closes, as over a slow relay: the answer is held, never released.
+  link.holdFromHost('"state":"finished"');
+  await page
+    .getByRole("dialog", { name: `End ${name}?` })
+    .getByRole("button", { name: "End session" })
+    .click();
+  // A role query for the terminal screen already reads it as gone: the End question hides the page behind it.
+  await expect(page.getByRole("button", { name: "Back to agents" })).toHaveCount(0);
+  await expect.poll(() => link.sent().some((frame) => frame.includes('"method":"terminal.kill"'))).toBe(true);
+  await page.close();
+
+  await expect.poll(() => onCore(address), { timeout: 10_000, message: `${address} still on the core` }).toBe(false);
+});
+
+test("an End that never reaches the core says so, and a second End finishes it", async ({ page }) => {
   const { link, name, address } = await phoneWithTerminal(page, "end-fails");
-  const deliver = await endWithRemovalHeld(page, link, name);
-  // The link drops with terminal.rm unanswered: the removal fails, and the program has already exited.
+  const deliver = await endHolding(page, link, name, "terminal.label", "terminal.kill");
+  // The link drops before End's mark and kill reach the core: End fails, and the program still runs.
   const sockets = link.opened();
   await link.drop(false);
   const ask = page.getByRole("dialog", { name: `End ${name}?` });
   await expect(ask.getByRole("alert")).toContainText("The session did not end", { timeout: 15_000 });
   await expect(ask.getByRole("button", { name: "End session" })).not.toHaveAttribute("aria-busy", "true");
-  await expect(agentsList(page)).toBeVisible({ timeout: 15_000 });
-  expect(onCore(address)).toBe(true);
+  expect(hc("ls", "--json")).toContain(`"${address}"`);
   // Once the link is back (a new socket, and no connection notice: a tag query, as the dialog hides the page from roles),
-  // try again; its own terminal.rm is held until it is out, so its success is what removes the terminal.
+  // try again; its own mark and kill are held until they are out, so its success is what removes the terminal.
   await expect.poll(link.opened, { timeout: 15_000 }).toBeGreaterThan(sockets);
   await expect(page.locator('[role="status"]', { hasText: /Reconnecting|Offline/ })).toHaveCount(0, {
     timeout: 15_000,
   });
-  const removals = () => link.sent().filter((frame) => frame.includes('"method":"terminal.rm"')).length;
-  const before = removals();
+  const kills = () => link.sent().filter((frame) => frame.includes('"method":"terminal.kill"')).length;
+  const before = kills();
   await ask.getByRole("button", { name: "End session" }).click();
-  await expect.poll(removals).toBeGreaterThan(before);
+  await expect.poll(kills).toBeGreaterThan(before);
   deliver();
   await expect(ask).toHaveCount(0, { timeout: 15_000 });
   await expect.poll(() => onCore(address), { timeout: 10_000, message: `${address} still on the core` }).toBe(false);
 });
 
-test("a session another client removes while End's removal is held closes the question without an error", async ({
+test("a session the host removes while End's own removal is held closes the question without an error", async ({
   page,
 }) => {
   const { link, name, address } = await phoneWithTerminal(page, "end-elsewhere");
-  const deliver = await endWithRemovalHeld(page, link, name);
-  await expect.poll(() => onCore(address) && hc("ls", "--all", "--json").includes('"finished"')).toBe(true);
-  hc("rm", address);
-  await expect.poll(() => onCore(address)).toBe(false);
+  const deliver = await endHolding(page, link, name, "terminal.rm");
+  // The host removes the marked terminal once it has finished; End's own terminal.rm then finds it gone.
+  await expect.poll(() => onCore(address), { timeout: 10_000 }).toBe(false);
   deliver();
   const ask = page.getByRole("dialog", { name: `End ${name}?` });
   await expect(ask).toHaveCount(0, { timeout: 15_000 });
   await expect(agentsList(page)).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+/** Holds End's kill, lets its mark reach the core, then drops the link: End fails and the program runs on. */
+async function endFailsAfterMark(page: Page, link: HcSocket, name: string, address: string) {
+  await endHolding(page, link, name, "terminal.kill");
+  await expect.poll(() => terminalOf(address).marked).toBe(true);
+  const sockets = link.opened();
+  await link.drop(false);
+  const ask = page.getByRole("dialog", { name: `End ${name}?` });
+  await expect(ask.getByRole("alert")).toContainText("The session did not end", { timeout: 15_000 });
+  return { ask, sockets };
+}
+
+test("a session whose End failed after its mark keeps its output when its program later exits by itself", async ({
+  page,
+}) => {
+  const { link, name, address } = await phoneWithTerminal(page, "end-then-exit");
+  await endFailsAfterMark(page, link, name, address);
+  hc("send", address, `echo kept-${address}; exit 3`);
+  await expect.poll(() => terminalOf(address).state, { timeout: 15_000 }).toBe("finished");
+  // A marked terminal killed after it: once the host has removed that one, it has seen this one finish.
+  const killed = hcRun("sh", "-c", "exec sleep 600");
+  hc("label", killed, "herdr.end=1");
+  hc("kill", killed);
+  await expect.poll(() => onCore(killed), { timeout: 10_000 }).toBe(false);
+  expect(terminalOf(address)).toMatchObject({ state: "finished", reason: "exited" });
+  expect(hc("read", address)).toContain(`kept-${address}`);
+});
+
+test("dismissing a failed End takes its mark off the session, which runs on", async ({ page }) => {
+  const { link, name, address } = await phoneWithTerminal(page, "end-dismissed");
+  const { ask, sockets } = await endFailsAfterMark(page, link, name, address);
+  await expect.poll(link.opened, { timeout: 15_000 }).toBeGreaterThan(sockets);
+  await expect(page.locator('[role="status"]', { hasText: /Reconnecting|Offline/ })).toHaveCount(0, {
+    timeout: 15_000,
+  });
+  await ask.getByRole("button", { name: "Cancel" }).click();
+  await expect(ask).toHaveCount(0);
+  await expect.poll(() => terminalOf(address).marked).toBe(false);
+  expect(terminalOf(address).state).toBe("live");
 });

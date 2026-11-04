@@ -1,14 +1,6 @@
-import type { HcEvent, HcSnapshot, Terminal } from "@doriface/protocol";
+import { eventAddress, type HcEvent, type HcSnapshot, type Terminal } from "@doriface/protocol";
 
 export type TerminalMap = ReadonlyMap<string, Terminal>;
-
-/** Remote terminals are addressed `machine/t7`; local ones by their bare id. */
-export function eventAddress(event: HcEvent): string | undefined {
-  if (event.terminal === undefined) return undefined;
-  return event.machine === undefined || event.terminal.includes("/")
-    ? event.terminal
-    : `${event.machine}/${event.terminal}`;
-}
 
 export function fromSnapshot(snapshot: HcSnapshot): TerminalMap {
   return new Map(snapshot.terminals.map((terminal) => [terminal.address, terminal]));

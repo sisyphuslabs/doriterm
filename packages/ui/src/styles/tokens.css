@@ -145,3 +145,21 @@
     --hit: 2.75rem;
   }
 }
+
+/*
+ * Density (Settings > Appearance) sets the chrome's row height: sidebar, lists, menus, the palette. Compact and
+ * spacious apply to fine pointers; on a touch device rows never drop below the 44 px target, and spacious grows them.
+ */
+@media not (pointer: coarse) {
+  :root[data-ui-density="compact"] {
+    --row: 1.625rem;
+  }
+  :root[data-ui-density="spacious"] {
+    --row: 2.25rem;
+  }
+}
+@media (pointer: coarse) {
+  :root[data-ui-density="spacious"] {
+    --row: 3rem;
+  }
+}

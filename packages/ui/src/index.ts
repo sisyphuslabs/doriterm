@@ -1,5 +1,12 @@
 export { cn } from "./lib/cn.ts";
 export { AgentRow, type Agent, type AgentRowProps } from "./components/agent-row.tsx";
+export {
+  ApprovalBanner,
+  type ApprovalAnswer,
+  type ApprovalBannerProps,
+  type ApprovalBannerState,
+  type ApprovalPrompt,
+} from "./components/approval-banner.tsx";
 export { Badge, badgeVariants, type BadgeProps } from "./components/badge.tsx";
 export { Button, buttonVariants, type ButtonProps } from "./components/button.tsx";
 export { ColorSwatch, type ColorSwatchProps } from "./components/color-swatch.tsx";
@@ -58,7 +65,9 @@ export {
   type TerminalPreviewProps,
   type TerminalSpan,
 } from "./components/terminal-preview.tsx";
+export { ThemeBrowser, type ThemeBrowserProps, type ThemeKind } from "./components/theme-browser.tsx";
 export { ThemePicker, type ThemeOption, type ThemePickerProps } from "./components/theme-picker.tsx";
 export { ToastProvider, ToastViewport, useToastManager, type ToastViewportProps } from "./components/toast.tsx";
 export { Tooltip, TooltipProvider, type TooltipProps } from "./components/tooltip.tsx";
+export { VoiceStrip, type VoiceState, type VoiceStripProps } from "./components/voice-strip.tsx";
 export * from "./theme/index.ts";

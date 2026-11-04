@@ -49,7 +49,7 @@ const refusedWith = (closeCode: number) => async (page: Page) => {
   await page.getByRole("button", { name: "They match" }).click();
   await expect(page.getByText("Pairing did not finish")).toBeVisible({ timeout: 15_000 });
 };
-const SETTINGS = ["Appearance", "Terminal", "Keybindings"] as const;
+const SETTINGS = ["Appearance", "Device", "Terminal", "Keybindings"] as const;
 /** The mesh panel once its document and the added machine it is checked against have both arrived. */
 const meshLoaded = async (page: Page) => {
   resetMeshDocs();

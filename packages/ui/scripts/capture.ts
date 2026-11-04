@@ -18,16 +18,20 @@ const SCREENS = [
   "palette",
   "settings",
   "settings-appearance",
+  "settings-device",
   "settings-terminal",
   "settings-keyboard",
   "mobile",
   "mobile-agents",
   "states",
+  "approval",
+  "voice",
 ] as const;
 /** Screens whose own scroll owner hides content: captured whole, plus a viewport scrolled to the end. */
 const SCROLLERS: Readonly<Record<string, string>> = {
   settings: "settings-body",
   "settings-appearance": "settings-body",
+  "settings-device": "settings-body",
   "settings-terminal": "settings-body",
   "settings-keyboard": "settings-body",
 };
