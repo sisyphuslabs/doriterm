@@ -1,6 +1,6 @@
 import type { EventFeed, HcConnection } from "@doriface/client";
 import { generateX25519 } from "@doriface/crypto";
-import { HcRpcError, isJsonObject, parseJson, type JsonObject, type JsonValue } from "@doriface/protocol";
+import { type HcEvent, HcRpcError, isJsonObject, parseJson, type JsonObject, type JsonValue } from "@doriface/protocol";
 import {
   editTab,
   LAYOUT_DOC,
@@ -13,7 +13,7 @@ import {
 import { afterAll, describe, expect, test } from "bun:test";
 import { type RelayedHost, startRelayedHost } from "./support/relayed-host.ts";
 import { setUpOnce } from "./support/set-up-once.ts";
-import { type EventWatch, watchEvents } from "./support/watch.ts";
+import { Matches } from "./support/watch.ts";
 
 const DEEP_TAB = "tbff1e9c7fe9d99f6cd247be825a5da61a";
 const DEEPEST = "p986c8fa4187d4d895e540c2850573fac";
@@ -64,6 +64,10 @@ const FUTURE_TAB_FIELDS: Readonly<Record<string, JsonValue>> = {
 };
 
 const isTab = (node: JsonObject): boolean => "root" in node;
+const isContainer = (node: JsonObject): boolean => node["type"] === "row" || node["type"] === "column";
+const CONTAINERS = 7;
+
+const count = (text: string, key: string): number => text.split(`"${key}"`).length - 1;
 
 function withFutureFields(read: JsonValue): JsonObject {
   const tagged = rebuilt(read, (node) => {
@@ -72,22 +76,25 @@ function withFutureFields(read: JsonValue): JsonObject {
     if (tabField !== undefined) return { ...node, "x-future-tab": tabField };
     if (node["type"] === "block" && id === DEEPEST)
       return { ...node, "x-future-pane": { marks: ["a", "b"], scrollback: 1200 } };
+    if (isContainer(node)) return { ...node, gap: 1, title: `t-${id.slice(0, 6)}`, "x-future-container": { id } };
     return Array.isArray(node["tabs"]) ? { ...node, "x-future-space": "space field" } : node;
   });
   if (!isJsonObject(tagged)) throw new Error("unexpected fixture");
   const out = sorted({ ...tagged, "x-future-doc": { kept: [1, "two", null], nested: { deep: true } } });
   const text = JSON.stringify(out);
-  for (const key of ["x-future-doc", "x-future-space", "x-future-pane"]) {
-    if (text.split(`"${key}"`).length !== 2) throw new Error(`the fixture must carry ${key} once`);
+  const expected = { "x-future-doc": 1, "x-future-space": 1, "x-future-tab": 2, "x-future-pane": 1 };
+  for (const [key, times] of [...Object.entries(expected), ["x-future-container", CONTAINERS] as const]) {
+    if (count(text, key) !== times) throw new Error(`the fixture must carry ${key} ${times} times`);
   }
-  if (text.split('"x-future-tab"').length !== 3 || !isJsonObject(out)) throw new Error("unexpected fixture");
+  if (!isJsonObject(out)) throw new Error("unexpected fixture");
   return out;
 }
 
 /**
  * A document herdr-app 0.1.12 wrote (two tabs, one split four levels deep, the other beside a herdr-app panel), plus
- * fields doriface knows nothing about at every level a newer herdr-app could add them: the document, a space, a tab
- * and a pane. Built by plain JSON edits here, never through the layout module under test.
+ * fields at every level a newer herdr-app could add them: the document, a space, each tab, every row and column (the
+ * herdr-app `gap` and `title`, plus an unknown key) and a pane. Built by plain JSON edits here, never through the
+ * layout module under test.
  */
 const FIXTURE: JsonObject = withFutureFields(
   parseJson(
@@ -104,7 +111,16 @@ const outsideTrees = (doc: JsonValue, tabs: readonly string[]): string =>
     ),
   );
 
-/** A split moves or halves its target's size and nothing else, so every other pane of the tree comes back as written. */
+const withoutChildren = (node: JsonObject): JsonObject =>
+  Object.fromEntries(Object.entries(node).filter(([key]) => key !== "children"));
+
+const shown = (node: JsonObject | undefined): string =>
+  JSON.stringify(node === undefined ? null : isContainer(node) ? withoutChildren(node) : node);
+
+/**
+ * A split moves or halves its target's size and adds children, nothing else: every other pane comes back as written,
+ * and every row and column keeps all its own fields, the ones on the split's path included.
+ */
 function untouchedNodes(
   doc: JsonValue,
   tab: string,
@@ -112,10 +128,10 @@ function untouchedNodes(
   const before = tabById(FIXTURE, tab)?.["root"] ?? null;
   const after = tabById(doc, tab)?.["root"] ?? null;
   return [...nodesOf(before)]
-    .filter((node) => node["type"] === "block" && node["id"] !== DEEPEST && node["id"] !== OTHER_PANE)
+    .filter((node) => node["id"] !== DEEPEST && node["id"] !== OTHER_PANE)
     .map((node) => {
       const id = String(node["id"]);
-      return { id, before: JSON.stringify(node), after: JSON.stringify(nodeById(after, id) ?? null) };
+      return { id, before: shown(node), after: shown(nodeById(after, id)) };
     });
 }
 
@@ -125,7 +141,7 @@ const sizeless = (node: JsonObject | undefined): string =>
 interface Device {
   readonly hc: HcConnection;
   readonly feed: EventFeed;
-  readonly events: EventWatch;
+  readonly docs: Matches<HcEvent>;
   readonly conflicts: () => number;
   readonly layout: LayoutDoc;
 }
@@ -156,7 +172,11 @@ async function device(name: string): Promise<Device> {
   };
   const layout = new LayoutDoc(counted, null, () => undefined);
   await layout.refresh();
-  return { hc, feed, events: watchEvents(feed), conflicts: () => conflicts, layout };
+  const docs = new Matches<HcEvent>();
+  feed.onEvent((event) => {
+    if (event.type === "doc") docs.push(event);
+  });
+  return { hc, feed, docs, conflicts: () => conflicts, layout };
 }
 
 setUpOnce(async () => {
@@ -200,8 +220,11 @@ describe("the herdr-app layout document, two devices through the relay", () => {
   test("a tree one device writes reaches the other live, by the core's doc event through the relay", async () => {
     const [a, b] = both();
     expect(await a.layout.edit(() => FIXTURE)).toBe(true);
-    const heard = await b.events.next("doc");
-    expect(heard.data).toMatchObject({ name: LAYOUT_DOC });
+    const wrote = a.layout.state.phase === "ready" ? a.layout.state.version : -1;
+    const heard = await b.docs.next(
+      (event) => event.type === "doc" && event.data.name === LAYOUT_DOC && event.data.version === wrote,
+      `the doc event for version ${wrote}`,
+    );
     if (heard.type !== "doc") throw new Error("not a doc event");
     await b.layout.heard(heard.data.version);
     const state = b.layout.state;
@@ -229,10 +252,9 @@ describe("the herdr-app layout document, two devices through the relay", () => {
     expect(await b.layout.edit(splitIn(OTHER_TAB, OTHER_PANE, "p-keep-b"))).toBe(true);
     const { value } = await b.hc.call("doc.get", { name: LAYOUT_DOC });
     expect(outsideTrees(value, [DEEP_TAB, OTHER_TAB])).toBe(outsideTrees(FIXTURE, [DEEP_TAB, OTHER_TAB]));
-    for (const tab of [DEEP_TAB, OTHER_TAB]) {
-      for (const { id, before, after } of untouchedNodes(value, tab))
-        expect({ id, json: after }).toEqual({ id, json: before });
-    }
+    const compared = [DEEP_TAB, OTHER_TAB].flatMap((tab) => untouchedNodes(value, tab));
+    for (const { id, before, after } of compared) expect({ id, json: after }).toEqual({ id, json: before });
+    expect(compared.filter(({ before }) => before.includes("x-future-container"))).toHaveLength(CONTAINERS);
     const target = nodeById(tabById(value, DEEP_TAB)?.["root"] ?? null, DEEPEST);
     const written = nodeById(tabById(FIXTURE, DEEP_TAB)?.["root"] ?? null, DEEPEST);
     expect(sizeless(target)).toBe(sizeless(written));
@@ -252,5 +274,7 @@ describe("the herdr-app layout document, two devices through the relay", () => {
     const { value } = await b.hc.call("doc.get", { name: LAYOUT_DOC });
     expect(panesIn(value, DEEP_TAB)).toEqual(expect.arrayContaining(["p-same-a", "p-same-b"]));
     expect(outsideTrees(value, [DEEP_TAB])).toBe(outsideTrees(FIXTURE, [DEEP_TAB]));
+    for (const { id, before, after } of untouchedNodes(value, DEEP_TAB))
+      expect({ id, json: after }).toEqual({ id, json: before });
   }, 60_000);
 });
