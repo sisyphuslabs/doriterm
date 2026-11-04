@@ -55,6 +55,17 @@ interface Launched {
   readonly ready: Promise<string>;
 }
 
+/** Stops one launch's whole process tree, and waits until every process of it has exited. */
+async function stopLaunch({ proc, drained }: Launched): Promise<void> {
+  const tree = treeOf(await processTable(), proc.pid);
+  signalAll(tree.toReversed(), "SIGTERM");
+  await proc.exited;
+  await within(drained, "the relay's processes exiting", STOP_MS).catch((error: unknown) => {
+    signalAll(tree, "SIGKILL");
+    throw error;
+  });
+}
+
 /** Runs the pinned private relay under `wrangler dev` with a route-free config, and hands out taps to it. */
 export async function startMeshRelay(): Promise<MeshRelay> {
   const dir = relayDir();
@@ -108,15 +119,6 @@ export async function startMeshRelay(): Promise<MeshRelay> {
     const timer = setTimeout(() => ready.reject(new Error(`wrangler dev not ready:\n${output}`)), START_TIMEOUT_MS);
     void ready.promise.finally(() => clearTimeout(timer)).catch(() => undefined);
     return { proc, drained, ready: ready.promise };
-  };
-  const stopLaunch = async ({ proc, drained }: Launched): Promise<void> => {
-    const tree = treeOf(await processTable(), proc.pid);
-    signalAll(tree.toReversed(), "SIGTERM");
-    await proc.exited;
-    await within(drained, "the relay's processes exiting", STOP_MS).catch((error: unknown) => {
-      signalAll(tree, "SIGKILL");
-      throw error;
-    });
   };
   let current = launch();
   const taps: Tap[] = [];

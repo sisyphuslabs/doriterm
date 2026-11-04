@@ -23,12 +23,23 @@ const close = (code: number): Uint8Array => {
 };
 
 function concat(...parts: readonly Uint8Array[]): Uint8Array {
-  return Uint8Array.from(parts.flatMap((part) => [...part]));
+  const out = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.length;
+  }
+  return out;
 }
 
 describe("the tap's close-frame reader", () => {
   test("finds the close code after the head and any data frames, in one chunk or split byte by byte", () => {
-    const stream = concat(head, frame(0x2, new Uint8Array(70_000).fill(8)), frame(0x2, new Uint8Array(200)), close(4429));
+    const stream = concat(
+      head,
+      frame(0x2, new Uint8Array(70_000).fill(8)),
+      frame(0x2, new Uint8Array(200)),
+      close(4429),
+    );
     const whole = new CloseFrameReader();
     whole.feed(stream);
     const split = new CloseFrameReader();
