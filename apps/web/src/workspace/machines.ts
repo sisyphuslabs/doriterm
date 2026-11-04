@@ -34,6 +34,12 @@ function entry(name: string, local: boolean, state: string, terminals: readonly 
   return { id: idOfMachine(local ? undefined : name), name, local, state, live: own.length, first: own[0]?.address };
 }
 
+const byName = new Intl.Collator(undefined, { numeric: true });
+
+/**
+ * This machine first, then the added ones by name: hc lists them in the order this host learned of them, which in a
+ * mesh differs from host to host and moves when a machine reconnects.
+ */
 export function machineEntries(
   localName: string,
   machines: readonly MachineView[],
@@ -41,7 +47,9 @@ export function machineEntries(
 ): MachineEntry[] {
   return [
     entry(localName, true, "connected", terminals),
-    ...machines.map((machine) => entry(machine.name, false, machine.state, terminals)),
+    ...machines
+      .toSorted((a, b) => byName.compare(a.name, b.name))
+      .map((machine) => entry(machine.name, false, machine.state, terminals)),
   ];
 }
 

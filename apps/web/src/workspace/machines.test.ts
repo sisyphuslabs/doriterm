@@ -42,6 +42,16 @@ describe("machineEntries", () => {
     ]);
   });
 
+  test("added machines are listed by name, not in the order this host happened to learn of them", () => {
+    const learned = [
+      view("c", "connected"),
+      view("b", "connected"),
+      view("box10", "connected"),
+      view("box9", "connected"),
+    ];
+    expect(machineEntries("a", learned, []).map((machine) => machine.name)).toEqual(["a", "b", "box9", "box10", "c"]);
+  });
+
   test("the refresh key changes when an added machine's terminals stop being live, as they do when its line drops", () => {
     const live = [terminal("t1"), terminal("boxb/t1"), terminal("boxb/t2")];
     const dropped = [
