@@ -2,28 +2,25 @@ import { Laptop, Smartphone, Tablet } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import {
   BUILTIN_PALETTES,
+  BUILTIN_THEMES,
   Button,
   Input,
   SegmentedControl,
   SettingRow,
-  ThemePicker,
+  ThemeBrowser,
+  isBuiltinThemeName,
   resolveTheme,
   type ThemeOption,
 } from "../../src/index.ts";
 
-const THEMES: readonly ThemeOption[] = [
-  {
-    id: "system",
-    name: "System",
-    source: "Day or Night, as the device",
-    theme: resolveTheme(BUILTIN_PALETTES.day),
-    dark: resolveTheme(BUILTIN_PALETTES.night),
-  },
-  { id: "night", name: "Night", source: "doriface", theme: resolveTheme(BUILTIN_PALETTES.night) },
-  { id: "day", name: "Day", source: "doriface", theme: resolveTheme(BUILTIN_PALETTES.day) },
-  { id: "graphite", name: "Graphite", source: "herdr-app", theme: resolveTheme(BUILTIN_PALETTES.graphite) },
-  { id: "paper", name: "Paper", source: "herdr-app", theme: resolveTheme(BUILTIN_PALETTES.paper) },
-];
+const THEMES: readonly ThemeOption[] = Object.keys(BUILTIN_PALETTES)
+  .filter(isBuiltinThemeName)
+  .map((id) => ({
+    id,
+    name: BUILTIN_THEMES[id].name,
+    source: [BUILTIN_THEMES[id].family, BUILTIN_THEMES[id].licence].filter(Boolean).join(" · "),
+    theme: resolveTheme(BUILTIN_PALETTES[id]),
+  }));
 
 const DEVICES = [
   { id: "d1", name: "MacBook Pro", kind: <Laptop />, seen: "This device", current: true },
@@ -104,12 +101,51 @@ export function ConnectionSection() {
 }
 
 export function AppearanceSection() {
-  const [theme, setTheme] = useState("system");
+  const [mode, setMode] = useState<"system" | "light" | "dark">("system");
+  const [picks, setPicks] = useState({ dark: "night", light: "day" });
+  const [density, setDensity] = useState<"compact" | "comfortable" | "spacious">("comfortable");
   return (
     <Group title="Appearance">
-      <div className="py-3">
-        <ThemePicker options={THEMES} value={theme} onValueChange={setTheme} />
-      </div>
+      <SettingRow
+        title="Appearance"
+        description="System follows this device's light or dark setting."
+        control={
+          <SegmentedControl
+            label="Appearance"
+            value={mode}
+            onValueChange={setMode}
+            options={[
+              { value: "system", label: "System" },
+              { value: "light", label: "Light" },
+              { value: "dark", label: "Dark" },
+            ]}
+          />
+        }
+      />
+      <ThemeBrowser
+        options={THEMES}
+        dark={picks.dark}
+        light={picks.light}
+        defaultKind="dark"
+        onPick={(id, kind) => setPicks((current) => ({ ...current, [kind]: id }))}
+        className="border-b border-border"
+      />
+      <SettingRow
+        title="Density"
+        description="Row height in the sidebar, lists and menus. The terminal keeps its own font size."
+        control={
+          <SegmentedControl
+            label="Density"
+            value={density}
+            onValueChange={setDensity}
+            options={[
+              { value: "compact", label: "Compact" },
+              { value: "comfortable", label: "Comfortable" },
+              { value: "spacious", label: "Spacious" },
+            ]}
+          />
+        }
+      />
       <SettingRow
         title="Import a herdr-app theme"
         description="Any themes/<name>.json from herdr-app works unchanged."

@@ -1,3 +1,4 @@
+import { LIBRARY_CREDITS, LIBRARY_PALETTES } from "./library.ts";
 import type { Palette } from "./palette.ts";
 
 /** doriface's own dark default: warm near-black, parchment ink. */
@@ -50,5 +51,28 @@ export const paper: Palette = {
   ],
 };
 
-export const BUILTIN_PALETTES = { night, day, graphite, paper } as const;
+/** doriface's and herdr-app's own presets, which the generated themes.css pins by `data-theme`. */
+export const CORE_PALETTES = { night, day, graphite, paper } as const;
+
+export const BUILTIN_PALETTES = { ...CORE_PALETTES, ...LIBRARY_PALETTES } as const;
 export type BuiltinThemeName = keyof typeof BUILTIN_PALETTES;
+
+export const isBuiltinThemeName = (id: string): id is BuiltinThemeName => Object.hasOwn(BUILTIN_PALETTES, id);
+
+/** How a built-in theme is named and credited in the picker. */
+export interface BuiltinThemeInfo {
+  readonly name: string;
+  /** Where it comes from: doriface, herdr-app, or the upstream project. */
+  readonly family: string;
+  /** The upstream project and its SPDX licence id, for library themes. */
+  readonly url?: string;
+  readonly licence?: string;
+}
+
+export const BUILTIN_THEMES: Readonly<Record<BuiltinThemeName, BuiltinThemeInfo>> = {
+  night: { name: "Night", family: "doriface" },
+  day: { name: "Day", family: "doriface" },
+  graphite: { name: "Graphite", family: "herdr-app" },
+  paper: { name: "Paper", family: "herdr-app" },
+  ...LIBRARY_CREDITS,
+};

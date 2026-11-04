@@ -5,6 +5,7 @@ import type { CreateSocket, RelayProofs } from "@doriface/relay-client";
 import { controlIsLive, listenControl } from "./control.ts";
 import { lanUrlsFor } from "./lan-urls.ts";
 import { LiveSessions } from "./e2ee/sessions.ts";
+import { endSweeper } from "./end-sweeper.ts";
 import { createGateway } from "./gateway.ts";
 import { HcPipe, readHcVersion } from "./hc-pipe.ts";
 import { listenError, StartupError } from "./startup-error.ts";
@@ -105,6 +106,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
     stateDir === undefined || identity === undefined
       ? undefined
       : e2eeDeps(stateDir, identity, options.pairingSlots ?? uplink, options, proofs);
+  const ends = endSweeper({ hc: options.hc, session: options.session, env: options.env }, options.log);
   const gateway = createGateway({
     e2ee,
     token: options.token,
@@ -112,7 +114,10 @@ export async function startHost(options: HostOptions): Promise<Host> {
     hcVersion,
     log: options.log,
     directIdleMs: options.directIdleMs,
-    openPipe: () => new HcPipe({ hc: options.hc, session: options.session, env: options.env, log: options.log }),
+    openPipe: () => {
+      void ends.ensure();
+      return new HcPipe({ hc: options.hc, session: options.session, env: options.env, log: options.log });
+    },
   });
   await uplink?.start({
     onSession: (session) => {
@@ -191,6 +196,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
       stopping ??= Promise.resolve(e2ee?.sync.stop())
         .then(() => uplink?.stop())
         .then(() => gateway.closeAll())
+        .then(() => ends.stop())
         .then(() => Promise.all([server.stop(true), lanServer?.stop(true)]))
         .then(() => undefined);
       return stopping;
