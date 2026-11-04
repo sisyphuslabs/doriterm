@@ -57,6 +57,31 @@ test.describe("machine order", () => {
     await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
   });
 
+  test("under reduced motion the neighbours stay put and the landing line is drawn over the lifted row", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const local = await openWorkspace(page);
+    const before = await rowOf(page, local).boundingBox();
+    const height = before?.height ?? 28;
+    await dragRow(page, MACHINE_NAME, -height * 1.5, false);
+    const caret = page.locator("[data-row-drop-caret]");
+    await expect(caret).toBeVisible();
+    expect(await rowOf(page, local).boundingBox()).toEqual(before);
+    // The row is lifted past the top of the list, over the line: the line must still be the topmost thing there.
+    // Hit testing follows paint order but skips `pointer-events: none`, so the line takes hits only for this probe.
+    const topmost = await caret.evaluate((line) => {
+      const box = line.getBoundingClientRect();
+      line.style.pointerEvents = "auto";
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      line.style.pointerEvents = "";
+      return hit === line;
+    });
+    expect(topmost).toBe(true);
+    await page.mouse.up();
+    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
+  });
+
   test("a drag that Escape cancels leaves the order as it was and writes nothing", async ({ page }) => {
     const local = await openWorkspace(page);
     await dragRow(page, MACHINE_NAME, -40, false);
@@ -108,12 +133,15 @@ test.describe("machine order", () => {
     await rowOf(page, local).click({ button: "right" });
     await page.getByRole("menuitem", { name: "Move down" }).click();
     await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
+    // A closing menu hands focus back to its row once its exit ends; focus is moved away only after that.
+    await expect(page.getByRole("menu")).toHaveCount(0);
     const written = getCoreDoc(ORDER_DOC);
     if (typeof written !== "object" || written === null || !("machine_order" in written)) throw new Error("no order");
     const ids = written.machine_order;
     if (!Array.isArray(ids)) throw new Error("not a list");
     const elsewhere = page.getByRole("button", { name: "Add a machine" });
     await elsewhere.focus();
+    await expect(elsewhere).toBeFocused();
     setCoreDoc(ORDER_DOC, { machine_order: ids.toReversed(), kept: { by: "another client" } });
     await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
     await expect(elsewhere).toBeFocused();
