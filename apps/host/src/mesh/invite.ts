@@ -3,6 +3,7 @@ import { type CardBody, checkName, MAX_MESH_MEMBERS, type Signed, verifyCard } f
 import type { MeshStore, OwnCard } from "../state/mesh.ts";
 import type { AuthorizeIndex } from "./authorize-index.ts";
 import { type MeshLines, recordLines } from "./lines.ts";
+import { checkFloor, type CounterFloor } from "./merge.ts";
 import type { PendingJoin, PendingJoins } from "./pending-joins.ts";
 
 export interface InviteDeps {
@@ -13,6 +14,8 @@ export interface InviteDeps {
   readonly own: () => Promise<OwnCard>;
   /** The offer's expiry: a pending join expires with it. */
   readonly expiresAt: number;
+  /** The highest claim a peer's `hello` holds on this host's counter: the admit is not signed below it (10.1). */
+  readonly floor: () => CounterFloor | undefined;
   readonly log: (line: string) => void;
 }
 
@@ -77,6 +80,7 @@ function admit(deps: InviteDeps, meshId: string, inviter: string, card: CardBody
     const index = deps.mesh.authorizeIndex();
     if (isRejoin(index, card)) return tx.records;
     if ((index?.memberCount ?? 0) >= MAX_MESH_MEMBERS) throw new JoinRefused("the mesh is full");
+    checkFloor(tx.records, inviter, deps.floor());
     tx.sign(deps.identity, (n, prev) => ({
       v: 2,
       mesh: meshId,

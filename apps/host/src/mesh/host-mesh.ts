@@ -10,6 +10,7 @@ import { type HcCore, type HcCoreOptions, hcCoreReader } from "./hc-core.ts";
 import { serveJoin } from "./invite.ts";
 import { joinMesh } from "./join-dial.ts";
 import { INVITER_EXPECTS, MeshLines } from "./lines.ts";
+import type { CounterFloor } from "./merge.ts";
 import { PendingJoins } from "./pending-joins.ts";
 
 export interface HostMeshOptions {
@@ -25,6 +26,8 @@ export interface HostMeshOptions {
    * join ran on once the join is over. It owns the session from then on. Without one, the session stays open and idle.
    */
   readonly sync?: ((session: SecureLink) => void) | undefined;
+  /** The highest claim a peer's `hello` holds on this host's counter (section 10.1): a join's admit waits for it. */
+  readonly floor: () => CounterFloor | undefined;
   readonly log: (line: string) => void;
 }
 
@@ -75,9 +78,9 @@ export class HostMesh {
   /** Serves a session on the mesh stream: a join on a mesh offer, or a member's sync session for the sync hook. */
   serve(secure: SecureLink): void {
     if (secure.kind === SessionKind.Session) return this.#options.sync?.(secure);
-    const { identity, mesh, log } = this.#options;
+    const { identity, mesh, floor, log } = this.#options;
     const expiresAt = this.#offerExpiresAt > 0 ? this.#offerExpiresAt : Date.now() + PAIRING_TTL_MS;
-    const deps = { identity, mesh, pending: this.pending, own: () => this.#own(undefined), expiresAt, log };
+    const deps = { identity, mesh, pending: this.pending, own: () => this.#own(undefined), expiresAt, floor, log };
     serveJoin(new MeshLines(secure, INVITER_EXPECTS), secure.remoteStatic, deps).then(
       () => this.#keep(secure),
       () => undefined,

@@ -51,6 +51,7 @@ export function meshDeps(options: MeshDepsOptions) {
     hc,
     relay,
     sync: (s) => sync.adopt(s),
+    floor: () => hooks.floor(),
     log,
   });
   const pending = () =>

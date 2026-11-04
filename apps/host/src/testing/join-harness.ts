@@ -35,7 +35,8 @@ export const ownOf = (s: Side) => ({ name: s.m.name, hcId: s.m.hcId });
 
 export function inviteDeps(inviter: Side, pending = new PendingJoins(), expiresAt = Date.now() + 60_000): InviteDeps {
   const log = (line: string): void => void inviter.logs.push(line);
-  return { identity: inviter.m.identity, mesh: inviter.mesh, pending, own: async () => ownOf(inviter), expiresAt, log };
+  const own = async () => ownOf(inviter);
+  return { identity: inviter.m.identity, mesh: inviter.mesh, pending, own, expiresAt, floor: () => undefined, log };
 }
 
 export function joinerContext(

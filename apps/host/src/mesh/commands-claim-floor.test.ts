@@ -5,18 +5,23 @@ import { join } from "node:path";
 import { memoryLinkPair } from "@doriface/crypto/testing";
 import { hashOf, parseRecord, type Signed } from "@doriface/mesh";
 import { CounterBehindError } from "../state/mesh.ts";
+import { failure, joinerContext, removeSides, runJoin, side } from "../testing/join-harness.ts";
 import { MeshCommands } from "./commands.ts";
 import { DialPolicy } from "./dial-policy.ts";
 import { Gossip } from "./gossip.ts";
 import type { MeshLine } from "./lines.ts";
 import { NOT_RUNNING } from "./live-facts.ts";
+import { PendingJoins } from "./pending-joins.ts";
 import { syncHooks } from "./sync-hooks.ts";
 import { FakeClock, seededRandom } from "./testing/fake-clock.ts";
 import { headsOfRecords, meshIdOfRecords, meshOf, peer, Signer, storeOf } from "./testing/mesh-peers.ts";
 
 const [a, b, c] = [peer("a"), peer("b"), peer("c")];
 const stateDir = mkdtempSync(join(tmpdir(), "dh-claim-floor-"));
-afterAll(() => rmSync(stateDir, { recursive: true, force: true }));
+afterAll(() => {
+  rmSync(stateDir, { recursive: true, force: true });
+  removeSides();
+});
 
 /**
  * b restored from a backup taken before its own ack n = 1, which a still holds, running its gossip and the operator's
@@ -64,7 +69,18 @@ function restoredB(seed: number) {
       return body?.by === b.signPub ? [body.n] : [];
     });
   const at = async (ms: number): Promise<void> => clock.advance(ms - clock.now());
-  return { commands, claim, deliver, ownNs, at, records: () => store.read()?.records ?? [] };
+  /** A join that b, as the inviting member, approves on its own (`mesh pair --auto`). */
+  const approveJoin = (joiner: string) => {
+    const pending = new PendingJoins();
+    pending.setAuto(Date.now() + 60_000);
+    const card = async () => ({ name: b.name, hcId: b.hcId });
+    const deps = { identity: b.machine.identity, mesh: store, pending, own: card, expiresAt: Date.now() + 60_000 };
+    const joining = side(joiner);
+    const inviter = { m: b.machine, dir: stateDir, mesh: store, logs: [] };
+    const invite = { ...deps, floor: () => gossip.floor(), log: () => undefined };
+    return runJoin(invite, joinerContext(joining, inviter), joining.m.identity.noise.publicKey);
+  };
+  return { commands, claim, deliver, ownNs, at, approveJoin, records: () => store.read()?.records ?? [] };
 }
 
 describe("the operator's commands sign nothing below a peer's standing claim (section 10.1, #154)", () => {
@@ -80,6 +96,18 @@ describe("the operator's commands sign nothing below a peer's standing claim (se
     s.deliver();
     await s.at(2_000);
     expect(await s.commands.rename({ member: "a", name: "a2" })).toMatchObject({ written: true });
+    expect(s.ownNs()).toEqual([1, 2]);
+  });
+
+  test("a join b approves while a claims its counter 1 is refused, and admits as n = 2 once a's records arrive: no fork", async () => {
+    const s = restoredB(33);
+    s.claim();
+    await s.at(1_000);
+    expect(await failure(s.approveJoin("delta").invited)).toContain("holds counter 1 of this host's key, here 0");
+    expect(s.ownNs()).toEqual([]);
+    s.deliver();
+    await s.at(2_000);
+    await s.approveJoin("epsilon").invited;
     expect(s.ownNs()).toEqual([1, 2]);
   });
 

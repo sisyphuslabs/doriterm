@@ -45,6 +45,7 @@ function hostMesh(sync?: (session: SecureLink) => void, Sessions = LiveSessions)
       relay: { url: undefined },
       log,
       sync,
+      floor: () => undefined,
     });
   return { dir, m, mesh, sessions, create };
 }
