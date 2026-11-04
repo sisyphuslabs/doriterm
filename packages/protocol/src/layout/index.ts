@@ -15,5 +15,6 @@ export {
 export type { Axis, Node } from "./node.ts";
 export { nodeAt, panesOf, pathTo, removePane, replaceAt, splitPane, terminalBlock } from "./tree.ts";
 export type { PaneRef } from "./tree.ts";
+export { arrangeIds, moveInOrder, movedOrder, ORDER_DOC, readOrderDocument, storedOrder } from "./order.ts";
 export { LayoutDoc } from "./sync.ts";
 export type { DocCalls, DocEdit, DocState } from "./sync.ts";

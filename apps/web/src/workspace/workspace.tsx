@@ -21,6 +21,8 @@ import { useNarrow } from "./use-narrow.ts";
 import { machineIds, tabAddress, tabKey } from "./tab-keys.ts";
 import { useLayout } from "./use-layout.ts";
 import { useLayoutDocs } from "./use-layout-docs.ts";
+import { ORDER_DOC } from "./machine-order.ts";
+import { useMachineOrder } from "./use-machine-order.ts";
 import { useTerminals, type DocHeard } from "./use-terminals.ts";
 
 export interface WorkspaceProps {
@@ -31,14 +33,31 @@ export interface WorkspaceProps {
 export function Workspace({ connection }: WorkspaceProps) {
   // The feed comes before the machine list the layout documents need, so its doc events reach them through a ref.
   const heardLayout = useRef<(machine: string | null, version: number) => void>(() => undefined);
+  const heardOrder = useRef<(version: number) => void>(() => undefined);
   const onDoc = useCallback<DocHeard>((machine, name, version) => {
     if (name === LAYOUT_DOC) heardLayout.current(machine, version);
+    if (name === ORDER_DOC && machine === null) heardOrder.current(version);
   }, []);
   const fed = useTerminals(connection, onDoc);
-  const { entries, terminals, refresh, listError, views, retry } = useMachines(connection, fed.terminals);
+  const { entries: listed, terminals, refresh, listError, views, retry } = useMachines(connection, fed.terminals);
   const { layouts, heard } = useLayoutDocs(connection, views);
   heardLayout.current = heard;
+  const order = useMachineOrder(connection, listed);
+  heardOrder.current = order.heard;
+  const entries = order.entries;
   const toasts = useToastManager();
+  const { move: saveMove } = order;
+  const moveMachine = useCallback(
+    (core: string, to: number): void =>
+      void saveMove(core, to).catch((cause: unknown) =>
+        toasts.add({
+          type: "error",
+          title: "The machine order was not saved",
+          description: cause instanceof Error ? cause.message : String(cause),
+        }),
+      ),
+    [saveMove, toasts],
+  );
   const failed = useCallback(
     (message: string) => toasts.add({ type: "error", title: "The layout was not saved", description: message }),
     [toasts],
@@ -98,8 +117,8 @@ export function Workspace({ connection }: WorkspaceProps) {
 
   const openAddMachine = useCallback(() => setAdding(true), []);
   const machines = useMemo(
-    () => ({ entries, listError, openAddMachine, views, retry, ...runs }),
-    [entries, listError, openAddMachine, views, retry, runs],
+    () => ({ entries, listError, openAddMachine, views, retry, moveMachine, ...runs }),
+    [entries, listError, openAddMachine, views, retry, moveMachine, runs],
   );
   return (
     <MachinesContext value={machines}>

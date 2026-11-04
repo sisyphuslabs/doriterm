@@ -17,6 +17,8 @@ export interface Machines {
   readonly views: readonly MachineView[];
   /** Dials a machine now (`machine.connect`) instead of at hc's next retry, then reads machine.list again. */
   readonly retry: (machine: string) => Promise<void>;
+  /** Moves a machine (by its permanent core id) to index `to` of `entries` and saves the order for every device. */
+  readonly moveMachine: (core: string, to: number) => void;
 }
 
 export const MachinesContext = createContext<Machines>({
@@ -26,6 +28,7 @@ export const MachinesContext = createContext<Machines>({
   openAddMachine: () => {},
   views: [],
   retry: async () => {},
+  moveMachine: () => {},
 });
 
 export const useMachinesContext = (): Machines => useContext(MachinesContext);
@@ -87,9 +90,12 @@ export function useMachines(connection: HcConnection, terminals: readonly Termin
       document.removeEventListener("visibilitychange", whenVisible);
     };
   }, [refresh]);
-  const localName = connection.hello.core.name;
+  const { id: coreId, name: coreName } = connection.hello.core;
   const reached = useMemo(() => withReach(terminals, views), [terminals, views]);
-  const entries = useMemo(() => machineEntries(localName, views, reached), [localName, views, reached]);
+  const entries = useMemo(
+    () => machineEntries({ id: coreId, name: coreName }, views, reached),
+    [coreId, coreName, views, reached],
+  );
   // A refused dial is not lost: hc records it as the machine's `why`, which the re-read brings in.
   const retry = useCallback(
     (machine: string) => connection.call("machine.connect", { machine }).then(refresh, refresh),

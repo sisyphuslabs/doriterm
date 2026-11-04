@@ -4,6 +4,8 @@ import { byName, idOfMachine, machineOf, type Session } from "./model.ts";
 export interface MachineEntry {
   /** Unique even when an added machine is named like this one. */
   readonly id: string;
+  /** The machine's permanent core id (hc's `machine.list` id; this core's own for this machine): a rename keeps it. */
+  readonly core: string;
   readonly name: string;
   /** The machine this client is connected to; its terminals have bare addresses. */
   readonly local: boolean;
@@ -28,10 +30,17 @@ export const showMachines = (entries: readonly MachineEntry[], listError: string
 /** Only this machine is listed: the section ends in an Add a machine row instead of a header action. */
 export const onlyThisMachine = (entries: readonly MachineEntry[]): boolean => entries.every((machine) => machine.local);
 
-function entry(name: string, local: boolean, state: string, terminals: readonly Session[]): MachineEntry {
+function entry(core: string, name: string, local: boolean, state: string, terminals: readonly Session[]): MachineEntry {
   const live = terminals.filter((t) => t.state === "live" && t.offline !== true);
   const own = live.filter((t) => machineOf(t.address) === (local ? undefined : name));
-  return { id: idOfMachine(local ? undefined : name), name, local, state, live: own.length, first: own[0]?.address };
+  const id = idOfMachine(local ? undefined : name);
+  return { id, core, name, local, state, live: own.length, first: own[0]?.address };
+}
+
+/** The core the client is connected to, as its `hello` names it. */
+export interface ThisCore {
+  readonly id: string;
+  readonly name: string;
 }
 
 /**
@@ -42,13 +51,13 @@ export const orderMachines = (machines: readonly MachineView[]): MachineView[] =
   machines.toSorted((a, b) => byName.compare(a.name, b.name));
 
 export function machineEntries(
-  localName: string,
+  core: ThisCore,
   machines: readonly MachineView[],
   terminals: readonly Session[],
 ): MachineEntry[] {
   return [
-    entry(localName, true, "connected", terminals),
-    ...machines.map((machine) => entry(machine.name, false, machine.state, terminals)),
+    entry(core.id, core.name, true, "connected", terminals),
+    ...machines.map((machine) => entry(machine.id, machine.name, false, machine.state, terminals)),
   ];
 }
 
