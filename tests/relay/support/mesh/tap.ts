@@ -1,4 +1,5 @@
 import type { Socket } from "bun";
+import { CloseFrameReader } from "./close-frames.ts";
 
 const CRLF = "\r\n";
 /** The relay's client dial: `GET /v1/client/<hostId>?…` (the target host is in the request line). */
@@ -19,6 +20,8 @@ export interface Tap {
   openTo(hostId: string): number;
   /** Every host this host dialed through the tap (sync sessions and hc lines alike), refused dials included. */
   dials(): readonly string[];
+  /** Every WebSocket close code the relay sent this host, on its uplink and its dials alike. */
+  closeCodes(): readonly number[];
   /** Calls `wake` whenever a connection opens or closes, until the returned function is called. */
   onChange(wake: () => void): () => void;
   /** Closes every connection and refuses new ones, as a network partition from this host's side. */
@@ -36,6 +39,7 @@ interface Conn {
   headDone: boolean;
   target: string | undefined;
   queue: Uint8Array[];
+  closes: CloseFrameReader;
 }
 
 export function makeTap(upstreamPort: number, ip: string): Tap {
@@ -45,6 +49,7 @@ export function makeTap(upstreamPort: number, ip: string): Tap {
     for (const wake of wakes) wake();
   };
   const dialed: string[] = [];
+  const readers: CloseFrameReader[] = [];
   let forwarded = 0;
   let cut = false;
   let blocked = new Set<string>();
@@ -60,7 +65,15 @@ export function makeTap(upstreamPort: number, ip: string): Tap {
     socket: {
       open(socket) {
         if (cut) return void socket.end();
-        const conn: Conn = { up: undefined, head: "", headDone: false, target: undefined, queue: [] };
+        const conn: Conn = {
+          up: undefined,
+          head: "",
+          headDone: false,
+          target: undefined,
+          queue: [],
+          closes: new CloseFrameReader(),
+        };
+        readers.push(conn.closes);
         socket.data = conn;
         conns.add(socket);
         changed();
@@ -70,6 +83,7 @@ export function makeTap(upstreamPort: number, ip: string): Tap {
           socket: {
             data(_up, bytes) {
               forwarded += bytes.length;
+              conn.closes.feed(bytes);
               socket.write(bytes);
             },
             close: () => void socket.end(),
@@ -119,6 +133,7 @@ export function makeTap(upstreamPort: number, ip: string): Tap {
     open: () => conns.size,
     openTo: (hostId) => [...conns].filter((socket) => socket.data.target === hostId).length,
     dials: () => dialed,
+    closeCodes: () => readers.flatMap((reader) => reader.codes),
     onChange(wake) {
       wakes.add(wake);
       return () => wakes.delete(wake);
