@@ -1,4 +1,13 @@
-import { ExtraKeysBar, Fingerprint, QrCode, SettingRow, Switch, TerminalPreview } from "../../src/index.ts";
+import {
+  DirectionPad,
+  ExtraKeysBar,
+  Fingerprint,
+  KeyboardButton,
+  QrCode,
+  SettingRow,
+  Switch,
+  TerminalPreview,
+} from "../../src/index.ts";
 import { sampleQrModules } from "../data.ts";
 import { ControlSpecimens } from "./control-specimens.tsx";
 import { OverlaySpecimens } from "./overlay-specimens.tsx";
@@ -51,6 +60,10 @@ export function PrimitivesScreen() {
             cursor
           />
           <ExtraKeysBar latched={["ctrl"]} />
+        </div>
+        <div className="mt-3 flex items-end gap-6">
+          <DirectionPad />
+          <KeyboardButton />
         </div>
       </Section>
 

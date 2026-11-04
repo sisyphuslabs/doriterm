@@ -11,13 +11,18 @@ export interface MenuProps {
   readonly align?: "start" | "center" | "end";
   readonly className?: string;
   readonly defaultOpen?: boolean;
+  readonly onOpenChange?: (open: boolean) => void;
   /** Keeps the requested side even near a viewport edge; for static previews. */
   readonly fixedSide?: boolean;
 }
 
-export function Menu({ trigger, children, align = "start", className, defaultOpen, fixedSide = false }: MenuProps) {
+export function Menu(props: MenuProps) {
+  const { trigger, children, align = "start", className, defaultOpen, onOpenChange, fixedSide = false } = props;
   return (
-    <BaseMenu.Root {...(defaultOpen === undefined ? {} : { defaultOpen })}>
+    <BaseMenu.Root
+      {...(defaultOpen === undefined ? {} : { defaultOpen })}
+      {...(onOpenChange === undefined ? {} : { onOpenChange: (open: boolean) => onOpenChange(open) })}
+    >
       <BaseMenu.Trigger render={trigger} />
       <BaseMenu.Portal>
         <BaseMenu.Positioner

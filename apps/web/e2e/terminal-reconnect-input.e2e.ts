@@ -1,6 +1,7 @@
 import { devices } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
+import { fakeSoftKeyboard } from "./phone-key-bar.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
@@ -33,6 +34,8 @@ test.describe("on a phone", () => {
 
   test("an extra key pressed during a blip reaches the shell in order with the typing around it", async ({ page }) => {
     const socket = await routeHcSocket(page);
+    // The keys bar shows on a touch phone only while the soft keyboard is up.
+    await fakeSoftKeyboard(page);
     await page.goto("/");
     await page.getByRole("banner").getByRole("button", { name: "New tab" }).click();
     const terminal = page.locator("[data-terminal]");
@@ -43,6 +46,7 @@ test.describe("on a phone", () => {
     await socket.drop(true);
     await expect.poll(socket.refused, { timeout: 15_000 }).toBeGreaterThan(0);
     await page.keyboard.type("echo pk-ab");
+    await page.getByRole("button", { name: "Arrow keys" }).click();
     await page.getByRole("button", { name: "Left arrow" }).click();
     await input.focus();
     await page.keyboard.type("Z");

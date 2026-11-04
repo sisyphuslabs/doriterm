@@ -1,12 +1,12 @@
 import { ChevronLeft, Ellipsis } from "lucide-react";
-import { ExtraKeysBar, IconButton, StatusChip, TerminalPreview } from "../../src/index.ts";
+import { DirectionPad, ExtraKeysBar, IconButton, StatusChip, TerminalPreview } from "../../src/index.ts";
 import { CLAUDE_LINES } from "../data.ts";
 import { PhoneFrame } from "./frames.tsx";
 import { CompactHome } from "./shell.tsx";
 
 export function MobileTerminal() {
   return (
-    <div className="flex h-full min-h-0 flex-col bg-card">
+    <div className="relative flex h-full min-h-0 flex-col bg-card">
       <header className="box-content flex h-12 shrink-0 items-center gap-1 border-b border-border bg-chrome px-1.5 pt-(--safe-top)">
         <IconButton label="Back to agents" icon={<ChevronLeft />} size="md" />
         <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -16,7 +16,8 @@ export function MobileTerminal() {
         <IconButton label="Terminal actions" icon={<Ellipsis />} size="md" />
       </header>
       <TerminalPreview lines={CLAUDE_LINES} cursor label="Claude Code output" className="flex-1 text-[0.75rem]" />
-      <ExtraKeysBar latched={["ctrl"]} />
+      <DirectionPad className="absolute right-3 bottom-[calc(var(--safe-bottom)+4.25rem)]" />
+      <ExtraKeysBar latched={["ctrl"]} padOpen className="pb-[calc(var(--safe-bottom)+0.25rem)]" />
     </div>
   );
 }
@@ -32,7 +33,7 @@ export function MobileScreen() {
         <PhoneFrame label="Agents">
           <CompactHome />
         </PhoneFrame>
-        <PhoneFrame label="Terminal, with the extra keys bar">
+        <PhoneFrame label="Terminal, with the keys bar and the arrow pad">
           <MobileTerminal />
         </PhoneFrame>
       </main>
