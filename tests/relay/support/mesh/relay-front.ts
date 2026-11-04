@@ -23,6 +23,8 @@ export interface MeshRelay {
   tapFor(): Tap;
   output(): string;
   stop(): Promise<void>;
+  /** Restarts the relay in place: same port, same persisted Durable Object state (design E-RELAY, E-IP). */
+  restart(): Promise<void>;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
@@ -46,6 +48,13 @@ function routeFreeConfig(dir: string): string {
   return JSON.stringify({ ...Object.fromEntries(kept), main: join(dir, parsed["main"]) });
 }
 
+interface Launched {
+  readonly proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
+  /** Ends once every process of this launch has exited (they all inherit the pipes). */
+  readonly drained: Promise<unknown>;
+  readonly ready: Promise<string>;
+}
+
 /** Runs the pinned private relay under `wrangler dev` with a route-free config, and hands out taps to it. */
 export async function startMeshRelay(): Promise<MeshRelay> {
   const dir = relayDir();
@@ -54,52 +63,53 @@ export async function startMeshRelay(): Promise<MeshRelay> {
   const config = join(scratch, "wrangler.json");
   writeFileSync(config, routeFreeConfig(dir));
   const port = freePort();
-  const proc = Bun.spawn(
-    [
-      wrangler,
-      "dev",
-      "-c",
-      config,
-      "--ip",
-      "127.0.0.1",
-      "--port",
-      String(port),
-      "--inspector-port",
-      String(freePort()),
-      "--persist-to",
-      join(scratch, "state"),
-    ],
-    {
-      cwd: dir,
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "pipe",
-      env: {
-        ...process.env,
-        WRANGLER_SEND_METRICS: "false",
-        XDG_CONFIG_HOME: join(scratch, "config"),
-        WRANGLER_LOG_PATH: join(scratch, "logs"),
-      },
-    },
-  );
   let output = "";
-  const ready = Promise.withResolvers<string>();
-  const drain = async (stream: ReadableStream<Uint8Array>): Promise<void> => {
-    const decoder = new TextDecoder();
-    for await (const chunk of stream) {
-      output += decoder.decode(chunk, { stream: true });
-      const url = READY.exec(output)?.[1];
-      if (url !== undefined) ready.resolve(url);
-    }
+  const launch = (): Launched => {
+    const proc = Bun.spawn(
+      [
+        wrangler,
+        "dev",
+        "-c",
+        config,
+        "--ip",
+        "127.0.0.1",
+        "--port",
+        String(port),
+        "--inspector-port",
+        String(freePort()),
+        "--persist-to",
+        join(scratch, "state"),
+      ],
+      {
+        cwd: dir,
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+        env: {
+          ...process.env,
+          WRANGLER_SEND_METRICS: "false",
+          XDG_CONFIG_HOME: join(scratch, "config"),
+          WRANGLER_LOG_PATH: join(scratch, "logs"),
+        },
+      },
+    );
+    const from = output.length;
+    const ready = Promise.withResolvers<string>();
+    const drain = async (stream: ReadableStream<Uint8Array>): Promise<void> => {
+      const decoder = new TextDecoder();
+      for await (const chunk of stream) {
+        output += decoder.decode(chunk, { stream: true });
+        const url = READY.exec(output.slice(from))?.[1];
+        if (url !== undefined) ready.resolve(url);
+      }
+    };
+    const drained = Promise.all([drain(proc.stdout), drain(proc.stderr)]);
+    void proc.exited.then((code) => ready.reject(new Error(`wrangler dev exited ${code} before ready:\n${output}`)));
+    const timer = setTimeout(() => ready.reject(new Error(`wrangler dev not ready:\n${output}`)), START_TIMEOUT_MS);
+    void ready.promise.finally(() => clearTimeout(timer)).catch(() => undefined);
+    return { proc, drained, ready: ready.promise };
   };
-  // Every process wrangler starts inherits these pipes, so they end only once the whole relay tree has exited.
-  const drained = Promise.all([drain(proc.stdout), drain(proc.stderr)]);
-  void proc.exited.then((code) => ready.reject(new Error(`wrangler dev exited ${code} before ready:\n${output}`)));
-  const timer = setTimeout(() => ready.reject(new Error(`wrangler dev not ready:\n${output}`)), START_TIMEOUT_MS);
-  const taps: Tap[] = [];
-  const ip = testIp();
-  const stop = async (): Promise<void> => {
-    for (const tap of taps) tap.stop();
+  const stopLaunch = async ({ proc, drained }: Launched): Promise<void> => {
     const tree = treeOf(await processTable(), proc.pid);
     signalAll(tree.toReversed(), "SIGTERM");
     await proc.exited;
@@ -107,16 +117,31 @@ export async function startMeshRelay(): Promise<MeshRelay> {
       signalAll(tree, "SIGKILL");
       throw error;
     });
+  };
+  let current = launch();
+  const taps: Tap[] = [];
+  const ip = testIp();
+  const stop = async (): Promise<void> => {
+    for (const tap of taps) tap.stop();
+    await stopLaunch(current);
     rmSync(scratch, { recursive: true, force: true });
   };
   try {
-    const url = await ready.promise;
+    const url = await current.ready;
     return {
       url,
       ip,
-      pid: proc.pid,
+      get pid() {
+        return current.proc.pid;
+      },
       output: () => output,
       stop,
+      /** Stops the relay and starts it again on the same port and persisted state; taps and their origins survive. */
+      async restart() {
+        await stopLaunch(current);
+        current = launch();
+        await current.ready;
+      },
       tapFor() {
         const tap = makeTap(port, ip);
         taps.push(tap);
@@ -126,7 +151,5 @@ export async function startMeshRelay(): Promise<MeshRelay> {
   } catch (error) {
     await stop();
     throw error;
-  } finally {
-    clearTimeout(timer);
   }
 }
