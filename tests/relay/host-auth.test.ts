@@ -45,7 +45,8 @@ async function answerWith(hostId: string, answer: (challenge: Uint8Array) => Pro
 
 describe("host challenge auth", () => {
   test("healthz reports the relay version", async () => {
-    expect(await (await fetch(`${relay.url}/healthz`)).json()).toEqual({ ok: true, version: "0.0.0" });
+    // A v1.6 relay may add its pass state (`passes`, `kid`, `accepted`); stand-ins need not.
+    expect(await (await fetch(`${relay.url}/healthz`)).json()).toMatchObject({ ok: true, version: "0.0.0" });
   });
 
   test("a correctly signed answer brings the host online for clients", async () => {
