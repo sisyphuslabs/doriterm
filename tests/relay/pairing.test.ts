@@ -101,7 +101,9 @@ describe("pairing slots", () => {
     const slot = uniqueSlot();
     const key = crypto.getRandomValues(new Uint8Array(32));
     expect(await holder.uplink.registerPairSlot(slot, key, offerExpiry())).toBe("registered");
-    expect(await other.uplink.registerPairSlot(slot, crypto.getRandomValues(new Uint8Array(32)), offerExpiry())).toBe("taken");
+    expect(await other.uplink.registerPairSlot(slot, crypto.getRandomValues(new Uint8Array(32)), offerExpiry())).toBe(
+      "taken",
+    );
     const refreshed = crypto.getRandomValues(new Uint8Array(32));
     expect(await holder.uplink.registerPairSlot(slot, refreshed, offerExpiry())).toBe("registered");
     expect((await lookup(typed(slot)))?.noiseStaticPub).toEqual(refreshed);
@@ -190,7 +192,9 @@ describe("pairing slots", () => {
   test("a cleared slot is not found any more", async () => {
     const host = await startTestHost(relay.url, testIp());
     const slot = uniqueSlot();
-    expect(await host.uplink.registerPairSlot(slot, crypto.getRandomValues(new Uint8Array(32)), offerExpiry())).toBe("registered");
+    expect(await host.uplink.registerPairSlot(slot, crypto.getRandomValues(new Uint8Array(32)), offerExpiry())).toBe(
+      "registered",
+    );
     await host.uplink.clearPairSlot();
     expect(await lookup(typed(slot))).toBeUndefined();
     host.uplink.stop();

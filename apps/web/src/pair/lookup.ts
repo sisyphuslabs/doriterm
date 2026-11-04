@@ -11,7 +11,8 @@ const REFUSALS: Readonly<Record<PairSlotRefusal, string>> = {
   malformed: "The relay's answer is malformed.",
   unsigned:
     "The host on this code did not sign its pairing key, so the code cannot be trusted. Update doriface-host on that computer, or pair with its link or QR code.",
-  forged: "The relay answered with a key this host did not sign. Do not pair with this code; use the host's link or QR code.",
+  forged:
+    "The relay answered with a key this host did not sign. Do not pair with this code; use the host's link or QR code.",
   expired: "This code's offer has expired. Check this device's clock, or open a new code on the host.",
 };
 

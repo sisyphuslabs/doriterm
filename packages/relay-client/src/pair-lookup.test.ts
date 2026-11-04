@@ -41,7 +41,11 @@ describe("lookupPairSlot", () => {
 
   test("a signed answer for the typed code's slot is the host's record", async () => {
     const host = await signedHost();
-    const record = await lookupPairSlot({ relayUrl: "https://relay.example", code: "AB3K9XQZ", fetch: answering(host.answer) });
+    const record = await lookupPairSlot({
+      relayUrl: "https://relay.example",
+      code: "AB3K9XQZ",
+      fetch: answering(host.answer),
+    });
     expect(record).toEqual({ hostId: host.hostId, noiseStaticPub: host.noiseStaticPub, signPub: host.signPub });
   });
 

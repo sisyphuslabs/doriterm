@@ -54,12 +54,17 @@ export function encodePairSlotRequest(slot: string, noiseStaticPub: Uint8Array):
 }
 
 function checkedExpiresAt(expiresAt: number): number {
-  if (!Number.isSafeInteger(expiresAt) || expiresAt < 0) throw new RangeError("expiresAt must be a non-negative integer");
+  if (!Number.isSafeInteger(expiresAt) || expiresAt < 0)
+    throw new RangeError("expiresAt must be a non-negative integer");
   return expiresAt;
 }
 
 /** `"doriface-pair-slot-v1" || slot || noiseStaticPub || expiresAt (u64 BE)`: what the host's signing key signs. */
-export function pairSlotStatement(slot: string, noiseStaticPub: Uint8Array, expiresAt: number): Uint8Array<ArrayBuffer> {
+export function pairSlotStatement(
+  slot: string,
+  noiseStaticPub: Uint8Array,
+  expiresAt: number,
+): Uint8Array<ArrayBuffer> {
   if (noiseStaticPub.byteLength !== NOISE_STATIC_PUB_BYTES) throw new RangeError("noiseStaticPub must be 32 bytes");
   const prefix = encoder.encode(PAIR_SLOT_CONTEXT);
   const out = new Uint8Array(prefix.byteLength + UNSIGNED_BYTES + EXPIRES_AT_BYTES);

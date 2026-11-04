@@ -63,7 +63,9 @@ export class PairSlotRequests {
     if (waiter === undefined) return true;
     clearTimeout(waiter.timer);
     if (ack.status === PairSlotAckStatus.Malformed) {
-      waiter.resolvers.reject(new PairSlotMalformedError(`the relay refused the PAIR_SLOT request for ${ack.slot} as malformed`));
+      waiter.resolvers.reject(
+        new PairSlotMalformedError(`the relay refused the PAIR_SLOT request for ${ack.slot} as malformed`),
+      );
     } else {
       waiter.resolvers.resolve(ack.status === PairSlotAckStatus.Registered ? "registered" : "taken");
     }

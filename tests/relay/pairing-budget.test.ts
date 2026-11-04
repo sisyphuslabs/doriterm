@@ -33,7 +33,9 @@ afterEach(runDeferred);
 async function pairingHost(): Promise<{ readonly host: TestHost; readonly slot: string }> {
   const host = await startTestHost(relay.url, testIp());
   const slot = uniqueSlot();
-  expect(await host.uplink.registerPairSlot(slot, crypto.getRandomValues(new Uint8Array(32)), offerExpiry())).toBe("registered");
+  expect(await host.uplink.registerPairSlot(slot, crypto.getRandomValues(new Uint8Array(32)), offerExpiry())).toBe(
+    "registered",
+  );
   return { host, slot };
 }
 
