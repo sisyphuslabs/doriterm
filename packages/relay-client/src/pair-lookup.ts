@@ -1,19 +1,7 @@
-import {
-  fromBase64Url,
-  HOST_ID_PATTERN,
-  hostIdOf,
-  NOISE_STATIC_PUB_BYTES,
-  normalizePairCode,
-  pairSlotOf,
-  SIGN_PUB_BYTES,
-} from "./wire/index.ts";
+import { checkPairSlotAnswer, type PairSlotRecord, type PairSlotRefusal } from "./pair-answer.ts";
+import { normalizePairCode, pairSlotOf } from "./wire/index.ts";
 
-/** What the relay says is pairing on a slot. Untrusted: the psk and the fingerprint check authenticate it. */
-export interface PairSlotRecord {
-  readonly hostId: string;
-  readonly noiseStaticPub: Uint8Array;
-  readonly signPub: Uint8Array;
-}
+export type { PairSlotRecord } from "./pair-answer.ts";
 
 export class PairLookupError extends Error {
   override readonly name = "PairLookupError";
@@ -48,25 +36,18 @@ async function jsonBody(response: Response): Promise<unknown> {
   }
 }
 
-function field(body: unknown, name: string): unknown {
-  return typeof body === "object" && body !== null ? Object.getOwnPropertyDescriptor(body, name)?.value : undefined;
-}
-
-async function parseRecord(body: unknown): Promise<PairSlotRecord | undefined> {
-  const hostId = field(body, "hostId");
-  const noise = field(body, "noiseStaticPub");
-  const sign = field(body, "signPub");
-  if (typeof hostId !== "string" || typeof noise !== "string" || typeof sign !== "string") return undefined;
-  const noiseStaticPub = fromBase64Url(noise);
-  const signPub = fromBase64Url(sign);
-  if (!HOST_ID_PATTERN.test(hostId) || noiseStaticPub?.byteLength !== NOISE_STATIC_PUB_BYTES) return undefined;
-  if (signPub?.byteLength !== SIGN_PUB_BYTES || (await hostIdOf(signPub)) !== hostId) return undefined;
-  return { hostId, noiseStaticPub, signPub };
-}
+const REFUSALS: Readonly<Record<PairSlotRefusal, string>> = {
+  malformed: "the relay's pairing answer is malformed",
+  unsigned:
+    "the host on this code did not sign its pairing key: update doriface-host there, or pair with its link instead",
+  forged: "the relay's pairing answer carries a key the host did not sign: do not pair with this code",
+  expired: "the host's signed pairing offer has expired: check this machine's clock, or open a new code on the host",
+};
 
 /**
  * Finds the host pairing on a typed code's slot. Undefined when no host holds the slot; throws PairLookupError for
- * a malformed code, a rate limit (429) or an answer that does not parse or whose signPub does not hash to hostId.
+ * a malformed code, a rate limit (429), or an answer that does not parse, whose signPub does not hash to hostId, or
+ * whose Noise key the host did not sign for this slot (502).
  */
 export async function lookupPairSlot(options: PairLookupOptions): Promise<PairSlotRecord | undefined> {
   const code = normalizePairCode(options.code);
@@ -76,7 +57,7 @@ export async function lookupPairSlot(options: PairLookupOptions): Promise<PairSl
   const response = await (options.fetch ?? fetch)(url, init);
   if (response.status === 404) return undefined;
   if (!response.ok) throw new PairLookupError(response.status, `pairing lookup failed with HTTP ${response.status}`);
-  const record = await parseRecord(await jsonBody(response));
-  if (record === undefined) throw new PairLookupError(502, "the relay's pairing answer is malformed");
-  return record;
+  const answer = await checkPairSlotAnswer(await jsonBody(response), pairSlotOf(code), Date.now());
+  if (!answer.ok) throw new PairLookupError(502, REFUSALS[answer.reason]);
+  return answer.record;
 }

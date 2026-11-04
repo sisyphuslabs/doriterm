@@ -14,3 +14,6 @@ export function uniqueSlot(): string {
   issued.add(slot);
   return slot;
 }
+
+/** An offer expiry 10 minutes out, as a host signs it with its pairing slot (contract v1.8). */
+export const offerExpiry = (): number => Date.now() + 10 * 60 * 1000;

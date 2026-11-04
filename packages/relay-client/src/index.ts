@@ -9,8 +9,15 @@ export {
   RelayCloseError,
   type Unsubscribe,
 } from "./link.ts";
-export { lookupPairSlot, PairLookupError, type PairLookupOptions, type PairSlotRecord } from "./pair-lookup.ts";
-export type { PairSlotResult } from "./pair-requests.ts";
+export {
+  checkPairSlotAnswer,
+  PAIR_SLOT_CLOCK_ALLOWANCE_MS,
+  type PairSlotAnswer,
+  type PairSlotRecord,
+  type PairSlotRefusal,
+} from "./pair-answer.ts";
+export { lookupPairSlot, PairLookupError, type PairLookupOptions } from "./pair-lookup.ts";
+export { PairSlotMalformedError, type PairSlotResult } from "./pair-requests.ts";
 export {
   PASS_LIMITS,
   PassBook,

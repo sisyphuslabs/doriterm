@@ -67,7 +67,13 @@ export {
   encodePairSlotClear,
   encodePairSlotAck,
   encodePairSlotRequest,
+  encodeSignedPairSlotRequest,
   NOISE_STATIC_PUB_BYTES,
+  PAIR_SLOT_CONTEXT,
   PairSlotAckStatus,
+  type PairSlotRequest,
+  type PairSlotSignature,
+  pairSlotStatement,
+  SIGNED_PAIR_SLOT_BYTES,
   slotOf,
 } from "./pair-slot.ts";

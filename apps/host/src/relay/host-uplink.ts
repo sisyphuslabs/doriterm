@@ -61,10 +61,16 @@ export class HostUplink implements PairingSlotRegistrar {
     });
   }
 
-  async register(slot: string, noiseStaticPub: Uint8Array): Promise<"registered" | "collision"> {
+  async register(slot: string, noiseStaticPub: Uint8Array, expiresAt: number): Promise<"registered" | "collision"> {
     const uplink = this.#uplink;
     if (uplink === undefined) throw new LinkClosedError("the relay uplink has not started");
-    return (await uplink.registerPairSlot(slot, noiseStaticPub)) === "taken" ? "collision" : "registered";
+    const outcome = await uplink.registerPairSlot(slot, noiseStaticPub, expiresAt);
+    if (outcome === "registered-unsigned") {
+      this.#options.log(
+        "relay: this relay does not take signed pairing slots (contract v1.8); up-to-date devices will refuse the typed code, so pair them with the link",
+      );
+    }
+    return outcome === "taken" ? "collision" : "registered";
   }
 
   release(): void {

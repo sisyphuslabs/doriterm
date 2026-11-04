@@ -16,7 +16,7 @@ import { socketFrom, testIp } from "./support/probe.ts";
 import { startRawHost } from "./support/raw-host.ts";
 import { type LocalRelay, startLocalRelay } from "./support/relay-dev.ts";
 import { inOrder, times } from "./support/sequential.ts";
-import { uniqueSlot } from "./support/slots.ts";
+import { offerExpiry, uniqueSlot } from "./support/slots.ts";
 import { startTestHost, type TestHost } from "./support/test-host.ts";
 import { setUpOnce } from "./support/set-up-once.ts";
 
@@ -33,7 +33,7 @@ afterEach(runDeferred);
 async function pairingHost(): Promise<{ readonly host: TestHost; readonly slot: string }> {
   const host = await startTestHost(relay.url, testIp());
   const slot = uniqueSlot();
-  expect(await host.uplink.registerPairSlot(slot, crypto.getRandomValues(new Uint8Array(32)))).toBe("registered");
+  expect(await host.uplink.registerPairSlot(slot, crypto.getRandomValues(new Uint8Array(32)), offerExpiry())).toBe("registered");
   return { host, slot };
 }
 

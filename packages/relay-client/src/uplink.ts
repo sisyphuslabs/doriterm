@@ -2,7 +2,7 @@ import { backoffDelay } from "./backoff.ts";
 import { AckCounter, keepAlive } from "./flow-control.ts";
 import { rethrowAfter } from "./inbox.ts";
 import { LinkClosedError } from "./link.ts";
-import { type PairSlotResult, PairSlotRequests } from "./pair-requests.ts";
+import { type AckResult, type PairSlotResult, PairSlotRequests, signedOrUnsigned } from "./pair-requests.ts";
 import type { RelayProofs } from "./pass-book.ts";
 import { UplinkPasses } from "./uplink-passes.ts";
 import { SessionLink } from "./session-link.ts";
@@ -17,9 +17,11 @@ import {
   encodeAuthAnswer,
   encodePairSlotClear,
   encodePairSlotRequest,
+  encodeSignedPairSlotRequest,
   hostIdOf,
   MuxError,
   MuxType,
+  pairSlotStatement,
   PING_INTERVAL_MS,
   PONG,
   relayOriginOf,
@@ -98,13 +100,18 @@ export class Uplink {
 
   /**
    * Registers a pairing slot (the typed code's first 3 characters) so a client with only the code can find this
-   * host. "taken" means another host holds the slot: draw a new code. Rejects if the uplink is not connected.
+   * host, signed with this host's key over the slot, its Noise key and the offer's expiry (contract v1.8), so a relay
+   * cannot answer the lookup with another Noise key. "taken" means another host holds the slot: draw a new code.
+   * "registered-unsigned" means the relay refused the signed form as malformed (it predates v1.8) and took the
+   * unsigned one. Rejects if the uplink is not connected.
    */
-  registerPairSlot(slot: string, noiseStaticPub: Uint8Array): Promise<PairSlotResult> {
-    const frame = encodePairSlotRequest(slot, noiseStaticPub);
+  async registerPairSlot(slot: string, noiseStaticPub: Uint8Array, expiresAt: number): Promise<PairSlotResult> {
+    const signature = await this.#options.signer.sign(pairSlotStatement(slot, noiseStaticPub, expiresAt));
+    const signed = encodeSignedPairSlotRequest(slot, noiseStaticPub, { expiresAt, signature });
+    const unsigned = encodePairSlotRequest(slot, noiseStaticPub);
     return this.#onePairSlotRequest(async () => {
-      const outcome = await this.#pairSlotRequest(slot, frame);
-      if (outcome === "registered") this.#pairSlot = slot;
+      const outcome = await signedOrUnsigned((frame) => this.#pairSlotRequest(slot, frame), signed, unsigned);
+      if (outcome !== "taken") this.#pairSlot = slot;
       return outcome;
     });
   }
@@ -131,7 +138,7 @@ export class Uplink {
     return result;
   }
 
-  #pairSlotRequest(slot: string, frame: Uint8Array<ArrayBuffer>): Promise<PairSlotResult> {
+  #pairSlotRequest(slot: string, frame: Uint8Array<ArrayBuffer>): Promise<AckResult> {
     const ws = this.#connected();
     const reply = this.#pairSlots.wait(slot, PAIR_SLOT_REPLY_TIMEOUT_MS);
     ws.send(frame);

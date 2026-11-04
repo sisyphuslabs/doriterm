@@ -1,18 +1,23 @@
+import { checkPairSlotAnswer, type PairSlotRefusal } from "@doriface/relay-client";
 import { slotOf } from "./code.ts";
-import { fromBase64Url, offerFrom, type PairingParse } from "./fragment.ts";
+import { offerFrom, type PairingParse } from "./fragment.ts";
 
 /** The relay's HTTP origin for a ws(s) relay URL. */
 export function relayHttpOrigin(relayUrl: string): string {
   return relayUrl.replace(/^ws(s?):\/\//, "http$1://").replace(/\/+$/, "");
 }
 
-function field(body: unknown, key: string): unknown {
-  return typeof body === "object" && body !== null && Object.hasOwn(body, key) ? Reflect.get(body, key) : undefined;
-}
+const REFUSALS: Readonly<Record<PairSlotRefusal, string>> = {
+  malformed: "The relay's answer is malformed.",
+  unsigned:
+    "The host on this code did not sign its pairing key, so the code cannot be trusted. Update doriface-host on that computer, or pair with its link or QR code.",
+  forged: "The relay answered with a key this host did not sign. Do not pair with this code; use the host's link or QR code.",
+  expired: "This code's offer has expired. Check this device's clock, or open a new code on the host.",
+};
 
 /**
- * Asks the relay which host holds this code's slot. The answer is untrusted: the fingerprint
- * check and the CPace pairing handshake authenticate it.
+ * Asks the relay which host holds this code's slot. The answer counts only once the host's own signature vouches for
+ * its Noise key on this slot (contract v1.8); the fingerprint check and the CPace handshake still follow.
  */
 export async function lookupCode(code: string, relayUrl: string, signal?: AbortSignal): Promise<PairingParse> {
   let response: Response;
@@ -27,14 +32,7 @@ export async function lookupCode(code: string, relayUrl: string, signal?: AbortS
   if (response.status === 404) return { ok: false, reason: "No host is pairing with this code. It may have expired." };
   if (!response.ok) return { ok: false, reason: `The relay answered ${response.status}. Try a new code.` };
   const body: unknown = await response.json().catch(() => null);
-  const hostId = field(body, "hostId");
-  const noise = field(body, "noiseStaticPub");
-  const sign = field(body, "signPub");
-  if (typeof hostId !== "string" || typeof noise !== "string" || typeof sign !== "string") {
-    return { ok: false, reason: "The relay's answer is malformed." };
-  }
-  const noiseStaticPub = fromBase64Url(noise);
-  const signPub = fromBase64Url(sign);
-  if (noiseStaticPub === null || signPub === null) return { ok: false, reason: "The relay's answer is malformed." };
-  return offerFrom({ hostId, noiseStaticPub, signPub }, { mode: "code", code }, relayUrl);
+  const answer = await checkPairSlotAnswer(body, slotOf(code), Date.now());
+  if (!answer.ok) return { ok: false, reason: REFUSALS[answer.reason] };
+  return offerFrom(answer.record, { mode: "code", code }, relayUrl);
 }

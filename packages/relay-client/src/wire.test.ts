@@ -10,6 +10,7 @@ import {
   encodeOpen,
   encodePairSlotAck,
   encodePairSlotRequest,
+  encodeSignedPairSlotRequest,
   fromBase64Url,
   HOST_ID_PATTERN,
   hostIdOf,
@@ -19,7 +20,9 @@ import {
   parseAck,
   pairSlotOf,
   PairSlotAckStatus,
+  pairSlotStatement,
   relayOriginOf,
+  SIGNED_PAIR_SLOT_BYTES,
   toBase64Url,
 } from "./wire/index.ts";
 
@@ -150,5 +153,36 @@ describe("pairing codes and slots", () => {
     expect(decodePairSlotAck(new Uint8Array([3, 0x41, 0x42, 0x33]))).toBeUndefined();
     expect(() => encodePairSlotRequest("AB", key)).toThrow(RangeError);
     expect(decodePairSlotRequest(new Uint8Array(10))).toBeUndefined();
+  });
+
+  test("the signed PAIR_SLOT is slot, key, expiresAt as u64 BE and the 64-byte signature (contract v1.8)", () => {
+    const key = new Uint8Array(32).fill(9);
+    const signature = new Uint8Array(64).fill(8);
+    const expiresAt = 0x0102030405;
+    const frame = encodeSignedPairSlotRequest("AB3", key, { expiresAt, signature });
+    const payload = frame.subarray(5);
+    expect(payload.byteLength).toBe(SIGNED_PAIR_SLOT_BYTES);
+    expect([...payload.subarray(35, 43)]).toEqual([0, 0, 0, 1, 2, 3, 4, 5]);
+    const request = decodeMux(frame);
+    expect(request.type === MuxType.PairSlot && decodePairSlotRequest(request.payload)).toEqual({
+      slot: "AB3",
+      noiseStaticPub: key,
+      signed: { expiresAt, signature },
+    });
+    for (const length of [36, SIGNED_PAIR_SLOT_BYTES - 1, SIGNED_PAIR_SLOT_BYTES + 1]) {
+      const padded = new Uint8Array(length);
+      padded.set(payload.subarray(0, Math.min(length, payload.byteLength)));
+      expect(decodePairSlotRequest(padded)).toBeUndefined();
+    }
+    expect(() => encodeSignedPairSlotRequest("AB3", key, { expiresAt, signature: signature.subarray(1) })).toThrow();
+    expect(() => encodeSignedPairSlotRequest("AB3", key, { expiresAt: 1.5, signature })).toThrow(RangeError);
+  });
+
+  test("the slot statement is the v1.8 prefix, slot, key and expiresAt", () => {
+    const statement = pairSlotStatement("AB3", new Uint8Array(32).fill(1), 2);
+    const prefix = new TextEncoder().encode("doriface-pair-slot-v1AB3");
+    expect(statement.subarray(0, prefix.byteLength)).toEqual(prefix);
+    expect(statement.byteLength).toBe(prefix.byteLength + 32 + 8);
+    expect(statement.at(-1)).toBe(2);
   });
 });

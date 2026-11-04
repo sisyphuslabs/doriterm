@@ -84,6 +84,21 @@ describe("PairingSlots", () => {
     expect(store.read()?.code).toBe(b.code);
   });
 
+  test("the registrar is given the offer's expiry, which the uplink signs with the slot and key", async () => {
+    const offer = store.offer();
+    const signedExpiry = Promise.withResolvers<number>();
+    const registrar: PairingSlotRegistrar = {
+      register: async (_slot, _key, expiresAt) => {
+        signedExpiry.resolve(expiresAt);
+        return "registered";
+      },
+      release: () => {},
+    };
+    slots = new PairingSlots(store, KEY, registrar, () => {});
+    slots.start();
+    expect(await within(signedExpiry.promise, "register")).toBe(offer.expiresAt);
+  });
+
   test("a registration the relay failed is tried again", async () => {
     store.offer();
     let calls = 0;
