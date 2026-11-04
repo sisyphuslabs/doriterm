@@ -23,6 +23,14 @@ const running = (): Mesh => {
  * The view every host converges on: who is a member, under which mesh name. A member's `witnessPool` is left out: it
  * is the host's own reading of who could witness a revoke written there (empty for itself), so it differs per host.
  */
+/**
+ * The machine name a member gets on a core (design 7.4): its mesh name, unless the name is taken there, then the first
+ * fallback, the name cut to 27 characters and the first 4 hostId characters. Every core of this harness runs on one
+ * machine and takes its name, so the founder's default mesh name is taken on every other core.
+ */
+const machineName = (coreName: string, member: { readonly hostId: string; readonly name: string }): string =>
+  member.name === coreName ? `${member.name.slice(0, 27)}-${member.hostId.slice(0, 4)}` : member.name;
+
 const viewText = async (hosts: Mesh, name: string): Promise<string> =>
   JSON.stringify((await viewOf(hosts.host(name))).map((member) => ({ hostId: member.hostId, name: member.name })));
 
@@ -80,11 +88,12 @@ scenario(
           (await (await hosts.core(name)).call("machine.list")).machines.map((machine) => machine.name).toSorted(),
         ),
       );
+      const coreNames = await Promise.all(NAMES.map(async (name) => (await hosts.core(name)).hello.core.name));
       expect(names).toEqual(
-        hosts.hosts.map((host) =>
+        NAMES.map((name, index) =>
           view
-            .filter((member) => member.hostId !== host.hostId)
-            .map((member) => member.name)
+            .filter((member) => member.hostId !== hosts.host(name).hostId)
+            .map((member) => machineName(coreNames[index] ?? "", member))
             .toSorted(),
         ),
       );
