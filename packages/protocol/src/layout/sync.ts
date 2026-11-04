@@ -1,6 +1,6 @@
 import { type JsonObject, type JsonValue } from "../json.ts";
 import { HcRpcError } from "../jsonrpc.ts";
-import { readDocument } from "./document.ts";
+import { readDocument, type ReadDocument } from "./document.ts";
 
 export interface DocCalls {
   readonly get: (on: string | null) => Promise<{ readonly value: JsonValue; readonly version: number }>;
@@ -24,21 +24,29 @@ const isConflict = (cause: unknown): boolean => cause instanceof HcRpcError && c
  * One machine's herdr-app document, kept the way herdr-app keeps it (`src/mirror_sync.rs`): read with `doc.get`, every
  * write a compare-and-set at the version that was read, and a conflict re-reads the document and replaces ours with it.
  * Unlike herdr-app, which writes its whole model, doriface writes edits: after a conflict the person's edit is made
- * again on the fresh document, or dropped when it no longer applies. Writes go one at a time, in order.
+ * again on the fresh document, or dropped when it no longer applies. Writes go one at a time, in order. `read` gives
+ * the document's reading rules: herdr-app's by default; another document kept the same way (doriface's own) brings its own.
  */
 export class LayoutDoc {
   readonly #calls: DocCalls;
   readonly #on: string | null;
   readonly #changed: (state: DocState) => void;
+  readonly #read: (value: JsonValue) => ReadDocument;
   #state: DocState = { phase: "loading" };
   #reads = 0;
   #queue: Promise<unknown> = Promise.resolve();
   #writing = 0;
 
-  constructor(calls: DocCalls, on: string | null, changed: (state: DocState) => void) {
+  constructor(
+    calls: DocCalls,
+    on: string | null,
+    changed: (state: DocState) => void,
+    read: (value: JsonValue) => ReadDocument = readDocument,
+  ) {
     this.#calls = calls;
     this.#on = on;
     this.#changed = changed;
+    this.#read = read;
   }
 
   get state(): DocState {
@@ -62,7 +70,7 @@ export class LayoutDoc {
   }
 
   #show(value: JsonValue, version: number): void {
-    const read = readDocument(value);
+    const read = this.#read(value);
     if (read.kind === "unreadable") this.#publish({ phase: "unreadable", reason: read.reason, version });
     else this.#publish({ phase: "ready", doc: read.kind === "ok" ? read.doc : null, version });
   }
