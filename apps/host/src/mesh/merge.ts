@@ -186,7 +186,11 @@ export function mergeBatch(deps: MergeDeps, batch: readonly Signed[], ackOwed = 
       },
     };
   });
-  if (result.counterBehind) deps.store.catchUp(deps.identity);
+  // This host's own records that arrived (a restored backup's) move its counter now, not at the next ack attempt, so an
+  // operator command signs above them as soon as no claim stands.
+  const self = selfOf(deps);
+  const ownArrived = result.added.some((record) => record !== result.ack && parseRecord(record)?.by === self);
+  if (result.counterBehind || ownArrived) deps.store.catchUp(deps.identity);
   return result;
 }
 

@@ -99,12 +99,13 @@ describe("a claim's 30 s run on only while its claimer delivers this host's own 
     ).toEqual(["ack"]);
   });
 
-  test.each<[string, (signer: Signer, prev: readonly string[]) => Signed]>([
-    ["a record it does not ack", (signer, prev) => signer.name(prev, "a2")],
-    ["a record it acks itself", (signer, prev) => signer.admit(peer("e"), prev)],
+  // The held ack (for d's admit) is signed as n = 2 the moment the claim resolves; an admit after it gets its own ack.
+  test.each<[string, (signer: Signer, prev: readonly string[]) => Signed, readonly number[]]>([
+    ["a record it does not ack", (signer, prev) => signer.name(prev, "a2"), [1, 2]],
+    ["a record it acks itself", (signer, prev) => signer.admit(peer("e"), prev), [1, 2, 3]],
   ])(
     "an ack held back is signed once after the claimed records resolve the claim and %s arrives: no fork",
-    async (_how, next) => {
+    async (_how, next, acks) => {
       const { records, chain, heads } = restored(1);
       const signer = new Signer(a, records);
       const admit = signer.admit(peer("d"), headsOfRecords(records));
@@ -119,13 +120,14 @@ describe("a claim's 30 s run on only while its claimer delivers this host's own 
       session.send(...chain);
       session.done();
       await h.at(3_000);
-      session.send(next(signer, [hashOf(admit)]));
-      session.done();
-      await h.at(4_000);
       expect(h.own()).toEqual([
         { n: 1, type: "ack" },
         { n: 2, type: "ack" },
       ]);
+      session.send(next(signer, [hashOf(admit)]));
+      session.done();
+      await h.at(4_000);
+      expect(h.own()).toEqual(acks.map((n) => ({ n, type: "ack" })));
       expect(h.cooldowns()).toBe(0);
     },
   );
