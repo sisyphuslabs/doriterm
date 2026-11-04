@@ -17,6 +17,19 @@ const group = (page: Page, title: string) => sidebar(page).getByRole("region", {
 const count = (region: Locator) => region.locator(":scope > header [data-numeric]");
 
 let dir = "";
+
+/** The terminals the added machine's own core lists, by its bare address (`t5`). */
+function onMachine(): string[] {
+  const listed: unknown = JSON.parse(hcOn("machine", ["ls", "--json"]));
+  const terminals: unknown = typeof listed === "object" && listed !== null ? Reflect.get(listed, "terminals") : [];
+  return Array.isArray(terminals)
+    ? terminals.flatMap((terminal: unknown) => {
+        const address: unknown =
+          typeof terminal === "object" && terminal !== null ? Reflect.get(terminal, "address") : null;
+        return typeof address === "string" ? [address] : [];
+      })
+    : [];
+}
 const started: string[] = [];
 
 /** An agent that reports `first`, then `then` once its flip file appears: hc's state changes while the page is open. */
@@ -105,14 +118,21 @@ test("with a second machine known, spaces sit under machine rows that start a ne
   await expect(remote).toBeVisible({ timeout: 20_000 });
   await expect(sidebar(page).getByRole("region", { name: "Machines", exact: true })).toHaveCount(0);
   const newSpace = remote.getByRole("button", { name: `New space on ${MACHINE_NAME}` });
-  await remote.locator(`[data-machine-header]`).hover();
-  await newSpace.click();
-  const focused = page.locator('[data-focused="true"] [data-terminal]');
-  await expect(focused).toHaveAttribute("data-terminal", new RegExp(`^${MACHINE_NAME}/t[0-9a-z]+$`), {
-    timeout: 20_000,
-  });
-  const address = await focused.getAttribute("data-terminal");
-  if (address !== null) started.push(address);
+  const before = new Set(onMachine());
+  try {
+    await remote.locator(`[data-machine-header]`).hover();
+    await newSpace.click();
+    const focused = page.locator('[data-focused="true"] [data-terminal]');
+    await expect(focused).toHaveAttribute("data-terminal", new RegExp(`^${MACHINE_NAME}/t[0-9a-z]+$`), {
+      timeout: 20_000,
+    });
+  } finally {
+    // The shell it started ends on the machine's own core, here and even on failure, so no later spec meets its tab.
+    for (const id of onMachine().filter((one) => !before.has(one))) {
+      hcOn("machine", ["kill", id]);
+      hcOn("machine", ["rm", id]);
+    }
+  }
 });
 
 test("the footer holds Settings and Add machine", async ({ page }) => {
