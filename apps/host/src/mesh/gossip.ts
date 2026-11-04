@@ -209,6 +209,11 @@ export class Gossip implements SyncHost {
     this.#changed({ ...result, view }, true);
   }
 
+  /** The highest claim a peer's `hello` holds on this host's counter (section 10.1); the operator commands check it. */
+  floor(): ReturnType<Claims["floor"]> {
+    return this.#claims.floor();
+  }
+
   /** Signs and pushes one record of this host's own (a revoke, a leave, a rename). */
   append(draft: RecordDraft): MergeResult {
     const result = appendOwn(this.#claims.signing(this.#options), draft);

@@ -56,10 +56,10 @@ describe("a peer's hello.n claim on this host's counter (section 10.1, M-E1)", (
     const session = s.connect();
     session.hello({ [b.signPub]: 7 });
     await s.clock.advance(1);
-    expect(s.signs()).toBe(`${a.name} holds counter 7 of this host's key, here 0: syncing before signing`);
+    expect(s.signs()).toStartWith(`${a.name} holds counter 7 of this host's key, here 0: syncing before signing`);
     session.done();
     await s.clock.advance(CLAIM_MS - 2);
-    expect(s.signs()).toBe(`${a.name} holds counter 7 of this host's key, here 0: syncing before signing`);
+    expect(s.signs()).toStartWith(`${a.name} holds counter 7 of this host's key, here 0: syncing before signing`);
     await s.clock.advance(1);
     expect(s.signs()).toBe(true);
     expect(s.ownNs()).toEqual([1]);

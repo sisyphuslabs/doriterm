@@ -1,7 +1,7 @@
 import { parseRecord, type Signed } from "@doriface/mesh";
 import type { Clock } from "./clock.ts";
 import { deadline } from "./deadline.ts";
-import type { MergeDeps, MergeResult } from "./merge.ts";
+import type { CounterFloor, MergeDeps, MergeResult } from "./merge.ts";
 
 /** A claim this host's own records do not move for this long expires: the safety net's 30 s (section 10.1). */
 export const CLAIM_MS = 30_000;
@@ -96,11 +96,17 @@ export class Claims {
     });
   }
 
-  /** `deps` with the highest claim standing as the counter floor, naming the peer whose it is. */
-  signing(deps: MergeDeps): MergeDeps {
+  /** The highest claim standing, naming the peer whose it is: no record of this host's own is signed below it. */
+  floor(): CounterFloor | undefined {
     let top: { readonly n: number; readonly peer: string } | undefined;
     for (const [peer, held] of this.#held) if (top === undefined || held.n > top.n) top = { n: held.n, peer };
-    return top === undefined ? deps : { ...deps, counterFloor: { n: top.n, peer: this.#nameOf(top.peer) } };
+    return top === undefined ? undefined : { n: top.n, peer: this.#nameOf(top.peer) };
+  }
+
+  /** `deps` with {@link floor} as the counter floor. */
+  signing(deps: MergeDeps): MergeDeps {
+    const counterFloor = this.floor();
+    return counterFloor === undefined ? deps : { ...deps, counterFloor };
   }
 
   stop(): void {

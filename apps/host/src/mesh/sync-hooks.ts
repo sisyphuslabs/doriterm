@@ -67,5 +67,6 @@ export function syncHooks(sync: SyncHandle, clock: Clock, pending: () => readonl
       }
     },
     live: () => ({ ...sync.live(), pending: pending() }),
+    floor: () => sync.gossip?.floor(),
   };
 }

@@ -10,6 +10,7 @@ import type { LeaveReply, RenameReply, RevokeReply } from "./command-replies.ts"
 import { admittedKeys } from "./lineage.ts";
 import { findMember, memberRef, planRevoke } from "./revoke-plan.ts";
 import type { MeshHooks } from "./host-hooks.ts";
+import { checkFloor } from "./merge.ts";
 import { hostIdOfKey } from "./status.ts";
 
 /** How long a push of a record this host wrote collects confirmations (`mesh leave` waits for it, design 6.5). */
@@ -48,7 +49,8 @@ const INVALID_NAME =
  * The running host's side of `mesh revoke`, `mesh rename` and `mesh leave` (design 6.1, 6.2, 6.5 and 7.5). Each
  * answers null when this host is in no mesh. A record is checked and signed in one mesh.json transaction, so the
  * view it was checked against is the view it is written on, and the device and known-host cleanup of section 6.7
- * happens in that same lock hold.
+ * happens in that same lock hold. While a peer's claim stands above this host's counter (section 10.1), each refuses
+ * in that transaction instead of signing a counter the claimed records may already hold.
  */
 export class MeshCommands {
   readonly deps: MeshCommandDeps;
@@ -154,6 +156,7 @@ export class MeshCommands {
   }
 
   #sign(tx: MeshTx, meshId: string, type: RecordBody["type"], subject: Subject): Signed {
+    checkFloor(tx.records, this.#self, this.deps.hooks.floor());
     const at = new Date().toISOString();
     return tx.sign(this.deps.identity, (n, prev) => ({
       v: 2,

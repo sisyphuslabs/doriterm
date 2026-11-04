@@ -1,4 +1,5 @@
 import type { Signed } from "@doriface/mesh";
+import type { CounterFloor } from "./merge.ts";
 import type { BudgetFacts, LineFacts, PeerFacts, PendingJoinFact } from "./status-sources.ts";
 
 /** The live facts of `mesh status` that only the running parts of the mesh hold (design sections 8.2 and 8.6). */
@@ -25,12 +26,15 @@ export interface MeshHooks {
   /** After `mesh leave` deleted mesh.json: removes this host's mesh machines (section 6.5). */
   left(): Promise<void>;
   live(): MeshLiveFacts;
+  /** The highest claim a peer's `hello` holds on this host's counter: the commands sign nothing below it (10.1). */
+  floor(): CounterFloor | undefined;
 }
 
 export const IDLE_MESH_HOOKS: MeshHooks = {
   push: () => undefined,
   confirmations: () => Promise.resolve([]),
   left: () => Promise.resolve(),
+  floor: () => undefined,
   live: () => ({
     pending: [],
     peers: new Map(),
