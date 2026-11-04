@@ -239,7 +239,8 @@ function e2eeDeps(
   const hc = { hc: options.hc, session: options.session, env: options.env };
   const relay = { url: options.relay?.url, createSocket: options.relay?.createSocket };
   const program = options.meshProgram ?? meshProgram(stateDir);
-  const sync = new HostSync({ identity, mesh, relay, hc, stateDir, program, log: options.log });
+  const closeRevoked = (): void => sessions.closeRevoked();
+  const sync = new HostSync({ identity, mesh, relay, hc, stateDir, program, closeRevoked, log: options.log });
   sync.changed();
   const hostMesh = new HostMesh({
     stateDir,

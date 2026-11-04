@@ -25,6 +25,11 @@ export interface HostSyncOptions {
   readonly hc: HcTarget;
   readonly stateDir: string;
   readonly program: string;
+  /**
+   * Closes, with 4401, every live session whose key the stored view no longer authorizes (`LiveSessions.closeRevoked`):
+   * steps 2 to 4 of section 6.2 run on every member that merges a revoke (section 6.3), not only on the revoker.
+   */
+  readonly closeRevoked: () => void;
   readonly log: (line: string) => void;
   readonly clock?: Clock;
   readonly random?: Random;
@@ -139,6 +144,7 @@ export class HostSync {
       dialLine: (member) => this.#dial(member, "hc"),
       merged: (records) => {
         for (const record of records) this.#seen.add(hashOf(record));
+        this.#options.closeRevoked();
       },
     });
     return started;
