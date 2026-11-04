@@ -120,11 +120,13 @@ test("a kept tab on an added machine does not arrive late on the way back from S
   page,
 }) => {
   startShell("machine", "faraway");
+  startShell("host", "nearby");
   const socket = await routeHcSocket(page);
   await page.goto("/");
-  // A local tab beside the remote one: the local tab shows at once, the remote one only once machine.list names its
-  // machine (its tab is kept by machine id).
-  await openNewTerminal(page);
+  // A local tab beside the remote one, both opened from their rows: the local tab shows at once, the remote one only
+  // once machine.list names its machine (its tab is kept by machine id). Which terminal opens first on load depends on
+  // the feed's order, so the spec opens its own local one rather than counting on New tab staying local.
+  await agentRow(page, "nearby", false).click({ timeout: 20_000 });
   await agentRow(page, "faraway", true).click({ timeout: 20_000 });
   const remoteTab = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab", { name: /faraway/ });
   await expect(remoteTab).toBeVisible({ timeout: 20_000 });
@@ -143,7 +145,10 @@ test("a kept tab on an added machine does not arrive late on the way back from S
   await twoFrames(page);
   expect(await arrivals(page)).toEqual([]);
   // New tab opens on the focused pane's machine: focus a local tab, so the control opens nothing on the added machine.
-  await page.getByRole("tablist", { name: "Tabs" }).getByRole("tab").filter({ hasNotText: "faraway" }).first().click();
+  await page
+    .getByRole("tablist", { name: "Tabs" })
+    .getByRole("tab", { name: /nearby/ })
+    .click();
   await expect(page.locator('[data-focused="true"] [data-terminal]')).toHaveAttribute("data-terminal", /^[^/]+$/);
   await page.getByRole("button", { name: "New tab", exact: true }).click();
   await expect.poll(() => arrivals(page)).toContain("div:opacity");
