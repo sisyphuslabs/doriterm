@@ -1,7 +1,19 @@
-import { Button, IconButton, Notice, SidebarSection, cn } from "@doriface/ui";
-import { Monitor, Plus, Server } from "lucide-react";
+import {
+  Button,
+  IconButton,
+  Notice,
+  RowDropCaret,
+  RowDropIndicator,
+  rowPlacement,
+  SidebarSection,
+  cn,
+  useListDrag,
+} from "@doriface/ui";
+import { Plus } from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { machineCause } from "./machine-cause.ts";
-import { type MachineEntry, onlyThisMachine, stateLabel } from "./machines.ts";
+import { MachineRow, type RowReorder } from "./machine-row.tsx";
+import { type MachineEntry, onlyThisMachine } from "./machines.ts";
 import { RetryButton } from "./retry-button.tsx";
 import { useMachinesContext } from "./use-machines.ts";
 
@@ -16,12 +28,16 @@ export interface MachineListProps {
   readonly className?: string;
 }
 
-const STATE_TONE: Readonly<Record<string, string>> = {
-  unreachable: "text-status-blocked-text",
-  needs_login: "text-status-blocked-text",
-};
+/** A machine this list moved, by any path; counted so a second move to the same place is still announced. */
+interface Moved {
+  readonly core: string;
+  readonly count: number;
+}
 
-/** Every machine this core reaches: this one, then the ones `hc machine add` added, with state and terminals. */
+/**
+ * Every machine this core reaches, in the order the person put them (this one, then the added ones by name, until they
+ * move one), with state and terminals. With two or more a row drags to a new place, and its menu and keys move it too.
+ */
 export function MachineList({
   entries,
   activeMachine,
@@ -35,66 +51,99 @@ export function MachineList({
   const add = alone ? undefined : (
     <IconButton label="Add a machine" icon={<Plus />} onClick={onAdd} className="-mr-1" />
   );
-  const { views, retry } = useMachinesContext();
+  const { views, retry, moveMachine } = useMachinesContext();
   const causes = views.flatMap((view) => {
     // A redial in progress is routine: the row already says connecting, so only a problem gets a notice.
     const cause = view.state === "connecting" ? undefined : machineCause(view);
     return cause === undefined ? [] : [{ machine: view.name, ...cause }];
   });
+  const list = useRef<HTMLElement>(null);
+  const buttons = useRef(new Map<string, HTMLButtonElement>());
+  const focused = useRef<string | null>(null);
+  const [moved, setMoved] = useState<Moved | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const movable = entries.length > 1;
+  const move = (core: string, to: number): void => {
+    setMoved((last) => ({ core, count: (last?.count ?? 0) + 1 }));
+    moveMachine(core, to);
+  };
+  const { drag, settle, lifted, touching, onPointerDown, onClickCapture } = useListDrag(
+    list,
+    entries.map((machine) => machine.core),
+    {
+      onMove: movable ? move : undefined,
+      onStart: () => setMenuFor(null),
+      onHoldRelease: (core, x, y) => {
+        const row = list.current?.querySelector(`[data-drag-id="${CSS.escape(core)}"]`);
+        row?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+      },
+    },
+  );
+
+  // Reordering moves the focused row in the DOM, which drops its focus; it goes straight back.
+  useLayoutEffect(() => {
+    if (moved === null || focused.current !== moved.core) return;
+    const button = buttons.current.get(moved.core);
+    if (button !== undefined && document.activeElement !== button) button.focus();
+  }, [moved, entries]);
+
+  const movedAt = moved === null ? -1 : entries.findIndex((machine) => machine.core === moved.core);
+  const movedMachine = entries[movedAt];
+  // The count's parity changes the text each time, so a second move to the same place is still read out.
+  const announcement =
+    moved === null || movedMachine === undefined
+      ? ""
+      : `Moved ${movedMachine.name} to position ${movedAt + 1} of ${entries.length}${moved.count % 2 === 0 ? "" : "\u00a0"}`;
+
+  const reorderOf = (machine: MachineEntry, index: number): RowReorder | undefined => {
+    if (!movable) return undefined;
+    const place = rowPlacement(machine.core, index, drag, settle);
+    return {
+      index,
+      count: entries.length,
+      offset: place.offset,
+      className: place.className,
+      dragging: drag?.id === machine.core,
+      lifted: lifted === machine.core,
+      menuOpen: menuFor === machine.core,
+      onMenuOpen: (open) => setMenuFor(open ? machine.core : null),
+      onPointerDown: (event) => onPointerDown(event, machine.core, index),
+      onClickCapture,
+      touching,
+      onMove: (to) => {
+        focused.current = machine.core;
+        move(machine.core, to);
+      },
+      buttonRef: (element) => {
+        if (element === null) buttons.current.delete(machine.core);
+        else buttons.current.set(machine.core, element);
+      },
+      onFocus: () => {
+        focused.current = machine.core;
+      },
+    };
+  };
+
   return (
     <SidebarSection
+      ref={list}
       title="Machines"
       count={entries.length}
       {...(add === undefined ? {} : { action: add })}
-      {...(className === undefined ? {} : { className })}
+      className={cn("relative", className)}
     >
-      {entries.map((machine) => {
-        const Icon = machine.local ? Monitor : Server;
-        const selected = machine.id === activeMachine;
-        const state = machine.local ? "this machine" : stateLabel(machine.state);
-        const dim = machine.first === undefined && "opacity-45";
-        return (
-          <div
-            key={machine.id}
-            className={cn(
-              "group flex h-(--row) min-w-0 items-center rounded-md",
-              machine.first !== undefined && "hover:bg-hover",
-              selected && "bg-selected",
-            )}
-          >
-            <button
-              type="button"
-              aria-current={selected ? "true" : undefined}
-              aria-disabled={machine.first === undefined || undefined}
-              onClick={() => machine.first !== undefined && onOpen(machine.first)}
-              className="flex h-full min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 text-left text-sm text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring aria-disabled:cursor-default"
-            >
-              <Icon aria-hidden className={cn("size-4 shrink-0 text-muted-foreground", dim)} />
-              <span title={machine.name} className={cn("min-w-0 flex-1 truncate", dim)}>
-                {machine.name}
-              </span>
-              <span className={cn("shrink-0 text-2xs text-muted-foreground", STATE_TONE[machine.state])}>{state}</span>
-              <span
-                data-numeric
-                aria-label={`${machine.live} terminals`}
-                className={cn("w-4 shrink-0 text-right text-xs text-muted-foreground", dim)}
-              >
-                {machine.live}
-              </span>
-            </button>
-            <IconButton
-              label={`New terminal on ${machine.name}`}
-              icon={<Plus />}
-              className={cn(
-                "mr-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100",
-                "data-disabled:opacity-0 group-hover:data-disabled:opacity-45 pointer-coarse:data-disabled:opacity-45",
-              )}
-              disabled={machine.state !== "connected"}
-              onClick={() => onNewOn(machine.name)}
-            />
-          </div>
-        );
-      })}
+      {drag === null ? null : <RowDropIndicator drag={drag} />}
+      {drag === null ? null : <RowDropCaret drag={drag} />}
+      {entries.map((machine, index) => (
+        <MachineRow
+          key={machine.core}
+          machine={machine}
+          selected={machine.id === activeMachine}
+          onOpen={onOpen}
+          onNewOn={onNewOn}
+          reorder={reorderOf(machine, index)}
+        />
+      ))}
       {alone ? (
         <Button variant="ghost" onClick={onAdd} className="h-(--row) justify-start gap-2.5 px-2 text-sm">
           <Plus aria-hidden className="size-4 text-muted-foreground" />
@@ -112,6 +161,9 @@ export function MachineList({
           {listError}
         </Notice>
       )}
+      <span role="status" aria-live="polite" className="sr-only">
+        {announcement}
+      </span>
     </SidebarSection>
   );
 }
