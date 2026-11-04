@@ -18,6 +18,8 @@ export interface PassStore {
 
 /** What the uplink and the dialers need from a host's passes (contract v1.6). */
 export interface RelayProofs {
+  /** Whether an upgrade to this relay now would carry a proof. */
+  presents(relayOrigin: string): boolean;
   /** A proof for one upgrade, or undefined to dial without one. */
   proof(role: ProofRole, target: string, relayOrigin: string): string | undefined;
   /** A PASS frame from this relay on the host's uplink. */
@@ -84,14 +86,23 @@ export class PassBook implements RelayProofs {
     return new PassBook(options, digest.slice(0, 16));
   }
 
-  proof(role: ProofRole, target: string, relayOrigin: string): string | undefined {
-    const now = this.#now();
+  #presentable(relayOrigin: string, now: number): Entry | undefined {
     if ((this.#cooldownUntil.get(relayOrigin) ?? 0) > now) return undefined;
     const entry = this.#entries.get(relayOrigin);
     const fields = entry === undefined ? undefined : passFields(entry.pass);
     if (entry === undefined || !entry.usable || fields === undefined) return undefined;
+    return fields.expiresAt * 1000 - (now + entry.offsetMs) < PASS_LIMITS.expiryMarginMs ? undefined : entry;
+  }
+
+  presents(relayOrigin: string): boolean {
+    return this.#presentable(relayOrigin, this.#now()) !== undefined;
+  }
+
+  proof(role: ProofRole, target: string, relayOrigin: string): string | undefined {
+    const now = this.#now();
+    const entry = this.#presentable(relayOrigin, now);
+    if (entry === undefined) return undefined;
     const ts = now + entry.offsetMs;
-    if (fields.expiresAt * 1000 - ts < PASS_LIMITS.expiryMarginMs) return undefined;
     const nonce = crypto.getRandomValues(new Uint8Array(16));
     const { body, message } = proofMessage({
       pass: entry.pass,

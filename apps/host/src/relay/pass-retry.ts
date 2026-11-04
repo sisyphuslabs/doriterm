@@ -33,10 +33,13 @@ export async function withPassRetry<T>(
   relayUrl: string,
   waitMs: number = PASS_WAIT_MS,
 ): Promise<T> {
+  // A 4412 on a dial that carried no proof is no pass refusal (only a faulty stand-in sends one): no retry (J4).
+  const proven = proofs?.presents(relayOriginOf(relayUrl)) === true;
   try {
     return await dial();
   } catch (error) {
-    if (proofs === undefined || codeOf(error) !== CloseCode.PassRefused) throw error;
+    if (proofs === undefined || !proven || codeOf(error) !== CloseCode.PassRefused) throw error;
+    proofs.refused(relayOriginOf(relayUrl));
     await newPass(proofs, relayUrl, waitMs);
     return dial().catch((again: unknown) => {
       throw codeOf(again) === CloseCode.RateLimited ? error : again;

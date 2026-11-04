@@ -7,10 +7,14 @@ const RELAY = "https://relay.example";
 function fakeProofs(): { proofs: RelayProofs; renew: () => void; subscribed: Promise<void> } {
   const listeners = new Set<(origin: string) => void>();
   const subscribed = Promise.withResolvers<void>();
+  let usable = true;
   const proofs: RelayProofs = {
+    presents: () => usable,
     proof: () => undefined,
     received: () => undefined,
-    refused: () => undefined,
+    refused: () => {
+      usable = false;
+    },
     accepted: () => undefined,
     wantsPass: () => true,
     onWant: () => () => undefined,
@@ -40,11 +44,21 @@ function dials(...outcomes: (number | "ok")[]): { dial: () => Promise<string>; c
 }
 
 describe("a dial refused for its pass (contract v1.6, 3.6)", () => {
-  test("redials once as soon as the new pass arrives", async () => {
+  test("a 4412 on a dial that carried no proof is an ordinary failure: no redial, nothing marked", async () => {
+    const { proofs } = fakeProofs();
+    proofs.refused("wss://relay.example");
+    const once = dials(4412, "ok");
+    const error = await withPassRetry(once.dial, proofs, RELAY, 1).catch((caught: unknown) => caught);
+    expect(error instanceof RelayCloseError ? error.code : error).toBe(4412);
+    expect(once.count()).toBe(1);
+  });
+
+  test("marks the pass refused and redials once as soon as the new pass arrives", async () => {
     const { proofs, renew, subscribed } = fakeProofs();
     const { dial, count } = dials(4412, "ok");
     const result = withPassRetry(dial, proofs, RELAY, 60_000);
     await subscribed;
+    expect(proofs.presents("wss://relay.example")).toBe(false);
     renew();
     expect(await result).toBe("link 2");
     expect(count()).toBe(2);
