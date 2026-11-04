@@ -1,6 +1,7 @@
 import { ContextMenu, IconButton, MenuItem, cn, skipMenuHandler } from "@doriface/ui";
 import { ArrowDown, ArrowUp, Monitor, Plus, Server } from "lucide-react";
 import {
+  type FocusEvent,
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
@@ -34,6 +35,8 @@ export interface RowReorder {
   readonly onMove: (to: number) => void;
   readonly buttonRef: (element: HTMLButtonElement | null) => void;
   readonly onFocus: () => void;
+  /** Focus moving to another element forgets the row, so a later reorder does not pull focus back to it. */
+  readonly onBlur: (event: FocusEvent<HTMLButtonElement>) => void;
 }
 
 export interface MachineRowProps {
@@ -97,6 +100,7 @@ export function MachineRow({ machine, selected, onOpen, onNewOn, reorder }: Mach
         onClick={() => machine.first !== undefined && onOpen(machine.first)}
         onKeyDown={onKeyDown}
         onFocus={reorder?.onFocus}
+        onBlur={reorder?.onBlur}
         className="flex h-full min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 text-left text-sm text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring aria-disabled:cursor-default"
       >
         <Icon aria-hidden className={cn("size-4 shrink-0 text-muted-foreground", dim)} />

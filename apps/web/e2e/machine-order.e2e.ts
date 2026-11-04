@@ -100,7 +100,9 @@ test.describe("machine order", () => {
     await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
   });
 
-  test("an order another client writes reaches the open page live", async ({ page }) => {
+  test("an order another client writes reaches the open page live, and never pulls focus back to a moved row", async ({
+    page,
+  }) => {
     const local = await openWorkspace(page);
     await rowOf(page, local).click({ button: "right" });
     await page.getByRole("menuitem", { name: "Move down" }).click();
@@ -109,7 +111,10 @@ test.describe("machine order", () => {
     if (typeof written !== "object" || written === null || !("machine_order" in written)) throw new Error("no order");
     const ids = written.machine_order;
     if (!Array.isArray(ids)) throw new Error("not a list");
+    const elsewhere = page.getByRole("button", { name: "Add a machine" });
+    await elsewhere.focus();
     setCoreDoc(ORDER_DOC, { machine_order: ids.toReversed(), kept: { by: "another client" } });
     await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
+    await expect(elsewhere).toBeFocused();
   });
 });

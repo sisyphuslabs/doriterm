@@ -80,11 +80,13 @@ export function MachineList({
     },
   );
 
-  // Reordering moves the focused row in the DOM, which drops its focus; it goes straight back.
+  // Reordering moves the focused row in the DOM, which drops its focus to the body; it goes straight back. Focus that
+  // went anywhere else since (another row, the terminal) is left there, whatever reorders the list later.
   useLayoutEffect(() => {
     if (moved === null || focused.current !== moved.core) return;
     const button = buttons.current.get(moved.core);
-    if (button !== undefined && document.activeElement !== button) button.focus();
+    const dropped = document.activeElement === null || document.activeElement === document.body;
+    if (button !== undefined && dropped) button.focus();
   }, [moved, entries]);
 
   const movedAt = moved === null ? -1 : entries.findIndex((machine) => machine.core === moved.core);
@@ -120,6 +122,9 @@ export function MachineList({
       },
       onFocus: () => {
         focused.current = machine.core;
+      },
+      onBlur: (event) => {
+        if (event.relatedTarget !== null) focused.current = null;
       },
     };
   };
