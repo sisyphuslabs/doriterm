@@ -34,18 +34,31 @@ const memberOf = (value: unknown): readonly Member[] => {
   return [{ hostId: value["hostId"], name: value["name"], pool }];
 };
 
+const hostIdsOf = (value: unknown): readonly string[] =>
+  listOf(value).flatMap((entry) => (isRecord(entry) && typeof entry["hostId"] === "string" ? [entry["hostId"]] : []));
+
+/**
+ * A status keeps this host's own row even when its own view no longer holds it. Its view holds it unless it is revoked
+ * there or an undecidable revoke removed it (section 3.7), so the own row is left out of `members` in those cases.
+ */
 export async function statusOf(host: MeshHost): Promise<Status> {
   const run = await host.cli("mesh", "status", "--json");
   const parsed: unknown = run.exit === 0 ? JSON.parse(run.stdout) : undefined;
   if (!isRecord(parsed) || !Array.isArray(parsed["members"])) {
     throw new Error(`mesh status --json on ${host.name} failed: ${run.stderr}${run.stdout}`);
   }
+  const stuck = listOf(parsed["stuck"]).flatMap((entry) =>
+    isRecord(entry) && typeof entry["kind"] === "string" ? [entry["kind"]] : [],
+  );
+  const self = parsed["self"];
+  const outOfView = hostIdsOf(parsed["revoked"]).some((id) => id === self) || stuck.includes("removed_undecidable");
   return {
     sync: String(parsed["sync"]),
-    members: parsed["members"].flatMap(memberOf).toSorted((x, y) => x.hostId.localeCompare(y.hostId)),
-    stuck: listOf(parsed["stuck"]).flatMap((entry) =>
-      isRecord(entry) && typeof entry["kind"] === "string" ? [entry["kind"]] : [],
-    ),
+    members: parsed["members"]
+      .flatMap(memberOf)
+      .filter((member) => !(outOfView && member.hostId === self))
+      .toSorted((x, y) => x.hostId.localeCompare(y.hostId)),
+    stuck,
   };
 }
 
