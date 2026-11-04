@@ -33,7 +33,7 @@ test.describe("opening a session on a machine that went offline", () => {
     await expect(pane.locator(`[data-terminal="${MACHINE_NAME}/${address}"]`)).toBeVisible({ timeout: 15_000 });
   });
 
-  test("keeps a phone's extra keys docked at the bottom", async ({ page }) => {
+  test("offers a phone no terminal keys, as there is nothing to type into", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
     await expect(agentRow(page, "crunch", true)).toBeVisible({ timeout: 20_000 });
@@ -41,7 +41,7 @@ test.describe("opening a session on a machine that went offline", () => {
     await expect(page.getByRole("region", { name: "Offline" })).toBeVisible({ timeout: STATE_BOUND_MS });
     await agentRow(page, "crunch", true).click();
     await expect(page.getByRole("heading", { name: OFFLINE })).toBeVisible({ timeout: 15_000 });
-    const keys = await page.getByRole("toolbar", { name: "Terminal keys" }).boundingBox();
-    expect((keys?.y ?? 0) + (keys?.height ?? 0)).toBeGreaterThan(844 - 2);
+    await expect(page.getByRole("toolbar", { name: "Terminal keys" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Show keyboard" })).toHaveCount(0);
   });
 });

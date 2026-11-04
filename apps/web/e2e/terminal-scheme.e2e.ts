@@ -1,5 +1,6 @@
 import { devices, type Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { fakeSoftKeyboard } from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 
@@ -50,6 +51,8 @@ test.describe("phone", () => {
       };
     });
     const added = () => page.evaluate(() => (Reflect.get(window, "schemeListenersAdded") as () => number)());
+    // The keys bar shows on a touch phone only while the soft keyboard is up.
+    await fakeSoftKeyboard(page);
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
     await page.getByRole("banner").getByRole("button", { name: "New tab" }).click();

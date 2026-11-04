@@ -1,0 +1,122 @@
+import type { Locator } from "@playwright/test";
+import { expect, test } from "./fixtures.ts";
+import { expectTouchTargets, key, keysBar, openPhoneTerminal, PHONE, showKeyboard } from "./phone-key-bar.ts";
+
+test.use({ serviceWorkers: "block", ...PHONE });
+
+const BAR_KEYS = ["Control", "Shift", "Tab", "Escape", "Arrow keys", "Paste", "Switch session", "Hide keyboard"];
+const PAD_KEYS = ["Delete", "Up arrow", "Clear screen", "Left arrow", "Return", "Right arrow", "Down arrow"];
+const names = (scope: Locator) =>
+  scope.getByRole("button").evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label") ?? ""));
+
+for (const width of [390, 320]) {
+  test(`at ${width} the keys bar is one pill of 44 pt keys inside the screen`, async ({ page }) => {
+    await openPhoneTerminal(page, width);
+    const bar = keysBar(page);
+    await expect(bar).toBeVisible();
+    expect(await names(bar)).toEqual(expect.arrayContaining(BAR_KEYS));
+    await expectTouchTargets(bar);
+    const shown = await page.locator('[data-slot="terminal-keys-scroll"]').evaluate((el) => {
+      const edge = el.getBoundingClientRect();
+      return [...el.querySelectorAll("button")]
+        .filter((button) => button.getBoundingClientRect().right <= edge.right + 1)
+        .map((button) => button.getAttribute("aria-label"));
+    });
+    // At 390 the left part shows Ctrl Shift Tab Esc without a swipe; 320 shows what fits and swipes the rest.
+    if (width === 390) expect(shown).toEqual(expect.arrayContaining(["Control", "Shift", "Tab", "Escape"]));
+    const box = await bar.boundingBox();
+    expect(box?.x ?? -1).toBeGreaterThanOrEqual(0);
+    expect((box?.x ?? 0) + (box?.width ?? Infinity)).toBeLessThanOrEqual(width);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await expect(bar.getByRole("button", { name: /arrow$/ })).toHaveCount(0);
+  });
+}
+
+test("the bar rides on the soft keyboard; with the keyboard down only a keyboard button stays", async ({ page }) => {
+  await openPhoneTerminal(page);
+  const bar = keysBar(page);
+  await expect(bar).toBeVisible();
+  const bottom = async (): Promise<number> => {
+    const box = await bar.boundingBox();
+    return Math.round((box?.y ?? 0) + (box?.height ?? 0));
+  };
+  await expect.poll(bottom).toBe(844 - 336);
+
+  // The keyboard closes on its own (its hide key): the bar falls with it.
+  await showKeyboard(page, 0);
+  await expect(bar).toHaveCount(0);
+  const show = key(page, "Show keyboard");
+  await expect(show).toBeVisible();
+  const round = await show.boundingBox();
+  expect(round?.width ?? 0).toBeGreaterThanOrEqual(44);
+  expect((round?.x ?? 0) + (round?.width ?? 0)).toBeGreaterThan(390 - 40);
+  expect((round?.y ?? 0) + (round?.height ?? 0)).toBeGreaterThan(844 - 80);
+
+  await show.click();
+  await expect(bar).toBeVisible();
+  await expect.poll(bottom).toBe(844 - 336);
+  await expect(page.locator("[data-terminal] textarea")).toBeFocused();
+  await key(page, "Hide keyboard").click();
+  await expect(bar).toHaveCount(0);
+  await expect(show).toBeVisible();
+});
+
+test("the D-pad toggle lays a 3x3 pad over the terminal", async ({ page }) => {
+  await openPhoneTerminal(page);
+  const toggle = key(page, "Arrow keys");
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  const pad = page.getByRole("group", { name: "Arrow keys" });
+  await expect(pad).toBeVisible();
+  const order = await pad
+    .locator(":scope > *")
+    .evaluateAll((cells) => cells.map((cell) => cell.getAttribute("aria-label") ?? ""));
+  expect(order).toEqual([
+    "Delete",
+    "Up arrow",
+    "Clear screen",
+    "Left arrow",
+    "Return",
+    "Right arrow",
+    "",
+    "Down arrow",
+    "",
+  ]);
+  expect(await names(pad)).toEqual(PAD_KEYS);
+  await expectTouchTargets(pad);
+  // Pressing pad keys keeps the keyboard up: the terminal keeps focus.
+  await key(page, "Up arrow").click();
+  await expect(page.locator("[data-terminal] textarea")).toBeFocused();
+  await toggle.click();
+  await expect(pad).toHaveCount(0);
+});
+
+test("swiping the bar sideways reveals ~ | / - behind an edge fade", async ({ page }) => {
+  await openPhoneTerminal(page);
+  const scroller = page.locator('[data-slot="terminal-keys-scroll"]');
+  await expect(scroller).toHaveAttribute("data-fade", "end");
+  await scroller.evaluate((el) => el.scrollTo({ left: el.scrollWidth }));
+  await expect(scroller).toHaveAttribute("data-fade", "start");
+  // Swiped until ~ reaches the start, the row shows ~ | / - whole.
+  const visible = await scroller.evaluate((el) => {
+    const edge = el.getBoundingClientRect();
+    const buttons = [...el.querySelectorAll("button")];
+    const tilde = buttons.find((button) => button.textContent === "~");
+    el.scrollLeft += (tilde?.getBoundingClientRect().left ?? edge.left) - edge.left;
+    return buttons
+      .filter((button) => {
+        const box = button.getBoundingClientRect();
+        return box.left >= edge.left - 1 && box.right <= edge.right + 1;
+      })
+      .map((button) => button.textContent);
+  });
+  expect(visible).toEqual(expect.arrayContaining(["~", "|", "/", "-"]));
+});
+
+test("reduced motion moves the bar without animating it", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openPhoneTerminal(page);
+  const durations = await keysBar(page).evaluate((el) => getComputedStyle(el).transitionDuration);
+  expect(durations.split(",").every((value) => Number.parseFloat(value) === 0)).toBe(true);
+});
