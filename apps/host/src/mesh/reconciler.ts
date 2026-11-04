@@ -150,7 +150,10 @@ export class Reconciler {
 
   async #run(view: MeshView): Promise<void> {
     const { machines, selfHostId } = this.#options;
-    const desired = new Map(view.members.filter((m) => m.hostId !== selfHostId).map((m) => [m.hostId, m]));
+    // Section 6.4: a host its own view does not list (revoked, over the cap) keeps no mesh machine until it is again.
+    const inView = view.members.some((m) => m.hostId === selfHostId);
+    const others = inView ? view.members.filter((m) => m.hostId !== selfHostId) : [];
+    const desired = new Map(others.map((m) => [m.hostId, m]));
     for (const hostId of this.#retries.keys()) if (!desired.has(hostId)) this.#retried(hostId);
     const entries = await this.#entries();
     const stale = entries.filter(
