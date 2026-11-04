@@ -1,7 +1,7 @@
 import type { HcConnection } from "@doriface/client";
-import { type DocCalls, LayoutDoc } from "@doriface/protocol/layout";
+import { type DocCalls, LayoutDoc, ORDER_DOC, readOrderDocument, storedOrder } from "@doriface/protocol/layout";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { arrangeMachines, moveMachine, ORDER_DOC, readOrderDocument, storedOrder } from "./machine-order.ts";
+import { arrangeMachines, moveMachine } from "./machine-order.ts";
 import type { MachineEntry } from "./machines.ts";
 
 export interface MachineOrder {

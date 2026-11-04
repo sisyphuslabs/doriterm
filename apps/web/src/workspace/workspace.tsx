@@ -3,7 +3,7 @@ import { useToastManager } from "@doriface/ui";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { connectionStore } from "../connection/store.ts";
 import { useActionHandler } from "../keys/dispatcher.ts";
-import { LAYOUT_DOC } from "@doriface/protocol/layout";
+import { LAYOUT_DOC, ORDER_DOC } from "@doriface/protocol/layout";
 import { closesTab, type TerminalEnd } from "../terminal/terminal-end.ts";
 import { CloseTabDialog } from "./close-tab-dialog.tsx";
 import { AddMachineDialog } from "./add-machine-dialog.tsx";
@@ -21,7 +21,6 @@ import { useNarrow } from "./use-narrow.ts";
 import { machineIds, tabAddress, tabKey } from "./tab-keys.ts";
 import { useLayout } from "./use-layout.ts";
 import { useLayoutDocs } from "./use-layout-docs.ts";
-import { ORDER_DOC } from "./machine-order.ts";
 import { useMachineOrder } from "./use-machine-order.ts";
 import { useTerminals, type DocHeard } from "./use-terminals.ts";
 
