@@ -66,8 +66,15 @@ for (const colorScheme of ["light", "dark"] as const) {
       await open("Connections");
       await ringOnTab(page, page.getByLabel("Connect through").getByRole("button", { name: "Relay" }));
       await open("Appearance");
-      await ringOnTab(page, page.getByRole("switch", { name: "Follow the system theme" }));
-      await ringOnTab(page, page.getByRole("radiogroup", { name: "Theme" }).getByRole("radio").first());
+      await ringOnTab(page, page.getByLabel("Appearance", { exact: true }).getByRole("button", { name: "System" }));
+      await ringOnTab(page, page.getByRole("searchbox", { name: "Search themes" }));
+      await ringOnTab(
+        page,
+        page
+          .getByRole("radiogroup", { name: /themes$/ })
+          .getByRole("radio")
+          .first(),
+      );
       await ringOnTab(page, page.getByRole("button", { name: "Choose file…" }));
       await open("Terminal");
       await ringOnTab(page, page.getByRole("button", { name: "Import Ghostty config…" }));

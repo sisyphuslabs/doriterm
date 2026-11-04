@@ -4,6 +4,7 @@ import { loadGhosttyCore } from "@doriface/ghostty-wasm";
 import type { GhosttyCore } from "@wterm/ghostty";
 import { Terminal, type TerminalHandle, type WTerm } from "@wterm/react";
 import { type FocusEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useScreenAwake } from "../device/keep-awake.ts";
 import { terminalConfigStore, useTerminalConfig } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
 import { readDisplay } from "./display.ts";
@@ -62,6 +63,7 @@ export function TerminalView(props: TerminalViewProps) {
   const config = useTerminalConfig();
   const options = useMemo(() => rendererOptions(config), [config]);
   const dark = useDarkScheme();
+  useScreenAwake();
   const [core, setCore] = useState<GhosttyCore | null>(null);
   const [wt, setWt] = useState<WTerm | null>(null);
   const [error, setError] = useState<string | null>(null);

@@ -1,5 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import {
+  END_LABEL,
   HcRpcError,
   type Terminal,
   type TerminalKillParams,
@@ -40,15 +41,45 @@ export async function renameSession(calls: SessionCalls, address: string, name: 
  */
 const ending = new Map<string, Promise<void>>();
 
-async function killAndRemove(calls: SessionCalls, address: string): Promise<void> {
+/** Removed meanwhile (another client, the host, or an earlier attempt's removal arriving late): what End is for. */
+const gone = (cause: unknown): boolean => cause instanceof HcRpcError && cause.kind === "not_found";
+
+/**
+ * Takes End's mark off a terminal whose End did not kill it, so a later finish of its program is not taken for End's.
+ * An empty value removes the label.
+ */
+export async function takeBackEnd(calls: SessionCalls, address: string): Promise<void> {
   try {
-    const ended = await calls.kill({ terminal: address });
-    if (ended.state === "finished") await calls.rm({ terminal: address });
+    await calls.label({ terminal: address, labels: { [END_LABEL]: "" } });
   } catch (cause) {
-    // Removed meanwhile (another client, or an earlier attempt's removal arriving late): the terminal is gone, which is
-    // what End is for.
-    if (!(cause instanceof HcRpcError && cause.kind === "not_found")) throw cause;
+    if (!gone(cause)) throw cause;
   }
+}
+
+async function killAndRemove(calls: SessionCalls, address: string): Promise<void> {
+  // The mark leaves with the kill, so a page closed before terminal.rm goes out still has the host remove it (END_LABEL).
+  const marked = calls.label({ terminal: address, labels: { [END_LABEL]: "1" } });
+  let notKilled = false;
+  const removed = (async () => {
+    let ended: Pick<Terminal, "state">;
+    try {
+      ended = await calls.kill({ terminal: address });
+    } catch (cause) {
+      notKilled = !gone(cause);
+      throw cause;
+    }
+    if (ended.state === "finished") await calls.rm({ terminal: address });
+  })();
+  const failed = (await Promise.allSettled([marked, removed])).find(
+    (outcome) => outcome.status === "rejected" && !gone(outcome.reason),
+  );
+  if (failed?.status !== "rejected") return;
+  if (notKilled) {
+    await takeBackEnd(calls, address).catch((cause: unknown) =>
+      console.error(`take End's mark off ${address}: ${String(cause)}`),
+    );
+  }
+  throw failed.reason;
 }
 
 /** Ends the program (hangup, then terminate, then kill) and removes the finished terminal from hc. */

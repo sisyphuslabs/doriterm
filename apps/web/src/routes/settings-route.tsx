@@ -1,9 +1,11 @@
 import { Button, IconButton, ScrollArea, Tab, TabList, Tabs, cn } from "@doriface/ui";
 import { ArrowLeft, Keyboard, Link2, Network, Palette, Server, SquareTerminal } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { MonitorSmartphone } from "lucide-react";
 import { currentPlatform, triggerKeys } from "../keys/trigger.ts";
 import { AppearanceSection } from "../settings/appearance-section.tsx";
 import { ConnectionSection } from "../settings/connection-section.tsx";
+import { DeviceSection } from "../settings/device-section.tsx";
 import { DevicesSection } from "../settings/devices-section.tsx";
 import { KeybindingsSection } from "../settings/keybindings-section.tsx";
 import { MeshSection } from "../settings/mesh-section.tsx";
@@ -16,6 +18,7 @@ const SECTIONS = [
   { id: "mesh", label: "Mesh", icon: <Network /> },
   { id: "machines", label: "Machines", icon: <Server /> },
   { id: "appearance", label: "Appearance", icon: <Palette /> },
+  { id: "device", label: "Device", icon: <MonitorSmartphone /> },
   { id: "terminal", label: "Terminal", icon: <SquareTerminal /> },
   { id: "keybindings", label: "Keybindings", icon: <Keyboard /> },
 ] as const;
@@ -106,6 +109,10 @@ export function SettingsRoute() {
           ) : section === "appearance" ? (
             <Group title="Appearance">
               <AppearanceSection />
+            </Group>
+          ) : section === "device" ? (
+            <Group title="This device">
+              <DeviceSection />
             </Group>
           ) : section === "terminal" ? (
             <Group title="Terminal">

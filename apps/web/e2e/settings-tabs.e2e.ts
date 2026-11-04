@@ -65,6 +65,13 @@ async function pageTo(on: Page, side: "start" | "end"): Promise<void> {
   await expect(on.locator(`[data-tab-edge="${side === "end" ? "start" : "end"}"]`)).toHaveCount(1);
 }
 
+/** Pages until that side's cue is gone: with more sections than two screens hold, one page is not the end. */
+async function pageAll(on: Page, side: "start" | "end"): Promise<void> {
+  if ((await on.locator(`[data-tab-edge="${side}"]`).count()) === 0) return;
+  await pageTo(on, side);
+  return pageAll(on, side);
+}
+
 test("no tab label is under a paging cue at rest, after paging to the end, or after paging back", async ({
   page: tab,
 }) => {
@@ -77,13 +84,13 @@ test("no tab label is under a paging cue at rest, after paging to the end, or af
   expect(rest).toMatchObject({ scrollLeft: 0, startCue: false, occluded: [], cutAtStart: [] });
   expect(rest.clipped).toContain("Keybindings");
 
-  await pageTo(tab, "end");
+  await pageAll(tab, "end");
   const end = await strip(tab);
   expect(end.cueOverlap).toBeLessThanOrEqual(1);
   expect([end.startCue, end.occluded]).toEqual([true, []]);
   expect(end.clipped).not.toContain("Keybindings");
 
-  await pageTo(tab, "start");
+  await pageAll(tab, "start");
   const back = await strip(tab);
   expect(back.cueOverlap).toBeLessThanOrEqual(1);
   expect(back).toMatchObject({ scrollLeft: 0, startCue: false, occluded: [], cutAtStart: [] });

@@ -68,14 +68,24 @@ export function AgentLists({
   );
 }
 
+/** What a mockup pins over a pane's terminal (`overlay`) or docks under it (`dock`). */
+export interface PaneExtras {
+  readonly overlay?: ReactNode;
+  readonly dock?: ReactNode;
+}
+
 /** A terminal card with no title bar, as in the app: its tab names it and the status bar says where it runs (#108). */
-function Pane(props: { readonly title: string; readonly lines: readonly TerminalLine[] }) {
+function Pane(props: { readonly title: string; readonly lines: readonly TerminalLine[] } & PaneExtras) {
   return (
     <section
       aria-label={`${props.title} terminal`}
-      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card"
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card"
     >
       <TerminalPreview lines={props.lines} cursor label={`${props.title} output`} className="flex-1" />
+      {props.dock}
+      {props.overlay === undefined ? null : (
+        <div className="absolute inset-x-2 top-2 mx-auto max-w-[40rem]">{props.overlay}</div>
+      )}
     </section>
   );
 }
@@ -104,7 +114,15 @@ export function Sidebar() {
   );
 }
 
-export function WorkspaceBody() {
+export function WorkspaceBody({
+  claude = {},
+  claudeLines = CLAUDE_LINES,
+  tabActions,
+}: {
+  readonly claude?: PaneExtras;
+  readonly claudeLines?: readonly TerminalLine[];
+  readonly tabActions?: ReactNode;
+}) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <TabBar
@@ -113,13 +131,14 @@ export function WorkspaceBody() {
         newTabKeys={["⌘", "T"]}
         trailing={
           <>
+            {tabActions}
             <IconButton label="Session actions for Claude Code" icon={<Ellipsis />} className="size-6" />
             <IconButton label="Split" icon={<Columns2 />} pressed />
           </>
         }
       />
       <div className="flex min-h-0 flex-1 gap-2 p-2">
-        <Pane title="Claude Code" lines={CLAUDE_LINES} />
+        <Pane title="Claude Code" lines={claudeLines} {...claude} />
         <Pane title="Codex" lines={CODEX_LINES} />
       </div>
       <StatusBar
