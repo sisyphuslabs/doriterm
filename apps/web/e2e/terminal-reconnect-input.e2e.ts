@@ -1,6 +1,9 @@
 import { devices } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
+import { endOwnTerminals } from "./own-terminals.ts";
+
+endOwnTerminals();
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
