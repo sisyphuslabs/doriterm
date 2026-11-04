@@ -88,8 +88,9 @@ describe("pairing slots", () => {
       status: PairSlotAckStatus.Registered,
     });
     const response = await fetch(`${relay.url}/v1/pair/${slot}`, { headers: { "cf-connecting-ip": testIp() } });
-    const body: object = await response.json();
-    expect(Object.keys(body).toSorted()).toEqual(["hostId", "noiseStaticPub", "signPub"]);
+    const body: unknown = await response.json();
+    const fields = typeof body === "object" && body !== null ? Object.keys(body).toSorted() : [];
+    expect(fields).toEqual(["hostId", "noiseStaticPub", "signPub"]);
     await expect(lookup(typed(slot))).rejects.toMatchObject({ name: "PairLookupError", status: 502 });
   });
 
