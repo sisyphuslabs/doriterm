@@ -12,7 +12,7 @@ import {
   SecureLinkError,
   SessionKind,
 } from "@doriface/crypto";
-import { encodeData } from "@doriface/relay-client";
+import { checkPairSlotAnswer, encodeData, toBase64Url } from "@doriface/relay-client";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -63,6 +63,26 @@ async function refusal(attempt: Promise<SecureLink>): Promise<number | undefined
 async function ackReaching(total: number): Promise<number> {
   const ack = await relay.acks.next();
   return ack >= total ? ack : ackReaching(total);
+}
+
+/** The next PAIR_SLOT is the offer's slot and this host's Noise key, signed so a v1.8 client accepts it. */
+async function expectSignedSlot(code: string): Promise<void> {
+  const request = await relay.pairSlots.next();
+  if (request === "clear") throw new Error("expected a PAIR_SLOT registration, got a clear");
+  const answer = {
+    hostId: identity.hostId,
+    noiseStaticPub: toBase64Url(request.noiseStaticPub),
+    signPub: toBase64Url(identity.sign.publicKey),
+    expiresAt: request.signed?.expiresAt,
+    slotSig: request.signed === undefined ? undefined : toBase64Url(request.signed.signature),
+  };
+  const record = {
+    hostId: identity.hostId,
+    noiseStaticPub: identity.noise.publicKey,
+    signPub: identity.sign.publicKey,
+  };
+  expect(request.slot).toBe(pairingSlotOf(code));
+  expect(await checkPairSlotAnswer(answer, request.slot, Date.now())).toEqual({ ok: true, record });
 }
 
 async function slotRegistered(slot: string): Promise<void> {
@@ -141,10 +161,7 @@ describe("pairing through the relay", () => {
 
   test("doriface-host pair registers the code's slot and the host's Noise key over the uplink", async () => {
     ({ code } = await pairOffer());
-    expect(await relay.pairSlots.next()).toEqual({
-      slot: pairingSlotOf(code),
-      noiseStaticPub: identity.noise.publicKey,
-    });
+    await expectSignedSlot(code);
   });
 
   test("a typed-code pairing on an ordinary session or another slot's session is refused with 4401", async () => {
@@ -165,10 +182,7 @@ describe("pairing through the relay", () => {
 
   test("a link secret pairs on an ordinary relay session", async () => {
     const { code: offered, linkSecret } = await pairOffer();
-    expect(await relay.pairSlots.next()).toEqual({
-      slot: pairingSlotOf(offered),
-      noiseStaticPub: identity.noise.publicKey,
-    });
+    await expectSignedSlot(offered);
     const laptop = generateX25519();
     const paired = await dial(relay.open(24), laptop, { mode: "link", linkSecret, name: "laptop" });
     expect(paired.kind).toBe(SessionKind.PairLink);
@@ -179,16 +193,10 @@ describe("pairing through the relay", () => {
 
   test("a reconnected uplink registers the pending code's slot again", async () => {
     const { code: next } = await pairOffer();
-    expect(await relay.pairSlots.next()).toEqual({
-      slot: pairingSlotOf(next),
-      noiseStaticPub: identity.noise.publicKey,
-    });
+    await expectSignedSlot(next);
     relay.dropUplink(1011);
     expect(await relay.answers.next()).toEqual({ hostId: identity.hostId, verified: true });
-    expect(await relay.pairSlots.next()).toEqual({
-      slot: pairingSlotOf(next),
-      noiseStaticPub: identity.noise.publicKey,
-    });
+    await expectSignedSlot(next);
   });
 });
 
