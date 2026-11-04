@@ -110,7 +110,7 @@ describe("the machine order, two devices through the relay", () => {
     expect(await stored(a)).toMatchObject({ machine_order: ["alpha", "lab", "studio", "build"] });
   }, 60_000);
 
-  test("two devices moving at once both land, and fields the order does not know come back byte for byte", async () => {
+  test("two devices moving at once both land, and fields the order does not know come back unchanged", async () => {
     const [a, b] = both();
     await startFrom(a, b, ["studio", "alpha", "build", "lab"]);
     const before = a.conflicts() + b.conflicts();
@@ -123,7 +123,8 @@ describe("the machine order, two devices through the relay", () => {
     const value = await stored(b);
     if (!isJsonObject(value)) throw new Error("no document");
     const { machine_order: order, ...rest } = value;
-    expect(JSON.stringify(rest)).toBe(JSON.stringify(FUTURE));
+    // The core stores a document's keys in its own (sorted) order, so the fields are compared by value, not by key order.
+    expect(rest).toStrictEqual(FUTURE);
     if (!Array.isArray(order)) throw new Error("no machine order");
     // Whichever write lands first, the second is made again on it: alpha ends last, studio two from wherever it was.
     expect([
