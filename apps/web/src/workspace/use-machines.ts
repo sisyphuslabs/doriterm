@@ -1,7 +1,7 @@
 import type { HcConnection } from "@doriface/client";
 import type { MachineView, Terminal } from "@doriface/protocol";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { machineEntries, machineKey, type MachineEntry } from "./machines.ts";
+import { machineEntries, machineKey, orderMachines, type MachineEntry } from "./machines.ts";
 import type { Session } from "./model.ts";
 import { withReach } from "./reach.ts";
 
@@ -63,7 +63,7 @@ export function useMachines(connection: HcConnection, terminals: readonly Termin
     connection.call("machine.list").then(
       (list) => {
         if (!current) return list;
-        setViews(list.machines);
+        setViews(orderMachines(list.machines));
         setListError(undefined);
         setListed((count) => count + 1);
         return list;

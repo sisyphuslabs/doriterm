@@ -1,6 +1,6 @@
 import type { MachineView, Terminal } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
-import { machineEntries, machineKey, onlyThisMachine, showMachines } from "./machines.ts";
+import { machineEntries, machineKey, onlyThisMachine, orderMachines, showMachines } from "./machines.ts";
 import { machineId, toSpaces } from "./model.ts";
 
 const terminal = (address: string, fields: Partial<Terminal> = {}): Terminal => ({
@@ -49,7 +49,7 @@ describe("machineEntries", () => {
       view("box10", "connected"),
       view("box9", "connected"),
     ];
-    expect(machineEntries("a", learned, []).map((machine) => machine.name)).toEqual(["a", "b", "box9", "box10", "c"]);
+    expect(orderMachines(learned).map((machine) => machine.name)).toEqual(["b", "box9", "box10", "c"]);
   });
 
   test("the refresh key changes when an added machine's terminals stop being live, as they do when its line drops", () => {
@@ -100,5 +100,11 @@ describe("toSpaces grouped by machine", () => {
       ["boxb", "infra"],
       ["zeta", "api"],
     ]);
+  });
+
+  test("machines with numbered names group in the same order as the Machines list, box9 before box10", () => {
+    const spaces = toSpaces([terminal("box10/t1", { cwd: "/w/a" }), terminal("box9/t1", { cwd: "/w/b" })]);
+    const listed = orderMachines([view("box10", "connected"), view("box9", "connected")]);
+    expect(spaces.map((space) => space.machine)).toEqual(listed.map((machine) => machine.name));
   });
 });

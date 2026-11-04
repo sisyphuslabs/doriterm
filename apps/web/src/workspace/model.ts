@@ -117,6 +117,9 @@ const ATTENTION: readonly AgentStatus[] = ["blocked", "working", "done"];
 
 const remoteRank = (machine: string | undefined): number => (machine === undefined ? 0 : 1);
 
+/** Names in the order a person reads them: numbers by value, so box9 comes before box10. */
+export const byName = new Intl.Collator(undefined, { numeric: true });
+
 /** One space per machine and name: this machine's first, then each machine's in name order. */
 export function toSpaces(terminals: readonly Terminal[]): Space[] {
   const groups = new Map<string, { name: string; machine: string | undefined; statuses: Set<AgentStatus> }>();
@@ -129,7 +132,7 @@ export function toSpaces(terminals: readonly Terminal[]): Space[] {
     groups.set(key, group);
   }
   const ordered = [...groups].toSorted(
-    ([, a], [, b]) => remoteRank(a.machine) - remoteRank(b.machine) || (a.machine ?? "").localeCompare(b.machine ?? ""),
+    ([, a], [, b]) => remoteRank(a.machine) - remoteRank(b.machine) || byName.compare(a.machine ?? "", b.machine ?? ""),
   );
   return ordered.map(([id, group]) => {
     const attention = ATTENTION.find((status) => group.statuses.has(status));
