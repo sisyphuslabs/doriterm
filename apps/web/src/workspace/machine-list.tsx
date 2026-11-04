@@ -166,7 +166,9 @@ export function MachineList({
           {listError}
         </Notice>
       )}
-      <span role="status" aria-live="polite" className="sr-only">
+      {/* role="status" is already polite. An explicit aria-live would keep a modal from hiding the workspace: Base UI
+          never hides an [aria-live] element's ancestors, and the focus chord reads a hidden workspace as a modal. */}
+      <span role="status" className="sr-only">
         {announcement}
       </span>
     </SidebarSection>
