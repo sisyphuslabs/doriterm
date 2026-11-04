@@ -3,6 +3,8 @@ import { AckCounter, keepAlive } from "./flow-control.ts";
 import { rethrowAfter } from "./inbox.ts";
 import { LinkClosedError } from "./link.ts";
 import { type PairSlotResult, PairSlotRequests } from "./pair-requests.ts";
+import type { RelayProofs } from "./pass-book.ts";
+import { UplinkPasses } from "./uplink-passes.ts";
 import { SessionLink } from "./session-link.ts";
 import type { HostSigner } from "./signer.ts";
 import { closeSocket, type CreateSocket, defaultCreateSocket, isOpen, relaySocketUrl } from "./socket.ts";
@@ -42,6 +44,8 @@ export interface UplinkOptions {
   readonly pingIntervalMs?: number;
   /** Ask the relay for session credit (contract v1.4); default true. */
   readonly credit?: boolean;
+  /** The host's relay passes (contract v1.6): with them the uplink asks for passes and presents proofs. */
+  readonly proofs?: RelayProofs | undefined;
 }
 
 /** Reconnecting cannot fix these: the key is wrong, or another uplink for this host took over. */
@@ -62,6 +66,7 @@ export class Uplink {
   readonly #sessions = new Map<number, SessionLink>();
   readonly #stop = Promise.withResolvers<number>();
   readonly #pairSlots = new PairSlotRequests();
+  readonly #passes: UplinkPasses | undefined;
   #socket: WebSocket | undefined;
   #stopPings: (() => void) | undefined;
   #timer: ReturnType<typeof setTimeout> | undefined;
@@ -78,6 +83,11 @@ export class Uplink {
     this.#url = relaySocketUrl(options.relayUrl, `/v1/host/${hostId}${query}`);
     this.#relayOrigin = relayOriginOf(this.#url);
     this.stopped = this.#stop.promise;
+    const { proofs } = options;
+    this.#passes =
+      proofs === undefined
+        ? undefined
+        : new UplinkPasses(proofs, this.#relayOrigin, hostId, options.random ?? Math.random);
   }
 
   static async start(options: UplinkOptions): Promise<Uplink> {
@@ -145,9 +155,11 @@ export class Uplink {
     this.#timer = undefined;
     this.#answeredAt = undefined;
     this.#options.onState?.({ state: "connecting", attempt: this.#attempt });
-    const ws = (this.#options.createSocket ?? defaultCreateSocket)(this.#url);
+    const url = this.#passes?.attemptUrl(this.#url) ?? this.#url;
+    const ws = (this.#options.createSocket ?? defaultCreateSocket)(url);
     ws.binaryType = "arraybuffer";
     this.#socket = ws;
+    this.#passes?.attempting(ws);
     let challenged = false;
     const acks = new AckCounter();
     const arrived = (bytes: number): void => {
@@ -163,6 +175,7 @@ export class Uplink {
       if (challenged) return this.#frame(ws, bytes, arrived);
       arrived(bytes.byteLength);
       challenged = true;
+      this.#passes?.challenged();
       this.#answer(ws, bytes).catch(() => closeSocket(ws, CloseCode.InternalError, "signing failed"));
     });
     ws.addEventListener("close", (event: CloseEvent) => this.#lost(ws, event.code));
@@ -188,6 +201,10 @@ export class Uplink {
       throw error;
     }
     arrived(bytes.byteLength);
+    if (frame.type === MuxType.Pass) {
+      if (this.#passes?.frame(frame.payload) !== true) closeSocket(ws, CloseCode.RelayProtocolError, "bad PASS");
+      return;
+    }
     const session = this.#sessions.get(frame.sessionId);
     if (frame.type === MuxType.Data && session !== undefined) return session.deliver(frame.payload);
     if (frame.type === MuxType.PairSlotAck) {
@@ -224,7 +241,7 @@ export class Uplink {
     if (FINAL_CODES.has(code)) return this.#finish(code);
     const stable = this.#answeredAt !== undefined && Date.now() - this.#answeredAt >= STABLE_MS;
     if (stable) this.#attempt = 0;
-    const retryInMs = backoffDelay(this.#attempt, this.#options.random);
+    const retryInMs = this.#passes?.reconnectDelay(code) ?? backoffDelay(this.#attempt, this.#options.random);
     this.#attempt += 1;
     this.#options.onState?.({ state: "waiting", code, retryInMs });
     this.#timer = setTimeout(() => this.#connect(), retryInMs);
@@ -243,6 +260,7 @@ export class Uplink {
     if (this.#done) return;
     this.#done = true;
     clearTimeout(this.#timer);
+    this.#passes?.stop();
     const ws = this.#socket;
     this.#socket = undefined;
     this.#stopPings?.();

@@ -11,6 +11,14 @@ export {
 } from "./link.ts";
 export { lookupPairSlot, PairLookupError, type PairLookupOptions, type PairSlotRecord } from "./pair-lookup.ts";
 export type { PairSlotResult } from "./pair-requests.ts";
+export {
+  PASS_LIMITS,
+  PassBook,
+  type PassBookOptions,
+  type PassStore,
+  type RelayProofs,
+  type StoredPass,
+} from "./pass-book.ts";
 export { SessionLink, type SessionTransport } from "./session-link.ts";
 export { ed25519Signer, generateSigningKey, type HostSigner } from "./signer.ts";
 export { type CreateSocket, relaySocketUrl } from "./socket.ts";
