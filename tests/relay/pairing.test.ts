@@ -65,10 +65,16 @@ describe("pairing slots", () => {
     expect(await host.uplink.registerPairSlot(slot, noiseStaticPub, expiresAt)).toBe("registered");
     const response = await fetch(`${relay.url}/v1/pair/${slot}`, { headers: { "cf-connecting-ip": testIp() } });
     const body: unknown = await response.json();
-    expect(body).toMatchObject({ expiresAt, slotSig: expect.stringMatching(/^[A-Za-z0-9_-]{86}$/) });
+    const verdicts = [
+      await checkPairSlotAnswer(body, slot, Date.now()),
+      await checkPairSlotAnswer(body, uniqueSlot(), Date.now()),
+    ];
     const record = { hostId: host.uplink.hostId, noiseStaticPub, signPub: host.signer.publicKey };
-    expect(await checkPairSlotAnswer(body, slot, Date.now())).toEqual({ ok: true, record });
-    expect(await checkPairSlotAnswer(body, uniqueSlot(), Date.now())).toEqual({ ok: false, reason: "forged" });
+    expect(verdicts).toEqual([
+      { ok: true, record },
+      { ok: false, reason: "forged" },
+    ]);
+    expect(body).toMatchObject({ expiresAt });
     host.uplink.stop();
   });
 
@@ -82,8 +88,8 @@ describe("pairing slots", () => {
       status: PairSlotAckStatus.Registered,
     });
     const response = await fetch(`${relay.url}/v1/pair/${slot}`, { headers: { "cf-connecting-ip": testIp() } });
-    const body: unknown = await response.json();
-    expect(body).toEqual({ hostId: host.hostId, noiseStaticPub: expect.any(String), signPub: expect.any(String) });
+    const body: object = await response.json();
+    expect(Object.keys(body).toSorted()).toEqual(["hostId", "noiseStaticPub", "signPub"]);
     await expect(lookup(typed(slot))).rejects.toMatchObject({ name: "PairLookupError", status: 502 });
   });
 

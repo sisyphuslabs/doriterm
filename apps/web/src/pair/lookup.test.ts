@@ -29,8 +29,7 @@ function honestAnswerOnSlotK7Q(): { readonly body: Record<string, unknown>; read
   return { body, noisePub };
 }
 
-const relayAnswers = (body: unknown) =>
-  spyOn(globalThis, "fetch").mockImplementation(async () => Response.json(body));
+const relayAnswers = (body: unknown) => spyOn(globalThis, "fetch").mockResolvedValue(Response.json(body));
 
 const attackerKey = (): string => b64url(crypto.getRandomValues(new Uint8Array(32)));
 
