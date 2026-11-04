@@ -45,8 +45,9 @@ test.describe("machine order", () => {
     page,
   }) => {
     const local = await openWorkspace(page);
+    // A row lands past a neighbour once its centre crosses the neighbour's: a row and a half up clears it.
     const height = (await rowOf(page, MACHINE_NAME).boundingBox())?.height ?? 28;
-    await dragRow(page, MACHINE_NAME, -height);
+    await dragRow(page, MACHINE_NAME, -height * 1.5);
     await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
     await expect(status(page)).toHaveText(new RegExp(`^Moved ${MACHINE_NAME} to position 1 of 2`));
     await expect(rows(page).locator("[data-dragging]")).toHaveCount(0);
