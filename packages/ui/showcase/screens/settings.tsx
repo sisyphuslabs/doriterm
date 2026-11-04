@@ -1,15 +1,17 @@
-import { ChevronLeft, Keyboard, Link2, Palette, SquareTerminal, X } from "lucide-react";
+import { ChevronLeft, Keyboard, Link2, MonitorSmartphone, Palette, SquareTerminal, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Button, IconButton, ScrollArea, Tab, TabList, Tabs, cn } from "../../src/index.ts";
+import { DeviceSection } from "./settings-device.tsx";
 import { KeyboardSection } from "./settings-keyboard.tsx";
 import { AppearanceSection, ConnectionSection } from "./settings-sections.tsx";
 import { TerminalSection } from "./settings-terminal.tsx";
 
-export type SettingsSection = "connection" | "appearance" | "terminal" | "keyboard";
+export type SettingsSection = "connection" | "appearance" | "device" | "terminal" | "keyboard";
 
 const SECTIONS = [
   { id: "connection", label: "Connection", icon: <Link2 /> },
   { id: "appearance", label: "Appearance", icon: <Palette /> },
+  { id: "device", label: "Device", icon: <MonitorSmartphone /> },
   { id: "terminal", label: "Terminal", icon: <SquareTerminal /> },
   { id: "keyboard", label: "Keyboard", icon: <Keyboard /> },
 ] as const;
@@ -17,6 +19,7 @@ const SECTIONS = [
 const BODY: Readonly<Record<SettingsSection, () => ReactNode>> = {
   connection: () => <ConnectionSection />,
   appearance: () => <AppearanceSection />,
+  device: () => <DeviceSection />,
   terminal: () => <TerminalSection />,
   keyboard: () => <KeyboardSection />,
 };
@@ -87,6 +90,10 @@ export function SettingsScreen({ section: initial = "connection" }: { readonly s
 
 export function SettingsAppearanceScreen() {
   return <SettingsScreen section="appearance" />;
+}
+
+export function SettingsDeviceScreen() {
+  return <SettingsScreen section="device" />;
 }
 
 export function SettingsTerminalScreen() {

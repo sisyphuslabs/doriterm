@@ -43,10 +43,14 @@ describe("session actions", () => {
     ]);
   });
 
-  test("ending kills the program, then removes the finished terminal", async () => {
+  test("ending marks the terminal for removal with the kill, then removes the finished terminal", async () => {
     const { calls, connection } = recorder();
     await endSession(connection, "box/t2");
-    expect(calls.map((call) => call.method)).toEqual(["terminal.kill", "terminal.rm"]);
+    expect(calls).toEqual([
+      { method: "terminal.label", params: { terminal: "box/t2", labels: { "herdr.end": "1" } } },
+      { method: "terminal.kill", params: { terminal: "box/t2" } },
+      { method: "terminal.rm", params: { terminal: "box/t2" } },
+    ]);
   });
 
   test("a screen that leaves when the program exits waits for End's terminal.rm", async () => {
@@ -70,6 +74,30 @@ describe("session actions", () => {
     removed.resolve({});
     await ending;
     expect(left).toEqual(["t5", "t4"]);
+  });
+
+  test("an End whose kill is refused takes its mark back; one whose removal fails after the kill keeps it", async () => {
+    const calls: { readonly method: string; readonly params: unknown }[] = [];
+    const failing = (fails: "kill" | "rm"): SessionCalls => {
+      const answer =
+        (method: "label" | "kill" | "rm") =>
+        (params: unknown): Promise<{ readonly state: "finished" }> => {
+          calls.push({ method, params });
+          return method === fails
+            ? Promise.reject(new HcRpcError({ code: -32000, message: `${method}: busy`, data: { kind: "busy" } }))
+            : Promise.resolve({ state: "finished" });
+        };
+      return { label: answer("label"), kill: answer("kill"), rm: answer("rm") };
+    };
+    await expect(endSession(failing("kill"), "t10")).rejects.toThrow("kill: busy");
+    expect(calls.filter((call) => call.method === "label").map((call) => call.params)).toEqual([
+      { terminal: "t10", labels: { "herdr.end": "1" } },
+      { terminal: "t10", labels: { "herdr.end": "" } },
+    ]);
+    calls.length = 0;
+    // The program was killed: the host still removes it, so the mark stays.
+    await expect(endSession(failing("rm"), "t11")).rejects.toThrow("rm: busy");
+    expect(calls.filter((call) => call.method === "label")).toHaveLength(1);
   });
 
   test("a terminal already gone when End's kill or rm lands counts as ended; any other refusal does not", async () => {

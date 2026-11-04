@@ -1,68 +1,42 @@
-import { BUILTIN_PALETTES, parseThemeFile, resolveTheme, themeVariables, type ResolvedTheme } from "@doriface/ui";
+import { themeVariables } from "@doriface/ui";
 import { useSyncExternalStore } from "react";
+import { themeChoices } from "./choices.ts";
+import { activeThemeId, parseAppearance, type Appearance } from "./stored.ts";
 
-export interface CustomTheme {
-  readonly id: string;
-  readonly name: string;
-  /** The herdr-app theme file as imported, so it re-resolves with newer rules. */
-  readonly file: unknown;
-}
-
-export interface Appearance {
-  /** "system", a builtin palette name, or a custom theme id. */
-  readonly theme: string;
-  readonly custom: readonly CustomTheme[];
-}
+export type { CustomTheme, ThemeChoice } from "./choices.ts";
+export { themeChoices } from "./choices.ts";
+export type { Appearance, AppearanceMode, Density } from "./stored.ts";
+export { activeThemeId } from "./stored.ts";
 
 const KEY = "doriface.appearance";
-const DEFAULT: Appearance = { theme: "system", custom: [] };
+const DARK_QUERY = "(prefers-color-scheme: dark)";
 
-function isCustomTheme(value: unknown): value is CustomTheme {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof Reflect.get(value, "id") === "string" &&
-    typeof Reflect.get(value, "name") === "string"
-  );
-}
-
+/** The stored appearance; storage that refuses the read (site settings, a sandbox) or holds junk gives the defaults. */
 function load(): Appearance {
-  let parsed: unknown;
+  let stored: unknown;
   try {
-    parsed = JSON.parse(localStorage.getItem(KEY) ?? "null");
+    stored = JSON.parse(localStorage.getItem(KEY) ?? "null");
   } catch {
-    return DEFAULT;
+    stored = null;
   }
-  if (typeof parsed !== "object" || parsed === null) return DEFAULT;
-  const theme: unknown = Reflect.get(parsed, "theme");
-  const custom: unknown = Reflect.get(parsed, "custom");
-  return {
-    theme: typeof theme === "string" ? theme : DEFAULT.theme,
-    custom: Array.isArray(custom) ? custom.filter(isCustomTheme) : [],
-  };
+  return parseAppearance(stored);
 }
 
-/** Every selectable theme resolved; custom files that no longer parse are skipped. */
-export function themeChoices(appearance: Appearance): ReadonlyMap<string, { name: string; theme: ResolvedTheme }> {
-  const choices = new Map<string, { name: string; theme: ResolvedTheme }>();
-  for (const [id, palette] of Object.entries(BUILTIN_PALETTES)) {
-    choices.set(id, { name: id[0]?.toUpperCase() + id.slice(1), theme: resolveTheme(palette) });
-  }
-  for (const custom of appearance.custom) {
-    try {
-      choices.set(custom.id, { name: custom.name, theme: resolveTheme(parseThemeFile(custom.file)) });
-    } catch {
-      continue;
-    }
-  }
-  return choices;
-}
+const systemDark = (): boolean => matchMedia(DARK_QUERY).matches;
 
-/** Writes the chosen theme's variables onto <html>; "system" leaves the stylesheet's own media queries. */
-export function applyAppearance(appearance: Appearance, root: HTMLElement = document.documentElement): void {
+/**
+ * Writes the theme on screen as variables onto <html>, so the UI and every terminal re-theme without a reload, and the
+ * density as `data-ui-density`, which tokens.css turns into row heights.
+ */
+export function applyAppearance(
+  appearance: Appearance,
+  root: HTMLElement = document.documentElement,
+  dark: boolean = systemDark(),
+): void {
+  root.dataset["uiDensity"] = appearance.density;
   for (const name of Array.from(root.style)) if (name.startsWith("--")) root.style.removeProperty(name);
   root.style.removeProperty("color-scheme");
-  const choice = themeChoices(appearance).get(appearance.theme);
+  const choice = themeChoices(appearance.custom).get(activeThemeId(appearance, dark));
   if (choice === undefined) return;
   for (const [name, value] of Object.entries(themeVariables(choice.theme))) root.style.setProperty(`--${name}`, value);
   root.style.setProperty("color-scheme", choice.theme.light ? "light" : "dark");
@@ -87,6 +61,12 @@ class AppearanceStore {
 }
 
 export const appearanceStore = new AppearanceStore();
+
+/** Applies the stored appearance now and again whenever the system switches between light and dark. */
+export function startAppearance(): void {
+  applyAppearance(appearanceStore.value);
+  matchMedia(DARK_QUERY).addEventListener("change", () => applyAppearance(appearanceStore.value));
+}
 
 export function useAppearance(): Appearance {
   return useSyncExternalStore(appearanceStore.subscribe, () => appearanceStore.value);

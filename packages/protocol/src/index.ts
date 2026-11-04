@@ -4,6 +4,7 @@ export * from "./json.ts";
 export * from "./jsonrpc.ts";
 export * from "./lines.ts";
 export * from "./events.ts";
+export { END_LABEL } from "./end-label.ts";
 export * from "./mesh-status.ts";
 export { isMeshName, meshRevokeCommand } from "./mesh-name.ts";
 export { parseMeshStatus } from "./mesh-status-parse.ts";

@@ -1,4 +1,4 @@
-import type { Agent, Command, Space, TerminalLine, WorkspaceTab } from "../src/index.ts";
+import type { Agent, ApprovalPrompt, Command, Space, TerminalLine, WorkspaceTab } from "../src/index.ts";
 
 export const SPACES: readonly Space[] = [
   { id: "api", name: "api-server", tabs: 3, attention: "blocked" },
@@ -105,3 +105,64 @@ export function sampleQrModules(size = 29): boolean[][] {
     }),
   );
 }
+
+/** Claude Code waiting on a Bash permission prompt, the screen the approval banner is pinned over. */
+export const CLAUDE_PERMISSION_LINES: readonly TerminalLine[] = [
+  [{ text: "~/api-server ", color: 4 }, { text: "main", color: 5 }, { text: " $ claude" }],
+  [{ text: "● ", color: 3 }, { text: "Reading migrations/0042_session_keys.sql" }],
+  [{ text: "● ", color: 3 }, { text: "Bash", bold: true }, { text: "(bun run db:migrate --env staging)" }],
+  [],
+  [{ text: " Bash command", bold: true }],
+  [{ text: "   bun run db:migrate --env staging" }],
+  [{ text: "   Apply migration 0042 to the staging database", dim: true }],
+  [],
+  [{ text: " Do you want to proceed?" }],
+  [
+    { text: " ❯ ", color: 6 },
+    { text: "1. Yes", color: 6 },
+  ],
+  [{ text: "   2. Yes, and don't ask again for bun run db:migrate commands in ~/api-server" }],
+  [{ text: "   3. No, and tell Claude what to do differently " }, { text: "(esc)", dim: true }],
+];
+
+/** The same session after the prompt was answered: the migration ran and Claude Code moved on. */
+export const CLAUDE_ALLOWED_LINES: readonly TerminalLine[] = [
+  [{ text: "~/api-server ", color: 4 }, { text: "main", color: 5 }, { text: " $ claude" }],
+  [{ text: "● ", color: 3 }, { text: "Reading migrations/0042_session_keys.sql" }],
+  [{ text: "● ", color: 3 }, { text: "Bash", bold: true }, { text: "(bun run db:migrate --env staging)" }],
+  [
+    { text: "  ⎿  ", dim: true },
+    { text: "Applied 0042_session_keys.sql", color: 2 },
+    { text: "  312ms", dim: true },
+  ],
+  [{ text: "● ", color: 3 }, { text: "Running " }, { text: "bun test db/", bold: true }],
+];
+
+/** The prompt left the screen before the banner's key went in: someone answered No in the terminal itself. */
+export const CLAUDE_PROMPT_GONE_LINES: readonly TerminalLine[] = [
+  [{ text: "~/api-server ", color: 4 }, { text: "main", color: 5 }, { text: " $ claude" }],
+  [{ text: "● ", color: 3 }, { text: "Reading migrations/0042_session_keys.sql" }],
+  [{ text: "● ", color: 3 }, { text: "Bash", bold: true }, { text: "(bun run db:migrate --env staging)" }],
+  [
+    { text: "  ⎿  ", dim: true },
+    { text: "No (tell Claude what to do differently)", color: 1 },
+  ],
+  [],
+  [{ text: "> ", color: 8 }, { text: "show me the rollback script first" }],
+];
+
+export const APPROVAL_PROMPT: ApprovalPrompt = {
+  agent: "Claude Code",
+  asks: "wants to run",
+  command: "bun run db:migrate --env staging",
+  keys: { allow: "1", deny: "esc" },
+};
+
+/** A Korean and an English sentence, as the dictation acceptance criteria ask. */
+export const VOICE_TRANSCRIPT = "마이그레이션 롤백 스크립트부터 보여줘. Then run the db tests again.";
+
+/** Input level, 0..1, for a still frame of the listening meter. */
+export const VOICE_LEVELS: readonly number[] = Array.from({ length: 48 }, (_unused, index) => {
+  const wave = Math.abs(Math.sin(index * 0.55) * Math.cos(index * 0.17));
+  return index > 40 ? wave * 0.25 : 0.2 + wave * 0.8;
+});

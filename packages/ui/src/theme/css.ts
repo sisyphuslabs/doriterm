@@ -32,7 +32,9 @@ export function themeVariables(theme: ResolvedTheme): CssVariables {
   const text = (value: string): string => ensureContrast(value, surfaces, AA_TEXT, ink);
   const graphic = (value: string): string => ensureContrast(value, surfaces, AA_GRAPHIC, ink);
   const termBg = rgb(r.background);
-  const termFg = rgb(r.terminal_foreground);
+  /** Terminal text reaches AA on its own background (Ghostty's `minimum-contrast`); passing palettes are unchanged. */
+  const termText = ensureContrast(r.terminal_foreground, [termBg], AA_TEXT, ink);
+  const termFg = rgb(termText);
   /** Ghostty draws faint text at faint-opacity 0.5; the guard lifts it to AA on the terminal background. */
   const faint = ensureContrast(hex(mix(termBg, termFg, 0.5)), [termBg], AA_TEXT, termFg);
   const edge = ensureContrast(hex(mix(base, ink, 0.3)), surfaces, AA_GRAPHIC, ink);
@@ -74,7 +76,7 @@ export function themeVariables(theme: ResolvedTheme): CssVariables {
     "sidebar-accent-foreground": r.foreground,
     "sidebar-border": r.border,
     "sidebar-ring": graphic(r.accent),
-    "term-fg": r.terminal_foreground,
+    "term-fg": termText,
     "term-bg": r.background,
     "term-faint": faint,
     "term-cursor": r.cursor,
