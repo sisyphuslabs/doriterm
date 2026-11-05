@@ -62,7 +62,7 @@ test("swiped-in characters type into the terminal", async ({ page }) => {
   await expect(terminal).toContainText(/x~\|\/-y[\s\S]*x~\|\/-y/, { timeout: 10_000 });
 });
 
-test("Paste and the ctrl+v chord paste the device clipboard", async ({ page, context }) => {
+test("Paste and the host's paste chord paste the device clipboard", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const terminal = await openPhoneTerminal(page);
   const clipboard = (text: string) => page.evaluate((value) => navigator.clipboard.writeText(value), text);
@@ -73,10 +73,10 @@ test("Paste and the ctrl+v chord paste the device clipboard", async ({ page, con
   await page.keyboard.type("\r");
   await expect(terminal).toContainText("pasted-42", { timeout: 10_000 });
 
-  // The core here is not a mac, so ctrl+shift+v is the paste chord.
+  // The paste chord follows the host OS, independently of the phone's browser platform.
   await clipboard("echo chord-$((5+5))");
-  await key(page, "Control").click();
-  await key(page, "Shift").click();
+  await key(page, process.platform === "darwin" ? "Command" : "Control").click();
+  if (process.platform !== "darwin") await key(page, "Shift").click();
   await page.keyboard.type("v");
   await expect(terminal).toContainText("echo chord-$((5+5))", { timeout: 10_000 });
   await page.keyboard.type("\r");
