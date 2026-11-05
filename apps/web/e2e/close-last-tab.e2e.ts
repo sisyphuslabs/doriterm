@@ -21,7 +21,7 @@ test("closing the only tab ends its shell and empties the workspace; a terminal 
   const running = (await terminalCount(page)).before;
 
   // Cmd+W on macOS; the pane close key elsewhere.
-  await page.keyboard.press("Control+Shift+X");
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+KeyW" : "Control+Shift+X");
   await expect(page.getByRole("contentinfo")).toContainText(`${running - 1} terminal`, { timeout: 15_000 });
   await expect(tabs).toHaveCount(0);
   await expect(page.locator(`[data-terminal="${address}"]`)).toHaveCount(0);

@@ -153,9 +153,10 @@ for (const platform of ["mac", "other"] as const) {
   test(`${platform}: four nested splits, right and down, each focus the new pane; moving focus moves no pane`, async ({
     page,
   }) => {
-    if (platform === "mac") {
-      await page.addInitScript(() => Object.defineProperty(Navigator.prototype, "platform", { get: () => "MacIntel" }));
-    }
+    await page.addInitScript(
+      (value) => Object.defineProperty(Navigator.prototype, "platform", { get: () => value }),
+      platform === "mac" ? "MacIntel" : "Linux x86_64",
+    );
     await page.goto("/");
     const first = await openNewTerminal(page);
     const one = (await first.getAttribute("data-terminal")) ?? "";
@@ -200,6 +201,7 @@ for (const platform of ["mac", "other"] as const) {
 }
 
 test("two split keys pressed back to back split the pane the first one makes, as Ghostty does", async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(Navigator.prototype, "platform", { get: () => "Linux x86_64" }));
   await page.goto("/");
   const first = await openNewTerminal(page);
   const one = (await first.getAttribute("data-terminal")) ?? "";

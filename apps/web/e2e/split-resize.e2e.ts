@@ -132,9 +132,10 @@ async function expectStep(page: Page, address: string, from: number, sign: 1 | -
 }
 
 async function setPlatform(page: Page, platform: Platform): Promise<void> {
-  if (platform === "mac") {
-    await page.addInitScript(() => Object.defineProperty(Navigator.prototype, "platform", { get: () => "MacIntel" }));
-  }
+  await page.addInitScript(
+    (value) => Object.defineProperty(Navigator.prototype, "platform", { get: () => value }),
+    platform === "mac" ? "MacIntel" : "Linux x86_64",
+  );
 }
 
 for (const platform of ["mac", "other"] as const) {
@@ -213,6 +214,7 @@ for (const platform of ["mac", "other"] as const) {
 test("closing a pane in the middle gives its space to its neighbour and focus to the pane before; the last closes the tab", async ({
   page,
 }) => {
+  await setPlatform(page, "other");
   const t = ["1", "2", "3", "4", "5"].map(shell);
   const [one = "", two = "", three = "", four = "", five = ""] = t;
   const other = shell("other");
@@ -419,6 +421,7 @@ test("a pane a refused write kept goes back to its place in the focus history, n
 test("zoomed, moving focus or splitting shows every pane again, so a close acts on a pane in view", async ({
   page,
 }) => {
+  await setPlatform(page, "other");
   const t = ["1", "2", "3", "4", "5"].map(shell);
   const [, two = "", , four = "", five = ""] = t;
   seedLayout([deepTab(t)]);

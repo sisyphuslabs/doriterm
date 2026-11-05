@@ -7,9 +7,9 @@ import { expect, openNewTerminal, terminalCount, test } from "./fixtures.ts";
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
 
-/** The pane and tab close keys off macOS (Cmd+W and Cmd+Option+W on macOS). */
-const CLOSE_PANE = "Control+Shift+X";
-const CLOSE_TAB = "Control+Shift+KeyW";
+/** The pane and tab close keys for the browser's native platform. */
+const CLOSE_PANE = process.platform === "darwin" ? "Meta+KeyW" : "Control+Shift+X";
+const CLOSE_TAB = process.platform === "darwin" ? "Meta+Alt+KeyW" : "Control+Shift+KeyW";
 
 const live = (page: Page, address: string) => page.locator(`[data-terminal="${address}"]`);
 const question = (page: Page) => page.getByRole("dialog", { name: /^Close .+\?$/ });
