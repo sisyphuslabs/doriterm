@@ -27,7 +27,7 @@ import { SkipLinks } from "./skip-links.tsx";
 import { useAppActions, type SessionVerb } from "./use-app-actions.ts";
 import { useArrivalReady, workspaceSettled } from "./use-arrival-ready.ts";
 import { useFocusSidebar } from "./use-focus-sidebar.ts";
-import { useSidebarShown } from "./layout-store.ts";
+import { useSidebarShown, useSidebarSize } from "./layout-store.ts";
 import type { LayoutTab } from "./layout-model.ts";
 import type { Axis } from "@doriface/protocol/layout";
 import type { Layout, PaneTarget } from "./use-layout.ts";
@@ -93,6 +93,7 @@ export function DesktopShell(props: DesktopShellProps) {
     onSession,
   } = props;
   const [sidebar, setSidebar] = useSidebarShown();
+  const [{ rail }] = useSidebarSize();
   const paletteKeys = useActionKeys("app.palette");
   const sidebarKeys = useActionKeys("layout.toggle:sidebar");
   const newTabKeys = useActionKeys("tab.new");
@@ -179,16 +180,25 @@ export function DesktopShell(props: DesktopShellProps) {
   );
 
   return (
-    <div className="relative flex h-dvh overflow-hidden bg-background">
+    // --titlebar-leading: where a titlebar row's own content starts, past the window buttons, the sidebar toggle and
+    // herdr-app's 12 px gap.
+    <div className="relative flex h-dvh overflow-hidden bg-background [--titlebar-leading:calc(var(--titlebar-inset-start,0.5rem)+var(--control-sm)+0.75rem)]">
       <SkipLinks onSidebar={focusSidebar} />
-      {sidebar ? (
-        <Sidebar
-          terminals={terminals}
-          active={focusedAddress}
-          onOpen={layout.openTerminal}
-          onHide={() => setSidebar(false)}
-          onPalette={onPalette}
+      {/* One sidebar toggle in the same place whether the sidebar is open or not, right after the window buttons (#415). */}
+      <div
+        data-titlebar
+        className="absolute top-0 left-[var(--titlebar-inset-start,0.5rem)] z-10 flex h-11 items-center"
+      >
+        <IconButton
+          label={sidebar ? "Hide sidebar" : "Show sidebar"}
+          aria-expanded={sidebar}
+          {...(sidebarKeys === undefined ? {} : { keys: sidebarKeys })}
+          icon={<PanelLeft />}
+          onClick={() => setSidebar((shown) => !shown)}
         />
+      </div>
+      {sidebar ? (
+        <Sidebar terminals={terminals} active={focusedAddress} onOpen={layout.openTerminal} onPalette={onPalette} />
       ) : null}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <TabBar
@@ -204,17 +214,14 @@ export function DesktopShell(props: DesktopShellProps) {
             ...(moveRightKeys === undefined ? {} : { right: moveRightKeys }),
           }}
           moved={layout.lastMove === null ? null : { id: layout.lastMove.key, count: layout.lastMove.count }}
-          {...(sidebar ? {} : { className: "pl-[var(--titlebar-inset-start,0.625rem)]" })}
-          leading={
-            sidebar ? null : (
-              <IconButton
-                label="Show sidebar"
-                {...(sidebarKeys === undefined ? {} : { keys: sidebarKeys })}
-                icon={<PanelLeft />}
-                onClick={() => setSidebar(true)}
-              />
-            )
-          }
+          {...(sidebar && !rail
+            ? {}
+            : {
+                // The tab strip starts past the sidebar toggle, which sits over it with the sidebar hidden or a rail.
+                className: sidebar
+                  ? "pl-[max(0.625rem,calc(var(--titlebar-leading)-var(--sidebar-rail-width)))]"
+                  : "pl-(--titlebar-leading)",
+              })}
           trailing={
             <>
               {focusedTerminal === undefined || nothingToType ? null : (

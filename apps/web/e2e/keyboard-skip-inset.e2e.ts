@@ -7,6 +7,8 @@ test("the skip links clear the window buttons when the titlebar is inset", async
   await openNewTerminal(page);
   await page.evaluate(() => document.documentElement.style.setProperty("--titlebar-inset-start", "96px"));
   await page.getByRole("button", { name: "Command palette" }).focus();
+  // Back past the titlebar's sidebar toggle (#415), then the two skip links.
+  await page.keyboard.press("Shift+Tab");
   await page.keyboard.press("Shift+Tab");
   await page.keyboard.press("Shift+Tab");
   const skip = page.getByRole("link", { name: "Skip to terminal" });

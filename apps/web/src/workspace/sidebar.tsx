@@ -1,7 +1,7 @@
 import type { Terminal } from "@doriface/protocol";
 import { IconButton, ScrollArea, SidebarFooter, SidebarFooterItem, cn } from "@doriface/ui";
 import { Link } from "@tanstack/react-router";
-import { PanelLeft, PanelLeftOpen, Plus, Search, Settings } from "lucide-react";
+import { PanelLeftOpen, Plus, Search, Settings } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { useActionKeys } from "../keys/use-action-keys.ts";
 import { usePendingUpdate } from "../update/update-store.ts";
@@ -16,16 +16,14 @@ export interface SidebarProps {
   readonly terminals: readonly Terminal[];
   readonly active: string | null;
   readonly onOpen: (address: string) => void;
-  readonly onHide: () => void;
   readonly onPalette: () => void;
 }
 
 /** Until it is measured, the rail's width on the web (--sidebar-rail-width, 2.75rem). */
 const RAIL_PX = 44;
 
-export function Sidebar({ terminals, active, onOpen, onHide, onPalette }: SidebarProps) {
+export function Sidebar({ terminals, active, onOpen, onPalette }: SidebarProps) {
   const paletteKeys = useActionKeys("app.palette");
-  const sidebarKeys = useActionKeys("layout.toggle:sidebar");
   const machines = useMachinesContext();
   const update = usePendingUpdate();
   const [{ sidebarWidth, rail }, setSize] = useSidebarSize();
@@ -58,23 +56,22 @@ export function Sidebar({ terminals, active, onOpen, onHide, onPalette }: Sideba
         data-titlebar
         className={cn(
           "flex h-11 shrink-0 items-center gap-1",
-          rail ? "justify-center" : "pr-2 pl-[var(--titlebar-inset-start,0.875rem)]",
+          // The shell's sidebar toggle sits at the start of this row (#415); the app icon and title follow it.
+          rail ? "justify-center" : "pr-2 pl-(--titlebar-leading)",
         )}
       >
         {rail ? null : (
           <>
-            <span className="flex-1 text-sm font-semibold text-sidebar-foreground">doriface</span>
+            {/* herdr-app's titlebar: a 16 px app icon, then the name 11 px after it, 14 px semibold. */}
+            <div className="flex min-w-0 flex-1 items-center gap-2.75">
+              <img src="/icon.svg" alt="" className="size-4 shrink-0" />
+              <span className="truncate text-base font-semibold text-sidebar-foreground">doriface</span>
+            </div>
             <IconButton
               label="Command palette"
               {...(paletteKeys === undefined ? {} : { keys: paletteKeys })}
               icon={<Search />}
               onClick={onPalette}
-            />
-            <IconButton
-              label="Hide sidebar"
-              {...(sidebarKeys === undefined ? {} : { keys: sidebarKeys })}
-              icon={<PanelLeft />}
-              onClick={onHide}
             />
           </>
         )}

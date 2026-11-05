@@ -157,6 +157,64 @@ test("nothing sits under the window buttons, in every state and size, and full s
     expect(await underWindowButtons(page), `after ${key}`).toEqual([]);
   }
   await page.keyboard.press("ControlOrMeta+0");
+
+  // One sidebar toggle, fixed right after the window buttons and centred on them, open or closed (#415).
+  const lightsCentre = TRAFFIC_LIGHTS.y + TRAFFIC_LIGHTS.height / 2;
+  const opened = await page.getByRole("button", { name: "Hide sidebar" }).boundingBox();
+  if (opened === null) throw new Error("no sidebar toggle with the sidebar open");
+  expect(opened.x, "the toggle starts past the window buttons").toBeGreaterThanOrEqual(
+    TRAFFIC_LIGHTS.x + TRAFFIC_LIGHTS.width + TITLE_GAP,
+  );
+  expect(
+    Math.abs(opened.y + opened.height / 2 - lightsCentre),
+    "toggle centred on the window buttons",
+  ).toBeLessThanOrEqual(1);
+  await page.getByRole("button", { name: "Hide sidebar" }).click();
+  await expect(page.getByRole("complementary", { name: "Workspace" })).toBeHidden();
+  const closed = await page.getByRole("button", { name: "Show sidebar" }).boundingBox();
+  if (closed === null) throw new Error("no sidebar toggle with the sidebar closed");
+  for (const side of ["x", "y", "width", "height"] as const) {
+    expect(
+      Math.abs(closed[side] - opened[side]),
+      `toggle ${side} open ${opened[side]} vs closed ${closed[side]}`,
+    ).toBeLessThanOrEqual(1);
+  }
+  await page.getByRole("button", { name: "Show sidebar" }).click();
+  await expect(page.getByRole("complementary", { name: "Workspace" })).toBeVisible();
+  const reopened = await page.getByRole("button", { name: "Hide sidebar" }).boundingBox();
+  expect(reopened).toEqual(opened);
+
+  // herdr-app's row: the app icon a title gap after the toggle, the title 11 px after the icon, all centred on the lights.
+  const row = await page.evaluate(() => {
+    const sidebarRow = document.querySelector("aside [data-titlebar]");
+    const icon = sidebarRow?.querySelector("img")?.getBoundingClientRect();
+    const title = [...(sidebarRow?.querySelectorAll("span") ?? [])]
+      .find((el) => el.textContent === "doriface")
+      ?.getBoundingClientRect();
+    const search = sidebarRow?.querySelector('[aria-label="Command palette"]')?.getBoundingClientRect();
+    const name = [...(sidebarRow?.querySelectorAll("span") ?? [])].find((el) => el.textContent === "doriface");
+    const font = name === undefined ? null : getComputedStyle(name);
+    return icon === undefined || title === undefined || search === undefined
+      ? null
+      : {
+          font: { size: font?.fontSize, weight: font?.fontWeight },
+          icon: { x: icon.x, right: icon.right, y: icon.y + icon.height / 2 },
+          title: { x: title.x, y: title.y + title.height / 2 },
+          search: search.y + search.height / 2,
+        };
+  });
+  if (row === null) throw new Error("the sidebar header has no app icon, title or search");
+  expect(row.font, "herdr-app's title: 14 px semibold").toEqual({ size: "14px", weight: "600" });
+  expect(row.icon.x - (opened.x + opened.width), "toggle to icon").toBeCloseTo(TITLE_GAP, 0);
+  expect(row.title.x - row.icon.right, "icon to title").toBeCloseTo(11, 0);
+  for (const [what, y] of [
+    ["icon", row.icon.y],
+    ["title", row.title.y],
+    ["search", row.search],
+  ] as const) {
+    expect(Math.abs(y - lightsCentre), `${what} centred on the window buttons`).toBeLessThanOrEqual(1);
+  }
+
   await page.getByRole("button", { name: "Hide sidebar" }).click();
   await expect(page.getByRole("complementary", { name: "Workspace" })).toBeHidden();
   await check("workspace with the sidebar hidden");

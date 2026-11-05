@@ -17,10 +17,10 @@ import {
 const TITLEBAR_INSET_START = 78;
 const MAC_INSET_CSS = `:root { --titlebar-inset-start: ${TITLEBAR_INSET_START}px; }`;
 
-/** Hides the sidebar with its own button and returns the button that brings it back. */
+/** Hides the sidebar with the titlebar's toggle and returns that toggle, which now brings it back (#415). */
 async function hideSidebar(page: Page): Promise<Locator> {
   const sidebar = page.getByRole("complementary", { name: "Workspace" });
-  await sidebar.getByRole("button", { name: "Hide sidebar" }).click();
+  await page.getByRole("button", { name: "Hide sidebar" }).click();
   await expect(sidebar).toBeHidden();
   return page.getByRole("button", { name: "Show sidebar" });
 }
@@ -246,6 +246,8 @@ test("a hidden sidebar comes back from a named button at the window's left edge,
   expect(button.x).toBeLessThan(24);
   expect(button.x + button.width).toBeLessThanOrEqual(tabs.x);
 
+  // The toggle that was just pressed keeps its tooltip closed until the pointer leaves it, so come back to it.
+  await page.mouse.move(button.x + button.width / 2, button.y + 200);
   await show.hover();
   await expect(page.locator("[data-side]").filter({ hasText: "Show sidebar" }).first()).toBeVisible();
   await tablist.getByRole("tab").first().focus();
