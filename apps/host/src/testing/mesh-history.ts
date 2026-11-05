@@ -44,7 +44,8 @@ export class MeshFixture {
 
   constructor(dir: string, founder: Machine) {
     this.founder = founder;
-    this.store = new MeshStore(dir, { log: (line) => void this.logs.push(line) });
+    // Not flushed to disk: fixtures test mesh logic, not crash safety, and a flush per write made them follow the disk (#91).
+    this.store = new MeshStore(dir, { log: (line) => void this.logs.push(line), durable: false });
     const own = { name: founder.name, hcId: founder.hcId, devicePub: deviceOf(founder) };
     if (!this.store.found(founder.identity, own)) throw new Error("a mesh already exists here");
   }

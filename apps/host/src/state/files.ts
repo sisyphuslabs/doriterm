@@ -45,17 +45,17 @@ export function readJson(path: string): unknown {
 const temporaryFor = (path: string): string => `${path}.${process.pid}.${crypto.randomUUID().slice(0, 8)}.tmp`;
 
 /**
- * Writes a fresh temporary file and flushes it to disk, so a rename after a crash never publishes an empty file; a
- * failed write removes what it created, but never another writer's file.
+ * Writes a fresh temporary file and, when `durable`, flushes it to disk, so a rename after a crash never publishes an
+ * empty file; a failed write removes what it created, but never another writer's file.
  */
-function writeTemporary(path: string, value: unknown): string {
+function writeTemporary(path: string, value: unknown, durable: boolean): string {
   const temporary = temporaryFor(path);
   const text = `${JSON.stringify(value, null, 2)}\n`;
   let fd: number | undefined;
   try {
     fd = openSync(temporary, "wx", 0o600);
     writeFileSync(fd, text);
-    fsyncSync(fd);
+    if (durable) fsyncSync(fd);
   } catch (error) {
     if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) rmSync(temporary, { force: true });
     throw error;
@@ -75,27 +75,32 @@ function syncDirectory(path: string): void {
   }
 }
 
-/** Writes `value` as JSON readable by the owner only (0600), replacing the file atomically. */
-export function writePrivateJson(path: string, value: unknown): void {
-  const temporary = writeTemporary(path, value);
+/**
+ * Writes `value` as JSON readable by the owner only (0600), replacing the file atomically. `durable: false` skips the
+ * flushes to disk (the file's and its directory's): the replacement is still atomic, but a crash may lose it. Only for
+ * state whose crash safety is not what a test checks (#91).
+ */
+export function writePrivateJson(path: string, value: unknown, durable = true): void {
+  const temporary = writeTemporary(path, value, durable);
   try {
     renameSync(temporary, path);
   } catch (error) {
     rmSync(temporary, { force: true });
     throw error;
   }
-  syncDirectory(path);
+  if (durable) syncDirectory(path);
 }
 
 /**
  * Creates `path` with `value` only if it does not exist yet, publishing the fully written file with a hard link (which
  * never replaces), so a concurrent reader sees no file or the whole file. Returns false when another writer won.
+ * `durable` as for {@link writePrivateJson}.
  */
-export function createPrivateJson(path: string, value: unknown): boolean {
-  const temporary = writeTemporary(path, value);
+export function createPrivateJson(path: string, value: unknown, durable = true): boolean {
+  const temporary = writeTemporary(path, value, durable);
   try {
     linkSync(temporary, path);
-    syncDirectory(path);
+    if (durable) syncDirectory(path);
     return true;
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "EEXIST") return false;

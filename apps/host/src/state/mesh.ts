@@ -27,6 +27,11 @@ export interface MeshStoreOptions {
   /** The view function; tests pass a counting wrapper to prove a handshake never calls it. */
   readonly evaluate?: ((records: readonly Signed[]) => View) | undefined;
   readonly lockTimeoutMs?: number | undefined;
+  /**
+   * False skips flushing mesh.json to disk on each write; each write stays atomic. For in-memory test meshes, whose run
+   * time would otherwise follow the disk's flush latency (#91). Default true.
+   */
+  readonly durable?: boolean | undefined;
 }
 
 /** The card a host puts in its own `found`, `admit` or `rekey`: everything but the mesh, inviter and nonce. */
@@ -148,7 +153,7 @@ export class MeshStore {
       index: undefined,
     };
     const indexed = this.#indexed(file);
-    if (!createPrivateJson(this.#path, meshFileJson(indexed))) return false;
+    if (!createPrivateJson(this.#path, meshFileJson(indexed), this.#options.durable ?? true)) return false;
     this.#cleanup(indexed);
     return true;
   }
@@ -156,7 +161,7 @@ export class MeshStore {
   /** Writes `file` at the next generation with its index, then cleans the device and known-host stores. */
   #write(file: MeshFile, view?: View): void {
     const indexed = this.#indexed({ ...file, generation: file.generation + 1 }, view);
-    writePrivateJson(this.#path, meshFileJson(indexed));
+    writePrivateJson(this.#path, meshFileJson(indexed), this.#options.durable ?? true);
     this.#cleanup(indexed);
   }
 
@@ -171,7 +176,7 @@ export class MeshStore {
     const counted = current
       ? { ...file, selfN, generation, index: file.index === undefined ? undefined : { ...file.index, generation } }
       : this.#indexed({ ...file, selfN, generation }, view);
-    writePrivateJson(this.#path, meshFileJson(counted));
+    writePrivateJson(this.#path, meshFileJson(counted), this.#options.durable ?? true);
     if (!current) this.#cleanup(counted);
     return counted;
   }

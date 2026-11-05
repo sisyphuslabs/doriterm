@@ -61,13 +61,15 @@ export interface RelayedHostOptions {
   readonly wrapSockets?: (base: CreateSocket) => { readonly host: CreateSocket; readonly client: CreateSocket };
   /** Origins of a test push service the host may post web push notices to. */
   readonly pushTestOrigins?: readonly string[];
+  /** Where the scratch dir is made (the system tmp dir by default), so a test can check that its own is removed. */
+  readonly scratchRoot?: string;
 }
 
 const UPLINK_TIMEOUT_MS = 30_000;
 
 /** Starts the relay, the hc core and the host; any failure along the way stops whatever had started. */
 export async function startRelayedHost(prefix: string, options: RelayedHostOptions = {}): Promise<RelayedHost> {
-  const scratch = mkdtempSync(join(tmpdir(), "rh-"));
+  const scratch = mkdtempSync(join(options.scratchRoot ?? tmpdir(), "rh-"));
   const stateDir = join(scratch, "host-state");
   const ip = testIp();
   const base = socketFrom(ip);

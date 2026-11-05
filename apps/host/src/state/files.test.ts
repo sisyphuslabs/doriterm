@@ -37,6 +37,21 @@ function durabilityOrder(write: () => unknown): readonly string[] {
 }
 
 describe("private state files", () => {
+  test("a write that is not durable still replaces the file whole, with no flush (#91)", () => {
+    const path = join(dir, "state.json");
+    writePrivateJson(path, { n: 1 });
+    expect(durabilityOrder(() => writePrivateJson(path, { n: 2 }, false))).toEqual(["rename"]);
+    expect(JSON.parse(fs.readFileSync(path, "utf8"))).toEqual({ n: 2 });
+    expect(fs.readdirSync(dir)).toEqual(["state.json"]);
+  });
+
+  test("a create that is not durable still publishes the whole file by a link, with no flush (#91)", () => {
+    const path = join(dir, "created.json");
+    expect(durabilityOrder(() => createPrivateJson(path, { n: 1 }, false))).toEqual(["link"]);
+    expect(JSON.parse(fs.readFileSync(path, "utf8"))).toEqual({ n: 1 });
+    expect(fs.readdirSync(dir)).toEqual(["created.json"]);
+  });
+
   test("writePrivateJson flushes the temporary file before the rename and the directory after it", () => {
     expect(durabilityOrder(() => writePrivateJson(join(dir, "devices.json"), { ok: true }))).toEqual([
       "fsync",

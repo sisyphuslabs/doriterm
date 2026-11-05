@@ -64,9 +64,12 @@ export const meshIdOfRecords = (records: readonly Signed[]): string => {
   return meshIdOf(found);
 };
 
-/** `owner`'s own mesh.json, holding `records`, in a fresh state dir. */
+/**
+ * `owner`'s own mesh.json, holding `records`, in a fresh state dir. Its writes are not flushed to disk: these meshes
+ * test gossip and views, not crash safety, and a flush per write made their run time follow the disk (#91).
+ */
 export function storeOf(owner: Peer, records: readonly Signed[], options: Partial<MeshStoreOptions> = {}): MeshStore {
-  const store = new MeshStore(scratch(), { log: () => undefined, ...options });
+  const store = new MeshStore(scratch(), { log: () => undefined, durable: false, ...options });
   if (!store.adopt(records, owner.machine.identity)) throw new Error("a mesh already exists here");
   return store;
 }
