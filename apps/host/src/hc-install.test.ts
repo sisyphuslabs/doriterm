@@ -113,6 +113,21 @@ async function archive(script: string): Promise<Uint8Array> {
   return bytes;
 }
 
+/**
+ * Each script's archive is built once, so the sha256 the manifest announces is the hash of the very bytes the download
+ * serves. Two tar runs need not give the same bytes: each writes its files anew, and tar records their times (whole
+ * seconds in GNU tar, more on macOS), so a build per request served a different archive than the one hashed (#497).
+ */
+const builds = new Map<string, Promise<Uint8Array>>();
+function built(script: string): Promise<Uint8Array> {
+  let bytes = builds.get(script);
+  if (bytes === undefined) {
+    bytes = archive(script);
+    builds.set(script, bytes);
+  }
+  return bytes;
+}
+
 let release: Release = { version: "0.1.18", script: hcScript("0.1.18") };
 const requests: string[] = [];
 let server: ReturnType<typeof Bun.serve> | undefined;
@@ -124,7 +139,7 @@ beforeAll(() => {
     fetch: async (request) => {
       const url = new URL(request.url);
       requests.push(url.pathname + url.search);
-      const bytes = await archive(release.script);
+      const bytes = await built(release.script);
       const sha256 = release.sha256 ?? new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
       if (url.pathname === "/core/latest.json") {
         const build = { url: `${url.origin}/core/${release.version}/hc.tar.gz`, sha256 };
@@ -144,6 +159,7 @@ afterAll(async () => {
 afterEach(() => {
   requests.length = 0;
   release = { version: "0.1.18", script: hcScript("0.1.18") };
+  builds.clear();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 

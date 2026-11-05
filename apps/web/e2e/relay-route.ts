@@ -17,6 +17,34 @@ export interface FakeRelayHost {
   readonly stop: () => Promise<void>;
 }
 
+/**
+ * Carries the page's sockets on the production relay address (the only relay a release build dials, #389) to the relay
+ * at `toRelay` instead, path and query kept. The e2e web server is a release build, so this is how a spec reaches a
+ * test relay without the page knowing it is not the production one.
+ */
+export async function routeRelaySockets(page: Page, toRelay: string): Promise<void> {
+  const base = toRelay.replace(/\/+$/, "");
+  await page.routeWebSocket(new RegExp(`^${FAKE_RELAY.replaceAll(".", "\\.")}/v1/client/`), (socket) => {
+    const target = new URL(socket.url());
+    const relay = new WebSocket(`${base}${target.pathname}${target.search}`);
+    relay.binaryType = "arraybuffer";
+    const early: (string | Uint8Array<ArrayBuffer>)[] = [];
+    relay.addEventListener("open", () => {
+      for (const frame of early.splice(0)) relay.send(frame);
+    });
+    socket.onMessage((message) => {
+      const frame = typeof message === "string" ? message : Uint8Array.from(message);
+      if (relay.readyState === WebSocket.OPEN) relay.send(frame);
+      else early.push(frame);
+    });
+    relay.addEventListener("message", (event: MessageEvent<string | ArrayBuffer>) =>
+      socket.send(typeof event.data === "string" ? event.data : Buffer.from(event.data)),
+    );
+    relay.addEventListener("close", (event) => void socket.close({ code: event.code, reason: event.reason }));
+    socket.onClose(() => relay.close());
+  });
+}
+
 /** `machine`: the host's core also has an added machine (the sidebar then lists machines with their state). */
 export async function startFakeRelayHost(options: { readonly machine?: boolean } = {}): Promise<FakeRelayHost> {
   const script = join(import.meta.dirname, "fake-relay-host.ts");
@@ -61,27 +89,7 @@ export async function startFakeRelayHost(options: { readonly machine?: boolean }
       if (typeof link !== "string") throw new Error("the fake relay host printed no pairing link");
       return link;
     },
-    async route(page) {
-      await page.routeWebSocket(new RegExp(`^${FAKE_RELAY.replaceAll(".", "\\.")}/v1/client/`), (socket) => {
-        const target = new URL(socket.url());
-        const relay = new WebSocket(`${bridge}${target.pathname}${target.search}`);
-        relay.binaryType = "arraybuffer";
-        const early: (string | Uint8Array<ArrayBuffer>)[] = [];
-        relay.addEventListener("open", () => {
-          for (const frame of early.splice(0)) relay.send(frame);
-        });
-        socket.onMessage((message) => {
-          const frame = typeof message === "string" ? message : Uint8Array.from(message);
-          if (relay.readyState === WebSocket.OPEN) relay.send(frame);
-          else early.push(frame);
-        });
-        relay.addEventListener("message", (event: MessageEvent<string | ArrayBuffer>) =>
-          socket.send(typeof event.data === "string" ? event.data : Buffer.from(event.data)),
-        );
-        relay.addEventListener("close", (event) => void socket.close({ code: event.code, reason: event.reason }));
-        socket.onClose(() => relay.close());
-      });
-    },
+    route: (page) => routeRelaySockets(page, bridge),
     async stop() {
       if (driver.exitCode !== null) return;
       input.end();

@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { devices, expect, type Locator, type Page, test } from "@playwright/test";
+import { routeRelaySockets } from "./relay-route.ts";
 
 // A real hc reached through the private relay: the relay-host helper runs it under wrangler dev, so these specs need
 // a relay checkout (DORIFACE_RELAY_DIR, as `bun run relay:fetch` makes) and are skipped without one.
@@ -54,6 +55,8 @@ const opened = (page: Page): Promise<string[]> =>
 /** Pairs this page with the relayed host by its link, as a person would, and opens a terminal on it over the relay. */
 async function pairAndOpen(page: Page, newTab: (page: Page) => Locator): Promise<Locator> {
   if (relayed === undefined) throw new Error("no relayed host");
+  // Pairing dials the link's relay; the workspace then dials the production one, as every release build does (#452).
+  await routeRelaySockets(page, relayed.relayUrl);
   await page.addInitScript(() => {
     const seen: string[] = [];
     Object.defineProperty(window, "__opened", { value: seen });

@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { type Browser, expect, type Page, test } from "@playwright/test";
+import { routeRelaySockets } from "./relay-route.ts";
 
 // Two devices paired with one host through the private relay: a space renamed on one shows on the other at once (#395).
 // The relay-host helper runs a real host and hc under wrangler dev, so this needs a relay checkout (DORIFACE_RELAY_DIR,
@@ -14,6 +15,7 @@ test.setTimeout(240_000);
 const HELPER = join(import.meta.dirname, "..", "..", "..", "tests", "relay", "support", "web-relay-host.ts");
 let helper: ChildProcess | undefined;
 let reader: AsyncIterator<string> | undefined;
+let relayUrl = "";
 
 /** The next line the helper prints that starts with `prefix`, without the prefix; other lines are skipped. */
 async function nextLine(prefix: string): Promise<string> {
@@ -29,7 +31,7 @@ test.beforeAll(async () => {
   helper = spawn("bun", [HELPER], { stdio: ["pipe", "pipe", "inherit"], env: { ...inherited, NO_COLOR: "1" } });
   if (helper.stdout === null) throw new Error("relay-host has no stdout");
   reader = createInterface({ input: helper.stdout })[Symbol.asyncIterator]();
-  await nextLine("READY ");
+  ({ relayUrl } = JSON.parse(await nextLine("READY ")) as { relayUrl: string });
 });
 
 test.afterAll(async () => {
@@ -49,6 +51,8 @@ const spaceRow = (page: Page, name: string) =>
 async function pairedDevice(browser: Browser): Promise<Page> {
   const page = await (await browser.newContext({ serviceWorkers: "block" })).newPage();
   await page.setViewportSize({ width: 1440, height: 900 });
+  // Pairing dials the link's relay; the workspace then dials the production one, as every release build does (#452).
+  await routeRelaySockets(page, relayUrl);
   helper?.stdin?.write("PAIR\n");
   await page.goto(`/pair${await nextLine("LINK ")}`);
   await page.getByRole("button", { name: "They match" }).click({ timeout: 30_000 });
