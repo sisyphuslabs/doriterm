@@ -34,10 +34,10 @@ async function recordEndedTitles(page: Page): Promise<void> {
 }
 
 /**
- * A new shell is titled by its argv (/bin/sh) until the program's own name (sh) arrives, and a finished one falls back to
+ * A new shell is titled by its argv (/bin/sh) until its process name (bash on macOS, sh elsewhere) arrives, then falls back to
  * its argv: waiting for the name first makes the name each question asks with known.
  */
-const NAME = "sh";
+const NAME = process.platform === "darwin" ? "bash" : "sh";
 const named = (page: Page) =>
   expect(page.locator('[data-focused="true"]')).toHaveAttribute("aria-label", `${NAME} terminal`, { timeout: 15_000 });
 

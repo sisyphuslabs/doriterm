@@ -41,10 +41,11 @@ test("off macOS the tab bar and the tab tooltip show Ctrl shortcuts", async ({ p
   await expect(selected).toHaveAttribute("title", /\(Ctrl\+\d\)$/);
   await expect(selected).not.toHaveAttribute("title", /⌘/);
   await expect(terminal).toBeVisible();
-  // The new tab's label passes through interim names before the shell's own ("sh"), and each one changes the tab's
+  // The new tab's label passes through interim names before the shell's own, and each one changes the tab's
   // width, which moves New tab. Hovered before the last of them, the button slides out from under the pointer during
   // the tooltip's open delay and no tooltip opens (#43). Hover once the label is final, so New tab stays put.
-  await expect(selected).toHaveAttribute("title", /^sh \(Ctrl\+\d\)$/, { timeout: 15_000 });
+  const shell = process.platform === "darwin" ? "bash" : "sh";
+  await expect(selected).toHaveAttribute("title", new RegExp(`^${shell} \\(Ctrl\\+\\d\\)$`), { timeout: 15_000 });
   await page.getByRole("button", { name: "New tab" }).hover();
   const tooltip = page.locator("[data-side]").filter({ hasText: "New tab" }).locator("kbd > span");
   await expect(tooltip).toHaveText(["Ctrl", "Shift", "T"]);

@@ -48,6 +48,7 @@ for (const via of ["keys", "button", "palette"] as const) {
     const previous = await openNewTerminal(page);
     const address = await previous.getAttribute("data-terminal");
     if (address === null) throw new Error("the previous terminal has no address");
+    const previousScreen = screenOnCore(address);
 
     // The new terminal is held back: its terminal.run waits, so every key is typed before it can exist.
     const before = runsSent(link);
@@ -65,7 +66,7 @@ for (const via of ["keys", "button", "palette"] as const) {
     const fresh = focused(page);
     await expect(fresh).toContainText("ahead-42", { timeout: 15_000 });
     await expect(fresh).toContainText(LINE);
-    expect(screenOnCore(address)).toEqual(["$"]);
+    expect(screenOnCore(address)).toEqual(previousScreen);
     await expect(catcher(page)).toHaveAttribute("inert", "");
   });
 }
@@ -93,6 +94,7 @@ test("input typed for a terminal that fails to start is reported as not sent, an
   const previous = await openNewTerminal(page);
   const address = await previous.getAttribute("data-terminal");
   if (address === null) throw new Error("the previous terminal has no address");
+  const previousScreen = screenOnCore(address);
   link.hold("terminal.run");
   await askNewTab(page, previous, "keys");
   await page.keyboard.type(LINE, { delay: 40 });
@@ -101,7 +103,7 @@ test("input typed for a terminal that fails to start is reported as not sent, an
   await expect(page.getByText("What you typed was not sent")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/did not start/)).toBeVisible();
   link.restore();
-  expect(screenOnCore(address)).toEqual(["$"]);
+  expect(screenOnCore(address)).toEqual(previousScreen);
 });
 
 /**
@@ -183,6 +185,7 @@ test("input typed for a terminal whose view does not open in time is reported as
   const previous = await openNewTerminal(page);
   const address = await previous.getAttribute("data-terminal");
   if (address === null) throw new Error("the previous terminal has no address");
+  const previousScreen = screenOnCore(address);
   const answered = (): number => link.received().filter((frame) => /"result":\{[^}]*"address"/.test(frame)).length;
   const answersBefore = answered();
   // The feed is held, so the new terminal is never listed and its view cannot mount.
@@ -206,5 +209,5 @@ test("input typed for a terminal whose view does not open in time is reported as
   await expect(page.getByText("What you typed was not sent")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/took too long/)).toBeVisible();
   releaseFeed();
-  expect(screenOnCore(address)).toEqual(["$"]);
+  expect(screenOnCore(address)).toEqual(previousScreen);
 });
