@@ -38,6 +38,10 @@ test("closing a tab of two idle shells ends both with no question", async ({ pag
   await first.getByRole("textbox").focus();
   await page.getByRole("button", { name: "Split right" }).click();
   await ended(page, before + 1);
+  // The core lists the new terminal before its split is placed. Close the tab only once it really holds both shells.
+  const panes = page.locator('[role="tabpanel"]:not([hidden]) [data-terminal]');
+  await expect(panes).toHaveCount(2);
+  await expect(panes.last()).toContainText("$", { timeout: 15_000 });
   await expect(page.getByRole("tab")).toHaveCount(tabs);
   await page.keyboard.press(CLOSE_TAB);
   await ended(page, before - 1);
