@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { addMachine, DEMO_MACHINE } from "./machine.ts";
+import { shellEnv } from "./shell-env.ts";
 
 const [webOrigin, relayAddress] = process.argv.slice(2).filter((arg) => !arg.startsWith("--"));
 if (webOrigin === undefined || !/^https?:\/\//.test(webOrigin) || relayAddress === undefined) {
@@ -26,7 +27,7 @@ const relay = new FakeRelay();
 const bridge = new RelayClientBridge(relay);
 const hc = createHcSession("web-e2e-fake-relay");
 // Match the loopback fixture: the real user's login shell and prompt are not part of a connection test.
-const env = { ...hc.env, SHELL: "/bin/sh", PS1: "$ ", ENV: "", BASH_SILENCE_DEPRECATION_WARNING: "1" };
+const env = { ...hc.env, ...shellEnv(stateDir) };
 const host = await startHost({
   listen: { hostname: "127.0.0.1", port: 0 },
   token: `fake-relay-host-${crypto.randomUUID()}`,

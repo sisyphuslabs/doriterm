@@ -18,6 +18,7 @@ import { addMachine, runSeeds } from "./machine.ts";
 import { seedMeshDoc } from "./mesh-doc.ts";
 import { writeSavedEnv } from "./saved-env.ts";
 import { seed } from "./seed.ts";
+import { shellEnv } from "./shell-env.ts";
 
 const layout = process.argv[2] === "layout";
 const port = layout ? E2E_LAYOUT_PORT : E2E_HOST_PORT;
@@ -37,10 +38,7 @@ const env = {
   ...process.env,
   ...own,
   // A plain shell and a neutral core name keep captures free of this machine's identity.
-  SHELL: "/bin/sh",
-  PS1: "$ ",
-  ENV: "",
-  BASH_SILENCE_DEPRECATION_WARNING: "1",
+  ...shellEnv(dir),
 };
 const coreDir = join(dir, "state", "herdr-core", session);
 mkdirSync(coreDir, { recursive: true });
