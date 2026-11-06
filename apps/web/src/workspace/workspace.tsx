@@ -24,6 +24,7 @@ import { PIN_LABEL, spacesInOrder } from "./sidebar-model.ts";
 import { PinContext, type PinTerminal } from "./use-pin.ts";
 import { MachinesContext, useMachines } from "./use-machines.ts";
 import { runParamsFor } from "./new-terminal.ts";
+import { entersFromList, phoneOpenKey, rememberOpenKey } from "./phone-route.ts";
 import { useNarrow } from "./use-narrow.ts";
 import { machineIds, tabAddress, tabKey } from "./tab-keys.ts";
 import { findTerminal, type LayoutTab } from "./layout-model.ts";
@@ -156,6 +157,9 @@ export function Workspace({ connection }: WorkspaceProps) {
   const ids = useMemo(() => machineIds(views), [views]);
   // The phone's open terminal is kept by machine id like a tab, so a rename keeps it open at the new address.
   const openFromList = useRef(false);
+  // Settings and pairing are routes with no terminal in them: they say nothing about which terminal is open, so the last
+  // one the list had stays open under them (the workspace is kept mounted there, and so is the terminal).
+  const lastPhoneKey = useRef<string | null>(null);
   // The phone's open terminal is a history entry (`?t=`), so Android's Back returns to the list instead of leaving the
   // app (the browser has nothing else to pop), and a reload reopens what was open without pushing a second entry.
   const navigate = useNavigate();
@@ -166,7 +170,8 @@ export function Workspace({ connection }: WorkspaceProps) {
   const routeTerminal = routePath === "/" ? routeKey : null;
   // Settings keeps the workspace mounted (#607), so it must keep the phone's open terminal too: a route that is not the
   // list says nothing about `?t=`, so it is read from the list only. There is no second copy to keep in step.
-  const phoneKey = routePath === "/" ? routeKey : null;
+  lastPhoneKey.current = rememberOpenKey(routePath, routeKey, lastPhoneKey.current);
+  const phoneKey = phoneOpenKey(routePath, routeKey, lastPhoneKey.current);
   const phoneOpen = phoneKey === null || !narrow ? null : (tabAddress(phoneKey, ids) ?? null);
   const showOnPhone = useCallback(
     (address: string) => {
@@ -175,7 +180,8 @@ export function Workspace({ connection }: WorkspaceProps) {
       // made Back step through no-op entries and a landing run close the screen behind it.
       if (!narrow) return;
       const key = tabKey(address, ids);
-      openFromList.current = routeTerminal === null;
+      // Only a push puts a list entry under this terminal; a switch replaces the entry that is already there.
+      if (entersFromList(routeTerminal)) openFromList.current = true;
       // Switching inside an open terminal replaces that entry, so one Back still leaves the terminal for the list;
       // only entering from the list adds one.
       void navigate({ href: `/?t=${encodeURIComponent(key)}`, replace: routeTerminal !== null });

@@ -155,3 +155,27 @@ test("a cold open on ?t= comes back to the list instead of leaving the app", asy
     endAgent("host", address);
   }
 });
+
+test("entering a terminal adds exactly one entry, so Back leaves the app after the list", async ({ page }) => {
+  const first = startAgent("host", "switchone", "idle");
+  const second = startAgent("host", "switchtwo", "idle");
+  try {
+    await page.goto("/");
+    const before = await page.evaluate(() => history.length);
+    const one = page.getByRole("button", { name: /switchone/ }).first();
+    await expect(one).toBeVisible({ timeout: 20_000 });
+    await one.click();
+    await expect(page.getByRole("button", { name: "Back to agents" })).toBeVisible({ timeout: 20_000 });
+    expect(await page.evaluate(() => history.length), "entering a terminal adds one entry").toBe(before + 1);
+
+    // One Back leaves the terminal; a second leaves the app. If the switch had pushed an entry of its own, the second
+    // Back would land on a list again instead of leaving, which is the shape the review measured.
+    await page.getByRole("button", { name: "Back to agents" }).click();
+    await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
+    await expect.poll(() => new URL(page.url()).searchParams.get("t")).toBeNull();
+    void second;
+  } finally {
+    endAgent("host", first);
+    endAgent("host", second);
+  }
+});
