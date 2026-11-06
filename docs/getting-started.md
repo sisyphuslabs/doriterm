@@ -1,7 +1,7 @@
 # Getting started
 
 From nothing to an agent on your computer that you can reach from your phone. Everything here is public: a release
-download, the hosted relay at `relay-doriface.omo.dev` and the hosted web app at https://doriface.omo.dev. No account,
+download, the hosted relay at `relay-doriface.omo.dev` and the hosted web app at https://app.doriterm.com. No account,
 no token and no server of your own.
 
 Each release runs the steps in sections 2 and 3 against its own Linux AppImage before it is published: the release smoke
@@ -33,8 +33,8 @@ herdr-core is missing or too old, it offers **Install herdr-core**, for your use
 
 1. In the app, open **Settings > Connections** and choose **Pair a device**. It shows a QR code, an 8-character code,
    this computer's key and how long the offer lasts.
-2. Scan the QR code with the phone's camera. It opens the pair page of the hosted web app, https://doriface.omo.dev.
-   No camera at hand: open https://doriface.omo.dev/pair on the phone and type the code.
+2. Scan the QR code with the phone's camera. It opens the pair page of the hosted web app, https://app.doriterm.com.
+   No camera at hand: open https://app.doriterm.com/pair on the phone and type the code.
 3. The phone shows the host's key. Compare its groups with the ones under **This computer's key** in the app and choose
    **They match**. The app's dialog then says **Paired with** your phone.
 

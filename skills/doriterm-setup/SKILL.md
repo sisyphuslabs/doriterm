@@ -26,7 +26,7 @@ All commands below use `S=~/.local/share/doriface-host/src` and `SETUP="bun $S/a
    - On a machine already in the mesh (or the first machine, which starts the mesh): `$SETUP invite --out ~/doriterm-invite`. The link is single use and expires in 10 minutes.
    - Move the file to the joining machine without printing it (for example `scp ~/doriterm-invite <machine>:` or `hc file read ~/doriterm-invite | hc file write --on <machine> ~/doriterm-invite`), then on that machine: `$SETUP join --from ~/doriterm-invite`. It deletes the spent file.
    - Join one machine at a time, then run `$SETUP verify --min-members <count>` on each member: every other member must read `connected`. A new line comes up about 20 seconds after the join, so retry `verify` for up to a minute before reporting a failure.
-6. Phone or browser: tell the user to run `$SETUP pair` in their own terminal and scan the QR code with the phone (it opens doriface.omo.dev/pair), or type the code and compare the fingerprint. Do not run `pair` yourself unless the user asks you to show them the output, since it prints a live pairing code.
+6. Phone or browser: tell the user to run `$SETUP pair` in their own terminal and scan the QR code with the phone (it opens app.doriterm.com/pair), or type the code and compare the fingerprint. Do not run `pair` yourself unless the user asks you to show them the output, since it prints a live pairing code.
 
 ## Report
 

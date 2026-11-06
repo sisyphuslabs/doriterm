@@ -79,7 +79,7 @@ Under the hood these are the host's own commands, `doriface-host mesh pair --aut
 bun ~/.local/share/doriface-host/src/apps/host/scripts/setup/cli.ts pair
 ```
 
-This prints a QR code, a link and an 8-character code, valid once for 10 minutes. Scan the QR code with the phone's camera: it opens [doriface.omo.dev/pair](https://doriface.omo.dev/pair) with the pairing filled in, and you can install the web app from there. The printed link opens in the desktop app on another computer. Without a camera, type the code in the web app's pairing screen and check that the fingerprint it shows matches the one printed.
+This prints a QR code, a link and an 8-character code, valid once for 10 minutes. Scan the QR code with the phone's camera: it opens [app.doriterm.com/pair](https://app.doriterm.com/pair) with the pairing filled in, and you can install the web app from there. The printed link opens in the desktop app on another computer. Without a camera, type the code in the web app's pairing screen and check that the fingerprint it shows matches the one printed.
 
 Pair each device once with one machine; through the mesh it reaches all of them.
 
