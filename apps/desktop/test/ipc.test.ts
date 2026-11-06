@@ -4,6 +4,7 @@ import { openPairingLink, takePairingLink } from "../src/main/deep-link.ts";
 import { HcInstallError, type HcInstalled } from "@doriface/host/hc-install";
 import { Channel } from "../src/shared/bridge.ts";
 import { ipcHandlers, type IpcReplySender, type IpcSender } from "../src/main/ipc-handlers.ts";
+import { DictationHost } from "../src/main/dictation.ts";
 import { LocalHostStartError } from "../src/main/local-host.ts";
 import type { DesktopNotice } from "../src/shared/bridge.ts";
 
@@ -22,6 +23,7 @@ const setup = (
   install: (onPhase: (phase: string) => void) => Promise<HcInstalled> = async () => {
     throw new Error("no install");
   },
+  dictation?: DictationHost,
 ) => {
   let hcInstalls = 0;
   let chooses = 0;
@@ -88,6 +90,7 @@ const setup = (
     },
     forwardDirect: async (windowId) => ({ url: `ws://127.0.0.1:1/${windowId}` }),
     cancelDirectForward: () => true,
+    dictation,
   });
   return {
     handlers,
@@ -332,5 +335,58 @@ describe("IPC sender gate", () => {
       refused.map(() => null),
     );
     expect(revokes).toEqual(["3FA94C0E"]);
+  });
+});
+
+const speechAddon = () => {
+  const started: string[] = [];
+  return {
+    started,
+    ready: () => true,
+    speechStatus: () => "granted",
+    requestSpeech: async () => "granted",
+    supportsOnDevice: () => true,
+    start: (lang: string) => started.push(lang),
+    stop: () => undefined,
+    abort: () => undefined,
+  };
+};
+
+describe("dictation over IPC (#726)", () => {
+  const page = { ...app, sender: { id: 7, isDestroyed: () => false, send: () => undefined } };
+
+  test("foreign and detached frames are refused before the microphone is touched", async () => {
+    const speech = speechAddon();
+    const { handlers } = setup(
+      undefined,
+      undefined,
+      null,
+      undefined,
+      new DictationHost(speech, {
+        status: () => "granted",
+        ask: async () => true,
+      }),
+    );
+    await Promise.all(
+      foreign.flatMap((event) => {
+        const owner = { ...event, sender: page.sender };
+        return [
+          expect(handlers.dictationAvailable(event, "en-US")).rejects.toThrow("refused IPC"),
+          expect(handlers.dictationStart(owner, "en-US")).rejects.toThrow("refused IPC"),
+          expect(handlers.dictationStop(owner, 1)).rejects.toThrow("refused IPC"),
+          expect(handlers.dictationAbort(owner, 1)).rejects.toThrow("refused IPC"),
+        ];
+      }),
+    );
+    expect(speech.started).toEqual([]);
+    expect(await handlers.dictationStart(page, "en-US")).toEqual({ session: 1 });
+    expect(speech.started).toEqual(["en-US"]);
+  });
+
+  test("a build without the system recognizer answers no and refuses every start", async () => {
+    const { handlers } = setup();
+    expect(await handlers.dictationAvailable(app, "en-US")).toBe(false);
+    expect(await handlers.dictationStart(page, "en-US")).toEqual({ refused: "service" });
+    expect(await handlers.dictationStop(page, 1)).toBe(false);
   });
 });

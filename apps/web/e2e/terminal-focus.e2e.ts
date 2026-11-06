@@ -212,6 +212,17 @@ test("typing Hangul right after a drag-select composes, rather than each jamo ar
   await page.mouse.move(box.right - 1, box.y, { steps: 8 });
   await page.mouse.up();
 
+  // The input must hold focus WITH a caret: focusing it while a range is still selected leaves rangeCount at 0 once
+  // the range is emptied, and macOS's Korean input method then commits each jamo on its own (#953).
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const selection = document.getSelection();
+        return `${document.activeElement?.tagName} ${selection?.rangeCount} ${selection?.isCollapsed}`;
+      }),
+    )
+    .toBe("TEXTAREA 1 true");
+
   // The browser's own IME path for the first Hangul key: a preedit into the focused input. A non-collapsed document
   // selection over the rows makes Blink drop it and forward the keystroke as its own jamo instead.
   const cdp = await page.context().newCDPSession(page);

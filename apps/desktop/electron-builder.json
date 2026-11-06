@@ -24,6 +24,11 @@
     "hardenedRuntime": true,
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.plist",
+    "extraResources": [{ "from": "dist/native", "to": "native", "filter": ["speech.node"] }],
+    "extendInfo": {
+      "NSMicrophoneUsageDescription": "Doriterm listens only while you dictate into a terminal. macOS recognizes your speech on this Mac; the audio never leaves it.",
+      "NSSpeechRecognitionUsageDescription": "Doriterm turns what you dictate into text with macOS's on-device speech recognition. The audio never leaves this Mac."
+    },
     "notarize": false,
     "target": [
       { "target": "dmg", "arch": ["arm64", "x64"] },

@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { pickFile } from "./file-input";
 import { expect, terminalCount, test } from "./fixtures.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -28,11 +29,7 @@ async function expectWorkspace(page: Page): Promise<void> {
 }
 
 async function openImportDialog(page: Page) {
-  const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: "Import keybinds…" }).click();
-  await (
-    await chooser
-  ).setFiles({ name: "keybinds", mimeType: "text/plain", buffer: Buffer.from("keybind = super+t=new_tab\n") });
+  await pickFile(page, "Import keybinds…", "keybinds", "keybind = super+t=new_tab\n");
   const dialog = page.getByRole("dialog", { name: "Import these keybindings?" });
   await expect(dialog).toBeVisible();
   return dialog;

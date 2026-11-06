@@ -55,13 +55,25 @@ test("the command key is offered on a Mac host only", () => {
   expect(specialKeysOn("other").map((entry) => entry.id)).not.toContain("cmd");
 });
 
+const defaultRowOn = (host: "mac" | "other"): readonly string[] => {
+  const allowed = new Set(specialKeysOn(host).map((entry) => entry.id));
+  return DEFAULT_KEY_IDS.filter((id) => allowed.has(id)).map((id) => specialKey(id)?.name ?? id);
+};
+
+test("the default bar opens on the same three keys on either host: no gap where a host has no Command", () => {
+  // A Mac hides nothing, so its row starts Control, Command, Shift; a Linux host has no Command key, and the next real
+  // key fills its place rather than Option taking the slot.
+  expect(defaultRowOn("mac").slice(0, 3)).toEqual(["Control", "Command", "Shift"]);
+  expect(defaultRowOn("other").slice(0, 3)).toEqual(["Control", "Shift", "Tab"]);
+});
+
 test("the default bar is today's row: the modifiers through ^C, the arrows, then the keys behind the old swipe", () => {
   expect(DEFAULT_KEY_IDS).toEqual([
     "ctrl",
     "cmd",
     "shift",
-    "alt",
     "tab",
+    "alt",
     "esc",
     "interrupt",
     "left",

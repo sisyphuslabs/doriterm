@@ -12,6 +12,7 @@ import { restorePlacement } from "../config/window-state.ts";
 import { launchBackground, secureWebPreferences, windowOptions } from "../config/window.ts";
 import { Channel, parsePlatform } from "../shared/bridge.ts";
 import { openDeepLink, routeDeepLinksTo, takePairingLink } from "./deep-link.ts";
+import { DictationHost } from "./dictation.ts";
 import { DirectForwarder } from "./direct-forward.ts";
 import { applyDevCsp, hardenContents, lockPermissions } from "./harden.ts";
 import { findHc, hostCommand, type HostContext, saveHc, savedHc, usualHcDirs } from "./host-command.ts";
@@ -22,6 +23,7 @@ import { noticesSupported, showNotice } from "./notice.ts";
 import { readNoticeAuthorization } from "./notice-authorization.ts";
 import { requestPairOffer } from "./pair-offer.ts";
 import { requestPairedDevices, revokePairedDevice } from "./devices.ts";
+import { loadSpeech, speechAddonPath } from "./speech.ts";
 import { registerAppScheme, serveApp } from "./protocol.ts";
 import { applyMacTitlebar } from "./titlebar.ts";
 import { readSaved, rememberPlacement, savedPlacement, writeSaved } from "./window-state.ts";
@@ -35,7 +37,16 @@ const devSetting = app.isPackaged ? undefined : process.env["DORIFACE_DESKTOP_DE
 const devUrl = devSetting === undefined || devSetting === "" ? undefined : loopbackDevUrl(devSetting);
 const origin = devUrl === undefined ? APP_ORIGIN : new URL(devUrl).origin;
 const csp = contentSecurityPolicy({ devServer: devUrl });
-const webPreferences = secureWebPreferences(join(import.meta.dirname, "preload.cjs"), app.getVersion());
+// The system recognizer for dictation, on macOS only; the page is told whether it exists through its preload (#726).
+const speech =
+  platform === "darwin"
+    ? loadSpeech(speechAddonPath(app.isPackaged, process.resourcesPath, app.getAppPath()))
+    : undefined;
+const webPreferences = secureWebPreferences(
+  join(import.meta.dirname, "preload.cjs"),
+  app.getVersion(),
+  speech !== undefined,
+);
 
 /** The built web app: bundled as a resource, or overridden in a checkout. */
 const webRoot = (): string =>
@@ -59,6 +70,8 @@ const openExternal = (url: string): void => {
 let mainWindow: BrowserWindow | undefined;
 /** The byte forwarder a plain `ws://` Direct address needs (#449); it lives as long as the app. */
 let forwarder: DirectForwarder | undefined;
+/** Dictation sessions, where this build has a system recognizer (#726). */
+let dictation: DictationHost | undefined;
 const savedFile = (name: string): string => join(app.getPath("userData"), name);
 
 const liveWindow = (): BrowserWindow | undefined =>
@@ -126,7 +139,10 @@ function createWindow(path: string): BrowserWindow {
   });
   // A reload, a navigation or a crash ends every forward the page held: the next page asks for its own (#449).
   const windowId = window.webContents.id;
-  const dropForwards = (): void => forwarder?.dropWindow(windowId);
+  const dropForwards = (): void => {
+    forwarder?.dropWindow(windowId);
+    dictation?.dropOwner(windowId);
+  };
   window.webContents.on("did-start-loading", dropForwards);
   window.webContents.on("render-process-gone", dropForwards);
   window.on("closed", () => {
@@ -162,6 +178,14 @@ function ready(): void {
   app.on("will-quit", () => void localHost.stop());
   forwarder = new DirectForwarder({ origin });
   app.on("will-quit", () => void forwarder?.stop());
+  dictation =
+    speech === undefined
+      ? undefined
+      : new DictationHost(speech, {
+          status: () => systemPreferences.getMediaAccessStatus("microphone"),
+          ask: () => systemPreferences.askForMediaAccess("microphone"),
+        });
+  app.on("will-quit", () => dictation?.stopAll());
   // A checkout has no release feed (app-update.yml) to update from; only the packaged app looks for one.
   const updates = app.isPackaged
     ? new UpdateWatch(
@@ -227,6 +251,7 @@ function ready(): void {
     setDirectTarget: (directUrl) => forwarder?.setTarget(directUrl) ?? false,
     forwardDirect: async (windowId) => (await forwarder?.issue(windowId)) ?? { refused: "no forwarder" },
     cancelDirectForward: (url) => forwarder?.cancel(url) ?? false,
+    dictation,
   });
   if (updates !== undefined) {
     updates.start();

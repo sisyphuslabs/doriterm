@@ -66,5 +66,9 @@ jobs:
           fi
           printf 'checking %d image(s)\n' "${#changed[@]}"
           bun tests/ci/capture-text.ts "${changed[@]}"
+      # bunfig.toml preloads apps/host/src/testing/core-guard.ts for every bun test run, and that reaches a workspace
+      # package: without node_modules the preload throws and the job reports an error instead of a result (doriterm#989).
+      - name: Install the workspace
+        run: bun install --frozen-lockfile
       - name: The check itself
         run: bun test tests/ci/capture-text.test.ts

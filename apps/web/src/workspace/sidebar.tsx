@@ -11,6 +11,7 @@ import { DEFAULT_SIDEBAR_WIDTH } from "./layout.ts";
 import { useSidebarSize } from "./layout-store.ts";
 import { RovingLists } from "./roving-lists.tsx";
 import { SidebarEdge } from "./sidebar-edge.tsx";
+import { SidebarFilterField, useSidebarFilter } from "./sidebar-filter-field.tsx";
 import { useMachinesContext } from "./use-machines.ts";
 
 export interface SidebarProps {
@@ -25,9 +26,12 @@ const RAIL_PX = 44;
 
 export function Sidebar({ terminals, active, onOpen, onPalette }: SidebarProps) {
   const paletteKeys = useActionKeys("app.palette");
+  const filter = useSidebarFilter();
   const machines = useMachinesContext();
   const update = usePendingUpdate();
   const [{ sidebarWidth, rail }, setSize] = useSidebarSize();
+  // The rail has no room for the field: its rows are not filtered either.
+  const query = rail ? "" : filter.query;
   const [dragging, setDragging] = useState(false);
   const aside = useRef<HTMLElement | null>(null);
   const [railPx, setRailPx] = useState(RAIL_PX);
@@ -77,13 +81,14 @@ export function Sidebar({ terminals, active, onOpen, onPalette }: SidebarProps) 
           </>
         )}
       </div>
+      {rail ? null : <SidebarFilterField />}
       <RegionBoundary
         region="sidebar"
         title="The sidebar could not be drawn"
         detail="Your terminals keep running and take input."
       >
         <RovingLists className="flex min-h-0 flex-1 flex-col">
-          <SidebarLists terminals={terminals} active={active} onOpen={onOpen} rail={rail} />
+          <SidebarLists terminals={terminals} active={active} onOpen={onOpen} rail={rail} query={query} />
         </RovingLists>
       </RegionBoundary>
       <SidebarFooter rail={rail}>

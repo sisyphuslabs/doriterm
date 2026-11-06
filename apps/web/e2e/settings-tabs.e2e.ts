@@ -97,6 +97,21 @@ test("no tab label is under a paging cue at rest, after paging to the end, or af
   expect([end.width, back.width]).toEqual([rest.width, rest.width]);
 });
 
+test("each paging cue takes a 44 pt tap on a phone, at rest and paged to the end (#892)", async ({ page: tab }) => {
+  await tab.goto("/settings");
+  const sizes = async () =>
+    tab.locator("[data-tab-edge]").evaluateAll((cues) =>
+      cues.map((cue) => {
+        const box = cue.getBoundingClientRect();
+        return `${cue.getAttribute("data-tab-edge") ?? ""} ${Math.round(box.width)}x${Math.round(box.height)}`;
+      }),
+    );
+  await expect(tab.locator('[data-tab-edge="end"]')).toHaveCount(1);
+  expect(await sizes()).toEqual(["end 44x44"]);
+  await pageAll(tab, "end");
+  expect(await sizes()).toEqual(["start 44x44"]);
+});
+
 test("a keyboard-focused tab's ring is drawn whole, inside the strip", async ({ page: tab }) => {
   await tab.goto("/settings");
   await tab.getByRole("tab", { name: "Connections" }).focus();

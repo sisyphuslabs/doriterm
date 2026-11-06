@@ -9,6 +9,7 @@ import {
   type TerminalLine,
 } from "../../src/index.ts";
 import { CLAUDE_LINES } from "../data.ts";
+import { DEMO_KEYS } from "../keys.tsx";
 import { PhoneFrame } from "./frames.tsx";
 import { CompactHome } from "./shell.tsx";
 
@@ -47,7 +48,12 @@ export function MobileTerminal({
       {bottom ?? (
         <>
           {pad ? <DirectionPad className="absolute right-3 bottom-[calc(var(--safe-bottom)+4.25rem)]" /> : null}
-          <ExtraKeysBar latched={["ctrl"]} padOpen={pad} className="pb-[calc(var(--safe-bottom)+0.25rem)]" />
+          <ExtraKeysBar
+            keys={DEMO_KEYS}
+            latched={["ctrl"]}
+            padOpen={pad}
+            className="pb-[calc(var(--safe-bottom)+0.25rem)]"
+          />
         </>
       )}
     </div>

@@ -9,10 +9,13 @@ import type { MachineView } from "@doriface/protocol";
  * first dial with a 4404, which gates it until its first probe 30 s later (DIAL_LIMITS.probeFirstMs). hc's doubling
  * redial (0.25 s up to a 30 s cap) next tries 61.75 s after the drop, the slowest return measured on a real relay blip
  * (62 s). The page sees that return at its next machine.list read, up to MACHINE_REFRESH_MS (10 s) later, so 75 s
- * covers it with about 3 s to spare: a blip never reads offline, while a machine that is really gone (a laptop asleep)
- * reads offline 75 s after its line dropped. needs_login is an answer, not a blip: it shows at once. Not covered, and
- * read as offline: a 4404 met after hc's 31.75 s redial (the line lands at 91.75 s), or a member still offline at its
- * first probe (the second comes 60 s later); both mean the member itself stayed away well past a blip.
+ * covers it with about 3 s to spare while the host's clock is not more than that behind this page's (a hold starts at
+ * hc's `since_ms`, kept no earlier than the read before the drop, so a host clock further behind starts it early: with
+ * it 9 s behind, that slowest return can read offline for up to 5 s). Otherwise a blip never reads offline, while a
+ * machine that is really gone (a laptop asleep) reads offline 75 s after its line dropped. needs_login is an answer,
+ * not a blip: it shows at once. Not covered, and read as offline: a 4404 met after hc's 31.75 s redial (the line lands
+ * at 91.75 s), or a member still offline at its first probe (the second comes 60 s later); both mean the member itself
+ * stayed away well past a blip.
  */
 export const OFFLINE_GRACE_MS = 75_000;
 

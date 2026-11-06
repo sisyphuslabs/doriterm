@@ -6,6 +6,7 @@ import { useRef } from "react";
 import { connectionStore } from "../connection/store.ts";
 import { NEW_TAB } from "../keys/actions.ts";
 import { AgentLists } from "./agent-lists.tsx";
+import { PhoneSortMenu } from "./agents-group.tsx";
 import { onlyThisMachine } from "./machines.ts";
 import type { Session } from "./model.ts";
 import { ConnectionLine, ConnectionPathItem, ReconnectStatus } from "./reconnect-status.tsx";
@@ -54,6 +55,7 @@ export function PhoneShell(props: PhoneShellProps) {
         >
           <h1 className="flex-1 text-xl font-semibold text-foreground">Agents</h1>
           <IconButton label="Command palette" icon={<Search />} size="md" onClick={onPalette} />
+          {machines.terminalsLoaded ? <PhoneSortMenu terminals={terminals} /> : null}
           <IconButton label={NEW_TAB.label} icon={<Plus />} size="md" onClick={onNew} />
           <IconButton
             label={update === null ? "Settings" : "Settings, update ready"}

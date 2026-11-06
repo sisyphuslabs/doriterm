@@ -1,7 +1,7 @@
 import { DEFAULT_KEY_IDS, SPECIAL_KEYS, specialKey } from "./catalog.ts";
 import { parseKeyInput } from "./custom.ts";
-import { type CustomKey, FAVORITES_PACK_ID, type KeyBarSettings, KEYBAR_VERSION } from "./settings.ts";
-import { isPackId } from "./packs.ts";
+import { type CustomKey, type KeyBarSettings, KEYBAR_VERSION } from "./settings.ts";
+import { FAVORITES_PACK_ID, isPackId } from "./packs.ts";
 
 /** Every change here is a pure function of the previous document, so a stored value is never mutated in place. */
 
@@ -33,13 +33,18 @@ export function removeKey(settings: KeyBarSettings, id: string): KeyBarSettings 
  * Puts a removed key back where the catalog places it among the keys already shown, so restoring two keys puts them
  * back in the order of the list rather than in the order they were restored.
  */
+/**
+ * Where a key sits in the bar's default row. A restored key lands between the same neighbours a person saw before it
+ * went away; one the default row does not carry joins after those it does, in the order the list offers it.
+ */
+const rowRank = (entry: string): number => {
+  const inRow = DEFAULT_KEY_IDS.indexOf(entry);
+  return inRow === -1 ? DEFAULT_KEY_IDS.length + SPECIAL_KEYS.findIndex((one) => one.id === entry) : inRow;
+};
+
 export function restoreKey(settings: KeyBarSettings, id: string): KeyBarSettings {
   if (settings.keys.includes(id) || specialKey(id) === undefined) return settings;
-  const rank = SPECIAL_KEYS.findIndex((entry) => entry.id === id);
-  const before = settings.keys.filter((entry) => {
-    const other = SPECIAL_KEYS.findIndex((candidate) => candidate.id === entry);
-    return other !== -1 && other < rank;
-  }).length;
+  const before = settings.keys.filter((entry) => rowRank(entry) < rowRank(id)).length;
   const keys = [...settings.keys];
   keys.splice(before, 0, id);
   return { ...settings, keys };
@@ -89,6 +94,7 @@ export function addFavorite(
   }
   const key: CustomKey = { id: entry.id, label, input: entry.input.trim(), bytes: parsed.key.bytes };
   const packs = settings.packs.includes(FAVORITES_PACK_ID) ? settings.packs : [...settings.packs, FAVORITES_PACK_ID];
+  // The bar shows Favorites after the add, so the new key is where the person can see it.
   return {
     kind: "added",
     key,
@@ -96,7 +102,7 @@ export function addFavorite(
       ...settings,
       favorites: [...settings.favorites, key],
       packs,
-      activePack: settings.activePack ?? FAVORITES_PACK_ID,
+      activePack: FAVORITES_PACK_ID,
     },
   };
 }

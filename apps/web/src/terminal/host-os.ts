@@ -27,11 +27,20 @@ export async function readHostOs(
   }
 }
 
-/** The platform of the host a terminal runs on, read again when its machine or its line changes. */
-export function useHostPlatform(connection: HcConnection, machine: string | undefined, offline: boolean): HostPlatform {
-  const key = `${machine ?? ""}#${offline}`;
+/**
+ * The platform of the host a terminal runs on, read again when its machine or its line changes. With no connection yet
+ * (Settings open before the first dial) it names the account's host instead of guessing from this device. That matters:
+ * an iPhone is not a Mac, so a preview keyed on this phone's OS would draw `cmd` for a Linux host.
+ */
+export function useHostPlatform(
+  connection: HcConnection | null,
+  machine: string | undefined,
+  offline: boolean,
+): HostPlatform {
+  const key = `${machine ?? ""}#${offline}#${connection === null ? "none" : "live"}`;
   const [read, setRead] = useState<{ readonly key: string; readonly os: HostOs | undefined } | undefined>(undefined);
   useEffect(() => {
+    if (connection === null) return undefined;
     let live = true;
     void (async () => {
       const os = await readHostOs(connection, machine);
@@ -41,5 +50,5 @@ export function useHostPlatform(connection: HcConnection, machine: string | unde
       live = false;
     };
   }, [connection, machine, key]);
-  return platformOf(read?.key === key ? read.os : undefined, machine ?? connection.hello.core.name);
+  return platformOf(read?.key === key ? read.os : undefined, machine ?? connection?.hello.core.name ?? "");
 }

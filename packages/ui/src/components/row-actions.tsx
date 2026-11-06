@@ -26,12 +26,13 @@ const SHOWN =
 const MASKED =
   "[&:is(:hover,:focus-within,:has([data-popup-open]),[data-popup-open])_[data-row-meta]]:invisible data-popup-open:outline-2 data-popup-open:outline-solid data-popup-open:-outline-offset-2 data-popup-open:outline-ring";
 /**
- * Held on a coarse pointer: the actions are drawn, 24 px apart so their centred 44 px hit areas do not meet, and the
- * row's own button gives them the width they take (two 24 px buttons, the 24 px gap and the 4 px inset), so nothing the
- * row draws runs under them. The pad goes on the button, not the wrapper, so its hover wash still spans the row.
+ * Held on a coarse pointer: the actions are drawn (24 px apart, should a row show more than one, so their centred 44 px
+ * hit areas do not meet), and the row's own button gives them the width they take: the agent row shows only its "..."
+ * on touch (#950), so one 24 px button and the 4 px inset. Nothing the row draws runs under it. The pad goes on the
+ * button, not the wrapper, so its hover wash still spans the row.
  */
 const COARSE_SHOWN = `${SHOWN} coarse:visible coarse:gap-6`;
-const COARSE_ROOM = "coarse:[&>button]:pr-20";
+const COARSE_ROOM = "coarse:[&>button]:pr-8";
 
 /** A touch keeps the row's own press (a held space row lifts for a drag): only a mouse, a pen or a key opens the menu. */
 function skipTouchMenu(event: MouseEvent<HTMLDivElement>): void {

@@ -1,5 +1,16 @@
 import { Button, IconButton, ScrollArea, Tab, TabList, Tabs, cn } from "@doriface/ui";
-import { ArrowLeft, Bell, Keyboard, Link2, Mic, Network, Palette, Server, SquareTerminal } from "lucide-react";
+import {
+  ArrowLeft,
+  Bell,
+  Keyboard,
+  Link2,
+  Mic,
+  Network,
+  Palette,
+  PanelBottom,
+  Server,
+  SquareTerminal,
+} from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { MonitorSmartphone } from "lucide-react";
 import { currentPlatform, triggerKeys } from "../keys/trigger.ts";
@@ -8,6 +19,7 @@ import { ConnectionSection } from "../settings/connection-section.tsx";
 import { DeviceSection } from "../settings/device-section.tsx";
 import { DevicesSection } from "../settings/devices-section.tsx";
 import { KeybindingsSection } from "../settings/keybindings-section.tsx";
+import { KeyboardSection } from "../settings/keyboard-section.tsx";
 import { MeshSection } from "../settings/mesh-section.tsx";
 import { MachinesSection } from "../settings/machines-section.tsx";
 import { NotificationsSection } from "../settings/notifications-section.tsx";
@@ -27,11 +39,18 @@ const SECTIONS = [
   { id: "appearance", label: "Appearance", icon: <Palette /> },
   { id: "device", label: "Device", icon: <MonitorSmartphone /> },
   { id: "terminal", label: "Terminal", icon: <SquareTerminal /> },
+  { id: "keyboard", label: "Keyboard", icon: <PanelBottom /> },
   { id: "notifications", label: "Notifications", icon: <Bell /> },
   { id: "keybindings", label: "Keybindings", icon: <Keyboard /> },
   { id: "voice", label: "Voice input", icon: <Mic /> },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
+
+/** The section a link asked for (a hash, so it survives a reload), else the one Settings always opens on. */
+function firstSection(): SectionId {
+  const asked = window.location.hash.slice(1);
+  return SECTIONS.some((entry) => entry.id === asked) ? (asked as SectionId) : "connections";
+}
 
 function Group({ title, children }: { readonly title: string; readonly children: ReactNode }) {
   return (
@@ -44,7 +63,7 @@ function Group({ title, children }: { readonly title: string; readonly children:
 
 /** Section navigation beside the form; changes apply as they are made. */
 export function SettingsRoute() {
-  const [section, setSection] = useState<SectionId>("connections");
+  const [section, setSection] = useState<SectionId>(firstSection);
   const close = useCloseSettings();
   const update = usePendingUpdate();
   // In the dialog its header is not the window's titlebar: it neither moves the window nor makes room for its controls.
@@ -158,6 +177,9 @@ export function SettingsRoute() {
               <Group title="Terminal">
                 <TerminalSection />
               </Group>
+            ) : section === "keyboard" ? (
+              // The section draws its own heading, because the heading row carries Edit and Done.
+              <KeyboardSection />
             ) : section === "notifications" ? (
               <Group title="Notifications">
                 <NotificationsSection />

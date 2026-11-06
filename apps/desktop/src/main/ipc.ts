@@ -28,4 +28,10 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle(Channel.cancelDirectForward, (event, candidate: unknown) =>
     handlers.cancelDirectForward(event, candidate),
   );
+  ipcMain.handle(Channel.dictationAvailable, (event, candidate: unknown) =>
+    handlers.dictationAvailable(event, candidate),
+  );
+  ipcMain.handle(Channel.dictationStart, (event, candidate: unknown) => handlers.dictationStart(event, candidate));
+  ipcMain.handle(Channel.dictationStop, (event, candidate: unknown) => handlers.dictationStop(event, candidate));
+  ipcMain.handle(Channel.dictationAbort, (event, candidate: unknown) => handlers.dictationAbort(event, candidate));
 }

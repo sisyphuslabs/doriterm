@@ -50,6 +50,7 @@ export const ACTIONS: readonly ActionDef[] = [
   app("agent.prev", "Previous agent"),
   app("layout.toggle:sidebar", "Show or hide the sidebar"),
   app("layout.focus:sidebar", "Move focus between the terminal and the sidebar"),
+  app("layout.filter:sidebar", "Filter the sidebar"),
   app("session.rename", "Rename session…"),
   app("session.end", "End session…"),
   app("space.rename", "Rename space…"),

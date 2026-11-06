@@ -1,6 +1,6 @@
 import { DEFAULT_KEY_IDS, SPECIAL_KEYS } from "./catalog.ts";
 import { MAX_TEXT_BYTES } from "./custom.ts";
-import { FAVORITES_PACK_ID, isPackId } from "./packs.ts";
+import { isPackId } from "./packs.ts";
 
 export const KEYBAR_VERSION = 1;
 
@@ -96,5 +96,3 @@ export function reviveSettings(stored: unknown): KeyBarSettings {
         : distinctFavorites(favorites.map(customKey).filter((entry): entry is CustomKey => entry !== null)),
   };
 }
-
-export { FAVORITES_PACK_ID };
