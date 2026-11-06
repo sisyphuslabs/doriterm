@@ -26,7 +26,7 @@ import { requestPairedDevices, revokePairedDevice } from "./devices.ts";
 import { loadSpeech, speechAddonPath } from "./speech.ts";
 import { registerAppScheme, serveApp } from "./protocol.ts";
 import { applyMacTitlebar } from "./titlebar.ts";
-import { readSaved, rememberPlacement, savedPlacement, writeSaved } from "./window-state.ts";
+import { readSaved, rememberPlacement, placedWindow, savedPlacement, writeSaved } from "./window-state.ts";
 import { revealWhenReady } from "./window-reveal.ts";
 import { UpdateWatch } from "./updater.ts";
 
@@ -132,7 +132,7 @@ function createWindow(path: string): BrowserWindow {
     onClosed: (listener) => void window.once("closed", listener),
   });
   if (platform === "darwin") applyMacTitlebar(window);
-  rememberPlacement(window, placementFile);
+  rememberPlacement(placedWindow(window), placementFile);
   window.webContents.on("context-menu", (_event, params) => {
     const template = contextMenuTemplate(params);
     if (template.length > 0) Menu.buildFromTemplate(template).popup({ window });
