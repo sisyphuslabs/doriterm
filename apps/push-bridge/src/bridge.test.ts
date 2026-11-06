@@ -10,7 +10,10 @@ const ORIGIN = "https://push-doriface.omo.dev";
 const NOTICE: PushNotice = { v: 1, n: "AAAAAAAAAAAAAAAAAAAAAA", k: "permission", h: "abcdefghijklmnopqrstuvwxyz" };
 const APNS_TOKEN = "a".repeat(64);
 const FCM_TOKEN = "fGx1:APA91bH-token_for_a_test";
-const NOW = Date.UTC(2026, 10, 6, 7, 0, 0);
+// The token this suite judges is minted from the real clock (web-push.ts stamps exp = now + 12h), so the
+// fixture clock has to come from the same clock: an absolute instant would silently go stale once the wall
+// clock passed it, and the "lapsed" case below would accept a live token (#755).
+const NOW = Math.floor(Date.now() / 1000) * 1000;
 
 async function vapidKey(): Promise<VapidKey> {
   const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign"]);
