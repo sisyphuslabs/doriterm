@@ -40,12 +40,36 @@ type NoticeSettings = Pick<DesktopNotices, "subscribe" | "view" | "load" | "turn
 const settings: NoticeSettings = desktopNotices ?? pushSettings;
 const desktop = desktopNotices !== null;
 
-function statusText(view: PushView): string {
-  if (desktop) {
-    return view.on
-      ? "On. You hear about agents while Doriterm runs, even with its window in the background. If none appear, allow Doriterm in your system's notification settings."
+const REMEDY =
+  "Allow Doriterm in your system's notification settings (on macOS: System Settings > Notifications > Doriterm), then check again.";
+
+/** The agents already in a wanted state when the feed was read: the trigger announces changes from now on, never these. */
+function waitingText(view: PushView): string {
+  if (view.waiting === null) return "";
+  if (view.waiting === 0) return " No agent is waiting right now; you hear about changes from now on.";
+  const agents = view.waiting === 1 ? "1 agent is" : `${view.waiting} agents are`;
+  return ` ${agents} already waiting and will not be announced again; you hear about changes from now on.`;
+}
+
+function desktopStatusText(view: PushView): string {
+  if (view.permission === "denied")
+    return `Blocked by this computer: it does not show Doriterm's notifications. ${REMEDY}`;
+  if (!view.on) {
+    return view.permission === "default"
+      ? "Hear when an agent asks for input or permission, finishes, or stops with an error, while Doriterm runs. This computer asks whether to allow them when the first one is shown."
       : "Hear when an agent asks for input or permission, finishes, or stops with an error, while Doriterm runs.";
   }
+  const shown =
+    view.permission === "granted"
+      ? "On. This computer allows Doriterm's notifications; you hear about agents while Doriterm runs, even with its window in the background."
+      : view.permission === "default"
+        ? "On. This computer asks whether to allow Doriterm's notifications when the first one is shown."
+        : `On. This computer decides whether Doriterm's notifications appear. If none do, ${REMEDY.charAt(0).toLowerCase()}${REMEDY.slice(1)}`;
+  return shown + waitingText(view);
+}
+
+function statusText(view: PushView): string {
+  if (desktop) return desktopStatusText(view);
   if (view.on) return "On. You hear about agents even with Doriterm closed.";
   if (view.permission === "denied") {
     return "Blocked for this site. Allow notifications in this browser's site settings, then come back here.";
@@ -115,18 +139,22 @@ export function NotificationsSection() {
       </div>
     );
   }
-  const blocked = view.permission === "denied" && !view.on;
+  const blocked = view.permission === "denied";
   const off = !view.on || view.busy;
   const setEvent = (event: NoticeEvent, on: boolean): void =>
     void settings.setPrefs({ ...view.prefs, events: { ...view.prefs.events, [event]: on } });
   return (
-    <div className="flex flex-col gap-6" data-push-state={view.on ? "on" : blocked ? "blocked" : "off"}>
+    <div className="flex flex-col gap-6" data-push-state={blocked ? "blocked" : view.on ? "on" : "off"}>
       <div className="flex flex-col">
         <SettingRow
           title="Notifications on this device"
           description={statusText(view)}
           control={
-            view.on ? (
+            desktop && blocked ? (
+              <Button loading={view.busy} disabled={view.busy} onClick={() => void settings.load()}>
+                Check again
+              </Button>
+            ) : view.on ? (
               <Button loading={view.busy} disabled={view.busy} onClick={() => void settings.turnOff()}>
                 Turn off
               </Button>
@@ -155,6 +183,11 @@ export function NotificationsSection() {
       {view.error === null ? null : (
         <Notice tone="error" title="Notifications">
           {view.error}
+        </Notice>
+      )}
+      {view.retry === null ? null : (
+        <Notice tone="warning" title="Following the agents again">
+          {`Could not follow the agents: ${view.retry.reason}. Trying again in ${Math.ceil(view.retry.inMs / 1000)} s.`}
         </Notice>
       )}
       <section aria-labelledby="push-events" className="flex flex-col">

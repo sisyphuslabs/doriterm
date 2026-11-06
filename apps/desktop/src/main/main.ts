@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, session, shell } from "electron";
+import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, session, shell, systemPreferences } from "electron";
 import { installHc } from "@doriface/host/hc-install";
 import electronUpdater from "electron-updater";
 import { homedir } from "node:os";
@@ -19,6 +19,7 @@ import { registerIpc } from "./ipc.ts";
 import { LocalHost } from "./local-host.ts";
 import { menuTemplate } from "./menu.ts";
 import { noticesSupported, showNotice } from "./notice.ts";
+import { readNoticeAuthorization } from "./notice-authorization.ts";
 import { requestPairOffer } from "./pair-offer.ts";
 import { requestPairedDevices, revokePairedDevice } from "./devices.ts";
 import { registerAppScheme, serveApp } from "./protocol.ts";
@@ -220,6 +221,7 @@ function ready(): void {
       return installed;
     },
     noticesSupported,
+    noticePermission: () => readNoticeAuthorization(systemPreferences),
     // A click brings the window back (or makes it, on macOS with none left) and opens the pane in it.
     showNotice: (notice) => showNotice(notice, (terminal) => sendToPage(Channel.noticeClicked, terminal)),
     setDirectTarget: (directUrl) => forwarder?.setTarget(directUrl) ?? false,

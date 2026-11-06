@@ -1,5 +1,6 @@
 import { Notification } from "electron";
-import type { DesktopNotice, NoticeKind } from "../shared/bridge.ts";
+import type { DesktopNotice, NoticeAnswer, NoticeKind } from "../shared/bridge.ts";
+import { showAndAnswer, type Wait } from "./notice-answer.ts";
 
 /** The fixed text per kind, as the web app's notices show it: no command, output or machine ever reaches the OS. */
 const BODY: Readonly<Record<NoticeKind, string>> = {
@@ -22,7 +23,12 @@ const live = new Set<Notification>();
 
 export const noticesSupported = (): boolean => Notification.isSupported();
 
-export function showNotice(notice: DesktopNotice, open: (terminal: string | null) => void): void {
+/** Shows one notification and answers whether the OS took it (notice-answer.ts); a click opens its terminal. */
+export function showNotice(
+  notice: DesktopNotice,
+  open: (terminal: string | null) => void,
+  wait?: Wait,
+): Promise<NoticeAnswer> {
   const shown = new Notification(noticeText(notice));
   live.add(shown);
   shown.once("click", () => {
@@ -30,5 +36,5 @@ export function showNotice(notice: DesktopNotice, open: (terminal: string | null
     open(notice.terminal);
   });
   shown.once("close", () => live.delete(shown));
-  shown.show();
+  return showAndAnswer(shown, wait);
 }

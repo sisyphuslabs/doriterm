@@ -63,6 +63,10 @@ function probes(index: string, worker: string, policy: string): readonly Probe[]
     {
       path: asset,
       check: (response) => (header(response, "cache-control").includes("immutable") ? undefined : "not immutable"),
+    }, // The link-preview card: a missing file would come back as the SPA shell, 200 text/html, and unfurls lose their image.
+    {
+      path: "/og.png",
+      check: (response) => (header(response, "content-type") === "image/png" ? undefined : "not image/png"),
     },
   ];
 }

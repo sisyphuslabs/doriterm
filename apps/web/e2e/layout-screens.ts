@@ -62,10 +62,22 @@ async function section(page: Page, narrow: boolean, label: string): Promise<void
   else await page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: label }).click();
 }
 
+// The import buttons click a detached <input type="file">. Waiting on Playwright's "filechooser" event
+// races the protocol call that turns interception on, so a click that wins it opens a picker no one
+// reports (#965). Hand the file to that input when the page clicks it instead, then wait on the dialog.
 async function choose(page: Page, button: string, text: string): Promise<void> {
-  const chooser = page.waitForEvent("filechooser");
+  await page.evaluate((contents) => {
+    const click = HTMLInputElement.prototype.click;
+    HTMLInputElement.prototype.click = function (this: HTMLInputElement) {
+      if (this.type !== "file") return click.call(this);
+      HTMLInputElement.prototype.click = click;
+      const files = new DataTransfer();
+      files.items.add(new File([contents], "config", { type: "text/plain" }));
+      this.files = files.files;
+      this.dispatchEvent(new Event("change"));
+    };
+  }, text);
   await page.getByRole("button", { name: button }).click();
-  await (await chooser).setFiles({ name: "config", mimeType: "text/plain", buffer: Buffer.from(text) });
   await expect(page.getByRole("dialog")).toBeVisible();
 }
 

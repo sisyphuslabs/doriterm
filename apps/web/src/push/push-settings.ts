@@ -17,9 +17,18 @@ import { browserScope, type PushSupport, pushSupport } from "./push-support.ts";
 import { reconcile } from "./reconcile.ts";
 import { pushRegistrar } from "./registrar.ts";
 
+/** A feed the desktop app could not follow and tries again: why, and how long until the next try. */
+export interface FeedRetry {
+  readonly reason: string;
+  readonly inMs: number;
+}
+
 export interface PushView {
   readonly support: PushSupport;
-  /** The browser's notification permission; null where there is none. */
+  /**
+   * The browser's notification permission, or the OS's authorization of the desktop app as the browser would name it
+   * (`default` while the OS has not asked yet); null where none can be read.
+   */
   readonly permission: NotificationPermission | null;
   readonly on: boolean;
   readonly prefs: PushPrefs;
@@ -27,6 +36,10 @@ export interface PushView {
   readonly error: string | null;
   /** Set once a test notice was handed to the push service. */
   readonly tested: boolean;
+  /** Desktop only: the feed subscription that failed and is being retried; null while it stands or is not wanted. */
+  readonly retry: FeedRetry | null;
+  /** Desktop only: agents already in a state this device asked to hear about, which the feed announces no more. */
+  readonly waiting: number | null;
 }
 
 const INITIAL: PushView = {
@@ -37,6 +50,8 @@ const INITIAL: PushView = {
   busy: true,
   error: null,
   tested: false,
+  retry: null,
+  waiting: null,
 };
 
 function expect(reply: PushHostLine, what: string): void {
