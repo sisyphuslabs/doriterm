@@ -106,6 +106,19 @@ test("a line added under a released section does not count as an Unreleased line
   expect((await check(dir, base)).code).toBe(1);
 });
 
+test("a Playwright config is test configuration, so it needs no changelog line", async () => {
+  const { dir, base } = await repo({
+    "apps/web/playwright.config.ts": "export default {};\n",
+    "apps/web/playwright.config.mjs": "export default {};\n",
+  });
+  expect((await check(dir, base)).code).toBe(0);
+});
+
+test("a Playwright config called something else is still user-facing", async () => {
+  const { dir, base } = await repo({ "apps/web/playwright.helpers.ts": "export {};\n" });
+  expect((await check(dir, base)).code).toBe(1);
+});
+
 test("the no-changelog label exempts an internal change", async () => {
   const { dir, base } = await repo({ "apps/web/src/app.ts": "export const a = 1;\n" });
   expect((await check(dir, base, ["review-queued", "no-changelog"])).code).toBe(0);

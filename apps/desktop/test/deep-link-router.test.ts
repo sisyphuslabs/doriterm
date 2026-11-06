@@ -6,7 +6,7 @@ import { Channel } from "../src/shared/bridge.ts";
 const signPub = new Uint8Array(32).map((_, index) => (index * 37 + 11) % 256);
 const linkFor = (fill: number): string =>
   buildPairingUrl({
-    webOrigin: "https://doriface.omo.dev",
+    webOrigin: "https://app.doriterm.com",
     hostId: hostIdOf(signPub),
     noiseStaticPub: new Uint8Array(32).fill(5),
     signPub,

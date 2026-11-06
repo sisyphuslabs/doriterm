@@ -12,6 +12,8 @@ import { E2E_WEB_PORT } from "./config.ts";
 export interface FakeRelayHost {
   /** A fresh pairing link: each one pairs one device, once. */
   readonly pairingLink: () => Promise<string>;
+  /** The same offer's typed code, from the same round trip, so a spec can prove the code path without a second offer. */
+  readonly pairingOffer: () => Promise<{ readonly link: string; readonly code: string }>;
   /** Starts a second machine and runs `doriface-host mesh join` there with `link`; resolves with its mesh name. */
   readonly join: (link: string) => Promise<string>;
   /** The host's LAN listener, the address a person sets as the Direct address (#446); empty unless `direct` was asked. */
@@ -26,8 +28,25 @@ export interface FakeRelayHost {
  * at `toRelay` instead, path and query kept. The e2e web server is a release build, so this is how a spec reaches a
  * test relay without the page knowing it is not the production one.
  */
-export async function routeRelaySockets(page: Page, toRelay: string): Promise<void> {
+export async function routeRelaySockets(page: Page, toRelay: string, pairUrl: string = toRelay): Promise<void> {
   const base = toRelay.replace(/\/+$/, "");
+  // The code path is an HTTP lookup, not a socket: without this the page asks the production relay for a slot only the
+  // test relay holds, and every typed code answers "no host is pairing with this code".
+  const httpRelay = FAKE_RELAY.replace(/^wss:/, "https:").replaceAll(".", "\\.");
+  await page.route(new RegExp(`^${httpRelay}/v1/pair/`), async (route) => {
+    const target = new URL(route.request().url());
+    const answer = await fetch(`${pairUrl}${target.pathname}`);
+    // The body is decoded here, so the upstream framing headers would describe bytes this is not: keep the type and let
+    // the fulfilled response pay for its own length. A compressed lookup answer would otherwise ship a stale encoding.
+    await route.fulfill({
+      status: answer.status,
+      headers: {
+        "content-type": answer.headers.get("content-type") ?? "application/json",
+        "access-control-allow-origin": "*",
+      },
+      body: await answer.text(),
+    });
+  });
   await page.routeWebSocket(new RegExp(`^${FAKE_RELAY.replaceAll(".", "\\.")}/v1/client/`), (socket) => {
     const target = new URL(socket.url());
     const relay = new WebSocket(`${base}${target.pathname}${target.search}`);
@@ -233,17 +252,22 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
     const first = await protocol.next("the bridge");
     const bridge = first["bridge"];
     const directUrl = first["directUrl"];
+    const pairUrl = first["pairUrl"];
     if (typeof bridge !== "string") throw new Error("the fake relay host printed no bridge");
+    if (typeof pairUrl !== "string") throw new Error("the fake relay host printed no pair lookup address");
     if (options.direct === true && (typeof directUrl !== "string" || directUrl === ""))
       throw new Error("the fake relay host printed no direct address");
+    const readOffer = async (): Promise<{ readonly link: string; readonly code: string }> => {
+      input.write("link\n");
+      const { link, code } = await protocol.next("a pairing link");
+      if (typeof link !== "string" || typeof code !== "string")
+        throw new Error("the fake relay host printed no pairing link or code");
+      return { link, code };
+    };
     return {
       directUrl: typeof directUrl === "string" ? directUrl : "",
-      async pairingLink() {
-        input.write("link\n");
-        const { link } = await protocol.next("a pairing link");
-        if (typeof link !== "string") throw new Error("the fake relay host printed no pairing link");
-        return link;
-      },
+      pairingOffer: readOffer,
+      pairingLink: async () => (await readOffer()).link,
       async join(link) {
         input.write(`join ${link}\n`);
         // A second core, a second host and a join through the relay: more than one startup stage's worth.
@@ -251,7 +275,7 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
         if (typeof joined !== "string") throw new Error("the fake relay host printed no joined machine");
         return joined;
       },
-      route: (page) => routeRelaySockets(page, bridge),
+      route: (page) => routeRelaySockets(page, bridge, pairUrl),
       stop,
     };
   } catch (error) {

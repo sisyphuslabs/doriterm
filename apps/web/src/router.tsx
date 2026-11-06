@@ -42,10 +42,17 @@ function Root() {
         </div>
       ) : null}
       {/* The view on screen is #root's first child: the desktop window waits for `#root > *` to paint, and the
-          workspace kept under the phone's sheet is invisible, so it must not come first there. */}
+          workspace kept under the phone's sheet is invisible, so it must not come first there. Under the sheet every
+          element is hidden, not only the wrapper: visibility is inherited, so a part that reveals itself (a touch
+          screen's row actions) would otherwise be drawn over Settings, which paints after it in no layer of its own
+          (#879). */}
       {/* Under the dialog the workspace stays in view but out of reach: inert, and hidden from assistive tech, so only
           the dialog is read (aria-modal). */}
-      <div className={sheet ? "invisible contents" : "contents"} inert={settings} aria-hidden={settings || undefined}>
+      <div
+        className={sheet ? "invisible contents [&_*]:invisible!" : "contents"}
+        inert={settings}
+        aria-hidden={settings || undefined}
+      >
         <ActionsPaused.Provider value={settings}>
           <TerminalsOnScreen.Provider value={!sheet}>
             <WorkspaceRoute />

@@ -34,7 +34,7 @@ test("a start blocked on hc fails inside the stage deadline, saying which stage 
     failureOf(startFakeRelayHost({ machine: true, stageDeadlineMs: 300, stageDeadlineFrom: "session" })),
   );
   expect(failure).toContain("did not finish the bridge within 300 ms");
-  expect(failure).toMatch(/it is in session \(done: relay \d+ ms, session \d+ ms\)/);
+  expect(failure).toMatch(/it is in session \(done: relay \d+ ms, pair lookup \d+ ms, session \d+ ms\)/);
   expect(Date.now() - started).toBeLessThan(8_000);
 }, 10_000);
 test("a start that dies fails at once with its exit, not with a timeout (#502)", async () => {

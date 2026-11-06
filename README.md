@@ -80,8 +80,8 @@ app; and the **relay** between them, which is already deployed. The shortest pat
 
 1. **Start a host** on the machine whose terminals you want. The desktop app does it for you when it opens, or run
    [`doriface-host`](#a-host-on-the-machine-with-the-terminals) from this repository.
-2. **Open a client**: the desktop app, or the web app — [app.doriterm.com](https://app.doriterm.com) once the domain lands,
-   [doriface.omo.dev](https://doriface.omo.dev) until then.
+2. **Open a client**: the desktop app, or the web app at [app.doriterm.com](https://app.doriterm.com);
+   [doriface.omo.dev](https://doriface.omo.dev) keeps serving the same build while the move completes.
 3. **Pair it** with the host — scan the QR code the host prints, or open the link it prints, and confirm the fingerprint it
    shows. [Pairing, and how the relay fits](#pairing-and-how-the-relay-fits) is the whole of it.
 
@@ -109,8 +109,8 @@ The desktop app starts a host on the computer it runs on, so that computer's ter
 
 ### In a browser
 
-The web client is the same app and needs no install. It moves to [app.doriterm.com](https://app.doriterm.com) when that domain
-lands; until then it is live at [doriface.omo.dev](https://doriface.omo.dev). Use your browser's "install" or "add to home
+The web client is the same app and needs no install. It is served at [app.doriterm.com](https://app.doriterm.com), and
+[doriface.omo.dev](https://doriface.omo.dev) keeps serving the same build while the move completes. Use your browser's "install" or "add to home
 screen" if you want it in a window of its own; an installed PWA opens in its own window and precaches its shell, so a dropped
 network does not empty the window. A release build reaches your machines through the relay only — a development build
 (`bun run --cwd apps/web dev`) also offers "Loopback dev" in Settings > Connections, with the token from

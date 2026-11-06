@@ -28,11 +28,11 @@ const withStateDir = async (name: string, run: (dir: string) => Promise<void>): 
 };
 
 describe("doriface-host pair", () => {
-  test("prints the desktop app's deep link by default, never the dead web origin", async () => {
+  test("prints the desktop app's deep link by default, never the web app's origin", async () => {
     await withStateDir("dh-pair-", async (dir) => {
       let text = "";
       await pairCommand(["--no-qr", "--state-dir", dir], (chunk) => void (text += chunk));
-      expect(text).not.toContain("https://doriface.omo.dev");
+      expect(text).not.toContain("https://app.doriterm.com");
       expect(text.split("\n").filter((line) => line.startsWith("http"))).toEqual([]);
       expect(text).toContain("Doriterm desktop app");
       const link = linkOf(text, "doriface://pair#");
@@ -52,7 +52,7 @@ describe("doriface-host pair", () => {
       const offer = new PairingStore(dir).read();
       if (offer === undefined) throw new Error("pair printed a QR code but stored no offer");
       const phone = buildPairingUrl({
-        webOrigin: "https://doriface.omo.dev",
+        webOrigin: "https://app.doriterm.com",
         hostId: identity.hostId,
         noiseStaticPub: identity.noise.publicKey,
         signPub: identity.sign.publicKey,
@@ -73,14 +73,14 @@ describe("doriface-host pair", () => {
       const link = linkOf(text, "https://web.example/pair#");
       expect([...fragmentOf(link).keys()]).toEqual(["h", "k", "s", "p", "r"]);
       expect(text).not.toContain("doriface://pair#");
-      expect(text).not.toContain("https://doriface.omo.dev");
+      expect(text).not.toContain("https://app.doriterm.com");
       expect(text).toContain("browser");
     });
   });
 });
 
 describe("doriface-host mesh pair", () => {
-  test("prints a deep link the joining machine can hand to mesh join, never the dead web origin", async () => {
+  test("prints a deep link the joining machine can hand to mesh join, never the web app's origin", async () => {
     await withStateDir("dh-mesh-pair-", async (dir) => {
       const offer = new PairingStore(dir).offer(Date.now(), true);
       const control = listenControl(dir, () => Promise.resolve(pendingToWire(offer)));
@@ -94,7 +94,7 @@ describe("doriface-host mesh pair", () => {
       } finally {
         control.stop();
       }
-      expect(text).not.toContain("https://doriface.omo.dev");
+      expect(text).not.toContain("https://app.doriterm.com");
       const link = linkOf(text, "doriface://pair#");
       const fragment = fragmentOf(link);
       expect([...fragment.keys()]).toEqual(["h", "k", "s", "p", "r", "m"]);
@@ -121,7 +121,7 @@ describe("doriface-host mesh pair", () => {
       const link = linkOf(text, "https://web.example/pair#");
       expect(fragmentOf(link).get("m")).toBe("1");
       expect(text).not.toContain("doriface://pair#");
-      expect(text).not.toContain("https://doriface.omo.dev");
+      expect(text).not.toContain("https://app.doriterm.com");
     });
   });
 });

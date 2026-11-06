@@ -1,0 +1,89 @@
+name: Web e2e (three engines)
+
+# #874: the required "Web e2e" job installs Chromium alone, so the repository never ran a page in Firefox or WebKit in
+# CI and every cross-engine claim was a local one. This runs the desktop-browser specs in all three engines on a
+# schedule instead of on every pull request: three engines triple the minutes, and the required check has to stay fast.
+#
+# It joins by clicking an invite link, pasting the link, and typing the eight-character code. The code path is an HTTP
+# lookup rather than a socket, which the harness only learned to route in #861, so this is the spec that proves the
+# cross-engine claim #861 makes.
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-e2e-three-engines
+  cancel-in-progress: false
+
+jobs:
+  engines:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - name: Install herdr-core
+        env:
+          HC_URL: https://releases.herdr.dev/core/0.1.17/herdr-core-linux-x86_64.tar.gz
+          HC_SHA256: 82ec44043f6894bfdb716b979b87cda43fd7fa46b0104e7b7bd93e64d1a9b877
+        run: |
+          mkdir -p "$RUNNER_TEMP/hc"
+          curl -fsSL "$HC_URL" -o "$RUNNER_TEMP/hc.tar.gz"
+          echo "$HC_SHA256  $RUNNER_TEMP/hc.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/hc.tar.gz" -C "$RUNNER_TEMP/hc" herdr-core
+          ln -s herdr-core "$RUNNER_TEMP/hc/hc"
+          echo "$RUNNER_TEMP/hc" >> "$GITHUB_PATH"
+          echo "HC_BIN=$RUNNER_TEMP/hc/hc" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/hc/hc" --version
+      - run: bun install --frozen-lockfile
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-three-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - name: Install Chromium, Firefox and WebKit
+        working-directory: apps/web
+        run: |
+          # --with-deps runs apt, and on #855 a stalled azure.archive.ubuntu.com mirror spent the whole 30-minute job
+          # there without the suite ever starting. Bound it and fall back to the engines alone: a missing system library
+          # then fails the first browser launch loudly, which is a job that reports a real error instead of a silent hang.
+          set +e
+          timeout 900 bunx playwright install --with-deps chromium firefox webkit
+          code=$?
+          set -e
+          if [ "$code" -eq 124 ]; then
+            echo "::warning::the bounded install hit its 15-minute limit; installing the engines without system packages"
+            timeout 600 bunx playwright install chromium firefox webkit
+          elif [ "$code" -ne 0 ]; then
+            echo "::warning::--with-deps exited $code, not on the time limit; installing the engines without system packages"
+            timeout 600 bunx playwright install chromium firefox webkit
+          fi
+      - name: Which engines this run actually got
+        working-directory: apps/web
+        run: bunx playwright --version && ls "$HOME/.cache/ms-playwright"
+      # One worker on purpose: each test starts its own fake relay host, host core and added machine, and the harness
+      # gives a startup stage 10 s. Three engines running in parallel on a two-core runner blow that budget, which
+      # fails as "the fake relay host did not finish ... within 10000 ms" - a startup timeout, not a broken join.
+      - name: Join in all three engines
+        run: E2E_BROWSERS=all bunx playwright test e2e/join-desktop.e2e.ts --workers=1
+        working-directory: apps/web
+        env:
+          CI: "1"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-e2e-three-engines
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore
