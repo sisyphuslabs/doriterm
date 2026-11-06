@@ -12,6 +12,7 @@ function noticeOf(cause: unknown): ScanFailureNotice {
   if (cause instanceof ScanError) {
     if (cause.failure === "timeout") return { title: "No QR code was read", body: cause.message };
     if (cause.failure === "unsupported") return { title: "This browser cannot scan codes", body: cause.message };
+    if (cause.failure === "no-preview") return { title: "The camera preview did not open", body: cause.message };
     return { title: "The camera could not read the code", body: cause.message };
   }
   return {

@@ -4,7 +4,7 @@ import { parsePairingFragment, type PairingParse } from "./fragment.ts";
  * Why a scan ended without a code. The screen titles its notice from this rather than from a message, so a person who
  * tapped Stop is not told the camera failed, and a timeout is not reported as a camera that never started.
  */
-export type ScanFailure = "stopped" | "timeout" | "unsupported" | "decode";
+export type ScanFailure = "stopped" | "timeout" | "unsupported" | "decode" | "no-preview";
 
 export class ScanError extends Error {
   readonly failure: ScanFailure;
@@ -91,7 +91,12 @@ async function decodeVideo(video: HTMLVideoElement, decode: DecodeQr): Promise<s
 async function barcodeDetectorSource(): Promise<CodeSource> {
   const Detector: unknown = Reflect.get(globalThis, "BarcodeDetector");
   if (typeof Detector !== "function") throw new ScanError("unsupported", UNSUPPORTED);
-  const detector: unknown = Reflect.construct(Detector, [{ formats: ["qr_code"] }]);
+  let detector: unknown;
+  try {
+    detector = Reflect.construct(Detector, [{ formats: ["qr_code"] }]);
+  } catch {
+    throw new ScanError("unsupported", UNSUPPORTED);
+  }
   const detect: unknown = Reflect.get(Object(detector), "detect");
   return {
     detect: async (video) => {
@@ -124,7 +129,12 @@ async function jsqrSource(): Promise<CodeSource> {
  * the detector is stateful, and jsqr stays unloaded on the browsers that do not need it.
  */
 export async function chooseCodeSource(): Promise<CodeSource> {
-  return (await supportsQrCodes()) ? barcodeDetectorSource() : jsqrSource();
+  try {
+    return (await supportsQrCodes()) ? await barcodeDetectorSource() : await jsqrSource();
+  } catch (cause) {
+    if (cause instanceof ScanError) throw cause;
+    throw new ScanError("unsupported", UNSUPPORTED);
+  }
 }
 
 export async function scanOnce(
@@ -189,7 +199,11 @@ export async function startScan(options: StartScanOptions): Promise<string> {
   const read = options.read ?? scanOnce;
   const handles = await open();
   const element = options.video;
-  if (options.signal.aborted || element === null) {
+  if (element === null) {
+    handles.stop();
+    throw new ScanError("no-preview", "The camera preview did not open. Try again.");
+  }
+  if (options.signal.aborted) {
     handles.stop();
     throw new ScanError("stopped", "The scan was stopped.");
   }

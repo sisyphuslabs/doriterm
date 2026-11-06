@@ -169,6 +169,24 @@ describe("startScan", () => {
     expect(spy.stops()).toBe(1);
   });
 
+  test("a preview that cannot play still stops the stream", async () => {
+    const spy = handlesSpy();
+    const element = {
+      srcObject: null,
+      play: async () => {
+        throw new Error("AbortError: the play() request was interrupted");
+      },
+    } as unknown as HTMLVideoElement;
+    const running = startScan({
+      video: element,
+      signal: new AbortController().signal,
+      open: async () => spy.handles,
+    });
+    await expect(running).rejects.toThrow("the play() request was interrupted");
+    expect(spy.stops()).toBe(1);
+    expect(element.srcObject).toBeNull();
+  });
+
   test("a finished scan stops the tracks and clears the preview", async () => {
     const spy = handlesSpy();
     const element = { srcObject: null, play: async () => {} } as unknown as HTMLVideoElement;
