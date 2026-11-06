@@ -15,6 +15,7 @@
 ### The pairing pages name the app host
 
 - Every page that tells someone where a phone lands after scanning the pairing QR code now names **https://app.doriterm.com**: the getting-started and install guides, the setup skill's instruction, and the landing page's illustrated panel, which still showed the older `doriface.omo.dev` address, one that keeps serving the same build. The desktop app and the web app already hand out the new one. (#977)
+
 ### Web app
 
 - A link to app.doriterm.com now unfurls with a preview card: the app as captured, with "Open Doriterm in your browser." (#963)

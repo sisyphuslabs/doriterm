@@ -47,12 +47,11 @@ test("nothing the workspace draws shows through Settings on a touch screen, and 
 // the user actually saw, so a section-level regression cannot hide behind a light-only check.
 test("the Appearance section keeps nothing of the workspace over it in dark (#879)", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "dark" });
-  const address = startAgent("host", "undersettings", "idle");
+  const address = startAgent("host", "undersettingsdark", "idle");
   try {
     await page.goto("/");
-    await expect(page.getByRole("button", { name: /^Pin undersettings to the top$/ })).toBeVisible({
-      timeout: 20_000,
-    });
+    // The row draws More alone since #950: Pin is that menu's first item, so More is the control that reaches Settings.
+    await expect(page.locator('button[aria-label^="More for undersettingsdark"]')).toBeVisible({ timeout: 20_000 });
     await page
       .getByRole("link", { name: /Settings/ })
       .or(page.getByRole("button", { name: /Settings/ }))
@@ -64,7 +63,6 @@ test("the Appearance section keeps nothing of the workspace over it in dark (#87
     await expect.poll(() => drawnUnderSettings(page)).toEqual([]);
     // Queried by attribute, not by role: the workspace under Settings is aria-hidden, and getByRole skips it, so a role
     // query here could never fail whatever the workspace drew.
-    await expect(page.locator('[aria-label^="Pin "]:visible')).toHaveCount(0);
     await expect(page.locator('[aria-label^="More for "]:visible')).toHaveCount(0);
   } finally {
     endAgent("host", address);

@@ -397,7 +397,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                         panes={phonePanes}
                         tabTitle={phoneTitle}
                         onOpen={showOnPhone}
-                        onBack={() => setPhoneKey(null)}
+                        onBack={hideOnPhone}
                         onNew={() => newTerminal()}
                         onPalette={onPalette}
                         onSession={onSession}
