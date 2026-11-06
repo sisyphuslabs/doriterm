@@ -39,14 +39,16 @@ for (const colorScheme of ["light", "dark"] as const) {
       // The workspace is kept, so the tab opened above is still the one in view at 390: the phone opens straight onto it. Its
       // agent list is a tap away, and that list is what a phone uses to reach any other terminal — this test's one.
       if (width === 390) {
-        const agents = page.locator("button:has([data-floor='name']):has(time)");
+        // Only the phone shell renders this container (phone-shell.tsx, ScrollArea slot="agents-list" -> data-slot), so the
+        // wide sidebar's identical AgentRows can never satisfy the count (#527: they did, before the phone had mounted).
+        const agents = page.locator("[data-slot='agents-list'] button:has([data-floor='name']):has(time)");
         // Wait for the narrow layout's own switch: the query apps/web/src/workspace/use-narrow.ts:3 reads, which commits the
         // phone tree a frame or more after setViewportSize resolves (and after Close settings' history.back() lands). The old
-        // isVisible() read the screen before that commit, skipped the click and left the phone on the terminal (#527); a row
-        // is no signal for it, because the wide sidebar draws the same rows.
+        // isVisible() read the screen before that commit, skipped the click and left the phone on the terminal (#527).
         await page.waitForFunction(() => matchMedia("(max-width: 767.98px)").matches);
-        // Back is always here on this path: opening a terminal sets the phone's open key (workspace.tsx:155, :170, :289) and
-        // only onBack clears it (:347), which this spec never calls, so the phone opens onto PhoneTerminal (phone-shell.tsx).
+        // Back is always here on this path: opening a terminal sets the phone's open key (workspace.tsx:155, called at :170 and
+        // :289) and only onBack clears it (:347), which this spec never calls, so the phone opens onto PhoneTerminal and its
+        // header carries Back.
         await page.getByRole("button", { name: "Back to agents" }).click();
         await expect(agents, "the phone lists the one terminal this test opened").toHaveCount(1, { timeout: 30_000 });
         await agents.click();
