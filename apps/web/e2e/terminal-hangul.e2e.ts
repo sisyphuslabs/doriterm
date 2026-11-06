@@ -115,7 +115,7 @@ test.describe("the reporter's Android PWA", () => {
     viewport: { width: 800, height: 1280 },
   });
 
-  test("a phone-sized viewport with an Android user agent keeps a Hangul face and draws the syllable (#959)", async ({
+  test("a tablet-sized viewport with an Android user agent keeps a Hangul face and draws the syllable (#959)", async ({
     page,
   }) => {
     await page.goto("/");
