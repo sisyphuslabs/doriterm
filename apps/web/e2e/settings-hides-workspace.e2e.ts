@@ -24,7 +24,7 @@ test("nothing the workspace draws shows through Settings on a touch screen, and 
   const address = startAgent("host", "undersettings", "idle");
   try {
     await page.goto("/");
-    const pin = page.getByRole("button", { name: "Pin undersettings" });
+    const pin = page.getByRole("button", { name: /^Pin undersettings to the top$/ });
     await expect(pin).toBeVisible({ timeout: 20_000 });
 
     await page
@@ -37,6 +37,33 @@ test("nothing the workspace draws shows through Settings on a touch screen, and 
 
     await page.getByRole("button", { name: "Close settings" }).click();
     await expect(pin).toBeVisible();
+  } finally {
+    endAgent("host", address);
+  }
+});
+
+// The report behind #879 was a dark Appearance screen on an Android phone: the workspace's agent row kept its Pin and
+// More visible there and read as a second toolbar over the System/Light/Dark control. Same guard, the screen and theme
+// the user actually saw, so a section-level regression cannot hide behind a light-only check.
+test("the Appearance section keeps nothing of the workspace over it in dark (#879)", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  const address = startAgent("host", "undersettings", "idle");
+  try {
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: /^Pin undersettings to the top$/ })).toBeVisible({
+      timeout: 20_000,
+    });
+    await page
+      .getByRole("link", { name: /Settings/ })
+      .or(page.getByRole("button", { name: /Settings/ }))
+      .first()
+      .click();
+    await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible();
+    await page.getByRole("tab", { name: "Appearance" }).click();
+    await expect(page.getByRole("heading", { name: "Appearance", exact: true })).toHaveCount(1);
+    await expect.poll(() => drawnUnderSettings(page)).toEqual([]);
+    await expect(page.getByRole("button", { name: /^Pin .+ to the top$/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^More for / })).toHaveCount(0);
   } finally {
     endAgent("host", address);
   }
