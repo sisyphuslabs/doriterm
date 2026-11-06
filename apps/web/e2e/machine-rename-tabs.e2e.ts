@@ -40,19 +40,26 @@ async function nameTab(page: Page, place: number, name: string): Promise<void> {
 
 /**
  * Holds the core's answer to the page's first read of the added machine's layout until `release`, so a terminal opened
- * meanwhile finds that layout still loading and gets a tab of this screen's own (#459).
+ * meanwhile finds that layout still loading and gets a tab of this screen's own (#459). `requested` resolves once the
+ * page has sent that read: the page reads a machine's layout only after the feed reports it connected.
  */
-async function holdMachineLayout(page: Page): Promise<{ readonly release: () => void }> {
+async function holdMachineLayout(page: Page): Promise<{
+  readonly requested: (timeoutMs: number) => Promise<void>;
+  readonly release: () => void;
+}> {
   const held: (() => void)[] = [];
   let holding = true;
   let asked: RegExp | undefined;
+  const sent = Promise.withResolvers<void>();
   await page.routeWebSocket(/\/v1\/hc/, (socket) => {
     const server = socket.connectToServer();
     socket.onMessage((message) => {
-      const sent = frameText(message);
-      const id = /"id":(\d+),"method":"doc\.get"/.exec(sent)?.[1];
-      if (holding && asked === undefined && id !== undefined && sent.includes(`"on":"${MACHINE_NAME}"`))
+      const text = frameText(message);
+      const id = /"id":(\d+),"method":"doc\.get"/.exec(text)?.[1];
+      if (holding && asked === undefined && id !== undefined && text.includes(`"on":"${MACHINE_NAME}"`)) {
         asked = new RegExp(`"id":${id}[,}]`);
+        sent.resolve();
+      }
       server.send(message);
     });
     server.onMessage((message) => {
@@ -61,6 +68,20 @@ async function holdMachineLayout(page: Page): Promise<{ readonly release: () => 
     });
   });
   return {
+    requested: async (timeoutMs) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`the page did not request the machine's layout within ${timeoutMs} ms`)),
+          timeoutMs,
+        );
+      });
+      try {
+        await Promise.race([sent.promise, late]);
+      } finally {
+        clearTimeout(timer);
+      }
+    },
     release: () => {
       if (asked === undefined) throw new Error("the page never requested the machine's layout");
       holding = false;
@@ -154,6 +175,7 @@ test.describe("renaming a machine with two tabs open", () => {
     const layout = await holdMachineLayout(page);
     await page.goto("/");
     await expect(page.getByRole("tablist", { name: "Tabs" })).toBeVisible({ timeout: 20_000 });
+    await layout.requested(STATE_BOUND_MS);
 
     hcOn("host", ["machine", "rename", MACHINE_NAME, RENAMED]);
     renamed = true;
