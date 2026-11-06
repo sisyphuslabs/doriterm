@@ -193,7 +193,7 @@ describe("window.open and new-window link clicks", () => {
   test("the web app's pairing link pairs in the app, and a lookalike of it does not", () => {
     const signPub = new Uint8Array(32).map((_, index) => (index * 37 + 11) % 256);
     const link = buildPairingUrl({
-      webOrigin: "https://doriface.omo.dev",
+      webOrigin: "https://app.doriterm.com",
       hostId: hostIdOf(signPub),
       noiseStaticPub: new Uint8Array(32).map((_, index) => (index * 53 + 7) % 256),
       signPub,
@@ -201,8 +201,13 @@ describe("window.open and new-window link clicks", () => {
       relayUrl: "wss://relay.invalid",
     });
     expect(routeWindowOpen(link, APP_ORIGIN)).toEqual({ kind: "pair", fragment: link.slice(link.indexOf("#")) });
-    expect(routeWindowOpen(link.replace("doriface.omo.dev", "x.doriface.omo.dev"), APP_ORIGIN)).toEqual({
+    expect(routeWindowOpen(link.replace("app.doriterm.com", "x.app.doriterm.com"), APP_ORIGIN)).toEqual({
       kind: "none",
+    });
+    const fromOldHost = link.replace("app.doriterm.com", "doriface.omo.dev");
+    expect(routeWindowOpen(fromOldHost, APP_ORIGIN)).toEqual({
+      kind: "pair",
+      fragment: fromOldHost.slice(fromOldHost.indexOf("#")),
     });
   });
 });

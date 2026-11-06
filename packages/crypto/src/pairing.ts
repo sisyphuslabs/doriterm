@@ -3,8 +3,8 @@ import { hostIdOf } from "./identity.ts";
 
 export const PAIRING_TTL_MS = 10 * 60 * 1000;
 export const DEFAULT_RELAY_URL = "https://relay-doriface.omo.dev";
-/** The hosted web app (#700): the page a phone opens from a pairing QR code when the operator names no other. */
-export const DEFAULT_PAIRING_WEB_ORIGIN = "https://doriface.omo.dev";
+/** The hosted web app (#700, #747): the app lives on its own host; the apex domain is the product landing page. */
+export const DEFAULT_PAIRING_WEB_ORIGIN = "https://app.doriterm.com";
 /** Crockford base32: no I, L, O or U. */
 export const PAIRING_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 export const PAIRING_CODE_LENGTH = 8;

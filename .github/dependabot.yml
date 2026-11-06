@@ -1,0 +1,34 @@
+# Version updates. Security updates are repository settings (Dependabot alerts and
+# security updates), not this file.
+version: 2
+updates:
+  # The workspaces resolve through bun.lock (lockfile v2), which the npm ecosystem does not read, so this entry starts
+  # producing updates once a supported lockfile exists. When Dependabot's bun support learns lockfile v2, the fix is to
+  # switch this entry to `package-ecosystem: bun` — an npm entry stays blind to a bun lockfile either way. The
+  # github-actions entry works as soon as this file lands.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch

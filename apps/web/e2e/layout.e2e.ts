@@ -70,6 +70,13 @@ for (const { name: size, narrow, inset, ...use } of VIEWPORTS) {
         await page.addStyleTag({ content: AT_REST });
         if (inset) await page.addStyleTag({ content: DESKTOP_INSET });
         const corner = await page.evaluate(cornerStarts, INSET);
+        // Settings opens as a dialog over the workspace (#843), and the workspace behind it draws no titlebar: the
+        // dialog is the screen, so its own left edge is what has to clear the window buttons. Measured in the page, not
+        // through a locator: every other screen has no dialog, and a locator would wait for one that never comes.
+        const dialog = await page.evaluate(() => {
+          const panel = document.querySelector("[data-settings-dialog]");
+          return panel === null ? null : { x: panel.getBoundingClientRect().x };
+        });
         const found = await page.evaluate(findOverflows, SKIP);
         if (OUT !== undefined) {
           const file = join(OUT, `${screen.name}-${size}-${theme}`);
@@ -78,8 +85,10 @@ for (const { name: size, narrow, inset, ...use } of VIEWPORTS) {
           writeFileSync(`${file}.json`, JSON.stringify(found, null, 1));
         }
         await context.close();
-        // Every workspace screen has a titlebar under the window buttons, and each one starts past them.
-        if (inset && screen.start === "layout") expect(corner.length).toBeGreaterThan(0);
+        // Every workspace screen has a titlebar under the window buttons, and each one starts past them; a screen that
+        // is the settings dialog clears them with its own panel instead.
+        if (inset && dialog !== null) expect(dialog.x).toBeGreaterThanOrEqual(INSET);
+        else if (inset && screen.start === "layout") expect(corner.length).toBeGreaterThan(0);
         if (inset) expect(corner.filter((start) => start < INSET)).toEqual([]);
         expect(found).toEqual([]);
       });

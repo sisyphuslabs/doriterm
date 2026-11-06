@@ -4,7 +4,7 @@ import { deepLinkArg, parseDeepLink, parseInAppLink } from "../src/config/deep-l
 
 const signPub = new Uint8Array(32).map((_, index) => (index * 37 + 11) % 256);
 const LINK = buildPairingUrl({
-  webOrigin: "https://doriface.omo.dev",
+  webOrigin: "https://app.doriterm.com",
   hostId: hostIdOf(signPub),
   noiseStaticPub: new Uint8Array(32).map((_, index) => (index * 53 + 7) % 256),
   signPub,
@@ -70,13 +70,20 @@ describe("parseInAppLink", () => {
     expect(parseInAppLink(LINK)).toEqual({ kind: "pair", fragment: FRAGMENT });
   });
 
+  test("keeps a link printed on the previous host, while that host is still live", () => {
+    expect(parseInAppLink(LINK.replace("app.doriterm.com", "doriface.omo.dev"))).toEqual({
+      kind: "pair",
+      fragment: FRAGMENT,
+    });
+  });
+
   test.each([
-    ["another origin", LINK.replace("doriface.omo.dev", "evil.omo.dev")],
-    ["a host ending in the web app's host", LINK.replace("doriface.omo.dev", "evil-doriface.omo.dev")],
-    ["a subdomain of the web app's host", LINK.replace("doriface.omo.dev", "x.doriface.omo.dev")],
-    ["a host starting with the web app's host", LINK.replace("doriface.omo.dev", "doriface.omo.dev.evil.com")],
+    ["another origin", LINK.replace("app.doriterm.com", "evil.omo.dev")],
+    ["a host ending in the web app's host", LINK.replace("app.doriterm.com", "evil-app.doriterm.com")],
+    ["a subdomain of the web app's host", LINK.replace("app.doriterm.com", "x.app.doriterm.com")],
+    ["a host starting with the web app's host", LINK.replace("app.doriterm.com", "app.doriterm.com.evil.com")],
     ["plain http", LINK.replace("https:", "http:")],
-    ["a port", LINK.replace("doriface.omo.dev", "doriface.omo.dev:8443")],
+    ["a port", LINK.replace("app.doriterm.com", "app.doriterm.com:8443")],
     ["credentials", LINK.replace("https://", "https://user@")],
     ["another path", LINK.replace("/pair#", "/pair/#")],
     ["a query", LINK.replace("/pair#", "/pair?x=1#")],

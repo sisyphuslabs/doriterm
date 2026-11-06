@@ -55,11 +55,11 @@ describe("the offer a surface shows for this computer", () => {
     expect(view.link.startsWith("https://doriface.example/pair#")).toBe(true);
   });
 
-  test("a phone's QR link is the hosted web app's /pair page with the desktop link's fragment (#700)", () => {
+  test("a phone's QR link is the app host's /pair page with the desktop link's fragment (#700, #747)", () => {
     const view = pairingOfferView({ identity, offer: offer() });
     expect(view.link.startsWith("doriface://pair#")).toBe(true);
     const phone = new URL(view.phoneLink);
-    expect(`${phone.origin}${phone.pathname}`).toBe("https://doriface.omo.dev/pair");
+    expect(`${phone.origin}${phone.pathname}`).toBe("https://app.doriterm.com/pair");
     expect(phone.search).toBe("");
     expect(phone.hash).toBe(new URL(view.link).hash);
     expect(parsePairingUrl(view.phoneLink)).toEqual({ ...parsePairingLink(view.link), webOrigin: phone.origin });
