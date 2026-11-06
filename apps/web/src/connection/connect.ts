@@ -4,6 +4,7 @@ import { base64urlDecode, CloseCode, type SecureLink, secureLink, SecureLinkErro
 import { connectRelayClient } from "@doriface/relay-client";
 import { directDial, type PageAccess, pageAccess, parseDirectAddress } from "./direct-address.ts";
 import { attemptDirect, DIRECT_BUDGET_MS, DirectFailure, type DirectReason } from "./direct-attempt.ts";
+import { directBudgetProbe } from "./direct-budget-probe.ts";
 import { canForwardPlainWs, openForwardedLink } from "./direct-forward.ts";
 import { BROWSER_DEPS, deviceKeyFor, type RelayDeps } from "./relay-deps.ts";
 import type { ConnectionSettings } from "./settings.ts";
@@ -150,7 +151,7 @@ async function openDirect(
   if (dial.kind === "blocked") return { reason: "blocked" };
   const open =
     dial.kind === "forward" ? (url: string, attempt: AbortSignal) => openForwardedLink(url, attempt) : undefined;
-  const budgetMs = options.budgetMs ?? DIRECT_BUDGET_MS;
+  const budgetMs = options.budgetMs ?? directBudgetProbe() ?? DIRECT_BUDGET_MS;
   const startedAt = performance.now();
   try {
     const secured = await attemptDirect({

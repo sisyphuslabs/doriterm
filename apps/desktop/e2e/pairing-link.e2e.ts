@@ -12,7 +12,7 @@ const signPub = new Uint8Array(32).map((_, index) => (index * 37 + 11) % 256);
 const linkSecret = new Uint8Array(32).fill(7);
 const SECRET = base64urlEncode(linkSecret);
 const PAIR_URL = buildPairingUrl({
-  webOrigin: "https://doriface.omo.dev",
+  webOrigin: "https://app.doriterm.com",
   hostId: hostIdOf(signPub),
   noiseStaticPub: new Uint8Array(32).map((_, index) => (index * 53 + 7) % 256),
   signPub,
@@ -178,8 +178,8 @@ test("a pairing link clicked in the app pairs in the app; other links still go t
     }, href);
   };
   await expectPairedInApp(page, () => click(PAIR_URL));
-  await click("https://github.com/sisyphuslabs/doriface");
+  await click("https://github.com/sisyphuslabs/doriterm");
   await expect
     .poll(() => running().evaluate(() => Reflect.get(globalThis, "openedExternally")))
-    .toEqual(["https://github.com/sisyphuslabs/doriface"]);
+    .toEqual(["https://github.com/sisyphuslabs/doriterm"]);
 });

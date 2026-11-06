@@ -82,7 +82,7 @@ test.describe("with clipboard access", () => {
   }) => {
     await crashOnLoad(page, "app");
     await page.goto("/");
-    const screen = page.getByRole("main").filter({ hasText: "doriface stopped drawing" });
+    const screen = page.getByRole("main").filter({ hasText: "Doriterm stopped drawing" });
     await expect(screen).toBeVisible({ timeout: 20_000 });
     await expect(screen).toContainText("Your terminals keep running on the host.");
     await screen.getByRole("button", { name: "Copy details" }).click();
@@ -105,7 +105,7 @@ test("a refused copy opens the details already selected", async ({ page }) => {
     });
   });
   await page.goto("/");
-  const screen = page.getByRole("main").filter({ hasText: "doriface stopped drawing" });
+  const screen = page.getByRole("main").filter({ hasText: "Doriterm stopped drawing" });
   await screen.getByRole("button", { name: "Copy details" }).click();
   await expect(screen.getByText("Copying was refused: the details are selected below.")).toBeVisible();
   const details = screen.locator("details");
@@ -119,7 +119,7 @@ test("a screen that throws shows the crash screen inside the router, and Try aga
 }) => {
   await crashOnLoad(page, "settings");
   await page.goto("/settings");
-  const screen = page.getByRole("main").filter({ hasText: "doriface stopped drawing" });
+  const screen = page.getByRole("main").filter({ hasText: "Doriterm stopped drawing" });
   await expect(screen).toBeVisible({ timeout: 20_000 });
   await stopCrash(page);
   await screen.getByRole("button", { name: "Try again" }).click();

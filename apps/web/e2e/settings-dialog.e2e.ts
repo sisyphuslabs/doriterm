@@ -1,0 +1,117 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Page } from "@playwright/test";
+import { expect, openNewTerminal, terminalCount, test } from "./fixtures.ts";
+import { hcOn } from "./machine-switch.ts";
+
+// The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
+test.use({ serviceWorkers: "block" });
+
+const settingsDialog = (page: Page) => page.getByRole("dialog", { name: "Settings" });
+const workspace = (page: Page) => page.locator('aside[aria-label="Workspace"]');
+
+/** The address of the terminal whose input holds DOM focus. */
+const focusedTerminal = (page: Page) =>
+  page.evaluate(() =>
+    document.activeElement instanceof HTMLTextAreaElement
+      ? (document.activeElement.closest("[data-terminal]")?.getAttribute("data-terminal") ?? null)
+      : null,
+  );
+
+test.describe("on a wide screen", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test("Settings opens as a dialog over a live terminal that keeps drawing its output, and Escape returns to it (#673)", async ({
+    page,
+  }) => {
+    const gates = mkdtempSync(join(tmpdir(), "doriface-settings-dialog-"));
+    try {
+      await page.goto("/");
+      const terminal = await openNewTerminal(page);
+      const address = (await terminal.getAttribute("data-terminal")) ?? "";
+      // The program prints each line only once its gate file exists, so a line drawn behind the dialog was printed
+      // while the dialog was open.
+      hcOn("host", [
+        "send",
+        address,
+        `until [ -e ${gates}/1 ]; do sleep 0.05; done; echo behind-dialog-673; until [ -e ${gates}/2 ]; do sleep 0.05; done; echo after-dialog-673`,
+      ]);
+      await expect.poll(() => focusedTerminal(page)).toBe(address);
+
+      await page.getByRole("link", { name: "Settings" }).click();
+      await expect(page).toHaveURL(/\/settings$/);
+      await expect(settingsDialog(page)).toBeVisible();
+      // The workspace stays in view behind the dialog, and is inert: Tab cannot reach it.
+      await expect(workspace(page)).toBeVisible();
+      expect(await workspace(page).evaluate((aside) => aside.closest("[inert]") !== null)).toBe(true);
+      await expect
+        .poll(() => page.evaluate(() => document.activeElement?.closest('[role="dialog"]') !== null))
+        .toBe(true);
+
+      writeFileSync(join(gates, "1"), "");
+      await expect(terminal.locator(".term-row").filter({ hasText: /^behind-dialog-673\s*$/ })).toBeVisible({
+        timeout: 15_000,
+      });
+
+      // A display choice made in the dialog applies to the terminal behind it as it is made.
+      const fontSize = () =>
+        terminal.evaluate((el) => getComputedStyle(el).getPropertyValue("--term-font-size").trim());
+      expect(await fontSize()).toBe("13pt");
+      await settingsDialog(page).getByRole("button", { name: "Appearance", exact: true }).click();
+      await settingsDialog(page).getByRole("button", { name: "Larger terminal text" }).click();
+      await expect.poll(fontSize).toBe("14pt");
+      await expect(settingsDialog(page).getByText("14 pt")).toBeVisible();
+
+      await page.keyboard.press("Escape");
+      await expect(page).toHaveURL(/\/$/);
+      await expect(settingsDialog(page)).toHaveCount(0);
+      await expect.poll(() => focusedTerminal(page)).toBe(address);
+      writeFileSync(join(gates, "2"), "");
+      await expect(terminal.locator(".term-row").filter({ hasText: /^after-dialog-673\s*$/ })).toBeVisible({
+        timeout: 15_000,
+      });
+    } finally {
+      rmSync(gates, { recursive: true, force: true });
+    }
+  });
+
+  test("a click on the backdrop closes Settings, and a dialog opened inside it is not the Settings dialog (#673)", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await terminalCount(page);
+    await page.getByRole("link", { name: "Settings" }).click();
+    await expect(settingsDialog(page)).toBeVisible();
+    // A dialog opened inside Settings takes Escape first: it closes alone, and Settings stays open.
+    await settingsDialog(page).getByRole("button", { name: "Keybindings", exact: true }).click();
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Import keybinds…" }).click();
+    await (
+      await chooser
+    ).setFiles({ name: "keybinds", mimeType: "text/plain", buffer: Buffer.from("keybind = super+t=new_tab\n") });
+    const inner = page.getByRole("dialog", { name: "Import these keybindings?" });
+    await expect(inner).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(inner).toHaveCount(0);
+    await expect(page).toHaveURL(/\/settings$/);
+    await expect(settingsDialog(page)).toBeVisible();
+    const box = await settingsDialog(page).boundingBox();
+    if (box === null) throw new Error("the Settings dialog has no box");
+    // Left of the panel, halfway down: the backdrop.
+    await page.mouse.click(Math.max(4, box.x / 2), box.y + box.height / 2);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(settingsDialog(page)).toHaveCount(0);
+  });
+});
+
+test.describe("on a phone", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test("Settings is a full-screen sheet, with the workspace hidden under it (#673)", async ({ page }) => {
+    await page.goto("/settings");
+    await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(settingsDialog(page)).toHaveCount(0);
+    await expect(workspace(page)).toBeHidden();
+  });
+});

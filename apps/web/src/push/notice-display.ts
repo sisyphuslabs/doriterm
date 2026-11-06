@@ -65,7 +65,7 @@ export function noticeDisplay(
   const actions =
     asks && prompt !== undefined ? rowActions(prompt, max) : notice.k === "permission" ? ANSWER_ACTIONS : [];
   return {
-    title: "doriface",
+    title: "Doriterm",
     body: BODY[notice.k],
     tag: notice.n,
     data: notice,

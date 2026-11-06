@@ -2,6 +2,7 @@ import { useToastManager } from "@doriface/ui";
 import { type RefObject, useState } from "react";
 import { applyModifiers, type HostPlatform, keySequence, MODIFIERS } from "../terminal/keys.ts";
 import type { TerminalPort } from "../terminal/terminal-port.ts";
+import { readClipboard } from "../terminal/paste-files.ts";
 
 export interface StickyKeys {
   readonly latched: ReadonlySet<string>;
@@ -18,9 +19,9 @@ export function useStickyKeys(port: RefObject<TerminalPort | null>, host: HostPl
   const pasteClipboard = (): void => {
     // A browser without the clipboard API throws instead of rejecting, so the call runs inside the promise chain.
     void Promise.resolve()
-      .then(() => navigator.clipboard.readText())
+      .then(() => readClipboard(navigator.clipboard))
       .then(
-        (text) => port.current?.paste(text),
+        (read) => ("files" in read ? port.current?.pasteFiles(read.files) : port.current?.paste(read.text)),
         () => toasts.add({ type: "warning", title: "Paste needs access to the clipboard" }),
       );
   };

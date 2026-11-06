@@ -5,6 +5,7 @@ import { sendBytes } from "../keys/actions.ts";
 import { copiedText } from "./copied-text.ts";
 import { useActionHandler } from "../keys/dispatcher.ts";
 import { heldSelection } from "./held-selection.ts";
+import { readClipboardImage } from "./paste-files.ts";
 import { scrollTerminal } from "./terminal-scroll.tsx";
 import type { TerminalInput } from "./terminal-view.tsx";
 
@@ -21,7 +22,12 @@ function copySelection(wt: WTerm): boolean {
 }
 
 /** `send` is the view's input path, so bound keys queue through a reconnect in order with typed input. */
-export function useTerminalActions(wt: WTerm | null, send: (data: TerminalInput) => void, focused: boolean): void {
+export function useTerminalActions(
+  wt: WTerm | null,
+  send: (data: TerminalInput) => void,
+  focused: boolean,
+  pasteFiles: (files: readonly File[]) => void,
+): void {
   useActionHandler("terminal", (action) => {
     if (wt === null || !focused) return false;
     if (action.startsWith("send:")) return (send(sendBytes(action)), true);
@@ -39,6 +45,12 @@ export function useTerminalActions(wt: WTerm | null, send: (data: TerminalInput)
         // Not consumed: the browser's own paste event runs clipboard-paste-protection and works where
         // clipboard-read is denied (the desktop shell).
         return false;
+      case "terminal.paste_image":
+        // herdr-app's Ctrl+V when bound to it: the clipboard's image as a file on the terminal's machine, else the key.
+        void readClipboardImage(navigator.clipboard ?? {}).then((image) =>
+          image === null ? send("\u0016") : pasteFiles([image]),
+        );
+        return true;
       case "terminal.select_all": {
         const selecting = Promise.resolve(wt.selectAll()).finally(() => {
           if (selectingAll.get(wt) === selecting) selectingAll.delete(wt);

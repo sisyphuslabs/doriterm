@@ -193,7 +193,7 @@ jobs:
         working-directory: apps/desktop/dist/release
         run: |
           shopt -s nullglob
-          apps=(mac*/doriface.app)
+          apps=(mac*/Doriterm.app)
           dmgs=(*"$VERSION"*.dmg)
           codesign --verify --deep --strict --verbose=2 "${apps[0]}"
           spctl -a -vv -t exec "${apps[0]}" 2>&1 | tee "$RUNNER_TEMP/spctl-app.txt"
@@ -218,6 +218,10 @@ jobs:
             cp "${found[0]}" "$out/"
           done
           ls -la "$out"
+      # install.sh (#668) downloads this binary on Linux and macOS; Windows gets the host inside the desktop installer.
+      - name: Collect the standalone host
+        if: matrix.os != 'win'
+        run: cp "apps/desktop/dist/host/${{ matrix.os }}-${{ matrix.arch }}/doriface-host" "$RUNNER_TEMP/out/doriface-host-${{ matrix.os }}-${{ matrix.arch }}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: desktop-${{ matrix.os }}-${{ matrix.arch }}
@@ -269,8 +273,8 @@ jobs:
         working-directory: apps/web/dist
         run: |
           mkdir -p "$RUNNER_TEMP/out"
-          zip -qrX "$RUNNER_TEMP/out/doriface-web-$VERSION.zip" .
-          unzip -l "$RUNNER_TEMP/out/doriface-web-$VERSION.zip" | tail -n 1
+          zip -qrX "$RUNNER_TEMP/out/doriterm-web-$VERSION.zip" .
+          unzip -l "$RUNNER_TEMP/out/doriterm-web-$VERSION.zip" | tail -n 1
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: web
@@ -287,12 +291,22 @@ jobs:
             echo "| --- | --- |"
             echo "| Job status | ${{ job.status }} |"
             echo "| Version | $VERSION |"
-            echo "| Artifact | doriface-web-$VERSION.zip |"
+            echo "| Artifact | doriterm-web-$VERSION.zip |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # #670: the candidate's web client against the last published release's on one runner. A rendering regression past
+  # apps/web/bench/thresholds.json fails this job, so no draft is made and nothing is published; the table and the runs
+  # (Doriterm-<version>-render-bench.md and .json) are attached to the release with the other files.
+  render-bench:
+    name: Render bench
+    needs: version
+    uses: ./.github/workflows/render-bench.yml
+    with:
+      label: ${{ needs.version.outputs.version }}
 
   release:
     name: Draft release
-    needs: [version, desktop, web]
+    needs: [version, desktop, web, render-bench]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -312,6 +326,9 @@ jobs:
         with:
           path: assets
           merge-multiple: true
+      # Stamped with this tag, so the installer from a release installs that release rather than whatever is latest.
+      - name: The host installer
+        run: sed "s/__DORIFACE_RELEASE__/$TAG/" apps/host/install/install.sh > assets/install.sh
       - name: SHA256SUMS.txt
         working-directory: assets
         run: |
@@ -335,10 +352,10 @@ jobs:
               gh release view "$TAG" --json assets --jq '.assets[].name' | while read -r name; do
                 gh release delete-asset "$TAG" "$name" --yes
               done
-              gh release edit "$TAG" --title "doriface $TAG" --notes-file "$RUNNER_TEMP/notes.md" --target "$GITHUB_SHA" "${pre[@]}"
+              gh release edit "$TAG" --title "Doriterm $TAG" --notes-file "$RUNNER_TEMP/notes.md" --target "$GITHUB_SHA" "${pre[@]}"
               ;;
             *)
-              gh release create "$TAG" --draft --title "doriface $TAG" --notes-file "$RUNNER_TEMP/notes.md" --target "$GITHUB_SHA" "${pre[@]}"
+              gh release create "$TAG" --draft --title "Doriterm $TAG" --notes-file "$RUNNER_TEMP/notes.md" --target "$GITHUB_SHA" "${pre[@]}"
               ;;
           esac
           gh release upload "$TAG" assets/*
@@ -403,10 +420,10 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/dl"
           cd "$RUNNER_TEMP/dl"
-          gh release download "$TAG" --pattern SHA256SUMS.txt --pattern "doriface-$VERSION-x86_64.AppImage"
+          gh release download "$TAG" --pattern SHA256SUMS.txt --pattern "Doriterm-$VERSION-x86_64.AppImage"
           sha256sum --check --ignore-missing --strict SHA256SUMS.txt
-          chmod +x "doriface-$VERSION-x86_64.AppImage"
-          echo "APPIMAGE=$RUNNER_TEMP/dl/doriface-$VERSION-x86_64.AppImage" >> "$GITHUB_ENV"
+          chmod +x "Doriterm-$VERSION-x86_64.AppImage"
+          echo "APPIMAGE=$RUNNER_TEMP/dl/Doriterm-$VERSION-x86_64.AppImage" >> "$GITHUB_ENV"
       # The AppImage carries its own statically linked FUSE 2 runtime, so it needs no libfuse.so.2: stock Ubuntu 24.04
       # ships FUSE 3 only, and a missing libfuse.so.2 is the "dlopen(): error loading libfuse.so.2" users hit. This step
       # fails when the library is present, so the launch below can never pass on a machine that hides the dependency.
@@ -429,6 +446,16 @@ jobs:
           DORIFACE_E2E_EXECUTABLE: ${{ env.APPIMAGE }}
           DEBUG: pw:browser
         run: xvfb-run --auto-servernum bun run test:e2e e2e/launch.e2e.ts e2e/terminal.e2e.ts
+      # docs/getting-started.md through the hosted relay (#672): this AppImage's host dials relay-doriface.omo.dev, and a
+      # fresh browser opens the QR code's hosted pair page, pairs and types into a terminal on this runner.
+      # It depends on relay-doriface.omo.dev and doriface.omo.dev being up and has no retries, so an outage of either holds
+      # Publish until this job is re-run.
+      - name: The user guide pairs through the hosted relay
+        working-directory: apps/desktop
+        env:
+          DORIFACE_E2E_EXECUTABLE: ${{ env.APPIMAGE }}
+          DORIFACE_HOSTED_RELAY_SMOKE: "1"
+        run: xvfb-run --auto-servernum bun run test:e2e e2e/hosted-relay-pair.e2e.ts
       - name: Workflow summary
         if: always()
         run: |
@@ -438,8 +465,8 @@ jobs:
             echo "| Field | Value |"
             echo "| --- | --- |"
             echo "| Job status | ${{ job.status }} |"
-            echo "| File | doriface-$VERSION-x86_64.AppImage |"
-            echo "| Checks | launch.e2e.ts, terminal.e2e.ts against the downloaded file |"
+            echo "| File | Doriterm-$VERSION-x86_64.AppImage |"
+            echo "| Checks | launch.e2e.ts, terminal.e2e.ts and hosted-relay-pair.e2e.ts (pairs through relay-doriface.omo.dev) against the downloaded file |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   smoke-mac:
@@ -462,32 +489,32 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/dl"
           cd "$RUNNER_TEMP/dl"
-          zip="doriface-$VERSION-arm64-mac.zip"
-          dmg="doriface-$VERSION-arm64.dmg"
+          zip="Doriterm-$VERSION-arm64-mac.zip"
+          dmg="Doriterm-$VERSION-arm64.dmg"
           gh release download "$TAG" --pattern SHA256SUMS.txt --pattern "$zip" --pattern "$dmg"
           grep -E "  ($zip|$dmg)\$" SHA256SUMS.txt | shasum -a 256 --check
           ditto -x -k "$zip" app
       - name: The dmg is notarized and stapled
         working-directory: ${{ runner.temp }}/dl
         run: |
-          dmg="doriface-$VERSION-arm64.dmg"
+          dmg="Doriterm-$VERSION-arm64.dmg"
           spctl -a -vv -t open --context context:primary-signature "$dmg" 2>&1 | tee spctl-dmg.txt
           grep -q "source=Notarized Developer ID" spctl-dmg.txt
           bash "$GITHUB_WORKSPACE/.github/scripts/macos-stapler.sh" validate "$dmg"
       - name: The app is signed and notarized, carries the version and starts
         working-directory: ${{ runner.temp }}/dl/app
         run: |
-          codesign --verify --deep --strict --verbose=2 doriface.app
-          spctl -a -vv -t exec doriface.app 2>&1 | tee ../spctl-app.txt
+          codesign --verify --deep --strict --verbose=2 Doriterm.app
+          spctl -a -vv -t exec Doriterm.app 2>&1 | tee ../spctl-app.txt
           grep -q "source=Notarized Developer ID" ../spctl-app.txt
-          bash "$GITHUB_WORKSPACE/.github/scripts/macos-stapler.sh" validate doriface.app
-          bundled=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" doriface.app/Contents/Info.plist)
+          bash "$GITHUB_WORKSPACE/.github/scripts/macos-stapler.sh" validate Doriterm.app
+          bundled=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Doriterm.app/Contents/Info.plist)
           if [ "$bundled" != "$VERSION" ]; then
             echo "::error::the app says $bundled, expected $VERSION"
             exit 1
           fi
           # Chromium prints this line once its browser process is up; wait for it, bounded, then check it is still running.
-          doriface.app/Contents/MacOS/doriface --remote-debugging-port=0 > launch.log 2>&1 &
+          Doriterm.app/Contents/MacOS/Doriterm --remote-debugging-port=0 > launch.log 2>&1 &
           pid=$!
           for _ in $(seq 1 60); do
             grep -q "DevTools listening on" launch.log && break
@@ -507,7 +534,7 @@ jobs:
             echo "| Field | Value |"
             echo "| --- | --- |"
             echo "| Job status | ${{ job.status }} |"
-            echo "| File | doriface-$VERSION-arm64-mac.zip |"
+            echo "| File | Doriterm-$VERSION-arm64-mac.zip |"
             echo "| Checks | checksums, codesign --verify, spctl (Notarized Developer ID), stapler validate, bundle version, launch |"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -529,7 +556,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       VERSION: ${{ needs.version.outputs.version }}
       TAG: ${{ needs.version.outputs.tag }}
-      SETUP: doriface-${{ needs.version.outputs.version }}-${{ matrix.arch }}-setup.exe
+      SETUP: Doriterm-${{ needs.version.outputs.version }}-${{ matrix.arch }}-setup.exe
       # Git Bash would turn the installer's /S flag into a path.
       MSYS2_ARG_CONV_EXCL: "*"
     steps:
@@ -554,7 +581,7 @@ jobs:
             find "$LOCALAPPDATA/Programs" -maxdepth 3 2>/dev/null | head -50
             exit 1
           fi
-          app="$(dirname "$(dirname "$(dirname "$host")")")/doriface.exe"
+          app="$(dirname "$(dirname "$(dirname "$host")")")/Doriterm.exe"
           test -f "$app"
           echo "HOST_EXE=$host" >> "$GITHUB_ENV"
           echo "APP_EXE=$app" >> "$GITHUB_ENV"
@@ -564,7 +591,7 @@ jobs:
       # profile (the trusted namespace the host requires) must create, re-check and reload the same identity.
       - name: The packaged host keeps its keys across two starts
         run: |
-          state="$USERPROFILE/.doriface-release-smoke"
+          state="$USERPROFILE/.doriterm-release-smoke"
           first=$("$HOST_EXE" fingerprint --state-dir "$state")
           second=$("$HOST_EXE" fingerprint --state-dir "$state")
           echo "first:  $first"

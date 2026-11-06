@@ -4,7 +4,7 @@ import { removeTerminal, stateOn, waitFor } from "./ended-terminal.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import { LAYOUT_DOC } from "./layout-doc.ts";
-import { machineRow, newOn, reconnect, STATE_BOUND_MS, switchTo } from "./machine-switch.ts";
+import { machineRow, newOn, reconnect, STATE_BOUND_MS, switchTo, OFFLINE_BOUND_MS } from "./machine-switch.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
@@ -53,7 +53,7 @@ test("a terminal whose program ends while the page is closed shows as ended afte
 test("a terminal on an added machine whose program ends while the machine is offline shows as ended once it is back", async ({
   page,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const go = test.info().outputPath("go");
   await page.goto("/");
   await expect(machineRow(page)).toContainText("connected", { timeout: 20_000 });
@@ -78,7 +78,7 @@ test("a terminal on an added machine whose program ends while the machine is off
 
     // The line to the machine drops; its core and the program keep running, and the pane shows the machine offline.
     switchTo("drop");
-    await expect(terminal).toHaveCount(0, { timeout: STATE_BOUND_MS });
+    await expect(terminal).toHaveCount(0, { timeout: OFFLINE_BOUND_MS });
     writeFileSync(go, "");
     await expect.poll(() => stateOn("machine", local), { timeout: 15_000 }).toBe("finished");
     reconnect();

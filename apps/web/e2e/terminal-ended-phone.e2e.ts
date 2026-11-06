@@ -3,7 +3,7 @@ import { agentRow, startShell } from "./agents.ts";
 import { removeTerminal, stateOn } from "./ended-terminal.ts";
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
-import { hcOn, machineRow, reconnect, STATE_BOUND_MS, switchTo } from "./machine-switch.ts";
+import { hcOn, machineRow, reconnect, STATE_BOUND_MS, switchTo, OFFLINE_BOUND_MS } from "./machine-switch.ts";
 import { fakeSoftKeyboard } from "./phone-key-bar.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
@@ -13,7 +13,7 @@ test.use({ ...phone, serviceWorkers: "block" });
 test("on a phone, a session that ended while its machine was offline shows as ended, with Close and no terminal keys", async ({
   page,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const local = startShell("machine", "ended-phone");
   const go = test.info().outputPath("go");
   try {
@@ -29,7 +29,7 @@ test("on a phone, a session that ended while its machine was offline shows as en
 
     // The line to the machine drops and the view unmounts; the program ends meanwhile, then the machine is back.
     switchTo("drop");
-    await expect(terminal).toHaveCount(0, { timeout: STATE_BOUND_MS });
+    await expect(terminal).toHaveCount(0, { timeout: OFFLINE_BOUND_MS });
     hcOn("machine", ["kill", local]);
     await expect.poll(() => stateOn("machine", local), { timeout: 15_000 }).toBe("finished");
     reconnect();

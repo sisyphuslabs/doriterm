@@ -7,6 +7,7 @@ import { contextMenuTemplate } from "../config/context-menu.ts";
 import { contentSecurityPolicy } from "../config/csp.ts";
 import { DEEP_LINK_SCHEME, deepLinkArg } from "../config/deep-link.ts";
 import { APP_ORIGIN, loopbackDevUrl } from "../config/origin.ts";
+import { storageDirToPin } from "../config/storage.ts";
 import { restorePlacement } from "../config/window-state.ts";
 import { launchBackground, secureWebPreferences, windowOptions } from "../config/window.ts";
 import { Channel, parsePlatform } from "../shared/bridge.ts";
@@ -27,6 +28,8 @@ import { revealWhenReady } from "./window-reveal.ts";
 import { UpdateWatch } from "./updater.ts";
 
 const platform = parsePlatform(process.platform);
+const pinnedStorage = storageDirToPin(app.getPath("appData"), app.commandLine.hasSwitch("user-data-dir"));
+if (pinnedStorage !== undefined) app.setPath("userData", pinnedStorage);
 const devSetting = app.isPackaged ? undefined : process.env["DORIFACE_DESKTOP_DEV_URL"];
 const devUrl = devSetting === undefined || devSetting === "" ? undefined : loopbackDevUrl(devSetting);
 const origin = devUrl === undefined ? APP_ORIGIN : new URL(devUrl).origin;
@@ -258,7 +261,7 @@ if (!app.requestSingleInstanceLock()) {
     .whenReady()
     .then(ready)
     .catch((error: unknown) => {
-      console.error(`doriface failed to start: ${String(error)}`);
+      console.error(`Doriterm failed to start: ${String(error)}`);
       app.exit(1);
     });
 }

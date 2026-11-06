@@ -21,7 +21,7 @@ function showUpdateScreen(missing: readonly string[]): void {
   heading.style.cssText = "margin:0;font-size:1.5rem";
   const need = document.createElement("p");
   need.style.margin = "0";
-  need.textContent = `doriface needs ${BASELINE} or newer. Update this browser, or open doriface in one of those.`;
+  need.textContent = `Doriterm needs ${BASELINE} or newer. Update this browser, or open Doriterm in one of those.`;
   const which = document.createElement("p");
   which.style.cssText = "margin:0;opacity:0.75;font-size:0.875rem";
   which.textContent = `This browser is missing: ${missing.join(", ")}.`;

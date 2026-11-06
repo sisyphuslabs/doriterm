@@ -15,10 +15,11 @@ import { openReadOnlyRelayPasses } from "../relay/relay-passes.ts";
 import { defaultStateDir, isRecord } from "../state/files.ts";
 import { loadHostIdentity } from "../state/host-keys.ts";
 import { pendingFromWire } from "../state/pairing.ts";
+import { waitForHost, waitSeconds } from "./wait-host.ts";
 import { pairingArtifact } from "../pair-link.ts";
 
 export const MESH_JOIN_USAGE = `usage: doriface-host mesh pair [--auto] [--no-qr] [--web-origin <url>] [--relay <url>]
-       doriface-host mesh join <mesh link | code> [--fingerprint <fp>] [--name <mesh name>] [--yes]
+       doriface-host mesh join <mesh link | code> [--fingerprint <fp>] [--name <mesh name>] [--yes] [--wait-host <secs>]
 
   mesh pair opens a single-use offer (10 minutes) for another machine to join this host's mesh. The running host
   serves the join and asks here before it admits the machine (--auto admits without asking, for scripts).
@@ -28,7 +29,8 @@ export const MESH_JOIN_USAGE = `usage: doriface-host mesh pair [--auto] [--no-qr
   --state-dir <dir>  the host's state (default $DORIFACE_HOST_STATE_DIR, else $XDG_STATE_HOME/doriface-host)
   --web-origin <url> print <url>/pair#… instead of doriface://pair#… (both are mesh join arguments)
   --hc <path>        mesh join without a running host: the herdr-core binary (default hc)
-  --session <name>   mesh join without a running host: the hc session this host serves`;
+  --session <name>   mesh join without a running host: the hc session this host serves
+  --wait-host <secs> mesh join: wait up to <secs> for the running host (a service still starting), and fail if none answers`;
 
 async function ask(question: string, out: (text: string) => void): Promise<boolean> {
   out(`${question} [y/N] `);
@@ -112,9 +114,11 @@ async function join(args: readonly string[], out: (text: string) => void, log: (
       hc: { type: "string", default: "hc" },
       session: { type: "string" },
       "state-dir": { type: "string" },
+      "wait-host": { type: "string" },
     },
   });
   const [given] = positionals;
+  const wait = values["wait-host"] === undefined ? undefined : waitSeconds(values["wait-host"]);
   if (given === undefined) throw new Error("mesh join needs a mesh pairing link or code");
   const target = parseTarget(given);
   const stateDir = values["state-dir"] ?? defaultStateDir();
@@ -122,6 +126,7 @@ async function join(args: readonly string[], out: (text: string) => void, log: (
     target.kind === "link"
       ? `join the mesh of host ${target.link.hostId}, fingerprint ${fingerprintOf(target.link.noiseStaticPub)}?`
       : undefined;
+  if (wait !== undefined) await waitForHost(stateDir, Date.now() + wait * 1000, out);
   const yes = values.yes || (question !== undefined && (await ask(question, out)));
   const request = { target: given, fingerprint: values.fingerprint, name: values.name, relay: values.relay, yes };
   if (await controlIsLive(stateDir)) {

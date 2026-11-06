@@ -8,6 +8,41 @@ export const MESH_STATUS_DOC = "doriface-mesh";
 /** The document a client device paired to the inviting host writes `{approve}` or `{deny}` to for a pending join. */
 export const MESH_APPROVAL_DOC = "doriface-mesh-approve";
 
+/**
+ * The document a client device writes `{request: <nonce>}` to for a one-line Add a machine (#668): the host answers in
+ * the same document with `{request, link, expiresAt}` (a single-use mesh offer that admits without asking) or
+ * `{request, error}`; once a machine joins on it, `{request, joined: {name, hostId}}` replaces the link, and an offer
+ * that expires unused leaves `{request, expired: true}`.
+ */
+export const MESH_OFFER_DOC = "doriface-mesh-offer";
+
+export type MeshOfferDoc =
+  | { readonly request: string }
+  | { readonly request: string; readonly link: string; readonly expiresAt: number }
+  | { readonly request: string; readonly error: string }
+  | { readonly request: string; readonly expired: true }
+  | { readonly request: string; readonly joined: { readonly name: string; readonly hostId: string } };
+
+/** The offer document as written, or undefined for anything else (a reader treats it as advisory). */
+export function parseMeshOfferDoc(value: unknown): MeshOfferDoc | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const request: unknown = Reflect.get(value, "request");
+  if (typeof request !== "string" || request === "") return undefined;
+  const link: unknown = Reflect.get(value, "link");
+  const expiresAt: unknown = Reflect.get(value, "expiresAt");
+  const error: unknown = Reflect.get(value, "error");
+  if (typeof link === "string" && typeof expiresAt === "number") return { request, link, expiresAt };
+  if (typeof error === "string") return { request, error };
+  if (Reflect.get(value, "expired") === true) return { request, expired: true };
+  const joined: unknown = Reflect.get(value, "joined");
+  if (typeof joined === "object" && joined !== null) {
+    const name: unknown = Reflect.get(joined, "name");
+    const hostId: unknown = Reflect.get(joined, "hostId");
+    if (typeof name === "string" && typeof hostId === "string") return { request, joined: { name, hostId } };
+  }
+  return { request };
+}
+
 /** The `v` of the status document; a reader refuses any other value. */
 export const MESH_STATUS_VERSION = 1;
 

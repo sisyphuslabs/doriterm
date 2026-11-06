@@ -43,12 +43,26 @@ const replyOf = (outcome: Outcome): Response => {
   }
 };
 
+/** Reads at most `MAX_BODY` bytes: a body without a length (chunked) is refused as soon as it passes the cap. */
 async function readBody(request: Request): Promise<Uint8Array> {
   const declared = Number(request.headers.get("content-length") ?? "0");
   if (declared > MAX_BODY) throw new Refusal(413, "body too large");
-  const body = new Uint8Array(await request.arrayBuffer());
-  if (body.byteLength > MAX_BODY) throw new Refusal(413, "body too large");
-  return body;
+  const body = new Uint8Array(MAX_BODY);
+  let length = 0;
+  const reader = request.body?.getReader();
+  if (reader === undefined) return body.subarray(0, 0);
+  for (;;) {
+    // oxlint-disable-next-line no-await-in-loop -- a stream is read chunk by chunk, in order
+    const { done, value } = await reader.read();
+    if (done) return body.subarray(0, length);
+    if (length + value.byteLength > MAX_BODY) {
+      // oxlint-disable-next-line no-await-in-loop -- the loop ends here: the stream is cancelled once, then refused
+      await reader.cancel();
+      throw new Refusal(413, "body too large");
+    }
+    body.set(value, length);
+    length += value.byteLength;
+  }
 }
 
 /**

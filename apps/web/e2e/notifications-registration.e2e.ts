@@ -69,17 +69,23 @@ test("a connection moved to another host takes notifications along; the old host
   page,
 }) => {
   const service = suite.service();
+  await page.addInitScript(() => Reflect.set(window, "__dorifacePushMoves", []));
   await turnOn(page);
   expect(await savedRoute(page)).toMatchObject({ pushUrl: `ws://127.0.0.1:${E2E_HOST_PORT}/v1/push` });
   await settingsSection(page, "Connections").click();
   const gateway = page.getByLabel("Gateway", { exact: true });
   await gateway.fill(`ws://127.0.0.1:${E2E_LAYOUT_PORT}/v1/hc`);
   await gateway.press("Enter");
-  await expect.poll(() => endpoints(E2E_LAYOUT_PORT)).toEqual([service.endpoint]);
+  // The move this change started is awaited where it runs, and the hosts are read once it is done: a move on a busy
+  // machine takes seconds, and polling the hosts on a clock decided the result by the machine's speed (#780).
+  const moves = await page.evaluate(async () => {
+    const recorded: unknown = Reflect.get(window, "__dorifacePushMoves");
+    if (!Array.isArray(recorded)) return 0;
+    await Promise.all(recorded);
+    return recorded.length;
+  });
+  expect(moves).toBeGreaterThan(0);
+  expect(await endpoints(E2E_LAYOUT_PORT)).toEqual([service.endpoint]);
   expect(await endpoints()).toEqual([]);
-  await expect
-    .poll(async () => await savedRoute(page))
-    .toMatchObject({
-      pushUrl: `ws://127.0.0.1:${E2E_LAYOUT_PORT}/v1/push`,
-    });
+  expect(await savedRoute(page)).toMatchObject({ pushUrl: `ws://127.0.0.1:${E2E_LAYOUT_PORT}/v1/push` });
 });

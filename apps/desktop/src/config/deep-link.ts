@@ -3,7 +3,13 @@ import { buildPairingUrl, parsePairingUrl } from "@doriface/crypto";
 export const DEEP_LINK_SCHEME = "doriface";
 
 /** The web app whose pairing links (`<origin>/pair#…`, docs/transport.md "Pairing") the desktop app opens itself. */
-export const PAIRING_WEB_ORIGIN = "https://doriface.omo.dev";
+export const PAIRING_WEB_ORIGIN = "https://app.doriterm.com";
+
+/**
+ * Origins whose pairing page this build keeps in the app. The previous host is still live while the app moves, so a
+ * link a member printed before the move keeps opening here; it drops out when that host redirects to the new one.
+ */
+export const PAIRING_WEB_ORIGINS: readonly string[] = [PAIRING_WEB_ORIGIN, "https://doriface.omo.dev"];
 
 export type DeepLink = { readonly kind: "open" } | { readonly kind: "pair"; readonly fragment: string };
 
@@ -55,7 +61,7 @@ export function parseDeepLink(candidate: unknown): DeepLink | undefined {
 /** A link clicked inside the app: only the web app's own pairing link stays in the app. */
 export function parseInAppLink(candidate: unknown): DeepLink | undefined {
   const url = parseBounded(candidate);
-  if (url === undefined || url.origin !== PAIRING_WEB_ORIGIN || url.pathname !== "/pair") return undefined;
+  if (url === undefined || !PAIRING_WEB_ORIGINS.includes(url.origin) || url.pathname !== "/pair") return undefined;
   const fragment = canonicalFragment(url.hash);
   return fragment === undefined ? undefined : { kind: "pair", fragment };
 }

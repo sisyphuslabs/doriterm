@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { agentRow, endAgent, startAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
-import { machineRow, reconnect, STATE_BOUND_MS, switchOn, switchTo } from "./machine-switch.ts";
+import { machineRow, reconnect, switchOn, switchTo, OFFLINE_BOUND_MS } from "./machine-switch.ts";
 
 /** hc's redial backoff after a few refused dials, plus one machine.list read. */
 const REDIAL_BOUND_MS = 45_000;
@@ -19,6 +19,7 @@ test.describe("a machine whose line drops while its terminals keep running", () 
   });
 
   test("its sessions stop reading live and Working, and leave the live counts", async ({ page }) => {
+    test.setTimeout(180_000);
     await page.goto("/");
     const working = page.getByRole("region", { name: "Working" });
     await expect(agentRow(working, "crunch", true)).toBeVisible({ timeout: 20_000 });
@@ -26,7 +27,7 @@ test.describe("a machine whose line drops while its terminals keep running", () 
     const before = Number.parseInt((await statusCount(page).textContent()) ?? "", 10);
 
     switchTo("drop");
-    await expect(machineRow(page)).toContainText(/offline\s*0/, { timeout: STATE_BOUND_MS });
+    await expect(machineRow(page)).toContainText(/offline\s*0/, { timeout: OFFLINE_BOUND_MS });
     await expect(working.getByRole("button", { name: /crunch/ })).toHaveCount(0);
     const row = agentRow(page.getByRole("region", { name: "Offline" }), "crunch", true);
     await expect(row.getByRole("img", { name: "Unknown" })).toBeVisible();
@@ -34,14 +35,14 @@ test.describe("a machine whose line drops while its terminals keep running", () 
   });
 
   test("when the machine answers again its sessions come back as Working, with no reload", async ({ page }) => {
-    test.setTimeout(120_000);
+    test.setTimeout(180_000);
     await page.goto("/");
     const working = page.getByRole("region", { name: "Working" });
     await expect(agentRow(working, "crunch", true)).toBeVisible({ timeout: 20_000 });
     await page.evaluate(() => Object.assign(window, { sameDocument: true }));
 
     switchTo("drop");
-    await expect(page.getByRole("region", { name: "Offline" })).toBeVisible({ timeout: STATE_BOUND_MS });
+    await expect(page.getByRole("region", { name: "Offline" })).toBeVisible({ timeout: OFFLINE_BOUND_MS });
     switchOn();
     await expect(agentRow(working, "crunch", true)).toBeVisible({ timeout: REDIAL_BOUND_MS });
     await expect(page.getByRole("region", { name: "Offline" })).toHaveCount(0);

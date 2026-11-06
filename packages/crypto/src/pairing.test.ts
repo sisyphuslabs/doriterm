@@ -86,7 +86,7 @@ const fragment = (from: string): URLSearchParams => new URLSearchParams(new URL(
 
 describe("pairing URL", () => {
   const link = {
-    webOrigin: "https://doriface.omo.dev/",
+    webOrigin: "https://app.doriterm.com/",
     hostId: identity.hostId,
     noiseStaticPub: identity.noise.publicKey,
     signPub: identity.sign.publicKey,
@@ -96,11 +96,11 @@ describe("pairing URL", () => {
   const url = buildPairingUrl(link);
 
   test("puts everything in the fragment and parses back", () => {
-    expect(url.startsWith(`https://doriface.omo.dev/pair#h=${identity.hostId}&k=`)).toBe(true);
+    expect(url.startsWith(`https://app.doriterm.com/pair#h=${identity.hostId}&k=`)).toBe(true);
     expect(new URL(url).search).toBe("");
     expect(parsePairingUrl(url)).toEqual({
       ...link,
-      webOrigin: "https://doriface.omo.dev",
+      webOrigin: "https://app.doriterm.com",
       relayUrl: "wss://relay-doriface.omo.dev",
       mesh: false,
     });
@@ -144,7 +144,7 @@ describe("pairing URL", () => {
     ["a short key", url.replace(/k=[^&]+/, "k=AAAA")],
     ["a relay that is not a URL", url.replace(/r=[^&]+$/, "r=relay")],
     ["an oversized key", url.replace(/k=[^&]+/, `k=${"A".repeat(100_000)}`)],
-    ["a non-HTTP(S) page", url.replace("https://doriface.omo.dev", "file://")],
+    ["a non-HTTP(S) page", url.replace("https://app.doriterm.com", "file://")],
   ])("rejects %s", (_, bad) => {
     expect(() => parsePairingUrl(bad)).toThrow();
   });

@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <title>doriface</title>
+  <title>Doriterm</title>
   <path id="tile" fill="#4A6EE0" d="M512 0C905 0 1024 119 1024 512C1024 905 905 1024 512 1024C119 1024 0 905 0 512C0 119 119 0 512 0Z"/>
   <g id="art">
     <ellipse cx="262" cy="380" rx="92" ry="170" transform="rotate(22 262 380)" fill="#9196A6"/>

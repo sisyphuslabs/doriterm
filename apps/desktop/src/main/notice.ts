@@ -15,7 +15,7 @@ export interface NoticeText {
   readonly body: string;
 }
 
-export const noticeText = (notice: DesktopNotice): NoticeText => ({ title: "doriface", body: BODY[notice.kind] });
+export const noticeText = (notice: DesktopNotice): NoticeText => ({ title: "Doriterm", body: BODY[notice.kind] });
 
 /** Shown notifications, held until clicked or closed: one only referenced by the OS can be collected with its click. */
 const live = new Set<Notification>();

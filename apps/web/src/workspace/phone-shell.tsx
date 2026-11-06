@@ -10,6 +10,7 @@ import { onlyThisMachine } from "./machines.ts";
 import type { Session } from "./model.ts";
 import { ConnectionLine, ConnectionPathItem, ReconnectStatus } from "./reconnect-status.tsx";
 import { usePendingUpdate } from "../update/update-store.ts";
+import { FirstRunGuideCard } from "../pair/first-run-guide-card.tsx";
 import { PhoneEmpty } from "./phone-empty.tsx";
 import { PhoneListLoading } from "./phone-loading.tsx";
 import { PhoneTerminal } from "./phone-terminal.tsx";
@@ -75,6 +76,7 @@ export function PhoneShell(props: PhoneShellProps) {
         </header>
         <ConnectionLine />
         <ScrollArea slot="agents-list" className="flex-1">
+          <FirstRunGuideCard listVisible listedLive={!empty} onNew={onNew} />
           {machines.terminalsLoaded ? (
             <>
               {empty ? (

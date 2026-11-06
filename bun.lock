@@ -13,7 +13,7 @@
     },
     "apps/desktop": {
       "name": "@doriface/desktop",
-      "version": "0.1.2",
+      "version": "0.1.4",
       "devDependencies": {
         "@doriface/crypto": "workspace:*",
         "@doriface/host": "workspace:*",
@@ -43,6 +43,24 @@
       },
       "devDependencies": {
         "@doriface/protocol": "workspace:*",
+      },
+    },
+    "apps/landing": {
+      "name": "@doriface/landing",
+      "version": "0.1.0",
+      "dependencies": {
+        "@doriface/ui": "workspace:*",
+        "lucide-react": "1.66.0",
+        "react": "19.3.1",
+        "react-dom": "19.3.1",
+      },
+      "devDependencies": {
+        "@tailwindcss/vite": "4.3.4",
+        "@types/react": "19.3.0",
+        "@types/react-dom": "19.3.0",
+        "@vitejs/plugin-react": "6.2.1",
+        "tailwindcss": "4.3.4",
+        "vite": "8.3.5",
       },
     },
     "apps/mobile": {
@@ -413,6 +431,8 @@
     "@doriface/ghostty-wasm": ["@doriface/ghostty-wasm@workspace:packages/ghostty-wasm"],
 
     "@doriface/host": ["@doriface/host@workspace:apps/host"],
+
+    "@doriface/landing": ["@doriface/landing@workspace:apps/landing"],
 
     "@doriface/mesh": ["@doriface/mesh@workspace:packages/mesh"],
 

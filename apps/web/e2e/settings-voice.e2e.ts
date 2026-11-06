@@ -66,7 +66,7 @@ test("in the desktop app, the page says the app cannot dictate and points at the
   const notice = page.getByRole("status").filter({ hasText: "Dictation isn't available here" });
   await expect(notice).toBeVisible();
   await expect(notice).toContainText("The desktop app can't dictate yet");
-  await expect(notice).toContainText("use doriface in Chrome or Safari");
+  await expect(notice).toContainText("use Doriterm in Chrome or Safari");
   await expect(page.getByText("Speech recognition", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Language/ })).toHaveCount(0);
 });

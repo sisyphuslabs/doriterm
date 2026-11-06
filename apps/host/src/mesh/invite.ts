@@ -181,6 +181,7 @@ export async function serveJoin(lines: MeshLines, peerStatic: Uint8Array, deps: 
     await decision(lines, deps, join);
     sendWelcome(lines, admit(deps, meshId, offer.inviter, card, { body: reply.body, sig: reply.sig }), meshId);
     lines.detach();
+    deps.pending.admitted(join);
     return card;
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);

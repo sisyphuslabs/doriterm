@@ -1,0 +1,993 @@
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>doriterm: Your devices. One terminal.</title>
+    <meta
+      name="description"
+      content="Your devices. One terminal. Every machine you own, linked through an end-to-end encrypted mesh."
+    />
+    <meta name="theme-color" content="#0f0e0d" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)" />
+    <meta property="og:title" content="doriterm: Your devices. One terminal." />
+    <meta property="og:description" content="Every machine you own, linked through an end-to-end encrypted mesh." />
+    <meta property="og:url" content="https://doriterm.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://doriterm.com/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://doriterm.com/" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="./fonts/TimelessSansVF.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="./fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="/theme-init.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="nav">
+      <div class="wrap nav__inner">
+        <a class="brand" href="#top" aria-label="doriterm, home">
+          <img class="mark-dark" src="/mark-dark.svg" alt="" width="28" height="28" />
+          <img class="mark-light" src="/mark-light.svg" alt="" width="28" height="28" />
+          <span>doriterm</span>
+        </a>
+        <nav aria-label="Sections">
+          <ul class="nav__links">
+            <li><a href="#mesh">Mesh</a></li>
+            <li><a href="#app">App</a></li>
+            <li><a href="#relay">Relay</a></li>
+            <li><a href="#pairing">Pairing</a></li>
+            <li><a href="#everywhere">Platforms</a></li>
+            <li><a href="https://github.com/sisyphuslabs/doriterm">GitHub</a></li>
+          </ul>
+        </nav>
+        <div class="nav__end">
+          <div class="theme-switch" role="group" aria-label="Theme">
+            <button type="button" data-theme-choice="system" aria-pressed="true" title="Match the system">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="3" y="4" width="18" height="12" rx="2" />
+                <path d="M8 20h8M12 16v4" />
+              </svg>
+              <span class="visually-hidden">System</span>
+            </button>
+            <button type="button" data-theme-choice="light" aria-pressed="false" title="Light">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="4" />
+                <path
+                  d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
+                />
+              </svg>
+              <span class="visually-hidden">Light</span>
+            </button>
+            <button type="button" data-theme-choice="dark" aria-pressed="false" title="Dark">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
+              </svg>
+              <span class="visually-hidden">Dark</span>
+            </button>
+          </div>
+          <a class="btn btn--primary btn--sm" href="https://app.doriterm.com">Open the app</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top">
+        <div class="hero__bg" aria-hidden="true"></div>
+        <div class="wrap hero__inner">
+          <h1 class="display">Your devices.<br /><span class="display__accent">One terminal.</span></h1>
+          <p class="hero__sub">
+            Every machine you own, linked through an <span class="nowrap">end-to-end</span> encrypted mesh. Start OmO on
+            the mac mini at home and answer it from your phone.
+          </p>
+          <div class="hero__cta">
+            <a class="btn btn--primary" href="https://app.doriterm.com">Open the app</a>
+            <a class="btn btn--ghost" href="https://github.com/sisyphuslabs/doriterm/releases"
+              >Download for desktop <span class="arrow" aria-hidden="true">&rarr;</span></a
+            >
+          </div>
+          <p class="hero__makers">
+            From <a href="#makers">Sisyphus Labs</a>, the people who made <a href="https://sisyphuslabs.ai">Dori</a> and
+            <a href="https://omo.dev">OmO</a>.
+          </p>
+
+          <div class="app-stage hero__stage">
+            <figure class="frame app-desktop">
+              <div class="frame__bar">
+                <span class="frame__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="frame__title">doriterm, studio</span>
+                <span class="frame__meta">app.doriterm.com</span>
+              </div>
+              <div class="live" style="--w: 1280; --h: 780">
+                <iframe
+                  data-src="/mockup/?view=desktop"
+                  title="The doriterm desktop workspace, drawn by the app's components with sample data"
+                  tabindex="-1"
+                  width="1280"
+                  height="780"
+                ></iframe>
+              </div>
+            </figure>
+            <figure class="app-phone">
+              <div class="live" style="--w: 390; --h: 844">
+                <iframe
+                  data-src="/mockup/?view=phone"
+                  title="The doriterm phone terminal with its key bar, drawn by the app's components with sample data"
+                  tabindex="-1"
+                  width="390"
+                  height="844"
+                ></iframe>
+              </div>
+            </figure>
+          </div>
+        </div>
+
+        <nav class="wrap index" aria-label="On this page">
+          <ol>
+            <li>
+              <a href="#mesh"
+                ><span class="n">01</span><span class="t">Every machine you own, one mesh</span
+                ><span class="d">signed records, no open ports</span></a
+              >
+            </li>
+            <li>
+              <a href="#app"
+                ><span class="n">02</span><span class="t">The app, live</span
+                ><span class="d">desktop and phone</span></a
+              >
+            </li>
+            <li>
+              <a href="#relay"
+                ><span class="n">03</span><span class="t">The relay is a pipe</span
+                ><span class="d">ciphertext in, ciphertext out</span></a
+              >
+            </li>
+            <li>
+              <a href="#pairing"
+                ><span class="n">04</span><span class="t">Pair a phone in one scan</span
+                ><span class="d">QR, link or an 8-character code</span></a
+              >
+            </li>
+            <li>
+              <a href="#everywhere"
+                ><span class="n">05</span><span class="t">Desktop, browser and phone</span
+                ><span class="d">rendered by libghostty</span></a
+              >
+            </li>
+          </ol>
+        </nav>
+      </section>
+
+      <section class="section" id="mesh" aria-labelledby="mesh-title">
+        <div class="wrap">
+          <p class="eyebrow reveal"><span class="num">01</span><span class="rule"></span>Mesh</p>
+          <h2 class="h2 reveal" id="mesh-title">
+            Every machine you own, one mesh.<br /><span class="soft">No ssh, no open port.</span>
+          </h2>
+          <p class="section__lede reveal">
+            Each machine keeps its own key and signs the membership records it writes with Ed25519. The records sync
+            over the same encrypted relay as your terminals.
+            <strong>The relay stores none of it and can forge none of it.</strong>
+          </p>
+          <figure class="fleet reveal" data-fleet aria-labelledby="fleet-title">
+            <div class="fleet__steps" role="group" aria-label="Fleet scenes">
+              <button type="button" data-fleet-step="0" aria-pressed="true">
+                <span class="fleet__n">01</span>One mesh
+              </button>
+              <button type="button" data-fleet-step="1" aria-pressed="false">
+                <span class="fleet__n">02</span>Work
+              </button>
+              <button type="button" data-fleet-step="2" aria-pressed="false">
+                <span class="fleet__n">03</span>Join
+              </button>
+              <button type="button" data-fleet-step="3" aria-pressed="false">
+                <span class="fleet__n">04</span>Revoke
+              </button>
+            </div>
+            <canvas class="fleet__canvas" aria-hidden="true"></canvas>
+            <figcaption class="fleet__caption">
+              <p data-fleet-text="0">
+                <strong id="fleet-title">Three machines, one mesh.</strong> Your laptop, the mac mini at home and a
+                cloud box share one mesh, and each one lists the others in its sidebar. The phone you paired sees all
+                three.
+              </p>
+              <p data-fleet-text="1" hidden>
+                <strong>Work runs where you start it.</strong> Start OmO on the mac mini and answer it from your phone.
+                Each record is sealed with Noise on the machine that sends it and opens only on the machine it is for.
+              </p>
+              <p data-fleet-text="2" hidden>
+                <strong>A new machine asks to join.</strong> <code>mesh pair</code> on the laptop invites pi. You
+                approve it on the laptop, the signed admit record syncs, and every member dials pi.
+              </p>
+              <p data-fleet-text="3" hidden>
+                <strong>One record removes one.</strong> <code>mesh revoke cloud-box --compromised</code> reaches every
+                member as one signed record. Each closes its sessions with cloud-box and refuses its keys.
+              </p>
+            </figcaption>
+          </figure>
+          <div class="mesh-facts">
+            <div class="card reveal">
+              <div class="card__icon" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M12 3l7 4v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V7z" />
+                  <path d="M9 12l2 2 4-4" />
+                </svg>
+              </div>
+              <h3>Approved, then admitted</h3>
+              <p>
+                A machine joins after you approve it on a member, unless you opened the invite with <code>--auto</code>.
+                For seven days every member shows who joined, who invited it and its fingerprint.
+              </p>
+            </div>
+            <div class="card reveal" style="--delay: 60ms">
+              <div class="card__icon" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <circle cx="6" cy="6" r="2.5" />
+                  <circle cx="18" cy="6" r="2.5" />
+                  <circle cx="12" cy="18" r="2.5" />
+                  <path d="M8.5 6h7M7.2 8.2l3.6 7.6M16.8 8.2l-3.6 7.6" />
+                </svg>
+              </div>
+              <h3>One sidebar, every machine</h3>
+              <p>
+                Each member adds every other member as a herdr machine on its own, so their spaces and agents appear
+                under their names.
+              </p>
+            </div>
+            <div class="card reveal" style="--delay: 120ms">
+              <div class="card__icon" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M5.6 5.6l12.8 12.8" />
+                </svg>
+              </div>
+              <h3>Revoke in one record</h3>
+              <p>
+                With <code>--compromised</code>, one record removes a member and every machine it admitted. Its sessions
+                close and its keys are refused on every path.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="app" aria-labelledby="app-title">
+        <div class="wrap">
+          <p class="eyebrow reveal"><span class="num">02</span><span class="rule"></span>App</p>
+          <h2 class="h2 reveal" id="app-title">
+            Every terminal on every machine.<br /><span class="soft">One sidebar for all of them.</span>
+          </h2>
+          <p class="section__lede reveal">
+            Spaces on the left, agents grouped by whether they need you, are working or are done, and split terminals on
+            the right. On a phone the same terminal gets a key bar with ctrl, esc and the arrows.
+            <strong>The window at the top of the page is the app's own components, live, with sample data.</strong>
+          </p>
+          <ul class="facts reveal">
+            <li>
+              <strong>Close the tab. The work keeps going.</strong> Agents run in herdr-core on their own machine, and
+              the window is only a view of them. Close the browser or put the phone away, and every terminal is where
+              you left it.
+            </li>
+            <li>
+              <strong>Any agent that runs in a terminal.</strong> OmO, Claude Code, Codex or your own script. Agents
+              that report their state over OSC 7501 also show whether they need you.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="section" id="relay" aria-labelledby="relay-title">
+        <div class="wrap">
+          <p class="eyebrow reveal"><span class="num">03</span><span class="rule"></span>Relay</p>
+          <h2 class="h2 reveal" id="relay-title">
+            The relay is a pipe.<br /><span class="soft">It cannot read what it carries.</span>
+          </h2>
+          <p class="section__lede reveal">
+            Your phone and your machine agree on keys with a Noise IK handshake, then seal every record with
+            ChaCha20-Poly1305 and rekey every 2<sup>20</sup> messages. The relay, on Cloudflare Workers, matches the two
+            ends by host id and copies bytes between them. <strong>It keeps no accounts and stores no messages.</strong>
+          </p>
+
+          <div class="pipe" data-pipe>
+            <figure class="frame reveal" style="margin: 0">
+              <div class="frame__bar">
+                <span class="frame__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="frame__title">phone</span>
+                <span class="frame__meta">you type</span>
+              </div>
+              <figcaption class="visually-hidden">On the phone, you type git status.</figcaption>
+              <pre
+                class="term"
+              ><span class="prompt">~/app $</span> <span data-type>git status</span><span class="caret" aria-hidden="true"></span></pre>
+            </figure>
+
+            <div
+              class="wire reveal"
+              style="--delay: 80ms"
+              role="img"
+              aria-label="Between the two ends, the relay carries only encrypted records in both directions."
+            >
+              <div class="wire__label"><span>relay-doriface.omo.dev</span><b>ciphertext</b></div>
+              <div class="wire__lane" aria-hidden="true"><div class="wire__stream" data-stream="out"></div></div>
+              <div class="wire__lane wire__lane--back" aria-hidden="true">
+                <div class="wire__stream" data-stream="back"></div>
+              </div>
+              <p class="wire__foot">no key, no plaintext, no storage</p>
+            </div>
+
+            <figure class="frame reveal" style="margin: 0; --delay: 160ms">
+              <div class="frame__bar">
+                <span class="frame__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="frame__title">server</span>
+                <span class="frame__meta">hc runs it</span>
+              </div>
+              <figcaption class="visually-hidden">
+                On the server, git status runs and prints that the branch is up to date.
+              </figcaption>
+              <pre class="term" data-host><span class="prompt">~/app $</span> git status
+<span class="dim">On branch</span> main
+<span class="dim">Your branch is up to date with</span> 'origin/main'.
+<span class="ok">nothing to commit, working tree clean</span></pre>
+            </figure>
+          </div>
+
+          <div class="sees">
+            <div class="card reveal">
+              <h3>What the relay can see</h3>
+              <ul>
+                <li>which host ids open sessions to which, and when</li>
+                <li>the addresses they connect from</li>
+                <li>the size and timing of encrypted records</li>
+                <li>
+                  with a typed code, a relay that answers as a fake host can read the new device's name; the fingerprint
+                  check then shows a key that is not your host's
+                </li>
+              </ul>
+            </div>
+            <div class="card reveal no" style="--delay: 80ms">
+              <h3>What it never sees</h3>
+              <ul>
+                <li>your keystrokes and terminal output</li>
+                <li>the pairing secret in a QR code or link, and mesh records</li>
+                <li>nothing it learns lets it forge, replay or splice a record</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="pairing" aria-labelledby="pairing-title">
+        <div class="wrap split">
+          <div>
+            <p class="eyebrow reveal"><span class="num">04</span><span class="rule"></span>Pairing</p>
+            <h2 class="h2 reveal" id="pairing-title">
+              Pair a phone in one scan.<br /><span class="soft">The secret never leaves the link.</span>
+            </h2>
+            <p class="section__lede reveal">
+              The pairing secret lives in the link's <code>#fragment</code>, which a browser never sends to any server.
+              No camera handy? Type the 8-character code instead.
+              <strong>CPace keeps the relay from testing guesses offline</strong>, and the host answers at most 10 tries
+              per offer.
+            </p>
+            <ol class="steps reveal">
+              <li>
+                <div>
+                  <b>Run one command on the machine</b
+                  ><span>It prints a QR code, a link, a code and the host's fingerprint.</span>
+                </div>
+              </li>
+              <li>
+                <div>
+                  <b>Scan it with your phone</b><span>The camera opens the pair page with everything filled in.</span>
+                </div>
+              </li>
+              <li>
+                <div>
+                  <b>Compare the fingerprint</b
+                  ><span
+                    >Ten groups of four, from the host's Noise key. A changed key is refused unless you say so.</span
+                  >
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          <figure
+            class="frame reveal"
+            style="margin: 0; --delay: 120ms"
+            data-pair
+            aria-label="Output of doriface-host pair: a QR code, a link whose fragment carries the secret, the typed code and the fingerprint"
+          >
+            <div class="frame__bar">
+              <span class="frame__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="frame__title">server</span>
+              <span class="frame__meta">expires in 10:00</span>
+            </div>
+            <pre class="term" style="padding-bottom: 0"><span class="prompt">~ $</span> doriface-host pair</pre>
+            <div class="pair-out">
+              <div class="qr" aria-hidden="true">
+                <svg viewBox="0 0 25 25" shape-rendering="crispEdges">
+                  <rect x="0" y="0" width="1.02" height="1.02" />
+                  <rect x="1" y="0" width="1.02" height="1.02" />
+                  <rect x="2" y="0" width="1.02" height="1.02" />
+                  <rect x="3" y="0" width="1.02" height="1.02" />
+                  <rect x="4" y="0" width="1.02" height="1.02" />
+                  <rect x="5" y="0" width="1.02" height="1.02" />
+                  <rect x="6" y="0" width="1.02" height="1.02" />
+                  <rect x="8" y="0" width="1.02" height="1.02" />
+                  <rect x="9" y="0" width="1.02" height="1.02" />
+                  <rect x="12" y="0" width="1.02" height="1.02" />
+                  <rect x="13" y="0" width="1.02" height="1.02" />
+                  <rect x="14" y="0" width="1.02" height="1.02" />
+                  <rect x="18" y="0" width="1.02" height="1.02" />
+                  <rect x="19" y="0" width="1.02" height="1.02" />
+                  <rect x="20" y="0" width="1.02" height="1.02" />
+                  <rect x="21" y="0" width="1.02" height="1.02" />
+                  <rect x="22" y="0" width="1.02" height="1.02" />
+                  <rect x="23" y="0" width="1.02" height="1.02" />
+                  <rect x="24" y="0" width="1.02" height="1.02" />
+                  <rect x="0" y="1" width="1.02" height="1.02" />
+                  <rect x="6" y="1" width="1.02" height="1.02" />
+                  <rect x="8" y="1" width="1.02" height="1.02" />
+                  <rect x="9" y="1" width="1.02" height="1.02" />
+                  <rect x="10" y="1" width="1.02" height="1.02" />
+                  <rect x="11" y="1" width="1.02" height="1.02" />
+                  <rect x="12" y="1" width="1.02" height="1.02" />
+                  <rect x="14" y="1" width="1.02" height="1.02" />
+                  <rect x="18" y="1" width="1.02" height="1.02" />
+                  <rect x="24" y="1" width="1.02" height="1.02" />
+                  <rect x="0" y="2" width="1.02" height="1.02" />
+                  <rect x="2" y="2" width="1.02" height="1.02" />
+                  <rect x="3" y="2" width="1.02" height="1.02" />
+                  <rect x="4" y="2" width="1.02" height="1.02" />
+                  <rect x="6" y="2" width="1.02" height="1.02" />
+                  <rect x="8" y="2" width="1.02" height="1.02" />
+                  <rect x="9" y="2" width="1.02" height="1.02" />
+                  <rect x="12" y="2" width="1.02" height="1.02" />
+                  <rect x="13" y="2" width="1.02" height="1.02" />
+                  <rect x="14" y="2" width="1.02" height="1.02" />
+                  <rect x="18" y="2" width="1.02" height="1.02" />
+                  <rect x="20" y="2" width="1.02" height="1.02" />
+                  <rect x="21" y="2" width="1.02" height="1.02" />
+                  <rect x="22" y="2" width="1.02" height="1.02" />
+                  <rect x="24" y="2" width="1.02" height="1.02" />
+                  <rect x="0" y="3" width="1.02" height="1.02" />
+                  <rect x="2" y="3" width="1.02" height="1.02" />
+                  <rect x="3" y="3" width="1.02" height="1.02" />
+                  <rect x="4" y="3" width="1.02" height="1.02" />
+                  <rect x="6" y="3" width="1.02" height="1.02" />
+                  <rect x="9" y="3" width="1.02" height="1.02" />
+                  <rect x="10" y="3" width="1.02" height="1.02" />
+                  <rect x="11" y="3" width="1.02" height="1.02" />
+                  <rect x="13" y="3" width="1.02" height="1.02" />
+                  <rect x="15" y="3" width="1.02" height="1.02" />
+                  <rect x="16" y="3" width="1.02" height="1.02" />
+                  <rect x="18" y="3" width="1.02" height="1.02" />
+                  <rect x="20" y="3" width="1.02" height="1.02" />
+                  <rect x="21" y="3" width="1.02" height="1.02" />
+                  <rect x="22" y="3" width="1.02" height="1.02" />
+                  <rect x="24" y="3" width="1.02" height="1.02" />
+                  <rect x="0" y="4" width="1.02" height="1.02" />
+                  <rect x="2" y="4" width="1.02" height="1.02" />
+                  <rect x="3" y="4" width="1.02" height="1.02" />
+                  <rect x="4" y="4" width="1.02" height="1.02" />
+                  <rect x="6" y="4" width="1.02" height="1.02" />
+                  <rect x="8" y="4" width="1.02" height="1.02" />
+                  <rect x="9" y="4" width="1.02" height="1.02" />
+                  <rect x="10" y="4" width="1.02" height="1.02" />
+                  <rect x="12" y="4" width="1.02" height="1.02" />
+                  <rect x="13" y="4" width="1.02" height="1.02" />
+                  <rect x="14" y="4" width="1.02" height="1.02" />
+                  <rect x="18" y="4" width="1.02" height="1.02" />
+                  <rect x="20" y="4" width="1.02" height="1.02" />
+                  <rect x="21" y="4" width="1.02" height="1.02" />
+                  <rect x="22" y="4" width="1.02" height="1.02" />
+                  <rect x="24" y="4" width="1.02" height="1.02" />
+                  <rect x="0" y="5" width="1.02" height="1.02" />
+                  <rect x="6" y="5" width="1.02" height="1.02" />
+                  <rect x="9" y="5" width="1.02" height="1.02" />
+                  <rect x="11" y="5" width="1.02" height="1.02" />
+                  <rect x="12" y="5" width="1.02" height="1.02" />
+                  <rect x="13" y="5" width="1.02" height="1.02" />
+                  <rect x="14" y="5" width="1.02" height="1.02" />
+                  <rect x="18" y="5" width="1.02" height="1.02" />
+                  <rect x="24" y="5" width="1.02" height="1.02" />
+                  <rect x="0" y="6" width="1.02" height="1.02" />
+                  <rect x="1" y="6" width="1.02" height="1.02" />
+                  <rect x="2" y="6" width="1.02" height="1.02" />
+                  <rect x="3" y="6" width="1.02" height="1.02" />
+                  <rect x="4" y="6" width="1.02" height="1.02" />
+                  <rect x="5" y="6" width="1.02" height="1.02" />
+                  <rect x="6" y="6" width="1.02" height="1.02" />
+                  <rect x="8" y="6" width="1.02" height="1.02" />
+                  <rect x="10" y="6" width="1.02" height="1.02" />
+                  <rect x="12" y="6" width="1.02" height="1.02" />
+                  <rect x="14" y="6" width="1.02" height="1.02" />
+                  <rect x="16" y="6" width="1.02" height="1.02" />
+                  <rect x="18" y="6" width="1.02" height="1.02" />
+                  <rect x="19" y="6" width="1.02" height="1.02" />
+                  <rect x="20" y="6" width="1.02" height="1.02" />
+                  <rect x="21" y="6" width="1.02" height="1.02" />
+                  <rect x="22" y="6" width="1.02" height="1.02" />
+                  <rect x="23" y="6" width="1.02" height="1.02" />
+                  <rect x="24" y="6" width="1.02" height="1.02" />
+                  <rect x="9" y="7" width="1.02" height="1.02" />
+                  <rect x="10" y="7" width="1.02" height="1.02" />
+                  <rect x="13" y="7" width="1.02" height="1.02" />
+                  <rect x="16" y="7" width="1.02" height="1.02" />
+                  <rect x="0" y="8" width="1.02" height="1.02" />
+                  <rect x="3" y="8" width="1.02" height="1.02" />
+                  <rect x="4" y="8" width="1.02" height="1.02" />
+                  <rect x="5" y="8" width="1.02" height="1.02" />
+                  <rect x="6" y="8" width="1.02" height="1.02" />
+                  <rect x="7" y="8" width="1.02" height="1.02" />
+                  <rect x="8" y="8" width="1.02" height="1.02" />
+                  <rect x="14" y="8" width="1.02" height="1.02" />
+                  <rect x="16" y="8" width="1.02" height="1.02" />
+                  <rect x="17" y="8" width="1.02" height="1.02" />
+                  <rect x="20" y="8" width="1.02" height="1.02" />
+                  <rect x="22" y="8" width="1.02" height="1.02" />
+                  <rect x="23" y="8" width="1.02" height="1.02" />
+                  <rect x="24" y="8" width="1.02" height="1.02" />
+                  <rect x="0" y="9" width="1.02" height="1.02" />
+                  <rect x="2" y="9" width="1.02" height="1.02" />
+                  <rect x="8" y="9" width="1.02" height="1.02" />
+                  <rect x="10" y="9" width="1.02" height="1.02" />
+                  <rect x="11" y="9" width="1.02" height="1.02" />
+                  <rect x="12" y="9" width="1.02" height="1.02" />
+                  <rect x="13" y="9" width="1.02" height="1.02" />
+                  <rect x="14" y="9" width="1.02" height="1.02" />
+                  <rect x="15" y="9" width="1.02" height="1.02" />
+                  <rect x="19" y="9" width="1.02" height="1.02" />
+                  <rect x="20" y="9" width="1.02" height="1.02" />
+                  <rect x="21" y="9" width="1.02" height="1.02" />
+                  <rect x="22" y="9" width="1.02" height="1.02" />
+                  <rect x="23" y="9" width="1.02" height="1.02" />
+                  <rect x="2" y="10" width="1.02" height="1.02" />
+                  <rect x="5" y="10" width="1.02" height="1.02" />
+                  <rect x="6" y="10" width="1.02" height="1.02" />
+                  <rect x="7" y="10" width="1.02" height="1.02" />
+                  <rect x="10" y="10" width="1.02" height="1.02" />
+                  <rect x="11" y="10" width="1.02" height="1.02" />
+                  <rect x="12" y="10" width="1.02" height="1.02" />
+                  <rect x="15" y="10" width="1.02" height="1.02" />
+                  <rect x="20" y="10" width="1.02" height="1.02" />
+                  <rect x="21" y="10" width="1.02" height="1.02" />
+                  <rect x="24" y="10" width="1.02" height="1.02" />
+                  <rect x="1" y="11" width="1.02" height="1.02" />
+                  <rect x="2" y="11" width="1.02" height="1.02" />
+                  <rect x="5" y="11" width="1.02" height="1.02" />
+                  <rect x="7" y="11" width="1.02" height="1.02" />
+                  <rect x="8" y="11" width="1.02" height="1.02" />
+                  <rect x="9" y="11" width="1.02" height="1.02" />
+                  <rect x="14" y="11" width="1.02" height="1.02" />
+                  <rect x="15" y="11" width="1.02" height="1.02" />
+                  <rect x="16" y="11" width="1.02" height="1.02" />
+                  <rect x="19" y="11" width="1.02" height="1.02" />
+                  <rect x="21" y="11" width="1.02" height="1.02" />
+                  <rect x="22" y="11" width="1.02" height="1.02" />
+                  <rect x="23" y="11" width="1.02" height="1.02" />
+                  <rect x="24" y="11" width="1.02" height="1.02" />
+                  <rect x="1" y="12" width="1.02" height="1.02" />
+                  <rect x="3" y="12" width="1.02" height="1.02" />
+                  <rect x="4" y="12" width="1.02" height="1.02" />
+                  <rect x="6" y="12" width="1.02" height="1.02" />
+                  <rect x="9" y="12" width="1.02" height="1.02" />
+                  <rect x="10" y="12" width="1.02" height="1.02" />
+                  <rect x="11" y="12" width="1.02" height="1.02" />
+                  <rect x="13" y="12" width="1.02" height="1.02" />
+                  <rect x="14" y="12" width="1.02" height="1.02" />
+                  <rect x="15" y="12" width="1.02" height="1.02" />
+                  <rect x="18" y="12" width="1.02" height="1.02" />
+                  <rect x="19" y="12" width="1.02" height="1.02" />
+                  <rect x="24" y="12" width="1.02" height="1.02" />
+                  <rect x="0" y="13" width="1.02" height="1.02" />
+                  <rect x="1" y="13" width="1.02" height="1.02" />
+                  <rect x="5" y="13" width="1.02" height="1.02" />
+                  <rect x="9" y="13" width="1.02" height="1.02" />
+                  <rect x="12" y="13" width="1.02" height="1.02" />
+                  <rect x="14" y="13" width="1.02" height="1.02" />
+                  <rect x="15" y="13" width="1.02" height="1.02" />
+                  <rect x="16" y="13" width="1.02" height="1.02" />
+                  <rect x="17" y="13" width="1.02" height="1.02" />
+                  <rect x="20" y="13" width="1.02" height="1.02" />
+                  <rect x="23" y="13" width="1.02" height="1.02" />
+                  <rect x="0" y="14" width="1.02" height="1.02" />
+                  <rect x="1" y="14" width="1.02" height="1.02" />
+                  <rect x="3" y="14" width="1.02" height="1.02" />
+                  <rect x="4" y="14" width="1.02" height="1.02" />
+                  <rect x="6" y="14" width="1.02" height="1.02" />
+                  <rect x="8" y="14" width="1.02" height="1.02" />
+                  <rect x="9" y="14" width="1.02" height="1.02" />
+                  <rect x="14" y="14" width="1.02" height="1.02" />
+                  <rect x="15" y="14" width="1.02" height="1.02" />
+                  <rect x="18" y="14" width="1.02" height="1.02" />
+                  <rect x="20" y="14" width="1.02" height="1.02" />
+                  <rect x="21" y="14" width="1.02" height="1.02" />
+                  <rect x="22" y="14" width="1.02" height="1.02" />
+                  <rect x="23" y="14" width="1.02" height="1.02" />
+                  <rect x="24" y="14" width="1.02" height="1.02" />
+                  <rect x="0" y="15" width="1.02" height="1.02" />
+                  <rect x="2" y="15" width="1.02" height="1.02" />
+                  <rect x="3" y="15" width="1.02" height="1.02" />
+                  <rect x="5" y="15" width="1.02" height="1.02" />
+                  <rect x="8" y="15" width="1.02" height="1.02" />
+                  <rect x="12" y="15" width="1.02" height="1.02" />
+                  <rect x="13" y="15" width="1.02" height="1.02" />
+                  <rect x="14" y="15" width="1.02" height="1.02" />
+                  <rect x="19" y="15" width="1.02" height="1.02" />
+                  <rect x="21" y="15" width="1.02" height="1.02" />
+                  <rect x="22" y="15" width="1.02" height="1.02" />
+                  <rect x="24" y="15" width="1.02" height="1.02" />
+                  <rect x="0" y="16" width="1.02" height="1.02" />
+                  <rect x="2" y="16" width="1.02" height="1.02" />
+                  <rect x="5" y="16" width="1.02" height="1.02" />
+                  <rect x="6" y="16" width="1.02" height="1.02" />
+                  <rect x="7" y="16" width="1.02" height="1.02" />
+                  <rect x="11" y="16" width="1.02" height="1.02" />
+                  <rect x="12" y="16" width="1.02" height="1.02" />
+                  <rect x="15" y="16" width="1.02" height="1.02" />
+                  <rect x="16" y="16" width="1.02" height="1.02" />
+                  <rect x="17" y="16" width="1.02" height="1.02" />
+                  <rect x="18" y="16" width="1.02" height="1.02" />
+                  <rect x="19" y="16" width="1.02" height="1.02" />
+                  <rect x="20" y="16" width="1.02" height="1.02" />
+                  <rect x="22" y="16" width="1.02" height="1.02" />
+                  <rect x="23" y="16" width="1.02" height="1.02" />
+                  <rect x="8" y="17" width="1.02" height="1.02" />
+                  <rect x="10" y="17" width="1.02" height="1.02" />
+                  <rect x="11" y="17" width="1.02" height="1.02" />
+                  <rect x="16" y="17" width="1.02" height="1.02" />
+                  <rect x="20" y="17" width="1.02" height="1.02" />
+                  <rect x="22" y="17" width="1.02" height="1.02" />
+                  <rect x="23" y="17" width="1.02" height="1.02" />
+                  <rect x="0" y="18" width="1.02" height="1.02" />
+                  <rect x="1" y="18" width="1.02" height="1.02" />
+                  <rect x="2" y="18" width="1.02" height="1.02" />
+                  <rect x="3" y="18" width="1.02" height="1.02" />
+                  <rect x="4" y="18" width="1.02" height="1.02" />
+                  <rect x="5" y="18" width="1.02" height="1.02" />
+                  <rect x="6" y="18" width="1.02" height="1.02" />
+                  <rect x="8" y="18" width="1.02" height="1.02" />
+                  <rect x="10" y="18" width="1.02" height="1.02" />
+                  <rect x="12" y="18" width="1.02" height="1.02" />
+                  <rect x="13" y="18" width="1.02" height="1.02" />
+                  <rect x="14" y="18" width="1.02" height="1.02" />
+                  <rect x="16" y="18" width="1.02" height="1.02" />
+                  <rect x="18" y="18" width="1.02" height="1.02" />
+                  <rect x="20" y="18" width="1.02" height="1.02" />
+                  <rect x="24" y="18" width="1.02" height="1.02" />
+                  <rect x="0" y="19" width="1.02" height="1.02" />
+                  <rect x="6" y="19" width="1.02" height="1.02" />
+                  <rect x="8" y="19" width="1.02" height="1.02" />
+                  <rect x="11" y="19" width="1.02" height="1.02" />
+                  <rect x="13" y="19" width="1.02" height="1.02" />
+                  <rect x="15" y="19" width="1.02" height="1.02" />
+                  <rect x="16" y="19" width="1.02" height="1.02" />
+                  <rect x="20" y="19" width="1.02" height="1.02" />
+                  <rect x="24" y="19" width="1.02" height="1.02" />
+                  <rect x="0" y="20" width="1.02" height="1.02" />
+                  <rect x="2" y="20" width="1.02" height="1.02" />
+                  <rect x="3" y="20" width="1.02" height="1.02" />
+                  <rect x="4" y="20" width="1.02" height="1.02" />
+                  <rect x="6" y="20" width="1.02" height="1.02" />
+                  <rect x="8" y="20" width="1.02" height="1.02" />
+                  <rect x="9" y="20" width="1.02" height="1.02" />
+                  <rect x="10" y="20" width="1.02" height="1.02" />
+                  <rect x="11" y="20" width="1.02" height="1.02" />
+                  <rect x="13" y="20" width="1.02" height="1.02" />
+                  <rect x="15" y="20" width="1.02" height="1.02" />
+                  <rect x="16" y="20" width="1.02" height="1.02" />
+                  <rect x="17" y="20" width="1.02" height="1.02" />
+                  <rect x="18" y="20" width="1.02" height="1.02" />
+                  <rect x="19" y="20" width="1.02" height="1.02" />
+                  <rect x="20" y="20" width="1.02" height="1.02" />
+                  <rect x="23" y="20" width="1.02" height="1.02" />
+                  <rect x="24" y="20" width="1.02" height="1.02" />
+                  <rect x="0" y="21" width="1.02" height="1.02" />
+                  <rect x="2" y="21" width="1.02" height="1.02" />
+                  <rect x="3" y="21" width="1.02" height="1.02" />
+                  <rect x="4" y="21" width="1.02" height="1.02" />
+                  <rect x="6" y="21" width="1.02" height="1.02" />
+                  <rect x="8" y="21" width="1.02" height="1.02" />
+                  <rect x="9" y="21" width="1.02" height="1.02" />
+                  <rect x="10" y="21" width="1.02" height="1.02" />
+                  <rect x="12" y="21" width="1.02" height="1.02" />
+                  <rect x="13" y="21" width="1.02" height="1.02" />
+                  <rect x="16" y="21" width="1.02" height="1.02" />
+                  <rect x="17" y="21" width="1.02" height="1.02" />
+                  <rect x="18" y="21" width="1.02" height="1.02" />
+                  <rect x="23" y="21" width="1.02" height="1.02" />
+                  <rect x="24" y="21" width="1.02" height="1.02" />
+                  <rect x="0" y="22" width="1.02" height="1.02" />
+                  <rect x="2" y="22" width="1.02" height="1.02" />
+                  <rect x="3" y="22" width="1.02" height="1.02" />
+                  <rect x="4" y="22" width="1.02" height="1.02" />
+                  <rect x="6" y="22" width="1.02" height="1.02" />
+                  <rect x="10" y="22" width="1.02" height="1.02" />
+                  <rect x="11" y="22" width="1.02" height="1.02" />
+                  <rect x="13" y="22" width="1.02" height="1.02" />
+                  <rect x="17" y="22" width="1.02" height="1.02" />
+                  <rect x="20" y="22" width="1.02" height="1.02" />
+                  <rect x="21" y="22" width="1.02" height="1.02" />
+                  <rect x="22" y="22" width="1.02" height="1.02" />
+                  <rect x="23" y="22" width="1.02" height="1.02" />
+                  <rect x="24" y="22" width="1.02" height="1.02" />
+                  <rect x="0" y="23" width="1.02" height="1.02" />
+                  <rect x="6" y="23" width="1.02" height="1.02" />
+                  <rect x="9" y="23" width="1.02" height="1.02" />
+                  <rect x="10" y="23" width="1.02" height="1.02" />
+                  <rect x="11" y="23" width="1.02" height="1.02" />
+                  <rect x="12" y="23" width="1.02" height="1.02" />
+                  <rect x="13" y="23" width="1.02" height="1.02" />
+                  <rect x="15" y="23" width="1.02" height="1.02" />
+                  <rect x="17" y="23" width="1.02" height="1.02" />
+                  <rect x="19" y="23" width="1.02" height="1.02" />
+                  <rect x="20" y="23" width="1.02" height="1.02" />
+                  <rect x="22" y="23" width="1.02" height="1.02" />
+                  <rect x="23" y="23" width="1.02" height="1.02" />
+                  <rect x="24" y="23" width="1.02" height="1.02" />
+                  <rect x="0" y="24" width="1.02" height="1.02" />
+                  <rect x="1" y="24" width="1.02" height="1.02" />
+                  <rect x="2" y="24" width="1.02" height="1.02" />
+                  <rect x="3" y="24" width="1.02" height="1.02" />
+                  <rect x="4" y="24" width="1.02" height="1.02" />
+                  <rect x="5" y="24" width="1.02" height="1.02" />
+                  <rect x="6" y="24" width="1.02" height="1.02" />
+                  <rect x="8" y="24" width="1.02" height="1.02" />
+                  <rect x="10" y="24" width="1.02" height="1.02" />
+                  <rect x="11" y="24" width="1.02" height="1.02" />
+                  <rect x="12" y="24" width="1.02" height="1.02" />
+                  <rect x="13" y="24" width="1.02" height="1.02" />
+                  <rect x="16" y="24" width="1.02" height="1.02" />
+                  <rect x="18" y="24" width="1.02" height="1.02" />
+                  <rect x="21" y="24" width="1.02" height="1.02" />
+                  <rect x="24" y="24" width="1.02" height="1.02" />
+                </svg>
+                <span class="scan"></span>
+              </div>
+              <div class="pair-lines">
+                <div>
+                  <span class="k">link</span
+                  ><span class="v">https://doriface.omo.dev/pair<span class="frag">#h=…&amp;k=…&amp;p=…</span></span>
+                </div>
+                <div><span class="k">code</span><span class="v">7KQ4 M2XD</span></div>
+                <div>
+                  <span class="k">fingerprint</span>
+                  <span class="v fp" data-fp
+                    ><span>3FA9</span><span>4C0E</span><span>81D2</span><span>B7A5</span><span>0E6C</span
+                    ><span>D193</span><span>2A7F</span><span>C40B</span><span>95E1</span><span>6D38</span></span
+                  >
+                </div>
+              </div>
+            </div>
+            <div class="pair-note">
+              <span class="chip" data-pair-state><span class="dot" aria-hidden="true"></span>fingerprint matches</span>
+              <span>phone paired with Noise IKpsk2</span>
+            </div>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section" id="everywhere" aria-labelledby="everywhere-title">
+        <div class="wrap">
+          <p class="eyebrow reveal"><span class="num">05</span><span class="rule"></span>Platforms</p>
+          <h2 class="h2 reveal" id="everywhere-title">
+            Desktop, browser, phone.<br /><span class="soft">The same terminal on each.</span>
+          </h2>
+          <p class="section__lede reveal">
+            Terminals render with libghostty, built from Ghostty's own source and compiled to WebAssembly, so a pane on
+            your phone draws the same cells as on your desktop.
+          </p>
+          <div class="grid-3">
+            <article class="card reveal">
+              <div class="card__icon" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="3" y="4" width="18" height="12" rx="2" />
+                  <path d="M8 20h8M12 16v4" />
+                </svg>
+              </div>
+              <h3>Desktop app</h3>
+              <p>
+                Starts the host and herdr-core on this computer, installs herdr-core for you when it is missing, and
+                offers this computer to your phone.
+              </p>
+              <span class="meta">macOS, Windows, Linux</span>
+            </article>
+            <article class="card reveal" style="--delay: 60ms">
+              <div class="card__icon" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+                </svg>
+              </div>
+              <h3>Any modern browser</h3>
+              <p>
+                Open app.doriterm.com, pair, and every pane of every machine is there. Nothing to install on a borrowed
+                computer.
+              </p>
+              <span class="meta">Chrome and Edge 119+, Safari 17.4+, Firefox 121+</span>
+            </article>
+            <article class="card reveal" style="--delay: 120ms">
+              <div class="card__icon" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="7" y="2" width="10" height="20" rx="2" />
+                  <path d="M11 18h2" />
+                </svg>
+              </div>
+              <h3>Your phone</h3>
+              <p>
+                Install it from the browser as an app. A key bar puts ctrl, esc and the arrows under your thumb, so you
+                can answer an agent from anywhere.
+              </p>
+              <span class="meta">iOS 17.4+, Android with Chrome 119+</span>
+            </article>
+          </div>
+
+          <div class="code commands reveal">
+            <div class="code__head">
+              <span>on your machine</span>
+              <button class="copy" type="button" data-copy>
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+                </svg>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <pre
+              data-copy-source
+            ><code><span class="p">$ </span>doriface-host pair                     <span class="c"># a QR code, a link and a code for your phone</span>
+<span class="p">$ </span>doriface-host mesh pair                <span class="c"># invite another machine into your mesh</span>
+<span class="p">$ </span>doriface-host mesh join &lt;code&gt;         <span class="c"># on that machine: ask to join</span>
+<span class="p">$ </span>doriface-host mesh revoke &lt;member&gt;     <span class="c"># remove a member everywhere</span></code></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="section makers" id="makers" aria-labelledby="makers-title">
+        <div class="wrap">
+          <h2 class="h2 reveal" id="makers-title">
+            Made by Sisyphus Labs.<br /><span class="soft">The people behind Dori and OmO.</span>
+          </h2>
+          <div class="makers__grid reveal">
+            <a class="maker" href="https://sisyphuslabs.ai">
+              <span class="maker__name">Dori</span>
+              <span class="maker__what"
+                >An engineer who lives in your chat. Tell him what to do in Slack, Discord or Telegram; he gives each
+                job its own coding-agent session and reports back when it is merged.</span
+              >
+              <span class="maker__url">sisyphuslabs.ai <span class="arrow" aria-hidden="true">&rarr;</span></span>
+            </a>
+            <a class="maker" href="https://omo.dev">
+              <span class="maker__name">OmO</span>
+              <span class="maker__what"
+                >The agent in the terminal above. Add <code>ultrawork</code> to a prompt and it plans, proves each step
+                and checks the result; type <code>mass ulw</code> and one job becomes a graph of agents, each on the
+                model that fits it.</span
+              >
+              <span class="maker__url">omo.dev <span class="arrow" aria-hidden="true">&rarr;</span></span>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section class="closing" aria-labelledby="closing-title">
+        <div class="wrap">
+          <h2 class="h2 reveal" id="closing-title">
+            Read every line<br /><span class="soft">before you trust it.</span>
+          </h2>
+          <p class="section__lede reveal">
+            doriterm is open source under AGPL-3.0, and the wire format it is built against is published, relay section
+            included.
+          </p>
+          <div class="hero__cta reveal">
+            <a class="btn btn--primary" href="https://app.doriterm.com">Open the app</a>
+            <a class="btn btn--ghost" href="https://github.com/sisyphuslabs/doriterm/blob/dev/docs/transport.md"
+              >Read the transport contract <span class="arrow" aria-hidden="true">&rarr;</span></a
+            >
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="wrap footer__inner">
+        <a class="brand" href="#top" aria-label="doriterm, back to top">
+          <img class="mark-dark" src="/mark-dark.svg" alt="" width="28" height="28" />
+          <img class="mark-light" src="/mark-light.svg" alt="" width="28" height="28" />
+          <span>doriterm</span>
+        </a>
+        <nav aria-label="Footer">
+          <a href="https://github.com/sisyphuslabs/doriterm">GitHub</a>
+          <a href="https://github.com/sisyphuslabs/doriterm/releases">Releases</a>
+          <a href="https://github.com/sisyphuslabs/doriterm/blob/dev/docs/architecture.md">Architecture</a>
+          <a href="https://github.com/sisyphuslabs/doriterm/blob/dev/LICENSE">AGPL-3.0</a>
+        </nav>
+      </div>
+    </footer>
+
+    <script type="module" src="main.js"></script>
+  </body>
+</html>

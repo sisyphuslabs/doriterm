@@ -116,7 +116,7 @@ export function windowOptions(
   look: WindowLook,
 ): BrowserWindowConstructorOptions {
   const base: BrowserWindowConstructorOptions = {
-    title: "doriface",
+    title: "Doriterm",
     ...look.placement,
     minWidth: MIN_WINDOW_SIZE.width,
     minHeight: MIN_WINDOW_SIZE.height,

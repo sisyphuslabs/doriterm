@@ -21,7 +21,7 @@ function isIcon(value: unknown): value is ManifestIcon {
 const APPLE_META = [
   ["apple-mobile-web-app-capable", "yes"],
   ["apple-mobile-web-app-status-bar-style", "default"],
-  ["apple-mobile-web-app-title", "doriface"],
+  ["apple-mobile-web-app-title", "Doriterm"],
 ] as const;
 
 test("the app is installable, serves its icons and registers its service worker", async ({ page, request }, info) => {
@@ -30,7 +30,8 @@ test("the app is installable, serves its icons and registers its service worker"
   expect(manifest).toMatchObject({
     id: "/",
     lang: "en",
-    name: "doriface",
+    name: "Doriterm",
+    short_name: "Doriterm",
     display: "standalone",
     start_url: "/",
     scope: "/",

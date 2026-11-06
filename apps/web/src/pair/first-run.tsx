@@ -8,7 +8,7 @@ import { startFailure, startThisComputer } from "../desktop/local-host.ts";
 import { HostStartNotice } from "./host-start-notice.tsx";
 import { Steps } from "./steps.tsx";
 
-const HOST_GUIDE = "https://github.com/sisyphuslabs/doriface#readme";
+const HOST_GUIDE = "https://github.com/sisyphuslabs/doriterm#readme";
 
 /** Pairing reaches the relay, so offline it is shown, disabled, with why; nothing else here needs a network. */
 const PAIR_NEEDS_NETWORK = "Pairing a host needs a network.";
@@ -44,7 +44,7 @@ function LocalFirstRun({ bridge, offline }: { readonly bridge: DesktopBridge; re
       <EmptyState
         icon={<Monitor />}
         title="Use this computer or pair a host"
-        description="doriface can run the terminals and agents on this computer, or show the ones on another computer you pair."
+        description="Doriterm can run the terminals and agents on this computer, or show the ones on another computer you pair."
         actions={
           <>
             <Button variant="primary" size="lg" loading={starting} onClick={start}>
@@ -85,7 +85,7 @@ export function FirstRun({ offline = false }: { readonly offline?: boolean }) {
         icon={<Server />}
         size="screen"
         title="Connect to a host"
-        description="doriface shows the terminals and agents of a mesh. Open the invite link a member sent you, or start a host on a computer you control and pair the code it prints."
+        description="Doriterm shows the terminals and agents of a mesh. Open the invite link a member sent you, or start a host on a computer you control and pair the code it prints."
         actions={
           <>
             <PairAHost offline={offline} primary />

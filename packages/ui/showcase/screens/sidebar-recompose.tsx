@@ -159,7 +159,7 @@ export function RecomposedSidebar({ machines, rail = false, hover, update = fals
       <div className={cn("flex h-11 shrink-0 items-center gap-1", rail ? "justify-center" : "pr-2 pl-3.5")}>
         {rail ? null : (
           <>
-            <span className="flex-1 text-sm font-semibold text-sidebar-foreground">doriface</span>
+            <span className="flex-1 text-sm font-semibold text-sidebar-foreground">Doriterm</span>
             <IconButton label="Command palette" keys={["⌘", "⇧", "P"]} icon={<Search />} />
             <IconButton label="Hide sidebar" keys={["⌘", "B"]} icon={<PanelLeft />} />
           </>

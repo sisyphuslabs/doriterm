@@ -1,0 +1,109 @@
+// #904: a mesh line that drops and comes back within the grace never reads offline, nor do the tabs on its machine; a
+// machine that is really gone reads offline once the grace ends, never before.
+import type { Page } from "@playwright/test";
+import { OFFLINE_GRACE_MS } from "../src/workspace/machine-grace.ts";
+import { agentRow, endAgent, startAgent } from "./agents.ts";
+import { expect, test } from "./fixtures.ts";
+import { MACHINE_NAME } from "./machine.ts";
+import { blip, hcOn, machineRow, OFFLINE_BOUND_MS, reconnect, switchTo } from "./machine-switch.ts";
+
+/** The host refuses new lines for up to this long after its relay uplink returns (DIAL_LIMITS.settleMaxMs). */
+const HOST_SETTLE_MAX_MS = 20_000;
+
+/**
+ * Records, from now on, every moment the page shows the machine or its tab as anything but up: the machine's row in any
+ * state but connected, an Offline agents group, or the tab's terminal view gone. A MutationObserver sees each change as
+ * it renders, so a flip shorter than any poll is recorded too.
+ */
+async function recordFlips(page: Page, terminal: string): Promise<void> {
+  await page.evaluate(
+    ([name, address]) => {
+      const flips: string[] = [];
+      const check = (): void => {
+        const row = document.querySelector(`[data-machine-header="${name}"]`)?.getAttribute("title") ?? "no row";
+        if (row !== `${name}, connected`) flips.push(`row: ${row}`);
+        for (const group of document.querySelectorAll("section[aria-labelledby]")) {
+          const title = document.getElementById(group.getAttribute("aria-labelledby") ?? "")?.textContent ?? "";
+          if (title.trim().startsWith("Offline")) flips.push(`group: ${title.trim()}`);
+        }
+        if (document.querySelector(`[data-terminal="${address}"]`) === null) flips.push("tab: terminal view gone");
+      };
+      check();
+      new MutationObserver(check).observe(document.body, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        characterData: true,
+      });
+      Object.assign(window, { flips });
+    },
+    [MACHINE_NAME, terminal] as const,
+  );
+}
+
+const flips = (page: Page): Promise<string[]> =>
+  page.evaluate(() => [...new Set((window as unknown as { flips: string[] }).flips)]);
+
+const machineState = (): string => {
+  const listed: unknown = JSON.parse(hcOn("host", ["machine", "ls"]));
+  const machines = Reflect.get(Object(listed), "machines");
+  const one = Array.isArray(machines)
+    ? machines.find((m: unknown) => Reflect.get(Object(m), "name") === MACHINE_NAME)
+    : undefined;
+  return String(Reflect.get(Object(one), "state"));
+};
+
+test.describe("a machine whose line blips (#904)", () => {
+  let address = "";
+  test.beforeEach(() => {
+    address = startAgent("machine", "crunch", "working");
+  });
+  test.afterEach(() => {
+    reconnect();
+    endAgent("machine", address);
+  });
+
+  test("a relay uplink drop with the host's settle and an hc redial flip neither the machine nor its tab", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    await page.goto("/");
+    await expect(machineRow(page)).toContainText(/connected\s*1/, { timeout: 20_000 });
+    await agentRow(page, "crunch", true).click();
+    const terminal = `${MACHINE_NAME}/${address}`;
+    await expect(page.locator(`[data-terminal="${terminal}"]`)).toBeVisible({ timeout: 15_000 });
+    await recordFlips(page, terminal);
+
+    // A line that hc redials at once: the drop alone.
+    await blip(0);
+    await expect.poll(machineState, { timeout: 15_000 }).toBe("connected");
+
+    // A relay uplink drop: every line ends, and the host refuses new ones for its whole settle. hc reads the machine
+    // unreachable through it (two or more of the page's machine.list reads), then its redial lands the line.
+    const settled = blip(HOST_SETTLE_MAX_MS);
+    await expect.poll(machineState, { timeout: 5_000 }).toBe("unreachable");
+    await settled;
+    await expect.poll(machineState, { timeout: OFFLINE_GRACE_MS }).toBe("connected");
+    expect(await flips(page)).toEqual([]);
+    await expect(agentRow(page.getByRole("region", { name: "Working" }), "crunch", true)).toBeVisible();
+  });
+
+  test("a machine that is really gone reads offline, with its tab, once the grace ends and not before", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    await page.goto("/");
+    await expect(machineRow(page)).toContainText(/connected\s*1/, { timeout: 20_000 });
+    await agentRow(page, "crunch", true).click();
+    const terminal = `${MACHINE_NAME}/${address}`;
+    await expect(page.locator(`[data-terminal="${terminal}"]`)).toBeVisible({ timeout: 15_000 });
+    switchTo("drop");
+    const dropped = Date.now();
+    await expect.poll(machineState, { timeout: 5_000 }).toBe("unreachable");
+    await expect(machineRow(page)).toContainText("offline", { timeout: OFFLINE_BOUND_MS });
+    // The page counts the grace from hc's own drop time, moved back at most one 10 s read, so it never ends early.
+    expect(Date.now() - dropped).toBeGreaterThanOrEqual(OFFLINE_GRACE_MS - 10_000);
+    await expect(page.locator(`[data-terminal="${terminal}"]`)).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Offline" })).toBeVisible();
+  });
+});

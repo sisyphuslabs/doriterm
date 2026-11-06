@@ -43,6 +43,7 @@ for (const width of ["1440", "390"] as const) {
   for (const theme of ["day", "night"] as const) {
     for (const shot of SHOTS.filter((entry) => entry.only === undefined || entry.only === width)) {
       test(`${shot.name} ${width} ${theme}`, async ({ browser }) => {
+        if (shot.timeoutMs !== undefined) test.setTimeout(shot.timeoutMs);
         const { defaultBrowserType: _browser, ...use } = { defaultBrowserType: "chromium", ...contextFor(width) };
         clearLayouts();
         const context = await browser.newContext({ ...use, colorScheme: theme === "day" ? "light" : "dark" });

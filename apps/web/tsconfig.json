@@ -7,7 +7,7 @@
     "jsx": "react-jsx",
     "types": ["bun", "vite/client", "vite-plugin-pwa/client"]
   },
-  "include": ["src", "e2e", "soak", "vite.config.ts", "playwright.config.ts"],
+  "include": ["src", "e2e", "soak", "bench", "vite.config.ts", "playwright.config.ts"],
   "references": [
     {
       "path": "../../packages/protocol"

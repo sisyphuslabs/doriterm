@@ -1,0 +1,31 @@
+@import "tailwindcss";
+@import "@doriface/ui/styles/tokens.css";
+@import "@doriface/ui/styles/base.css";
+
+@source "../../../../packages/ui/src";
+@source "./";
+
+/* The landing sets every font in Timeless; the app mockups follow, with JetBrains Mono kept inside terminal panes. */
+@font-face {
+  font-family: "Timeless Sans";
+  src: url("../../fonts/TimelessSansVF.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  --font-ui: "Timeless Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* An iPhone 14's portrait safe areas, as the showcase's phone frames use. */
+[data-insets="phone"] {
+  --safe-top: 47px;
+  --safe-bottom: 34px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}

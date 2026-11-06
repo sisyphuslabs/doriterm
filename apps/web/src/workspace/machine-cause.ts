@@ -6,7 +6,7 @@ export interface MachineCause {
   readonly detail: string;
 }
 
-const KEEPS_TRYING = "doriface keeps trying to reach it.";
+const KEEPS_TRYING = "Doriterm keeps trying to reach it.";
 
 /** hc's `why` repeats the dialer's own words; these are the ones doriface-host prints (apps/host/src/connect/dial.ts). */
 const CAUSES: readonly { readonly match: RegExp; readonly detail: (name: string) => string }[] = [

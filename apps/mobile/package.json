@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "build:web": "bun run --cwd ../web build",
-    "sync:android": "bun run build:web && cap sync android"
+    "sync:android": "bun run build:web && cap sync android",
+    "sync:ios": "bun run build:web && cap sync ios"
   },
   "dependencies": {
     "@capacitor/android": "8.6.0",

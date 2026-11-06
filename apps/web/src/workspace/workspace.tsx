@@ -8,6 +8,7 @@ import { type Axis, LAYOUT_DOC, ORDER_DOC } from "@doriface/protocol/layout";
 import { closesTab, type TerminalEnd } from "../terminal/terminal-end.ts";
 import { CloseTabDialog } from "./close-tab-dialog.tsx";
 import { AddMachineDialog } from "./add-machine-dialog.tsx";
+import { guideStore } from "../pair/first-run-guide.ts";
 import { DesktopShell } from "./desktop-shell.tsx";
 import { Palette } from "./palette.tsx";
 import { SessionContext, type SessionAsk } from "./session-context.ts";
@@ -66,10 +67,12 @@ export function Workspace({ connection }: WorkspaceProps) {
     refresh,
     listError,
     views,
+    heard: heardMachines,
     retry,
     listed: machineReads,
   } = useMachines(connection, fed.terminals);
-  const { layouts, heard } = useLayoutDocs(connection, views);
+  // Opened and re-read on what hc said: a document read while its line was down is read again once the line is back.
+  const { layouts, heard } = useLayoutDocs(connection, heardMachines);
   const gitOf = useGitFacts(connection, views);
   heardLayout.current = heard;
   const order = useMachineOrder(connection, listed);
@@ -145,14 +148,22 @@ export function Workspace({ connection }: WorkspaceProps) {
     },
     [dropPane],
   );
-  useDeadPanes(connection, layout.tabs, fed.loaded ? terminals : null, views, machineReads, dropEnded);
+  // A pane is asked about only on what hc said: a machine held connected through a redial may have no terminals listed.
+  useDeadPanes(connection, layout.tabs, fed.loaded ? terminals : null, heardMachines, machineReads, dropEnded);
   useAdoptLoose(layouts, fed.loaded ? terminals : null, failed);
   const narrow = useNarrow();
   const ids = useMemo(() => machineIds(views), [views]);
   // The phone's open terminal is kept by machine id like a tab, so a rename keeps it open at the new address.
   const [phoneKey, setPhoneKey] = useState<string | null>(null);
   const phoneOpen = phoneKey === null ? null : (tabAddress(phoneKey, ids) ?? null);
-  const showOnPhone = useCallback((address: string) => setPhoneKey(tabKey(address, ids)), [ids]);
+  // Opening a terminal from this device's list is the first run's "open an agent" step; a restored focus is not (#668).
+  const showOnPhone = useCallback(
+    (address: string) => {
+      guideStore.opened();
+      setPhoneKey(tabKey(address, ids));
+    },
+    [ids],
+  );
   const [palette, setPalette] = useState(false);
   const [ask, setAsk] = useState<SessionAsk | null>(null);
   const [spaceAsk, setSpaceAsk] = useState<string | null>(null);
@@ -195,14 +206,22 @@ export function Workspace({ connection }: WorkspaceProps) {
   }, [splits, shownTab, shownPane]);
   const inView = narrow ? phoneOpen : (layout.focused?.address ?? null);
   // A new tab goes to the selected space (openTerminal), so it starts where that space is when no terminal is in focus.
-  const newTerminal = (template?: string): void =>
-    runs.start({
-      ...runParamsFor(
-        terminals.find((terminal) => terminal.address === inView),
-        spaces.find((space) => space.id === layout.active?.spaceKey),
-      ),
-      ...(template === undefined ? {} : { argv: [template], name: template }),
-    });
+  const newTerminal = (template?: string): void => {
+    runs.start(
+      {
+        ...runParamsFor(
+          terminals.find((terminal) => terminal.address === inView),
+          spaces.find((space) => space.id === layout.active?.spaceKey),
+        ),
+        ...(template === undefined ? {} : { argv: [template], name: template }),
+      },
+      // The first run's agent step completes once the terminal really started, not when it was asked for (#668).
+      (address) => {
+        guideStore.opened();
+        opened(address);
+      },
+    );
+  };
   const split = (axis: Axis, target?: PaneTarget): void => {
     const from =
       target === undefined
@@ -384,7 +403,7 @@ export function Workspace({ connection }: WorkspaceProps) {
             autoCorrect="off"
             spellCheck={false}
           />
-          <AddMachineDialog open={adding} onClose={() => setAdding(false)} />
+          <AddMachineDialog open={adding} onClose={() => setAdding(false)} connection={connection} machines={entries} />
           <SessionDialogs
             connection={connection}
             terminals={terminals}

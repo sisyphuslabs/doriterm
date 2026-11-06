@@ -102,7 +102,7 @@ export function KeybindingsSection() {
   return (
     <div className="flex flex-col gap-5">
       {storageError === null ? null : storageError instanceof NewerKeymapError ? (
-        <Notice tone="warning" title="Keybindings were saved by a newer version of doriface">
+        <Notice tone="warning" title="Keybindings were saved by a newer version of Doriterm">
           This version shows the default keys and saves no changes, so the newer version's keybindings stay as they are.
         </Notice>
       ) : (

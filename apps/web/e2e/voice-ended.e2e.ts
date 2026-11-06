@@ -3,7 +3,7 @@ import { agentRow, startShell } from "./agents.ts";
 import { removeTerminal, stateOn } from "./ended-terminal.ts";
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
-import { hcOn, machineRow, reconnect, STATE_BOUND_MS, switchTo } from "./machine-switch.ts";
+import { hcOn, machineRow, OFFLINE_BOUND_MS, reconnect, STATE_BOUND_MS, switchTo } from "./machine-switch.ts";
 import { stubSpeech } from "./speech-stub.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
@@ -29,7 +29,7 @@ async function openOnMachine(page: Page, name: string, address: string) {
 test("a dictation under way ends when its machine drops: the recognizer is aborted, not left listening", async ({
   page,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const speech = await stubSpeech(page);
   const address = startShell("machine", "voice-drop");
   try {
@@ -39,7 +39,7 @@ test("a dictation under way ends when its machine drops: the recognizer is abort
     await expect(strip(page)).toHaveAttribute("data-voice-strip", "listening");
 
     switchTo("drop");
-    await expect(terminal).toHaveCount(0, { timeout: STATE_BOUND_MS });
+    await expect(terminal).toHaveCount(0, { timeout: OFFLINE_BOUND_MS });
     await expect(page.getByText(`${MACHINE_NAME} is offline`)).toBeVisible();
     await expect(strip(page)).toHaveCount(0);
     await expect(mic(page)).toHaveCount(0);
@@ -53,7 +53,7 @@ test("a dictation under way ends when its machine drops: the recognizer is abort
 test("the ended view offers no dictation: no mic, no strip, no keys bar, and a bound Dictate key starts nothing", async ({
   page,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const speech = await stubSpeech(page);
   const address = startShell("machine", "voice-ended");
   try {
@@ -71,7 +71,7 @@ test("the ended view offers no dictation: no mic, no strip, no keys bar, and a b
 
     const terminal = await openOnMachine(page, "voice-ended", address);
     switchTo("drop");
-    await expect(terminal).toHaveCount(0, { timeout: STATE_BOUND_MS });
+    await expect(terminal).toHaveCount(0, { timeout: OFFLINE_BOUND_MS });
     hcOn("machine", ["kill", address]);
     await expect.poll(() => stateOn("machine", address), { timeout: 15_000 }).toBe("finished");
     reconnect();

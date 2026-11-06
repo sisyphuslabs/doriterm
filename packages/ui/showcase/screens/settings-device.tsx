@@ -15,7 +15,7 @@ export function DeviceSection() {
         />
         <SettingRow
           inline
-          title="Install doriface"
+          title="Install Doriterm"
           description="Opens in its own window, from the Dock or the home screen."
           control={<Button size="sm">Install</Button>}
         />

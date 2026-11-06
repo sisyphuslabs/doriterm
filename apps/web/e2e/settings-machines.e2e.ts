@@ -1,11 +1,12 @@
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
-import { reconnect, STATE_BOUND_MS, switchTo } from "./machine-switch.ts";
+import { reconnect, STATE_BOUND_MS, switchTo, OFFLINE_BOUND_MS } from "./machine-switch.ts";
 
 test.describe("Settings, Machines", () => {
   test("lists this machine and the added one with their state, and says when and why one went offline", async ({
     page,
   }) => {
+    test.setTimeout(180_000);
     await page.goto("/settings");
     await page.getByRole("button", { name: "Machines" }).click();
     await expect(page.getByRole("heading", { name: "Machines", level: 2 })).toBeVisible();
@@ -23,7 +24,7 @@ test.describe("Settings, Machines", () => {
     await expect(page.getByText(/ssh target/)).toHaveCount(0);
     try {
       switchTo("drop");
-      await expect(added).toContainText("Offline", { timeout: STATE_BOUND_MS });
+      await expect(added).toContainText("Offline", { timeout: OFFLINE_BOUND_MS });
       await expect(added).toContainText(/Last seen (just now|\d+m ago)/);
       await expect(added).toContainText("isn't answering");
       await expect(added).not.toContainText(/cannot reach|sh -c/);

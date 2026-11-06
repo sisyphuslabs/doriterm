@@ -12,6 +12,7 @@
     { "path": "apps/mobile" },
     { "path": "packages/ui" },
     { "path": "apps/web" },
+    { "path": "apps/landing" },
     { "path": "apps/desktop" },
     { "path": "apps/desktop/tsconfig.tools.json" },
     { "path": "packages/ghostty-wasm" },

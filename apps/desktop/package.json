@@ -1,9 +1,9 @@
 {
   "name": "@doriface/desktop",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "private": true,
-  "description": "doriface desktop shell",
-  "homepage": "https://github.com/sisyphuslabs/doriface",
+  "description": "Doriterm desktop shell",
+  "homepage": "https://github.com/sisyphuslabs/doriterm",
   "license": "AGPL-3.0-only",
   "author": "Sisyphus Labs",
   "type": "module",
@@ -29,5 +29,5 @@
     "electron-updater": "6.8.11",
     "ws": "8.18.3"
   },
-  "productName": "doriface"
+  "productName": "Doriterm"
 }

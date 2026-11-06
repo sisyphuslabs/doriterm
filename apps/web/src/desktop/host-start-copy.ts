@@ -26,8 +26,8 @@ export function hostStartCopy(failure: HostStartFailure): HostStartCopy {
             // HC_BIN, so installing into one of them is the step that works.
             next:
               searched === undefined || searched.length === 0
-                ? "doriface looks for hc on your PATH. Install herdr-core there, then retry."
-                : `doriface looks for hc on your PATH and in ${listOf(searched)}. Install herdr-core in one of them, then retry.`,
+                ? "Doriterm looks for hc on your PATH. Install herdr-core there, then retry."
+                : `Doriterm looks for hc on your PATH and in ${listOf(searched)}. Install herdr-core in one of them, then retry.`,
             install: true,
           }
         : {
@@ -38,7 +38,7 @@ export function hostStartCopy(failure: HostStartFailure): HostStartCopy {
     case "hc-version-failed":
       return failure.version !== undefined
         ? {
-            cause: `${path ?? "hc"} is herdr-core ${failure.version}, older than doriface supports.`,
+            cause: `${path ?? "hc"} is herdr-core ${failure.version}, older than Doriterm supports.`,
             next: "Update herdr-core, or point HC_BIN at a newer hc, then retry.",
             install: true,
           }
@@ -50,10 +50,10 @@ export function hostStartCopy(failure: HostStartFailure): HostStartCopy {
     case "permission-denied":
       return path !== undefined
         ? {
-            cause: `doriface may not run ${path}.`,
+            cause: `Doriterm may not run ${path}.`,
             next: "Make the file executable, or point HC_BIN at another hc, then retry.",
           }
-        : { cause: `doriface may not listen on ${address ?? "its port"}.`, next: `Retry. ${AGAIN}` };
+        : { cause: `Doriterm may not listen on ${address ?? "its port"}.`, next: `Retry. ${AGAIN}` };
     case "port-in-use":
       return {
         cause: `${address ?? "The host's port"} is already in use.`,
@@ -61,13 +61,13 @@ export function hostStartCopy(failure: HostStartFailure): HostStartCopy {
       };
     case "already-running":
       return {
-        cause: "Another doriface host is already running on this computer.",
-        next: "Quit it (another doriface window, or doriface-host in a terminal), then retry.",
+        cause: "Another Doriterm host is already running on this computer.",
+        next: "Quit it (another Doriterm window, or doriface-host in a terminal), then retry.",
       };
     case "host-spawn-failed":
       return {
-        cause: "doriface could not run its host program.",
-        next: "Reinstall doriface, then retry. If it keeps happening, Details shows why it could not run.",
+        cause: "Doriterm could not run its host program.",
+        next: "Reinstall Doriterm, then retry. If it keeps happening, Details shows why it could not run.",
       };
     case "host-timeout":
       return { cause: "The host took too long to start.", next: `Retry. ${AGAIN}` };

@@ -1,6 +1,7 @@
 import type { HcConnection } from "@doriface/client";
 import type { MachineView, Terminal, TerminalRunParams } from "@doriface/protocol";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { graceEnds, graceViews, stepHeld, type Held } from "./machine-grace.ts";
 import { machineEntries, machineKey, orderMachines, type MachineEntry } from "./machines.ts";
 import type { Session } from "./model.ts";
 import { withReach } from "./reach.ts";
@@ -19,7 +20,10 @@ export interface Machines {
   readonly listError: string | undefined;
   /** Shows how to add a machine (the pairing commands). */
   readonly openAddMachine: () => void;
-  /** The added machines as machine.list last said: state, `why`, since when. */
+  /**
+   * The added machines as the page shows them: as machine.list last said (state, `why`, since when), except a machine
+   * whose line hc is redialing, which reads connected for `OFFLINE_GRACE_MS` (#904).
+   */
   readonly views: readonly MachineView[];
   /** Dials a machine now (`machine.connect`) instead of at hc's next retry, then reads machine.list again. */
   readonly retry: (machine: string) => Promise<void>;
@@ -59,7 +63,10 @@ export interface MachineState {
   /** Reads machine.list again now, e.g. after a call on a machine failed. */
   readonly refresh: () => void;
   readonly listError: string | undefined;
+  /** The machines as the page shows them: a line hc is redialing reads connected for `OFFLINE_GRACE_MS` (#904). */
   readonly views: readonly MachineView[];
+  /** The machines as machine.list last said, with no grace: for checks that must not act on a held state. */
+  readonly heard: readonly MachineView[];
   readonly retry: (machine: string) => Promise<void>;
   /** How many machine.list reads have come back: a tab waits one read before taking a gone terminal as removed. */
   readonly listed: number;
@@ -67,7 +74,12 @@ export interface MachineState {
 
 /** machine.list, read again when a machine's live terminals change, on a timer while visible, and on return. */
 export function useMachines(connection: HcConnection, terminals: readonly Terminal[]): MachineState {
-  const [views, setViews] = useState<readonly MachineView[]>([]);
+  const [read, setRead] = useState<{
+    readonly views: readonly MachineView[];
+    readonly at: number | undefined;
+    readonly held: Held;
+  }>({ views: [], at: undefined, held: new Map() });
+  const [now, setNow] = useState(Date.now);
   const [reads, setReads] = useState(0);
   const [listError, setListError] = useState<string | undefined>(undefined);
   const [listed, setListed] = useState(0);
@@ -92,7 +104,12 @@ export function useMachines(connection: HcConnection, terminals: readonly Termin
       (list) => {
         if (!fresh()) return list;
         appliedSeq.current = seq;
-        setViews(orderMachines(list.machines));
+        const at = Date.now();
+        setRead((before) => {
+          const views = orderMachines(list.machines);
+          return { views, at, held: stepHeld(before.held, before, views, at) };
+        });
+        setNow(at);
         setListError(undefined);
         setListed((count) => count + 1);
         return list;
@@ -115,6 +132,15 @@ export function useMachines(connection: HcConnection, terminals: readonly Termin
       document.removeEventListener("visibilitychange", whenVisible);
     };
   }, [refresh]);
+  // A held machine's grace ends between reads: the page shows it offline then, not at the next read up to 10 s later.
+  const ends = graceEnds(read.held, now);
+  useEffect(() => {
+    if (ends === undefined) return undefined;
+    // A timer may fire a moment early: `now` is moved to the end itself, so the grace ends and `ends` moves on.
+    const timer = setTimeout(() => setNow(Math.max(Date.now(), ends)), Math.max(0, ends - Date.now()));
+    return () => clearTimeout(timer);
+  }, [ends]);
+  const views = useMemo(() => graceViews(read.views, read.held, now), [read, now]);
   const { id: coreId, name: coreName } = connection.hello.core;
   const reached = useMemo(() => withReach(terminals, views), [terminals, views]);
   const entries = useMemo(
@@ -126,5 +152,5 @@ export function useMachines(connection: HcConnection, terminals: readonly Termin
     (machine: string) => connection.call("machine.connect", { machine }).then(refresh, refresh),
     [connection, refresh],
   );
-  return { entries, terminals: reached, refresh, listError, views, retry, listed };
+  return { entries, terminals: reached, refresh, listError, views, heard: read.views, retry, listed };
 }

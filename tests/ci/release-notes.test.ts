@@ -23,7 +23,7 @@ function checkout(changelog: string): string {
   copyFileSync(SCRIPT, join(dir, ".github", "scripts", "release-notes.ts"));
   writeFileSync(join(dir, "CHANGELOG.md"), changelog);
   mkdirSync(join(dir, "assets"));
-  writeFileSync(join(dir, "assets", "doriface-1.2.0-x86_64.AppImage"), "");
+  writeFileSync(join(dir, "assets", "Doriterm-1.2.0-x86_64.AppImage"), "");
   return dir;
 }
 
@@ -70,7 +70,7 @@ test("the notes carry the version's own CHANGELOG section", async () => {
   expect(code).toBe(0);
   expect(out).toContain("- A thing users see. (#7)");
   expect(out).not.toContain("Something coming");
-  expect(out).toContain("doriface-1.2.0-x86_64.AppImage");
+  expect(out).toContain("Doriterm-1.2.0-x86_64.AppImage");
 });
 
 test("a release with no CHANGELOG section is refused, in --check and when writing the notes", async () => {
