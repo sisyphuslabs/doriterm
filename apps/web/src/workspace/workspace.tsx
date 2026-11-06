@@ -162,24 +162,34 @@ export function Workspace({ connection }: WorkspaceProps) {
   const navigate = useNavigate();
   const router = useRouter();
   const routeSearch = useRouterState({ select: (state) => state.location.search as { readonly t?: unknown } });
+  const routePath = useRouterState({ select: (state) => state.location.pathname });
   const routeKey = typeof routeSearch.t === "string" ? routeSearch.t : null;
+  const routeTerminal = routePath === "/" ? routeKey : null;
+  // Settings keeps the workspace mounted (#607), so it must keep the phone's open terminal too: a route that is not the
+  // list says nothing about `?t=`, and reading it as "nothing is open" unmounted the terminal and reattached it on return.
   useEffect(() => {
+    if (routePath !== "/") return;
     if (routeKey === phoneKey) return;
     setPhoneKey(routeKey);
-  }, [routeKey, phoneKey]);
+  }, [routePath, routeKey, phoneKey]);
   const showOnPhone = useCallback(
     (address: string) => {
       guideStore.opened();
+      // A desktop keeps no history entries of its own: its New tab and its notices are not navigations, and pushing one
+      // made Back step through no-op entries and a landing run close the screen behind it.
+      if (!narrow) return;
       const key = tabKey(address, ids);
       setPhoneKey(key);
-      void navigate({ href: `/?t=${encodeURIComponent(key)}` });
+      // Switching inside an open terminal replaces that entry, so one Back still leaves the terminal for the list;
+      // only entering from the list adds one.
+      void navigate({ href: `/?t=${encodeURIComponent(key)}`, replace: routeTerminal !== null });
     },
-    [ids, navigate],
+    [ids, navigate, narrow, routeTerminal],
   );
   const hideOnPhone = useCallback(() => {
-    if (typeof routeSearch.t === "string") router.history.back();
+    if (routeTerminal !== null) router.history.back();
     else setPhoneKey(null);
-  }, [routeSearch.t]);
+  }, [routeTerminal]);
   const [palette, setPalette] = useState(false);
   const [ask, setAsk] = useState<SessionAsk | null>(null);
   const [spaceAsk, setSpaceAsk] = useState<string | null>(null);
