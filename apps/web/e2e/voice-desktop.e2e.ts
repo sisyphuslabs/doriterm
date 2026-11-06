@@ -2,7 +2,15 @@ import { agentRow, endAgent, startShell } from "./agents.ts";
 import { removeTerminal, stateOn } from "./ended-terminal.ts";
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
-import { hcOn, machineRow, OFFLINE_BOUND_MS, reconnect, STATE_BOUND_MS, switchTo } from "./machine-switch.ts";
+import {
+  hcOn,
+  machineRow,
+  OFFLINE_BOUND_MS,
+  reconnect,
+  STATE_BOUND_MS,
+  switchTo,
+  OFFLINE_TEST_TIMEOUT_MS,
+} from "./machine-switch.ts";
 import { stubSpeech } from "./speech-stub.ts";
 import { tabOf } from "./tab-strip.ts";
 
@@ -118,7 +126,7 @@ test("moving focus to the other pane of a split tab ends the dictation, so nothi
 test("a dictation under way ends when its terminal's machine drops: the recognizer is aborted, the strip goes (#254)", async ({
   page,
 }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
   const speech = await stubSpeech(page);
   const remote = startShell("machine", "dictate-drop");
   try {
@@ -146,7 +154,7 @@ test("a dictation under way ends when its terminal's machine drops: the recogniz
 test("the desktop's ended view offers no dictation: no mic, no strip, and a bound Dictate key starts nothing (#258)", async ({
   page,
 }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
   const speech = await stubSpeech(page);
   const remote = startShell("machine", "dictate-ended");
   try {

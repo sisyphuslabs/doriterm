@@ -1,11 +1,16 @@
 import { contextBridge, ipcRenderer } from "electron";
 import {
   Channel,
+  DICTATION_ARG,
+  isDictationEvent,
+  isDictationStartAnswer,
   isDirectForward,
   isDirectForwardRefused,
   isHcInstallAnswer,
   isLocalHostEndpoint,
   isLocalHostStartFailed,
+  isNoticeAnswer,
+  isNoticeAuthorization,
   isPairedDevicesAnswer,
   isPairOfferAnswer,
   isRevokeDeviceAnswer,
@@ -17,7 +22,38 @@ import {
 
 const version = process.argv.find((arg) => arg.startsWith(VERSION_ARG))?.slice(VERSION_ARG.length) ?? "0.0.0";
 
+/** Dictation through the system recognizer, offered only when the main process loaded it (#726). */
+const dictation: Pick<
+  DorifaceBridge,
+  "dictationAvailable" | "dictationStart" | "dictationStop" | "dictationAbort" | "onDictationEvent"
+> = process.argv.includes(DICTATION_ARG)
+  ? {
+      async dictationAvailable(lang) {
+        const available: unknown = await ipcRenderer.invoke(Channel.dictationAvailable, lang);
+        return available === true;
+      },
+      async dictationStart(lang) {
+        const answer: unknown = await ipcRenderer.invoke(Channel.dictationStart, lang);
+        return isDictationStartAnswer(answer) ? answer : { refused: "service" };
+      },
+      async dictationStop(session) {
+        const stopped: unknown = await ipcRenderer.invoke(Channel.dictationStop, session);
+        return stopped === true;
+      },
+      async dictationAbort(session) {
+        const aborted: unknown = await ipcRenderer.invoke(Channel.dictationAbort, session);
+        return aborted === true;
+      },
+      onDictationEvent(listener) {
+        ipcRenderer.on(Channel.dictationEvent, (_event, value: unknown) => {
+          if (isDictationEvent(value)) listener(value);
+        });
+      },
+    }
+  : {};
+
 const bridge: DorifaceBridge = {
+  ...dictation,
   version,
   platform: parsePlatform(process.platform),
   async openExternal(url) {
@@ -111,9 +147,13 @@ const bridge: DorifaceBridge = {
     const supported: unknown = await ipcRenderer.invoke(Channel.noticesSupported);
     return supported === true;
   },
+  async noticePermission() {
+    const authorization: unknown = await ipcRenderer.invoke(Channel.noticePermission);
+    return isNoticeAuthorization(authorization) ? authorization : "unknown";
+  },
   async showNotice(notice) {
-    const shown: unknown = await ipcRenderer.invoke(Channel.showNotice, notice);
-    return shown === true;
+    const answer: unknown = await ipcRenderer.invoke(Channel.showNotice, notice);
+    return isNoticeAnswer(answer) ? answer : { accepted: false, reason: "the main process returned no answer" };
   },
   onNoticeClick(listener) {
     ipcRenderer.on(Channel.noticeClicked, (_event, terminal: unknown) => {

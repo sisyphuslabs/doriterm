@@ -13,6 +13,9 @@ export const STATE_BOUND_MS = 25_000;
 /** How long a machine whose line dropped may read connected before it reads offline: the page's grace (#904), plus as above. */
 export const OFFLINE_BOUND_MS = OFFLINE_GRACE_MS + STATE_BOUND_MS;
 
+/** A test that waits a machine out to offline and back: the bound above, plus its setup and its reconnect. */
+export const OFFLINE_TEST_TIMEOUT_MS = OFFLINE_BOUND_MS + 120_000;
+
 export const machineRow = (page: Page) => page.getByRole("button", { name: new RegExp(`^${MACHINE_NAME}\\b`) });
 export const newOn = (page: Page) => page.getByRole("button", { name: `New space on ${MACHINE_NAME}` });
 

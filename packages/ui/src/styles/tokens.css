@@ -41,6 +41,8 @@
   --color-brand-foreground: var(--brand-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-affirmative: var(--avatar-green);
+  --color-affirmative-foreground: var(--avatar-ink);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -109,7 +111,13 @@
 :root {
   --font-ui:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --font-term: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* Bundled faces first (terminal-fonts.css), so symbols and icons draw the same everywhere; then the platform's mono,
+     Hangul and emoji faces by name, so a phone never falls back to a face that has no Hangul (#949). */
+  --font-term:
+    "JetBrains Mono Variable", "JetBrains Mono", "Symbols Nerd Font Mono", "Doriterm Noto Symbols 2",
+    "Doriterm Noto Symbols", "Doriterm Noto Math", ui-monospace, "SF Mono", Menlo, Consolas, "Apple SD Gothic Neo",
+    "Noto Sans Mono CJK KR", "Noto Sans CJK KR", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji",
+    "Noto Color Emoji", "Segoe UI Emoji", monospace;
 
   /* Pointer-precise sizes (desktop). Coarse pointers override below. */
   --type-2xs: 0.6875rem;

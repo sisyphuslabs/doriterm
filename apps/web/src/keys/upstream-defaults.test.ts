@@ -12,9 +12,10 @@ import { PLATFORM_RESERVED } from "./platform-reserved.ts";
  */
 const DORIFACE_ONLY: Readonly<Record<"mac" | "other", readonly string[]>> = {
   // Ghostty binds move_tab by default only on Linux and Windows; there doriface takes the same chord.
-  mac: ["layout.focus:sidebar", "tab.move:left", "tab.move:right"],
+  mac: ["layout.focus:sidebar", "layout.filter:sidebar", "tab.move:left", "tab.move:right"],
   other: [
     "layout.focus:sidebar",
+    "layout.filter:sidebar",
     // herdr-app cycles spaces with Ctrl+Shift+PgUp/PgDn here; doriface's terminal keeps those, so it cycles with Ctrl+Alt+[ / ].
     "space.next",
     "space.prev",

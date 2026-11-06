@@ -4,12 +4,20 @@ import type { MachineView } from "@doriface/protocol";
  * How long a machine read connected may then read connecting or unreachable before the page shows it offline (#904).
  *
  * hc marks a machine unreachable on the first failed redial, within 50 ms of its line ending, and a healthy line ends
- * often: any relay blip ends every mesh line at once, the host then refuses new lines for its 10-20 s settle
- * (apps/host/src/mesh/dial-policy.ts, DIAL_LIMITS.settleMaxMs), and hc's doubling redial lands the line 16-32 s after
- * the drop. 45 s covers that with a margin, so a blip never reads offline, while a machine that is really gone (a laptop
- * asleep) reads offline 45 s after its line dropped. needs_login is an answer, not a blip: it shows at once.
+ * often: any relay blip ends every mesh line at once. The host then refuses new lines for its 10-20 s settle
+ * (apps/host/src/mesh/dial-policy.ts, DIAL_LIMITS.settleMaxMs), and a member that was reconnecting too answers its
+ * first dial with a 4404, which gates it until its first probe 30 s later (DIAL_LIMITS.probeFirstMs). hc's doubling
+ * redial (0.25 s up to a 30 s cap) next tries 61.75 s after the drop, the slowest return measured on a real relay blip
+ * (62 s). The page sees that return at its next machine.list read, up to MACHINE_REFRESH_MS (10 s) later, so 75 s
+ * covers it with about 3 s to spare while the host's clock is not more than that behind this page's (a hold starts at
+ * hc's `since_ms`, kept no earlier than the read before the drop, so a host clock further behind starts it early: with
+ * it 9 s behind, that slowest return can read offline for up to 5 s). Otherwise a blip never reads offline, while a
+ * machine that is really gone (a laptop asleep) reads offline 75 s after its line dropped. needs_login is an answer,
+ * not a blip: it shows at once. Not covered, and read as offline: a 4404 met after hc's 31.75 s redial (the line lands
+ * at 91.75 s), or a member still offline at its first probe (the second comes 60 s later); both mean the member itself
+ * stayed away well past a blip.
  */
-export const OFFLINE_GRACE_MS = 45_000;
+export const OFFLINE_GRACE_MS = 75_000;
 
 const DOWN = new Set(["connecting", "unreachable"]);
 
@@ -20,17 +28,25 @@ export type Held = ReadonlyMap<string, number>;
 export interface Before {
   readonly views: readonly MachineView[];
   readonly at: number | undefined;
+  /** The page's first machine.list answer: when it was read and which machines it listed; none before it. */
+  readonly first?: { readonly at: number; readonly ids: ReadonlySet<string> };
+  /** Every machine (by id) any read so far found connected. */
+  readonly up?: ReadonlySet<string>;
 }
 
 /**
  * The hold after one machine.list answer read at `now`. A machine held already keeps its start. A machine that reads
  * down is held from its drop when it read connected at the read before (dropped since then), or when this is the page's
- * first read and hc says when it dropped (a page opened mid-blip); a machine listed later for the first time (just added,
- * still dialing) was never connected, so it shows as hc says. The drop is hc's `since_ms`, which is the host's clock, so it is kept
- * between the read before (or one grace back, on a first read) and `now`: no host clock can lengthen a hold, and a
- * machine that went down while the page was hidden is not held for a drop that is older than its grace. A machine that
- * already read down at the read before is never held anew, so a grace that ended does not start again. Anything else
- * (connected, needs_login, down past the grace, gone from the list) is not held.
+ * first read and hc says when it dropped (a page opened mid-blip); a machine listed later for the first time (just
+ * added, still dialing) was never connected, so it shows as hc says. The drop is hc's `since_ms`, which is the host's
+ * clock, so it is kept between the read before (or one grace back, on a first read) and `now`: no host clock can
+ * lengthen a hold, and a machine that went down while the page was hidden is not held for a drop that is older than its
+ * grace. A machine that already read down at the read before is never held anew, so a grace that ended does not start
+ * again. A machine the page's first read listed that no read has found connected since (it read connecting, and hc
+ * names its drop only once it reads unreachable) is held from that drop, kept no earlier than one grace before the
+ * first read and never later than `now`: a page opened mid-blip holds it for what is left of its grace, and since hc's
+ * `since_ms` stays the drop time, that hold ends once and does not start again. Anything else (connected, needs_login,
+ * down past the grace, gone from the list) is not held.
  */
 export function stepHeld(held: Held, before: Before, list: readonly MachineView[], now: number): Map<string, number> {
   const seen = new Map(before.views.map((view) => [view.id, view.state]));
@@ -41,7 +57,15 @@ export function stepHeld(held: Held, before: Before, list: readonly MachineView[
     const was = seen.get(view.id);
     const fresh = was === "connected" || (before.at === undefined && view.since_ms != null);
     const earliest = was === "connected" && before.at !== undefined ? before.at : now - OFFLINE_GRACE_MS;
-    const since = kept ?? (fresh ? Math.min(now, Math.max(earliest, view.since_ms ?? now)) : undefined);
+    const opened =
+      before.first !== undefined &&
+      before.first.ids.has(view.id) &&
+      before.up?.has(view.id) !== true &&
+      view.since_ms != null &&
+      view.since_ms <= now
+        ? Math.max(view.since_ms, before.first.at - OFFLINE_GRACE_MS)
+        : undefined;
+    const since = kept ?? (fresh ? Math.min(now, Math.max(earliest, view.since_ms ?? now)) : opened);
     if (since !== undefined && now - since < OFFLINE_GRACE_MS) next.set(view.id, since);
   }
   return next;

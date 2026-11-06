@@ -54,6 +54,8 @@ export default defineConfig({
       },
       injectManifest: {
         globPatterns: ["**/*.{js,css,html,svg,png,wasm,woff2}"],
+        // The Nerd Font icons (1.2 MB) are fetched the first time a page draws one, and kept then (sw.ts).
+        globIgnores: ["**/symbols-nerd-font-mono-*.woff2"],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
       },
     }),

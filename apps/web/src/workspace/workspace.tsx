@@ -32,6 +32,7 @@ import { afterEnd } from "./session-actions.ts";
 import { useDeadPanes } from "./use-dead-panes.ts";
 import { useLayoutDocs } from "./use-layout-docs.ts";
 import { GitFactsContext, useGitFacts } from "./git-facts.ts";
+import { TodoProgressContext, useTodoProgress } from "./todo-progress.ts";
 import { layoutSpaces, tabTitle } from "./model.ts";
 import { SpaceSelectionContext } from "./space-selection.ts";
 import { useSpaceMove } from "./space-order.ts";
@@ -74,6 +75,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   // Opened and re-read on what hc said: a document read while its line was down is read again once the line is back.
   const { layouts, heard } = useLayoutDocs(connection, heardMachines);
   const gitOf = useGitFacts(connection, views);
+  const todoOf = useTodoProgress(connection, fed.terminals);
   heardLayout.current = heard;
   const order = useMachineOrder(connection, listed);
   heardOrder.current = order.heard;
@@ -336,113 +338,120 @@ export function Workspace({ connection }: WorkspaceProps) {
   return (
     <MachinesContext value={machines}>
       <GitFactsContext value={gitOf}>
-        <SpaceSelectionContext value={spaceSelection}>
-          <PinContext value={pin}>
-            <SessionContext value={setAsk}>
-              <SpaceRename
-                connection={connection}
-                terminals={terminals}
-                layouts={layouts}
-                spaces={spaces}
-                ask={spaceAsk}
-                onAsk={setSpaceAsk}
-              >
-                <SpaceClose
+        <TodoProgressContext value={todoOf}>
+          <SpaceSelectionContext value={spaceSelection}>
+            <PinContext value={pin}>
+              <SessionContext value={setAsk}>
+                <SpaceRename
                   connection={connection}
                   terminals={terminals}
                   layouts={layouts}
                   spaces={spaces}
-                  ask={spaceClosing}
-                  onAsk={setSpaceClosing}
+                  ask={spaceAsk}
+                  onAsk={setSpaceAsk}
                 >
-                  {narrow ? (
-                    <PhoneShell
-                      connection={connection}
-                      terminals={sessions}
-                      open={phoneOpen}
-                      panes={phonePanes}
-                      tabTitle={phoneTitle}
-                      onOpen={showOnPhone}
-                      onBack={() => setPhoneKey(null)}
-                      onNew={() => newTerminal()}
-                      onPalette={onPalette}
-                      onSession={onSession}
-                    />
-                  ) : (
-                    <DesktopShell
-                      connection={connection}
-                      terminals={sessions}
-                      loaded={fed.loaded}
-                      layout={layout}
-                      spaceKeys={spaceKeys}
-                      onSelectSpace={selectSpace}
-                      onNew={() => newTerminal()}
-                      onNewAgent={(template) => newTerminal(template)}
-                      onNewSpace={() => runs.start({}, inNewSpace)}
-                      onSplit={split}
-                      onCloseTab={closeTab}
-                      onClosePane={closePane}
-                      onEnd={onEnd}
-                      onPalette={onPalette}
-                      onSession={onSession}
-                    />
-                  )}
-                </SpaceClose>
-              </SpaceRename>
-            </SessionContext>
-          </PinContext>
-          <PromptAnswerBanner />
-          <textarea
-            ref={typeAhead.catcher}
-            {...CATCHER_ATTRIBUTES}
-            aria-label="New terminal starting: what you type goes to it"
-            tabIndex={-1}
-            className="sr-only"
-            autoCapitalize="off"
-            autoComplete="off"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-          <AddMachineDialog open={adding} onClose={() => setAdding(false)} connection={connection} machines={entries} />
-          <SessionDialogs
-            connection={connection}
-            terminals={terminals}
-            ask={ask}
-            onDone={done}
-            onDrop={layout.dropPane}
-          />
-          {closing === undefined ? null : (
-            <CloseTabDialog
-              key={closing.key}
+                  <SpaceClose
+                    connection={connection}
+                    terminals={terminals}
+                    layouts={layouts}
+                    spaces={spaces}
+                    ask={spaceClosing}
+                    onAsk={setSpaceClosing}
+                  >
+                    {narrow ? (
+                      <PhoneShell
+                        connection={connection}
+                        terminals={sessions}
+                        open={phoneOpen}
+                        panes={phonePanes}
+                        tabTitle={phoneTitle}
+                        onOpen={showOnPhone}
+                        onBack={() => setPhoneKey(null)}
+                        onNew={() => newTerminal()}
+                        onPalette={onPalette}
+                        onSession={onSession}
+                      />
+                    ) : (
+                      <DesktopShell
+                        connection={connection}
+                        terminals={sessions}
+                        loaded={fed.loaded}
+                        layout={layout}
+                        spaceKeys={spaceKeys}
+                        onSelectSpace={selectSpace}
+                        onNew={() => newTerminal()}
+                        onNewAgent={(template) => newTerminal(template)}
+                        onNewSpace={() => runs.start({}, inNewSpace)}
+                        onSplit={split}
+                        onCloseTab={closeTab}
+                        onClosePane={closePane}
+                        onEnd={onEnd}
+                        onPalette={onPalette}
+                        onSession={onSession}
+                      />
+                    )}
+                  </SpaceClose>
+                </SpaceRename>
+              </SessionContext>
+            </PinContext>
+            <PromptAnswerBanner />
+            <textarea
+              ref={typeAhead.catcher}
+              {...CATCHER_ATTRIBUTES}
+              aria-label="New terminal starting: what you type goes to it"
+              tabIndex={-1}
+              className="sr-only"
+              autoCapitalize="off"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+            <AddMachineDialog
+              open={adding}
+              onClose={() => setAdding(false)}
+              connection={connection}
+              machines={entries}
+            />
+            <SessionDialogs
               connection={connection}
               terminals={terminals}
-              tab={closing}
-              {...(lastOfSpace(closing)
-                ? { space: { name: spaces.find((space) => space.id === closing.spaceKey)?.name ?? "Space" } }
-                : {})}
-              onClosed={() => layout.closeTab(closing.key)}
-              onDone={() => setClosingTab(null)}
+              ask={ask}
+              onDone={done}
+              onDrop={layout.dropPane}
             />
-          )}
-          {palette ? (
-            <Palette
-              terminals={sessions}
-              host={connection.hello.core.name}
-              route={connectionStore.settings.mode === "relay" ? "relay" : "loopback"}
-              actions={availableActions(
-                narrow ? "phone" : "desktop",
-                inView !== null,
-                layout.active?.readOnly ?? null,
-                {
-                  keys: layout.shown.map((tab) => tab.key),
-                  active: layout.active?.key ?? null,
-                },
-              )}
-              onOpenTerminal={opened}
-              onClose={() => setPalette(false)}
-            />
-          ) : null}
-        </SpaceSelectionContext>
+            {closing === undefined ? null : (
+              <CloseTabDialog
+                key={closing.key}
+                connection={connection}
+                terminals={terminals}
+                tab={closing}
+                {...(lastOfSpace(closing)
+                  ? { space: { name: spaces.find((space) => space.id === closing.spaceKey)?.name ?? "Space" } }
+                  : {})}
+                onClosed={() => layout.closeTab(closing.key)}
+                onDone={() => setClosingTab(null)}
+              />
+            )}
+            {palette ? (
+              <Palette
+                terminals={sessions}
+                host={connection.hello.core.name}
+                route={connectionStore.settings.mode === "relay" ? "relay" : "loopback"}
+                actions={availableActions(
+                  narrow ? "phone" : "desktop",
+                  inView !== null,
+                  layout.active?.readOnly ?? null,
+                  {
+                    keys: layout.shown.map((tab) => tab.key),
+                    active: layout.active?.key ?? null,
+                  },
+                )}
+                onOpenTerminal={opened}
+                onClose={() => setPalette(false)}
+              />
+            ) : null}
+          </SpaceSelectionContext>
+        </TodoProgressContext>
       </GitFactsContext>
     </MachinesContext>
   );

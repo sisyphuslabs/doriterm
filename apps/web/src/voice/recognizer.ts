@@ -26,8 +26,11 @@ export type RecognizerClass = (new () => Recognizer) & {
   readonly install?: (options: RecognizerOptions) => Promise<boolean>;
 };
 
-/** Why the mic cannot listen at all here. */
-export type Unavailable = "unsupported" | "insecure";
+/**
+ * Why the mic cannot listen at all here: no recognizer, an http page, or a desktop app with no recognizer of its own
+ * (`desktop`: Linux or a Mac build without it; `desktop-windows`: not built for Windows yet, #726).
+ */
+export type Unavailable = "unsupported" | "insecure" | "desktop" | "desktop-windows";
 
 export type Support =
   | { readonly kind: "ok"; readonly recognizer: RecognizerClass }
@@ -68,6 +71,13 @@ export function errorFor(code: string, local: boolean): VoiceError | null {
       return local ? "device" : "language";
     case "service-not-allowed":
       return local ? "device" : "service";
+    // The macOS desktop recognizer's own reasons (#726), kept as they are.
+    case "mic-system":
+    case "speech-system":
+    case "device-mac":
+      return code;
+    case "busy":
+      return "service";
     default:
       return "service";
   }

@@ -1,5 +1,6 @@
 import { Button, Menu, MenuItem, Notice, SegmentedControl, SettingRow } from "@doriface/ui";
 import { Check, ChevronDown } from "lucide-react";
+import { desktopDictation } from "../voice/desktop-recognizer.ts";
 import { type Engine, languageName, VOICE_LANGUAGES } from "../voice/voice-settings.ts";
 import { useVoiceSettings, voiceStore } from "../voice/voice-store.ts";
 import { type VoiceBlocked, voiceBlocked } from "./voice-support.ts";
@@ -21,12 +22,15 @@ const BLOCKED: Readonly<Record<VoiceBlocked, string>> = {
     "This browser has no speech recognition, so the mic cannot listen. Type instead, or open Doriterm in Chrome or Safari.",
   insecure: "The browser only listens on a secure (https) page. Open Doriterm over https to dictate, or type instead.",
   desktop: "The desktop app can't dictate yet. For dictation, use Doriterm in Chrome or Safari; here, type instead.",
+  "desktop-windows":
+    "The Windows app can't dictate yet. For dictation, use Doriterm in Chrome or Edge; here, type instead.",
 };
 
 /** Dictation: where it sends the audio, and the language and way it is recognized; nothing here keeps any audio. */
 export function VoiceSection() {
   const settings = useVoiceSettings();
   const blocked = voiceBlocked(window);
+  const onThisMac = blocked === null && desktopDictation() !== null;
   const browser = navigator.language;
   const name = (tag: string) => (tag === "" ? `Browser language: ${languageName(browser)}` : languageName(tag));
   const listed = VOICE_LANGUAGES.includes(settings.language) || settings.language === "" ? [] : [settings.language];
@@ -72,18 +76,24 @@ export function VoiceSection() {
             description="Speech recognition takes one language at a time."
             control={language}
           />
-          <SettingRow
-            title="Speech recognition"
-            description={ENGINE_NOTE[settings.engine]}
-            control={
-              <SegmentedControl<Engine>
-                label="Speech recognition"
-                options={ENGINES}
-                value={settings.engine}
-                onValueChange={(next) => voiceStore.update({ engine: next })}
-              />
-            }
-          />
+          {onThisMac ? (
+            <p data-voice-on-mac className="text-sm text-pretty text-muted-foreground">
+              macOS recognizes speech on this Mac; the audio never leaves it.
+            </p>
+          ) : (
+            <SettingRow
+              title="Speech recognition"
+              description={ENGINE_NOTE[settings.engine]}
+              control={
+                <SegmentedControl<Engine>
+                  label="Speech recognition"
+                  options={ENGINES}
+                  value={settings.engine}
+                  onValueChange={(next) => voiceStore.update({ engine: next })}
+                />
+              }
+            />
+          )}
         </div>
       ) : (
         <Notice tone="info" title="Dictation isn't available here">

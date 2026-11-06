@@ -13,10 +13,19 @@ test("no recognizer, or a page that is not secure, says which", () => {
   expect(voiceBlocked({ isSecureContext: false, SpeechRecognition: recognizer() })).toBe("insecure");
 });
 
-test("the desktop app is blocked whole: its Chromium has a recognizer whose speech service refuses it", () => {
-  const bridge = { version: "0.1.0", platform: "darwin" };
-  expect(voiceBlocked({ isSecureContext: true, SpeechRecognition: recognizer(), doriface: bridge })).toBe("desktop");
-  expect(voiceBlocked({ isSecureContext: true, doriface: bridge })).toBe("desktop");
+const shell = (platform: string, dictation: boolean) => ({
+  version: "0.1.2",
+  platform,
+  ...(dictation ? { dictationStart: () => ({ session: 1 }) } : {}),
+});
+
+test("the desktop app dictates only through its own system recognizer, never its Chromium's (#726)", () => {
+  const page = { isSecureContext: true, SpeechRecognition: recognizer() };
+  expect(voiceBlocked({ ...page, doriface: shell("darwin", true) })).toBeNull();
+  expect(voiceBlocked({ ...page, doriface: shell("darwin", false) })).toBe("desktop");
+  expect(voiceBlocked({ ...page, doriface: shell("linux", false) })).toBe("desktop");
+  expect(voiceBlocked({ ...page, doriface: shell("win32", false) })).toBe("desktop-windows");
+  expect(voiceBlocked({ isSecureContext: true, doriface: shell("darwin", false) })).toBe("desktop");
 });
 
 test("something on the page that is not the app's bridge is not the desktop app", () => {

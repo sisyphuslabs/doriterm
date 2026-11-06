@@ -48,7 +48,7 @@ export function packEntries(settings: KeyBarSettings, id: string): readonly BarE
   }));
 }
 
-/** The active pack's keys, which the bar draws after the person's own; empty when no pack is active. */
+/** The active pack's keys, which the bar draws ahead of the person's own; empty when no pack is active. */
 export function activeEntries(settings: KeyBarSettings): readonly BarEntry[] {
   return settings.activePack === null ? [] : packEntries(settings, settings.activePack);
 }

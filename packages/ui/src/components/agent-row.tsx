@@ -16,7 +16,13 @@ export interface Agent {
   readonly age?: string;
   readonly icon?: ReactNode;
   readonly pinned?: boolean;
+  /** How far the agent's own todo list has got, when it draws one: `done` of `total`. */
+  readonly todo?: { readonly done: number; readonly total: number };
 }
+
+/** The todo progress in words, for the label and the tooltip. */
+export const todoLabel = (todo: { readonly done: number; readonly total: number }): string =>
+  `${todo.done} of ${todo.total} tasks done`;
 
 export interface AgentRowProps extends Omit<ComponentProps<"button">, "onSelect" | "children" | "className"> {
   readonly agent: Agent;
@@ -48,9 +54,14 @@ export function AgentRow({
   const quiet = agent.status === "idle" && !selected;
   const row = useRef<HTMLButtonElement | null>(null);
   // The age is in the key too: a wider age (59m after <1m) leaves less room for the parts.
-  useRowFloors(row, [agent.name, agent.detail, agent.machine, agent.age].join("\u0000"));
+  const todo = agent.todo === undefined ? undefined : `${agent.todo.done}/${agent.todo.total}`;
+  useRowFloors(row, [agent.name, agent.detail, agent.machine, agent.age, todo].join("\u0000"));
   if (rail) {
-    const label = `${agent.name}, ${STATUS_LABEL[agent.status]}`;
+    const label = [
+      agent.name,
+      STATUS_LABEL[agent.status],
+      ...(agent.todo === undefined ? [] : [todoLabel(agent.todo)]),
+    ].join(", ");
     return (
       <button
         {...props}
@@ -128,6 +139,19 @@ export function AgentRow({
           className="min-w-0 max-w-[35%] shrink-2 truncate text-2xs text-muted-foreground"
         >
           {agent.machine}
+        </span>
+      )}
+      {agent.todo === undefined ? null : (
+        <span
+          role="img"
+          aria-label={todoLabel(agent.todo)}
+          title={todoLabel(agent.todo)}
+          data-numeric
+          data-row-meta
+          data-todo
+          className="shrink-0 text-xs text-muted-foreground tabular-nums"
+        >
+          {todo}
         </span>
       )}
       {agent.status === "blocked" && !compactBlocked ? <StatusChip status="blocked" glyph={false} /> : null}

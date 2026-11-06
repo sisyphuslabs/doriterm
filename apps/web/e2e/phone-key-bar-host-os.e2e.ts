@@ -1,29 +1,11 @@
-import type { Page } from "@playwright/test";
-import { E2E_HOST_PORT } from "./config.ts";
-import { coreDoc, setCoreDoc } from "./core-doc.ts";
+import { coreDoc } from "./core-doc.ts";
 import { expect, test } from "./fixtures.ts";
+import { fakeHostOs } from "./host-os.ts";
 import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE });
 
 const HOST_INFO_DOC = "doriface-host";
-
-// A host OS, faked without touching the real host's document: this page's reads are pointed at
-// a document of the same length that says the chosen OS. The rest of the hc stream passes through as it is.
-const FAKED_DOC = `${HOST_INFO_DOC.slice(0, -1)}x`;
-
-async function readHostOs(page: Page, os: "linux" | "darwin"): Promise<void> {
-  setCoreDoc(FAKED_DOC, { v: 1, os });
-  await page.routeWebSocket(`ws://127.0.0.1:${E2E_HOST_PORT}/v1/hc`, (socket) => {
-    const host = socket.connectToServer();
-    socket.onMessage((frame) => {
-      const text = typeof frame === "string" ? frame : frame.toString("latin1");
-      const read = `"name":"${HOST_INFO_DOC}"`;
-      host.send(text.includes(read) ? Buffer.from(text.replace(read, `"name":"${FAKED_DOC}"`), "latin1") : frame);
-    });
-    host.onMessage((message) => socket.send(message));
-  });
-}
 
 test("the e2e host reports its actual OS on its core, and its key bar matches", async ({ page }) => {
   await openPhoneTerminal(page);
@@ -38,7 +20,7 @@ test("the e2e host reports its actual OS on its core, and its key bar matches", 
 for (const os of ["linux", "darwin"] as const) {
   test(`a host that reports ${os} gets its matching keys and paste chord`, async ({ page, context }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-    await readHostOs(page, os);
+    await fakeHostOs(page, os);
     const terminal = await openPhoneTerminal(page);
     const cmd = keysBar(page).getByRole("button", { name: "Command", exact: true });
     await expect(cmd).toHaveCount(os === "darwin" ? 1 : 0);

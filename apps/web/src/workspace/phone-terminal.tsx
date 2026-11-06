@@ -2,6 +2,7 @@ import type { HcConnection } from "@doriface/client";
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { ApprovalOverlay } from "../approval/approval-overlay.tsx";
 import { RegionBoundary } from "../crash/region-boundary.tsx";
+import { useKeyBarSettings } from "../keybar/store.ts";
 import { useMouseOnly, useSoftKeyboard } from "../terminal/keyboard-inset.ts";
 import { useHostPlatform } from "../terminal/host-os.ts";
 import { closesTab } from "../terminal/terminal-end.ts";
@@ -12,6 +13,7 @@ import { useDictation } from "../voice/use-dictation.ts";
 import { VoiceDock } from "../voice/voice-dock.tsx";
 import { MachineOffline } from "./machine-offline.tsx";
 import { machineOf, type Session, terminalTitle } from "./model.ts";
+import { PackSheet } from "./pack-sheet.tsx";
 import { PhoneHeader } from "./phone-header.tsx";
 import { PaneSwitcher } from "./phone-pane-switcher.tsx";
 import { PhoneTabSwitcher, useSpaceTabs } from "./phone-tab-switcher.tsx";
@@ -54,6 +56,10 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   const [keysShown, setKeysShown] = useState(false);
   const [menu, setMenu] = useState(false);
   const [pad, setPad] = useState(false);
+  // The keys bar as drawn, which grows while its field has a row of its own; the terminal keeps clear of all of it.
+  const [barHeight, setBarHeight] = useState(0);
+  const [packs, setPacks] = useState(false);
+  const keyBar = useKeyBarSettings();
   // A rename moves the address, a restarted program changes the pid: either way the view attaches afresh.
   const viewKey = `${terminal.address}#${terminal.pid ?? ""}`;
   // The view that showed its program had already ended; the keys have nothing to send to under it.
@@ -79,7 +85,9 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
     if (ended || offline) voice.dictation.close();
   }, [ended, offline, voice.dictation]);
   const dictating = voice.state.kind !== "idle" && !ended && !offline;
-  const keysOpen = !ended && !dictating && (keyboard.up || menu || (mouseOnly && keysShown));
+  // The packs panel takes the screen for a moment, so the bar stays under it as it does under the session menu: closing
+  // the panel puts the person back on the terminal's keyboard.
+  const keysOpen = !ended && !dictating && (keyboard.up || menu || packs || (mouseOnly && keysShown));
   // The tabs bar takes the bottom while nothing rides there: the keys bar, with the soft keyboard, and dictation do.
   const tabs = useSpaceTabs(terminals, terminal.address);
   const tabsBar = !keysOpen && !dictating && tabs.some((tab) => tab.includes(terminal.address));
@@ -116,7 +124,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
         style={
           keysOpen
             ? {
-                paddingBottom: `calc(${keysBottom(keyboard.inset)} + ${KEYS_BAR_HEIGHT})`,
+                paddingBottom: `calc(${keysBottom(keyboard.inset)} + ${barHeight > 0 ? `${barHeight}px` : KEYS_BAR_HEIGHT})`,
               }
             : undefined
         }
@@ -188,9 +196,21 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
             onMenu={setMenu}
             pad={pad}
             onPad={setPad}
+            onBarHeight={setBarHeight}
+            onPacks={() => setPacks(true)}
             {...(mouseOnly ? { onKeys: setKeysShown } : {})}
           />
         </>
+      )}
+      {offline || ended ? null : (
+        <PackSheet
+          open={packs}
+          onOpenChange={(open) => {
+            setPacks(open);
+            if (!open) requestAnimationFrame(() => port.current?.focus());
+          }}
+          settings={keyBar}
+        />
       )}
     </div>
   );

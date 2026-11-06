@@ -84,7 +84,12 @@ export function MachineHeader({
             >
               {state}
             </span>
-            <span data-numeric aria-label={`${live} terminals`} className="w-4 shrink-0 text-right">
+            {/* At least one digit wide, so single digits keep their column, and as wide as more digits need (#878). */}
+            <span
+              data-numeric
+              aria-label={`${live} terminals`}
+              className="min-w-4 shrink-0 text-right whitespace-nowrap"
+            >
               {live}
             </span>
           </>

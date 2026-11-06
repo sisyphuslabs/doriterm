@@ -3,7 +3,15 @@ import { agentRow, startShell } from "./agents.ts";
 import { removeTerminal, stateOn } from "./ended-terminal.ts";
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
-import { hcOn, machineRow, OFFLINE_BOUND_MS, reconnect, STATE_BOUND_MS, switchTo } from "./machine-switch.ts";
+import {
+  hcOn,
+  machineRow,
+  OFFLINE_BOUND_MS,
+  reconnect,
+  STATE_BOUND_MS,
+  switchTo,
+  OFFLINE_TEST_TIMEOUT_MS,
+} from "./machine-switch.ts";
 import { stubSpeech } from "./speech-stub.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
@@ -29,7 +37,7 @@ async function openOnMachine(page: Page, name: string, address: string) {
 test("a dictation under way ends when its machine drops: the recognizer is aborted, not left listening", async ({
   page,
 }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
   const speech = await stubSpeech(page);
   const address = startShell("machine", "voice-drop");
   try {
@@ -53,7 +61,7 @@ test("a dictation under way ends when its machine drops: the recognizer is abort
 test("the ended view offers no dictation: no mic, no strip, no keys bar, and a bound Dictate key starts nothing", async ({
   page,
 }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
   const speech = await stubSpeech(page);
   const address = startShell("machine", "voice-ended");
   try {

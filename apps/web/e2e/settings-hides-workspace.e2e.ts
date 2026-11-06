@@ -16,16 +16,16 @@ const drawnUnderSettings = (page: Page) =>
     );
 
 // Settings paints over a workspace it keeps mounted and hidden, so nothing of that workspace may be drawn while it is
-// open, however a part reveals itself: on a touch screen an agent row keeps its Pin and More visible (#808), and those
-// were drawn over every Settings section (#879).
+// open, however a part reveals itself: on a touch screen an agent row keeps its More visible (#808; More alone since
+// #950), and the row's actions were drawn over every Settings section (#879).
 test("nothing the workspace draws shows through Settings on a touch screen, and leaving it draws the row again (#879)", async ({
   page,
 }) => {
   const address = startAgent("host", "undersettings", "idle");
   try {
     await page.goto("/");
-    const pin = page.getByRole("button", { name: "Pin undersettings" });
-    await expect(pin).toBeVisible({ timeout: 20_000 });
+    const more = page.getByRole("button", { name: "More for undersettings" });
+    await expect(more).toBeVisible({ timeout: 20_000 });
 
     await page
       .getByRole("link", { name: /Settings/ })
@@ -36,7 +36,7 @@ test("nothing the workspace draws shows through Settings on a touch screen, and 
     await expect.poll(() => drawnUnderSettings(page)).toEqual([]);
 
     await page.getByRole("button", { name: "Close settings" }).click();
-    await expect(pin).toBeVisible();
+    await expect(more).toBeVisible();
   } finally {
     endAgent("host", address);
   }

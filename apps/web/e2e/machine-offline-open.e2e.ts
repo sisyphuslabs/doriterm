@@ -1,7 +1,15 @@
 import { agentRow, endAgent, startAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
-import { machineRow, reconnect, STATE_BOUND_MS, switchOn, switchTo, OFFLINE_BOUND_MS } from "./machine-switch.ts";
+import {
+  machineRow,
+  reconnect,
+  STATE_BOUND_MS,
+  switchOn,
+  switchTo,
+  OFFLINE_BOUND_MS,
+  OFFLINE_TEST_TIMEOUT_MS,
+} from "./machine-switch.ts";
 
 const OFFLINE = `${MACHINE_NAME} is offline`;
 
@@ -16,7 +24,7 @@ test.describe("opening a session on a machine that went offline", () => {
   });
 
   test("says why in plain words, and Try again brings the terminal back", async ({ page }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
     await page.goto("/");
     await expect(agentRow(page, "crunch", true)).toBeVisible({ timeout: 20_000 });
     switchTo("drop");
@@ -35,7 +43,7 @@ test.describe("opening a session on a machine that went offline", () => {
   });
 
   test("offers a phone no terminal keys, as there is nothing to type into", async ({ page }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
     await expect(agentRow(page, "crunch", true)).toBeVisible({ timeout: 20_000 });

@@ -9,6 +9,7 @@ import {
   TerminalPreview,
 } from "../../src/index.ts";
 import { sampleQrModules } from "../data.ts";
+import { DEMO_KEYS } from "../keys.tsx";
 import { ControlSpecimens } from "./control-specimens.tsx";
 import { OverlaySpecimens } from "./overlay-specimens.tsx";
 import { Section } from "./specimen.tsx";
@@ -59,7 +60,7 @@ export function PrimitivesScreen() {
             ]}
             cursor
           />
-          <ExtraKeysBar latched={["ctrl"]} />
+          <ExtraKeysBar keys={DEMO_KEYS} latched={["ctrl"]} />
         </div>
         <div className="mt-3 flex items-end gap-6">
           <DirectionPad />

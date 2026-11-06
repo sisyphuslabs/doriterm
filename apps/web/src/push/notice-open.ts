@@ -1,7 +1,7 @@
 import { isNoticeId } from "@doriface/protocol";
 import { useEffect, useSyncExternalStore } from "react";
 import { nativePush } from "../native/shell.ts";
-import { noticeBridge } from "./desktop-notices.ts";
+import { noticeBridge } from "./notice-bridge.ts";
 import type { PageAnswer } from "./notice-click.ts";
 import { pushChannel } from "./push-channel.ts";
 import { answerFromPage, whenVisible } from "./prompt-answer.ts";

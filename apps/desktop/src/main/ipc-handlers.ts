@@ -6,16 +6,20 @@ import { HcInstallError, type HcInstalled } from "@doriface/host/hc-install";
 import {
   Channel,
   type DesktopNotice,
+  type DictationStartAnswer,
   type DirectForwardAnswer,
   type HcInstallAnswer,
   isDesktopNotice,
   type LocalHostEndpoint,
   type LocalHostStartFailed,
+  type NoticeAnswer,
+  type NoticeAuthorization,
   type PairedDevicesAnswer,
   type PairOfferAnswer,
   type RevokeDeviceAnswer,
   type UpdateReady,
 } from "../shared/bridge.ts";
+import type { DictationHost, DictationOwner } from "./dictation.ts";
 import { LocalHostStartError } from "./local-host.ts";
 import { SHELL_MENU_ACTIONS } from "./shell-menu.ts";
 
@@ -24,6 +28,11 @@ export interface IpcSender {
   readonly senderFrame: { readonly url: string } | null;
   /** The page that sent it: a forward capability is bound to it, so another window cannot use one (#449). */
   readonly sender?: { readonly id: number } | undefined;
+}
+
+/** A page that may own a dictation session: its events are sent to it until it goes (#726). */
+export interface IpcOwnerSender extends IpcSender {
+  readonly sender: DictationOwner;
 }
 
 /** A sender the main process can answer on its own channel as well, as Install herdr-core's progress does. */
@@ -52,13 +61,18 @@ export interface IpcDeps {
   /** Installs herdr-core for this user and keeps it as the hc later starts use; throws HcInstallError with why not. */
   readonly installHc: (onPhase: (phase: string) => void) => Promise<HcInstalled>;
   readonly noticesSupported: () => boolean;
-  readonly showNotice: (notice: DesktopNotice) => void;
+  /** The OS's standing answer about this app's notifications; `unknown` where this shell cannot read one. */
+  readonly noticePermission: () => NoticeAuthorization;
+  /** Shows one notification and answers whether the OS took it. */
+  readonly showNotice: (notice: DesktopNotice) => Promise<NoticeAnswer>;
   /** Keeps the page's saved Direct address, checked by the shell; a change drops every forward. */
   readonly setDirectTarget: (directUrl: string) => boolean;
   /** One capability for `windowId`, or why the shell will not forward. */
   readonly forwardDirect: (windowId: number) => Promise<DirectForwardAnswer>;
   /** Forgets a capability the page gave up on. */
   readonly cancelDirectForward: (url: string) => boolean;
+  /** The system recognizer's sessions; absent where this build has none (Windows, Linux, a Mac without the addon). */
+  readonly dictation?: DictationHost | undefined;
 }
 
 export interface IpcHandlers {
@@ -90,14 +104,23 @@ export interface IpcHandlers {
   /** Install herdr-core: each phase is sent to the page as it starts; a failure is answered as a value. */
   installHc(event: IpcReplySender): Promise<HcInstallAnswer>;
   noticesSupported(event: IpcSender): Promise<boolean>;
+  /** The OS's standing answer about this app's notifications. */
+  noticePermission(event: IpcSender): Promise<NoticeAuthorization>;
   /** Shows a native notification; only a known kind and a terminal address are taken, never text. */
-  showNotice(event: IpcSender, candidate: unknown): Promise<boolean>;
+  showNotice(event: IpcSender, candidate: unknown): Promise<NoticeAnswer>;
   /** Keeps the page's saved Direct address as the only forward target, checked by the shell itself (#449). */
   setDirectTarget(event: IpcSender, candidate: unknown): Promise<boolean>;
   /** One forward capability for the window that asked, or why the shell will not forward. */
   forwardDirect(event: IpcSender): Promise<DirectForwardAnswer>;
   /** Forgets a capability this window gave up on. */
   cancelDirectForward(event: IpcSender, candidate: unknown): Promise<boolean>;
+  /** Whether this Mac recognizes the language on the device; false for anything that is not a language tag. */
+  dictationAvailable(event: IpcSender, candidate: unknown): Promise<boolean>;
+  /** One session for the page that asked, after the system's prompts, or why not (as a value). */
+  dictationStart(event: IpcOwnerSender, candidate: unknown): Promise<DictationStartAnswer>;
+  /** Only the page that owns the current session may stop or end it. */
+  dictationStop(event: IpcOwnerSender, candidate: unknown): Promise<boolean>;
+  dictationAbort(event: IpcOwnerSender, candidate: unknown): Promise<boolean>;
 }
 
 const TRIGGER = /^[a-z0-9_+=\-[\];',./`\\]{1,40}$/;
@@ -217,11 +240,14 @@ export function ipcHandlers(deps: IpcDeps): IpcHandlers {
       assertAppFrame(event, deps.origin);
       return deps.noticesSupported();
     },
+    async noticePermission(event) {
+      assertAppFrame(event, deps.origin);
+      return deps.noticePermission();
+    },
     async showNotice(event, candidate) {
       assertAppFrame(event, deps.origin);
-      if (!isDesktopNotice(candidate)) return false;
-      deps.showNotice({ kind: candidate.kind, terminal: candidate.terminal });
-      return true;
+      if (!isDesktopNotice(candidate)) return { accepted: false, reason: "the notice was refused" };
+      return deps.showNotice({ kind: candidate.kind, terminal: candidate.terminal });
     },
     async setDirectTarget(event, candidate) {
       assertAppFrame(event, deps.origin);
@@ -238,6 +264,23 @@ export function ipcHandlers(deps: IpcDeps): IpcHandlers {
       assertAppFrame(event, deps.origin);
       if (typeof candidate !== "string") return false;
       return deps.cancelDirectForward(candidate);
+    },
+    async dictationAvailable(event, candidate) {
+      assertAppFrame(event, deps.origin);
+      return deps.dictation?.available(candidate) ?? false;
+    },
+    async dictationStart(event, candidate) {
+      assertAppFrame(event, deps.origin);
+      if (deps.dictation === undefined) return { refused: "service" };
+      return deps.dictation.start(event.sender, candidate);
+    },
+    async dictationStop(event, candidate) {
+      assertAppFrame(event, deps.origin);
+      return deps.dictation?.stop(event.sender, candidate) ?? false;
+    },
+    async dictationAbort(event, candidate) {
+      assertAppFrame(event, deps.origin);
+      return deps.dictation?.abort(event.sender, candidate) ?? false;
     },
   };
 }

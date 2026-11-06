@@ -45,6 +45,8 @@ const MAC: readonly [string, string][] = [
   ["super+[", "agent.prev"],
   ["super+b", "layout.toggle:sidebar"],
   ["super+shift+.", "layout.focus:sidebar"],
+  // Ghostty takes Cmd+Shift+F for its own search, so the filter takes Cmd+Alt+F.
+  ["super+alt+f", "layout.filter:sidebar"],
   ["f2", "tab.rename"],
   ["shift+f2", "space.rename"],
   ["super+shift+p", "app.palette"],
@@ -110,6 +112,8 @@ const OTHER: readonly [string, string][] = [
   ["alt+up", "agent.prev"],
   ["ctrl+shift+b", "layout.toggle:sidebar"],
   ["ctrl+shift+.", "layout.focus:sidebar"],
+  // Ghostty takes Ctrl+Shift+F for its own search here, so the filter takes Ctrl+Alt+F.
+  ["ctrl+alt+f", "layout.filter:sidebar"],
   ["f2", "tab.rename"],
   ["shift+f2", "space.rename"],
   ["ctrl+shift+p", "app.palette"],

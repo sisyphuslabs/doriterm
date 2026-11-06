@@ -33,6 +33,19 @@ test("a connected machine whose line is redialing reads connected until the grac
   expect(stepHeld(again, { views: dropped, at: 31_050 }, dropped, 1_000 + OFFLINE_GRACE_MS).size).toBe(0);
 });
 
+test("the slowest return measured on a real relay blip, 62 s after the drop, never reads offline", () => {
+  const connected = [machine("jobdori", "connected")];
+  const dropped = [machine("jobdori", "unreachable", 2_000)];
+  let held = stepHeld(NONE, { views: connected, at: 0 }, dropped, 4_000);
+  let before = { views: dropped, at: 4_000 as number | undefined };
+  for (let now = 14_000; now <= 64_000; now += 10_000) {
+    held = stepHeld(held, before, dropped, now);
+    before = { views: dropped, at: now };
+    expect(shown(dropped, held, now)).toEqual([["jobdori", "connected"]]);
+  }
+  expect(stepHeld(held, before, connected, 64_100).size).toBe(0);
+});
+
 test("a line back inside the grace never showed anything but connected, and a second drop starts a fresh grace", () => {
   const connected = [machine("rack", "connected")];
   const dropped = [machine("rack", "connecting")];
@@ -65,12 +78,57 @@ test("needs login shows at once, and a machine long down on the page's first rea
   expect(shown(asleep, first, 1_000 + 3_600_000)).toEqual([["air", "unreachable"]]);
 });
 
-test("a machine never seen connected is held only on the page's first read, and only when hc says when it dropped", () => {
+test("a machine never seen connected is held only on the first read, and only when hc says when it dropped", () => {
   const later = { views: [machine("rack", "connected")], at: 90_000 };
   const added = [machine("rack", "connected"), machine("new", "connecting")];
   expect(stepHeld(NONE, later, added, 100_000).size).toBe(0);
   expect(stepHeld(NONE, later, [machine("new", "unreachable", 99_000)], 100_000).size).toBe(0);
   expect(stepHeld(NONE, FIRST, [machine("rack", "connecting")], 100_000).size).toBe(0);
+});
+
+/** Steps the hold through reads as useMachines does (first answer, machines read connected), returning what shows. */
+function replay(reads: readonly (readonly [number, readonly MachineView[]])[]): string[] {
+  let held: Held = NONE;
+  let before: Parameters<typeof stepHeld>[1] = FIRST;
+  const states: string[] = [];
+  for (const [now, views] of reads) {
+    held = stepHeld(held, before, views, now);
+    const first = before.first ?? { at: now, ids: new Set(views.map((view) => view.id)) };
+    const up = new Set(before.up);
+    for (const view of views) if (view.state === "connected") up.add(view.id);
+    before = { views, at: now, first, up };
+    states.push(shown(views, held, now)[0]?.[1] ?? "none");
+  }
+  return states;
+}
+
+test("with the host's clock 25 s ahead, a grace that ended after a drop never holds the machine again", () => {
+  const reads: [number, MachineView[]][] = [];
+  // Reads at 5, 15, ... s; the line drops at 100 s, which the host's clock calls 125 s.
+  for (let now = 5; now <= 95; now += 10) reads.push([now * 1_000, [machine("rack", "connected")]]);
+  for (let now = 105; now <= 305; now += 10) reads.push([now * 1_000, [machine("rack", "unreachable", 125_000)]]);
+  const states = replay(reads).slice(10);
+  const heldReads = Math.ceil(OFFLINE_GRACE_MS / 10_000);
+  expect(states).toEqual([...Array(heldReads).fill("connected"), ...Array(21 - heldReads).fill("unreachable")]);
+});
+
+test("a page opened while a line redials holds that machine once hc names its drop, and only for what is left", () => {
+  const opening = [machine("air", "connecting")];
+  const first = { at: 100_000, ids: new Set(["id-air"]) };
+  expect(stepHeld(NONE, FIRST, opening, 100_000).size).toBe(0);
+  const named = [machine("air", "unreachable", 98_000)];
+  const held = stepHeld(NONE, { views: opening, at: 100_000, first }, named, 110_000);
+  expect(held.get("id-air")).toBe(98_000);
+  expect(shown(named, held, 110_000)).toEqual([["air", "connected"]]);
+  const later = { views: named, at: 98_000 + OFFLINE_GRACE_MS, first };
+  expect(stepHeld(held, later, named, 98_000 + OFFLINE_GRACE_MS).size).toBe(0);
+  expect(stepHeld(NONE, later, named, 98_000 + OFFLINE_GRACE_MS + 10_000).size).toBe(0);
+  const ahead = [machine("air", "unreachable", 500_000)];
+  expect(stepHeld(NONE, { views: opening, at: 100_000, first }, ahead, 110_000).size).toBe(0);
+  const asleep = [machine("air", "unreachable", 1_000)];
+  expect(stepHeld(NONE, { views: opening, at: 100_000, first }, asleep, 110_000).size).toBe(0);
+  const added = [machine("new", "unreachable", 105_000)];
+  expect(stepHeld(NONE, { views: opening, at: 100_000, first }, added, 110_000).size).toBe(0);
 });
 
 test("a page opened mid-blip holds a machine only for what is left of the grace after hc's own since", () => {
@@ -93,7 +151,8 @@ test("with the host's clock ahead, a first read holds at most one grace and an e
     before = { views: ahead, at: now };
     states.push(shown(ahead, held, now)[0]?.[1] ?? "none");
   }
-  expect(states).toEqual([...Array(4).fill("connected"), ...Array(8).fill("unreachable")]);
+  const held10 = Math.ceil(OFFLINE_GRACE_MS / 10_000) - 1;
+  expect(states).toEqual([...Array(held10).fill("connected"), ...Array(12 - held10).fill("unreachable")]);
 });
 
 test("a held machine's live terminals stay live in its grace and read offline once it ends", () => {
@@ -111,6 +170,6 @@ test("a held machine's live terminals stay live in its grace and read offline on
   };
   const dropped = [machine("rack", "unreachable", 0)];
   const held = stepHeld(NONE, { views: [machine("rack", "connected")], at: 0 }, dropped, 0);
-  expect(withReach([live], graceViews(dropped, held, 44_000))[0]?.offline).toBeUndefined();
+  expect(withReach([live], graceViews(dropped, held, OFFLINE_GRACE_MS - 1))[0]?.offline).toBeUndefined();
   expect(withReach([live], graceViews(dropped, held, OFFLINE_GRACE_MS))[0]?.offline).toBe(true);
 });

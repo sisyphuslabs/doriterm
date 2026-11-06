@@ -5,10 +5,22 @@ import { OFFLINE_GRACE_MS } from "../src/workspace/machine-grace.ts";
 import { agentRow, endAgent, startAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
-import { blip, hcOn, machineRow, OFFLINE_BOUND_MS, reconnect, switchTo } from "./machine-switch.ts";
+import {
+  blip,
+  hcOn,
+  machineRow,
+  OFFLINE_BOUND_MS,
+  reconnect,
+  switchTo,
+  OFFLINE_TEST_TIMEOUT_MS,
+} from "./machine-switch.ts";
 
-/** The host refuses new lines for up to this long after its relay uplink returns (DIAL_LIMITS.settleMaxMs). */
-const HOST_SETTLE_MAX_MS = 20_000;
+/**
+ * The longest a host refuses a member's line after a relay blip: its settle (DIAL_LIMITS.settleMaxMs, 20 s), then the
+ * first probe of a member whose dial met a 4404 while it was reconnecting too (DIAL_LIMITS.probeFirstMs, 30 s). hc's
+ * own redial then lands the line about 62 s after the drop, as measured on a real blip (#904).
+ */
+const HOST_WORST_REFUSAL_MS = 20_000 + 30_000;
 
 /**
  * Records, from now on, every moment the page shows the machine or its tab as anything but up: the machine's row in any
@@ -66,7 +78,7 @@ test.describe("a machine whose line blips (#904)", () => {
   test("a relay uplink drop with the host's settle and an hc redial flip neither the machine nor its tab", async ({
     page,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
     await page.goto("/");
     await expect(machineRow(page)).toContainText(/connected\s*1/, { timeout: 20_000 });
     await agentRow(page, "crunch", true).click();
@@ -78,9 +90,10 @@ test.describe("a machine whose line blips (#904)", () => {
     await blip(0);
     await expect.poll(machineState, { timeout: 15_000 }).toBe("connected");
 
-    // A relay uplink drop: every line ends, and the host refuses new ones for its whole settle. hc reads the machine
-    // unreachable through it (two or more of the page's machine.list reads), then its redial lands the line.
-    const settled = blip(HOST_SETTLE_MAX_MS);
+    // A relay uplink drop at its worst: every line ends, and the host refuses this one for its settle and one probe.
+    // hc reads the machine unreachable through it (several of the page's machine.list reads), then its redial lands the
+    // line.
+    const settled = blip(HOST_WORST_REFUSAL_MS);
     await expect.poll(machineState, { timeout: 5_000 }).toBe("unreachable");
     await settled;
     await expect.poll(machineState, { timeout: OFFLINE_GRACE_MS }).toBe("connected");
@@ -91,7 +104,7 @@ test.describe("a machine whose line blips (#904)", () => {
   test("a machine that is really gone reads offline, with its tab, once the grace ends and not before", async ({
     page,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
     await page.goto("/");
     await expect(machineRow(page)).toContainText(/connected\s*1/, { timeout: 20_000 });
     await agentRow(page, "crunch", true).click();

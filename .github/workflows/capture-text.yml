@@ -1,0 +1,74 @@
+name: Capture text
+
+# #926: a screenshot in a public repository must not show an account name, a host name or an internal run path. Six did,
+# and a reviewer's eye missed five of them for weeks, so the check is mechanical: OCR the images a pull request changes
+# and fail on the shapes a leak takes (tests/ci/capture-text.ts).
+#
+# Runs only when an image under docs/ or .github/assets changes, or when this check itself changes, so a normal pull
+# request never pays for it.
+on:
+  pull_request:
+    paths:
+      - "docs/**/*.png"
+      - "docs/**/*.PNG"
+      - "docs/**/*.jpg"
+      - "docs/**/*.JPG"
+      - "docs/**/*.jpeg"
+      - "docs/**/*.JPEG"
+      - "docs/**/*.webp"
+      - "docs/**/*.WEBP"
+      - ".github/assets/**/*.png"
+      - ".github/assets/**/*.PNG"
+      - ".github/assets/**/*.jpg"
+      - ".github/assets/**/*.JPG"
+      - ".github/assets/**/*.jpeg"
+      - ".github/assets/**/*.JPEG"
+      - ".github/assets/**/*.webp"
+      - ".github/assets/**/*.WEBP"
+      - "tests/ci/capture-text.ts"
+      - "tests/ci/capture-text.test.ts"
+      - ".github/workflows/capture-text.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capture-text-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  changed-images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Install tesseract
+        run: |
+          set -euo pipefail
+          sudo apt-get -o Acquire::http::Timeout=15 -o Acquire::Retries=1 update
+          sudo timeout 300 apt-get install -y --no-install-recommends tesseract-ocr
+          tesseract --version | head -1
+      - name: Check the images this pull request changes
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          mapfile -t changed < <(git diff --name-only --no-renames --diff-filter=AM "$BASE...HEAD" -- ':(icase)*.png' ':(icase)*.jpg' ':(icase)*.jpeg' ':(icase)*.webp')
+          if [ "${#changed[@]}" -eq 0 ]; then
+            echo "no changed images"
+            exit 0
+          fi
+          printf 'checking %d image(s)\n' "${#changed[@]}"
+          bun tests/ci/capture-text.ts "${changed[@]}"
+      # bunfig.toml preloads apps/host/src/testing/core-guard.ts for every bun test run, and that reaches a workspace
+      # package: without node_modules the preload throws and the job reports an error instead of a result (doriterm#989).
+      - name: Install the workspace
+        run: bun install --frozen-lockfile
+      - name: The check itself
+        run: bun test tests/ci/capture-text.test.ts

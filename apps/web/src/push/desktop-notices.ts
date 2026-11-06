@@ -1,37 +1,10 @@
 import type { EventFeed, HcConnection } from "@doriface/client";
 import { DEFAULT_PUSH_PREFS, type HcEvent, parsePushClientLine, type PushPrefs } from "@doriface/protocol";
 import { type ConnectionState, connectionStore } from "../connection/store.ts";
+import { type NoticeBridge, noticeBridge, permissionOf } from "./notice-bridge.ts";
 import { NoticeTrigger, type Trigger, wanted } from "./notice-trigger.ts";
 import type { PushView } from "./push-settings.ts";
 import { guardedLocalStorage } from "../storage/guarded.ts";
-
-/** The desktop shell's native notifications (apps/desktop/src/shared/bridge.ts), read as an untrusted boundary. */
-export interface NoticeBridge {
-  supported(): Promise<boolean>;
-  show(notice: { readonly kind: Trigger["kind"] | "test"; readonly terminal: string | null }): Promise<boolean>;
-  onClick(listener: (terminal: string | null) => void): void;
-}
-
-export function noticeBridge(scope: object = globalThis): NoticeBridge | null {
-  const bridge: unknown = Reflect.get(scope, "doriface");
-  if (typeof bridge !== "object" || bridge === null) return null;
-  const method = (name: string): ((...args: unknown[]) => unknown) | null => {
-    const found: unknown = Reflect.get(bridge, name);
-    return typeof found === "function" ? (...args) => Reflect.apply(found, bridge, args) : null;
-  };
-  const supported = method("noticesSupported");
-  const show = method("showNotice");
-  const onClick = method("onNoticeClick");
-  if (supported === null || show === null || onClick === null) return null;
-  return {
-    supported: async () => (await supported()) === true,
-    show: async (notice) => (await show(notice)) === true,
-    onClick: (listener) =>
-      void onClick((terminal: unknown) => {
-        if (terminal === null || typeof terminal === "string") listener(terminal);
-      }),
-  };
-}
 
 export const DESKTOP_NOTICES_KEY = "doriface.desktop-notices";
 
@@ -59,12 +32,30 @@ export interface NoticeStorage {
   setItem(key: string, value: string): void;
 }
 
+export type Schedule = (step: () => void, ms: number) => () => void;
+
 export interface DesktopNoticesOptions {
   readonly bridge: NoticeBridge;
   readonly storage: NoticeStorage;
   readonly connection: Pick<typeof connectionStore, "state" | "subscribe">;
   readonly now?: () => number;
+  readonly schedule?: Schedule;
 }
+
+/** A failed subscribe is tried again after 1 s, then twice as long each time, never later than this. */
+export const MAX_RETRY_MS = 30_000;
+
+export const retryDelay = (attempt: number): number => Math.min(1_000 * 2 ** attempt, MAX_RETRY_MS);
+
+/** A refused notice is reported on the tab at most this often: an agent flapping is one error, not one per event. */
+export const REFUSAL_REPORT_MS = 60_000;
+
+const timers: Schedule = (step, ms) => {
+  const handle = setTimeout(step, ms);
+  return () => clearTimeout(handle);
+};
+
+const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 /**
  * Settings > Notifications in the desktop app: native notifications from this app's own event feed, on the same
@@ -78,11 +69,23 @@ export class DesktopNotices {
   #connection: HcConnection | null = null;
   #feed: EventFeed | undefined;
   #shown: string | null = null;
+  #attempts = 0;
+  #pendingRetry: (() => void) | null = null;
+  #refusalReportedAt: number | null = null;
 
   constructor(options: DesktopNoticesOptions) {
     this.#options = options;
     const saved = parseSavedNotices(options.storage.getItem(DESKTOP_NOTICES_KEY));
-    this.#view = { support: "supported", permission: null, busy: false, error: null, tested: false, ...saved };
+    this.#view = {
+      support: "supported",
+      permission: null,
+      busy: false,
+      error: null,
+      tested: false,
+      retry: null,
+      waiting: null,
+      ...saved,
+    };
     options.connection.subscribe(() => this.#follow());
     this.#follow();
   }
@@ -96,10 +99,14 @@ export class DesktopNotices {
     return this.#view;
   }
 
+  /** Reads what this system can show and whether it allows this app to; never asks, the OS does at the first notice. */
   async load(): Promise<void> {
     await this.#run("read the notification settings", async () => {
-      const supported = await this.#options.bridge.supported();
-      this.#set({ support: supported ? "supported" : "desktop-app" });
+      const [supported, authorization] = await Promise.all([
+        this.#options.bridge.supported(),
+        this.#options.bridge.permission(),
+      ]);
+      this.#set({ support: supported ? "supported" : "desktop-app", permission: permissionOf(authorization) });
     });
   }
 
@@ -113,11 +120,13 @@ export class DesktopNotices {
 
   async setPrefs(prefs: PushPrefs): Promise<void> {
     this.#save({ prefs });
+    this.#count();
   }
 
   async test(): Promise<void> {
     await this.#run("send a test notification", async () => {
-      if (!(await this.#options.bridge.show({ kind: "test", terminal: null }))) throw new Error("it was refused");
+      const answer = await this.#options.bridge.show({ kind: "test", terminal: null });
+      if (!answer.accepted) throw new Error(answer.reason);
       this.#set({ tested: true });
     });
   }
@@ -127,12 +136,40 @@ export class DesktopNotices {
     this.#shown = terminal;
   }
 
+  #now(): number {
+    return (this.#options.now ?? Date.now)();
+  }
+
   #heard(event: HcEvent): void {
-    const hit = this.#trigger.event(event, (this.#options.now ?? Date.now)());
+    const hit = this.#trigger.event(event, this.#now());
+    this.#count();
     if (hit === undefined || !this.#view.on || !wanted(hit, this.#view.prefs, this.#shown)) return;
-    this.#options.bridge.show({ kind: hit.kind, terminal: hit.terminal }).catch((error: unknown) => {
-      console.error(`notification: ${String(error)}`);
-    });
+    void this.#show(hit);
+  }
+
+  async #show(hit: Trigger): Promise<void> {
+    try {
+      const answer = await this.#options.bridge.show({ kind: hit.kind, terminal: hit.terminal });
+      if (!answer.accepted) this.#refused(answer.reason);
+    } catch (error) {
+      this.#refused(message(error));
+    }
+  }
+
+  #refused(reason: string): void {
+    const now = this.#now();
+    if (this.#refusalReportedAt !== null && now - this.#refusalReportedAt < REFUSAL_REPORT_MS) return;
+    this.#refusalReportedAt = now;
+    this.#set({ error: `Could not show a notification. ${reason}` });
+  }
+
+  /** How many agents the feed last reported in a state this device asked to hear about; null without a feed. */
+  #count(): void {
+    const waiting =
+      this.#feed === undefined
+        ? null
+        : this.#trigger.waiting().filter((hit) => wanted(hit, this.#view.prefs, null)).length;
+    if (waiting !== this.#view.waiting) this.#set({ waiting });
   }
 
   /** Keeps one event feed open on the live connection while notifications are on, and none otherwise. */
@@ -143,7 +180,9 @@ export class DesktopNotices {
     const old = this.#feed;
     this.#feed = undefined;
     this.#connection = connection;
+    this.#stopRetrying();
     old?.close();
+    this.#count();
     if (connection !== null) void this.#attach(connection);
   }
 
@@ -152,21 +191,44 @@ export class DesktopNotices {
     try {
       feed = await connection.subscribe();
     } catch (error) {
-      console.error(`notifications: could not follow the agents: ${String(error)}`);
+      if (this.#connection === connection) this.#retry(connection, message(error));
       return;
     }
     if (this.#connection !== connection) return feed.close();
     this.#feed = feed;
+    this.#stopRetrying();
     this.#trigger.baseline(feed.snapshot.terminals);
-    feed.onSnapshot((snapshot) => this.#trigger.baseline(snapshot.terminals));
+    this.#count();
+    feed.onSnapshot((snapshot) => {
+      this.#trigger.baseline(snapshot.terminals);
+      this.#count();
+    });
     feed.onEvent((event) => this.#heard(event));
     // A feed that ended while the connection stays (a missed heartbeat) is opened again.
     feed.onClose(() => {
       if (this.#feed !== feed) return;
       this.#feed = undefined;
       this.#connection = null;
+      this.#count();
       if (!connection.closed) this.#follow();
     });
+  }
+
+  #retry(connection: HcConnection, reason: string): void {
+    const inMs = retryDelay(this.#attempts);
+    this.#attempts += 1;
+    this.#set({ retry: { reason, inMs } });
+    this.#pendingRetry = (this.#options.schedule ?? timers)(() => {
+      this.#pendingRetry = null;
+      if (this.#connection === connection) void this.#attach(connection);
+    }, inMs);
+  }
+
+  #stopRetrying(): void {
+    this.#pendingRetry?.();
+    this.#pendingRetry = null;
+    this.#attempts = 0;
+    if (this.#view.retry !== null) this.#set({ retry: null });
   }
 
   #save(change: Partial<SavedNotices> & Partial<PushView>): void {
@@ -182,7 +244,7 @@ export class DesktopNotices {
       await step();
       this.#set({ busy: false });
     } catch (error) {
-      this.#set({ busy: false, error: `Could not ${what}. ${error instanceof Error ? error.message : String(error)}` });
+      this.#set({ busy: false, error: `Could not ${what}. ${message(error)}` });
     }
   }
 

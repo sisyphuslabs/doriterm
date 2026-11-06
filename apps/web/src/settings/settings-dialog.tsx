@@ -40,6 +40,15 @@ export function SettingsDialog({ children }: { readonly children: ReactNode }) {
     <SettingsInDialog value>
       {/* The modal level of the ui kit's own dialogs (z-50), so nothing in the workspace paints over it. */}
       <div aria-hidden className="fixed inset-0 z-50 bg-black/40" onClick={close} />
+      {/* The window's own titlebar band over the backdrop: it moves the desktop window and starts past its buttons even
+          while the workspace behind has drawn no titlebar of its own yet (Settings opened as the first screen). Outside
+          the desktop app it is still backdrop: a click on it closes Settings. */}
+      <div
+        aria-hidden
+        data-titlebar
+        className="fixed inset-x-0 top-0 z-50 h-11 pl-(--titlebar-inset-start,0px)"
+        onClick={close}
+      />
       <div
         ref={panel}
         role="dialog"

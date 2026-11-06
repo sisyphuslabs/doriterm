@@ -9,7 +9,20 @@ export interface StickyKeys {
   /** Applies the latched modifiers to typed input and lets them go; the paste chord pastes and sends nothing. */
   readonly transform: (data: string) => string;
   readonly press: (id: string) => void;
+  /** Sends the bytes a key carries (a pack's key, or one of the person's own), through the latched modifiers. */
+  readonly send: (bytes: string) => void;
   readonly paste: () => void;
+}
+
+/** What one press sends: the key's bytes through the latched modifiers, or a paste instead of a write. */
+export function sentBy(
+  bytes: string,
+  latched: ReadonlySet<string>,
+  host: HostPlatform,
+): { readonly kind: "write"; readonly data: string } | { readonly kind: "paste" } {
+  if (latched.size === 0) return { kind: "write", data: bytes };
+  const input = applyModifiers(bytes, latched, host);
+  return input.kind === "write" ? { kind: "write", data: input.data } : { kind: "paste" };
 }
 
 /** The phone's modifiers as t3code has them: tap to latch, applied to the next key or typed character, then off. */
@@ -28,10 +41,14 @@ export function useStickyKeys(port: RefObject<TerminalPort | null>, host: HostPl
   const transform = (data: string): string => {
     if (latched.size === 0) return data;
     setLatched(new Set());
-    const input = applyModifiers(data, latched, host);
-    if (input.kind === "write") return input.data;
+    const sent = sentBy(data, latched, host);
+    if (sent.kind === "write") return sent.data;
     pasteClipboard();
     return "";
+  };
+  const send = (bytes: string): void => {
+    const input = transform(bytes);
+    if (input !== "") port.current?.send(input);
   };
   const press = (id: string): void => {
     if (MODIFIERS.has(id)) {
@@ -45,13 +62,11 @@ export function useStickyKeys(port: RefObject<TerminalPort | null>, host: HostPl
       return;
     }
     const sequence = keySequence(id);
-    if (sequence === undefined) return;
-    const input = transform(sequence);
-    if (input !== "") port.current?.send(input);
+    if (sequence !== undefined) send(sequence);
   };
   const paste = (): void => {
     setLatched(new Set());
     pasteClipboard();
   };
-  return { latched, transform, press, paste };
+  return { latched, transform, press, send, paste };
 }

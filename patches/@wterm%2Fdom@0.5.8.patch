@@ -23,27 +23,114 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 08a9e4df1211ebe8eeefaa1e2dcdbeeee312677e..c3744c7b2672f48a0987164aedd54bd6a2b003c9 100644
+index 08a9e4df1211ebe8eeefaa1e2dcdbeeee312677e..38aa82563f17e85c1ca63e7afe5bc75ab485ec9e 100644
 --- a/dist/input.js
 +++ b/dist/input.js
-@@ -86,6 +86,8 @@ export class InputHandler {
+@@ -70,6 +70,12 @@ const COMPOSITION_INPUT_DEDUP_MS = 250;
+ const SCROLLBACK_BOTTOM_TOLERANCE = 5;
+ // iOS needs a deletable value to keep emitting input events for held Backspace.
+ const TOUCH_INPUT_PLACEHOLDER = "\u200b";
++// A Hangul letter or syllable: WebKit's Korean keyboards compose these in the field as plain text edits, with no
++// composition events, so the field has to keep them until the syllable is finished.
++const HANGUL = /[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\uac00-\ud7a3\ud7b0-\ud7ff]$/u;
++function isHangulKey(e) {
++    return !e.ctrlKey && !e.metaKey && !e.altKey && Array.from(e.key).length === 1 && HANGUL.test(e.key);
++}
+ function isAltGraphTextInput(event, pressedModifiers) {
+     if (event.metaKey ||
+         !(event.getModifierState("AltGraph") ||
+@@ -86,6 +92,12 @@ export class InputHandler {
          this.composing = false;
          this.compositionWidth = 0;
          this.recentCompositionCommit = null;
 +        // The preedit the host took mid-composition, until the browser reports that composition's end.
 +        this.takenComposition = null;
++        // WebKit's Korean input without composition events: what of the field's run of Hangul was sent, and the
++        // syllable still being typed after it, which is drawn at the cursor and sent once the next one starts.
++        this.localSent = "";
++        this.localPreedit = "";
          // The first native deletion mirrors the Backspace already sent on keydown.
          this.suppressNextTouchDeleteInput = false;
          this.mouseButtons = 0;
-@@ -462,6 +464,7 @@ export class InputHandler {
+@@ -157,6 +169,7 @@ export class InputHandler {
+         };
+         this._onBlur = () => {
+             this.tabExitArmed = false;
++            this.commitLocalPreedit();
+             this.focused = false;
+             this.composing = false;
+             this.recentCompositionCommit = null;
+@@ -224,10 +237,12 @@ export class InputHandler {
+         this.textarea.focus({ preventScroll: true });
+     }
+     syncInputPosition() {
+-        if (this.composing || this.touchPrimary)
++        if (this.composing || this.touchPrimary || this.localPreedit !== "")
+             this.positionTextarea();
+     }
+     destroy() {
++        // A syllable still being typed belongs to this terminal: it is sent before the field goes.
++        this.commitLocalPreedit();
+         this.accessibility.destroy();
+         this.textarea.removeEventListener("keydown", this._onKeyDown);
+         this.textarea.removeEventListener("keyup", this._onKeyUp);
+@@ -259,6 +274,19 @@ export class InputHandler {
+             this.suppressedKeyUps.add(keyId);
+             return;
+         }
++        // An iPhone or iPad Korean keyboard names the jamo in its keydown and then composes it in the field: the field
++        // must get it, or the next jamo has nothing to join. Backspace inside a syllable still being typed takes back a
++        // jamo of it, which is the field's edit too.
++        if (isHangulKey(e) ||
++            (this.localPreedit !== "" &&
++                e.key === "Backspace" &&
++                !e.ctrlKey &&
++                !e.metaKey &&
++                !e.altKey)) {
++            this.tabExitArmed = false;
++            this.suppressedKeyUps.add(keyId);
++            return;
++        }
+         this.recentCompositionCommit = null;
+         const bridge = this.getBridge();
+         const kittyFlags = bridge?.kittyKeyboardFlags?.() ?? 0;
+@@ -371,6 +399,8 @@ export class InputHandler {
+         if (kittyFlags !== 0) {
+             const seq = encodeKittyKey(e, kittyFlags, e.repeat ? "repeat" : "press", this.pressedModifiers, bridge?.cursorKeysApp?.() ?? false);
+             if (seq) {
++                if (!physicalModifier)
++                    this.commitLocalPreedit();
+                 if (!physicalModifier)
+                     this.selectionActions?.clearSelection();
+                 if (nativeTouchDelete)
+@@ -385,6 +415,7 @@ export class InputHandler {
+         }
+         const seq = this.keyToSequence(e);
+         if (seq) {
++            this.commitLocalPreedit();
+             this.selectionActions?.clearSelection();
+             if (nativeTouchDelete)
+                 this.suppressNextTouchDeleteInput = true;
+@@ -421,6 +452,9 @@ export class InputHandler {
+         this.recentCompositionCommit = null;
+         this.suppressNextTouchDeleteInput = false;
+         const text = e.clipboardData?.getData("text");
++        // The syllable being typed goes before the paste, and the field starts over, so a paste the browser inserts
++        // itself (below) carries only the pasted text.
++        this.commitLocalPreedit();
+         // Some mobile browsers leave clipboardData empty but insert the paste
+         // into the textarea. Let that input event carry the text instead.
+         if (!text)
+@@ -462,6 +496,8 @@ export class InputHandler {
      }
      handleCompositionStart() {
          this.tabExitArmed = false;
++        this.commitLocalPreedit();
 +        this.takenComposition = null;
          this.prepareComposition();
          this.composing = true;
          this.recentCompositionCommit = null;
-@@ -472,11 +475,22 @@ export class InputHandler {
+@@ -472,11 +508,22 @@ export class InputHandler {
          this.positionTextarea();
          const s = this.textarea.style;
          s.opacity = "1";
@@ -69,7 +156,7 @@ index 08a9e4df1211ebe8eeefaa1e2dcdbeeee312677e..c3744c7b2672f48a0987164aedd54bd6
          this.composing = false;
          this.hideComposition();
          this.resetInputValue();
-@@ -485,6 +499,26 @@ export class InputHandler {
+@@ -485,6 +532,31 @@ export class InputHandler {
              this.onData(e.data);
          }
      }
@@ -79,6 +166,11 @@ index 08a9e4df1211ebe8eeefaa1e2dcdbeeee312677e..c3744c7b2672f48a0987164aedd54bd6
 +     * input method's composition, and that composition's end sends nothing.
 +     */
 +    takeComposition() {
++        if (!this.composing && this.localPreedit !== "") {
++            const pending = this.localPreedit;
++            this.endLocalRun();
++            return pending;
++        }
 +        if (!this.composing)
 +            return "";
 +        const raw = this.textarea.value;
@@ -96,7 +188,102 @@ index 08a9e4df1211ebe8eeefaa1e2dcdbeeee312677e..c3744c7b2672f48a0987164aedd54bd6
      hideComposition() {
          this.compositionWidth = 0;
          const s = this.textarea.style;
-@@ -816,7 +850,7 @@ export class InputHandler {
+@@ -502,7 +574,7 @@ export class InputHandler {
+         if (!bridge || !cellSize || !firstRow || !bridge.getCursor) {
+             this.textarea.style.left = "0px";
+             this.textarea.style.top = "0px";
+-            if (this.composing) {
++            if (this.composing || this.localPreedit !== "") {
+                 this.textarea.style.width = `${Math.max(1, this.compositionWidth)}px`;
+                 this.textarea.style.height = `${cellSize?.rowHeight ?? 17}px`;
+             }
+@@ -519,7 +591,7 @@ export class InputHandler {
+         const s = this.textarea.style;
+         s.left = `${rowRect.left - hostRect.left - this.element.clientLeft + this.element.scrollLeft + col * charWidth}px`;
+         s.top = `${rowRect.top - hostRect.top - this.element.clientTop + this.element.scrollTop + row * rowHeight}px`;
+-        if (this.composing) {
++        if (this.composing || this.localPreedit !== "") {
+             s.width = `${Math.min((bridge.getCols() - col) * charWidth, Math.max(charWidth, this.compositionWidth))}px`;
+             s.height = `${rowHeight}px`;
+         }
+@@ -536,6 +608,57 @@ export class InputHandler {
+             : charWidth;
+         this.positionTextarea();
+     }
++    /** Sends the syllable still being typed in a WebKit Korean run, and ends the run. */
++    commitLocalPreedit() {
++        if (this.localPreedit !== "")
++            this.onData(this.localPreedit);
++        if (this.localSent !== "" || this.localPreedit !== "")
++            this.endLocalRun();
++    }
++    endLocalRun() {
++        this.localSent = "";
++        this.localPreedit = "";
++        this.hideComposition();
++        this.resetInputValue();
++    }
++    /**
++     * The field after a WebKit Korean keyboard's edit, its text kept so the keyboard can join the next jamo to it: text
++     * the program already has and the edit took back is erased there, everything up to the last Hangul letter is sent,
++     * and that letter stays as the syllable being typed. A run that ends in anything else is sent whole and the field
++     * starts over.
++     */
++    editLocalRun(value) {
++        const sent = Array.from(this.localSent);
++        const now = Array.from(value);
++        let kept = 0;
++        while (kept < sent.length && kept < now.length && sent[kept] === now[kept])
++            kept += 1;
++        for (let erased = kept; erased < sent.length; erased += 1)
++            this.sendTouchDelete();
++        const rest = now.slice(kept);
++        const last = rest.at(-1);
++        const pending = last !== undefined && HANGUL.test(last) ? last : "";
++        const commit = (pending === "" ? rest : rest.slice(0, -1)).join("");
++        if (commit !== "") {
++            this.selectionActions?.clearSelection();
++            this.onData(commit);
++        }
++        if (pending === "") {
++            this.endLocalRun();
++            return;
++        }
++        this.localSent = sent.slice(0, kept).join("") + commit;
++        this.localPreedit = pending;
++        const s = this.textarea.style;
++        s.opacity = "1";
++        s.color = "var(--term-preedit-fg, var(--term-fg, currentColor))";
++        s.background = "var(--term-preedit-bg, var(--term-bg, transparent))";
++        s.caretColor = "var(--term-preedit-fg, var(--term-fg, currentColor))";
++        // A syllable takes two cells; one more is left for the caret. Only the end of the field shows.
++        this.compositionWidth = 3 * (this.getCellSize()?.charWidth ?? 0);
++        this.positionTextarea();
++        this.textarea.scrollLeft = this.textarea.scrollWidth;
++    }
+     resetInputValue() {
+         this.textarea.value = this.touchPrimary ? TOUCH_INPUT_PLACEHOLDER : "";
+         if (this.touchPrimary)
+@@ -565,6 +688,18 @@ export class InputHandler {
+         const value = this.touchPrimary && rawValue.startsWith(TOUCH_INPUT_PLACEHOLDER)
+             ? rawValue.slice(TOUCH_INPUT_PLACEHOLDER.length)
+             : rawValue;
++        const repeatsCommit = this.recentCompositionCommit !== null &&
++            value === this.recentCompositionCommit.text &&
++            performance.now() - this.recentCompositionCommit.at < COMPOSITION_INPUT_DEDUP_MS;
++        if (inputType !== "insertFromPaste" &&
++            (this.localSent !== "" ||
++                this.localPreedit !== "" ||
++                (!repeatsCommit && inputType !== "deleteContentBackward" && HANGUL.test(value)))) {
++            this.recentCompositionCommit = null;
++            this.suppressNextTouchDeleteInput = false;
++            this.editLocalRun(value);
++            return;
++        }
+         this.resetInputValue();
+         const recent = this.recentCompositionCommit;
+         this.recentCompositionCommit = null;
+@@ -816,7 +951,7 @@ export class InputHandler {
      }
      keyToSequence(e) {
          if (e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -105,7 +292,7 @@ index 08a9e4df1211ebe8eeefaa1e2dcdbeeee312677e..c3744c7b2672f48a0987164aedd54bd6
              if (control !== null)
                  return control;
              if (e.key === "Backspace")
-@@ -850,4 +884,15 @@ export class InputHandler {
+@@ -850,4 +985,15 @@ export class InputHandler {
          return null;
      }
  }

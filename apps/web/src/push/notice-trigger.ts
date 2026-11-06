@@ -7,6 +7,7 @@ import {
   type Status,
   type Terminal,
 } from "@doriface/protocol";
+import { machineOf } from "../workspace/model.ts";
 
 /**
  * The host's push trigger (apps/host/src/push/trigger.ts) as the desktop app runs it on its own event feed, so a
@@ -45,6 +46,15 @@ export class NoticeTrigger {
     for (const terminal of terminals) {
       if (terminal.state === "live") this.#kinds.set(terminal.address, noticeKindOf(terminal.status));
     }
+  }
+
+  /** Every terminal now in a state that asks for someone, as last told: what a baseline counted and did not announce. */
+  waiting(): readonly Trigger[] {
+    const hits: Trigger[] = [];
+    for (const [terminal, kind] of this.#kinds) {
+      if (kind !== undefined) hits.push({ terminal, machine: machineOf(terminal), kind });
+    }
+    return hits;
   }
 
   event(event: HcEvent, now: number): Trigger | undefined {

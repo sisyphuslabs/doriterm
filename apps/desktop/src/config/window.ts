@@ -1,5 +1,5 @@
 import type { BrowserWindowConstructorOptions, WebPreferences } from "electron";
-import { VERSION_ARG, type DesktopPlatform } from "../shared/bridge.ts";
+import { DICTATION_ARG, VERSION_ARG, type DesktopPlatform } from "../shared/bridge.ts";
 
 /** The web app's top row (sidebar and Settings headers, h-11) that the window buttons share. */
 export const TITLEBAR_ROW_HEIGHT = 44;
@@ -51,7 +51,7 @@ export const MAC_RAIL_WIDTH = 76;
  */
 export const MAC_INSET_CSS = `:root { --titlebar-inset-start: ${TITLEBAR_INSET_START}px; --sidebar-rail-width: ${MAC_RAIL_WIDTH}px; }`;
 
-export function secureWebPreferences(preload: string, version: string): WebPreferences {
+export function secureWebPreferences(preload: string, version: string, dictation = false): WebPreferences {
   return {
     preload,
     contextIsolation: true,
@@ -66,7 +66,7 @@ export function secureWebPreferences(preload: string, version: string): WebPrefe
     navigateOnDragDrop: false,
     safeDialogs: true,
     spellcheck: false,
-    additionalArguments: [`${VERSION_ARG}${version}`],
+    additionalArguments: [`${VERSION_ARG}${version}`, ...(dictation ? [DICTATION_ARG] : [])],
   };
 }
 

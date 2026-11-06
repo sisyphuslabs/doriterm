@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { buildSpeech } from "./build-speech.ts";
 
 const root = join(import.meta.dir, "..");
 const outdir = join(root, "dist", "app");
@@ -24,5 +25,5 @@ const build = async (bundle: (typeof bundles)[number]): Promise<boolean> => {
   return result.success;
 };
 
-const results = await Promise.all(bundles.map(build));
+const results = await Promise.all([...bundles.map(build), buildSpeech(root)]);
 if (results.includes(false)) process.exit(1);

@@ -22,6 +22,8 @@ import { SpaceList, type SpaceReorder } from "./space-list.tsx";
 import { SpaceNameInput } from "./space-name-input.tsx";
 import { useSpaceClosing } from "./space-close-context.ts";
 import { useSpaceRenaming } from "./space-rename-context.ts";
+import { filterMachineGroups, filterSpaces } from "./sidebar-filter.ts";
+import { FilterButton } from "./sidebar-filter-field.tsx";
 import { machineGroups } from "./sidebar-model.ts";
 import { useCollapsed, useSpaceColors } from "./sidebar-prefs.ts";
 import { useMachineReorder } from "./use-machine-reorder.tsx";
@@ -32,6 +34,10 @@ export interface SpacesGroupProps {
   /** Opens a machine's first terminal, from its header. */
   readonly onOpen: (address: string) => void;
   readonly rail?: boolean;
+  /** The sidebar filter's query; the selected space stays listed whatever it is. */
+  readonly query?: string;
+  /** Shows the filter button in the header: only where the filter field is (the desktop sidebar, not the phone list). */
+  readonly filterable?: boolean;
 }
 
 const ALARM = new Set(["unreachable", "needs_login"]);
@@ -120,10 +126,10 @@ function NewSpaceThere({ disabled, onClick }: { readonly disabled: boolean; read
  * The spaces. With one machine they are one list whose header starts a new space; once more than one machine is
  * known, each machine is a list headed by its row (state, terminal count, New space there), in the machines' order.
  */
-export function SpacesGroup({ onOpen, rail = false }: SpacesGroupProps) {
+export function SpacesGroup({ onOpen, rail = false, query = "", filterable = false }: SpacesGroupProps) {
   const machines = useMachinesContext();
   if (!machines.machinesListed) return <SpacesLoading rail={rail} />;
-  return <SpacesLists onOpen={onOpen} rail={rail} machines={machines} />;
+  return <SpacesLists onOpen={onOpen} rail={rail} query={query} filterable={filterable} machines={machines} />;
 }
 
 /** Holds the spaces' place, labeled, until the first machine.list answer: one row, where the first machine row goes. */
@@ -144,14 +150,21 @@ function SpacesLoading({ rail }: { readonly rail: boolean }) {
 function SpacesLists({
   onOpen,
   rail,
+  query,
+  filterable,
   machines,
-}: SpacesGroupProps & { readonly rail: boolean; readonly machines: ReturnType<typeof useMachinesContext> }) {
+}: SpacesGroupProps & {
+  readonly rail: boolean;
+  readonly query: string;
+  readonly filterable: boolean;
+  readonly machines: ReturnType<typeof useMachinesContext>;
+}) {
   // The layout documents' spaces (#404): picking one shows it on the tab it showed last.
   const { spaces, selected, select, move } = useSpaceSelection();
   const colors = useSpaceColors(useMemo(() => spaces.map((space) => space.id), [spaces]));
   const colored = spaces.map((space): Space => {
     const color = colors[space.id];
-    return color === undefined ? space : { ...space, color };
+    return color === undefined ? space : Object.assign({}, space, { color });
   });
   const [editing, setEditing] = useState<string | null>(null);
   // A space row: the list owns its wrapper (drag id, offset), so this is what a person acts on inside it.
@@ -184,25 +197,30 @@ function SpacesLists({
     );
   };
   const editName = rail ? undefined : (space: Space): void => setEditing(space.id);
+  const filtering = query.trim() !== "";
   const listOf = (own: readonly Space[], grouped: boolean) => (
     <SpaceList
       spaces={own}
-      move={rail ? undefined : move}
+      // A filtered list hides rows, so a move by position would land among rows the person cannot see.
+      move={rail || filtering ? undefined : move}
       onDoubleClick={editName}
       row={(space, reorder) => spaceRow(space, grouped, reorder)}
     />
   );
-  const grouped = machineGroups(machines.entries, colored);
+  const allGrouped = machineGroups(machines.entries, colored);
+  const grouped = allGrouped === undefined ? undefined : filterMachineGroups(allGrouped, query, selected);
+  const shownSpaces = filterSpaces(colored, query, selected);
   // The icon rail has no room for a drag handle or a menu; the full sidebar reorders.
   const list = useRef<HTMLDivElement>(null);
-  const { reorderOf, overlay } = useMachineReorder(list, machines.entries, !rail);
+  const { reorderOf, overlay } = useMachineReorder(list, machines.entries, !rail && !filtering);
   const [collapsed, toggle] = useCollapsed();
   const local = machines.entries.find((machine) => machine.local);
   const newSpaceOn = (machine: MachineEntry): void =>
     machine.local ? machines.start({}) : machines.newTerminalOn(machine.name);
+  const showFilter = filterable && !rail;
   const newHere =
-    grouped !== undefined || local === undefined || rail ? undefined : (
-      <IconButton label="New space" icon={<Plus />} className="-mr-1" onClick={() => machines.start({})} />
+    allGrouped !== undefined || local === undefined || rail ? undefined : (
+      <IconButton label="New space" icon={<Plus />} onClick={() => machines.start({})} />
     );
   // While this device's own link is down, the machine list it last read is not news: no row claims a live link (#476).
   const notice = useConnectionNotice();
@@ -217,7 +235,7 @@ function SpacesLists({
       live={machine.live}
       connected={linkDown === null && machine.state === "connected"}
       rail={rail}
-      collapsed={collapsed.includes(machine.id)}
+      collapsed={collapsed.includes(machine.id) && !filtering}
       onToggle={() => toggle(machine.id)}
       onNewSpace={() => newSpaceOn(machine)}
       {...(machine.first === undefined ? {} : { onOpen: () => onOpen(machine.first ?? "") })}
@@ -226,8 +244,18 @@ function SpacesLists({
   return (
     <SidebarSection
       title="Spaces"
-      {...(grouped === undefined ? { count: spaces.length } : {})}
-      {...(newHere === undefined ? {} : { action: newHere })}
+      {...(grouped === undefined ? { count: shownSpaces.length } : {})}
+      {...(showFilter || newHere !== undefined
+        ? {
+            action: (
+              // One right margin for the header's buttons, as the lone New space had, so none spills past the header.
+              <span className="-mr-1 flex items-center gap-0.5">
+                {showFilter ? <FilterButton /> : null}
+                {newHere}
+              </span>
+            ),
+          }
+        : {})}
       {...(rail ? { className: "[&>header]:sr-only" } : {})}
     >
       {/* While the link is down the connection notice says it once; the failed list would only repeat it (#545). */}
@@ -235,7 +263,7 @@ function SpacesLists({
         <MachinesListError cause={machines.listError} className="mx-1 mt-1" />
       )}
       {grouped === undefined ? (
-        <section aria-label="Spaces on this machine">{listOf(colored, false)}</section>
+        <section aria-label="Spaces on this machine">{listOf(shownSpaces, false)}</section>
       ) : (
         <div ref={list} className="relative flex flex-col gap-2">
           {overlay}
@@ -247,10 +275,10 @@ function SpacesLists({
               reorder={reorderOf(machine, index)}
               header={(button) => header(machine, button)}
             >
-              {collapsed.includes(machine.id) ? null : (
+              {collapsed.includes(machine.id) && !filtering ? null : (
                 <>
                   {listOf(own, true)}
-                  {own.length > 0 || rail ? null : (
+                  {own.length > 0 || rail || filtering ? null : (
                     <NewSpaceThere
                       disabled={linkDown !== null || machine.state !== "connected"}
                       onClick={() => newSpaceOn(machine)}
