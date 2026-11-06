@@ -117,16 +117,31 @@ test("Escape puts a picked-up key back where it was", async ({ page }) => {
     page.locator("[data-edit-key]").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-edit-key") ?? ""));
   const before = await order();
   const at = before.indexOf("esc");
-  const grip = page.getByRole("button", { name: "Reorder Escape" });
-  await grip.focus();
+  await page.getByRole("button", { name: "Reorder Escape" }).focus();
   await page.keyboard.press("Enter");
   await page.keyboard.press("ArrowUp");
-  await expect(grip).toBeFocused();
+  // The store's write is queued, so the order is waited for rather than read once straight after the key.
+  await expect.poll(async () => (await order()).indexOf("esc")).toBe(at - 1);
   await page.keyboard.press("Escape");
-  await expect(page.locator('p[aria-live="polite"]')).toContainText("Escape put down");
-  expect((await order()).indexOf("esc")).toBe(at - 1);
-  await page.keyboard.press("ArrowDown");
-  expect((await order()).indexOf("esc")).toBe(at - 1);
+  await expect(page.locator('p[aria-live="polite"]')).toContainText("put back at position");
+  await expect.poll(async () => (await order()).indexOf("esc")).toBe(at);
+});
+
+test("tabbing away from the grip lets Escape close Settings again", async ({ page }) => {
+  await openSettings(page);
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  const order = async (): Promise<readonly string[]> =>
+    page.locator("[data-edit-key]").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-edit-key") ?? ""));
+  const before = await order();
+  const at = before.indexOf("esc");
+  await page.getByRole("button", { name: "Reorder Escape" }).focus();
+  await page.keyboard.press("Enter");
+  // Tab away: the pick ends, so the list no longer owns Escape and the screen's own close runs again.
+  await page.getByRole("button", { name: "Done", exact: true }).focus();
+  await expect(page.locator("[data-captures-keys]")).toHaveCount(0);
+  expect((await order()).indexOf("esc")).toBe(at);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeHidden();
 });
 
 test("a pack added from the Add keys sheet leads the hero and the terminal's bar", async ({ page }) => {

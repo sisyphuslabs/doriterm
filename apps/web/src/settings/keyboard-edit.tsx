@@ -23,7 +23,9 @@ export function KeyboardEdit({ settings, host, readOnly }: KeyboardEditProps) {
     onMove: readOnly ? undefined : (id, to) => reorder(id, to),
   });
   const removed = specialKeysOn(host).filter((entry) => !settings.keys.includes(entry.id));
-  const [picked, setPicked] = useState<string | null>(null);
+  const [picked, setPicked] = useState<{ readonly id: string; readonly from: number } | null>(null);
+  /** Set while the refocus after a move runs, so that focus landing back on the grip is not read as tabbing away. */
+  const refocusing = useRef(false);
   const [said, setSaid] = useState("");
   const grips = useRef(new Map<string, HTMLButtonElement>());
   const reorder = (id: string, to: number): void => {
@@ -36,28 +38,34 @@ export function KeyboardEdit({ settings, host, readOnly }: KeyboardEditProps) {
     void keyBarStore.update((current) => inVisibleOrder(current, next));
     // The row this grip belongs to moved in the DOM, which can drop focus: put it back so the next arrow key still lands
     // on the grip the person was holding, and Escape keeps cancelling the move instead of closing Settings.
-    requestAnimationFrame(() => grips.current.get(id)?.focus());
+    refocusing.current = true;
+    requestAnimationFrame(() => {
+      grips.current.get(id)?.focus();
+      refocusing.current = false;
+    });
   };
   const onGripKey = (event: KeyboardEvent<HTMLButtonElement>, id: string, index: number, name: string): void => {
     if (event.key === "Escape") {
       if (picked === null) return;
       event.preventDefault();
+      // Escape cancels: the key goes back where it was picked up from, which is what a list reorder means everywhere.
+      reorder(id, picked.from);
       setPicked(null);
-      setSaid(`${name} put down at position ${index + 1} of ${shown.length}`);
+      setSaid(`${name} put back at position ${picked.from + 1} of ${shown.length}`);
       return;
     }
     if (event.key === " " || event.key === "Enter") {
       event.preventDefault();
       if (picked === null) {
-        setPicked(id);
+        setPicked({ id, from: index });
         setSaid(`${name} picked up. Use the arrow keys to move it, Space to drop it.`);
-      } else if (picked === id) {
+      } else if (picked.id === id) {
         setPicked(null);
         setSaid(`${name} dropped at position ${index + 1} of ${shown.length}`);
       }
       return;
     }
-    if (picked !== id) return;
+    if (picked === null || picked.id !== id) return;
     const step = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
     if (step === 0) return;
     const to = index + step;
@@ -100,11 +108,18 @@ export function KeyboardEdit({ settings, host, readOnly }: KeyboardEditProps) {
                     else grips.current.set(entry.id, element);
                   }}
                   aria-label={`Reorder ${entry.name}`}
-                  aria-pressed={picked === entry.id}
+                  aria-pressed={picked?.id === entry.id}
                   disabled={readOnly}
                   onKeyDown={(event) => onGripKey(event, entry.id, index, entry.name)}
+                  onBlur={() => {
+                    if (refocusing.current) return;
+                    if (picked?.id === entry.id) {
+                      setPicked(null);
+                      setSaid(`${entry.name} left where it is`);
+                    }
+                  }}
                   className={`flex size-11 items-center justify-center rounded-full outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring ${
-                    picked === entry.id ? "bg-selected text-foreground" : "text-muted-foreground"
+                    picked?.id === entry.id ? "bg-selected text-foreground" : "text-muted-foreground"
                   }`}
                 >
                   <GripVertical className="size-4" aria-hidden />
