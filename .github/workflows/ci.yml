@@ -252,6 +252,121 @@ jobs:
           DEBUG: pw:browser
         run: xvfb-run --auto-servernum bun run test:e2e
 
+  desktop-macos:
+    # The desktop app ships for macOS first (signed and notarized dmg and zip), and part of its suite only runs there:
+    # the hidden-inset titlebar spec and the app-menu spec skip on every other platform, and the shortcut, split-focus
+    # and pairing-link specs take their Command branch only on a Mac (#609). Without this job those paths reach dev
+    # unproven.
+    name: Desktop (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      # A macOS runner bills ten times a Linux one, so the suite only runs when the change can reach the app: the shell
+      # itself, the web client and host binary it packages, and the workspaces under them.
+      - name: Decide whether this change reaches the desktop app
+        id: scope
+        run: |
+          set -u
+          base=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            base="${{ github.event.merge_group.base_sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          match=true
+          if [ -n "$base" ] && [ "$base" != "0000000000000000000000000000000000000000" ] &&
+            git fetch --no-tags --depth=1 origin "$base" > /dev/null 2>&1; then
+            changed="$(git diff --name-only "$base" HEAD)"
+            printf '%s\n' "$changed"
+            match=false
+            if printf '%s\n' "$changed" |
+              grep -Eq '^(apps/desktop|apps/web|apps/host|packages|patches)/|^(bun\.lock|package\.json|tsconfig\.base\.json|\.github/workflows/ci\.yml)$'; then
+              match=true
+            fi
+          else
+            echo "no readable base commit: running the suite"
+          fi
+          echo "match=$match" >> "$GITHUB_OUTPUT"
+      - uses: oven-sh/setup-bun@v2
+        if: steps.scope.outputs.match == 'true'
+        with:
+          bun-version: 1.4.4
+      # bun's install cache and Electron's own downloads; the packed app itself is rebuilt every run.
+      - uses: actions/cache@v4
+        if: steps.scope.outputs.match == 'true'
+        with:
+          path: |
+            ~/.bun/install/cache
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: macos-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
+          restore-keys: macos-${{ runner.arch }}-
+      - name: Install herdr-core
+        if: steps.scope.outputs.match == 'true'
+        env:
+          HC_SHA256_AARCH64: cedbd4d4d9ba1385588198dd4d3c67d2654478f33add5b6445d4d0eb9da5fcf3
+          HC_SHA256_X86_64: e2dc3211edb1f1c77d0e73dd76c1426636d71050f34a5303916a56d363d7062b
+        run: |
+          case "${{ runner.arch }}" in
+            X64) arch=x86_64; sha="$HC_SHA256_X86_64" ;;
+            *) arch=aarch64; sha="$HC_SHA256_AARCH64" ;;
+          esac
+          mkdir -p "$RUNNER_TEMP/hc"
+          curl -fsSL "https://releases.herdr.dev/core/0.1.17/herdr-core-macos-$arch.tar.gz" -o "$RUNNER_TEMP/hc.tar.gz"
+          echo "$sha  $RUNNER_TEMP/hc.tar.gz" | shasum -a 256 --check --strict
+          tar -xzf "$RUNNER_TEMP/hc.tar.gz" -C "$RUNNER_TEMP/hc" herdr-core
+          ln -s herdr-core "$RUNNER_TEMP/hc/hc"
+          echo "$RUNNER_TEMP/hc" >> "$GITHUB_PATH"
+          echo "HC_BIN=$RUNNER_TEMP/hc/hc" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/hc/hc" --version
+      - name: Install dependencies
+        if: steps.scope.outputs.match == 'true'
+        run: bun install --frozen-lockfile
+      - name: Desktop units
+        if: steps.scope.outputs.match == 'true'
+        working-directory: apps/desktop
+        run: bun test
+      - name: Package (electron-builder --dir)
+        if: steps.scope.outputs.match == 'true'
+        working-directory: apps/desktop
+        run: bun run pack
+      # Installing and packing must not rewrite tracked files (the same check the Linux Desktop job makes).
+      - name: The tree is clean after install and pack
+        if: steps.scope.outputs.match == 'true'
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --porcelain
+            git diff --stat --summary
+            git --no-pager diff
+            exit 1
+          fi
+      # CI points the specs at electron-builder --dir output so the app that launches is the packaged one, as on Linux.
+      - name: Find the packaged app
+        if: steps.scope.outputs.match == 'true'
+        run: |
+          app="$(find apps/desktop/dist/release -maxdepth 2 -name doriface.app -print -quit)"
+          test -n "$app"
+          echo "DORIFACE_E2E_EXECUTABLE=$PWD/$app/Contents/MacOS/doriface" >> "$GITHUB_ENV"
+      - name: Launch the packaged app
+        if: steps.scope.outputs.match == 'true'
+        working-directory: apps/desktop
+        env:
+          CI: "1"
+          # Electron's own stdout/stderr, so a launch that never connects says why.
+          DEBUG: pw:browser
+        run: bun run test:e2e
+      - if: always() && steps.scope.outputs.match == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos-e2e
+          path: |
+            apps/desktop/test-results
+            apps/desktop/playwright-report
+          if-no-files-found: ignore
+
   windows-private-state:
     # Host key custody on Windows (#406): ACLs, not POSIX mode bits. Both supported Windows architectures run the
     # real-ACL suite and the compiled host, so bun:ffi is proven in the packaged binary too.
