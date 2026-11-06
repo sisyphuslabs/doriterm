@@ -155,8 +155,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   const narrow = useNarrow();
   const ids = useMemo(() => machineIds(views), [views]);
   // The phone's open terminal is kept by machine id like a tab, so a rename keeps it open at the new address.
-  const [phoneKey, setPhoneKey] = useState<string | null>(null);
-  const phoneOpen = phoneKey === null ? null : (tabAddress(phoneKey, ids) ?? null);
+  const openFromList = useRef(false);
   // The phone's open terminal is a history entry (`?t=`), so Android's Back returns to the list instead of leaving the
   // app (the browser has nothing else to pop), and a reload reopens what was open without pushing a second entry.
   const navigate = useNavigate();
@@ -166,12 +165,9 @@ export function Workspace({ connection }: WorkspaceProps) {
   const routeKey = typeof routeSearch.t === "string" ? routeSearch.t : null;
   const routeTerminal = routePath === "/" ? routeKey : null;
   // Settings keeps the workspace mounted (#607), so it must keep the phone's open terminal too: a route that is not the
-  // list says nothing about `?t=`, and reading it as "nothing is open" unmounted the terminal and reattached it on return.
-  useEffect(() => {
-    if (routePath !== "/") return;
-    if (routeKey === phoneKey) return;
-    setPhoneKey(routeKey);
-  }, [routePath, routeKey, phoneKey]);
+  // list says nothing about `?t=`, so it is read from the list only. There is no second copy to keep in step.
+  const phoneKey = routePath === "/" ? routeKey : null;
+  const phoneOpen = phoneKey === null || !narrow ? null : (tabAddress(phoneKey, ids) ?? null);
   const showOnPhone = useCallback(
     (address: string) => {
       guideStore.opened();
@@ -179,7 +175,7 @@ export function Workspace({ connection }: WorkspaceProps) {
       // made Back step through no-op entries and a landing run close the screen behind it.
       if (!narrow) return;
       const key = tabKey(address, ids);
-      setPhoneKey(key);
+      openFromList.current = routeTerminal === null;
       // Switching inside an open terminal replaces that entry, so one Back still leaves the terminal for the list;
       // only entering from the list adds one.
       void navigate({ href: `/?t=${encodeURIComponent(key)}`, replace: routeTerminal !== null });
@@ -187,9 +183,11 @@ export function Workspace({ connection }: WorkspaceProps) {
     [ids, navigate, narrow, routeTerminal],
   );
   const hideOnPhone = useCallback(() => {
-    if (routeTerminal !== null) router.history.back();
-    else setPhoneKey(null);
-  }, [routeTerminal]);
+    // A cold open on `?t=` has no list behind it, so popping would leave the app; that case goes to the list instead.
+    if (openFromList.current) router.history.back();
+    else void navigate({ href: "/", replace: true });
+    openFromList.current = false;
+  }, [navigate, router]);
   const [palette, setPalette] = useState(false);
   const [ask, setAsk] = useState<SessionAsk | null>(null);
   const [spaceAsk, setSpaceAsk] = useState<string | null>(null);

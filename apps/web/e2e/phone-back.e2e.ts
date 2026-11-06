@@ -23,7 +23,6 @@ test("the phone's Back returns to the list from a terminal, and only then leaves
     await page.goBack();
     await expect.poll(() => page.url()).not.toBe(before);
     await expect(page.getByRole("button", { name: "Back to agents" })).toHaveCount(0);
-    void address;
   } finally {
     endAgent("host", address);
   }
@@ -91,7 +90,7 @@ test("Settings opened over an open terminal keeps it mounted instead of reattach
 });
 
 test("a desktop keeps no history entries when it opens a terminal", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 1280, height: 800 });
   const address = startAgent("host", "deskone", "idle");
   try {
     await page.goto("/");
@@ -108,6 +107,50 @@ test("a desktop keeps no history entries when it opens a terminal", async ({ pag
       .catch(() => undefined);
     await expect.poll(() => new URL(page.url()).searchParams.get("t")).toBeNull();
     expect(await page.evaluate(() => history.length)).toBe(entries);
+  } finally {
+    endAgent("host", address);
+  }
+});
+
+test("a reload on ?t= reopens the terminal without a second entry, and Back reaches the list", async ({ page }) => {
+  const address = startAgent("host", "backreload", "idle");
+  try {
+    await page.goto("/");
+    const row = page.getByRole("button", { name: /backreload/ }).first();
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    await row.click();
+    await expect(page.getByRole("button", { name: "Back to agents" })).toBeVisible({ timeout: 20_000 });
+    const entries = await page.evaluate(() => history.length);
+
+    await page.reload();
+    await expect(page.locator(`[data-terminal="${address}"]`)).toBeVisible({ timeout: 20_000 });
+    expect(new URL(page.url()).searchParams.get("t")).not.toBeNull();
+    // The reload must not push a second entry for the same terminal.
+    expect(await page.evaluate(() => history.length)).toBe(entries);
+
+    await page.goBack();
+    await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
+  } finally {
+    endAgent("host", address);
+  }
+});
+
+test("a cold open on ?t= comes back to the list instead of leaving the app", async ({ page }) => {
+  const address = startAgent("host", "backcold", "idle");
+  try {
+    await page.goto("/");
+    const row = page.getByRole("button", { name: /backcold/ }).first();
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    await row.click();
+    const url = page.url();
+    // Straight onto the terminal's own address, with no list behind it in this tab's history.
+    await page.goto(url);
+    await expect(page.getByRole("button", { name: "Back to agents" })).toBeVisible({ timeout: 20_000 });
+
+    // Popping here would leave the app, so the button goes to the list instead.
+    await page.getByRole("button", { name: "Back to agents" }).click();
+    await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
+    await expect.poll(() => new URL(page.url()).searchParams.get("t")).toBeNull();
   } finally {
     endAgent("host", address);
   }
