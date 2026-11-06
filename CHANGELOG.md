@@ -13,6 +13,7 @@
 ### Workspace
 
 - An agent row shows how far its own todo list has got, as done/total (2/4), read from the list the agent draws: Claude Code's task list when its task tools are on (a long list's folded line counts too), and omp's TODO list with its phases added up. An agent with no list, or one that draws none, shows nothing, and while it waits on a question the row keeps its last count. (#673)
+- A machine renamed while its layout was still loading keeps every tab's terminal: a tab that opened before this screen heard the new name no longer stays on "This terminal didn't open", and attaches at the machine's new name instead. (#852)
 - The sidebar has a filter: the funnel button, Cmd+Alt+F on macOS or Ctrl+Alt+F elsewhere opens a field that narrows machines, spaces and agents to the rows whose shown labels match what is typed (letters in order, any case). The selected space and agent stay as context, a folded machine opens to show its matches, and Escape clears the query, then closes the field and returns to the terminal. (#673)
 
 ### Phone

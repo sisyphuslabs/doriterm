@@ -30,6 +30,7 @@ import { Ended } from "./ended.tsx";
 import { type TerminalPort, pasteInto, useTerminalPort } from "./terminal-port.ts";
 import { putFiles, quotePaths, readClipboard } from "./paste-files.ts";
 import { Unopened } from "./unopened.tsx";
+import { useReopenWhenMoved } from "./use-reopen-when-moved.ts";
 import { JumpToBottom, scrollTerminal, TerminalScrollbar, useTerminalScroll } from "./terminal-scroll.tsx";
 import { QuietBusy } from "./quiet-busy.tsx";
 import { TerminalLinks } from "./terminal-links.tsx";
@@ -110,6 +111,10 @@ export function TerminalView(props: TerminalViewProps) {
   const toasts = useToastManager();
   /** Why attaching failed, in plain words; Try again clears it, which mounts the terminal and attaches again. */
   const [unopened, setUnopened] = useState<string | null>(null);
+  const unopenedAt = useReopenWhenMoved(address, unopened, () => {
+    setWt(null);
+    setUnopened(null);
+  });
   /** The first attach is unanswered: the pane says it is opening, not a ready shell with nothing in it (#483). */
   const [opening, setOpening] = useState(false);
   const [paste, setPaste] = useState<PendingPaste | null>(null);
@@ -357,7 +362,10 @@ export function TerminalView(props: TerminalViewProps) {
         restarting: () => setRestarting(true),
         reattach: () => attach(ready),
         replaced: () => undefined,
-        error: () => setUnopened(openFailure(address, "error" in answer ? answer.error : refusal?.cause)),
+        error: () => {
+          unopenedAt(address);
+          setUnopened(openFailure(address, "error" in answer ? answer.error : refusal?.cause));
+        },
       };
       return then[settled(answer, program.current, !attachedBefore.current, refusal !== null)]();
     });

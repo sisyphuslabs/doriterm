@@ -14,6 +14,14 @@ const selectedPane = (page: Page, address: string) =>
 
 const stripNames = (page: Page): Promise<string[]> => tabs(page).allInnerTexts();
 
+/** Shows the strip's tab at `place` and reads the terminal its pane shows, as `machine/tN`. */
+async function shownAt(page: Page, place: number): Promise<string> {
+  await tabs(page).nth(place).click();
+  const pane = page.locator('[role="tabpanel"]:not([hidden]) [data-terminal]');
+  await expect(pane).toHaveCount(1, { timeout: 15_000 });
+  return (await pane.getAttribute("data-terminal")) ?? "";
+}
+
 /** Shows the strip's tab at `place` and types into its pane, proving the terminal answers at `address`. */
 async function answerAt(page: Page, place: number, address: string, typed: string): Promise<void> {
   await tabs(page).nth(place).click();
@@ -140,20 +148,23 @@ test.describe("renaming a machine with two tabs open", () => {
     await expect(page.locator(`[data-terminal="${MACHINE_NAME}/${remote}"]`)).toBeVisible({ timeout: 20_000 });
     layout.release();
     await expect(tabs(page)).toHaveCount(2, { timeout: STATE_BOUND_MS });
+    // Which of the two the loaded layout puts first is not the rename's to keep; which terminal each tab shows is.
+    const held = [localOf(await shownAt(page, 0)), localOf(await shownAt(page, 1))];
+    expect(held.toSorted()).toEqual([remote, second].toSorted());
     await nameTab(page, 0, "build");
     await nameTab(page, 1, "logs");
     const order = await domOrder(page);
 
     hcOn("host", ["machine", "rename", MACHINE_NAME, RENAMED]);
     renamed = true;
-    await expect(page.locator(`[data-terminal="${RENAMED}/${second}"]`)).toBeVisible({ timeout: STATE_BOUND_MS });
+    await expect(selectedPane(page, `${RENAMED}/${held[1]}`)).toBeVisible({ timeout: STATE_BOUND_MS });
     await expect(tabs(page)).toHaveCount(2);
     expect(await stripNames(page)).toEqual(["build", "logs"]);
     expect(await domOrder(page)).toEqual(order);
     await tabs(page).nth(0).click();
-    await expect(selectedPane(page, `${RENAMED}/${remote}`)).toBeVisible({ timeout: 15_000 });
+    await expect(selectedPane(page, `${RENAMED}/${held[0]}`)).toBeVisible({ timeout: 15_000 });
     await tabs(page).nth(1).click();
-    await expect(selectedPane(page, `${RENAMED}/${second}`)).toBeVisible({ timeout: 15_000 });
+    await expect(selectedPane(page, `${RENAMED}/${held[1]}`)).toBeVisible({ timeout: 15_000 });
     await expect(tabs(page)).toHaveCount(2);
   });
 
