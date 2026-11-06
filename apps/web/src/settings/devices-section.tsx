@@ -1,11 +1,16 @@
-import { Button, SettingRow } from "@doriface/ui";
-import { Monitor, Server, Smartphone } from "lucide-react";
-import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Button, Dialog, SettingRow } from "@doriface/ui";
+import { Laptop, Monitor, Server } from "lucide-react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { ConnectionSettings } from "../connection/settings.ts";
 import { hostFailure } from "../connection/host-failure.ts";
 import { connectionStore, useConnection, type ConnectionState } from "../connection/store.ts";
-import { desktopPairOffer } from "../desktop/pair-bridge.ts";
-import { PairDeviceDialog } from "./pair-device-dialog.tsx";
+import { desktopDevices, type DesktopDevicesAnswer } from "../desktop/device-bridge.ts";
+import type { DesktopPairedDevice } from "../desktop/pair-bridge.ts";
+import { hostRouteOf } from "./host-route.ts";
+import { PairDeviceOffer } from "./pair-device-offer.tsx";
+import { deviceSummary, pairedDevicesView, type PairedDevicesView } from "./paired-devices.ts";
+import { sessionPathLabel } from "./session-path.ts";
+import { useHostRoundTrip } from "./use-host-round-trip.ts";
 
 function useConnectionSettings(): ConnectionSettings {
   return useSyncExternalStore(connectionStore.subscribe, () => connectionStore.settings);
@@ -45,39 +50,146 @@ function label(icon: ReactNode, text: string) {
   );
 }
 
+/** What the paired-devices row says above the list: why it is empty, or what revoking does. */
+function devicesDescription(view: PairedDevicesView): string {
+  switch (view.kind) {
+    case "unsupported":
+      return "";
+    case "asking":
+      return "Asking this computer's host…";
+    case "failed":
+      return view.reason;
+    case "empty":
+      return "No phone or browser is paired with this computer.";
+    case "listed":
+      return "These devices reach this computer's terminals. Revoking one closes its session at once.";
+  }
+}
+
 /**
- * This device, the host it is set up for, and — on this computer's own host — the offer that pairs a new device to it.
- * Revoking other devices needs the encrypted session.
+ * This device, the host it is set up for, — on this computer's own host — the offer that pairs a new device to it and
+ * the devices already paired. The list and the revoke come from the shell, which asks the running host over its
+ * token-guarded loopback, so a member revokes a lost phone from the computer it was paired to, with no terminal.
  */
 export function DevicesSection() {
   const state = useConnection();
   const settings = useConnectionSettings();
-  const [pairing, setPairing] = useState(false);
-  // One relay function for this page: a new one each render would reopen the offer the dialog is showing.
-  const pair = useMemo(() => desktopPairOffer(), []);
+  const route = hostRouteOf(settings);
+  const roundTrip = useHostRoundTrip(state.phase === "open" ? state.connection : null);
+  const devices = useMemo(() => desktopDevices(), []);
+  const [paired, setPaired] = useState<DesktopDevicesAnswer | null>(null);
+  const [revoking, setRevoking] = useState<DesktopPairedDevice | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const view = pairedDevicesView(paired, devices !== null);
   // The host names itself as it answers; that name is kept beside the paired host, so the row still names it once the
   // link drops or the page is loaded again while it is down (#496). The id is only left when no name was ever learned.
   const name = state.phase === "open" ? state.connection.hello.core.name : settings.hostName;
   const host = name !== "" ? name : settings.mode === "relay" ? settings.hostId || "No host" : settings.loopbackUrl;
-  // Only this computer's own host can be offered to a device: the shell relays its offer, and a host this app merely
-  // reaches over the relay runs somewhere else.
-  const offersItself = pair !== null && settings.mode === "loopback";
+  useEffect(() => {
+    if (devices === null) return;
+    let cancelled = false;
+    devices.list().then(
+      (answer) => !cancelled && setPaired(answer),
+      (error: unknown) =>
+        !cancelled &&
+        setPaired({ state: "unavailable", reason: error instanceof Error ? error.message : String(error) }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [devices]);
+
+  const revoke = async (device: DesktopPairedDevice): Promise<void> => {
+    setRevoking(null);
+    if (devices === null) return;
+    try {
+      const answer = await devices.revoke(device.id);
+      if (answer.state === "unavailable") return setNote(answer.reason);
+      setPaired({ state: "listed", devices: answer.devices });
+      setNote(
+        answer.state === "revoked"
+          ? `${answer.device.name} can no longer reach this computer.`
+          : "That device was already gone.",
+      );
+    } catch (error) {
+      setNote(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   return (
     <>
       <SettingRow title={label(<Monitor aria-hidden />, "This browser")} description="This device" control={null} />
-      <SettingRow title={label(<Server aria-hidden />, host)} description={describe(state)} control={null} />
-      {offersItself ? (
-        <SettingRow
-          title={label(<Smartphone aria-hidden />, "Pair a device")}
-          description="A phone or another computer that pairs with this computer can open its terminals, end to end encrypted."
-          control={
-            <Button size="sm" onClick={() => setPairing(true)}>
-              Pair a device
+      <SettingRow
+        title={label(<Server aria-hidden />, host)}
+        description={
+          <>
+            {describe(state)}
+            {state.phase === "open" ? (
+              <span className="block text-muted-foreground">
+                {sessionPathLabel(state.path, state.directReason)}
+                {roundTrip === undefined ? "" : ` · ${roundTrip} ms round trip`}
+              </span>
+            ) : route.label === undefined ? null : (
+              <span className="block text-muted-foreground">{route.label}</span>
+            )}
+          </>
+        }
+        control={null}
+      />
+      <PairDeviceOffer />
+      {view.kind === "unsupported" ? null : (
+        <>
+          <SettingRow
+            title={label(<Laptop aria-hidden />, "Other devices")}
+            description={devicesDescription(view)}
+            control={null}
+          />
+          {view.kind === "listed"
+            ? view.devices.map((device) => (
+                <SettingRow
+                  key={device.id}
+                  title={device.name}
+                  description={deviceSummary(device)}
+                  control={
+                    <Button size="sm" onClick={() => setRevoking(device)}>
+                      Revoke
+                    </Button>
+                  }
+                />
+              ))
+            : null}
+          {note === null ? null : (
+            <p role="status" className="text-sm text-muted-foreground">
+              {note}
+            </p>
+          )}
+        </>
+      )}
+      <Dialog
+        open={revoking !== null}
+        alert
+        title={`Revoke ${revoking?.name ?? "this device"}?`}
+        description="It loses access to this computer at once and has to be paired again with a new code."
+        className="w-[min(28rem,calc(100%-2rem))]"
+        onOpenChange={(next) => {
+          if (!next) setRevoking(null);
+        }}
+        actions={
+          <>
+            <Button variant="ghost" onClick={() => setRevoking(null)}>
+              Cancel
             </Button>
-          }
-        />
-      ) : null}
-      <PairDeviceDialog open={pairing} onClose={() => setPairing(false)} pair={pair} />
+            <Button
+              variant="primary"
+              onClick={() => {
+                if (revoking !== null) void revoke(revoking);
+              }}
+            >
+              Revoke
+            </Button>
+          </>
+        }
+      />
     </>
   );
 }

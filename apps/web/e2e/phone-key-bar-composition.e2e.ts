@@ -83,3 +83,25 @@ test("Paste while a syllable composes pastes after the syllable (#652)", async (
   await pressReturn(page);
   await expect(terminal).toContainText(`${HAN} 7a 7a`, { timeout: 10_000 });
 });
+
+test("text the input method puts back before ending a taken composition is not sent with the next key (#652)", async ({
+  page,
+}) => {
+  const terminal = await openReader(page);
+  const field = terminal.getByRole("textbox");
+  await compose(page, "한");
+  await key(page, "Escape").click();
+  // An input method that writes the syllable back into the emptied field, then ends the composition with it.
+  await field.evaluate((el) => {
+    if (!(el instanceof HTMLTextAreaElement)) throw new Error("the terminal's field is not a textarea");
+    el.value = "한";
+    el.dispatchEvent(new CompositionEvent("compositionend", { data: "한", bubbles: true }));
+  });
+  // A soft keyboard's next letter arrives as an input event, which reads the whole field.
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Input.insertText", { text: "z" });
+  await cdp.detach();
+  await pressReturn(page);
+  await expect(terminal).toContainText(`${HAN} 1b 7a`, { timeout: 10_000 });
+  await expect(terminal).not.toContainText(`1b ${HAN}`);
+});

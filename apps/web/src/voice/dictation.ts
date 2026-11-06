@@ -24,6 +24,8 @@ export interface DictationOptions {
   readonly engine: () => Engine;
   /** Stores the user's answer to the consent question, so it is asked once. */
   readonly remember: (engine: Engine) => void;
+  /** The reason shown when the language cannot be recognized on the device: `device`, or `device-mac` on the Mac app. */
+  readonly unavailableReason?: VoiceError;
   readonly now?: () => number;
 }
 
@@ -135,14 +137,15 @@ export class Dictation {
     const local = await this.#localAvailability(recognizer);
     if (turn !== this.#turn) return;
     if (local === "available") return this.#listen(recognizer, true);
+    const unavailable = this.#options.unavailableReason ?? "device";
     if (local === "unavailable" || recognizer.install === undefined)
-      return this.#set({ kind: "error", reason: "device" });
+      return this.#set({ kind: "error", reason: unavailable });
     this.#set({ kind: "preparing" });
     const options = { langs: [this.#options.language()], processLocally: true };
     const installed = await recognizer.install(options).catch(() => false);
     if (turn !== this.#turn) return;
     if (installed) return this.#listen(recognizer, true);
-    return this.#set({ kind: "error", reason: "device" });
+    return this.#set({ kind: "error", reason: unavailable });
   }
 
   #listen(Recognizer: RecognizerClass, local: boolean): void {

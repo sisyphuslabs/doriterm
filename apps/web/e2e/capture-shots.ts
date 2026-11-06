@@ -7,7 +7,15 @@ import { SPACE_RENAME_SHOTS } from "./capture-space-rename-shots.ts";
 import { VOICE_SHOTS } from "./capture-voice-shots.ts";
 import { seedSpaces } from "./layout-doc.ts";
 import { MACHINE_NAME } from "./machine.ts";
-import { hcOn, machineRow, reconnect, STATE_BOUND_MS, switchTo } from "./machine-switch.ts";
+import {
+  hcOn,
+  machineRow,
+  reconnect,
+  STATE_BOUND_MS,
+  switchTo,
+  OFFLINE_BOUND_MS,
+  OFFLINE_TEST_TIMEOUT_MS,
+} from "./machine-switch.ts";
 import { resetMeshDocs } from "./mesh-reset.ts";
 
 export type Width = "1440" | "390";
@@ -22,6 +30,8 @@ export interface Shot {
   readonly storageFails?: true;
   /** The shot shows a drag in progress: the pointer stays where `run` left it, still pressed. */
   readonly holdsPointer?: true;
+  /** Longer than the default test timeout: the shot waits out a machine's offline grace (#904). */
+  readonly timeoutMs?: number;
   readonly run: (page: Page, width: Width) => Promise<void>;
   /** Ends what `run` started, once the shot is taken. */
   readonly cleanup?: () => void;
@@ -73,13 +83,13 @@ const refusedWith = (closeCode: number) => async (page: Page) => {
   await page.getByRole("button", { name: "They match" }).click();
   await expect(page.getByText("Pairing did not finish")).toBeVisible({ timeout: 15_000 });
 };
-const SETTINGS = ["Appearance", "Device", "Terminal", "Keybindings"] as const;
+const SETTINGS = ["Appearance", "This device", "Terminal", "Keybindings"] as const;
 /** The mesh panel once its document and the added machine it is checked against have both arrived. */
 const meshLoaded = async (page: Page) => {
   resetMeshDocs();
   await page.goto("/");
   await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
-  await section(page, "Mesh");
+  await section(page, "Machines");
   await expect(page.locator('[data-mesh-group="pending"] [data-mesh-answer]').first()).toBeVisible({ timeout: 20_000 });
 };
 
@@ -341,6 +351,7 @@ export const SHOTS: readonly Shot[] = [
     // A session whose program ended while its machine was offline, so its view first attaches to a finished terminal.
     name: "session-ended",
     start: "connected",
+    timeoutMs: OFFLINE_TEST_TIMEOUT_MS,
     run: async (page, width) => {
       ended = startShell("machine", "nightly-build");
       await page.goto("/");
@@ -349,7 +360,7 @@ export const SHOTS: readonly Shot[] = [
       const terminal = page.locator(`[data-terminal="${MACHINE_NAME}/${ended}"]`);
       await expect(terminal).toContainText("$", { timeout: 15_000 });
       switchTo("drop");
-      await expect(terminal).toHaveCount(0, { timeout: STATE_BOUND_MS });
+      await expect(terminal).toHaveCount(0, { timeout: OFFLINE_BOUND_MS });
       hcOn("machine", ["kill", ended]);
       reconnect();
       // The phone's terminal screen has no machine list to wait on.

@@ -20,7 +20,14 @@ interface Probe {
 
 const header = (response: Response, name: string): string => response.headers.get(name) ?? "";
 
-function probes(index: string, worker: string): readonly Probe[] {
+/** The Content-Security-Policy that public/_headers gives every page: the deployed shell must carry exactly this one. */
+function declaredPolicy(headersFile: string): string {
+  const policy = /^\/\*\n(?:  .*\n)*?  Content-Security-Policy: (.+)$/m.exec(headersFile)?.[1];
+  if (policy === undefined) throw new Error("dist/_headers gives /* no Content-Security-Policy");
+  return policy;
+}
+
+function probes(index: string, worker: string, policy: string): readonly Probe[] {
   const asset = /\/assets\/[^"]+\.js/.exec(index)?.[0];
   if (asset === undefined) throw new Error("dist/index.html names no /assets/*.js");
   const shell = (response: Response, body: string): string | undefined => {
@@ -29,6 +36,7 @@ function probes(index: string, worker: string): readonly Probe[] {
     if (body !== index) return "not this build's index.html";
     if (!header(response, "cache-control").includes("no-transform")) return "no no-transform";
     if (header(response, "x-content-type-options") !== "nosniff") return "no nosniff";
+    if (header(response, "content-security-policy") !== policy) return "not _headers' Content-Security-Policy";
     return undefined;
   };
   return [
@@ -55,6 +63,10 @@ function probes(index: string, worker: string): readonly Probe[] {
     {
       path: asset,
       check: (response) => (header(response, "cache-control").includes("immutable") ? undefined : "not immutable"),
+    }, // The link-preview card: a missing file would come back as the SPA shell, 200 text/html, and unfurls lose their image.
+    {
+      path: "/og.png",
+      check: (response) => (header(response, "content-type") === "image/png" ? undefined : "not image/png"),
     },
   ];
 }
@@ -74,7 +86,11 @@ if (!/^https:\/\/[^/]+$/.test(origin) || !Number.isInteger(attempts) || attempts
   console.error("usage: bun .github/scripts/probe-web.ts <https origin> [attempts]");
   process.exit(2);
 }
-const checks = probes(await Bun.file(join(DIST, "index.html")).text(), await Bun.file(join(DIST, "sw.js")).text());
+const checks = probes(
+  await Bun.file(join(DIST, "index.html")).text(),
+  await Bun.file(join(DIST, "sw.js")).text(),
+  declaredPolicy(await Bun.file(join(DIST, "_headers")).text()),
+);
 
 /** One round of every probe; the next round starts WAIT_MS later, until one passes or the attempts run out. */
 async function attempt(n: number): Promise<boolean> {

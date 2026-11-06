@@ -32,6 +32,8 @@ function standIn(): { readonly connection: HcConnection; readonly closes: ((erro
     hello: { core: { id: "c0re", name: "" } },
     onClose: (listener: (error?: Error) => void) => (closes.push(listener), () => undefined),
     close: () => undefined,
+    // A live core: a wake with the link open asks it one call (#653), and it answers.
+    call: () => Promise.resolve([]),
   };
   return { connection: connection as unknown as HcConnection, closes };
 }

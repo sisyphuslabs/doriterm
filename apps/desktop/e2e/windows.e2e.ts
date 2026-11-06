@@ -74,9 +74,19 @@ async function appPage(): Promise<Page> {
   return page;
 }
 
-test("the app is named doriface", async () => {
+test("the app is named Doriterm", async () => {
   const name = await running().evaluate(({ app }) => app.getName());
-  expect(name).toBe("doriface");
+  expect(name).toBe("Doriterm");
+});
+
+test("storage keeps the folder installs already use, unless a profile is named", async () => {
+  const storage = await running().evaluate(({ app }) => ({
+    path: app.getPath("userData"),
+    named: app.commandLine.hasSwitch("user-data-dir"),
+  }));
+  if (scratch === undefined) throw new Error("no scratch profile");
+  expect(storage.named).toBe(true);
+  expect(storage.path).toBe(scratch.profile);
 });
 
 test("a second launch and a Dock click bring back the one window", async () => {

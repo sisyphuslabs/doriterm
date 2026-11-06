@@ -1,4 +1,4 @@
-import type { PushHostLine, PushNotice } from "@doriface/protocol";
+import type { NoticePrompt, PushClientLine, PushHostLine, PushNotice } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
 import { planClick } from "./notice-click.ts";
 import { noticeDisplay } from "./notice-display.ts";
@@ -9,12 +9,41 @@ const notice = (k: PushNotice["k"]): PushNotice => ({
   k,
   h: "abcdefghijklmnopqrstuvwxyz",
 });
+const rows = (...labels: string[]): NoticePrompt => ({
+  options: labels.map((label, index) => ({ id: String(index + 1), label, declines: label === "No" })),
+});
+
+const said = (line: PushClientLine) =>
+  line.t === "answer" ? `${line.id}:${line.answer}` : line.t === "choose" ? `${line.id}:option ${line.option}` : line.t;
 const URL_OF = "/?notice=AAAAAAAAAAAAAAAAAAAAAA&host=abcdefghijklmnopqrstuvwxyz";
 
 describe("what a notice shows", () => {
   test("a permission notice offers Allow and Deny; others offer no action", () => {
     expect(noticeDisplay(notice("permission")).actions.map((action) => action.action)).toEqual(["allow", "deny"]);
     expect(noticeDisplay(notice("done")).actions).toEqual([]);
+  });
+
+  test("a prompt whose rows the host named offers them, in the agent's words", () => {
+    expect(noticeDisplay(notice("input"), rows("Postgres", "SQLite")).actions).toEqual([
+      { action: "option:1", title: "Postgres" },
+      { action: "option:2", title: "SQLite" },
+    ]);
+  });
+
+  test("more rows than the platform shows: the first rows that do not decline, and the agent's No row last", () => {
+    expect(noticeDisplay(notice("permission"), rows("Yes", "Yes, and don't ask again", "No"), 2).actions).toEqual([
+      { action: "option:1", title: "Yes" },
+      { action: "option:3:declines", title: "No" },
+    ]);
+    expect(noticeDisplay(notice("input"), rows("A", "B", "C"), 2).actions.map((action) => action.title)).toEqual([
+      "A",
+      "B",
+    ]);
+  });
+
+  test("a question with no rows to offer (several steps, boxes, typed text) offers none: a tap opens the card", () => {
+    expect(noticeDisplay(notice("input")).actions).toEqual([]);
+    expect(noticeDisplay(notice("input")).requireInteraction).toBe(true);
   });
 
   test("one notification per notice id, with nothing but a fixed text", () => {
@@ -24,10 +53,10 @@ describe("what a notice shows", () => {
   });
 });
 
-/** A host that answers every Allow / Deny with `reply`, recording what it was asked. */
+/** A host that answers every line with `reply`, recording what it was asked. */
 const replies = (reply: PushHostLine) => {
   const asked: string[] = [];
-  return { asked, answer: async (id: string, answer: string) => (asked.push(`${id}:${answer}`), reply) };
+  return { asked, answer: async (line: PushClientLine) => (asked.push(said(line)), reply) };
 };
 
 const unreachable = async (): Promise<PushHostLine> => {
@@ -63,6 +92,28 @@ describe("what a tap does", () => {
   test("an action on a notice that is no permission prompt answers nothing", async () => {
     const host = replies({ t: "answered", terminal: "t3" });
     expect(await planClick("deny", notice("done"), host.answer)).toEqual({ open: URL_OF });
+    expect(host.asked).toEqual([]);
+  });
+
+  test("a row that does not decline never answers from the notification: the page sends it once visible", async () => {
+    const host = replies({ t: "answered", terminal: "t3" });
+    expect(await planClick("option:2", notice("input"), host.answer)).toEqual({ open: `${URL_OF}&answer=option:2` });
+    expect(host.asked).toEqual([]);
+  });
+
+  test("the agent's No row answers from the notification, like Deny, and opens the pane if it did not go through", async () => {
+    const host = replies({ t: "answered", terminal: "t3" });
+    expect(await planClick("option:3:declines", notice("permission"), host.answer)).toEqual({
+      open: null,
+      answered: "t3",
+    });
+    expect(host.asked).toEqual(["AAAAAAAAAAAAAAAAAAAAAA:option 3"]);
+    expect(await planClick("option:3:declines", notice("permission"), unreachable)).toEqual({ open: URL_OF });
+  });
+
+  test("a row action on a notice that asks nothing answers nothing", async () => {
+    const host = replies({ t: "answered", terminal: "t3" });
+    expect(await planClick("option:1", notice("done"), host.answer)).toEqual({ open: URL_OF });
     expect(host.asked).toEqual([]);
   });
 

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <title>Doriterm</title>
+  <path id="tile" fill="#4A6EE0" d="M512 0C905 0 1024 119 1024 512C1024 905 905 1024 512 1024C119 1024 0 905 0 512C0 119 119 0 512 0Z"/>
+  <g id="art">
+    <ellipse cx="262" cy="380" rx="92" ry="170" transform="rotate(22 262 380)" fill="#9196A6"/>
+    <ellipse cx="762" cy="380" rx="92" ry="170" transform="rotate(-22 762 380)" fill="#9196A6"/>
+    <ellipse cx="512" cy="430" rx="270" ry="230" fill="#F7F8FC"/>
+    <ellipse cx="420" cy="380" rx="46" ry="58" fill="#141C4A"/>
+    <ellipse cx="604" cy="380" rx="46" ry="58" fill="#141C4A"/>
+    <rect x="132" y="500" width="760" height="420" rx="96" fill="#121C33"/>
+    <path d="M262 650 L362 730 L262 810" fill="none" stroke="#F7F8FC" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="420" y="772" width="150" height="56" rx="14" fill="#9AAEEB"/>
+  </g>
+</svg>

@@ -19,7 +19,8 @@
     "relay:fetch": "bun tests/relay/private-relay.ts fetch",
     "relay:test": "bun tests/relay/private-relay.ts test",
     "relay:dev": "bun tests/relay/private-relay.ts dev",
-    "capture:readme": "bun run --cwd apps/web capture:readme"
+    "capture:readme": "bun run --cwd apps/web capture:readme",
+    "bench:render": "bun run --cwd apps/web bench:render"
   },
   "devDependencies": {
     "@types/bun": "1.4.4",

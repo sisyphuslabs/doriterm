@@ -33,8 +33,8 @@ export default defineConfig({
       manifest: {
         // `id` pins the installed app to the origin root, so a later start_url change does not register as a second app.
         id: "/",
-        name: "doriface",
-        short_name: "doriface",
+        name: "Doriterm",
+        short_name: "Doriterm",
         lang: "en",
         description: "Your terminals and agents, from any device.",
         display: "standalone",
@@ -54,6 +54,8 @@ export default defineConfig({
       },
       injectManifest: {
         globPatterns: ["**/*.{js,css,html,svg,png,wasm,woff2}"],
+        // The Nerd Font icons (1.2 MB) are fetched the first time a page draws one, and kept then (sw.ts).
+        globIgnores: ["**/symbols-nerd-font-mono-*.woff2"],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
       },
     }),

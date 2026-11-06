@@ -137,7 +137,7 @@ export function SpaceRow({
             <span
               data-numeric
               aria-label={`${space.tabs} tabs`}
-              className="w-4 text-right text-xs text-muted-foreground"
+              className="min-w-4 text-right text-xs whitespace-nowrap text-muted-foreground"
             >
               {space.tabs}
             </span>

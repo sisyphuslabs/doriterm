@@ -249,7 +249,7 @@ describe.skipIf(process.platform === "win32")("installing herdr-core from a rele
     const floor = await failure((await install(old)).done);
     expect([floor.phase, floor.message]).toEqual([
       "manifest",
-      "herdr-core 0.1.16 is older than 0.1.17, which doriface needs",
+      "herdr-core 0.1.16 is older than 0.1.17, which Doriterm needs",
     ]);
     expect(existsSync(join(old, ".local"))).toBe(false);
   });

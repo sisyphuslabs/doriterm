@@ -107,8 +107,10 @@ test("ctrl then v sends ^V, never a paste", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const terminal = await openPhoneTerminal(page);
   await page.evaluate(() => navigator.clipboard.writeText("CLIPBOARD-TEXT"));
-  // -iexten keeps the tty from taking ^V as its own literal-next, so cat -v prints the byte it reads.
-  await page.keyboard.type("stty -iexten; cat -v\r");
+  // -iexten keeps the tty from taking ^V as its own literal-next, so cat -v prints the byte it reads. The line discipline
+  // judges a byte as it arrives, so the chord waits for what the shell prints once stty has applied (#751).
+  await page.keyboard.type("stty -iexten && echo iexten-off-$((1+1)); cat -v\r");
+  await expect(terminal).toContainText("iexten-off-2", { timeout: 10_000 });
   await key(page, "Control").click();
   await page.keyboard.type("v");
   await page.keyboard.type("q\r");

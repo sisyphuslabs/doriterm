@@ -18,15 +18,13 @@ export { Dialog, DialogClose, DialogPanel, type DialogPanelProps, type DialogPro
 export { EmptyState, type EmptyStateProps } from "./components/empty-state.tsx";
 export { DirectionPad, type DirectionPadProps } from "./components/direction-pad.tsx";
 export {
-  DEFAULT_EXTRA_KEYS,
   ExtraKeysBar,
-  extraKeys,
   KeyboardButton,
-  SWIPE_KEYS,
   type ExtraKey,
   type ExtraKeysBarProps,
   type KeyboardButtonProps,
 } from "./components/extra-keys-bar.tsx";
+export { DEFAULT_EXTRA_KEYS } from "./components/extra-keys-defaults.tsx";
 export { Fingerprint, type FingerprintProps } from "./components/fingerprint.tsx";
 export { FontFamilyList, type FontFamilyListProps } from "./components/font-family-list.tsx";
 export { IconButton, type IconButtonProps } from "./components/icon-button.tsx";

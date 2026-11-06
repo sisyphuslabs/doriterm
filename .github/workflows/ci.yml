@@ -59,6 +59,60 @@ jobs:
       - run: bun run test
       - name: Build apps/web
         run: bun run --cwd apps/web build
+      - name: Build apps/landing
+        run: bun run --cwd apps/landing build
+
+  install-linux:
+    # The one-step host install (#668) on a runner with no herdr-core: it must end with a running user service and a
+    # printed QR code. Not a required check; it runs on pull requests because it costs a Linux minute or two.
+    name: Install (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      # A runner job has no login session, so no systemd user manager answers until the runner user lingers.
+      - name: Start the runner user's systemd manager
+        run: |
+          sudo loginctl enable-linger "$USER"
+          runtime="/run/user/$(id -u)"
+          echo "XDG_RUNTIME_DIR=$runtime" >> "$GITHUB_ENV"
+          for _ in $(seq 1 50); do
+            XDG_RUNTIME_DIR="$runtime" systemctl --user show-environment >/dev/null 2>&1 && exit 0
+            sleep 0.2
+          done
+          echo "::error::no systemd user manager for $USER" && exit 1
+      - name: The installer installs, starts and pairs
+        run: bash .github/scripts/install-smoke.sh linux-x64
+      - name: Host log
+        if: failure()
+        run: journalctl --user -u doriface-host --no-pager | tail -100
+
+  install-macos:
+    # The same on a Mac, with a LaunchAgent. Like the other macOS job it runs after the merge, on the push to dev.
+    name: Install (macOS)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - name: The installer installs, starts and pairs
+        run: bash .github/scripts/install-smoke.sh mac-arm64
+      - name: Host log
+        if: failure()
+        run: tail -100 ~/Library/Logs/doriface-host.log || true
 
   relay-e2e:
     # This job is the only reporter of the required "Relay e2e" context, so it carries that name only on the paths that
@@ -175,15 +229,35 @@ jobs:
           fi
       # mesh-attach.e2e.ts is a browser spec that needs this job's relay checkout: the web app paired with one mesh
       # member attaches to a terminal on another, through the mesh (G009 C004). Web e2e has no relay, so it skips it.
+      - name: Playwright version
+        if: env.RELAY_TOKEN_SET == 'true'
+        id: playwright
+        working-directory: apps/web
+        run: echo "version=$(bunx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         if: env.RELAY_TOKEN_SET == 'true'
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ hashFiles('bun.lock') }}
       - name: Install Chromium
         if: env.RELAY_TOKEN_SET == 'true'
-        run: bunx playwright install --with-deps chromium
         working-directory: apps/web
+        timeout-minutes: 12
+        run: |
+          # Two separate things arrive here, and only one of them is cacheable. The browser binary is cached, so a
+          # warm cache can skip its download; the system packages are not, and skipping them once cost two required
+          # tests their CJK fonts (doriterm#915: the Korean width assertions failed on a warm cache and passed cold).
+          # So the packages are ensured on every run. The pre-update carries the Acquire timeouts, the two installs are
+          # bounded by timeout, and the step by timeout-minutes - on doriterm#914 an unreachable mirror spent a whole
+          # 30-minute job inside this step, which is why nothing here waits indefinitely.
+          sudo apt-get -o Acquire::http::Timeout=15 -o Acquire::Retries=1 update >/dev/null 2>&1 || true
+          timeout 300 bunx playwright install-deps chromium
+          if compgen -G "$HOME/.cache/ms-playwright/chromium-*" >/dev/null; then
+            echo "browser cache hit: installing the engine without downloading it again"
+            timeout 300 bunx playwright install chromium
+          else
+            timeout 600 bunx playwright install chromium
+          fi
       - name: Browser spec through the mesh
         if: env.RELAY_TOKEN_SET == 'true'
         run: bun run test:e2e e2e/mesh-attach.e2e.ts
@@ -229,9 +303,32 @@ jobs:
           echo "HC_BIN=$RUNNER_TEMP/hc/hc" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/hc/hc" --version
       - run: bun install --frozen-lockfile
-      - name: Install Chromium
-        run: bunx playwright install --with-deps chromium
+      - name: Playwright version
+        id: playwright
         working-directory: apps/web
+        run: echo "version=$(bunx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ hashFiles('bun.lock') }}
+      - name: Install Chromium
+        working-directory: apps/web
+        timeout-minutes: 12
+        run: |
+          # Two separate things arrive here, and only one of them is cacheable. The browser binary is cached, so a
+          # warm cache can skip its download; the system packages are not, and skipping them once cost two required
+          # tests their CJK fonts (doriterm#915: the Korean width assertions failed on a warm cache and passed cold).
+          # So the packages are ensured on every run. The pre-update carries the Acquire timeouts, the two installs are
+          # bounded by timeout, and the step by timeout-minutes - on doriterm#914 an unreachable mirror spent a whole
+          # 30-minute job inside this step, which is why nothing here waits indefinitely.
+          sudo apt-get -o Acquire::http::Timeout=15 -o Acquire::Retries=1 update >/dev/null 2>&1 || true
+          timeout 300 bunx playwright install-deps chromium
+          if compgen -G "$HOME/.cache/ms-playwright/chromium-*" >/dev/null; then
+            echo "browser cache hit: installing the engine without downloading it again"
+            timeout 300 bunx playwright install chromium
+          else
+            timeout 600 bunx playwright install chromium
+          fi
       # The e2e workers follow the runner's cores (playwright.config.ts, #342): record what this runner has.
       - name: Runner resources
         run: |
@@ -255,6 +352,56 @@ jobs:
             apps/web/playwright-report
             apps/web/test-results
           if-no-files-found: ignore
+
+  android:
+    # After the merge, like the other platform jobs: the Android app (#704) builds from the web build, and its JVM tests
+    # open the host's own push bodies (RFC 8291) with the app's decrypting code.
+    name: Android
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: bun install --frozen-lockfile
+      - name: Build the web app and copy it into the Android project
+        run: bun run --cwd apps/mobile sync:android
+      - name: Debug APK and JVM tests
+        working-directory: apps/mobile/android
+        run: ./gradlew --no-daemon assembleDebug testDebugUnitTest
+
+  ios:
+    # After the merge, like the other platform jobs: the iOS app (#704) and its Notification Service Extension build for
+    # the simulator, unsigned.
+    name: iOS
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: bun install --frozen-lockfile
+      - name: Build the web app and copy it into the iOS project
+        run: bun run --cwd apps/mobile sync:ios
+      - name: Simulator build of the app and its extension
+        working-directory: apps/mobile/ios/App
+        run: >-
+          xcodebuild -project App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 
   desktop:
     # After the merge, not on the pull request: nothing here can hold a pull request before it lands.
@@ -302,7 +449,7 @@ jobs:
       - name: Launch the packaged app
         working-directory: apps/desktop
         env:
-          DORIFACE_E2E_EXECUTABLE: ${{ github.workspace }}/apps/desktop/dist/release/linux-unpacked/doriface
+          DORIFACE_E2E_EXECUTABLE: ${{ github.workspace }}/apps/desktop/dist/release/linux-unpacked/Doriterm
           # Electron's own stdout/stderr, so a launch that never connects says why.
           DEBUG: pw:browser
         run: xvfb-run --auto-servernum bun run test:e2e
@@ -403,9 +550,9 @@ jobs:
       - name: Find the packaged app
         if: steps.scope.outputs.match == 'true'
         run: |
-          app="$(find apps/desktop/dist/release -maxdepth 2 -name doriface.app -print -quit)"
+          app="$(find apps/desktop/dist/release -maxdepth 2 -name Doriterm.app -print -quit)"
           test -n "$app"
-          echo "DORIFACE_E2E_EXECUTABLE=$PWD/$app/Contents/MacOS/doriface" >> "$GITHUB_ENV"
+          echo "DORIFACE_E2E_EXECUTABLE=$PWD/$app/Contents/MacOS/Doriterm" >> "$GITHUB_ENV"
       - name: Launch the packaged app
         if: steps.scope.outputs.match == 'true'
         working-directory: apps/desktop
@@ -460,7 +607,7 @@ jobs:
         run: |
           bun run --cwd apps/desktop build:host ${{ matrix.target }}
           host="apps/desktop/dist/host/${{ matrix.target }}/doriface-host.exe"
-          state="$USERPROFILE/.doriface-406-state"  # under the profile: $RUNNER_TEMP sits on runner paths other accounts may re-permission, which the namespace rule refuses
+          state="$USERPROFILE/.doriterm-406-state"  # under the profile: $RUNNER_TEMP sits on runner paths other accounts may re-permission, which the namespace rule refuses
           first=$("$host" fingerprint --state-dir "$state")
           second=$("$host" fingerprint --state-dir "$state")
           echo "$first"

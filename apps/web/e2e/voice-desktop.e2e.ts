@@ -2,7 +2,15 @@ import { agentRow, endAgent, startShell } from "./agents.ts";
 import { removeTerminal, stateOn } from "./ended-terminal.ts";
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
-import { hcOn, machineRow, reconnect, STATE_BOUND_MS, switchTo } from "./machine-switch.ts";
+import {
+  hcOn,
+  machineRow,
+  OFFLINE_BOUND_MS,
+  reconnect,
+  STATE_BOUND_MS,
+  switchTo,
+  OFFLINE_TEST_TIMEOUT_MS,
+} from "./machine-switch.ts";
 import { stubSpeech } from "./speech-stub.ts";
 import { tabOf } from "./tab-strip.ts";
 
@@ -118,7 +126,7 @@ test("moving focus to the other pane of a split tab ends the dictation, so nothi
 test("a dictation under way ends when its terminal's machine drops: the recognizer is aborted, the strip goes (#254)", async ({
   page,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
   const speech = await stubSpeech(page);
   const remote = startShell("machine", "dictate-drop");
   try {
@@ -133,7 +141,7 @@ test("a dictation under way ends when its terminal's machine drops: the recogniz
     await expect(strip).toHaveAttribute("data-voice-strip", "listening");
 
     switchTo("drop");
-    await expect(page.getByText(`${MACHINE_NAME} is offline`).first()).toBeVisible({ timeout: STATE_BOUND_MS });
+    await expect(page.getByText(`${MACHINE_NAME} is offline`).first()).toBeVisible({ timeout: OFFLINE_BOUND_MS });
     await expect(strip).toHaveCount(0);
     await expect.poll(() => speech.aborts()).toBe(1);
     await expect(page.getByRole("button", { name: /^Dictate into/ })).toHaveCount(0);
@@ -146,7 +154,7 @@ test("a dictation under way ends when its terminal's machine drops: the recogniz
 test("the desktop's ended view offers no dictation: no mic, no strip, and a bound Dictate key starts nothing (#258)", async ({
   page,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
   const speech = await stubSpeech(page);
   const remote = startShell("machine", "dictate-ended");
   try {
@@ -168,7 +176,7 @@ test("the desktop's ended view offers no dictation: no mic, no strip, and a boun
     const terminal = page.locator(`[data-terminal="${MACHINE_NAME}/${remote}"]`);
     await expect(terminal).toContainText("$", { timeout: 15_000 });
     switchTo("drop");
-    await expect(terminal).toHaveCount(0, { timeout: STATE_BOUND_MS });
+    await expect(terminal).toHaveCount(0, { timeout: OFFLINE_BOUND_MS });
     hcOn("machine", ["kill", remote]);
     await expect.poll(() => stateOn("machine", remote), { timeout: 15_000 }).toBe("finished");
     reconnect();

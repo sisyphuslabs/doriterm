@@ -10,6 +10,10 @@ import { useVoiceSettings } from "./voice-store.ts";
 const WHY: Readonly<Record<Unavailable, string>> = {
   unsupported: "This browser has no speech recognition, so dictation is off here. Chrome, Edge and Safari have it.",
   insecure: "Dictation needs a secure (https) page, and this one was opened over plain http.",
+  desktop:
+    "The desktop app can't dictate here yet. For dictation, use Doriterm in Chrome or Safari; here, type instead.",
+  "desktop-windows":
+    "The Windows app can't dictate yet. For dictation, use Doriterm in Chrome or Edge; here, type instead.",
 };
 
 function shown(state: Exclude<DictationState, { kind: "idle" }>, now: number): VoiceState {

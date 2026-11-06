@@ -8,6 +8,8 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle(Channel.openLink, (event, candidate: unknown) => handlers.openLink(event, candidate));
   ipcMain.handle(Channel.startLocalHost, (event) => handlers.startLocalHost(event));
   ipcMain.handle(Channel.pairOffer, (event, candidate: unknown) => handlers.pairOffer(event, candidate));
+  ipcMain.handle(Channel.pairedDevices, (event) => handlers.pairedDevices(event));
+  ipcMain.handle(Channel.revokeDevice, (event, candidate: unknown) => handlers.revokeDevice(event, candidate));
   ipcMain.handle(Channel.setWindowBackground, (event, candidate: unknown) =>
     handlers.setWindowBackground(event, candidate),
   );
@@ -19,10 +21,17 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle(Channel.installUpdate, (event) => handlers.installUpdate(event));
   ipcMain.handle(Channel.installHc, (event) => handlers.installHc(event));
   ipcMain.handle(Channel.noticesSupported, (event) => handlers.noticesSupported(event));
+  ipcMain.handle(Channel.noticePermission, (event) => handlers.noticePermission(event));
   ipcMain.handle(Channel.showNotice, (event, candidate: unknown) => handlers.showNotice(event, candidate));
   ipcMain.handle(Channel.setDirectTarget, (event, candidate: unknown) => handlers.setDirectTarget(event, candidate));
   ipcMain.handle(Channel.directForward, (event) => handlers.forwardDirect(event));
   ipcMain.handle(Channel.cancelDirectForward, (event, candidate: unknown) =>
     handlers.cancelDirectForward(event, candidate),
   );
+  ipcMain.handle(Channel.dictationAvailable, (event, candidate: unknown) =>
+    handlers.dictationAvailable(event, candidate),
+  );
+  ipcMain.handle(Channel.dictationStart, (event, candidate: unknown) => handlers.dictationStart(event, candidate));
+  ipcMain.handle(Channel.dictationStop, (event, candidate: unknown) => handlers.dictationStop(event, candidate));
+  ipcMain.handle(Channel.dictationAbort, (event, candidate: unknown) => handlers.dictationAbort(event, candidate));
 }

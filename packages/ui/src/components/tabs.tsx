@@ -8,7 +8,9 @@ type ClassNameless<T> = Omit<T, "className"> & { readonly className?: string };
 
 export const Tabs = BaseTabs.Root;
 
-const CUE_SLOT = "flex w-8 shrink-0 items-center justify-center";
+// 44 px wide on a touch screen, so a paging cue takes a whole tap there (#892); both slots share it, so the list's width
+// stays the same whichever cues are drawn.
+const CUE_SLOT = "flex w-8 shrink-0 items-center justify-center coarse:w-11";
 
 /**
  * A pointer cue that more tabs lie past an edge, and a way to reach them; keyboard users move between tabs with the

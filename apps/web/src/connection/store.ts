@@ -1,4 +1,4 @@
-import type { HcConnection } from "@doriface/client";
+import { type HcConnection, HcLinkSilentError, HcTimeoutError } from "@doriface/client";
 import { useSyncExternalStore } from "react";
 import type { HostStartFailure } from "../desktop/bridge.ts";
 import { AttemptBudget, AttemptTimeoutError } from "./attempt-budget.ts";
@@ -47,6 +47,12 @@ const BACKOFF_MS = [500, 1_000, 2_000, 5_000, 10_000] as const;
  * floor of this order — 10 s in one, 60 s in herdr (`#653`).
  */
 const STABLE_CONNECTION_MS = 10_000;
+
+/**
+ * How long a wake gives an open link to answer one call before it is treated as gone: a socket the page slept on can be
+ * half-open, and the heartbeat alone would take its whole timeout to notice (#653).
+ */
+const WAKE_PROBE_MS = 10_000;
 /** This computer's host, as the desktop app runs it: where it listens now, and why it did not start. */
 export interface LocalHostStarter {
   start(): Promise<{ readonly url: string; readonly token: string }>;
@@ -74,6 +80,10 @@ export class ConnectionStore {
   #current = 0;
   /** A wake already asked for this tick: several page events must cost one attempt, not three. */
   #wakeQueued = false;
+  /** The open connection a wake is asking right now, so several page events cost one call. */
+  #probing: HcConnection | null = null;
+  /** Why the store closed a connection itself, kept with that connection so no other drop can take it. */
+  #closedFor: { readonly connection: HcConnection; readonly reason: Error } | null = null;
   readonly #budget = new AttemptBudget();
   readonly #connect: typeof connect;
 
@@ -136,6 +146,8 @@ export class ConnectionStore {
   }
 
   stop(): void {
+    this.#probing = null;
+    this.#closedFor = null;
     clearTimeout(this.#timer);
     clearTimeout(this.#stableTimer);
     this.#stable = false;
@@ -166,7 +178,10 @@ export class ConnectionStore {
         if (this.#abort !== abort) return;
         if (opened.path === "direct") this.#relayFirst = true;
         this.#stale = connection;
-        this.#retry(error ?? new Error("the host closed the connection"), this.#stable ? 0 : attempt + 1);
+        const closedFor = this.#closedFor?.connection === connection ? this.#closedFor.reason : undefined;
+        this.#closedFor = null;
+        const reason = error ?? closedFor ?? new Error("the host closed the connection");
+        this.#retry(reason, this.#stable ? 0 : attempt + 1);
       });
       this.#stale = null;
       this.#budget.reset();
@@ -290,6 +305,7 @@ export class ConnectionStore {
    */
   retryNow(): void {
     if (this.#state.phase === "connecting") return this.#restart();
+    if (this.#state.phase === "open") return this.#probe(this.#state.connection);
     const attempt = this.#pending;
     if (attempt === null || this.#state.phase !== "failed") return;
     clearTimeout(this.#timer);
@@ -311,6 +327,30 @@ export class ConnectionStore {
       this.#abort?.abort();
       void this.#again(this.#current);
     });
+  }
+
+  /**
+   * Asks the open link one call the core answers at once. An answer of any kind, an error included, proves the link and
+   * leaves it alone; no answer within {@link WAKE_PROBE_MS} closes it, and the drop reconnects as any other drop does.
+   */
+  #probe(connection: HcConnection): void {
+    if (this.#probing === connection) return;
+    this.#probing = connection;
+    connection
+      .call("terminal.list", {}, { timeoutMs: WAKE_PROBE_MS })
+      .then(
+        () => undefined,
+        (error: unknown) => {
+          // A stop, or a newer connection, ended this probe's claim on the link while it waited.
+          if (!(error instanceof HcTimeoutError) || this.#probing !== connection) return;
+          if (this.#state.phase !== "open" || this.#state.connection !== connection) return;
+          this.#closedFor = { connection, reason: new HcLinkSilentError(WAKE_PROBE_MS) };
+          connection.close();
+        },
+      )
+      .finally(() => {
+        if (this.#probing === connection) this.#probing = null;
+      });
   }
 
   #set(state: ConnectionState): void {

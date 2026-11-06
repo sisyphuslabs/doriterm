@@ -20,7 +20,7 @@ test("with storage reads refused, the app still starts, with the default appeara
     "true",
   );
   await expect(page.locator("html")).toHaveAttribute("data-ui-density", "comfortable");
-  await nav.getByRole("button", { name: "Device" }).click();
+  await nav.getByRole("button", { name: "This device" }).click();
   await expect(page.getByRole("switch", { name: "Keep the screen awake" })).not.toBeChecked();
   expect(errors).toEqual([]);
 });

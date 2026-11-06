@@ -4,7 +4,7 @@ import { type Browser, devices, type Page } from "@playwright/test";
 import { join } from "node:path";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
 import { MACHINE_NAME } from "./machine.ts";
-import { machineRow, newOn, STATE_BOUND_MS, switchOn, switchTo } from "./machine-switch.ts";
+import { machineRow, newOn, switchOn, switchTo, OFFLINE_BOUND_MS, OFFLINE_TEST_TIMEOUT_MS } from "./machine-switch.ts";
 import { expect, test } from "./fixtures.ts";
 import { clearLayouts } from "./layout-doc.ts";
 
@@ -97,11 +97,12 @@ for (const [mode, name, state] of [
   ["login", "machines-needs-login", "needs login"],
 ] as const) {
   test(`machines, ${state}`, async ({ browser }) => {
+    test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
     try {
       switchTo(mode);
       await eachShot(async (shot) => {
         const { page, close } = await openPage(browser, shot);
-        await expect(machineRow(page)).toContainText(state, { timeout: STATE_BOUND_MS });
+        await expect(machineRow(page)).toContainText(state, { timeout: OFFLINE_BOUND_MS });
         await shoot(page, shot, name);
         await close();
       });

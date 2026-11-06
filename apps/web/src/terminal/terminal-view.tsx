@@ -28,6 +28,7 @@ import { type TerminalEnd, terminalEnd } from "./terminal-end.ts";
 import { type CoreAnswer, type Settled, settled, type Unsent, unsentReason } from "./terminal-settle.ts";
 import { Ended } from "./ended.tsx";
 import { type TerminalPort, pasteInto, useTerminalPort } from "./terminal-port.ts";
+import { putFiles, quotePaths, readClipboard } from "./paste-files.ts";
 import { Unopened } from "./unopened.tsx";
 import { JumpToBottom, scrollTerminal, TerminalScrollbar, useTerminalScroll } from "./terminal-scroll.tsx";
 import { QuietBusy } from "./quiet-busy.tsx";
@@ -104,6 +105,8 @@ export function TerminalView(props: TerminalViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [restarting, setRestarting] = useState(false);
   const [ended, setEnded] = useState(false);
+  /** Whether this view is on screen: a pane out of view waits to re-attach until it is shown, so a hidden tab does not fetch a replay nobody looks at (#639). */
+  const [shown, setShown] = useState(true);
   const toasts = useToastManager();
   /** Why attaching failed, in plain words; Try again clears it, which mounts the terminal and attaches again. */
   const [unopened, setUnopened] = useState<string | null>(null);
@@ -215,6 +218,21 @@ export function TerminalView(props: TerminalViewProps) {
     },
     [send],
   );
+  // herdr-app's send_image: files go to the terminal's machine (`terminal.put`), and where they landed is pasted there,
+  // bracketed when the program asked, so an agent on any machine reads the image by its path (#701).
+  const latestConnection = useRef(connection);
+  latestConnection.current = connection;
+  const pasteFiles = useCallback(
+    (files: readonly File[]): void => {
+      void putFiles(latestConnection.current, address, files).then(({ paths, refused }) => {
+        for (const why of refused) toasts.add({ type: "warning", title: why });
+        const element = handle.current?.instance?.element;
+        if (paths.length > 0 && element !== undefined) pasteInto(element, quotePaths(paths));
+        return paths;
+      });
+    },
+    [address, toasts],
+  );
   const typesCompositionNow = useRef(typedInto);
   typesCompositionNow.current = typedInto;
   useEffect(() => {
@@ -230,8 +248,8 @@ export function TerminalView(props: TerminalViewProps) {
   const scroll = useTerminalScroll(wt);
   const outputShown = useRef(scroll.changed);
   outputShown.current = scroll.changed;
-  useTerminalPort(handle, typed, onPort);
-  useBehaviors(wt, stream, options, onUnsafePaste);
+  useTerminalPort(handle, typed, onPort, pasteFiles);
+  useBehaviors(wt, stream, options, onUnsafePaste, pasteFiles);
   useTerminalFont(wt, config);
   // Wide characters in the output are laid out in idle time, so scrolling back to them is not the first time (#286).
   const warmup = useRef<GlyphWarmup | null>(null);
@@ -244,12 +262,13 @@ export function TerminalView(props: TerminalViewProps) {
       if (warmup.current === made) warmup.current = null;
     };
   }, [wt]);
-  useTerminalActions(wt, typed, focused);
+  useTerminalActions(wt, typed, focused, pasteFiles);
   // A pane out of view (a hidden tab, a zoomed-away split) is not painted and takes no output until it shows (#560).
   useEffect(() => {
     if (wt === null) return undefined;
     const seen = new IntersectionObserver((entries) => {
       const visible = entries.at(-1)?.isIntersecting ?? true;
+      setShown(visible);
       pacer.setVisible(visible);
       wt.setRenderingPaused(!visible);
     });
@@ -276,12 +295,12 @@ export function TerminalView(props: TerminalViewProps) {
     if (instance === null || instance === undefined) return;
     // A browser without the clipboard API throws instead of rejecting, so the call runs inside the promise chain.
     void Promise.resolve()
-      .then(() => navigator.clipboard.readText())
+      .then(() => readClipboard(navigator.clipboard))
       .then(
-        (text) => pasteInto(instance.element, text),
+        (read) => ("files" in read ? pasteFiles(read.files) : pasteInto(instance.element, read.text)),
         () => toasts.add({ type: "warning", title: "Paste needs access to the clipboard" }),
       );
-  }, [toasts]);
+  }, [toasts, pasteFiles]);
   const closeSelectionMenu = useCallback((): void => {
     setSelectAt(null);
     handle.current?.focus();
@@ -351,6 +370,10 @@ export function TerminalView(props: TerminalViewProps) {
   const attach = (ready: WTerm): void => {
     setWt(ready);
     attachedTo.current = connection;
+    // A test hook, as crash-probe is: a spec sets window.__dorifaceAttachLog and reads which terminal re-attached when
+    // a link came back (#639). Inert in the product, where nothing sets it.
+    const attachLog: unknown = Reflect.get(globalThis, "__dorifaceAttachLog");
+    if (Array.isArray(attachLog)) attachLog.push(address);
     // wterm pins the row height it measured at mount inline, over the stylesheet's font-size-derived one; without this
     // a font-size change (zoom, Settings) keeps the old row height, so the grid gains columns but never rows.
     ready.element.style.removeProperty("--term-row-height");
@@ -419,8 +442,8 @@ export function TerminalView(props: TerminalViewProps) {
   };
 
   useEffect(() => {
-    if (wt !== null && attachedTo.current !== connection) attach(wt);
-  }, [wt, connection]);
+    if (wt !== null && shown && attachedTo.current !== connection) attach(wt);
+  }, [wt, connection, shown]);
 
   if (error !== null) return <p className="p-4 text-sm text-destructive">{error}</p>;
   if (restarting) {

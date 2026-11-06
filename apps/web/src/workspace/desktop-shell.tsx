@@ -12,6 +12,7 @@ import {
 } from "@doriface/ui";
 import { Bot, Columns2, Folder, Monitor, PanelLeft, Rows2, SquareTerminal, Terminal } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useActionHandler } from "../keys/dispatcher.ts";
 import { useActionKeys } from "../keys/use-action-keys.ts";
 import { DictateButton } from "../voice/dictate-button.tsx";
 import { useDictation } from "../voice/use-dictation.ts";
@@ -19,6 +20,8 @@ import { VoiceDock } from "../voice/voice-dock.tsx";
 import { agentStatus } from "./attention.ts";
 import { machineOf, programKind, type Session, spaceName, tabTitle, terminalTitle } from "./model.ts";
 import { NewTabMenu } from "./new-tab-menu.tsx";
+import { FirstRunGuideCard } from "../pair/first-run-guide-card.tsx";
+import { guideStore } from "../pair/first-run-guide.ts";
 import { NoTerminal } from "./no-terminal.tsx";
 import { QuietBusy } from "../terminal/quiet-busy.tsx";
 import { usePaneSends } from "./pane-sends.ts";
@@ -27,10 +30,11 @@ import { RenameDialog } from "./rename-dialog.tsx";
 import { ConnectionPathItem, ReconnectStatus } from "./reconnect-status.tsx";
 import { SessionMenu } from "./session-menu.tsx";
 import { Sidebar } from "./sidebar.tsx";
+import { sidebarFilter } from "./sidebar-filter-field.tsx";
 import { SkipLinks } from "./skip-links.tsx";
 import { useAppActions, type SessionVerb } from "./use-app-actions.ts";
 import { useArrivalReady, workspaceSettled } from "./use-arrival-ready.ts";
-import { useFocusSidebar } from "./use-focus-sidebar.ts";
+import { behindModal, useFocusSidebar } from "./use-focus-sidebar.ts";
 import { useSidebarShown, useSidebarSize } from "./layout-store.ts";
 import type { LayoutTab } from "./layout-model.ts";
 import type { Axis } from "@doriface/protocol/layout";
@@ -118,13 +122,23 @@ export function DesktopShell(props: DesktopShellProps) {
     onSession,
   } = props;
   const [sidebar, setSidebar] = useSidebarShown();
-  const [{ rail }] = useSidebarSize();
+  const [{ rail }, setSidebarSize] = useSidebarSize();
   const paletteKeys = useActionKeys("app.palette");
   const sidebarKeys = useActionKeys("layout.toggle:sidebar");
   const newTabKeys = useActionKeys("tab.new");
   const moveLeftKeys = useActionKeys("tab.move:left");
   const moveRightKeys = useActionKeys("tab.move:right");
   const focusSidebar = useFocusSidebar(sidebar, () => setSidebar(true));
+  // The filter key shows the whole sidebar (out of hiding, off the rail) with its field focused. Behind a modal dialog
+  // (the palette, a rename) it does nothing, as the focus key does, so focus stays in the dialog.
+  useActionHandler("app", (action) => {
+    if (action !== "layout.filter:sidebar") return false;
+    if (behindModal()) return true;
+    setSidebar(true);
+    if (rail) setSidebarSize({ rail: false });
+    sidebarFilter.ask();
+    return true;
+  });
   const focusedAddress = layout.focused?.address ?? null;
   const voice = useDictation();
   const sends = usePaneSends();
@@ -225,8 +239,22 @@ export function DesktopShell(props: DesktopShellProps) {
     // herdr-app's 12 px gap.
     <div className="relative flex h-dvh overflow-hidden bg-background pt-(--safe-top) pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left) [--titlebar-leading:calc(var(--titlebar-inset-start,0.5rem)+var(--control-sm)+0.75rem)]">
       <SkipLinks onSidebar={focusSidebar} />
+      <FirstRunGuideCard
+        className="absolute right-4 bottom-10 z-30 m-0 w-72 shadow-lg"
+        listVisible={sidebar}
+        listedLive={terminals.some((terminal) => terminal.state === "live")}
+        onNew={onNew}
+      />
       {sidebar ? (
-        <Sidebar terminals={terminals} active={focusedAddress} onOpen={layout.openTerminal} onPalette={onPalette} />
+        <Sidebar
+          terminals={terminals}
+          active={focusedAddress}
+          onOpen={(address) => {
+            guideStore.opened();
+            layout.openTerminal(address);
+          }}
+          onPalette={onPalette}
+        />
       ) : null}
       {/* The titlebar's leading strip, beside the toggle and, with the sidebar hidden, before it: it keeps the chrome and
           the window drag where the tab strip's own box used to reach (#643). It comes before the toggle so the toggle's

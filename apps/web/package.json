@@ -12,9 +12,11 @@
     "icons": "bun scripts/icons.ts",
     "test:e2e": "playwright test",
     "test:e2e:two-runs": "bun scripts/e2e-two-runs.ts",
-    "capture:readme": "CAPTURE=1 playwright test e2e/capture.e2e.ts --grep \"workspace 1440 (day|night)$\" --workers=1"
+    "capture:readme": "CAPTURE=1 CAPTURE_PRESET=4k playwright test e2e/capture.e2e.ts --grep \"(workspace 1440 (day|night)|agents-attention 1440 day)$\" --workers=1",
+    "bench:render": "bun bench/run.ts"
   },
   "dependencies": {
+    "@capacitor/core": "8.6.0",
     "@doriface/client": "workspace:*",
     "@doriface/crypto": "workspace:*",
     "@doriface/ghostty-wasm": "workspace:*",
@@ -27,6 +29,7 @@
     "@wterm/dom": "0.5.8",
     "@wterm/ghostty": "0.5.8",
     "@wterm/react": "0.5.8",
+    "jsqr": "1.4.0",
     "lucide-react": "1.66.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",

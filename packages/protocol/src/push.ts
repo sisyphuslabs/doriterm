@@ -60,6 +60,28 @@ export const MAX_PUSH_LINE = 4096;
 
 export type PromptAnswer = "allow" | "deny";
 
+/** A notice's prompt rows, as a notification may offer them as actions: a single-choice prompt's own rows. */
+export interface NoticeOption {
+  /** The row's number as the agent drew it. */
+  readonly id: string;
+  /** The agent's own label, at most MAX_NOTICE_LABEL characters. */
+  readonly label: string;
+  /** The agent's No row: answering it from a notification needs no look at the app. */
+  readonly declines: boolean;
+}
+
+/**
+ * What a notice's prompt offers a notification: its rows when it is one question answered by one key (no steps, no
+ * boxes, no typed text), and nothing otherwise, where a tap opens the card.
+ */
+export interface NoticePrompt {
+  readonly options: readonly NoticeOption[];
+}
+
+export const MAX_NOTICE_LABEL = 80;
+export const MAX_NOTICE_OPTIONS = 8;
+const OPTION_ID = /^\d{1,3}$/;
+
 /** A browser's push subscription: its endpoint and its RFC 8291 keys, base64url. */
 export interface PushSubscriptionKeys {
   readonly endpoint: string;
@@ -77,7 +99,9 @@ export type PushClientLine =
   | { readonly t: "test"; readonly endpoint: string }
   | { readonly t: "focus"; readonly terminal: string | null }
   | { readonly t: "notice"; readonly id: string }
-  | { readonly t: "answer"; readonly id: string; readonly answer: PromptAnswer };
+  | { readonly t: "answer"; readonly id: string; readonly answer: PromptAnswer }
+  /** One row of a notice's prompt (its `NoticeOption.id`), answered with that row's own key. */
+  | { readonly t: "choose"; readonly id: string; readonly option: string };
 
 export interface HeldSubscription {
   readonly endpoint: string;
@@ -87,7 +111,13 @@ export interface HeldSubscription {
 export type PushHostLine =
   | { readonly t: "ready"; readonly vapidKey: string; readonly subscriptions: readonly HeldSubscription[] }
   | { readonly t: "ok" }
-  | { readonly t: "notice"; readonly terminal: string | null; readonly kind: NoticeKind | null }
+  | {
+      readonly t: "notice";
+      readonly terminal: string | null;
+      readonly kind: NoticeKind | null;
+      /** A host that knows the prompt and can answer its rows says so; an older host never does. */
+      readonly prompt?: NoticePrompt;
+    }
   | { readonly t: "answered"; readonly terminal: string }
   | { readonly t: "stale"; readonly terminal: string | null }
   /** The answer did not go through (a dropped link, a lapsed claim): nothing was pressed. */
@@ -188,6 +218,14 @@ export function parsePushClientLine(line: string): PushClientLine | { readonly t
       return { t: "focus", terminal: terminalOf(value["terminal"]) };
     case "notice":
       return { t: "notice", id: isNoticeId(value["id"]) ? value["id"] : fail("id is malformed") };
+    case "choose": {
+      const option = value["option"];
+      return {
+        t: "choose",
+        id: isNoticeId(value["id"]) ? value["id"] : fail("id is malformed"),
+        option: typeof option === "string" && OPTION_ID.test(option) ? option : fail("option is malformed"),
+      };
+    }
     case "answer": {
       const answer = value["answer"];
       return {
@@ -199,6 +237,19 @@ export function parsePushClientLine(line: string): PushClientLine | { readonly t
     default:
       return { t: "unknown" };
   }
+}
+
+/** A notice's prompt as the host sent it; anything malformed is no prompt, so the notification offers no rows. */
+function promptOf(value: unknown): NoticePrompt | undefined {
+  if (!isJsonObject(value) || !Array.isArray(value["options"])) return undefined;
+  const options = value["options"].slice(0, MAX_NOTICE_OPTIONS).flatMap((entry): NoticeOption[] => {
+    if (!isJsonObject(entry)) return [];
+    const { id, label, declines } = entry;
+    return typeof id === "string" && OPTION_ID.test(id) && typeof label === "string" && label !== ""
+      ? [{ id, label: label.slice(0, MAX_NOTICE_LABEL), declines: declines === true }]
+      : [];
+  });
+  return options.length === 0 ? undefined : { options };
 }
 
 /** One host line (without its LF), as the app and the service worker read it. */
@@ -222,7 +273,13 @@ export function parsePushHostLine(line: string): PushHostLine {
       return { t: "ok" };
     case "notice": {
       const kind = value["kind"];
-      return { t: "notice", terminal: terminalOf(value["terminal"]), kind: isKind(kind) ? kind : null };
+      const prompt = promptOf(value["prompt"]);
+      return {
+        t: "notice",
+        terminal: terminalOf(value["terminal"]),
+        kind: isKind(kind) ? kind : null,
+        ...(prompt === undefined ? {} : { prompt }),
+      };
     }
     case "answered":
       return { t: "answered", terminal: text(value["terminal"], MAX_ID, "terminal") };

@@ -119,7 +119,7 @@ export function TerminalSection() {
           label="Preview of the terminal with these settings"
           cursor
           lines={PREVIEW}
-          className="font-(family-name:--term-font-family) text-(length:--term-font-size) leading-(--term-row-height)"
+          className="font-(family-name:--term-font-family) text-(length:--term-font-pixels) leading-(--term-row-height)"
         />
       </div>
       <div className="flex flex-wrap items-center gap-2">

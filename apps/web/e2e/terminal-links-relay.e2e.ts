@@ -4,10 +4,11 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { devices, expect, type Locator, type Page, test } from "@playwright/test";
 import { routeRelaySockets } from "./relay-route.ts";
+import { PRIVATE_RELAY_SKIP } from "./private-relay.ts";
 
 // A real hc reached through the private relay: the relay-host helper runs it under wrangler dev, so these specs need
 // a relay checkout (DORIFACE_RELAY_DIR, as `bun run relay:fetch` makes) and are skipped without one.
-test.skip(process.env["DORIFACE_RELAY_DIR"] === undefined, "needs the private relay (DORIFACE_RELAY_DIR)");
+test.skip(process.env["DORIFACE_RELAY_DIR"] === undefined, PRIVATE_RELAY_SKIP);
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
 test.describe.configure({ mode: "serial" });

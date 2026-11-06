@@ -1,4 +1,5 @@
 import { devices } from "@playwright/test";
+import { endAgent, startAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { hcOn } from "./machine-switch.ts";
 
@@ -14,6 +15,23 @@ function addressesOn(core: "host" | "machine"): string[] {
     typeof terminal === "object" && terminal !== null ? String(Reflect.get(terminal, "address")) : "",
   );
 }
+
+test("with agents, the phone's sort control sits in the Agents header, not on a row of its own", async ({ page }) => {
+  const address = startAgent("host", "sortrow", "idle");
+  try {
+    await page.goto("/");
+    const header = page.locator("header[data-titlebar]");
+    const sort = header.getByRole("button", { name: "Sort agents" });
+    await expect(sort).toBeVisible({ timeout: 20_000 });
+    const [sortBox, headerBox] = await Promise.all([sort.boundingBox(), header.boundingBox()]);
+    if (sortBox === null || headerBox === null) throw new Error("no box");
+    expect(sortBox.y).toBeGreaterThanOrEqual(headerBox.y);
+    expect(sortBox.y + sortBox.height).toBeLessThanOrEqual(headerBox.y + headerBox.height);
+    await expect(page.getByRole("button", { name: "Sort agents" })).toHaveCount(1);
+  } finally {
+    endAgent("host", address);
+  }
+});
 
 test("with two machines and no agent, the phone shows no sort control", async ({ page }) => {
   for (const core of ["host", "machine"] as const) {

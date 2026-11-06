@@ -25,7 +25,8 @@ import { captureInstallPrompt } from "./device/install.ts";
 import { TerminalStyle } from "./ghostty/terminal-style.tsx";
 import { PAIR_PATH, pairingLink } from "./pair/link-capture.ts";
 import { removeServiceWorkers } from "./pwa/remove-service-workers.ts";
-import { captureNotice, listenForDesktopNotices, listenForNotices } from "./push/notice-open.ts";
+import { isNativeShell, paintAppBars } from "./native/shell.ts";
+import { captureNotice, listenForAppNotices, listenForDesktopNotices, listenForNotices } from "./push/notice-open.ts";
 import { followConnection } from "./push/push-settings.ts";
 import { runAction, setActionFallback, useKeymapDispatcher } from "./keys/dispatcher.ts";
 import { reportMenuKeys } from "./keys/menu-keys.ts";
@@ -40,8 +41,10 @@ checkBaseline();
 startAppearance();
 captureInstallPrompt();
 // The desktop shell serves the app from its own app: scheme; an offline cache there only reloads the window,
-// so earlier desktop builds' workers and caches are removed instead.
-if (location.protocol === "https:" || location.protocol === "http:") {
+// so earlier desktop builds' workers and caches are removed instead. The iOS and Android apps carry the build
+// themselves and push through APNs and FCM (#705), so they run no worker either.
+const native = isNativeShell();
+if (!native && (location.protocol === "https:" || location.protocol === "http:")) {
   // A new worker waits until Reload to update (the sidebar's Settings dot says one does), so no page is swapped mid-use.
   const updateDeps = {
     workers: navigator.serviceWorker,
@@ -62,12 +65,26 @@ if (location.protocol === "https:" || location.protocol === "http:") {
   captureNotice();
   listenForNotices(() => void router.navigate({ to: "/" }));
   followConnection();
-} else void removeServiceWorkers();
+} else {
+  void removeServiceWorkers();
+  if (native) {
+    listenForAppNotices(() => void router.navigate({ to: "/" }));
+    followConnection();
+    // The app's status and navigation bars take the theme in view, as the desktop window does.
+    paintBars();
+    appearanceStore.subscribe(paintBars);
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paintBars);
+  }
+}
 const desktop = desktopBridge();
 // This computer's host, if it dies while the app runs, is started again before the link to it is tried again (#515).
 if (desktop !== null)
   connectionStore.restartsLocalHost({ start: () => desktop.startLocalHost(), failure: startFailure });
 void bootConnection(desktop, connectionStore);
+/** Hands the page background to the iOS or Android shell, which paints the system bars around the page with it. */
+function paintBars(): void {
+  paintAppBars(getComputedStyle(document.documentElement).getPropertyValue("--background").trim());
+}
 /** Hands the page background to the desktop shell, which paints the window with it now and at the next launch. */
 function paintWindow(): void {
   setDesktopBackground(getComputedStyle(document.documentElement).getPropertyValue("--background").trim());

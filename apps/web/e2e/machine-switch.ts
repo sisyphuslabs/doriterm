@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { OFFLINE_GRACE_MS } from "../src/workspace/machine-grace.ts";
 import { E2E_HOST_ENV } from "./config.ts";
 import { stopLines } from "./line-stop.ts";
 import { MACHINE_ENV, MACHINE_LINE_PID, MACHINE_NAME, MACHINE_SWITCH } from "./machine.ts";
@@ -8,6 +9,12 @@ import { readSavedEnv } from "./saved-env.ts";
 
 /** How long a machine's state may lag behind hc: one periodic re-read of machine.list plus slack. */
 export const STATE_BOUND_MS = 25_000;
+
+/** How long a machine whose line dropped may read connected before it reads offline: the page's grace (#904), plus as above. */
+export const OFFLINE_BOUND_MS = OFFLINE_GRACE_MS + STATE_BOUND_MS;
+
+/** A test that waits a machine out to offline and back: the bound above, plus its setup and its reconnect. */
+export const OFFLINE_TEST_TIMEOUT_MS = OFFLINE_BOUND_MS + 120_000;
 
 export const machineRow = (page: Page) => page.getByRole("button", { name: new RegExp(`^${MACHINE_NAME}\\b`) });
 export const newOn = (page: Page) => page.getByRole("button", { name: `New space on ${MACHINE_NAME}` });
@@ -27,6 +34,23 @@ export function hcOn(core: "host" | "machine", args: readonly string[], input?: 
 export function switchTo(mode: "off" | "login" | "drop"): void {
   writeFileSync(MACHINE_SWITCH, mode === "login" ? "login" : "off");
   if (mode !== "drop") return void hcOn("machine", ["server", "stop"]);
+  stopMachineLines();
+}
+
+/**
+ * A blip: the machine's lines end, as when a relay uplink drops, and its dials are refused for `refuseMs` (0: none), as
+ * a host refuses lines while it settles after its uplink returns. The machine's core and terminals keep running; hc
+ * redials by itself. Resolves once the refusal is lifted.
+ */
+export async function blip(refuseMs: number): Promise<void> {
+  if (refuseMs > 0) writeFileSync(MACHINE_SWITCH, "off");
+  stopMachineLines();
+  if (refuseMs === 0) return;
+  await new Promise((resolve) => setTimeout(resolve, refuseMs));
+  switchOn();
+}
+
+function stopMachineLines(): void {
   // Every dial appends its pid; hc may hold more than one line, so each one still running hc's `connect` ends. macOS
   // sh execs the line itself; Linux dash keeps a `sh -c` around it, so its children go too. Dead or reused pids are skipped.
   const pids = readFileSync(MACHINE_LINE_PID, "utf8")

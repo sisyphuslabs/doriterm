@@ -60,8 +60,8 @@ test("Settings offers this computer, and a fresh browser pairs with the code it 
   await page.goto(`${originOf(page)}/settings`);
   await page
     .getByRole("navigation", { name: "Settings", exact: true })
-    .getByRole("button", { name: "Connections", exact: true })
-    .or(page.getByRole("tab", { name: "Connections", exact: true }))
+    .getByRole("button", { name: "This device", exact: true })
+    .or(page.getByRole("tab", { name: "This device", exact: true }))
     .filter({ visible: true })
     .click();
 

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { speechAddonPath } from "../src/main/speech.ts";
 
 /**
  * What a Linux user needs before the AppImage opens is decided by the runtime electron-builder embeds, not by the app.
@@ -25,5 +26,40 @@ describe("packaging the AppImage", () => {
     // The legacy toolset put this argument in the AppImage's desktop entry by default and the static toolset does not.
     // It stays on the AppImage target only: the deb's entry never carried it.
     expect(builder.appImage?.executableArgs).toContain("--no-sandbox");
+  });
+});
+
+const mac = (
+  JSON.parse(readFileSync(join(import.meta.dir, "..", "electron-builder.json"), "utf8")) as {
+    readonly mac: {
+      readonly entitlements: string;
+      readonly entitlementsInherit: string;
+      readonly extraResources?: readonly {
+        readonly from: string;
+        readonly to: string;
+        readonly filter?: readonly string[];
+      }[];
+      readonly extendInfo?: Readonly<Record<string, string>>;
+    };
+  }
+).mac;
+
+describe("packaging dictation for macOS (#726)", () => {
+  test("the signed app may take audio input, and both of macOS's prompts have their usage string", () => {
+    for (const file of new Set([mac.entitlements, mac.entitlementsInherit])) {
+      const plist = readFileSync(join(import.meta.dir, "..", file), "utf8");
+      expect(plist).toMatch(/<key>com\.apple\.security\.device\.audio-input<\/key>\s*<true\/>/);
+      // Library validation stays on: the addon is signed with the app, so nothing else may be loaded.
+      expect(plist).not.toContain("disable-library-validation");
+    }
+    expect(mac.extendInfo?.["NSMicrophoneUsageDescription"]).toBeString();
+    expect(mac.extendInfo?.["NSSpeechRecognitionUsageDescription"]).toBeString();
+  });
+
+  test("the addon ships outside asar at the path the main process loads it from", () => {
+    expect(mac.extraResources).toContainEqual({ from: "dist/native", to: "native", filter: ["speech.node"] });
+    expect(speechAddonPath(true, "/App/Contents/Resources", "/ignored")).toBe(
+      "/App/Contents/Resources/native/speech.node",
+    );
   });
 });

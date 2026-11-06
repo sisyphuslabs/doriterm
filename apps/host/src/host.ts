@@ -8,9 +8,13 @@ import { HcPipe, readHcVersion } from "./hc-pipe.ts";
 import { openControl } from "./host-control.ts";
 import { e2eeDeps } from "./host-e2ee.ts";
 import { PairOffers } from "./pair-surface.ts";
+import { DeviceSurface } from "./device-surface.ts";
 import { type GitFactsPublisher, publishGitFacts } from "./git-facts.ts";
 import { type HostInfoPublisher, publishHostInfo } from "./host-info.ts";
+import { type MeshOfferService, serveMeshOffers } from "./mesh/offer-doc.ts";
+import { pairingArtifact } from "./pair-link.ts";
 import { retireLock } from "./host-lock.ts";
+import { publishMeshStatusOnCore, type MeshStatusPublisher } from "./mesh/status-publisher.ts";
 import { type Host, HOST_VERSION, type HostOptions } from "./host-types.ts";
 import { listenError, StartupError } from "./startup-error.ts";
 import { type StartedPart, stopStarted } from "./stop-started.ts";
@@ -105,8 +109,35 @@ async function serve(
   // The host's OS goes on its core once a client opens a pipe, as the end sweeper starts: every hc call starts its
   // session's core when none runs, and a host that no one uses must not start one (#306).
   const core = { hc: options.hc, session: options.session, env: options.env };
+  // One expression for the status: the publisher and the control channel must answer from the same function (review #761).
+  const meshStatus = options.meshStatus ?? e2ee?.meshStatus;
   let info: HostInfoPublisher | undefined;
   let git: GitFactsPublisher | undefined;
+  let meshDoc: MeshStatusPublisher | undefined;
+  let offers: MeshOfferService | undefined;
+  // A one-line Add a machine (#668): a client asks for a mesh offer through a core document, and the host answers it.
+  const meshOffer = async () => {
+    if (e2ee === undefined) throw new Error("this host keeps no state, so it cannot open a mesh offer");
+    const offer = await e2ee.hostMesh.pair(true);
+    const keys = e2ee.identity;
+    const link = pairingArtifact(
+      {
+        hostId: keys.hostId,
+        noiseStaticPub: keys.noise.publicKey,
+        signPub: keys.sign.publicKey,
+        linkSecret: offer.linkSecret,
+        relayUrl: options.relay?.url ?? DEFAULT_RELAY_URL,
+        mesh: true,
+      },
+      undefined,
+    ).url;
+    return { link, expiresAt: offer.expiresAt };
+  };
+  started(
+    "mesh offers",
+    () => offers?.stop(),
+    () => (offers?.kill() ?? []).map((pid) => `hc connect pid ${pid}`),
+  );
   started(
     "host info",
     () => info?.stop(),
@@ -125,6 +156,18 @@ async function serve(
             open: () => e2ee.hostMesh.pairDevice(),
             relayUrl: options.relay?.url ?? DEFAULT_RELAY_URL,
           }),
+    // A revoke from the app is the same act as `devices revoke` on the control socket: the file loses the device, the
+    // sessions of its key close, and its push subscription goes.
+    devices:
+      e2ee === undefined
+        ? undefined
+        : new DeviceSurface({
+            devices: e2ee.devices,
+            changed: async () => {
+              await e2ee.sessions.closeRevoked();
+              push?.prune();
+            },
+          }),
     token: options.token,
     hostVersion: HOST_VERSION,
     hcVersion,
@@ -134,6 +177,14 @@ async function serve(
       void ends.ensure();
       info ??= publishHostInfo(core, options.platform ?? process.platform, options.log);
       git ??= publishGitFacts(core, options.log);
+      meshDoc ??=
+        meshStatus === undefined || e2ee === undefined
+          ? undefined
+          : publishMeshStatusOnCore(core, meshStatus, e2ee.identity.hostId, options.log);
+      if (e2ee !== undefined) {
+        const pending = e2ee.hostMesh.pending;
+        offers ??= serveMeshOffers(core, options.log, (listener) => pending.onAdmitted(listener), meshOffer);
+      }
       return new HcPipe({ hc: options.hc, session: options.session, env: options.env, log: options.log });
     },
   });
@@ -142,6 +193,12 @@ async function serve(
     "git facts",
     () => git?.stop(),
     () => (git?.kill() ?? []).map((pid) => `hc connect pid ${pid}`),
+  );
+  // A host in no mesh writes the document empty (a mesh it left), so this starts with the first pipe, as the others do.
+  started(
+    "mesh status",
+    () => meshDoc?.stop(),
+    () => (meshDoc?.kill() ?? []).map((pid) => `hc connect pid ${pid}`),
   );
   if (uplink !== undefined) started("relay uplink", () => uplink.stop());
   await uplink?.start({
@@ -191,7 +248,7 @@ async function serve(
     control =
       options.stateDir === undefined || e2ee === undefined
         ? undefined
-        : openControl(options.stateDir, e2ee, options.meshStatus ?? e2ee.meshStatus, push);
+        : openControl(options.stateDir, e2ee, meshStatus, push);
   } catch (error) {
     throw new Error(`cannot open the control socket that devices revoke uses: ${String(error)}`, { cause: error });
   }
@@ -215,15 +272,17 @@ async function serve(
     relayUrl: uplink === undefined ? undefined : options.relay?.url,
     hostInfoSettled: () => info?.settled ?? Promise.resolve(),
     gitFactsSettled: () => git?.settled() ?? Promise.resolve(),
+    meshStatusSettled: () => meshDoc?.settled() ?? Promise.resolve(),
     stop() {
       const pushStopped = push?.stop();
       e2ee?.slots.stop();
       control?.stop();
-      stopping ??= Promise.resolve(e2ee?.sync.stop())
+      stopping ??= Promise.resolve(meshDoc?.stop())
+        .then(() => e2ee?.sync.stop())
         .then(() => uplink?.stop())
         .then(() => gateway.closeAll())
         .then(() => ends.stop())
-        .then(() => Promise.all([info?.stop(), git?.stop()]))
+        .then(() => Promise.all([info?.stop(), git?.stop(), offers?.stop()]))
         .then(() => pushStopped)
         .then(() => Promise.all([server.stop(true), lanServer?.stop(true)]))
         .then(() => retireLock(stateDir, options.log));

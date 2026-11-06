@@ -46,7 +46,7 @@ export function parseGhosttyConfig(text: string): ParsedConfig {
     const value = unquote(trimmed.slice(eq + 1).trim());
     const def = KEY_BY_NAME.get(key);
     if (def === undefined) {
-      lines.push({ line, key, value, status: "unknown", reason: "not a terminal setting doriface knows" });
+      lines.push({ line, key, value, status: "unknown", reason: "not a terminal setting Doriterm knows" });
       return;
     }
     if (value === "") {

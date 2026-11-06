@@ -162,17 +162,23 @@ export function extendSelection(doc: Document, word: Word, at: Caret): Range | n
   return rangeOf(doc, word.start, word.end);
 }
 
-const pressed = new WeakMap<Element, number>();
-/** How long after a held press its browser-synthesized mouse events may still arrive. */
-const GUARD_MS = 600;
+const pressed = new WeakSet<Element>();
 
-/** Says a held press just selected text here, so the tap's own mouse events leave the selection alone. */
+/**
+ * Says the touch now on `element` picked text, so the tap its own lift would make is not one. The browser sends that
+ * touch's mouse events a few milliseconds after its lift, however long the finger stayed down, so the mark outlives the
+ * lift instead of expiring after a window measured from the pick: a finger that dwells on the selection is still a hold.
+ */
 export function markLongPress(element: Element): void {
-  pressed.set(element, performance.now());
+  pressed.add(element);
 }
 
-/** Whether `element` selected text from a held press this recently. */
+/** Whether the touch now on `element` picked text. */
 export function longPressed(element: Element): boolean {
-  const at = pressed.get(element);
-  return at !== undefined && performance.now() - at < GUARD_MS;
+  return pressed.has(element);
+}
+
+/** Begins a press on `element`: what the last touch did there does not speak for this one. */
+export function clearLongPress(element: Element): void {
+  pressed.delete(element);
 }

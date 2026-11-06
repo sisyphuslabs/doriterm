@@ -1,5 +1,6 @@
 import { Notification } from "electron";
-import type { DesktopNotice, NoticeKind } from "../shared/bridge.ts";
+import type { DesktopNotice, NoticeAnswer, NoticeKind } from "../shared/bridge.ts";
+import { showAndAnswer, type Wait } from "./notice-answer.ts";
 
 /** The fixed text per kind, as the web app's notices show it: no command, output or machine ever reaches the OS. */
 const BODY: Readonly<Record<NoticeKind, string>> = {
@@ -15,14 +16,19 @@ export interface NoticeText {
   readonly body: string;
 }
 
-export const noticeText = (notice: DesktopNotice): NoticeText => ({ title: "doriface", body: BODY[notice.kind] });
+export const noticeText = (notice: DesktopNotice): NoticeText => ({ title: "Doriterm", body: BODY[notice.kind] });
 
 /** Shown notifications, held until clicked or closed: one only referenced by the OS can be collected with its click. */
 const live = new Set<Notification>();
 
 export const noticesSupported = (): boolean => Notification.isSupported();
 
-export function showNotice(notice: DesktopNotice, open: (terminal: string | null) => void): void {
+/** Shows one notification and answers whether the OS took it (notice-answer.ts); a click opens its terminal. */
+export function showNotice(
+  notice: DesktopNotice,
+  open: (terminal: string | null) => void,
+  wait?: Wait,
+): Promise<NoticeAnswer> {
   const shown = new Notification(noticeText(notice));
   live.add(shown);
   shown.once("click", () => {
@@ -30,5 +36,5 @@ export function showNotice(notice: DesktopNotice, open: (terminal: string | null
     open(notice.terminal);
   });
   shown.once("close", () => live.delete(shown));
-  shown.show();
+  return showAndAnswer(shown, wait);
 }

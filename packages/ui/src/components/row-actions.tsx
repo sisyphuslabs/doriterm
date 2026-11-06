@@ -12,6 +12,12 @@ export interface RowWithActionsProps {
    * items its "..." action holds, so a right-click finds what the button offers (#699).
    */
   readonly menu?: ReactNode;
+  /**
+   * Keeps the actions drawn on a coarse pointer, where there is no hover to reveal them: only for a row that can give
+   * them room, which this asks the row's own button for with a trailing pad (#798). A row that cannot, like a space
+   * whose status dot and tab count are its own signal, leaves this off and keeps its actions on hover.
+   */
+  readonly coarseActions?: boolean;
   readonly className?: string;
 }
 
@@ -19,6 +25,14 @@ const SHOWN =
   "group-hover/row:visible group-focus-within/row:visible group-has-[[data-popup-open]]/row:visible group-data-popup-open/row:visible";
 const MASKED =
   "[&:is(:hover,:focus-within,:has([data-popup-open]),[data-popup-open])_[data-row-meta]]:invisible data-popup-open:outline-2 data-popup-open:outline-solid data-popup-open:-outline-offset-2 data-popup-open:outline-ring";
+/**
+ * Held on a coarse pointer: the actions are drawn (24 px apart, should a row show more than one, so their centred 44 px
+ * hit areas do not meet), and the row's own button gives them the width they take: the agent row shows only its "..."
+ * on touch (#950), so one 24 px button and the 4 px inset. Nothing the row draws runs under it. The pad goes on the
+ * button, not the wrapper, so its hover wash still spans the row.
+ */
+const COARSE_SHOWN = `${SHOWN} coarse:visible coarse:gap-6`;
+const COARSE_ROOM = "coarse:[&>button]:pr-8";
 
 /** A touch keeps the row's own press (a held space row lifts for a drag): only a mouse, a pen or a key opens the menu. */
 function skipTouchMenu(event: MouseEvent<HTMLDivElement>): void {
@@ -40,18 +54,25 @@ function openFromKeys(event: KeyboardEvent<HTMLDivElement>): void {
 }
 
 /** A sidebar row with a few trailing actions that take the place of its meta (age, machine, count) when shown. */
-export function RowWithActions({ row, actions, menu, className }: RowWithActionsProps) {
+export function RowWithActions({ row, actions, menu, coarseActions = false, className }: RowWithActionsProps) {
   const box = useRef<HTMLDivElement | null>(null);
   const element = (
     <div
       ref={box}
-      className={cn("group/row relative min-w-0 rounded-md", MASKED, className)}
+      className={cn("group/row relative min-w-0 rounded-md", MASKED, coarseActions && COARSE_ROOM, className)}
       {...(menu === undefined
         ? {}
         : { onTouchStart: skipMenuHandler, onContextMenu: skipTouchMenu, onKeyDown: openFromKeys })}
     >
       {row}
-      <span className={cn("invisible absolute inset-y-0 right-1 flex items-center gap-0.5", SHOWN)}>{actions}</span>
+      <span
+        className={cn(
+          "invisible absolute inset-y-0 right-1 flex items-center gap-0.5",
+          coarseActions ? COARSE_SHOWN : SHOWN,
+        )}
+      >
+        {actions}
+      </span>
     </div>
   );
   if (menu === undefined) return element;

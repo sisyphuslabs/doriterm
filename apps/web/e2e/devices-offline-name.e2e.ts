@@ -12,9 +12,9 @@ test.use({ serviceWorkers: "block" });
  */
 const NOT_ANSWERING = /Your host isn't (answering|connected right now)|Your host didn't answer in time/;
 
-/** Settings > Paired devices, which names the host this device is paired with. */
+/** Settings > Host, the group that names the host this device is paired with. */
 const paired = (page: Page) =>
-  page.locator("section").filter({ has: page.getByRole("heading", { name: "Paired devices" }) });
+  page.locator("section").filter({ has: page.getByRole("heading", { name: "Host", exact: true }) });
 
 /**
  * The host row's title: the section's rows are "This browser" and then the host, each a title paragraph and a

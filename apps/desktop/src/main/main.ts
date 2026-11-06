@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, session, shell } from "electron";
+import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, session, shell, systemPreferences } from "electron";
 import { installHc } from "@doriface/host/hc-install";
 import electronUpdater from "electron-updater";
 import { homedir } from "node:os";
@@ -7,10 +7,12 @@ import { contextMenuTemplate } from "../config/context-menu.ts";
 import { contentSecurityPolicy } from "../config/csp.ts";
 import { DEEP_LINK_SCHEME, deepLinkArg } from "../config/deep-link.ts";
 import { APP_ORIGIN, loopbackDevUrl } from "../config/origin.ts";
+import { storageDirToPin } from "../config/storage.ts";
 import { restorePlacement } from "../config/window-state.ts";
 import { launchBackground, secureWebPreferences, windowOptions } from "../config/window.ts";
 import { Channel, parsePlatform } from "../shared/bridge.ts";
 import { openDeepLink, routeDeepLinksTo, takePairingLink } from "./deep-link.ts";
+import { DictationHost } from "./dictation.ts";
 import { DirectForwarder } from "./direct-forward.ts";
 import { applyDevCsp, hardenContents, lockPermissions } from "./harden.ts";
 import { findHc, hostCommand, type HostContext, saveHc, savedHc, usualHcDirs } from "./host-command.ts";
@@ -18,7 +20,10 @@ import { registerIpc } from "./ipc.ts";
 import { LocalHost } from "./local-host.ts";
 import { menuTemplate } from "./menu.ts";
 import { noticesSupported, showNotice } from "./notice.ts";
+import { readNoticeAuthorization } from "./notice-authorization.ts";
 import { requestPairOffer } from "./pair-offer.ts";
+import { requestPairedDevices, revokePairedDevice } from "./devices.ts";
+import { loadSpeech, speechAddonPath } from "./speech.ts";
 import { registerAppScheme, serveApp } from "./protocol.ts";
 import { applyMacTitlebar } from "./titlebar.ts";
 import { readSaved, rememberPlacement, savedPlacement, writeSaved } from "./window-state.ts";
@@ -26,11 +31,22 @@ import { revealWhenReady } from "./window-reveal.ts";
 import { UpdateWatch } from "./updater.ts";
 
 const platform = parsePlatform(process.platform);
+const pinnedStorage = storageDirToPin(app.getPath("appData"), app.commandLine.hasSwitch("user-data-dir"));
+if (pinnedStorage !== undefined) app.setPath("userData", pinnedStorage);
 const devSetting = app.isPackaged ? undefined : process.env["DORIFACE_DESKTOP_DEV_URL"];
 const devUrl = devSetting === undefined || devSetting === "" ? undefined : loopbackDevUrl(devSetting);
 const origin = devUrl === undefined ? APP_ORIGIN : new URL(devUrl).origin;
 const csp = contentSecurityPolicy({ devServer: devUrl });
-const webPreferences = secureWebPreferences(join(import.meta.dirname, "preload.cjs"), app.getVersion());
+// The system recognizer for dictation, on macOS only; the page is told whether it exists through its preload (#726).
+const speech =
+  platform === "darwin"
+    ? loadSpeech(speechAddonPath(app.isPackaged, process.resourcesPath, app.getAppPath()))
+    : undefined;
+const webPreferences = secureWebPreferences(
+  join(import.meta.dirname, "preload.cjs"),
+  app.getVersion(),
+  speech !== undefined,
+);
 
 /** The built web app: bundled as a resource, or overridden in a checkout. */
 const webRoot = (): string =>
@@ -54,6 +70,8 @@ const openExternal = (url: string): void => {
 let mainWindow: BrowserWindow | undefined;
 /** The byte forwarder a plain `ws://` Direct address needs (#449); it lives as long as the app. */
 let forwarder: DirectForwarder | undefined;
+/** Dictation sessions, where this build has a system recognizer (#726). */
+let dictation: DictationHost | undefined;
 const savedFile = (name: string): string => join(app.getPath("userData"), name);
 
 const liveWindow = (): BrowserWindow | undefined =>
@@ -121,7 +139,10 @@ function createWindow(path: string): BrowserWindow {
   });
   // A reload, a navigation or a crash ends every forward the page held: the next page asks for its own (#449).
   const windowId = window.webContents.id;
-  const dropForwards = (): void => forwarder?.dropWindow(windowId);
+  const dropForwards = (): void => {
+    forwarder?.dropWindow(windowId);
+    dictation?.dropOwner(windowId);
+  };
   window.webContents.on("did-start-loading", dropForwards);
   window.webContents.on("render-process-gone", dropForwards);
   window.on("closed", () => {
@@ -157,6 +178,14 @@ function ready(): void {
   app.on("will-quit", () => void localHost.stop());
   forwarder = new DirectForwarder({ origin });
   app.on("will-quit", () => void forwarder?.stop());
+  dictation =
+    speech === undefined
+      ? undefined
+      : new DictationHost(speech, {
+          status: () => systemPreferences.getMediaAccessStatus("microphone"),
+          ask: () => systemPreferences.askForMediaAccess("microphone"),
+        });
+  app.on("will-quit", () => dictation?.stopAll());
   // A checkout has no release feed (app-update.yml) to update from; only the packaged app looks for one.
   const updates = app.isPackaged
     ? new UpdateWatch(
@@ -175,6 +204,20 @@ function ready(): void {
     pairOffer: async (request) => {
       try {
         return await requestPairOffer(await localHost.start(), request);
+      } catch (error) {
+        return { state: "unavailable", reason: error instanceof Error ? error.message : String(error) };
+      }
+    },
+    pairedDevices: async () => {
+      try {
+        return await requestPairedDevices(await localHost.start());
+      } catch (error) {
+        return { state: "unavailable", reason: error instanceof Error ? error.message : String(error) };
+      }
+    },
+    revokeDevice: async (id) => {
+      try {
+        return await revokePairedDevice(await localHost.start(), id);
       } catch (error) {
         return { state: "unavailable", reason: error instanceof Error ? error.message : String(error) };
       }
@@ -202,11 +245,13 @@ function ready(): void {
       return installed;
     },
     noticesSupported,
+    noticePermission: () => readNoticeAuthorization(systemPreferences),
     // A click brings the window back (or makes it, on macOS with none left) and opens the pane in it.
     showNotice: (notice) => showNotice(notice, (terminal) => sendToPage(Channel.noticeClicked, terminal)),
     setDirectTarget: (directUrl) => forwarder?.setTarget(directUrl) ?? false,
     forwardDirect: async (windowId) => (await forwarder?.issue(windowId)) ?? { refused: "no forwarder" },
     cancelDirectForward: (url) => forwarder?.cancel(url) ?? false,
+    dictation,
   });
   if (updates !== undefined) {
     updates.start();
@@ -243,7 +288,7 @@ if (!app.requestSingleInstanceLock()) {
     .whenReady()
     .then(ready)
     .catch((error: unknown) => {
-      console.error(`doriface failed to start: ${String(error)}`);
+      console.error(`Doriterm failed to start: ${String(error)}`);
       app.exit(1);
     });
 }

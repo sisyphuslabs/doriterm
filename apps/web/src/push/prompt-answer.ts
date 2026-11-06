@@ -2,7 +2,7 @@ import type { PushHostLine } from "@doriface/protocol";
 import { useSyncExternalStore } from "react";
 
 /**
- * An answer the page sends for a permission notice's Allow, in #192's banner states. `waiting`: the page is not on
+ * An answer the page sends for a notice's Allow or one of its prompt's rows, in #192's banner states. `waiting`: the page is not on
  * screen yet, so nothing is sent; `sending`: the host is checking the prompt is still on the live screen;
  * `answered`: the agent got its key; `stale`: the prompt was answered or changed, so nothing was sent; `failed`: the
  * answer did not go through (the host could not be reached, or its link dropped), so nothing was sent; `unknown`: the
@@ -54,10 +54,11 @@ export function whenVisible(doc: Visibility): Promise<void> {
 }
 
 /**
- * Sends Allow for a permission notice from the page: once it is visible, the host checks the prompt against the live
- * screen (`answerApproval`, the rule #192's banner uses) and types the agent's key only if it is unchanged.
+ * Sends a notice's answer (Allow, or one of its prompt's rows) from the page: once it is visible, the host checks the
+ * prompt against the live screen (`answerApproval`, the rule #192's banner uses) and types the agent's key only if it is
+ * unchanged.
  */
-export async function allowFromPage(
+export async function answerFromPage(
   terminal: string,
   send: () => Promise<PushHostLine>,
   visible: () => Promise<void>,

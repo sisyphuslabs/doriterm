@@ -1,5 +1,6 @@
 /* Element defaults every doriface surface inherits. Import after tailwindcss and tokens.css. */
 @import "@fontsource-variable/jetbrains-mono";
+@import "./terminal-fonts.css";
 
 @layer base {
   *,

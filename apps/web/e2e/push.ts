@@ -128,8 +128,29 @@ export const subscribedKey = (page: Page): Promise<string | null> =>
   });
 
 export async function serviceWorker(context: BrowserContext): Promise<Worker> {
-  return context.serviceWorkers()[0] ?? context.waitForEvent("serviceworker");
+  const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
+  await worker.evaluate(RECORD_SHOWN);
+  return worker;
 }
+
+// Chromium can resolve showNotification and still never list the notice in getNotifications() (#964: 5 of 51 repeats
+// listed none 4-9 ms after the show, with no notificationclose). The worker records each notice once the original
+// showNotification resolves (a rejected show still fails), keyed by tag; the helpers read Chromium's list first and
+// fall back to that record, with a warning, only when Chromium lists nothing.
+const RECORD_SHOWN = `(() => {
+  if (self.__shown !== undefined) return;
+  self.__shown = new Map();
+  const show = self.registration.showNotification.bind(self.registration);
+  const close = Notification.prototype.close;
+  Notification.prototype.close = function () {
+    self.__shown.delete(this.tag);
+    return close.call(this);
+  };
+  self.registration.showNotification = (title, options = {}) =>
+    show(title, options).then(() => {
+      self.__shown.set(options.tag ?? "", { title, ...options });
+    });
+})()`;
 
 /** Delivers a decrypted push to the app's worker as the browser does after its push service hands it over. */
 export async function deliverPush(context: BrowserContext, data: string): Promise<void> {
@@ -156,9 +177,21 @@ export interface Shown {
 }
 
 /** The notifications the worker shows now. */
-export const shownNotifications = (worker: Worker): Promise<Shown[]> =>
-  worker.evaluate(`self.registration.getNotifications().then((list) =>
-    list.map((n) => ({ title: n.title, body: n.body, tag: n.tag, actions: (n.actions ?? []).map((a) => a.action) })))`);
+export async function shownNotifications(worker: Worker): Promise<Shown[]> {
+  const { shown, fallback } = await worker.evaluate<{ shown: Shown[]; fallback: boolean }>(`(async () => {
+    const listed = await self.registration.getNotifications();
+    const fallback = listed.length === 0 && self.__shown.size > 0;
+    const source = fallback ? [...self.__shown.values()] : listed;
+    const shown = source.map((n) =>
+      ({ title: n.title, body: n.body ?? "", tag: n.tag ?? "", actions: (n.actions ?? []).map((a) => a.action) }));
+    return { shown, fallback };
+  })()`);
+  if (fallback)
+    console.warn(
+      `push.ts: Chromium lists no notification; reading the worker's record (#964): ${JSON.stringify(shown)}`,
+    );
+  return shown;
+}
 
 /**
  * A tap on a shown notification (`action` "" for the notification itself). DevTools cannot click a system
@@ -166,17 +199,32 @@ export const shownNotifications = (worker: Worker): Promise<Shown[]> =>
  * event may not extend its lifetime, and the returned promise settles when the handler's work does.
  */
 export async function tapNotification(worker: Worker, tag: string, action: string): Promise<void> {
-  // DevTools' deliverPushMessage returns before the worker's showNotification settles: tap only once it is shown.
-  await expect.poll(async () => (await shownNotifications(worker)).some((shown) => shown.tag === tag)).toBe(true);
-  await worker.evaluate(`(async () => {
-    const [notification] = await self.registration.getNotifications({ tag: ${JSON.stringify(tag)} });
-    if (notification === undefined) throw new Error("no notification to tap");
-    const event = new NotificationEvent("notificationclick", { notification, action: ${JSON.stringify(action)} });
+  // DevTools' deliverPushMessage returns before the worker's showNotification settles: tap only once it is shown. A
+  // permission or question notice is shown only after the worker asked the host for its rows (up to sw.ts's 4 s
+  // deadline, #669), so the wait allows for that whole exchange on a loaded runner.
+  await expect
+    .poll(async () => (await shownNotifications(worker)).some((shown) => shown.tag === tag), { timeout: 15_000 })
+    .toBe(true);
+  const tapped = await worker.evaluate<{ fromRecord: boolean; handled: string | null }>(`(async () => {
+    const tag = ${JSON.stringify(tag)};
+    const [listed] = await self.registration.getNotifications({ tag });
+    const shown = self.__shown.get(tag);
+    if (listed === undefined && shown === undefined) throw new Error("no notification to tap");
+    const notification = listed ?? { ...shown, close: () => self.__shown.delete(tag) };
+    const event = new Event("notificationclick");
     let work = Promise.resolve();
-    Object.defineProperty(event, "waitUntil", { value: (promise) => { work = promise; } });
+    Object.defineProperties(event, {
+      notification: { value: notification },
+      action: { value: ${JSON.stringify(action)} },
+      waitUntil: { value: (promise) => { work = promise; } },
+    });
     self.dispatchEvent(event);
-    await work;
+    const handled = await work.then(() => null, (error) => String(error));
+    return { fromRecord: listed === undefined, handled };
   })()`);
+  if (tapped.fromRecord)
+    console.warn(`push.ts: Chromium lists no notification tagged ${tag}; tapping the worker's record (#964)`);
+  if (tapped.handled !== null) throw new Error(`the notification's click handler rejected: ${tapped.handled}`);
 }
 
 /** One line to the e2e host's push stream as the loopback client; resolves with its reply. */

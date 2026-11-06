@@ -2,7 +2,8 @@ import { CloseCode } from "@doriface/crypto";
 import { DEFAULT_PUSH_PREFS, encodePushLine, parsePushHostLine, type PushHostLine } from "@doriface/protocol";
 import { afterEach, describe, expect, test } from "bun:test";
 import { servePushStream } from "./push-stream.ts";
-import { ENDPOINT, type Rig, rig, statusEvent } from "../testing/push-rig.ts";
+import { CLAUDE_QUESTION_SCREEN } from "../../../../packages/protocol/src/testing/prompt-screens.ts";
+import { ENDPOINT, type Rig, rig, statusEvent, terminal } from "../testing/push-rig.ts";
 
 const rigs: Rig[] = [];
 afterEach(() => {
@@ -110,5 +111,28 @@ describe("the push stream", () => {
     const bad = stream(r);
     bad.send("[1]\n");
     expect(bad.closed.code).toBe(CloseCode.CryptoFailure);
+  });
+});
+
+describe("a notice's rows on the push stream (#669)", () => {
+  test("a notice names its prompt's rows, and choose answers one with its own key", async () => {
+    const r = await opened();
+    const subscription = { endpoint: ENDPOINT, p256dh: r.keys.p256dh, auth: r.keys.auth };
+    await r.service.subscribe("device-a", subscription, DEFAULT_PUSH_PREFS);
+    const asking = { state: "blocked", kind: "question", app: "claude-code" };
+    r.core.terminals.set("t3", terminal("t3", asking));
+    r.core.screens.set("t3", CLAUDE_QUESTION_SCREEN);
+    await r.service.event(statusEvent("t3", asking));
+    const [notice] = await r.notices();
+    const id = typeof notice === "object" && notice !== null ? String(Reflect.get(notice, "n")) : "";
+    const s = stream(r);
+    expect(await s.say(encodePushLine({ t: "notice", id }))).toMatchObject({
+      t: "notice",
+      terminal: "t3",
+      kind: "input",
+      prompt: { options: [{ id: "1", label: "Postgres" }, { id: "2" }, { id: "3" }, { id: "5" }] },
+    });
+    expect(await s.say(encodePushLine({ t: "choose", id, option: "2" }))).toEqual({ t: "answered", terminal: "t3" });
+    expect(r.core.sent).toEqual([{ terminal: "t3", keys: ["2"] }]);
   });
 });

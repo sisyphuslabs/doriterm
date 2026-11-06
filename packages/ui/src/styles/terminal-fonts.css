@@ -1,0 +1,89 @@
+/*
+ * The terminal's own faces past the Latin, Greek and Cyrillic ones @fontsource-variable/jetbrains-mono ships, so box
+ * drawing, blocks, braille spinners, arrows, powerline and Nerd Font icons are drawn the same on every device and never
+ * left to a platform that has no face for them (iOS shows tofu for the Nerd Font icons, #949). Each face is listed
+ * with the characters it draws (unicode-range), so a browser fetches it only once a page draws one of them. How each
+ * file was cut from its upstream font: fonts/SOURCES.md.
+ */
+
+/* The rest of JetBrains Mono 2.304: the same font as the Fontsource subsets, so its cells match theirs. */
+@font-face {
+  font-family: "JetBrains Mono Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("./fonts/jetbrains-mono-symbols-wght-normal.woff2") format("woff2-variations");
+  unicode-range:
+    U+02D8-02D9, U+02DB, U+0302, U+0306-0307, U+030A-030C, U+030F, U+0312, U+031B, U+0325-0328, U+0336-0338, U+0AEA,
+    U+2070, U+2074-207A, U+207C, U+2080-2089, U+2102, U+210D, U+2115, U+2119-211A, U+211D, U+2124, U+212E, U+2140,
+    U+218A-218B, U+2190, U+2192, U+2194-2199, U+219D-219E, U+21A0, U+21A2-21A3, U+21A5-21A7, U+21A9-21AA, U+21AD,
+    U+21BE, U+21C9, U+21D0-21D4, U+21DB, U+21DE-21DF, U+21E5, U+21E7-21E8, U+21EA, U+2200-220C, U+220E-2211, U+2213,
+    U+2218-221A, U+221E, U+2223-2225, U+2227-222B, U+2234-2239, U+223C, U+223E, U+2243, U+2245, U+2247-2249, U+224B,
+    U+224D, U+2254, U+2257, U+225F-2265, U+226A-2273, U+227A-227C, U+2282-2289, U+228E-2299, U+229B-22A5, U+22B4,
+    U+22B8, U+22BB-22BD, U+22C2-22C4, U+22C6, U+22C8-22CA, U+22CE, U+22D0, U+22E2, U+22EE-22F1, U+2302-2305,
+    U+2308-230B, U+2318, U+231C-231F, U+2324-2326, U+2328, U+232B, U+2336-237A, U+2389-238B, U+2395, U+239B-23AD,
+    U+23CE, U+23FB-23FE, U+2400-2421, U+2423-2424, U+2500-25A1, U+25AA-25AB, U+25B2-25CC, U+25CE-25CF, U+25D4-25D5,
+    U+25E6-25EB, U+25EF, U+25F6, U+266D, U+266F, U+2687, U+26A0-26A1, U+2713, U+2715, U+2717, U+2736, U+276E-2771,
+    U+2794, U+279C-279E, U+27C5-27C6, U+27DC, U+27E6-27EB, U+27F5-27F7, U+2916, U+294A, U+2987-2988, U+2A00,
+    U+2A05-2A06, U+2B58, U+E0A0-E0A2, U+E0B0-E0B3, U+FE62, U+FF5B, U+FF5D, U+16910, U+1D538-1D539, U+1D53B-1D53E,
+    U+1D540-1D544, U+1D546, U+1D54A-1D550, U+1D552-1D56B;
+}
+
+@font-face {
+  font-family: "Symbols Nerd Font Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("./fonts/symbols-nerd-font-mono.woff2") format("woff2");
+  unicode-range:
+    U+23FB-23FE, U+2630, U+2665, U+26A1, U+276C-2771, U+2B58, U+E000-E00A, U+E0A0-E0A3, U+E0B0-E0C8, U+E0CA,
+    U+E0CC-E0D2, U+E0D4, U+E0D6-E0D7, U+E200-E2A9, U+E300-E3E3, U+E5FA-E6BB, U+E700-E958, U+EA60-EA88, U+EA8A-EA8C,
+    U+EA8F-EAC7, U+EAC9, U+EACC-EB09, U+EB0B-EB4E, U+EB50-EC5E, U+EC60-EC84, U+ED00-EFCF, U+F000-F385, U+F400-F533,
+    U+F0001-F1AF0;
+}
+
+@font-face {
+  font-family: "Doriterm Noto Symbols 2";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("./fonts/noto-sans-symbols-2-terminal.woff2") format("woff2");
+  unicode-range:
+    U+21AF, U+21E6, U+21E9, U+21EB-21F0, U+21F3, U+22C5, U+2316, U+231A-231B, U+2327, U+237B, U+237D-237F, U+2394,
+    U+23CF, U+23E9-23EA, U+23ED-23EF, U+23F1-23FA, U+23FF, U+25A2-25A9, U+25AC-25B1, U+25CD, U+25D0-25D3, U+25D6-25E5,
+    U+25EC-25EE, U+25F0-25F5, U+25F7-2609, U+260E-2612, U+2614-2623, U+2631-2637, U+263C, U+2654-2664, U+2666-2668,
+    U+267F-2686, U+2688-268F, U+269E-269F, U+26AA-26AC, U+26BD-26CD, U+26CF-26E1, U+2700-2704, U+2706-2709, U+270B-2712,
+    U+2714, U+2716, U+2718-271C, U+2722-2727, U+2729-2735, U+2737-274B, U+274D, U+274F-2753, U+2756-276B, U+2772-2775,
+    U+2798-279B, U+279F-27AF, U+27B1-27BE, U+2800-28FF, U+2981, U+29BF, U+29EB, U+2B00-2B0D, U+2B12-2B2F, U+2B4D-2B57,
+    U+2B59-2B73, U+2B76-2B95, U+2B97-2BFD, U+2BFF;
+}
+
+@font-face {
+  font-family: "Doriterm Noto Symbols";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("./fonts/noto-sans-symbols-terminal.woff2") format("woff2");
+  unicode-range:
+    U+2300-2301, U+2306-2307, U+230C-230F, U+2311-2315, U+2317, U+2322-2323, U+2329-232A, U+232C-2335, U+237C,
+    U+2380-2388, U+238C-2393, U+2396-239A, U+23AF, U+23BE-23CD, U+23D0-23DB, U+23E2-23E8, U+2460-24FF, U+260A-260D,
+    U+2613, U+2624-262F, U+2638-263B, U+263D-2653, U+2669-266C, U+266E, U+2670-267E, U+2690-269D, U+26A2-26A9,
+    U+26AD-26BC, U+26CE, U+26E2-26FF, U+271D-2721, U+2776-2793, U+2921-2922;
+}
+
+@font-face {
+  font-family: "Doriterm Noto Math";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("./fonts/noto-sans-math-terminal.woff2") format("woff2");
+  unicode-range:
+    U+219A-219C, U+219F, U+21A1, U+21A4, U+21A8, U+21AB-21AC, U+21AE, U+21B0-21BD, U+21BF-21C8, U+21CA-21CF,
+    U+21D5-21DA, U+21DC-21DD, U+21E0-21E4, U+21F1-21F2, U+21F4-21FF, U+220D, U+2214, U+2216-2217, U+221B-221D,
+    U+221F-2222, U+2226, U+222C-2233, U+223A-223B, U+223D, U+223F-2242, U+2244, U+2246, U+224A, U+224C, U+224E-2253,
+    U+2255-2256, U+2258-225E, U+2266-2269, U+2274-2279, U+227D-2281, U+228A-228D, U+229A, U+22A6-22B3, U+22B5-22B7,
+    U+22B9-22BA, U+22BE-22C1, U+22C7, U+22CB-22CD, U+22CF, U+22D1-22E1, U+22E3-22ED, U+22F2-22FF, U+2310, U+2319,
+    U+2320-2321, U+23AE, U+23B0-23B9, U+23DC-23E1, U+27C0-27C4, U+27C7-27DB, U+27DD-27E5, U+27EC-27F4, U+27F8-27FF,
+    U+2900-2915, U+2917-2920, U+2923-2949, U+294B-2980, U+2982-2986, U+2989-29BE, U+29C0-29EA, U+29EC-29FF, U+2B0E-2B11,
+    U+2B30-2B4C, U+2BFE;
+}

@@ -1,5 +1,5 @@
 // Korean wraps between words, never inside one, and a row's icon sits on its text's first line: Settings >
-// Connections at 390 with the layout host's long Korean name (#480).
+// This device at 390 with the layout host's long Korean name (#480).
 import { STARTS } from "./layout-screens.ts";
 import { LAYOUT_CORE } from "./layout-seed.ts";
 import { expect, test } from "./fixtures.ts";
@@ -16,8 +16,8 @@ interface Wrap {
   readonly iconOffsetPx: number;
 }
 
-function measure(text: string): Wrap {
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+function measure(root: HTMLElement, text: string): Wrap {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let node: Text | undefined;
   for (let next = walker.nextNode(); next !== null; next = walker.nextNode()) {
     if (next.textContent === text) node = next as Text;
@@ -63,10 +63,15 @@ test("a long Korean host name wraps between words, and its icon sits on the firs
   );
   const page = await context.newPage();
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Connections" }).click();
-  await expect(page.getByText(LAYOUT_CORE)).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("tab", { name: "This device" }).click();
+  // The workspace stays mounted and hidden under Settings (router.tsx), and its own machine header and status bar name
+  // the host as well: they are in the page at 390 but never visible, so the row holds the one name a reader sees (#836).
+  const paired = page.locator("section").filter({ has: page.getByRole("heading", { name: "Host", exact: true }) });
+  const name = paired.getByText(LAYOUT_CORE);
+  await expect(name).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(LAYOUT_CORE).filter({ visible: true })).toHaveCount(1);
   await page.evaluate(() => document.fonts.ready);
-  const wrap = await page.evaluate(measure, LAYOUT_CORE);
+  const wrap = await name.evaluate(measure, LAYOUT_CORE);
   expect(wrap.lines.length, `laid out on ${JSON.stringify(wrap.lines)}`).toBeGreaterThan(1);
   const hangul = new RegExp(`^${HANGUL}$`);
   for (const [index, start] of wrap.starts.entries()) {

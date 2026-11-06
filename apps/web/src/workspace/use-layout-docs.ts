@@ -106,7 +106,7 @@ export function useLayoutDocs(
         : state.phase === "ready"
           ? null
           : state.phase === "unreadable"
-            ? `this layout has ${state.reason}, which this version of doriface cannot edit`
+            ? `this layout has ${state.reason}, which this version of Doriterm cannot edit`
             : state.phase === "loading"
               ? LAYOUT_LOADING
               : state.reason;

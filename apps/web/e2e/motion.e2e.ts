@@ -137,7 +137,7 @@ test("a kept tab on an added machine does not arrive late on the way back from S
   await watchArrivals(page);
   const release = socket.hold("machine.list");
   await page.getByRole("link", { name: "Settings" }).click();
-  await expect(page.getByRole("heading", { name: "Connection", level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "This device", level: 2 })).toBeVisible();
   await page.goBack();
   await expect(page.getByRole("contentinfo").getByText(/^\d+ terminals?\b/)).toBeVisible({ timeout: 20_000 });
   await twoFrames(page);
@@ -166,7 +166,7 @@ test("coming back from Settings is not an arrival: the workspace returns without
   await page.reload();
   await expect.poll(() => page.locator(":root").getAttribute("data-ready")).toBe("");
   await page.getByRole("link", { name: "Settings" }).click();
-  await expect(page.getByRole("heading", { name: "Connection", level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "This device", level: 2 })).toBeVisible();
   await page.goBack();
   await expect(page.locator(SIDEBAR)).toBeVisible({ timeout: 20_000 });
   await expect.poll(() => page.locator(":root").getAttribute("data-ready")).toBe("");

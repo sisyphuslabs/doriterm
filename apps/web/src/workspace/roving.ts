@@ -60,6 +60,12 @@ function ownRow(target: HTMLButtonElement): HTMLButtonElement | undefined {
   return row !== undefined && row !== target && actionsOf(row).includes(target) ? row : undefined;
 }
 
+/**
+ * An action the arrow keys can land on: enabled, and laid out. A touch screen draws an agent row's More alone (#950),
+ * so its Pin is display:none there and focusing it would do nothing.
+ */
+const reachable = (action: HTMLButtonElement): boolean => !action.disabled && action.checkVisibility();
+
 /** The element an unmodified arrow, Home or End key moves focus to, or undefined when the key is not ours. */
 export function rovingTarget(root: Element, target: EventTarget | null, key: string): HTMLButtonElement | undefined {
   if (!isButton(target)) return undefined;
@@ -69,7 +75,7 @@ export function rovingTarget(root: Element, target: EventTarget | null, key: str
   if (owner !== undefined) {
     if (key === "ArrowLeft") return owner;
     if (key !== "ArrowRight") return undefined;
-    const actions = actionsOf(owner).filter((action) => !action.disabled);
+    const actions = actionsOf(owner).filter(reachable);
     return actions[actions.indexOf(target) + 1];
   }
   const rows = rowsOf(section);
@@ -85,7 +91,7 @@ export function rovingTarget(root: Element, target: EventTarget | null, key: str
     case "End":
       return rows.at(-1);
     case "ArrowRight":
-      return actionsOf(target).find((action) => !action.disabled);
+      return actionsOf(target).find(reachable);
     default:
       return undefined;
   }

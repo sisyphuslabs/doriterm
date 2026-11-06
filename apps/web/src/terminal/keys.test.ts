@@ -4,6 +4,25 @@ import { applyModifiers, hostPlatform, keySequence } from "./keys.ts";
 const latched = (...ids: string[]): ReadonlySet<string> => new Set(ids);
 
 test.each([
+  ["\u001b[H", ["ctrl"], "\u001b[1;5H"],
+  ["\u001b[F", ["alt"], "\u001b[1;3F"],
+  ["\u001b[5~", ["alt"], "\u001b[5;3~"],
+  ["\u001b[6~", ["ctrl", "shift"], "\u001b[6;6~"],
+  ["\u001b[3~", ["shift"], "\u001b[3;2~"],
+  ["\u001bOP", ["shift"], "\u001b[1;2P"],
+  ["\u001b[15~", ["ctrl"], "\u001b[15;5~"],
+] as const)("a latched modifier on %j sends %j", (typed, ids, bytes) => {
+  expect(applyModifiers(typed, latched(...ids), "other")).toEqual({ kind: "write", data: bytes });
+});
+
+test.each(["\u001b[I", "\u001b[0n", "\u001b[12;5R", "\u001b[200~", "\u001b[?25h"])(
+  "a latched modifier leaves %j alone, since it is a report and not a key",
+  (report) => {
+    expect(applyModifiers(report, latched("ctrl", "shift"), "other")).toEqual({ kind: "write", data: report });
+  },
+);
+
+test.each([
   ["esc", "\u001b"],
   ["interrupt", "\u0003"],
   ["tab", "\t"],

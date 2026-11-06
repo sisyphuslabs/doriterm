@@ -17,8 +17,8 @@ async function openMesh(page: Page): Promise<void> {
   await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
   await page.goto("/settings");
   await page
-    .getByRole("tab", { name: "Mesh" })
-    .or(page.getByRole("button", { name: "Mesh" }))
+    .getByRole("tab", { name: "Machines" })
+    .or(page.getByRole("button", { name: "Machines" }))
     .first()
     .click();
   await expect(page.locator("[data-mesh-group]").first()).toBeVisible({ timeout: 20_000 });

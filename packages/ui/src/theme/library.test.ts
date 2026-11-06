@@ -19,7 +19,7 @@ test("every built-in theme has its own name", () => {
   expect(Object.keys(BUILTIN_THEMES).toSorted()).toEqual(Object.keys(BUILTIN_PALETTES).toSorted());
 });
 
-test.each(Object.entries(LIBRARY_CREDITS))("%s credits its project under a licence doriface can ship", (_, credit) => {
+test.each(Object.entries(LIBRARY_CREDITS))("%s credits its project under a licence Doriterm can ship", (_, credit) => {
   expect(credit.url).toStartWith("https://github.com/");
   expect(["MIT", "Apache-2.0"]).toContain(credit.licence);
 });

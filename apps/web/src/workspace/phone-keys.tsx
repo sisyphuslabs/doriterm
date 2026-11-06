@@ -1,10 +1,13 @@
-import { DirectionPad, ExtraKeysBar, extraKeys, KeyboardButton, Menu, MenuItem } from "@doriface/ui";
-import type { RefObject } from "react";
+import { DirectionPad, ExtraKeysBar, KeyboardButton, Menu, MenuItem } from "@doriface/ui";
+import { type RefObject, useCallback, useState } from "react";
+import { activeEntries, specialEntries } from "../keybar/entries.ts";
+import { toExtra } from "../keybar/render.tsx";
+import { useKeyBarSettings } from "../keybar/store.ts";
 import type { HostPlatform } from "../terminal/keys.ts";
 import type { TerminalPort } from "../terminal/terminal-port.ts";
+import { InputBox } from "./input-box.tsx";
 import { machineOf, type Session, terminalTitle } from "./model.ts";
 import type { StickyKeys } from "./use-sticky-keys.ts";
-import { InputBox } from "./input-box.tsx";
 
 export function keysBottom(inset: number): string {
   return inset > 0 ? `${inset}px` : "var(--safe-bottom)";
@@ -32,12 +35,33 @@ export interface PhoneKeysProps {
   /** The arrow pad is open over the keys bar; the terminal keeps its own controls above it. */
   readonly pad: boolean;
   readonly onPad: (open: boolean) => void;
+  /** Opens the packs panel: the bar's pack button, or Ctrl held down. */
+  readonly onPacks: () => void;
   /**
    * Set where the bar opens without a soft keyboard (a mouse-only device, #287): the round button reads Show keys and
    * calls this with true, and the bar's last key reads Hide keys and calls it with false. Unset, the button raises the
    * soft keyboard and the bar's key puts it down.
    */
   readonly onKeys?: (shown: boolean) => void;
+  /** The bar's height in px as it is drawn (taller while the field has a row of its own); 0 while it is closed. */
+  readonly onBarHeight?: (px: number) => void;
+}
+
+/** Reports an element's border-box height as it changes, and 0 once it is gone. */
+function useHeightReport(report: ((px: number) => void) | undefined): (element: HTMLDivElement | null) => void {
+  return useCallback(
+    (element: HTMLDivElement | null) => {
+      if (element === null || report === undefined) return undefined;
+      const observer = new ResizeObserver(() => report(element.getBoundingClientRect().height));
+      observer.observe(element);
+      report(element.getBoundingClientRect().height);
+      return () => {
+        observer.disconnect();
+        report(0);
+      };
+    },
+    [report],
+  );
 }
 
 function hideKeyboard(): void {
@@ -45,11 +69,47 @@ function hideKeyboard(): void {
 }
 
 /**
- * The phone terminal's keys (after t3code's terminal screen): with the soft keyboard up, the keys bar rides on it and
- * can open the arrow pad; with it down, only a round keyboard button stays, at the bottom right.
+ * The phone terminal's keys (after t3code's terminal screen): the active pack's keys, then the person's own from Settings
+ * > Keyboard, then the controls that never move (the arrow pad, Switch session, Paste, and the fixed slots). With the soft
+ * keyboard up the bar rides on it; with it down, only a round keyboard button stays, at the bottom right.
  */
 export function PhoneKeys(props: PhoneKeysProps) {
-  const { port, open, inset, host, sticky, terminals, current, onOpen, onMenu, pad, onPad, onKeys } = props;
+  const {
+    port,
+    open,
+    inset,
+    host,
+    sticky,
+    terminals,
+    current,
+    onOpen,
+    onMenu,
+    pad,
+    onPad,
+    onPacks,
+    onKeys,
+    onBarHeight,
+  } = props;
+  const [typing, setTyping] = useState(false);
+  const [barHeight, setBarHeight] = useState(0);
+  const reportHeight = useCallback(
+    (px: number) => {
+      setBarHeight(px);
+      onBarHeight?.(px);
+    },
+    [onBarHeight],
+  );
+  const barRef = useHeightReport(reportHeight);
+  const settings = useKeyBarSettings();
+  const own = specialEntries(settings, host);
+  const packed = activeEntries(settings);
+  const entries = new Map([...own, ...packed].map((entry) => [entry.id, entry]));
+  const press = (id: string): void => {
+    const entry = entries.get(id);
+    if (entry === undefined) return;
+    if (entry.bytes === null) sticky.press(id);
+    else sticky.send(entry.bytes);
+  };
   if (!open) {
     return (
       <KeyboardButton
@@ -69,21 +129,27 @@ export function PhoneKeys(props: PhoneKeysProps) {
         <DirectionPad
           onKey={sticky.press}
           className="absolute right-3 z-10"
-          style={{ bottom: `calc(${bottom} + ${KEYS_BAR_HEIGHT} + 0.5rem)` }}
+          style={{ bottom: `calc(${bottom} + ${barHeight > 0 ? `${barHeight}px` : KEYS_BAR_HEIGHT} + 0.5rem)` }}
         />
       ) : null}
       <ExtraKeysBar
+        ref={barRef}
+        inputActive={typing}
         className="absolute inset-x-0 z-10"
         style={{ bottom }}
-        keys={extraKeys(host === "mac")}
+        keys={own.map(toExtra)}
+        packKeys={packed.map(toExtra)}
         latched={[...sticky.latched]}
-        onKey={sticky.press}
+        onKey={press}
+        onKeyHold={() => onPacks()}
         padOpen={pad}
         onPad={() => onPad(!pad)}
         onPaste={sticky.paste}
         inputField={
           <InputBox
-            className="w-[clamp(8rem,40vw,12rem)] shrink-0 p-0"
+            className={typing ? "w-full p-0" : "w-[clamp(8rem,40vw,12rem)] shrink-0 p-0"}
+            draftKey={current}
+            onActive={setTyping}
             onSend={(text) => port.current?.send(`${text}\r`)}
           />
         }

@@ -1,6 +1,14 @@
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
-import { machineRow, newOn, STATE_BOUND_MS, reconnect, switchTo } from "./machine-switch.ts";
+import {
+  machineRow,
+  newOn,
+  STATE_BOUND_MS,
+  reconnect,
+  switchTo,
+  OFFLINE_BOUND_MS,
+  OFFLINE_TEST_TIMEOUT_MS,
+} from "./machine-switch.ts";
 
 test.describe("machines added with hc machine add", () => {
   test("New terminal on a machine starts its shell there and attaches it at machine/tN", async ({ page }) => {
@@ -27,13 +35,14 @@ test.describe("machines added with hc machine add", () => {
   });
 
   test("a machine that goes offline with the page open reads offline and offers no new terminal", async ({ page }) => {
+    test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto("/");
     await expect(machineRow(page)).toContainText("connected", { timeout: 20_000 });
     try {
       switchTo("off");
-      await expect(machineRow(page)).toContainText("offline", { timeout: STATE_BOUND_MS });
+      await expect(machineRow(page)).toContainText("offline", { timeout: OFFLINE_BOUND_MS });
       await expect(newOn(page)).toBeDisabled();
       expect(errors).toEqual([]);
     } finally {

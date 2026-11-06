@@ -1,4 +1,6 @@
 import { Button, SettingRow, Switch } from "@doriface/ui";
+import { Link } from "@tanstack/react-router";
+import { guideStore } from "../pair/first-run-guide.ts";
 import { install, useInstallOffer } from "../device/install.ts";
 import { keepAwakeStore, screenWakeLock, useKeepAwake } from "../device/keep-awake.ts";
 
@@ -26,7 +28,7 @@ export function DeviceSection() {
       <SettingRow
         key="install"
         inline
-        title="Install doriface"
+        title="Install Doriterm"
         description="Opens in its own window, from the Dock or the home screen."
         control={
           <Button size="sm" onClick={() => void install(offer.prompt)}>
@@ -38,14 +40,21 @@ export function DeviceSection() {
       <SettingRow
         key="install"
         title="Add to Home Screen"
-        description="In Safari, tap Share, then Add to Home Screen. doriface then opens in its own window."
+        description="In Safari, tap Share, then Add to Home Screen. Doriterm then opens in its own window."
         control={null}
       />
     ) : null,
+    <SettingRow
+      key="guide"
+      inline
+      title="Getting started"
+      description="The first-run steps: start an agent and find it in the agents list."
+      control={
+        <Button size="sm" render={<Link to="/" />} onClick={() => guideStore.start()}>
+          Show again
+        </Button>
+      }
+    />,
   ].filter((row) => row !== null);
-  return rows.length === 0 ? (
-    <p className="py-3 text-sm text-muted-foreground">This browser has no device settings.</p>
-  ) : (
-    <div className="flex flex-col">{rows}</div>
-  );
+  return <div className="flex flex-col">{rows}</div>;
 }

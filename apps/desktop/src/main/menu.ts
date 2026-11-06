@@ -2,7 +2,7 @@ import type { MenuItemConstructorOptions } from "electron";
 import type { DesktopPlatform } from "../shared/bridge.ts";
 import { shellMenu } from "./shell-menu.ts";
 
-export const REPOSITORY_URL = "https://github.com/sisyphuslabs/doriface";
+export const REPOSITORY_URL = "https://github.com/sisyphuslabs/doriterm";
 
 export interface MenuOptions {
   readonly platform: DesktopPlatform;
@@ -87,7 +87,7 @@ export function menuTemplate(options: MenuOptions): MenuItemConstructorOptions[]
     { role: "windowMenu" },
     {
       role: "help",
-      submenu: [{ label: "doriface on GitHub", click: () => options.openExternal(REPOSITORY_URL) }],
+      submenu: [{ label: "Doriterm on GitHub", click: () => options.openExternal(REPOSITORY_URL) }],
     },
   ];
   return mac ? [appMenu(options.openSettings), ...common] : common;

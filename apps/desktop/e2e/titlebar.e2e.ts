@@ -85,9 +85,9 @@ function underWindowButtons(page: Page): Promise<string[]> {
  */
 const TITLE_GAP = 12;
 
-/** The left edge of the sidebar's "doriface" title against the right edge of the window buttons, in window points. */
+/** The left edge of the sidebar's "Doriterm" title against the right edge of the window buttons, in window points. */
 async function titleClearance(app: ElectronApplication, page: Page): Promise<number> {
-  const title = await page.locator("aside [data-titlebar]").getByText("doriface", { exact: true }).boundingBox();
+  const title = await page.locator("aside [data-titlebar]").getByText("Doriterm", { exact: true }).boundingBox();
   const buttons = await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0]?.getWindowButtonPosition(),
   );
@@ -189,10 +189,10 @@ test("nothing sits under the window buttons, in every state and size, and full s
     const sidebarRow = document.querySelector("aside [data-titlebar]");
     const icon = sidebarRow?.querySelector("img")?.getBoundingClientRect();
     const title = [...(sidebarRow?.querySelectorAll("span") ?? [])]
-      .find((el) => el.textContent === "doriface")
+      .find((el) => el.textContent === "Doriterm")
       ?.getBoundingClientRect();
     const search = sidebarRow?.querySelector('[aria-label="Command palette"]')?.getBoundingClientRect();
-    const name = [...(sidebarRow?.querySelectorAll("span") ?? [])].find((el) => el.textContent === "doriface");
+    const name = [...(sidebarRow?.querySelectorAll("span") ?? [])].find((el) => el.textContent === "Doriterm");
     const font = name === undefined ? null : getComputedStyle(name);
     return icon === undefined || title === undefined || search === undefined
       ? null

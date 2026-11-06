@@ -15,7 +15,7 @@ export interface MachineEntry {
   readonly first: string | undefined;
 }
 
-/** hc's states in the sidebar's words; "offline" is what Settings > Machines and an offline pane say. */
+/** hc's states in the sidebar's words; "offline" is what the Machines screen and an offline pane say. */
 const LABELS: Readonly<Record<string, string>> = { needs_login: "needs login", unreachable: "offline" };
 
 export const stateLabel = (state: string): string => LABELS[state] ?? state;

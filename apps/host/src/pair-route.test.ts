@@ -62,7 +62,7 @@ describe("this computer's pairing offer on the loopback gateway", () => {
     expect(code).toHaveLength(8);
     expect(Reflect.get(offer, "opens")).toBe("desktop");
     expect(String(Reflect.get(offer, "link")).startsWith("doriface://pair#")).toBe(true);
-    expect(String(Reflect.get(offer, "phoneLink")).startsWith("https://doriface.omo.dev/pair#")).toBe(true);
+    expect(String(Reflect.get(offer, "phoneLink")).startsWith("https://app.doriterm.com/pair#")).toBe(true);
     expect(Reflect.get(offer, "slot")).toBe("unavailable");
     expect(Reflect.get(offer, "codeUsable")).toBe(false);
 

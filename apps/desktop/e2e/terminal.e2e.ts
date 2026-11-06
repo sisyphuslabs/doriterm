@@ -130,3 +130,24 @@ test("under the macOS titlebar rules a whole tab takes the press, so it drags th
     });
   expect(regions).toEqual({ strip: "drag", pill: "no-drag" });
 });
+
+test("the mic is live only where the app has the system recognizer: crossed out with why elsewhere (#726)", async () => {
+  if (launched === undefined) throw new Error("the app did not launch");
+  const page = await launched.firstWindow();
+  // The mic sits in the tab bar and dictates into the focused pane.
+  const mic = page.locator("[data-voice-mic]").first();
+  if (process.platform === "darwin") {
+    // The packaged Mac app loads its recognizer, so the mic offers dictation. It is not pressed here: that would raise
+    // the system's microphone prompt on the runner.
+    await expect(mic).toHaveAccessibleName(/^Dictate into /);
+    return;
+  }
+  await expect(mic).toHaveAccessibleName("Dictation unavailable");
+  await mic.click();
+  const why =
+    process.platform === "win32" ? "The Windows app can't dictate yet" : "The desktop app can't dictate here yet";
+  await expect(page.getByText(why)).toBeVisible();
+  // Nothing asked for the microphone: the strip says why, and Close puts the mic back.
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByText(why)).toHaveCount(0);
+});

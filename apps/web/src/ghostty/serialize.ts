@@ -6,7 +6,7 @@ const quote = (value: string): string =>
 
 /** Writes the non-default keys as a Ghostty config file, in schema order, one line per value. */
 export function serializeGhosttyConfig(config: TerminalConfig): string {
-  const lines = ["# Terminal settings exported from doriface (Ghostty config syntax)"];
+  const lines = ["# Terminal settings exported from Doriterm (Ghostty config syntax)"];
   for (const def of KEYS) {
     const values = config.get(def.key);
     if (values === undefined) continue;

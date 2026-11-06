@@ -136,9 +136,20 @@ jobs:
         with:
           bun-version: 1.4.4
       - run: bun install --frozen-lockfile
-      - name: Install Chromium
+      # This job's two runners are macos-15 and windows-latest. Neither has apt or a timeout binary, so the bounding used
+      # elsewhere in this repository has nothing to bound here and the step's timeout-minutes is the only bound.
+      # Windows keeps --with-deps: there it installs the Server-Media-Foundation media pack, which is not apt and is
+      # still needed. macOS needs nothing beyond the browser.
+      - name: Install Chromium on Windows
+        if: runner.os == 'Windows'
         working-directory: apps/web
+        timeout-minutes: 12
         run: bunx playwright install --with-deps chromium
+      - name: Install Chromium on macOS
+        if: runner.os == 'macOS'
+        working-directory: apps/web
+        timeout-minutes: 12
+        run: bunx playwright install chromium
       - name: Build the web app
         working-directory: apps/web
         run: bunx --bun vite build --outDir "$RUNNER_TEMP/web-dist" --emptyOutDir

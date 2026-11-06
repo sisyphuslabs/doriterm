@@ -1,5 +1,6 @@
 // The layout spec's screens: each opens one state of the app with the layout host's long names on the page.
 import type { Page } from "@playwright/test";
+import { pickFile } from "./file-input";
 import { BAD_LINK, fakeRelay, PAIR_CODE, PAIR_LINK, PAIRING_SETTINGS } from "./capture-relay.ts";
 import { E2E_LAYOUT_PORT, E2E_TOKEN } from "./config.ts";
 import { expect } from "./fixtures.ts";
@@ -63,9 +64,7 @@ async function section(page: Page, narrow: boolean, label: string): Promise<void
 }
 
 async function choose(page: Page, button: string, text: string): Promise<void> {
-  const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: button }).click();
-  await (await chooser).setFiles({ name: "config", mimeType: "text/plain", buffer: Buffer.from(text) });
+  await pickFile(page, button, "config", text);
   await expect(page.getByRole("dialog")).toBeVisible();
 }
 
@@ -109,7 +108,7 @@ export const SCREENS: readonly Screen[] = [
   {
     name: "unreachable-settings",
     start: "unreachable",
-    open: (page, narrow) => section(page, narrow, "Connections"),
+    open: (page, narrow) => section(page, narrow, "This device"),
   },
   { name: "workspace", start: "layout", open: workspace },
   {
@@ -163,13 +162,13 @@ export const SCREENS: readonly Screen[] = [
       await expect(page.getByRole("combobox", { name: "Command" })).toBeFocused();
     },
   },
-  ...(["Connections", "Appearance", "Device", "Terminal", "Keybindings", "Voice input"] as const).map(
-    (label): Screen => ({
-      name: `settings-${label.toLowerCase()}`,
-      start: "layout",
-      open: (page, narrow) => section(page, narrow, label),
-    }),
-  ),
+  ...(
+    ["This device", "Machines", "Connect a machine", "Appearance", "Terminal", "Keybindings", "Voice input"] as const
+  ).map((label): Screen => ({
+    name: `settings-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    start: "layout",
+    open: (page, narrow) => section(page, narrow, label),
+  })),
   {
     name: "settings-storage-error",
     start: "layout",

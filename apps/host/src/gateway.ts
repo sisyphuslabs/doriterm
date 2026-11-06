@@ -5,6 +5,7 @@ import { type BunWebSocketData, upgradeWebSocket } from "hono/bun";
 import type { WSEvents } from "hono/ws";
 import { checkBearer, checkHandshake } from "./auth.ts";
 import { bridge } from "./bridge.ts";
+import { AmbiguousDeviceError, type DeviceSurface, UnknownDeviceError } from "./device-surface.ts";
 import { acceptE2ee, type E2eeDeps, type E2eeTransport } from "./e2ee/accept.ts";
 import { meshPeer } from "./e2ee/authorize.ts";
 import { firstLineRefusal, gateHello } from "./e2ee/first-line.ts";
@@ -44,6 +45,12 @@ export interface GatewayOptions {
    * reports it, behind the same token as `/v1/hc` and never on the LAN listener. Without it both routes are absent.
    */
   readonly pair?: PairRoute | undefined;
+  /**
+   * This computer's paired devices for the app that runs the host: `GET /v1/devices` lists them and
+   * `DELETE /v1/devices/<id>` revokes one, behind the same token as `/v1/hc` and never on the LAN listener. Without it
+   * both routes are absent.
+   */
+  readonly devices?: DeviceSurface | undefined;
 }
 
 /** The loopback pairing routes' answers; the app renders these, so they stay JSON-serialisable. */
@@ -130,15 +137,30 @@ export function createGateway(options: GatewayOptions): Gateway {
     }),
   );
   const pair = options.pair;
-  if (pair !== undefined) {
+  const devices = options.devices;
+  if (pair !== undefined || devices !== undefined) {
     const pairGate = async (c: Context, next: Next) => {
       if (!checkBearer(c.req.header("authorization"), options.token))
         return c.text("missing or wrong doriface token", 401);
       await next();
       return undefined;
     };
-    app.get("/v1/pair", pairGate, (c) => c.json(pair.state()));
-    app.post("/v1/pair", pairGate, async (c) => c.json(await pair.open()));
+    if (pair !== undefined) {
+      app.get("/v1/pair", pairGate, (c) => c.json(pair.state()));
+      app.post("/v1/pair", pairGate, async (c) => c.json(await pair.open()));
+    }
+    if (devices !== undefined) {
+      app.get("/v1/devices", pairGate, (c) => c.json({ devices: devices.list() }));
+      app.delete("/v1/devices/:id", pairGate, async (c) => {
+        try {
+          return c.json({ revoked: await devices.revoke(c.req.param("id") ?? "") });
+        } catch (error) {
+          if (error instanceof UnknownDeviceError) return c.json({ error: error.message }, 404);
+          if (error instanceof AmbiguousDeviceError) return c.json({ error: error.message }, 409);
+          throw error instanceof Error ? error : new Error(String(error));
+        }
+      });
+    }
   }
 
   const pipeTo = (link: Link, closeClient: (code: number, reason: string) => void): void => {

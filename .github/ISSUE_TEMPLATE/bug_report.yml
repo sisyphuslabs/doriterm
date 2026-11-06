@@ -1,0 +1,72 @@
+name: Bug report
+description: Something in the app, the web client, the host or the relay does not do what it says.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. A report that names what you ran and what came back is one we can act on.
+        If the problem is a security one, do not file it here: report it privately to a maintainer instead of in a public issue.
+        The model it belongs to is in README.md ("Security") and docs/architecture.md §12.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you saw, and the exact message if there was one.
+      placeholder: |
+        I paired this computer from my phone, opened the workspace, and the terminal pane stayed blank.
+        The status bar said "relay" and the pane said "waiting for the host".
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+      placeholder: The pane should have shown the shell that `hc` lists on this computer.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce
+      description: Numbered steps, from a fresh app open if you can.
+      placeholder: |
+        1. `doriface-host pair` on the computer with the terminals
+        2. scan the QR code on the phone
+        3. open the first space
+    validations:
+      required: false
+
+  - type: input
+    id: versions
+    attributes:
+      label: Version and platform
+      description: The release (or commit) of the app or web client, the OS, and the `hc` version if a host is involved.
+      placeholder: Doriterm 0.1.2, macOS 26.1, Apple silicon, hc 0.1.17
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where it went wrong
+      multiple: true
+      options:
+        - The desktop app
+        - The web client or the installed PWA
+        - The host (`doriface-host`)
+        - Pairing a device
+        - The relay
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, screenshots or a recording
+      description: Drag files in, or paste the output. Remove anything private before you paste it.
+    validations:
+      required: false

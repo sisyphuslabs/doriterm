@@ -1,0 +1,15 @@
+{
+  "what": "the installed app's offline start, measured while the network was off",
+  "how": "Chromium at 375x812 against the built app; the page registered its service worker, then the context went offline and the page was reloaded",
+  "service_worker_scope": "http://127.0.0.1:55736/",
+  "installability_errors": [],
+  "manifest_id": "/",
+  "manifest_display": "standalone",
+  "offline_reload": "ok",
+  "offline_document": {
+    "body": 3787,
+    "title": "Doriterm"
+  },
+  "beforeinstallprompt_seen": false,
+  "note": "beforeinstallprompt is false because a headless Chromium never offers the prompt; installability is proven by the errors list and the manifest, not by a dialog"
+}

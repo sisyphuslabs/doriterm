@@ -30,22 +30,87 @@ export const Channel = {
   hcInstallPhase: "doriface:hc-install-phase",
   /** Renderer to main: whether this system can show native notifications. */
   noticesSupported: "doriface:notices-supported",
+  /** Renderer to main: the OS's standing answer about this app's notifications (`authorized`, `denied`, ...). */
+  noticePermission: "doriface:notice-permission",
   /** Renderer to main: show one native notification about an agent (a kind and its terminal, never any text). */
   showNotice: "doriface:show-notice",
   /** Main to renderer: a notification was clicked; carries its terminal address, or null for a test. */
   noticeClicked: "doriface:notice-clicked",
   /** Renderer to main: this computer's pairing offer (`open` for a fresh one, `state` for what stands). */
   pairOffer: "doriface:pair-offer",
+  /** Renderer to main: this computer's paired devices and this device's id. */
+  pairedDevices: "doriface:paired-devices",
+  /** Renderer to main: revoke one paired device by its short id. */
+  revokeDevice: "doriface:revoke-device",
   /** Renderer to main: the Direct address the page saved, checked by the shell before it forwards anything (chosen). */
   setDirectTarget: "doriface:set-direct-target",
   /** Renderer to main: one capability to forward bytes to the saved Direct address, or why not (#449). */
   directForward: "doriface:direct-forward",
   /** Renderer to main: the page gave up on a capability, so its late upgrade is refused. */
   cancelDirectForward: "doriface:cancel-direct-forward",
+  /** Renderer to main: whether this Mac recognizes a language on the device (#726). */
+  dictationAvailable: "doriface:dictation-available",
+  /** Renderer to main: start one dictation session in the system recognizer, after the system's own prompts. */
+  dictationStart: "doriface:dictation-start",
+  /** Renderer to main: end the session's audio; its last words still arrive. */
+  dictationStop: "doriface:dictation-stop",
+  /** Renderer to main: end the session now. */
+  dictationAbort: "doriface:dictation-abort",
+  /** Main to renderer: one event of the session this page started. */
+  dictationEvent: "doriface:dictation-event",
 } as const;
 
 /** The main process hands the app version to the sandboxed preload through this argv entry. */
 export const VERSION_ARG = "--doriface-app-version=";
+
+/** Present only when this build's system recognizer loaded (macOS), so the preload offers dictation (#726). */
+export const DICTATION_ARG = "--doriface-dictation";
+
+/** Why a dictation did not start: a system setting, no on-device model, another session or prompt, or anything else. */
+export const DICTATION_REFUSALS = ["mic-system", "speech-system", "device-mac", "busy", "service"] as const;
+export type DictationRefusal = (typeof DICTATION_REFUSALS)[number];
+
+export type DictationStartAnswer = { readonly session: number } | { readonly refused: DictationRefusal };
+
+/** One event of a dictation session, as the system recognizer reports it. Never carries audio. */
+export type DictationEvent =
+  | { readonly session: number; readonly kind: "speechstart" | "speechend" | "end" }
+  | { readonly session: number; readonly kind: "result"; readonly text: string; readonly final: boolean }
+  | { readonly session: number; readonly kind: "error"; readonly code: string };
+
+/** A BCP 47 tag of the shape the recognizer takes (`en-US`, `ko-KR`, `zh-Hant-TW`); nothing else reaches native code. */
+export const isDictationLanguage = (value: unknown): value is string =>
+  typeof value === "string" && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$/.test(value);
+
+export const isDictationSession = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+
+const MAX_DICTATION_TEXT = 10_000;
+
+export function isDictationEvent(value: unknown): value is DictationEvent {
+  if (typeof value !== "object" || value === null) return false;
+  const kind: unknown = Reflect.get(value, "kind");
+  if (!isDictationSession(Reflect.get(value, "session"))) return false;
+  if (kind === "speechstart" || kind === "speechend" || kind === "end") return true;
+  if (kind === "result") {
+    const text: unknown = Reflect.get(value, "text");
+    return (
+      typeof text === "string" && text.length <= MAX_DICTATION_TEXT && typeof Reflect.get(value, "final") === "boolean"
+    );
+  }
+  if (kind === "error") {
+    const code: unknown = Reflect.get(value, "code");
+    return typeof code === "string" && /^[a-z-]{1,32}$/.test(code);
+  }
+  return false;
+}
+
+export function isDictationStartAnswer(value: unknown): value is DictationStartAnswer {
+  if (typeof value !== "object" || value === null) return false;
+  if (isDictationSession(Reflect.get(value, "session"))) return true;
+  const refused: unknown = Reflect.get(value, "refused");
+  return DICTATION_REFUSALS.some((known) => known === refused);
+}
 
 export type DesktopPlatform = "darwin" | "linux" | "win32";
 
@@ -61,6 +126,25 @@ export interface DesktopNotice {
 }
 
 const MAX_TERMINAL = 160;
+
+/**
+ * The OS's standing answer about this app's notifications, as macOS names it: `not-determined` until the first notice
+ * makes it ask, then `authorized` or `denied`; `unknown` where the running shell cannot read one (#769).
+ */
+export const NOTICE_AUTHORIZATIONS = ["authorized", "denied", "not-determined", "unknown"] as const;
+export type NoticeAuthorization = (typeof NOTICE_AUTHORIZATIONS)[number];
+
+export const isNoticeAuthorization = (value: unknown): value is NoticeAuthorization =>
+  NOTICE_AUTHORIZATIONS.some((known) => known === value);
+
+/** What showing a notification came to: the OS took it, or why it did not (`show()` threw, or its `failed` event). */
+export type NoticeAnswer = { readonly accepted: true } | { readonly accepted: false; readonly reason: string };
+
+export function isNoticeAnswer(value: unknown): value is NoticeAnswer {
+  if (typeof value !== "object" || value === null) return false;
+  const accepted: unknown = Reflect.get(value, "accepted");
+  return accepted === true || (accepted === false && typeof Reflect.get(value, "reason") === "string");
+}
 
 export function isDesktopNotice(value: unknown): value is DesktopNotice {
   if (typeof value !== "object" || value === null) return false;
@@ -103,8 +187,7 @@ export interface PairedDevice {
   readonly pairedAt: string;
 }
 
-/**
- * What `pairOffer` answers: the offer to show, the device that used it, or why this app cannot ask its host
+/** What `pairOffer` answers: the offer to show, the device that used it, or why this app cannot ask its host
  * (`unavailable`, which is never a transient offer state).
  */
 export type PairOfferAnswer =
@@ -113,6 +196,50 @@ export type PairOfferAnswer =
   | { readonly state: "expired" }
   | { readonly state: "none" }
   | { readonly state: "unavailable"; readonly reason: string };
+
+/**
+ * What `pairedDevices` answers: every device this computer has stored, or why this app cannot ask its host.
+ */
+export type PairedDevicesAnswer =
+  | { readonly state: "listed"; readonly devices: readonly PairedDevice[] }
+  | { readonly state: "unavailable"; readonly reason: string };
+
+/** What `revokeDevice` answers: the list after the revoke, or why it did not happen. */
+export type RevokeDeviceAnswer =
+  | { readonly state: "revoked"; readonly device: PairedDevice; readonly devices: readonly PairedDevice[] }
+  | { readonly state: "not-found"; readonly devices: readonly PairedDevice[] }
+  | { readonly state: "unavailable"; readonly reason: string };
+
+export function isPairedDevice(value: unknown): value is PairedDevice {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof Reflect.get(value, "name") === "string" &&
+    typeof Reflect.get(value, "id") === "string" &&
+    typeof Reflect.get(value, "pairedAt") === "string"
+  );
+}
+
+const pairedDevices = (value: unknown): readonly PairedDevice[] | undefined =>
+  Array.isArray(value) && value.every(isPairedDevice) ? value : undefined;
+
+export function isPairedDevicesAnswer(value: unknown): value is PairedDevicesAnswer {
+  if (typeof value !== "object" || value === null) return false;
+  const state: unknown = Reflect.get(value, "state");
+  if (state === "unavailable") return typeof Reflect.get(value, "reason") === "string";
+  return state === "listed" && pairedDevices(Reflect.get(value, "devices")) !== undefined;
+}
+
+export function isRevokeDeviceAnswer(value: unknown): value is RevokeDeviceAnswer {
+  if (typeof value !== "object" || value === null) return false;
+  const state: unknown = Reflect.get(value, "state");
+  // `unavailable` is why the revoke did not happen and carries no list, so it is read before the list is required.
+  if (state === "unavailable") return typeof Reflect.get(value, "reason") === "string";
+  const list = pairedDevices(Reflect.get(value, "devices"));
+  if (list === undefined) return false;
+  if (state === "revoked") return isPairedDevice(Reflect.get(value, "device"));
+  return state === "not-found";
+}
 
 export function isPairOfferAnswer(value: unknown): value is PairOfferAnswer {
   if (typeof value !== "object" || value === null) return false;
@@ -214,6 +341,9 @@ export interface DorifaceBridge {
    * cannot answer is an `unavailable` answer.
    */
   pairOffer(request: "open" | "state"): Promise<PairOfferAnswer>;
+  /** This computer's paired devices; revoking one from here closes its sessions on the host. */
+  pairedDevices(): Promise<PairedDevicesAnswer>;
+  revokeDevice(id: string): Promise<RevokeDeviceAnswer>;
   /** Calls `listener` with an app path to show, e.g. `/settings` from the app menu. */
   onNavigate(listener: (path: string) => void): void;
   /** Paints the window, now and at the next launch, with the in-app theme's background (`#rrggbb`). */
@@ -236,8 +366,10 @@ export interface DorifaceBridge {
   installUpdate(): Promise<boolean>;
   /** Whether this system shows native notifications at all (a Linux desktop may run no notification service). */
   noticesSupported(): Promise<boolean>;
-  /** Shows a native notification; resolves false when the notice was refused. */
-  showNotice(notice: DesktopNotice): Promise<boolean>;
+  /** The OS's standing answer about this app's notifications; `unknown` where this shell cannot read one. */
+  noticePermission(): Promise<NoticeAuthorization>;
+  /** Shows a native notification; resolves with whether the OS took it, or why it did not. */
+  showNotice(notice: DesktopNotice): Promise<NoticeAnswer>;
   /** Calls `listener` with the terminal of each clicked notification (null for a test one). */
   onNoticeClick(listener: (terminal: string | null) => void): void;
   /** Tells the shell the Direct address the page saved; the shell checks it and forwards nothing else (#449). */
@@ -246,6 +378,13 @@ export interface DorifaceBridge {
   forwardDirect(): Promise<DirectForwardAnswer>;
   /** Tells the shell the page gave up on a capability, so no socket is opened for it later. */
   cancelDirectForward(url: string): Promise<boolean>;
+  /** Dictation through the system recognizer: present only on a Mac build where it loaded (#726). */
+  dictationAvailable?(lang: string): Promise<boolean>;
+  dictationStart?(lang: string): Promise<DictationStartAnswer>;
+  dictationStop?(session: number): Promise<boolean>;
+  dictationAbort?(session: number): Promise<boolean>;
+  /** Calls `listener` with every event of the sessions this page started. */
+  onDictationEvent?(listener: (event: DictationEvent) => void): void;
 }
 
 export function parsePlatform(value: string): DesktopPlatform {

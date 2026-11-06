@@ -71,6 +71,11 @@ export interface Host {
    * opened a pipe yet. Its next tick waits on a timer, so no tick's child runs until the caller yields to timers.
    */
   gitFactsSettled(): Promise<void>;
+  /**
+   * Settles once the mesh-status ticks asked for so far are over and their `hc connect` children have exited; at once if
+   * no client has opened a pipe yet. Its next tick waits on a timer, like the git facts'.
+   */
+  meshStatusSettled(): Promise<void>;
   /** Closes every client and `hc connect` child, then the listener. */
   stop(): Promise<void>;
 }

@@ -26,6 +26,7 @@ interface Waiting {
 export class PendingJoins {
   readonly #waiting = new Map<string, Waiting>();
   readonly #watchers = new Set<(join: PendingJoin) => void>();
+  readonly #admitted = new Set<(join: PendingJoin) => void>();
   #autoUntil = 0;
 
   /** Approves every join until `until` (the `--auto` offer's expiry); 0 turns it off. */
@@ -43,6 +44,19 @@ export class PendingJoins {
     this.#watchers.clear();
     for (const watcher of watchers) watcher(join);
     return decided.promise;
+  }
+
+  /** Calls `listener` with each join this host admits from now on, after its welcome is sent; returns the unsubscribe. */
+  onAdmitted(listener: (join: PendingJoin) => void): () => void {
+    this.#admitted.add(listener);
+    return () => {
+      this.#admitted.delete(listener);
+    };
+  }
+
+  /** A join was admitted and welcomed (section 4.4): tells whoever follows the offer it came on. */
+  admitted(join: PendingJoin): void {
+    for (const listener of this.#admitted) listener(join);
   }
 
   /** Expires the pending join with this nonce: its session ended before anyone decided. */

@@ -13,3 +13,5 @@ Answers: 201 sent, 410 the token is unregistered (the host drops the subscriptio
 `createBridge` in `src/bridge.ts` is a plain `fetch` handler, so it runs on Workers, Bun or Node. `src/worker.ts` is the Workers entry; `wrangler.toml` deploys it at `push-doriface.omo.dev`.
 
 Credentials (owner step, not in the repo): an APNs auth key (`APNS_PRIVATE_KEY`, the `.p8` file, with `APNS_KEY_ID` and `APNS_TEAM_ID`), the app's bundle id (`APNS_TOPIC`), and a Firebase service account JSON (`FCM_SERVICE_ACCOUNT`). A provider with no credentials answers 503 and the other keeps working.
+
+What a device token allows: the bridge checks that a request carries a valid VAPID token for its own origin, but it does not tie a device token to the VAPID key the app subscribed with (browser push services do, through `applicationServerKey`). The device token is the secret: it lives only in the app and on the host that holds the subscription. Someone who learns one can make that device show the fixed "Open doriface" alert, never a readable notice. Rate limiting per token is tracked separately.

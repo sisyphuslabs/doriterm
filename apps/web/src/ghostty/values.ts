@@ -141,7 +141,7 @@ export function checkValue(kind: Kind, value: string): Checked {
       const missing = [theme.light, theme.dark].find((name) => builtinTheme(name) === null);
       return missing === undefined
         ? OK
-        : bad(`"${missing}" is not a theme doriface has: one of ${THEME_NAMES.join(", ")} or a theme from Appearance`);
+        : bad(`"${missing}" is not a theme Doriterm has: one of ${THEME_NAMES.join(", ")} or a theme from Appearance`);
     }
     case "padding":
       return parsePadding(value) === null ? bad("expects pixels, or two values like 4,8") : OK;

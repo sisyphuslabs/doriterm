@@ -36,8 +36,8 @@ async function openDevice(page: Page, phone = false): Promise<void> {
   await page.goto("/settings");
   await (
     phone
-      ? page.getByRole("tab", { name: "Device" })
-      : page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: "Device" })
+      ? page.getByRole("tab", { name: "This device" })
+      : page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: "This device" })
   ).click();
   await expect(page.getByRole("heading", { name: "This device" })).toBeVisible();
 }

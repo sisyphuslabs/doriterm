@@ -18,7 +18,7 @@ export function CrashScreen({ error, onRetry }: CrashScreenProps) {
       <div role="alert" className="flex w-full max-w-md flex-col gap-4">
         <div className="flex items-center gap-2">
           <CircleAlert aria-hidden className="size-5 shrink-0 text-status-blocked-text" />
-          <h1 className="text-xl font-semibold">doriface stopped drawing</h1>
+          <h1 className="text-xl font-semibold">Doriterm stopped drawing</h1>
         </div>
         <p className="text-sm text-muted-foreground">
           It hit an error it could not draw past. Your terminals keep running on the host.

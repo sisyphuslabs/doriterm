@@ -2,6 +2,67 @@
 
 Changes land on `dev` through a pull request, and `dev` requires three checks: `Check`, `Relay e2e` and `Web e2e`.
 
+## From zero
+
+Everything below is public: no account, token or repository access beyond a public clone. It is written for Linux
+x86_64, and the `From zero` workflow runs these blocks exactly as written, in order, on a clean runner with no secrets
+(`tests/ci/from-zero.ts`), so a step that stops working or starts to need something private fails there first. On macOS,
+take the herdr-core archive for your machine from the same release (`herdr-core-macos-aarch64.tar.gz` or
+`herdr-core-macos-x86_64.tar.gz`) and check it with `shasum -a 256`. You need `git`, `curl`, `tar` and `unzip` first.
+
+Install Bun 1.4.4:
+
+```sh from-zero
+curl -fsSL https://bun.sh/install | bash -s bun-v1.4.4
+export PATH="$HOME/.bun/bin:$PATH"
+bun --version
+```
+
+Install herdr-core 0.1.17 as `hc`, checking the archive first:
+
+```sh from-zero
+mkdir -p "$HOME/.local/bin"
+curl -fsSL https://releases.herdr.dev/core/0.1.17/herdr-core-linux-x86_64.tar.gz -o herdr-core.tar.gz
+echo "82ec44043f6894bfdb716b979b87cda43fd7fa46b0104e7b7bd93e64d1a9b877  herdr-core.tar.gz" | sha256sum --check --strict
+tar -xzf herdr-core.tar.gz -C "$HOME/.local/bin" herdr-core
+ln -sf herdr-core "$HOME/.local/bin/hc"
+export PATH="$HOME/.local/bin:$PATH"
+hc --version
+```
+
+Clone the repository and install its dependencies:
+
+```sh from-zero
+git clone https://github.com/sisyphuslabs/doriterm.git
+cd doriterm
+```
+
+```sh from-zero
+bun install --frozen-lockfile
+```
+
+Run the type checker, linter, formatter check, API codegen check and every unit suite. The relay suites need the
+private relay, so this prints one line saying they were skipped and why:
+
+```sh from-zero
+bun run check
+```
+
+Run the browser suite against a real `hc`. `playwright install --with-deps` installs Chromium's system libraries with `sudo apt-get` each time it runs. The few specs that
+need the private relay are skipped, each with the same one-line reason:
+
+```sh from-zero
+cd apps/web
+bun run build
+bunx playwright install --with-deps chromium
+bun run test:e2e
+bun run test:e2e:two-runs
+```
+
+That is everything `Check` and `Web e2e` run: the web build, the browser suite, and two short runs at once on their own
+ports. The relay suites are optional for a contributor; with access to the private relay,
+`RELAY_REPO=<owner>/<name> bun run relay:test` runs them (see below), and without it that command says so and stops.
+
 ## Checks
 
 `bun run check` runs the type checker, the linter, the formatter check, the API codegen check and the tests, which is what
@@ -40,6 +101,17 @@ report is a check a fork can fake.
 Do not change `.github/workflows/` in a pull request unless that is the point of the pull request: a run from a fork
 uses the workflow files in the pull request, so a maintainer reads such a change on its own before trusting any check
 it reports.
+
+## Changelog
+
+A pull request that changes what users get adds one line under `## Unreleased` in `CHANGELOG.md`, in the subsection it
+belongs to: what changed for them in plain words, not how it was built, with the pull request number. The `Changelog`
+check fails a pull request that changes a file under `apps/` or `packages/` (tests, e2e specs, fixtures, the showcase
+and Markdown aside) and adds no such line. When nothing changes for users, a refactor or a build tweak, add the
+`no-changelog` label; the check runs again on its own.
+
+A release moves the Unreleased lines into a `## vX.Y.Z - YYYY-MM-DD` section. The release workflow refuses a tag whose
+section is missing or has no lines, before it builds anything, and publishes the section as the release notes.
 
 ## Commits
 

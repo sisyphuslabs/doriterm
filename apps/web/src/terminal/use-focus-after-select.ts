@@ -36,9 +36,10 @@ export function useFocusAfterSelect(wt: WTerm | null, trimCopy: boolean): void {
       if (element.contains(document.activeElement) || !element.isConnected || !mayTakeFocus(element)) return;
       const selection = document.getSelection();
       const range = selection !== null && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
+      // The selection is emptied before the input takes focus, so focusing puts the input's caret back as the document's
+      // selection. Emptied after, the input keeps focus with no caret, and macOS's Korean input method commits each jamo.
+      if (!longPressed(element)) keepPressSelection(selection, element, range);
       wt.focus();
-      if (longPressed(element)) return;
-      keepPressSelection(document.getSelection(), element, range);
     };
     const press = (event: MouseEvent): void => {
       if (event.button === 0) document.addEventListener("mouseup", restore, { once: true });

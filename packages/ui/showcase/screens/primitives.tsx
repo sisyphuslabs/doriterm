@@ -9,6 +9,7 @@ import {
   TerminalPreview,
 } from "../../src/index.ts";
 import { sampleQrModules } from "../data.ts";
+import { DEMO_KEYS } from "../keys.tsx";
 import { ControlSpecimens } from "./control-specimens.tsx";
 import { OverlaySpecimens } from "./overlay-specimens.tsx";
 import { Section } from "./specimen.tsx";
@@ -25,7 +26,7 @@ export function PrimitivesScreen() {
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-8 pb-40 md:px-8">
       <header>
-        <h1 className="text-2xl font-semibold text-foreground">doriface primitives</h1>
+        <h1 className="text-2xl font-semibold text-foreground">Doriterm primitives</h1>
         <p className="mt-1 text-base text-muted-foreground">
           Every component in packages/ui, in each state it ships with.
         </p>
@@ -59,7 +60,7 @@ export function PrimitivesScreen() {
             ]}
             cursor
           />
-          <ExtraKeysBar latched={["ctrl"]} />
+          <ExtraKeysBar keys={DEMO_KEYS} latched={["ctrl"]} />
         </div>
         <div className="mt-3 flex items-end gap-6">
           <DirectionPad />

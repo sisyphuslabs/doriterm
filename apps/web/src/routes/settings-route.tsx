@@ -1,5 +1,5 @@
 import { Button, IconButton, ScrollArea, Tab, TabList, Tabs, cn } from "@doriface/ui";
-import { ArrowLeft, Bell, Keyboard, Link2, Mic, Network, Palette, Server, SquareTerminal } from "lucide-react";
+import { ArrowLeft, Bell, Keyboard, Mic, Network, Palette, PanelBottom, Server, SquareTerminal } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { MonitorSmartphone } from "lucide-react";
 import { currentPlatform, triggerKeys } from "../keys/trigger.ts";
@@ -8,29 +8,38 @@ import { ConnectionSection } from "../settings/connection-section.tsx";
 import { DeviceSection } from "../settings/device-section.tsx";
 import { DevicesSection } from "../settings/devices-section.tsx";
 import { KeybindingsSection } from "../settings/keybindings-section.tsx";
+import { KeyboardSection } from "../settings/keyboard-section.tsx";
 import { MeshSection } from "../settings/mesh-section.tsx";
 import { MachinesSection } from "../settings/machines-section.tsx";
 import { NotificationsSection } from "../settings/notifications-section.tsx";
+import { PairSection } from "../settings/pair-section.tsx";
 import { TerminalSection } from "../settings/terminal-section.tsx";
 import { UpdateRow } from "../settings/update-row.tsx";
 import { CrashProbe } from "../crash/crash-probe.ts";
 import { RegionBoundary } from "../crash/region-boundary.tsx";
 import { usePendingUpdate } from "../update/update-store.ts";
 import { useCloseSettings } from "../settings/use-close-settings.ts";
+import { useSettingsInDialog } from "../settings/settings-dialog.tsx";
 import { VoiceSection } from "../settings/voice-section.tsx";
 
 const SECTIONS = [
-  { id: "connections", label: "Connections", icon: <Link2 /> },
-  { id: "mesh", label: "Mesh", icon: <Network /> },
-  { id: "machines", label: "Machines", icon: <Server /> },
-  { id: "appearance", label: "Appearance", icon: <Palette /> },
-  { id: "device", label: "Device", icon: <MonitorSmartphone /> },
+  { id: "device", label: "This device", icon: <MonitorSmartphone /> },
+  { id: "machines", label: "Machines", icon: <Network /> },
+  { id: "pair", label: "Connect a machine", icon: <Server /> },
   { id: "terminal", label: "Terminal", icon: <SquareTerminal /> },
+  { id: "keyboard", label: "Keyboard", icon: <PanelBottom /> },
   { id: "notifications", label: "Notifications", icon: <Bell /> },
+  { id: "appearance", label: "Appearance", icon: <Palette /> },
   { id: "keybindings", label: "Keybindings", icon: <Keyboard /> },
   { id: "voice", label: "Voice input", icon: <Mic /> },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
+
+/** The section a link asked for (a hash, so it survives a reload), else the one Settings always opens on. */
+function firstSection(): SectionId {
+  const asked = window.location.hash.slice(1);
+  return SECTIONS.some((entry) => entry.id === asked) ? (asked as SectionId) : "device";
+}
 
 function Group({ title, children }: { readonly title: string; readonly children: ReactNode }) {
   return (
@@ -41,11 +50,19 @@ function Group({ title, children }: { readonly title: string; readonly children:
   );
 }
 
+/** One sentence under the title, in the words the navigation uses: what this screen is about and nothing else. */
+function Lead({ children }: { readonly children: ReactNode }) {
+  return <p className="text-sm text-pretty text-muted-foreground">{children}</p>;
+}
+
 /** Section navigation beside the form; changes apply as they are made. */
 export function SettingsRoute() {
-  const [section, setSection] = useState<SectionId>("connections");
+  const [section, setSection] = useState<SectionId>(firstSection);
   const close = useCloseSettings();
   const update = usePendingUpdate();
+  // In the dialog its header is not the window's titlebar: it neither moves the window nor makes room for its controls.
+  const dialog = useSettingsInDialog();
+  const titlebar = dialog ? {} : { "data-titlebar": "" };
   const back = (
     <IconButton
       label="Close settings"
@@ -55,10 +72,15 @@ export function SettingsRoute() {
     />
   );
   return (
-    <div className="flex h-dvh min-h-0 flex-col bg-background pt-(--safe-top) pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left) md:flex-row">
+    <div
+      className={cn(
+        "flex h-full min-h-0 flex-col bg-background md:flex-row",
+        !dialog && "pt-(--safe-top) pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left)",
+      )}
+    >
       <CrashProbe region="settings" />
       <Tabs value={section} onValueChange={(value: SectionId) => setSection(value)} className="md:hidden">
-        <div data-titlebar className="flex items-center gap-1 pt-3 pr-2 pb-1 pl-[var(--titlebar-inset-start,0.5rem)]">
+        <div {...titlebar} className="flex items-center gap-1 pt-3 pr-2 pb-1 pl-[var(--titlebar-inset-start,0.5rem)]">
           {back}
           <h1 className="text-xl font-semibold text-foreground">Settings</h1>
         </div>
@@ -75,8 +97,11 @@ export function SettingsRoute() {
         className="hidden w-56 shrink-0 flex-col gap-px border-r border-sidebar-border bg-sidebar px-2 pb-2 md:flex"
       >
         <div
-          data-titlebar
-          className="mb-1 flex h-11 shrink-0 items-center gap-1 pl-[calc(var(--titlebar-inset-start,0.5rem)-0.5rem)]"
+          {...titlebar}
+          className={cn(
+            "mb-1 flex h-11 shrink-0 items-center gap-1",
+            !dialog && "pl-[calc(var(--titlebar-inset-start,0.5rem)-0.5rem)]",
+          )}
         >
           {back}
           <h1 className="text-lg font-semibold text-foreground">Settings</h1>
@@ -117,38 +142,64 @@ export function SettingsRoute() {
             title="This section could not be drawn"
             detail="The other sections still open from the list."
           >
-            {section === "connections" ? (
+            {section === "device" ? (
               <>
-                <Group title="Connection">
-                  <ConnectionSection />
-                </Group>
-                <Group title="Paired devices">
+                <Lead>
+                  This app talks to one host: the computer that runs your terminals. Here is which host it reaches,
+                  whether it is there now, this device's own settings, and under Advanced connection the route this app
+                  takes to that host. The defaults work for everyone; change them only for a self-hosted relay or a
+                  development host.
+                </Lead>
+                <Group title="Host">
                   <DevicesSection />
                 </Group>
+                <Group title="This device">
+                  <DeviceSection />
+                </Group>
+                <Group title="Advanced connection">
+                  <ConnectionSection />
+                </Group>
               </>
-            ) : section === "mesh" ? (
-              <Group title="Mesh">
-                <MeshSection />
-              </Group>
             ) : section === "machines" ? (
-              <Group title="Machines">
-                <MachinesSection />
-              </Group>
-            ) : section === "appearance" ? (
-              <Group title="Appearance">
-                <AppearanceSection />
-              </Group>
-            ) : section === "device" ? (
-              <Group title="This device">
-                <DeviceSection />
-              </Group>
+              <>
+                <Lead>
+                  These are the computers this host reaches: the ones that joined your mesh, and any you added by hand.
+                  Adding one by hand reaches it without the mesh; connecting one joins it first. A machine that answers
+                  reads Connected, one still being dialled reads Connecting, and one that needs a login says so; when a
+                  machine is offline the row says when it was last seen and, where the host knows a cause, what it is.
+                </Lead>
+                <Group title="Machines">
+                  <MachinesSection />
+                </Group>
+                <Group title="In your mesh">
+                  <MeshSection />
+                </Group>{" "}
+              </>
+            ) : section === "pair" ? (
+              <>
+                <Lead>
+                  Connecting a machine joins it to your mesh: one command on this host opens an invite, and the other
+                  computer or phone joins with it. A join waits for your approval under Machines before that machine is
+                  reachable.
+                </Lead>
+                <Group title="Connect a machine">
+                  <PairSection />
+                </Group>
+              </>
             ) : section === "terminal" ? (
               <Group title="Terminal">
                 <TerminalSection />
               </Group>
+            ) : section === "keyboard" ? (
+              // The section draws its own heading, because the heading row carries Edit and Done.
+              <KeyboardSection />
             ) : section === "notifications" ? (
               <Group title="Notifications">
                 <NotificationsSection />
+              </Group>
+            ) : section === "appearance" ? (
+              <Group title="Appearance">
+                <AppearanceSection />
               </Group>
             ) : section === "keybindings" ? (
               <Group title="Keybindings">

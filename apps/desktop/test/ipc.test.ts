@@ -4,6 +4,7 @@ import { openPairingLink, takePairingLink } from "../src/main/deep-link.ts";
 import { HcInstallError, type HcInstalled } from "@doriface/host/hc-install";
 import { Channel } from "../src/shared/bridge.ts";
 import { ipcHandlers, type IpcReplySender, type IpcSender } from "../src/main/ipc-handlers.ts";
+import { DictationHost } from "../src/main/dictation.ts";
 import { LocalHostStartError } from "../src/main/local-host.ts";
 import type { DesktopNotice } from "../src/shared/bridge.ts";
 
@@ -22,6 +23,7 @@ const setup = (
   install: (onPhase: (phase: string) => void) => Promise<HcInstalled> = async () => {
     throw new Error("no install");
   },
+  dictation?: DictationHost,
 ) => {
   let hcInstalls = 0;
   let chooses = 0;
@@ -31,13 +33,16 @@ const setup = (
   let starts = 0;
   let closes = 0;
   const pairs: ("open" | "state")[] = [];
+  const revokes: string[] = [];
   const menus: ReadonlyMap<string, string>[] = [];
   const notices: DesktopNotice[] = [];
   const targets: string[] = [];
   const handlers = ipcHandlers({
     noticesSupported: () => true,
-    showNotice: (notice) => {
+    noticePermission: () => "not-determined",
+    showNotice: async (notice) => {
       notices.push(notice);
+      return notice.kind === "test" ? { accepted: false, reason: "muted" } : { accepted: true };
     },
     setMenuKeys: (keys) => {
       menus.push(keys);
@@ -51,6 +56,11 @@ const setup = (
     pairOffer: async (request) => {
       pairs.push(request);
       return { state: "none" };
+    },
+    pairedDevices: async () => ({ state: "listed", devices: [] }),
+    revokeDevice: async (id) => {
+      revokes.push(id);
+      return { state: "not-found", devices: [] };
     },
     openExternal: async (url) => {
       opened.push(url);
@@ -80,6 +90,7 @@ const setup = (
     },
     forwardDirect: async (windowId) => ({ url: `ws://127.0.0.1:1/${windowId}` }),
     cancelDirectForward: () => true,
+    dictation,
   });
   return {
     handlers,
@@ -88,6 +99,7 @@ const setup = (
     menus,
     notices,
     pairs,
+    revokes,
     targets,
     starts: () => starts,
     closes: () => closes,
@@ -115,12 +127,15 @@ describe("IPC sender gate", () => {
         expect(handlers.openLink(event, "https://example.com/")).rejects.toThrow("refused IPC"),
         expect(handlers.startLocalHost(event)).rejects.toThrow("refused IPC"),
         expect(handlers.pairOffer(event, "open")).rejects.toThrow("refused IPC"),
+        expect(handlers.pairedDevices(event)).rejects.toThrow("refused IPC"),
+        expect(handlers.revokeDevice(event, "3FA94C0E")).rejects.toThrow("refused IPC"),
         expect(handlers.setWindowBackground(event, "#131518")).rejects.toThrow("refused IPC"),
         expect(handlers.closeWindow(event)).rejects.toThrow("refused IPC"),
         expect(handlers.setMenuKeys(event, { "tab.new": "super+t" })).rejects.toThrow("refused IPC"),
         expect(handlers.chooseHc(event)).rejects.toThrow("refused IPC"),
         expect(handlers.installUpdate(event)).rejects.toThrow("refused IPC"),
         expect(handlers.noticesSupported(event)).rejects.toThrow("refused IPC"),
+        expect(handlers.noticePermission(event)).rejects.toThrow("refused IPC"),
         expect(handlers.showNotice(event, { kind: "done", terminal: "t1" })).rejects.toThrow("refused IPC"),
         expect(handlers.setDirectTarget(event, "127.0.0.1:7767")).rejects.toThrow("refused IPC"),
         expect(handlers.forwardDirect(event)).rejects.toThrow("refused IPC"),
@@ -244,11 +259,17 @@ describe("IPC sender gate", () => {
     expect(painted).toEqual(["#131518"]);
   });
 
-  test("a native notification takes a known kind and a terminal address, never text of its own", async () => {
+  test("a native notification takes a known kind and a terminal address, never text of its own, and answers as the OS did", async () => {
     const { handlers, notices } = setup();
     expect(await handlers.noticesSupported(app)).toBe(true);
-    expect(await handlers.showNotice(app, { kind: "done", terminal: "box/t7", body: "rm -rf" })).toBe(true);
-    expect(await handlers.showNotice(app, { kind: "test", terminal: null })).toBe(true);
+    expect(await handlers.noticePermission(app)).toBe("not-determined");
+    expect(await handlers.showNotice(app, { kind: "done", terminal: "box/t7", body: "rm -rf" })).toEqual({
+      accepted: true,
+    });
+    expect(await handlers.showNotice(app, { kind: "test", terminal: null })).toEqual({
+      accepted: false,
+      reason: "muted",
+    });
     const refused = [
       { kind: "done" },
       { kind: "shout", terminal: "t1" },
@@ -258,9 +279,9 @@ describe("IPC sender gate", () => {
       "done",
       null,
     ];
-    expect(await Promise.all(refused.map((candidate) => handlers.showNotice(app, candidate)))).toEqual(
-      refused.map(() => false),
-    );
+    for (const answer of await Promise.all(refused.map((candidate) => handlers.showNotice(app, candidate)))) {
+      expect(answer.accepted).toBe(false);
+    }
     expect(notices).toEqual([
       { kind: "done", terminal: "box/t7" },
       { kind: "test", terminal: null },
@@ -303,5 +324,69 @@ describe("IPC sender gate", () => {
       refused.map(() => null),
     );
     expect(pairs).toEqual(["open", "state"]);
+  });
+
+  test("a revoke takes a short device id only, so a hand-edited page cannot address a path", async () => {
+    const { handlers, revokes } = setup();
+    expect(await handlers.revokeDevice(app, "3fa94c0e")).toEqual({ state: "not-found", devices: [] });
+    expect(revokes).toEqual(["3FA94C0E"]);
+    const refused = ["3FA94C0", "3FA94C0E1", "../../etc/passwd", "3FA9 4C0E", "", null, 7, { id: "3FA94C0E" }];
+    expect(await Promise.all(refused.map((candidate) => handlers.revokeDevice(app, candidate)))).toEqual(
+      refused.map(() => null),
+    );
+    expect(revokes).toEqual(["3FA94C0E"]);
+  });
+});
+
+const speechAddon = () => {
+  const started: string[] = [];
+  return {
+    started,
+    ready: () => true,
+    speechStatus: () => "granted",
+    requestSpeech: async () => "granted",
+    supportsOnDevice: () => true,
+    start: (lang: string) => started.push(lang),
+    stop: () => undefined,
+    abort: () => undefined,
+  };
+};
+
+describe("dictation over IPC (#726)", () => {
+  const page = { ...app, sender: { id: 7, isDestroyed: () => false, send: () => undefined } };
+
+  test("foreign and detached frames are refused before the microphone is touched", async () => {
+    const speech = speechAddon();
+    const { handlers } = setup(
+      undefined,
+      undefined,
+      null,
+      undefined,
+      new DictationHost(speech, {
+        status: () => "granted",
+        ask: async () => true,
+      }),
+    );
+    await Promise.all(
+      foreign.flatMap((event) => {
+        const owner = { ...event, sender: page.sender };
+        return [
+          expect(handlers.dictationAvailable(event, "en-US")).rejects.toThrow("refused IPC"),
+          expect(handlers.dictationStart(owner, "en-US")).rejects.toThrow("refused IPC"),
+          expect(handlers.dictationStop(owner, 1)).rejects.toThrow("refused IPC"),
+          expect(handlers.dictationAbort(owner, 1)).rejects.toThrow("refused IPC"),
+        ];
+      }),
+    );
+    expect(speech.started).toEqual([]);
+    expect(await handlers.dictationStart(page, "en-US")).toEqual({ session: 1 });
+    expect(speech.started).toEqual(["en-US"]);
+  });
+
+  test("a build without the system recognizer answers no and refuses every start", async () => {
+    const { handlers } = setup();
+    expect(await handlers.dictationAvailable(app, "en-US")).toBe(false);
+    expect(await handlers.dictationStart(page, "en-US")).toEqual({ refused: "service" });
+    expect(await handlers.dictationStop(page, 1)).toBe(false);
   });
 });

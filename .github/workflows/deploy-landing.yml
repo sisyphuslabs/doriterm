@@ -1,0 +1,106 @@
+name: Deploy landing
+
+# Serves apps/landing (doriterm.com) with Workers static assets (apps/landing/wrangler.jsonc). A push on dev that touches
+# the landing build deploys staging (https://staging.doriterm.com) and probes it (.github/scripts/probe-landing.ts). A
+# pull request from this repository labelled deploy-staging deploys its head to staging only. Production
+# (https://doriterm.com) runs only from a manual run on dev, after staging passes, and refuses while
+# https://app.doriterm.com, where every "Open the app" button points, does not answer. The secrets CLOUDFLARE_API_TOKEN
+# and CLOUDFLARE_ACCOUNT_ID are the account deploy-web.yml uses; that account must hold the doriterm.com zone.
+on:
+  push:
+    branches: [dev]
+    paths:
+      - apps/landing/**
+      - packages/ui/**
+      - package.json
+      - bun.lock
+      - .github/scripts/probe-landing.ts
+      - .github/workflows/deploy-landing.yml
+  # The deploy-staging label is shared with deploy-web.yml: the path filter keeps a web-only PR off staging.doriterm.com.
+  pull_request:
+    types: [labeled, synchronize]
+    paths:
+      - apps/landing/**
+      - packages/ui/**
+      - package.json
+      - bun.lock
+      - .github/scripts/probe-landing.ts
+      - .github/workflows/deploy-landing.yml
+  workflow_dispatch:
+    inputs:
+      production:
+        description: Deploy doriterm.com after staging passes its probe (dev only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-landing
+  cancel-in-progress: false
+
+env:
+  BUN_VERSION: 1.4.4
+  WRANGLER: wrangler@4.158.0
+
+jobs:
+  staging:
+    name: Landing staging
+    if: >-
+      (github.event_name == 'push') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev') ||
+      (github.event_name == 'pull_request' &&
+      contains(github.event.pull_request.labels.*.name, 'deploy-staging') &&
+      github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - name: Build apps/landing
+        run: bun run --cwd apps/landing build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: landing-dist
+          path: apps/landing/dist
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Deploy staging
+        working-directory: apps/landing
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bunx "$WRANGLER" deploy --env staging
+      - name: Probe staging
+        run: bun .github/scripts/probe-landing.ts https://staging.doriterm.com
+
+  production:
+    name: Landing production
+    needs: staging
+    if: github.ref == 'refs/heads/dev' && github.event_name == 'workflow_dispatch' && inputs.production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: The app the page links to answers
+        run: curl -fsS --max-time 15 -o /dev/null https://app.doriterm.com/
+      # The bytes staging served and passed, not a second build.
+      - uses: actions/download-artifact@v4
+        with:
+          name: landing-dist
+          path: apps/landing/dist
+      - name: Deploy production
+        working-directory: apps/landing
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bunx "$WRANGLER" deploy --env ""
+      - name: Probe production
+        run: bun .github/scripts/probe-landing.ts https://doriterm.com
