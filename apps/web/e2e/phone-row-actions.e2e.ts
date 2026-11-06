@@ -30,7 +30,7 @@ test("an agent row's Pin and More are on the phone, and each takes a tap just in
   try {
     await page.goto("/");
     const row = page.getByRole("button", { name: /tapme/ }).first();
-    const pin = page.getByRole("button", { name: "Pin tapme" });
+    const pin = page.getByRole("button", { name: /^Pin tapme to the top$/ });
     const more = page.getByRole("button", { name: "More for tapme" });
     await expect(row).toBeVisible({ timeout: 20_000 });
     await expect(pin).toBeVisible();
@@ -70,7 +70,7 @@ test("an agent row's Pin and More are on the phone, and each takes a tap just in
     // The two shapes that used to be drawn under the actions: a detail far longer than the row, and the "Needs you" chip
     // of a blocked agent, which is not meta at all, so hiding the meta never moved it out from under the Pin. The chip
     // only draws outside the compact blocked group, so the blocked agent is pinned first: Pinned keeps it.
-    await page.getByRole("button", { name: "Pin blockrow" }).tap();
+    await page.getByRole("button", { name: /^Pin blockrow to the top$/ }).tap();
     await expect(page.getByRole("button", { name: /blockrow/ }).first()).toContainText("Needs you");
     const shapes = ["longrow", "blockrow"] as const;
     await Promise.all(
