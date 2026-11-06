@@ -62,6 +62,7 @@ async function holdMachineLayout(page: Page): Promise<{ readonly release: () => 
   });
   return {
     release: () => {
+      if (asked === undefined) throw new Error("the page never requested the machine's layout");
       holding = false;
       for (const send of held.splice(0)) send();
     },
@@ -130,6 +131,9 @@ test.describe("renaming a machine with two tabs open", () => {
     expect(await domOrder(page)).toEqual(order);
     await tabs(page).nth(0).click();
     await expect(selectedPane(page, `${RENAMED}/${remote}`)).toBeVisible({ timeout: 15_000 });
+    await tabs(page).nth(1).click();
+    await expect(selectedPane(page, `${RENAMED}/${second}`)).toBeVisible({ timeout: 15_000 });
+    await expect(tabs(page)).toHaveCount(2);
   });
 
   test("keeps two tabs the machine's layout had when the rename lands while it loads", async ({ page }) => {
