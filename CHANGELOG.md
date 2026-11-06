@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Settings
+
+- Settings on a phone no longer shows the agent list's Pin and More buttons drawn over its sections: nothing of the workspace kept behind the full-screen Settings sheet is drawn while it is open. (#898)
+
 ## v0.1.4 - 2026-11-06
 
 ### The product is Doriterm
@@ -32,10 +36,6 @@
 ### Documentation
 
 - The GitHub social preview uses the landing page's Timeless card, and the design and architecture docs name what they cite correctly. (#802, #804, #866)
-
-### Settings
-
-- Settings on a phone no longer shows the agent list's Pin and More buttons drawn over its sections: nothing of the workspace kept behind the full-screen Settings sheet is drawn while it is open. (#898)
 
 ## v0.1.3
 
