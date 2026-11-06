@@ -390,7 +390,10 @@ jobs:
         run: |
           bun test apps/host/src/state/win32 2>&1 | tee win32.log
           grep -E '^ +0 fail' win32.log
-          ! grep -E '^ +[1-9][0-9]* skip' win32.log
+          if grep -qE '^ +[1-9][0-9]* skip' win32.log; then
+            echo "a case was skipped"
+            exit 1
+          fi
           grep -E '^\(pass\) .*W[0-9]+ ' win32.log
       - name: The state units on Windows
         run: bun test apps/host/src/state/host-keys.test.ts apps/host/src/state/known-hosts.test.ts
