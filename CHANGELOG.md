@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### From the phone
+
+- Back in the installed app walks out of a terminal to your agents list and only leaves the app from the list, so a
+  terminal is no longer one Back gesture from closing Doriterm. (#975)
+- An agent row's pin says what it pins: Pin <agent> to the top, on the button and as its tooltip. (#879)
+
 ### Workspace
 
 - An agent row shows how far its own todo list has got, as done/total (2/4), read from the list the agent draws: Claude Code's task list when its task tools are on (a long list's folded line counts too), and omp's TODO list with its phases added up. An agent with no list, or one that draws none, shows nothing, and while it waits on a question the row keeps its last count. (#673)
