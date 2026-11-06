@@ -7,11 +7,11 @@
  * it when the sheet closed.
  */
 export const phoneOpenKey = (path: string, routeKey: string | null, lastOpen: string | null): string | null =>
-  path === "/" ? routeKey : lastOpen;
+  path === "/" ? routeKey : (routeKey ?? lastOpen);
 
 /** The last terminal a `/` route had open, to carry across the routes that are not the list. */
-export const rememberOpenKey = (path: string, routeKey: string | null, lastOpen: string | null): string | null =>
-  path === "/" && routeKey !== null ? routeKey : lastOpen;
+export const rememberOpenKey = (_path: string, routeKey: string | null, lastOpen: string | null): string | null =>
+  routeKey ?? lastOpen;
 
 /**
  * Whether opening this terminal added a history entry. Entering from the list does; a switch inside an open terminal

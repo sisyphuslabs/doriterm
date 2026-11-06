@@ -15,11 +15,17 @@ describe("the phone's open terminal, read from the route", () => {
     expect(phoneOpenKey("/settings", null, null)).toBeNull();
   });
 
-  test("only the list changes what is remembered", () => {
+  // A link that names the terminal keeps it open on any route, which is what a deep link to Settings carries.
+  test("a route that names a terminal keeps that terminal", () => {
+    expect(phoneOpenKey("/settings", "machine-d", null)).toBe("machine-d");
+    expect(phoneOpenKey("/settings", "machine-d", "machine-c")).toBe("machine-d");
+  });
+
+  test("what is remembered follows the route, and survives one that says nothing", () => {
     expect(rememberOpenKey("/", "machine-c", null)).toBe("machine-c");
     expect(rememberOpenKey("/", null, "machine-c")).toBe("machine-c");
     expect(rememberOpenKey("/settings", null, "machine-c")).toBe("machine-c");
-    expect(rememberOpenKey("/settings", "ignored", "machine-c")).toBe("machine-c");
+    expect(rememberOpenKey("/settings", "machine-e", "machine-c")).toBe("machine-e");
   });
 });
 

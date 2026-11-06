@@ -179,3 +179,32 @@ test("entering a terminal adds exactly one entry, so Back leaves the app after t
     endAgent("host", second);
   }
 });
+
+test("at 390, Settings that names the open terminal keeps it mounted", async ({ page }) => {
+  const address = startAgent("host", "backdeep", "idle");
+  try {
+    await page.goto("/");
+    const row = page.getByRole("button", { name: /backdeep/ }).first();
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    await row.click();
+    await expect(page.getByRole("button", { name: "Back to agents" })).toBeVisible({ timeout: 20_000 });
+    const key = new URL(page.url()).searchParams.get("t");
+    expect(key, "opening a terminal on a phone names it in the route").not.toBeNull();
+
+    // The phone reaches Settings as a route of its own; a route that names the terminal must keep it, not report that
+    // nothing is open (which unmounted it and reattached it on the way back).
+    await page.goto(`/settings?t=${encodeURIComponent(key ?? "")}`);
+    await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible({ timeout: 20_000 });
+    await expect(
+      page.locator(`[data-terminal="${address}"]`),
+      "the terminal is still mounted under Settings",
+    ).toHaveCount(1);
+
+    // Closing Settings lands on the list, which is a route with no terminal in it; the terminal comes back from the row.
+    await page.getByRole("button", { name: "Close settings" }).click();
+    await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: /backdeep/ }).first()).toBeVisible({ timeout: 20_000 });
+  } finally {
+    endAgent("host", address);
+  }
+});
