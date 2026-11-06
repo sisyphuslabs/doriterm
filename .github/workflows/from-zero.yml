@@ -90,7 +90,7 @@ jobs:
       - name: Pair through the hosted relay, as docs/getting-started.md says
         working-directory: apps/desktop
         env:
-          DORIFACE_E2E_EXECUTABLE: ${{ github.workspace }}/apps/desktop/dist/release/linux-unpacked/doriface
+          DORIFACE_E2E_EXECUTABLE: ${{ github.workspace }}/apps/desktop/dist/release/linux-unpacked/Doriterm
           DORIFACE_HOSTED_RELAY_SMOKE: "1"
         run: xvfb-run --auto-servernum bun run test:e2e e2e/hosted-relay-pair.e2e.ts
       - if: always()

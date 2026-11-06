@@ -5,7 +5,7 @@ import { join } from "node:path";
 type Step = { name?: string; run?: string; uses?: string };
 type Job = { needs?: string; if?: string; steps: Step[] };
 type Workflow = { concurrency: { group: string; "cancel-in-progress": string | boolean }; jobs: Record<string, Job> };
-type Route = { pattern: string; custom_domain?: boolean };
+type Route = { pattern: string; zone_id?: string; custom_domain?: boolean };
 type Assets = { directory: string; not_found_handling?: string };
 type Wrangler = { assets: Assets; routes: Route[]; env: { staging: { assets: Assets; routes: Route[] } } };
 
@@ -27,23 +27,30 @@ test("production deploys only from dev, after staging was deployed and probed, f
   if (staging === undefined || production === undefined) throw new Error("deploy-web.yml lacks a job");
   expect(production.needs).toBe("staging");
   expect(production.if).toContain("github.ref == 'refs/heads/dev'");
-  expect(runs(staging)).toEqual(
-    expect.arrayContaining([
-      'bunx "$WRANGLER" deploy --env staging',
-      "bun .github/scripts/probe-web.ts https://doriface-staging.omo.dev",
-    ]),
-  );
+  expect(runs(staging).slice(-3)).toEqual([
+    'bunx "$WRANGLER" deploy --env staging',
+    "bun .github/scripts/probe-web.ts https://staging.app.doriterm.com",
+    "bun .github/scripts/probe-web.ts https://doriface-staging.omo.dev",
+  ]);
   expect(runs(staging)).not.toContain('bunx "$WRANGLER" deploy --env ""');
   expect(runs(production)).toEqual([
     'bunx "$WRANGLER" deploy --env ""',
+    "bun .github/scripts/probe-web.ts https://app.doriterm.com",
     "bun .github/scripts/probe-web.ts https://doriface.omo.dev",
   ]);
   expect(production.steps.some((step) => step.uses?.startsWith("actions/download-artifact"))).toBe(true);
 });
 
-test("both hostnames serve the build with the SPA fallback, so /pair loads the app", () => {
-  expect(wrangler.routes).toEqual([{ pattern: "doriface.omo.dev", custom_domain: true }]);
-  expect(wrangler.env.staging.routes).toEqual([{ pattern: "doriface-staging.omo.dev", custom_domain: true }]);
+test("app.doriterm.com and the omo.dev host each serve the build with the SPA fallback, so /pair loads the app", () => {
+  const DORITERM_ZONE = "79ae74d5937b2858a42f6261887e436e";
+  expect(wrangler.routes).toEqual([
+    { pattern: "app.doriterm.com", zone_id: DORITERM_ZONE, custom_domain: true },
+    { pattern: "doriface.omo.dev", custom_domain: true },
+  ]);
+  expect(wrangler.env.staging.routes).toEqual([
+    { pattern: "staging.app.doriterm.com", zone_id: DORITERM_ZONE, custom_domain: true },
+    { pattern: "doriface-staging.omo.dev", custom_domain: true },
+  ]);
   for (const assets of [wrangler.assets, wrangler.env.staging.assets]) {
     expect(assets).toEqual({ directory: "./dist", not_found_handling: "single-page-application" });
   }

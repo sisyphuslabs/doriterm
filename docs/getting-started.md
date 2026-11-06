@@ -16,8 +16,8 @@ and check it against `SHA256SUMS.txt` from the same release.
 
 | Computer              | File                                            |
 | --------------------- | ----------------------------------------------- |
-| macOS (Apple silicon) | `doriface-<version>-arm64.dmg`                  |
-| macOS (Intel)         | `doriface-<version>-x64.dmg`                    |
+| macOS (Apple silicon) | `Doriterm-<version>-arm64.dmg`                  |
+| macOS (Intel)         | `Doriterm-<version>-x64.dmg`                    |
 | Windows (x64, arm64)  | the setup `.exe` for your architecture          |
 | Linux (x64, arm64)    | the `.AppImage` or `.deb` for your architecture |
 

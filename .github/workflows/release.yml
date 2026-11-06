@@ -296,7 +296,7 @@ jobs:
 
   # #670: the candidate's web client against the last published release's on one runner. A rendering regression past
   # apps/web/bench/thresholds.json fails this job, so no draft is made and nothing is published; the table and the runs
-  # (doriface-<version>-render-bench.md and .json) are attached to the release with the other files.
+  # (Doriterm-<version>-render-bench.md and .json) are attached to the release with the other files.
   render-bench:
     name: Render bench
     needs: version
