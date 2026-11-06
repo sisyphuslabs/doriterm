@@ -37,8 +37,10 @@ const setup = (
   const targets: string[] = [];
   const handlers = ipcHandlers({
     noticesSupported: () => true,
-    showNotice: (notice) => {
+    noticePermission: () => "not-determined",
+    showNotice: async (notice) => {
       notices.push(notice);
+      return notice.kind === "test" ? { accepted: false, reason: "muted" } : { accepted: true };
     },
     setMenuKeys: (keys) => {
       menus.push(keys);
@@ -130,6 +132,7 @@ describe("IPC sender gate", () => {
         expect(handlers.chooseHc(event)).rejects.toThrow("refused IPC"),
         expect(handlers.installUpdate(event)).rejects.toThrow("refused IPC"),
         expect(handlers.noticesSupported(event)).rejects.toThrow("refused IPC"),
+        expect(handlers.noticePermission(event)).rejects.toThrow("refused IPC"),
         expect(handlers.showNotice(event, { kind: "done", terminal: "t1" })).rejects.toThrow("refused IPC"),
         expect(handlers.setDirectTarget(event, "127.0.0.1:7767")).rejects.toThrow("refused IPC"),
         expect(handlers.forwardDirect(event)).rejects.toThrow("refused IPC"),
@@ -253,11 +256,17 @@ describe("IPC sender gate", () => {
     expect(painted).toEqual(["#131518"]);
   });
 
-  test("a native notification takes a known kind and a terminal address, never text of its own", async () => {
+  test("a native notification takes a known kind and a terminal address, never text of its own, and answers as the OS did", async () => {
     const { handlers, notices } = setup();
     expect(await handlers.noticesSupported(app)).toBe(true);
-    expect(await handlers.showNotice(app, { kind: "done", terminal: "box/t7", body: "rm -rf" })).toBe(true);
-    expect(await handlers.showNotice(app, { kind: "test", terminal: null })).toBe(true);
+    expect(await handlers.noticePermission(app)).toBe("not-determined");
+    expect(await handlers.showNotice(app, { kind: "done", terminal: "box/t7", body: "rm -rf" })).toEqual({
+      accepted: true,
+    });
+    expect(await handlers.showNotice(app, { kind: "test", terminal: null })).toEqual({
+      accepted: false,
+      reason: "muted",
+    });
     const refused = [
       { kind: "done" },
       { kind: "shout", terminal: "t1" },
@@ -267,9 +276,9 @@ describe("IPC sender gate", () => {
       "done",
       null,
     ];
-    expect(await Promise.all(refused.map((candidate) => handlers.showNotice(app, candidate)))).toEqual(
-      refused.map(() => false),
-    );
+    for (const answer of await Promise.all(refused.map((candidate) => handlers.showNotice(app, candidate)))) {
+      expect(answer.accepted).toBe(false);
+    }
     expect(notices).toEqual([
       { kind: "done", terminal: "box/t7" },
       { kind: "test", terminal: null },

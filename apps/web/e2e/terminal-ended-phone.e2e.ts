@@ -3,7 +3,15 @@ import { agentRow, startShell } from "./agents.ts";
 import { removeTerminal, stateOn } from "./ended-terminal.ts";
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
-import { hcOn, machineRow, reconnect, STATE_BOUND_MS, switchTo, OFFLINE_BOUND_MS } from "./machine-switch.ts";
+import {
+  hcOn,
+  machineRow,
+  reconnect,
+  STATE_BOUND_MS,
+  switchTo,
+  OFFLINE_BOUND_MS,
+  OFFLINE_TEST_TIMEOUT_MS,
+} from "./machine-switch.ts";
 import { fakeSoftKeyboard } from "./phone-key-bar.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
@@ -13,7 +21,7 @@ test.use({ ...phone, serviceWorkers: "block" });
 test("on a phone, a session that ended while its machine was offline shows as ended, with Close and no terminal keys", async ({
   page,
 }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
   const local = startShell("machine", "ended-phone");
   const go = test.info().outputPath("go");
   try {

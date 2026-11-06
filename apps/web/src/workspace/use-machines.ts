@@ -77,6 +77,8 @@ export function useMachines(connection: HcConnection, terminals: readonly Termin
   const [read, setRead] = useState<{
     readonly views: readonly MachineView[];
     readonly at: number | undefined;
+    readonly first?: { readonly at: number; readonly ids: ReadonlySet<string> };
+    readonly up?: ReadonlySet<string>;
     readonly held: Held;
   }>({ views: [], at: undefined, held: new Map() });
   const [now, setNow] = useState(Date.now);
@@ -107,7 +109,10 @@ export function useMachines(connection: HcConnection, terminals: readonly Termin
         const at = Date.now();
         setRead((before) => {
           const views = orderMachines(list.machines);
-          return { views, at, held: stepHeld(before.held, before, views, at) };
+          const first = before.first ?? { at, ids: new Set(views.map((view) => view.id)) };
+          const up = new Set(before.up);
+          for (const view of views) if (view.state === "connected") up.add(view.id);
+          return { views, at, first, up, held: stepHeld(before.held, before, views, at) };
         });
         setNow(at);
         setListError(undefined);

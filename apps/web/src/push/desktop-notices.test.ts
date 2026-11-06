@@ -1,101 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import type { EventFeed, HcConnection } from "@doriface/client";
-import { DEFAULT_PUSH_PREFS, type HcEvent, type Status, type Terminal } from "@doriface/protocol";
-import type { ConnectionState } from "../connection/store.ts";
-
-// store.ts builds the app's store from localStorage as it loads; bun has none, so an empty one stands in for that load only.
-Object.assign(globalThis, { localStorage: { getItem: () => null, setItem: () => undefined } });
-const { DESKTOP_NOTICES_KEY, DesktopNotices, parseSavedNotices } = await import("./desktop-notices.ts");
-const { REPEAT_MS } = await import("./notice-trigger.ts");
-Reflect.deleteProperty(globalThis, "localStorage");
-
-const terminal = (address: string, status: Status | null): Terminal => ({
-  address,
-  argv: ["agent"],
-  cols: 80,
-  rows: 24,
-  created_ms: 1,
-  cwd: "/work",
-  labels: {},
-  screen: "exact",
-  state: "live",
+import { DEFAULT_PUSH_PREFS } from "@doriface/protocol";
+import {
+  DESKTOP_NOTICES_KEY,
+  done,
+  parseSavedNotices,
+  REPEAT_MS,
+  rig,
   status,
-  status_ms: 1_000,
-  turn: 2,
-});
-
-let seq = 1;
-const status = (address: string, state: Status, machine?: string): HcEvent => ({
-  type: "status",
-  seq: seq++,
-  terminal: address,
-  ...(machine === undefined ? {} : { machine }),
-  data: { status: state, records: {}, reported: true },
-});
-
-class FakeFeed {
-  readonly #events = new Set<(event: HcEvent) => void>();
-  readonly #closes = new Set<() => void>();
-  readonly snapshot: { readonly seq: number; readonly terminals: readonly Terminal[] };
-  closed = false;
-  constructor(snapshot: FakeFeed["snapshot"]) {
-    this.snapshot = snapshot;
-  }
-  onEvent = (listener: (event: HcEvent) => void) => (this.#events.add(listener), () => undefined);
-  onSnapshot = () => () => undefined;
-  onClose = (listener: () => void) => (this.#closes.add(listener), () => undefined);
-  close = (): void => {
-    this.closed = true;
-    for (const listener of this.#closes) listener();
-  };
-  emit(event: HcEvent): void {
-    for (const listener of this.#events) listener(event);
-  }
-}
-
-function rig({ saved = null as string | null, supported = true, shows = true, terminals = [] as Terminal[] } = {}) {
-  const feeds: FakeFeed[] = [];
-  const live: Pick<HcConnection, "subscribe" | "closed"> = {
-    closed: false,
-    subscribe: async () => {
-      const feed = new FakeFeed({ seq: 0, terminals });
-      feeds.push(feed);
-      return feed as unknown as EventFeed;
-    },
-  };
-  const listeners = new Set<() => void>();
-  const connection = {
-    state: { phase: "open", connection: live as HcConnection, path: "relay" } as ConnectionState,
-    subscribe: (listener: () => void) => (listeners.add(listener), () => listeners.delete(listener)),
-    move(state: ConnectionState) {
-      this.state = state;
-      for (const listener of listeners) listener();
-    },
-  };
-  const stored = new Map<string, string>(saved === null ? [] : [[DESKTOP_NOTICES_KEY, saved]]);
-  const shown: { kind: string; terminal: string | null }[] = [];
-  let now = 0;
-  const notices = new DesktopNotices({
-    bridge: {
-      supported: async () => supported,
-      show: async (notice) => (shows && shown.push(notice), shows),
-      onClick: () => undefined,
-    },
-    storage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => void stored.set(key, value) },
-    connection,
-    now: () => now,
-  });
-  const feed = async (): Promise<FakeFeed> => {
-    await Promise.resolve();
-    const last = feeds.at(-1);
-    if (last === undefined) throw new Error("no feed was opened");
-    return last;
-  };
-  const reopen = () => connection.move({ phase: "open", connection: live as HcConnection, path: "relay" });
-  return { notices, feeds, feed, shown, stored, connection, reopen, tick: (ms: number) => void (now += ms) };
-}
-
-const done: Status = { state: "done" };
+  terminal,
+} from "./desktop-notices-rig.ts";
 
 describe("the desktop app's native notifications", () => {
   test("off until Turn on: no feed is opened and nothing is shown", async () => {
@@ -172,7 +85,7 @@ describe("the desktop app's native notifications", () => {
     expect(working.shown).toEqual([{ kind: "test", terminal: null }]);
     expect(working.notices.view).toMatchObject({ tested: true, error: null });
 
-    const refused = rig({ shows: false });
+    const refused = rig({ answer: { accepted: false, reason: "it was refused" } });
     await refused.notices.test();
     expect(refused.notices.view.error).toBe("Could not send a test notification. it was refused");
 

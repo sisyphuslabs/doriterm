@@ -11,6 +11,8 @@ import {
   isDesktopNotice,
   type LocalHostEndpoint,
   type LocalHostStartFailed,
+  type NoticeAnswer,
+  type NoticeAuthorization,
   type PairedDevicesAnswer,
   type PairOfferAnswer,
   type RevokeDeviceAnswer,
@@ -52,7 +54,10 @@ export interface IpcDeps {
   /** Installs herdr-core for this user and keeps it as the hc later starts use; throws HcInstallError with why not. */
   readonly installHc: (onPhase: (phase: string) => void) => Promise<HcInstalled>;
   readonly noticesSupported: () => boolean;
-  readonly showNotice: (notice: DesktopNotice) => void;
+  /** The OS's standing answer about this app's notifications; `unknown` where this shell cannot read one. */
+  readonly noticePermission: () => NoticeAuthorization;
+  /** Shows one notification and answers whether the OS took it. */
+  readonly showNotice: (notice: DesktopNotice) => Promise<NoticeAnswer>;
   /** Keeps the page's saved Direct address, checked by the shell; a change drops every forward. */
   readonly setDirectTarget: (directUrl: string) => boolean;
   /** One capability for `windowId`, or why the shell will not forward. */
@@ -90,8 +95,10 @@ export interface IpcHandlers {
   /** Install herdr-core: each phase is sent to the page as it starts; a failure is answered as a value. */
   installHc(event: IpcReplySender): Promise<HcInstallAnswer>;
   noticesSupported(event: IpcSender): Promise<boolean>;
+  /** The OS's standing answer about this app's notifications. */
+  noticePermission(event: IpcSender): Promise<NoticeAuthorization>;
   /** Shows a native notification; only a known kind and a terminal address are taken, never text. */
-  showNotice(event: IpcSender, candidate: unknown): Promise<boolean>;
+  showNotice(event: IpcSender, candidate: unknown): Promise<NoticeAnswer>;
   /** Keeps the page's saved Direct address as the only forward target, checked by the shell itself (#449). */
   setDirectTarget(event: IpcSender, candidate: unknown): Promise<boolean>;
   /** One forward capability for the window that asked, or why the shell will not forward. */
@@ -217,11 +224,14 @@ export function ipcHandlers(deps: IpcDeps): IpcHandlers {
       assertAppFrame(event, deps.origin);
       return deps.noticesSupported();
     },
+    async noticePermission(event) {
+      assertAppFrame(event, deps.origin);
+      return deps.noticePermission();
+    },
     async showNotice(event, candidate) {
       assertAppFrame(event, deps.origin);
-      if (!isDesktopNotice(candidate)) return false;
-      deps.showNotice({ kind: candidate.kind, terminal: candidate.terminal });
-      return true;
+      if (!isDesktopNotice(candidate)) return { accepted: false, reason: "the notice was refused" };
+      return deps.showNotice({ kind: candidate.kind, terminal: candidate.terminal });
     },
     async setDirectTarget(event, candidate) {
       assertAppFrame(event, deps.origin);

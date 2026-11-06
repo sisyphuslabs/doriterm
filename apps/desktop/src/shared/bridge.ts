@@ -30,6 +30,8 @@ export const Channel = {
   hcInstallPhase: "doriface:hc-install-phase",
   /** Renderer to main: whether this system can show native notifications. */
   noticesSupported: "doriface:notices-supported",
+  /** Renderer to main: the OS's standing answer about this app's notifications (`authorized`, `denied`, ...). */
+  noticePermission: "doriface:notice-permission",
   /** Renderer to main: show one native notification about an agent (a kind and its terminal, never any text). */
   showNotice: "doriface:show-notice",
   /** Main to renderer: a notification was clicked; carries its terminal address, or null for a test. */
@@ -65,6 +67,25 @@ export interface DesktopNotice {
 }
 
 const MAX_TERMINAL = 160;
+
+/**
+ * The OS's standing answer about this app's notifications, as macOS names it: `not-determined` until the first notice
+ * makes it ask, then `authorized` or `denied`; `unknown` where the running shell cannot read one (#769).
+ */
+export const NOTICE_AUTHORIZATIONS = ["authorized", "denied", "not-determined", "unknown"] as const;
+export type NoticeAuthorization = (typeof NOTICE_AUTHORIZATIONS)[number];
+
+export const isNoticeAuthorization = (value: unknown): value is NoticeAuthorization =>
+  NOTICE_AUTHORIZATIONS.some((known) => known === value);
+
+/** What showing a notification came to: the OS took it, or why it did not (`show()` threw, or its `failed` event). */
+export type NoticeAnswer = { readonly accepted: true } | { readonly accepted: false; readonly reason: string };
+
+export function isNoticeAnswer(value: unknown): value is NoticeAnswer {
+  if (typeof value !== "object" || value === null) return false;
+  const accepted: unknown = Reflect.get(value, "accepted");
+  return accepted === true || (accepted === false && typeof Reflect.get(value, "reason") === "string");
+}
 
 export function isDesktopNotice(value: unknown): value is DesktopNotice {
   if (typeof value !== "object" || value === null) return false;
@@ -286,8 +307,10 @@ export interface DorifaceBridge {
   installUpdate(): Promise<boolean>;
   /** Whether this system shows native notifications at all (a Linux desktop may run no notification service). */
   noticesSupported(): Promise<boolean>;
-  /** Shows a native notification; resolves false when the notice was refused. */
-  showNotice(notice: DesktopNotice): Promise<boolean>;
+  /** The OS's standing answer about this app's notifications; `unknown` where this shell cannot read one. */
+  noticePermission(): Promise<NoticeAuthorization>;
+  /** Shows a native notification; resolves with whether the OS took it, or why it did not. */
+  showNotice(notice: DesktopNotice): Promise<NoticeAnswer>;
   /** Calls `listener` with the terminal of each clicked notification (null for a test one). */
   onNoticeClick(listener: (terminal: string | null) => void): void;
   /** Tells the shell the Direct address the page saved; the shell checks it and forwards nothing else (#449). */

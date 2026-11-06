@@ -6,6 +6,8 @@ import {
   isHcInstallAnswer,
   isLocalHostEndpoint,
   isLocalHostStartFailed,
+  isNoticeAnswer,
+  isNoticeAuthorization,
   isPairedDevicesAnswer,
   isPairOfferAnswer,
   isRevokeDeviceAnswer,
@@ -111,9 +113,13 @@ const bridge: DorifaceBridge = {
     const supported: unknown = await ipcRenderer.invoke(Channel.noticesSupported);
     return supported === true;
   },
+  async noticePermission() {
+    const authorization: unknown = await ipcRenderer.invoke(Channel.noticePermission);
+    return isNoticeAuthorization(authorization) ? authorization : "unknown";
+  },
   async showNotice(notice) {
-    const shown: unknown = await ipcRenderer.invoke(Channel.showNotice, notice);
-    return shown === true;
+    const answer: unknown = await ipcRenderer.invoke(Channel.showNotice, notice);
+    return isNoticeAnswer(answer) ? answer : { accepted: false, reason: "the main process returned no answer" };
   },
   onNoticeClick(listener) {
     ipcRenderer.on(Channel.noticeClicked, (_event, terminal: unknown) => {
