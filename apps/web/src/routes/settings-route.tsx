@@ -160,9 +160,8 @@ export function SettingsRoute() {
                 <TerminalSection />
               </Group>
             ) : section === "keyboard" ? (
-              <Group title="Keyboard">
-                <KeyboardSection />
-              </Group>
+              // The section draws its own heading, because the heading row carries Edit and Done.
+              <KeyboardSection />
             ) : section === "notifications" ? (
               <Group title="Notifications">
                 <NotificationsSection />

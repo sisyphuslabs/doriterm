@@ -1,84 +1,103 @@
 import { Button, Notice } from "@doriface/ui";
-import { RotateCcw } from "lucide-react";
+import { ChevronRight } from "lucide-react";
+import { useState } from "react";
 import { currentPlatform } from "../keys/trigger.ts";
-import { resetKeys } from "../keybar/operations.ts";
-import { useKeyBarError, useKeyBarSettings, keyBarStore } from "../keybar/store.ts";
+import { packName, specialEntries } from "../keybar/entries.ts";
+import { useKeyBarError, useKeyBarSettings } from "../keybar/store.ts";
 import { asSentence } from "../storage/sentence.ts";
-import { FavoriteKeys } from "./favorite-keys.tsx";
-import { KeyBarPreview } from "./key-bar-preview.tsx";
-import { KeyOrderList, KeyRestoreList } from "./key-order-list.tsx";
-import { PackList } from "./pack-list.tsx";
+import { CustomKeySheet } from "./custom-key-sheet.tsx";
+import { KeyBarHero } from "./key-bar-hero.tsx";
+import { KeyboardEdit } from "./keyboard-edit.tsx";
+import { KeyPickerSheet } from "./key-picker-sheet.tsx";
+import { PacksSheet } from "./packs-sheet.tsx";
 
-function Group({
-  id,
+type SheetId = "keys" | "packs" | "custom" | null;
+
+function LinkRow({
   title,
-  description,
-  children,
+  value,
+  onClick,
+  last = false,
 }: {
-  readonly id: string;
   readonly title: string;
-  readonly description?: string;
-  readonly children: React.ReactNode;
+  readonly value: string;
+  readonly onClick: () => void;
+  readonly last?: boolean;
 }) {
   return (
-    <section aria-labelledby={id} className="flex flex-col">
-      <h3 id={id} className="text-base font-semibold text-foreground">
-        {title}
-      </h3>
-      {description === undefined ? null : <p className="pb-1 text-xs text-muted-foreground">{description}</p>}
-      {children}
-    </section>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex min-h-12 w-full items-center gap-3 px-4 text-left outline-none active:bg-selected focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring ${
+        last ? "" : "border-b border-border"
+      }`}
+    >
+      <span className="flex-1 text-base text-foreground">{title}</span>
+      <span className="text-sm text-muted-foreground">{value}</span>
+      <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
+    </button>
   );
 }
 
 /**
- * Settings > Keyboard: the phone keys bar's own keys, their order, the packs that add a second group of keys, and the
- * keys the person defines. Every change is stored on this device as it is made; the preview above follows it at once.
+ * Settings > Keyboard: the bar as the terminal draws it, three rows into the sheets that change it (keys, packs, the
+ * person's own), and Edit for the only screen where keys can be removed or reordered.
  */
 export function KeyboardSection() {
   const settings = useKeyBarSettings();
   const error = useKeyBarError();
   const host = currentPlatform();
   const readOnly = error !== null;
+  const [editing, setEditing] = useState(false);
+  const [sheet, setSheet] = useState<SheetId>(null);
+  const shown = specialEntries(settings, host).length;
+  const packs = settings.packs.length;
+  const own = settings.favorites.length;
+  const packsValue =
+    packs === 0 ? "None" : settings.activePack === null ? `${packs} on` : packName(settings.activePack);
   return (
-    <div className="flex flex-col gap-5">
+    <section aria-label="Keyboard" className="flex flex-col gap-4">
+      <header className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-foreground md:text-xl">Keyboard</h2>
+        <Button size="sm" variant="ghost" disabled={readOnly} onClick={() => setEditing(!editing)}>
+          {editing ? "Done" : "Edit"}
+        </Button>
+      </header>
       {error === null ? null : (
         <Notice tone="error" title="Key settings could not be read from this browser's storage">
           Changes are not saved, so the stored keys stay as they are. Reload the page to try again.{" "}
           {asSentence(error.message)}
         </Notice>
       )}
-      <KeyBarPreview settings={settings} host={host} readOnly={readOnly} />
-      <Group
-        id="keyboard-in-bar"
-        title="In the bar"
-        description="Drag a row or use its arrows to change the order. The X takes a key out; nothing here is lost."
-      >
-        <KeyOrderList settings={settings} host={host} readOnly={readOnly} />
-        <Button
-          size="sm"
-          variant="ghost"
-          className="mt-2 self-start"
-          disabled={readOnly}
-          onClick={() => void keyBarStore.update((current) => resetKeys(current))}
-        >
-          <RotateCcw />
-          Reset to the default keys
-        </Button>
-      </Group>
-      <Group id="keyboard-more" title="Not in the bar" description="Put a key back where the list places it.">
-        <KeyRestoreList settings={settings} host={host} readOnly={readOnly} />
-      </Group>
-      <Group
-        id="keyboard-packs"
-        title="Shortcut packs"
-        description="A pack adds its keys to the bar as a tab. Long-press Ctrl in the terminal to switch packs."
-      >
-        <PackList settings={settings} readOnly={readOnly} />
-      </Group>
-      <Group id="keyboard-favorites" title="Your keys" description="Add a key of your own to the Favorites pack.">
-        <FavoriteKeys settings={settings} readOnly={readOnly} />
-      </Group>
-    </div>
+      <KeyBarHero settings={settings} host={host} />
+      {editing ? (
+        <KeyboardEdit settings={settings} host={host} readOnly={readOnly} />
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-border bg-card">
+          <LinkRow title="Keys" value={`${shown} shown`} onClick={() => setSheet("keys")} />
+          <LinkRow title="Packs" value={packsValue} onClick={() => setSheet("packs")} />
+          <LinkRow title="Your keys" value={own === 0 ? "None" : `${own}`} onClick={() => setSheet("custom")} last />
+        </div>
+      )}
+      <KeyPickerSheet
+        open={sheet === "keys"}
+        onOpenChange={(open) => setSheet(open ? "keys" : null)}
+        settings={settings}
+        host={host}
+        readOnly={readOnly}
+      />
+      <PacksSheet
+        open={sheet === "packs"}
+        onOpenChange={(open) => setSheet(open ? "packs" : null)}
+        settings={settings}
+        readOnly={readOnly}
+      />
+      <CustomKeySheet
+        open={sheet === "custom"}
+        onOpenChange={(open) => setSheet(open ? "custom" : null)}
+        settings={settings}
+        readOnly={readOnly}
+      />
+    </section>
   );
 }
