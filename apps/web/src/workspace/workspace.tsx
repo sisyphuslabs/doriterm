@@ -155,7 +155,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   useAdoptLoose(layouts, fed.loaded ? terminals : null, failed);
   const narrow = useNarrow();
   const ids = useMemo(() => machineIds(views), [views]);
-  // The phone's open terminal is kept by machine id like a tab, so a rename keeps it open at the new address.
+  // Whether this screen pushed the entry the phone is on: a cold open on ?t= has none behind it, so its Back may not pop.
   const openFromList = useRef(false);
   // Settings and pairing are routes with no terminal in them: they say nothing about which terminal is open, so the last
   // one the list had stays open under them (the workspace is kept mounted there, and so is the terminal).
@@ -169,12 +169,13 @@ export function Workspace({ connection }: WorkspaceProps) {
   const routeKey = typeof routeSearch.t === "string" ? routeSearch.t : null;
   const routeTerminal = routePath === "/" ? routeKey : null;
   // Settings keeps the workspace mounted (#607), so it must keep the phone's open terminal too: a route that is not the
-  // list says nothing about `?t=`, so it is read from the list only. There is no second copy to keep in step.
+  // list says nothing about `?t=`, so the key is read there and the last one carries across (phone-route.ts).
   lastPhoneKey.current = rememberOpenKey(routePath, routeKey, lastPhoneKey.current);
   const phoneKey = phoneOpenKey(routePath, routeKey, lastPhoneKey.current);
   const phoneOpen = phoneKey === null || !narrow ? null : (tabAddress(phoneKey, ids) ?? null);
   const showOnPhone = useCallback(
     (address: string) => {
+      // Opening a terminal is what the first-run guide is waiting for (#668); this stays even when no entry is pushed.
       guideStore.opened();
       // A desktop keeps no history entries of its own: its New tab and its notices are not navigations, and pushing one
       // made Back step through no-op entries and a landing run close the screen behind it.

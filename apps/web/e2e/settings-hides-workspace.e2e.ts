@@ -62,8 +62,10 @@ test("the Appearance section keeps nothing of the workspace over it in dark (#87
     await page.getByRole("tab", { name: "Appearance" }).click();
     await expect(page.getByRole("heading", { name: "Appearance", exact: true })).toHaveCount(1);
     await expect.poll(() => drawnUnderSettings(page)).toEqual([]);
-    await expect(page.getByRole("button", { name: /^Pin .+ to the top$/ })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /^More for / })).toHaveCount(0);
+    // Queried by attribute, not by role: the workspace under Settings is aria-hidden, and getByRole skips it, so a role
+    // query here could never fail whatever the workspace drew.
+    await expect(page.locator('[aria-label^="Pin "]:visible')).toHaveCount(0);
+    await expect(page.locator('[aria-label^="More for "]:visible')).toHaveCount(0);
   } finally {
     endAgent("host", address);
   }
