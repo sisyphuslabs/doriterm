@@ -17,7 +17,7 @@ import {
 import { raceDeadline } from "./deadline.ts";
 import {
   HcConnectionClosedError,
-  HcHandshakeError,
+  HcHandshakeTimeoutError,
   HcLinkSilentError,
   HcProtocolError,
   HcTimeoutError,
@@ -119,7 +119,7 @@ export class HcConnection {
       const hello = await raceDeadline(
         wire.hello,
         { timeoutMs, signal: options.signal },
-        () => new HcHandshakeError(`no hello reply within ${timeoutMs} ms`),
+        () => new HcHandshakeTimeoutError(timeoutMs),
       );
       return new HcConnection(wire, hello, options.callTimeoutMs);
     } catch (error) {

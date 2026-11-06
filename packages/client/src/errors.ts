@@ -9,6 +9,21 @@ export class HcHandshakeError extends Error {
   override readonly name: string = "HcHandshakeError";
 }
 
+/**
+ * The framed hello got no reply inside its deadline, so the core may be silent rather than wrong. Its own class, because a
+ * caller has to tell "no answer" from the three handshake errors that mean the core answered and its answer is unusable
+ * (#744): only this one may be reported as a host that did not answer.
+ */
+export class HcHandshakeTimeoutError extends HcHandshakeError {
+  override readonly name = "HcHandshakeTimeoutError";
+  readonly timeoutMs: number;
+
+  constructor(timeoutMs: number) {
+    super(`no hello reply within ${timeoutMs} ms`);
+    this.timeoutMs = timeoutMs;
+  }
+}
+
 /** A core this client cannot use, and what says so: the protocol generation it speaks, or its version under the floor. */
 export type HcCoreMismatch =
   /** The core speaks a newer protocol generation than this client: the client needs an update. */

@@ -12,6 +12,7 @@ export {
   HcConnectionClosedError,
   HcCoreMismatchError,
   HcHandshakeError,
+  HcHandshakeTimeoutError,
   HcLinkSilentError,
   HcProtocolError,
   HcTimeoutError,
