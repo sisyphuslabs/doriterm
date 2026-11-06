@@ -30,6 +30,10 @@ const DOWNLOADS: readonly Download[] = [
   { label: "Linux arm64", matches: (name) => isArm(name) && (name.endsWith(".AppImage") || name.endsWith(".deb")) },
   { label: "Web client and PWA (static files)", matches: (name) => has(name, "-web-") && name.endsWith(".zip") },
   { label: "Render bench against the last release (#670)", matches: (name) => has(name, "-render-bench.") },
+  {
+    label: "Host only, Linux and macOS (`curl -fsSL <this release>/install.sh | sh` installs it as a user service)",
+    matches: (name) => name === "install.sh" || name.startsWith("doriface-host-"),
+  },
 ];
 
 const escapeRegExp = (text: string): string => text.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -112,4 +116,4 @@ const assets = readdirSync(assetsDir)
   .filter((name) => name !== "SHA256SUMS.txt")
   .toSorted();
 const changes = resolved.notes;
-console.log([`# doriface v${version}`, changes, `## Downloads\n\n${downloads(assets)}`, SIGNING].join("\n\n"));
+console.log([`# Doriterm v${version}`, changes, `## Downloads\n\n${downloads(assets)}`, SIGNING].join("\n\n"));

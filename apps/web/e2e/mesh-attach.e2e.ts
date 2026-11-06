@@ -4,12 +4,13 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { type Browser, expect, type Page, test } from "@playwright/test";
 import { routeRelaySockets } from "./relay-route.ts";
+import { PRIVATE_RELAY_SKIP } from "./private-relay.ts";
 
 // G009 C004: the web app paired with ONE mesh member lists another member's machine with its terminals and attaches to
 // one of them, typing into it. Two real doriface-hosts with their own hc cores are joined by `mesh pair` and `mesh join`
 // through the private relay under wrangler dev (no `hc machine add`), so this needs a relay checkout
 // (DORIFACE_RELAY_DIR, as `bun run relay:fetch` makes) and is skipped without one. MESH_ATTACH_OUT keeps the captures.
-test.skip(process.env["DORIFACE_RELAY_DIR"] === undefined, "needs the private relay (DORIFACE_RELAY_DIR)");
+test.skip(process.env["DORIFACE_RELAY_DIR"] === undefined, PRIVATE_RELAY_SKIP);
 test.use({ serviceWorkers: "block" });
 test.describe.configure({ mode: "serial" });
 test.setTimeout(240_000);

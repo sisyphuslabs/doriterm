@@ -81,7 +81,7 @@ export interface VapidKey {
 }
 
 /** Who runs this sender, for a push service that must reach someone about abuse (RFC 8292 section 2.1). */
-export const VAPID_SUBJECT = "https://github.com/sisyphuslabs/doriface";
+export const VAPID_SUBJECT = "https://github.com/sisyphuslabs/doriterm";
 const VAPID_LIFETIME_S = 12 * 60 * 60;
 
 const jsonPart = (value: object): string => base64urlEncode(utf8(JSON.stringify(value)));

@@ -4,11 +4,12 @@ import { createInterface } from "node:readline";
 import { type Browser, expect, type Page, test } from "@playwright/test";
 import { pressNewTab } from "./fixtures.ts";
 import { routeRelaySockets } from "./relay-route.ts";
+import { PRIVATE_RELAY_SKIP } from "./private-relay.ts";
 
 // Two devices paired with one host through the private relay: a space renamed on one shows on the other at once (#395).
 // The relay-host helper runs a real host and hc under wrangler dev, so this needs a relay checkout (DORIFACE_RELAY_DIR,
 // as `bun run relay:fetch` makes) and is skipped without one.
-test.skip(process.env["DORIFACE_RELAY_DIR"] === undefined, "needs the private relay (DORIFACE_RELAY_DIR)");
+test.skip(process.env["DORIFACE_RELAY_DIR"] === undefined, PRIVATE_RELAY_SKIP);
 test.use({ serviceWorkers: "block" });
 test.describe.configure({ mode: "serial" });
 test.setTimeout(240_000);

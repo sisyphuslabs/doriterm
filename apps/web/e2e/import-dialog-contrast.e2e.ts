@@ -45,7 +45,8 @@ function dialogContrasts(): { readonly text: string; readonly ratio: number; rea
     }
     return layers.reduceRight<[number, number, number]>((under, top) => over(top, under), [255, 255, 255]);
   };
-  const dialog = document.querySelector('[role="dialog"]');
+  // The import dialog, over Settings' own dialog where Settings is one.
+  const dialog = document.querySelector('[role="dialog"]:not([data-settings-dialog])');
   if (dialog === null) throw new Error("no dialog is open");
   const found: { text: string; ratio: number; large: boolean }[] = [];
   const walker = document.createTreeWalker(dialog, NodeFilter.SHOW_TEXT);

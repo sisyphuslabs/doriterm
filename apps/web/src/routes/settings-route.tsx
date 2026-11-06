@@ -17,6 +17,7 @@ import { CrashProbe } from "../crash/crash-probe.ts";
 import { RegionBoundary } from "../crash/region-boundary.tsx";
 import { usePendingUpdate } from "../update/update-store.ts";
 import { useCloseSettings } from "../settings/use-close-settings.ts";
+import { useSettingsInDialog } from "../settings/settings-dialog.tsx";
 import { VoiceSection } from "../settings/voice-section.tsx";
 
 const SECTIONS = [
@@ -46,6 +47,9 @@ export function SettingsRoute() {
   const [section, setSection] = useState<SectionId>("connections");
   const close = useCloseSettings();
   const update = usePendingUpdate();
+  // In the dialog its header is not the window's titlebar: it neither moves the window nor makes room for its controls.
+  const dialog = useSettingsInDialog();
+  const titlebar = dialog ? {} : { "data-titlebar": "" };
   const back = (
     <IconButton
       label="Close settings"
@@ -55,10 +59,15 @@ export function SettingsRoute() {
     />
   );
   return (
-    <div className="flex h-dvh min-h-0 flex-col bg-background pt-(--safe-top) pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left) md:flex-row">
+    <div
+      className={cn(
+        "flex h-full min-h-0 flex-col bg-background md:flex-row",
+        !dialog && "pt-(--safe-top) pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left)",
+      )}
+    >
       <CrashProbe region="settings" />
       <Tabs value={section} onValueChange={(value: SectionId) => setSection(value)} className="md:hidden">
-        <div data-titlebar className="flex items-center gap-1 pt-3 pr-2 pb-1 pl-[var(--titlebar-inset-start,0.5rem)]">
+        <div {...titlebar} className="flex items-center gap-1 pt-3 pr-2 pb-1 pl-[var(--titlebar-inset-start,0.5rem)]">
           {back}
           <h1 className="text-xl font-semibold text-foreground">Settings</h1>
         </div>
@@ -75,8 +84,11 @@ export function SettingsRoute() {
         className="hidden w-56 shrink-0 flex-col gap-px border-r border-sidebar-border bg-sidebar px-2 pb-2 md:flex"
       >
         <div
-          data-titlebar
-          className="mb-1 flex h-11 shrink-0 items-center gap-1 pl-[calc(var(--titlebar-inset-start,0.5rem)-0.5rem)]"
+          {...titlebar}
+          className={cn(
+            "mb-1 flex h-11 shrink-0 items-center gap-1",
+            !dialog && "pl-[calc(var(--titlebar-inset-start,0.5rem)-0.5rem)]",
+          )}
         >
           {back}
           <h1 className="text-lg font-semibold text-foreground">Settings</h1>

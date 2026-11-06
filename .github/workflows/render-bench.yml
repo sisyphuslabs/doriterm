@@ -122,7 +122,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/results"
           safe=$(printf '%s' "$LABEL" | tr -c 'A-Za-z0-9._-' '-')
           for ext in json md; do
-            [ -f "$RUNNER_TEMP/bench/render-bench.$ext" ] && cp "$RUNNER_TEMP/bench/render-bench.$ext" "$RUNNER_TEMP/results/doriface-$safe-render-bench.$ext"
+            [ -f "$RUNNER_TEMP/bench/render-bench.$ext" ] && cp "$RUNNER_TEMP/bench/render-bench.$ext" "$RUNNER_TEMP/results/Doriterm-$safe-render-bench.$ext"
           done
           ls -la "$RUNNER_TEMP/results"
       - name: Workflow summary

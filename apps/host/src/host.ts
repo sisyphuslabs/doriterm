@@ -11,6 +11,8 @@ import { PairOffers } from "./pair-surface.ts";
 import { DeviceSurface } from "./device-surface.ts";
 import { type GitFactsPublisher, publishGitFacts } from "./git-facts.ts";
 import { type HostInfoPublisher, publishHostInfo } from "./host-info.ts";
+import { type MeshOfferService, serveMeshOffers } from "./mesh/offer-doc.ts";
+import { pairingArtifact } from "./pair-link.ts";
 import { retireLock } from "./host-lock.ts";
 import { publishMeshStatusOnCore, type MeshStatusPublisher } from "./mesh/status-publisher.ts";
 import { type Host, HOST_VERSION, type HostOptions } from "./host-types.ts";
@@ -112,6 +114,30 @@ async function serve(
   let info: HostInfoPublisher | undefined;
   let git: GitFactsPublisher | undefined;
   let meshDoc: MeshStatusPublisher | undefined;
+  let offers: MeshOfferService | undefined;
+  // A one-line Add a machine (#668): a client asks for a mesh offer through a core document, and the host answers it.
+  const meshOffer = async () => {
+    if (e2ee === undefined) throw new Error("this host keeps no state, so it cannot open a mesh offer");
+    const offer = await e2ee.hostMesh.pair(true);
+    const keys = e2ee.identity;
+    const link = pairingArtifact(
+      {
+        hostId: keys.hostId,
+        noiseStaticPub: keys.noise.publicKey,
+        signPub: keys.sign.publicKey,
+        linkSecret: offer.linkSecret,
+        relayUrl: options.relay?.url ?? DEFAULT_RELAY_URL,
+        mesh: true,
+      },
+      undefined,
+    ).url;
+    return { link, expiresAt: offer.expiresAt };
+  };
+  started(
+    "mesh offers",
+    () => offers?.stop(),
+    () => (offers?.kill() ?? []).map((pid) => `hc connect pid ${pid}`),
+  );
   started(
     "host info",
     () => info?.stop(),
@@ -155,6 +181,10 @@ async function serve(
         meshStatus === undefined || e2ee === undefined
           ? undefined
           : publishMeshStatusOnCore(core, meshStatus, e2ee.identity.hostId, options.log);
+      if (e2ee !== undefined) {
+        const pending = e2ee.hostMesh.pending;
+        offers ??= serveMeshOffers(core, options.log, (listener) => pending.onAdmitted(listener), meshOffer);
+      }
       return new HcPipe({ hc: options.hc, session: options.session, env: options.env, log: options.log });
     },
   });
@@ -252,7 +282,7 @@ async function serve(
         .then(() => uplink?.stop())
         .then(() => gateway.closeAll())
         .then(() => ends.stop())
-        .then(() => Promise.all([info?.stop(), git?.stop()]))
+        .then(() => Promise.all([info?.stop(), git?.stop(), offers?.stop()]))
         .then(() => pushStopped)
         .then(() => Promise.all([server.stop(true), lanServer?.stop(true)]))
         .then(() => retireLock(stateDir, options.log));

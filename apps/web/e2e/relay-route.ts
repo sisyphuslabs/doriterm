@@ -12,6 +12,8 @@ import { E2E_WEB_PORT } from "./config.ts";
 export interface FakeRelayHost {
   /** A fresh pairing link: each one pairs one device, once. */
   readonly pairingLink: () => Promise<string>;
+  /** Starts a second machine and runs `doriface-host mesh join` there with `link`; resolves with its mesh name. */
+  readonly join: (link: string) => Promise<string>;
   /** The host's LAN listener, the address a person sets as the Direct address (#446); empty unless `direct` was asked. */
   readonly directUrl: string;
   /** Call before the page dials the relay: its `/v1/client/...` sockets go to the fake relay's client bridge. */
@@ -95,7 +97,7 @@ function readProtocol(
   driver: ChildProcess,
   deadlineMs: number,
   deadlineFrom: string | undefined,
-): { readonly next: (what: string) => Promise<Line> } {
+): { readonly next: (what: string, waitMs?: number) => Promise<Line> } {
   const out = driver.stdout;
   if (out === null) throw new Error("the fake relay host has no stdout");
   const lines = createInterface({ input: out });
@@ -147,7 +149,7 @@ function readProtocol(
     );
   })();
 
-  const next = (what: string): Promise<Line> =>
+  const next = (what: string, waitMs = deadlineMs): Promise<Line> =>
     new Promise<Line>((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const waiter: Waiter = {
@@ -178,10 +180,10 @@ function readProtocol(
           waiting.splice(at, 1);
           reject(
             new Error(
-              `the fake relay host did not finish ${what} within ${deadlineMs} ms: ${where()}, and it printed no error`,
+              `the fake relay host did not finish ${what} within ${waitMs} ms: ${where()}, and it printed no error`,
             ),
           );
-        }, deadlineMs);
+        }, waitMs);
       };
       if (clockRunning) arm();
       else armWhenRunning.push(arm);
@@ -242,6 +244,13 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
         if (typeof link !== "string") throw new Error("the fake relay host printed no pairing link");
         return link;
       },
+      async join(link) {
+        input.write(`join ${link}\n`);
+        // A second core, a second host and a join through the relay: more than one startup stage's worth.
+        const { joined } = await protocol.next("a joined machine", 60_000);
+        if (typeof joined !== "string") throw new Error("the fake relay host printed no joined machine");
+        return joined;
+      },
       route: (page) => routeRelaySockets(page, bridge),
       stop,
     };
@@ -263,6 +272,8 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
 export function startFakeRelayHost(
   options: {
     readonly machine?: boolean;
+    /** The host's core already runs one shell, named `existing`, before any device pairs. */
+    readonly terminal?: boolean;
     readonly stageDeadlineMs?: number;
     readonly stageDeadlineFrom?: string;
     readonly direct?: boolean;
@@ -277,6 +288,7 @@ export function startFakeRelayHost(
       `http://127.0.0.1:${E2E_WEB_PORT}`,
       FAKE_RELAY,
       ...(options.machine === true ? ["--machine"] : []),
+      ...(options.terminal === true ? ["--terminal"] : []),
       ...(options.direct === true ? ["--direct"] : []),
     ],
     cwd: join(import.meta.dirname, ".."),

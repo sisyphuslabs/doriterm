@@ -92,7 +92,9 @@ test("a web font that loads while the terminal is under Settings re-sizes wide g
   await print(page, terminal, HANGUL);
   await expect.poll(async () => (await wideSizes(terminal)).length).toBe(2);
   const before = await wideSizes(terminal);
-  // Settings keeps the workspace mounted and hidden, so the font arrives under a terminal that is not on screen.
+  // Too short for the dialog, Settings is a sheet: it keeps the workspace mounted and hidden, so the font arrives under
+  // a terminal that is not on screen.
+  await page.setViewportSize({ width: 1280, height: 560 });
   await page.getByRole("link", { name: "Settings" }).first().click();
   await expect(page.locator("[data-terminal]")).toBeHidden();
   release();

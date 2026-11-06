@@ -83,7 +83,13 @@ test("keep the screen awake survives a reload and holds the lock only while a te
   await setVisibility(page, "visible");
   await expect.poll(async () => (await wake(page)).active, { message: "taken again when shown" }).toBe(1);
 
+  // The Settings dialog leaves the terminals in view behind it, so the lock stays.
   await page.getByRole("link", { name: "Settings" }).first().click();
+  await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+  expect((await wake(page)).active).toBe(1);
+  // On a screen too short for the dialog Settings is a sheet over the whole page, and no terminal shows.
+  await page.setViewportSize({ width: 1280, height: 560 });
+  await expect(page.getByRole("dialog", { name: "Settings" })).toHaveCount(0);
   await expect.poll(async () => (await wake(page)).active, { message: "released once no terminal shows" }).toBe(0);
 });
 

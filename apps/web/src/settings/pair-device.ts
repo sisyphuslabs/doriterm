@@ -57,8 +57,8 @@ export function slotNote(offer: DesktopPairOffer): string | undefined {
 /** What opens the link, said plainly: the link is for another computer, the QR code for a phone. */
 export function linkOpens(opens: DesktopPairOffer["opens"]): string {
   return opens === "web"
-    ? "Opens the doriface web app on the device you pair."
-    : "Opens the doriface desktop app on another computer. On a phone, scan the QR code or type the code above.";
+    ? "Opens the Doriterm web app on the device you pair."
+    : "Opens the Doriterm desktop app on another computer. On a phone, scan the QR code or type the code above.";
 }
 
 /** What the QR code encodes: the phone's web link, or `link` from a host older than #700 that sends none. */

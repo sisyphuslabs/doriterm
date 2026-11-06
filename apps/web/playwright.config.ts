@@ -29,8 +29,23 @@ export default defineConfig({
   metadata: { runDir: RUN_DIR },
   forbidOnly: Boolean(process.env["CI"]),
   reporter: process.env["CI"] ? [["list"], ["html", { open: "never" }]] : "list",
-  use: { baseURL: `http://127.0.0.1:${E2E_WEB_PORT}`, trace: "retain-on-failure" },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // The window and the pixel ratio are pinned here rather than inherited from a device preset (#862): every spec that
+  // measures layout has to measure the same boxes on a Linux runner and on a developer's Mac, and a preset that moves
+  // between Playwright releases would move them silently.
+  use: {
+    baseURL: `http://127.0.0.1:${E2E_WEB_PORT}`,
+    trace: "retain-on-failure",
+    viewport: { width: 1280, height: 720 },
+    deviceScaleFactor: 1,
+  },
+  projects: [
+    {
+      name: "chromium",
+      // The device preset brings the browser channel and the platform; the window and pixel ratio are pinned after it so
+      // a preset change cannot move what a layout spec measures (#862).
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 },
+    },
+  ],
   webServer: [
     {
       // Only layout.e2e.ts reads this host, and a file's tests run in one worker, so the workers can share it.

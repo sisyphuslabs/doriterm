@@ -2,12 +2,14 @@ import {
   AA_GRAPHIC,
   ansiTextContrast,
   Button,
+  IconButton,
   Notice,
   SegmentedControl,
   SettingRow,
   ThemeBrowser,
   type ThemeOption,
 } from "@doriface/ui";
+import { Minus, Plus } from "lucide-react";
 import { useRef, useState } from "react";
 import {
   appearanceStore,
@@ -16,7 +18,11 @@ import {
   type AppearanceMode,
   type Density,
 } from "../appearance/appearance.ts";
+import { useTerminalConfig } from "../ghostty/config-store.ts";
+import { isDefault, single } from "../ghostty/config.ts";
+import { useActionKeys } from "../keys/use-action-keys.ts";
 import { useDarkScheme } from "../terminal/use-dark-scheme.ts";
+import { stepTerminalFont } from "../workspace/use-app-actions.ts";
 import { importThemeFile } from "./import-theme.ts";
 
 const MODES = [
@@ -31,7 +37,50 @@ const DENSITIES = [
   { value: "spacious", label: "Spacious" },
 ] as const satisfies readonly { value: Density; label: string }[];
 
-/** Light/dark mode, a dark and a light pick from the theme library, density, and herdr-app theme import. */
+/**
+ * The terminals' text size beside the other display choices, stepped as the zoom keys step it; Settings > Terminal has
+ * the same font-size among its other keys.
+ */
+function TextSizeRow() {
+  const config = useTerminalConfig();
+  const smaller = useActionKeys("app.zoom_out");
+  const larger = useActionKeys("app.zoom_in");
+  return (
+    <SettingRow
+      title="Text size"
+      description="The terminals' font size, in points."
+      control={
+        <div className="flex items-center gap-1">
+          <IconButton
+            label="Smaller terminal text"
+            {...(smaller === undefined ? {} : { keys: smaller })}
+            icon={<Minus />}
+            onClick={() => stepTerminalFont("app.zoom_out")}
+          />
+          <output data-numeric className="min-w-14 text-center text-sm text-foreground tabular-nums">
+            {single(config, "font-size")} pt
+          </output>
+          <IconButton
+            label="Larger terminal text"
+            {...(larger === undefined ? {} : { keys: larger })}
+            icon={<Plus />}
+            onClick={() => stepTerminalFont("app.zoom_in")}
+          />
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={isDefault(config, "font-size")}
+            onClick={() => stepTerminalFont("app.zoom_reset")}
+          >
+            Reset
+          </Button>
+        </div>
+      }
+    />
+  );
+}
+
+/** Light/dark mode, a dark and a light pick from the theme library, density, text size, and herdr-app theme import. */
 export function AppearanceSection() {
   const appearance = useAppearance();
   const systemDark = useDarkScheme();
@@ -83,7 +132,7 @@ export function AppearanceSection() {
       )}
       <SettingRow
         title="Density"
-        description="Row height in the sidebar, lists and menus. The terminal keeps its own font size."
+        description="Row height in the sidebar, lists and menus. The terminals' text has its own size, below."
         control={
           <SegmentedControl
             label="Density"
@@ -93,6 +142,7 @@ export function AppearanceSection() {
           />
         }
       />
+      <TextSizeRow />
       <SettingRow
         title="Import a herdr-app theme"
         description="A herdr-app theme file (.json) imports unchanged."

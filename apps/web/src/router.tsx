@@ -8,16 +8,21 @@ import { keyboardIsIdle, mayTakeFocus } from "./terminal/may-take-focus.ts";
 import { capturePairingLink } from "./pair/link-capture.ts";
 import { PairRoute } from "./routes/pair-route.tsx";
 import { SettingsRoute } from "./routes/settings-route.tsx";
+import { SettingsDialog, useSettingsSheet } from "./settings/settings-dialog.tsx";
 import { WorkspaceRoute } from "./routes/workspace-route.tsx";
 
 /**
- * The workspace stays mounted under Settings, hidden and inert, so leaving Settings shows its terminals as they were:
- * no pane attaches again and replays its history (seconds over the relay), the scroll stays where it was, and the
- * keyboard goes back to the focused pane's terminal, as it did when the workspace mounted again.
+ * The workspace stays mounted under Settings, inert, so leaving Settings shows its terminals as they were: no pane
+ * attaches again and replays its history (seconds over the relay), the scroll stays where it was, and the keyboard goes
+ * back to the focused pane's terminal, as it did when the workspace mounted again. On a wide, tall enough screen Settings
+ * is a dialog over the workspace, which stays in view and keeps drawing; on a phone, or a screen too short for the dialog,
+ * it is a full-screen sheet and the workspace under it is hidden.
  */
 function Root() {
   const path = useRouterState({ select: (state) => state.location.pathname });
   const settings = path === "/settings";
+  const asSheet = useSettingsSheet();
+  const sheet = settings && asSheet;
   useEffect(() => {
     if (settings) return;
     // Back at the workspace while a reconnect waits out its back-off: try now, not up to 10 s on (#403).
@@ -29,7 +34,7 @@ function Root() {
   if (path !== "/" && !settings) return <Outlet />;
   return (
     <>
-      {settings ? (
+      {sheet ? (
         // No z-index: a menu or dialog Settings portals to the body paints in DOM order, and a layer above it would
         // cover the menu (the workspace behind is invisible, so this layer only has to paint over nothing).
         <div className="fixed inset-0 bg-background">
@@ -37,14 +42,23 @@ function Root() {
         </div>
       ) : null}
       {/* The view on screen is #root's first child: the desktop window waits for `#root > *` to paint, and the
-          workspace kept under Settings is invisible, so it must not come first. */}
-      <div className={settings ? "invisible contents" : "contents"} inert={settings}>
+          workspace kept under the phone's sheet is invisible, so it must not come first there. */}
+      {/* Under the dialog the workspace stays in view but out of reach: inert, and hidden from assistive tech, so only
+          the dialog is read (aria-modal). */}
+      <div className={sheet ? "invisible contents" : "contents"} inert={settings} aria-hidden={settings || undefined}>
         <ActionsPaused.Provider value={settings}>
-          <TerminalsOnScreen.Provider value={!settings}>
+          <TerminalsOnScreen.Provider value={!sheet}>
             <WorkspaceRoute />
           </TerminalsOnScreen.Provider>
         </ActionsPaused.Provider>
       </div>
+      {/* After the workspace, so the dialog paints over its layers at the same modal level; what Settings portals to
+          the body comes after #root and paints over the dialog. */}
+      {settings && !asSheet ? (
+        <SettingsDialog>
+          <Outlet />
+        </SettingsDialog>
+      ) : null}
     </>
   );
 }

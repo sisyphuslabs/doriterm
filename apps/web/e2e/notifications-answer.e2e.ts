@@ -40,7 +40,7 @@ test("a permission notice is opaque; its Yes row opens the pane and the page ans
     .poll(() => shownNotifications(worker), { timeout: 15_000 })
     .toEqual([
       {
-        title: "doriface",
+        title: "Doriterm",
         body: "An agent is asking for permission.",
         tag,
         actions: ["option:1", "option:4:declines"],
@@ -96,7 +96,7 @@ test("a question's notice offers its own rows; a row opens the pane and the page
   await expect
     .poll(() => shownNotifications(worker), { timeout: 15_000 })
     .toEqual([
-      { title: "doriface", body: "An agent is waiting for your input.", tag, actions: ["option:1", "option:2"] },
+      { title: "Doriterm", body: "An agent is waiting for your input.", tag, actions: ["option:1", "option:2"] },
     ]);
   await tapNotification(worker, tag, "option:2");
   await expect(page.locator(`[data-terminal="${agent.address}"]`)).toBeVisible({ timeout: 15_000 });
@@ -113,7 +113,7 @@ test("several questions in a row offer no rows: a tap opens the card (#669)", as
   await deliverPush(context, JSON.stringify(posted.notice));
   await expect
     .poll(() => shownNotifications(worker), { timeout: 15_000 })
-    .toEqual([{ title: "doriface", body: "An agent is waiting for your input.", tag, actions: [] }]);
+    .toEqual([{ title: "Doriterm", body: "An agent is waiting for your input.", tag, actions: [] }]);
 });
 
 test("the agent's No row answers from the notification with its own key, without opening the app", async ({

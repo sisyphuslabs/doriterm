@@ -2,57 +2,142 @@
 
 ## Unreleased
 
-### Setting up your machines
+### Spaces list
 
-- [docs/install.md](docs/install.md) and the README show how to run the host as a user service on every Linux and macOS machine you own, join them into one mesh, and pair phones and browsers. The [doriterm-setup skill](skills/doriterm-setup/SKILL.md) lets a coding agent do it with `apps/host/scripts/setup/cli.ts` (`install`, `verify`, `invite`, `join`, `pair`, `uninstall`), which is safe to re-run and never prints a join link or key. (#778)
-
-### Paired devices
-
-- Settings > Connections lists the devices paired with this computer and revokes one; revoking closes its session at once and refuses that key from then on, so a lost phone no longer needs a terminal on this computer. (#709)
-
-### Joining a mesh from a browser
-
-- A browser with no account and no pairing opens the web app, follows an invite link a member sent, checks the host's fingerprint and lands on the mesh's terminals; a revisit needs no new invite. (#709)
-- A mesh invite (`&m=1`) is no longer read as a device invite: the web app says it adds a machine, with the command that does, instead of reporting a link that was already used. (#709)
-
-### Answering agents from the card
-
-- The card pinned over a waiting agent answers every prompt Claude Code and Codex draw, not only Allow or Deny: each of the agent's own rows with its key, its questions (one or several in a row, multi-select, a typed answer), and a plan to approve. It shows what the agent said above the question, the directory it works in, the diff or file it touches, and opens the files it names. Every answer is still checked against the live screen first. (#669)
-- A notification for a waiting agent offers its prompt's own rows, a question's included, fetched over the encrypted push stream: the agent's No row answers from the notification, any other row opens the app and is sent once it is on screen, and a prompt with several steps, boxes or a typed answer opens the card. (#669)
-
-### Web app and PWA
-
-- The installed web app carries its own app id and language, ships a maskable icon at 192 as well as 512, and opens standalone from an iOS home screen with its own title and status bar. (#709)
-- A resize no longer moves a terminal's view: a terminal following its output stays on its last line when the window is resized, a split divider is dragged or the phone keyboard opens, even while an agent redraws its whole transcript for the new width, and a terminal scrolled into its history keeps its line at the top. (#811)
 - A machine's terminal count and a space's tab count stay on one line however many digits they have: on a phone, "19" no longer breaks into "1" above "9" in the Spaces list. (#899)
 
-### Rendering performance
+## v0.1.4 - 2026-11-06
 
-- `bun run bench:render` measures the web client drawing 1, 15 and 50 live panes against a real core: frame times, main-thread load, long tasks, drawing throughput and lag, memory, and the cost of panes in a hidden tab. Every release now benches its web client against the last release's on one runner, stops before the draft when rendering regressed past the recorded limits, and attaches the results to the release. (#670)
+### The product is Doriterm
 
-### Native apps
+- The app is **Doriterm** everywhere a name shows: the bundle and its executable, the window title, the About and Help menus, notification titles, the PWA manifest and the tab title, the sidebar, the first-run and pairing copy, the exported terminal and keybinding files, the docs, and every GitHub link. The app id, the storage directory, the local keys, the `doriface://` link scheme and the wire contract stay as they are, so an installed app keeps the computer it paired and its settings. (#739)
+- Upgrading from 0.1.x: the app id and the storage folder do not move, so an update keeps the devices and settings an install already has. What changes on disk is the name: a macOS install that updates in place keeps its existing bundle folder (`/Applications/doriface.app`) and shows Doriterm in the Dock and menus, while installing the dmg fresh gives `/Applications/Doriterm.app`; the Linux deb launches as `/usr/bin/Doriterm`; the Windows installer updates the folder it recorded before. If you install the new dmg while the old one is still in /Applications, remove the old doriface.app; an in-place update does not need this. (#739)
 
-- A push bridge for the coming iOS and Android apps: the host's encrypted notices reach them through APNs and FCM, and the bridge never holds a key that opens one. (#705)
-- An Android app: the same web client in a native shell, with notifications that arrive with the app closed and Allow and Deny on a permission prompt, answered once the app is on screen. The status and navigation bars follow the theme. (#704, #705)
+### The hosted web app
 
-### Desktop local host and pairing by code
+- The hosted web app answers at **https://app.doriterm.com** (staging at https://staging.app.doriterm.com). https://doriface.omo.dev keeps serving the same build, so an installed app and links already shared keep working. (#857)
 
-- The host the desktop app starts joins the relay, so a phone or another computer can pair with this computer by code or link and reach its terminals. (#596)
-- Settings > Connections has **Pair a device**: it asks this computer's host for a fresh offer and shows its QR code, link, 8-character code, fingerprint and expiry, then the device that used it — no terminal and no CLI. (#614)
-- The web app is hosted at https://doriface.omo.dev, and the pairing QR code (in **Pair a device** and from `doriface-host pair`) opens its pair page on a phone, with the host's key ready to check. The link for another computer stays `doriface://pair#…`. (#700)
-- The hosted web app sends a Content Security Policy: a page there runs only the app's own scripts and the terminal's wasm, connects only to the relay, and cannot be framed. Every deploy's probe checks the live origin sends it. (#703)
+### Host install
 
-### Machine mesh
+- On macOS, running `install.sh` again over a host already installed waits for launchd to unload the old LaunchAgent before it registers the new one, instead of failing with `Bootstrap failed: 5`. (#908)
 
-- A machine you had already added over ssh or with a via is replaced by its mesh line under the same name, and mesh status and the Mesh panel say what kind of entry it replaced. Its open tabs and layout carry over. (#710)
+### Settings
+
+- Settings opens as a dialog over the workspace on a wide screen: the terminals stay in view behind it and keep drawing, so a theme, density or text-size change shows on them as it is made, and Escape or a click on the dimmed backdrop returns to the focused pane (in the desktop app the strip over the window's title bar still moves the window). Appearance gains a Text size row beside theme and density. A phone keeps the full-screen sheet. (#843)
 
 ### Website
 
-- A landing page for doriterm.com in `apps/landing` (a static Vite build) with its design system in `docs/design/landing/DESIGN-LANDING.md`: the hero line "Your devices. One terminal.", the app shown live from its own components, the relay as a ciphertext-only pipe, pairing by QR or code, and the mesh, each drawn as an animation that stops under reduced motion, in dark and light. (#735)
+- The doriterm.com landing page shows OmO running in the hero window and the machines of a fleet as a dot matrix around the relay, and introduces the people who make it. (#911)
 
-### Pasting images
+### Native apps
 
-- An image pasted into a terminal, or a file dropped on one, goes to that terminal's machine, this one or an added one, and its path is pasted there, as in herdr-app, so an agent there can read it. Text pastes as before, Ctrl+V works as before, and **Paste image** can be bound to a key in Settings > Keybindings. (#701)
+- The push bridge keeps a device's subscription when FCM answers a bare 404, and stops reading a chunked request body at its size cap. (#838)
+
+### Documentation
+
+- The GitHub social preview uses the landing page's Timeless card, and the design and architecture docs name what they cite correctly. (#802, #804, #866)
+
+## v0.1.3
+
+### This computer on the relay, and pairing from a phone
+
+- One step installs a host on Linux or macOS: `install.sh` (a release asset) checks the download against `SHA256SUMS.txt`, installs herdr-core when `hc` is missing, registers the host as a user service that starts at login and restarts if it stops, and prints the pairing QR code, link and code — running it again upgrades in place, and `--uninstall` removes it and keeps the keys. The code waits for a host that is still starting and for the relay to register it, so the first code it prints works. (#721)
+- The host the desktop app starts joins the relay, so a phone or another computer can pair with this computer by code or link and reach its terminals. (#597)
+- Settings > Connections has **Pair a device**: it asks this computer's host for a fresh offer and shows its QR code, link, 8-character code, fingerprint and expiry, then the device that used it — no terminal and no CLI. (#638)
+- Settings > Connections lists the devices paired with this computer and revokes one after asking: its session ends at once, its notifications stop and its key is refused, so a lost phone no longer needs a terminal on this computer. (#729)
+- The web app is hosted at https://doriface.omo.dev, and the pairing QR code (in **Pair a device** and from `doriface-host pair`) opens its pair page on a phone, with the host's key ready to check. The link for another computer stays `doriface://pair#…`. (#713)
+- A pair link printed with no `--web-origin` opens the desktop app, instead of a hostname the release never served. (#595)
+- A plain LAN Direct address works in the desktop app: the app forwards the page's bytes and reads none of them. (#601)
+- A saved Direct address carries the session with it, and the relay is its fallback. (#598)
+- Settings keeps naming the host it is paired with after that host stops answering, instead of showing its 26-character id. (#600)
+- A newly paired device walks through its first run: pair, start or open an agent, then see it in the agents list. Each step completes on its own, the guide can be skipped, and Settings > Device > **Getting started** shows it again. (#723)
+
+### Answering agents from the card
+
+- The card pinned over a waiting agent answers every prompt shape Claude Code and Codex draw, not only Allow or Deny: each of the agent's own rows with its key, its questions (one or several in a row, multi-select, a typed answer), and a plan to approve. It shows what the agent said above the question, the directory it works in, and the diff or file it touches, and a file it names opens read-only. Every answer is still checked against the live screen first. (#736)
+- A notification offers its prompt's own rows: a one-question prompt's rows become the notification's actions, the No row answers from the notification, any other row opens the app and its page sends the answer, and the answer is still checked against the live screen. Several steps or a typed answer offer no rows, and a tap opens the card. (#745)
+
+### A browser on the mesh, and the installed web app
+
+- A browser with no account and no pairing opens the web app, follows an invite link a member sent, checks the host's fingerprint and lands on the mesh's terminals; a revisit needs no new invite. (#716)
+- A mesh invite (`&m=1`) is no longer read as a device invite: the web app says it adds a machine, with the command that does, instead of reporting a link that was already used. (#716)
+- The installed web app carries its own app id and language, ships a maskable icon at 192 as well as 512, and opens standalone from an iOS home screen with its own title and status bar. (#715)
+- The hosted web app sends a Content Security Policy: its own scripts and the terminal's wasm, this origin and the relay, nothing else, and every deploy probes for the header. (#743)
+
+### Machine mesh
+
+- A machine you had already added over ssh or with a via is replaced by its mesh line under the same name, and mesh status and the Mesh panel say what kind of entry it replaced. Its open tabs and layout carry over. (#712)
+- Settings > Mesh shows the mesh this computer is in instead of "Not in a mesh": the host publishes its mesh status like its own facts, and a host in no mesh writes that it is in none, so a mesh it left is never read as the current one. (#761)
+- **Add a machine** is one command: the dialog asks this host for a single-use mesh offer and shows one `curl -fsSL …/install.sh | sh -s -- --join '<link>'` to run on the machine to add, which installs the host, runs it as a service and joins this host's mesh; the cores then add each other as machines, and the dialog says when it joined, with the three hand-run steps left under **Advanced**. (#831)
+
+### The phone
+
+- The phone terminal has a held touch, a field and a two-slot keys bar, with the input beside a scrolling key strip and a keyboard toggle that stays put. (#680, #682)
+- A one-tap ^C sits after Esc in the phone key row. (#678)
+- A syllable still composing is finished before a key-bar key, a chord or a paste, so the bar never eats it and never sends the syllable twice. (#718, #738)
+- The phone draws its sort control only when an agent can be sorted. (#657)
+- The phone's list says it is loading until the host's first list answers, instead of showing "No terminals yet" on every load. (#807)
+- A held touch's menu stays open when the finger lifts, and the selection it made survives: the tap a lift would make belongs to the hold, not to the menu. (#845)
+- An agent row's Pin and More are drawn on a touch screen, 24 px apart, so each takes a 44 px tap instead of waiting for a hover that never comes. (#808)
+
+### Native apps
+
+- A push bridge for the coming iOS and Android apps: the host's encrypted notices reach them through APNs and FCM, and the bridge never holds a key that opens one. (#717)
+- An Android app around the same web build, with its notifications through the bridge and Allow and Deny on the notification itself. (#810)
+- An iOS app around the same web client: a Notification Service Extension opens each notice with the app's own keys, so the text is shown without the bridge or Apple reading it. (#846)
+
+### Spaces, tabs and the sidebar
+
+- Ctrl+1-9 show the space at that place in the sidebar, and Cmd+Alt+] and Cmd+Alt+[ step through the spaces and wrap (Ctrl+Alt on Windows and Linux). There the tab number chords move from Ctrl+1-9 to Alt+1-9. (#626)
+- A space moves up or down within its machine, by drag or from its menu, and the order is written to the shared layout document, so every device of the host reads it without a reload. (#622)
+- A space's menu can close the whole space: it says how many tabs and terminals go, ends every program they run, and takes the space out on every device. (#620)
+- A tab's menu hands the keyboard to the question its item opened, so a rename typed at once is kept. (#591, #632)
+- Right-clicking a sidebar row opens its menu, so Rename is there without the "..." button. (#720)
+- The sidebar toggle takes a click on macOS with the sidebar hidden or in a rail, a click on it is not a window drag, and the tab strip still moves the window beside it. (#646, #659, #690)
+
+### Fonts, Korean text and the terminal
+
+- A latched Ctrl, Alt or Cmd reads a Hangul letter as its 2-set key, and a Ctrl chord whose key is a Hangul letter sends that physical key's control byte, so ctrl+ㅊ is ^C. (#675, #714)
+- A fallback Hangul face is sized to Ghostty's ideograph width, not the whole two cells. (#658)
+- Wide glyphs in a terminal that opened in a tab not shown are drawn once the tab is shown. (#649)
+- A press's selection is held by the terminal rather than the document, so IME composes after a drag-select. (#593)
+- A resize keeps the terminal's view: a following terminal keeps following through a divider drag or the phone keyboard, a program's redraw during one is written whole instead of paced, and only a scroll of your own stops it following. (#811)
+- An image pasted into a terminal, or a file dropped on one, goes to that terminal's machine — this one or an added one — and its path is pasted there, so an agent on that machine can read it; text and Ctrl+V paste as before, and **Paste image** can be bound in Settings > Keybindings. (#742)
+
+### Connection and offline wording
+
+- An attempt has a deadline that bounds the whole attempt and grows after each timeout, so a link that never settles cannot leave the page on "Connecting"; a direct race whose host stalls falls back to the relay. (#719, #740)
+- A relay that never answers the upgrade fails at its bound instead of holding the connect open. (#631)
+- The page waking runs a reconnect at once, and a link that keeps dropping keeps backing off. (#654)
+- A connection that answered no hello still opens, so a name never fails a session. (#633)
+- A layout write whose link drops under it says so plainly, never the closed link's raw cause. (#724)
+- Coming back from Settings keeps your terminals running instead of replaying their history. (#607)
+- Moving this device to another host in Settings moves its notifications with it: the host it leaves drops the subscription and the new host gets it. (#627)
+- A page that comes back — a tab shown again, a page restored from the back/forward cache, the network returning — while its link still looks open asks the host once, and a link that does not answer within 10 seconds is dropped and reconnected at once instead of leaving the terminal frozen until the 45-second heartbeat gives up; a link that answers, even with a refusal, is left alone. (#775)
+- A pane in a tab that is not on screen no longer re-attaches and pulls its 2,000-line scrollback over the link, so the pane in front of you and your typing do not compete with a replay nobody sees; it attaches when the tab is shown. (#731)
+
+### A core this client cannot use
+
+- A core the client cannot use fails for good instead of being retried forever, and says which side to update from one shared version floor; a core build missing a method the workspace calls says so at the handshake. (#662, #686, #689, #697)
+
+### Done, idle and errors
+
+- An agent that finished while its pane was not on screen keeps its dot, its row under **Done** and its space's mark until this screen shows that pane; another device that never showed it still says Done. (#628)
+- A render error shows a crash screen or a region notice with Try again, never a blank or bare screen. (#660)
+
+### Linux
+
+- The AppImage carries its own FUSE runtime, so stock Ubuntu 24.04 opens it without installing FUSE 2 first. (#629)
+
+### Website
+
+- doriterm.com has a landing page: "Your devices. One terminal.", the app shown live from its own components, pairing by QR or code, the mesh, and the relay as a ciphertext-only pipe, each as an animation that stops under reduced motion, in dark and light, with OmO as the agent shown first. (#735, #880)
+
+### Reliability
+
+- A launch still opening when the host stops is ended, so its core cannot outlive the host. (#599)
+- The host reads one typed plan document that is open unless it names a limit or a feature, and a document that cannot be read as one stops the host instead of reading as an open plan. (#606)
+- Many test, CI and documentation fixes, so problems are caught before a release instead of after. The phone keys bar's keys, packs and custom keys are now a stored model, and a modifier held in the bar now covers Home, End, Page Up, Page Down, Delete and F1 to F12 as well as the arrows, so a keyboard attached to a phone carries the modifier too. (#605, #608, #613, #617, #624, #681, #683, #685, #687, #695, #711, #725, #741, #762, #763, #765, #784, #785, #788, #815, #826, #828, #847, #863, #872, #876, #885)
 
 ## v0.1.2 - 2026-11-06
 

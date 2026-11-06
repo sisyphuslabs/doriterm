@@ -1,6 +1,9 @@
 // The hosted web app (#700): this package's production build (dist/, `bun run build`) served as Workers static assets,
 // with no Worker code. .github/workflows/deploy-web.yml deploys it to staging, probes it, then deploys production.
-// Self-hosters: put your own hostnames in "routes", or delete them to serve from workers.dev.
+// The app's own host is app.doriterm.com (staging.app.doriterm.com for staging, #857); the omo.dev hosts keep serving the
+// same bytes so installed apps and links printed there keep working. Custom domains create their DNS record and
+// certificate on deploy; the doriterm.com routes name their zone by id, which the deploy token can use without listing
+// zones. Self-hosters: put your own hostnames in "routes", or delete them to serve from workers.dev.
 {
   "name": "doriface-web",
   "compatibility_date": "2026-11-06",
@@ -11,14 +14,20 @@
   },
   "workers_dev": false,
   "preview_urls": false,
-  "routes": [{ "pattern": "doriface.omo.dev", "custom_domain": true }],
+  "routes": [
+    { "pattern": "app.doriterm.com", "zone_id": "79ae74d5937b2858a42f6261887e436e", "custom_domain": true },
+    { "pattern": "doriface.omo.dev", "custom_domain": true },
+  ],
   "env": {
     "staging": {
       "name": "doriface-web-staging",
       "assets": { "directory": "./dist", "not_found_handling": "single-page-application" },
       "workers_dev": false,
       "preview_urls": false,
-      "routes": [{ "pattern": "doriface-staging.omo.dev", "custom_domain": true }],
+      "routes": [
+        { "pattern": "staging.app.doriterm.com", "zone_id": "79ae74d5937b2858a42f6261887e436e", "custom_domain": true },
+        { "pattern": "doriface-staging.omo.dev", "custom_domain": true },
+      ],
     },
   },
 }

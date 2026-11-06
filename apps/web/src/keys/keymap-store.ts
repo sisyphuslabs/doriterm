@@ -9,7 +9,7 @@ export const KEYMAP_VERSION = 2;
 /** The stored keymap is a newer build's: this one reads its defaults and writes nothing. */
 export class NewerKeymapError extends Error {
   constructor() {
-    super("The keymap was saved by a newer version of doriface; it is left as it is.");
+    super("The keymap was saved by a newer version of Doriterm; it is left as it is.");
     this.name = "NewerKeymapError";
   }
 }

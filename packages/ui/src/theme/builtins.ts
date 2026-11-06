@@ -62,7 +62,7 @@ export const isBuiltinThemeName = (id: string): id is BuiltinThemeName => Object
 /** How a built-in theme is named and credited in the picker. */
 export interface BuiltinThemeInfo {
   readonly name: string;
-  /** Where it comes from: doriface, herdr-app, or the upstream project. */
+  /** Where it comes from: Doriterm, herdr-app, or the upstream project. */
   readonly family: string;
   /** The upstream project and its SPDX licence id, for library themes. */
   readonly url?: string;
@@ -70,8 +70,8 @@ export interface BuiltinThemeInfo {
 }
 
 export const BUILTIN_THEMES: Readonly<Record<BuiltinThemeName, BuiltinThemeInfo>> = {
-  night: { name: "Night", family: "doriface" },
-  day: { name: "Day", family: "doriface" },
+  night: { name: "Night", family: "Doriterm" },
+  day: { name: "Day", family: "Doriterm" },
   graphite: { name: "Graphite", family: "herdr-app" },
   paper: { name: "Paper", family: "herdr-app" },
   ...LIBRARY_CREDITS,

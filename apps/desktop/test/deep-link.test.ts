@@ -82,7 +82,7 @@ describe("parseInAppLink", () => {
     ["a query", LINK.replace("/pair#", "/pair?x=1#")],
     ["a bad fragment", LINK.replace(/&r=[^&]*/, "")],
     ["a doriface: link", `doriface://pair${FRAGMENT}`],
-    ["an ordinary allowlisted link", "https://github.com/sisyphuslabs/doriface"],
+    ["an ordinary allowlisted link", "https://github.com/sisyphuslabs/doriterm"],
   ])("leaves %s to the browser rules", (_name, candidate) => {
     expect(parseInAppLink(candidate)).toBeUndefined();
   });

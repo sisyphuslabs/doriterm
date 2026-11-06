@@ -78,7 +78,7 @@ describe("the main process deep-link router", () => {
     const link = linkFor(6);
     expect(openInAppLink(link)).toBe(true);
     expect(takePairingLink()).toBe(fragmentOf(link));
-    expect(openInAppLink("https://github.com/sisyphuslabs/doriface")).toBe(false);
+    expect(openInAppLink("https://github.com/sisyphuslabs/doriterm")).toBe(false);
     expect(openInAppLink(`doriface://pair${fragmentOf(link)}`)).toBe(false);
     expect(shown.reveals()).toBe(1);
   });

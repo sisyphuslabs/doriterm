@@ -14,7 +14,7 @@ export const VOICE_ERROR_COPY: Readonly<Record<VoiceError, ErrorCopy>> = {
   permission: {
     tone: "error",
     title: () => "Microphone access is off",
-    body: () => "Allow the microphone for doriface in the browser's site settings, then try again.",
+    body: () => "Allow the microphone for Doriterm in the browser's site settings, then try again.",
     retry: true,
   },
   "no-speech": {

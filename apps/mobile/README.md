@@ -18,4 +18,11 @@ A build without a Firebase project (`android/app/google-services.json`, an owner
 
 ## iOS
 
-Not in this tree yet: the iOS shell and its Notification Service Extension follow in a separate change under #704, built on macOS.
+```sh
+bun run --cwd apps/mobile sync:ios
+cd apps/mobile/ios/App && xcodebuild -project App.xcodeproj -scheme App -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO build
+```
+
+Needs Xcode 16 on macOS. The app target registers `DorifacePush` and `DorifaceShell` (`MainViewController`); `AppDelegate` hands the APNs token to the plugin and a tapped notice (or its Allow or Deny) to the page. The `NoticeService` extension opens each notice the bridge forwards (`p` in the APNs payload) with the app's keys, which `NoticeKeys` keeps in a Keychain group the two targets share, and replaces APNs' fixed alert with the notice's own text. `Shared/` holds the decryption and the notice parser both targets compile.
+
+A real APNs delivery needs the Apple Developer team, the app's bundle ids with Push Notifications and the shared Keychain group, and the APNs key on the bridge (owner steps, #708).

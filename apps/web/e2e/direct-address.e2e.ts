@@ -47,6 +47,9 @@ test.describe("a saved Direct address (#446)", () => {
     test.setTimeout(90_000);
     const paired = await pairAcrossTheNetwork(page, host);
     await withDirectAddress(page, paired, host.directUrl);
+    // The direct race's 300 ms is the page's own clock: on a busy machine the socket alone can take longer, and the page
+    // rightly takes the relay. Here only the direct attempt's answer decides, so this spec is about the path (#780).
+    await page.addInitScript(() => Reflect.set(window, "__dorifaceDirectBudgetMs", Number.POSITIVE_INFINITY));
     const sockets: string[] = [];
     page.on("websocket", (socket) => sockets.push(socket.url()));
     await page.goto("/");

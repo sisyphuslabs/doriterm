@@ -165,7 +165,7 @@ export async function installHc(options: HcInstallOptions): Promise<HcInstalled>
   if (!meetsHcFloor(release.version)) {
     throw new HcInstallError(
       "manifest",
-      `herdr-core ${release.version} is older than ${HC_VERSION_FLOOR}, which doriface needs`,
+      `herdr-core ${release.version} is older than ${HC_VERSION_FLOOR}, which Doriterm needs`,
     );
   }
 

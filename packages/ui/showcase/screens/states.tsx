@@ -8,7 +8,7 @@ export function HostOffline() {
       <EmptyState
         icon={<WifiOff />}
         title="studio is offline"
-        description="Last seen 4 minutes ago. Agents keep running on the host, and doriface reconnects when it is back."
+        description="Last seen 4 minutes ago. Agents keep running on the host, and Doriterm reconnects when it is back."
         actions={
           <>
             <Button variant="primary">Try again</Button>

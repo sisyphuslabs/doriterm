@@ -18,9 +18,9 @@ const ENGINE_NOTE: Readonly<Record<Engine, string>> = {
 
 const BLOCKED: Readonly<Record<VoiceBlocked, string>> = {
   unsupported:
-    "This browser has no speech recognition, so the mic cannot listen. Type instead, or open doriface in Chrome or Safari.",
-  insecure: "The browser only listens on a secure (https) page. Open doriface over https to dictate, or type instead.",
-  desktop: "The desktop app can't dictate yet. For dictation, use doriface in Chrome or Safari; here, type instead.",
+    "This browser has no speech recognition, so the mic cannot listen. Type instead, or open Doriterm in Chrome or Safari.",
+  insecure: "The browser only listens on a secure (https) page. Open Doriterm over https to dictate, or type instead.",
+  desktop: "The desktop app can't dictate yet. For dictation, use Doriterm in Chrome or Safari; here, type instead.",
 };
 
 /** Dictation: where it sends the audio, and the language and way it is recognized; nothing here keeps any audio. */

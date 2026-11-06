@@ -59,7 +59,7 @@ test("with herdr-core missing, This computer says so plainly, offers Retry, and 
         "permission-denied",
         { timeout: 20_000 },
       );
-      await expect(notice).toContainText(`doriface may not run ${missing}.`);
+      await expect(notice).toContainText(`Doriterm may not run ${missing}.`);
     };
     await failsPlainly("day");
     await failsPlainly("night");
