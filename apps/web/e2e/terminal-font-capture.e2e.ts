@@ -39,11 +39,14 @@ for (const colorScheme of ["light", "dark"] as const) {
       // The workspace is kept, so the tab opened above is still the one in view at 390: the phone opens straight onto it. Its
       // agent list is a tap away, and that list is what a phone uses to reach any other terminal — this test's one.
       if (width === 390) {
-        // The click waits for the phone's terminal screen itself. It mounts once the page's media query reports 390, a frame
-        // or more after setViewportSize resolves (and after Close settings' history.back() lands); an isVisible() check read
-        // the screen before that, skipped the click, and left the phone on the terminal with no list to count (#527).
-        await page.getByRole("button", { name: "Back to agents" }).click();
+        const back = page.getByRole("button", { name: "Back to agents" });
         const agents = page.locator("button:has([data-floor='name']):has(time)");
+        // The phone layout mounts a frame or more after setViewportSize (a matchMedia listener, and after Close settings'
+        // history.back() lands). Wait for THAT state change first, on either of its two screens: the agents list, or the
+        // terminal this test kept open, which is the only one with Back. Reading the screen before the mount is what made
+        // the old isVisible() check skip the click and leave the phone on the terminal with no list to count (#527).
+        await expect(back.or(agents).first(), "the phone layout is up").toBeVisible({ timeout: 15_000 });
+        if (await back.isVisible()) await back.click();
         await expect(agents, "the phone lists the one terminal this test opened").toHaveCount(1, { timeout: 30_000 });
         await agents.click();
       }
