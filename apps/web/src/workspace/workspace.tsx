@@ -2,6 +2,7 @@ import type { TerminalRunParams } from "@doriface/protocol";
 import type { HcConnection } from "@doriface/client";
 import { useToastManager } from "@doriface/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { connectionStore } from "../connection/store.ts";
 import { useActionHandler } from "../keys/dispatcher.ts";
 import { type Axis, LAYOUT_DOC, ORDER_DOC } from "@doriface/protocol/layout";
@@ -156,14 +157,29 @@ export function Workspace({ connection }: WorkspaceProps) {
   // The phone's open terminal is kept by machine id like a tab, so a rename keeps it open at the new address.
   const [phoneKey, setPhoneKey] = useState<string | null>(null);
   const phoneOpen = phoneKey === null ? null : (tabAddress(phoneKey, ids) ?? null);
-  // Opening a terminal from this device's list is the first run's "open an agent" step; a restored focus is not (#668).
+  // The phone's open terminal is a history entry (`?t=`), so Android's Back returns to the list instead of leaving the
+  // app (the browser has nothing else to pop), and a reload reopens what was open without pushing a second entry.
+  const navigate = useNavigate();
+  const router = useRouter();
+  const routeSearch = useRouterState({ select: (state) => state.location.search as { readonly t?: unknown } });
+  const routeKey = typeof routeSearch.t === "string" ? routeSearch.t : null;
+  useEffect(() => {
+    if (routeKey === phoneKey) return;
+    setPhoneKey(routeKey);
+  }, [routeKey, phoneKey]);
   const showOnPhone = useCallback(
     (address: string) => {
       guideStore.opened();
-      setPhoneKey(tabKey(address, ids));
+      const key = tabKey(address, ids);
+      setPhoneKey(key);
+      void navigate({ href: `/?t=${encodeURIComponent(key)}` });
     },
-    [ids],
+    [ids, navigate],
   );
+  const hideOnPhone = useCallback(() => {
+    if (typeof routeSearch.t === "string") router.history.back();
+    else setPhoneKey(null);
+  }, [routeSearch.t]);
   const [palette, setPalette] = useState(false);
   const [ask, setAsk] = useState<SessionAsk | null>(null);
   const [spaceAsk, setSpaceAsk] = useState<string | null>(null);
@@ -363,7 +379,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                       panes={phonePanes}
                       tabTitle={phoneTitle}
                       onOpen={showOnPhone}
-                      onBack={() => setPhoneKey(null)}
+                      onBack={hideOnPhone}
                       onNew={() => newTerminal()}
                       onPalette={onPalette}
                       onSession={onSession}
