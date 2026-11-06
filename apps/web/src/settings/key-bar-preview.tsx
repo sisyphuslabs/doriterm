@@ -9,14 +9,15 @@ import type { HostPlatform } from "../terminal/keys.ts";
 export interface KeyBarPreviewProps {
   readonly settings: KeyBarSettings;
   readonly host: HostPlatform;
+  readonly readOnly: boolean;
 }
 
 /**
  * What Settings > Keyboard is editing: the bar's own row, drawn from the same entries the terminal draws and inert, so a
- * preview can never send anything. The packs the person turned on sit under it as their own row of tabs, the active one
- * pressed, because a pack replaces what leads the terminal's bar.
+ * preview can never send anything. The packs the person turned on sit under it as their own row of tabs, with Keys only
+ * first, because a pack replaces what leads the terminal's bar.
  */
-export function KeyBarPreview({ settings, host }: KeyBarPreviewProps) {
+export function KeyBarPreview({ settings, host, readOnly }: KeyBarPreviewProps) {
   const keys = specialEntries(settings, host).map(toExtra);
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card" data-key-bar-preview>
@@ -42,14 +43,25 @@ export function KeyBarPreview({ settings, host }: KeyBarPreviewProps) {
           aria-label="Pack tabs"
           className="flex flex-wrap items-center gap-1.5 border-t border-border px-2 py-2"
         >
+          <button
+            type="button"
+            data-pack-tab=""
+            aria-pressed={settings.activePack === null}
+            disabled={readOnly}
+            onClick={() => choose(null)}
+            className={TAB}
+          >
+            Keys only
+          </button>
           {settings.packs.map((id) => (
             <button
               key={id}
               type="button"
               data-pack-tab={id}
               aria-pressed={settings.activePack === id}
-              onClick={() => void keyBarStore.update((current) => setActivePack(current, id))}
-              className="h-9 rounded-full border border-border px-3 text-xs font-medium text-foreground outline-none active:bg-selected aria-pressed:bg-selected aria-pressed:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+              disabled={readOnly}
+              onClick={() => choose(id)}
+              className={TAB}
             >
               {packName(id)}
             </button>
@@ -59,3 +71,10 @@ export function KeyBarPreview({ settings, host }: KeyBarPreviewProps) {
     </div>
   );
 }
+
+const TAB =
+  "h-9 rounded-full border border-border px-3 text-xs font-medium text-foreground outline-none active:bg-selected aria-pressed:bg-selected aria-pressed:text-foreground disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring";
+
+const choose = (id: string | null): void => {
+  void keyBarStore.update((current) => setActivePack(current, id));
+};

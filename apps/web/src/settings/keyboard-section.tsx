@@ -48,7 +48,7 @@ export function KeyboardSection() {
           {asSentence(error.message)}
         </Notice>
       )}
-      <KeyBarPreview settings={settings} host={host} />
+      <KeyBarPreview settings={settings} host={host} readOnly={readOnly} />
       <Group
         id="keyboard-in-bar"
         title="In the bar"

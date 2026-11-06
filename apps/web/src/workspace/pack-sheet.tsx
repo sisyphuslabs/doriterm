@@ -14,8 +14,8 @@ export interface PackSheetProps {
 }
 
 /**
- * The packs panel: every pack the person turned on, as tabs of the bar. Picking one puts its keys after their own, and
- * the choice stays on this device. Long-press Ctrl opens this panel; the bar's packs button opens it too.
+ * The packs panel: every pack the person turned on, as tabs of the bar. Picking one puts its keys ahead of their own in
+ * the row, and the choice stays on this device. Long-press Ctrl opens this panel; the bar's key held down opens it too.
  */
 export function PackSheet({ open, onOpenChange, settings }: PackSheetProps) {
   const navigate = useNavigate();
@@ -26,7 +26,7 @@ export function PackSheet({ open, onOpenChange, settings }: PackSheetProps) {
   return (
     <Sheet title="Shortcut packs" side="bottom" open={open} onOpenChange={onOpenChange}>
       <p className="pb-2 text-sm text-muted-foreground">
-        A pack's keys follow your own in the bar. Long-press Ctrl opens this panel.
+        A pack's keys lead the bar; your own follow them. Long-press Ctrl opens this panel.
       </p>
       {settings.packs.length === 0 ? (
         <p className="pb-2 text-sm text-muted-foreground">No packs yet. Add one in Settings &gt; Keyboard.</p>

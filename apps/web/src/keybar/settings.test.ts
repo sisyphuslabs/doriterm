@@ -133,6 +133,15 @@ test("a custom key is stored with the bytes it sends, and adding it turns Favori
   expect(added.settings.activePack).toBe("favorites");
 });
 
+test("adding a key shows Favorites even when another pack was the one the bar drew", () => {
+  const onTmux = addPack(defaultSettings(), "tmux");
+  expect(onTmux.activePack).toBe("tmux");
+  const added = addFavorite(onTmux, { id: "k2", label: "Interrupt", input: "^C" });
+  if (added.kind !== "added") throw new Error(added.reason);
+  expect(added.settings.activePack).toBe("favorites");
+  expect(added.settings.packs).toEqual(["tmux", "favorites"]);
+});
+
 test("a refused custom key changes nothing and says why", () => {
   const settings = defaultSettings();
   const noLabel = addFavorite(settings, { id: "k1", label: " ", input: "Ctrl+C" });

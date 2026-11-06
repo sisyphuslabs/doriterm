@@ -139,10 +139,13 @@ for (const theme of ["day", "night"] as const) {
     const pills = page.locator("[data-key-bar-preview] [data-preview-key]");
     await expect(pills.first()).toBeVisible();
     expect(await pills.count()).toBeGreaterThan(5);
-    // Every key's ink against the surface it is drawn on: a bar whose text vanished in one theme fails here.
+    // Every key's ink against the surface it is drawn on: the theme's foreground cannot drop under 4.5:1 for these pills.
+    // A paint failure (the edge-fade mask that once hid the old preview) is a different bug and is not what this measures.
     const surface = await pills
       .first()
       .evaluate((pill) => getComputedStyle(pill.parentElement ?? pill).backgroundColor);
+    // rgb(r, g, b), never rgba(..., a) with a under 1: a transparent row would make the ratio meaningless.
+    expect(surface).toMatch(/^rgb\(\d+, \d+, \d+\)$/);
     const colors = await pills.evaluateAll((all) => all.map((pill) => getComputedStyle(pill).color));
     expect(Math.min(...colors.map((color) => contrast(color, surface)))).toBeGreaterThanOrEqual(4.5);
   });
