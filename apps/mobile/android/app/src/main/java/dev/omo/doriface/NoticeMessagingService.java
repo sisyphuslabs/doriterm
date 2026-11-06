@@ -83,8 +83,8 @@ public class NoticeMessagingService extends FirebaseMessagingService {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_doriface)
             .setColor(0xFF4A6EE0)
-            .setContentTitle("doriface")
-            .setContentText(notice == null ? "Open doriface to see what changed." : notice.body())
+            .setContentTitle(context.getString(R.string.app_name))
+            .setContentText(notice == null ? "Open " + context.getString(R.string.app_name) + " to see what changed." : notice.body())
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(open(context, notice == null ? "/" : notice.url(null), tag, id * 3));

@@ -33,8 +33,8 @@ export default defineConfig({
       manifest: {
         // `id` pins the installed app to the origin root, so a later start_url change does not register as a second app.
         id: "/",
-        name: "doriface",
-        short_name: "doriface",
+        name: "Doriterm",
+        short_name: "Doriterm",
         lang: "en",
         description: "Your terminals and agents, from any device.",
         display: "standalone",

@@ -113,7 +113,7 @@ export function parseKeybinds(text: string): ParsedKeybinds {
     }
     const action = actionFromGhostty(name);
     if (action === undefined) {
-      lines.push({ line, text: body, status: "unknown", reason: `"${ghostty.trim()}" is not an action doriface has` });
+      lines.push({ line, text: body, status: "unknown", reason: `"${ghostty.trim()}" is not an action Doriterm has` });
       return;
     }
     const checked = checkBinding(trigger.replace(/^(global|all|unconsumed|performable):/, ""), action);
@@ -139,7 +139,7 @@ export function importKeybinds(platform: Platform, current: Overrides, parsed: P
 const ghosttyTrigger = (trigger: string): string => trigger.replace(/(^|\+)=$/, "$1equal");
 
 export function serializeKeybinds(overrides: Overrides): string {
-  const out = ["# Keybindings exported from doriface (Ghostty keybind syntax)"];
+  const out = ["# Keybindings exported from Doriterm (Ghostty keybind syntax)"];
   for (const [trigger, action] of overrides) {
     const ghostty = action === null ? "unbind" : actionFor(action)?.ghostty;
     const line = `keybind = ${ghosttyTrigger(trigger)}=${ghostty ?? action}`;

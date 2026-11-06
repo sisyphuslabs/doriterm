@@ -5,6 +5,7 @@ import { createInterface } from "node:readline";
 import { E2E_WEB_PORT } from "./config.ts";
 import { expect, pressNewTab, test } from "./fixtures.ts";
 import { routeRelaySockets } from "./relay-route.ts";
+import { PRIVATE_RELAY_SKIP } from "./private-relay.ts";
 import { expectImageBelow, graphics, lines, png, RED, show, SIZE, BLUE } from "./terminal-images.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -13,7 +14,7 @@ test.use({ serviceWorkers: "block" });
 const ROOT = join(import.meta.dirname, "..", "..", "..");
 const RELAY_DIR = process.env["DORIFACE_RELAY_DIR"] ?? join(ROOT, ".relay");
 // The relay is private; `bun run relay:fetch` checks it out, as the Relay e2e job does.
-test.skip(!existsSync(join(RELAY_DIR, "package.json")), "needs the private relay: bun run relay:fetch");
+test.skip(!existsSync(join(RELAY_DIR, "package.json")), PRIVATE_RELAY_SKIP);
 
 let driver: ChildProcess | undefined;
 let link = "";

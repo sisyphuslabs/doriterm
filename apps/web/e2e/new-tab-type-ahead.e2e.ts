@@ -154,8 +154,10 @@ async function leaveWhileStarting(page: Page, link: HcSocket): Promise<(fail?: b
   const release = link.hold("terminal.run");
   await askNewTab(page, previous, "keys");
   await page.keyboard.type(LINE, { delay: 40 });
+  // Too short for the dialog, Settings is a sheet: it keeps the workspace mounted and hides it, so the panes that asked
+  // are there but not shown when the run lands.
+  await page.setViewportSize({ width: 1280, height: 560 });
   await page.getByRole("link", { name: "Settings" }).first().click();
-  // Settings keeps the workspace mounted and hides it, so the panes that asked are there but not shown when the run lands.
   await expect(page.locator("[data-terminal]")).toBeHidden();
   await expect(page.getByRole("heading", { level: 2 }).first()).toBeVisible();
   return release;

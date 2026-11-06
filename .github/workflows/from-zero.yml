@@ -1,0 +1,102 @@
+name: From zero
+
+# #672: CONTRIBUTING.md's "From zero" path, run exactly as written on a clean runner with no secrets. Only this job's
+# own runner (tests/ci/from-zero.ts) uses the setup-bun below; the guide runs with a fresh HOME, a stock PATH and no
+# credentials, installs Bun and herdr-core itself, clones the public repository and runs `bun run check` and the web
+# e2e. A step that breaks, or that needs anything private, fails the job.
+#
+# It runs after every merge to dev and once a day (a public download the guide uses can move without a commit here),
+# and on a pull request that changes the guide, its runner or what the guide installs from.
+#
+# user-guide checks docs/getting-started.md the same way: a packed desktop app pairs a fresh browser through the
+# production relay and the hosted web app, as the release smoke does with the AppImage it publishes. It tests dev's app
+# against the deployed web app, so a protocol change merged to dev before the web deploy shows here first.
+on:
+  push:
+    branches: [dev]
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - CONTRIBUTING.md
+      - .github/workflows/from-zero.yml
+      - tests/ci/from-zero.ts
+      - package.json
+      - bun.lock
+      - bunfig.toml
+      - tests/relay/private-relay.ts
+      - apps/web/package.json
+      - apps/web/playwright.config.ts
+      - apps/web/e2e/**
+      - apps/web/scripts/e2e-two-runs.ts
+      - docs/getting-started.md
+      - apps/desktop/e2e/hosted-relay-pair.e2e.ts
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  contributor:
+    name: From zero (contributor guide, no secrets)
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      # Only for the guide and its runner; the guide clones the repository again, anonymously, from the public URL.
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Follow CONTRIBUTING.md from zero
+        run: bun tests/ci/from-zero.ts CONTRIBUTING.md
+        env:
+          FROM_ZERO_REV: ${{ github.sha }}
+
+  user-guide:
+    name: From zero (user guide, hosted relay)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Install herdr-core
+        env:
+          HC_URL: https://releases.herdr.dev/core/0.1.17/herdr-core-linux-x86_64.tar.gz
+          HC_SHA256: 82ec44043f6894bfdb716b979b87cda43fd7fa46b0104e7b7bd93e64d1a9b877
+        run: |
+          mkdir -p "$RUNNER_TEMP/hc"
+          curl -fsSL "$HC_URL" -o "$RUNNER_TEMP/hc.tar.gz"
+          echo "$HC_SHA256  $RUNNER_TEMP/hc.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/hc.tar.gz" -C "$RUNNER_TEMP/hc" herdr-core
+          ln -s herdr-core "$RUNNER_TEMP/hc/hc"
+          echo "HC_BIN=$RUNNER_TEMP/hc/hc" >> "$GITHUB_ENV"
+      - run: bun install --frozen-lockfile
+      # Ubuntu's AppArmor blocks the unprivileged user namespaces Chromium's sandbox needs; the app keeps its sandbox on.
+      - name: Allow the Chromium sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Package (electron-builder --dir)
+        working-directory: apps/desktop
+        run: bun run pack
+      - name: Pair through the hosted relay, as docs/getting-started.md says
+        working-directory: apps/desktop
+        env:
+          DORIFACE_E2E_EXECUTABLE: ${{ github.workspace }}/apps/desktop/dist/release/linux-unpacked/doriface
+          DORIFACE_HOSTED_RELAY_SMOKE: "1"
+        run: xvfb-run --auto-servernum bun run test:e2e e2e/hosted-relay-pair.e2e.ts
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: user-guide-e2e
+          path: |
+            apps/desktop/test-results
+          if-no-files-found: ignore

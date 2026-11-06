@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { compareHcVersions, HC_VERSION_FLOOR, meetsHcFloor } from "./hc-version.ts";
 
-test("the floor is the herdr-core doriface is built and tested against", () => {
+test("the floor is the herdr-core Doriterm is built and tested against", () => {
   expect(HC_VERSION_FLOOR).toBe("0.1.17");
 });
 

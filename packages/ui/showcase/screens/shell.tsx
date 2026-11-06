@@ -97,7 +97,7 @@ export function Sidebar() {
       className="hidden w-(--sidebar-width) shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex"
     >
       <div className="flex h-11 shrink-0 items-center gap-1 pr-2 pl-3.5">
-        <span className="flex-1 text-[0.84rem] font-semibold text-sidebar-foreground">doriface</span>
+        <span className="flex-1 text-[0.84rem] font-semibold text-sidebar-foreground">Doriterm</span>
         <IconButton label="Search" keys={["⌘", "P"]} icon={<Search />} />
         <IconButton label="Hide sidebar" keys={["⌘", "B"]} icon={<PanelLeft />} />
       </div>
@@ -145,7 +145,7 @@ export function WorkspaceBody({
         start={
           <>
             <StatusBarItem icon={<Monitor aria-hidden />}>studio</StatusBarItem>
-            <StatusBarItem icon={<Folder aria-hidden />}>doriface</StatusBarItem>
+            <StatusBarItem icon={<Folder aria-hidden />}>Doriterm</StatusBarItem>
             <StatusBarItem>
               5 terminals <span className="text-status-blocked-text">· 1 needs you</span>
             </StatusBarItem>

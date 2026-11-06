@@ -67,7 +67,7 @@ function AddedMachine(props: { view: MachineView; now: number; onRetry: () => Pr
 }
 
 function MachineRows({ connection }: { readonly connection: HcConnection }) {
-  const { views, retry, listError } = useMachines(connection, NO_TERMINALS);
+  const { views, retry, listError, entries } = useMachines(connection, NO_TERMINALS);
   const now = useNow();
   const [adding, setAdding] = useState(false);
   return (
@@ -92,7 +92,7 @@ function MachineRows({ connection }: { readonly connection: HcConnection }) {
           Add a machine
         </Button>
       </div>
-      <AddMachineDialog open={adding} onClose={() => setAdding(false)} />
+      <AddMachineDialog open={adding} onClose={() => setAdding(false)} connection={connection} machines={entries} />
     </div>
   );
 }

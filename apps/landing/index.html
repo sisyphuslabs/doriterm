@@ -22,7 +22,6 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preload" href="./fonts/TimelessSansVF.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="./fonts/TimelessSerifVF.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="styles.css" />
     <script src="/theme-init.js"></script>
@@ -103,140 +102,289 @@
 
     <main id="main">
       <section class="hero" id="top">
-        <div class="wrap">
-          <div class="hero__copy">
-            <p class="eyebrow">
-              <span class="num">doriterm</span><span class="rule"></span>end-to-end encrypted terminal
-            </p>
-            <h1 class="display">Your devices.<br />One terminal.</h1>
-            <p class="hero__sub">
-              Every machine you own, linked through an <span class="nowrap">end-to-end</span> encrypted mesh.
-            </p>
-            <div class="hero__cta">
-              <a class="btn btn--primary" href="https://app.doriterm.com">Open the app</a>
-              <a class="btn btn--ghost" href="https://github.com/sisyphuslabs/doriterm/releases"
-                >Download for desktop <span class="arrow" aria-hidden="true">&rarr;</span></a
+        <div class="hero__bg" aria-hidden="true"></div>
+        <div class="wrap hero__inner">
+          <h1 class="display">Your devices.<br /><span class="display__accent">One terminal.</span></h1>
+          <p class="hero__sub">
+            Every machine you own, linked through an <span class="nowrap">end-to-end</span> encrypted mesh. Start OmO on
+            the mac mini at home and answer it from your phone.
+          </p>
+          <div class="hero__cta">
+            <a class="btn btn--primary" href="https://app.doriterm.com">Open the app</a>
+            <a class="btn btn--ghost" href="https://github.com/sisyphuslabs/doriterm/releases"
+              >Download for desktop <span class="arrow" aria-hidden="true">&rarr;</span></a
+            >
+          </div>
+          <p class="hero__makers">
+            From <a href="#makers">Sisyphus Labs</a>, the people who made <a href="https://sisyphuslabs.ai">Dori</a> and
+            <a href="https://omo.dev">OmO</a>.
+          </p>
+
+          <figure class="frame omowin" data-omowin aria-labelledby="omowin-caption">
+            <div class="omowin__bar">
+              <span class="frame__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <ul class="omowin__tabs" aria-label="Machines in this window">
+                <li>
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <rect x="3" y="4" width="10" height="7" rx="1" />
+                    <path d="M1.5 13h13" /></svg
+                  >laptop
+                </li>
+                <li aria-current="true">
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <rect x="2" y="5" width="12" height="6" rx="2" />
+                    <path d="M5 9.5h1.5" /></svg
+                  >mac mini
+                </li>
+                <li>
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <rect x="2.5" y="3" width="11" height="4.5" rx="1" />
+                    <rect x="2.5" y="8.5" width="11" height="4.5" rx="1" /></svg
+                  >cloud-box
+                </li>
+                <li>
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="2" width="6" height="12" rx="1.5" /></svg
+                  >phone
+                </li>
+              </ul>
+              <span class="omowin__lock"
+                ><svg viewBox="0 0 16 16" aria-hidden="true">
+                  <rect x="3" y="7" width="10" height="7" rx="1.5" />
+                  <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" /></svg
+                >e2ee</span
               >
             </div>
-            <p class="hero__proof">
-              <span>Noise IK sessions</span> &middot; <span>ChaCha20-Poly1305</span> &middot;
-              <span>the relay holds no key</span>
-            </p>
-          </div>
-
-          <figure class="frame meshwin" data-meshwin aria-labelledby="meshwin-caption">
-            <div class="frame__bar">
-              <span class="frame__dots" aria-hidden="true"><i></i><i></i><i></i></span>
-              <span class="frame__title">one terminal &middot; 4 machines</span>
-              <span class="frame__meta">e2ee mesh</span>
-            </div>
-            <div class="meshwin__body">
-              <div class="meshwin__links" aria-hidden="true" data-links></div>
-              <section class="mpane" data-pane="laptop" aria-label="laptop terminal">
-                <header class="mpane__bar">
-                  <span class="mpane__icon"
-                    ><svg viewBox="0 0 16 16" aria-hidden="true">
-                      <rect x="2.5" y="3.5" width="11" height="7.5" rx="1" />
-                      <path d="M1 13h14" /></svg
-                  ></span>
-                  <span class="mpane__name">laptop</span>
-                  <span class="mpane__os">macOS</span>
-                  <span class="mpane__key" title="Noise key on this machine"
-                    ><svg viewBox="0 0 16 16" aria-hidden="true">
-                      <circle cx="5" cy="8" r="2.6" />
-                      <path d="M7.6 8H14M11.5 8v2.4M13.5 8v1.6" /></svg
-                  ></span>
-                </header>
-                <div class="mpane__body">
-                  <p class="mline"><span class="p">~/api main $</span> bun test</p>
-                  <p class="mline ok">✓ 412 pass &nbsp;0 fail &nbsp;<span class="d">3.1s</span></p>
-                  <p class="mline"><span class="p">~/api main $</span> <span class="cur"></span></p>
-                  <p class="mline ok" data-step="l-healthy">● cloud-box: api@4f2c healthy</p>
-                </div>
-              </section>
-              <section class="mpane" data-pane="mini" aria-label="mac mini terminal">
-                <header class="mpane__bar">
-                  <span class="mpane__icon"
-                    ><svg viewBox="0 0 16 16" aria-hidden="true">
-                      <rect x="2" y="5" width="12" height="6" rx="2" />
-                      <path d="M5 9.5h1.5" /></svg
-                  ></span>
-                  <span class="mpane__name">mac mini</span>
-                  <span class="mpane__os">OmO</span>
-                  <span class="mpane__key" title="Noise key on this machine"
-                    ><svg viewBox="0 0 16 16" aria-hidden="true">
-                      <circle cx="5" cy="8" r="2.6" />
-                      <path d="M7.6 8H14M11.5 8v2.4M13.5 8v1.6" /></svg
-                  ></span>
-                </header>
-                <div class="mpane__body">
-                  <p class="mline"><span class="p">mini:~/api $</span> omo</p>
-                  <p class="mline d">● Reading migrations/0042_keys.sql</p>
-                  <p class="mline warn">! Needs you: apply to staging?</p>
-                  <p class="mline ok" data-step="m-applied">✓ Applied. 41 tests pass</p>
-                </div>
-              </section>
-              <div class="relay-node" data-relay>
-                <span class="relay-node__ring" aria-hidden="true"></span>
-                <span class="relay-node__lock"
-                  ><svg viewBox="0 0 16 16" aria-hidden="true">
-                    <rect x="3" y="7" width="10" height="7" rx="1.5" />
-                    <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" /></svg
-                ></span>
-                <span class="relay-node__name">relay</span>
-                <span class="relay-node__note">ciphertext only</span>
+            <div class="omowin__body">
+              <p class="oline"><span class="p">mini:~/research $</span> omo</p>
+              <p class="oline o-dim" data-o="boot">OmO &middot; Claude Fable 5.1 &middot; mac mini</p>
+              <p class="oline o-prompt" data-o="prompt">
+                <span class="caret-mark">&rsaquo;</span> mass ulw 12k sources &rarr; ranking model &rarr; deck
+              </p>
+              <div class="oflow" data-o="flow">
+                <p class="oflow__head">
+                  <span>Workflow &middot; market research, 12,000 sources</span>
+                  <span class="oflow__progress"><span data-progress>0</span>/10 done &middot; 7 models</span>
+                </p>
+                <ol class="oflow__waves">
+                  <li class="owave" data-wave="1">
+                    <p class="owave__head">
+                      Wave 1 <span class="owave__count"><span data-done>0</span>/1</span>
+                    </p>
+                    <ul>
+                      <li class="onode" data-node>
+                        <span class="onode__dot" aria-hidden="true"
+                          ><i class="s-pending"></i><i class="s-running"></i><i class="s-done"></i
+                          ><i class="s-blocked"></i
+                        ></span>
+                        <span class="onode__name">plan-interview</span>
+                        <span class="onode__state"
+                          ><i class="s-pending">pending</i><i class="s-running">running</i
+                          ><i class="s-done">completed</i><i class="s-blocked">blocked</i></span
+                        >
+                        <span class="onode__meta">planning &middot; Claude Fable 5.1</span>
+                        <span class="onode__result">plan: 10 nodes / 5 waves</span>
+                      </li>
+                    </ul>
+                  </li>
+                  <li class="owave" data-wave="2">
+                    <p class="owave__head">
+                      Wave 2 <span class="owave__count"><span data-done>0</span>/2</span>
+                    </p>
+                    <ul>
+                      <li class="onode" data-node>
+                        <span class="onode__dot" aria-hidden="true"
+                          ><i class="s-pending"></i><i class="s-running"></i><i class="s-done"></i
+                          ><i class="s-blocked"></i
+                        ></span>
+                        <span class="onode__name">scope-check</span>
+                        <span class="onode__state"
+                          ><i class="s-pending">pending</i><i class="s-running">running</i
+                          ><i class="s-done">completed</i><i class="s-blocked">blocked</i></span
+                        >
+                        <span class="onode__meta">verification &middot; Claude Opus 5</span>
+                        <span class="onode__result">APPROVE</span>
+                      </li>
+                      <li class="onode" data-node>
+                        <span class="onode__dot" aria-hidden="true"
+                          ><i class="s-pending"></i><i class="s-running"></i><i class="s-done"></i
+                          ><i class="s-blocked"></i
+                        ></span>
+                        <span class="onode__name">source-sweep</span>
+                        <span class="onode__state"
+                          ><i class="s-pending">pending</i><i class="s-running">running</i
+                          ><i class="s-done">completed</i><i class="s-blocked">blocked</i></span
+                        >
+                        <span class="onode__meta">deep &middot; GPT 6 Astra</span>
+                        <span class="onode__result">11,388 sources kept</span>
+                      </li>
+                    </ul>
+                  </li>
+                  <li class="owave" data-wave="3">
+                    <p class="owave__head">
+                      Wave 3 <span class="owave__count"><span data-done>0</span>/3</span>
+                    </p>
+                    <ul>
+                      <li class="onode" data-node>
+                        <span class="onode__dot" aria-hidden="true"
+                          ><i class="s-pending"></i><i class="s-running"></i><i class="s-done"></i
+                          ><i class="s-blocked"></i
+                        ></span>
+                        <span class="onode__name">chart-system</span>
+                        <span class="onode__state"
+                          ><i class="s-pending">pending</i><i class="s-running">running</i
+                          ><i class="s-done">completed</i><i class="s-blocked">blocked</i></span
+                        >
+                        <span class="onode__meta">visual-engineering &middot; Claude Fable 5.1</span>
+                        <span class="onode__result">12 charts, one palette</span>
+                      </li>
+                      <li class="onode" data-node>
+                        <span class="onode__dot" aria-hidden="true"
+                          ><i class="s-pending"></i><i class="s-running"></i><i class="s-done"></i
+                          ><i class="s-blocked"></i
+                        ></span>
+                        <span class="onode__name">claim-graph</span>
+                        <span class="onode__state"
+                          ><i class="s-pending">pending</i><i class="s-running">running</i
+                          ><i class="s-done">completed</i><i class="s-blocked">blocked</i></span
+                        >
+                        <span class="onode__meta">analysis &middot; Claude Opus 5</span>
+                        <span class="onode__result">3,100 claims, 41 refuted</span>
+                      </li>
+                      <li class="onode" data-node>
+                        <span class="onode__dot" aria-hidden="true"
+                          ><i class="s-pending"></i><i class="s-running"></i><i class="s-done"></i
+                          ><i class="s-blocked"></i
+                        ></span>
+                        <span class="onode__name">dataset-build</span>
+                        <span class="onode__state"
+                          ><i class="s-pending">pending</i><i class="s-running">running</i
+                          ><i class="s-done">completed</i><i class="s-blocked">blocked</i></span
+                        >
+                        <span class="onode__meta">deep &middot; GPT 5.6 Sol</span>
+                        <span class="onode__result">40k rows, 0 leaks</span>
+                      </li>
+                    </ul>
+                  </li>
+                  <li class="owave" data-wave="4">
+                    <p class="owave__head">
+                      Wave 4 <span class="owave__count"><span data-done>0</span>/3</span>
+                    </p>
+                    <ul>
+                      <li class="onode" data-node>
+                        <span class="onode__dot" aria-hidden="true"
+                          ><i class="s-pending"></i><i class="s-running"></i><i class="s-done"></i
+                          ><i class="s-blocked"></i
+                        ></span>
+                        <span class="onode__name">deck</span>
+                        <span class="onode__state"
+                          ><i class="s-pending">pending</i><i class="s-running">running</i
+                          ><i class="s-done">completed</i><i class="s-blocked">blocked</i></span
+                        >
+                        <span class="onode__meta">visual-engineering &middot; GPT 6 Astra</span>
+                        <span class="onode__result">screenshots 375 / 1280</span>
+                      </li>
+                      <li class="onode" data-node data-kind="blocked">
+                        <span class="onode__dot" aria-hidden="true"
+                          ><i class="s-pending"></i><i class="s-running"></i><i class="s-done"></i
+                          ><i class="s-blocked"></i
+                        ></span>
+                        <span class="onode__name">model-train</span>
+                        <span class="onode__state"
+                          ><i class="s-pending">pending</i><i class="s-running">running</i
+                          ><i class="s-done">completed</i><i class="s-blocked">blocked</i></span
+                        >
+                        <span class="onode__meta">deep &middot; Kimi K3</span>
+                        <span class="onode__result">waiting: GPU quota</span>
+                      </li>
+                      <li class="onode" data-node>
+                        <span class="onode__dot" aria-hidden="true"
+                          ><i class="s-pending"></i><i class="s-running"></i><i class="s-done"></i
+                          ><i class="s-blocked"></i
+                        ></span>
+                        <span class="onode__name">report-draft</span>
+                        <span class="onode__state"
+                          ><i class="s-pending">pending</i><i class="s-running">running</i
+                          ><i class="s-done">completed</i><i class="s-blocked">blocked</i></span
+                        >
+                        <span class="onode__meta">writing &middot; Grok 4.6</span>
+                        <span class="onode__result">every claim cited</span>
+                      </li>
+                    </ul>
+                  </li>
+                  <li class="owave" data-wave="5">
+                    <p class="owave__head">
+                      Wave 5 <span class="owave__count"><span data-done>0</span>/1</span>
+                    </p>
+                    <ul>
+                      <li class="onode" data-node data-kind="last">
+                        <span class="onode__dot" aria-hidden="true"
+                          ><i class="s-pending"></i><i class="s-running"></i><i class="s-done"></i
+                          ><i class="s-blocked"></i
+                        ></span>
+                        <span class="onode__name">gate-review</span>
+                        <span class="onode__state"
+                          ><i class="s-pending">pending</i><i class="s-running">running</i
+                          ><i class="s-done">completed</i><i class="s-blocked">blocked</i></span
+                        >
+                        <span class="onode__meta">unspecified-low &middot; GLM 5.2</span>
+                      </li>
+                    </ul>
+                  </li>
+                </ol>
               </div>
-              <section class="mpane" data-pane="cloud" aria-label="cloud-box terminal">
-                <header class="mpane__bar">
-                  <span class="mpane__icon"
-                    ><svg viewBox="0 0 16 16" aria-hidden="true">
-                      <rect x="2" y="2.5" width="12" height="4.5" rx="1" />
-                      <rect x="2" y="9" width="12" height="4.5" rx="1" />
-                      <path d="M4.5 4.75h.01M4.5 11.25h.01" /></svg
-                  ></span>
-                  <span class="mpane__name">cloud-box</span>
-                  <span class="mpane__os">ubuntu</span>
-                  <span class="mpane__key" title="Noise key on this machine"
-                    ><svg viewBox="0 0 16 16" aria-hidden="true">
-                      <circle cx="5" cy="8" r="2.6" />
-                      <path d="M7.6 8H14M11.5 8v2.4M13.5 8v1.6" /></svg
-                  ></span>
-                </header>
-                <div class="mpane__body">
-                  <p class="mline"><span class="p">ubuntu@cloud-box:~ $</span> tail -f deploy.log</p>
-                  <p class="mline d">pull api@4f2c &nbsp;migrate &nbsp;restart</p>
-                  <p class="mline ok" data-step="c-healthy">api@4f2c healthy in 41s</p>
-                </div>
-              </section>
-              <section class="mpane" data-pane="phone" aria-label="phone terminal">
-                <header class="mpane__bar">
-                  <span class="mpane__icon"
-                    ><svg viewBox="0 0 16 16" aria-hidden="true">
-                      <rect x="4.5" y="1.5" width="7" height="13" rx="1.6" />
-                      <path d="M7 12.5h2" /></svg
-                  ></span>
-                  <span class="mpane__name">phone</span>
-                  <span class="mpane__os">iOS</span>
-                  <span class="mpane__key" title="Noise key on this machine"
-                    ><svg viewBox="0 0 16 16" aria-hidden="true">
-                      <circle cx="5" cy="8" r="2.6" />
-                      <path d="M7.6 8H14M11.5 8v2.4M13.5 8v1.6" /></svg
-                  ></span>
-                </header>
-                <div class="mpane__body">
-                  <p class="mline d">attached to OmO on mac mini</p>
-                  <p class="mline warn">! apply to staging?</p>
-                  <p class="mline" data-step="p-answer">
-                    <span class="p">›</span> 1 &nbsp;<span class="d">yes, apply it</span>
-                  </p>
-                </div>
-              </section>
-              <div class="meshwin__packets" aria-hidden="true" data-packets></div>
             </div>
-            <figcaption class="scene-legend" id="meshwin-caption">
-              <span><i class="plain"></i>plaintext, only on your machines</span>
-              <span><i></i>sealed with Noise in transit</span>
-              <span><i class="key"></i>each machine keeps its own key</span>
+            <figcaption class="omowin__foot" id="omowin-caption">
+              <span><i class="dot-ok"></i>attached from phone</span>
+              <span><i class="dot-cipher"></i>through the relay, ciphertext only</span>
+              <span class="omowin__src">OmO's own demo workflow, from omo.dev</span>
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section machines" id="machines" aria-labelledby="machines-title">
+        <div class="wrap">
+          <h2 class="h2 reveal" id="machines-title">
+            Your fleet, in one window.<br /><span class="soft">Linked by a relay that cannot read it.</span>
+          </h2>
+          <p class="section__lede reveal">
+            Each machine keeps its own key. Records leave a machine in the clear, are sealed before they reach the
+            relay, and open only on the machine they are for.
+          </p>
+          <figure class="fleet reveal" data-fleet aria-labelledby="fleet-title">
+            <div class="fleet__steps" role="group" aria-label="Fleet scenes">
+              <button type="button" data-fleet-step="0" aria-pressed="true">
+                <span class="fleet__n">01</span>One window
+              </button>
+              <button type="button" data-fleet-step="1" aria-pressed="false">
+                <span class="fleet__n">02</span>Work
+              </button>
+              <button type="button" data-fleet-step="2" aria-pressed="false">
+                <span class="fleet__n">03</span>Join
+              </button>
+              <button type="button" data-fleet-step="3" aria-pressed="false">
+                <span class="fleet__n">04</span>Revoke
+              </button>
+            </div>
+            <canvas class="fleet__canvas" aria-hidden="true"></canvas>
+            <figcaption class="fleet__caption">
+              <p data-fleet-text="0">
+                <strong id="fleet-title">Every machine in one window.</strong> Your laptop, the mac mini at home and a
+                cloud box each run a host. They link through one relay and show up in the same sidebar, next to the
+                phone you hold.
+              </p>
+              <p data-fleet-text="1" hidden>
+                <strong>Work runs where you start it.</strong> Start OmO on the mac mini and answer it from your phone.
+                Every record crosses the relay sealed with Noise, and the relay forwards bytes it cannot read.
+              </p>
+              <p data-fleet-text="2" hidden>
+                <strong>A new machine joins.</strong> Invite one with mesh pair and approve it on a machine you trust. A
+                signed admit record syncs and every member dials the new one. No ssh, no open port.
+              </p>
+              <p data-fleet-text="3" hidden>
+                <strong>One record removes one.</strong> Revoke a machine once and the record reaches every member. From
+                then on its key is refused everywhere.
+              </p>
             </figcaption>
           </figure>
         </div>
@@ -319,6 +467,17 @@
               </div>
             </figure>
           </div>
+          <ul class="facts reveal">
+            <li>
+              <strong>Close the tab. The work keeps going.</strong> Agents run in herdr-core on their own machine, and
+              the window is only a view of them. Close the browser or put the phone away, and every terminal is where
+              you left it.
+            </li>
+            <li>
+              <strong>Any agent that runs in a terminal.</strong> OmO, Claude Code, Codex or your own script. Agents
+              that report their state over OSC 7501 also show whether they need you.
+            </li>
+          </ul>
         </div>
       </section>
 
@@ -1033,6 +1192,33 @@
 <span class="p">$ </span>doriface-host mesh pair                <span class="c"># invite another machine into your mesh</span>
 <span class="p">$ </span>doriface-host mesh join &lt;code&gt;         <span class="c"># on that machine: ask to join</span>
 <span class="p">$ </span>doriface-host mesh revoke &lt;member&gt;     <span class="c"># remove a member everywhere</span></code></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="section makers" id="makers" aria-labelledby="makers-title">
+        <div class="wrap">
+          <h2 class="h2 reveal" id="makers-title">
+            Made by Sisyphus Labs.<br /><span class="soft">The people behind Dori and OmO.</span>
+          </h2>
+          <div class="makers__grid reveal">
+            <a class="maker" href="https://sisyphuslabs.ai">
+              <span class="maker__name">Dori</span>
+              <span class="maker__what"
+                >An engineer who lives in your chat. Tell him what to do in Slack, Discord or Telegram; he gives each
+                job its own coding-agent session and reports back when it is merged.</span
+              >
+              <span class="maker__url">sisyphuslabs.ai <span class="arrow" aria-hidden="true">&rarr;</span></span>
+            </a>
+            <a class="maker" href="https://omo.dev">
+              <span class="maker__name">OmO</span>
+              <span class="maker__what"
+                >The agent in the terminal above. Add <code>ultrawork</code> to a prompt and it plans, proves each step
+                and checks the result; type <code>mass ulw</code> and one job becomes a graph of agents, each on the
+                model that fits it.</span
+              >
+              <span class="maker__url">omo.dev <span class="arrow" aria-hidden="true">&rarr;</span></span>
+            </a>
           </div>
         </div>
       </section>

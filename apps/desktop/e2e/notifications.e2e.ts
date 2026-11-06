@@ -109,7 +109,7 @@ test("Settings > Notifications turns native notifications on, and Send test show
   await button(page, "Turn on").click();
   await expect(section(page)).toHaveAttribute("data-push-state", "on");
   await button(page, "Send test").click();
-  await expect.poll(shown).toEqual([{ title: "doriface", body: "Notifications on this computer work." }]);
+  await expect.poll(shown).toEqual([{ title: "Doriterm", body: "Notifications on this computer work." }]);
 });
 
 test("an agent that finishes its turn shows a native notification, and a turned-off event shows none", async () => {
@@ -117,8 +117,8 @@ test("an agent that finishes its turn shows a native notification, and a turned-
   const finished = agent("notify-done", "state=done:app=claude");
   press(finished);
   await expect.poll(shown).toEqual([
-    { title: "doriface", body: "Notifications on this computer work." },
-    { title: "doriface", body: "An agent finished its turn." },
+    { title: "Doriterm", body: "Notifications on this computer work." },
+    { title: "Doriterm", body: "An agent finished its turn." },
   ]);
 
   await section(page).getByRole("switch", { name: "An agent finishes its turn" }).click();

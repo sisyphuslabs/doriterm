@@ -5,6 +5,7 @@ import { connectionStore } from "../connection/store.ts";
 import { deviceName } from "./device-name.ts";
 import type { OfferSecret, PairingOffer } from "./fragment.ts";
 import { pairAndRemember } from "./handshake.ts";
+import { guideStore } from "./first-run-guide.ts";
 import { Steps } from "./steps.tsx";
 
 type Outcome =
@@ -33,6 +34,7 @@ export function VerifyStep({ offer }: { readonly offer: PairingOffer }) {
       setOutcome({ kind: "failed", reason: error instanceof Error ? error.message : String(error) });
       return;
     }
+    guideStore.start();
     setOutcome({ kind: "paired" });
   };
   return (

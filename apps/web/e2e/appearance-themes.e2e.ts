@@ -126,6 +126,6 @@ test("a picked theme whose terminal colours are faint names the remedy, and the 
     .click();
   await expect(note).toContainText("Everforest Light");
   await expect(note).toContainText("palette");
-  await list(page, "Light").getByRole("radio", { name: "Day doriface", exact: true }).click();
+  await list(page, "Light").getByRole("radio", { name: "Day Doriterm", exact: true }).click();
   await expect(note).toHaveCount(0);
 });

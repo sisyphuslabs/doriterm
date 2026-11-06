@@ -54,7 +54,7 @@ self.addEventListener("push", (event) => {
   const notice = parsePushNotice(readPayload(event));
   // Every push shows a notification: a browser that sees pushes without one revokes or replaces the subscription.
   if (notice === undefined) {
-    event.waitUntil(self.registration.showNotification("doriface", { body: "Open doriface to see what changed." }));
+    event.waitUntil(self.registration.showNotification("Doriterm", { body: "Open Doriterm to see what changed." }));
     return;
   }
   event.waitUntil(showNotice(notice));

@@ -181,9 +181,9 @@ describe("window.open and new-window link clicks", () => {
   });
 
   test("an allowlisted link goes to the browser and anything else goes nowhere", () => {
-    expect(routeWindowOpen("https://github.com/sisyphuslabs/doriface#readme", APP_ORIGIN)).toEqual({
+    expect(routeWindowOpen("https://github.com/sisyphuslabs/doriterm#readme", APP_ORIGIN)).toEqual({
       kind: "browser",
-      url: "https://github.com/sisyphuslabs/doriface#readme",
+      url: "https://github.com/sisyphuslabs/doriterm#readme",
     });
     for (const url of ["https://example.com/", "app://evil/", "file:///etc/passwd", "javascript:alert(1)", "x"]) {
       expect(routeWindowOpen(url, APP_ORIGIN)).toEqual({ kind: "none" });

@@ -16,13 +16,13 @@ const FALLBACK = "Your host isn't answering. Check that its computer is on and d
 function coreMismatch(mismatch: HcCoreMismatch): string {
   switch (mismatch.kind) {
     case "core-too-old":
-      return `Your host's herdr-core is ${mismatch.version}, and doriface needs ${mismatch.need} or newer. Run hc update on that computer.`;
+      return `Your host's herdr-core is ${mismatch.version}, and Doriterm needs ${mismatch.need} or newer. Run hc update on that computer.`;
     case "core-older":
-      return `Your host's herdr-core is too old for doriface, which needs ${mismatch.need} or newer. Run hc update on that computer.`;
+      return `Your host's herdr-core is too old for Doriterm, which needs ${mismatch.need} or newer. Run hc update on that computer.`;
     case "core-missing":
-      return `Your host's herdr-core is missing ${mismatch.methods.join(", ")}, which doriface needs. Run hc update on that computer.`;
+      return `Your host's herdr-core is missing ${mismatch.methods.join(", ")}, which Doriterm needs. Run hc update on that computer.`;
     case "core-newer":
-      return "Your host's herdr-core is newer than this doriface understands. Update doriface.";
+      return "Your host's herdr-core is newer than this Doriterm understands. Update Doriterm.";
   }
 }
 

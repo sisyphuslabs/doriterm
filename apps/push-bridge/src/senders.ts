@@ -67,7 +67,7 @@ class Cached {
 }
 
 /** The fixed alert iOS shows if the app's Notification Service Extension cannot decrypt in time. */
-export const APNS_FALLBACK_ALERT = { title: "doriface", body: "Open doriface to see what changed." } as const;
+export const APNS_FALLBACK_ALERT = { title: "Doriterm", body: "Open Doriterm to see what changed." } as const;
 /** Apple refuses a provider token older than an hour and throttles one renewed more often than every 20 minutes. */
 const APNS_TOKEN_REUSE_MS = 40 * 60 * 1000;
 const APNS_GONE = new Set(["Unregistered", "BadDeviceToken", "DeviceTokenNotForTopic", "ExpiredToken"]);
@@ -211,10 +211,10 @@ export class FcmSender {
       await response.body?.cancel();
       return { kind: "sent" };
     }
+    // Only FCM's own UNREGISTERED says the token is gone: a bare 404 (a wrong project id) must not make the host drop
+    // every Android subscription.
     const error: unknown = await response.json().catch(() => undefined);
-    return response.status === 404 || errorCodes(error).includes("UNREGISTERED")
-      ? { kind: "gone" }
-      : { kind: "failed", status: response.status };
+    return errorCodes(error).includes("UNREGISTERED") ? { kind: "gone" } : { kind: "failed", status: response.status };
   }
 }
 

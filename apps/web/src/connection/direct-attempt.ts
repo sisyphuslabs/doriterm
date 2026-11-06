@@ -70,10 +70,13 @@ export async function attemptDirect(options: DirectAttemptOptions): Promise<Secu
   const budget = options.budgetMs ?? DIRECT_BUDGET_MS;
   const controller = new AbortController();
   let expired = false;
-  const timer = setTimeout(() => {
-    expired = true;
-    controller.abort(new DirectFailure("no-answer", `no answer within ${budget} ms`));
-  }, budget);
+  // An unbounded budget arms no timer: setTimeout would read Infinity as no delay at all.
+  const timer = Number.isFinite(budget)
+    ? setTimeout(() => {
+        expired = true;
+        controller.abort(new DirectFailure("no-answer", `no answer within ${budget} ms`));
+      }, budget)
+    : undefined;
   const caller = options.signal;
   const onCallerAbort = (): void => remaining(controller);
   if (caller?.aborted === true) onCallerAbort();

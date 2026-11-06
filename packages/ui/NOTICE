@@ -3,7 +3,7 @@
 src/theme/library-dark.ts and src/theme/library-light.ts hold terminal colour
 palettes (background, foreground, selection, cursor, ansi0..15) taken from the
 projects below through their iTerm2-Color-Schemes exports. THEMES.md lists each
-theme with its project and the changes doriface makes.
+theme with its project and the changes Doriterm makes.
 
 -------------------------------------------------------------------------
 iTerm2-Color-Schemes (https://github.com/mbadolato/iTerm2-Color-Schemes)

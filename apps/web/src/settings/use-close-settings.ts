@@ -2,8 +2,12 @@ import { useCanGoBack, useNavigate, useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
 import { useActionHandler } from "../keys/dispatcher.ts";
 
-/** Whatever owns the keyboard while it is open: dialogs, menus, lists and a shortcut being recorded. */
-const LAYERS = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-captures-keys]';
+/**
+ * Whatever owns the keyboard while it is open: dialogs, menus, lists and a shortcut being recorded. Settings' own dialog
+ * (the desktop layout) is not one of them: it is what Escape closes.
+ */
+const LAYERS =
+  '[role="dialog"]:not([data-settings-dialog]), [role="alertdialog"], [role="menu"], [role="listbox"], [data-captures-keys]';
 const TEXT_INPUTS: ReadonlySet<string> = new Set(["text", "search", "url", "email", "number", "password", "tel"]);
 
 const layerOpen = (): boolean => document.querySelector(LAYERS) !== null;
@@ -23,19 +27,24 @@ function fieldTakesEscape(event: KeyboardEvent): boolean {
   return true;
 }
 
+/** Leaves Settings for the view it was opened from, with no keys of its own (the dialog's backdrop closes with it). */
+export function useSettingsClose(): () => void {
+  const router = useRouter();
+  const navigate = useNavigate();
+  const canGoBack = useCanGoBack();
+  return useCallback((): void => {
+    if (canGoBack) router.history.back();
+    else void navigate({ to: "/", replace: true });
+  }, [canGoBack, router, navigate]);
+}
+
 /**
  * Leaves Settings for the view it was opened from. Escape closes it unless a layer above or a focused text field takes
  * the key first. The keymap's settings toggle and close-tab shortcuts close it too; while a layer is open they are taken
  * and do nothing, so they neither close Settings under a dialog or recording nor fall through to the window.
  */
 export function useCloseSettings(): () => void {
-  const router = useRouter();
-  const navigate = useNavigate();
-  const canGoBack = useCanGoBack();
-  const close = useCallback((): void => {
-    if (canGoBack) router.history.back();
-    else void navigate({ to: "/", replace: true });
-  }, [canGoBack, router, navigate]);
+  const close = useSettingsClose();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {

@@ -36,7 +36,7 @@ const cases: readonly (readonly [string, PairingSecret | undefined, HostPairingS
   ["pairLink", { mode: "link", linkSecret, name: "phone" }, { mode: "link", linkSecret }],
 ];
 
-describe("doriface v1.3 golden flights (fixed keys, ephemerals, CPace scalars and sid)", () => {
+describe("Doriterm v1.3 golden flights (fixed keys, ephemerals, CPace scalars and sid)", () => {
   test("the typed-code CPace inputs and shares match an independent CPace computation", () => {
     const inputs = { ...codePairingInputs(code, host.hostId, host.noise.publicKey), sid };
     expect(inputs.ci.toHex()).toBe(field("cpace", "ci"));

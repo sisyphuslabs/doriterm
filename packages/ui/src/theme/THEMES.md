@@ -1,17 +1,17 @@
 # Built-in themes
 
-doriface ships 40 themes: its own Night and Day, herdr-app's Graphite and Paper, and 36 well-known terminal themes
+Doriterm ships 40 themes: its own Night and Day, herdr-app's Graphite and Paper, and 36 well-known terminal themes
 (`library-dark.ts`, `library-light.ts`). Each library palette is the project's terminal palette (background,
 foreground, selection, cursor, ansi0..15) as collected by
 [iTerm2-Color-Schemes](https://github.com/mbadolato/iTerm2-Color-Schemes) (MIT, Copyright (c) 2011 to Present Mark
 Badolato); the colours of each theme belong to its own project under the licence listed below. Every licence here
-(MIT, Apache-2.0) permits redistribution inside doriface (AGPL-3.0-only). Each project's copyright line and licence
+(MIT, Apache-2.0) permits redistribution inside Doriterm (AGPL-3.0-only). Each project's copyright line and licence
 text ship in `packages/ui/NOTICE`, the Apache License 2.0 text in `packages/ui/licenses/Apache-2.0.txt`.
 
 Two changes are made, both recorded in code:
 
 - **Selection.** Some exports invert the selection (selection background equal to the foreground, selected text in a
-  second colour). doriface's palette has no selection text colour, so those themes use the background mixed toward
+  second colour). Doriterm's palette has no selection text colour, so those themes use the background mixed toward
   ansi4 (at most 30 %) while terminal text stays readable on it (`library.test.ts`).
 - **Contrast.** Terminal text, UI text, control edges and status glyphs pass the AA guard (`guard.ts`), as for every
   theme; a palette that already passes is unchanged.

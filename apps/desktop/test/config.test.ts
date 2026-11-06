@@ -44,6 +44,11 @@ describe("main process window config", () => {
     });
   });
 
+  test("the window title is the product name", () => {
+    const look = { background: WINDOW_BACKGROUND.dark, placement: DEFAULT_WINDOW_SIZE };
+    expect(windowOptions("darwin", secureWebPreferences("/p", "0.0.0"), look).title).toBe("Doriterm");
+  });
+
   test("macOS gets a hidden-inset titlebar with positioned traffic lights; others keep the native frame", () => {
     const prefs = secureWebPreferences("/p", "0.0.0");
     const look = { background: WINDOW_BACKGROUND.dark, placement: DEFAULT_WINDOW_SIZE };
@@ -142,7 +147,7 @@ describe("origin, external links and permissions", () => {
   });
 
   test("only https links to exactly an allowlisted host open externally", () => {
-    expect(isAllowedExternal("https://github.com/sisyphuslabs/doriface")).toBe(true);
+    expect(isAllowedExternal("https://github.com/sisyphuslabs/doriterm")).toBe(true);
     expect(isAllowedExternal("https://omo.dev/x")).toBe(true);
     expect(isAllowedExternal("https://docs.omo.dev/x")).toBe(false);
     expect(isAllowedExternal("https://gist.github.com/x")).toBe(false);

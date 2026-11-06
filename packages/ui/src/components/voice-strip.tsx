@@ -106,7 +106,7 @@ export function VoiceStrip(props: VoiceStripProps) {
         }
       >
         To turn speech into text, the browser sends the audio to its speech service, which may run on a server outside
-        this device. doriface never keeps or sends the audio itself.
+        this device. Doriterm never keeps or sends the audio itself.
         {state.device ? ` On this device only downloads ${language} recognition once and keeps the audio here.` : ""}
       </Notice>,
     );
