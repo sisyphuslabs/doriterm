@@ -201,9 +201,12 @@ test("Cmd/Ctrl + = / - / 0 size the terminal text, not the window", async () => 
   const bigger = await step(page, () => page.keyboard.press("ControlOrMeta+Equal"), before, 1);
   const smaller = await step(page, () => page.keyboard.press("ControlOrMeta+Minus"), bigger, -1);
   const smallest = await step(page, () => page.keyboard.press("ControlOrMeta+Minus"), smaller, -1);
-  // The grid refits to the text size: a point up fits fewer columns; a point down never fits fewer (at DPR 1, 12 and 13
-  // points share a 10 px cell, so it can fit the same).
-  expect(bigger.cols).toBeLessThan(before.cols);
+  // The grid refits to the text size: a point up never fits more columns, and fits fewer whenever the cell itself grows.
+  // One point can leave the cell where it was, and then the columns stay too: a point is a pixel on macOS, where 13 and
+  // 14 points both round JetBrains Mono's advance to 8 px, so two neighbouring sizes can share a cell. A point down
+  // never fits fewer columns.
+  expect(bigger.cols).toBeLessThanOrEqual(before.cols);
+  if (bigger.cellDevicePx > before.cellDevicePx) expect(bigger.cols).toBeLessThan(before.cols);
   expect(smallest.cols).toBeGreaterThanOrEqual(before.cols);
 
   await page.keyboard.press("ControlOrMeta+0");
