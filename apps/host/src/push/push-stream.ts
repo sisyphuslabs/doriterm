@@ -44,10 +44,18 @@ async function reply(
       return ok;
     case "notice": {
       const entry = service.resolve(line.id);
-      return { t: "notice", terminal: entry?.terminal ?? null, kind: entry?.kind ?? null };
+      const prompt = service.prompt(entry);
+      return {
+        t: "notice",
+        terminal: entry?.terminal ?? null,
+        kind: entry?.kind ?? null,
+        ...(prompt === undefined ? {} : { prompt }),
+      };
     }
     case "answer":
       return service.answer(line.id, line.answer, owner);
+    case "choose":
+      return service.choose(line.id, line.option, owner);
     case "unknown":
       return error("unknown line");
   }

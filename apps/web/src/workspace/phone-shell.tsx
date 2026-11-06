@@ -11,6 +11,7 @@ import type { Session } from "./model.ts";
 import { ConnectionLine, ConnectionPathItem, ReconnectStatus } from "./reconnect-status.tsx";
 import { usePendingUpdate } from "../update/update-store.ts";
 import { PhoneEmpty } from "./phone-empty.tsx";
+import { PhoneListLoading } from "./phone-loading.tsx";
 import { PhoneTerminal } from "./phone-terminal.tsx";
 import { RovingLists } from "./roving-lists.tsx";
 import { usePhoneActions, type SessionVerb } from "./use-app-actions.ts";
@@ -40,7 +41,8 @@ export function PhoneShell(props: PhoneShellProps) {
   const machines = useMachinesContext();
   const update = usePendingUpdate();
   const terminal = terminals.find((entry) => entry.address === open);
-  const empty = !terminals.some((entry) => entry.state === "live");
+  // An unanswered list is not an empty one: the empty state waits for the core's first answer (#797).
+  const empty = machines.terminalsLoaded && !terminals.some((entry) => entry.state === "live");
   if (terminal === undefined) {
     const route = connectionStore.settings.mode === "relay" ? "relay" : "loopback";
     return (
@@ -73,13 +75,19 @@ export function PhoneShell(props: PhoneShellProps) {
         </header>
         <ConnectionLine />
         <ScrollArea slot="agents-list" className="flex-1">
-          {empty ? (
-            <PhoneEmpty host={connection.hello.core.name} onNew={onNew} onAddMachine={machines.openAddMachine} />
-          ) : null}
-          {empty && onlyThisMachine(machines.entries) ? null : (
-            <RovingLists>
-              <AgentLists terminals={terminals} active={null} onOpen={onOpen} heading={false} />
-            </RovingLists>
+          {machines.terminalsLoaded ? (
+            <>
+              {empty ? (
+                <PhoneEmpty host={connection.hello.core.name} onNew={onNew} onAddMachine={machines.openAddMachine} />
+              ) : null}
+              {empty && onlyThisMachine(machines.entries) ? null : (
+                <RovingLists>
+                  <AgentLists terminals={terminals} active={null} onOpen={onOpen} heading={false} />
+                </RovingLists>
+              )}
+            </>
+          ) : (
+            <PhoneListLoading />
           )}
         </ScrollArea>
         <StatusBar

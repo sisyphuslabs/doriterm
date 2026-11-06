@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12 and up: neither cloud backup nor a device-to-device transfer carries the push keys (see backup_rules). -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="doriface-push.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="doriface-push.xml" />
+    </device-transfer>
+</data-extraction-rules>

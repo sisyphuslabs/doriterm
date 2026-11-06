@@ -28,9 +28,13 @@ on:
 permissions:
   contents: read
 
+# A group keeps one pending run and a newer one cancels it, so pull requests must never share dev's group: every PR
+# push starts a run (its jobs skip without the label), and in one shared group those runs cancelled the dev deploys of
+# merged commits (#868). dev deploys queue in their own group and are never cancelled in progress; each pull request has
+# its own group, where a newer push replaces its older run.
 concurrency:
-  group: deploy-web
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'pull_request' && format('deploy-web-pr-{0}', github.event.pull_request.number) || 'deploy-web-dev' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   BUN_VERSION: 1.4.4

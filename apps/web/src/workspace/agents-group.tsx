@@ -14,7 +14,6 @@ import {
 import { Clock, Ellipsis, Layers, Pencil, Pin, PinOff, Power } from "lucide-react";
 import { useMemo } from "react";
 import { useAskSession } from "./session-context.ts";
-import { filterAgentGroups } from "./sidebar-filter.ts";
 import { agentGroups, type AgentSort } from "./sidebar-model.ts";
 import { useAgentSort } from "./sidebar-prefs.ts";
 import { usePin } from "./use-pin.ts";
@@ -27,8 +26,6 @@ export interface AgentsGroupProps {
   readonly rail?: boolean;
   /** False where the screen's own title already says "Agents" (the phone): the group is labelled, not headed. */
   readonly heading?: boolean;
-  /** The sidebar filter's query; the selected agent stays listed whatever it is. */
-  readonly query?: string;
 }
 
 function SortMenu() {
@@ -98,11 +95,10 @@ function AgentActions({ agent }: { readonly agent: Agent }) {
  * The agents, first in the sidebar: Pinned, then Needs you, Working, Idle, Done and Offline with counts (or one group
  * per space), each its own list. On the rail the rows are glyphs and the group titles are left to their labels.
  */
-export function AgentsGroup({ terminals, active, onOpen, rail = false, heading = true, query = "" }: AgentsGroupProps) {
+export function AgentsGroup({ terminals, active, onOpen, rail = false, heading = true }: AgentsGroupProps) {
   const now = useNow();
   const [sort] = useAgentSort();
-  const all = useMemo(() => agentGroups(terminals, now, sort), [terminals, now, sort]);
-  const groups = useMemo(() => filterAgentGroups(all, query, active), [all, query, active]);
+  const groups = useMemo(() => agentGroups(terminals, now, sort), [terminals, now, sort]);
   const list = (
     <div className="flex flex-col gap-3">
       {groups.map((group) => (

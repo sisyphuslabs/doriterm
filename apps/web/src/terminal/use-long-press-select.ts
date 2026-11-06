@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { holdSelection } from "./held-selection.ts";
 import {
   caretAt,
+  clearLongPress,
   extendSelection,
   LONG_PRESS_MS,
   LONG_PRESS_SLOP,
@@ -87,9 +88,15 @@ export function useLongPressSelect(wt: WTerm | null, onMenu: (at: Point | null) 
     const onTouchMove = (event: TouchEvent): void => {
       if (press !== null && press.picked && event.cancelable) event.preventDefault();
     };
+    // The mark belongs to one touch, and the next press anywhere answers for its own tap. A finger still down is that
+    // press, so a second one beside it leaves the mark alone.
+    const began = (): void => {
+      if (press === null) clearLongPress(element);
+    };
     // Capture: the renderer's input textarea sits over the cursor's cell and answers a press itself, so a press there
     // would never reach a listener on the terminal's element on the way up.
     element.addEventListener("pointerdown", onDown, { capture: true });
+    doc.addEventListener("pointerdown", began, true);
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", stop);
@@ -97,7 +104,9 @@ export function useLongPressSelect(wt: WTerm | null, onMenu: (at: Point | null) 
     element.addEventListener("touchmove", onTouchMove, { passive: false });
     return () => {
       stop();
+      clearLongPress(element);
       element.removeEventListener("pointerdown", onDown, { capture: true });
+      doc.removeEventListener("pointerdown", began, true);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", stop);

@@ -6,7 +6,7 @@ import { isUsable } from "./use-overlay-focus.ts";
  * A modal dialog is open: either it has hidden the workspace (the guard overlays use, #33), or it is a modal that
  * leaves the workspace in place, as the command palette does. The chord must not act behind either.
  */
-export function behindModal(): boolean {
+function behindModal(): boolean {
   if (document.querySelector('[aria-modal="true"]') !== null) return true;
   const anchor = sidebarElement() ?? terminalInput();
   return anchor !== null && !isUsable(anchor);

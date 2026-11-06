@@ -9,13 +9,20 @@ test.use({ serviceWorkers: "block", ...PHONE, permissions: ["clipboard-read", "c
 const menu = (page: Page) => page.getByRole("menu", { name: "Selected text" });
 const clipboard = (page: Page, text: string) => page.evaluate((value) => navigator.clipboard.writeText(value), text);
 
-/** Holds a finger on the terminal's own text and pastes from the menu it opens. */
-async function pasteFromMenu(page: Page, at: string | null = null): Promise<void> {
+/** A finger that stays down this long is still holding on purpose, well past the moment a touch becomes a tap. */
+const HELD_MS = 1_200;
+
+/**
+ * Holds a finger on the terminal's own text and pastes from the menu it opens. `heldMs` keeps the finger down that much
+ * longer than the hold needs, as a person who reads the selection before lifting does (#760).
+ */
+async function pasteFromMenu(page: Page, at: string | null = null, heldMs = 0): Promise<void> {
   const terminal = page.locator("[data-terminal]");
   const point = at === null ? await pointOnLastText(terminal) : await pointOn(terminal, "$", at);
   const touch = await Touch.on(page);
   await touch.down(point);
   await expect(page.locator(".term-selection-cells > div").first()).toBeVisible();
+  if (heldMs > 0) await page.waitForTimeout(heldMs);
   await touch.up(point);
   await menu(page).getByRole("menuitem", { name: "Paste" }).click();
 }
@@ -24,6 +31,13 @@ test("the held touch's menu pastes Korean text into the line being typed", async
   const terminal = await openPhoneTerminal(page);
   await clipboard(page, "안녕하세요");
   await pasteFromMenu(page, "$");
+  await expect(terminal).toContainText("안녕하세요", { timeout: 15_000 });
+});
+
+test("a finger still down after the hold pastes from the menu its lift opens", async ({ page }) => {
+  const terminal = await openPhoneTerminal(page);
+  await clipboard(page, "안녕하세요");
+  await pasteFromMenu(page, "$", HELD_MS);
   await expect(terminal).toContainText("안녕하세요", { timeout: 15_000 });
 });
 

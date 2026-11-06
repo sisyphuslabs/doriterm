@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { FRAME_BYTES, type FrameTimer, OutputPacer } from "./output-pacer.ts";
+import { FRAME_BYTES, type FrameTimer, OutputPacer, SYNCHRONIZED_UNPACED_MS } from "./output-pacer.ts";
 
 /** Animation frames that run only when the test says so. */
 function manualFrames() {
@@ -73,5 +73,101 @@ describe("OutputPacer (#560)", () => {
     clock.nextFrame();
     expect(written).toEqual([4]);
     expect(credited).toBe(0);
+  });
+});
+
+const text = (value: string) => new TextEncoder().encode(value);
+const OPEN = "\u001b[?2026h";
+const CLOSE = "\u001b[?2026l";
+
+describe("OutputPacer in a synchronized update (#757)", () => {
+  test("an update is written as it arrives, uncapped, with its credit, and output after it is paced again", () => {
+    const clock = manualFrames();
+    const written: number[] = [];
+    let credited = 0;
+    const pacer = new OutputPacer(
+      (batch) => written.push(batch.byteLength),
+      clock.frame,
+      () => 0,
+    );
+    const credit = (count: number): void => void (credited += count);
+    pacer.push(text(OPEN), credit);
+    clock.nextFrame();
+    expect(written).toEqual([OPEN.length]);
+    // A whole transcript, far over a frame's bytes, arrives in pieces while the update is open: each is written at once.
+    pacer.push(bytes(FRAME_BYTES * 3), credit);
+    pacer.push(bytes(FRAME_BYTES * 2), credit);
+    expect(written).toEqual([OPEN.length, FRAME_BYTES * 3, FRAME_BYTES * 2]);
+    expect(credited).toBe(OPEN.length + FRAME_BYTES * 5);
+    expect(clock.frames).toHaveLength(0);
+    // The update ends inside a piece: up to its end at once, the rest a frame's bytes at a time.
+    const ending = new Uint8Array([...text(CLOSE), ...bytes(FRAME_BYTES * 2)]);
+    pacer.push(ending, credit);
+    expect(written.slice(3)).toEqual([CLOSE.length]);
+    clock.nextFrame();
+    expect(written.slice(4)).toEqual([FRAME_BYTES]);
+    clock.nextFrame();
+    expect(written.slice(5)).toEqual([FRAME_BYTES]);
+    expect(credited).toBe(OPEN.length + FRAME_BYTES * 5 + ending.byteLength);
+  });
+
+  test("an update opened in a frame's batch has the rest of the queue written in that frame", () => {
+    const clock = manualFrames();
+    const written: number[] = [];
+    const pacer = new OutputPacer(
+      (batch) => written.push(batch.byteLength),
+      clock.frame,
+      () => 0,
+    );
+    pacer.push(new Uint8Array([...text(OPEN), ...bytes(FRAME_BYTES * 4)]));
+    pacer.push(text(CLOSE));
+    pacer.push(bytes(FRAME_BYTES + 1));
+    clock.nextFrame();
+    expect(written).toEqual([OPEN.length + FRAME_BYTES * 4 + CLOSE.length]);
+    clock.nextFrame();
+    expect(written.slice(1)).toEqual([FRAME_BYTES]);
+  });
+
+  test("an update held open past the terminal's own hold is paced again", () => {
+    const clock = manualFrames();
+    let now = 0;
+    const written: number[] = [];
+    const pacer = new OutputPacer(
+      (batch) => written.push(batch.byteLength),
+      clock.frame,
+      () => now,
+    );
+    pacer.push(text(OPEN));
+    clock.nextFrame();
+    pacer.push(bytes(FRAME_BYTES * 2));
+    expect(written).toEqual([OPEN.length, FRAME_BYTES * 2]);
+    now = SYNCHRONIZED_UNPACED_MS;
+    pacer.push(bytes(FRAME_BYTES * 2));
+    expect(written).toHaveLength(2);
+    clock.nextFrame();
+    expect(written.slice(2)).toEqual([FRAME_BYTES]);
+  });
+
+  test("out of view an update waits like any output, and drop forgets that one was open", () => {
+    const clock = manualFrames();
+    const written: number[] = [];
+    const pacer = new OutputPacer(
+      (batch) => written.push(batch.byteLength),
+      clock.frame,
+      () => 0,
+    );
+    pacer.push(text(OPEN));
+    clock.nextFrame();
+    pacer.setVisible(false);
+    pacer.push(bytes(10));
+    expect(written).toEqual([OPEN.length]);
+    pacer.setVisible(true);
+    clock.nextFrame();
+    expect(written.slice(1)).toEqual([10]);
+    pacer.drop();
+    pacer.push(bytes(FRAME_BYTES * 2));
+    expect(written).toHaveLength(2);
+    clock.nextFrame();
+    expect(written.slice(2)).toEqual([FRAME_BYTES]);
   });
 });

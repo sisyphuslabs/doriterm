@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug builds only: lets an emulator without a Firebase project show a real notice (see the receiver). -->
+        <receiver android:name=".DebugNoticeReceiver" android:exported="true" />
+    </application>
+</manifest>

@@ -5,8 +5,12 @@ import {
   type ApprovalMark,
   type HcEvent,
   type HeldSubscription,
+  MAX_NOTICE_LABEL,
+  MAX_NOTICE_OPTIONS,
   noticeMachineId,
   type NoticeKind,
+  type NoticePrompt,
+  type PromptReply,
   type PromptAnswer,
   type PushHostLine,
   type PushNotice,
@@ -128,26 +132,49 @@ export class PushService {
   }
 
   /**
+   * A notice's prompt rows for a notification to offer: only a prompt answered by one row's own key (no steps, no boxes,
+   * no typed text; a typed row is left out of the rest), as it stood when the notice was made. Anything else opens the
+   * card.
+   */
+  prompt(entry: NoticeEntry | undefined): NoticePrompt | undefined {
+    const prompt = entry?.mark?.prompt;
+    if (prompt === undefined || prompt.multi || prompt.step !== undefined) return undefined;
+    const options = prompt.options
+      .filter((option) => !option.typed && option.keys.length > 0)
+      .slice(0, MAX_NOTICE_OPTIONS)
+      .map((option) => ({ id: option.id, label: option.label.slice(0, MAX_NOTICE_LABEL), declines: option.declines }));
+    return options.length === 0 ? undefined : { options };
+  }
+
+  /**
    * Answers a permission notice's Allow (the plain "Yes" row) or Deny (the dialog's cancel) through the rule #192's
-   * banner uses (`answerApproval`); a prompt with no such row is `stale` and nothing is pressed. One
-   * claim per prompt across every client, then the live screen re-read, and the key only if the marked prompt is
-   * still up. `failed`: it did not go through and nothing was pressed; `unknown`: the key press failed after it was
-   * sent, so it may have landed; anything else is `stale` and sends nothing.
+   * banner uses (`answerApproval`); a prompt with no such row is `stale` and nothing is pressed.
    */
   async answer(id: string, answer: PromptAnswer, owner: string): Promise<PushHostLine> {
     const entry = this.resolve(id);
+    const reply =
+      entry?.kind === "permission" && entry.mark !== undefined ? binaryReply(entry.mark.prompt, answer) : undefined;
+    return this.#press(entry, reply, owner);
+  }
+
+  /** Answers one row a notification offered (`prompt`), with that row's own key, through the same rule. */
+  async choose(id: string, option: string, owner: string): Promise<PushHostLine> {
+    const entry = this.resolve(id);
+    const offered = this.prompt(entry)?.options.some((row) => row.id === option) === true;
+    return this.#press(entry, offered ? { kind: "option", option } : undefined, owner);
+  }
+
+  /**
+   * One claim per prompt across every client, then the live screen re-read, and the keys only if the marked prompt is
+   * still up. `failed`: it did not go through and nothing was pressed; `unknown`: the key press failed after it was
+   * sent, so it may have landed; anything else is `stale` and sends nothing.
+   */
+  async #press(entry: NoticeEntry | undefined, reply: PromptReply | undefined, owner: string): Promise<PushHostLine> {
     const stale: PushHostLine = { t: "stale", terminal: entry?.terminal ?? null };
-    const { terminal, mark } = entry ?? {};
+    const terminal = entry?.terminal;
+    const mark = entry?.mark;
     const core = this.#core;
-    const reply = mark === undefined ? undefined : binaryReply(mark.prompt, answer);
-    if (
-      entry?.kind !== "permission" ||
-      terminal == null ||
-      mark === undefined ||
-      reply === undefined ||
-      core === undefined
-    )
-      return stale;
+    if (terminal == null || mark === undefined || reply === undefined || core === undefined) return stale;
     // One id per answer: a device's worker and its page each answer for themselves, never as one client.
     const who = {
       by: this.#options.deviceName?.(owner) ?? "a notification",
@@ -189,7 +216,8 @@ export class PushService {
           pushEndpointAllowed(entry.endpoint, this.#options.extraOrigins),
       );
     if (recipients.length === 0) return;
-    const mark = hit.kind === "permission" ? await this.#mark(hit.terminal) : undefined;
+    // A permission or a question (an `input` notice) is marked as it stands now, so its answer is checked against it.
+    const mark = hit.kind === "permission" || hit.kind === "input" ? await this.#mark(hit.terminal) : undefined;
     const id = this.#notices.add({ terminal: hit.terminal, kind: hit.kind, at: this.#now(), mark });
     await Promise.all(recipients.map((entry) => this.#send(entry, this.#notice(id, hit.kind))));
   }

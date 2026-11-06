@@ -4,6 +4,11 @@ import {
   CLAUDE_AFTER_SCREEN,
   CLAUDE_PROMPT_SCREEN,
 } from "../../../../packages/protocol/src/testing/approval-screens.ts";
+import {
+  CLAUDE_MULTI_SCREEN,
+  CLAUDE_QUESTION_SCREEN,
+  CLAUDE_STEPS_SCREEN,
+} from "../../../../packages/protocol/src/testing/prompt-screens.ts";
 import { verifyVapid } from "../testing/push-receiver.ts";
 import { ENDPOINT, HOST_ID, type Rig, rig, statusEvent, terminal } from "../testing/push-rig.ts";
 
@@ -217,6 +222,78 @@ describe("answering a permission notice", () => {
       t: "stale",
       terminal: null,
     });
+    expect(r.core.sent).toEqual([]);
+  });
+});
+
+describe("a notice's own rows (#669)", () => {
+  const PERMISSION = { state: "blocked", kind: "permission", app: "claude-code" };
+  const QUESTION = { state: "blocked", kind: "question", app: "claude-code" };
+
+  async function noticed(status: typeof PERMISSION, screen: string): Promise<{ r: Rig; id: string }> {
+    const r = await subscribed();
+    r.core.terminals.set("t3", terminal("t3", status));
+    r.core.screens.set("t3", screen);
+    await r.service.event(statusEvent("t3", status));
+    const [notice] = await r.notices();
+    const id = typeof notice === "object" && notice !== null ? String(Reflect.get(notice, "n")) : "";
+    return { r, id };
+  }
+
+  test("a permission notice names every row of its dialog, in the agent's words", async () => {
+    const { r, id } = await noticed(PERMISSION, CLAUDE_PROMPT_SCREEN);
+    expect(r.service.prompt(r.service.resolve(id))?.options).toEqual([
+      { id: "1", label: "Yes", declines: false },
+      { id: "2", label: "Yes, and always allow access to ~/work from this project", declines: false },
+      { id: "3", label: "Yes, and switch to auto mode · auto mode handles these prompts for you", declines: false },
+      { id: "4", label: "No", declines: true },
+    ]);
+  });
+
+  test("a single question is an input notice that names its rows, leaving out the typed one", async () => {
+    const { r, id } = await noticed(QUESTION, CLAUDE_QUESTION_SCREEN);
+    expect(r.service.resolve(id)?.kind).toBe("input");
+    expect(r.service.prompt(r.service.resolve(id))?.options.map((row) => row.label)).toEqual([
+      "Postgres",
+      "SQLite",
+      "Both",
+      "Chat about this",
+    ]);
+  });
+
+  test.each([
+    ["several questions", CLAUDE_STEPS_SCREEN],
+    ["a multi-select question", CLAUDE_MULTI_SCREEN],
+  ])("%s names no rows: a tap opens the card", async (_, screen) => {
+    const { r, id } = await noticed(QUESTION, screen);
+    expect(r.service.prompt(r.service.resolve(id))).toBeUndefined();
+    expect(await r.service.choose(id, "1", "device-a")).toEqual({ t: "stale", terminal: "t3" });
+    expect(r.core.sent).toEqual([]);
+  });
+
+  test("a row the notice named is answered with that row's own key, after the live-screen check", async () => {
+    const { r, id } = await noticed(QUESTION, CLAUDE_QUESTION_SCREEN);
+    expect(await r.service.choose(id, "2", "device-a")).toEqual({ t: "answered", terminal: "t3" });
+    expect(r.core.sent).toEqual([{ terminal: "t3", keys: ["2"] }]);
+  });
+
+  test("a row the notice did not name (the typed one, or none at all) presses nothing", async () => {
+    const { r, id } = await noticed(QUESTION, CLAUDE_QUESTION_SCREEN);
+    expect(await r.service.choose(id, "4", "device-a")).toEqual({ t: "stale", terminal: "t3" });
+    expect(await r.service.choose(id, "9", "device-a")).toEqual({ t: "stale", terminal: "t3" });
+    expect(r.core.sent).toEqual([]);
+  });
+
+  test("a question changed in the terminal after the notice is stale: nothing is pressed", async () => {
+    const { r, id } = await noticed(QUESTION, CLAUDE_QUESTION_SCREEN);
+    r.core.screens.set("t3", CLAUDE_STEPS_SCREEN);
+    expect(await r.service.choose(id, "1", "device-a")).toEqual({ t: "stale", terminal: "t3" });
+    expect(r.core.sent).toEqual([]);
+  });
+
+  test("a question's notice has no Allow: Allow from an older page presses nothing", async () => {
+    const { r, id } = await noticed(QUESTION, CLAUDE_QUESTION_SCREEN);
+    expect(await r.service.answer(id, "allow", "device-a")).toEqual({ t: "stale", terminal: "t3" });
     expect(r.core.sent).toEqual([]);
   });
 });

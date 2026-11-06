@@ -4,7 +4,7 @@
 // questions) to the terminal's width, and logs every key it receives to <log>: a chunk is split into keystrokes (an
 // escape sequence, a lone Esc, one character), as a terminal program reads them.
 //
-// permission: `1` allows, Esc declines, and `x` stands for a person answering in the terminal before the status catches
+// permission: `1` allows, Esc or `4` (its No row) declines, and `x` stands for a person answering in the terminal before the status catches
 // up (the dialog goes, the status stays blocked). question: a row's number answers; `4` puts the cursor on "Type
 // something.", where pasted text and Enter answer. steps: two questions, then Claude Code's review, where `1` submits.
 // multi: numbers toggle boxes, → moves to the review, `1` submits.
@@ -58,7 +58,7 @@ function permission(): Step {
       draw([...transcript.slice(0, 3), "● Bash(touch probe-a.txt)", "  ⎿  Allowed", ""]);
       report("state=working:app=claude-code");
       report("state=idle:app=claude-code");
-    } else if (key === ESC) cancel();
+    } else if (key === ESC || key === "4") cancel();
     else if (key === "x") draw([...transcript.slice(0, 3), "  ⎿  Answered in the terminal", ""]);
   };
 }

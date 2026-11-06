@@ -1,0 +1,35 @@
+name: Changelog
+
+# A pull request that changes what users get (apps/ or packages/, outside tests, fixtures and docs) adds a line under
+# "## Unreleased" in CHANGELOG.md, or carries the no-changelog label when nothing changes for users. The release
+# workflow refuses a tag whose CHANGELOG section is missing or empty (release-notes.ts --check), so a line missed here
+# is a line missing from a release. Adding or removing the label runs this check again, and only this one.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+concurrency:
+  group: changelog-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    name: Changelog
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: A user-facing change has an Unreleased line
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: bun .github/scripts/changelog-check.ts "$BASE_SHA"

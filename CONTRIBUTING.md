@@ -41,6 +41,17 @@ Do not change `.github/workflows/` in a pull request unless that is the point of
 uses the workflow files in the pull request, so a maintainer reads such a change on its own before trusting any check
 it reports.
 
+## Changelog
+
+A pull request that changes what users get adds one line under `## Unreleased` in `CHANGELOG.md`, in the subsection it
+belongs to: what changed for them in plain words, not how it was built, with the pull request number. The `Changelog`
+check fails a pull request that changes a file under `apps/` or `packages/` (tests, e2e specs, fixtures, the showcase
+and Markdown aside) and adds no such line. When nothing changes for users, a refactor or a build tweak, add the
+`no-changelog` label; the check runs again on its own.
+
+A release moves the Unreleased lines into a `## vX.Y.Z - YYYY-MM-DD` section. The release workflow refuses a tag whose
+section is missing or has no lines, before it builds anything, and publishes the section as the release notes.
+
 ## Commits
 
 One meaning per commit, in the imperative: `fix(web): ...`, `feat(host): ...`, `test(relay): ...`. Say why in the body

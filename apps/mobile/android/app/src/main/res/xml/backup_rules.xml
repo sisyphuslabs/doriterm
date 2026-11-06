@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and below: the push keys are sealed under an Android Keystore key that never leaves the device, so a
+     restored copy could not be opened; they are made again on the new device instead. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="doriface-push.xml" />
+</full-backup-content>

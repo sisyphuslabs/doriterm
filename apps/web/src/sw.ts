@@ -1,11 +1,19 @@
 /// <reference lib="webworker" />
 import { base64urlDecode } from "@doriface/crypto";
-import { DEFAULT_PUSH_PREFS, parsePushNotice, type PromptAnswer, type PushHostLine } from "@doriface/protocol";
+import {
+  DEFAULT_PUSH_PREFS,
+  type NoticePrompt,
+  parsePushNotice,
+  type PushClientLine,
+  type PushHostLine,
+  type PushNotice,
+} from "@doriface/protocol";
 import { clientsClaim } from "workbox-core";
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from "workbox-precaching";
 import { NavigationRoute, registerRoute } from "workbox-routing";
 import { planClick } from "./push/notice-click.ts";
-import { noticeDisplay } from "./push/notice-display.ts";
+import { DEFAULT_MAX_ACTIONS, noticeDisplay } from "./push/notice-display.ts";
+import { deadlineAfter, exchangeWithin, type PushExchange } from "./push/over-push.ts";
 import { loadPushPrefs, loadPushRoute, openPushLink } from "./push/push-route.ts";
 import { carryOver } from "./push/reconcile.ts";
 import { asSubscription } from "./push/subscription-keys.ts";
@@ -31,6 +39,8 @@ self.addEventListener("message", (event) => {
 
 /** How long an Allow or Deny waits for the host before it opens the pane instead. */
 const ANSWER_TIMEOUT_MS = 15_000;
+/** How long a push waits for the host to name its prompt's rows before it shows the notice without them. */
+const PROMPT_TIMEOUT_MS = 4_000;
 
 function readPayload(event: PushEvent): unknown {
   try {
@@ -47,24 +57,50 @@ self.addEventListener("push", (event) => {
     event.waitUntil(self.registration.showNotification("doriface", { body: "Open doriface to see what changed." }));
     return;
   }
-  const { title, ...shown } = noticeDisplay(notice);
-  // TypeScript's NotificationOptions lacks `actions`, which Chromium and Firefox show.
-  const options: NotificationOptions & Pick<typeof shown, "actions"> = { ...shown, icon: "/icon-192.png" };
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(showNotice(notice));
 });
 
-/** Answers over a fresh E2EE push session: the host checks the live prompt first and types only if it is unchanged. */
-async function answerOverPush(id: string, answer: PromptAnswer): Promise<PushHostLine> {
+/**
+ * A permission or a question asks the host over the E2EE push stream which rows its prompt has, so the notification
+ * can offer them; the payload itself names nothing. A host that does not answer in time, or names none, gets the
+ * notice without rows (a permission keeps Allow and Deny).
+ */
+async function showNotice(notice: PushNotice): Promise<void> {
+  const prompt =
+    notice.k === "permission" || notice.k === "input" ? await promptOf(notice).catch(() => undefined) : undefined;
+  // `Notification.maxActions` is not in TypeScript's DOM types; Chromium reports it.
+  const max: unknown = Reflect.get(Notification, "maxActions");
+  const { title, ...shown } = noticeDisplay(
+    notice,
+    prompt,
+    typeof max === "number" && max > 0 ? max : DEFAULT_MAX_ACTIONS,
+  );
+  // TypeScript's NotificationOptions lacks `actions`, which Chromium and Firefox show.
+  const options: NotificationOptions & Pick<typeof shown, "actions"> = { ...shown, icon: "/icon-192.png" };
+  await self.registration.showNotification(title, options);
+}
+
+async function promptOf(notice: PushNotice): Promise<NoticePrompt | undefined> {
+  const reply = await overPush({ t: "notice", id: notice.n }, PROMPT_TIMEOUT_MS);
+  return reply.t === "notice" ? reply.prompt : undefined;
+}
+
+async function openSession(): Promise<PushExchange> {
   const route = await loadPushRoute();
   if (route === undefined) throw new Error("notifications are off on this device");
-  const client = new PushStreamClient(await openPushLink(route));
-  const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error("the host did not answer")), ANSWER_TIMEOUT_MS),
-  );
+  return new PushStreamClient(await openPushLink(route));
+}
+
+/**
+ * One line over a fresh E2EE push session, all of it (route, link and reply) inside the deadline. An answer: the host
+ * checks the live prompt first and types only if it is unchanged.
+ */
+async function overPush(line: PushClientLine, timeoutMs = ANSWER_TIMEOUT_MS): Promise<PushHostLine> {
+  const deadline = deadlineAfter(timeoutMs);
   try {
-    return await Promise.race([client.request({ t: "answer", id, answer }), timeout]);
+    return await exchangeWithin(openSession, line, deadline.expired);
   } finally {
-    client.close();
+    deadline.cancel();
   }
 }
 
@@ -117,7 +153,7 @@ async function openApp(url: string): Promise<void> {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil(
-    planClick(event.action, event.notification.data, answerOverPush).then((plan) =>
+    planClick(event.action, event.notification.data, (line) => overPush(line)).then((plan) =>
       plan.open === null ? undefined : openApp(plan.open),
     ),
   );

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { pushSupport, type SupportScope } from "./push-support.ts";
 
 const browser: SupportScope = {
+  native: false,
   protocol: "https:",
   push: true,
   notifications: true,
@@ -17,6 +18,12 @@ describe("where push can be turned on", () => {
     ["a Safari tab on iPhone (no PushManager there)", { ...browser, push: false, ios: true }, "install-first"],
     ["the desktop shell's app: scheme", { ...browser, protocol: "app:" }, "desktop-app"],
     ["a browser without push", { ...browser, push: false }, "unsupported"],
+    ["the Android app, whose web view has no push manager", { ...browser, native: true, push: false }, "supported"],
+    [
+      "the iOS app on its capacitor: scheme",
+      { ...browser, native: true, protocol: "capacitor:", push: false, ios: true },
+      "supported",
+    ],
   ] as const)("%s", (_, scope, support) => {
     expect(pushSupport(scope)).toBe(support);
   });

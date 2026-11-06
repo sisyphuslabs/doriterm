@@ -14,30 +14,30 @@
 ### Answering agents from the card
 
 - The card pinned over a waiting agent answers every prompt Claude Code and Codex draw, not only Allow or Deny: each of the agent's own rows with its key, its questions (one or several in a row, multi-select, a typed answer), and a plan to approve. It shows what the agent said above the question, the directory it works in, the diff or file it touches, and opens the files it names. Every answer is still checked against the live screen first. (#669)
+- A notification for a waiting agent offers its prompt's own rows, a question's included, fetched over the encrypted push stream: the agent's No row answers from the notification, any other row opens the app and is sent once it is on screen, and a prompt with several steps, boxes or a typed answer opens the card. (#669)
 
 ### Web app and PWA
 
 - The installed web app carries its own app id and language, ships a maskable icon at 192 as well as 512, and opens standalone from an iOS home screen with its own title and status bar. (#709)
+- A resize no longer moves a terminal's view: a terminal following its output stays on its last line when the window is resized, a split divider is dragged or the phone keyboard opens, even while an agent redraws its whole transcript for the new width, and a terminal scrolled into its history keeps its line at the top. (#811)
 
 ### Native apps
 
 - A push bridge for the coming iOS and Android apps: the host's encrypted notices reach them through APNs and FCM, and the bridge never holds a key that opens one. (#705)
+- An Android app: the same web client in a native shell, with notifications that arrive with the app closed and Allow and Deny on a permission prompt, answered once the app is on screen. The status and navigation bars follow the theme. (#704, #705)
 
 ### Desktop local host and pairing by code
 
 - The host the desktop app starts joins the relay, so a phone or another computer can pair with this computer by code or link and reach its terminals. (#596)
 - Settings > Connections has **Pair a device**: it asks this computer's host for a fresh offer and shows its QR code, link, 8-character code, fingerprint and expiry, then the device that used it — no terminal and no CLI. (#614)
 - The web app is hosted at https://doriface.omo.dev, and the pairing QR code (in **Pair a device** and from `doriface-host pair`) opens its pair page on a phone, with the host's key ready to check. The link for another computer stays `doriface://pair#…`. (#700)
+- The hosted web app sends a Content Security Policy: a page there runs only the app's own scripts and the terminal's wasm, connects only to the relay, and cannot be framed. Every deploy's probe checks the live origin sends it. (#703)
 
 ### Machine mesh
 
 - A machine you had already added over ssh or with a via is replaced by its mesh line under the same name, and mesh status and the Mesh panel say what kind of entry it replaced. Its open tabs and layout carry over. (#710)
 
-### Workspace (#673)
-
-- The sidebar has a filter: the funnel button, Cmd+Alt+F on macOS or Ctrl+Alt+F elsewhere opens a field that narrows machines, spaces and agents to the rows whose shown labels match what is typed (letters in order, any case). The selected space and agent stay as context, a folded machine opens to show its matches, and Escape clears the query, then closes the field and returns to the terminal. (#673)
-
-## v0.1.2
+## v0.1.2 - 2026-11-06
 
 ### Tabs and spaces
 
@@ -101,3 +101,47 @@
 - On phones, the app, its header, its status bar and its sheets keep clear of the notch, the rounded corners and the home indicator on every side. (#561, #565)
 - An older browser gets an Update your browser screen instead of a page that does not work. (#563)
 - Many test and CI fixes, so problems are caught before a release instead of after. (#444, #450, #453, #457, #467, #471, #490, #491, #492, #494, #498, #501, #505, #506, #507, #508, #511, #513, #514, #519, #523, #531, #536, #538, #541, #543, #546, #549, #558, #564, #569, #571, #574, #575, #585, #588)
+
+## v0.1.1 - 2026-11-05
+
+### Signed macOS app and Windows
+
+- The macOS app is signed with a Developer ID certificate and notarized by Apple, and the dmg is stapled, so it opens without a Gatekeeper warning. (#382)
+- On Windows, the host keeps its keys and private state readable only by you, and it refuses a herdr-core older than 0.1.17. (#433)
+- The app installs herdr-core for you when it is missing or too old: a verified download, installed for your user only. (#417)
+- Release builds connect only to the production relay. (#411)
+
+### Panes, spaces and the terminal
+
+- Drag a pane by its header to move it within its tab, as in herdr-app, or swap panes from the keyboard. (#442)
+- A space row shows its branch, ahead or behind, uncommitted changes or a detached head, only when one of them is unusual. (#380)
+- Cmd/Ctrl + and - and 0 size the terminal text instead of zooming the whole window. (#413)
+- A selection covers whole cells and stays contiguous across wide characters. (#437)
+- Keys you type while a terminal opens on its own are kept, and a terminal that answers after you moved on no longer takes the keyboard. (#414, #375)
+- A terminal started again with Try again gets its focus back. (#386)
+- The sidebar list and the tab strip show no classic scrollbars while their content fits. (#374)
+- The browser's theme colour follows the theme you are looking at. (#371)
+
+### Updates and Settings
+
+- An update that is ready lights a dot on Settings, and Settings restarts or reloads into it; the phone's Settings gear shows the dot too. (#394, #425)
+- Voice input says what dictation does and where its microphone is, and why it cannot listen when it cannot. (#398)
+
+### Hosts and the mesh
+
+- Stopping a host ends the handshakes in flight instead of waiting for them to time out. (#438)
+- A link opened while its device is being revoked is closed. (#439)
+- Re-pairing a host compares and saves it in one step, so two pairings at once cannot mix. (#396)
+- Adding a machine reserves both of its relay connections together. (#373)
+- Many test fixes, so problems are caught before a release instead of after. (#363, #370, #377, #378, #399, #400, #405, #407, #423, #428, #431, #432, #434, #436, #443)
+
+## v0.1.0 - 2026-11-05
+
+The first release: an end-to-end encrypted web, PWA and desktop face for herdr-core.
+
+- The desktop app for macOS, Windows and Linux starts a host and herdr-core on your computer and shows its terminals; the same client runs in a browser and installs as a PWA.
+- Every herdr-core method works unchanged: the host passes herdr-core's own protocol straight through.
+- Terminals render with libghostty, built from Ghostty v1.4.0.
+- Traffic between your devices and a host is end-to-end encrypted with Noise and carried by a public relay that only ever sees ciphertext.
+- Pair a device with an 8-character code or a one-tap link, and add other machines through the relay with `hc machine add --via 'doriface-host connect <host>'`, with no ssh and no open port.
+- Everything up to and including #367.

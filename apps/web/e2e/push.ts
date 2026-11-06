@@ -166,8 +166,12 @@ export const shownNotifications = (worker: Worker): Promise<Shown[]> =>
  * event may not extend its lifetime, and the returned promise settles when the handler's work does.
  */
 export async function tapNotification(worker: Worker, tag: string, action: string): Promise<void> {
-  // DevTools' deliverPushMessage returns before the worker's showNotification settles: tap only once it is shown.
-  await expect.poll(async () => (await shownNotifications(worker)).some((shown) => shown.tag === tag)).toBe(true);
+  // DevTools' deliverPushMessage returns before the worker's showNotification settles: tap only once it is shown. A
+  // permission or question notice is shown only after the worker asked the host for its rows (up to sw.ts's 4 s
+  // deadline, #669), so the wait allows for that whole exchange on a loaded runner.
+  await expect
+    .poll(async () => (await shownNotifications(worker)).some((shown) => shown.tag === tag), { timeout: 15_000 })
+    .toBe(true);
   await worker.evaluate(`(async () => {
     const [notification] = await self.registration.getNotifications({ tag: ${JSON.stringify(tag)} });
     if (notification === undefined) throw new Error("no notification to tap");

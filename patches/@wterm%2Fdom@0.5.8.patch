@@ -299,10 +299,38 @@ index e307b168727cef08a2d644e33ca8cc4d8c23cfb1..04cbfc73f380b80233da981248ce1905
      /**
       * Hands the core the theme colors the page's CSS resolves to, unless the
 diff --git a/dist/wterm.js b/dist/wterm.js
-index 848e1c3f7880842c4439541fc4565ff4a42c0201..3a69b5ccab58680500721e787d159dfaea8804a1 100644
+index 848e1c3f7880842c4439541fc4565ff4a42c0201..7b452098433c6114ec443fcbec152d4ff0d61013 100644
 --- a/dist/wterm.js
 +++ b/dist/wterm.js
-@@ -372,6 +372,7 @@ export class WTerm {
+@@ -100,6 +100,11 @@ export class WTerm {
+         this._destroyed = false;
+         this._shouldScrollToBottom = false;
+         this._pinnedToBottom = true;
++        // The user moved the view off the bottom (a scroll, a search reveal, a
++        // prompt jump): only that stops a view from following output. A change
++        // of geometry (a refit, a row height) can leave the element short of its
++        // bottom for a moment, and must not.
++        this._scrolledAway = false;
+         this._scrollbackDiscardedCount = 0;
+         this._programmaticScrollTop = null;
+         this._pendingResizeScrollTop = null;
+@@ -184,6 +189,7 @@ export class WTerm {
+                 const match = this._search.matches[this.getSearchState().activeIndex];
+                 if (match) {
+                     this._shouldScrollToBottom = false;
++                    this._scrolledAway = true;
+                     this._pendingResizeScrollTop = null;
+                     this._setScrollTop((match.start.row + 0.5) * this._rowHeight -
+                         this.element.clientHeight / 2);
+@@ -306,6 +312,7 @@ export class WTerm {
+             }
+             this._programmaticScrollTop = null;
+             this._shouldScrollToBottom = false;
++            this._scrolledAway = !atBottom;
+             this._scheduleRender();
+         };
+         this.element.addEventListener("scroll", this._onScroll, { passive: true });
+@@ -372,6 +379,7 @@ export class WTerm {
                  maxImageWidth: this.maxImageWidth,
                  maxImageHeight: this.maxImageHeight,
              });
@@ -310,7 +338,7 @@ index 848e1c3f7880842c4439541fc4565ff4a42c0201..3a69b5ccab58680500721e787d159dfa
              this.renderer.setup(this.cols, this.rows);
              this.input = new InputHandler(this.element, (data, preserveScroll = false) => this._deliverInput(data, preserveScroll), () => this.bridge, () => this._charWidth > 0 && this._rowHeight > 0
                  ? { charWidth: this._charWidth, rowHeight: this._rowHeight }
-@@ -407,7 +408,6 @@ export class WTerm {
+@@ -407,7 +415,6 @@ export class WTerm {
              if (!this.autoResize) {
                  this._lockHeight();
              }
@@ -318,7 +346,15 @@ index 848e1c3f7880842c4439541fc4565ff4a42c0201..3a69b5ccab58680500721e787d159dfa
              this._initialRender();
              this._registerWebMCP();
              if (this.cols !== initialCols || this.rows !== initialRows)
-@@ -445,6 +445,29 @@ export class WTerm {
+@@ -425,6 +432,7 @@ export class WTerm {
+         return this._pinnedToBottom;
+     }
+     _scrollToBottom() {
++        this._scrolledAway = false;
+         this._setScrollTop(this.element.scrollHeight);
+     }
+     _setScrollTop(value, frame) {
+@@ -445,6 +453,29 @@ export class WTerm {
          }
          this.element.scrollTop = target;
      }
@@ -348,3 +384,58 @@ index 848e1c3f7880842c4439541fc4565ff4a42c0201..3a69b5ccab58680500721e787d159dfa
      /**
       * Apply host colors without writing terminal input or restarting the session.
       * Pass `null` to drop them and answer color queries from the page's CSS again.
+@@ -490,7 +521,7 @@ export class WTerm {
+         this.renderer?.beforeMutation(this.bridge);
+         if (this.debug)
+             this.debug.traceWrite(data);
+-        this._shouldScrollToBottom = this._pinnedToBottom;
++        this._shouldScrollToBottom = this._pinnedToBottom || !this._scrolledAway;
+         // Answer theme color queries with the colors the page shows right now.
+         if (mayQueryThemeColors(data))
+             this._syncCssThemeColors();
+@@ -669,9 +700,17 @@ export class WTerm {
+         this._rectangleDrag.cancel();
+         this._historySelection.invalidate();
+         this.renderer?.beforeMutation(this.bridge);
++        const atBottom = this._isScrolledToBottom();
+         this._shouldScrollToBottom =
+-            this._pendingResizeScrollTop === null && this._isScrolledToBottom();
++            this._pendingResizeScrollTop === null && (atBottom || !this._scrolledAway);
++        // Ghostty ends synchronized output on a resize, but the program is still
++        // writing the update it opened: reopened, the screen keeps showing the
++        // last finished frame until the program ends it (or the hold times out),
++        // instead of the frame half drawn.
++        const synchronizedBefore = this.bridge.synchronizedOutput?.() ?? false;
+         this.bridge.resize(cols, rows);
++        if (synchronizedBefore && !(this.bridge.synchronizedOutput?.() ?? false))
++            this.bridge.writeString("\x1b[?2026h");
+         this._outputAnnouncements.invalidate();
+         this.cols = this.bridge.getCols();
+         this.rows = this.bridge.getRows();
+@@ -735,6 +774,7 @@ export class WTerm {
+             return false;
+         const before = this.element.scrollTop;
+         this._shouldScrollToBottom = false;
++        this._scrolledAway = true;
+         this._searchReveal = false;
+         this._pendingResizeScrollTop = target * this._rowHeight;
+         this._doRender();
+@@ -1493,14 +1533,15 @@ export class WTerm {
+         const height = this._visibleContentHeight(contentHeight);
+         const newCols = Math.max(1, Math.floor(containerRect.width / charWidth));
+         const newRows = Math.max(1, Math.floor(height / rowHeight));
+-        const atBottom = this._isScrolledToBottom();
++        const following = this._isScrolledToBottom() || !this._scrolledAway;
+         this._setKeyboardInset(contentHeight - height);
+         if (newCols !== this.cols || newRows !== this.rows) {
+             this.resize(newCols, newRows);
+         }
+-        else if (atBottom) {
++        // A following view stays on its bottom now: the keyboard's spacer just
++        // changed the element's height, and the next paint is a frame away.
++        if (following)
+             this._scrollToBottom();
+-        }
+     }
+     destroy() {
+         this._destroyed = true;

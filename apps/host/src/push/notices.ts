@@ -6,7 +6,7 @@ export interface NoticeEntry {
   readonly terminal: string | null;
   readonly kind: NoticeKind;
   readonly at: number;
-  /** A permission notice's prompt as it stood when the notice was made; an answer is checked against it. */
+  /** A permission or question notice's prompt as it stood when the notice was made; an answer is checked against it. */
   readonly mark: ApprovalMark | undefined;
 }
 

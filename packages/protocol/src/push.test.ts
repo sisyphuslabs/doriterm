@@ -57,8 +57,45 @@ describe("push stream lines", () => {
     ["a non-http endpoint", JSON.stringify({ t: "unsubscribe", endpoint: "file:///etc/passwd" })],
     ["an answer other than allow or deny", JSON.stringify({ t: "answer", id: ID, answer: "always" })],
     ["a line of 4096 bytes", JSON.stringify({ t: "focus", terminal: "t".repeat(4090) })],
+    ["a row that is no row number", JSON.stringify({ t: "choose", id: ID, option: "esc" })],
   ])("closes on %s", (_, line) => {
     expect(() => parsePushClientLine(line)).toThrow(PushLineError);
+  });
+
+  test("a row of a notice's prompt round-trips", () => {
+    const line = { t: "choose", id: ID, option: "2" } as const;
+    expect(parsePushClientLine(encodePushLine(line).trimEnd())).toEqual(line);
+  });
+
+  test("a notice names its prompt's rows; malformed rows are dropped and long labels cut", () => {
+    const line = {
+      t: "notice",
+      terminal: "t3",
+      kind: "input",
+      prompt: {
+        options: [
+          { id: "1", label: "Postgres", declines: false },
+          { id: "esc", label: "not a row" },
+          { id: "2", label: "x".repeat(200), declines: true },
+        ],
+      },
+    };
+    expect(parsePushHostLine(JSON.stringify(line))).toEqual({
+      t: "notice",
+      terminal: "t3",
+      kind: "input",
+      prompt: {
+        options: [
+          { id: "1", label: "Postgres", declines: false },
+          { id: "2", label: "x".repeat(80), declines: true },
+        ],
+      },
+    });
+    expect(parsePushHostLine('{"t":"notice","terminal":"t3","kind":"input","prompt":{"options":[]}}')).toEqual({
+      t: "notice",
+      terminal: "t3",
+      kind: "input",
+    });
   });
 
   test("host lines parse for the app", () => {

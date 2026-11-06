@@ -52,6 +52,11 @@ jobs:
         env:
           REQUESTED: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
         run: bun .github/scripts/release-version.ts "$REQUESTED"
+      # A release is published with its CHANGELOG section as its notes; with no section, or an empty one, it stops here.
+      - name: CHANGELOG.md has this release's section
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: bun .github/scripts/release-notes.ts --check "$VERSION"
       # Fail before an hour of builds rather than at upload: a published release is never rebuilt in place.
       - name: The release is not published yet
         env:

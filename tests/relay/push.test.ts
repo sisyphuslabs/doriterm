@@ -94,7 +94,20 @@ describe("web push through the relay", () => {
     const id = typeof notice === "object" && notice !== null ? String(Reflect.get(notice, "n")) : "";
     expect(Object.keys(notice ?? {}).toSorted()).toEqual(["h", "k", "n", "v"]);
 
-    expect(await ask({ t: "notice", id })).toEqual({ t: "notice", terminal: agent, kind: "permission" });
+    // The rows of the agent's dialog travel only on this E2EE stream, never in the payload above (#669).
+    expect(await ask({ t: "notice", id })).toMatchObject({
+      t: "notice",
+      terminal: agent,
+      kind: "permission",
+      prompt: {
+        options: [
+          { id: "1", label: "Yes", declines: false },
+          { id: "2" },
+          { id: "3" },
+          { id: "4", label: "No", declines: true },
+        ],
+      },
+    });
     // The agent logs a key as it reads it, after hc delivered it: wait for that write, then read the log.
     const keyed = new Promise<void>((resolve) => {
       const watcher = watch(scratch, (_, name) => {

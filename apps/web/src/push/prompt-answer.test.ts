@@ -1,7 +1,7 @@
 import type { PushHostLine } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
 import { noticeOf } from "./notice-open.ts";
-import { allowFromPage, whenVisible } from "./prompt-answer.ts";
+import { answerFromPage, whenVisible } from "./prompt-answer.ts";
 
 /** A document whose visibility the test flips, firing visibilitychange as a browser does. */
 /** A host that cannot be reached. */
@@ -25,11 +25,11 @@ function page(state: DocumentVisibilityState) {
   };
 }
 
-describe("Allow from the page", () => {
+describe("an answer from the page", () => {
   test("sends nothing while the page is hidden, and sends once it is visible", async () => {
     const doc = page("hidden");
     const sent: string[] = [];
-    const done = allowFromPage(
+    const done = answerFromPage(
       "t3",
       async () => {
         sent.push("allow");
@@ -52,7 +52,7 @@ describe("Allow from the page", () => {
     ["the key press may have landed", { t: "unknown", terminal: "t3" }, "unknown"],
   ] as const)("%s", async (_, reply: PushHostLine, phase) => {
     expect(
-      await allowFromPage(
+      await answerFromPage(
         "t3",
         async () => reply,
         async () => undefined,
@@ -61,12 +61,21 @@ describe("Allow from the page", () => {
   });
 
   test("a host that cannot be reached sends nothing", async () => {
-    expect(await allowFromPage("t3", offline, async () => undefined)).toBe("failed");
+    expect(await answerFromPage("t3", offline, async () => undefined)).toBe("failed");
   });
 
-  test("only answer=allow in the address asks the page to answer", () => {
-    expect(at("?notice=AAAAAAAAAAAAAAAAAAAAAA&host=h&answer=allow")?.allow).toBe(true);
-    expect(at("?notice=AAAAAAAAAAAAAAAAAAAAAA&host=h&answer=deny")?.allow).toBe(false);
-    expect(at("?notice=AAAAAAAAAAAAAAAAAAAAAA&host=h")?.allow).toBe(false);
+  test("only answer=allow or answer=option:<id> in the address asks the page to answer", () => {
+    expect(at("?notice=AAAAAAAAAAAAAAAAAAAAAA&host=h&answer=allow")?.answer).toEqual({ kind: "allow" });
+    expect(at("?notice=AAAAAAAAAAAAAAAAAAAAAA&host=h&answer=option:2")?.answer).toEqual({
+      kind: "option",
+      option: "2",
+    });
+    expect(at("?notice=AAAAAAAAAAAAAAAAAAAAAA&host=h&answer=deny")?.answer).toBeUndefined();
+    expect(at("?notice=AAAAAAAAAAAAAAAAAAAAAA&host=h&answer=option:x")?.answer).toBeUndefined();
+    expect(at("?notice=AAAAAAAAAAAAAAAAAAAAAA&host=h")?.answer).toBeUndefined();
+    // Deny arrives only from an app's notification (#705), which cannot answer by itself; it is no page answer.
+    expect(at("?notice=AAAAAAAAAAAAAAAAAAAAAA&host=h&answer=deny")?.deny).toBe(true);
+    expect(at("?notice=AAAAAAAAAAAAAAAAAAAAAA&host=h&answer=deny")?.answer).toBeUndefined();
+    expect(at("?notice=AAAAAAAAAAAAAAAAAAAAAA&host=h&answer=allow")?.deny).toBe(false);
   });
 });

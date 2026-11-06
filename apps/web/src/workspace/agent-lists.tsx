@@ -12,8 +12,6 @@ export interface AgentListsProps {
   readonly rail?: boolean;
   /** False on the phone, whose screen title already says "Agents". */
   readonly heading?: boolean;
-  /** The sidebar filter's query: only rows whose labels match it are listed. */
-  readonly query?: string;
 }
 
 /** The phone's one list: the agents its screen is titled for, then the spaces (under their machines once there are more). */
@@ -31,13 +29,7 @@ export function AgentLists({ terminals, active, onOpen, rail = false, heading = 
 }
 
 /** The desktop sidebar's lists as herdr-app lays them out: Spaces on top, Agents docked at the bottom, a divider between. */
-export function SidebarLists({
-  terminals,
-  active,
-  onOpen,
-  rail = false,
-  query = "",
-}: Omit<AgentListsProps, "heading">) {
+export function SidebarLists({ terminals, active, onOpen, rail = false }: Omit<AgentListsProps, "heading">) {
   const { terminalsLoaded } = useMachinesContext();
   const pad = "px-2 pb-3";
   return (
@@ -45,7 +37,7 @@ export function SidebarLists({
       spaces={
         terminalsLoaded ? (
           <div className={pad}>
-            <SpacesGroup onOpen={onOpen} rail={rail} query={query} />
+            <SpacesGroup onOpen={onOpen} rail={rail} />
           </div>
         ) : (
           <div aria-busy="true" className={pad} />
@@ -54,7 +46,7 @@ export function SidebarLists({
       agents={
         terminalsLoaded ? (
           <div className={pad}>
-            <AgentsGroup terminals={terminals} active={active} onOpen={onOpen} rail={rail} query={query} />
+            <AgentsGroup terminals={terminals} active={active} onOpen={onOpen} rail={rail} />
           </div>
         ) : (
           <div aria-busy="true" className={pad} />
