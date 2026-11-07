@@ -65,6 +65,11 @@ async function main(argv: readonly string[]): Promise<number> {
     process.stdout.write(`${USAGE}\n`);
     return values.help ? 0 : 2;
   }
+  // Read before any step runs: a timeout that is not a positive number would make the relay wait never end (#821).
+  const timeoutS = Number(values.timeout);
+  if (!Number.isFinite(timeoutS) || timeoutS <= 0) {
+    throw new SetupError("timeout", `--timeout wants a positive number of seconds, not "${values.timeout}"`);
+  }
   const context = setupContext(report, {
     src: values.src,
     stateDir: values["state-dir"],
@@ -87,7 +92,7 @@ async function main(argv: readonly string[]): Promise<number> {
       }
       const paths = resolvePaths(context, await ensureHc(context));
       const service = await ensureService(context, paths, process.env["DORITERM_SETUP_REEXEC"] !== undefined);
-      if (service.restarted) await waitForRelay(context, paths, service.logFrom, Number(values.timeout) * 1000);
+      if (service.restarted) await waitForRelay(context, paths, service.logFrom, timeoutS * 1000);
       await verify(context, paths);
       return 0;
     }

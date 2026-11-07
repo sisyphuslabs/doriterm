@@ -12,7 +12,10 @@ const AGAIN = "Run doriface-host pair again.";
 const REASONS: Readonly<Record<OfferSecret["mode"], Readonly<Record<number, string>>>> = {
   code: {
     [CloseCode.CryptoFailure]: "The code doesn't match this host. Check it and try again.",
-    [CloseCode.UnknownDevice]: `The host refused this code: it was used already or replaced. ${AGAIN}`,
+    // The relay's slot answer cannot say whether a code came from `mesh pair` (#727), and the host refuses a device
+    // pairing on a mesh offer with the same 4401 as a spent code, so the sentence names both.
+    [CloseCode.UnknownDevice]:
+      "The host refused this code: it was used already or replaced, or it is a mesh invite from doriface-host mesh pair, which adds a machine with doriface-host mesh join and cannot pair this device. Run doriface-host pair for a new device code.",
     [CloseCode.HostOffline]: "The host is not connected to the relay. Start doriface-host and try again.",
     [CloseCode.PairSlotUnknown]: "No host is pairing with this code. It may have expired.",
     [CloseCode.RateLimited]: `Too many attempts for this code. Use the QR code or ${AGAIN.toLowerCase()}`,

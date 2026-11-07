@@ -42,6 +42,8 @@ export interface PushView {
   readonly waiting: number | null;
 }
 
+const MOVE = "move notifications to the new host";
+
 const INITIAL: PushView = {
   support: "unsupported",
   permission: null,
@@ -58,12 +60,20 @@ function expect(reply: PushHostLine, what: string): void {
   if (reply.t === "error") throw new Error(`The host refused to ${what}: ${reply.reason}`);
 }
 
+const failure = (what: string, error: unknown): string =>
+  `Could not ${what}. ${error instanceof Error ? error.message : String(error)}`;
+
 /** Settings > Notifications: this device's permission, its subscription on the host, and what it asks to hear. */
 class PushSettings {
   #view: PushView = INITIAL;
   readonly #listeners = new Set<() => void>();
   /** Moves run one at a time (see `retarget`). */
   readonly #moves = new MoveQueue();
+  /**
+   * Why the last move failed, shown until another move settles. Opening Notifications reads the settings again, and that
+   * read must not hide that notifications stayed with the old host (#890).
+   */
+  #unmoved: string | null = null;
 
   subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
@@ -146,10 +156,16 @@ class PushSettings {
 
   async #retarget(next: ConnectionSettings): Promise<void> {
     const route = await loadPushRoute().catch(() => undefined);
-    if (route === undefined) return;
-    const target = isConfigured(next) ? routeOf(next) : undefined;
-    if (target !== undefined && sameRoute(route, target)) return;
-    await this.#run("move notifications to the new host", async () => {
+    if (route === undefined) return this.#settled(null);
+    let target: PushRoute | undefined;
+    try {
+      target = isConfigured(next) ? routeOf(next) : undefined;
+    } catch (error) {
+      // A gateway that is not an address (#890): the move fails in view, and the old route stays.
+      return this.#settled(failure(MOVE, error));
+    }
+    if (target !== undefined && sameRoute(route, target)) return this.#settled(null);
+    const failed = await this.#run(MOVE, async () => {
       const registrar = pushRegistrar();
       const subscription = await registrar.current();
       if (subscription !== null) {
@@ -163,6 +179,7 @@ class PushSettings {
       await this.#register(target, (await loadPushPrefs()) ?? this.#view.prefs);
       this.#set({ on: true });
     });
+    this.#settled(failed);
   }
 
   async setPrefs(prefs: PushPrefs): Promise<void> {
@@ -204,14 +221,25 @@ class PushSettings {
     await savePushPrefs(prefs);
   }
 
-  async #run(what: string, step: () => Promise<void>): Promise<void> {
-    this.#set({ busy: true, error: null });
+  /** Runs one step with the view busy; answers why it failed, or null. */
+  async #run(what: string, step: () => Promise<void>): Promise<string | null> {
+    this.#set({ busy: true, error: this.#unmoved });
     try {
       await step();
       this.#set({ busy: false });
+      return null;
     } catch (error) {
-      this.#set({ busy: false, error: `Could not ${what}. ${error instanceof Error ? error.message : String(error)}` });
+      const message = failure(what, error);
+      this.#set({ busy: false, error: message });
+      return message;
     }
+  }
+
+  /** A move settled: its failure is shown until the next one, and a move that went through clears the last failure. */
+  #settled(unmoved: string | null): void {
+    const shown = this.#view.error === this.#unmoved;
+    this.#unmoved = unmoved;
+    if (shown || unmoved !== null) this.#set({ error: unmoved });
   }
 
   #set(change: Partial<PushView>): void {

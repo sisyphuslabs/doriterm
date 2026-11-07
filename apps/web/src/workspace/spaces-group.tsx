@@ -183,14 +183,16 @@ function SpacesLists({
         <SpaceRow space={space} selected={space.id === selected} onSelect={select} rail={rail} hideMachine={grouped} />
       </div>
     );
-    if (rail) return button;
     return (
       <RowWithActions
         row={button}
+        // The rail has no room for the "..." button, but its right-click opens the same menu (#699).
         actions={
-          <span data-drag-ignore className="flex items-center">
-            <SpaceActions space={space} reorder={reorder} />
-          </span>
+          rail ? null : (
+            <span data-drag-ignore className="flex items-center">
+              <SpaceActions space={space} reorder={reorder} />
+            </span>
+          )
         }
         menu={<SpaceMenuItems space={space} reorder={reorder} />}
       />

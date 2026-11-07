@@ -1,7 +1,7 @@
 import { Button, EmptyState } from "@doriface/ui";
 import { Link2Off } from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
-import { parsePairingFragment, type PairingOffer } from "../pair/fragment.ts";
+import { linkTarget, parsePairingFragment, type PairingOffer } from "../pair/fragment.ts";
 import { pairingLink } from "../pair/link-capture.ts";
 import { MeshInvite } from "../pair/mesh-invite.tsx";
 import { PairStep } from "../pair/pair-step.tsx";
@@ -18,12 +18,18 @@ export function PairRoute() {
   const parsed = parsePairingFragment(link);
   if (parsed.ok && parsed.offer.target === "mesh") return <MeshInvite />;
   if (parsed.ok) return <VerifyStep key={link} offer={parsed.offer} />;
+  // A broken link from `mesh pair` is fixed by a new mesh link, not by a device pairing (#727).
+  const command = linkTarget(link) === "mesh" ? "doriface-host mesh pair" : "doriface-host pair";
   return (
     <main className="grid min-h-dvh place-items-center p-6">
       <EmptyState
         icon={<Link2Off />}
         title="This pairing link cannot be used"
-        description={`${parsed.reason} Run doriface-host pair again and open the new link.`}
+        description={
+          <>
+            {parsed.reason} Run <code>{command}</code> again and open the new link.
+          </>
+        }
         actions={
           <Button variant="primary" size="lg" render={<a href="/pair" />}>
             Type a pairing code

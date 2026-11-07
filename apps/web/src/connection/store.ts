@@ -1,4 +1,4 @@
-import { type HcConnection, HcLinkSilentError, HcTimeoutError } from "@doriface/client";
+import { type HcConnection, HcTimeoutError } from "@doriface/client";
 import { useSyncExternalStore } from "react";
 import type { HostStartFailure } from "../desktop/bridge.ts";
 import { AttemptBudget, AttemptTimeoutError } from "./attempt-budget.ts";
@@ -17,7 +17,7 @@ import {
   saveSettings,
   staysOnThisComputer,
 } from "./settings.ts";
-import { resumeOnWake } from "./wake.ts";
+import { resumeOnWake, WakeProbeUnansweredError } from "./wake.ts";
 
 /**
  * `stale` is the connection that dropped while this one retries: its workspace stays on screen meanwhile.
@@ -419,7 +419,7 @@ export class ConnectionStore {
           // A stop, or a newer connection, ended this probe's claim on the link while it waited.
           if (!(error instanceof HcTimeoutError) || this.#probing !== connection) return;
           if (this.#state.phase !== "open" || this.#state.connection !== connection) return;
-          this.#closedFor = { connection, reason: new HcLinkSilentError(WAKE_PROBE_MS) };
+          this.#closedFor = { connection, reason: new WakeProbeUnansweredError(error.method, error.timeoutMs) };
           connection.close();
         },
       )

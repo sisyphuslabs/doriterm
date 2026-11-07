@@ -47,7 +47,7 @@ export {
   rowLandingTop,
   rowShiftOf,
 } from "./components/list-drop-geometry.ts";
-export { skipMenuHandler } from "./components/menu.tsx";
+export { skipMenuHandler, skipTouchMenu } from "./components/menu.tsx";
 export {
   ContextMenu,
   Menu,
