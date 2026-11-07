@@ -463,12 +463,14 @@ export async function invite(context: SetupContext, paths: SetupPaths, out: stri
 export async function joinMesh(context: SetupContext, paths: SetupPaths, from: string): Promise<void> {
   const link = readFileSync(from, "utf8").trim();
   if (link === "") throw new SetupError("join", `${from} is empty`);
+  // The host reads the link from the file: on the command line, other local users could read it from /proc (#821).
   const ran = await context.run([
     paths.bun,
     cliOf(paths.src),
     "mesh",
     "join",
-    link,
+    "--from-file",
+    from,
     "--yes",
     "--state-dir",
     paths.stateDir,
