@@ -35,6 +35,7 @@ const SHELL_ACTIONS: Readonly<Record<Shell, readonly string[]>> = {
     "space.prev",
     "space.new",
     "voice.dictate",
+    "terminal.search",
     "layout.toggle:sidebar",
     "layout.filter:sidebar",
     "app.zoom_in",
@@ -47,14 +48,15 @@ const SHELL_ACTIONS: Readonly<Record<Shell, readonly string[]>> = {
     "session.end",
     "space.rename",
     "voice.dictate",
+    "terminal.search",
     "app.zoom_in",
     "app.zoom_out",
     "app.settings",
   ],
 };
 
-/** Actions on the session in view: rename, end, dictating into it, and renaming its space. */
-const SESSION_ACTIONS = new Set(["session.rename", "session.end", "voice.dictate", "space.rename"]);
+/** Actions on the session in view: rename, end, dictating into it, finding in it, and renaming its space. */
+const SESSION_ACTIONS = new Set(["session.rename", "session.end", "voice.dictate", "terminal.search", "space.rename"]);
 
 /** The strip's tab keys in order, and the selected tab's: what moving a tab is measured against. */
 export interface Strip {

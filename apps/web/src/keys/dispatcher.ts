@@ -64,6 +64,10 @@ function inTerminal(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest(".wterm") !== null;
 }
 
+function inFindBar(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('[data-slot="find-bar"]') !== null;
+}
+
 const NOT_TEXT = new Set([
   "button",
   "checkbox",
@@ -108,7 +112,13 @@ export function useKeymapDispatcher(): void {
       if (id === undefined) return;
       const action = actionFor(id);
       if (action === null) return;
-      if (action.scope === "terminal" && !inTerminal(event.target)) return;
+      // Find asked for again from its own field selects the query again, as from the terminal.
+      if (
+        action.scope === "terminal" &&
+        !inTerminal(event.target) &&
+        !(id === "terminal.search" && inFindBar(event.target))
+      )
+        return;
       // A focused terminal program keeps its own control keys: the key reaches it uncancelled, as it would from the shell.
       if (TERMINAL_KEEPS.has(id) && inTerminal(event.target)) return;
       // The tab move keys stay with a text field (they select text) and with a reorderable row (they move the row).

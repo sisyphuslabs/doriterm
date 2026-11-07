@@ -15,6 +15,7 @@ import {
 import { ShellScreen } from "./screens/shell.tsx";
 import { SidebarRecomposeScreen } from "./screens/sidebar-recompose.tsx";
 import { StatesScreen } from "./screens/states.tsx";
+import { TerminalFindScreen } from "./screens/terminal-find.tsx";
 import { VoiceScreen } from "./screens/voice.tsx";
 
 export const ROUTES = [
@@ -33,6 +34,7 @@ export const ROUTES = [
   { id: "states", title: "Empty, offline and error states", render: StatesScreen },
   { id: "approval", title: "Permission banner", render: ApprovalScreen },
   { id: "voice", title: "Voice input", render: VoiceScreen },
+  { id: "terminal-find", title: "Find in terminal", render: TerminalFindScreen },
   { id: "concept-keyboard", title: "Concept: Settings keyboard", render: ConceptKeyboardScreen },
 ] as const satisfies readonly { id: string; title: string; render: ComponentType }[];
 

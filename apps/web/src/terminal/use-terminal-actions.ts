@@ -27,6 +27,7 @@ export function useTerminalActions(
   send: (data: TerminalInput) => void,
   focused: boolean,
   pasteFiles: (files: readonly File[]) => void,
+  openFind: () => void,
 ): void {
   useActionHandler("terminal", (action) => {
     if (wt === null || !focused) return false;
@@ -58,6 +59,9 @@ export function useTerminalActions(
         selectingAll.set(wt, selecting);
         return true;
       }
+      case "terminal.search":
+        openFind();
+        return true;
       case "terminal.clear":
         send("\u000c");
         return true;
