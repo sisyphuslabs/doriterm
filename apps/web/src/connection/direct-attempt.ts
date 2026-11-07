@@ -6,6 +6,17 @@ import { LinkAbortedError, LinkCloseError, openWebSocketLink } from "./ws-link.t
 export const DIRECT_BUDGET_MS = 300;
 /** The host's session route carries ciphertext only; the token subprotocol is never sent here (#446 §1). */
 export const DIRECT_SUBPROTOCOL = "doriface.v1";
+/** How often a direct link pings the host, which closes a socket that sent nothing for `DIRECT_IDLE_MS` (90 s). */
+export const DIRECT_PING_MS = 30_000;
+
+/** Opens a socket to a host's session route (or to the desktop shell's forward of one). */
+export function openDirectLink(
+  url: string,
+  signal: AbortSignal | undefined,
+  pingIntervalMs = DIRECT_PING_MS,
+): Promise<ByteLink> {
+  return openWebSocketLink(url, [DIRECT_SUBPROTOCOL], { pingIntervalMs, ...(signal === undefined ? {} : { signal }) });
+}
 
 /**
  * Why a direct attempt did not carry the session. Local categories only: never peer text, never a guessed cause. The UI
@@ -83,8 +94,7 @@ export async function attemptDirect(options: DirectAttemptOptions): Promise<Secu
   else caller?.addEventListener("abort", onCallerAbort, { once: true });
 
   let link: ByteLink | undefined;
-  const open =
-    options.open ?? ((url: string, signal: AbortSignal) => openWebSocketLink(url, [DIRECT_SUBPROTOCOL], { signal }));
+  const open = options.open ?? ((url: string, signal: AbortSignal) => openDirectLink(url, signal));
   try {
     link = await open(options.url, controller.signal);
     const socket = link;

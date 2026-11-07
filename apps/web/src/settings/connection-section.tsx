@@ -19,10 +19,11 @@ const relayHost = (url: string): string => (URL.canParse(url) ? new URL(url).hos
  * and a dev build reads another relay and a direct address only from saved settings (`doriface.connection`).
  */
 export function ConnectionSection() {
+  // The fields being typed; a commit applies only the one changed, to the settings as they are then (#1006).
   const [draft, setDraft] = useState<ConnectionSettings>(connectionStore.settings);
-  const commit = (next: ConnectionSettings): void => {
-    setDraft(next);
-    connectionStore.update(next);
+  const commit = (fields: Partial<ConnectionSettings>): void => {
+    setDraft((prev) => ({ ...prev, ...fields }));
+    connectionStore.edit(fields);
   };
   const row = (id: TextField, title: string, description: string, secret = false) => (
     <SettingRow
@@ -40,10 +41,10 @@ export function ConnectionSection() {
           className="w-full sm:w-64"
           onValueChange={(value: string) => setDraft((prev) => ({ ...prev, [id]: value }))}
           onBlur={() => {
-            if (draft[id] !== connectionStore.settings[id]) commit(draft);
+            if (draft[id] !== connectionStore.settings[id]) commit({ [id]: draft[id] });
           }}
           onKeyDown={(event) => {
-            if (event.key === "Enter") commit(draft);
+            if (event.key === "Enter") commit({ [id]: draft[id] });
           }}
         />
       }
@@ -83,7 +84,7 @@ export function ConnectionSection() {
             label="Connect through"
             options={MODES}
             value={draft.mode}
-            onValueChange={(mode) => commit({ ...draft, mode })}
+            onValueChange={(mode) => commit({ mode })}
           />
         }
       />

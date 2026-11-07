@@ -5,6 +5,7 @@ import { endAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { rows } from "./sidebar-measure.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -61,7 +62,7 @@ test("typing in the sidebar filter narrows spaces and agents by their labels, ke
   const before = await rowNames();
 
   // The filter key opens the field with focus in it, from wherever focus was.
-  await page.keyboard.press("Control+Alt+F");
+  await pressShortcut(page, "layout.filter:sidebar");
   const field = sidebar.getByRole("searchbox", { name: "Filter sidebar" });
   await expect(field).toBeFocused();
   await page.keyboard.type("bet");
@@ -110,7 +111,7 @@ test("behind the command palette the filter key does nothing: the palette keeps 
   const palette = page.getByRole("dialog");
   await expect(palette).toBeVisible();
   const focused = await page.evaluate(() => document.activeElement?.outerHTML ?? "");
-  await page.keyboard.press("Control+Alt+F");
+  await pressShortcut(page, "layout.filter:sidebar");
   await expect(palette).toBeVisible();
   await expect(sidebar.getByRole("searchbox", { name: "Filter sidebar" })).toHaveCount(0);
   expect(await page.evaluate(() => document.activeElement?.outerHTML ?? "")).toBe(focused);
@@ -125,4 +126,28 @@ test.describe("on a phone", () => {
     await expect(page.getByText(/^Spaces$/).first()).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("button", { name: "Filter sidebar" })).toHaveCount(0);
   });
+});
+
+test("while the filter holds a query a machine header offers no fold toggle, and its saved fold is unchanged after (#850)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const sidebar = page.getByRole("complementary", { name: "Workspace" });
+  const spaces = sidebar.getByRole("region", { name: "Spaces" });
+  const fold = spaces.getByRole("button", { name: /^(Collapse|Expand) studio$/ });
+  await expect(fold).toHaveAccessibleName("Collapse studio", { timeout: 20_000 });
+
+  await page.keyboard.press("Control+Alt+F");
+  const field = sidebar.getByRole("searchbox", { name: "Filter sidebar" });
+  await expect(field).toBeFocused();
+  // The machine's own name: its group stays, with every space it holds.
+  await page.keyboard.type("studio");
+  await expect(spaces.getByText("studio", { exact: true })).toBeVisible();
+  // Folding is not on offer while the lists are narrowed: a click there would change a state the screen cannot show.
+  await expect(fold).toHaveCount(0);
+
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await expect(field).toBeHidden();
+  await expect(fold).toHaveAccessibleName("Collapse studio");
 });

@@ -11,6 +11,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <Foundation/Foundation.h>
 #import <Speech/Speech.h>
+#import <os/log.h>
 #include <node_api.h>
 #include <stdlib.h>
 #include <string.h>
@@ -94,10 +95,15 @@ static void StopAudio(DFSession *session) {
   @try {
     if (session.tapped) [session.engine.inputNode removeTapOnBus:0];
   } @catch (NSException *exception) {
+    // Teardown goes on either way; the system log keeps the cause so a broken teardown can be seen in the field (#1156).
+    os_log_error(OS_LOG_DEFAULT, "speech: removing the input tap failed: %{public}@: %{public}@", exception.name,
+                 exception.reason);
   }
   @try {
     if (session.engine.isRunning) [session.engine stop];
   } @catch (NSException *exception) {
+    os_log_error(OS_LOG_DEFAULT, "speech: stopping the audio engine failed: %{public}@: %{public}@", exception.name,
+                 exception.reason);
   }
   session.tapped = NO;
 }

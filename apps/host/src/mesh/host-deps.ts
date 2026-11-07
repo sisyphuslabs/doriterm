@@ -82,5 +82,6 @@ export function meshDeps(options: MeshDepsOptions) {
     meshPresence: (secure: SecureLink) => sync.presence(secure),
     meshCommands: new MeshCommands({ store: mesh, stateDir, identity, closeRevoked, hooks, log }),
     meshStatus: () => storedMeshStatus(mesh, identity, hooks),
+    refreshMeshLines: () => hooks.refreshLines(),
   };
 }
