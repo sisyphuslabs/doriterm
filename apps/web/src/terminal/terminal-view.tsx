@@ -34,6 +34,7 @@ import { Unopened } from "./unopened.tsx";
 import { useReopenWhenMoved } from "./use-reopen-when-moved.ts";
 import { JumpToBottom, scrollTerminal, TerminalScrollbar, useTerminalScroll } from "./terminal-scroll.tsx";
 import { QuietBusy } from "./quiet-busy.tsx";
+import { TerminalFind } from "./terminal-find.tsx";
 import { TerminalLinks } from "./terminal-links.tsx";
 import { useTerminalActions } from "./use-terminal-actions.ts";
 import { useTerminalFont } from "./use-terminal-font.ts";
@@ -129,8 +130,13 @@ export function TerminalView(props: TerminalViewProps) {
   const [paste, setPaste] = useState<PendingPaste | null>(null);
   /** Where a held touch lifted, while its menu of Copy and Paste is open. */
   const [selectAt, setSelectAt] = useState<Point | null>(null);
+  /** The find bar's open count while it is open (each ask selects its query again), null while closed. */
+  const [finding, setFinding] = useState<number | null>(null);
+  const openFind = useCallback(() => setFinding((count) => (count ?? 0) + 1), []);
   const handle = useRef<TerminalHandle | null>(null);
   const endHold = useRef<EndHolder | null>(null);
+  /** Counts the writes reaching the renderer, so a find reads the cells again only after new output. */
+  const written = useRef(0);
   const stream = useRef<TerminalStream | null>(null);
   // The program's output reaches the core through this: Kitty images sent as PNG are decoded to RGBA on the way.
   const output = useMemo(() => new KittyPngTranscoder((bytes) => handle.current?.write(bytes)), []);
@@ -139,6 +145,7 @@ export function TerminalView(props: TerminalViewProps) {
     () =>
       new OutputPacer((bytes) => {
         output.push(bytes);
+        written.current += 1;
         warmup.current?.note(bytes);
         outputShown.current();
       }),
@@ -278,7 +285,7 @@ export function TerminalView(props: TerminalViewProps) {
       if (warmup.current === made) warmup.current = null;
     };
   }, [wt]);
-  useTerminalActions(wt, typed, focused, pasteFiles);
+  useTerminalActions(wt, typed, focused, pasteFiles, openFind);
   // A pane out of view (a hidden tab, a zoomed-away split) is not painted and takes no output until it shows (#560).
   useEffect(() => {
     if (wt === null) return undefined;
@@ -529,6 +536,19 @@ export function TerminalView(props: TerminalViewProps) {
         <>
           <TerminalScrollbar wt={wt} scroll={scroll} />
           <TerminalLinks wt={wt} />
+          {finding === null ? null : (
+            <TerminalFind
+              wt={wt}
+              address={address}
+              scroll={scroll}
+              written={written}
+              opened={finding}
+              onClose={() => {
+                setFinding(null);
+                wt.focus();
+              }}
+            />
+          )}
           <JumpToBottom
             wt={wt}
             scroll={scroll}

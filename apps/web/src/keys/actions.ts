@@ -73,6 +73,7 @@ export const ACTIONS: readonly ActionDef[] = [
   term("terminal.paste_image", "Paste image"),
   term("terminal.select_all", "Select all", "select_all"),
   term("terminal.clear", "Clear screen", "clear_screen"),
+  term("terminal.search", "Find in terminal", "start_search"),
   term("terminal.scroll:top", "Scroll to top", "scroll_to_top"),
   term("terminal.scroll:bottom", "Scroll to bottom", "scroll_to_bottom"),
   term("terminal.scroll:page_up", "Scroll a page up", "scroll_page_up"),
