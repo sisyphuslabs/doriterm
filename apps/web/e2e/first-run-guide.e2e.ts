@@ -65,6 +65,45 @@ test("from the QR code's link, the first-run steps complete in order on their re
   }
 });
 
+test("the list step waits for the terminal this device opened, not the host's own shell (#834)", async ({ page }) => {
+  test.setTimeout(180_000);
+  const host = await startFakeRelayHost({ terminal: true });
+  try {
+    await pairFromQrLink(page, host);
+    await expect.poll(() => stepStates(page)).toEqual(["pair:done", "agent:current", "list:todo"]);
+    // The card says the current step out loud, through a polite status line.
+    const status = guide(page).getByRole("status");
+    const currentLabel = await guide(page)
+      .locator('[aria-current="step"]')
+      .evaluate((item) =>
+        [...item.childNodes]
+          .filter((node) => node.nodeType === Node.TEXT_NODE)
+          .map((node) => node.textContent)
+          .join("")
+          .trim(),
+      );
+    await expect(status).toContainText(currentLabel);
+
+    // This device starts a terminal and ends it; the host's own shell, `existing`, stays live.
+    await guide(page).getByRole("button", { name: "Start a terminal" }).click();
+    await expect(page.locator("[data-terminal]")).toContainText("$", { timeout: 30_000 });
+    await page.keyboard.type("exit");
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("button", { name: "Back to agents" })).toHaveCount(0, { timeout: 30_000 });
+    const existing = page.getByText("existing", { exact: true }).first();
+    await expect(existing).toBeVisible({ timeout: 30_000 });
+    expect(await stepStates(page)).toEqual(["pair:done", "agent:done", "list:current"]);
+
+    // Opening the host's shell makes it the terminal the step waits for, and it is listed live.
+    await existing.click();
+    await page.getByRole("button", { name: "Back to agents" }).click();
+    await expect.poll(() => stepStates(page), { timeout: 30_000 }).toEqual(["pair:done", "agent:done", "list:done"]);
+    await expect(status).toContainText(await guide(page).getByRole("heading").innerText());
+  } finally {
+    await host.stop();
+  }
+});
+
 test("Skip puts the guide away", async ({ page }) => {
   test.setTimeout(180_000);
   const host = await startFakeRelayHost();

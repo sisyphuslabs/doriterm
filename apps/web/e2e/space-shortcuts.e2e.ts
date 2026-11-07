@@ -8,6 +8,7 @@ import { expect, test } from "./fixtures.ts";
 import { paneOf, seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
+import { pagePlatform, shortcut } from "./platform-keys.ts";
 
 test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 
@@ -20,11 +21,11 @@ const spaceRow = (page: Page, name: string) =>
     .getByRole("complementary", { name: "Workspace" })
     .getByRole("region", { name: "Spaces" })
     .getByRole("button", { name: new RegExp(`^${name}\\b`) });
-const mac = (page: Page) => page.evaluate(() => /mac/i.test(navigator.platform));
+const mac = async (page: Page): Promise<boolean> => (await pagePlatform(page)) === "mac";
 
 /** The cycle chord as the platform binds it: Cmd+Alt+[ / ] on a Mac, Ctrl+Alt+[ / ] elsewhere. */
-const cycle = async (page: Page, side: "[" | "]"): Promise<string> =>
-  `${(await mac(page)) ? "Meta" : "Control"}+Alt+${side}`;
+const cycle = (page: Page, side: "[" | "]"): Promise<string> =>
+  shortcut(page, side === "]" ? "space.next" : "space.prev");
 
 /** A plain shell started straight on the core in `cwd`, named, so its tab reads that name. */
 function shellIn(cwd: string, name: string): string {
@@ -168,7 +169,8 @@ test("4: Settings lists the space keys with the keys that run them, and says a t
     .click();
   const row = (action: string) => page.locator(`[id="keybinding-${action}"]`).locator("xpath=../..");
   const chips = (await mac(page))
-    ? { select: "⌃2", next: "⌘⌥]", previous: "⌘⌥[", ninth: "⌃9" }
+    ? // A Mac lists modifiers in its own order, Control, Option, Shift, Command (⌃⌥⇧⌘), whatever order they are typed in.
+      { select: "⌃2", next: "⌥⌘]", previous: "⌥⌘[", ninth: "⌃9" }
     : { select: "Ctrl2", next: "CtrlAlt]", previous: "CtrlAlt[", ninth: "Ctrl9" };
 
   await expect(row("space.select:2")).toContainText("Go to space 2");

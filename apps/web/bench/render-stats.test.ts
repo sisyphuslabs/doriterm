@@ -10,7 +10,12 @@ import {
   workloadBytes,
 } from "./render-stats.ts";
 
-const run = (panes: number, over: Partial<BenchRun["visible"]> = {}, hidden: Partial<BenchRun["hidden"]> = {}) =>
+const run = (
+  panes: number,
+  over: Partial<BenchRun["visible"]> = {},
+  hidden: Partial<BenchRun["hidden"]> = {},
+  closeMs: readonly number[] = [40, 50, 60, 50, 45],
+) =>
   ({
     build: "x",
     panes,
@@ -29,6 +34,7 @@ const run = (panes: number, over: Partial<BenchRun["visible"]> = {}, hidden: Par
       ...over,
     },
     hidden: { busyShare: 0.05, showCatchUpMs: 300, ...hidden },
+    prompt: { closeMs },
   }) satisfies BenchRun;
 
 const LIMITS: Thresholds = {
@@ -39,6 +45,7 @@ const LIMITS: Thresholds = {
   heapMB: { ratio: 1.25, floor: 10 },
   hiddenBusyShare: { ratio: 1.5, floor: 0.05 },
   showCatchUpMs: { ratio: 1.5, floor: 200 },
+  closePromptMs: { ratio: 1.5, floor: 50, max: 200 },
 };
 
 describe("frameStats", () => {
@@ -77,6 +84,19 @@ test("median of an even count is the mean of the middle two", () => {
 });
 
 describe("compareRuns", () => {
+  test("fails a Close prompt past its 200 ms budget even when the baseline was as slow (#986)", () => {
+    const slow = [210, 220, 230, 215, 225];
+    const verdict = compareRuns([run(15, {}, {}, slow)], [run(15, {}, {}, slow)], LIMITS);
+    expect(verdict.regressions.map((row) => `${row.metric}:${row.candidate}:${row.limit}`)).toEqual([
+      "closePromptMs:220:200",
+    ]);
+  });
+
+  test("reads a Close prompt as the median of its clicks, so one slow click does not fail the gate", () => {
+    const verdict = compareRuns([run(15)], [run(15, {}, {}, [40, 900, 50, 45, 60])], LIMITS);
+    expect(verdict.regressions).toEqual([]);
+  });
+
   test("passes a candidate within the recorded limits", () => {
     const verdict = compareRuns([run(15)], [run(15, { frameP95: 22 })], LIMITS);
     expect(verdict.regressions).toEqual([]);

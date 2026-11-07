@@ -53,6 +53,7 @@ jobs:
           REQUESTED: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
         run: bun .github/scripts/release-version.ts "$REQUESTED"
       # A release is published with its CHANGELOG section as its notes; with no section, or an empty one, it stops here.
+      # The release pull request writes that section from Unreleased and changes/unreleased/ (changelog-assemble.ts).
       - name: CHANGELOG.md has this release's section
         env:
           VERSION: ${{ steps.resolve.outputs.version }}
@@ -144,10 +145,25 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Build the web client, the app and the host
         working-directory: apps/desktop
+        env:
+          # The host reports the version it is built as (apps/host/src/host-types.ts), a prerelease suffix included.
+          DORIFACE_BUILD_VERSION: ${{ needs.version.outputs.version }}
         run: |
           bun run build:web
           bun run build
           bun run build:host "${{ matrix.os }}-${{ matrix.arch }}"
+      # Every runner builds its own platform, so the host it ships can be asked which version it reports (#1039).
+      - name: The host reports this release's version
+        working-directory: apps/desktop/dist/host/${{ matrix.os }}-${{ matrix.arch }}
+        run: |
+          host=./doriface-host
+          [ "${{ matrix.os }}" != win ] || host=./doriface-host.exe
+          reported=$("$host" --version)
+          if [ "$reported" != "doriface-host $VERSION" ]; then
+            echo "::error title=Host version::the host built for $VERSION reports \"$reported\""
+            exit 1
+          fi
+          echo "$reported"
       - name: Package (electron-builder ${{ matrix.targets }})
         if: matrix.os != 'mac'
         working-directory: apps/desktop

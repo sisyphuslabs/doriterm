@@ -47,7 +47,7 @@ jobs:
     timeout-minutes: 50
     steps:
       # Only for the guide and its runner; the guide clones the repository again, anonymously, from the public URL.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2
@@ -66,7 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2

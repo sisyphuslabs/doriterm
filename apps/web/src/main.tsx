@@ -92,6 +92,12 @@ function paintWindow(): void {
 
 onDesktopNavigate((path) => router.history.push(path));
 onDesktopUpdateReady((version) => updateStore.set({ apply: "restart", version, run: () => installDesktopUpdate() }));
+// Screens with no workspace (Settings, pairing) handle no text-size action, so the text-size keys (and the desktop
+// app's View menu) step the terminal text from here, as Settings > Appearance hints, in a browser too (#859); the window
+// itself is never zoomed (#388).
+for (const action of ["app.zoom_in", "app.zoom_out", "app.zoom_reset"]) {
+  setActionFallback(action, () => stepTerminalFont(action));
+}
 if (desktopBridge() !== null) {
   // The desktop app's Close Window leaves Cmd+W to the keymap; with no pane, tab or Settings to close, it closes the window.
   setActionFallback("tab.close", () => closeDesktopWindow());
@@ -101,11 +107,6 @@ if (desktopBridge() !== null) {
   // A clicked notification opens its pane in the workspace, from Settings too.
   listenForDesktopNotices(() => void router.navigate({ to: "/" }));
   reportMenuKeys();
-  // Screens with no workspace (Settings, pairing) handle no text-size action, so the View menu's text-size items and
-  // keys step the terminal text from here; the window itself is never zoomed (#388).
-  for (const action of ["app.zoom_in", "app.zoom_out", "app.zoom_reset"]) {
-    setActionFallback(action, () => stepTerminalFont(action));
-  }
   // The shell may forward bytes to this page's saved Direct address and nothing else (#449).
   const forwarder = directForwardBridge();
   if (forwarder !== null) {
