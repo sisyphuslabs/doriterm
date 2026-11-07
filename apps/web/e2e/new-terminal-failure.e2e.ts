@@ -14,8 +14,12 @@ test("a New tab that fails says so with the sidebar hidden, where the machine li
   await socket.drop(true);
   await expect(page.getByRole("status").filter({ hasText: "Reconnecting" })).toBeVisible();
   await pressNewTab(page.getByRole("button", { name: "New tab", exact: true }));
-  await expect(page.getByText("Could not open a new tab")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Could not open a new tab" })).toHaveCount(1);
   await expect(page.getByText(/try again once it is back/)).toBeVisible();
+  // One act of the person asks the core at most once: a second terminal.run here would be a dispatch reaching the handler
+  // twice, and it would report the same failure twice (#1343).
+  const asked = socket.sent().filter((frame) => frame.includes("terminal.run")).length;
+  expect(asked, "one New tab asks the core at most once").toBeLessThanOrEqual(1);
   socket.restore();
 });
 
