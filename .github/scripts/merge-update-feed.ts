@@ -7,8 +7,9 @@
 //
 // The size and SHA-512 of every file the feed names come from the file in the assets directory, the bytes the release
 // uploads, not from the runner's feed: electron-builder writes the feed while it builds, and the macOS runner staples
-// the notarization ticket to the dmg after that, which changes the dmg's bytes. An entry whose numbers changed is
-// printed. A feed that names a file the release does not carry, or a version other than the release's, stops it.
+// the notarization ticket to the dmg after that, which changes the dmg's bytes. A dmg whose numbers changed is
+// printed; any other file whose bytes changed stops the release, since its shipped .blockmap no longer matches (#1016).
+// A feed that names a file the release does not carry, or a version other than the release's, stops it.
 //
 // usage: bun .github/scripts/merge-update-feed.ts <assets dir> <version>
 // Reads <assets dir>/feed-<os>-<arch>/latest*.yml, writes <assets dir>/latest*.yml and removes the feed-* directories.
@@ -71,6 +72,14 @@ for (const [name, feeds] of [...byName].toSorted(([a], [b]) => a.localeCompare(b
     if (files.has(file.url)) fail(`${name}: ${file.url} is listed twice`);
     const actual = measured(name, file.url);
     if (actual.size !== file.size || actual.sha512 !== file.sha512) {
+      // The updater downloads the zip and the setup.exe, each checked against the .blockmap electron-builder wrote from
+      // the same bytes as the feed; only the dmg, which has none and is never downloaded by the updater, is stapled after.
+      if (!file.url.endsWith(".dmg")) {
+        fail(
+          `${name}: ${file.url} changed after electron-builder wrote its feed and its .blockmap ` +
+            `(${file.size} -> ${actual.size} bytes); a differential update would fail its check against that blockmap`,
+        );
+      }
       console.log(`${name}: ${file.url} is ${actual.size} bytes as uploaded, the runner's feed said ${file.size}`);
     }
     files.set(file.url, { ...file, ...actual });

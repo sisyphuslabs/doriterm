@@ -1,12 +1,14 @@
-import { classify } from "./capture-text.ts";
-
-const KNOWN_BAD: readonly { readonly text: string; readonly why: string }[] = [
+/**
+ * The strings a capture must never show, one per leak shape: the half of the proof that says the check catches rather
+ * than merely spares. capture-text.test.ts runs every one, so a pattern widened until it matches nothing turns red.
+ */
+export const KNOWN_BAD: readonly { readonly text: string; readonly why: string }[] = [
   { text: "alpha-center@build-box ~ % ls", why: "zsh prompt, no colon" },
   { text: "User@Users-MacBook-Pro ~ % ls", why: "capitalised account and host" },
   { text: "Alice@build-box:~$ ls", why: "capitalised account" },
   { text: "alpha@build.example.com:~$ ls", why: "fully qualified host" },
   { text: "someone@localhost:~$ ls", why: "named account on a neutral host" },
-  { text: "someone@my-laptop:~$ ls", why: "named account on a neutral host" },
+  { text: "someone@my-laptop:~$ ls", why: "named account on a neutral host, my- prefix" },
   { text: "alpha@a-host:/srv/run/clone$ ls", why: "account at host with a path" },
   { text: "/Users/someone/project", why: "home directory" },
   { text: "/home/someone/project", why: "home directory, Linux" },
@@ -16,18 +18,16 @@ const KNOWN_BAD: readonly { readonly text: string; readonly why: string }[] = [
   { text: "/tmp/x/clone", why: "run root, temp" },
   { text: "/opt/omo-runs/x", why: "system install root" },
   { text: "ssh someone@a-host", why: "ssh target" },
+  { text: "someone@github.com", why: "named account at a registry host" },
+  { text: "support@doriterm.com", why: "account at a real domain" },
 ];
 
-let flagged = 0;
-const missed: string[] = [];
-for (const { text, why } of KNOWN_BAD) {
-  const verdict = classify(text);
-  if (verdict.ok) missed.push(why);
-  else flagged += 1;
-}
-
-console.log(`known-bad strings: ${flagged}/${KNOWN_BAD.length} flagged`);
-if (missed.length > 0) {
-  console.error(`not flagged: ${missed.join(", ")}`);
-  process.exit(1);
-}
+/** What a mockup is meant to show: a reserved example domain names no one, and neither does a clone URL's git user. */
+export const PLACEHOLDERS: readonly { readonly text: string; readonly why: string }[] = [
+  { text: "you@example.com", why: "placeholder email at example.com" },
+  { text: "support@example.org", why: "placeholder email at example.org" },
+  { text: "billing@example.net", why: "placeholder email at example.net" },
+  { text: "alice@studio.example", why: "placeholder email under the .example name" },
+  { text: "someone@example", why: "placeholder email at bare example" },
+  { text: "git clone git@github.com:owner/repo.git", why: "a clone URL's git user" },
+];

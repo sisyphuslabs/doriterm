@@ -13,10 +13,25 @@ export interface BridgeConfig {
   readonly fcm?: FcmCredentials | undefined;
 }
 
+/** Bounds how often one device token is pushed to (#830); `allows` counts the push it is asked about. */
+export interface TokenLimiter {
+  allows(key: string): Promise<boolean>;
+}
+
 export interface BridgeDeps {
   readonly fetch?: UpstreamFetch | undefined;
   readonly now?: (() => number) | undefined;
   readonly log?: ((line: string) => void) | undefined;
+  readonly limiter?: TokenLimiter | undefined;
+}
+
+/**
+ * What a token's pushes are counted under: a SHA-256 of the provider and the token, so the limiter never holds a device
+ * token, which is the secret that lets anyone make that device show an alert.
+ */
+export async function tokenKey(provider: string, token: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${provider}/${token}`));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 /** APNs and FCM both keep a push for at most four weeks. */
@@ -84,6 +99,10 @@ export function createBridge(config: BridgeConfig, deps: BridgeDeps = {}): (requ
       const body = await readBody(request);
       checkBody(body, request.headers.get("content-encoding"));
       await checkVapid(request.headers.get("authorization"), url.origin, now());
+      // Counted only once the request is one the bridge would forward, so junk cannot spend a real host's allowance.
+      if (deps.limiter !== undefined && !(await deps.limiter.allows(await tokenKey(target.provider, target.token)))) {
+        return reply(429, "too many pushes to this device token; try again later");
+      }
       const urgency = request.headers.get("urgency") ?? "normal";
       const push = {
         token: target.token,

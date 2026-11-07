@@ -76,6 +76,18 @@ export async function routeRelaySockets(page: Page, toRelay: string, pairUrl: st
  */
 export const STAGE_DEADLINE_MS = 10_000;
 
+/** What arms a wait's deadline: `run` once `ms` have passed, unless the returned cancel runs first. */
+export interface DeadlineClock {
+  after(ms: number, run: () => void): () => void;
+}
+
+const realClock: DeadlineClock = {
+  after(ms, run) {
+    const timer = setTimeout(run, ms);
+    return () => clearTimeout(timer);
+  },
+};
+
 /** A startup whose lines this reads: `startFakeRelayHost` runs fake-relay-host.ts, and the whole file's contract is
  * the protocol its command prints. */
 interface Startup {
@@ -88,6 +100,7 @@ interface Startup {
   readonly stageDeadlineMs: number;
   /** The stage whose report starts the deadline's clock; without one it runs from the start of each wait. */
   readonly stageDeadlineFrom?: string;
+  readonly clock: DeadlineClock;
   /**
    * The command also serves the LAN listener and prints `directUrl`: only the spec that sets a Direct address asks for
    * that listener and reads the address (#446).
@@ -116,6 +129,7 @@ function readProtocol(
   driver: ChildProcess,
   deadlineMs: number,
   deadlineFrom: string | undefined,
+  clock: DeadlineClock,
 ): { readonly next: (what: string, waitMs?: number) => Promise<Line> } {
   const out = driver.stdout;
   if (out === null) throw new Error("the fake relay host has no stdout");
@@ -170,14 +184,14 @@ function readProtocol(
 
   const next = (what: string, waitMs = deadlineMs): Promise<Line> =>
     new Promise<Line>((resolve, reject) => {
-      let timer: ReturnType<typeof setTimeout> | undefined;
+      let cancel: (() => void) | undefined;
       const waiter: Waiter = {
         resolve: (line) => {
-          if (timer !== undefined) clearTimeout(timer);
+          cancel?.();
           resolve(line);
         },
         reject: (error) => {
-          if (timer !== undefined) clearTimeout(timer);
+          cancel?.();
           reject(error);
         },
       };
@@ -193,7 +207,7 @@ function readProtocol(
       waiting.push(waiter);
       const arm = (): void => {
         if (!waiting.includes(waiter)) return;
-        timer = setTimeout(() => {
+        cancel = clock.after(waitMs, () => {
           const at = waiting.indexOf(waiter);
           if (at < 0) return;
           waiting.splice(at, 1);
@@ -202,7 +216,7 @@ function readProtocol(
               `the fake relay host did not finish ${what} within ${waitMs} ms: ${where()}, and it printed no error`,
             ),
           );
-        }, waitMs);
+        });
       };
       if (clockRunning) arm();
       else armWhenRunning.push(arm);
@@ -231,7 +245,7 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
   const driver = spawn(program, args, { cwd: options.cwd, stdio: ["pipe", "pipe", "inherit"] });
   const input = driver.stdin;
   if (input === null) throw new Error("the fake relay host has no stdin");
-  const protocol = readProtocol(driver, deadlineMs, options.stageDeadlineFrom);
+  const protocol = readProtocol(driver, deadlineMs, options.stageDeadlineFrom, options.clock);
   let stopping: Promise<void> | undefined;
   const stop = (): Promise<void> => {
     stopping ??= (async () => {
@@ -292,6 +306,8 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
  * `stageDeadlineMs`: a shorter stage deadline, for a test that proves the bound without a blocked start running 10 s.
  * `stageDeadlineFrom`: the stage whose report starts that deadline, for a test that proves which stage a blocked start
  * names: the test then decides where the deadline lands, not the host's speed (#692).
+ * `clock`: what runs those deadlines, for a test that proves when a wait's deadline is armed: on a clock the test moves,
+ * that is decided by the test, not by how fast the host answers (#780).
  */
 export function startFakeRelayHost(
   options: {
@@ -303,9 +319,11 @@ export function startFakeRelayHost(
     readonly cwd?: string;
     readonly stageDeadlineFrom?: string;
     readonly direct?: boolean;
+    readonly clock?: DeadlineClock;
   } = {},
 ): Promise<FakeRelayHost> {
   return startDriver({
+    clock: options.clock ?? realClock,
     ...(options.stageDeadlineFrom === undefined ? {} : { stageDeadlineFrom: options.stageDeadlineFrom }),
     direct: options.direct === true,
     command: [

@@ -141,3 +141,19 @@ test("runners that disagree on the version stop the release", async () => {
 test("no runner feed at all stops the release", async () => {
   expect((await run(assetsDir({}, [armZip]))).code).toBe(1);
 });
+
+// #1016: the zip and the setup.exe ship with the .blockmap electron-builder wrote from their bytes; bytes that changed
+// after that would make every differential update fail its check, so only the dmg, which has no blockmap, may change.
+test.each([
+  ["feed-mac-arm64", "latest-mac.yml", armZip],
+  ["feed-win-x64", "latest.yml", x64Exe],
+] as const)(
+  "a %s download whose bytes changed after its feed was written stops the release",
+  async (runner, feedName, built) => {
+    const changed = { name: built.name, body: `${built.body}, changed` };
+    const dir = assetsDir({ [runner]: { [feedName]: feedYaml("1.2.0", [built]) } }, [changed]);
+    const { code, err } = await run(dir);
+    expect(code).toBe(1);
+    expect(err).toContain(`${built.name} changed after electron-builder wrote its feed and its .blockmap`);
+  },
+);

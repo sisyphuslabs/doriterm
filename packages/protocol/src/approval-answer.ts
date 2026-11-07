@@ -1,7 +1,7 @@
 import { type ApprovalClock, CLAIM_TTL_MS, clockOf, FENCE_MARGIN_MS, holds } from "./approval-clock.ts";
 import { livePrompt, type ApprovalCore } from "./approval-live.ts";
 import { type ApprovalMark, approvalKey, waitsOnApproval } from "./approval-prompt.ts";
-import { type PromptReply, replyClass, replyKeys, replyLabel, typedAnswer } from "./approval-reply.ts";
+import { type PromptReply, replyClass, replyKeys, replyLabel, replyShown, typedAnswer } from "./approval-reply.ts";
 import {
   type Answerer,
   type ApprovalOutcome,
@@ -95,9 +95,10 @@ async function entryOpen(
  *    holds the prompt (`claimed` and watched for less than CLAIM_TTL_MS on this client's own clock, or `sent`, `stale`,
  *    `unknown`) makes this answer lose. The only claim of its own a client takes over is the one it names by attempt id
  *    in `retake`, from an answer it saw end as `failed`.
- * 2. Re-read the live screen: press only if the marked prompt is still there. The keys are worked out on that screen
- *    (where its cursor is, which boxes are checked): the row's own key, ↑/↓ to a row only the cursor reaches, the
- *    boxes to toggle and the submit, or the cancel.
+ * 2. Re-read the live screen: press only if the marked prompt is still there and the rows the keys pick there carry
+ *    the words the card showed. The keys are worked out on that screen (where its cursor is, which boxes are
+ *    checked): the row's own key, ↑/↓ to a row only the cursor reaches, the boxes to toggle and the submit, or the
+ *    cancel.
  * 3. Fence: re-read the document; press only if the prompt's record is still this answer's own claim and this client's
  *    monotonic and wall clocks both say the claim is younger than CLAIM_TTL_MS - FENCE_MARGIN_MS (a sleeping page's
  *    monotonic clock may stand still). Otherwise nothing is pressed (`failed`).
@@ -155,7 +156,8 @@ export async function answerApproval(
   let keys: readonly string[] | undefined;
   try {
     const live = await livePrompt(core, mark);
-    keys = live.now === undefined ? undefined : replyKeys(live.now, reply);
+    // The keys are worked out on the live screen, and only for rows that still carry the words the card showed.
+    keys = live.now === undefined || !replyShown(mark.prompt, live.now, reply) ? undefined : replyKeys(live.now, reply);
     if (live.check !== "pending" || keys === undefined || (reply.kind === "text" && text === undefined)) {
       await settle(core, mark, claim, "stale");
       return { kind: "stale" };

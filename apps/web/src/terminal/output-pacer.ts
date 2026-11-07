@@ -3,8 +3,9 @@ import { SynchronizedUpdate } from "./synchronized-update.ts";
 /** At most this much output is written to a terminal per paint: a flood costs each frame a bounded slice (#560). */
 export const FRAME_BYTES = 16 * 1024;
 /**
- * How long a synchronized update is written unpaced, as wterm holds its paint for one (@wterm/dom 0.5.8
- * `SYNCHRONIZED_OUTPUT_TIMEOUT_MS`): past it the terminal draws anyway, so the output is paced again.
+ * How long a synchronized update is written unpaced, as wterm holds its paint for one (@wterm/dom's
+ * `SYNCHRONIZED_OUTPUT_TIMEOUT_MS`, which output-pacer.test.ts reads from the installed package): past it the terminal
+ * draws anyway, so the output is paced again.
  */
 export const SYNCHRONIZED_UNPACED_MS = 1000;
 

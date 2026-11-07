@@ -1,7 +1,15 @@
 import { ContextMenu as BaseContextMenu } from "@base-ui/react/context-menu";
 import { Menu as BaseMenu } from "@base-ui/react/menu";
 import { Check } from "lucide-react";
-import { type ComponentProps, type ReactElement, type ReactNode, type SyntheticEvent, useRef } from "react";
+import {
+  type ComponentProps,
+  type ReactElement,
+  type ReactNode,
+  type SyntheticEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { cn } from "../lib/cn.ts";
 import { Kbd } from "./kbd.tsx";
 import { fitsViewportWidth, overlaySurface } from "./overlay.ts";
@@ -123,12 +131,34 @@ export interface PointMenuProps {
   readonly label: string;
 }
 
-/** A menu that opens at a point rather than from a trigger: e.g. a link tapped inside a terminal. */
+/**
+ * A menu that opens at a point rather than from a trigger: e.g. a link tapped inside a terminal.
+ *
+ * Closed, it mounts nothing. A closed Base UI menu root still runs its floating, dismiss and list-navigation hooks each
+ * time its parent renders, and every terminal pane holds two of these menus (a link's and a held selection's), so 50
+ * panes streaming output re-ran 100 closed menus on every pane render (#842). The root is mounted from the moment the
+ * menu opens until its close has finished.
+ *
+ * Base UI runs a menu's enter transition only when its root goes from closed to open, not when it mounts open, so an
+ * opening menu first commits its root closed and opens it in a layout effect, before the browser paints: the popup
+ * still scales and fades in, and the close still animates out.
+ */
 export function PointMenu({ at, onClose, children, label }: PointMenuProps) {
+  const open = at !== null;
+  /** The root has been committed for this opening and its close has not finished yet. */
+  const [shown, setShown] = useState(false);
+  useLayoutEffect(() => {
+    if (open) setShown(true);
+  }, [open]);
+  if (!open && !shown) return null;
   const anchor =
     at === null ? null : { getBoundingClientRect: () => DOMRect.fromRect({ x: at.x, y: at.y, width: 0, height: 0 }) };
   return (
-    <BaseMenu.Root open={at !== null} onOpenChange={(open) => !open && onClose()}>
+    <BaseMenu.Root
+      open={open && shown}
+      onOpenChange={(next) => !next && onClose()}
+      onOpenChangeComplete={(next) => !next && !open && setShown(false)}
+    >
       <BaseMenu.Portal>
         <BaseMenu.Positioner anchor={anchor} sideOffset={6} positionMethod="fixed">
           <BaseMenu.Popup aria-label={label} className={cn(overlaySurface, "min-w-48 p-1", bounded)}>
@@ -159,8 +189,9 @@ export function MenuItem({ icon, keys, destructive = false, children, ...props }
       className={cn(
         // A label too long for the menu's width wraps, so the row grows from its usual height instead of running out.
         "flex min-h-(--row) cursor-default items-center gap-2.5 rounded-md px-2 py-1 text-sm outline-none select-none",
-        "data-highlighted:bg-hover data-disabled:opacity-45 [&_svg]:size-3.5 [&_svg]:text-muted-foreground",
+        "data-highlighted:bg-hover [&_svg]:size-3.5 [&_svg]:text-muted-foreground",
         destructive && "text-destructive [&_svg]:text-destructive",
+        "data-disabled:text-muted-foreground data-disabled:[&_svg]:text-muted-foreground",
       )}
     >
       {icon}

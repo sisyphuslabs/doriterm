@@ -112,7 +112,8 @@ export interface PutOutcome {
   readonly refused: readonly string[];
 }
 
-const megabytes = (bytes: number): string => `${(bytes / (1 << 20)).toFixed(1)} MB`;
+/** A refused size, rounded up to a tenth so a file just past the limit never reads as the limit itself (#827). */
+const megabytesUp = (bytes: number): string => `${(Math.ceil((bytes / (1 << 20)) * 10) / 10).toFixed(1)} MB`;
 
 /** Why a put failed, by herdr's error kind, as herdr-app's notices name it. */
 function failure(cause: unknown): string {
@@ -134,7 +135,7 @@ async function putOne(
     return `${file.name || "The image"} could not be read as an image`;
   }
   if (ready.bytes.length > MAX_PUT_BYTES) {
-    return `${ready.name} is ${megabytes(ready.bytes.length)}; at most 8 MB can be sent`;
+    return `${ready.name} is ${megabytesUp(ready.bytes.length)}; at most 8 MB can be sent`;
   }
   try {
     const put = await connection.call("terminal.put", { terminal, name: ready.name, data: base64Of(ready.bytes) });

@@ -101,7 +101,7 @@ export function MachineHeader({
           icon={<Plus />}
           disabled={!connected}
           onClick={onNewSpace}
-          className="size-6 text-muted-foreground data-disabled:opacity-45"
+          className="size-6 text-muted-foreground"
         />
       )}
       {rail ? null : (

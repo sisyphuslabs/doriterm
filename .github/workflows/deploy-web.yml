@@ -3,9 +3,9 @@ name: Deploy web
 # Serves apps/web with Workers static assets (apps/web/wrangler.jsonc, #700). One build is deployed to staging
 # (https://staging.app.doriterm.com and https://doriface-staging.omo.dev) and every host is probed
 # (.github/scripts/probe-web.ts), and only then the same bytes go to production (https://app.doriterm.com and
-# https://doriface.omo.dev) and are probed again. A push on dev that touches the web build runs both; a
-# manual run on dev can stop at staging. A pull request from this repository labelled deploy-staging deploys its head to
-# staging only, so a change can be seen live before it merges. The repository secrets CLOUDFLARE_API_TOKEN and
+# https://doriface.omo.dev) and are probed again. A push on dev that touches the web build runs both; a manual run,
+# which deploys dev only, can stop at staging. A pull request from this repository labelled deploy-staging deploys its
+# head to staging only, so a change can be seen live before it merges. The repository secrets CLOUDFLARE_API_TOKEN and
 # CLOUDFLARE_ACCOUNT_ID are the Cloudflare account that serves relay-doriface.omo.dev.
 on:
   push:
@@ -29,12 +29,16 @@ on:
 permissions:
   contents: read
 
-# A group keeps one pending run and a newer one cancels it, so pull requests must never share dev's group: every PR
-# push starts a run (its jobs skip without the label), and in one shared group those runs cancelled the dev deploys of
-# merged commits (#868). dev deploys queue in their own group and are never cancelled in progress; each pull request has
-# its own group, where a newer push replaces its older run.
+# A group keeps one pending run and a newer one cancels it, so only a run that deploys dev to production may share dev's
+# group: every PR push starts a run (its jobs skip without the label), and in one shared group those runs cancelled the
+# dev deploys of merged commits (#868); a manual staging-only run, or one from another branch, would do the same (#884).
+# dev deploys, and manual production runs on dev, queue in that group and are never cancelled in progress; each pull
+# request has its own group, where a newer push replaces its older run; any other manual run has a group of its own.
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('deploy-web-pr-{0}', github.event.pull_request.number) || 'deploy-web-dev' }}
+  group: >-
+    ${{ github.event_name == 'pull_request' && format('deploy-web-pr-{0}', github.event.pull_request.number) ||
+    github.event_name == 'workflow_dispatch' && (github.ref != 'refs/heads/dev' || !inputs.production) &&
+    format('deploy-web-manual-{0}', github.run_id) || 'deploy-web-dev' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -45,6 +49,8 @@ env:
 jobs:
   staging:
     name: Staging
+    # Its secrets come from the staging environment: a token scoped to the staging hosts, once the settings hold one (#816).
+    environment: staging
     if: >-
       github.event_name != 'pull_request' ||
       (contains(github.event.pull_request.labels.*.name, 'deploy-staging') &&
@@ -52,7 +58,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: A manual run deploys dev only
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/dev'
+        run: |
+          echo "::error title=Deploy web::a manual run deploys dev; this one was started on $GITHUB_REF. A pull request labelled deploy-staging puts a branch on staging."
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -68,6 +79,11 @@ jobs:
           path: apps/web/dist
           include-hidden-files: true
           if-no-files-found: error
+      # The pull request's own wrangler.jsonc is what deploys: anything but the staging worker and hosts stops here (#816).
+      - name: Staging deploys to staging only
+        run: >-
+          bun .github/scripts/deploy-target.ts apps/web/wrangler.jsonc staging doriface-web-staging
+          staging.app.doriterm.com doriface-staging.omo.dev
       - name: Deploy staging
         working-directory: apps/web
         env:
@@ -83,12 +99,14 @@ jobs:
 
   production:
     name: Production
+    # Its secrets come from the production environment, which only dev and an approval reach once the settings say so.
+    environment: production
     needs: staging
     if: github.ref == 'refs/heads/dev' && (github.event_name == 'push' || inputs.production)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -100,6 +118,8 @@ jobs:
         with:
           name: web-dist
           path: apps/web/dist
+      - name: Production deploys to production only
+        run: bun .github/scripts/deploy-target.ts apps/web/wrangler.jsonc "" doriface-web app.doriterm.com doriface.omo.dev
       - name: Deploy production
         working-directory: apps/web
         env:

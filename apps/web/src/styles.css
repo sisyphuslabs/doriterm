@@ -66,6 +66,33 @@
   --term-preedit-bg: light-dark(var(--term-bg), var(--term-fg));
 }
 
+/* A composing (preedit) text is drawn as cells at the cursor by use-preedit.ts, as Ghostty draws it: underlined over the
+   cells it covers, with the cursor not drawn. The input keeps the composition but paints none of it (#674). */
+.wterm .term-preedit {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  width: max-content;
+  height: var(--term-row-height);
+  color: var(--term-preedit-fg);
+  background: var(--term-preedit-bg);
+  text-decoration: underline;
+  text-decoration-thickness: max(1px, var(--term-device-pixel, 1px));
+  pointer-events: none;
+}
+.wterm[data-preedit] textarea {
+  opacity: 0 !important;
+}
+/* The cursor is not drawn in any shape: wterm's blink keyframes and its bar, underline and hollow rules would otherwise
+   still paint it, so these win with !important (an animation overrides any declaration that is not). */
+.wterm[data-preedit] .term-cursor {
+  outline: none !important;
+  box-shadow: none !important;
+  background: var(--term-cell-bg, transparent) !important;
+  color: var(--term-cell-fg, inherit) !important;
+  animation: none !important;
+}
+
 /* A two-cell glyph is sized to fill its cells as Ghostty sizes a fallback face (use-wide-glyph-scale.ts); what is left
    is split either side. adjust-cell-width is already in the two cells, so the glyph takes no letter-spacing of its own. */
 .wterm .term-wide {

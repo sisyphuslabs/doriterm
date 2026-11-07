@@ -115,8 +115,24 @@ describe("putFiles", () => {
     const { connection, puts } = core();
     const sent = await putFiles(connection, "t1", [png("big.png", MAX_PUT_BYTES + 1), png("ok.png")], noPng);
     expect(sent.paths).toEqual(["/there/ok.png"]);
-    expect(sent.refused).toEqual(["big.png is 8.0 MB; at most 8 MB can be sent"]);
+    expect(sent.refused).toEqual(["big.png is 8.1 MB; at most 8 MB can be sent"]);
     expect(puts.map((put) => put.name)).toEqual(["ok.png"]);
+  });
+
+  test("a refused size never reads as the limit or under it (#827)", async () => {
+    const { connection } = core();
+    const sizes = [MAX_PUT_BYTES + 1, MAX_PUT_BYTES + 104_857, 9 << 20];
+    const sent = await putFiles(
+      connection,
+      "t1",
+      sizes.map((size, at) => png(`f${at}.png`, size)),
+      noPng,
+    );
+    expect(sent.refused).toEqual([
+      "f0.png is 8.1 MB; at most 8 MB can be sent",
+      "f1.png is 8.1 MB; at most 8 MB can be sent",
+      "f2.png is 9.0 MB; at most 8 MB can be sent",
+    ]);
   });
 
   test("exactly 8 MB is sent", async () => {

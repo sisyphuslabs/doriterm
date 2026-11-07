@@ -4,6 +4,7 @@ import { memoryLinkPair } from "@doriface/crypto/testing";
 import { parseRecord } from "@doriface/mesh";
 import { CounterBehindError } from "../state/mesh.ts";
 import type { MeshLine } from "./lines.ts";
+import { checkFloor } from "./merge.ts";
 import { FakeClock, seededRandom } from "./testing/fake-clock.ts";
 import { headsOfRecords, meshOf, peer } from "./testing/mesh-peers.ts";
 import { MeshNet } from "./testing/mesh-net.ts";
@@ -42,12 +43,26 @@ function meshAtB(seed: number) {
       throw error;
     }
   };
+  /**
+   * Whether b would refuse to sign an own record now, decided as `append` decides it (the floor the claims hold against
+   * b's counter), without signing one: a signature, its check at the door and two writes per sample are what made a
+   * 10-minute run cost seconds on a loaded host, and none of them is what the H-2 case is about (#780).
+   */
+  const refuses = (): boolean => {
+    try {
+      checkFloor(host.records(), b.signPub, host.gossip.floor());
+      return false;
+    } catch (error) {
+      if (error instanceof CounterBehindError) return true;
+      throw error;
+    }
+  };
   const ownNs = (): readonly number[] =>
     (host.store.read()?.records ?? []).flatMap((record) => {
       const body = parseRecord(record);
       return body?.by === b.signPub ? [body.n] : [];
     });
-  return { clock, connect, signs, ownNs };
+  return { clock, connect, signs, refuses, ownNs };
 }
 
 describe("a peer's hello.n claim on this host's counter (section 10.1, M-E1)", () => {
@@ -110,7 +125,7 @@ describe("a peer's hello.n claim on this host's counter (section 10.1, M-E1)", (
       const open = session.ours.closeCode === undefined ? session : s.connect();
       open.hello(CLAIM);
       await s.clock.advance(1);
-      if (sampled(at) && s.signs() !== true) refused.push(at);
+      if (sampled(at) && s.refuses()) refused.push(at);
       await s.clock.advance(KEEP_ALIVE_MS - 1);
       return claimFrom(open, at + KEEP_ALIVE_MS);
     };

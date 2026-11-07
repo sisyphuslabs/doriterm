@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { classify } from "./capture-text.ts";
+import { KNOWN_BAD, PLACEHOLDERS } from "./capture-text-fixtures.ts";
+import { captureText, classify } from "./capture-text.ts";
 
 const patterns = (text: string): string[] => classify(text).findings.map((one) => one.pattern);
 
@@ -67,7 +69,58 @@ describe("a capture's OCR text", () => {
   });
 });
 
+describe("the known-bad list", () => {
+  test.each(KNOWN_BAD)("flags $why", ({ text }) => {
+    expect(classify(text).ok).toBe(false);
+  });
+});
+
+describe("the placeholder list", () => {
+  test.each(PLACEHOLDERS)("passes $why", ({ text }) => {
+    expect(classify(text)).toEqual({ ok: true, findings: [] });
+  });
+});
+
 const REPO = join(import.meta.dirname, "..", "..");
+
+describe("the Capture text workflow starts", () => {
+  const workflow = Bun.YAML.parse(readFileSync(join(REPO, ".github/workflows/capture-text.yml"), "utf8")) as {
+    on: { pull_request: { paths: string[] } };
+  };
+  const globs = workflow.on.pull_request.paths.map((pattern) => new Bun.Glob(pattern));
+  const starts = (path: string): boolean => globs.some((glob) => glob.match(path));
+
+  test("for an image under docs/ or .github/assets in any case of its extension", () => {
+    for (const ext of ["png", "Png", "PNG", "jpg", "Jpeg", "webp", "gif", "GIF", "svg", "Svg"]) {
+      expect({ ext, starts: starts(`docs/design/app/a.${ext}`) }).toEqual({ ext, starts: true });
+      expect({ ext, starts: starts(`.github/assets/a.${ext}`) }).toEqual({ ext, starts: true });
+    }
+    expect(starts("docs/design/notes.md")).toBe(false);
+  });
+
+  test("for a change to any file of the check, the known-bad list included", () => {
+    for (const path of [
+      "tests/ci/capture-text.ts",
+      "tests/ci/capture-text.test.ts",
+      "tests/ci/capture-text-fixtures.ts",
+    ]) {
+      expect({ path, starts: starts(path) }).toEqual({ path, starts: true });
+    }
+  });
+});
+
+test("an SVG's own text is checked, since OCR cannot read one", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "capture-text-"));
+  try {
+    const svg = join(dir, "a.svg");
+    writeFileSync(svg, '<svg xmlns="http://www.w3.org/2000/svg"><text x="1">someone@alpha-box:~$ ls</text></svg>');
+    expect(classify(await captureText(svg)).findings.map((one) => one.pattern)).toContain("prompt: account at host");
+    writeFileSync(svg, '<svg xmlns="http://www.w3.org/2000/svg"><text x="1">demo@my-laptop:~$ ls</text></svg>');
+    expect(classify(await captureText(svg)).ok).toBe(true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 const tesseract = ((): string | undefined => {
   try {
     return execFileSync("sh", ["-lc", "command -v tesseract"], { encoding: "utf8" }).trim();

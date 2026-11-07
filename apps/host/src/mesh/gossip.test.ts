@@ -53,3 +53,14 @@ describe("push (S-2)", () => {
     expect(a.dials.toSorted()).toEqual(["b", "c", "d"]);
   });
 });
+
+describe("format answers follow the roster (#1005)", () => {
+  test("a member revoked from the mesh takes its answer with it; the others keep theirs", () => {
+    const { net } = mesh();
+    const a = net.host("a");
+    a.gossip.heard(peer("b").signPub, [], {}, [2, 3]);
+    a.gossip.heard(peer("d").signPub, [], {}, [2, 3]);
+    a.gossip.append({ type: "revoke", signPubs: [peer("d").signPub], reason: "revoke" });
+    expect(a.gossip.formatAnswers().map((answer) => answer.hostId)).toEqual([peer("b").signPub]);
+  });
+});

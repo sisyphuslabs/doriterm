@@ -23,8 +23,10 @@ export function targetOf(url: URL): Target | undefined {
   const [, provider, token] = match ?? [];
   if (token === undefined) return undefined;
   if (provider === "fcm") return FCM_TOKEN.test(token) ? { provider, token } : undefined;
+  // APNs reads a device token in any letter case as one device, so the bridge keeps one form: the per-token limit counts
+  // every spelling of a token together, and APNs receives the token as the bridge counted it (#830).
   if (provider === "apns" || provider === "apns-sandbox")
-    return APNS_TOKEN.test(token) ? { provider, token } : undefined;
+    return APNS_TOKEN.test(token) ? { provider, token: token.toLowerCase() } : undefined;
   return undefined;
 }
 

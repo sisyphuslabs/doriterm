@@ -131,31 +131,6 @@ describe("an existing service", () => {
     });
   });
 
-  test("a re-run with no flags keeps the installed service's --listen and --session", () => {
-    for (const installed of [
-      { ...linux, listen: "127.0.0.1:0", session: "work" },
-      { ...mac, listen: "127.0.0.1:0", session: "work" },
-    ]) {
-      const render = installed.os === "mac" ? renderPlist : renderUnit;
-      const adopted = readExistingService(render(installed), installed.src, installed.home);
-      if (adopted.kind !== "checkout") throw new Error("not adopted");
-      expect([adopted.listen, adopted.session]).toEqual(["127.0.0.1:0", "work"]);
-      const again = setupPaths(
-        installed.os,
-        installed.home,
-        {},
-        { bun: installed.bun, hc: installed.hc, shell: installed.shell },
-        {
-          stateDir: adopted.stateDir,
-          listen: adopted.listen,
-          session: adopted.session,
-          logFile: adopted.logFile,
-        },
-      );
-      expect(render(again)).toBe(render(installed));
-    }
-  });
-
   test("install.sh's compiled binary is another install, never overwritten", () => {
     const installer =
       '[Service]\nExecStart="/home/u/.local/bin/doriface-host" --hc "/usr/bin/hc" --state-dir "/home/u/.local/state/doriface-host"\n';

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, session, shell, systemPreferences } from "electron";
 import { installHc } from "@doriface/host/hc-install";
 import electronUpdater from "electron-updater";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { contextMenuTemplate } from "../config/context-menu.ts";
@@ -186,14 +187,16 @@ function ready(): void {
           ask: () => systemPreferences.askForMediaAccess("microphone"),
         });
   app.on("will-quit", () => dictation?.stopAll());
-  // A checkout has no release feed (app-update.yml) to update from; only the packaged app looks for one.
-  const updates = app.isPackaged
-    ? new UpdateWatch(
-        electronUpdater.autoUpdater,
-        () => liveWindow()?.webContents.send(Channel.updateReady),
-        (line) => console.log(line),
-      )
-    : undefined;
+  // A checkout has no release feed (app-update.yml) to update from, and neither has the macOS electron-builder --dir
+  // build the e2e specs launch; only a packaged app that carries the feed looks for an update.
+  const updates =
+    app.isPackaged && existsSync(join(process.resourcesPath, "app-update.yml"))
+      ? new UpdateWatch(
+          electronUpdater.autoUpdater,
+          () => liveWindow()?.webContents.send(Channel.updateReady),
+          (line) => console.log(line),
+        )
+      : undefined;
   lockPermissions(session.defaultSession, origin);
   if (devUrl === undefined) serveApp(webRoot(), csp);
   else applyDevCsp(session.defaultSession, origin, csp);

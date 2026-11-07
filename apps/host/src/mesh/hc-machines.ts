@@ -117,7 +117,13 @@ export interface HcTarget {
   readonly hc: string;
   readonly session?: string | undefined;
   readonly env?: Readonly<Record<string, string | undefined>> | undefined;
+  /** How long a connect's hello may go unanswered before that connection fails; HcConnection's 10 s when unset. */
+  readonly handshakeTimeoutMs?: number | undefined;
 }
+
+/** The handshake deadline `core` names, as HcConnection.open takes it. */
+export const handshakeOf = (core: HcTarget): { readonly handshakeTimeoutMs?: number } =>
+  core.handshakeTimeoutMs === undefined ? {} : { handshakeTimeoutMs: core.handshakeTimeoutMs };
 
 /** `hc connect` to a core as a byte link. */
 export function spawnHcLink(target: HcTarget): ChildByteLink {

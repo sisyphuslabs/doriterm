@@ -1,6 +1,6 @@
 import { HcConnection } from "@doriface/client";
 import { HcRpcError, HOST_INFO_DOC, type HostInfo, hostInfoFor, parseHostInfo } from "@doriface/protocol";
-import { type HcTarget, type KillableLink, spawnHcLink } from "./mesh/hc-machines.ts";
+import { handshakeOf, type HcTarget, type KillableLink, spawnHcLink } from "./mesh/hc-machines.ts";
 
 export interface HostInfoPublisher {
   /** Settles once the document is written (or left as it was, or the write failed and was logged) and its child exited. */
@@ -38,7 +38,7 @@ export function publishHostInfo(
     }),
   );
   const write = async (): Promise<void> => {
-    const connection = await HcConnection.open(child, { signal: stopping.signal });
+    const connection = await HcConnection.open(child, { ...handshakeOf(core), signal: stopping.signal });
     try {
       await writeHostInfo(connection, info);
     } finally {

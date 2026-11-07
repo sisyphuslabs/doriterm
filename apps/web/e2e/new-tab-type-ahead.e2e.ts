@@ -175,6 +175,7 @@ test("a run that answers while Settings hides the workspace hands its keys over 
 });
 
 test("input typed for a terminal whose view does not open in time is reported as not sent", async ({ page }) => {
+  await page.addInitScript({ content: COUNT_BODY_OBSERVERS });
   const link = await routeHcSocket(page);
   await page.clock.install();
   await page.goto("/");
@@ -182,25 +183,15 @@ test("input typed for a terminal whose view does not open in time is reported as
   const address = await previous.getAttribute("data-terminal");
   if (address === null) throw new Error("the previous terminal has no address");
   const previousScreen = screenOnCore(address);
-  const answered = (): number => link.received().filter((frame) => /"result":\{[^}]*"address"/.test(frame)).length;
-  const answersBefore = answered();
+  const observers = await bodyObservers(page);
   // The feed is held, so the new terminal is never listed and its view cannot mount.
   const releaseFeed = link.holdFromHost('"method":"event"', '"method":"heartbeat"', '"method":"missed"');
   await askNewTab(page, previous, "keys");
   await page.keyboard.type(LINE, { delay: 40 });
-  await expect.poll(answered, { timeout: 15_000 }).toBeGreaterThan(answersBefore);
-  // The route has seen the answer, but the page may not have handled it yet: the budget timer is armed only once it
-  // has. A MessageChannel task posted now runs after the answer's WebSocket message task and the promise chain it
-  // settles, so the clock is run only after the timer exists.
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) => {
-        const channel = new MessageChannel();
-        channel.port1.addEventListener("message", () => resolve(), { once: true });
-        channel.port1.start();
-        channel.port2.postMessage(null);
-      }),
-  );
+  // The app handling terminal.run's answer is what arms the budget timer: in the same step it starts watching the body
+  // for the new terminal's view. The route seeing the answer is earlier than that (#1025), so the clock runs only once
+  // that observer exists.
+  await expect.poll(() => bodyObservers(page), { timeout: 15_000 }).toBeGreaterThan(observers);
   await page.clock.runFor(16_000);
   await expect(page.getByText("What you typed was not sent")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/took too long/)).toBeVisible();

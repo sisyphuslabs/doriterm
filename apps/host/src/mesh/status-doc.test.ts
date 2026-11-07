@@ -92,6 +92,30 @@ describe("publishing the status document", () => {
     expect(docs.value).toBeNull();
   });
 
+  test("a host that left its mesh clears its own document in a shape the parser no longer reads (#809)", async () => {
+    const stale: JsonValue[] = [
+      { self: status.self, members: "an older shape" },
+      { ...status, v: status.v + 1 },
+      { ...status, members: [] },
+    ];
+    const runs = stale.map(async (value) => {
+      const docs = new Docs();
+      docs.value = value;
+      return { done: await publishMeshStatus(docs, () => undefined, status.self), left: docs.value };
+    });
+    expect(await Promise.all(runs)).toEqual(stale.map(() => ({ done: "cleared", left: null })));
+  });
+
+  test("a document of another shape that names another host, or names none, is left alone", async () => {
+    const others: JsonValue[] = [{ self: "a-different-host", members: 1 }, { members: [] }, [status.self], status.self];
+    const runs = others.map(async (value) => {
+      const docs = new Docs();
+      docs.value = value;
+      return { done: await publishMeshStatus(docs, () => undefined, status.self), sets: docs.sets };
+    });
+    expect(await Promise.all(runs)).toEqual(others.map(() => ({ done: "unchanged", sets: 0 })));
+  });
+
   test("an empty document stays empty on a host that is in no mesh", async () => {
     const docs = new Docs();
     expect(await publishMeshStatus(docs, () => undefined, status.self)).toBe("unchanged");

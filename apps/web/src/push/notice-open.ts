@@ -45,7 +45,10 @@ export function noticeOf(url: URL): PendingNotice | null {
   return { id, host: url.searchParams.get("host") ?? "", answer: answerOf(answer), deny: answer === "deny" };
 }
 
-/** A tap on an app's notification, as an address the page opens like a service worker's (`/?notice=...`). */
+/**
+ * A tapped notification's address (`/?notice=...`), handed over by an app or by the service worker: the notice waits for
+ * the workspace, which the page goes to.
+ */
 function openTapped(url: string, toWorkspace: () => void): void {
   if (!URL.canParse(url, location.origin)) return;
   const notice = noticeOf(new URL(url, location.origin));
@@ -83,11 +86,7 @@ export function listenForNotices(toWorkspace: () => void): void {
     const data = event.data;
     if (typeof data !== "object" || data === null || Reflect.get(data, "type") !== "doriface-notice") return;
     const url = Reflect.get(data, "url");
-    if (typeof url !== "string" || !URL.canParse(url, location.origin)) return;
-    const notice = noticeOf(new URL(url, location.origin));
-    if (notice === null) return;
-    set(notice);
-    toWorkspace();
+    if (typeof url === "string") openTapped(url, toWorkspace);
   });
 }
 

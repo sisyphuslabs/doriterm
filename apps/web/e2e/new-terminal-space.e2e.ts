@@ -20,7 +20,7 @@ test("New tab starts the shell where the active terminal runs: its machine and i
   await page.goto("/");
   await expect(machineRow(page)).toContainText("connected", { timeout: 20_000 });
   await newOn(page).click({ force: true });
-  const remote = new RegExp(`^${MACHINE_NAME}/t\\d+$`);
+  const remote = new RegExp(`^${MACHINE_NAME}/t[0-9a-z]+$`);
   await expect(focused(page)).toHaveAttribute("data-terminal", remote, { timeout: 15_000 });
   const first = await focused(page).getAttribute("data-terminal");
   const there = await workingDirectory(page, page.locator(`[data-terminal="${first}"]`));

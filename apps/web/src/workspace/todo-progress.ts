@@ -1,6 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import { readTodoProgress, readsTodos, type TodoProgress } from "@doriface/protocol";
-import { createContext, use, useEffect, useRef, useState } from "react";
+import { createContext, use, useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "./model.ts";
 
 /** A terminal's agent todo list, when its agent draws one this reads. */
@@ -114,5 +114,6 @@ export function useTodoProgress(connection: HcConnection, terminals: readonly Se
     [],
   );
 
-  return (address) => progress.get(address);
+  // One getter per progress map, so the context and the agents memo keyed on it change only when progress does (#910).
+  return useCallback((address) => progress.get(address), [progress]);
 }

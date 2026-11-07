@@ -15,6 +15,9 @@ import { migrate } from "./migration.ts";
 /** Section 8.1: a named STUCK state is retried when the view or `machine.list` changes, or every 10 minutes. */
 export const STUCK_RETRY_MS = 600_000;
 
+/** How long a status read waits for herdr's `machine.list` before it reports the last list it holds (#754). */
+export const LIVE_LINES_MS = 1_500;
+
 export type LineStatus =
   | { readonly state: "ok"; readonly replaced?: MeshReplacedMachine }
   | { readonly state: "retrying"; readonly reason: string }
@@ -73,6 +76,11 @@ export class Reconciler {
   #cancelRetry: () => void = () => undefined;
 
   #listed: readonly MeshEntry[] = [];
+  /** Reads of the list in the order they started: a slower, older read never replaces a newer one's answer. */
+  #reads = 0;
+  #listedRead = 0;
+  /** An earlier entry a migration removed, kept for its member until the line is added, by whichever attempt (#728). */
+  readonly #replaced = new Map<string, MeshReplacedMachine>();
 
   constructor(options: ReconcilerOptions) {
     this.#options = options;
@@ -152,9 +160,33 @@ export class Reconciler {
     }
   }
 
-  /** The mesh machines herdr listed at the end of this host's last reconcile, for status (which cannot wait on herdr). */
+  /** The mesh machines herdr listed at the latest read: a reconcile's end, or a status read's refresh. */
   lines(): readonly MeshEntry[] {
     return this.#listed;
+  }
+
+  /**
+   * Reads herdr's list again for a status read (#754), so a line herdr has connected since the last reconcile reads
+   * connected. Status cannot wait on herdr long: past `LIVE_LINES_MS`, or when herdr fails, `lines()` keeps the last list.
+   */
+  async refreshLines(): Promise<void> {
+    const deadline = Promise.withResolvers<undefined>();
+    const cancel = this.#options.clock.after(LIVE_LINES_MS, () => deadline.resolve(undefined));
+    try {
+      await Promise.race([this.#readListed(), deadline.promise]);
+    } catch (error) {
+      this.#options.log(`mesh: status kept the last machine list: herdr did not answer: ${messageOf(error)}`);
+    } finally {
+      cancel();
+    }
+  }
+
+  async #readListed(): Promise<void> {
+    const read = ++this.#reads;
+    const listed = await this.#entries();
+    if (read < this.#listedRead) return;
+    this.#listedRead = read;
+    this.#listed = listed;
   }
 
   async #entries(): Promise<readonly MeshEntry[]> {
@@ -175,6 +207,7 @@ export class Reconciler {
     const others = inView ? machinesOf(view).filter((m) => m.hostId !== selfHostId) : [];
     const desired = new Map(others.map((m) => [m.hostId, m]));
     this.#retries.clearExcept((hostId) => desired.has(hostId));
+    for (const hostId of this.#replaced.keys()) if (!desired.has(hostId)) this.#replaced.delete(hostId);
     const entries = await this.#entries();
     const stale = entries.filter(
       (entry) => !desired.has(entry.hostId) || (entry.machine.why ?? "").includes(DIFFERENT_CORE),
@@ -195,7 +228,7 @@ export class Reconciler {
     );
     const key = JSON.stringify([view.members.map((m) => [m.hostId, m.name]), list.map((m) => m.name).toSorted()]);
     await Promise.all(missing.map((member) => this.#add(member, list, key)));
-    this.#listed = await this.#entries();
+    await this.#readListed();
     this.#armRetry(view);
   }
 
@@ -221,8 +254,12 @@ export class Reconciler {
     try {
       await this.#reservedAdd(member, name, attempt.via);
       this.#retries.clear(member.hostId);
-      this.status.set(member.hostId, { state: "ok" });
-      this.#options.log(`mesh: added machine ${name}`);
+      const replaced = this.#replaced.get(member.hostId);
+      this.#replaced.delete(member.hostId);
+      this.status.set(member.hostId, replaced === undefined ? { state: "ok" } : { state: "ok", replaced });
+      this.#options.log(
+        `mesh: added machine ${name}${replaced === undefined ? "" : `, ${replacedMachineText(replaced)}`}`,
+      );
     } catch (error) {
       const kind = kindOf(error);
       if (kind === "name_taken") return this.#addAs(member, attempt, rest);
@@ -253,10 +290,14 @@ export class Reconciler {
     const names = [member.name, ...fallbacks(member.name, member.hostId)];
     const parts = { machines, log, reserve: reserve === undefined ? undefined : () => reserve(member.hostId) };
     const done = await migrate(parts, old, names, attempt.via);
+    // Out of the list (added, or lost with its add-back): the line's later add is the replacement. Back in it: not yet.
+    if (done.kind === "added" || done.kind === "lost") this.#replaced.set(member.hostId, replacedOf(old));
+    else this.#replaced.delete(member.hostId);
     if (done.kind === "copied") return this.#stick(member, attempt.key, copied);
     if (done.kind === "added") {
       this.#retries.clear(member.hostId);
       const replaced = replacedOf(old);
+      this.#replaced.delete(member.hostId);
       this.status.set(member.hostId, { state: "ok", replaced });
       return log(`mesh: added machine ${done.name}, ${replacedMachineText(replaced)}`);
     }

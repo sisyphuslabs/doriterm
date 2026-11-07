@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
@@ -53,16 +53,19 @@ jobs:
           key: playwright-three-${{ runner.os }}-${{ hashFiles('bun.lock') }}
       - name: Install Chromium, Firefox and WebKit
         working-directory: apps/web
+        timeout-minutes: 22
         run: |
           # --with-deps runs apt, and on #855 a stalled azure.archive.ubuntu.com mirror spent the whole 30-minute job
-          # there without the suite ever starting. Bound it and fall back to the engines alone: a missing system library
-          # then fails the first browser launch loudly, which is a job that reports a real error instead of a silent hang.
+          # there without the suite ever starting. apt-bounds.sh gives each apt request a timeout and three retries, the
+          # install is bounded, and it falls back to the engines alone: a missing system library then fails the first
+          # browser launch loudly, which is a job that reports a real error instead of a silent hang (doriterm#914).
+          bash "$GITHUB_WORKSPACE/.github/scripts/apt-bounds.sh"
           set +e
-          timeout 900 bunx playwright install --with-deps chromium firefox webkit
+          timeout 600 bunx playwright install --with-deps chromium firefox webkit
           code=$?
           set -e
           if [ "$code" -eq 124 ]; then
-            echo "::warning::the bounded install hit its 15-minute limit; installing the engines without system packages"
+            echo "::warning::the bounded install hit its 10-minute limit; installing the engines without system packages"
             timeout 600 bunx playwright install chromium firefox webkit
           elif [ "$code" -ne 0 ]; then
             echo "::warning::--with-deps exited $code, not on the time limit; installing the engines without system packages"

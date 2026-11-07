@@ -1,6 +1,6 @@
 import { DEFAULT_PUSH_PREFS } from "@doriface/protocol";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, watch, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateToken } from "./auth.ts";
@@ -8,6 +8,7 @@ import { type HostOptions, startHost } from "./host.ts";
 import { LOOPBACK_OWNER, SubscriptionStore } from "./push/subscriptions.ts";
 import { parseStartupErrorLine } from "./startup-error.ts";
 import { createHcSession } from "./testing/hc-session.ts";
+import { silentHc } from "./testing/silent-hc.ts";
 import { openWsClient } from "./testing/ws-client.ts";
 
 const CLI = join(import.meta.dir, "cli.ts");
@@ -295,37 +296,24 @@ const HANDSHAKE_TIMEOUT_MS = 10_000;
 describe("the write of a host's OS", () => {
   test("starts no hc connect until a client opens a pipe, and stop reaps the write's child", async () => {
     const dir = mkdtempSync(join(tmpdir(), "dh-silent-"));
-    // An hc whose connect never answers the hello, keeps its output open, and exits once its input ends, as hc does. Its
-    // pid file is written under another name and moved into place, so a connect-* name only appears with its pid in it
-    // (`echo > name` creates the file before it writes, and an empty one read as pid 0, #365).
-    const hc = join(dir, "hc");
-    writeFileSync(
-      hc,
-      `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "hc 0.1.17"; exit 0; fi\necho $$ > "${dir}/.pid-$$" && mv "${dir}/.pid-$$" "${dir}/connect-$$.pid"\nwhile read -r line; do :; done\n`,
-      { mode: 0o755 },
-    );
-    const connects = () => readdirSync(dir).filter((name) => name.startsWith("connect-"));
+    const silent = silentHc(dir);
     const token = generateToken();
     try {
       const host = await startHost({
         listen: { hostname: "127.0.0.1", port: 0 },
         token,
-        hc,
+        hc: silent.hc,
         platform: "darwin",
+        // The hc never answers, so each of the host's own connects would end at its handshake deadline: this test is
+        // about stop ending them, so stop is the only thing that may (#780).
+        hcHandshakeTimeoutMs: Number.POSITIVE_INFINITY,
         log: () => {},
       });
-      expect(connects()).toEqual([]);
-      // A client's pipe and the OS write: two connects.
-      const both = new Promise<void>((resolve) => {
-        const watcher = watch(dir, () => {
-          if (connects().length < 2) return;
-          watcher.close();
-          resolve();
-        });
-      });
+      expect(silent.connects()).toEqual([]);
       const client = await openWsClient(host.url, token);
-      await both;
-      const pids = connects().map((name) => Number(readFileSync(join(dir, name), "utf8")));
+      // A client's pipe and the OS write: two connects.
+      await silent.started(2);
+      const pids = silent.connects().map((name) => Number(readFileSync(join(dir, name), "utf8")));
       // kill(0) signals this process's own group, so 0 (or NaN) would count as a live child.
       for (const pid of pids) expect(pid).toBeGreaterThan(0);
       expect(pids.every(alive)).toBe(true);
@@ -333,6 +321,7 @@ describe("the write of a host's OS", () => {
       await host.stop();
       expect(pids.filter(alive)).toEqual([]);
     } finally {
+      await silent.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -341,41 +330,29 @@ describe("the write of a host's OS", () => {
     const dir = mkdtempSync(join(tmpdir(), "dh-silent-stop-"));
     // The same hc that never answers the hello: every connect of this host is still waiting for its reply when the
     // host is told to stop. Stopping must end those handshakes, not sit out their deadline (10 s each).
-    const hc = join(dir, "hc");
-    writeFileSync(
-      hc,
-      `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "hc 0.1.17"; exit 0; fi\necho $$ > "${dir}/.pid-$$" && mv "${dir}/.pid-$$" "${dir}/connect-$$.pid"\nwhile read -r line; do :; done\n`,
-      { mode: 0o755 },
-    );
-    const connects = () => readdirSync(dir).filter((name) => name.startsWith("connect-"));
+    const silent = silentHc(dir);
     const token = generateToken();
     try {
       const host = await startHost({
         listen: { hostname: "127.0.0.1", port: 0 },
         token,
-        hc,
+        hc: silent.hc,
         platform: "darwin",
         log: () => {},
       });
-      const both = new Promise<void>((resolve) => {
-        const watcher = watch(dir, () => {
-          if (connects().length < 2) return;
-          watcher.close();
-          resolve();
-        });
-      });
       const client = await openWsClient(host.url, token);
-      await both;
+      await silent.started(2);
       client.socket.close();
       const started = performance.now();
       await host.stop();
       const took = performance.now() - started;
-      const pids = connects().map((name) => Number(readFileSync(join(dir, name), "utf8")));
+      const pids = silent.connects().map((name) => Number(readFileSync(join(dir, name), "utf8")));
       for (const pid of pids) expect(pid).toBeGreaterThan(0);
       expect(pids.filter(alive)).toEqual([]);
       // Well under one handshake deadline: what is left is closing the children, not waiting for a reply.
       expect(took).toBeLessThan(HANDSHAKE_TIMEOUT_MS / 2);
     } finally {
+      await silent.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });

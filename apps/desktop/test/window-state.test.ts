@@ -13,16 +13,22 @@ const external = { x: 1470, y: 0, width: 2560, height: 1415 };
 function placedWindow(bounds: Area) {
   const listeners = new Map<string, () => void>();
   let placed = bounds;
+  let destroyed = false;
   const window = {
     onMove: (listener: () => void) => void listeners.set("move", listener),
     onResize: (listener: () => void) => void listeners.set("resize", listener),
     onClose: (listener: () => void) => void listeners.set("close", listener),
-    normalBounds: () => placed,
+    isDestroyed: () => destroyed,
+    normalBounds: () => {
+      if (destroyed) throw new Error("Object has been destroyed");
+      return placed;
+    },
   };
   return {
     window,
     fire: (event: "move" | "resize" | "close"): void => listeners.get(event)?.(),
     moveTo: (next: Area): void => void (placed = next),
+    destroy: (): void => void (destroyed = true),
   };
 }
 
@@ -87,6 +93,42 @@ describe("window placement while the window moves", () => {
       moveTo({ x: 5, y: 5, width: 500, height: 400 });
       jest.advanceTimersByTime(PLACEMENT_SETTLE_MS * 2);
       expect(savedPlacement(file), "no save runs after the window closed").toEqual(resting);
+    } finally {
+      done();
+    }
+  });
+
+  test("a move or resize during teardown schedules nothing, so no save reads the destroyed window (#818)", () => {
+    jest.useFakeTimers();
+    const { file, done } = placementFile();
+    try {
+      const { window, fire, moveTo, destroy } = placedWindow(resting);
+      rememberPlacement(window, file);
+      fire("close");
+      destroy();
+      moveTo({ x: 5, y: 5, width: 500, height: 400 });
+      fire("move");
+      fire("resize");
+      expect(() => jest.advanceTimersByTime(PLACEMENT_SETTLE_MS * 2)).not.toThrow();
+      expect(savedPlacement(file)).toEqual(resting);
+    } finally {
+      done();
+    }
+  });
+
+  test("a close that was cancelled leaves the window open, and its later moves are still saved (#1113)", () => {
+    jest.useFakeTimers();
+    const { file, done } = placementFile();
+    try {
+      const { window, fire, moveTo } = placedWindow(resting);
+      rememberPlacement(window, file);
+      // A `close` listener (or the page's beforeunload) called preventDefault: Electron sent `close`, the window stayed.
+      fire("close");
+      const later = { x: 300, y: 200, width: 1100, height: 800 };
+      moveTo(later);
+      fire("move");
+      jest.advanceTimersByTime(PLACEMENT_SETTLE_MS);
+      expect(savedPlacement(file)).toEqual(later);
     } finally {
       done();
     }

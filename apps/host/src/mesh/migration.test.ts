@@ -114,4 +114,33 @@ describe("replacing an earlier entry for a member's core never leaves the machin
       reason: "unreachable: no route; adding b back failed: ssh down",
     });
   });
+
+  test("a removal herdr refuses gives the reserved pair back, leaves the earlier entry, and is retried (#728)", async () => {
+    const { clock, machines, pairs, reconciler, calls, listed } = setup();
+    machines.failRms.push(hcError("unreachable", "core busy"));
+    await reconciler.reconcile(view);
+    expect(calls()).toEqual(["add b", `add ${fallback}`, "rm b"]);
+    expect(await listed()).toEqual([["b", "me@box", false, "work"]]);
+    expect(pairs.log.at(-1)).toBe("dropped");
+    expect(reconciler.status.get(b.hostId)).toEqual({
+      state: "retrying",
+      reason: "removing b failed: unreachable: core busy",
+    });
+    machines.failAdds.set("b", [hcError("name_taken")]);
+    machines.failAdds.set(fallback, [hcError("already_added")]);
+    await clock.advance(DIAL_LIMITS.probeFirstMs);
+    await reconciler.idle();
+    expect(calls().slice(3)).toEqual(["add b", `add ${fallback}`, "rm b", "add b"]);
+  });
+
+  test("the entry a migration removed is still named once a retried add of the line lands (#728)", async () => {
+    const { clock, machines, reconciler } = setup();
+    machines.failAdds.set("b", [hcError("name_taken"), hcError("unreachable", "no route")]);
+    machines.failRestores.push(hcError("unreachable", "ssh down"));
+    await reconciler.reconcile(view);
+    expect(reconciler.status.get(b.hostId)?.state).toBe("retrying");
+    await clock.advance(DIAL_LIMITS.probeFirstMs);
+    await reconciler.idle();
+    expect(reconciler.status.get(b.hostId)).toEqual({ state: "ok", replaced: { name: "b", kind: "ssh" } });
+  });
 });

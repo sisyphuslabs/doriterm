@@ -236,7 +236,8 @@ function SpacesLists({
       connected={linkDown === null && machine.state === "connected"}
       rail={rail}
       collapsed={collapsed.includes(machine.id) && !filtering}
-      onToggle={() => toggle(machine.id)}
+      // A filter opens every machine to show its matches, so a fold toggle there would change a state nothing shows (#850).
+      {...(filtering ? {} : { onToggle: () => toggle(machine.id) })}
       onNewSpace={() => newSpaceOn(machine)}
       {...(machine.first === undefined ? {} : { onOpen: () => onOpen(machine.first ?? "") })}
     />

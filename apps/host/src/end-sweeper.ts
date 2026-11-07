@@ -1,6 +1,6 @@
 import { HcConnection } from "@doriface/client";
 import { END_LABEL, eventAddress, type HcEvent, HcRpcError, type Terminal } from "@doriface/protocol";
-import { type HcTarget, type KillableLink, spawnHcLink } from "./mesh/hc-machines.ts";
+import { handshakeOf, type HcTarget, type KillableLink, spawnHcLink } from "./mesh/hc-machines.ts";
 
 export interface EndSweeper {
   /**
@@ -48,7 +48,7 @@ export function endSweeper(
     exited = gone.promise;
     let connection: HcConnection;
     try {
-      connection = await HcConnection.open(next, { signal: stopping.signal });
+      connection = await HcConnection.open(next, { ...handshakeOf(core), signal: stopping.signal });
     } catch (error) {
       next.close();
       throw error;

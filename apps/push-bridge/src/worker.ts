@@ -1,4 +1,4 @@
-import { type BridgeConfig, createBridge } from "./bridge.ts";
+import { type BridgeConfig, createBridge, type TokenLimiter } from "./bridge.ts";
 
 /** Worker secrets and vars; a provider whose values are missing answers 503 rather than failing the other one. */
 export interface BridgeEnv {
@@ -8,7 +8,15 @@ export interface BridgeEnv {
   readonly APNS_TOPIC?: string;
   /** The Firebase service account JSON as Google issues it (`project_id`, `client_email`, `private_key`). */
   readonly FCM_SERVICE_ACCOUNT?: string;
+  /** The per-device-token rate limit (#830), a Workers rate limiting binding; see wrangler.toml. */
+  readonly TOKEN_LIMIT?: { limit(options: { key: string }): Promise<{ success: boolean }> };
 }
+
+/** The binding as the bridge's limiter, or none where the Worker runs without one (wrangler dev, a test). */
+export const limiterOf = (env: BridgeEnv): TokenLimiter | undefined => {
+  const binding = env.TOKEN_LIMIT;
+  return binding === undefined ? undefined : { allows: async (key) => (await binding.limit({ key })).success };
+};
 
 export function configOf(env: BridgeEnv): BridgeConfig {
   const { APNS_TEAM_ID, APNS_KEY_ID, APNS_PRIVATE_KEY, APNS_TOPIC, FCM_SERVICE_ACCOUNT } = env;
@@ -35,7 +43,7 @@ let handler: ((request: Request) => Promise<Response>) | undefined;
 
 export default {
   fetch(request: Request, env: BridgeEnv): Promise<Response> {
-    handler ??= createBridge(configOf(env), { log: (line) => console.error(line) });
+    handler ??= createBridge(configOf(env), { log: (line) => console.error(line), limiter: limiterOf(env) });
     return handler(request);
   },
 };
