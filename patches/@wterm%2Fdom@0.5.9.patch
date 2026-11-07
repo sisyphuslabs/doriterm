@@ -546,7 +546,7 @@ index a6746f499859ba9da2d7884dfd71694205c6d819..7ef2bfcb6c94d74a4e6ff9aec76a6e41
      /**
       * Hands the core the theme colors the page's CSS resolves to, unless the
 diff --git a/dist/wterm.js b/dist/wterm.js
-index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..fffa81453596df9f2d711fca64271d67c61c24cb 100644
+index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa8b176239 100644
 --- a/dist/wterm.js
 +++ b/dist/wterm.js
 @@ -131,6 +131,11 @@ export class WTerm {
@@ -640,7 +640,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..fffa81453596df9f2d711fca64271d67
          // Answer theme color queries with the colors the page shows right now.
          if (mayQueryThemeColors(data))
              this._syncCssThemeColors();
-@@ -732,9 +763,17 @@ export class WTerm {
+@@ -732,9 +763,21 @@ export class WTerm {
          this._rectangleDrag.cancel();
          this._historySelection.invalidate();
          this.renderer?.beforeMutation(this.bridge);
@@ -654,12 +654,16 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..fffa81453596df9f2d711fca64271d67
 +        // instead of the frame half drawn.
 +        const synchronizedBefore = this.bridge.synchronizedOutput?.() ?? false;
          this.bridge.resize(cols, rows);
-+        if (synchronizedBefore && !(this.bridge.synchronizedOutput?.() ?? false))
++        const reopened = synchronizedBefore && !(this.bridge.synchronizedOutput?.() ?? false);
++        if (reopened)
 +            this.bridge.writeString("\x1b[?2026h");
++        // The reopened update is the one the program opened, so it keeps that update's deadline: a drag that resizes
++        // again and again must not hold a screen the program left frozen past its one second (#853).
++        this._synchronizedOutputContinues = reopened;
          this._outputAnnouncements.invalidate();
          this.cols = this.bridge.getCols();
          this.rows = this.bridge.getRows();
-@@ -798,6 +837,7 @@ export class WTerm {
+@@ -798,6 +841,7 @@ export class WTerm {
              return false;
          const before = this.element.scrollTop;
          this._shouldScrollToBottom = false;
@@ -667,7 +671,51 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..fffa81453596df9f2d711fca64271d67
          this._searchReveal = false;
          this._pendingResizeScrollTop = target * this._rowHeight;
          this._doRender();
-@@ -1576,14 +1616,15 @@ export class WTerm {
+@@ -1127,14 +1171,20 @@ export class WTerm {
+             this._synchronizedOutputState = "idle";
+             return false;
+         }
++        const continues = this._synchronizedOutputContinues === true;
++        this._synchronizedOutputContinues = false;
+         if (this._synchronizedOutputState === "held" &&
+             generation !== this._synchronizedOutputGeneration) {
+-            this._armSynchronizedOutputFallback(generation);
++            this._armSynchronizedOutputFallback(generation, continues ? this._synchronizedOutputDeadline : undefined);
+             return true;
+         }
+         else if (this._synchronizedOutputState === "passthrough" &&
+             generation !== this._synchronizedOutputGeneration) {
+-            this._synchronizedOutputState = "idle";
++            // A resize's reopen is the same update its hold already released: it stays released, or every resize of a
++            // drag would freeze the screen for another second (review of #1097). A new update the program opens holds.
++            this._synchronizedOutputGeneration = generation;
++            if (!continues)
++                this._synchronizedOutputState = "idle";
+         }
+         if (this._synchronizedOutputState !== "idle") {
+             return this._synchronizedOutputState === "held";
+@@ -1144,9 +1194,10 @@ export class WTerm {
+         this._armSynchronizedOutputFallback(generation);
+         return true;
+     }
+-    _armSynchronizedOutputFallback(generation) {
++    _armSynchronizedOutputFallback(generation, deadline = performance.now() + SYNCHRONIZED_OUTPUT_TIMEOUT_MS) {
+         this._cancelSynchronizedOutputFallback();
+         this._synchronizedOutputGeneration = generation;
++        this._synchronizedOutputDeadline = deadline;
+         this._synchronizedOutputTimer = setTimeout(() => {
+             if (this._synchronizedOutputState !== "held" ||
+                 this._synchronizedOutputGeneration !== generation) {
+@@ -1157,7 +1208,7 @@ export class WTerm {
+             this._setupRendererIfNeeded();
+             this._cancelScheduledRender();
+             this._doRender();
+-        }, SYNCHRONIZED_OUTPUT_TIMEOUT_MS);
++        }, Math.max(0, deadline - performance.now()));
+     }
+     _cancelSynchronizedOutputFallback() {
+         if (this._synchronizedOutputTimer == null)
+@@ -1576,14 +1627,15 @@ export class WTerm {
          const height = this._visibleContentHeight(contentHeight);
          const newCols = Math.max(1, Math.floor(containerRect.width / charWidth));
          const newRows = Math.max(1, Math.floor(height / rowHeight));
