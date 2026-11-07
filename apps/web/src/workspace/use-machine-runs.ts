@@ -30,8 +30,6 @@ export function useMachineRuns(
   // A run that answers after the workspace closed starts nothing here: no tab, no handing over of held keys (which would
   // wait for a view that never mounts), no toast.
   const mounted = useRef(true);
-  // Asks whose answer has not come back yet, by their run parameters (#1343).
-  const pending = useRef(new Set<string>());
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -40,29 +38,21 @@ export function useMachineRuns(
   }, []);
   const start = useCallback(
     (params: TerminalRunParams, place: (address: string) => void = opened, failed?: () => void): void => {
-      // One attempt per user action: a second ask with the same parameters while the first is unanswered is the same
-      // action dispatched twice (a menu item's click reaching its handler twice, a keybinding and a click), and starting a
-      // second terminal for it would report the same failure twice (#1343).
-      const ask = JSON.stringify(params);
-      if (pending.current.has(ask)) return undefined;
-      pending.current.add(ask);
       const core = connection.hello.core.name;
       const hold = typeAhead.hold();
-      void startTerminal((run) => connection.call("terminal.run", run), params, core)
-        .then((started) => {
-          if (!mounted.current) return undefined;
-          if (started.ok) {
-            // Placed either way; claimed (its view takes the keyboard) only while the keyboard is still the new terminal's.
-            if (typeAhead.holds(hold, started.address)) place(started.address);
-            else withoutClaim(() => place(started.address));
-            return typeAhead.deliver(hold, started.address);
-          }
-          typeAhead.release(hold);
-          toasts.add({ type: "error", ...failureNotice(started.failure, connection.closed, core) });
-          failed?.();
-          return refresh();
-        })
-        .finally(() => pending.current.delete(ask));
+      void startTerminal((run) => connection.call("terminal.run", run), params, core).then((started) => {
+        if (!mounted.current) return undefined;
+        if (started.ok) {
+          // Placed either way; claimed (its view takes the keyboard) only while the keyboard is still the new terminal's.
+          if (typeAhead.holds(hold, started.address)) place(started.address);
+          else withoutClaim(() => place(started.address));
+          return typeAhead.deliver(hold, started.address);
+        }
+        typeAhead.release(hold);
+        toasts.add({ type: "error", ...failureNotice(started.failure, connection.closed, core) });
+        failed?.();
+        return refresh();
+      });
     },
     [connection, opened, refresh, toasts, typeAhead],
   );
