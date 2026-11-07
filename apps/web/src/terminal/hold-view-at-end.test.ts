@@ -1,6 +1,7 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterAll, afterEach, expect, test } from "bun:test";
 import { holdAtEnd } from "./hold-view-at-end.ts";
 
+const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
 const frames: (() => void)[] = [];
 const requestAnimationFrame = (run: () => void): number => frames.push(run);
 Reflect.set(globalThis, "requestAnimationFrame", requestAnimationFrame);
@@ -8,6 +9,10 @@ const runFrame = (): void => frames.shift()?.();
 
 afterEach(() => {
   frames.length = 0;
+});
+
+afterAll(() => {
+  Reflect.set(globalThis, "requestAnimationFrame", originalRequestAnimationFrame);
 });
 
 const scroller = (scrollTop: number, scrollHeight: number, clientHeight = 100) => ({
