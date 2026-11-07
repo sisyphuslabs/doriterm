@@ -11,21 +11,33 @@ test("a New tab that fails says so with the sidebar hidden, where the machine li
   await openNewTerminal(page);
   await page.getByRole("button", { name: "Hide sidebar" }).click();
   await expect(page.getByRole("complementary", { name: "Workspace" })).toBeHidden();
+  await socket.drop(true);
+  await expect(page.getByRole("status").filter({ hasText: "Reconnecting" })).toBeVisible();
+  await pressNewTab(page.getByRole("button", { name: "New tab", exact: true }));
+  const notice = page.getByRole("heading", { name: "Could not open a new tab" });
+  await expect(notice).toHaveCount(1);
+  await expect(page.getByText(/try again once it is back/)).toBeVisible();
+  // A duplicate that renders later in this step is caught here; one that renders after it is not, so this narrows the
+  // window rather than closing it (#1343).
+  await expect(notice).toHaveCount(1);
+  socket.restore();
+});
+
+test("one New tab asks the core once, so a failure has one cause to report", async ({ page }) => {
+  const socket = await routeHcSocket(page);
+  await page.goto("/");
+  await openNewTerminal(page);
   const asked = (): number => socket.sent().filter((frame) => frame.includes("terminal.run")).length;
   const before = asked();
-  // Let the page send and keep the core's answer away: the ask is on the wire, the run is still in flight, and a second
-  // dispatch would be recorded here instead of being refused by a closed socket (#1343).
+  // The link answers late, so the ask stays on the wire while the run is in flight: a second dispatch is recorded here,
+  // where a press made after the drop could not be (#1343).
   socket.delay(60_000);
   await pressNewTab(page.getByRole("button", { name: "New tab", exact: true }));
   await expect.poll(asked, { message: "one New tab asks the core" }).toBe(before + 1);
   await socket.drop(true);
-  await expect(page.getByRole("status").filter({ hasText: "Reconnecting" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Could not open a new tab" })).toHaveCount(1);
   expect(asked(), "one New tab asks the core once, not twice").toBe(before + 1);
-  const notice = page.getByRole("heading", { name: "Could not open a new tab" });
-  await expect(notice).toHaveCount(1);
-  await expect(page.getByText(/try again once it is back/)).toBeVisible();
-  // The first notice can win the poll a moment before a duplicate renders: count again after the rest of the notice.
-  await expect(notice).toHaveCount(1);
+  socket.delay(0);
   socket.restore();
 });
 
