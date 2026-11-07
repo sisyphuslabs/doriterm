@@ -16,6 +16,7 @@ const SCREENS = [
   "shell",
   "pair",
   "palette",
+  "shortcuts",
   "settings",
   "settings-appearance",
   "settings-device",

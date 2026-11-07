@@ -43,8 +43,8 @@ every chord. Keys a person rebinds in Settings > Keybindings stay theirs.
 | `cmd-alt-shift-down` | `pane.swap:down` | same | same |  |
 | `f2` | `tab.rename` | same | same |  |
 | `shift-f2` | `space.rename` | same | same |  |
-| `cmd-/` | `app.help` | unbound | same | no shortcuts dialog yet (#733); Settings > Keybindings lists every key |
-| `cmd-shift-/` | `app.help` | unbound | same | no shortcuts dialog yet (#733); Settings > Keybindings lists every key |
+| `cmd-/` | `app.help` | same | same |  |
+| `cmd-shift-/` | `app.help` | same | same |  |
 | `cmd-b` | `layout.toggle:sidebar` | same | same |  |
 | `cmd-=` | `app.zoom_in` | same | same |  |
 | `cmd-+` | `app.zoom_in` | same | same |  |
@@ -125,9 +125,9 @@ every chord. Keys a person rebinds in Settings > Keybindings stay theirs.
 | `ctrl-shift-pageup` | `space.prev` | same | same |  |
 | `alt-down` | `agent.next` | same | same |  |
 | `alt-up` | `agent.prev` | same | same |  |
-| `ctrl-?` | `app.help` | unbound | same | no shortcuts dialog yet (#733); Settings > Keybindings lists every key |
-| `ctrl-shift-/` | `app.help` | unbound | same | no shortcuts dialog yet (#733); Settings > Keybindings lists every key |
-| `ctrl-shift-?` | `app.help` | unbound | same | no shortcuts dialog yet (#733); Settings > Keybindings lists every key |
+| `ctrl-?` | `app.help` | same | same |  |
+| `ctrl-shift-/` | `app.help` | same | same |  |
+| `ctrl-shift-?` | `app.help` | same | same |  |
 | `ctrl-shift-b` | `layout.toggle:sidebar` | same | same |  |
 | `ctrl-shift-n` | `space.new` | same | New space in the tab bar's new menu |  |
 | `ctrl-shift-t` | `tab.new` | same | the tab bar's + button |  |

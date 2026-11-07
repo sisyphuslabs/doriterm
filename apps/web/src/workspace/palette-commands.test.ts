@@ -68,7 +68,14 @@ describe("paletteCommands", () => {
 
   test("a phone's palette lists only what the phone shell handles", () => {
     const labels = paletteCommands(source([], "phone")).map((command) => command.label);
-    expect(labels).toEqual(["New tab", "Larger terminal text", "Smaller terminal text", "studio", "Open settings"]);
+    expect(labels).toEqual([
+      "New tab",
+      "Larger terminal text",
+      "Smaller terminal text",
+      "studio",
+      "Keyboard shortcuts",
+      "Open settings",
+    ]);
   });
 
   test("split is listed as unavailable, with the reason, until a terminal whose layout takes edits is in view", () => {

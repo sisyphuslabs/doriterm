@@ -1,5 +1,8 @@
 export type Scope = "app" | "terminal";
 
+/** How Settings > Keybindings and the shortcuts dialog head each scope's group. */
+export const SCOPE_LABEL: Readonly<Record<Scope, string>> = { app: "App", terminal: "Terminal" };
+
 export interface ActionDef {
   /** Our id, herdr-app style: `tab.new`, `pane.go:left`, `send:<text>`. */
   readonly id: string;
@@ -64,6 +67,7 @@ export const ACTIONS: readonly ActionDef[] = [
   app("voice.dictate", "Dictate"),
   app("app.palette", "Command palette", "toggle_command_palette"),
   app("app.settings", "Open settings", "open_config"),
+  app("app.help", "Keyboard shortcuts"),
   app("app.zoom_in", "Larger terminal text", "increase_font_size:1"),
   app("app.zoom_out", "Smaller terminal text", "decrease_font_size:1"),
   app("app.zoom_reset", "Reset terminal text size", "reset_font_size"),
