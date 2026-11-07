@@ -48,7 +48,7 @@ export class NoticeTrigger {
     }
   }
 
-  /** Every terminal now in a state that asks for someone, as last told: what a baseline counted and did not announce. */
+  /** Every terminal in a state that asks for someone, as the feed last told: live, so announced ones count too. */
   waiting(): readonly Trigger[] {
     const hits: Trigger[] = [];
     for (const [terminal, kind] of this.#kinds) {

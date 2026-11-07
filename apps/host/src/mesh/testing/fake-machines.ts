@@ -27,8 +27,35 @@ export class FakeMachines implements HcMachines {
     });
   }
 
+  /** The state an added line starts in: herdr often answers an add while the line still dials. */
+  addState = "connected";
+  #held: { readonly table: readonly MachineView[]; readonly resolve: (table: readonly MachineView[]) => void }[] = [];
+  #holdNext = false;
+
+  /** herdr's line for `name` moves to `state` with no call from this host, as a dial that finishes does. */
+  setState(name: string, state: string): void {
+    this.#machines = this.#machines.map((machine) => (machine.name === name ? { ...machine, state } : machine));
+  }
+
+  /** The next list call answers the table as it is now, but only once the returned function is called. */
+  holdNextList(): () => void {
+    this.#holdNext = true;
+    return () => {
+      for (const held of this.#held.splice(0)) held.resolve(held.table);
+    };
+  }
+
+  /** Every list call from now on is never answered, as from a herdr that stopped answering. */
+  stallLists = false;
+
   list(): Promise<readonly MachineView[]> {
-    return Promise.resolve([...this.#machines]);
+    if (this.stallLists) return new Promise(() => {});
+    const table = [...this.#machines];
+    if (!this.#holdNext) return Promise.resolve(table);
+    this.#holdNext = false;
+    const { promise, resolve } = Promise.withResolvers<readonly MachineView[]>();
+    this.#held.push({ table, resolve });
+    return promise;
   }
 
   add(name: string, via: string): Promise<Machine> {
@@ -36,7 +63,7 @@ export class FakeMachines implements HcMachines {
     const failure = this.failAdds.get(name)?.shift();
     if (failure !== undefined) return Promise.reject(failure);
     const machine = { host: name, id: `core-${name}`, name, target: via, version: "0" };
-    this.#machines.push({ ...machine, state: "connected", via: true });
+    this.#machines.push({ ...machine, state: this.addState, via: true });
     return Promise.resolve(machine);
   }
 

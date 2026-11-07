@@ -81,11 +81,13 @@ describe("the desktop app's native notifications", () => {
 
   test("Send test shows a test notice; a refused one and a system without notifications say so", async () => {
     const working = rig();
+    await working.notices.turnOn();
     await working.notices.test();
     expect(working.shown).toEqual([{ kind: "test", terminal: null }]);
     expect(working.notices.view).toMatchObject({ tested: true, error: null });
 
     const refused = rig({ answer: { accepted: false, reason: "it was refused" } });
+    await refused.notices.turnOn();
     await refused.notices.test();
     expect(refused.notices.view.error).toBe("Could not send a test notification. it was refused");
 

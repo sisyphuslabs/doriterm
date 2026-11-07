@@ -22,6 +22,27 @@ export const GitFactsContext = createContext<GitFactsOf>(() => undefined);
 
 export const useGitFactsOf = (): GitFactsOf => use(GitFactsContext);
 
+/** One machine's read: the document it holds (undefined when it has none), or "failed" when it could not be asked. */
+export type FactsRead = readonly [machine: string, read: GitFactsDoc | undefined | "failed"];
+
+/**
+ * The documents after a round of reads. A read that could not be made (a mesh line redialing, held as connected by the
+ * grace from #904) keeps the machine's last document, as the layout documents keep theirs, so its rows do not lose their
+ * git facts for a blip (#913). A machine that answers with no document has none, and one no longer asked (gone from the
+ * list, or offline past the grace) is dropped.
+ */
+export function nextDocs(
+  before: ReadonlyMap<string, GitFactsDoc>,
+  reads: readonly FactsRead[],
+): ReadonlyMap<string, GitFactsDoc> {
+  const next = new Map<string, GitFactsDoc>();
+  for (const [machine, read] of reads) {
+    const doc = read === "failed" ? before.get(machine) : read;
+    if (doc !== undefined) next.set(machine, doc);
+  }
+  return next;
+}
+
 /** The documents each connected machine's doriface-host (and this machine's) wrote, read again every few seconds. */
 export function useGitFacts(connection: HcConnection, machines: readonly MachineView[]): GitFactsOf {
   const names = machines
@@ -34,7 +55,7 @@ export function useGitFacts(connection: HcConnection, machines: readonly Machine
     const want = ["", ...(names === "" ? [] : names.split("\u0000"))];
     const read = async (): Promise<void> => {
       const results = await Promise.all(
-        want.map(async (machine): Promise<readonly [string, GitFactsDoc | undefined]> => {
+        want.map(async (machine): Promise<FactsRead> => {
           try {
             const doc = await connection.call(
               "doc.get",
@@ -42,15 +63,15 @@ export function useGitFacts(connection: HcConnection, machines: readonly Machine
             );
             return [machine, parseGitFacts(doc.value)];
           } catch {
-            // An offline machine, or a core that has none: its rows say nothing about git.
-            return [machine, undefined];
+            return [machine, "failed"];
           }
         }),
       );
       if (!live) return;
-      const next = new Map<string, GitFactsDoc>();
-      for (const [machine, doc] of results) if (doc !== undefined) next.set(machine, doc);
-      setDocs((before) => (JSON.stringify([...before]) === JSON.stringify([...next]) ? before : next));
+      setDocs((before) => {
+        const next = nextDocs(before, results);
+        return JSON.stringify([...before]) === JSON.stringify([...next]) ? before : next;
+      });
     };
     void read();
     const timer = setInterval(() => void read(), READ_MS);

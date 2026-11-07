@@ -2,7 +2,7 @@ import { Notice, SettingRow, cn } from "@doriface/ui";
 import { Monitor, Server } from "lucide-react";
 import type { ReactNode } from "react";
 import type { MemberEntry } from "../connection/mesh-connections.ts";
-import { connectionStore, useMeshMembers } from "../connection/store.ts";
+import { connectionStore, useConnectionSettings, useMeshMembers } from "../connection/store.ts";
 import { RetryButton } from "../workspace/retry-button.tsx";
 
 const WORDS: Readonly<Record<MemberEntry["state"]["phase"], string>> = {
@@ -47,12 +47,12 @@ function stateLine(entry: MemberEntry): ReactNode {
  */
 export function MembersSection() {
   const members = useMeshMembers();
-  const selectedHostId = connectionStore.settings.hostId;
+  const selectedHostId = useConnectionSettings().hostId;
   if (members.length < 2) return null;
   const open = members.filter((entry) => entry.state.phase === "open").length;
   return (
     <div className="flex flex-col gap-3">
-      <ul aria-label="Your machines" className="flex flex-col divide-y divide-border">
+      <ul className="flex flex-col divide-y divide-border">
         {members.map((entry) => (
           <li key={entry.target.hostId}>
             <SettingRow

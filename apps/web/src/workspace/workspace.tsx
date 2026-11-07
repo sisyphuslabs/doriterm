@@ -73,7 +73,7 @@ export function Workspace({ connection }: WorkspaceProps) {
     listed: machineReads,
   } = useMachines(connection, fed.terminals);
   // Opened and re-read on what hc said: a document read while its line was down is read again once the line is back.
-  const { layouts, heard } = useLayoutDocs(connection, heardMachines);
+  const { layouts, heard } = useLayoutDocs(connection, heardMachines, views);
   const gitOf = useGitFacts(connection, views);
   const todoOf = useTodoProgress(connection, fed.terminals);
   heardLayout.current = heard;
@@ -161,7 +161,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   // Opening a terminal from this device's list is the first run's "open an agent" step; a restored focus is not (#668).
   const showOnPhone = useCallback(
     (address: string) => {
-      guideStore.opened();
+      guideStore.opened(address);
       setPhoneKey(tabKey(address, ids));
     },
     [ids],
@@ -219,7 +219,7 @@ export function Workspace({ connection }: WorkspaceProps) {
       },
       // The first run's agent step completes once the terminal really started, not when it was asked for (#668).
       (address) => {
-        guideStore.opened();
+        guideStore.opened(address);
         opened(address);
       },
     );
@@ -302,6 +302,8 @@ export function Workspace({ connection }: WorkspaceProps) {
 
   const openAddMachine = useCallback(() => setAdding(true), []);
   const terminalsLoaded = fed.loaded;
+  const terminalsError = fed.loaded ? null : fed.error;
+  const retryTerminals = fed.retry;
   const machinesListed = machineReads > 0 || listError !== undefined;
   // The sidebar's runs are its New space buttons: each terminal they start is the first tab of a new space (#404).
   const inNewSpace = useCallback(
@@ -315,6 +317,8 @@ export function Workspace({ connection }: WorkspaceProps) {
     () => ({
       entries,
       terminalsLoaded,
+      terminalsError,
+      retryTerminals,
       machinesListed,
       listError,
       openAddMachine,
@@ -324,7 +328,20 @@ export function Workspace({ connection }: WorkspaceProps) {
       start: (params: TerminalRunParams) => runs.start(params, inNewSpace),
       newTerminalOn: (machine: string) => runs.start({ on: machine }, inNewSpace),
     }),
-    [entries, terminalsLoaded, machinesListed, listError, openAddMachine, views, retry, moveMachine, runs, inNewSpace],
+    [
+      entries,
+      terminalsLoaded,
+      terminalsError,
+      retryTerminals,
+      machinesListed,
+      listError,
+      openAddMachine,
+      views,
+      retry,
+      moveMachine,
+      runs,
+      inNewSpace,
+    ],
   );
   const { selectSpace } = layout;
   // The space keys count the spaces as the sidebar lists them, so "space 2" is the second row a person sees.
