@@ -135,7 +135,7 @@ export function Workspace({ connection }: WorkspaceProps) {
     machineReads > 0,
   );
   // A session that ends is dropped from the layout once; a refused drop keeps the pane, showing the ended session.
-  const { dropEnded, closing: closingSessions } = useDropOnce(terminals, layout.dropPane);
+  const { dropEnded, closing: closingSessions, kept } = useDropOnce(terminals, layout.dropPane);
   // A pane is asked about only on what hc said: a machine held connected through a redial may have no terminals listed.
   useDeadPanes(connection, layout.tabs, fed.loaded ? terminals : null, heardMachines, machineReads, dropEnded);
   useAdoptLoose(layouts, fed.loaded ? terminals : null, failed);
@@ -415,7 +415,14 @@ export function Workspace({ connection }: WorkspaceProps) {
               connection={connection}
               machines={entries}
             />
-            <SessionDialogs connection={connection} terminals={terminals} ask={ask} onDone={done} onDrop={dropEnded} />
+            <SessionDialogs
+              connection={connection}
+              terminals={terminals}
+              ask={ask}
+              onDone={done}
+              onDrop={dropEnded}
+              onKept={kept}
+            />
             {closing === undefined ? null : (
               <CloseTabDialog
                 key={closing.key}
@@ -430,6 +437,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                   layout.closeTab(closing.key);
                 }}
                 onDone={() => setClosingTab(null)}
+                onKept={kept}
               />
             )}
             {palette ? (

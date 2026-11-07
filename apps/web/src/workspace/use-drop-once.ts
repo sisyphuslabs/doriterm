@@ -34,6 +34,11 @@ export class DropOnce {
     return true;
   }
 
+  /** A close dropped this session's pane, but its End failed: the session keeps running, and its later end drops again. */
+  kept(address: string): void {
+    this.#dropped.delete(address);
+  }
+
   /** What the page lists now: a dropped address listed with a new session in it is dropped again when that one ends. */
   listed(terminals: readonly Listed[]): void {
     this.#live = new Map(
@@ -52,6 +57,8 @@ export interface DropsOnce {
   readonly dropEnded: (address: string) => void;
   /** Records these sessions as dropped by a close that writes their panes' removal itself (a whole tab). */
   readonly closing: (addresses: readonly string[]) => void;
+  /** A close's End failed and this session keeps running: its later end drops its pane again (DropOnce.kept). */
+  readonly kept: (address: string) => void;
 }
 
 /**
@@ -70,5 +77,6 @@ export function useDropOnce(terminals: readonly Listed[], drop: (address: string
   const closing = useCallback((addresses: readonly string[]): void => {
     for (const address of addresses) once.current.take(address);
   }, []);
-  return useMemo(() => ({ dropEnded, closing }), [dropEnded, closing]);
+  const kept = useCallback((address: string): void => once.current.kept(address), []);
+  return useMemo(() => ({ dropEnded, closing, kept }), [dropEnded, closing, kept]);
 }

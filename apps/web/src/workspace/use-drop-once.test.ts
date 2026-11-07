@@ -44,6 +44,17 @@ test("another program listed live at the dropped address is a new session, dropp
   }
 });
 
+test("a session whose close's End failed keeps running: its later end drops its pane again", () => {
+  const once = new DropOnce();
+  once.listed([live("t1")]);
+  expect(once.take("t1")).toBe(true);
+  once.kept("t1");
+  once.listed([live("t1")]);
+  once.listed([live("t1")]);
+  expect(once.take("t1")).toBe(true);
+  expect(once.take("t1")).toBe(false);
+});
+
 test("a drop of an address not listed live takes the next live listing there as a new session", () => {
   const once = new DropOnce();
   once.listed([]);
