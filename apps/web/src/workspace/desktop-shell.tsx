@@ -36,7 +36,9 @@ import { useAppActions, type SessionVerb } from "./use-app-actions.ts";
 import { useArrivalReady, workspaceSettled } from "./use-arrival-ready.ts";
 import { behindModal, useFocusSidebar } from "./use-focus-sidebar.ts";
 import { useSidebarShown, useSidebarSize } from "./layout-store.ts";
-import type { LayoutTab } from "./layout-model.ts";
+import { findTerminal, type LayoutTab } from "./layout-model.ts";
+import { readDisplay } from "../terminal/display.ts";
+import { attachAhead, openingCallsOf } from "../terminal/opening-attach.ts";
 import type { Axis } from "@doriface/protocol/layout";
 import type { Layout, PaneTarget } from "./use-layout.ts";
 import type { TerminalEnd } from "../terminal/terminal-end.ts";
@@ -251,6 +253,9 @@ export function DesktopShell(props: DesktopShellProps) {
           active={focusedAddress}
           onOpen={(address) => {
             guideStore.opened(address);
+            if (findTerminal(layout.tabs, address) === null) {
+              attachAhead(connection, openingCallsOf(connection), address, readDisplay(document.documentElement));
+            }
             layout.openTerminal(address);
           }}
           onPalette={onPalette}

@@ -16,6 +16,36 @@ export const HISTORY_LINES = 2_000;
 const DEFAULT_SIZE = { cols: 80, rows: 24 } as const;
 let lastSize: { readonly cols: number; readonly rows: number } = DEFAULT_SIZE;
 const opening = new WeakMap<object, Map<string, OpeningAttach>>();
+/** Opening attaches not yet answered, by connection and by the machine their address names (null: the core itself). */
+const unanswered = new WeakMap<object, Map<string | null, Set<Promise<unknown>>>>();
+
+const machineOfAddress = (address: string): string | null => {
+  const slash = address.indexOf("/");
+  return slash === -1 ? null : address.slice(0, slash);
+};
+
+function track(connection: object, address: string, stream: Promise<unknown>): void {
+  const byMachine = unanswered.get(connection) ?? new Map<string | null, Set<Promise<unknown>>>();
+  unanswered.set(connection, byMachine);
+  const machine = machineOfAddress(address);
+  const pending = byMachine.get(machine) ?? new Set<Promise<unknown>>();
+  byMachine.set(machine, pending);
+  pending.add(stream);
+  const forget = (): void => {
+    pending.delete(stream);
+  };
+  stream.then(forget, forget);
+}
+
+/**
+ * Settles once every opening attach to `machine` (null: the core itself) sent so far has been answered. A layout write
+ * waits for it (#1351): hc makes a document durable on disk while it holds its state, so an attach that reached the
+ * core behind that write waited for the disk, by tens to hundreds of ms on a busy one.
+ */
+export function openingAttachesAnswered(connection: object, machine: string | null): Promise<unknown> {
+  const pending = unanswered.get(connection)?.get(machine);
+  return pending === undefined || pending.size === 0 ? Promise.resolve() : Promise.allSettled(pending);
+}
 
 /** The two calls a run with its attach makes, on one connection. */
 export interface OpeningCalls {
@@ -64,6 +94,7 @@ export async function runWithAttach(
   );
   // Settled by whoever takes it, or closed here when nobody will: never an unhandled rejection.
   stream.catch(() => undefined);
+  track(connection, terminal, stream);
   try {
     const { address } = await ran;
     const byAddress = opening.get(connection) ?? new Map<string, OpeningAttach>();
@@ -77,6 +108,29 @@ export async function runWithAttach(
     );
     throw error;
   }
+}
+
+/**
+ * Asks for a terminal's screen before the tab that will show it is written to the layout, which waits for the answer
+ * ({@link openingAttachesAnswered}). The view that opens the address takes this attach.
+ */
+export function attachAhead(
+  connection: object,
+  calls: Pick<OpeningCalls, "attach">,
+  address: string,
+  display: Display,
+): void {
+  const byAddress = opening.get(connection) ?? new Map<string, OpeningAttach>();
+  opening.set(connection, byAddress);
+  if (byAddress.has(address)) return;
+  const { cols, rows } = lastSize;
+  const stream = calls.attach(
+    { terminal: address, cols, rows, history: HISTORY_LINES, display },
+    { autoCredit: false },
+  );
+  stream.catch(() => undefined);
+  track(connection, address, stream);
+  byAddress.set(address, { cols, rows, display, stream });
 }
 
 /** The attach sent with this terminal's run, once: the first view to open it on that connection takes it. */

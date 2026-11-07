@@ -2,6 +2,7 @@ import type { HcConnection } from "@doriface/client";
 import { HcRpcError, type JsonObject, type MachineView } from "@doriface/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type DocCalls, type DocEdit, LAYOUT_DOC, LayoutDoc } from "@doriface/protocol/layout";
+import { openingAttachesAnswered } from "../terminal/opening-attach.ts";
 
 /** One machine's layout as this screen can show it: `doc` is the last one read, and `readOnly` says why it is frozen. */
 export interface MachineLayout {
@@ -35,12 +36,13 @@ export function docCalls(connection: Pick<HcConnection, "call">, machines: () =>
     get: (id) =>
       addressed(id, (on) => connection.call("doc.get", on === null ? { name: LAYOUT_DOC } : { name: LAYOUT_DOC, on })),
     set: (id, value, version) =>
-      addressed(id, (on) =>
-        connection.call(
+      addressed(id, async (on) => {
+        await openingAttachesAnswered(connection, on);
+        return connection.call(
           "doc.set",
           on === null ? { name: LAYOUT_DOC, value, version } : { name: LAYOUT_DOC, on, value, version },
-        ),
-      ),
+        );
+      }),
   };
 }
 
