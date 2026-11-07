@@ -18,4 +18,16 @@ export const KNOWN_BAD: readonly { readonly text: string; readonly why: string }
   { text: "/tmp/x/clone", why: "run root, temp" },
   { text: "/opt/omo-runs/x", why: "system install root" },
   { text: "ssh someone@a-host", why: "ssh target" },
+  { text: "someone@github.com", why: "named account at a registry host" },
+  { text: "support@doriterm.com", why: "account at a real domain" },
+];
+
+/** What a mockup is meant to show: a reserved example domain names no one, and neither does a clone URL's git user. */
+export const PLACEHOLDERS: readonly { readonly text: string; readonly why: string }[] = [
+  { text: "you@example.com", why: "placeholder email at example.com" },
+  { text: "support@example.org", why: "placeholder email at example.org" },
+  { text: "billing@example.net", why: "placeholder email at example.net" },
+  { text: "alice@studio.example", why: "placeholder email under the .example name" },
+  { text: "someone@example", why: "placeholder email at bare example" },
+  { text: "git clone git@github.com:owner/repo.git", why: "a clone URL's git user" },
 ];

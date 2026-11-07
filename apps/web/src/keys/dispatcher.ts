@@ -23,10 +23,24 @@ function dispatch(scope: Scope, action: string): boolean {
   return fallbacks.get(action)?.() ?? false;
 }
 
+let chosen = false;
+
+/**
+ * True while an action chosen from a list (the palette, the desktop app's menu) runs, rather than one a key sent. A
+ * modal that lists the action closes once it runs, so a handler's guard against acting behind a modal does not apply.
+ */
+export const actionChosen = (): boolean => chosen;
+
 /** Runs a bound action as if its key was pressed; false when no handler took it. */
 export function runAction(id: string): boolean {
   const action = actionFor(id);
-  return action !== null && dispatch(action.scope, id);
+  if (action === null) return false;
+  chosen = true;
+  try {
+    return dispatch(action.scope, id);
+  } finally {
+    chosen = false;
+  }
 }
 
 /** True under a view that is kept but not shown (the workspace under Settings): its handlers take no action. */

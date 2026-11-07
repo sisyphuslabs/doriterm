@@ -1,5 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import { useEffect, useState } from "react";
+import { measureRoundTrip } from "./round-trip.ts";
 
 /** How often the round trip is measured again: often enough to be current, rare enough to cost nothing. */
 const EVERY_MS = 15_000;
@@ -13,14 +14,8 @@ export function useHostRoundTrip(connection: HcConnection | null): number | unde
     if (connection === null) return setMs(undefined);
     let cancelled = false;
     const measure = async (): Promise<void> => {
-      const started = performance.now();
-      try {
-        await connection.call("machine.list");
-      } catch {
-        if (!cancelled) setMs(undefined);
-        return;
-      }
-      if (!cancelled) setMs(Math.max(1, Math.round(performance.now() - started)));
+      const measured = await measureRoundTrip(connection);
+      if (!cancelled) setMs(measured);
     };
     void measure();
     const timer = setInterval(() => void measure(), EVERY_MS);

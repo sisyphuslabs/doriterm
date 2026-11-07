@@ -196,9 +196,13 @@ export class MeshConnections {
 
   /** The desktop app restarting this computer's own host: only the member on loopback is affected, and it will be dialled again. */
   restoring(): void {
-    // The store stops itself; this records that it must be dialled again by the settings the boot path hands over next.
-    this.#started.clear();
-    this.selected?.restoring();
+    // The store stops itself; this records that it must be dialled again by the settings the boot path hands over next. Only that
+    // member is forgotten: the next settings change starts every member not in the set, and `start()` on an open store closes it
+    // (#1140).
+    const store = this.selected;
+    if (store === undefined) return;
+    for (const [hostId, held] of this.#stores) if (held === store) this.#started.delete(hostId);
+    store.restoring();
   }
 
   restartsLocalHost(starter: LocalHostStarter): void {
