@@ -387,7 +387,6 @@ jobs:
             apps/web/playwright-report
             apps/web/test-results
           if-no-files-found: ignore
-          retention-days: 3
 
   android:
     # After the merge, like the other platform jobs: the Android app (#704) builds from the web build, and its JVM tests
