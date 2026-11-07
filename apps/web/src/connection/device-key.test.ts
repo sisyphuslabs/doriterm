@@ -30,6 +30,18 @@ describe("loadDeviceKey", () => {
     expect(again.publicKey).toEqual(key.publicKey);
   });
 
+  test("a store that throws on write is not read as a browser that cannot keep keys (#1329 review)", async () => {
+    const backing = memoryStore();
+    const storage: KeyValueStore = {
+      get: (key) => backing.get(key),
+      put: (key, value) => {
+        if (key === "device-key.probe") throw new Error("QuotaExceededError");
+        return backing.put(key, value);
+      },
+    };
+    await expect(loadDeviceKey(storage, globalThis.crypto.subtle)).rejects.toThrow("QuotaExceededError");
+  });
+
   test("a failed load is retried on the next call", async () => {
     const backing = memoryStore();
     let failing = true;
