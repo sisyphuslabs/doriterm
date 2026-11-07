@@ -26,6 +26,8 @@ export interface MeshHooks {
   /** After `mesh leave` deleted mesh.json: removes this host's mesh machines (section 6.5). */
   left(): Promise<void>;
   live(): MeshLiveFacts;
+  /** Reads herdr's machine list again before a status read, bounded, so `live()` names each line as herdr does (#754). */
+  refreshLines(): Promise<void>;
   /** The highest claim a peer's `hello` holds on this host's counter: the commands sign nothing below it (10.1). */
   floor(): CounterFloor | undefined;
   /**
@@ -41,6 +43,7 @@ export const IDLE_MESH_HOOKS: MeshHooks = {
   left: () => Promise.resolve(),
   floor: () => undefined,
   formatReady: () => false,
+  refreshLines: () => Promise.resolve(),
   live: () => ({
     pending: [],
     peers: new Map(),

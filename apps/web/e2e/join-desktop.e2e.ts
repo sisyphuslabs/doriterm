@@ -67,6 +67,34 @@ test("a desktop browser joins by pasting the invite link", async ({ browser }) =
   }
 });
 
+test("typing the code looks its host up from the third character on, and Pair asks the relay nothing more (#1271)", async ({
+  browser,
+}) => {
+  test.setTimeout(180_000);
+  const host = await startFakeRelayHost({ machine: true });
+  const context = await browser.newContext({ serviceWorkers: "block" });
+  try {
+    const { code } = await host.pairingOffer();
+    const page = await desktopPage(context, host);
+    const lookups: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/v1/pair/")) lookups.push(request.url());
+    });
+    await page.goto("/");
+    await pairScreen(page);
+    const field = page.getByRole("textbox").first();
+    await field.pressSequentially(code.slice(0, 3));
+    await expect.poll(() => lookups.length).toBe(1);
+    await field.pressSequentially(code.slice(3));
+    await page.getByRole("button", { name: "Pair", exact: true }).click();
+    await expect(page.getByRole("figure").filter(FINGERPRINT)).toBeVisible({ timeout: 60_000 });
+    expect(lookups).toHaveLength(1);
+  } finally {
+    await context.close();
+    await host.stop();
+  }
+});
+
 test("a desktop browser joins by typing the code the host shows", async ({ browser }) => {
   test.setTimeout(180_000);
   const host = await startFakeRelayHost({ machine: true });

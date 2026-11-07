@@ -11,7 +11,9 @@ type Workflow = {
 };
 
 const ROOT = join(import.meta.dir, "..", "..");
-const SCRIPT = join(ROOT, ".github", "scripts", "changelog-check.ts");
+const SCRIPTS = join(ROOT, ".github", "scripts");
+// The check and the fragment rules it imports.
+const SCRIPT_FILES = ["changelog-check.ts", "changelog-fragments.ts"];
 
 // A repository of the test's own, with no global or system git config, so no hook or setting of the machine leaks in.
 const GIT_ENV = {
@@ -51,17 +53,22 @@ function write(dir: string, files: Record<string, string>): void {
 const BASE_CHANGELOG =
   "# Changelog\n\n## Unreleased\n\n### Terminals\n\n- Already there. (#1)\n\n## v1.0.0\n\n- First. (#0)\n";
 
-async function repo(change: Record<string, string>): Promise<{ dir: string; base: string }> {
+/** A repository whose base commit holds `atBase` too, then one commit with `change` written and `remove` deleted. */
+async function repo(
+  change: Record<string, string>,
+  { atBase = {}, remove = [] }: { atBase?: Record<string, string>; remove?: string[] } = {},
+): Promise<{ dir: string; base: string }> {
   const dir = mkdtempSync(join(tmpdir(), "changelog-check-"));
   dirs.push(dir);
   await git(dir, "init", "-q", "-b", "dev");
-  write(dir, { "CHANGELOG.md": BASE_CHANGELOG, "apps/web/src/app.ts": "export {};\n", "README.md": "x\n" });
+  write(dir, { "CHANGELOG.md": BASE_CHANGELOG, "apps/web/src/app.ts": "export {};\n", "README.md": "x\n", ...atBase });
   mkdirSync(join(dir, ".github", "scripts"), { recursive: true });
-  copyFileSync(SCRIPT, join(dir, ".github", "scripts", "changelog-check.ts"));
+  for (const name of SCRIPT_FILES) copyFileSync(join(SCRIPTS, name), join(dir, ".github", "scripts", name));
   await git(dir, "add", "-A");
   await git(dir, "commit", "-q", "-m", "base");
   const base = await git(dir, "rev-parse", "HEAD");
   write(dir, change);
+  for (const path of remove) rmSync(join(dir, path));
   await git(dir, "add", "-A");
   await git(dir, "commit", "-q", "-m", "change");
   return { dir, base };
@@ -167,6 +174,101 @@ test("a release pull request that moves Unreleased into a new version section pa
     ),
   });
   expect((await check(dir, base)).code).toBe(0);
+});
+
+test("an empty release heading does not stand in for an Unreleased line", async () => {
+  const { dir, base } = await repo({
+    "apps/web/src/app.ts": "export const a = 1;\n",
+    "CHANGELOG.md": BASE_CHANGELOG.replace("## v1.0.0\n", "## v9.9.9\n\n## v1.0.0\n"),
+  });
+  const result = await check(dir, base);
+  expect(result.code).toBe(1);
+  expect(result.out).toContain("v9.9.9");
+});
+
+test("a release section whose version apps/desktop/package.json does not set is not a release", async () => {
+  const { dir, base } = await repo({
+    "apps/web/src/app.ts": "export const a = 1;\n",
+    "CHANGELOG.md": BASE_CHANGELOG.replace(
+      "## Unreleased\n\n### Terminals\n\n- Already there. (#1)\n",
+      "## Unreleased\n\n## v1.1.0 - 2026-11-06\n\n### Terminals\n\n- Already there. (#1)\n",
+    ),
+  });
+  const result = await check(dir, base);
+  expect(result.code).toBe(1);
+  expect(result.out).toContain("apps/desktop/package.json");
+});
+
+test("a release section that leaves Unreleased as it was is not a release", async () => {
+  const { dir, base } = await repo({
+    "apps/desktop/package.json": '{ "version": "1.1.0" }\n',
+    "apps/web/src/app.ts": "export const a = 1;\n",
+    "CHANGELOG.md": BASE_CHANGELOG.replace("## v1.0.0\n", "## v1.1.0\n\n- Written here instead. (#2)\n\n## v1.0.0\n"),
+  });
+  const result = await check(dir, base);
+  expect(result.code).toBe(1);
+  expect(result.out).toContain("Already there");
+});
+
+const FRAGMENT = "### Terminals\n\n- New for users. (#2)\n";
+const FRAGMENT_3 = "### Terminals\n\n- From a fragment. (#3)\n";
+const RELEASED = BASE_CHANGELOG.replace(
+  "## Unreleased\n\n### Terminals\n\n- Already there. (#1)\n",
+  "## Unreleased\n\n## v1.1.0 - 2026-11-08\n\n### Terminals\n\n- Already there. (#1)\n- From a fragment. (#3)\n",
+);
+
+test("a user-facing change with a fragment in changes/unreleased passes", async () => {
+  const { dir, base } = await repo({
+    "apps/web/src/app.ts": "export const a = 1;\n",
+    "changes/unreleased/2.md": FRAGMENT,
+  });
+  const result = await check(dir, base);
+  expect(result.code).toBe(0);
+  expect(result.out).toContain("changes/unreleased/2.md");
+});
+
+test("a fragment the release cannot place fails, naming the file and the line, even with the label", async () => {
+  const { dir, base } = await repo({
+    "apps/web/src/app.ts": "export const a = 1;\n",
+    "changes/unreleased/2.md": "- No heading above this line. (#2)\n",
+  });
+  const results = await Promise.all([[], ["no-changelog"]].map((labels) => check(dir, base, labels)));
+  for (const result of results) {
+    expect(result.code).toBe(1);
+    expect(result.out).toContain("changes/unreleased/2.md line 1");
+  }
+});
+
+test("a fragment that is not named <pr-number>.md or a lowercase branch slug fails", async () => {
+  const { dir, base } = await repo({
+    "apps/web/src/app.ts": "export const a = 1;\n",
+    "changes/unreleased/My Fix.md": FRAGMENT,
+  });
+  const result = await check(dir, base);
+  expect(result.code).toBe(1);
+  expect(result.out).toContain("<pr-number>.md");
+});
+
+test("a release pull request that writes the fragments into its section and deletes them passes", async () => {
+  const { dir, base } = await repo(
+    { "apps/desktop/package.json": '{ "version": "1.1.0" }\n', "CHANGELOG.md": RELEASED },
+    {
+      atBase: { "apps/desktop/package.json": '{ "version": "1.0.0" }\n', "changes/unreleased/3.md": FRAGMENT_3 },
+      remove: ["changes/unreleased/3.md"],
+    },
+  );
+  expect((await check(dir, base)).code).toBe(0);
+});
+
+test("a release pull request that leaves fragments behind is not a release", async () => {
+  const { dir, base } = await repo(
+    { "apps/desktop/package.json": '{ "version": "1.1.0" }\n', "CHANGELOG.md": RELEASED },
+    { atBase: { "apps/desktop/package.json": '{ "version": "1.0.0" }\n', "changes/unreleased/3.md": FRAGMENT_3 } },
+  );
+  const result = await check(dir, base);
+  expect(result.code).toBe(1);
+  expect(result.out).toContain("changes/unreleased/3.md");
+  expect(result.out).toContain("changelog-assemble.ts");
 });
 
 test("the Changelog workflow runs the check on every pull request event a label can change", () => {
