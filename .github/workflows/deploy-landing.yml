@@ -99,7 +99,7 @@ jobs:
       - name: The app the page links to answers
         run: curl -fsS --max-time 15 -o /dev/null https://app.doriterm.com/
       # The bytes staging served and passed, not a second build.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: landing-dist
           path: apps/landing/dist
