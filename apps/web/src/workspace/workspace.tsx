@@ -73,7 +73,7 @@ export function Workspace({ connection }: WorkspaceProps) {
     listed: machineReads,
   } = useMachines(connection, fed.terminals);
   // Opened and re-read on what hc said: a document read while its line was down is read again once the line is back.
-  const { layouts, heard } = useLayoutDocs(connection, heardMachines);
+  const { layouts, heard } = useLayoutDocs(connection, heardMachines, views);
   const gitOf = useGitFacts(connection, views);
   const todoOf = useTodoProgress(connection, fed.terminals);
   heardLayout.current = heard;
