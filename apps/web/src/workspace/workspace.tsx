@@ -4,6 +4,7 @@ import { useToastManager } from "@doriface/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { connectionStore } from "../connection/store.ts";
 import { useActionHandler } from "../keys/dispatcher.ts";
+import { ShortcutsHelp } from "../keys/shortcuts-dialog.tsx";
 import { type Axis, LAYOUT_DOC, ORDER_DOC } from "@doriface/protocol/layout";
 import { closesTab, type TerminalEnd } from "../terminal/terminal-end.ts";
 import { CloseTabDialog } from "./close-tab-dialog.tsx";
@@ -458,6 +459,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                 onClose={() => setPalette(false)}
               />
             ) : null}
+            <ShortcutsHelp />
           </SpaceSelectionContext>
         </TodoProgressContext>
       </GitFactsContext>

@@ -55,6 +55,8 @@ const MAC: readonly [string, string][] = [
   ["shift+f2", "space.rename"],
   ["super+shift+p", "app.palette"],
   ["super+,", "app.settings"],
+  ["super+/", "app.help"],
+  ["super+shift+/", "app.help"],
   ["super+=", "app.zoom_in"],
   ["super+shift+=", "app.zoom_in"],
   ["super+-", "app.zoom_out"],
@@ -137,6 +139,9 @@ const OTHER: readonly [string, string][] = [
   ["shift+f2", "space.rename"],
   ["ctrl+shift+p", "app.palette"],
   ["ctrl+,", "app.settings"],
+  // herdr-app's Ctrl+? (Ctrl+Shift+/). Some terminals send DEL for it, which Backspace already sends, so no program
+  // loses a key it needs.
+  ["ctrl+shift+/", "app.help"],
   ["ctrl+=", "app.zoom_in"],
   ["ctrl+shift+=", "app.zoom_in"],
   ["ctrl+-", "app.zoom_out"],

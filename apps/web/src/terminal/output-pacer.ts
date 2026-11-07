@@ -70,6 +70,11 @@ export class OutputPacer {
     this.#schedule();
   }
 
+  /** Whether output is still waiting to be written: queued bytes, or a frame already booked. */
+  get busy(): boolean {
+    return this.#queue.length > 0 || this.#cancel !== null;
+  }
+
   /** Out of view: nothing is written. Back in view: what waited is written from the next frame. */
   setVisible(visible: boolean): void {
     if (visible === this.#visible) return;

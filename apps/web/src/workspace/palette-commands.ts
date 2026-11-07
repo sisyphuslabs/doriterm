@@ -13,6 +13,8 @@ const AGENT = "agent:";
 /** The palette leads with the agent that needs you, as the sidebar sections do. */
 const URGENCY: Readonly<Record<AgentStatus, number>> = { blocked: 0, done: 1, working: 2, idle: 3, unknown: 4 };
 const HOST = "host:";
+/** The palette's General group: the app's own help and settings, after the hosts. */
+const GENERAL: ReadonlySet<string> = new Set(["app.help", "app.settings"]);
 
 export interface PaletteSource {
   readonly terminals: readonly Terminal[];
@@ -50,13 +52,9 @@ export function paletteCommands(source: PaletteSource): Command[] {
     });
   return [
     ...agents,
-    ...source.actions
-      .filter((action) => action.id !== "app.settings")
-      .map((action) => command(source, action, "Actions")),
+    ...source.actions.filter((action) => !GENERAL.has(action.id)).map((action) => command(source, action, "Actions")),
     { id: `${HOST}${source.host}`, label: source.host, group: "Hosts", hint: source.route },
-    ...source.actions
-      .filter((action) => action.id === "app.settings")
-      .map((action) => command(source, action, "General")),
+    ...source.actions.filter((action) => GENERAL.has(action.id)).map((action) => command(source, action, "General")),
   ];
 }
 
