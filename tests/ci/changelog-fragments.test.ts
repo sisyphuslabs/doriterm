@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   assembleRelease,
+  canonicalHeading,
   FRAGMENT_DIR,
   parseFragment,
   pendingNotes,
@@ -102,6 +103,41 @@ test("a prerelease's notes are Unreleased and the fragments, grouped the same wa
   const result = pendingNotes(input(), fixtureFragments());
   const section = expected().split("## v1.3.0 - 2026-11-08\n\n")[1]?.split("\n## v1.2.0")[0]?.trim();
   expect(result).toEqual({ ok: true, notes: section ?? "missing" });
+});
+
+test("a heading open pull requests wrote outside the list goes under its release section (#1324)", () => {
+  const headings = [
+    "Host setup",
+    "Host",
+    "First run",
+    "Connection",
+    "From the phone",
+    "Machines",
+    "Adding a machine",
+    "Keys, as herdr-app binds them",
+  ];
+  expect(headings.map(canonicalHeading)).toEqual([
+    "Host install",
+    "Host install",
+    "Workspace",
+    "Connection and offline wording",
+    "Phone",
+    "Machine mesh",
+    "Joining a mesh",
+    "Keys",
+  ]);
+});
+
+test("Keys comes right after Workspace in a release", () => {
+  const fragments: Fragment[] = [
+    { name: "1.md", text: "### Machine mesh\n\n- Mesh. (#1)\n" },
+    { name: "2.md", text: "### Keys, as herdr-app binds them\n\n- Keys. (#2)\n" },
+    { name: "3.md", text: "### Workspace\n\n- Workspace. (#3)\n" },
+  ];
+  expect(pendingNotes("## Unreleased\n", fragments)).toEqual({
+    ok: true,
+    notes: "### Workspace\n\n- Workspace. (#3)\n\n### Keys\n\n- Keys. (#2)\n\n### Machine mesh\n\n- Mesh. (#1)",
+  });
 });
 
 test("every fragment in this repository has the shape the release can place", () => {

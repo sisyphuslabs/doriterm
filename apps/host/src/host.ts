@@ -4,6 +4,7 @@ import { lanUrlsFor } from "./lan-urls.ts";
 import { endSweeper } from "./end-sweeper.ts";
 import { createGateway } from "./gateway.ts";
 import { HC_VERSION_FLOOR, meetsHcFloor } from "./hc-install.ts";
+import { SpeculativeHello } from "./e2ee/speculative-hello.ts";
 import { HcPipe, readHcVersion } from "./hc-pipe.ts";
 import { openControl } from "./host-control.ts";
 import { e2eeDeps } from "./host-e2ee.ts";
@@ -151,8 +152,18 @@ async function serve(
     () => info?.stop(),
     () => (info?.kill() ?? []).map((pid) => `hc connect pid ${pid}`),
   );
+  // An early hello is answered only once a client has been admitted and the host's own services run (#1271): before
+  // that, an `hc connect` could start the session's core, and nothing a replayed message 1 reaches may start anything.
+  const speculative = new SpeculativeHello({
+    spawn: () =>
+      info === undefined
+        ? undefined
+        : new HcPipe({ hc: options.hc, session: options.session, env: options.env, log: options.log }),
+  });
+  started("speculative hello", () => speculative.stop());
   const gateway = createGateway({
     e2ee,
+    speculative,
     push: push?.serve,
     pair:
       e2ee === undefined

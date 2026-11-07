@@ -24,7 +24,7 @@ export interface SyncHandle {
 }
 
 /** The view with no member: a reconcile against it removes every mesh machine from this host's core. */
-const NO_MEMBERS: MeshView = { members: [], overCap: [], revoked: [] };
+const NO_MEMBERS: MeshView = { members: [], revoked: [] };
 
 /** How often a confirmation wait looks at `owed()` again: confirmations arrive as the peers' next `hello`. */
 const CONFIRM_STEP_MS = 250;

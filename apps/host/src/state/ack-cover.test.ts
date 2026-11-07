@@ -108,7 +108,6 @@ const baseOf = (peers: readonly Peer[]) => {
 interface Tally {
   carried: number;
   rebuilt: number;
-  overCap: number;
 }
 
 /**
@@ -179,7 +178,6 @@ function scenario(seed: number, members: readonly Peer[], tally: Tally): void {
         }
         before = evaluations;
         expectRebuilt(store, everyone);
-        if ((store.read()?.index?.overCap.length ?? 0) > 0) tally.overCap += 1;
       }
     });
     expectRebuilt(store, everyone);
@@ -188,7 +186,7 @@ function scenario(seed: number, members: readonly Peer[], tally: Tally): void {
 }
 
 describe("random histories with revokes and admissions: the index written with each own ack is a full rebuild's", () => {
-  const tally: Tally = { carried: 0, rebuilt: 0, overCap: 0 };
+  const tally: Tally = { carried: 0, rebuilt: 0 };
   const five = [a, b, c, d, f];
   const thirteen = [peer("m0"), b, ...Array.from({ length: 11 }, (_, i) => peer(`m${i + 1}`))];
 
@@ -201,7 +199,7 @@ describe("random histories with revokes and admissions: the index written with e
   );
 
   test.each([0, 1])(
-    "thirteen members (one over the cap), five seeds from 1000 + %i * 5",
+    "thirteen members, five seeds from 1000 + %i * 5",
     (group) => {
       for (let seed = 1000 + group * 5; seed < 1000 + group * 5 + 5; seed++) {
         scenario(seed, thirteen, tally);
@@ -210,12 +208,9 @@ describe("random histories with revokes and admissions: the index written with e
     60_000,
   );
 
-  test("both paths ran: acks the index was carried over and acks it was rebuilt for, and over-cap members", () => {
-    console.log(
-      `own acks after the first: ${tally.carried} carried, ${tally.rebuilt} rebuilt; over-cap writes ${tally.overCap}`,
-    );
+  test("both paths ran: acks the index was carried over and acks it was rebuilt for", () => {
+    console.log(`own acks after the first: ${tally.carried} carried, ${tally.rebuilt} rebuilt`);
     expect(tally.carried).toBeGreaterThan(0);
     expect(tally.rebuilt).toBeGreaterThan(0);
-    expect(tally.overCap).toBeGreaterThan(0);
   });
 });

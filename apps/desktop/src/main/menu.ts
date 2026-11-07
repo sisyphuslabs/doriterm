@@ -1,4 +1,4 @@
-import type { MenuItemConstructorOptions } from "electron";
+import type { BaseWindow, BrowserWindow, MenuItemConstructorOptions } from "electron";
 import type { DesktopPlatform } from "../shared/bridge.ts";
 import { shellMenu } from "./shell-menu.ts";
 
@@ -37,15 +37,16 @@ function appMenu(openSettings: () => void): MenuItemConstructorOptions {
 }
 
 /**
- * macOS File menu: Close Window takes Ghostty's Cmd+Shift+W. Cmd+W belongs to the page, which closes the focused pane,
- * the tab with the last one, or Settings, and closes the window only when there is nothing else to close.
+ * macOS File menu: Close Window has no key. Cmd+W and Cmd+Shift+W belong to the page, which closes the tab and the
+ * focused pane with them as herdr-app does, or Settings, and closes the window only when there is nothing else to close.
  */
 const MAC_FILE_MENU: MenuItemConstructorOptions = {
   label: "File",
-  submenu: [
-    { label: "Close Window", accelerator: "CommandOrControl+Shift+W", click: (_item, window) => window?.close() },
-  ],
+  submenu: [{ label: "Close Window", click: (_item, window) => window?.close() }],
 };
+
+const hasPage = (window: BaseWindow | undefined): window is BrowserWindow =>
+  window !== undefined && "webContents" in window;
 
 /**
  * The standard View menu, except that in place of page zoom it sizes the terminal text, as Ghostty and herdr-app do: the
@@ -64,7 +65,13 @@ function viewMenu(runAction: (action: string) => void): MenuItemConstructorOptio
     label: "View",
     submenu: [
       { role: "reload" },
-      { role: "forceReload" },
+      // No key: Cmd+Shift+R (Ctrl+Shift+R) renames the tab in the page (#702), so the menu must not take it first.
+      {
+        label: "Force Reload",
+        click: (_item, window) => {
+          if (hasPage(window)) window.webContents.reloadIgnoringCache();
+        },
+      },
       { role: "toggleDevTools" },
       { type: "separator" },
       textItem("font-size-reset", "Default Text Size", "CommandOrControl+0", "app.zoom_reset"),

@@ -15,7 +15,6 @@ const indexOf = (members: readonly ReturnType<typeof member>[]): AuthorizeIndex 
   new AuthorizeIndex({
     generation: 1,
     members: [...members],
-    overCap: [],
     revoked: [],
     superseded: [],
     named: [],
@@ -48,6 +47,13 @@ describe("a client member in the authorization index", () => {
     expect(hostIds.has("host-box")).toBe(true);
   });
 
+  test("a client is counted as a member of the mesh with its signing key and core id known, though it never dials", () => {
+    const index = indexOf([member("phone", "client"), member("box", "machine")]);
+    expect(index.memberCount).toBe(2);
+    expect(index.isMember("sign-phone")).toBe(true);
+    expect(index.isMemberHcId("hc-phone")).toBe(true);
+  });
+
   test("a member with no kind is a machine, which is all a pre-kind index could hold", () => {
     const index = indexOf([member("box")]);
     expect(index.member("noise-box")?.name).toBe("box");
@@ -61,7 +67,6 @@ describe("a revoked client is cleaned like any other member", () => {
     const index = new AuthorizeIndex({
       generation: 1,
       members: [],
-      overCap: [],
       revoked: [{ signPub: gone.signPub, hostId: gone.hostId, keys: [gone.noisePub, gone.devicePub] }],
       superseded: [],
       named: [],
@@ -76,7 +81,6 @@ describe("a revoked client is cleaned like any other member", () => {
     const index = new AuthorizeIndex({
       generation: 1,
       members: [phone, box],
-      overCap: [],
       revoked: [],
       superseded: [],
       named: [],

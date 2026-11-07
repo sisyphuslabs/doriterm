@@ -152,13 +152,10 @@ export async function updateCheckout(context: SetupContext, ref: string): Promis
  * elsewhere on PATH (otherwise every re-run would install again).
  */
 export async function ensureHc(context: SetupContext): Promise<string> {
-  for (const candidate of hcCandidates(context)) {
-    // oxlint-disable-next-line no-await-in-loop -- the first candidate that meets the floor wins
-    const version = hcVersionOf((await context.run([candidate, "--version"])).stdout);
-    if (version !== undefined && meetsHcFloor(version)) {
-      context.report("hc", "unchanged", `herdr-core ${version} at ${candidate}`);
-      return candidate;
-    }
+  const found = await qualifyingHc(context);
+  if (found !== undefined) {
+    context.report("hc", "unchanged", `herdr-core ${found.version} at ${found.path}`);
+    return found.path;
   }
   const installed = installedHcPath(
     (await must(context, "hc", [process.execPath, cliOf(srcOf(context)), "--install-hc"])).stdout,
@@ -179,16 +176,42 @@ function hcCandidates(context: SetupContext): string[] {
   );
 }
 
-/** For the commands after install, which must not install anything. */
-export function findHc(context: SetupContext): string {
-  const found = hcCandidates(context)[0];
-  if (found === undefined) throw new SetupError("hc", "herdr-core (hc) is not installed; run install first");
-  return found;
+/** The first candidate that meets the floor, so install and the later commands pick the same binary (#821). */
+async function qualifyingHc(
+  context: SetupContext,
+): Promise<{ readonly path: string; readonly version: string } | undefined> {
+  for (const path of hcCandidates(context)) {
+    // oxlint-disable-next-line no-await-in-loop -- the first candidate that meets the floor wins
+    const version = hcVersionOf((await context.run([path, "--version"])).stdout);
+    if (version !== undefined && meetsHcFloor(version)) return { path, version };
+  }
+  return undefined;
+}
+
+/** For the commands after install, which must not install anything: a foreign or older `hc` first is skipped. */
+export async function findHc(context: SetupContext): Promise<string> {
+  const found = await qualifyingHc(context);
+  if (found === undefined) {
+    throw new SetupError("hc", `no herdr-core at or above ${HC_VERSION_FLOOR} is installed; run install first`);
+  }
+  return found.path;
+}
+
+/** `--listen default` and `--session default` go back to the host's own default, whatever the service ran with (#821). */
+export const DEFAULT_FLAG = "default";
+
+function chosen(flag: string | undefined, adopted: string | undefined): string | undefined {
+  return flag === DEFAULT_FLAG ? undefined : (flag ?? adopted);
 }
 
 export function resolvePaths(context: SetupContext, hc: string): SetupPaths {
   const tools = { bun: process.execPath, hc, shell: context.env["SHELL"] ?? userInfo().shell ?? "/bin/sh" };
-  const first = setupPaths(context.os, context.home, context.env, tools, { ...context.options, src: srcOf(context) });
+  const first = setupPaths(context.os, context.home, context.env, tools, {
+    ...context.options,
+    src: srcOf(context),
+    listen: chosen(context.options.listen, undefined),
+    session: chosen(context.options.session, undefined),
+  });
   if (context.os === "mac") {
     const installer = join(context.home, "Library", "LaunchAgents", `${INSTALLER_LABEL}.plist`);
     if (existsSync(installer)) {
@@ -215,8 +238,8 @@ export function resolvePaths(context: SetupContext, hc: string): SetupPaths {
     ...context.options,
     src: first.src,
     stateDir: context.options.stateDir ?? existing.stateDir,
-    listen: context.options.listen ?? existing.listen,
-    session: context.options.session ?? existing.session,
+    listen: chosen(context.options.listen, existing.listen),
+    session: chosen(context.options.session, existing.session),
     logFile: existing.logFile,
   });
 }
@@ -463,12 +486,14 @@ export async function invite(context: SetupContext, paths: SetupPaths, out: stri
 export async function joinMesh(context: SetupContext, paths: SetupPaths, from: string): Promise<void> {
   const link = readFileSync(from, "utf8").trim();
   if (link === "") throw new SetupError("join", `${from} is empty`);
+  // The host reads the link from the file: on the command line, other local users could read it from /proc (#821).
   const ran = await context.run([
     paths.bun,
     cliOf(paths.src),
     "mesh",
     "join",
-    link,
+    "--from-file",
+    from,
     "--yes",
     "--state-dir",
     paths.stateDir,
