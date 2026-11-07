@@ -1,5 +1,5 @@
 import type { Terminal } from "@doriface/protocol";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 type Listed = Pick<Terminal, "address" | "state" | "pid" | "created_ms">;
 
@@ -47,14 +47,28 @@ export class DropOnce {
   }
 }
 
-/** `drop`, called at most once per ended session however many signals report its end (see DropOnce). */
-export function useDropOnce(terminals: readonly Listed[], drop: (address: string) => void): (address: string) => void {
+export interface DropsOnce {
+  /** `drop`, called at most once per ended session however many signals report its end (see DropOnce). */
+  readonly dropEnded: (address: string) => void;
+  /** Records these sessions as dropped by a close that writes their panes' removal itself (a whole tab). */
+  readonly closing: (addresses: readonly string[]) => void;
+}
+
+/**
+ * A close writes its pane's removal as it is chosen and then ends the session, whose end reports it again: that report
+ * is the same drop, so with the close's write refused it would be written, refused and said a second time (#1328).
+ */
+export function useDropOnce(terminals: readonly Listed[], drop: (address: string) => void): DropsOnce {
   const once = useRef(new DropOnce());
   useEffect(() => once.current.listed(terminals), [terminals]);
-  return useCallback(
+  const dropEnded = useCallback(
     (address: string): void => {
       if (once.current.take(address)) drop(address);
     },
     [drop],
   );
+  const closing = useCallback((addresses: readonly string[]): void => {
+    for (const address of addresses) once.current.take(address);
+  }, []);
+  return useMemo(() => ({ dropEnded, closing }), [dropEnded, closing]);
 }
