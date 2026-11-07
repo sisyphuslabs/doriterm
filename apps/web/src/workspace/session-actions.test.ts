@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { HcRpcError } from "@doriface/protocol";
-import { afterEnd, endSession, renameSession, type SessionCalls } from "./session-actions.ts";
+import { afterEnd, endLeftRunning, endSession, renameSession, type SessionCalls } from "./session-actions.ts";
 
 type Call = { readonly method: string; readonly params: unknown };
 
@@ -98,6 +98,14 @@ describe("session actions", () => {
     // The program was killed: the host still removes it, so the mark stays.
     await expect(endSession(failing("rm"), "t11")).rejects.toThrow("rm: busy");
     expect(calls.filter((call) => call.method === "label")).toHaveLength(1);
+  });
+
+  test("an End whose kill is refused left its program running; one whose removal fails after the kill did not", async () => {
+    const killRefused: unknown = await endSession(refusing("kill", "busy"), "t12").catch((cause: unknown) => cause);
+    expect(endLeftRunning(killRefused)).toBe(true);
+    const rmRefused: unknown = await endSession(refusing("rm", "busy"), "t13").catch((cause: unknown) => cause);
+    expect(endLeftRunning(rmRefused)).toBe(false);
+    expect(endLeftRunning(new Error("another failure"))).toBe(false);
   });
 
   test("a terminal already gone when End's kill or rm lands counts as ended; any other refusal does not", async () => {

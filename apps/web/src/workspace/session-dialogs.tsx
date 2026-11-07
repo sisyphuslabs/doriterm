@@ -9,7 +9,7 @@ import { asksBeforeClosing, terminalTitle } from "./model.ts";
 import { RenameDialog } from "./rename-dialog.tsx";
 import { pendingEnds } from "./pending-ends.ts";
 import { recordedEnd } from "./resume-ends.ts";
-import { endSession, renameSession, sessionCalls, takeBackEnd } from "./session-actions.ts";
+import { endLeftRunning, endSession, renameSession, sessionCalls, takeBackEnd } from "./session-actions.ts";
 import type { SessionAsk } from "./session-context.ts";
 
 export interface SessionDialogsProps {
@@ -19,7 +19,7 @@ export interface SessionDialogsProps {
   readonly onDone: () => void;
   /** Takes a session's pane out of the layout: as a close is chosen, else once the session is gone. */
   readonly onDrop: (address: string) => void;
-  /** A close's End failed: the session keeps running, so its later end drops its pane again. */
+  /** A close's End did not kill its program: the session keeps running, so its later end drops its pane again. */
   readonly onKept: (address: string) => void;
 }
 
@@ -111,7 +111,7 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onDrop, onK
     run(
       () =>
         ending().catch((cause: unknown) => {
-          if (closing) onKept(address);
+          if (closing && endLeftRunning(cause)) onKept(address);
           throw cause;
         }),
       onDone,

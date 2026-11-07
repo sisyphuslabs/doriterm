@@ -7,7 +7,7 @@ import { single } from "../ghostty/config.ts";
 import { terminalInput } from "./focus-targets.ts";
 import type { LayoutTab } from "./layout-model.ts";
 import { asksBeforeClosing } from "./model.ts";
-import { endSession, sessionCalls } from "./session-actions.ts";
+import { endLeftRunning, endSession, sessionCalls } from "./session-actions.ts";
 
 export interface CloseTabDialogProps {
   readonly connection: HcConnection;
@@ -18,7 +18,7 @@ export interface CloseTabDialogProps {
   /** Takes the tab out of the layout: at once, while its sessions end behind it. */
   readonly onClosed: () => void;
   readonly onDone: () => void;
-  /** A session whose End failed keeps running, so its later end drops its pane again. */
+  /** A session whose End did not kill its program keeps running, so its later end drops its pane again. */
   readonly onKept: (address: string) => void;
 }
 
@@ -48,7 +48,7 @@ export function CloseTabDialog({ connection, terminals, tab, space, onClosed, on
     const ending = Promise.all(
       live.map((terminal) =>
         endSession(calls, terminal.address).catch((cause: unknown) => {
-          onKept(terminal.address);
+          if (endLeftRunning(cause)) onKept(terminal.address);
           throw cause;
         }),
       ),

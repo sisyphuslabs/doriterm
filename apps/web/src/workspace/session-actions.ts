@@ -56,6 +56,13 @@ export async function takeBackEnd(calls: SessionCalls, address: string): Promise
   }
 }
 
+/** The refusals of Ends that did not kill their program, which keeps running; one that killed it and failed after is not. */
+const leftRunning = new WeakSet<object>();
+
+/** Whether End rejected with this because its program was not killed: the session keeps running (#1328). */
+export const endLeftRunning = (cause: unknown): boolean =>
+  typeof cause === "object" && cause !== null && leftRunning.has(cause);
+
 async function killAndRemove(calls: SessionCalls, address: string): Promise<void> {
   // The mark leaves with the kill, so a page closed before terminal.rm goes out still has the host remove it (END_LABEL).
   const marked = calls.label({ terminal: address, labels: { [END_LABEL]: "1" } });
@@ -78,6 +85,7 @@ async function killAndRemove(calls: SessionCalls, address: string): Promise<void
     await takeBackEnd(calls, address).catch((cause: unknown) =>
       console.error(`take End's mark off ${address}: ${String(cause)}`),
     );
+    if (typeof failed.reason === "object" && failed.reason !== null) leftRunning.add(failed.reason);
   }
   throw failed.reason;
 }
