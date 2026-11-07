@@ -242,7 +242,7 @@ export function DesktopShell(props: DesktopShellProps) {
       <FirstRunGuideCard
         className="absolute right-4 bottom-10 z-30 m-0 w-72 shadow-lg"
         listVisible={sidebar}
-        listedLive={terminals.some((terminal) => terminal.state === "live")}
+        live={terminals.filter((terminal) => terminal.state === "live").map((terminal) => terminal.address)}
         onNew={onNew}
       />
       {sidebar ? (
@@ -250,7 +250,7 @@ export function DesktopShell(props: DesktopShellProps) {
           terminals={terminals}
           active={focusedAddress}
           onOpen={(address) => {
-            guideStore.opened();
+            guideStore.opened(address);
             layout.openTerminal(address);
           }}
           onPalette={onPalette}

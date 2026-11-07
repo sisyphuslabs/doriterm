@@ -161,7 +161,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   // Opening a terminal from this device's list is the first run's "open an agent" step; a restored focus is not (#668).
   const showOnPhone = useCallback(
     (address: string) => {
-      guideStore.opened();
+      guideStore.opened(address);
       setPhoneKey(tabKey(address, ids));
     },
     [ids],
@@ -219,7 +219,7 @@ export function Workspace({ connection }: WorkspaceProps) {
       },
       // The first run's agent step completes once the terminal really started, not when it was asked for (#668).
       (address) => {
-        guideStore.opened();
+        guideStore.opened(address);
         opened(address);
       },
     );

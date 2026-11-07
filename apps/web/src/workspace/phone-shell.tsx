@@ -44,7 +44,10 @@ export function PhoneShell(props: PhoneShellProps) {
   const update = usePendingUpdate();
   const terminal = terminals.find((entry) => entry.address === open);
   // An unanswered list is not an empty one: the empty state waits for the core's first answer (#797).
-  const empty = machines.terminalsLoaded && !terminals.some((entry) => entry.state === "live");
+  const live = machines.terminalsLoaded
+    ? terminals.filter((entry) => entry.state === "live").map((entry) => entry.address)
+    : [];
+  const empty = machines.terminalsLoaded && live.length === 0;
   if (terminal === undefined) {
     const route = connectionStore.settings.mode === "relay" ? "relay" : "loopback";
     return (
@@ -78,7 +81,7 @@ export function PhoneShell(props: PhoneShellProps) {
         </header>
         <ConnectionLine />
         <ScrollArea slot="agents-list" className="flex-1">
-          <FirstRunGuideCard listVisible listedLive={!empty} onNew={onNew} />
+          <FirstRunGuideCard listVisible live={live} onNew={onNew} />
           {machines.terminalsLoaded ? (
             <>
               {empty ? (
