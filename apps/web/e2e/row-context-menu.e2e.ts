@@ -1,6 +1,6 @@
 // A sidebar row's right-click (Ctrl+click on macOS, the Menu key elsewhere) opens the row's own menu at the pointer,
 // with the items its "..." button holds (#699).
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { agentRow, endAgent, startAgent } from "./agents.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { hcOn } from "./machine-switch.ts";
@@ -116,7 +116,9 @@ test("on the icon rail, right-clicking an agent opens the same menu, and Rename�
   await expect(page.getByRole("dialog", { name: /^Rename / })).toBeVisible();
 });
 
-test("on the icon rail, right-clicking a space opens its menu with Rename space…", async ({ page }) => {
+test("on the icon rail, right-clicking a space opens its menu, and Rename space… asks for the new name", async ({
+  page,
+}) => {
   const name = idleAgent("cm-rail-space");
   await page.goto("/");
   await expect(spaceRow(page, `sp-${name}`)).toBeVisible({ timeout: 20_000 });
@@ -126,9 +128,12 @@ test("on the icon rail, right-clicking a space opens its menu with Rename space�
   await avatar.click({ button: "right" });
   await expect(menu(page).getByRole("menuitem", { name: "Rename space…" })).toBeVisible();
   await expect(menu(page).getByRole("menuitem", { name: "Close space…" })).toBeVisible();
+  await menu(page).getByRole("menuitem", { name: "Rename space…" }).click();
+  await expect(page.getByRole("dialog", { name: new RegExp(`sp-${name}`) })).toBeVisible();
 });
 
-test("right-clicking a split pane's header opens its session menu, and Rename… asks for the name", async ({ page }) => {
+/** Splits a fresh tab in two, hands `body` the first pane's header, then closes that tab's shells (#226). */
+async function inSplit(page: Page, body: (header: Locator) => Promise<void>): Promise<void> {
   await page.goto("/");
   // A second tab, so closing the split's tab at the end never closes its space (which asks first).
   await openNewTerminal(page);
@@ -139,17 +144,48 @@ test("right-clicking a split pane's header opens its session menu, and Rename…
   const panes = page.locator('[role="tabpanel"]:not([hidden]) section[data-split="true"]');
   await expect(panes).toHaveCount(2, { timeout: 15_000 });
   await expect(page.locator("[data-terminal]")).toHaveCount(before + 1);
-  const header = panes.first().locator("header");
-  await header.getByRole("heading").click({ button: "right" });
-  await expect(menu(page).getByRole("menuitem")).toHaveText(["Rename…", "End session…"]);
-  await menu(page).getByRole("menuitem", { name: "Rename…" }).click();
-  await expect(page.getByRole("dialog", { name: /^Rename / })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await body(panes.first().locator("header"));
   // The split's shells are this test's own: close the tab so the worker's core keeps no terminal it opened (#226).
   await first.getByRole("textbox").focus();
   await page.keyboard.press(process.platform === "darwin" ? "Meta+Alt+KeyW" : "Control+Shift+KeyW");
   await expect(page.locator("[data-terminal]")).toHaveCount(before - 1, { timeout: 15_000 });
+}
+
+test("right-clicking a split pane's header opens its session menu, and Rename… asks for the name", async ({ page }) => {
+  await inSplit(page, async (header) => {
+    await header.getByRole("heading").click({ button: "right" });
+    await expect(menu(page).getByRole("menuitem")).toHaveText(["Rename…", "End session…"]);
+    await menu(page).getByRole("menuitem", { name: "Rename…" }).click();
+    await expect(page.getByRole("dialog", { name: /^Rename / })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+});
+
+test("a held touch's contextmenu on a split pane's header stays its drag: no menu", async ({ page }) => {
+  await inSplit(page, async (header) => {
+    // Android Chrome sends a held touch as a contextmenu whose pointerType is touch; a menu opening on it would take
+    // the press from the pane's drag. Each press is counted two frames after it, a point the mouse's press proves the
+    // menu has reached by then, so the touch's zero is not read before a menu could appear.
+    const menusAfter = (pointerType: string) =>
+      header.getByRole("heading").evaluate(async (element, type) => {
+        const box = element.getBoundingClientRect();
+        const press = {
+          bubbles: true,
+          cancelable: true,
+          pointerType: type,
+          clientX: box.left + 4,
+          clientY: box.top + 4,
+        };
+        element.dispatchEvent(new PointerEvent("contextmenu", press));
+        await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+        return document.querySelectorAll('[role="menu"]').length;
+      }, pointerType);
+    expect(await menusAfter("touch"), "a touch's contextmenu opened the header's menu").toBe(0);
+    expect(await menusAfter("mouse"), "the mouse's contextmenu had not opened the menu by the same point").toBe(1);
+    await page.keyboard.press("Escape");
+    await expect(menu(page)).toHaveCount(0);
+  });
 });
 
 test("right-clicking a space row opens its menu, and Rename space… there asks for the new name", async ({ page }) => {

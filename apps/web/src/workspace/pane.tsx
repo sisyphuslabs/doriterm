@@ -1,5 +1,5 @@
 import type { HcConnection } from "@doriface/client";
-import { cn, ContextMenu, IconButton, skipMenuHandler } from "@doriface/ui";
+import { cn, ContextMenu, IconButton, skipMenuHandler, skipTouchMenu } from "@doriface/ui";
 import { Columns2, Maximize2, Minimize2, Rows2, X } from "lucide-react";
 import type { Axis } from "@doriface/protocol/layout";
 import { useActionKeys } from "../keys/use-action-keys.ts";
@@ -134,6 +134,7 @@ export function Pane(props: PaneProps) {
               onPointerDown={onGrab}
               // A held touch stays the header's drag, not Base UI's long-press menu.
               onTouchStart={skipMenuHandler}
+              onContextMenu={skipTouchMenu}
               data-pane-grab={onGrab === undefined ? undefined : ""}
               className={cn(
                 "flex h-7 shrink-0 items-center gap-1 border-b border-border pr-0.5 pl-2.5 text-xs transition-colors duration-(--duration-micro)",

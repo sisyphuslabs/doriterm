@@ -3,6 +3,7 @@ import { Menu as BaseMenu } from "@base-ui/react/menu";
 import { Check } from "lucide-react";
 import {
   type ComponentProps,
+  type MouseEvent,
   type ReactElement,
   type ReactNode,
   type SyntheticEvent,
@@ -99,6 +100,15 @@ export interface ContextMenuProps {
 export function skipMenuHandler(event: SyntheticEvent): void {
   const prevent: unknown = Reflect.get(event, "preventBaseUIHandler");
   if (typeof prevent === "function") Reflect.apply(prevent, event, []);
+}
+
+/**
+ * Leaves a touch's contextmenu (a held press, as Android Chrome sends it) to the trigger's own press: a held row lifts
+ * for a drag, a held pane header drags the pane. Only a mouse, a pen or a key opens the menu.
+ */
+export function skipTouchMenu(event: MouseEvent): void {
+  const press = event.nativeEvent;
+  if (press instanceof PointerEvent && press.pointerType === "touch") skipMenuHandler(event);
 }
 
 export function ContextMenu({ trigger, children, open, onOpenChange, finalFocus }: ContextMenuProps) {
