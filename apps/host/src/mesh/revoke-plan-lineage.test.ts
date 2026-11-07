@@ -6,7 +6,7 @@ import { plan, ref, twelve, withMesh } from "../testing/mesh-plan.ts";
 
 describe("the subtree follows each key's one admitter, its governing admission's signer (H1b)", () => {
   test(
-    "C1: a second admit of an over-cap key does not make it the second admitter's lineage",
+    "C1: a second admit of the thirteenth member does not make it the second admitter's lineage",
     () => {
       const f = machine("f"),
         a = machine("a"),
@@ -41,7 +41,7 @@ describe("the subtree follows each key's one admitter, its governing admission's
   );
 
   test(
-    "G: a non-governing admit of a re-admitted over-cap key sweeps in neither it nor the members it admitted",
+    "G: a non-governing admit of a re-admitted thirteenth member sweeps in neither it nor the members it admitted",
     () => {
       const f = machine("f"),
         a = machine("a"),
@@ -60,7 +60,7 @@ describe("the subtree follows each key's one admitter, its governing admission's
         mesh.admit(m1, a);
         mesh.admit(b, a);
         const records = mesh.store.read()?.records ?? [];
-        expect(viewOf(records).overCap.has(signPubOf(a))).toBe(true);
+        expect(viewOf(records).members.has(signPubOf(a))).toBe(true);
         expect(plan(mesh, f, "b", true).keys).toEqual([signPubOf(b)]);
       });
     },
@@ -68,7 +68,7 @@ describe("the subtree follows each key's one admitter, its governing admission's
   );
 
   test(
-    "an over-cap key is found by the name on its card (L10)",
+    "the thirteenth member is found by its mesh name (L10)",
     () => {
       const f = machine("f"),
         a = machine("a"),
@@ -83,9 +83,9 @@ describe("the subtree follows each key's one admitter, its governing admission's
   );
 });
 
-describe("an over-cap key's card name never stands for another key (L15, L16)", () => {
+describe("a card name never stands for another key (L15, L16)", () => {
   test(
-    "the preview gives an over-cap key's hostId beside a card name that copies a member's hostId",
+    "the preview gives the thirteenth member's hostId beside a card name that copies another member's hostId",
     () => {
       const f = machine("f"),
         a = machine("a");
@@ -101,7 +101,7 @@ describe("an over-cap key's card name never stands for another key (L15, L16)", 
   );
 
   test(
-    "a revoked key's hostId names no member, even when an over-cap key's card carries it",
+    "a revoked key's hostId names no member, even when the thirteenth member's card name carries it",
     () => {
       const f = machine("f"),
         a = machine("a"),

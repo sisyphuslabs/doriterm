@@ -29,17 +29,17 @@ test("View.governing: a re-admitted member is governed by its re-admission, not 
   );
 });
 
-test("View.governing and View.admitter cover every governed key: A13's over-cap keys too", () => {
+test("View.governing and View.admitter cover every governed key: A13's fourteen members", () => {
   const { view, hash } = signed(cardScenarios, "A13");
   const B = keyOf("B").pub;
-  expect([...view.governing.keys()].toSorted()).toEqual([...view.members, ...view.overCap].toSorted());
-  expect(view.overCap.size).toBe(2);
+  expect([...view.governing.keys()].toSorted()).toEqual([...view.members].toSorted());
+  expect(view.members.size).toBe(14);
   expect([view.governing.get(keyOf("M5").pub), view.admitter.get(keyOf("M5").pub)]).toEqual([hash("qM5"), B]);
   expect([view.governing.get(keyOf("M6").pub), view.admitter.get(keyOf("M6").pub)]).toEqual([hash("qM6"), B]);
 });
 
-test("the oracle reads the same over-cap admitters", () => {
+test("the oracle reads the same admitters past the twelfth member", () => {
   const records = withChainNumbers(cardScenarios.find((s) => s.id === "A13")?.records ?? []);
   const oracle = naiveView(records);
-  expect([oracle.admitter.get("M5"), oracle.admitter.get("M6"), oracle.members.length]).toEqual(["B", "B", 12]);
+  expect([oracle.admitter.get("M5"), oracle.admitter.get("M6"), oracle.members.length]).toEqual(["B", "B", 14]);
 });

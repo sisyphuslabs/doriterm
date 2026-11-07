@@ -18,7 +18,6 @@ export {
   type CardSubject,
   MAX_BODY_BYTES,
   MAX_DANGLING,
-  MAX_MESH_MEMBERS,
   MAX_PREV,
   MAX_RECORDS,
   MAX_REVOKE_SUBJECTS,

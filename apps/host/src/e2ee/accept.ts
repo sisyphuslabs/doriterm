@@ -11,12 +11,14 @@ import {
   secureLink,
   SessionKind,
 } from "@doriface/crypto";
+import { HELLO_REQUEST_LINE } from "@doriface/client";
 import { OPEN_POLICY, type PlanPolicy, requireFeature, requireWithin } from "@doriface/policy";
 import type { AuthorizeIndex } from "../mesh/authorize-index.ts";
 import type { DeviceStore } from "../state/devices.ts";
 import type { MeshStore } from "../state/mesh.ts";
 import type { ClaimRefusal, PairingClaim, PairingStore } from "../state/pairing.ts";
 import { authorizationOf, sessionPeer } from "./authorize.ts";
+import type { SpeculativeHello } from "./speculative-hello.ts";
 
 /** Where a session arrived: the direct listener, or a relay session (`openSlot` is the slot a `?pair` session named). */
 export type E2eeTransport =
@@ -38,9 +40,20 @@ export interface E2eeDeps {
   readonly policy: PlanPolicy;
   /** How many sessions this host serves now, for a plan's concurrent-session limit. */
   readonly live: { readonly count: () => number };
+  /** Answers an early hello before key confirmation, within its own budget (#1271); absent, every hello waits. */
+  readonly speculative?: Pick<SpeculativeHello, "answer"> | undefined;
 }
 
 const refuse = (closeCode: number, reason: string): Authorization => ({ accept: false, closeCode, reason });
+
+const HELLO_LINE = new TextEncoder().encode(HELLO_REQUEST_LINE);
+
+/**
+ * The one early payload this host may answer before the client confirms the keys: the exact framed hello every client
+ * sends first, which names no core. Anything else waits for admission, as every byte after it does (#1271).
+ */
+const isHelloLine = (early: Uint8Array): boolean =>
+  early.byteLength === HELLO_LINE.byteLength && early.every((byte, index) => byte === HELLO_LINE[index]);
 
 /** A withdrawal the plan caused: the person reads the plan's own words, and the host's log records them. */
 const planRefusal = (deps: E2eeDeps, code: number, what: string, message: string): Authorization => {
@@ -128,6 +141,9 @@ export async function acceptE2ee(
       authorize,
       lanUrls: deps.lanUrls,
       rekeyInterval: deps.rekeyInterval,
+      answerEarly: (early, session) => {
+        if (isHelloLine(early)) deps.speculative?.answer(early, session);
+      },
     });
   } catch (error) {
     deps.log(`e2ee handshake refused: ${error instanceof Error ? error.message : String(error)}`);

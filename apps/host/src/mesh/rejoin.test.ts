@@ -1,9 +1,8 @@
 import { generateHostIdentity, generateX25519 } from "@doriface/crypto";
-import { MAX_MESH_MEMBERS, parseRecord, type Signed, signCard } from "@doriface/mesh";
+import { parseRecord, type Signed, signCard } from "@doriface/mesh";
 import { afterEach, describe, expect, test } from "bun:test";
 import { cardBody } from "../state/mesh.ts";
 import {
-  admitMembers,
   failure,
   inviteDeps,
   joinerContext,
@@ -175,22 +174,5 @@ describe("section 4.4 step 3: a member whose welcome was lost joins again", () =
     expect(await run.joined).toBe(a.mesh.read()?.meshId ?? "");
     expect(types(a)).toEqual(["found", "admit", "revoke", "admit"]);
     expect(a.mesh.authorizeIndex()?.member(noiseOf(z))?.signPub).toBe(signPubOf(z));
-  });
-
-  test("a mesh that filled up while a join waited for approval refuses it and writes no admit", async () => {
-    const [a, b] = [side("alpha"), side("beta")];
-    a.mesh.found(a.m.identity, ownOf(a));
-    admitMembers(
-      a,
-      Array.from({ length: MAX_MESH_MEMBERS - 2 }, (_, i) => `member${i + 2}`),
-    );
-    const pending = new PendingJoins();
-    const run = runJoin(inviteDeps(a, pending), joinerContext(b, a), b.m.identity.noise.publicKey);
-    const asked = await pending.next();
-    admitMembers(a, ["last"]);
-    pending.decide(asked.nonce, true);
-    expect(await failure(run.invited)).toBe("the mesh is full");
-    expect(types(a).filter((type) => type === "admit")).toHaveLength(MAX_MESH_MEMBERS - 1);
-    expect(b.mesh.read()).toBeUndefined();
   });
 });

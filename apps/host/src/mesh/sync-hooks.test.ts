@@ -145,7 +145,7 @@ async function coreWithMachines(machines: FakeMachines) {
     clock,
     log: () => undefined,
   });
-  await reconciler.reconcile({ members: [self, coreMember("b"), coreMember("c")], overCap: [], revoked: [] });
+  await reconciler.reconcile({ members: [self, coreMember("b"), coreMember("c")], revoked: [] });
   const runtime = { gossip: { stop: () => void machines.calls.push("gossip stopped") }, reconciler };
   const stopped: string[] = [];
   const sync = {

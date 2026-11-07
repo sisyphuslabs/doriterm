@@ -7,7 +7,6 @@ import { withStateLock } from "../state/lock.ts";
 import { MESH_FILE } from "../state/mesh-file.ts";
 import type { MeshStore, MeshTx } from "../state/mesh.ts";
 import type { LeaveReply, RenameReply, RevokeReply } from "./command-replies.ts";
-import { admittedKeys } from "./lineage.ts";
 import { machineKeysOf, meshViewOf } from "./mesh-view.ts";
 import { findMember, memberRef, planRevoke } from "./revoke-plan.ts";
 import type { MeshHooks } from "./host-hooks.ts";
@@ -99,7 +98,7 @@ export class MeshCommands {
       }
       const renamed = { member: memberRef(view, key), name: request.name };
       if (view.name.get(key) === request.name) return { reply: { written: false, ...renamed }, record: undefined };
-      const named = [...admittedKeys(view), ...view.revoked].find(
+      const named = [...view.members, ...view.revoked].find(
         (other) => other !== key && hostIdOfKey(other) === request.name,
       );
       if (named !== undefined) {
@@ -147,13 +146,11 @@ export class MeshCommands {
     };
   }
 
-  /** The view, once this host is a member of it: a revoked or over-cap host signs nothing (section 6.4). */
+  /** The view, once this host is a member of it: a revoked host signs nothing (section 6.4). */
   #member(tx: MeshTx): View {
     const view = tx.view();
     if (!view.members.has(this.#self)) {
-      throw new Error(
-        "this host is not a member in its own view of the mesh (revoked or over-cap), so it signs nothing",
-      );
+      throw new Error("this host is not a member in its own view of the mesh (revoked), so it signs nothing");
     }
     return view;
   }
