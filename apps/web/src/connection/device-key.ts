@@ -73,11 +73,35 @@ async function generateWebCrypto(subtle: SubtleCrypto): Promise<StoredWebCrypto>
   return { kind: "webcrypto", privateKey: pair.privateKey, publicKey };
 }
 
+const PROBE = "device-key.probe";
+const keepsKeys = new WeakMap<KeyValueStore, Promise<boolean>>();
+
+/**
+ * Whether this store gives a stored CryptoKey back. WebKit's IndexedDB hands an X25519 CryptoKey back as null
+ * (bugs.webkit.org 312279), so the key must be kept as bytes there or the device is new on every load (#1329).
+ */
+async function keepsStoredKeys(storage: KeyValueStore, subtle: SubtleCrypto): Promise<boolean> {
+  const held = keepsKeys.get(storage);
+  if (held !== undefined) return held;
+  const probe = (async (): Promise<boolean> => {
+    try {
+      const pair = await generateWebCrypto(subtle);
+      await storage.put(PROBE, pair);
+      const back = await storage.get(PROBE);
+      return isStored(back) && back.kind === "webcrypto";
+    } catch {
+      return false;
+    }
+  })();
+  keepsKeys.set(storage, probe);
+  return probe;
+}
+
 async function readOrCreate(storage: KeyValueStore, subtle: SubtleCrypto | null): Promise<DeviceKey> {
   const stored = await storage.get(KEY);
   if (isStored(stored))
     return stored.kind === "webcrypto" && subtle !== null ? fromWebCrypto(subtle, stored) : fromRaw(asRaw(stored));
-  if (subtle !== null && (await webCryptoX25519(subtle))) {
+  if (subtle !== null && (await webCryptoX25519(subtle)) && (await keepsStoredKeys(storage, subtle))) {
     const generated = await generateWebCrypto(subtle);
     await storage.put(KEY, generated);
     return fromWebCrypto(subtle, generated);
