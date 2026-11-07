@@ -33,8 +33,10 @@ const SHELL_ACTIONS: Readonly<Record<Shell, readonly string[]>> = {
     // herdr's palette hides `space.select` for the same reason.
     "space.next",
     "space.prev",
+    "space.new",
     "voice.dictate",
     "layout.toggle:sidebar",
+    "layout.filter:sidebar",
     "app.zoom_in",
     "app.zoom_out",
     "app.settings",

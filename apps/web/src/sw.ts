@@ -11,6 +11,7 @@ import {
 import { clientsClaim } from "workbox-core";
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from "workbox-precaching";
 import { NavigationRoute, registerRoute } from "workbox-routing";
+import { ICON_FONT_CACHE, isIconFont, pruneIconFonts, splitIconFonts } from "./pwa/icon-font-cache.ts";
 import { planClick } from "./push/notice-click.ts";
 import { DEFAULT_MAX_ACTIONS, noticeDisplay } from "./push/notice-display.ts";
 import { deadlineAfter, exchangeWithin, type PushExchange } from "./push/over-push.ts";
@@ -25,17 +26,17 @@ declare const self: ServiceWorkerGlobalScope & {
 
 // Precache the build and serve index.html for navigations. A first worker takes over at once; a newer one waits until
 // the page sends SKIP_WAITING (Reload to update in Settings, through vite-plugin-pwa's updateSW).
+// The icon font is listed too, and taken out here: it is fetched when first drawn, and its name says which to keep.
 // oxlint-disable-next-line no-underscore-dangle -- injectManifest replaces this exact name with the precache list
-precacheAndRoute(self.__WB_MANIFEST);
+const { precache, iconFonts } = splitIconFonts(self.__WB_MANIFEST, self.location.href);
+precacheAndRoute(precache);
 cleanupOutdatedCaches();
 registerRoute(new NavigationRoute(createHandlerBoundToURL("index.html")));
 
-/** Fonts left out of the precache, kept as each is first fetched; a file's name changes with its contents. */
-const FONT_CACHE = "doriterm-fonts-v1";
 registerRoute(
-  ({ url }) => url.origin === self.location.origin && /\/symbols-nerd-font-mono-[^/]*\.woff2$/.test(url.pathname),
+  ({ url }) => url.origin === self.location.origin && isIconFont(url),
   async ({ request }) => {
-    const cache = await caches.open(FONT_CACHE);
+    const cache = await caches.open(ICON_FONT_CACHE);
     const kept = await cache.match(request);
     if (kept !== undefined) return kept;
     const fetched = await fetch(request);
@@ -44,6 +45,9 @@ registerRoute(
   },
 );
 clientsClaim();
+self.addEventListener("activate", (event) => {
+  event.waitUntil(caches.open(ICON_FONT_CACHE).then((cache) => pruneIconFonts(cache, iconFonts)));
+});
 
 self.addEventListener("message", (event) => {
   const data: unknown = event.data;

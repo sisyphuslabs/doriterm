@@ -4,7 +4,7 @@ import { useState } from "react";
 import { connectionStore } from "../connection/store.ts";
 import { deviceName } from "./device-name.ts";
 import type { OfferSecret, PairingOffer } from "./fragment.ts";
-import { pairAndRemember } from "./handshake.ts";
+import { pairAndOpen } from "./handshake.ts";
 import { guideStore } from "./first-run-guide.ts";
 import { Steps } from "./steps.tsx";
 
@@ -27,9 +27,7 @@ export function VerifyStep({ offer }: { readonly offer: PairingOffer }) {
   const match = async (): Promise<void> => {
     setOutcome({ kind: "pairing" });
     try {
-      await pairAndRemember(offer, deviceName(), (host) =>
-        connectionStore.pair({ ...connectionStore.settings, mode: "relay", ...host }),
-      );
+      await pairAndOpen(offer, deviceName(), connectionStore);
     } catch (error) {
       setOutcome({ kind: "failed", reason: error instanceof Error ? error.message : String(error) });
       return;

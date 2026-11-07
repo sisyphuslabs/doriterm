@@ -55,8 +55,12 @@ function Recorder({
       data-captures-keys
       tabIndex={-1}
       onBlur={() => {
-        // Switching windows blurs it too; the recorder gets focus back with the window, so it keeps listening.
-        if (document.hasFocus()) onLeave();
+        // Switching windows blurs it too; the recorder gets focus back with the window, so it keeps listening. So does
+        // Settings moving between its dialog and its sheet, which hands focus straight back (#859): only a blur that
+        // focus does not return from is leaving.
+        queueMicrotask(() => {
+          if (document.hasFocus() && document.activeElement !== self.current) onLeave();
+        });
       }}
       className="inline-flex h-(--control) items-center rounded-md border border-ring px-2.5 text-sm text-foreground"
     >

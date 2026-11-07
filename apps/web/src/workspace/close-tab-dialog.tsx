@@ -1,6 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import type { Terminal } from "@doriface/protocol";
-import { Button, Dialog, Notice } from "@doriface/ui";
+import { Button, Dialog, useToastManager } from "@doriface/ui";
 import { useEffect, useRef, useState } from "react";
 import { useTerminalConfig } from "../ghostty/config-store.ts";
 import { single } from "../ghostty/config.ts";
@@ -15,9 +15,11 @@ export interface CloseTabDialogProps {
   readonly tab: LayoutTab;
   /** The space whose last tab this is: closing it closes the space, as herdr-app's `tab.close`, and always asks first. */
   readonly space?: { readonly name: string };
-  /** Takes the tab out of the layout once its sessions have ended. */
+  /** Takes the tab out of the layout: at once, while its sessions end behind it. */
   readonly onClosed: () => void;
   readonly onDone: () => void;
+  /** A session whose End failed keeps running, so its later end drops its pane again. */
+  readonly onKept: (address: string) => void;
 }
 
 const counted = (count: number, word: string): string => `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -25,11 +27,12 @@ const counted = (count: number, word: string): string => `${count} ${word}${coun
 /**
  * Closing a space's last tab closes the space, as herdr-app's `space.close` asks: "Close space?", naming its tabs and
  * terminals, and Close ends them. Closing a tab of several panes ends all of their programs, as in herdr-app and Ghostty. It asks once first only as
- * confirm-close-surface says (while one of them runs a program, by default); otherwise it shows only if an End fails.
+ * confirm-close-surface says (while one of them runs a program, by default). The tab leaves as Close is chosen, not a
+ * round trip or a kill escalation later (#1271); an End that fails is reported in a toast, the one surface left once
+ * the tab is gone.
  */
-export function CloseTabDialog({ connection, terminals, tab, space, onClosed, onDone }: CloseTabDialogProps) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export function CloseTabDialog({ connection, terminals, tab, space, onClosed, onDone, onKept }: CloseTabDialogProps) {
+  const toasts = useToastManager();
   // Asked with focus on the page body (a terminal whose renderer had not started yet), or from an element gone by now,
   // the question gives focus to the focused pane's terminal, as the session's own question does.
   const [opener] = useState(() => document.activeElement);
@@ -40,18 +43,25 @@ export function CloseTabDialog({ connection, terminals, tab, space, onClosed, on
   const count = live.length;
   const asks = asksBeforeClosing(single(useTerminalConfig(), "confirm-close-surface"), live);
   const quiet = space === undefined && !asks;
-  const end = async (): Promise<void> => {
-    setBusy(true);
+  const end = (): void => {
     const calls = sessionCalls(connection);
-    try {
-      await Promise.all(live.map((terminal) => endSession(calls, terminal.address)));
-    } catch (cause) {
-      setBusy(false);
-      setError(cause instanceof Error ? cause.message : String(cause));
-      return;
-    }
+    const ending = Promise.all(
+      live.map((terminal) =>
+        endSession(calls, terminal.address).catch((cause: unknown) => {
+          onKept(terminal.address);
+          throw cause;
+        }),
+      ),
+    );
     onClosed();
     onDone();
+    ending.catch((cause: unknown) =>
+      toasts.add({
+        type: "error",
+        title: count === 1 ? "The session did not end" : "A session did not end",
+        description: `${cause instanceof Error ? cause.message : String(cause)} It keeps running.`,
+      }),
+    );
   };
   const endedQuietly = useRef(false);
   useEffect(() => {
@@ -62,9 +72,9 @@ export function CloseTabDialog({ connection, terminals, tab, space, onClosed, on
     }
     if (!quiet || endedQuietly.current) return;
     endedQuietly.current = true;
-    void end();
+    end();
   });
-  if ((count === 0 && space === undefined) || (quiet && error === null)) return null;
+  if ((count === 0 && space === undefined) || quiet) return null;
   return (
     <Dialog
       open
@@ -85,17 +95,11 @@ export function CloseTabDialog({ connection, terminals, tab, space, onClosed, on
           <Button variant="ghost" onClick={onDone}>
             Cancel
           </Button>
-          <Button variant="destructive" loading={busy} onClick={() => void end()}>
+          <Button variant="destructive" onClick={end}>
             Close
           </Button>
         </>
       }
-    >
-      {error === null ? undefined : (
-        <Notice tone="error" title="A session did not end">
-          {error}
-        </Notice>
-      )}
-    </Dialog>
+    />
   );
 }

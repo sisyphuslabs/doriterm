@@ -12,6 +12,8 @@ export interface AppActionTargets {
   readonly terminals: readonly Terminal[];
   readonly layout: Layout;
   readonly onNew: () => void;
+  /** Starts a new space, as the New tab menu's New space does (herdr-app's `space.new`). */
+  readonly onNewSpace: () => void;
   /** Starts a terminal beside the focused pane: to its right along a row, below it along a column. */
   readonly onSplit: (axis: Axis, target?: PaneTarget) => void;
   /** Closes a tab, asking first whether its sessions keep running. */
@@ -23,6 +25,8 @@ export interface AppActionTargets {
   readonly onToggleSidebar: () => void;
   /** Moves focus from the terminal to the sidebar, or back. */
   readonly onFocusSidebar: () => void;
+  /** Shows the whole sidebar with its filter field out and focused. */
+  readonly onFilterSidebar: () => void;
   /** Renames or ends the session in view, or renames its space; false when there is none. */
   readonly onSession: SessionVerb;
   /** Starts dictating into the session in view, or ends the dictation under way; false with no session in view. */
@@ -155,12 +159,14 @@ export function desktopActions(
     terminals,
     layout,
     onNew,
+    onNewSpace,
     onSplit,
     onCloseTab,
     onClosePane,
     onRenameTab,
     onToggleSidebar,
     onFocusSidebar,
+    onFilterSidebar,
     onSession,
     onDictate,
     focusedTab,
@@ -210,6 +216,9 @@ export function desktopActions(
         return selectSpace(steppedSpace(spaceKeys, activeSpace, 1));
       case "space.prev":
         return selectSpace(steppedSpace(spaceKeys, activeSpace, -1));
+      case "space.new":
+        onNewSpace();
+        return true;
       case "pane.split":
         if (focused === null || (argument !== "right" && argument !== "down")) return false;
         onSplit(argument === "right" ? "row" : "column");
@@ -235,6 +244,9 @@ export function desktopActions(
         return true;
       case "layout.focus":
         onFocusSidebar();
+        return true;
+      case "layout.filter":
+        onFilterSidebar();
         return true;
       case "app.settings":
         openSettings();

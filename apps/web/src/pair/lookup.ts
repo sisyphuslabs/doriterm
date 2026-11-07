@@ -1,5 +1,5 @@
 import { isPairSlotExpiry, PAIR_SLOT_SIGNATURE_BYTES } from "@doriface/relay-client/wire";
-import { pairSlotRefusal, pairSlotVerdict } from "@doriface/relay-client";
+import { type PairSlotRecord, pairSlotRefusal, pairSlotVerdict } from "@doriface/relay-client";
 import { slotOf } from "./code.ts";
 import { fromBase64Url, offerFrom, type PairingParse } from "./fragment.ts";
 
@@ -17,17 +17,19 @@ const sentence = (reason: string): string => `${reason.charAt(0).toUpperCase()}$
 
 const MALFORMED = "The relay's answer is malformed.";
 
+/** What the relay answered for one slot, before it is checked against a code. */
+export type SlotAnswer =
+  | { readonly ok: true; readonly record: PairSlotRecord }
+  | { readonly ok: false; readonly reason: string };
+
 /**
- * Asks the relay which host holds this code's slot. The answer is untrusted: the host's signature over its slot and
- * Noise key (contract v1.9, #22), then the fingerprint check and the CPace pairing handshake authenticate it.
+ * Asks the relay which host holds `slot`. The answer is untrusted: the host's signature over its slot and Noise key
+ * (contract v1.9, #22), then the fingerprint check and the CPace pairing handshake authenticate it.
  */
-export async function lookupCode(code: string, relayUrl: string, signal?: AbortSignal): Promise<PairingParse> {
+export async function lookupSlot(slot: string, relayUrl: string, signal?: AbortSignal): Promise<SlotAnswer> {
   let response: Response;
   try {
-    response = await fetch(
-      `${relayHttpOrigin(relayUrl)}/v1/pair/${slotOf(code)}`,
-      signal === undefined ? {} : { signal },
-    );
+    response = await fetch(`${relayHttpOrigin(relayUrl)}/v1/pair/${slot}`, signal === undefined ? {} : { signal });
   } catch {
     return { ok: false, reason: "The relay cannot be reached. Check the network and try again." };
   }
@@ -55,7 +57,19 @@ export async function lookupCode(code: string, relayUrl: string, signal?: AbortS
     signed && slotSig !== null && isPairSlotExpiry(expiresAt)
       ? { hostId, noiseStaticPub, signPub, expiresAt, slotSig }
       : { hostId, noiseStaticPub, signPub };
-  const verdict = pairSlotVerdict(record, slotOf(code), Date.now());
+  return { ok: true, record };
+}
+
+/** The offer for a whole `code` from its slot's answer, checked now: the answer may have been asked for earlier. */
+export function offerFromSlot(answer: SlotAnswer, code: string, relayUrl: string, now = Date.now()): PairingParse {
+  if (!answer.ok) return answer;
+  const verdict = pairSlotVerdict(answer.record, slotOf(code), now);
   if (verdict !== "signed") return { ok: false, reason: sentence(pairSlotRefusal(verdict)) };
+  const { hostId, noiseStaticPub, signPub } = answer.record;
   return offerFrom({ hostId, noiseStaticPub, signPub }, { mode: "code", code }, { relayUrl, target: "device" });
+}
+
+/** Looks the host of a whole code up and checks it: the slot's lookup and the offer, in one step. */
+export async function lookupCode(code: string, relayUrl: string, signal?: AbortSignal): Promise<PairingParse> {
+  return offerFromSlot(await lookupSlot(slotOf(code), relayUrl, signal), code, relayUrl);
 }

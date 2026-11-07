@@ -90,6 +90,23 @@ describe("H-2: the authorize index", () => {
         .toSorted(),
     ).toEqual([signPubOf(founder), signPubOf(member)].toSorted());
   });
+
+  test("an index written under the 12-member cap (#806) is rebuilt at start, and its thirteenth member authorizes", () => {
+    const dir = scratch();
+    const founder = machine("founder");
+    const joined = Array.from({ length: 12 }, (_, i) => machine(`m${i}`));
+    new MeshFixture(dir, founder).admitAll(founder, joined);
+    const path = join(dir, "mesh.json");
+    const written = JSON.parse(readFileSync(path, "utf8")) as { index: { members: unknown[]; overCap?: unknown[] } };
+    written.index.overCap = written.index.members.splice(12);
+    writePrivateJson(path, written);
+    const store = new MeshStore(dir, { log: () => {} });
+    expect(() => store.authorizeIndex()).toThrow("stale");
+    store.ensureIndex();
+    const thirteenth = joined.at(-1) ?? founder;
+    expect(store.authorizeIndex()?.member(noiseOf(thirteenth))?.signPub).toBe(signPubOf(thirteenth));
+    expect("overCap" in (JSON.parse(readFileSync(path, "utf8")) as { index: object }).index).toBe(false);
+  });
 });
 
 describe("H-3: counter discipline", () => {
@@ -162,7 +179,7 @@ const indexMachines = {
 
 describe("the index follows the view", () => {
   test(
-    "members, over-cap members and every key a revoked member's cards named",
+    "members past the twelfth, and every key a revoked member's cards named",
     cpuHeadroom(5, () => {
       const dir = scratch();
       const { founder, member, others, thirteenth } = indexMachines;
@@ -180,8 +197,10 @@ describe("the index follows the view", () => {
       expect(index.deviceRefusal(base64urlEncode(fresh.publicKey))).toBe("revoked mesh member");
       expect(index.member(noiseOf(last))).toBeDefined();
       mesh.admit(founder, thirteenth);
-      expect(mesh.store.authorizeIndex()?.deviceRefusal(noiseOf(thirteenth))).toBe("over-cap mesh member");
-      expect(mesh.store.authorizeIndex()?.member(noiseOf(thirteenth))).toBeUndefined();
+      const grown = mesh.store.authorizeIndex();
+      expect(grown?.memberCount).toBe(13);
+      expect(grown?.member(noiseOf(thirteenth))?.name).toBe("m11");
+      expect(grown?.deviceRefusal(noiseOf(thirteenth))).toBeUndefined();
     }),
   );
 });

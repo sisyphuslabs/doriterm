@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { readFileSync, realpathSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { evaluate, type Value } from "./gh-expression.ts";
 
-type Step = { name?: string; if?: string; run?: string; uses?: string };
+type Step = { id?: string; name?: string; if?: string; run?: string; uses?: string };
 type Job = { needs?: string; if?: string; steps: Step[] };
 type Workflow = { concurrency: { group: string; "cancel-in-progress": string | boolean }; jobs: Record<string, Job> };
 type Route = { pattern: string; zone_id?: string; custom_domain?: boolean };
@@ -79,6 +79,28 @@ test("production deploys only from dev, after staging was deployed and probed, f
   expect(production.steps.some((step) => step.uses?.startsWith("actions/download-artifact"))).toBe(true);
 });
 
+// #929: a deploy that failed leaves nothing new to probe; each probe retries for minutes, so probing then only burns time.
+test("each host is probed only after that job's deploy succeeded, and a failed probe does not skip the next host", () => {
+  for (const job of Object.values(workflow.jobs)) {
+    const deploy = job.steps.findIndex((step) => step.run?.startsWith('bunx "$WRANGLER" deploy'));
+    const deployId = job.steps[deploy]?.id;
+    const probes = job.steps.slice(deploy + 1).filter((step) => step.run?.includes("probe-web.ts"));
+    expect(probes.length).toBe(2);
+    const probed = (outcome: string, status: "success" | "failure"): boolean[] =>
+      probes.map((probe) =>
+        Boolean(
+          evaluate(probe.if ?? "success()", {
+            contexts: { steps: deployId === undefined ? {} : { [deployId]: { outcome } } },
+            status,
+          }),
+        ),
+      );
+    expect(probed("failure", "failure")).toEqual([false, false]);
+    expect(probed("success", "failure")).toEqual([false, true]);
+    expect(probed("success", "success")).toEqual([true, true]);
+  }
+});
+
 test("app.doriterm.com and the omo.dev host each serve the build with the SPA fallback, so /pair loads the app", () => {
   const DORITERM_ZONE = "79ae74d5937b2858a42f6261887e436e";
   expect(wrangler.routes).toEqual([
@@ -94,7 +116,7 @@ test("app.doriterm.com and the omo.dev host each serve the build with the SPA fa
   }
 });
 
-test("every page runs only this origin's scripts and connects only to this origin and the relay", () => {
+test("every page runs only this origin's scripts and connects only to this origin and the relay", async () => {
   const headersFile = readFileSync(join(ROOT, "apps", "web", "public", "_headers"), "utf8");
   const policy = /^\/\*\n(?:  .*\n)*?  Content-Security-Policy: (.+)$/m.exec(headersFile)?.[1] ?? "";
   const directives = new Map(
@@ -110,8 +132,8 @@ test("every page runs only this origin's scripts and connects only to this origi
     "https://relay-doriface.omo.dev",
     "wss://relay-doriface.omo.dev",
   ]);
-  expect(directives.get("style-src")).toEqual(["'self'", `'sha256-${baseUiScrollbarStyleHash()}'`]);
-  expect(directives.get("img-src")).toEqual(["'self'", "blob:"]);
+  expect(directives.get("style-src")).toEqual(["'self'", `'sha256-${await baseUiScrollbarStyleHash()}'`]);
+  expect(directives.get("img-src")).toEqual(["'self'"]);
   expect(directives.get("font-src")).toEqual(["'self'", "data:"]);
   for (const name of ["frame-ancestors", "base-uri", "form-action", "object-src"]) {
     expect(directives.get(name)).toEqual(["'none'"]);
@@ -120,13 +142,28 @@ test("every page runs only this origin's scripts and connects only to this origi
   expect(policy).not.toContain("'unsafe-inline'");
 });
 
-/** The CSP hash of the <style> @base-ui/react renders to hide scrollbars, rebuilt from the installed package's source. */
-function baseUiScrollbarStyleHash(): string {
-  const pkg = realpathSync(join(ROOT, "packages", "ui", "node_modules", "@base-ui", "react"));
-  const source = readFileSync(join(pkg, "utils", "styles.js"), "utf8");
-  const className = /DISABLE_SCROLLBAR_CLASS_NAME = '([^']+)'/.exec(source)?.[1];
-  const template = /children: `([^`]+)`/.exec(source)?.[1];
-  if (className === undefined || template === undefined) throw new Error("@base-ui/react's scrollbar style moved");
-  const css = template.replaceAll("${DISABLE_SCROLLBAR_CLASS_NAME}", className);
+/**
+ * The CSP hash of the <style> @base-ui/react renders to hide scrollbars: the element it renders, from the ESM build the
+ * web bundle imports, so the hash follows what ships rather than a reading of its source.
+ */
+async function baseUiScrollbarStyleHash(): Promise<string> {
+  const root = dirname(Bun.resolveSync("@base-ui/react/scroll-area", join(ROOT, "packages", "ui")));
+  const styles: unknown = await import(join(root, "..", "utils", "styles.mjs"));
+  const element: unknown = Reflect.get(Reflect.get(Object(styles), "styleDisableScrollbar"), "getElement")(undefined);
+  const css: unknown = Reflect.get(Reflect.get(Object(element), "props"), "children");
+  if (typeof css !== "string") throw new Error("@base-ui/react's scrollbar style is no longer one string");
   return new Bun.CryptoHasher("sha256").update(css).digest("base64");
 }
+
+/** One page's meta tag content: apps/<page>/index.html, <meta property|name="<key>">. */
+const metaOf = (page: string, key: string): string | undefined =>
+  new RegExp(`<meta (?:property|name)="${key}" content="([^"]+)"`).exec(
+    readFileSync(join(ROOT, "apps", page, "index.html"), "utf8"),
+  )?.[1];
+
+test("app.doriterm.com previews with the same card as doriterm.com, so the two cannot drift apart", () => {
+  const landing = metaOf("landing", "og:image");
+  expect(landing).toBe("https://doriterm.com/og.png");
+  expect(metaOf("web", "og:image")).toBe(landing);
+  expect(metaOf("web", "twitter:image")).toBe(landing);
+});
