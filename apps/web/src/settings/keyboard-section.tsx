@@ -1,7 +1,7 @@
 import { Button, Notice } from "@doriface/ui";
 import { ChevronRight } from "lucide-react";
-import { useState, useSyncExternalStore } from "react";
-import { connectionStore, useConnection } from "../connection/store.ts";
+import { useState } from "react";
+import { useConnection, useConnectionSettings } from "../connection/store.ts";
 import { packName, specialEntries } from "../keybar/entries.ts";
 import { useKeyBarError, useKeyBarSettings } from "../keybar/store.ts";
 import { asSentence } from "../storage/sentence.ts";
@@ -20,7 +20,7 @@ type SheetId = "keys" | "packs" | "custom" | null;
  */
 function useBarHost() {
   const state = useConnection();
-  const settings = useSyncExternalStore(connectionStore.subscribe, () => connectionStore.settings);
+  const settings = useConnectionSettings();
   const live =
     state.phase === "open"
       ? state.connection
