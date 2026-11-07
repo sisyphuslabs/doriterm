@@ -106,8 +106,15 @@ export function TerminalView(props: TerminalViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [restarting, setRestarting] = useState(false);
   const [ended, setEnded] = useState(false);
-  /** Whether this view is on screen: a pane out of view waits to re-attach until it is shown, so a hidden tab does not fetch a replay nobody looks at (#639). */
+  /**
+   * Whether this view is on screen. A pane out of view keeps a stream it holds but opens none: every re-attach (a new
+   * connection, or the core ending the stream of a program still running) waits until it is shown, so a hidden tab does
+   * not fetch a replay nobody looks at (#639), and a program that ended meanwhile is found then (#906).
+   */
   const [shown, setShown] = useState(true);
+  /** Counts the streams the core ended with the program still running; each is re-attached by the effect below. */
+  const [lostStreams, setLostStreams] = useState(0);
+  const reattachedFor = useRef(0);
   const toasts = useToastManager();
   /** Why attaching failed, in plain words; Try again clears it, which mounts the terminal and attaches again. */
   const [unopened, setUnopened] = useState<string | null>(null);
@@ -349,7 +356,7 @@ export function TerminalView(props: TerminalViewProps) {
   }, [onEnd]);
 
   /** The core ended the stream, or refused an attach, with the program not known to be over: ask it what is left. */
-  const settle = (ready: WTerm, refusal: { readonly cause: unknown } | null): void => {
+  const settle = (refusal: { readonly cause: unknown } | null): void => {
     void askCore(connection).then((answer) => {
       // The line dropped again: the next connection attaches anew.
       if (connection.closed || unmounted.current) return undefined;
@@ -360,7 +367,7 @@ export function TerminalView(props: TerminalViewProps) {
           onEnded?.();
         },
         restarting: () => setRestarting(true),
-        reattach: () => attach(ready),
+        reattach: () => setLostStreams((count) => count + 1),
         replaced: () => undefined,
         error: () => {
           unopenedAt(address);
@@ -434,7 +441,7 @@ export function TerminalView(props: TerminalViewProps) {
             if (stream.current === attached) stream.current = null;
             const end = terminalEnd(close);
             onEndNow.current?.(address, end);
-            if (end === "lost") settle(ready, null);
+            if (end === "lost") settle(null);
           });
           for (const data of pending.current.splice(0)) attached.write(data);
           focusWhenFree(ready);
@@ -444,14 +451,17 @@ export function TerminalView(props: TerminalViewProps) {
           // The connection dropped mid-attach: the next one attaches again (below).
           if (connection.closed || unmounted.current) return;
           setOpening(false);
-          settle(ready, { cause });
+          settle({ cause });
         },
       );
   };
 
   useEffect(() => {
-    if (wt !== null && shown && attachedTo.current !== connection) attach(wt);
-  }, [wt, connection, shown]);
+    if (wt === null || !shown) return;
+    if (attachedTo.current === connection && reattachedFor.current === lostStreams) return;
+    reattachedFor.current = lostStreams;
+    attach(wt);
+  }, [wt, connection, shown, lostStreams]);
 
   if (error !== null) return <p className="p-4 text-sm text-destructive">{error}</p>;
   if (restarting) {
