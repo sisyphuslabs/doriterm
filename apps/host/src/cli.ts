@@ -38,6 +38,7 @@ const USAGE = `usage: doriface-host [options]
   --relay <url>         the relay this host keeps an encrypted-only uplink to (default ${DEFAULT_RELAY_URL})
   --no-relay            keep no relay uplink: reach this host only directly
   --push-test-origin <origin>  for tests: also post web push notices to this push service origin (port 0: any port)
+  --version             print this host's version
   -h, --help            show this help`;
 
 const log = (line: string): void => {
@@ -126,11 +127,16 @@ async function serve(args: readonly string[]): Promise<void> {
       "no-relay": { type: "boolean", default: false },
       "push-test-origin": { type: "string", multiple: true },
       "install-hc": { type: "boolean", default: false },
+      version: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
   });
   if (values.help) {
     process.stdout.write(`${USAGE}\n`);
+    return;
+  }
+  if (values.version) {
+    out(`doriface-host ${HOST_VERSION}\n`);
     return;
   }
   if (values["install-hc"]) return installHerdrCore();

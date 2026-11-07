@@ -84,6 +84,16 @@ describe("answering a permission prompt", () => {
     expect((await readApprovalRecord(core, nextMark))?.by).toBe(laptop.by);
   });
 
+  test("the row the key picks on the live screen must carry the label the card showed, or nothing is pressed", async () => {
+    const { core, mark } = claudeAt("t3");
+    const options = mark.prompt.options.map((option) =>
+      option.id === "1" ? { ...option, label: "Delete everything" } : option,
+    );
+    const shown = { ...mark, prompt: { ...mark.prompt, options } };
+    expect(await answerApproval(core, shown, ALLOW, phone, 1)).toEqual({ kind: "stale" });
+    expect(core.pressed).toEqual([]);
+  });
+
   test("a terminal on an added machine keeps its claim on that machine's core", async () => {
     const { core, mark } = claudeAt("box/t3");
     await answerApproval(core, mark, ALLOW, phone, 1);

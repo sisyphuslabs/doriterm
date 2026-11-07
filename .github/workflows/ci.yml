@@ -572,13 +572,12 @@ jobs:
         working-directory: apps/desktop
         run: bun run pack
       # The dictation addon (apps/desktop/native, #726) was just built by pack: it is universal and loads without a prompt.
+      # The slice check is scripts/universal-addon.ts, whose test runs on every pull request (#1116).
       - name: Dictation addon
         if: steps.scope.outputs.match == 'true'
         working-directory: apps/desktop
         run: |
-          lipo -archs dist/native/speech.node | tee "$RUNNER_TEMP/archs.txt"
-          grep -q arm64 "$RUNNER_TEMP/archs.txt"
-          grep -q x86_64 "$RUNNER_TEMP/archs.txt"
+          bun scripts/universal-addon.ts dist/native/speech.node
           bun scripts/speech-smoke.ts
       # Installing and packing must not rewrite tracked files (the same check the Linux Desktop job makes).
       - name: The tree is clean after install and pack

@@ -64,7 +64,7 @@ Every headline is two-tone: a plain statement in `--ink`, then the consequence i
 
 4 px base: `--space-1..10` = 4, 8, 12, 16, 24, 32, 48, 64, 96, 144 px. Content width 1200 px plus a fluid gutter (`clamp(20px, 4vw, 40px)`). Sections are separated by 144 px (96 px under 760 px).
 
-Breakpoints: 640 (two-column lists; the mesh canvas and the app frames switch to their phone layouts), 760 (the stats tighten, the section index and the pairing output go to one column, and the nav hides Open the app), 860 (the nav hides its section links below this width), 900 (the hero scene draws its wide version from here and its tall one below; three-column cards, the relay pipe in one row, pairing side by side, the mesh log beside the stage), 1080 (hero lede and actions side by side).
+Breakpoints: 480 (below it the hero's two actions stack, full width up to 320 px), 640 (two-column lists and the section index's descriptions from here; below it the mesh canvas and its scene buttons take their phone layout and the app's desktop window is hidden), 760 (below it the facts, the makers, the section index and the pairing output go to one column, sections and cards tighten, and the nav hides Open the app), 860 (the nav hides its section links below this width), 900 (three-column cards and mesh facts, the relay pipe in one row, pairing side by side, and the phone frame overlapping the app window's corner), 1080 (the hero's top padding grows).
 
 | Radius          | Value  | Use                              |
 | --------------- | ------ | -------------------------------- |
