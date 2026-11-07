@@ -10,6 +10,10 @@ export interface Machines {
   readonly entries: readonly MachineEntry[];
   /** The first terminal list is in: the agents draw from it at once. */
   readonly terminalsLoaded: boolean;
+  /** Why the first terminal list failed, while none has come in; null otherwise. */
+  readonly terminalsError: string | null;
+  /** Asks the core for the terminal list again. */
+  readonly retryTerminals: () => void;
   /** The first machine.list answer (or its failure) is in; until then Spaces holds a loading row in its place. */
   readonly machinesListed: boolean;
   /** Starts a shell on that machine (`terminal.run` with `on`) and opens it at its `machine/tN` address. */
@@ -37,6 +41,8 @@ export interface Machines {
 export const MachinesContext = createContext<Machines>({
   entries: [],
   terminalsLoaded: true,
+  terminalsError: null,
+  retryTerminals: () => {},
   machinesListed: true,
   newTerminalOn: () => {},
   start: () => {},

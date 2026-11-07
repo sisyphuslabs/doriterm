@@ -30,6 +30,7 @@ import { useLayout, type PaneTarget } from "./use-layout.ts";
 import { chainedSplit, SplitChain } from "./split-chain.ts";
 import { afterEnd } from "./session-actions.ts";
 import { useDeadPanes } from "./use-dead-panes.ts";
+import { useDropOnce } from "./use-drop-once.ts";
 import { useLayoutDocs } from "./use-layout-docs.ts";
 import { GitFactsContext, useGitFacts } from "./git-facts.ts";
 import { TodoProgressContext, useTodoProgress } from "./todo-progress.ts";
@@ -73,7 +74,7 @@ export function Workspace({ connection }: WorkspaceProps) {
     listed: machineReads,
   } = useMachines(connection, fed.terminals);
   // Opened and re-read on what hc said: a document read while its line was down is read again once the line is back.
-  const { layouts, heard } = useLayoutDocs(connection, heardMachines);
+  const { layouts, heard } = useLayoutDocs(connection, heardMachines, views);
   const gitOf = useGitFacts(connection, views);
   const todoOf = useTodoProgress(connection, fed.terminals);
   heardLayout.current = heard;
@@ -133,23 +134,8 @@ export function Workspace({ connection }: WorkspaceProps) {
     unsaved,
     machineReads > 0,
   );
-  // A session that ends is dropped from the layout once, by whichever automatic signal comes first: closing it ends and
-  // removes it (#409), so its view's end and the dead-pane check both report it. A refused drop keeps the pane, showing
-  // the ended session, as for a program that exits; a second drop would be refused again, toast again and move the view.
-  const droppedOnce = useRef(new Set<string>());
-  useEffect(() => {
-    // An address listed live again is a new session in it, whose end is dropped again.
-    for (const terminal of terminals) if (terminal.state === "live") droppedOnce.current.delete(terminal.address);
-  }, [terminals]);
-  const { dropPane } = layout;
-  const dropEnded = useCallback(
-    (address: string): void => {
-      if (droppedOnce.current.has(address)) return;
-      droppedOnce.current.add(address);
-      dropPane(address);
-    },
-    [dropPane],
-  );
+  // A session that ends is dropped from the layout once; a refused drop keeps the pane, showing the ended session.
+  const { dropEnded, closing: closingSessions, kept } = useDropOnce(terminals, layout.dropPane);
   // A pane is asked about only on what hc said: a machine held connected through a redial may have no terminals listed.
   useDeadPanes(connection, layout.tabs, fed.loaded ? terminals : null, heardMachines, machineReads, dropEnded);
   useAdoptLoose(layouts, fed.loaded ? terminals : null, failed);
@@ -161,7 +147,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   // Opening a terminal from this device's list is the first run's "open an agent" step; a restored focus is not (#668).
   const showOnPhone = useCallback(
     (address: string) => {
-      guideStore.opened();
+      guideStore.opened(address);
       setPhoneKey(tabKey(address, ids));
     },
     [ids],
@@ -219,7 +205,7 @@ export function Workspace({ connection }: WorkspaceProps) {
       },
       // The first run's agent step completes once the terminal really started, not when it was asked for (#668).
       (address) => {
-        guideStore.opened();
+        guideStore.opened(address);
         opened(address);
       },
     );
@@ -302,6 +288,8 @@ export function Workspace({ connection }: WorkspaceProps) {
 
   const openAddMachine = useCallback(() => setAdding(true), []);
   const terminalsLoaded = fed.loaded;
+  const terminalsError = fed.loaded ? null : fed.error;
+  const retryTerminals = fed.retry;
   const machinesListed = machineReads > 0 || listError !== undefined;
   // The sidebar's runs are its New space buttons: each terminal they start is the first tab of a new space (#404).
   const inNewSpace = useCallback(
@@ -315,6 +303,8 @@ export function Workspace({ connection }: WorkspaceProps) {
     () => ({
       entries,
       terminalsLoaded,
+      terminalsError,
+      retryTerminals,
       machinesListed,
       listError,
       openAddMachine,
@@ -324,7 +314,20 @@ export function Workspace({ connection }: WorkspaceProps) {
       start: (params: TerminalRunParams) => runs.start(params, inNewSpace),
       newTerminalOn: (machine: string) => runs.start({ on: machine }, inNewSpace),
     }),
-    [entries, terminalsLoaded, machinesListed, listError, openAddMachine, views, retry, moveMachine, runs, inNewSpace],
+    [
+      entries,
+      terminalsLoaded,
+      terminalsError,
+      retryTerminals,
+      machinesListed,
+      listError,
+      openAddMachine,
+      views,
+      retry,
+      moveMachine,
+      runs,
+      inNewSpace,
+    ],
   );
   const { selectSpace } = layout;
   // The space keys count the spaces as the sidebar lists them, so "space 2" is the second row a person sees.
@@ -417,7 +420,8 @@ export function Workspace({ connection }: WorkspaceProps) {
               terminals={terminals}
               ask={ask}
               onDone={done}
-              onDrop={layout.dropPane}
+              onDrop={dropEnded}
+              onKept={kept}
             />
             {closing === undefined ? null : (
               <CloseTabDialog
@@ -428,8 +432,12 @@ export function Workspace({ connection }: WorkspaceProps) {
                 {...(lastOfSpace(closing)
                   ? { space: { name: spaces.find((space) => space.id === closing.spaceKey)?.name ?? "Space" } }
                   : {})}
-                onClosed={() => layout.closeTab(closing.key)}
+                onClosed={() => {
+                  closingSessions(closing.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])));
+                  layout.closeTab(closing.key);
+                }}
                 onDone={() => setClosingTab(null)}
+                onKept={kept}
               />
             )}
             {palette ? (

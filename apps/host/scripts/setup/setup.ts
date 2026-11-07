@@ -197,9 +197,21 @@ export async function findHc(context: SetupContext): Promise<string> {
   return found.path;
 }
 
+/** `--listen default` and `--session default` go back to the host's own default, whatever the service ran with (#821). */
+export const DEFAULT_FLAG = "default";
+
+function chosen(flag: string | undefined, adopted: string | undefined): string | undefined {
+  return flag === DEFAULT_FLAG ? undefined : (flag ?? adopted);
+}
+
 export function resolvePaths(context: SetupContext, hc: string): SetupPaths {
   const tools = { bun: process.execPath, hc, shell: context.env["SHELL"] ?? userInfo().shell ?? "/bin/sh" };
-  const first = setupPaths(context.os, context.home, context.env, tools, { ...context.options, src: srcOf(context) });
+  const first = setupPaths(context.os, context.home, context.env, tools, {
+    ...context.options,
+    src: srcOf(context),
+    listen: chosen(context.options.listen, undefined),
+    session: chosen(context.options.session, undefined),
+  });
   if (context.os === "mac") {
     const installer = join(context.home, "Library", "LaunchAgents", `${INSTALLER_LABEL}.plist`);
     if (existsSync(installer)) {
@@ -226,8 +238,8 @@ export function resolvePaths(context: SetupContext, hc: string): SetupPaths {
     ...context.options,
     src: first.src,
     stateDir: context.options.stateDir ?? existing.stateDir,
-    listen: context.options.listen ?? existing.listen,
-    session: context.options.session ?? existing.session,
+    listen: chosen(context.options.listen, existing.listen),
+    session: chosen(context.options.session, existing.session),
     logFile: existing.logFile,
   });
 }
@@ -474,12 +486,14 @@ export async function invite(context: SetupContext, paths: SetupPaths, out: stri
 export async function joinMesh(context: SetupContext, paths: SetupPaths, from: string): Promise<void> {
   const link = readFileSync(from, "utf8").trim();
   if (link === "") throw new SetupError("join", `${from} is empty`);
+  // The host reads the link from the file: on the command line, other local users could read it from /proc (#821).
   const ran = await context.run([
     paths.bun,
     cliOf(paths.src),
     "mesh",
     "join",
-    link,
+    "--from-file",
+    from,
     "--yes",
     "--state-dir",
     paths.stateDir,

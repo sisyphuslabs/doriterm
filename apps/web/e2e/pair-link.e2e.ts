@@ -19,6 +19,16 @@ test("an unusable pairing link leads on to typing the code", async ({ page }) =>
   await expect(page.getByLabel("Pairing code")).toBeVisible();
 });
 
+for (const [kind, link, command] of [
+  ["mesh", `${BAD_LINK}&m=1`, "doriface-host mesh pair"],
+  ["device", BAD_LINK, "doriface-host pair"],
+] as const) {
+  test(`an unusable ${kind} link names the command that makes a new one (#727)`, async ({ page }) => {
+    await page.goto(link);
+    await expect(page.locator("code").filter({ hasText: new RegExp(`^${command}$`) })).toBeVisible();
+  });
+}
+
 test("a pairing link's secret leaves the address bar and the history on load", async ({ page }) => {
   const secret = new URLSearchParams(PAIR_LINK.split("#")[1]).get("p") ?? "";
   expect(secret).toHaveLength(43);
