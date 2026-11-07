@@ -1,4 +1,4 @@
-import packageJson from "../package.json" with { type: "json" };
+import release from "../../desktop/package.json" with { type: "json" };
 import type { MeshStatus } from "@doriface/protocol";
 import type { PlanPolicy } from "@doriface/policy";
 import type { CreateSocket } from "@doriface/relay-client";
@@ -6,7 +6,15 @@ import type { ListenAddress } from "./listen.ts";
 import type { MeshHooks } from "./mesh/host-hooks.ts";
 import type { PairingSlotRegistrar } from "./pairing-slots.ts";
 
-export const HOST_VERSION = packageJson.version;
+/** Set by apps/desktop/scripts/build-host.ts (`bun build --define`) to the version a release builds, prerelease included. */
+declare const DORIFACE_BUILD_VERSION: string | undefined;
+
+/**
+ * The version this host reports on /healthz, in its start-up line and for --version: the build's, else the version in
+ * apps/desktop/package.json, which is the one source of the release version (.github/scripts/release-version.ts).
+ */
+export const HOST_VERSION: string =
+  typeof DORIFACE_BUILD_VERSION === "string" ? DORIFACE_BUILD_VERSION : release.version;
 
 export interface HostOptions {
   readonly listen: ListenAddress;

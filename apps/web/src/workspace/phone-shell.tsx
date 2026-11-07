@@ -14,6 +14,7 @@ import { usePendingUpdate } from "../update/update-store.ts";
 import { FirstRunGuideCard } from "../pair/first-run-guide-card.tsx";
 import { PhoneEmpty } from "./phone-empty.tsx";
 import { PhoneListLoading } from "./phone-loading.tsx";
+import { TerminalsLoadError } from "./terminals-load-error.tsx";
 import { PhoneTerminal } from "./phone-terminal.tsx";
 import { RovingLists } from "./roving-lists.tsx";
 import { usePhoneActions, type SessionVerb } from "./use-app-actions.ts";
@@ -44,7 +45,10 @@ export function PhoneShell(props: PhoneShellProps) {
   const update = usePendingUpdate();
   const terminal = terminals.find((entry) => entry.address === open);
   // An unanswered list is not an empty one: the empty state waits for the core's first answer (#797).
-  const empty = machines.terminalsLoaded && !terminals.some((entry) => entry.state === "live");
+  const live = machines.terminalsLoaded
+    ? terminals.filter((entry) => entry.state === "live").map((entry) => entry.address)
+    : [];
+  const empty = machines.terminalsLoaded && live.length === 0;
   if (terminal === undefined) {
     const route = connectionStore.settings.mode === "relay" ? "relay" : "loopback";
     return (
@@ -78,7 +82,7 @@ export function PhoneShell(props: PhoneShellProps) {
         </header>
         <ConnectionLine />
         <ScrollArea slot="agents-list" className="flex-1">
-          <FirstRunGuideCard listVisible listedLive={!empty} onNew={onNew} />
+          <FirstRunGuideCard listVisible live={live} onNew={onNew} />
           {machines.terminalsLoaded ? (
             <>
               {empty ? (
@@ -90,6 +94,8 @@ export function PhoneShell(props: PhoneShellProps) {
                 </RovingLists>
               )}
             </>
+          ) : machines.terminalsError !== null ? (
+            <TerminalsLoadError cause={machines.terminalsError} onRetry={machines.retryTerminals} />
           ) : (
             <PhoneListLoading />
           )}
