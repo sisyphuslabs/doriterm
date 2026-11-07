@@ -1,5 +1,5 @@
 import type { AttachOptions, HcConnection, TerminalStream } from "@doriface/client";
-import type { Display, TerminalAttachParams, TerminalRunParams } from "@doriface/protocol";
+import { type Display, HcRpcError, type TerminalAttachParams, type TerminalRunParams } from "@doriface/protocol";
 
 export interface OpeningAttach {
   readonly cols: number;
@@ -149,8 +149,9 @@ interface Asked {
 
 /**
  * The stream a view opens its terminal with, and the grid the core was asked for: on a first attach, the one sent with
- * the terminal's run when there is one, told the view's own colours if they differ; else, or when that one failed (a
- * host that sent it on before the run had answered), the view's own `attach`.
+ * the terminal's run when there is one, told the view's own colours if they differ; else, or when that one found no
+ * terminal (a host that sent it on before the run had answered), the view's own `attach`. Any other failure is the
+ * attach's own, and is the view's to show.
  */
 export async function viewAttach(
   connection: object,
@@ -165,8 +166,10 @@ export async function viewAttach(
   let stream: TerminalStream;
   try {
     stream = await early.stream;
-  } catch {
-    return own();
+  } catch (error) {
+    // An older host hands the attach to hc before the run has answered, and hc finds no terminal by that name yet.
+    if (error instanceof HcRpcError && error.kind === "not_found") return own();
+    throw error;
   }
   if (JSON.stringify(early.display) !== JSON.stringify(asked.display)) stream.facts(asked.display);
   return { stream, cols: early.cols, rows: early.rows };
