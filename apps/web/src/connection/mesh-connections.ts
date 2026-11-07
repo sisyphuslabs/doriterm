@@ -1,3 +1,4 @@
+import type { OpenConnection } from "./connect.ts";
 import type { ConnectionState } from "./store.ts";
 import type { HostStartFailure } from "../desktop/bridge.ts";
 import type { LocalHostStarter } from "./store.ts";
@@ -13,6 +14,8 @@ export interface MemberConnection {
   readonly state: ConnectionState;
   subscribe(listener: () => void): () => void;
   start(): void;
+  /** Runs on a session that is already open instead of dialing one; `settings`, when given, replace its own first. */
+  adopt(opened: OpenConnection, settings?: ConnectionSettings): void;
   stop(): void;
   retryNow(): void;
   update(settings: ConnectionSettings): void;
@@ -130,20 +133,21 @@ export class MeshConnections {
    * Pairing is an intent, not something to infer from the host id: the roster exists so a client reaches every member of a
    * mesh, and a machine the person paired away from must not stay in it and be dialled forever after (review of #994).
    */
-  pair(settings: ConnectionSettings): void {
+  pair(settings: ConnectionSettings, opened?: OpenConnection): void {
     // The name belongs to the host that said it (#496): the machine just paired has not said one yet, so the previous
     // machine's name must not travel with the rest of the settings (review of #994).
-    this.#apply({ ...settings, hostName: "", members: [] });
+    this.#apply({ ...settings, hostName: "", members: [] }, opened);
   }
 
-  #apply(settings: ConnectionSettings): void {
+  /** `opened` is a session to the selected member that pairing already proved: its store runs on it instead of dialing. */
+  #apply(settings: ConnectionSettings, opened?: OpenConnection): void {
     this.#settings = normalizeSettings(settings);
     saveSettings(this.#settings);
     // A settings change is the app asking to dial with them, which is how the boot path replaces a stale saved port. Members that
     // already dialled are left alone; one that was stopped (by `restoring()`) is dialled again, which is the boot case where the
     // endpoint never changed and nothing else would start it (review of #994).
     this.#running = true;
-    this.#sync();
+    this.#sync(opened);
     this.#startAll();
     this.#notify();
   }
@@ -192,9 +196,13 @@ export class MeshConnections {
 
   /** The desktop app restarting this computer's own host: only the member on loopback is affected, and it will be dialled again. */
   restoring(): void {
-    // The store stops itself; this records that it must be dialled again by the settings the boot path hands over next.
-    this.#started.clear();
-    this.selected?.restoring();
+    // The store stops itself; this records that it must be dialled again by the settings the boot path hands over next. Only that
+    // member is forgotten: the next settings change starts every member not in the set, and `start()` on an open store closes it
+    // (#1140).
+    const store = this.selected;
+    if (store === undefined) return;
+    for (const [hostId, held] of this.#stores) if (held === store) this.#started.delete(hostId);
+    store.restoring();
   }
 
   restartsLocalHost(starter: LocalHostStarter): void {
@@ -233,7 +241,8 @@ export class MeshConnections {
     return hostId === "" && this.#settings.mode !== "loopback" ? [] : [selected];
   }
 
-  #sync(): void {
+  /** `opened` goes to the selected member's store, which then runs on it and dials nothing; unused, it is closed. */
+  #sync(opened?: OpenConnection): void {
     const roster = this.#roster();
     const keep = new Set(roster.map((member) => member.hostId));
     for (const [hostId, unsubscribe] of this.#unsubscribes) {
@@ -244,19 +253,28 @@ export class MeshConnections {
       this.#stores.delete(hostId);
       this.#targets.delete(hostId);
     }
+    // The store the proved session goes to, adopted once every store is listened to: its first open must reach #onMember.
+    let adoption: (() => void) | undefined;
     for (const member of roster) {
       const existing = this.#stores.get(member.hostId);
       this.#targets.set(member.hostId, member);
+      const proved = member.hostId === this.#settings.hostId ? opened : undefined;
       if (existing !== undefined) {
         // The shared settings can change under a member that is already dialled: a new relay, another mode, a fresh loopback
         // token. Only the members whose slice changed are told, so an untouched connection is not torn down for an edit that
-        // does not concern it.
+        // does not concern it. A member taking a proved session gets its slice with it, so it does not dial first.
         const scoped = this.#scoped(member);
-        if (!sameTarget(existing.settings, scoped)) existing.update(scoped);
+        if (proved !== undefined) adoption = () => existing.adopt(proved, scoped);
+        else if (!sameTarget(existing.settings, scoped)) existing.update(scoped);
         continue;
       }
-      this.#stores.set(member.hostId, this.#dial(member));
+      const store = this.#dial(member, proved !== undefined);
+      this.#stores.set(member.hostId, store);
+      if (proved !== undefined) adoption = () => store.adopt(proved);
     }
+    if (adoption === undefined) return opened?.connection.close();
+    this.#started.add(this.#settings.hostId);
+    adoption();
   }
 
   /** One member's settings: the shared ones, with that member's own address and a roster of just itself. */
@@ -271,13 +289,14 @@ export class MeshConnections {
     };
   }
 
-  #dial(member: MemberTarget): MemberConnection {
+  /** `adopting`: the store is about to take a proved session, so it is not started. */
+  #dial(member: MemberTarget, adopting = false): MemberConnection {
     const scoped = this.#scoped(member);
     // A member's store holds a slice of a roster this object owns, so it must not write: saving its slice would replace the
     // roster with one member.
     const store = this.#make(scoped, () => undefined);
     if (this.#localHost !== null) store.restartsLocalHost(this.#localHost);
-    if (this.#running) {
+    if (!adopting && this.#running) {
       this.#started.add(member.hostId);
       store.start();
     }

@@ -3,6 +3,7 @@
 import type { Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
+import { pressShortcut } from "./platform-keys.ts";
 
 endOwnTerminals();
 
@@ -31,8 +32,8 @@ test("Select all then Copy puts the screen's text without line-end spaces or the
   page,
 }) => {
   await terminalWithOutput(page);
-  await page.keyboard.press("ControlOrMeta+Shift+A");
-  await page.keyboard.press("ControlOrMeta+Shift+C");
+  await pressShortcut(page, "terminal.select_all");
+  await pressShortcut(page, "terminal.copy");
   await expect.poll(() => clipboard(page)).toContain("trim-42-end");
   expect(untrimmed(await clipboard(page))).toEqual({ padded: [], trailingNewline: false });
 });
@@ -57,7 +58,7 @@ test("a drag past the end of a line copies the line without the spaces after it"
   await page.mouse.down();
   await page.mouse.move(row.end, row.y, { steps: 8 });
   await page.mouse.up();
-  await page.keyboard.press("ControlOrMeta+Shift+C");
+  await pressShortcut(page, "terminal.copy");
   await expect.poll(() => clipboard(page)).toContain("trim-42-end");
   expect(await clipboard(page)).toBe("trim-42-end");
 });

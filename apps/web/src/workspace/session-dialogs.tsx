@@ -17,7 +17,7 @@ export interface SessionDialogsProps {
   readonly terminals: readonly Terminal[];
   readonly ask: SessionAsk | null;
   readonly onDone: () => void;
-  /** Takes a session's pane out of the layout once the session is gone. */
+  /** Takes a session's pane out of the layout: as a close is chosen, else once the session is gone. */
   readonly onDrop: (address: string) => void;
 }
 
@@ -108,6 +108,11 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onDrop }: S
           : recordedEnd(pendingEnds(connection.hello.core.id), { ...record, at: Date.now() }, calls),
       onDone,
     );
+    // A close takes the pane and its question away as it is chosen, not a round trip or a kill escalation later (#1271):
+    // End is already recorded, and a failed one still brings its question back to say why.
+    if (ask.kind !== "close") return;
+    endedQuietly.current = ask;
+    onDrop(address);
   };
   // Closing ends the program, as in herdr-app and Ghostty; it asks first only as confirm-close-surface says. A close
   // that needs no question ends at once, and the question shows only to say why that End failed.

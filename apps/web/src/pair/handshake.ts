@@ -1,7 +1,9 @@
 import { HcConnection } from "@doriface/client";
 import { base64urlEncode, closeCodeOf, type PairingSecret, secureLink } from "@doriface/crypto";
 import { CloseCode, connectRelayClient } from "@doriface/relay-client";
+import type { OpenConnection } from "../connection/connect.ts";
 import { BROWSER_DEPS, deviceKeyFor, type RelayDeps } from "../connection/relay-deps.ts";
+import type { ConnectionSettings } from "../connection/settings.ts";
 import { slotOf } from "./code.ts";
 import type { OfferSecret, PairingOffer } from "./fragment.ts";
 
@@ -45,9 +47,13 @@ function pairingOption(secret: OfferSecret, name: string): PairingSecret {
 /**
  * Runs the pairing session through the relay: a typed code on a `?pair=<slot>` session, a link on an ordinary one.
  * It resolves only after the host answered `hello` on that session, which the host does only once it stored this
- * device, so the next IK session is admitted.
+ * device, so the next IK session is admitted. The session stays open and is the caller's: a full hc session.
  */
-export async function pairWithHost(offer: PairingOffer, name: string, deps: RelayDeps = BROWSER_DEPS): Promise<void> {
+export async function pairWithHost(
+  offer: PairingOffer,
+  name: string,
+  deps: RelayDeps = BROWSER_DEPS,
+): Promise<HcConnection> {
   const { secret } = offer;
   const pairing = pairingOption(secret, name);
   const link = await connectRelayClient({
@@ -67,8 +73,7 @@ export async function pairWithHost(offer: PairingOffer, name: string, deps: Rela
       remoteStatic: offer.noiseStaticPub,
       pairing,
     });
-    const connection = await HcConnection.open(secure);
-    connection.close();
+    return await HcConnection.open(secure);
   } catch (error) {
     const reason = pairingFailureReason(secret.mode, error instanceof Error ? closeCodeOf(error) : undefined);
     throw reason === undefined ? error : new PairingFailedError(reason, { cause: error });
@@ -89,6 +94,32 @@ export async function pairAndRemember(
   save: (host: RememberedHost) => void,
   deps: RelayDeps = BROWSER_DEPS,
 ): Promise<void> {
-  await pairWithHost(offer, name, deps);
-  save({ hostId: offer.hostId, hostKey: base64urlEncode(offer.noiseStaticPub), relayUrl: offer.relayUrl });
+  (await pairWithHost(offer, name, deps)).close();
+  save(rememberedOf(offer));
+}
+
+const rememberedOf = (offer: PairingOffer): RememberedHost => ({
+  hostId: offer.hostId,
+  hostKey: base64urlEncode(offer.noiseStaticPub),
+  relayUrl: offer.relayUrl,
+});
+
+/** The app's connections, as pairing binds them to the host just paired (`connectionStore` in connection/store.ts). */
+export interface PairedConnections {
+  readonly settings: ConnectionSettings;
+  pair(settings: ConnectionSettings, opened?: OpenConnection): void;
+}
+
+/**
+ * Pairs, then binds the app to the host on the session the pairing proved, so the workspace opens on it instead of
+ * dialing the relay again (#1271); a failed pairing binds nothing.
+ */
+export async function pairAndOpen(
+  offer: PairingOffer,
+  name: string,
+  connections: PairedConnections,
+  deps: RelayDeps = BROWSER_DEPS,
+): Promise<void> {
+  const connection = await pairWithHost(offer, name, deps);
+  connections.pair({ ...connections.settings, mode: "relay", ...rememberedOf(offer) }, { connection, path: "relay" });
 }

@@ -6,8 +6,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { offerFrom, type PairingOffer, parsePairingFragment } from "../pair/fragment.ts";
-import { PairingFailedError, pairAndRemember, type RememberedHost } from "../pair/handshake.ts";
+import { PairingFailedError, pairAndOpen, pairAndRemember, type RememberedHost } from "../pair/handshake.ts";
 import { connect } from "./connect.ts";
+import { MeshConnections } from "./mesh-connections.ts";
+import { ConnectionStore } from "./store.ts";
 import { DEFAULT_SETTINGS } from "./settings.ts";
 
 const CLI = join(import.meta.dir, "..", "..", "..", "host", "src", "cli.ts");
@@ -87,6 +89,32 @@ describe("the web relay path against a real doriface-host", () => {
     expect(saved).toEqual([
       { hostId: link.hostId, hostKey: base64urlEncode(link.noiseStaticPub), relayUrl: bridge.url },
     ]);
+  }, 30_000);
+
+  test("pairing opens the workspace on the session it proved: one relay socket from They match to open (#1271)", async () => {
+    const { link } = await newOffer();
+    // A test build is not a dev build, so the store would lock its relay to production: the dial keeps this test's relay.
+    const dial: typeof connect = (settings, signal, _deps, options) =>
+      connect({ ...settings, relayUrl: bridge.url }, signal, deps, options);
+    const connections = new MeshConnections({ ...DEFAULT_SETTINGS, relayUrl: bridge.url }, (settings, save) => {
+      return new ConnectionStore(settings, dial, save);
+    });
+    const opened = new Promise<void>((resolve) => {
+      connections.subscribe(() => {
+        if (connections.state.phase === "open") resolve();
+      });
+    });
+    const dialsBefore = bridge.dialed.length;
+    try {
+      await pairAndOpen(link, "laptop", connections, deps);
+      await opened;
+      expect(bridge.dialed.length - dialsBefore).toBe(1);
+      const { state } = connections;
+      if (state.phase !== "open") throw new Error(`the workspace connection is ${state.phase}`);
+      expect((await state.connection.call("terminal.list", {})).terminals).toBeArray();
+    } finally {
+      connections.stop();
+    }
   }, 30_000);
 
   test("a link dials an ordinary session and pairs; connect() then runs hello over Noise IK", async () => {
