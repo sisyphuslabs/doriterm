@@ -2,7 +2,7 @@ import { Button, SettingRow } from "@doriface/ui";
 import { Smartphone } from "lucide-react";
 import { useMemo, useState } from "react";
 import { desktopPairOffer } from "../desktop/pair-bridge.ts";
-import { connectionStore } from "../connection/store.ts";
+import { useConnectionSettings } from "../connection/store.ts";
 import { PairDeviceDialog } from "./pair-device-dialog.tsx";
 
 /**
@@ -12,7 +12,8 @@ import { PairDeviceDialog } from "./pair-device-dialog.tsx";
  * screen away from the question that led there (review of #772).
  */
 export function PairDeviceOffer() {
-  const settings = connectionStore.settings;
+  // Subscribed, so the offer follows a mode change on any screen that shows it, not only one whose parent subscribes.
+  const settings = useConnectionSettings();
   // One relay function for this page: a new one each render would reopen the offer the dialog is showing.
   const pair = useMemo(() => desktopPairOffer(), []);
   const [pairing, setPairing] = useState(false);

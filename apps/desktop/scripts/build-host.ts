@@ -10,37 +10,51 @@ const TARGETS = {
   "win-arm64": "bun-windows-arm64",
 } as const;
 
-type Target = keyof typeof TARGETS;
+export type Target = keyof typeof TARGETS;
 
 const isTarget = (value: string): value is Target => Object.hasOwn(TARGETS, value);
 const OS_NAMES: Readonly<Record<string, string>> = { darwin: "mac", linux: "linux", win32: "win" };
 
 const root = join(import.meta.dir, "..");
 const cli = join(root, "..", "host", "src", "cli.ts");
-const requested = Bun.argv.slice(2);
-const names = requested.includes("all")
-  ? Object.keys(TARGETS)
-  : requested.length > 0
-    ? requested
-    : [`${OS_NAMES[process.platform] ?? process.platform}-${process.arch}`];
 
-const unknown = names.filter((name) => !isTarget(name));
-if (unknown.length > 0) {
-  console.error(`unknown host target ${unknown.join(", ")}; expected all or one of ${Object.keys(TARGETS).join(", ")}`);
-  process.exit(2);
+/** The target of the machine this runs on. */
+export function nativeTarget(): Target {
+  const name = `${OS_NAMES[process.platform] ?? process.platform}-${process.arch}`;
+  if (!isTarget(name)) throw new Error(`no host target for ${name}`);
+  return name;
 }
 
-const compile = async (name: Target): Promise<number> => {
-  const outfile = join(root, "dist", "host", name, name.startsWith("win-") ? "doriface-host.exe" : "doriface-host");
+/**
+ * Compiles the host for `name` into `outfile`. A `version` (a release's, prerelease suffix included) is what the host
+ * then reports; without one it reports apps/desktop/package.json's.
+ */
+export async function compileHost(name: Target, outfile: string, version?: string): Promise<number> {
+  const define = version === undefined ? [] : ["--define", `DORIFACE_BUILD_VERSION=${JSON.stringify(version)}`];
   const proc = Bun.spawn(
-    [process.execPath, "build", "--compile", `--target=${TARGETS[name]}`, cli, "--outfile", outfile],
+    [process.execPath, "build", "--compile", `--target=${TARGETS[name]}`, ...define, cli, "--outfile", outfile],
     {
       stdout: "inherit",
       stderr: "inherit",
     },
   );
   return proc.exited;
-};
+}
 
-const codes = await Promise.all(names.filter(isTarget).map(compile));
-if (codes.some((code) => code !== 0)) process.exit(1);
+if (import.meta.main) {
+  const requested = Bun.argv.slice(2);
+  const names = requested.includes("all") ? Object.keys(TARGETS) : requested.length > 0 ? requested : [nativeTarget()];
+  const unknown = names.filter((name) => !isTarget(name));
+  if (unknown.length > 0) {
+    console.error(
+      `unknown host target ${unknown.join(", ")}; expected all or one of ${Object.keys(TARGETS).join(", ")}`,
+    );
+    process.exit(2);
+  }
+  // The release sets the version it builds; a local build reports apps/desktop/package.json's.
+  const version = process.env["DORIFACE_BUILD_VERSION"] || undefined;
+  const outfile = (name: Target): string =>
+    join(root, "dist", "host", name, name.startsWith("win-") ? "doriface-host.exe" : "doriface-host");
+  const codes = await Promise.all(names.filter(isTarget).map((name) => compileHost(name, outfile(name), version)));
+  if (codes.some((code) => code !== 0)) process.exit(1);
+}

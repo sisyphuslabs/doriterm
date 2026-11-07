@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { readFileSync, realpathSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { evaluate, type Value } from "./gh-expression.ts";
 
 type Step = { id?: string; name?: string; if?: string; run?: string; uses?: string };
@@ -116,7 +116,7 @@ test("app.doriterm.com and the omo.dev host each serve the build with the SPA fa
   }
 });
 
-test("every page runs only this origin's scripts and connects only to this origin and the relay", () => {
+test("every page runs only this origin's scripts and connects only to this origin and the relay", async () => {
   const headersFile = readFileSync(join(ROOT, "apps", "web", "public", "_headers"), "utf8");
   const policy = /^\/\*\n(?:  .*\n)*?  Content-Security-Policy: (.+)$/m.exec(headersFile)?.[1] ?? "";
   const directives = new Map(
@@ -132,8 +132,8 @@ test("every page runs only this origin's scripts and connects only to this origi
     "https://relay-doriface.omo.dev",
     "wss://relay-doriface.omo.dev",
   ]);
-  expect(directives.get("style-src")).toEqual(["'self'", `'sha256-${baseUiScrollbarStyleHash()}'`]);
-  expect(directives.get("img-src")).toEqual(["'self'", "blob:"]);
+  expect(directives.get("style-src")).toEqual(["'self'", `'sha256-${await baseUiScrollbarStyleHash()}'`]);
+  expect(directives.get("img-src")).toEqual(["'self'"]);
   expect(directives.get("font-src")).toEqual(["'self'", "data:"]);
   for (const name of ["frame-ancestors", "base-uri", "form-action", "object-src"]) {
     expect(directives.get(name)).toEqual(["'none'"]);
@@ -142,13 +142,15 @@ test("every page runs only this origin's scripts and connects only to this origi
   expect(policy).not.toContain("'unsafe-inline'");
 });
 
-/** The CSP hash of the <style> @base-ui/react renders to hide scrollbars, rebuilt from the installed package's source. */
-function baseUiScrollbarStyleHash(): string {
-  const pkg = realpathSync(join(ROOT, "packages", "ui", "node_modules", "@base-ui", "react"));
-  const source = readFileSync(join(pkg, "utils", "styles.js"), "utf8");
-  const className = /DISABLE_SCROLLBAR_CLASS_NAME = '([^']+)'/.exec(source)?.[1];
-  const template = /children: `([^`]+)`/.exec(source)?.[1];
-  if (className === undefined || template === undefined) throw new Error("@base-ui/react's scrollbar style moved");
-  const css = template.replaceAll("${DISABLE_SCROLLBAR_CLASS_NAME}", className);
+/**
+ * The CSP hash of the <style> @base-ui/react renders to hide scrollbars: the element it renders, from the ESM build the
+ * web bundle imports, so the hash follows what ships rather than a reading of its source.
+ */
+async function baseUiScrollbarStyleHash(): Promise<string> {
+  const root = dirname(Bun.resolveSync("@base-ui/react/scroll-area", join(ROOT, "packages", "ui")));
+  const styles: unknown = await import(join(root, "..", "utils", "styles.mjs"));
+  const element: unknown = Reflect.get(Reflect.get(Object(styles), "styleDisableScrollbar"), "getElement")(undefined);
+  const css: unknown = Reflect.get(Reflect.get(Object(element), "props"), "children");
+  if (typeof css !== "string") throw new Error("@base-ui/react's scrollbar style is no longer one string");
   return new Bun.CryptoHasher("sha256").update(css).digest("base64");
 }
