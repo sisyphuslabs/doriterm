@@ -1,6 +1,6 @@
-import type { GitFacts, JsonObject, Terminal } from "@doriface/protocol";
+import type { GitFacts, GitFactsDoc, JsonObject, Terminal } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
-import { shownGit } from "./git-facts.ts";
+import { nextDocs, shownGit } from "./git-facts.ts";
 import { layoutSpaces } from "./model.ts";
 
 const clean: GitFacts = { branch: "main", detached: false, onDefault: true, ahead: 0, behind: 0, dirty: false };
@@ -24,6 +24,28 @@ describe("shownGit: only what is unusual", () => {
     expect(shownGit({ ...clean, behind: 3 })?.behind).toBe(3);
     const { branch: _, ...detached } = { ...clean, detached: true, onDefault: false };
     expect(shownGit(detached)).toEqual({ detached: true, ahead: 0, behind: 0, dirty: false });
+  });
+});
+
+const doc = (branch: string): GitFactsDoc => ({ v: 1, dirs: { "/work": { ...clean, branch } } });
+
+describe("nextDocs: a round of reads", () => {
+  const before = new Map<string, GitFactsDoc>([
+    ["", doc("main")],
+    ["laptop", doc("feat/a")],
+  ]);
+
+  test("a read that could not be made keeps the machine's last document, so its facts do not blink out (#913)", () => {
+    const next = nextDocs(before, [
+      ["", doc("main")],
+      ["laptop", "failed"],
+    ]);
+    expect(next.get("laptop")).toEqual(doc("feat/a"));
+  });
+
+  test("a machine that answers with no document, or is no longer asked, has none", () => {
+    expect(nextDocs(before, [["", undefined]])).toEqual(new Map());
+    expect([...nextDocs(before, [["", doc("dev")]]).keys()]).toEqual([""]);
   });
 });
 

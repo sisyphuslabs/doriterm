@@ -397,6 +397,13 @@ pre kbd {
   height: 15px;
 }
 
+/* Pause animations (WCAG 2.2.2): pressed while the loops are paused, showing play to resume them. */
+.motion-switch [aria-pressed="true"] .motion-switch__pause,
+.motion-switch [aria-pressed="false"] .motion-switch__play,
+.no-js .motion-switch {
+  display: none;
+}
+
 /* 3.3 Buttons */
 .btn {
   position: relative;
@@ -1641,5 +1648,10 @@ pre kbd {
 
   .caret {
     animation: none;
+  }
+
+  /* Nothing moves, so there is nothing to pause. */
+  .motion-switch {
+    display: none;
   }
 }

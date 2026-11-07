@@ -35,6 +35,7 @@ const SHELL_ACTIONS: Readonly<Record<Shell, readonly string[]>> = {
     "space.prev",
     "voice.dictate",
     "layout.toggle:sidebar",
+    "layout.filter:sidebar",
     "app.zoom_in",
     "app.zoom_out",
     "app.settings",
