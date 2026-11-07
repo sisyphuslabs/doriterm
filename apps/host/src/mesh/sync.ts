@@ -115,7 +115,7 @@ export class SyncSession {
     this.#retiring = this.#clock.after(this.#lingerMs, () => this.close(CloseCode.UnknownDevice, reason));
   }
 
-  /** Back in the view (under the cap again): the retirement is called off. */
+  /** Back in the view (re-admitted): the retirement is called off. */
   keep(): void {
     this.#retiring?.();
     this.#retiring = undefined;

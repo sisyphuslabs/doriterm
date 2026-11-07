@@ -9,9 +9,23 @@ export interface SessionMenuProps {
   readonly placement?: "strip" | "header";
 }
 
+/** What can be done with a terminal's session: its "..." menu and a split pane header's right-click hold the same items. */
+export function SessionMenuItems({ address }: { readonly address: string }) {
+  const ask = useAskSession();
+  return (
+    <>
+      <MenuItem icon={<Pencil />} onClick={() => ask({ kind: "rename", address })}>
+        Rename…
+      </MenuItem>
+      <MenuItem icon={<Power />} destructive onClick={() => ask({ kind: "end", address })}>
+        End session…
+      </MenuItem>
+    </>
+  );
+}
+
 /** The actions on a terminal's session: rename it, or end its program. */
 export function SessionMenu({ address, title, placement = "strip" }: SessionMenuProps) {
-  const ask = useAskSession();
   const label = `Session actions for ${title}`;
   return (
     <Menu
@@ -24,12 +38,7 @@ export function SessionMenu({ address, title, placement = "strip" }: SessionMenu
         )
       }
     >
-      <MenuItem icon={<Pencil />} onClick={() => ask({ kind: "rename", address })}>
-        Rename…
-      </MenuItem>
-      <MenuItem icon={<Power />} destructive onClick={() => ask({ kind: "end", address })}>
-        End session…
-      </MenuItem>
+      <SessionMenuItems address={address} />
     </Menu>
   );
 }

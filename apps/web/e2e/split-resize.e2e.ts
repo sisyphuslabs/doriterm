@@ -16,7 +16,7 @@ const KEYS: Readonly<Record<Platform, Readonly<Record<Key, string>>>> = {
     grow: "Meta+Control+ArrowDown",
     equalize: "Meta+Control+Equal",
     zoom: "Meta+Shift+Enter",
-    close: "Meta+w",
+    close: "Meta+Shift+w",
     up: "Meta+Alt+ArrowUp",
     splitDown: "Meta+Shift+d",
   },
@@ -317,12 +317,36 @@ test("the last pane of the tab in view ending while its layout write is refused 
   expect(savedTab("tb-solo")).toBe(saved);
 });
 
+/**
+ * How many "The layout was not saved" notices the page has shown from now on, closed ones included: a notice closes
+ * itself after five seconds, which a loaded runner can outlast between the refusal and a spec's last check (#1328).
+ */
+async function notSavedNotices(page: Page): Promise<() => Promise<number>> {
+  await page.evaluate(() => {
+    let shown = 0;
+    Reflect.set(window, "__notSavedNotices", () => shown);
+    new MutationObserver((records) => {
+      for (const node of records.flatMap((record) => [...record.addedNodes]))
+        if (node instanceof Element)
+          shown += [node, ...node.querySelectorAll("*")].filter(
+            (element) => element.childElementCount === 0 && element.textContent === "The layout was not saved",
+          ).length;
+    }).observe(document.body, { subtree: true, childList: true });
+  });
+  return () =>
+    page.evaluate(() => {
+      const read: unknown = Reflect.get(window, "__notSavedNotices");
+      return typeof read === "function" ? Number(read()) : Number.NaN;
+    });
+}
+
 test("closing the tab in view while its layout write is refused keeps that tab in view, and says so once", async ({
   page,
 }) => {
   const socket = await routeHcSocket(page);
   const { solo } = await soloInView(page);
   const saved = savedTab("tb-solo");
+  const said = await notSavedNotices(page);
   const { before } = await terminalCount(page);
   /** Whether hc has answered the page's terminal.get for the closed session with not_found (the dead-pane check). */
   const toldGone = (): boolean => {
@@ -343,8 +367,7 @@ test("closing the tab in view while its layout write is refused keeps that tab i
   socket.staleWrites(true);
   const release = socket.holdFromHost('"method":"event"', '"method":"heartbeat"', '"method":"missed"');
   await page.getByRole("button", { name: /^Close .*solo/ }).click();
-  const told = page.getByText("The layout was not saved");
-  await expect(told).toHaveCount(1, { timeout: 15_000 });
+  await expect.poll(said, { timeout: 15_000 }).toBe(1);
   await expect(page.getByRole("region", { name: "resize-solo terminal" })).toHaveCount(1);
 
   // The removal is the same ending: the dead-pane check finds the session gone, and the pane is not dropped again, so
@@ -353,7 +376,7 @@ test("closing the tab in view while its layout write is refused keeps that tab i
   await expect(page.getByRole("contentinfo")).toContainText(`${before - 1} terminal`, { timeout: 15_000 });
   await expect.poll(toldGone, { timeout: 15_000 }).toBe(true);
   await expect(page.getByRole("tab", { selected: true })).toHaveText(/solo/);
-  await expect(told).toHaveCount(1);
+  expect(await said()).toBe(1);
   expect(savedTab("tb-solo")).toBe(saved);
 });
 

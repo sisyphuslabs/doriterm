@@ -30,6 +30,7 @@ import { useLayout, type PaneTarget } from "./use-layout.ts";
 import { chainedSplit, SplitChain } from "./split-chain.ts";
 import { afterEnd } from "./session-actions.ts";
 import { useDeadPanes } from "./use-dead-panes.ts";
+import { useDropOnce } from "./use-drop-once.ts";
 import { useLayoutDocs } from "./use-layout-docs.ts";
 import { GitFactsContext, useGitFacts } from "./git-facts.ts";
 import { TodoProgressContext, useTodoProgress } from "./todo-progress.ts";
@@ -133,23 +134,8 @@ export function Workspace({ connection }: WorkspaceProps) {
     unsaved,
     machineReads > 0,
   );
-  // A session that ends is dropped from the layout once, by whichever automatic signal comes first: closing it ends and
-  // removes it (#409), so its view's end and the dead-pane check both report it. A refused drop keeps the pane, showing
-  // the ended session, as for a program that exits; a second drop would be refused again, toast again and move the view.
-  const droppedOnce = useRef(new Set<string>());
-  useEffect(() => {
-    // An address listed live again is a new session in it, whose end is dropped again.
-    for (const terminal of terminals) if (terminal.state === "live") droppedOnce.current.delete(terminal.address);
-  }, [terminals]);
-  const { dropPane } = layout;
-  const dropEnded = useCallback(
-    (address: string): void => {
-      if (droppedOnce.current.has(address)) return;
-      droppedOnce.current.add(address);
-      dropPane(address);
-    },
-    [dropPane],
-  );
+  // A session that ends is dropped from the layout once; a refused drop keeps the pane, showing the ended session.
+  const { dropEnded, closing: closingSessions, kept } = useDropOnce(terminals, layout.dropPane);
   // A pane is asked about only on what hc said: a machine held connected through a redial may have no terminals listed.
   useDeadPanes(connection, layout.tabs, fed.loaded ? terminals : null, heardMachines, machineReads, dropEnded);
   useAdoptLoose(layouts, fed.loaded ? terminals : null, failed);
@@ -434,7 +420,8 @@ export function Workspace({ connection }: WorkspaceProps) {
               terminals={terminals}
               ask={ask}
               onDone={done}
-              onDrop={layout.dropPane}
+              onDrop={dropEnded}
+              onKept={kept}
             />
             {closing === undefined ? null : (
               <CloseTabDialog
@@ -445,8 +432,12 @@ export function Workspace({ connection }: WorkspaceProps) {
                 {...(lastOfSpace(closing)
                   ? { space: { name: spaces.find((space) => space.id === closing.spaceKey)?.name ?? "Space" } }
                   : {})}
-                onClosed={() => layout.closeTab(closing.key)}
+                onClosed={() => {
+                  closingSessions(closing.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])));
+                  layout.closeTab(closing.key);
+                }}
                 onDone={() => setClosingTab(null)}
+                onKept={kept}
               />
             )}
             {palette ? (

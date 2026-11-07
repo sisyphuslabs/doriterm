@@ -54,6 +54,8 @@ export interface HcSocket {
    * it: the feed drops an event older than one it has seen.
    */
   readonly holdFromHost: (...needles: string[]) => () => void;
+  /** Delivers a frame to the page as if the host had sent it, on every open connection. */
+  readonly sendFromHost: (frame: Buffer) => void;
   /**
    * While on, every layout write the page sends (`doc.set`) names a version the document is not at, so the host refuses
    * each one as a conflict, as when another device keeps changing the layout: the page's retries run out.
@@ -182,6 +184,9 @@ export async function routeHcSocket(
         hostHolds.delete(hold);
         for (const deliver of hold.parked.splice(0)) deliver();
       };
+    },
+    sendFromHost: (frame) => {
+      for (const socket of live) socket.send(frame);
     },
     staleWrites: (on) => void (stale = on),
     hold: (...methods) => {

@@ -192,7 +192,7 @@ test("moving a tab is not an arrival: a drag, a keyboard move and a menu move st
   await moved(async () => {
     const mac = await page.evaluate(() => navigator.platform.startsWith("Mac"));
     await tabs(page).nth(0).focus();
-    await page.keyboard.press(mac ? "Meta+Shift+ArrowRight" : "Control+Shift+PageDown");
+    await page.keyboard.press(mac ? "Meta+Shift+ArrowRight" : "Control+Alt+Shift+PageDown");
   });
   await moved(async () => {
     await tabs(page).nth(3).click({ button: "right" });

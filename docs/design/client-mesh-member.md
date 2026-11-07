@@ -86,7 +86,7 @@ entry; a revoke closes open sessions and a concurrently completing handshake
 The browser holds X25519 (`apps/web/src/connection/device-key.ts`); cards are Ed25519-signed under `signPub`. A client
 member's card carries its own Ed25519 signing identity and attests the X25519 session key, bound to the mesh, the inviter,
 a nonce and the kind. Clients are not record authors and not voters (`packages/mesh/src/view/structure.ts`,
-`testimony.ts`); they count against the 12-member cap and never dial.
+`testimony.ts`); they never dial.
 
 ## 7. Wire: the outer file format advances, and no admission is emitted before the cohort can hold it
 
