@@ -18,6 +18,8 @@ export interface CloseTabDialogProps {
   /** Takes the tab out of the layout: at once, while its sessions end behind it. */
   readonly onClosed: () => void;
   readonly onDone: () => void;
+  /** A session whose End failed keeps running, so its later end drops its pane again. */
+  readonly onKept: (address: string) => void;
 }
 
 const counted = (count: number, word: string): string => `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -29,7 +31,7 @@ const counted = (count: number, word: string): string => `${count} ${word}${coun
  * round trip or a kill escalation later (#1271); an End that fails is reported in a toast, the one surface left once
  * the tab is gone.
  */
-export function CloseTabDialog({ connection, terminals, tab, space, onClosed, onDone }: CloseTabDialogProps) {
+export function CloseTabDialog({ connection, terminals, tab, space, onClosed, onDone, onKept }: CloseTabDialogProps) {
   const toasts = useToastManager();
   // Asked with focus on the page body (a terminal whose renderer had not started yet), or from an element gone by now,
   // the question gives focus to the focused pane's terminal, as the session's own question does.
@@ -43,7 +45,14 @@ export function CloseTabDialog({ connection, terminals, tab, space, onClosed, on
   const quiet = space === undefined && !asks;
   const end = (): void => {
     const calls = sessionCalls(connection);
-    const ending = Promise.all(live.map((terminal) => endSession(calls, terminal.address)));
+    const ending = Promise.all(
+      live.map((terminal) =>
+        endSession(calls, terminal.address).catch((cause: unknown) => {
+          onKept(terminal.address);
+          throw cause;
+        }),
+      ),
+    );
     onClosed();
     onDone();
     ending.catch((cause: unknown) =>

@@ -1,6 +1,6 @@
-import { type KeyboardEvent, type MouseEvent, type ReactElement, type ReactNode, useRef } from "react";
+import { type KeyboardEvent, type ReactElement, type ReactNode, useRef } from "react";
 import { cn } from "../lib/cn.ts";
-import { ContextMenu, skipMenuHandler } from "./menu.tsx";
+import { ContextMenu, skipMenuHandler, skipTouchMenu } from "./menu.tsx";
 
 export interface RowWithActionsProps {
   /** The row's own button; it stays the list's stop, and ArrowRight reaches the actions (see the sidebar's roving). */
@@ -33,12 +33,6 @@ const MASKED =
  */
 const COARSE_SHOWN = `${SHOWN} coarse:visible coarse:gap-6`;
 const COARSE_ROOM = "coarse:[&>button]:pr-8";
-
-/** A touch keeps the row's own press (a held space row lifts for a drag): only a mouse, a pen or a key opens the menu. */
-function skipTouchMenu(event: MouseEvent<HTMLDivElement>): void {
-  const press = event.nativeEvent;
-  if (press instanceof PointerEvent && press.pointerType === "touch") skipMenuHandler(event);
-}
 
 /**
  * Shift+F10 or the Menu key opens the row's menu under the row, on every platform: Blink opens it from those keys only

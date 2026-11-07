@@ -12,4 +12,4 @@ export { deviceIdOf, DeviceStore, type PairedDevice } from "./state/devices.ts";
 export { defaultStateDir } from "./state/files.ts";
 export { loadHostIdentity } from "./state/host-keys.ts";
 export { PairingStore, type PairingClaim, type PendingPairing, type SlotStatus } from "./state/pairing.ts";
-export { WsLink } from "./ws-link.ts";
+export { DIRECT_IDLE_MS, WsLink } from "./ws-link.ts";

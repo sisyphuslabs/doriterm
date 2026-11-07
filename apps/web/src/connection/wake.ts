@@ -1,3 +1,19 @@
+/**
+ * The call a wake sends to prove an open link got no answer in time, so the link was dropped (#653). It names that call:
+ * the link's heartbeats may have kept arriving, so this is not a silent link (#779).
+ */
+export class WakeProbeUnansweredError extends Error {
+  override readonly name = "WakeProbeUnansweredError";
+  readonly method: string;
+  readonly timeoutMs: number;
+
+  constructor(method: string, timeoutMs: number) {
+    super(`the host did not answer a check after the app woke (${method}, ${Math.round(timeoutMs / 1000)} s)`);
+    this.method = method;
+    this.timeoutMs = timeoutMs;
+  }
+}
+
 /** The page events that mean "this page can work again", as the store needs them. */
 export interface WakeSources {
   /** Registers a listener for `online` and `pageshow`. */
