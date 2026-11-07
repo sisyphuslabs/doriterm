@@ -4,6 +4,21 @@ import { memoryStore, type KeyValueStore } from "../storage/idb.ts";
 import { loadDeviceKey } from "./device-key.ts";
 
 describe("loadDeviceKey", () => {
+  test("WebKit hands a stored CryptoKey back as null, and the device keeps one identity across loads (#1329)", async () => {
+    const backing = memoryStore();
+    const lossy = (): KeyValueStore => ({
+      get: async (key) => {
+        const value = await backing.get(key);
+        return (value as { readonly kind?: string } | null)?.kind === "webcrypto" ? null : value;
+      },
+      put: (key, value) => backing.put(key, value),
+    });
+    const subtle = globalThis.crypto.subtle;
+    const first = await loadDeviceKey(lossy(), subtle);
+    const afterReload = await loadDeviceKey(lossy(), subtle);
+    expect(afterReload.publicKey).toEqual(first.publicKey);
+  });
+
   test("without WebCrypto X25519 it keeps raw bytes and agrees with a noble peer", async () => {
     const storage = memoryStore();
     const key = await loadDeviceKey(storage, null);
