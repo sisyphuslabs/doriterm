@@ -65,7 +65,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Build apps/landing
         run: bun run --cwd apps/landing build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: landing-dist
           path: apps/landing/dist
