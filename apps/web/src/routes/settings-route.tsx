@@ -1,5 +1,5 @@
 import { Button, IconButton, ScrollArea, Tab, TabList, Tabs, cn } from "@doriface/ui";
-import { ArrowLeft, Bell, Keyboard, Mic, Network, Palette, PanelBottom, Server, SquareTerminal } from "lucide-react";
+import { ArrowLeft, Bell, Keyboard, Mic, Network, Palette, PanelBottom, Plug, SquareTerminal } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { MonitorSmartphone } from "lucide-react";
 import { currentPlatform, triggerKeys } from "../keys/trigger.ts";
@@ -27,7 +27,7 @@ import { VoiceSection } from "../settings/voice-section.tsx";
 const SECTIONS = [
   { id: "device", label: "This device", icon: <MonitorSmartphone /> },
   { id: "machines", label: "Machines", icon: <Network /> },
-  { id: "pair", label: "Connect a machine", icon: <Server /> },
+  { id: "pair", label: "Connect a machine", icon: <Plug /> },
   { id: "terminal", label: "Terminal", icon: <SquareTerminal /> },
   { id: "keyboard", label: "Keyboard", icon: <PanelBottom /> },
   { id: "notifications", label: "Notifications", icon: <Bell /> },
@@ -167,13 +167,17 @@ export function SettingsRoute() {
               <>
                 <Lead>
                   These are the computers this host reaches: the ones that joined your mesh, and any you added by hand.
-                  Adding one by hand reaches it without the mesh; connecting one joins it first. A machine that answers
-                  reads Connected, one still being dialled reads Connecting, and one that needs a login says so; when a
-                  machine is offline the row says when it was last seen and, where the host knows a cause, what it is.
                 </Lead>
                 <Group title="Machines">
                   {members.length > 1 ? <MembersSection /> : null}
                   <MachinesSection />
+                  {/* What a row's state means sits under the rows, where a reader meets it: on a phone the list leads (#1007). */}
+                  <p className="pt-3 text-sm text-pretty text-muted-foreground">
+                    Adding one by hand reaches it without the mesh; connecting one joins it first. A machine that
+                    answers reads Connected, one still being dialled reads Connecting, and one that needs a login says
+                    so; when a machine is offline the row says when it was last seen and, where the host knows a cause,
+                    what it is.
+                  </p>
                 </Group>
                 <Group title="In your mesh">
                   <MeshSection />
