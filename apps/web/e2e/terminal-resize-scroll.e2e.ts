@@ -77,6 +77,11 @@ interface Sample {
   readonly top: number;
   /** Rows on the screen, the view's height in lines. */
   readonly screen: number;
+  /**
+   * Rows inside the scroll element's visible box, scrollback rows included: more than `screen` when the sample is read
+   * after a layout change and before the grid is fitted to it.
+   */
+  readonly inView: number;
 }
 
 /**
@@ -94,13 +99,14 @@ async function sampleWhile(page: Page, address: string, change: () => Promise<vo
           const element = document.querySelector(selector);
           if (element !== null) {
             const rows = [...element.querySelectorAll(".term-row:not(.term-scrollback-row)")];
-            const box = element.getBoundingClientRect();
-            const bottom = box.top + element.clientTop + element.clientHeight;
-            const visible = [...element.querySelectorAll(".term-row")]
-              .filter((row) => {
-                const rect = row.getBoundingClientRect();
-                return rect.bottom > box.top + 1 && rect.top < bottom - 1;
-              })
+            // The visible box is the content box: both edges start below the border.
+            const edge = element.getBoundingClientRect().top + element.clientTop;
+            const bottom = edge + element.clientHeight;
+            const inView = [...element.querySelectorAll(".term-row")].filter((row) => {
+              const rect = row.getBoundingClientRect();
+              return rect.bottom > edge + 1 && rect.top < bottom - 1;
+            });
+            const visible = inView
               .map((row) => Number(/row (\d{5})/.exec(row.textContent ?? "")?.[1] ?? 0))
               .filter((number) => number > 0);
             seen.push({
@@ -108,6 +114,7 @@ async function sampleWhile(page: Page, address: string, change: () => Promise<vo
               newest: Math.max(0, ...rows.map((row) => Number(/row (\d{5})/.exec(row.textContent ?? "")?.[1] ?? 0))),
               top: visible.length === 0 ? 0 : Math.min(...visible),
               screen: rows.length,
+              inView: inView.length,
             });
           }
           if (document.documentElement.hasAttribute("data-e2e-stop-sampling")) {
@@ -135,13 +142,16 @@ async function sampleWhile(page: Page, address: string, change: () => Promise<vo
 
 /**
  * Every sampled frame showed the transcript's end, and none scrolled back through it: the lines in view are all within
- * two screens of the end. `atBottom` also requires each frame at the scroll element's very bottom; a layout change that
+ * two views of the end, a view being the screen's rows or the rows the visible box holds, whichever is more. `atBottom` also requires each frame at the scroll element's very bottom; a layout change that
  * React commits in its own task can be read after it lands and before the frame's ResizeObserver fits the grid to it, a
  * state the browser never paints, so that is checked only where no such change happens.
  */
 function expectFollowed(samples: readonly Sample[], { atBottom = true } = {}): void {
   const off = samples.filter(
-    (sample) => sample.newest !== LINES || sample.top <= LINES - 2 * sample.screen || (atBottom && sample.away >= 5),
+    (sample) =>
+      sample.newest !== LINES ||
+      sample.top <= LINES - 2 * Math.max(sample.screen, sample.inView) ||
+      (atBottom && sample.away >= 5),
   );
   expect(samples.length).toBeGreaterThan(0);
   expect(off.slice(0, 5), `${off.length} of ${samples.length} frames left the transcript's end`).toEqual([]);

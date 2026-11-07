@@ -45,3 +45,29 @@ test("a run that answers after a menu was opened leaves the keyboard in the menu
   await expect(rename).toBeVisible();
   expect(await page.evaluate(() => document.activeElement?.closest("[data-terminal]") === null)).toBe(true);
 });
+
+// New tab's menu hands the keyboard back once its closing animation ends; a menu opened before then owns it, and the
+// closing one must not take it back (#1014). The animation is slowed so the second menu reliably opens inside it.
+test("a menu opened while New tab's menu is still closing keeps the keyboard once that menu is gone (#1014)", async ({
+  page,
+}) => {
+  const link = await routeHcSocket(page);
+  await page.goto("/");
+  await openNewTerminal(page);
+  await page.addStyleTag({
+    content: "[data-ending-style] { transition-duration: 1500ms !important; animation-duration: 1500ms !important; }",
+  });
+  // The run's answer is held, so the keyboard stays in the box that holds what is typed for the new terminal.
+  const releaseAnswer = link.holdFromHost(RUN_ANSWER);
+  await pressNewTab(page.getByRole("button", { name: "New tab" }).first());
+  const closing = page.getByRole("menuitem", { name: /^Terminal/ });
+  await page.getByRole("button", { name: "Session actions" }).click();
+  const rename = page.getByRole("menuitem", { name: "Rename…" });
+  await expect(rename).toBeVisible();
+  await expect(closing).toHaveCount(0, { timeout: 5_000 });
+  await expect(rename).toBeVisible();
+  expect(await page.evaluate(() => document.activeElement?.closest('[role="menu"]')?.textContent ?? "")).toContain(
+    "Rename…",
+  );
+  releaseAnswer();
+});

@@ -1,5 +1,12 @@
 import type { EventFeed, HcConnection } from "@doriface/client";
-import { DEFAULT_PUSH_PREFS, type HcEvent, parsePushClientLine, type PushPrefs } from "@doriface/protocol";
+import {
+  DEFAULT_PUSH_PREFS,
+  type HcEvent,
+  NOTICE_EVENTS,
+  noticeMachineId,
+  parsePushClientLine,
+  type PushPrefs,
+} from "@doriface/protocol";
 import { type ConnectionState, connectionStore } from "../connection/store.ts";
 import { type NoticeBridge, noticeBridge, permissionOf } from "./notice-bridge.ts";
 import { NoticeTrigger, type Trigger, wanted } from "./notice-trigger.ts";
@@ -68,6 +75,7 @@ export class DesktopNotices {
   #view: PushView;
   #connection: HcConnection | null = null;
   #feed: EventFeed | undefined;
+  #opening: Promise<void> | undefined;
   #shown: string | null = null;
   #attempts = 0;
   #pendingRetry: (() => void) | null = null;
@@ -123,12 +131,30 @@ export class DesktopNotices {
     this.#count();
   }
 
+  /** Shows a test notice only past the gates an agent's notice on this machine passes, so a pass means one would show. */
   async test(): Promise<void> {
     await this.#run("send a test notification", async () => {
+      await this.#opening;
+      const refusal = this.#testRefusal();
+      if (refusal !== undefined) throw new Error(refusal);
       const answer = await this.#options.bridge.show({ kind: "test", terminal: null });
       if (!answer.accepted) throw new Error(answer.reason);
       this.#set({ tested: true });
     });
+  }
+
+  #testRefusal(): string | undefined {
+    const { on, prefs, retry } = this.#view;
+    if (!on) return "Notifications are off.";
+    if (this.#feed === undefined) {
+      return retry === null
+        ? "Doriterm is not following the agents yet: it is not connected to the host."
+        : `Doriterm is not following the agents: ${retry.reason}.`;
+    }
+    if (!NOTICE_EVENTS.some((kind) => prefs.events[kind]))
+      return "Every event is turned off, so no agent would notify.";
+    if (prefs.muted.includes(noticeMachineId(undefined))) return "Notifications from this machine are turned off.";
+    return undefined;
   }
 
   /** The pane this window shows focused and visible, or null: no notification comes about it. */
@@ -183,7 +209,7 @@ export class DesktopNotices {
     this.#stopRetrying();
     old?.close();
     this.#count();
-    if (connection !== null) void this.#attach(connection);
+    this.#opening = connection === null ? undefined : this.#attach(connection);
   }
 
   async #attach(connection: HcConnection): Promise<void> {
