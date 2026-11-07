@@ -85,7 +85,6 @@ export class MeshConnections {
    * The list `entries()` answers with. Rebuilt only when something changes, because it is read through
    * `useSyncExternalStore`, which compares snapshots by identity and would re-render forever on a fresh array per call.
    */
-  // Members a pairing leaves behind are not dialled any more: the settings keep only the machine just paired (see `pair`).
   #snapshot: readonly MemberEntry[] = [];
 
   constructor(settings: ConnectionSettings, make: StoreFactory) {
