@@ -167,13 +167,17 @@ export function SettingsRoute() {
               <>
                 <Lead>
                   These are the computers this host reaches: the ones that joined your mesh, and any you added by hand.
-                  Adding one by hand reaches it without the mesh; connecting one joins it first. A machine that answers
-                  reads Connected, one still being dialled reads Connecting, and one that needs a login says so; when a
-                  machine is offline the row says when it was last seen and, where the host knows a cause, what it is.
                 </Lead>
                 <Group title="Machines">
                   {members.length > 1 ? <MembersSection /> : null}
                   <MachinesSection />
+                  {/* What a row's state means sits under the rows, where a reader meets it: on a phone the list leads (#1007). */}
+                  <p className="pt-3 text-sm text-pretty text-muted-foreground">
+                    Adding one by hand reaches it without the mesh; connecting one joins it first. A machine that
+                    answers reads Connected, one still being dialled reads Connecting, and one that needs a login says
+                    so; when a machine is offline the row says when it was last seen and, where the host knows a cause,
+                    what it is.
+                  </p>
                 </Group>
                 <Group title="In your mesh">
                   <MeshSection />

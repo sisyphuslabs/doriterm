@@ -52,7 +52,7 @@ export function MembersSection() {
   const open = members.filter((entry) => entry.state.phase === "open").length;
   return (
     <div className="flex flex-col gap-3">
-      <ul aria-label="Your machines" className="flex flex-col divide-y divide-border">
+      <ul className="flex flex-col divide-y divide-border">
         {members.map((entry) => (
           <li key={entry.target.hostId}>
             <SettingRow
