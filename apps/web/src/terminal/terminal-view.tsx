@@ -3,6 +3,7 @@ import { cn, MenuItem, PointMenu, useToastManager } from "@doriface/ui";
 import { loadGhosttyCore } from "@doriface/ghostty-wasm";
 import type { GhosttyCore } from "@wterm/ghostty";
 import { Terminal, type TerminalHandle, type WTerm } from "@wterm/react";
+import { type EndHolder, holdAtEnd } from "./hold-view-at-end.ts";
 import { ClipboardPaste, Copy } from "lucide-react";
 import { type FocusEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useScreenAwake } from "../device/keep-awake.ts";
@@ -133,6 +134,7 @@ export function TerminalView(props: TerminalViewProps) {
   const [finding, setFinding] = useState<number | null>(null);
   const openFind = useCallback(() => setFinding((count) => (count ?? 0) + 1), []);
   const handle = useRef<TerminalHandle | null>(null);
+  const endHold = useRef<EndHolder | null>(null);
   /** Counts the writes reaching the renderer, so a find reads the cells again only after new output. */
   const written = useRef(0);
   const stream = useRef<TerminalStream | null>(null);
@@ -434,6 +436,9 @@ export function TerminalView(props: TerminalViewProps) {
             pacer.drop();
             output.reset();
             handle.current?.write(FULL_RESET);
+            // The reset leaves the scroller at the top, where the replay's rows climb past the reader (#1040).
+            endHold.current?.stop();
+            endHold.current = holdAtEnd(ready.element, () => pacer.busy);
           }
           attachedBefore.current = true;
           const resets = new CursorResets();
