@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { KNOWN_BAD } from "./capture-text-fixtures.ts";
+import { KNOWN_BAD, PLACEHOLDERS } from "./capture-text-fixtures.ts";
 import { captureText, classify } from "./capture-text.ts";
 
 const patterns = (text: string): string[] => classify(text).findings.map((one) => one.pattern);
@@ -72,6 +72,12 @@ describe("a capture's OCR text", () => {
 describe("the known-bad list", () => {
   test.each(KNOWN_BAD)("flags $why", ({ text }) => {
     expect(classify(text).ok).toBe(false);
+  });
+});
+
+describe("the placeholder list", () => {
+  test.each(PLACEHOLDERS)("passes $why", ({ text }) => {
+    expect(classify(text)).toEqual({ ok: true, findings: [] });
   });
 });
 

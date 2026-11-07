@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { HcRpcError, type JsonValue, type MachineView } from "@doriface/protocol";
 import { LayoutDoc } from "@doriface/protocol/layout";
-import { docCalls, docEdit } from "./use-layout-docs.ts";
+import { docCalls, docEdit, noEditsWhy } from "./use-layout-docs.ts";
 
 const noChange = (): null => null;
 
@@ -127,3 +127,17 @@ test.each(["unavailable", "conflict", "machine_unknown"])(
     expect(requests).toEqual(kind === "machine_unknown" ? ["doc.set", "machine.list"] : ["doc.set"]);
   },
 );
+
+const listed = (id: string, state: string): MachineView => ({ ...machine(id, id), state });
+
+test("a machine held as connected through a redial says its edits wait for it, as its row reads connected (#918)", async () => {
+  expect(noEditsWhy("m1", [listed("m1", "connected")])).toBe("the machine is reconnecting");
+  await expect(docEdit(undefined, "the machine is reconnecting")(noChange)).rejects.toThrow(
+    "The layout cannot take changes now: the machine is reconnecting",
+  );
+});
+
+test("a machine that reads offline, or is not listed, is not connected", () => {
+  expect(noEditsWhy("m1", [listed("m1", "unreachable")])).toBe("the machine is not connected");
+  expect(noEditsWhy("m1", [])).toBe("the machine is not connected");
+});
