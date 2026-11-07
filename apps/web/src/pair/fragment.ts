@@ -62,9 +62,14 @@ export type PairingParse =
 
 const OLDER_HOST = "This pairing link comes from an older doriface-host. Run doriface-host pair again.";
 
+const paramsOf = (hash: string): URLSearchParams => new URLSearchParams(hash.replace(/^#/, ""));
+
+/** What a link says it admits, read from its `m` flag alone, so a link too broken to parse still says it (#727). */
+export const linkTarget = (hash: string): PairingTarget => (paramsOf(hash).get("m") === "1" ? "mesh" : "device");
+
 /** Parses `#h=&k=&s=&p=&r=` and checks that hostId belongs to the signing key it came with. */
 export function parsePairingFragment(hash: string): PairingParse {
-  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  const params = paramsOf(hash);
   if (!params.has("p") && params.has("c")) return { ok: false, reason: OLDER_HOST };
   const hostId = params.get("h") ?? "";
   const noiseStaticPub = fromBase64Url(params.get("k") ?? "");
@@ -72,7 +77,7 @@ export function parsePairingFragment(hash: string): PairingParse {
   const link = params.get("p") ?? "";
   const linkSecret = link.length === 43 ? fromBase64Url(link) : null;
   const relayUrl = params.get("r") ?? "";
-  const target: PairingTarget = params.get("m") === "1" ? "mesh" : "device";
+  const target = linkTarget(hash);
   if (noiseStaticPub === null || signPub === null) return { ok: false, reason: "The host's keys are missing." };
   if (linkSecret?.byteLength !== 32) return { ok: false, reason: "The pairing link's secret is malformed." };
   if (!/^wss?:\/\//.test(relayUrl)) return { ok: false, reason: "The relay address is not a WebSocket URL." };

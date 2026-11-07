@@ -231,8 +231,10 @@ for (const colorScheme of ["light", "dark"] as const) {
       await terminal.getByRole("textbox").focus();
       const cdp = await page.context().newCDPSession(page);
       await cdp.send("Input.imeSetComposition", { text: "\u{D55C}", selectionStart: 1, selectionEnd: 1 });
-      const preedit = terminal.getByRole("textbox");
-      await expect(preedit).toHaveValue("\u{D55C}");
+      await expect(terminal.getByRole("textbox")).toHaveValue("\u{D55C}");
+      // The preedit is painted as cells at the cursor (#674), not by the input that holds it.
+      const preedit = terminal.locator(".term-preedit");
+      await expect(preedit).toHaveText("\u{D55C}");
       const colors = await preedit.evaluate((field) => {
         const style = getComputedStyle(field);
         return { text: style.color, field: style.backgroundColor };

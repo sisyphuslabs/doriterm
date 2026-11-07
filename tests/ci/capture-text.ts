@@ -28,7 +28,10 @@ const isNeutral = (name: string): boolean => NEUTRAL_NAMES.has(name.toLowerCase(
 
 /** Registry-style suffixes an `@` in prose takes; they name a package, not an account on a computer. */
 const PACKAGE_SUFFIX = /^(?:latest|next|beta|alpha|canary|stable)$/i;
-const REGISTRY_HOSTS = /^(?:github\.com|npmjs\.(?:com|org)|golang\.org|pypi\.org)$/i;
+/** The domains reserved for examples (RFC 2606, RFC 6761): a placeholder uses them, and a real capture never shows one. */
+const RESERVED_EXAMPLE = /^(?:example(?:\.(?:com|org|net))?|[a-z0-9.-]+\.example)$/i;
+/** `git@<host>:owner/repo` is a clone URL: every git host's SSH user is `git`, which names no one. */
+const CLONE_URL = /^git@(?:github\.com|gitlab\.com|bitbucket\.org|codeberg\.org)$/i;
 
 const ACCOUNT_AT_HOST = /\b([a-z][a-z0-9._-]*)@([a-z][a-z0-9.-]*[a-z0-9])/gi;
 const HOME_PATH = /\/(?:Users|home)\/([A-Za-z][A-Za-z0-9._-]*)/g;
@@ -51,7 +54,7 @@ export function classify(ocrText: string): Verdict {
     const account = match[1] ?? "";
     const host = match[2] ?? "";
     if (isNeutral(account) && isNeutral(host)) continue;
-    if (PACKAGE_SUFFIX.test(host) || REGISTRY_HOSTS.test(host)) continue;
+    if (PACKAGE_SUFFIX.test(host) || RESERVED_EXAMPLE.test(host) || CLONE_URL.test(`${account}@${host}`)) continue;
     if (account.length < 2) continue;
     add("prompt: account at host");
   }

@@ -60,6 +60,17 @@ jobs:
         run: bun tests/ci/from-zero.ts CONTRIBUTING.md
         env:
           FROM_ZERO_REV: ${{ github.sha }}
+      # The guide clones into its own temp tree, so a failing e2e case leaves its trace and report there and nowhere the
+      # workspace's own artifact steps would find them (#1343).
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: from-zero-contributor-e2e
+          path: |
+            ${{ runner.temp }}/from-zero-*/work-*/doriterm/apps/web/test-results
+            ${{ runner.temp }}/from-zero-*/work-*/doriterm/apps/web/playwright-report
+          if-no-files-found: ignore
+          retention-days: 3
 
   user-guide:
     name: From zero (user guide, hosted relay)

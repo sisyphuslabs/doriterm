@@ -5,6 +5,7 @@ import {
   pairingWebOrigin,
   relayWebSocketUrl,
 } from "@doriface/crypto";
+import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { renderUnicodeCompact } from "uqr";
 import { parseTarget } from "../connect/target.ts";
@@ -20,6 +21,7 @@ import { pairingArtifact } from "../pair-link.ts";
 
 export const MESH_JOIN_USAGE = `usage: doriface-host mesh pair [--auto] [--no-qr] [--web-origin <url>] [--relay <url>]
        doriface-host mesh join <mesh link | code> [--fingerprint <fp>] [--name <mesh name>] [--yes] [--wait-host <secs>]
+       doriface-host mesh join --from-file <file> [options as above]
 
   mesh pair opens a single-use offer (10 minutes) for another machine to join this host's mesh. The running host
   serves the join and asks here before it admits the machine (--auto admits without asking, for scripts).
@@ -30,7 +32,23 @@ export const MESH_JOIN_USAGE = `usage: doriface-host mesh pair [--auto] [--no-qr
   --web-origin <url> print <url>/pair#… instead of doriface://pair#… (both are mesh join arguments)
   --hc <path>        mesh join without a running host: the herdr-core binary (default hc)
   --session <name>   mesh join without a running host: the hc session this host serves
-  --wait-host <secs> mesh join: wait up to <secs> for the running host (a service still starting), and fail if none answers`;
+  --wait-host <secs> mesh join: wait up to <secs> for the running host (a service still starting), and fail if none answers
+  --from-file <file> mesh join: read the link or code from <file>, so it is never on the command line where other
+                     local users can read it`;
+
+/** The link or code to join: the argument, or the first line of `--from-file`, never both (#821). */
+export function joinTargetOf(positional: string | undefined, fromFile: string | undefined): string {
+  if (positional !== undefined && fromFile !== undefined) {
+    throw new Error("mesh join takes a link or code, or --from-file, not both");
+  }
+  if (fromFile === undefined) {
+    if (positional === undefined) throw new Error("mesh join needs a mesh pairing link or code");
+    return positional;
+  }
+  const given = readFileSync(fromFile, "utf8").trim();
+  if (given === "") throw new Error(`${fromFile} holds no mesh pairing link or code`);
+  return given;
+}
 
 async function ask(question: string, out: (text: string) => void): Promise<boolean> {
   out(`${question} [y/N] `);
@@ -115,11 +133,11 @@ async function join(args: readonly string[], out: (text: string) => void, log: (
       session: { type: "string" },
       "state-dir": { type: "string" },
       "wait-host": { type: "string" },
+      "from-file": { type: "string" },
     },
   });
-  const [given] = positionals;
+  const given = joinTargetOf(positionals[0], values["from-file"]);
   const wait = values["wait-host"] === undefined ? undefined : waitSeconds(values["wait-host"]);
-  if (given === undefined) throw new Error("mesh join needs a mesh pairing link or code");
   const target = parseTarget(given);
   const stateDir = values["state-dir"] ?? defaultStateDir();
   const question =
