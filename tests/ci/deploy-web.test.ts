@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { evaluate, type Value } from "./gh-expression.ts";
 
-type Step = { name?: string; if?: string; run?: string; uses?: string };
+type Step = { id?: string; name?: string; if?: string; run?: string; uses?: string };
 type Job = { needs?: string; if?: string; steps: Step[] };
 type Workflow = { concurrency: { group: string; "cancel-in-progress": string | boolean }; jobs: Record<string, Job> };
 type Route = { pattern: string; zone_id?: string; custom_domain?: boolean };
@@ -79,6 +79,28 @@ test("production deploys only from dev, after staging was deployed and probed, f
   expect(production.steps.some((step) => step.uses?.startsWith("actions/download-artifact"))).toBe(true);
 });
 
+// #929: a deploy that failed leaves nothing new to probe; each probe retries for minutes, so probing then only burns time.
+test("each host is probed only after that job's deploy succeeded, and a failed probe does not skip the next host", () => {
+  for (const job of Object.values(workflow.jobs)) {
+    const deploy = job.steps.findIndex((step) => step.run?.startsWith('bunx "$WRANGLER" deploy'));
+    const deployId = job.steps[deploy]?.id;
+    const probes = job.steps.slice(deploy + 1).filter((step) => step.run?.includes("probe-web.ts"));
+    expect(probes.length).toBe(2);
+    const probed = (outcome: string, status: "success" | "failure"): boolean[] =>
+      probes.map((probe) =>
+        Boolean(
+          evaluate(probe.if ?? "success()", {
+            contexts: { steps: deployId === undefined ? {} : { [deployId]: { outcome } } },
+            status,
+          }),
+        ),
+      );
+    expect(probed("failure", "failure")).toEqual([false, false]);
+    expect(probed("success", "failure")).toEqual([false, true]);
+    expect(probed("success", "success")).toEqual([true, true]);
+  }
+});
+
 test("app.doriterm.com and the omo.dev host each serve the build with the SPA fallback, so /pair loads the app", () => {
   const DORITERM_ZONE = "79ae74d5937b2858a42f6261887e436e";
   expect(wrangler.routes).toEqual([
@@ -132,3 +154,16 @@ async function baseUiScrollbarStyleHash(): Promise<string> {
   if (typeof css !== "string") throw new Error("@base-ui/react's scrollbar style is no longer one string");
   return new Bun.CryptoHasher("sha256").update(css).digest("base64");
 }
+
+/** One page's meta tag content: apps/<page>/index.html, <meta property|name="<key>">. */
+const metaOf = (page: string, key: string): string | undefined =>
+  new RegExp(`<meta (?:property|name)="${key}" content="([^"]+)"`).exec(
+    readFileSync(join(ROOT, "apps", page, "index.html"), "utf8"),
+  )?.[1];
+
+test("app.doriterm.com previews with the same card as doriterm.com, so the two cannot drift apart", () => {
+  const landing = metaOf("landing", "og:image");
+  expect(landing).toBe("https://doriterm.com/og.png");
+  expect(metaOf("web", "og:image")).toBe(landing);
+  expect(metaOf("web", "twitter:image")).toBe(landing);
+});

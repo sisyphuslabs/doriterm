@@ -31,6 +31,8 @@ import { isStreamChannel, Wire } from "./wire.ts";
 export interface HcConnectionOptions {
   /** Default 10 000 ms. */
   readonly handshakeTimeoutMs?: number;
+  /** The hello line already went out (inside the Noise handshake's first message, #1271): only its answer is read. */
+  readonly helloSent?: boolean;
   readonly signal?: AbortSignal;
   /**
    * Applied to calls that pass no `timeoutMs`. Default: DEFAULT_CALL_TIMEOUT_MS for calls hc answers at once, and none
@@ -115,7 +117,7 @@ export class HcConnection {
     const wire = new Wire(link);
     const timeoutMs = options.handshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS;
     try {
-      wire.start();
+      if (options.helloSent !== true) wire.start();
       const hello = await raceDeadline(
         wire.hello,
         { timeoutMs, signal: options.signal },

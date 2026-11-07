@@ -104,13 +104,14 @@ describe("M-14: the incremental viewOf is byte-identical to the previous engine 
   });
 
   test(
-    "large meshes with revokes concurrent with acks and with names",
+    "large meshes, past twelve members too, with revokes concurrent with acks and with names",
     () => {
       for (const seed of SEEDS.slice(0, 4))
-        for (const records of [64, 160]) {
-          const mesh = bigMesh({ records, revokes: records / 32, seed, forks: 0.2 });
-          expect(same(mesh)).toBe(true);
-        }
+        for (const records of [64, 160])
+          for (const members of [12, 24]) {
+            const mesh = bigMesh({ records, revokes: records / 32, seed, forks: 0.2, members });
+            expect(same(mesh)).toBe(true);
+          }
     },
     SLOW,
   );

@@ -40,7 +40,7 @@ describe("the mesh file format guard", () => {
       generation: 1,
       self: { n: 1 },
       records: [record],
-      index: { generation: 1, members: [client], overCap: [], revoked: [], superseded: [], named: [] },
+      index: { generation: 1, members: [client], revoked: [], superseded: [], named: [] },
     });
     expect(withKind.index?.members[0]?.kind).toBe("client");
     const legacy = { signPub: "s", hostId: "h", noisePub: "n", name: "box", hcId: "c" };
@@ -50,7 +50,7 @@ describe("the mesh file format guard", () => {
       generation: 1,
       self: { n: 1 },
       records: [record],
-      index: { generation: 1, members: [legacy], overCap: [], revoked: [], superseded: [], named: [] },
+      index: { generation: 1, members: [legacy], revoked: [], superseded: [], named: [] },
     });
     expect(older.index?.members[0]?.kind).toBe("machine");
   });

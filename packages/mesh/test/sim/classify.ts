@@ -20,7 +20,7 @@ export type ChangeKind =
   | "revived-undecidable";
 
 export const sig = (v: EngineView): string =>
-  JSON.stringify([v.members.toSorted(), v.revoked, [...v.noise].toSorted(), [...v.name].toSorted(), v.overCap]);
+  JSON.stringify([v.members.toSorted(), v.revoked, [...v.noise].toSorted(), [...v.name].toSorted()]);
 
 /** Residual 3: a race only attacker keys could witness (0:0, every voter in the batch), decided by their testimony. */
 function soleWitnessRace(w: World, before: readonly Rec[], batch: readonly string[]): boolean {

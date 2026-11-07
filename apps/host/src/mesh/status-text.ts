@@ -39,7 +39,7 @@ function memberLine(member: MeshMemberStatus, nameOf: (hostId: string) => string
   ];
   if (member.admittedBy !== null) parts.push(`admitted by ${nameOf(member.admittedBy)}`);
   else if (!member.overCap) parts.push("founder");
-  if (member.overCap) parts.push("over the 12-member cap");
+  if (member.overCap) parts.push("over an older host's member cap");
   if (member.presence) parts.push("present");
   if (member.lastSync !== null) parts.push(`last sync ${member.lastSync}`);
   if (member.owed > 0) parts.push(`${member.owed} records owed`);
