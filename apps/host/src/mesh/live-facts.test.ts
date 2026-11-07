@@ -149,7 +149,7 @@ describe("a member's line in status (section 8.1)", () => {
     const [self, b] = [coreMember("self"), coreMember("b")];
     const options = { program: "/opt/doriface-host", stateDir: "/state", selfHostId: self.hostId };
     const reconciler = new Reconciler({ machines: new FakeMachines(clock), ...options, clock, log: () => undefined });
-    const view = { members: [self, b], overCap: [], revoked: [] };
+    const view = { members: [self, b], revoked: [] };
     await reconciler.reconcile(view);
     const policy = new DialPolicy({ clock, random: seededRandom(4), onDue: () => undefined });
     const gossip = {

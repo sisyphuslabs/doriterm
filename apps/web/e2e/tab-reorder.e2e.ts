@@ -65,10 +65,10 @@ test("the keyboard moves the focused tab, focus stays on it, and its new place i
   const before = await fourTabs(page);
   const mac = await page.evaluate(() => navigator.platform.startsWith("Mac"));
   await tabs(page).nth(0).focus();
-  await page.keyboard.press(mac ? "Meta+Shift+ArrowRight" : "Control+Shift+PageDown");
+  await page.keyboard.press(mac ? "Meta+Shift+ArrowRight" : "Control+Alt+Shift+PageDown");
   await expect(tabs(page).nth(1)).toBeFocused();
   await expect(page.getByRole("status").filter({ hasText: /^Moved .+ to position 2 of 4/ })).toHaveCount(1);
-  await page.keyboard.press(mac ? "Meta+Shift+ArrowRight" : "Control+Shift+PageDown");
+  await page.keyboard.press(mac ? "Meta+Shift+ArrowRight" : "Control+Alt+Shift+PageDown");
   await expect(tabs(page).nth(2)).toBeFocused();
   expect(await order(page)).toEqual(rearranged(before, [1, 2, 0, 3]));
 });
@@ -177,7 +177,7 @@ test("a move is said once: a tab opened afterwards does not change what the stri
   await openFour(page);
   const mac = await page.evaluate(() => navigator.platform.startsWith("Mac"));
   await tabs(page).nth(0).focus();
-  await page.keyboard.press(mac ? "Meta+Shift+ArrowRight" : "Control+Shift+PageDown");
+  await page.keyboard.press(mac ? "Meta+Shift+ArrowRight" : "Control+Alt+Shift+PageDown");
   const said = page.getByRole("status").filter({ hasText: /^Moved / });
   await expect(said).toHaveText(/^Moved .+ to position 2 of 4/);
   const text = await said.textContent();

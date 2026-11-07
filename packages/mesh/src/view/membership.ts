@@ -1,20 +1,19 @@
-// membership(S, eff) of contract v1.5 "Membership": from the effective records of S to the view (members, cap,
+// membership(S, eff) of contract v1.5 "Membership": from the effective records of S to the view (members,
 // revoked keys, Noise keys, admitter lineage, names). It reads every record type but ack, so the engine decides only
 // those statuses before calling it, and the view it returns has no `eff`: a caller that needs eff adds it.
 
-import { MAX_MESH_MEMBERS } from "../records/types.ts";
 import { fallbacks } from "../names.ts";
 import { type Dag, isAdmission, type Rec, type RecordSet, subjectsOf } from "./dag.ts";
 import type { Status } from "./status.ts";
 
 /** The view the rules read: everything membership() decides, without the set's effective records. */
 export interface MemberView {
-  /** The first 12 keys with a governing admission, in the canonical order of those admissions. */
+  /** Every key with a governing admission, in the canonical order of those admissions. A mesh has no member cap. */
   readonly members: readonly string[];
-  /** Keys past the cap, in the same order: not dialed, cannot sign. */
-  readonly overCap: readonly string[];
   readonly revoked: readonly string[];
   readonly noise: ReadonlyMap<string, string>;
+  /** signPub -> its Noise key, for the members whose key a rekey changed: the rest hold their governing card's. */
+  readonly rekeyed: ReadonlyMap<string, string>;
   readonly admitter: ReadonlyMap<string, string>;
   readonly governing: ReadonlyMap<string, string>;
   readonly name: ReadonlyMap<string, string>;
@@ -22,16 +21,17 @@ export interface MemberView {
 }
 
 /**
- * What the rules read of a view: members, revoked keys, Noise keys and every governed key's admission. A ViewCache keeps
- * one of these per record and per context, so it leaves out what only the full view reports (admitter, names, hostIds).
+ * What the rules read of a view: revoked keys, every member's governing admission (its keys are the members, in member
+ * order) and the Noise keys a rekey changed. A ViewCache keeps one of these per record and per context, so it holds one
+ * entry per member and leaves out what the governing card already says (the member list, the other Noise keys) and
+ * what only the full view reports (admitter, names, hostIds).
  */
-export type RuleView = Pick<MemberView, "members" | "revoked" | "noise" | "governing">;
+export type RuleView = Pick<MemberView, "revoked" | "governing" | "rekeyed">;
 
 export const ruleViewOf = (v: MemberView): RuleView => ({
-  members: v.members,
   revoked: v.revoked,
-  noise: v.noise,
   governing: v.governing,
+  rekeyed: v.rekeyed,
 });
 
 export interface EngineView extends MemberView {
@@ -83,9 +83,8 @@ export function membership(dag: Dag, S: RecordSet, statuses: ReadonlyMap<string,
     subjectsOf,
   );
   const ordered = governingAdmissions(dag, order, effective, revokes);
-  const members = ordered.slice(0, MAX_MESH_MEMBERS).map(([k]) => k);
-  const overCap = ordered.slice(MAX_MESH_MEMBERS).map(([k]) => k);
-  const governed = new Set(ordered.map(([k]) => k));
+  const members = ordered.map(([k]) => k);
+  const governed = new Set(members);
   const admitted = new Set(order.filter(isAdmission).flatMap((r) => (r.subject === undefined ? [] : [r.subject])));
   const revoked = [...admitted].filter((k) => !governed.has(k) && revokes.has(k)).toSorted();
   const updates = group(
@@ -93,20 +92,20 @@ export function membership(dag: Dag, S: RecordSet, statuses: ReadonlyMap<string,
     (r) => (r.subject === undefined ? [] : [`${r.type}:${r.subject}`]),
   );
   const noise = new Map<string, string>();
+  const rekeyed = new Map<string, string>();
   const admitter = new Map<string, string>();
   const governing = new Map<string, string>();
   const name = new Map<string, string>();
   const hostId = new Map<string, string>();
   const taken = new Set<string>();
-  // admitter and governing hold every key with a governing admission, over-cap keys too (contract membership()).
   for (const [k, gov] of ordered) {
     admitter.set(k, gov.by);
     governing.set(k, gov.id);
-  }
-  for (const [k, gov] of ordered.slice(0, MAX_MESH_MEMBERS)) {
     const after = (type: "rekey" | "name"): readonly Rec[] =>
       (updates.get(`${type}:${k}`) ?? []).filter((r) => dag.inPast(r.id, gov.id));
-    const card = latest(dag, after("rekey"))?.card ?? gov.card;
+    const rekey = latest(dag, after("rekey"))?.card;
+    if (rekey !== undefined) rekeyed.set(k, rekey.noise);
+    const card = rekey ?? gov.card;
     if (card !== undefined) noise.set(k, card.noise);
     const host = gov.card?.hostId ?? "";
     hostId.set(k, host);
@@ -116,15 +115,15 @@ export function membership(dag: Dag, S: RecordSet, statuses: ReadonlyMap<string,
     taken.add(chosen);
     name.set(k, chosen);
   }
-  return { members, overCap, revoked, noise, admitter, governing, name, hostId };
+  return { members, revoked, noise, rekeyed, admitter, governing, name, hostId };
 }
 
 export const withEff = (v: MemberView, eff: ReadonlySet<string>): EngineView => ({
   members: v.members,
-  overCap: v.overCap,
   revoked: v.revoked,
   eff,
   noise: v.noise,
+  rekeyed: v.rekeyed,
   admitter: v.admitter,
   governing: v.governing,
   name: v.name,

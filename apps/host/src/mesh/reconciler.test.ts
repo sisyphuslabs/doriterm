@@ -20,7 +20,6 @@ const member = (name: string, hostId = hostIdFor(name)): MemberEntry => ({
 const [self, b, c] = [member("self"), member("b"), member("c")];
 const viewOf = (...members: readonly MemberEntry[]): MeshView => ({
   members: [self, ...members],
-  overCap: [],
   revoked: [],
 });
 
@@ -80,21 +79,16 @@ describe("a member that could not be added (section 8.1, H-54-1)", () => {
 });
 
 describe("this host's own membership (section 6.4)", () => {
-  test.each([
-    ["revoked", { members: [b, c], overCap: [], revoked: [self.signPub] }],
-    ["over the cap", { members: [b, c], overCap: [self], revoked: [] }],
-  ] satisfies [string, MeshView][])(
-    "a host its own view lists as %s removes every mesh machine, keeps the owner's own, and adds them back once a member again",
-    async (_why, outside) => {
-      const { machines, reconcile } = reconciler();
-      machines.seed({ name: "laptop", target: "ssh://laptop" });
-      await reconcile.reconcile(viewOf(b, c));
-      await reconcile.reconcile(outside);
-      expect((await machines.list()).map((machine) => machine.name)).toEqual(["laptop"]);
-      await reconcile.reconcile(viewOf(b, c));
-      expect(machines.calls).toEqual(["0 add b", "0 add c", "0 rm b", "0 rm c", "0 add b", "0 add c"]);
-    },
-  );
+  test("a host its own view lists as revoked removes every mesh machine, keeps the owner's own, and adds them back once a member again", async () => {
+    const outside: MeshView = { members: [b, c], revoked: [self.signPub] };
+    const { machines, reconcile } = reconciler();
+    machines.seed({ name: "laptop", target: "ssh://laptop" });
+    await reconcile.reconcile(viewOf(b, c));
+    await reconcile.reconcile(outside);
+    expect((await machines.list()).map((machine) => machine.name)).toEqual(["laptop"]);
+    await reconcile.reconcile(viewOf(b, c));
+    expect(machines.calls).toEqual(["0 add b", "0 add c", "0 rm b", "0 rm c", "0 add b", "0 add c"]);
+  });
 });
 
 describe("lines that exist (section 8.1)", () => {

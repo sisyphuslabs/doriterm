@@ -70,6 +70,28 @@ export interface ScreenPrompt {
 /** One agent's reader: the screen's lines, bottom row last, to the prompt it shows, if any. */
 export type PromptReader = (lines: readonly string[]) => ScreenPrompt | undefined;
 
+/** A dialog a reader found: its prompt and the row of its last line (its footer, or its last option row). */
+export interface Found {
+  readonly prompt: ScreenPrompt;
+  readonly end: number;
+}
+
+export const indent = (line: string) => line.length - line.trimStart().length;
+
+/** A rule of `char` drawn at exactly `column`: a dialog box's own border, never the text inside its padding. */
+export const ruleAt = (line: string, column: number, char: "─" | "╌") =>
+  indent(line) === column && line.trim().length >= 10 && [...line.trim()].every((each) => each === char);
+
+/**
+ * The dialog the agent is asking: the one whose last line is the screen's last line, since an agent draws its live
+ * dialog at the bottom. Anything that only reads like a dialog ends above it: text the agent printed above the dialog,
+ * or a command, diff, file or plan inside the dialog's own body that imitates another dialog (#776).
+ */
+export function liveDialog(lines: readonly string[], found: readonly (Found | undefined)[]): ScreenPrompt | undefined {
+  const bottom = lastIndex(lines, (line) => line.trim() !== "");
+  return found.find((each) => each !== undefined && each.end === bottom)?.prompt;
+}
+
 /** An option row such as `❯ 1. Yes` or `  3. No, and tell Codex what to do differently (esc)`, without its cursor. */
 export interface OptionRow {
   readonly number: string;
@@ -86,6 +108,12 @@ export function optionRow(line: string): OptionRow | undefined {
     ? undefined
     : { number: match[2], label: match[3].trim(), cursor: match[1] !== undefined };
 }
+
+/** The column a numbered row's number is drawn at, or -1 for a line that is not one. */
+export const numberColumn = (line: string) => {
+  const row = optionRow(line);
+  return row === undefined ? -1 : line.indexOf(`${row.number}.`);
+};
 
 /**
  * The option list that starts at the first option row in `lines` and ends at the first blank row. A row the agent

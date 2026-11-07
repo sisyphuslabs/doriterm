@@ -12,7 +12,7 @@ import {
 } from "@doriface/ui";
 import { Bot, Columns2, Folder, Monitor, PanelLeft, Rows2, SquareTerminal, Terminal } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useActionHandler } from "../keys/dispatcher.ts";
+import { actionChosen } from "../keys/dispatcher.ts";
 import { useActionKeys } from "../keys/use-action-keys.ts";
 import { DictateButton } from "../voice/dictate-button.tsx";
 import { useDictation } from "../voice/use-dictation.ts";
@@ -130,15 +130,14 @@ export function DesktopShell(props: DesktopShellProps) {
   const moveRightKeys = useActionKeys("tab.move:right");
   const focusSidebar = useFocusSidebar(sidebar, () => setSidebar(true));
   // The filter key shows the whole sidebar (out of hiding, off the rail) with its field focused. Behind a modal dialog
-  // (the palette, a rename) it does nothing, as the focus key does, so focus stays in the dialog.
-  useActionHandler("app", (action) => {
-    if (action !== "layout.filter:sidebar") return false;
-    if (behindModal()) return true;
+  // (the palette, a rename) it does nothing, as the focus key does, so focus stays in the dialog; chosen from the palette
+  // it runs, since the palette closes as it does (#848).
+  const filterSidebar = (): void => {
+    if (behindModal() && !actionChosen()) return;
     setSidebar(true);
     if (rail) setSidebarSize({ rail: false });
     sidebarFilter.ask();
-    return true;
-  });
+  };
   const focusedAddress = layout.focused?.address ?? null;
   const voice = useDictation();
   const sends = usePaneSends();
@@ -171,12 +170,14 @@ export function DesktopShell(props: DesktopShellProps) {
     spaceKeys,
     onSelectSpace,
     onNew,
+    onNewSpace,
     onSplit,
     onCloseTab,
     onClosePane,
     onRenameTab: (key) => setRenaming({ key, busy: false, error: null }),
     onToggleSidebar: () => setSidebar((shown) => !shown),
     onFocusSidebar: focusSidebar,
+    onFilterSidebar: filterSidebar,
     onSession,
     // The session in view, as the tab bar's mic acts on it; none in view (or its machine offline) leaves the key alone.
     onDictate: () => {
@@ -242,7 +243,7 @@ export function DesktopShell(props: DesktopShellProps) {
       <FirstRunGuideCard
         className="absolute right-4 bottom-10 z-30 m-0 w-72 shadow-lg"
         listVisible={sidebar}
-        listedLive={terminals.some((terminal) => terminal.state === "live")}
+        live={terminals.filter((terminal) => terminal.state === "live").map((terminal) => terminal.address)}
         onNew={onNew}
       />
       {sidebar ? (
@@ -250,7 +251,7 @@ export function DesktopShell(props: DesktopShellProps) {
           terminals={terminals}
           active={focusedAddress}
           onOpen={(address) => {
-            guideStore.opened();
+            guideStore.opened(address);
             layout.openTerminal(address);
           }}
           onPalette={onPalette}

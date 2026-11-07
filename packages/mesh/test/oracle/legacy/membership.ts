@@ -1,15 +1,12 @@
-// membership(S, eff) of contract v1.5 "Membership": from the effective records of S to the view (members, cap,
+// membership(S, eff) of contract v1.5 "Membership": from the effective records of S to the view (members,
 // revoked keys, Noise keys, admitter lineage, names).
 
-import { MAX_MESH_MEMBERS } from "../../../src/records/types.ts";
 import { fallbacks } from "../../../src/names.ts";
 import { type Dag, isAdmission, type Rec, revokesKey } from "./dag.ts";
 
 export interface EngineView {
-  /** The first 12 keys with a governing admission, in the canonical order of those admissions. */
+  /** Every key with a governing admission, in the canonical order of those admissions. */
   readonly members: readonly string[];
-  /** Keys past the cap, in the same order: not dialed, cannot sign. */
-  readonly overCap: readonly string[];
   readonly revoked: readonly string[];
   readonly eff: ReadonlySet<string>;
   readonly noise: ReadonlyMap<string, string>;
@@ -54,9 +51,8 @@ export function membership(dag: Dag, S: ReadonlySet<string>, eff: ReadonlySet<st
       .filter(isAdmission)
       .map((r) => r.subject),
   );
-  const members = ordered.slice(0, MAX_MESH_MEMBERS).map(([k]) => k);
-  const overCap = ordered.slice(MAX_MESH_MEMBERS).map(([k]) => k);
-  const governed = new Set(ordered.map(([k]) => k));
+  const members = ordered.map(([k]) => k);
+  const governed = new Set(members);
   const revoked = [...admitted]
     .flatMap((k) => (k === undefined || governed.has(k) ? [] : [k]))
     .filter((k) => effective.some((v) => revokesKey(v, k)))
@@ -67,12 +63,9 @@ export function membership(dag: Dag, S: ReadonlySet<string>, eff: ReadonlySet<st
   const name = new Map<string, string>();
   const hostId = new Map<string, string>();
   const taken = new Set<string>();
-  // admitter and governing hold every key with a governing admission, over-cap keys too (contract membership()).
   for (const [k, gov] of ordered) {
     admitter.set(k, gov.by);
     governing.set(k, gov.id);
-  }
-  for (const [k, gov] of ordered.slice(0, MAX_MESH_MEMBERS)) {
     const after = (type: Rec["type"]): readonly Rec[] =>
       effective.filter((r) => r.type === type && r.subject === k && dag.past(r.id).has(gov.id));
     const card = latest(dag, after("rekey"))?.card ?? gov.card;
@@ -85,5 +78,5 @@ export function membership(dag: Dag, S: ReadonlySet<string>, eff: ReadonlySet<st
     taken.add(chosen);
     name.set(k, chosen);
   }
-  return { members, overCap, revoked, eff, noise, admitter, governing, name, hostId };
+  return { members, revoked, eff, noise, admitter, governing, name, hostId };
 }

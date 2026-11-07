@@ -1,4 +1,4 @@
-import { type HcConnection, HcLinkSilentError, HcTimeoutError } from "@doriface/client";
+import { type HcConnection, HcTimeoutError } from "@doriface/client";
 import { useSyncExternalStore } from "react";
 import type { HostStartFailure } from "../desktop/bridge.ts";
 import { AttemptBudget, AttemptTimeoutError } from "./attempt-budget.ts";
@@ -17,7 +17,7 @@ import {
   saveSettings,
   staysOnThisComputer,
 } from "./settings.ts";
-import { resumeOnWake } from "./wake.ts";
+import { resumeOnWake, WakeProbeUnansweredError } from "./wake.ts";
 
 /**
  * `stale` is the connection that dropped while this one retries: its workspace stays on screen meanwhile.
@@ -31,6 +31,11 @@ export type ConnectionState =
       readonly connection: HcConnection;
       readonly path: ConnectionPath;
       readonly directReason?: DirectReason | undefined;
+      /**
+       * How long this attempt took to open the session, measured on this device from its start (#637). Absent when this
+       * store did not dial the session itself (one pairing proved and handed over, #1271): no figure rather than a guess.
+       */
+      readonly connectMs?: number | undefined;
     }
   /** This computer's host did not start: nothing is tried until a start succeeds. */
   | { readonly phase: "host-failed"; readonly failure: HostStartFailure }
@@ -184,13 +189,14 @@ export class ConnectionStore {
     const relayFirst = this.#relayFirst;
     this.#relayFirst = false;
     this.#set({ phase: "connecting", attempt, stale: this.#stale });
+    const started = Date.now();
     try {
       const opened: OpenConnection = await this.#budget.bounded(
         this.#connect(this.#settings, abort.signal, undefined, relayFirst ? { skipDirect: true } : {}),
         abort,
       );
       if (abort.signal.aborted) return opened.connection.close();
-      this.#opened(opened, abort, attempt);
+      this.#opened(opened, abort, attempt, Date.now() - started);
     } catch (error) {
       if (this.#abort !== abort) return;
       if (error instanceof AttemptTimeoutError) {
@@ -218,8 +224,8 @@ export class ConnectionStore {
     this.#opened(opened, abort, 0);
   }
 
-  /** A connection this store now runs on: named, watched for its drop, and shown open. */
-  #opened(opened: OpenConnection, abort: AbortController, attempt: number): void {
+  /** A connection this store now runs on: named, watched for its drop, and shown open with its open time when measured. */
+  #opened(opened: OpenConnection, abort: AbortController, attempt: number, connectMs?: number): void {
     const { connection } = opened;
     this.#rememberName(connection);
     connection.onClose((error) => {
@@ -239,6 +245,7 @@ export class ConnectionStore {
       connection,
       path: opened.path,
       ...(opened.directReason === undefined ? {} : { directReason: opened.directReason }),
+      ...(connectMs === undefined ? {} : { connectMs }),
     });
   }
 
@@ -412,7 +419,7 @@ export class ConnectionStore {
           // A stop, or a newer connection, ended this probe's claim on the link while it waited.
           if (!(error instanceof HcTimeoutError) || this.#probing !== connection) return;
           if (this.#state.phase !== "open" || this.#state.connection !== connection) return;
-          this.#closedFor = { connection, reason: new HcLinkSilentError(WAKE_PROBE_MS) };
+          this.#closedFor = { connection, reason: new WakeProbeUnansweredError(error.method, error.timeoutMs) };
           connection.close();
         },
       )
@@ -437,6 +444,11 @@ resumeOnWake(connectionStore);
 
 export function useConnection(store: Pick<MeshConnections, "subscribe" | "state"> = connectionStore): ConnectionState {
   return useSyncExternalStore(store.subscribe, () => store.state);
+}
+
+/** The saved connection settings, drawn again whenever they change: a view that reads them subscribes here (#813). */
+export function useConnectionSettings(): ConnectionSettings {
+  return useSyncExternalStore(connectionStore.subscribe, () => connectionStore.settings);
 }
 
 /** Every member and its own connection state, for a list that marks one machine offline rather than the whole app. */

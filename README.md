@@ -131,8 +131,10 @@ It downloads `doriface-host` into `~/.local/bin` and checks it against the relea
 herdr-core when `hc` is missing, runs the host as a user service at the highest priority a user service can have
 (systemd `--user` on Linux, an `Interactive` LaunchAgent on macOS), then prints a QR code, a link and an 8-character
 code to pair your first device. `sh -s -- --help` lists the options; `--uninstall` removes the service and the binary and
-keeps the host's keys and paired devices. To add a computer to a host you already use, open **Add a machine** in the app: it shows this same line with `--join '<link>'`, which installs the host there and joins it to this host's mesh, so its terminals show in the app. On Windows, the desktop app carries the host. The installer ships from the first
-release after v0.1.2.
+keeps the host's keys and paired devices. To add a computer to a host you already use, open **Add a machine** in the
+app: it shows this same line with `--join '<link>'`, which installs the host there and joins it to this host's mesh, so
+its terminals show in the app. On Windows, the desktop app carries the host. The installer ships from the first release
+after v0.1.2.
 
 From this repository, with [Bun](https://bun.sh) installed:
 

@@ -44,7 +44,7 @@ test("a storage that refuses this screen's view says its tab selection was not s
   const before = await order(page);
   const mac = await page.evaluate(() => navigator.platform.startsWith("Mac"));
   await tabs(page).nth(0).focus();
-  await page.keyboard.press(mac ? "Meta+Shift+ArrowRight" : "Control+Shift+PageDown");
+  await page.keyboard.press(mac ? "Meta+Shift+ArrowRight" : "Control+Alt+Shift+PageDown");
   await expect(tabs(page).nth(1)).toBeFocused();
   expect(await order(page)).toEqual(rearranged(before, [1, 0, 2, 3]));
   // The move itself is the document's (#404); the selection and focus it leaves wrote the view again and were refused
