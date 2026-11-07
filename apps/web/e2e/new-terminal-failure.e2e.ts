@@ -14,7 +14,8 @@ test("a New tab that fails says so with the sidebar hidden, where the machine li
   await socket.drop(true);
   await expect(page.getByRole("status").filter({ hasText: "Reconnecting" })).toBeVisible();
   await pressNewTab(page.getByRole("button", { name: "New tab", exact: true }));
-  await expect(page.getByText("Could not open a new tab")).toBeVisible();
+  // One click, one attempt, one notice: a second identical heading here is a double fire, not a slow answer (#1343).
+  await expect(page.getByRole("heading", { name: "Could not open a new tab" })).toHaveCount(1);
   await expect(page.getByText(/try again once it is back/)).toBeVisible();
   socket.restore();
 });
