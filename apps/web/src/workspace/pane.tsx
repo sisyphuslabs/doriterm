@@ -1,5 +1,5 @@
 import type { HcConnection } from "@doriface/client";
-import { cn, IconButton } from "@doriface/ui";
+import { cn, ContextMenu, IconButton, skipMenuHandler } from "@doriface/ui";
 import { Columns2, Maximize2, Minimize2, Rows2, X } from "lucide-react";
 import type { Axis } from "@doriface/protocol/layout";
 import { useActionKeys } from "../keys/use-action-keys.ts";
@@ -12,6 +12,7 @@ import { TerminalView } from "../terminal/terminal-view.tsx";
 import { MachineOffline } from "./machine-offline.tsx";
 import { machineOf, type Session, terminalTitle } from "./model.ts";
 import { picksPane } from "./pane-focus.ts";
+import { SessionMenuItems } from "./session-menu.tsx";
 
 export interface PaneProps {
   readonly connection: HcConnection;
@@ -121,20 +122,34 @@ export function Pane(props: PaneProps) {
       className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card [&_.wterm]:transition-opacity [&_.wterm]:duration-(--duration-micro)"
     >
       {split ? (
-        <header
-          onPointerDown={onGrab}
-          data-pane-grab={onGrab === undefined ? undefined : ""}
-          className={cn(
-            "flex h-7 shrink-0 items-center gap-1 border-b border-border pr-0.5 pl-2.5 text-xs transition-colors duration-(--duration-micro)",
-            focused ? "bg-raised text-foreground" : "text-muted-foreground",
-            onGrab !== undefined && "cursor-grab select-none",
-          )}
+        <ContextMenu
+          // A split pane's header names its session, so its right-click opens the session's menu (#699). An item that
+          // opened a dialog (Rename…) keeps the keyboard there, as a sidebar row's menu leaves it (#590).
+          finalFocus={() => {
+            const holder = document.activeElement;
+            return !(holder instanceof HTMLElement && holder.closest('[role="dialog"]') !== null);
+          }}
+          trigger={
+            <header
+              onPointerDown={onGrab}
+              // A held touch stays the header's drag, not Base UI's long-press menu.
+              onTouchStart={skipMenuHandler}
+              data-pane-grab={onGrab === undefined ? undefined : ""}
+              className={cn(
+                "flex h-7 shrink-0 items-center gap-1 border-b border-border pr-0.5 pl-2.5 text-xs transition-colors duration-(--duration-micro)",
+                focused ? "bg-raised text-foreground" : "text-muted-foreground",
+                onGrab !== undefined && "cursor-grab select-none",
+              )}
+            >
+              <h2 title={title} className="min-w-0 truncate">
+                {title}
+              </h2>
+              <PaneButtons zoomed={zoomed} onSplit={onSplit} onZoom={onZoom} onClose={onClose} />
+            </header>
+          }
         >
-          <h2 title={title} className="min-w-0 truncate">
-            {title}
-          </h2>
-          <PaneButtons zoomed={zoomed} onSplit={onSplit} onZoom={onZoom} onClose={onClose} />
-        </header>
+          <SessionMenuItems address={terminal.address} />
+        </ContextMenu>
       ) : null}
       {/* The terminal's own box: the approval banner pins to its top, under a split pane's header, never over it. */}
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">

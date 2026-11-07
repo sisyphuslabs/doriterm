@@ -2,7 +2,7 @@
 // with the items its "..." button holds (#699).
 import type { Page } from "@playwright/test";
 import { agentRow, endAgent, startAgent } from "./agents.ts";
-import { expect, test } from "./fixtures.ts";
+import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { hcOn } from "./machine-switch.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -91,6 +91,65 @@ test("Ctrl+click opens the menu on macOS, where Blink makes it a right-click", a
   await expect(row).toBeVisible({ timeout: 20_000 });
   await row.click({ modifiers: ["Control"] });
   await expect(menu(page).getByRole("menuitem", { name: "Rename…" })).toBeVisible();
+});
+
+/** Narrows the sidebar to its icon rail, as Enter on its edge does. */
+async function toRail(page: Page): Promise<void> {
+  await page.getByRole("separator", { name: "Resize sidebar" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(sidebar(page)).toHaveAttribute("data-rail", "true");
+}
+
+test("on the icon rail, right-clicking an agent opens the same menu, and Rename… asks for the name", async ({
+  page,
+}) => {
+  const name = idleAgent("cm-rail-agent");
+  await page.goto("/");
+  await expect(agentRow(agents(page), name, false)).toBeVisible({ timeout: 20_000 });
+  await toRail(page);
+  // The rail draws the status glyph alone; the agent's name is its label.
+  const glyph = agentRow(agents(page), name, false);
+  await expect(glyph).toBeVisible();
+  await glyph.click({ button: "right" });
+  await expect(menu(page).getByRole("menuitem")).toHaveText(["Pin to top", "Rename…", "End session…"]);
+  await menu(page).getByRole("menuitem", { name: "Rename…" }).click();
+  await expect(page.getByRole("dialog", { name: /^Rename / })).toBeVisible();
+});
+
+test("on the icon rail, right-clicking a space opens its menu with Rename space…", async ({ page }) => {
+  const name = idleAgent("cm-rail-space");
+  await page.goto("/");
+  await expect(spaceRow(page, `sp-${name}`)).toBeVisible({ timeout: 20_000 });
+  await toRail(page);
+  const avatar = spaceRow(page, `sp-${name}`);
+  await expect(avatar).toBeVisible();
+  await avatar.click({ button: "right" });
+  await expect(menu(page).getByRole("menuitem", { name: "Rename space…" })).toBeVisible();
+  await expect(menu(page).getByRole("menuitem", { name: "Close space…" })).toBeVisible();
+});
+
+test("right-clicking a split pane's header opens its session menu, and Rename… asks for the name", async ({ page }) => {
+  await page.goto("/");
+  // A second tab, so closing the split's tab at the end never closes its space (which asks first).
+  await openNewTerminal(page);
+  const first = await openNewTerminal(page);
+  const before = await page.locator("[data-terminal]").count();
+  await first.getByRole("textbox").focus();
+  await page.getByRole("button", { name: "Split right" }).first().click();
+  const panes = page.locator('[role="tabpanel"]:not([hidden]) section[data-split="true"]');
+  await expect(panes).toHaveCount(2, { timeout: 15_000 });
+  await expect(page.locator("[data-terminal]")).toHaveCount(before + 1);
+  const header = panes.first().locator("header");
+  await header.getByRole("heading").click({ button: "right" });
+  await expect(menu(page).getByRole("menuitem")).toHaveText(["Rename…", "End session…"]);
+  await menu(page).getByRole("menuitem", { name: "Rename…" }).click();
+  await expect(page.getByRole("dialog", { name: /^Rename / })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  // The split's shells are this test's own: close the tab so the worker's core keeps no terminal it opened (#226).
+  await first.getByRole("textbox").focus();
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+Alt+KeyW" : "Control+Shift+KeyW");
+  await expect(page.locator("[data-terminal]")).toHaveCount(before - 1, { timeout: 15_000 });
 });
 
 test("right-clicking a space row opens its menu, and Rename space… there asks for the new name", async ({ page }) => {
