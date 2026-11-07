@@ -27,6 +27,8 @@ export interface LinkOptions {
   readonly timeoutMs?: number;
   /** Cancels the attempt: a socket still connecting is closed, and one that opened is closed too (#446 §2). */
   readonly signal?: AbortSignal | undefined;
+  /** Sends a text `ping` this often while the socket is open, for a host that closes a silent socket; off when unset. */
+  readonly pingIntervalMs?: number | undefined;
 }
 
 /**
@@ -38,7 +40,7 @@ export function openWebSocketLink(
   protocols: readonly string[],
   options: LinkOptions = {},
 ): Promise<ByteLink> {
-  const { timeoutMs = 10_000, signal } = options;
+  const { timeoutMs = 10_000, signal, pingIntervalMs } = options;
   return new Promise((resolve, reject) => {
     if (signal?.aborted === true) {
       reject(new LinkAbortedError(`the ${url} attempt was cancelled`));
@@ -51,6 +53,7 @@ export function openWebSocketLink(
     const held: Uint8Array[] = [];
     let ended = false;
     let opened = false;
+    let pings: ReturnType<typeof setInterval> | undefined;
     const stop = (): void => {
       clearTimeout(timer);
       signal?.removeEventListener("abort", onAbort);
@@ -89,6 +92,10 @@ export function openWebSocketLink(
         reject(new LinkAbortedError(`the ${url} attempt was cancelled`));
         return;
       }
+      if (pingIntervalMs !== undefined)
+        pings = setInterval(() => {
+          if (socket.readyState === WebSocket.OPEN) socket.send("ping");
+        }, pingIntervalMs);
       resolve(link);
     });
     socket.addEventListener("message", (event: MessageEvent<unknown>) => {
@@ -99,6 +106,7 @@ export function openWebSocketLink(
     });
     socket.addEventListener("close", (event) => {
       stop();
+      clearInterval(pings);
       if (ended) return;
       ended = true;
       const error = event.code === 1000 ? undefined : new LinkCloseError(event.code, event.reason);
