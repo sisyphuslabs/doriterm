@@ -21,6 +21,9 @@ test("a run that answers after a menu was opened leaves the keyboard in the menu
   // The core started it and the feed lists it; the page has not heard the run's answer.
   await count.grown();
   expect(answers()).toBe(answersBefore);
+  // Choosing Terminal starts closing New tab's menu, and the feed can list the terminal before that close ends. A menu
+  // opened inside the close is #1014's case (the next test); this one opens once New tab's menu is gone (#1349).
+  await expect(page.getByRole("menuitem", { name: /^Terminal/ })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Session actions" }).click();
   const rename = page.getByRole("menuitem", { name: "Rename…" });
