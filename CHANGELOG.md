@@ -6,10 +6,16 @@
 
 ### Workspace
 
+- The command palette lists Filter the sidebar with its key, and choosing it opens the filter with the keyboard in it. (#848)
 - While the sidebar filter holds a query, a machine's header offers no fold button, since every machine shows its matches; its folded state is as it was once the filter is cleared. (#850)
 - An added machine's spaces and tabs keep their branch and diff facts while its mesh line redials, instead of losing them for a moment. (#913)
 - When the host cannot answer with its terminals at first, the agents list says so with Try again, on a phone and in the desktop sidebar, instead of loading forever. (#819)
 - A menu opened right after choosing from New tab's menu stays open and keeps the keyboard: the New tab menu used to hand the keyboard back to the new terminal as it finished closing, which could shut the menu just opened. (#1014)
+- The first-run guide's last step, "See it in the agents list", completes when the terminal you started or opened on this device is in the list, not on any terminal the host already had, and a screen reader hears each step complete and "You're set". (#834)
+
+### Machine mesh
+
+- While a machine is held as connected through a redial, a tab opened, closed or moved on it says the machine is reconnecting, matching its row, instead of calling it not connected. (#918)
 
 ### Joining a mesh
 
@@ -21,7 +27,17 @@
 
 ### Settings
 
+- On a phone, Settings > Machines opens on the machines and Add a machine: the explanation of what each state means sits under the list instead of filling the first screen. (#1007)
 - The Connect a machine tab draws a plug instead of a server, matching what it offers, and the Pair a device offer follows a change of connection mode on every screen that shows it. (#813)
+
+### Connection and offline wording
+
+- Settings, This device, shows how long this device took to open its session with the host, beside the round trip it already measures, so a slow link can be told from a slow host. Both numbers are measured on the live connection and are left out when there is none. (#637)
+
+### Host install
+
+- The setup tool's `--listen default` and `--session default` put a host that was installed with its own listener or hc session back on the defaults; before, a re-run could only replace them. (#821)
+- `doriface-host --version` prints the host's version, and `/healthz` and the start-up line report the release the host was built from instead of 0.1.0 on every release. (#1039)
 
 ### Website
 
@@ -29,21 +45,9 @@
 - On the doriterm.com landing page, starting the Revoke scene again shows cloud-box at work until its revoke record lands, instead of an empty machine that reads working. (#936)
 - The doriterm.com link preview shows the app's whole agent list: its third idle agent is no longer cut off by the sidebar's Settings footer. (#954)
 
-### Reliability
-
-- A pull request records its changelog line in a file of its own under `changes/unreleased/`, and the release writes those files into its notes, so open pull requests no longer conflict on CHANGELOG.md each time one merges. (#1261)
-
 ### Answering agents from the card
 
 - A command, diff, new file, plan or question text that itself draws something shaped like a dialog no longer reads as the dialog: the card answers the dialog drawn at the bottom of the screen, with that dialog's own rows, and presses nothing when a row on the live screen does not say what the card showed for it. Where Codex's screen cannot tell the dialog from the agent's own text, the card offers nothing and the agent is answered in the terminal. (#776)
-
-### Host
-
-- `doriface-host --version` prints the host's version, and `/healthz` and the start-up line report the release the host was built from instead of 0.1.0 on every release. (#1039)
-
-### First run
-
-- The first-run guide's last step, "See it in the agents list", completes when the terminal you started or opened on this device is in the list, not on any terminal the host already had, and a screen reader hears each step complete and "You're set". (#834)
 
 ## v0.1.6 - 2026-11-07
 
