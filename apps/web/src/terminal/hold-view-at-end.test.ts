@@ -24,6 +24,19 @@ test("a reader at the end is held there while the replay streams", () => {
   expect(element.scrollTop).toBe(900);
 });
 
+test("a reader at the end is held again after the reset collapses the scroller", () => {
+  const element = scroller(400, 500);
+  holdAtEnd(element, () => true);
+  // The reset's own render runs before the hold's first frame, emptying the scroller: the height and the position drop.
+  element.scrollHeight = 100;
+  element.scrollTop = 0;
+  runFrame();
+  // The replay's rows then grow it again.
+  element.scrollHeight = 900;
+  runFrame();
+  expect(element.scrollTop).toBe(900);
+});
+
 test("a reader who had scrolled up is left where they are", () => {
   const element = scroller(100, 500);
   holdAtEnd(element, () => true);
