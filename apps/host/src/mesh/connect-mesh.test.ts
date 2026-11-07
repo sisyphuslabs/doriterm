@@ -22,7 +22,7 @@ const member = (name: string): MemberEntry => ({
   hcId: `hc-${name}`,
 });
 const b = member("b");
-const view: MeshView = { members: [member("a"), b], overCap: [], revoked: [] };
+const view: MeshView = { members: [member("a"), b], revoked: [] };
 
 function fakeLink(): ByteLink & { readonly closes: (number | undefined)[] } {
   const closes: (number | undefined)[] = [];
@@ -107,7 +107,7 @@ describe("revocation closes outbound lines (R-13)", () => {
     const link = fakeLink();
     const lines = new LineGrants({ view: () => view, policy, dial: () => Promise.resolve(link) });
     expect((await lines.grant(b.hostId)).ok).toBe(true);
-    lines.closeRevoked({ members: [member("a")], overCap: [], revoked: [b.signPub] });
+    lines.closeRevoked({ members: [member("a")], revoked: [b.signPub] });
     expect(link.closes).toEqual([4401]);
   });
 });

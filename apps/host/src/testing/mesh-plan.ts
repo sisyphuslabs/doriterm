@@ -23,7 +23,7 @@ export function plan(mesh: MeshFixture, self: Machine, member: string, compromis
 
 export const ref = (m: Machine) => ({ hostId: m.identity.hostId, name: m.name });
 
-/** f admits a and m1..m10: twelve members, so the next admitted key is over-cap. */
+/** f admits a and m1..m10: twelve members, so the next admitted key is the thirteenth (a mesh has no member cap). */
 export function twelve(mesh: MeshFixture, f: Machine, a: Machine): readonly Machine[] {
   mesh.admit(f, a);
   const rest = Array.from({ length: 10 }, (_, i) => machine(`m${i + 1}`));

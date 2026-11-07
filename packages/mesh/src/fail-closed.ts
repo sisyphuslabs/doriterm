@@ -12,7 +12,7 @@ import { supportAt, verdict, voters } from "./view/testimony.ts";
 export interface FailClosed {
   /** The revoked key whose undecidable conflict removed them. */
   readonly revokedKey: string;
-  /** Keys the honest outcome keeps that are now neither members nor over-cap. */
+  /** Keys the honest outcome keeps that are now not members. */
   readonly removed: readonly string[];
 }
 
@@ -20,7 +20,7 @@ export function failClosedOfRecords(records: readonly Rec[], cache?: ViewCache):
   const e = cache?.engineFor(records) ?? new Engine(new Dag(records));
   const now = e.full();
   const S = e.dag.all();
-  const current = new Set([...now.members, ...now.overCap]);
+  const current = new Set(now.members);
   const revoked = new Set(now.revoked);
   /** Per revoked key, the keys its undecided conflicts removed. */
   const removed = new Map<string, Set<string>>();

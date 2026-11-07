@@ -76,11 +76,6 @@ export class Engine {
     return withEff(view, this.#eff(past, statuses));
   }
 
-  /** M(x). */
-  membersBefore(id: string): ReadonlySet<string> {
-    return this.#shared.membersBefore(id, () => new Set(this.before(id)?.members ?? []));
-  }
-
   /** The cache key of a past-closed set: its records that no other record of the set names as prev. */
   keyOf(S: PastSet): string {
     return headsKey(this.#headsOf(S));
@@ -194,16 +189,14 @@ export const viewOfRecords = (records: readonly Rec[], cache?: ViewCache): Engin
   (cache?.engineFor(records) ?? new Engine(new Dag(records))).full();
 
 export interface View {
-  /** At most 12 members, in the canonical order of their governing admissions. */
+  /** Every key with a governing admission, in the canonical order of those admissions. */
   readonly members: ReadonlySet<string>;
-  /** Admitted keys past the 12th member: not dialed, cannot sign. Disjoint from `members`. */
-  readonly overCap: ReadonlySet<string>;
   readonly revoked: ReadonlySet<string>;
   /** signPub -> the member's current Noise key. */
   readonly noise: ReadonlyMap<string, string>;
-  /** signPub -> the signPub that admitted it (the lineage), for every key with a governing admission, over-cap keys too. */
+  /** signPub -> the signPub that admitted it (the lineage), for every member. */
   readonly admitter: ReadonlyMap<string, string>;
-  /** signPub -> the hash of its governing admission, for every key that has one, over-cap keys too. */
+  /** signPub -> the hash of its governing admission, for every member. */
   readonly governing: ReadonlyMap<string, string>;
   /** signPub -> the member's mesh name after the fallback for taken names. */
   readonly name: ReadonlyMap<string, string>;
@@ -213,7 +206,6 @@ export interface View {
 
 const EMPTY: View = {
   members: new Set(),
-  overCap: new Set(),
   revoked: new Set(),
   noise: new Map(),
   admitter: new Map(),
@@ -232,7 +224,6 @@ export function viewOf(set: readonly Signed[], cache?: ViewCache): View {
   const v = viewOfRecords(records, cache);
   return {
     members: new Set(v.members),
-    overCap: new Set(v.overCap),
     revoked: new Set(v.revoked),
     noise: v.noise,
     admitter: v.admitter,
