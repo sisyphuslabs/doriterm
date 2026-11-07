@@ -299,7 +299,14 @@ export function TabBar({
           // A choice starts a tab that takes the keyboard at once, so the page stays live (not modal) and, as the menu
           // closes, focus goes where the choice put it rather than back to +, where the next keys typed would press it.
           modal={false}
-          finalFocus={() => (chose.current ? (handedTo.current ?? false) : true)}
+          // Base UI asks once the closing animation has ended. The page was live all along, so by then the person may
+          // have moved on (another menu, a dialog): what holds the keyboard now keeps it (#1014).
+          finalFocus={() => {
+            const holder = document.activeElement;
+            const movedOn = holder instanceof HTMLElement && holder !== document.body && holder !== handedTo.current;
+            if (movedOn) return false;
+            return chose.current ? (handedTo.current ?? false) : true;
+          }}
         >
           <div
             className="contents"
