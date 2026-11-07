@@ -263,6 +263,21 @@ describe("one connection per member", () => {
     expect(made.every((connection) => connection.stopped === 0)).toBe(true);
   });
 
+  it("an edit applies only the fields it changed, onto the settings as they are now (#1006)", () => {
+    const { mesh } = running(settingsWith([member("a"), member("b")], "a"));
+    // A form read the settings when it opened; the shown machine changed after that.
+    const opened = mesh.settings;
+    mesh.select("b");
+    const { members: currentMembers, ...current } = mesh.settings;
+    mesh.edit({ token: "fresh" });
+    const { members, ...after } = mesh.settings;
+    expect(after).toEqual({ ...current, token: "fresh" });
+    expect(members.map((entry) => entry.hostId).toSorted()).toEqual(
+      currentMembers.map((entry) => entry.hostId).toSorted(),
+    );
+    expect(mesh.settings.hostId).not.toBe(opened.hostId);
+  });
+
   it("dials only the members the roster added, and stops one that left it", () => {
     const { mesh, made } = running(settingsWith([member("a"), member("b")]));
     made[0]?.fail();

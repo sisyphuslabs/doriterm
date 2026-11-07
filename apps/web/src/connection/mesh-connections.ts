@@ -128,6 +128,14 @@ export class MeshConnections {
   }
 
   /**
+   * Applies the fields a form changed to the settings as they are now, rather than a copy the form read when it opened:
+   * the shown machine and the roster move on their own meanwhile, and a stale copy would restore them (#1006).
+   */
+  edit(fields: Partial<ConnectionSettings>): void {
+    this.#apply({ ...this.#settings, ...fields });
+  }
+
+  /**
    * Pairs with one machine, which REPLACES what this app was bound to.
    *
    * Pairing is an intent, not something to infer from the host id: the roster exists so a client reaches every member of a
