@@ -11,15 +11,21 @@ test("a New tab that fails says so with the sidebar hidden, where the machine li
   await openNewTerminal(page);
   await page.getByRole("button", { name: "Hide sidebar" }).click();
   await expect(page.getByRole("complementary", { name: "Workspace" })).toBeHidden();
+  const asked = (): number => socket.sent().filter((frame) => frame.includes("terminal.run")).length;
+  const before = asked();
+  // Let the page send and keep the core's answer away: the ask is on the wire, the run is still in flight, and a second
+  // dispatch would be recorded here instead of being refused by a closed socket (#1343).
+  socket.delay(60_000);
+  await pressNewTab(page.getByRole("button", { name: "New tab", exact: true }));
+  await expect.poll(asked, { message: "one New tab asks the core" }).toBe(before + 1);
   await socket.drop(true);
   await expect(page.getByRole("status").filter({ hasText: "Reconnecting" })).toBeVisible();
-  await pressNewTab(page.getByRole("button", { name: "New tab", exact: true }));
-  await expect(page.getByRole("heading", { name: "Could not open a new tab" })).toHaveCount(1);
+  expect(asked(), "one New tab asks the core once, not twice").toBe(before + 1);
+  const notice = page.getByRole("heading", { name: "Could not open a new tab" });
+  await expect(notice).toHaveCount(1);
   await expect(page.getByText(/try again once it is back/)).toBeVisible();
-  // One act of the person asks the core at most once: a second terminal.run here would be a dispatch reaching the handler
-  // twice, and it would report the same failure twice (#1343).
-  const asked = socket.sent().filter((frame) => frame.includes("terminal.run")).length;
-  expect(asked, "one New tab asks the core at most once").toBeLessThanOrEqual(1);
+  // The first notice can win the poll a moment before a duplicate renders: count again after the rest of the notice.
+  await expect(notice).toHaveCount(1);
   socket.restore();
 });
 
