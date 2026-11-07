@@ -1,7 +1,7 @@
 // The herdr-app layout document on the e2e core, written the way herdr-app 0.1.12 writes it: keys sorted, `type` on
 // every node, a tab's root a row whose id is the tab's.
 import type { Locator, Page } from "@playwright/test";
-import { getCoreDoc, setCoreDoc } from "./core-doc.ts";
+import { getCoreDoc, setCoreDoc, updateCoreDoc } from "./core-doc.ts";
 import { LAYOUT_MACHINE_SPEC } from "./layout-seed.ts";
 import { MACHINE_NAME } from "./machine.ts";
 
@@ -119,13 +119,16 @@ export function savedTab(id: string): string | null {
 
 /** Renames a saved tab as another device would: once the page shows the name, it has read every earlier write. */
 export function renameTab(id: string, name: string): void {
-  const doc = getCoreDoc(LAYOUT_DOC);
-  if (!isRecord(doc)) throw new Error("no layout document to rename a tab in");
   const renamed = (tab: unknown): unknown =>
     isRecord(tab) && tab["id"] === id ? Object.assign({}, tab, { name }) : tab;
   const inSpace = (space: unknown): unknown =>
     isRecord(space) ? Object.assign({}, space, { tabs: listOf(space["tabs"]).map(renamed) }) : space;
-  setCoreDoc(LAYOUT_DOC, { ...doc, spaces: listOf(doc["spaces"]).map(inSpace) });
+  // The new document is derived from the one on the core, so a lost compare-and-set renames the tab in the document the core
+  // reports at that attempt instead of restoring a copy read before another client's write landed (#896).
+  updateCoreDoc(LAYOUT_DOC, (current) => {
+    if (!isRecord(current)) throw new Error("no layout document to rename a tab in");
+    return { ...current, spaces: listOf(current["spaces"]).map(inSpace) };
+  });
 }
 
 export function clearLayout(): void {

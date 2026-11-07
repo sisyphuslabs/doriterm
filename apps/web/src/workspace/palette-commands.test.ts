@@ -47,6 +47,12 @@ describe("paletteCommands", () => {
     expect(commands.find((command) => command.group === "Hosts")).toMatchObject({ label: "studio", hint: "relay" });
   });
 
+  test("lists Filter the sidebar with its key, as it lists the other sidebar actions (#848)", () => {
+    const filter = paletteCommands(source([])).find((command) => command.id === "layout.filter:sidebar");
+    expect(filter).toMatchObject({ label: "Filter the sidebar", group: "Actions" });
+    expect(filter?.keys?.toSorted()).toEqual(["⌘", "⌥", "F"].toSorted());
+  });
+
   test("agents that need you come first", () => {
     const commands = paletteCommands(
       source([

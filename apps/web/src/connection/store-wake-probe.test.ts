@@ -3,6 +3,7 @@ import { type HcConnection, HcTimeoutError } from "@doriface/client";
 import type { OpenConnection } from "./connect.ts";
 import { type ConnectionSettings, DEFAULT_RELAY_URL, DEFAULT_SETTINGS } from "./settings.ts";
 import type { ConnectionState } from "./store.ts";
+import { WakeProbeUnansweredError } from "./wake.ts";
 
 // store.ts builds the app's store from localStorage as it loads; bun has none, so an empty one stands in for that load.
 Object.assign(globalThis, { localStorage: { getItem: () => null, setItem: () => undefined } });
@@ -146,6 +147,32 @@ test("a wake with a link that no longer answers drops it within 10 s and dials a
   store.stop();
 });
 
+test("a probe's drop is reported as the unanswered probe, not as a missing heartbeat (#779)", async () => {
+  jest.useFakeTimers();
+  const quiet = core(false);
+  const fresh = core(true);
+  let attempts = 0;
+  const store = new ConnectionStore(RELAY, (): Promise<OpenConnection> => {
+    attempts += 1;
+    return Promise.resolve({ connection: (attempts === 1 ? quiet : fresh).connection, path: "relay" as const });
+  });
+  const open = settled(store, "open");
+  store.start();
+  await open;
+
+  const failed = settled(store, "failed");
+  store.retryNow();
+  await flush();
+  jest.advanceTimersByTime(10_000);
+  await flush();
+  await failed;
+
+  const error = store.state.phase === "failed" ? store.state.error : undefined;
+  expect(error).toBeInstanceOf(WakeProbeUnansweredError);
+  expect(error).toMatchObject({ method: "terminal.list", timeoutMs: 10_000 });
+  store.stop();
+});
+
 test("a wake whose call the core refuses still leaves the link alone: a refusal is an answer (#653)", async () => {
   jest.useFakeTimers();
   const refusing = core("error");
@@ -238,6 +265,10 @@ test("a probe's reason stays with its own connection: a later plain close is not
   const failed = settled(store, "failed");
   second.hostCloses();
   await failed;
-  expect(store.state.phase === "failed" && store.state.error.name).not.toBe("HcLinkSilentError");
+  // Neither the wake probe's reason nor a silent link: the later close carries its own reason.
+  const error = store.state.phase === "failed" ? store.state.error : undefined;
+  expect(error).toBeDefined();
+  expect(error).not.toBeInstanceOf(WakeProbeUnansweredError);
+  expect(error?.name).not.toBe("HcLinkSilentError");
   store.stop();
 });

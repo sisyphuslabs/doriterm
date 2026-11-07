@@ -64,6 +64,36 @@ test("retryNow makes the waiting attempt at once, and its back-off timer makes n
 
   jest.advanceTimersByTime(10_000);
   expect(attempts).toBe(2);
+  expect(store.state).toEqual({ phase: "open", connection, path: "relay", connectMs: expect.any(Number) });
+  store.stop();
+});
+
+test("an open session carries how long its own attempt took to open it, measured on this device (#637)", async () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date("2026-11-07T00:00:00.000Z"));
+  const { connection } = standIn();
+  const answered = Promise.withResolvers<OpenConnection>();
+  const store = new ConnectionStore(SETTINGS, () => answered.promise);
+  const open = new Promise<void>((resolve) => {
+    const off = store.subscribe(() => {
+      if (store.state.phase !== "open") return;
+      off();
+      resolve();
+    });
+  });
+  store.start();
+  // The host answers 340 ms into the attempt: the session's figure is that attempt's, not a constant.
+  jest.setSystemTime(new Date("2026-11-07T00:00:00.340Z"));
+  answered.resolve({ connection, path: "relay" });
+  await open;
+  expect(store.state).toMatchObject({ phase: "open", connectMs: 340 });
+  store.stop();
+});
+
+test("a session pairing proved and handed over has no open time: this store did not dial it (#637, #1271)", () => {
+  const { connection } = standIn();
+  const store = new ConnectionStore(SETTINGS, () => Promise.reject(new Error("no dial: the session is adopted")));
+  store.adopt({ connection, path: "relay" });
   expect(store.state).toEqual({ phase: "open", connection, path: "relay" });
   store.stop();
 });

@@ -26,6 +26,8 @@ export interface AppActionTargets {
   readonly onToggleSidebar: () => void;
   /** Moves focus from the terminal to the sidebar, or back. */
   readonly onFocusSidebar: () => void;
+  /** Shows the whole sidebar with its filter field out and focused. */
+  readonly onFilterSidebar: () => void;
   /** Renames or ends the session in view, or renames its space; false when there is none. */
   readonly onSession: SessionVerb;
   /** Starts dictating into the session in view, or ends the dictation under way; false with no session in view. */
@@ -166,6 +168,7 @@ export function desktopActions(
     onRenameTab,
     onToggleSidebar,
     onFocusSidebar,
+    onFilterSidebar,
     onSession,
     onDictate,
     focusedTab,
@@ -243,6 +246,9 @@ export function desktopActions(
         return true;
       case "layout.focus":
         onFocusSidebar();
+        return true;
+      case "layout.filter":
+        onFilterSidebar();
         return true;
       case "app.settings":
         openSettings();
