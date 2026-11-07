@@ -36,8 +36,8 @@ for (const colorScheme of ["light", "dark"] as const) {
       await page.keyboard.press("Enter");
       await page.getByRole("button", { name: "Close settings" }).first().click();
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-      // The workspace is kept, so the tab opened above is still the one in view at 390: the phone opens straight onto it. Its
-      // agent list is a tap away, and that list is what a phone uses to reach any other terminal — this test's one.
+      // The phone's open terminal lives in the route (`/?t=<key>`, #975), and the desktop opened this one with no `?t=`, so at
+      // 390 the phone opens on its agent list: the list is what a phone uses to reach a terminal — this test's one.
       if (width === 390) {
         // Only the phone shell renders this container (phone-shell.tsx, ScrollArea slot="agents-list" -> data-slot), so the
         // wide sidebar's identical AgentRows can never satisfy the count (#527: they did, before the phone had mounted).
@@ -46,10 +46,6 @@ for (const colorScheme of ["light", "dark"] as const) {
         // phone tree a frame or more after setViewportSize resolves (and after Close settings' history.back() lands). The old
         // isVisible() read the screen before that commit, skipped the click and left the phone on the terminal (#527).
         await page.waitForFunction(() => matchMedia("(max-width: 767.98px)").matches);
-        // Back is always here on this path: opening a terminal sets the phone's open key (workspace.tsx:155, called at :170 and
-        // :289) and only onBack clears it (:347), which this spec never calls, so the phone opens onto PhoneTerminal and its
-        // header carries Back.
-        await page.getByRole("button", { name: "Back to agents" }).click();
         await expect(agents, "the phone lists the one terminal this test opened").toHaveCount(1, { timeout: 30_000 });
         await agents.click();
       }

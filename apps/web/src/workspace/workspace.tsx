@@ -2,6 +2,7 @@ import type { TerminalRunParams } from "@doriface/protocol";
 import type { HcConnection } from "@doriface/client";
 import { useToastManager } from "@doriface/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { connectionStore } from "../connection/store.ts";
 import { useActionHandler } from "../keys/dispatcher.ts";
 import { ShortcutsHelp } from "../keys/shortcuts-dialog.tsx";
@@ -24,6 +25,7 @@ import { PIN_LABEL, spacesInOrder } from "./sidebar-model.ts";
 import { PinContext, type PinTerminal } from "./use-pin.ts";
 import { MachinesContext, useMachines } from "./use-machines.ts";
 import { runParamsFor } from "./new-terminal.ts";
+import { entersFromList, phoneOpenKey, rememberOpenKey } from "./phone-route.ts";
 import { useNarrow } from "./use-narrow.ts";
 import { machineIds, tabAddress, tabKey } from "./tab-keys.ts";
 import { findTerminal, type LayoutTab } from "./layout-model.ts";
@@ -142,17 +144,46 @@ export function Workspace({ connection }: WorkspaceProps) {
   useAdoptLoose(layouts, fed.loaded ? terminals : null, failed);
   const narrow = useNarrow();
   const ids = useMemo(() => machineIds(views), [views]);
-  // The phone's open terminal is kept by machine id like a tab, so a rename keeps it open at the new address.
-  const [phoneKey, setPhoneKey] = useState<string | null>(null);
-  const phoneOpen = phoneKey === null ? null : (tabAddress(phoneKey, ids) ?? null);
-  // Opening a terminal from this device's list is the first run's "open an agent" step; a restored focus is not (#668).
+  // Whether this screen pushed the entry the phone is on: a cold open on ?t= has none behind it, so its Back may not pop.
+  const openFromList = useRef(false);
+  // Settings and pairing are routes with no terminal in them: they say nothing about which terminal is open, so the last
+  // one the list had stays open under them (the workspace is kept mounted there, and so is the terminal).
+  const lastPhoneKey = useRef<string | null>(null);
+  // The phone's open terminal is a history entry (`?t=`), so Android's Back returns to the list instead of leaving the
+  // app (the browser has nothing else to pop), and a reload reopens what was open without pushing a second entry.
+  const navigate = useNavigate();
+  const router = useRouter();
+  const routeSearch = useRouterState({ select: (state) => state.location.search as { readonly t?: unknown } });
+  const routePath = useRouterState({ select: (state) => state.location.pathname });
+  const routeKey = typeof routeSearch.t === "string" ? routeSearch.t : null;
+  const routeTerminal = routePath === "/" ? routeKey : null;
+  // Settings keeps the workspace mounted (#607), so it must keep the phone's open terminal too: a route that is not the
+  // list says nothing about `?t=`, so the key is read there and the last one carries across (phone-route.ts).
+  lastPhoneKey.current = rememberOpenKey(routePath, routeKey, lastPhoneKey.current);
+  const phoneKey = phoneOpenKey(routePath, routeKey, lastPhoneKey.current);
+  const phoneOpen = phoneKey === null || !narrow ? null : (tabAddress(phoneKey, ids) ?? null);
   const showOnPhone = useCallback(
     (address: string) => {
+      // Opening a terminal is what the first-run guide is waiting for (#668); this stays even when no entry is pushed.
       guideStore.opened(address);
-      setPhoneKey(tabKey(address, ids));
+      // A desktop keeps no history entries of its own: its New tab and its notices are not navigations, and pushing one
+      // made Back step through no-op entries and a landing run close the screen behind it.
+      if (!narrow) return;
+      const key = tabKey(address, ids);
+      // Only a push puts a list entry under this terminal; a switch replaces the entry that is already there.
+      if (entersFromList(routeTerminal)) openFromList.current = true;
+      // Switching inside an open terminal replaces that entry, so one Back still leaves the terminal for the list;
+      // only entering from the list adds one.
+      void navigate({ href: `/?t=${encodeURIComponent(key)}`, replace: routeTerminal !== null });
     },
-    [ids],
+    [ids, navigate, narrow, routeTerminal],
   );
+  const hideOnPhone = useCallback(() => {
+    // A cold open on `?t=` has no list behind it, so popping would leave the app; that case goes to the list instead.
+    if (openFromList.current) router.history.back();
+    else void navigate({ href: "/", replace: true });
+    openFromList.current = false;
+  }, [navigate, router]);
   const [palette, setPalette] = useState(false);
   const [ask, setAsk] = useState<SessionAsk | null>(null);
   const [spaceAsk, setSpaceAsk] = useState<string | null>(null);
@@ -370,7 +401,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                         panes={phonePanes}
                         tabTitle={phoneTitle}
                         onOpen={showOnPhone}
-                        onBack={() => setPhoneKey(null)}
+                        onBack={hideOnPhone}
                         onNew={() => newTerminal()}
                         onPalette={onPalette}
                         onSession={onSession}
