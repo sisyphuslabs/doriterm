@@ -54,7 +54,7 @@ async function clickToDialog(page: Page): Promise<number> {
   return probe.then((handle) => handle.jsonValue() as Promise<number>).catch(() => 10_000);
 }
 
-test("with three terminals flooding, Close asks within 200 ms of the click (#560)", async ({ page }) => {
+test("with three terminals flooding, Close still asks on every click (#560)", async ({ page }) => {
   test.setTimeout(180_000);
   await setConfirmClose(page, "always");
   await openNewTerminal(page);
@@ -94,9 +94,10 @@ test("with three terminals flooding, Close asks within 200 ms of the click (#560
   };
   await [1, 2, 3].reduce<Promise<void>>((previous) => previous.then(askAndCancel), Promise.resolve());
   const longTasks = await page.evaluate(() => (Reflect.get(window, "longTasks") as number[]).length);
+  // How soon is the render bench's to judge (closePromptMs, bench/thresholds.json: 200 ms), on a runner with nothing
+  // else on it and against the last release (#986). Here, on a runner shared with the rest of the suite, the time
+  // measures how much CPU the page got: this case holds that every click is answered, within the 10 s above.
   console.log(`#560 click-to-dialog ms: ${times.map((ms) => Math.round(ms)).join(", ")}; long tasks: ${longTasks}`);
-  const median = times.toSorted((a, b) => a - b)[1] ?? Number.POSITIVE_INFINITY;
-  expect(median).toBeLessThan(200);
 });
 
 const DATA = 0;

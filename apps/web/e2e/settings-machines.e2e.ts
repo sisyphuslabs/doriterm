@@ -33,4 +33,27 @@ test.describe("Settings, Machines", () => {
     }
     await expect(added).toContainText("Connected", { timeout: STATE_BOUND_MS });
   });
+
+  test.describe("on a phone", () => {
+    test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+
+    test("the list and Add a machine lead the first screen, with the explanation below them (#1007)", async ({
+      page,
+    }) => {
+      await page.goto("/settings#machines");
+      const list = page.getByRole("list", { name: "Machines" });
+      await expect(list.getByRole("listitem").first()).toContainText("This machine", { timeout: 15_000 });
+      const viewport = page.viewportSize();
+      if (viewport === null) throw new Error("no viewport");
+      // The list leads: its heading sits in the screen's top third, not under a screenful of explanation.
+      const heading = await page.getByRole("heading", { name: "Machines", level: 2 }).boundingBox();
+      expect(heading?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(viewport.height / 3);
+      for (const target of [list.getByRole("listitem").first(), page.getByRole("button", { name: "Add a machine" })]) {
+        // oxlint-disable-next-line no-await-in-loop -- each target is measured on the same settled screen
+        const box = await target.boundingBox();
+        expect(box, "drawn").not.toBeNull();
+        expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(viewport.height);
+      }
+    });
+  });
 });

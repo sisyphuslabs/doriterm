@@ -1,19 +1,6 @@
 import { DEFAULT_PUSH_PREFS } from "@doriface/protocol";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
-import {
-  closeSync,
-  constants,
-  createReadStream,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  openSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { createInterface } from "node:readline";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateToken } from "./auth.ts";
@@ -21,6 +8,7 @@ import { type HostOptions, startHost } from "./host.ts";
 import { LOOPBACK_OWNER, SubscriptionStore } from "./push/subscriptions.ts";
 import { parseStartupErrorLine } from "./startup-error.ts";
 import { createHcSession } from "./testing/hc-session.ts";
+import { silentHc } from "./testing/silent-hc.ts";
 import { openWsClient } from "./testing/ws-client.ts";
 
 const CLI = join(import.meta.dir, "cli.ts");
@@ -305,42 +293,6 @@ const alive = (pid: number): boolean => {
 /** `HcConnection`'s default handshake deadline: the wait a stop must not sit out. */
 const HANDSHAKE_TIMEOUT_MS = 10_000;
 
-/**
- * An hc whose connect never answers the hello, keeps its output open, and exits once its input ends, as hc does. Its
- * pid file is written under another name and moved into place, so a connect-* name only appears with its pid in it
- * (`echo > name` creates the file before it writes, and an empty one read as pid 0, #365). Each connect then writes its
- * pid to a FIFO this test holds open: `started` resolves as connects start, from their own lines, where a watch on the
- * directory reports only what happens once the watch is live, which the test cannot see (#780).
- */
-function silentHc(dir: string) {
-  const hc = join(dir, "hc");
-  const fifo = join(dir, "started");
-  if (Bun.spawnSync(["mkfifo", fifo]).exitCode !== 0) throw new Error(`mkfifo ${fifo} failed`);
-  writeFileSync(
-    hc,
-    `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "hc 0.1.17"; exit 0; fi\necho $$ > "${dir}/.pid-$$" && mv "${dir}/.pid-$$" "${dir}/connect-$$.pid"\necho $$ > "${fifo}"\nwhile read -r line; do :; done\n`,
-    { mode: 0o755 },
-  );
-  // Read and write, so no connect blocks opening it and the reader never sees an end while connects come and go.
-  const fd = openSync(fifo, constants.O_RDWR);
-  const lines = createInterface({ input: createReadStream("", { fd, autoClose: false }) });
-  const reads = lines[Symbol.asyncIterator]();
-  return {
-    hc,
-    connects: () => readdirSync(dir).filter((name) => name.startsWith("connect-")),
-    /** Resolves once `count` connects have started. */
-    started: async function started(count: number): Promise<void> {
-      if (count === 0) return;
-      if ((await reads.next()).done === true) throw new Error("the connects' FIFO ended");
-      return started(count - 1);
-    },
-    close: () => {
-      lines.close();
-      closeSync(fd);
-    },
-  };
-}
-
 describe("the write of a host's OS", () => {
   test("starts no hc connect until a client opens a pipe, and stop reaps the write's child", async () => {
     const dir = mkdtempSync(join(tmpdir(), "dh-silent-"));
@@ -369,7 +321,7 @@ describe("the write of a host's OS", () => {
       await host.stop();
       expect(pids.filter(alive)).toEqual([]);
     } finally {
-      silent.close();
+      await silent.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -400,7 +352,7 @@ describe("the write of a host's OS", () => {
       // Well under one handshake deadline: what is left is closing the children, not waiting for a reply.
       expect(took).toBeLessThan(HANDSHAKE_TIMEOUT_MS / 2);
     } finally {
-      silent.close();
+      await silent.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });

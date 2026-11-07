@@ -4,8 +4,8 @@ import { connectionStore } from "../connection/store.ts";
 import { formatCode, normalizeCode } from "./code.ts";
 import type { PairingOffer } from "./fragment.ts";
 import { parsePairingFragment } from "./fragment.ts";
-import { lookupCode } from "./lookup.ts";
 import { ScanButton } from "./scan-button.tsx";
+import { SlotLookups } from "./slot-lookups.ts";
 import { offerFromScan } from "./scan.ts";
 import { Steps } from "./steps.tsx";
 
@@ -20,15 +20,13 @@ export function PairStep({
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [lookups] = useState(() => new SlotLookups(connectionStore.settings.relayUrl));
   const apply = async (candidate: string): Promise<void> => {
     const link = candidate.indexOf("#");
     const code = normalizeCode(candidate);
     if (link === -1 && code === null) return setError("Enter the 8 characters the host shows.");
     setBusy(true);
-    const parsed =
-      link !== -1
-        ? parsePairingFragment(candidate.slice(link))
-        : await lookupCode(code ?? "", connectionStore.settings.relayUrl);
+    const parsed = link !== -1 ? parsePairingFragment(candidate.slice(link)) : await lookups.offer(code ?? "");
     setBusy(false);
     if (parsed.ok) onOffer(parsed.offer);
     else setError(parsed.reason);
@@ -79,6 +77,7 @@ export function PairStep({
             onValueChange={(value: string) => {
               const code = normalizeCode(value);
               setText(code === null ? value : formatCode(code));
+              if (!value.includes("#")) lookups.typed(value);
               setError(null);
             }}
           />
