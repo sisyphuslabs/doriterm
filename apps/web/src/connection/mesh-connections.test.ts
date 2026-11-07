@@ -207,6 +207,17 @@ describe("one connection per member", () => {
     expect(made[0]?.started).toBe(2);
   });
 
+  it("restoring re-dials only the member it stopped, leaving the others' open connections alone (#1140)", () => {
+    const roster = settingsWith([member("a"), member("b"), member("c")], "a");
+    const { mesh, made } = running(roster);
+    const [restored, open, other] = made;
+    mesh.restoring();
+    mesh.update(roster);
+    expect([restored?.stopped, restored?.started]).toEqual([1, 2]);
+    expect([open?.started, open?.stopped, open?.state.phase]).toEqual([1, 0, "open"]);
+    expect([other?.started, other?.stopped, other?.state.phase]).toEqual([1, 0, "open"]);
+  });
+
   it("tells listeners the selection moved when a machine fails over", () => {
     const { mesh, made } = running(settingsWith([member("a"), member("b")], "a"));
     let told = 0;
