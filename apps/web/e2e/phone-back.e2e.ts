@@ -208,3 +208,28 @@ test("at 390, Settings that names the open terminal keeps it mounted", async ({ 
     endAgent("host", address);
   }
 });
+
+test("the list forgets the terminal, so Settings opened from it mounts none", async ({ page }) => {
+  const address = startAgent("host", "backforget", "idle");
+  try {
+    await page.goto("/");
+    const row = page.getByRole("button", { name: /backforget/ }).first();
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    await row.click();
+    await expect(page.getByRole("button", { name: "Back to agents" })).toBeVisible({ timeout: 20_000 });
+
+    // Back to the list closes the terminal. Settings opened from there must not bring it back: a remembered terminal would
+    // report itself as the focused view, suppressing its notifications and clearing its attention while nobody looks at it.
+    await page.getByRole("button", { name: "Back to agents" }).click();
+    await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
+    await page
+      .getByRole("link", { name: /Settings/ })
+      .or(page.getByRole("button", { name: /Settings/ }))
+      .first()
+      .click();
+    await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator(`[data-terminal="${address}"]`), "no terminal is mounted under Settings").toHaveCount(0);
+  } finally {
+    endAgent("host", address);
+  }
+});
