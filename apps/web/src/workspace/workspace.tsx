@@ -302,6 +302,8 @@ export function Workspace({ connection }: WorkspaceProps) {
 
   const openAddMachine = useCallback(() => setAdding(true), []);
   const terminalsLoaded = fed.loaded;
+  const terminalsError = fed.loaded ? null : fed.error;
+  const retryTerminals = fed.retry;
   const machinesListed = machineReads > 0 || listError !== undefined;
   // The sidebar's runs are its New space buttons: each terminal they start is the first tab of a new space (#404).
   const inNewSpace = useCallback(
@@ -315,6 +317,8 @@ export function Workspace({ connection }: WorkspaceProps) {
     () => ({
       entries,
       terminalsLoaded,
+      terminalsError,
+      retryTerminals,
       machinesListed,
       listError,
       openAddMachine,
@@ -324,7 +328,20 @@ export function Workspace({ connection }: WorkspaceProps) {
       start: (params: TerminalRunParams) => runs.start(params, inNewSpace),
       newTerminalOn: (machine: string) => runs.start({ on: machine }, inNewSpace),
     }),
-    [entries, terminalsLoaded, machinesListed, listError, openAddMachine, views, retry, moveMachine, runs, inNewSpace],
+    [
+      entries,
+      terminalsLoaded,
+      terminalsError,
+      retryTerminals,
+      machinesListed,
+      listError,
+      openAddMachine,
+      views,
+      retry,
+      moveMachine,
+      runs,
+      inNewSpace,
+    ],
   );
   const { selectSpace } = layout;
   // The space keys count the spaces as the sidebar lists them, so "space 2" is the second row a person sees.

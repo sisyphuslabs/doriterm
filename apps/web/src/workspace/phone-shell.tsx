@@ -14,6 +14,7 @@ import { usePendingUpdate } from "../update/update-store.ts";
 import { FirstRunGuideCard } from "../pair/first-run-guide-card.tsx";
 import { PhoneEmpty } from "./phone-empty.tsx";
 import { PhoneListLoading } from "./phone-loading.tsx";
+import { TerminalsLoadError } from "./terminals-load-error.tsx";
 import { PhoneTerminal } from "./phone-terminal.tsx";
 import { RovingLists } from "./roving-lists.tsx";
 import { usePhoneActions, type SessionVerb } from "./use-app-actions.ts";
@@ -93,6 +94,8 @@ export function PhoneShell(props: PhoneShellProps) {
                 </RovingLists>
               )}
             </>
+          ) : machines.terminalsError !== null ? (
+            <TerminalsLoadError cause={machines.terminalsError} onRetry={machines.retryTerminals} />
           ) : (
             <PhoneListLoading />
           )}
