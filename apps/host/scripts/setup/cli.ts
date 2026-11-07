@@ -123,7 +123,7 @@ async function main(argv: readonly string[]): Promise<number> {
   }
 }
 
-async function ensureHcQuiet(context: ReturnType<typeof setupContext>): Promise<string> {
+function ensureHcQuiet(context: ReturnType<typeof setupContext>): Promise<string> {
   return findHc(context);
 }
 

@@ -38,6 +38,10 @@ export interface Setup {
   /** Rewrites the client's first message (message 1) in flight. */
   readonly tamperHello?: (bytes: Uint8Array) => Uint8Array;
   readonly synchronous?: boolean;
+  /** The responder's early-answer hook (#1271). */
+  readonly answerEarly?: (early: Uint8Array, session: SecureLink) => void;
+  /** Both ends' handshake deadline. */
+  readonly timeoutMs?: number;
 }
 
 const toStatic = (key: KeyPair | StaticKey): StaticKey => ("dh" in key ? key : rawStaticKey(key));
@@ -61,6 +65,8 @@ export function connect(setup: Setup = {}) {
     rekeyInterval: setup.rekey?.[1],
     lanUrls: setup.lanUrls,
     authorize: setup.authorize ?? acceptAll,
+    answerEarly: setup.answerEarly,
+    timeoutMs: setup.timeoutMs,
   });
   const initiator = secureLink(clientEnd, {
     role: "initiator",
@@ -70,6 +76,7 @@ export function connect(setup: Setup = {}) {
     pairing: setup.pairing,
     early: setup.early,
     rekeyInterval: setup.rekey?.[0],
+    timeoutMs: setup.timeoutMs,
   });
   return { clientEnd, hostEnd, initiator, responder };
 }

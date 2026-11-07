@@ -20,9 +20,9 @@ test("closing the only tab asks Close space?, ends its shell and empties the wor
   await expect(tabs).toHaveCount(1);
   const running = (await terminalCount(page)).before;
 
-  // Cmd+W on macOS; the pane close key elsewhere. The tab's only pane closes as its tab, and a space's last tab takes the
+  // The pane close key: Cmd+Shift+W on macOS (herdr-app's), Ctrl+Shift+X elsewhere. The tab's only pane closes as its tab, and a space's last tab takes the
   // space with it, so it asks first, as herdr-app's space.close (#466 ruling D).
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+KeyW" : "Control+Shift+X");
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+KeyW" : "Control+Shift+X");
   const ask = page.getByRole("dialog", { name: "Close space?" });
   await expect(ask).toContainText(/\u2014 1 tab, 1 terminal/);
   await ask.getByRole("button", { name: "Close" }).click();

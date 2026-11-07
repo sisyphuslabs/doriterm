@@ -7,11 +7,12 @@ const digits = (prefix: string, action: string): [string, string][] =>
 
 /**
  * herdr-app's keys.macos.json merged with Ghostty's macOS defaults. Where the two disagree herdr-app wins and Ghostty's
- * trigger is added as an alias when it is free, except for panes, where Ghostty's are taken: ⌘W closes the focused pane
- * (the last one closes its tab) and ⌘⌥W the tab, so a split never loses every pane to one key. DESIGN.md lists each.
+ * trigger is added as an alias when it is free: ⌘W closes the tab and ⌘⇧W the focused pane, as in herdr-app, and
+ * Ghostty's ⌘⌥W closes the tab too. herdr-app-parity.ts records every herdr-app default doriface binds differently.
  */
 const MAC: readonly [string, string][] = [
   ["super+t", "tab.new"],
+  ["super+w", "tab.close"],
   ["super+alt+w", "tab.close"],
   ["ctrl+tab", "tab.next"],
   ["ctrl+shift+tab", "tab.prev"],
@@ -24,9 +25,10 @@ const MAC: readonly [string, string][] = [
   ...digits("ctrl+", "space.select"),
   ["super+alt+[", "space.prev"],
   ["super+alt+]", "space.next"],
+  ["super+n", "space.new"],
   ["super+d", "pane.split:right"],
   ["super+shift+d", "pane.split:down"],
-  ["super+w", "pane.close"],
+  ["super+shift+w", "pane.close"],
   ["super+alt+left", "pane.go:left"],
   ["super+alt+right", "pane.go:right"],
   ["super+alt+up", "pane.go:up"],
@@ -48,6 +50,8 @@ const MAC: readonly [string, string][] = [
   // Ghostty takes Cmd+Shift+F for its own search, so the filter takes Cmd+Alt+F.
   ["super+alt+f", "layout.filter:sidebar"],
   ["f2", "tab.rename"],
+  // doriface's own rename chord (#702); in a browser tab it is hard reload, which Chrome, Edge and Firefox let a page take.
+  ["super+shift+r", "tab.rename"],
   ["shift+f2", "space.rename"],
   ["super+shift+p", "app.palette"],
   ["super+,", "app.settings"],
@@ -59,6 +63,7 @@ const MAC: readonly [string, string][] = [
   ["super+v", "terminal.paste"],
   ["super+a", "terminal.select_all"],
   ["super+k", "terminal.clear"],
+  ["super+f", "terminal.search"],
   ["super+home", "terminal.scroll:top"],
   ["super+end", "terminal.scroll:bottom"],
   ["super+page_up", "terminal.scroll:page_up"],
@@ -74,8 +79,8 @@ const MAC: readonly [string, string][] = [
 ];
 
 /**
- * herdr-app's keys.json merged with Ghostty's Linux and Windows defaults. Panes move with Ctrl+Alt+arrows, Ghostty's
- * keys, instead of herdr-app's Alt+arrows and Alt+H/J/K/L, which shells and editors use for word moves and Meta keys.
+ * herdr-app's keys.json merged with Ghostty's Linux and Windows defaults. Focus moves with herdr-app's Alt+arrows and
+ * Alt+H/J/K/L and Ghostty's Ctrl+Alt+arrows; with no pane that way the key reaches the terminal program.
  */
 const OTHER: readonly [string, string][] = [
   ["ctrl+shift+t", "tab.new"],
@@ -86,21 +91,34 @@ const OTHER: readonly [string, string][] = [
   ["ctrl+page_up", "tab.prev"],
   ["alt+]", "tab.next"],
   ["alt+[", "tab.prev"],
-  // Ghostty's own move_tab; its ctrl+shift+left/right are previous/next tab, which doriface leaves alone.
-  ["ctrl+shift+page_up", "tab.move:left"],
-  ["ctrl+shift+page_down", "tab.move:right"],
-  ...digits("alt+", "tab.select"),
-  // herdr-app's space keys: Ctrl+1-9 select a space (Alt+1-9 are its tabs), and Ctrl+Alt+[ / ] cycle them.
-  ...digits("ctrl+", "space.select"),
+  // herdr-app cycles spaces with Ghostty's move_tab chord (Ctrl+Shift+PgUp/PgDn), so a tab moves with Ctrl+Alt+Shift.
+  ["ctrl+alt+shift+page_up", "tab.move:left"],
+  ["ctrl+alt+shift+page_down", "tab.move:right"],
+  // herdr-app's number keys here: Ctrl+1-9 select a tab and Alt+1-9 a space.
+  ...digits("ctrl+", "tab.select"),
+  ...digits("alt+", "space.select"),
+  ["ctrl+shift+page_up", "space.prev"],
+  ["ctrl+shift+page_down", "space.next"],
   ["ctrl+alt+[", "space.prev"],
   ["ctrl+alt+]", "space.next"],
+  ["ctrl+shift+n", "space.new"],
   ["ctrl+shift+o", "pane.split:right"],
   ["ctrl+shift+e", "pane.split:down"],
   ["ctrl+shift+x", "pane.close"],
+  ["alt+left", "pane.go:left"],
+  ["alt+right", "pane.go:right"],
+  ["alt+h", "pane.go:left"],
+  ["alt+j", "pane.go:down"],
+  ["alt+k", "pane.go:up"],
+  ["alt+l", "pane.go:right"],
   ["ctrl+alt+left", "pane.go:left"],
   ["ctrl+alt+right", "pane.go:right"],
   ["ctrl+alt+up", "pane.go:up"],
   ["ctrl+alt+down", "pane.go:down"],
+  ["alt+shift+h", "pane.swap:left"],
+  ["alt+shift+j", "pane.swap:down"],
+  ["alt+shift+k", "pane.swap:up"],
+  ["alt+shift+l", "pane.swap:right"],
   ["ctrl+alt+shift+left", "pane.resize:left"],
   ["ctrl+alt+shift+right", "pane.resize:right"],
   ["ctrl+alt+shift+up", "pane.resize:up"],
@@ -115,6 +133,7 @@ const OTHER: readonly [string, string][] = [
   // Ghostty takes Ctrl+Shift+F for its own search here, so the filter takes Ctrl+Alt+F.
   ["ctrl+alt+f", "layout.filter:sidebar"],
   ["f2", "tab.rename"],
+  ["ctrl+shift+r", "tab.rename"],
   ["shift+f2", "space.rename"],
   ["ctrl+shift+p", "app.palette"],
   ["ctrl+,", "app.settings"],
@@ -127,6 +146,7 @@ const OTHER: readonly [string, string][] = [
   ["ctrl+shift+v", "terminal.paste"],
   ["shift+insert", "terminal.paste"],
   ["ctrl+shift+a", "terminal.select_all"],
+  ["ctrl+shift+f", "terminal.search"],
   ["shift+home", "terminal.scroll:top"],
   ["shift+end", "terminal.scroll:bottom"],
   ["shift+page_up", "terminal.scroll:page_up"],

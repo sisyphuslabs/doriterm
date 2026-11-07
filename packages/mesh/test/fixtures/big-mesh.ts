@@ -1,8 +1,7 @@
-// A large, mostly honest mesh for the M-14 benchmark and the differential fuzz: up to 12 members writing acks and
+// A large, mostly honest mesh for the M-14 benchmark and the differential fuzz: up to `members` members writing acks and
 // names, members replaced over time, and every revoke written concurrently with one record of its subject (an ack or,
 // every other time, a name), so each revoke is a real R3 conflict that every later view has to decide.
 
-import { MAX_MESH_MEMBERS } from "../../src/records/types.ts";
 import type { Rec } from "../../src/view/dag.ts";
 import { pick, rng } from "../sim/world.ts";
 import { ack, admit, type Draft, name, revoke } from "./records.ts";
@@ -13,6 +12,8 @@ export interface BigMeshOptions {
   readonly seed: number;
   /** The chance that two members write from the same heads (a fork that the next record merges). */
   readonly forks?: number;
+  /** How many members the mesh grows to before it starts replacing them (12 unless given). */
+  readonly members?: number;
 }
 
 export function bigMesh(o: BigMeshOptions): Rec[] {
@@ -47,7 +48,7 @@ export function bigMesh(o: BigMeshOptions): Rec[] {
   const founder = `K${fresh++}`;
   advance(write(founder, (id) => ({ ...admit(id, founder, founder, []), type: "found" })).id);
   members = [founder];
-  while (members.length < MAX_MESH_MEMBERS && out.length < o.records) admitOne();
+  while (members.length < (o.members ?? 12) && out.length < o.records) admitOne();
   let revoked = 0;
   while (out.length < o.records) {
     const due = revoked < o.revokes && out.length >= (o.records * (revoked + 1)) / (o.revokes + 2);

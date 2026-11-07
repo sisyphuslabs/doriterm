@@ -69,7 +69,7 @@ describe("design 6.1: what mesh revoke writes and what it says first", () => {
   });
 
   test(
-    "--compromised names an over-cap key the member admitted (13 keys: f admits 11, a admits z)",
+    "--compromised names the thirteenth member, which the member admitted (f admits 11, a admits z)",
     () => {
       const f = machine("f"),
         a = machine("a"),
@@ -79,7 +79,7 @@ describe("design 6.1: what mesh revoke writes and what it says first", () => {
         for (let i = 1; i <= 10; i++) mesh.admit(f, machine(`m${i}`));
         mesh.admit(a, z);
         const records = mesh.store.read()?.records ?? [];
-        expect(viewOf(records).overCap.has(signPubOf(z))).toBe(true);
+        expect(viewOf(records).members.has(signPubOf(z))).toBe(true);
         const p = plan(mesh, f, "a", true);
         expect(p.keys).toEqual([a, z].map(signPubOf));
         expect(p.subtree).toEqual([ref(z)]);

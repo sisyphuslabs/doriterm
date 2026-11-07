@@ -1,3 +1,4 @@
+import { parseRecord } from "@doriface/mesh";
 import { OPEN_POLICY, parsePolicy, type PlanPolicy } from "@doriface/policy";
 import { afterEach, describe, expect, test } from "bun:test";
 import {
@@ -53,5 +54,27 @@ describe("the plan gate on mesh size", () => {
     const run = thirdMachineJoins(parsePolicy('{"plan":"free","limits":{"machines":3}}'));
     expect(await run.joined).not.toBe("");
     await run.invited;
+  });
+
+  test("a plan limit reached while a join waited for approval refuses it when the approval arrives", async () => {
+    const [alpha, delta] = [side("alpha"), side("delta")];
+    alpha.mesh.found(alpha.m.identity, ownOf(alpha));
+    const pending = new PendingJoins();
+    const policy = parsePolicy('{"plan":"free","limits":{"machines":2}}');
+    const run = runJoin(
+      inviteDeps(alpha, pending, Date.now() + 60_000, policy),
+      joinerContext(delta, alpha),
+      delta.m.identity.noise.publicKey,
+    );
+    const asked = await pending.next();
+    admitMembers(alpha, ["beta"]); // the plan's second machine, admitted while the join waits
+    pending.decide(asked.nonce, true);
+    expect(await failure(run.invited)).toBe(
+      "This mesh has 2 machines, and the free plan allows 2. Remove a machine from the mesh to make room.",
+    );
+    expect(await failure(run.joined)).toContain("the free plan allows 2");
+    const admitted = (alpha.mesh.read()?.records ?? []).filter((record) => parseRecord(record)?.type === "admit");
+    expect(admitted).toHaveLength(1); // beta's: the approved join wrote no admit once the limit was reached
+    expect(delta.mesh.read()).toBeUndefined();
   });
 });
