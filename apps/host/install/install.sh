@@ -72,12 +72,15 @@ case "$(uname -m)" in
   arm64 | aarch64) arch=arm64 ;;
   *) fail "no doriface-host build for CPU $(uname -m)" ;;
 esac
+# A service starts in its own working directory, so a relative path from this shell is resolved here, once (#834).
+absolute() { case "$1" in /*) printf '%s' "$1" ;; *) printf '%s/%s' "$(pwd)" "$1" ;; esac; }
+bin_dir="$(absolute "$bin_dir")"
 asset="doriface-host-${os}-${arch}"
 host_bin="${bin_dir}/doriface-host"
 unit_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user"
 unit="${unit_dir}/doriface-host.service"
 # Named once and passed to the service and to every command below, so they all use the same keys and devices.
-state_dir="${DORIFACE_HOST_STATE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/doriface-host}"
+state_dir="$(absolute "${DORIFACE_HOST_STATE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/doriface-host}")"
 plist="${HOME}/Library/LaunchAgents/${SERVICE_LABEL}.plist"
 
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -181,8 +184,10 @@ fi
 service_path="${bin_dir}:$(dirname "$hc_path"):${PATH}"
 service_shell="${SHELL:-/bin/sh}"
 
-# systemd reads % as a specifier in unit values; a literal one is written %%.
-sd() { printf '%s' "$1" | sed 's/%/%%/g'; }
+# A quoted word in a unit: systemd reads % as a specifier (written %%) and unescapes \ and " inside the quotes.
+sd() { printf '%s' "$1" | sed -e 's/%/%%/g' -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+# ExecStart also expands $VAR, so a literal $ is written $$ there; Environment= gives $ no meaning (#834).
+sd_exec() { sd "$1" | sed 's/\$/$$/g'; }
 
 if [ "$os" = linux ]; then
   mkdir -p "$unit_dir"
@@ -192,7 +197,7 @@ Description=Doriterm host gateway beside herdr-core
 After=network-online.target
 
 [Service]
-ExecStart="$(sd "$host_bin")" --hc "$(sd "$hc_path")" --state-dir "$(sd "$state_dir")"
+ExecStart="$(sd_exec "$host_bin")" --hc "$(sd_exec "$hc_path")" --state-dir "$(sd_exec "$state_dir")"
 Environment="PATH=$(sd "$service_path")" "SHELL=$(sd "$service_shell")"
 Restart=always
 RestartSec=2
@@ -245,7 +250,7 @@ EOF
   waited=0
   while launchctl print "gui/$(id -u)/${SERVICE_LABEL}" >/dev/null 2>&1; do
     waited=$((waited + 1))
-    [ "$waited" -le 100 ] || fail "the old ${SERVICE_LABEL} did not unload within 10 s; run: launchctl bootout gui/$(id -u)/${SERVICE_LABEL}"
+    [ "$waited" -le 100 ] || fail "the old ${SERVICE_LABEL} did not unload within 10 s; see what holds it with: launchctl print gui/$(id -u)/${SERVICE_LABEL}"
     sleep 0.1
   done
   launchctl bootstrap "gui/$(id -u)" "$plist"
