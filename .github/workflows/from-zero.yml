@@ -97,7 +97,7 @@ jobs:
           DORIFACE_HOSTED_RELAY_SMOKE: "1"
         run: xvfb-run --auto-servernum bun run test:e2e e2e/hosted-relay-pair.e2e.ts
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: user-guide-e2e
           path: |
