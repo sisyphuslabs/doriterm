@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
+import type { HcConnection } from "@doriface/client";
+import type { OpenConnection } from "./connect.ts";
 import { MeshConnections, type MemberConnection, type StoreFactory } from "./mesh-connections.ts";
 import { DEFAULT_SETTINGS, loadSettings, type ConnectionSettings, type MemberTarget } from "./settings.ts";
 
@@ -26,6 +28,7 @@ class FakeConnection implements MemberConnection {
   started = 0;
   stopped = 0;
   retries = 0;
+  adopted: OpenConnection[] = [];
 
   connecting(): void {
     this.#state = { phase: "connecting", attempt: 1, stale: null };
@@ -48,7 +51,16 @@ class FakeConnection implements MemberConnection {
 
   start(): void {
     this.started += 1;
-    this.#state = { phase: "open", connection: undefined as never, path: "relay" };
+    this.#state = { phase: "open", connection: undefined as never, path: "relay", connectMs: 1 };
+    this.#emit();
+  }
+
+  adopt(opened: OpenConnection, settings?: ConnectionSettings): void {
+    if (settings !== undefined) this.settings = settings;
+    this.adopted.push(opened);
+    this.#state = { phase: "open", connection: opened.connection, path: opened.path };
+    // As the real store does: the session's hello names the host, learned as it opens.
+    this.rename(opened.connection.hello.core.name);
     this.#emit();
   }
 
@@ -62,7 +74,10 @@ class FakeConnection implements MemberConnection {
     this.retries += 1;
   }
 
+  updates = 0;
+
   update(settings: ConnectionSettings): void {
+    this.updates += 1;
     this.settings = settings;
   }
 
@@ -121,6 +136,46 @@ const running = (initial: ConnectionSettings) => {
 
 afterEach(() => {
   globalThis.localStorage?.clear?.();
+});
+
+/** A session pairing proved, standing in for the open HcConnection: its hello's name and close are all that is read. */
+function provedSession(name = "Build Box"): { readonly opened: OpenConnection; readonly closed: () => number } {
+  let closes = 0;
+  const connection = {
+    hello: { core: { id: "core", name } },
+    close: () => {
+      closes += 1;
+    },
+  } as unknown as HcConnection;
+  return { opened: { connection, path: "relay" }, closed: () => closes };
+}
+
+describe("pairing hands its session on (#1271)", () => {
+  it("the paired machine's connection runs on the session pairing proved, and dials nothing", () => {
+    const { mesh, made } = running(settingsWith([member("a")], "a"));
+    const { opened, closed } = provedSession();
+    mesh.pair(settingsWith([member("b")], "b"), opened);
+    const paired = made.find((connection) => connection.settings.hostId === "b");
+    expect(paired?.adopted).toEqual([opened]);
+    expect(paired?.started).toBe(0);
+    expect(mesh.state.phase).toBe("open");
+    expect(closed()).toBe(0);
+  });
+
+  it("the paired machine keeps the name its proved session answered with", () => {
+    const { mesh } = running(settingsWith([member("a")], "a"));
+    mesh.pair(settingsWith([member("b")], "b"), provedSession("Build Box").opened);
+    expect(mesh.settings.hostName).toBe("Build Box");
+    expect(mesh.settings.members.find((entry) => entry.hostId === "b")?.hostName).toBe("Build Box");
+  });
+
+  it("re-pairing a machine the app already holds hands it the session without telling it to dial first", () => {
+    const { mesh, made } = running(settingsWith([member("b", "B")], "b"));
+    const held = made.find((connection) => connection.settings.hostId === "b");
+    const { opened } = provedSession("B");
+    mesh.pair(settingsWith([member("b", "B")], "b"), opened);
+    expect([held?.started, held?.updates, held?.adopted]).toEqual([1, 0, [opened]]);
+  });
 });
 
 describe("one connection per member", () => {

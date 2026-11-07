@@ -1,0 +1,102 @@
+// The chord the app binds to an action on the platform the page runs as (#862): Meta for super on macOS, Control for
+// ctrl elsewhere, read from the app's own default keymap so a spec presses what a person on that platform would.
+import type { Page } from "@playwright/test";
+import { defaultKeymap } from "../src/keys/defaults.ts";
+import type { Platform } from "../src/keys/trigger.ts";
+
+/** The platform the page's keymap is for, by the app's own test (currentPlatform, src/keys/trigger.ts). */
+export const pagePlatform = (page: Page): Promise<Platform> =>
+  page.evaluate(() => (/mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent) ? "mac" : "other"));
+
+/** Every trigger bound to `action` by default on `platform`, in the keymap's order. */
+export function triggersFor(platform: Platform, action: string): string[] {
+  const found = [...defaultKeymap(platform)].filter(([, bound]) => bound === action).map(([trigger]) => trigger);
+  if (found.length === 0) throw new Error(`nothing is bound to ${action} on ${platform}`);
+  return found;
+}
+
+const MODIFIERS: Readonly<Record<string, { readonly key: string; readonly bit: number }>> = {
+  alt: { key: "Alt", bit: 1 },
+  ctrl: { key: "Control", bit: 2 },
+  super: { key: "Meta", bit: 4 },
+  shift: { key: "Shift", bit: 8 },
+};
+
+/** Triggers name keys by KeyboardEvent.code (layout independent); these are the codes of the named and symbol keys. */
+const CODES: Readonly<Record<string, string>> = {
+  "=": "Equal",
+  "-": "Minus",
+  "[": "BracketLeft",
+  "]": "BracketRight",
+  ",": "Comma",
+  ".": "Period",
+  "/": "Slash",
+  ";": "Semicolon",
+  "'": "Quote",
+  "`": "Backquote",
+  "\\": "Backslash",
+  space: "Space",
+  left: "ArrowLeft",
+  right: "ArrowRight",
+  up: "ArrowUp",
+  down: "ArrowDown",
+  page_up: "PageUp",
+  page_down: "PageDown",
+  enter: "Enter",
+  tab: "Tab",
+  escape: "Escape",
+  backspace: "Backspace",
+  delete: "Delete",
+  insert: "Insert",
+  home: "Home",
+  end: "End",
+};
+
+function codeOf(key: string): string {
+  if (/^[a-z]$/.test(key)) return `Key${key.toUpperCase()}`;
+  if (/^[0-9]$/.test(key)) return `Digit${key}`;
+  if (/^f\d{1,2}$/.test(key)) return key.toUpperCase();
+  const code = CODES[key];
+  if (code === undefined) throw new Error(`no key code for ${key}`);
+  return code;
+}
+
+function parts(trigger: string): { readonly mods: readonly string[]; readonly key: string } {
+  const split = trigger.split("+");
+  const key = split.at(-1) === "" ? "+" : (split.at(-1) ?? "");
+  return { mods: split.slice(0, split.at(-1) === "" ? -2 : -1), key };
+}
+
+/** A trigger ("super+alt+]") in Playwright's syntax ("Meta+Alt+BracketRight"). */
+export function chordOf(trigger: string): string {
+  const { mods, key } = parts(trigger);
+  return [...mods.map((mod) => MODIFIERS[mod]?.key ?? mod), codeOf(key)].join("+");
+}
+
+/** The first chord the app binds to `action` on the page's platform, in Playwright's syntax. */
+export async function shortcut(page: Page, action: string): Promise<string> {
+  return chordOf(triggersFor(await pagePlatform(page), action)[0] ?? "");
+}
+
+/** Presses the chord that runs `action` on the page's platform. */
+export async function pressShortcut(page: Page, action: string): Promise<void> {
+  await page.keyboard.press(await shortcut(page, action));
+}
+
+/**
+ * Presses `trigger` as the browser delivers it, a keydown carrying its own editing command (`paste`), which runs unless
+ * the page cancels the keydown. Playwright's keyboard.press sends no editing command on Linux (#510).
+ */
+export async function pressWithCommand(page: Page, trigger: string, command: string): Promise<void> {
+  const { mods, key } = parts(trigger);
+  const code = codeOf(key);
+  const modifiers = mods.reduce((bits, mod) => bits | (MODIFIERS[mod]?.bit ?? 0), 0);
+  const letter = /^[a-z]$/.test(key);
+  const named = letter ? key.toUpperCase() : code;
+  const keyCode = letter ? key.toUpperCase().charCodeAt(0) : key === "insert" ? 45 : 0;
+  const cdp = await page.context().newCDPSession(page);
+  const event = { modifiers, key: named, code, windowsVirtualKeyCode: keyCode };
+  await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...event, commands: [command] });
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", ...event });
+  await cdp.detach();
+}
