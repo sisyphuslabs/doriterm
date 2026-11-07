@@ -33,6 +33,8 @@ export function publishMeshStatusOnCore(
   log: (line: string) => void,
   link: (core: HcTarget) => KillableLink = spawnHcLink,
   tickMs: number = TICK_MS,
+  /** Runs before each publish: the host reads herdr's machine list again, so the document names lines as herdr does. */
+  refresh: () => Promise<void> = () => Promise.resolve(),
 ): MeshStatusPublisher {
   let stopped = false;
   let child: KillableLink | undefined;
@@ -58,6 +60,7 @@ export function publishMeshStatusOnCore(
       try {
         const connection = await HcConnection.open(opened);
         try {
+          await refresh();
           await publishMeshStatus(docStoreOf(connection), current, self);
           lastError = undefined;
         } finally {

@@ -23,7 +23,7 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc510a9fff 100644
+index 78a86ffd96eec03222777f40e9db6a0561684c3f..c110122041145cf4f69922c809e686e41f238e8d 100644
 --- a/dist/input.js
 +++ b/dist/input.js
 @@ -70,6 +70,12 @@ const COMPOSITION_INPUT_DEDUP_MS = 250;
@@ -94,7 +94,17 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
          this.recentCompositionCommit = null;
          const bridge = this.getBridge();
          const kittyFlags = bridge?.kittyKeyboardFlags?.() ?? 0;
-@@ -371,6 +399,8 @@ export class InputHandler {
+@@ -345,6 +373,9 @@ export class InputHandler {
+             this.suppressedKeyUps.add(keyId);
+             if (e.key === "Backspace") {
+                 e.preventDefault();
++                // The syllable still being typed is on the line this kills: it is sent first, as every other key
++                // sends it, so it does not reach the program after the kill (#978).
++                this.commitLocalPreedit();
+                 this.selectionActions?.clearSelection();
+                 this.onData("\x15");
+             }
+@@ -371,6 +402,8 @@ export class InputHandler {
          if (kittyFlags !== 0) {
              const seq = encodeKittyKey(e, kittyFlags, e.repeat ? "repeat" : "press", this.pressedModifiers, bridge?.cursorKeysApp?.() ?? false);
              if (seq) {
@@ -103,7 +113,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
                  if (!physicalModifier)
                      this.selectionActions?.clearSelection();
                  if (nativeTouchDelete)
-@@ -385,6 +415,7 @@ export class InputHandler {
+@@ -385,6 +418,7 @@ export class InputHandler {
          }
          const seq = this.keyToSequence(e);
          if (seq) {
@@ -111,7 +121,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
              this.selectionActions?.clearSelection();
              if (nativeTouchDelete)
                  this.suppressNextTouchDeleteInput = true;
-@@ -421,6 +452,9 @@ export class InputHandler {
+@@ -421,6 +455,9 @@ export class InputHandler {
          this.recentCompositionCommit = null;
          this.suppressNextTouchDeleteInput = false;
          const text = e.clipboardData?.getData("text");
@@ -121,7 +131,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
          // Some mobile browsers leave clipboardData empty but insert the paste
          // into the textarea. Let that input event carry the text instead.
          if (!text)
-@@ -462,6 +496,8 @@ export class InputHandler {
+@@ -462,6 +499,8 @@ export class InputHandler {
      }
      handleCompositionStart() {
          this.tabExitArmed = false;
@@ -130,7 +140,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
          this.prepareComposition();
          this.composing = true;
          this.recentCompositionCommit = null;
-@@ -472,11 +508,22 @@ export class InputHandler {
+@@ -472,11 +511,22 @@ export class InputHandler {
          this.positionTextarea();
          const s = this.textarea.style;
          s.opacity = "1";
@@ -156,7 +166,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
          this.composing = false;
          this.hideComposition();
          this.resetInputValue();
-@@ -485,6 +532,31 @@ export class InputHandler {
+@@ -485,6 +535,31 @@ export class InputHandler {
              this.onData(e.data);
          }
      }
@@ -188,7 +198,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
      hideComposition() {
          this.compositionWidth = 0;
          const s = this.textarea.style;
-@@ -502,7 +574,7 @@ export class InputHandler {
+@@ -502,7 +577,7 @@ export class InputHandler {
          if (!bridge || !cellSize || !firstRow || !bridge.getCursor) {
              this.textarea.style.left = "0px";
              this.textarea.style.top = "0px";
@@ -197,7 +207,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
                  this.textarea.style.width = `${Math.max(1, this.compositionWidth)}px`;
                  this.textarea.style.height = `${cellSize?.rowHeight ?? 17}px`;
              }
-@@ -519,7 +591,7 @@ export class InputHandler {
+@@ -519,7 +594,7 @@ export class InputHandler {
          const s = this.textarea.style;
          s.left = `${rowRect.left - hostRect.left - this.element.clientLeft + this.element.scrollLeft + col * charWidth}px`;
          s.top = `${rowRect.top - hostRect.top - this.element.clientTop + this.element.scrollTop + row * rowHeight}px`;
@@ -206,7 +216,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
              s.width = `${Math.min((bridge.getCols() - col) * charWidth, Math.max(charWidth, this.compositionWidth))}px`;
              s.height = `${rowHeight}px`;
          }
-@@ -536,6 +608,57 @@ export class InputHandler {
+@@ -536,6 +611,57 @@ export class InputHandler {
              : charWidth;
          this.positionTextarea();
      }
@@ -264,7 +274,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
      resetInputValue() {
          this.textarea.value = this.touchPrimary ? TOUCH_INPUT_PLACEHOLDER : "";
          if (this.touchPrimary)
-@@ -565,6 +688,18 @@ export class InputHandler {
+@@ -565,6 +691,30 @@ export class InputHandler {
          const value = this.touchPrimary && rawValue.startsWith(TOUCH_INPUT_PLACEHOLDER)
              ? rawValue.slice(TOUCH_INPUT_PLACEHOLDER.length)
              : rawValue;
@@ -280,10 +290,22 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
 +            this.editLocalRun(value);
 +            return;
 +        }
++        if (inputType === "insertFromPaste" && (this.localSent !== "" || this.localPreedit !== "")) {
++            // A paste inserted with no paste event before it, which would have ended the run: the field still holds
++            // the run's sent text and its syllable, so the syllable is sent, the run ends, and only the paste goes (#988).
++            const run = this.localSent + this.localPreedit;
++            const pasted = value.startsWith(run) ? value.slice(run.length) : value;
++            this.recentCompositionCommit = null;
++            this.suppressNextTouchDeleteInput = false;
++            this.commitLocalPreedit();
++            if (pasted)
++                this.sendPaste(pasted);
++            return;
++        }
          this.resetInputValue();
          const recent = this.recentCompositionCommit;
          this.recentCompositionCommit = null;
-@@ -821,7 +956,7 @@ export class InputHandler {
+@@ -821,7 +971,7 @@ export class InputHandler {
                  return other;
          }
          if (e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -292,7 +314,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
              if (control !== null)
                  return control;
              if (e.key === "Backspace")
-@@ -855,6 +990,17 @@ export class InputHandler {
+@@ -855,6 +1005,17 @@ export class InputHandler {
          return null;
      }
  }

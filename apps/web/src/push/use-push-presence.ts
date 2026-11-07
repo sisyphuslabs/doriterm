@@ -5,6 +5,21 @@ import { pushChannel } from "./push-channel.ts";
 
 const seen = (): boolean => document.visibilityState === "visible" && document.hasFocus();
 
+/** Where the shown pane is reported: the host's push stream, and the desktop app's own notifications where it runs. */
+export interface PresenceSink {
+  focus(terminal: string | null): void;
+}
+
+/** The pane this device reports as shown: none under Settings, sheet or dialog alike, and none while the page is unseen. */
+export function shownPane(terminal: string | null, underSettings: boolean, pageSeen: boolean): string | null {
+  return underSettings || !pageSeen ? null : terminal;
+}
+
+/** Tells every sink the same pane, so the push and the desktop app's notices hold back about the same one. */
+export function reportShown(shown: string | null, sinks: readonly (PresenceSink | null)[]): void {
+  for (const sink of sinks) sink?.focus(shown);
+}
+
 /**
  * Tells the host which pane this device shows while the page is visible and focused, so it sends no push about it; the
  * desktop app's own notifications hold back the same way. Under Settings no pane counts as shown: the workspace stays
@@ -13,13 +28,9 @@ const seen = (): boolean => document.visibilityState === "visible" && document.h
  */
 export function usePushPresence(terminal: string | null): void {
   const underSettings = useContext(ActionsPaused);
-  const inView = underSettings ? null : terminal;
+  const inView = shownPane(terminal, underSettings, true);
   useEffect(() => {
-    const report = (): void => {
-      const shown = seen() ? inView : null;
-      pushChannel.focus(shown);
-      desktopNotices?.focus(shown);
-    };
+    const report = (): void => reportShown(shownPane(inView, false, seen()), [pushChannel, desktopNotices]);
     report();
     document.addEventListener("visibilitychange", report);
     addEventListener("focus", report);
@@ -28,8 +39,7 @@ export function usePushPresence(terminal: string | null): void {
       document.removeEventListener("visibilitychange", report);
       removeEventListener("focus", report);
       removeEventListener("blur", report);
-      pushChannel.focus(null);
-      desktopNotices?.focus(null);
+      reportShown(null, [pushChannel, desktopNotices]);
     };
   }, [inView]);
 }

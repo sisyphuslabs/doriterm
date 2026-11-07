@@ -250,6 +250,9 @@ export function findTerminal(tabs: readonly LayoutTab[], address: string): { tab
 const holds = (folder: string, dir: string): boolean =>
   folder !== "" && (dir === folder || dir.startsWith(folder.endsWith("/") ? folder : `${folder}/`));
 
+/** Addresses by their numbers (`t9` before `t10`), for terminals started in the same millisecond. */
+const BY_ADDRESS = new Intl.Collator("en", { numeric: true });
+
 /** The space adopted terminals with no space of their own go to, as herdr-app names its fallback. */
 export const HOME_SPACE = "Home";
 
@@ -257,8 +260,9 @@ export const HOME_SPACE = "Home";
  * The document with every live terminal of its machine that no tab shows adopted as a tab of its own (#404): in the space
  * its `space` label names (made when there is none, as that label named its space before #404), else in the space
  * whose folder holds its working directory (the deepest such folder), else in the machine's Home space, made when there
- * is none. A terminal another one started (`parent`) is not a tab of its own. Null when every terminal has a tab, so
- * nothing is written; read inside the document's edit, so a reload or a second device adopts nothing twice.
+ * is none. A terminal another one started (`parent`) is not a tab of its own. Tabs are added in the order the terminals
+ * started, not the feed's: hc lists them by address as text, so `t10` came before `t9` (#1269). Null when every terminal
+ * has a tab, so nothing is written; read inside the document's edit, so a reload or a second device adopts nothing twice.
  */
 export function adoptLoose(
   doc: JsonObject | null,
@@ -272,10 +276,12 @@ export function adoptLoose(
           panesOf(tab.root).flatMap((pane) => (pane.terminal === null ? [] : [pane.terminal])),
         ),
   );
-  const loose = terminals.filter(
-    (terminal) =>
-      terminal.state === "live" && (terminal.parent ?? null) === null && !shown.has(localOf(terminal.address)),
-  );
+  const loose = terminals
+    .filter(
+      (terminal) =>
+        terminal.state === "live" && (terminal.parent ?? null) === null && !shown.has(localOf(terminal.address)),
+    )
+    .toSorted((a, b) => a.created_ms - b.created_ms || BY_ADDRESS.compare(a.address, b.address));
   if (loose.length === 0) return null;
   const spaces = doc === null ? [] : docSpaces(doc);
   let home = spaces.find((space) => space.name === HOME_SPACE && space.folder === "")?.id;

@@ -32,6 +32,11 @@ export interface BenchRun {
     /** From selecting the tab again to every pane showing the hidden phase's last line. */
     readonly showCatchUpMs: number;
   };
+  /** The same workload again with the panes in view, while the bench tab's Close is clicked (#560, #986). */
+  readonly prompt: {
+    /** Each click's time from its pointerdown to the Close question on screen, in the page's own clock. */
+    readonly closeMs: readonly number[];
+  };
 }
 
 /** Below this many intervals a nearest-rank p95 is close to the largest one: the window is too short to report. */
@@ -93,6 +98,8 @@ export function median(values: readonly number[]): number {
 export interface Limit {
   readonly ratio: number;
   readonly floor: number;
+  /** A product budget the candidate's median must stay within whatever the baseline measured (Close prompt: 200 ms). */
+  readonly max?: number;
 }
 
 export const GATED = [
@@ -103,6 +110,7 @@ export const GATED = [
   "heapMB",
   "hiddenBusyShare",
   "showCatchUpMs",
+  "closePromptMs",
 ] as const;
 export type Gated = (typeof GATED)[number];
 export type Thresholds = Readonly<Record<Gated, Limit>>;
@@ -110,6 +118,7 @@ export type Thresholds = Readonly<Record<Gated, Limit>>;
 const read = (run: BenchRun, metric: Gated): number => {
   if (metric === "hiddenBusyShare") return run.hidden.busyShare;
   if (metric === "showCatchUpMs") return run.hidden.showCatchUpMs;
+  if (metric === "closePromptMs") return median(run.prompt.closeMs);
   return run.visible[metric];
 };
 
@@ -134,11 +143,11 @@ export function compareRuns(
     if (base.length === 0) throw new Error(`no baseline run with ${panes} panes to compare with`);
     const cand = candidate.filter((run) => run.panes === panes);
     return GATED.map((metric): Row => {
-      const { ratio, floor } = thresholds[metric];
+      const { ratio, floor, max = Number.POSITIVE_INFINITY } = thresholds[metric];
       const b = median(base.map((run) => read(run, metric)));
       const c = median(cand.map((run) => read(run, metric)));
       const shrinks = ratio < 1;
-      const limit = shrinks ? b * ratio : Math.max(b * ratio, b + floor);
+      const limit = shrinks ? b * ratio : Math.min(Math.max(b * ratio, b + floor), max);
       return { panes, metric, baseline: b, candidate: c, limit, regressed: shrinks ? c < limit : c > limit };
     });
   });
@@ -150,9 +159,9 @@ const fixed = (value: number, digits: number): string => value.toFixed(digits);
 /** The bench's table: one row per run. */
 export function renderTable(runs: readonly BenchRun[]): string {
   const head =
-    "| Build | Panes | Frame p50 ms | Frame p95 ms | Frame max ms | Main busy | Long tasks (ms) | Drawn KiB/s | Catch-up ms | Heap MB | DOM nodes | Hidden busy | Show catch-up ms |";
-  const rule = `|${" --- |".repeat(13)}`;
-  const rows = runs.map(({ build, panes, visible: v, hidden: h }) =>
+    "| Build | Panes | Frame p50 ms | Frame p95 ms | Frame max ms | Main busy | Long tasks (ms) | Drawn KiB/s | Catch-up ms | Heap MB | DOM nodes | Hidden busy | Show catch-up ms | Close prompt ms |";
+  const rule = `|${" --- |".repeat(14)}`;
+  const rows = runs.map(({ build, panes, visible: v, hidden: h, prompt }) =>
     [
       build,
       panes,
@@ -167,6 +176,7 @@ export function renderTable(runs: readonly BenchRun[]): string {
       v.domNodes,
       `${fixed(h.busyShare * 100, 1)}%`,
       Math.round(h.showCatchUpMs),
+      `${Math.round(median(prompt.closeMs))} (${prompt.closeMs.map((ms) => Math.round(ms)).join(", ")})`,
     ].join(" | "),
   );
   return [head, rule, ...rows.map((row) => `| ${row} |`)].join("\n");

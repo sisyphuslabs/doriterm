@@ -244,6 +244,19 @@ describe("adoptLoose (#404)", () => {
     ]);
   });
 
+  test("tabs follow the order the terminals started, not hc's text order of their addresses (#1269)", () => {
+    const listed = [loose("t10", "/a", { created_ms: 20 }), loose("t9", "/a", { created_ms: 10 })];
+    expect(where(adoptLoose(null, listed, ids()))).toEqual([
+      ["spc3", ["t9"]],
+      ["spc3", ["t10"]],
+    ]);
+    const sameMs = [loose("t10", "/a"), loose("t9", "/a")];
+    expect(where(adoptLoose(null, sameMs, ids()))).toEqual([
+      ["spc3", ["t9"]],
+      ["spc3", ["t10"]],
+    ]);
+  });
+
   test("adopting again adopts nothing more, and an existing Home is reused", () => {
     const once = adoptLoose(null, [loose("t1", "/a")], ids());
     expect(once === null ? null : adoptLoose(once, [loose("t1", "/a")])).toBeNull();

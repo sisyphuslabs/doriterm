@@ -31,8 +31,10 @@ const USAGE = `usage: bun apps/host/scripts/setup/cli.ts <command> [options]
   --src <dir>        the checkout (default ~/.local/share/doriface-host/src)
   --state-dir <dir>  the host's state (default: the installed service's, else ~/.local/state/doriface-host-mesh)
   --label <name>     the LaunchAgent label or systemd unit name (default com.sisyphuslabs.doriface-host / doriface-host)
-  --listen <h:p>     the host's loopback listener (default 127.0.0.1:7766)
-  --session <name>   the hc session (a separate core) the host serves (default: hc's default core)
+  --listen <h:p>     the host's loopback listener (default: the installed service's, else 127.0.0.1:7766;
+                     "default" goes back to 127.0.0.1:7766)
+  --session <name>   the hc session (a separate core) the host serves (default: the installed service's, else hc's
+                     default core; "default" goes back to hc's default core)
   --timeout <s>      how long install waits for the relay (default 90)`;
 
 const report: Report = (step, status, detail) => {
