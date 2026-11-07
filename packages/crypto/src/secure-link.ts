@@ -63,6 +63,13 @@ export interface ResponderOptions extends CommonOptions {
   readonly authorize: (hello: ClientHello) => Authorization;
   /** IP-literal `ws://…/v1/e2ee` URLs for message 2 (at most 8). */
   readonly lanUrls?: readonly string[] | undefined;
+  /**
+   * Session only, once message 2 has gone out: the host may answer these IK early bytes before the client confirms the
+   * keys, by sealing its answer with `session.send` (#1271). `session` is not established yet: only `send` may be called
+   * on it, never `onData`. The early bytes are still held for the session's first listener, and the session still
+   * resolves only on the client's confirmation, within the same absolute handshake deadline.
+   */
+  readonly answerEarly?: ((early: Uint8Array, session: SecureLink) => void) | undefined;
   /** For tests only: fixed randomness. */
   readonly testRandomness?: HostFlightTestOptions | undefined;
 }
@@ -207,6 +214,7 @@ export function secureLink(link: ByteLink, options: SecureLinkOptions): Promise<
       if (hello.kind === "session") pending.hold(hello.early);
       step = confirm;
       link.send(reply);
+      if (hello.kind === "session" && hello.early.byteLength > 0) opts.answerEarly?.(hello.early, pending);
     });
   }
 }

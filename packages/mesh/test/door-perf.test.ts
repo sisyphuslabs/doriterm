@@ -4,7 +4,7 @@ import { mergeAtDoor } from "../src/dangling.ts";
 import { door, holds } from "../src/door.ts";
 import * as codec from "../src/records/codec.ts";
 import { hashOf, meshIdOf, parseRecord, signCard, signRecord, verifies } from "../src/records/codec.ts";
-import { MAX_MESH_MEMBERS, MAX_RECORDS, type Signed } from "../src/records/types.ts";
+import { MAX_RECORDS, type Signed } from "../src/records/types.ts";
 import { keyOf } from "./fixtures/signed.ts";
 
 /**
@@ -15,9 +15,11 @@ import { keyOf } from "./fixtures/signed.ts";
  * worst spike, so a contended runner does not fail it, and stays 4x under the quadratic door it exists to catch.
  */
 const BUDGET_PER_FLOOR = 16;
+/** The welcome's members: they admit each other first, then write acks. */
+const MEMBERS = 12;
 
 function welcome(): readonly Signed[] {
-  const keys = Array.from({ length: MAX_MESH_MEMBERS }, (_, i) => keyOf(`perf${i}`));
+  const keys = Array.from({ length: MEMBERS }, (_, i) => keyOf(`perf${i}`));
   const at = (i: number) => keys[i] ?? keys[0] ?? keyOf("perf0");
   const card = (i: number, mesh: string, inviter: string): Signed => {
     const k = at(i);
@@ -37,13 +39,13 @@ function welcome(): readonly Signed[] {
   const out: Signed[] = [found];
   const counters = new Map<number, number>([[0, 1]]);
   for (let i = 1; out.length < MAX_RECORDS; i++) {
-    const signer = i < MAX_MESH_MEMBERS ? 0 : i % MAX_MESH_MEMBERS;
+    const signer = i < MEMBERS ? 0 : i % MEMBERS;
     const n = (counters.get(signer) ?? 0) + 1;
     counters.set(signer, n);
     const prev = [hashOf(out.at(-1) ?? found)];
     const k = at(signer);
     out.push(
-      i < MAX_MESH_MEMBERS
+      i < MEMBERS
         ? signRecord(
             { v: 2, mesh, type: "admit", by: k.pub, n, prev, subject: { card: card(i, mesh, k.pub) } },
             k.secret,

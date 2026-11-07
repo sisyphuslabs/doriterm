@@ -6,6 +6,7 @@ import { useConnection } from "../connection/store.ts";
 import { type DesktopNotices, desktopNotices } from "../push/desktop-notices.ts";
 import { pushSettings, type PushView } from "../push/push-settings.ts";
 import { idOfMachine } from "../workspace/model.ts";
+import { noticeControls } from "./notice-controls.ts";
 import { useMachines } from "../workspace/use-machines.ts";
 
 const NO_TERMINALS: readonly Terminal[] = [];
@@ -43,7 +44,7 @@ const desktop = desktopNotices !== null;
 const REMEDY =
   "Allow Doriterm in your system's notification settings (on macOS: System Settings > Notifications > Doriterm), then check again.";
 
-/** The agents already in a wanted state when the feed was read: the trigger announces changes from now on, never these. */
+/** The agents in a wanted state as the feed last told, kept live: the trigger announces changes, never a state already held. */
 function waitingText(view: PushView): string {
   if (view.waiting === null) return "";
   if (view.waiting === 0) return " No agent is waiting right now; you hear about changes from now on.";
@@ -140,7 +141,8 @@ export function NotificationsSection() {
     );
   }
   const blocked = view.permission === "denied";
-  const off = !view.on || view.busy;
+  const controls = noticeControls(view, desktop);
+  const off = !controls.editable;
   const setEvent = (event: NoticeEvent, on: boolean): void =>
     void settings.setPrefs({ ...view.prefs, events: { ...view.prefs.events, [event]: on } });
   return (
@@ -150,29 +152,40 @@ export function NotificationsSection() {
           title="Notifications on this device"
           description={statusText(view)}
           control={
-            desktop && blocked ? (
-              <Button loading={view.busy} disabled={view.busy} onClick={() => void settings.load()}>
-                Check again
-              </Button>
-            ) : view.on ? (
-              <Button loading={view.busy} disabled={view.busy} onClick={() => void settings.turnOff()}>
-                Turn off
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                loading={view.busy}
-                disabled={view.busy || blocked}
-                onClick={() => void settings.turnOn()}
-              >
-                Turn on
-              </Button>
-            )
+            <div className="flex gap-2">
+              {controls.actions.map((action) =>
+                action === "check-again" ? (
+                  <Button key={action} loading={view.busy} disabled={view.busy} onClick={() => void settings.load()}>
+                    Check again
+                  </Button>
+                ) : action === "turn-off" ? (
+                  <Button key={action} loading={view.busy} disabled={view.busy} onClick={() => void settings.turnOff()}>
+                    Turn off
+                  </Button>
+                ) : (
+                  <Button
+                    key={action}
+                    variant="primary"
+                    loading={view.busy}
+                    disabled={controls.turnOnDisabled}
+                    onClick={() => void settings.turnOn()}
+                  >
+                    Turn on
+                  </Button>
+                ),
+              )}
+            </div>
           }
         />
         <SettingRow
           title="Send a test notification"
-          description={view.tested ? "Sent. It should appear in a moment." : "Checks that this device gets them."}
+          description={
+            view.tested
+              ? "Sent. It should appear in a moment."
+              : desktop
+                ? "Runs the checks an agent's notification from this computer passes, then shows one."
+                : "Checks that this device gets them."
+          }
           control={
             <Button disabled={off} onClick={() => void settings.test()}>
               Send test

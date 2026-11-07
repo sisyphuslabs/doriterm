@@ -24,16 +24,17 @@ export function witnessPoolOfRecords(
   const e = cache?.engineFor(records) ?? new Engine(new Dag(records));
   const now = e.full();
   const out = new Map<string, readonly string[]>();
+  const current = new Set(now.members);
   for (const X of subjects) {
     const L = positionOf(records, X);
     if (L === undefined) continue;
     const C = new Set([L.id, ...e.dag.past(L.id)]);
     const minted = new Set((lineage(e, revoker, now, C) ?? []).map((g) => e.dag.rec(g).by));
-    const present = e.dag.past(L.id).size === 0 ? [] : e.view(e.dag.past(L.id)).members;
+    const present = e.dag.past(L.id).size === 0 ? [] : [...e.view(e.dag.past(L.id)).governing.keys()];
     const excluded = (k: string): boolean => k === X || k === revoker || minted.has(k) || subjects.includes(k);
     out.set(
       X,
-      present.filter((k) => !excluded(k) && now.members.includes(k)),
+      present.filter((k) => !excluded(k) && current.has(k)),
     );
   }
   return out;
@@ -59,7 +60,7 @@ export function presentAtOfRecords(records: readonly Rec[], X: string, cache?: V
   if (L === undefined) return [];
   const e = cache?.engineFor(records) ?? new Engine(new Dag(records));
   const past = e.dag.past(L.id);
-  return past.size === 0 ? [] : e.view(past).members.filter((k) => k !== X);
+  return past.size === 0 ? [] : [...e.view(past).governing.keys()].filter((k) => k !== X);
 }
 
 export function presentAt(set: readonly Signed[], X: string, cache?: ViewCache): readonly string[] {

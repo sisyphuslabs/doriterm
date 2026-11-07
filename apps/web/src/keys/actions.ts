@@ -59,6 +59,7 @@ export const ACTIONS: readonly ActionDef[] = [
   ...Array.from({ length: 9 }, (_, index) => app(`space.select:${index + 1}`, `Go to space ${index + 1}`)),
   app("space.next", "Next space"),
   app("space.prev", "Previous space"),
+  app("space.new", "New space"),
   // No default chord (#194): any free one would collide with a terminal program; it is bound in Settings > Keybindings.
   app("voice.dictate", "Dictate"),
   app("app.palette", "Command palette", "toggle_command_palette"),

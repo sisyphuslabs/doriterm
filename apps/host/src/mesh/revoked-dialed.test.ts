@@ -10,13 +10,6 @@ import { MeshNet } from "./testing/mesh-net.ts";
 const LINGER_MS = 60_000;
 const KEEP_ALIVE_MS = 10_000;
 
-/**
- * The revoke crosses two real hosts' stores, and every write there re-evaluates the 13-member view with real signature
- * checks (the production cost #86 tracks): the test takes 0.26-0.37 s alone on a fast workstation. Pinned to 2 cores beside 16 busy loops
- * (host load 108-125) it took p50 6.2 s and max 17.3 s over 20 runs; 60 s is over 3 times that max.
- */
-const REVOKE_ACROSS_THIRTEEN_MS = 60_000;
-
 describe("a sync session this host dialed to a member that is then revoked (section 6.2)", () => {
   test.each([
     ["open at the revoke", false],
@@ -60,61 +53,5 @@ describe("a sync session this host dialed to a member that is then revoked (sect
       expect((closedAt ?? Number.POSITIVE_INFINITY) - since).toBeLessThanOrEqual(LINGER_MS);
       expect(session.ours.closeCode).toBe(CloseCode.UnknownDevice);
     },
-  );
-});
-
-/** Thirteen members; m1 has a sync session it dialed to the one past the 12-member cap, kept busy by that member. */
-function pastTheCap() {
-  const peers = Array.from({ length: 13 }, (_, i) => peer(`m${i}`));
-  const clock = new FakeClock();
-  const net = new MeshNet(clock, seededRandom(84));
-  const { records } = meshOf(peers);
-  const [m0, m1] = peers;
-  if (m0 === undefined || m1 === undefined) throw new Error("no members");
-  const [at0, at1] = [net.add(m0, records), net.add(m1, records)];
-  const [capped] = at1.gossip.view.overCap;
-  const other = peers.find((member) => ![m0, m1].includes(member) && member.signPub !== capped?.signPub);
-  if (capped === undefined || other === undefined) throw new Error("no member past the cap");
-  const [ours, theirs] = memoryLinkPair(true);
-  at1.gossip.attach(capped.signPub, m1.signPub, ours);
-  let closed: { readonly at: number; readonly reason: string } | undefined;
-  theirs.onClose((error) => {
-    closed = { at: clock.now(), reason: error?.message ?? "" };
-  });
-  const line = { t: "hello", v: 2, mesh: at1.gossip.meshId, heads: headsOfRecords(records), n: {} } satisfies MeshLine;
-  const done = { t: "done", mesh: at1.gossip.meshId } satisfies MeshLine;
-  const keepBusy = async (left: number): Promise<void> => {
-    if (left <= 0 || closed !== undefined) return;
-    theirs.send(new TextEncoder().encode(`${JSON.stringify(line)}\n${JSON.stringify(done)}\n`));
-    await clock.advance(KEEP_ALIVE_MS);
-    return keepBusy(left - KEEP_ALIVE_MS);
-  };
-  return { clock, at0, at1, capped, other, ours, keepBusy, closed: () => closed };
-}
-
-describe("a sync session this host dialed to a member past the 12-member cap (section 6.2)", () => {
-  test("retires within 60 s, and its close says the cap is why", async () => {
-    const s = pastTheCap();
-    await s.keepBusy(LINGER_MS + 3 * KEEP_ALIVE_MS);
-    expect(s.closed()?.at ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(LINGER_MS);
-    expect(s.closed()?.reason).toContain("12-member cap");
-    expect(s.ours.closeCode).toBe(CloseCode.UnknownDevice);
-  });
-
-  test(
-    "stays open once a revoke brings that member back under the cap",
-    async () => {
-      const s = pastTheCap();
-      await s.keepBusy(KEEP_ALIVE_MS);
-      s.at0.gossip.append({ type: "revoke", signPubs: [s.other.signPub], reason: "revoke" });
-      await s.clock.until(
-        () => s.at1.gossip.view.members.some((member) => member.signPub === s.capped.signPub),
-        30_000,
-        10,
-      );
-      await s.keepBusy(2 * LINGER_MS);
-      expect(s.closed()).toBeUndefined();
-    },
-    REVOKE_ACROSS_THIRTEEN_MS,
   );
 });

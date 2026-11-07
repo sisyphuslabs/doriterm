@@ -1,5 +1,5 @@
 {
-  "measured": "A/A noise: Render bench run 42196735742 (bench/670-noise, ubuntu-24.04, 5 rounds, self-a vs self-b); A/B: run 42196737507 (bench/670, v0.1.2 vs candidate). See docs/render-bench.md.",
+  "measured": "A/A noise: Render bench run 42196735742 (bench/670-noise, ubuntu-24.04, 5 rounds, self-a vs self-b); Close prompt: run 42338764501 (bench/986-close-prompt-noise, same setup); A/B: run 42196737507 (bench/670, v0.1.2 vs candidate). See docs/render-bench.md.",
   "limits": {
     "frameP95": {
       "ratio": 1.25,
@@ -35,6 +35,12 @@
       "ratio": 1.5,
       "floor": 300,
       "why": "A/A medians moved 178 ms at 50 panes"
+    },
+    "closePromptMs": {
+      "ratio": 1.5,
+      "floor": 50,
+      "max": 200,
+      "why": "#560's budget: the median click may not pass 200 ms, whatever the baseline measured. A/A medians on ubuntu-24.04 (run 42338764501, 5 rounds): 9.4 / 9.5 ms at 1 pane, 22.2 / 22.5 at 15, 76.3 / 65.1 at 50 (runs' medians 55 to 80, single clicks 46 to 111), so 200 is 2.6x the release runner's 50-pane median; on a loaded Linux host 16.2 / 16.8, 29.7 / 37.1 and 142.5 / 107.3 (runs' medians 83 to 186). The medians moved 1.33x at most, so 1.5x and 50 ms above the baseline (docs/render-bench.md)"
     }
   }
 }

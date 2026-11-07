@@ -1,137 +1,46 @@
-/** herdr-app's default triggers in doriface's trigger syntax, from herdrdev/herdr-app b8d4db8f defaults/. */
-export const HERDR_APP_MAC: readonly string[] = [
-  "alt+backspace",
-  "alt+left",
-  "alt+right",
-  "alt+shift+super+down",
-  "alt+shift+super+left",
-  "alt+shift+super+right",
-  "alt+shift+super+up",
-  "alt+super+[",
-  "alt+super+]",
-  "alt+super+down",
-  "alt+super+h",
-  "alt+super+left",
-  "alt+super+right",
-  "alt+super+up",
-  "ctrl+1",
-  "ctrl+2",
-  "ctrl+3",
-  "ctrl+4",
-  "ctrl+5",
-  "ctrl+6",
-  "ctrl+7",
-  "ctrl+8",
-  "ctrl+9",
-  "ctrl+shift+tab",
-  "ctrl+tab",
-  "ctrl+v",
-  "f2",
-  "shift+f2",
-  "shift+super+/",
-  "shift+super+=",
-  "shift+super+[",
-  "shift+super+]",
-  "shift+super+d",
-  "shift+super+enter",
-  "shift+super+l",
-  "shift+super+p",
-  "shift+super+w",
-  "super+,",
-  "super+-",
-  "super+/",
-  "super+0",
-  "super+1",
-  "super+2",
-  "super+3",
-  "super+4",
-  "super+5",
-  "super+6",
-  "super+7",
-  "super+8",
-  "super+9",
-  "super+=",
-  "super+[",
-  "super+]",
-  "super+b",
-  "super+backspace",
-  "super+c",
-  "super+d",
-  "super+h",
-  "super+left",
-  "super+n",
-  "super+p",
-  "super+q",
-  "super+right",
-  "super+t",
-  "super+v",
-  "super+w",
-];
+import { readFileSync } from "node:fs";
+import { normalizeTrigger, type Platform } from "./trigger.ts";
 
-export const HERDR_APP_OTHER: readonly string[] = [
-  "alt+1",
-  "alt+2",
-  "alt+3",
-  "alt+4",
-  "alt+5",
-  "alt+6",
-  "alt+7",
-  "alt+8",
-  "alt+9",
-  "alt+[",
-  "alt+]",
-  "alt+down",
-  "alt+h",
-  "alt+j",
-  "alt+k",
-  "alt+l",
-  "alt+left",
-  "alt+right",
-  "alt+shift+h",
-  "alt+shift+j",
-  "alt+shift+k",
-  "alt+shift+l",
-  "alt+up",
-  "ctrl+,",
-  "ctrl+-",
-  "ctrl+0",
-  "ctrl+1",
-  "ctrl+2",
-  "ctrl+3",
-  "ctrl+4",
-  "ctrl+5",
-  "ctrl+6",
-  "ctrl+7",
-  "ctrl+8",
-  "ctrl+9",
-  "ctrl+=",
-  "ctrl+backspace",
-  "ctrl+insert",
-  "ctrl+left",
-  "ctrl+page_down",
-  "ctrl+page_up",
-  "ctrl+right",
-  "ctrl+shift+/",
-  "ctrl+shift+=",
-  "ctrl+shift+b",
-  "ctrl+shift+c",
-  "ctrl+shift+e",
-  "ctrl+shift+k",
-  "ctrl+shift+l",
-  "ctrl+shift+n",
-  "ctrl+shift+o",
-  "ctrl+shift+p",
-  "ctrl+shift+page_down",
-  "ctrl+shift+page_up",
-  "ctrl+shift+t",
-  "ctrl+shift+tab",
-  "ctrl+shift+v",
-  "ctrl+shift+w",
-  "ctrl+shift+x",
-  "ctrl+shift+z",
-  "ctrl+tab",
-  "ctrl+v",
-  "f2",
-  "shift+f2",
-  "shift+insert",
-];
+/** The herdr-app commit `herdr-app/keys.json` and `herdr-app/keys.macos.json` were copied from (herdr-app/SOURCE.md). */
+export const HERDR_APP_COMMIT = "cfcf836404f932817f10f88455c33e33c94fd1df";
+
+/** herdr-app's file per platform: `keys.macos.json` on macOS, `keys.json` everywhere else. */
+export const HERDR_APP_FILE: Readonly<Record<Platform, string>> = { mac: "keys.macos.json", other: "keys.json" };
+
+/** One default binding: herdr-app's own spelling of the chord, doriface's trigger for it, and the action. */
+export interface HerdrBinding {
+  readonly chord: string;
+  readonly trigger: string;
+  readonly action: string;
+}
+
+function isSections(value: unknown): value is Record<string, Record<string, unknown>> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Object.values(value).every((section) => typeof section === "object" && section !== null)
+  );
+}
+
+/**
+ * herdr-app's default bindings for a platform, read from the vendored file, every section in file order. Chords that
+ * spell one key two ways (`ctrl-?` and `ctrl-shift-/`) are both listed, under the same trigger. Test and build-script
+ * use only: the app never loads these files.
+ */
+export function herdrAppDefaults(platform: Platform): readonly HerdrBinding[] {
+  const parsed: unknown = JSON.parse(
+    readFileSync(new URL(`./herdr-app/${HERDR_APP_FILE[platform]}`, import.meta.url), "utf8"),
+  );
+  if (!isSections(parsed)) throw new Error(`herdr-app/${HERDR_APP_FILE[platform]} is not a keys file`);
+  return Object.values(parsed).flatMap((section) =>
+    Object.entries(section).map(([chord, action]) => {
+      const trigger = normalizeTrigger(chord, true);
+      if (trigger === null || typeof action !== "string") throw new Error(`herdr-app binding not understood: ${chord}`);
+      return { chord, trigger, action };
+    }),
+  );
+}
+
+export const HERDR_APP_MAC: readonly string[] = [...new Set(herdrAppDefaults("mac").map((entry) => entry.trigger))];
+
+export const HERDR_APP_OTHER: readonly string[] = [...new Set(herdrAppDefaults("other").map((entry) => entry.trigger))];

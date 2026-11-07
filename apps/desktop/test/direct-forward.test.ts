@@ -13,7 +13,7 @@ function portOf(server: { address(): unknown }): number {
   return port;
 }
 
-/** A host on this machine: it echoes each binary frame back, and counts the sessions it admitted. */
+/** A host on this machine: it echoes each binary frame back, answers `ping` with `pong`, and counts its sessions. */
 interface Peer {
   readonly url: string;
   readonly connections: () => number;
@@ -26,7 +26,10 @@ async function echoingPeer(): Promise<Peer> {
   let admitted = 0;
   server.on("connection", (socket) => {
     admitted += 1;
-    socket.on("message", (data: Buffer) => socket.send(data, { binary: true }));
+    socket.on("message", (data: Buffer, binary: boolean) => {
+      if (binary) socket.send(data, { binary: true });
+      else if (String(data) === "ping") socket.send("pong");
+    });
   });
   return {
     url: `ws://127.0.0.1:${portOf(server)}/v1/e2ee`,
@@ -156,6 +159,41 @@ test("a redirect is refused: the forward never follows it", async () => {
   await opened(socket);
   await closed(socket);
   expect(peer.connections()).toBe(0);
+  await peer.stop();
+});
+
+test("the keepalive crosses the forward: the page's ping reaches the host, its pong comes back, and bytes still flow (#1040)", async () => {
+  const peer = await echoingPeer();
+  const forwarder = forwarderFor();
+  forwarder.setTarget(peer.url);
+  const answer = await forwarder.issue(7);
+  if (!("url" in answer)) throw new Error("no forward");
+  const socket = pageSocket(answer.url);
+  await opened(socket);
+  const pong = new Promise<string>((resolve) =>
+    socket.once("message", (data: Buffer, binary: boolean) => resolve(`${binary ? "binary" : "text"} ${String(data)}`)),
+  );
+  const ended = closed(socket).then(() => "closed");
+  socket.send("ping");
+  expect(await Promise.race([pong, ended])).toBe("text pong");
+  const reply = answered(socket);
+  socket.send(new Uint8Array([4, 5]));
+  expect(Array.from(await reply)).toEqual([4, 5]);
+  socket.close();
+  await peer.stop();
+});
+
+test("any other text frame closes the forward", async () => {
+  const peer = await echoingPeer();
+  const forwarder = forwarderFor();
+  forwarder.setTarget(peer.url);
+  const answer = await forwarder.issue(7);
+  if (!("url" in answer)) throw new Error("no forward");
+  const socket = pageSocket(answer.url);
+  await opened(socket);
+  const ended = closed(socket);
+  socket.send("hello");
+  await ended;
   await peer.stop();
 });
 

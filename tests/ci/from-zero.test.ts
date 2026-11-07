@@ -90,7 +90,13 @@ test("CONTRIBUTING.md's from-zero path installs the tools, clones, checks and ru
   expect(() => guideScript(steps, REV)).not.toThrow();
 });
 
-type Step = { uses?: string; run?: string; with?: Record<string, unknown>; env?: Record<string, string> };
+type Step = {
+  uses?: string;
+  run?: string;
+  if?: string;
+  with?: Record<string, unknown>;
+  env?: Record<string, string>;
+};
 type Job = { name?: string; "runs-on"?: string; steps: Step[] };
 type Workflow = {
   on: {
@@ -128,10 +134,15 @@ test("the From zero workflow runs the guide on a clean runner with no secrets", 
   const guide = job?.steps.find((step) => step.run?.includes("bun tests/ci/from-zero.ts CONTRIBUTING.md"));
   expect(guide?.env?.["FROM_ZERO_REV"]).toBe("${{ github.sha }}");
   // Only the runner's own bun is installed outside the guide; herdr-core, Node and Chromium come from the guide alone.
+  // The upload runs after a failed guide and installs nothing: it keeps the trace the guide left in its own clone.
   expect(job?.steps.filter((step) => step.uses !== undefined).map((step) => step.uses?.split("@")[0])).toEqual([
     "actions/checkout",
     "oven-sh/setup-bun",
+    "actions/upload-artifact",
   ]);
+  const kept = job?.steps.find((step) => step.uses?.startsWith("actions/upload-artifact@"));
+  expect(kept?.["if"]).toBe("failure()");
+  expect(JSON.stringify(kept?.with?.["path"])).toContain("from-zero-*/work-*/doriterm/apps/web/test-results");
   expect(JSON.stringify(job)).not.toContain("HC_BIN");
 });
 

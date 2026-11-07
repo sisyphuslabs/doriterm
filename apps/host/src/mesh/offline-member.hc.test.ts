@@ -26,7 +26,7 @@ async function offlineMember() {
   const clock = new FakeClock();
   const reach = { online: false };
   const policy = new DialPolicy({ clock, random: seededRandom(13), onDue: () => undefined });
-  const view: MeshView = { members: [self.member, x.member], overCap: [], revoked: [] };
+  const view: MeshView = { members: [self.member, x.member], revoked: [] };
   const toCore = dialCore([x]);
   const dial = (member: MemberEntry): Promise<ByteLink> =>
     reach.online ? toCore(member) : Promise.reject(new SecureLinkError(4404, "host is not connected (4404)"));

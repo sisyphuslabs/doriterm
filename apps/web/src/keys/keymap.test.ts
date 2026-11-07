@@ -110,6 +110,25 @@ describe("triggers", () => {
 });
 
 describe("KeymapStore", () => {
+  test("custom keys saved before herdr-app's defaults arrived (#702) load as saved and keep winning over them", async () => {
+    const storage = memoryStore();
+    const saved = {
+      version: KEYMAP_VERSION,
+      bindings: [
+        ["super+w", "pane.close"],
+        ["ctrl+1", "space.select:1"],
+        ["shift+super+r", null],
+      ],
+    };
+    await storage.put("keymap", saved);
+    const store = new KeymapStore(storage);
+    await store.loaded;
+    expect(await storage.get("keymap")).toEqual(saved);
+    const mac = resolveKeymap("mac", store.overrides);
+    expect([mac.get("super+w"), mac.has("shift+super+r")]).toEqual(["pane.close", false]);
+    expect(resolveKeymap("other", store.overrides).get("ctrl+1")).toBe("space.select:1");
+  });
+
   test("a binding whose action this build does not know is kept in storage through an unrelated edit", async () => {
     const storage = memoryStore();
     await storage.put("keymap", {

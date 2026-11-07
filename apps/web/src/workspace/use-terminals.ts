@@ -1,6 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import type { ListResult, Terminal } from "@doriface/protocol";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { applyEvent, fromSnapshot, type TerminalMap } from "./terminals.ts";
 
 export interface TerminalsState {
@@ -32,10 +32,16 @@ export type DocHeard = (machine: string | null, name: string, version: number) =
  * terminal.list for the first picture and machine count, then events.subscribe keeps it live. The same feed carries
  * `doc` events, handed to `onDoc`.
  */
-export function useTerminals(connection: HcConnection | null, onDoc?: DocHeard): TerminalsState {
+export function useTerminals(
+  connection: HcConnection | null,
+  onDoc?: DocHeard,
+): TerminalsState & { readonly retry: () => void } {
   const [state, setState] = useState<TerminalsState>(() =>
     connection === null ? EMPTY : (lastShown.get(connection) ?? EMPTY),
   );
+  // Asks the core again: a first answer that failed says so with Try again instead of loading forever (#819).
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt((count) => count + 1), []);
   const docHeard = useRef(onDoc);
   docHeard.current = onDoc;
 
@@ -46,6 +52,7 @@ export function useTerminals(connection: HcConnection | null, onDoc?: DocHeard):
     }
     // A connection that already dropped has nothing new to say: keep what it last showed until the next one answers.
     if (connection.closed) return undefined;
+    setState((prev) => (prev.error === null ? prev : { ...prev, error: null }));
     let map: TerminalMap = new Map();
     let machines = 0;
     let disposed = false;
@@ -94,7 +101,7 @@ export function useTerminals(connection: HcConnection | null, onDoc?: DocHeard):
         () => undefined,
       );
     };
-  }, [connection]);
+  }, [connection, attempt]);
 
-  return state;
+  return { ...state, retry };
 }

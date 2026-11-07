@@ -17,12 +17,21 @@ export function FirstRunGuideCard({ onNew, className, ...facts }: FirstRunGuideC
   const steps = guideSteps(guide, facts);
   const finished = steps.every((step) => step.state === "done");
   const agentCurrent = steps.some((step) => step.id === "agent" && step.state === "current");
+  const current = steps.findIndex((step) => step.state === "current");
+  const heading = finished ? "You're set" : "Getting started";
+  // Read out politely as it changes, so a step that completes, or the whole card, is heard and not only seen (#834).
+  const announcement = finished
+    ? `${heading}: every step is done.`
+    : `Step ${current + 1} of ${steps.length}: ${steps[current]?.label ?? ""}`;
   return (
     <section
       aria-label="Getting started"
       className={cn("m-3 flex flex-col gap-3 rounded-lg border border-border bg-raised p-4 text-sm", className)}
     >
-      <h2 className="font-semibold text-foreground">{finished ? "You're set" : "Getting started"}</h2>
+      <h2 className="font-semibold text-foreground">{heading}</h2>
+      <p role="status" className="sr-only">
+        {announcement}
+      </p>
       <ol aria-label="Getting started steps" className="flex flex-col gap-2">
         {steps.map((step, index) => (
           <li

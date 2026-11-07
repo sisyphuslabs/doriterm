@@ -3,6 +3,7 @@ import { AgentsGroup } from "./agents-group.tsx";
 import { SidebarSplit } from "./sidebar-split.tsx";
 import { useMachinesContext } from "./use-machines.ts";
 import { SpacesGroup } from "./spaces-group.tsx";
+import { TerminalsLoadError } from "./terminals-load-error.tsx";
 
 export interface AgentListsProps {
   readonly terminals: readonly Terminal[];
@@ -20,7 +21,9 @@ export interface AgentListsProps {
 export function AgentLists({ terminals, active, onOpen, rail = false, heading = true }: AgentListsProps) {
   // Nothing until the terminal list is in: the agents then draw in their final place, and the spaces (or their loading
   // row) below them, so nothing already drawn moves.
-  const { terminalsLoaded } = useMachinesContext();
+  const { terminalsLoaded, terminalsError, retryTerminals } = useMachinesContext();
+  if (!terminalsLoaded && terminalsError !== null)
+    return <TerminalsLoadError cause={terminalsError} onRetry={retryTerminals} />;
   if (!terminalsLoaded) return <div aria-busy="true" className="px-2 pb-3" />;
   return (
     <div className="flex flex-col gap-4 px-2 pb-3">
@@ -38,8 +41,15 @@ export function SidebarLists({
   rail = false,
   query = "",
 }: Omit<AgentListsProps, "heading">) {
-  const { terminalsLoaded } = useMachinesContext();
+  const { terminalsLoaded, terminalsError, retryTerminals } = useMachinesContext();
   const pad = "px-2 pb-3";
+  // A first answer that failed is said once, in place of the lists, not as a load that never ends (#819).
+  const waiting =
+    terminalsError === null ? (
+      <div aria-busy="true" className={pad} />
+    ) : (
+      <TerminalsLoadError cause={terminalsError} onRetry={retryTerminals} />
+    );
   return (
     <SidebarSplit
       spaces={
@@ -48,7 +58,7 @@ export function SidebarLists({
             <SpacesGroup onOpen={onOpen} rail={rail} query={query} filterable />
           </div>
         ) : (
-          <div aria-busy="true" className={pad} />
+          waiting
         )
       }
       agents={

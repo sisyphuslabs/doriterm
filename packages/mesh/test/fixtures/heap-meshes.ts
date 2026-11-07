@@ -1,10 +1,9 @@
 // Meshes that stress what a ViewCache keeps, for the heap tests: each is a shape an attacker or an unlucky history
-// can reach at or below the cap.
+// can reach.
 
-import { MAX_MESH_MEMBERS } from "../../src/records/types.ts";
 import { ack, admit, type Draft, found, name, revoke } from "./records.ts";
 
-const keys = Array.from({ length: MAX_MESH_MEMBERS }, (_, i) => `K${i}`);
+const keys = Array.from({ length: 12 }, (_, i) => `K${i}`);
 
 /** Found K0 and admit the other members in one chain. */
 function founded(): Draft[] {
@@ -23,7 +22,7 @@ export function namesOnly(records: number): Draft[] {
   return drafts;
 }
 
-/** The founder admits key after key: past the twelfth, every admitted key is over the cap but still governed. */
+/** The founder admits key after key: every admitted key is a member. */
 export function admitsOnly(records: number): Draft[] {
   const drafts = founded();
   while (drafts.length < records)

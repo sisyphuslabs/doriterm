@@ -7,14 +7,15 @@
 # The CSP runs only this origin's own scripts (and the terminal's wasm) and connects only to this origin and the relay:
 # the app is relay-only since #458. Bringing a Direct address back (#446) means adding its sources to connect-src here,
 # or the page's direct dial is refused before the relay fallback. The one inline style is @base-ui/react's scrollbar
-# hider (utils/styles.js, rendered by react-dom as a hoisted <style>), allowed by its hash; tests/ci/deploy-web.test.ts
-# recomputes it from the installed package, so an upgrade that changes the text fails there.
+# hider (utils/styles.mjs, rendered by react-dom as a hoisted <style>), allowed by its hash; tests/ci/deploy-web.test.ts
+# renders that element from the installed package and hashes it, so an upgrade that changes the text fails there. Images
+# come only from this origin: nothing loads one from a blob: URL (a download's object URL is an anchor, not an image).
 /*
   Cache-Control: public, max-age=0, must-revalidate, no-transform
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: no-referrer
-  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'sha256-kLmvWqfziFavKtqHqRsb90f006UAK2Dmd0It5Iz2KFA='; img-src 'self' blob:; font-src 'self' data:; connect-src 'self' https://relay-doriface.omo.dev wss://relay-doriface.omo.dev; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'sha256-kLmvWqfziFavKtqHqRsb90f006UAK2Dmd0It5Iz2KFA='; img-src 'self'; font-src 'self' data:; connect-src 'self' https://relay-doriface.omo.dev wss://relay-doriface.omo.dev; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Resource-Policy: same-origin
 
