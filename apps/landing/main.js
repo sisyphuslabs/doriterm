@@ -643,7 +643,9 @@ function setupFleet() {
     }
     if (animate && targets.revoke) {
       const gone = machines.get(targets.revoke);
+      // A restart finds the machine already revoked (load 0): it works again, at the work scene's load, until the record lands.
       gone.cut.jump(0);
+      gone.load.jump(FLEET_SCENES[1][targets.revoke][1]);
       gone.status = "working";
       records.push({ kind: "revoke", to: targets.revoke, start: now + 500, dur: 1700 });
       later(2200, () => {
