@@ -63,7 +63,7 @@ jobs:
       # The guide clones into its own temp tree, so a failing e2e case leaves its trace and report there and nowhere the
       # workspace's own artifact steps would find them (#1343).
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: from-zero-contributor-e2e
           path: |
@@ -108,7 +108,7 @@ jobs:
           DORIFACE_HOSTED_RELAY_SMOKE: "1"
         run: xvfb-run --auto-servernum bun run test:e2e e2e/hosted-relay-pair.e2e.ts
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: user-guide-e2e
           path: |
