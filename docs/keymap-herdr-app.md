@@ -68,7 +68,7 @@ every chord. Keys a person rebinds in Settings > Keybindings stay theirs.
 | `ctrl-7` | `space.select:7` | same | same |  |
 | `ctrl-8` | `space.select:8` | same | same |  |
 | `ctrl-9` | `space.select:9` | same | same |  |
-| `cmd-f` | `terminal.search` | unbound | same | no find bar in a terminal yet (#732) |
+| `cmd-f` | `terminal.search` | same | same |  |
 | `cmd-c` | `terminal.copy` | same | same |  |
 | `cmd-v` | `terminal.paste` | same | same |  |
 | `ctrl-v` | `terminal.paste_image` | unbound | same | Ctrl+V is left to the terminal's own key handling; a pasted image already reaches the terminal's machine through the paste itself (#742), and Paste image can be bound in Settings > Keybindings |
@@ -147,7 +147,7 @@ every chord. Keys a person rebinds in Settings > Keybindings stay theirs.
 | `ctrl-right` | `send:\u001bf` | same | same |  |
 | `ctrl-shift-c` | `terminal.copy` | same | same |  |
 | `ctrl-shift-v` | `terminal.paste` | same | same |  |
-| `ctrl-shift-f` | `terminal.search` | unbound | same | no find bar in a terminal yet (#732) |
+| `ctrl-shift-f` | `terminal.search` | same | same |  |
 | `ctrl-v` | `terminal.paste_image` | unbound | same | Ctrl+V is left to the terminal's own key handling; a pasted image already reaches the terminal's machine through the paste itself (#742), and Paste image can be bound in Settings > Keybindings |
 | `ctrl-insert` | `terminal.copy` | same | same |  |
 | `shift-insert` | `terminal.paste` | same | same |  |

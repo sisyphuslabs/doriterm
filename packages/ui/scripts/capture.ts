@@ -28,6 +28,7 @@ const SCREENS = [
   "sidebar-recompose",
   "approval",
   "voice",
+  "terminal-find",
 ] as const;
 /** Screens whose own scroll owner hides content: captured whole, plus a viewport scrolled to the end. */
 const SCROLLERS: Readonly<Record<string, string>> = {
