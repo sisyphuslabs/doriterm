@@ -16,7 +16,7 @@ const KEYS: Readonly<Record<Platform, Readonly<Record<Key, string>>>> = {
     grow: "Meta+Control+ArrowDown",
     equalize: "Meta+Control+Equal",
     zoom: "Meta+Shift+Enter",
-    close: "Meta+w",
+    close: "Meta+Shift+w",
     up: "Meta+Alt+ArrowUp",
     splitDown: "Meta+Shift+d",
   },

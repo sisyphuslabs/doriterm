@@ -60,10 +60,9 @@ describe("menus", () => {
     expect(opened).toEqual(["settings"]);
   });
 
-  test("macOS Close Window takes Ghostty's Cmd+Shift+W and leaves Cmd+W to the page, which closes panes with it", () => {
+  test("macOS Close Window has no key, leaving Cmd+W and Cmd+Shift+W to the page, which closes tabs and panes with them", () => {
     const close = submenuOf(menuTemplate(options("darwin"))[1]).find((item) => item.label === "Close Window");
-    expect(close).toMatchObject({ accelerator: "CommandOrControl+Shift+W" });
-    expect(close?.registerAccelerator).toBeUndefined();
+    expect(close?.accelerator).toBeUndefined();
     const closed: string[] = [];
     const window = { close: () => void closed.push("window") };
     close?.click?.(Object.create(null), Object.assign(Object.create(null), window), Object.create(null));
@@ -80,6 +79,7 @@ describe("menus", () => {
     const shell = submenuOf(menuTemplate(options("darwin", { keys, runAction: (id) => ran.push(id) }))[3]);
     expect(roles(shell)).toEqual([
       "New Tab",
+      "Rename Tab…",
       "separator",
       "Split Right",
       "Split Down",
@@ -96,12 +96,13 @@ describe("menus", () => {
       "Select Space",
       "Previous Space",
       "Next Space",
+      "New Space",
     ]);
-    expect(shell[2]).toMatchObject({ accelerator: "Command+D", registerAccelerator: false });
-    expect(shell[3]).toMatchObject({ accelerator: "Command+Shift+D", registerAccelerator: false });
-    expect(submenuOf(shell[5])[0]).toMatchObject({ label: "Left", accelerator: "Command+Option+Left" });
+    expect(shell[3]).toMatchObject({ accelerator: "Command+D", registerAccelerator: false });
+    expect(shell[4]).toMatchObject({ accelerator: "Command+Shift+D", registerAccelerator: false });
+    expect(submenuOf(shell[6])[0]).toMatchObject({ label: "Left", accelerator: "Command+Option+Left" });
     expect(shell[0]?.accelerator).toBeUndefined();
-    shell[3]?.click?.(Object.create(null), undefined, Object.create(null));
+    shell[4]?.click?.(Object.create(null), undefined, Object.create(null));
     expect(ran).toEqual(["pane.split:down"]);
   });
 
@@ -150,7 +151,7 @@ describe("menus", () => {
       const view = submenuOf(menu.find((item) => item.label === "View"));
       expect(roles(view)).toEqual([
         "reload",
-        "forceReload",
+        "Force Reload",
         "toggleDevTools",
         "separator",
         "Default Text Size",
@@ -159,6 +160,8 @@ describe("menus", () => {
         "separator",
         "togglefullscreen",
       ]);
+      // Cmd+Shift+R (Ctrl+Shift+R) renames the page's tab (#702), so no View item takes it.
+      expect(view.find((item) => item.label === "Force Reload")?.accelerator).toBeUndefined();
       const zoomItems = view.filter((item) => item.id?.startsWith("font-size-"));
       expect(zoomItems.map((item) => [item.id, item.accelerator, item.registerAccelerator])).toEqual([
         ["font-size-reset", "CommandOrControl+0", false],
