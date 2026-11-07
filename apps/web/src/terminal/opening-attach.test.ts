@@ -170,4 +170,17 @@ describe("a new terminal's attach goes with its run (#1351)", () => {
     expect([viewed.stream.channel, viewed.cols, viewed.rows]).toEqual([4, 90, 20]);
     connection.close();
   });
+
+  test("any other refusal of that attach is the view's to show: it does not attach again", async () => {
+    const { connection, core } = await opened();
+    const started = runWithAttach(connection, openingCallsOf(connection), {}, DISPLAY);
+    const run = await core.request("terminal.run");
+    const early = await core.request("terminal.attach");
+    core.reply(early.id, { error: { code: -32601, message: "no method", data: { kind: "unknown_method" } } });
+    core.reply(run.id, { result: { ...TERMINAL, address: "t3" } });
+    const { address } = await started;
+    const viewing = viewAttach(connection, address, true, { cols: 90, rows: 20, display: DISPLAY }, attachedAgain);
+    await expect(viewing).rejects.toMatchObject({ kind: "unknown_method" });
+    connection.close();
+  });
 });
