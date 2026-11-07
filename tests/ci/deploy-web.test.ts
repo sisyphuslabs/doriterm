@@ -132,3 +132,16 @@ async function baseUiScrollbarStyleHash(): Promise<string> {
   if (typeof css !== "string") throw new Error("@base-ui/react's scrollbar style is no longer one string");
   return new Bun.CryptoHasher("sha256").update(css).digest("base64");
 }
+
+/** One page's meta tag content: apps/<page>/index.html, <meta property|name="<key>">. */
+const metaOf = (page: string, key: string): string | undefined =>
+  new RegExp(`<meta (?:property|name)="${key}" content="([^"]+)"`).exec(
+    readFileSync(join(ROOT, "apps", page, "index.html"), "utf8"),
+  )?.[1];
+
+test("app.doriterm.com previews with the same card as doriterm.com, so the two cannot drift apart", () => {
+  const landing = metaOf("landing", "og:image");
+  expect(landing).toBe("https://doriterm.com/og.png");
+  expect(metaOf("web", "og:image")).toBe(landing);
+  expect(metaOf("web", "twitter:image")).toBe(landing);
+});
