@@ -34,7 +34,7 @@ afterAll(async () => {
 });
 
 const shapeOf = (m: MachineView) => [m.name, m.id, m.target, m.via ?? false, m.session ?? null];
-const viewOf = (...members: readonly MemberEntry[]): MeshView => ({ members, overCap: [], revoked: [] });
+const viewOf = (...members: readonly MemberEntry[]): MeshView => ({ members, revoked: [] });
 const fakeMember = (name: string): MemberEntry => ({
   signPub: `sign-${name}`,
   hostId: hostIdFor(name),

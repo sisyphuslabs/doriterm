@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Reconciler } from "./reconciler.ts";
+import { LIVE_LINES_MS, Reconciler } from "./reconciler.ts";
 import { FakeClock } from "./testing/fake-clock.ts";
 import { FakeMachines, hcError } from "./testing/fake-machines.ts";
 import { hostIdFor } from "./testing/hc-mesh.ts";
@@ -20,7 +20,6 @@ const member = (name: string, hostId = hostIdFor(name)): MemberEntry => ({
 const [self, b, c] = [member("self"), member("b"), member("c")];
 const viewOf = (...members: readonly MemberEntry[]): MeshView => ({
   members: [self, ...members],
-  overCap: [],
   revoked: [],
 });
 
@@ -80,21 +79,16 @@ describe("a member that could not be added (section 8.1, H-54-1)", () => {
 });
 
 describe("this host's own membership (section 6.4)", () => {
-  test.each([
-    ["revoked", { members: [b, c], overCap: [], revoked: [self.signPub] }],
-    ["over the cap", { members: [b, c], overCap: [self], revoked: [] }],
-  ] satisfies [string, MeshView][])(
-    "a host its own view lists as %s removes every mesh machine, keeps the owner's own, and adds them back once a member again",
-    async (_why, outside) => {
-      const { machines, reconcile } = reconciler();
-      machines.seed({ name: "laptop", target: "ssh://laptop" });
-      await reconcile.reconcile(viewOf(b, c));
-      await reconcile.reconcile(outside);
-      expect((await machines.list()).map((machine) => machine.name)).toEqual(["laptop"]);
-      await reconcile.reconcile(viewOf(b, c));
-      expect(machines.calls).toEqual(["0 add b", "0 add c", "0 rm b", "0 rm c", "0 add b", "0 add c"]);
-    },
-  );
+  test("a host its own view lists as revoked removes every mesh machine, keeps the owner's own, and adds them back once a member again", async () => {
+    const outside: MeshView = { members: [b, c], revoked: [self.signPub] };
+    const { machines, reconcile } = reconciler();
+    machines.seed({ name: "laptop", target: "ssh://laptop" });
+    await reconcile.reconcile(viewOf(b, c));
+    await reconcile.reconcile(outside);
+    expect((await machines.list()).map((machine) => machine.name)).toEqual(["laptop"]);
+    await reconcile.reconcile(viewOf(b, c));
+    expect(machines.calls).toEqual(["0 add b", "0 add c", "0 rm b", "0 rm c", "0 add b", "0 add c"]);
+  });
 });
 
 describe("lines that exist (section 8.1)", () => {
@@ -142,5 +136,50 @@ describe("lines that exist (section 8.1)", () => {
     expect(machines.calls).toEqual([]);
     await reconcile.releaseAdd(c.hostId);
     expect(machines.calls).toEqual(["0 add c"]);
+  });
+});
+
+const stateOf = (reconcile: Reconciler, name: string): string | undefined =>
+  reconcile.lines().find((entry) => entry.machine.name === name)?.machine.state;
+
+describe("the line state status reads (#754)", () => {
+  test("a line herdr connected after the last reconcile reads connected once status refreshes", async () => {
+    const { machines, reconcile } = reconciler();
+    machines.addState = "connecting";
+    await reconcile.reconcile(viewOf(b));
+    expect(stateOf(reconcile, "b")).toBe("connecting");
+    machines.setState("b", "connected");
+    await reconcile.refreshLines();
+    expect(stateOf(reconcile, "b")).toBe("connected");
+  });
+
+  test("a herdr that does not answer within the budget leaves the last list, and the read ends at the budget", async () => {
+    const { clock, machines, reconcile } = reconciler();
+    machines.addState = "connecting";
+    await reconcile.reconcile(viewOf(b));
+    machines.stallLists = true;
+    let done = false;
+    const refreshed = reconcile.refreshLines().finally(() => {
+      done = true;
+    });
+    await clock.advance(LIVE_LINES_MS - 1);
+    expect(done).toBe(false);
+    await clock.advance(1);
+    await refreshed;
+    expect(stateOf(reconcile, "b")).toBe("connecting");
+  });
+
+  test("a refresh that answers after a newer reconcile never puts the older list back", async () => {
+    const { machines, reconcile } = reconciler();
+    machines.addState = "connecting";
+    await reconcile.reconcile(viewOf(b));
+    const release = machines.holdNextList();
+    const refreshed = reconcile.refreshLines();
+    machines.setState("b", "connected");
+    await reconcile.reconcile(viewOf(b));
+    expect(stateOf(reconcile, "b")).toBe("connected");
+    release();
+    await refreshed;
+    expect(stateOf(reconcile, "b")).toBe("connected");
   });
 });

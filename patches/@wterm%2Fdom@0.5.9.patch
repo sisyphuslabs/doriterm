@@ -23,23 +23,25 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc510a9fff 100644
+index 78a86ffd96eec03222777f40e9db6a0561684c3f..1e97a4505ef95644b541ed12d54da2d12c051b66 100644
 --- a/dist/input.js
 +++ b/dist/input.js
-@@ -70,6 +70,12 @@ const COMPOSITION_INPUT_DEDUP_MS = 250;
+@@ -70,6 +70,14 @@ const COMPOSITION_INPUT_DEDUP_MS = 250;
  const SCROLLBACK_BOTTOM_TOLERANCE = 5;
  // iOS needs a deletable value to keep emitting input events for held Backspace.
  const TOUCH_INPUT_PLACEHOLDER = "\u200b";
 +// A Hangul letter or syllable: WebKit's Korean keyboards compose these in the field as plain text edits, with no
 +// composition events, so the field has to keep them until the syllable is finished.
 +const HANGUL = /[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\uac00-\ud7a3\ud7b0-\ud7ff]$/u;
++// A Hangul letter alone: the first jamo of a syllable such a keyboard starts in the field.
++const HANGUL_LETTER = /[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\ud7b0-\ud7ff]$/u;
 +function isHangulKey(e) {
 +    return !e.ctrlKey && !e.metaKey && !e.altKey && Array.from(e.key).length === 1 && HANGUL.test(e.key);
 +}
  function isAltGraphTextInput(event, pressedModifiers) {
      if (event.metaKey ||
          !(event.getModifierState("AltGraph") ||
-@@ -86,6 +92,12 @@ export class InputHandler {
+@@ -86,6 +94,16 @@ export class InputHandler {
          this.composing = false;
          this.compositionWidth = 0;
          this.recentCompositionCommit = null;
@@ -49,10 +51,14 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
 +        // syllable still being typed after it, which is drawn at the cursor and sent once the next one starts.
 +        this.localSent = "";
 +        this.localPreedit = "";
++        // Whether the key being pressed is one whose edits the field makes (a Korean keyboard's jamo, or its Backspace
++        // inside a syllable): only then may a finished syllable go on being typed. A syllable an input method commits
++        // with no composition and no such key is committed text, and is sent as it arrives (#1104).
++        this.koreanKeyEdit = false;
          // The first native deletion mirrors the Backspace already sent on keydown.
          this.suppressNextTouchDeleteInput = false;
          this.mouseButtons = 0;
-@@ -157,6 +169,7 @@ export class InputHandler {
+@@ -157,6 +175,7 @@ export class InputHandler {
          };
          this._onBlur = () => {
              this.tabExitArmed = false;
@@ -60,7 +66,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
              this.focused = false;
              this.composing = false;
              this.recentCompositionCommit = null;
-@@ -224,10 +237,12 @@ export class InputHandler {
+@@ -224,10 +243,12 @@ export class InputHandler {
          this.textarea.focus({ preventScroll: true });
      }
      syncInputPosition() {
@@ -74,27 +80,56 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
          this.accessibility.destroy();
          this.textarea.removeEventListener("keydown", this._onKeyDown);
          this.textarea.removeEventListener("keyup", this._onKeyUp);
-@@ -259,6 +274,19 @@ export class InputHandler {
+@@ -253,13 +274,36 @@ export class InputHandler {
+         if (physicalModifier) {
+             this.pressedModifiers.add(e.code);
+         }
+-        if (this.composing || e.isComposing || e.keyCode === 229) {
++        const composingKey = this.composing || e.isComposing || e.keyCode === 229;
++        if (composingKey && !(isComposingCtrlChord(e) && this.chordEndsComposition())) {
+             this.tabExitArmed = false;
+             this.positionTextarea();
              this.suppressedKeyUps.add(keyId);
              return;
          }
+-        this.recentCompositionCommit = null;
++        // A Ctrl chord on a letter key belongs to the program even while a Korean syllable composes: the syllable is
++        // committed first, as the Korean input method commits it for a native terminal, and then the chord is sent.
++        const preedit = composingKey ? this.takeComposition() : "";
++        if (preedit !== "")
++            this.onData(preedit);
 +        // An iPhone or iPad Korean keyboard names the jamo in its keydown and then composes it in the field: the field
 +        // must get it, or the next jamo has nothing to join. Backspace inside a syllable still being typed takes back a
 +        // jamo of it, which is the field's edit too.
-+        if (isHangulKey(e) ||
-+            (this.localPreedit !== "" &&
-+                e.key === "Backspace" &&
-+                !e.ctrlKey &&
-+                !e.metaKey &&
-+                !e.altKey)) {
++        this.koreanKeyEdit =
++            isHangulKey(e) ||
++                (this.localPreedit !== "" &&
++                    e.key === "Backspace" &&
++                    !e.ctrlKey &&
++                    !e.metaKey &&
++                    !e.altKey);
++        if (this.koreanKeyEdit) {
 +            this.tabExitArmed = false;
 +            this.suppressedKeyUps.add(keyId);
 +            return;
 +        }
-         this.recentCompositionCommit = null;
++        // The browser may still commit the taken syllable as ordinary input; that repeat stays recognisable.
++        if (!composingKey)
++            this.recentCompositionCommit = null;
          const bridge = this.getBridge();
          const kittyFlags = bridge?.kittyKeyboardFlags?.() ?? 0;
-@@ -371,6 +399,8 @@ export class InputHandler {
+         const kittyOwnsModifier = physicalModifier && Boolean(kittyFlags & KITTY_REPORT_ALL);
+@@ -345,6 +389,9 @@ export class InputHandler {
+             this.suppressedKeyUps.add(keyId);
+             if (e.key === "Backspace") {
+                 e.preventDefault();
++                // The syllable still being typed is on the line this kills: it is sent first, as every other key
++                // sends it, so it does not reach the program after the kill (#978).
++                this.commitLocalPreedit();
+                 this.selectionActions?.clearSelection();
+                 this.onData("\x15");
+             }
+@@ -371,6 +418,8 @@ export class InputHandler {
          if (kittyFlags !== 0) {
              const seq = encodeKittyKey(e, kittyFlags, e.repeat ? "repeat" : "press", this.pressedModifiers, bridge?.cursorKeysApp?.() ?? false);
              if (seq) {
@@ -103,7 +138,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
                  if (!physicalModifier)
                      this.selectionActions?.clearSelection();
                  if (nativeTouchDelete)
-@@ -385,6 +415,7 @@ export class InputHandler {
+@@ -385,6 +434,7 @@ export class InputHandler {
          }
          const seq = this.keyToSequence(e);
          if (seq) {
@@ -111,7 +146,15 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
              this.selectionActions?.clearSelection();
              if (nativeTouchDelete)
                  this.suppressNextTouchDeleteInput = true;
-@@ -421,6 +452,9 @@ export class InputHandler {
+@@ -395,6 +445,7 @@ export class InputHandler {
+         }
+     }
+     handleKeyUp(e) {
++        this.koreanKeyEdit = false;
+         const keyId = e.code || e.key;
+         this.pressedModifiers.delete(e.code);
+         const delivered = this.deliveredKeys.delete(keyId);
+@@ -421,6 +472,9 @@ export class InputHandler {
          this.recentCompositionCommit = null;
          this.suppressNextTouchDeleteInput = false;
          const text = e.clipboardData?.getData("text");
@@ -121,7 +164,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
          // Some mobile browsers leave clipboardData empty but insert the paste
          // into the textarea. Let that input event carry the text instead.
          if (!text)
-@@ -462,6 +496,8 @@ export class InputHandler {
+@@ -462,6 +516,8 @@ export class InputHandler {
      }
      handleCompositionStart() {
          this.tabExitArmed = false;
@@ -130,7 +173,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
          this.prepareComposition();
          this.composing = true;
          this.recentCompositionCommit = null;
-@@ -472,11 +508,22 @@ export class InputHandler {
+@@ -472,11 +528,22 @@ export class InputHandler {
          this.positionTextarea();
          const s = this.textarea.style;
          s.opacity = "1";
@@ -156,7 +199,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
          this.composing = false;
          this.hideComposition();
          this.resetInputValue();
-@@ -485,6 +532,31 @@ export class InputHandler {
+@@ -485,6 +552,44 @@ export class InputHandler {
              this.onData(e.data);
          }
      }
@@ -173,10 +216,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
 +        }
 +        if (!this.composing)
 +            return "";
-+        const raw = this.textarea.value;
-+        const text = this.touchPrimary && raw.startsWith(TOUCH_INPUT_PLACEHOLDER)
-+            ? raw.slice(TOUCH_INPUT_PLACEHOLDER.length)
-+            : raw;
++        const text = this.composingText();
 +        this.composing = false;
 +        this.takenComposition = text;
 +        // A browser that commits the dropped composition as ordinary input repeats the text: that repeat is dropped.
@@ -185,10 +225,26 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
 +        this.resetInputValue();
 +        return text;
 +    }
++    /** The field's text while a composition is in progress: the input method's preedit. */
++    composingText() {
++        const raw = this.textarea.value;
++        return this.touchPrimary && raw.startsWith(TOUCH_INPUT_PLACEHOLDER)
++            ? raw.slice(TOUCH_INPUT_PLACEHOLDER.length)
++            : raw;
++    }
++    /**
++     * Whether a Ctrl chord pressed now ends what is composing rather than editing it. A Korean syllable is finished by
++     * any key that is not a jamo, so the chord is the program's; other input methods use Ctrl+letter on their own text
++     * (Japanese: Ctrl+K on macOS, Ctrl+U/I/O/P in Microsoft IME convert the word), so their chord stays with them. With
++     * no composition left (WebKit ends it before the key's keydown) the chord is the program's too.
++     */
++    chordEndsComposition() {
++        return !this.composing || HANGUL.test(this.composingText());
++    }
      hideComposition() {
          this.compositionWidth = 0;
          const s = this.textarea.style;
-@@ -502,7 +574,7 @@ export class InputHandler {
+@@ -502,7 +607,7 @@ export class InputHandler {
          if (!bridge || !cellSize || !firstRow || !bridge.getCursor) {
              this.textarea.style.left = "0px";
              this.textarea.style.top = "0px";
@@ -197,7 +253,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
                  this.textarea.style.width = `${Math.max(1, this.compositionWidth)}px`;
                  this.textarea.style.height = `${cellSize?.rowHeight ?? 17}px`;
              }
-@@ -519,7 +591,7 @@ export class InputHandler {
+@@ -519,7 +624,7 @@ export class InputHandler {
          const s = this.textarea.style;
          s.left = `${rowRect.left - hostRect.left - this.element.clientLeft + this.element.scrollLeft + col * charWidth}px`;
          s.top = `${rowRect.top - hostRect.top - this.element.clientTop + this.element.scrollTop + row * rowHeight}px`;
@@ -206,7 +262,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
              s.width = `${Math.min((bridge.getCols() - col) * charWidth, Math.max(charWidth, this.compositionWidth))}px`;
              s.height = `${rowHeight}px`;
          }
-@@ -536,6 +608,57 @@ export class InputHandler {
+@@ -536,6 +641,57 @@ export class InputHandler {
              : charWidth;
          this.positionTextarea();
      }
@@ -264,7 +320,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
      resetInputValue() {
          this.textarea.value = this.touchPrimary ? TOUCH_INPUT_PLACEHOLDER : "";
          if (this.touchPrimary)
-@@ -565,6 +688,18 @@ export class InputHandler {
+@@ -565,6 +721,32 @@ export class InputHandler {
          const value = this.touchPrimary && rawValue.startsWith(TOUCH_INPUT_PLACEHOLDER)
              ? rawValue.slice(TOUCH_INPUT_PLACEHOLDER.length)
              : rawValue;
@@ -274,16 +330,30 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
 +        if (inputType !== "insertFromPaste" &&
 +            (this.localSent !== "" ||
 +                this.localPreedit !== "" ||
-+                (!repeatsCommit && inputType !== "deleteContentBackward" && HANGUL.test(value)))) {
++                (!repeatsCommit &&
++                    inputType !== "deleteContentBackward" &&
++                    (HANGUL_LETTER.test(value) || (this.koreanKeyEdit && HANGUL.test(value)))))) {
 +            this.recentCompositionCommit = null;
 +            this.suppressNextTouchDeleteInput = false;
 +            this.editLocalRun(value);
 +            return;
 +        }
++        if (inputType === "insertFromPaste" && (this.localSent !== "" || this.localPreedit !== "")) {
++            // A paste inserted with no paste event before it, which would have ended the run: the field still holds
++            // the run's sent text and its syllable, so the syllable is sent, the run ends, and only the paste goes (#988).
++            const run = this.localSent + this.localPreedit;
++            const pasted = value.startsWith(run) ? value.slice(run.length) : value;
++            this.recentCompositionCommit = null;
++            this.suppressNextTouchDeleteInput = false;
++            this.commitLocalPreedit();
++            if (pasted)
++                this.sendPaste(pasted);
++            return;
++        }
          this.resetInputValue();
          const recent = this.recentCompositionCommit;
          this.recentCompositionCommit = null;
-@@ -821,7 +956,7 @@ export class InputHandler {
+@@ -821,7 +1003,7 @@ export class InputHandler {
                  return other;
          }
          if (e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -292,10 +362,17 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc
              if (control !== null)
                  return control;
              if (e.key === "Backspace")
-@@ -855,6 +990,17 @@ export class InputHandler {
+@@ -855,6 +1037,24 @@ export class InputHandler {
          return null;
      }
  }
++/**
++ * A Ctrl chord on a physical letter key, which the browser reports as an input method's key (keyCode 229, or
++ * `isComposing`) while a word composes: Chromium sends it before the input method's commit, WebKit after it.
++ */
++function isComposingCtrlChord(e) {
++    return e.ctrlKey && !e.altKey && !e.metaKey && /^Key[A-Z]$/.test(e.code ?? "");
++}
 +/**
 + * The control byte of a Ctrl chord whose key is not an ASCII character, read from the physical letter key: an input
 + * method (a Korean 2-set layout, for one) can report its own letter in `key` while the chord is on `code`'s key.
@@ -487,7 +564,7 @@ index a6746f499859ba9da2d7884dfd71694205c6d819..7ef2bfcb6c94d74a4e6ff9aec76a6e41
      /**
       * Hands the core the theme colors the page's CSS resolves to, unless the
 diff --git a/dist/wterm.js b/dist/wterm.js
-index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..fffa81453596df9f2d711fca64271d67c61c24cb 100644
+index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa8b176239 100644
 --- a/dist/wterm.js
 +++ b/dist/wterm.js
 @@ -131,6 +131,11 @@ export class WTerm {
@@ -581,7 +658,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..fffa81453596df9f2d711fca64271d67
          // Answer theme color queries with the colors the page shows right now.
          if (mayQueryThemeColors(data))
              this._syncCssThemeColors();
-@@ -732,9 +763,17 @@ export class WTerm {
+@@ -732,9 +763,21 @@ export class WTerm {
          this._rectangleDrag.cancel();
          this._historySelection.invalidate();
          this.renderer?.beforeMutation(this.bridge);
@@ -595,12 +672,16 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..fffa81453596df9f2d711fca64271d67
 +        // instead of the frame half drawn.
 +        const synchronizedBefore = this.bridge.synchronizedOutput?.() ?? false;
          this.bridge.resize(cols, rows);
-+        if (synchronizedBefore && !(this.bridge.synchronizedOutput?.() ?? false))
++        const reopened = synchronizedBefore && !(this.bridge.synchronizedOutput?.() ?? false);
++        if (reopened)
 +            this.bridge.writeString("\x1b[?2026h");
++        // The reopened update is the one the program opened, so it keeps that update's deadline: a drag that resizes
++        // again and again must not hold a screen the program left frozen past its one second (#853).
++        this._synchronizedOutputContinues = reopened;
          this._outputAnnouncements.invalidate();
          this.cols = this.bridge.getCols();
          this.rows = this.bridge.getRows();
-@@ -798,6 +837,7 @@ export class WTerm {
+@@ -798,6 +841,7 @@ export class WTerm {
              return false;
          const before = this.element.scrollTop;
          this._shouldScrollToBottom = false;
@@ -608,7 +689,51 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..fffa81453596df9f2d711fca64271d67
          this._searchReveal = false;
          this._pendingResizeScrollTop = target * this._rowHeight;
          this._doRender();
-@@ -1576,14 +1616,15 @@ export class WTerm {
+@@ -1127,14 +1171,20 @@ export class WTerm {
+             this._synchronizedOutputState = "idle";
+             return false;
+         }
++        const continues = this._synchronizedOutputContinues === true;
++        this._synchronizedOutputContinues = false;
+         if (this._synchronizedOutputState === "held" &&
+             generation !== this._synchronizedOutputGeneration) {
+-            this._armSynchronizedOutputFallback(generation);
++            this._armSynchronizedOutputFallback(generation, continues ? this._synchronizedOutputDeadline : undefined);
+             return true;
+         }
+         else if (this._synchronizedOutputState === "passthrough" &&
+             generation !== this._synchronizedOutputGeneration) {
+-            this._synchronizedOutputState = "idle";
++            // A resize's reopen is the same update its hold already released: it stays released, or every resize of a
++            // drag would freeze the screen for another second (review of #1097). A new update the program opens holds.
++            this._synchronizedOutputGeneration = generation;
++            if (!continues)
++                this._synchronizedOutputState = "idle";
+         }
+         if (this._synchronizedOutputState !== "idle") {
+             return this._synchronizedOutputState === "held";
+@@ -1144,9 +1194,10 @@ export class WTerm {
+         this._armSynchronizedOutputFallback(generation);
+         return true;
+     }
+-    _armSynchronizedOutputFallback(generation) {
++    _armSynchronizedOutputFallback(generation, deadline = performance.now() + SYNCHRONIZED_OUTPUT_TIMEOUT_MS) {
+         this._cancelSynchronizedOutputFallback();
+         this._synchronizedOutputGeneration = generation;
++        this._synchronizedOutputDeadline = deadline;
+         this._synchronizedOutputTimer = setTimeout(() => {
+             if (this._synchronizedOutputState !== "held" ||
+                 this._synchronizedOutputGeneration !== generation) {
+@@ -1157,7 +1208,7 @@ export class WTerm {
+             this._setupRendererIfNeeded();
+             this._cancelScheduledRender();
+             this._doRender();
+-        }, SYNCHRONIZED_OUTPUT_TIMEOUT_MS);
++        }, Math.max(0, deadline - performance.now()));
+     }
+     _cancelSynchronizedOutputFallback() {
+         if (this._synchronizedOutputTimer == null)
+@@ -1576,14 +1627,15 @@ export class WTerm {
          const height = this._visibleContentHeight(contentHeight);
          const newCols = Math.max(1, Math.floor(containerRect.width / charWidth));
          const newRows = Math.max(1, Math.floor(height / rowHeight));

@@ -33,12 +33,12 @@ export class StoredMesh {
   }
 }
 
-/** Every member and over-cap entry this host has seen, so a revoked member is still named and dialed by its hostId. */
+/** Every member this host has seen, so a revoked member is still named and dialed by its hostId. */
 export class MemberBook {
   readonly #known = new Map<string, MemberEntry>();
 
   remember(view: MeshView): void {
-    for (const member of [...view.members, ...view.overCap]) this.#known.set(member.signPub, member);
+    for (const member of view.members) this.#known.set(member.signPub, member);
   }
 
   all(): readonly MemberEntry[] {

@@ -173,14 +173,19 @@ describe("parseMeshStatus", () => {
     expect(parseMeshStatus({ ...status, later: true })).toEqual(status);
   });
 
+  // A reader built before a field must keep reading a host that writes it (#728): every object is open to new keys.
   test.each(objectPaths(status).map((path) => [path.join("."), path] as const))(
-    "refuses an unknown key in %s",
+    "drops a key a newer writer added in %s instead of refusing the document",
     (_, path) => {
       const copy: unknown = structuredClone(status);
-      nodeAt(copy, path)["later"] = true;
-      expect(parseMeshStatus(copy)).toBeUndefined();
+      nodeAt(copy, path)["later"] = { any: ["form"] };
+      expect(parseMeshStatus(copy)).toEqual(status);
     },
   );
+
+  test("a document from a newer version is refused, however much of it this reader knows", () => {
+    expect(parseMeshStatus({ ...status, v: status.v + 1 })).toBeUndefined();
+  });
 
   test.each(Object.keys(status))("refuses a document without %s", (key) => {
     expect(parseMeshStatus(without(key))).toBeUndefined();
@@ -248,7 +253,6 @@ describe("parseMeshStatus", () => {
     ["an id-shaped name", memberAt(1, { name: "t7" })],
     ["a local name herdr refuses", memberAt(1, { localName: "build box" })],
     ["a fingerprint of another shape", memberAt(1, { fingerprint: "abc" })],
-    ["a command instead of a suggestion", memberAt(1, { revokeCommand: "rm -rf ~" })],
     ["a revoke suggested for a member that is not unreachable", memberAt(1, { revokeSuggested: true })],
     [
       "a revoke suggested for this host",
@@ -259,10 +263,6 @@ describe("parseMeshStatus", () => {
     ["a replaced machine name herdr refuses", memberAt(1, { replacedMachine: { name: "old box", kind: "ssh" } })],
     ["a replaced machine as a bare name", memberAt(1, { replacedMachine: "old" })],
     ["a replaced machine of an unknown kind", memberAt(1, { replacedMachine: { name: "old", kind: "telnet" } })],
-    [
-      "a replaced machine carrying its target",
-      memberAt(1, { replacedMachine: { name: "old", kind: "ssh", target: "me@box" } }),
-    ],
     ["an empty hello core id", memberAt(1, { helloCoreId: "" })],
     [
       "a read-only end that is not a time",
@@ -270,5 +270,16 @@ describe("parseMeshStatus", () => {
     ],
   ])("refuses %s", (_, value) => {
     expect(parseMeshStatus(value)).toBeUndefined();
+  });
+
+  // Any client can write the document: what a reader does not know never reaches it, so a command or an ssh target
+  // written into a member is dropped, not shown.
+  test.each([
+    ["a command beside the suggestion", { revokeCommand: "rm -rf ~" }, "revokeCommand"],
+    ["a replaced machine's target", { replacedMachine: { name: "old", kind: "ssh", target: "me@box" } }, "target"],
+  ] as const)("drops %s", (_, change, key) => {
+    const read = parseMeshStatus(memberAt(1, change));
+    expect(read).toBeDefined();
+    expect(JSON.stringify(read)).not.toContain(key);
   });
 });

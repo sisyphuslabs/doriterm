@@ -4,6 +4,7 @@ import { lanUrlsFor } from "./lan-urls.ts";
 import { endSweeper } from "./end-sweeper.ts";
 import { createGateway } from "./gateway.ts";
 import { HC_VERSION_FLOOR, meetsHcFloor } from "./hc-install.ts";
+import { SpeculativeHello } from "./e2ee/speculative-hello.ts";
 import { HcPipe, readHcVersion } from "./hc-pipe.ts";
 import { openControl } from "./host-control.ts";
 import { e2eeDeps } from "./host-e2ee.ts";
@@ -117,6 +118,8 @@ async function serve(
   // session's core when none runs, and a host that no one uses must not start one (#306).
   // One expression for the status: the publisher and the control channel must answer from the same function (review #761).
   const meshStatus = options.meshStatus ?? e2ee?.meshStatus;
+  // Both read herdr's machine list again first, bounded, so a line herdr connected since the last reconcile reads so (#754).
+  const refreshMeshLines = (): Promise<void> => e2ee?.refreshMeshLines() ?? Promise.resolve();
   let info: HostInfoPublisher | undefined;
   let git: GitFactsPublisher | undefined;
   let meshDoc: MeshStatusPublisher | undefined;
@@ -149,8 +152,18 @@ async function serve(
     () => info?.stop(),
     () => (info?.kill() ?? []).map((pid) => `hc connect pid ${pid}`),
   );
+  // An early hello is answered only once a client has been admitted and the host's own services run (#1271): before
+  // that, an `hc connect` could start the session's core, and nothing a replayed message 1 reaches may start anything.
+  const speculative = new SpeculativeHello({
+    spawn: () =>
+      info === undefined
+        ? undefined
+        : new HcPipe({ hc: options.hc, session: options.session, env: options.env, log: options.log }),
+  });
+  started("speculative hello", () => speculative.stop());
   const gateway = createGateway({
     e2ee,
+    speculative,
     push: push?.serve,
     pair:
       e2ee === undefined
@@ -186,7 +199,15 @@ async function serve(
       meshDoc ??=
         meshStatus === undefined || e2ee === undefined
           ? undefined
-          : publishMeshStatusOnCore(core, meshStatus, e2ee.identity.hostId, options.log);
+          : publishMeshStatusOnCore(
+              core,
+              meshStatus,
+              e2ee.identity.hostId,
+              options.log,
+              undefined,
+              undefined,
+              refreshMeshLines,
+            );
       if (e2ee !== undefined) {
         const pending = e2ee.hostMesh.pending;
         offers ??= serveMeshOffers(core, options.log, (listener) => pending.onAdmitted(listener), meshOffer);
@@ -254,7 +275,17 @@ async function serve(
     control =
       options.stateDir === undefined || e2ee === undefined
         ? undefined
-        : openControl(options.stateDir, e2ee, meshStatus, push);
+        : openControl(
+            options.stateDir,
+            e2ee,
+            meshStatus === undefined
+              ? undefined
+              : async () => {
+                  await refreshMeshLines();
+                  return meshStatus();
+                },
+            push,
+          );
   } catch (error) {
     throw new Error(`cannot open the control socket that devices revoke uses: ${String(error)}`, { cause: error });
   }

@@ -17,8 +17,10 @@ export interface SessionDialogsProps {
   readonly terminals: readonly Terminal[];
   readonly ask: SessionAsk | null;
   readonly onDone: () => void;
-  /** Takes a session's pane out of the layout once the session is gone. */
+  /** Takes a session's pane out of the layout: as a close is chosen, else once the session is gone. */
   readonly onDrop: (address: string) => void;
+  /** A close's End failed: the session keeps running, so its later end drops its pane again. */
+  readonly onKept: (address: string) => void;
 }
 
 const COPY = {
@@ -37,7 +39,7 @@ const ENDED = {
  * question into a statement that it ended, with only OK: the question never disappears on its own, and nothing is
  * answered for the user. A question asked about a session that had already ended needs no answer and closes.
  */
-export function SessionDialogs({ connection, terminals, ask, onDone, onDrop }: SessionDialogsProps) {
+export function SessionDialogs({ connection, terminals, ask, onDone, onDrop, onKept }: SessionDialogsProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The question open now: an action settles into the question that started it, never into a later one.
@@ -101,13 +103,24 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onDrop }: S
     const { address } = ask;
     const calls = sessionCalls(connection);
     const record = terminal === undefined ? null : { address, pid: terminal.pid ?? null, created: terminal.created_ms };
+    const ending = (): Promise<void> =>
+      record === null
+        ? endSession(calls, address)
+        : recordedEnd(pendingEnds(connection.hello.core.id), { ...record, at: Date.now() }, calls);
+    const closing = ask.kind === "close";
     run(
       () =>
-        record === null
-          ? endSession(calls, address)
-          : recordedEnd(pendingEnds(connection.hello.core.id), { ...record, at: Date.now() }, calls),
+        ending().catch((cause: unknown) => {
+          if (closing) onKept(address);
+          throw cause;
+        }),
       onDone,
     );
+    // A close takes the pane and its question away as it is chosen, not a round trip or a kill escalation later (#1271):
+    // End is already recorded, and a failed one still brings its question back to say why.
+    if (!closing) return;
+    endedQuietly.current = ask;
+    onDrop(address);
   };
   // Closing ends the program, as in herdr-app and Ghostty; it asks first only as confirm-close-surface says. A close
   // that needs no question ends at once, and the question shows only to say why that End failed.

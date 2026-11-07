@@ -3,15 +3,17 @@
  * Writes the release notes for a version to stdout: the CHANGELOG.md section for that version, then the downloads in
  * the assets directory and which builds are code signed. A release with no section, or a section with no lines, is
  * refused (exit 1), so a tag cannot publish without notes. A prerelease (1.2.0-rc.1) takes the 1.2.0 section, or the
- * Unreleased section while 1.2.0 has none.
+ * Unreleased section and the changes/unreleased/ fragments while 1.2.0 has none (changelog-fragments.ts).
  *
  * Usage: bun .github/scripts/release-notes.ts <version> <assets dir>
  *        bun .github/scripts/release-notes.ts --check <version>   (only the refusal, before any build)
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { FRAGMENT_DIR, pendingNotes, readFragments } from "./changelog-fragments.ts";
 
-const CHANGELOG = join(import.meta.dir, "..", "..", "CHANGELOG.md");
+const ROOT = join(import.meta.dir, "..", "..");
+const CHANGELOG = join(ROOT, "CHANGELOG.md");
 
 interface Download {
   readonly label: string;
@@ -61,11 +63,15 @@ const hasEntries = (section: string): boolean =>
 /** The section that holds this release's notes, or why there is none. */
 function releaseSection(version: string): { notes: string } | { refusal: string } {
   if (!existsSync(CHANGELOG)) return { refusal: "CHANGELOG.md is missing" };
-  const lines = readFileSync(CHANGELOG, "utf8").split(/\r?\n/);
+  const text = readFileSync(CHANGELOG, "utf8");
+  const lines = text.split(/\r?\n/);
+  const fragments = readFragments(join(ROOT, FRAGMENT_DIR));
   const base = version.split("-")[0] ?? version;
+  const pending = pendingNotes(text, fragments);
+  if (!pending.ok) return { refusal: pending.problems.join("; ") };
   const names = version === base ? [version] : [version, base, "Unreleased"];
   const found = names.flatMap((name) => {
-    const section = changelogSection(lines, name);
+    const section = name === "Unreleased" ? pending.notes : changelogSection(lines, name);
     return section === undefined ? [] : [{ name, section }];
   });
   const first = found.find(({ section }) => hasEntries(section));

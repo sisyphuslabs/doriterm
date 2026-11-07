@@ -74,18 +74,20 @@ function all<T>(value: unknown, item: (entry: unknown) => T | undefined): readon
   return items.every((entry) => entry !== undefined) ? items.filter((entry) => entry !== undefined) : undefined;
 }
 
-/** The persisted index, or undefined when it is missing or malformed (the host rebuilds it at start). */
+/**
+ * The persisted index, or undefined when it is missing or malformed (the host rebuilds it at start). An index with an
+ * `overCap` list was written under the 12-member cap (#806): its members past the 12th are missing, so it is rebuilt.
+ */
 function indexData(value: unknown): IndexData | undefined {
-  if (!isRecord(value) || !Number.isSafeInteger(value["generation"])) return undefined;
+  if (!isRecord(value) || !Number.isSafeInteger(value["generation"]) || "overCap" in value) return undefined;
   const members = all(value["members"], memberEntry);
-  const overCap = all(value["overCap"], memberEntry);
   const revoked = all(value["revoked"], revokedEntry);
   const superseded = value["superseded"];
   // An index written before `named` existed is missing it: the host rebuilds it at start (MeshStore.ensureIndex).
   const named = all(value["named"], namingEntry);
-  if (members === undefined || overCap === undefined || revoked === undefined || !strings(superseded)) return undefined;
+  if (members === undefined || revoked === undefined || !strings(superseded)) return undefined;
   if (named === undefined) return undefined;
-  return { generation: Number(value["generation"]), members, overCap, revoked, superseded, named };
+  return { generation: Number(value["generation"]), members, revoked, superseded, named };
 }
 
 const objectOr = (value: unknown): Readonly<Record<string, unknown>> => (isRecord(value) ? value : {});

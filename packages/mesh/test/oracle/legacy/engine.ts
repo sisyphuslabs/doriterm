@@ -1,5 +1,5 @@
 // Test-only: the R3 engine as it was before incremental evaluation (M-14), kept verbatim as the differential oracle
-// for src/view. Never imported by src/.
+// for src/view, except for the 12-member cap the contract dropped (#806). Never imported by src/.
 
 // The R3 engine: the record set, the views of its sub-sets with their caches, and the public viewOf. The rules are
 // split by responsibility: structure.ts, standing.ts, testimony.ts, status.ts, membership.ts. No rule reads its own
@@ -86,16 +86,14 @@ export const viewOfRecords = (records: readonly Rec[], cache?: ViewCache): Engin
   new Engine(new Dag(records), cache).full();
 
 export interface View {
-  /** At most 12 members, in the canonical order of their governing admissions. */
+  /** Every key with a governing admission, in the canonical order of those admissions. */
   readonly members: ReadonlySet<string>;
-  /** Admitted keys past the 12th member: not dialed, cannot sign. Disjoint from `members`. */
-  readonly overCap: ReadonlySet<string>;
   readonly revoked: ReadonlySet<string>;
   /** signPub -> the member's current Noise key. */
   readonly noise: ReadonlyMap<string, string>;
   /** signPub -> the signPub of the member that admitted it (the lineage). */
   readonly admitter: ReadonlyMap<string, string>;
-  /** signPub -> the hash of the member's governing admission (members only, not over-cap keys). */
+  /** signPub -> the hash of the member's governing admission (members only). */
   readonly governing: ReadonlyMap<string, string>;
   /** signPub -> the member's mesh name after the fallback for taken names. */
   readonly name: ReadonlyMap<string, string>;
@@ -105,7 +103,6 @@ export interface View {
 
 const EMPTY: View = {
   members: new Set(),
-  overCap: new Set(),
   revoked: new Set(),
   noise: new Map(),
   admitter: new Map(),
@@ -124,7 +121,6 @@ export function viewOf(set: readonly Signed[], cache?: ViewCache): View {
   const v = viewOfRecords(records, cache);
   return {
     members: new Set(v.members),
-    overCap: new Set(v.overCap),
     revoked: new Set(v.revoked),
     noise: v.noise,
     admitter: v.admitter,

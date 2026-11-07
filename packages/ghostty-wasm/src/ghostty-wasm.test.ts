@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ghosttyBuild, ghosttyWasmUrl } from "./index.ts";
-import { runScenario } from "./testing/scenario.ts";
+import { GhosttyCore } from "@wterm/ghostty";
+import { runScenario, writeAll } from "./testing/scenario.ts";
 
 const STOCK_WASM_URL = Bun.pathToFileURL(Bun.resolveSync("@wterm/ghostty/ghostty-vt.wasm", import.meta.dir)).href;
 const PROGRAM_STATUS_REPLY = "\x1b]7501;?:states=idle,working,done,blocked,error:kinds=permission,question,auth\x1b\\";
@@ -28,4 +29,12 @@ describe("@wterm/ghostty 0.5.9 core on the rebuilt wasm (headless)", () => {
     expect(stock.response).toBeNull();
     expect(stock.programStatus).toBeNull();
   });
+});
+
+test("writing to a core that takes nothing fails at once instead of waiting for a write that never comes (#1002)", async () => {
+  const core = await GhosttyCore.load({ wasmPath: ghosttyWasmUrl });
+  core.init(80, 24);
+  core.dispose();
+  // A disposed core (as one with no terminal, or no buffer for the input) returns without calling back.
+  await expect(writeAll(core, "hello")).rejects.toThrow(/wrote nothing/);
 });

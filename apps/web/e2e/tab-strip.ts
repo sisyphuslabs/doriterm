@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, laidOutBox, openNewTerminal } from "./fixtures.ts";
+import { shortcut } from "./platform-keys.ts";
 
 export const strip = (page: Page) => page.getByRole("tablist", { name: "Tabs" });
 export const tabs = (page: Page) => strip(page).getByRole("tab");
@@ -20,12 +21,10 @@ export const selectedIndex = (page: Page) =>
   tabs(page).evaluateAll((els) => els.findIndex((el) => el.getAttribute("aria-selected") === "true"));
 
 /**
- * The number chord that selects a tab by its place: Cmd+N on a Mac, Alt+N elsewhere, since Ctrl+N selects a space there.
+ * The number chord that selects a tab by its place, as the platform binds it: Cmd+N on a Mac, Ctrl+N elsewhere, as
+ * herdr-app binds it (#702).
  */
-export async function tabNumberChord(page: Page, place: number): Promise<string> {
-  const mac = await page.evaluate(() => /mac/i.test(navigator.platform));
-  return `${mac ? "Meta" : "Alt"}+${place}`;
-}
+export const tabNumberChord = (page: Page, place: number): Promise<string> => shortcut(page, `tab.select:${place}`);
 
 /** The strip's order as the platform's number chords select each tab, then the tab that was selected is selected again. */
 export async function order(page: Page): Promise<string[]> {

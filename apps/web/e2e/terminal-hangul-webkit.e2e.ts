@@ -98,6 +98,38 @@ test("a paste the browser delivers only as input, while a syllable is still bein
   await expectRead(page, terminal, "ed 95 9c e3 84 b1 78 79 7a");
 });
 
+test("a paste inserted with no paste event, while a syllable is still being typed, sends each part once (#988)", async ({
+  page,
+}) => {
+  const { terminal, field } = await openReader(page);
+  await typeHangul(field, "iphone", HANGEUL.slice(0, 4));
+  // No paste event first: the browser inserts the paste into the field and reports only the input.
+  await field.evaluate((element) => {
+    if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
+    element.setRangeText("xyz", element.selectionStart, element.selectionEnd, "end");
+    element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertFromPaste", data: "xyz" }));
+  });
+  // The run ended with the paste: the next syllable starts afresh, with no stray erase of what was sent.
+  await typeHangul(field, "iphone", HANGEUL.slice(0, 3));
+  await expectRead(page, terminal, "ed 95 9c e3 84 b1 78 79 7a ed 95 9c");
+});
+
+test("iPad: Cmd+Backspace with a syllable still being typed kills the line with that syllable on it (#978)", async ({
+  page,
+}) => {
+  const { terminal, field } = await openReader(page);
+  await page.keyboard.type("x");
+  await typeHangul(field, "ipad", HANGEUL.slice(0, 3));
+  await field.evaluate((element) => {
+    element.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Backspace", keyCode: 8, metaKey: true }),
+    );
+  });
+  // The kill took x and the syllable: nothing of either reaches the program after it.
+  await page.keyboard.type("z");
+  await expectRead(page, terminal, "7a");
+});
+
 test("Safari on a Mac: replacement edits without composition events reach the program as 한글", async ({ page }) => {
   const { terminal, field } = await openReader(page);
   await safariReplace(field, ["ㅎ", "하", "한"]);

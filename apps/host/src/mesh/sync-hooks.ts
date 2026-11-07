@@ -12,7 +12,10 @@ import type { PendingJoinFact } from "./status-sources.ts";
 export interface SyncHandle {
   readonly gossip: Gossip | undefined;
   readonly runtime:
-    | { readonly gossip: Pick<Gossip, "stop">; readonly reconciler: Pick<Reconciler, "reconcile" | "remaining"> }
+    | {
+        readonly gossip: Pick<Gossip, "stop">;
+        readonly reconciler: Pick<Reconciler, "reconcile" | "remaining" | "refreshLines">;
+      }
     | undefined;
   changed(): void;
   stop(): void | Promise<void>;
@@ -21,7 +24,7 @@ export interface SyncHandle {
 }
 
 /** The view with no member: a reconcile against it removes every mesh machine from this host's core. */
-const NO_MEMBERS: MeshView = { members: [], overCap: [], revoked: [] };
+const NO_MEMBERS: MeshView = { members: [], revoked: [] };
 
 /** How often a confirmation wait looks at `owed()` again: confirmations arrive as the peers' next `hello`. */
 const CONFIRM_STEP_MS = 250;
@@ -69,6 +72,7 @@ export function syncHooks(sync: SyncHandle, clock: Clock, pending: () => readonl
       }
     },
     live: () => ({ ...sync.live(), pending: pending() }),
+    refreshLines: () => sync.runtime?.reconciler.refreshLines() ?? Promise.resolve(),
     floor: () => sync.gossip?.floor(),
     formatReady: () => {
       const running = sync.gossip;

@@ -14,7 +14,7 @@ const member = (name: string, kind?: "machine" | "client"): MemberEntry => ({
   ...(kind === undefined ? {} : { kind }),
 });
 
-const viewOf = (...members: readonly MemberEntry[]): MeshView => ({ members, overCap: [], revoked: [] });
+const viewOf = (...members: readonly MemberEntry[]): MeshView => ({ members, revoked: [] });
 
 describe("the members a host may dial are the machines", () => {
   test("a client is left out of the dialable set but stays in the view, where the status document shows it", () => {

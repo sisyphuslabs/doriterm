@@ -18,7 +18,6 @@ const sorted = (keys: Iterable<string>): string[] => [...keys].toSorted();
 
 interface Seen {
   readonly members: readonly string[];
-  readonly overCap: readonly string[];
   readonly revoked: readonly string[];
   readonly noise: ReadonlyMap<string, string>;
   readonly admitter: ReadonlyMap<string, string>;
@@ -29,7 +28,6 @@ function expectView(s: Scenario, view: Seen, noiseLabel: (label: string) => stri
   const want = s.residual ?? { members: s.expectMembers, revoked: s.expectRevoked };
   expect(sorted(view.members)).toEqual(sorted(want.members));
   expect(sorted(view.revoked)).toEqual(sorted(want.revoked));
-  if (s.expectOverCap !== undefined) expect(sorted(view.overCap)).toEqual(sorted(s.expectOverCap));
   for (const [k, v] of Object.entries(s.expectNoise ?? {})) expect(view.noise.get(k)).toBe(noiseLabel(v));
   for (const [k, v] of Object.entries(s.expectAdmitter ?? {})) expect(view.admitter.get(k)).toBe(v);
   for (const [k, v] of Object.entries(s.expectName ?? {})) expect(view.name.get(k)).toBe(v);
@@ -70,7 +68,6 @@ function throughTheDoor(s: Scenario): void {
     new Map([...m].map(([k, x]) => [named(k), x]));
   const view: Seen = {
     members: [...v.members].map(named),
-    overCap: [...v.overCap].map(named),
     revoked: [...v.revoked].map(named),
     noise: byName(v.noise),
     admitter: new Map([...v.admitter].map(([k, x]) => [named(k), named(x)])),

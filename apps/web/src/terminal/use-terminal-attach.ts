@@ -59,6 +59,9 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
   const toasts = useToastManager();
   const [restarting, setRestarting] = useState(false);
   const [ended, setEnded] = useState(false);
+  /** Counts the streams the core ended with the program still running; each is re-attached by the effect below. */
+  const [lostStreams, setLostStreams] = useState(0);
+  const reattachedFor = useRef(0);
   const [unopened, setUnopened] = useState<string | null>(null);
   const unopenedAt = useReopenWhenMoved(address, unopened, () => {
     setWt(null);
@@ -108,7 +111,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
   }, [onEnd]);
 
   /** The core ended the stream, or refused an attach, with the program not known to be over: ask it what is left. */
-  const settle = (ready: WTerm, refusal: { readonly cause: unknown } | null): void => {
+  const settle = (refusal: { readonly cause: unknown } | null): void => {
     void askCore(connection).then((answer) => {
       // The line dropped again: the next connection attaches anew.
       if (connection.closed || unmounted.current) return undefined;
@@ -119,7 +122,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           onEnded?.();
         },
         restarting: () => setRestarting(true),
-        reattach: () => attach(ready),
+        reattach: () => setLostStreams((count) => count + 1),
         replaced: () => undefined,
         error: () => {
           unopenedAt(address);
@@ -193,7 +196,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
             if (stream.current === attached) stream.current = null;
             const end = terminalEnd(close);
             onEndNow.current?.(address, end);
-            if (end === "lost") settle(ready, null);
+            if (end === "lost") settle(null);
           });
           for (const data of pending.current.splice(0)) attached.write(data);
           focusWhenFree(ready);
@@ -203,14 +206,17 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           // The connection dropped mid-attach: the next one attaches again (below).
           if (connection.closed || unmounted.current) return;
           setOpening(false);
-          settle(ready, { cause });
+          settle({ cause });
         },
       );
   };
 
   useEffect(() => {
-    if (wt !== null && shown && attachedTo.current !== connection) attach(wt);
-  }, [wt, connection, shown]);
+    if (wt === null || !shown) return;
+    if (attachedTo.current === connection && reattachedFor.current === lostStreams) return;
+    reattachedFor.current = lostStreams;
+    attach(wt);
+  }, [wt, connection, shown, lostStreams]);
 
   return { attach, opening, restarting, ended, unopened, clearUnopened: () => setUnopened(null), onEndNow };
 }
