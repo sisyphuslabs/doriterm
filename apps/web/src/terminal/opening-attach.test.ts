@@ -172,6 +172,25 @@ describe("a new terminal's attach goes with its run (#1351)", () => {
     connection.close();
   });
 
+  test("a run named by its caller, as a template's, goes alone: no attach can reach a live terminal of that name", async () => {
+    const { connection, core } = await opened();
+    const started = runWithAttach(
+      connection,
+      openingCallsOf(connection),
+      { argv: ["claude"], name: "claude" },
+      DISPLAY,
+    );
+    const run = await core.request("terminal.run");
+    expect(run.params["name"]).toBe("claude");
+    core.reply(run.id, { error: { code: -32000, message: "taken", data: { kind: "name_taken" } } });
+    await expect(started).rejects.toMatchObject({ kind: "name_taken" });
+    // A ping goes behind the run on the same wire: once it is in, anything sent with the run would be in too.
+    void connection.call("terminal.list", {}).catch(() => undefined);
+    await core.request("terminal.list");
+    expect(core.requests.map((request) => request.method)).toEqual(["terminal.run", "terminal.list"]);
+    connection.close();
+  });
+
   test("any other refusal of that attach is the view's to show: it does not attach again", async () => {
     const { connection, core } = await opened();
     const started = runWithAttach(connection, openingCallsOf(connection), {}, DISPLAY);
