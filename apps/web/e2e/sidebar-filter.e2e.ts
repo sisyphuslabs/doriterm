@@ -127,3 +127,27 @@ test.describe("on a phone", () => {
     await expect(page.getByRole("button", { name: "Filter sidebar" })).toHaveCount(0);
   });
 });
+
+test("while the filter holds a query a machine header offers no fold toggle, and its saved fold is unchanged after (#850)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const sidebar = page.getByRole("complementary", { name: "Workspace" });
+  const spaces = sidebar.getByRole("region", { name: "Spaces" });
+  const fold = spaces.getByRole("button", { name: /^(Collapse|Expand) studio$/ });
+  await expect(fold).toHaveAccessibleName("Collapse studio", { timeout: 20_000 });
+
+  await page.keyboard.press("Control+Alt+F");
+  const field = sidebar.getByRole("searchbox", { name: "Filter sidebar" });
+  await expect(field).toBeFocused();
+  // The machine's own name: its group stays, with every space it holds.
+  await page.keyboard.type("studio");
+  await expect(spaces.getByText("studio", { exact: true })).toBeVisible();
+  // Folding is not on offer while the lists are narrowed: a click there would change a state the screen cannot show.
+  await expect(fold).toHaveCount(0);
+
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await expect(field).toBeHidden();
+  await expect(fold).toHaveAccessibleName("Collapse studio");
+});
