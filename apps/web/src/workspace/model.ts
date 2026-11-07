@@ -2,6 +2,7 @@ import type { JsonObject, Terminal } from "@doriface/protocol";
 import { docSpaces, panesOf, tabsOf } from "@doriface/protocol/layout";
 import type { Agent, AgentStatus, Space } from "@doriface/ui";
 import { spaceKey } from "../layout/view.ts";
+import { isOpeningName } from "../terminal/opening-attach.ts";
 import { agentStatus } from "./attention.ts";
 import type { Session } from "./attention.ts";
 import { type GitFactsOf, shownGit } from "./git-facts.ts";
@@ -66,7 +67,8 @@ export function asksBeforeClosing(confirm: string, sessions: readonly Session[])
 export function terminalTitle(terminal: Terminal): string {
   const renamed = terminal.labels[TITLE_LABEL];
   if (renamed !== undefined && renamed !== "") return renamed;
-  const named = terminal.name ?? terminal.title;
+  // A name this page gave only so the attach could go with the run is no title (#1351).
+  const named = isOpeningName(terminal.name) ? terminal.title : (terminal.name ?? terminal.title);
   if (named !== undefined && named !== null && named !== "") return named;
   return terminal.foreground?.name ?? terminal.argv[0] ?? terminal.address;
 }
