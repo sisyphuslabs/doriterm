@@ -89,7 +89,7 @@ async function chord(page: Page, action: "new" | "close" | "right" | "down" | "s
     close: onMac ? "Meta+Alt+KeyW" : "Control+Shift+KeyW",
     right: onMac ? "Meta+KeyD" : "Control+Shift+KeyO",
     down: onMac ? "Meta+Shift+KeyD" : "Control+Shift+KeyE",
-    select: onMac ? "Meta" : "Alt",
+    select: onMac ? "Meta" : "Control",
   };
   return chords[action];
 }

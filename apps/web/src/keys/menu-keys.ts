@@ -7,6 +7,7 @@ import { currentPlatform } from "./trigger.ts";
 /** The actions the desktop app's Shell menu lists (apps/desktop/src/main/shell-menu.ts). */
 export const MENU_ACTIONS: readonly string[] = [
   "tab.new",
+  "tab.rename",
   "pane.split:right",
   "pane.split:down",
   "pane.go:left",
@@ -28,6 +29,7 @@ export const MENU_ACTIONS: readonly string[] = [
   ...Array.from({ length: 9 }, (_, index) => `space.select:${index + 1}`),
   "space.prev",
   "space.next",
+  "space.new",
 ];
 
 /** The first trigger bound to each menu action; an unbound one is left out, so its item shows no shortcut. */

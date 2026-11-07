@@ -113,7 +113,7 @@ test.describe("machine order", () => {
     const mac = await page.evaluate(() => /mac/i.test(navigator.platform));
     const [up, down] = mac
       ? ["Meta+Shift+ArrowUp", "Meta+Shift+ArrowDown"]
-      : ["Control+Shift+PageUp", "Control+Shift+PageDown"];
+      : ["Control+Alt+Shift+PageUp", "Control+Alt+Shift+PageDown"];
     const button = machineRow(page);
     await button.focus();
     await page.keyboard.press(up);
@@ -140,7 +140,7 @@ test.describe("machine order", () => {
     const mac = await page.evaluate(() => /mac/i.test(navigator.platform));
     const button = machineRow(page);
     await button.focus();
-    await page.keyboard.press(mac ? "Meta+Shift+ArrowLeft" : "Control+Shift+PageUp");
+    await page.keyboard.press(mac ? "Meta+Shift+ArrowLeft" : "Control+Alt+Shift+PageUp");
     await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
     await expect(button).toBeFocused();
     expect(await domOrder(page)).toEqual(strip);
@@ -183,7 +183,9 @@ test.describe("machine order", () => {
 /** The chords that move a focused row on this browser's platform, as the move keys test reads them. */
 async function moveKeys(page: Page): Promise<readonly [string, string]> {
   const mac = await page.evaluate(() => /mac/i.test(navigator.platform));
-  return mac ? ["Meta+Shift+ArrowUp", "Meta+Shift+ArrowDown"] : ["Control+Shift+PageUp", "Control+Shift+PageDown"];
+  return mac
+    ? ["Meta+Shift+ArrowUp", "Meta+Shift+ArrowDown"]
+    : ["Control+Alt+Shift+PageUp", "Control+Alt+Shift+PageDown"];
 }
 
 /** The ids the order document holds, after a move this page made. */

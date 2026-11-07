@@ -3,7 +3,7 @@ import { defaultKeymap } from "./defaults.ts";
 import { triggersFor } from "./keymap.ts";
 import { GHOSTTY_DEFAULTS } from "./ghostty-defaults.ts";
 import { HERDR_APP_MAC, HERDR_APP_OTHER } from "./herdr-app-defaults.ts";
-import { PLATFORM_RESERVED } from "./platform-reserved.ts";
+import { PLATFORM_RESERVED, TAKEN_ON_PURPOSE } from "./platform-reserved.ts";
 
 /**
  * Actions whose keys doriface picks itself on that platform; their triggers must be free in both upstream keymaps, and
@@ -16,9 +16,9 @@ const DORIFACE_ONLY: Readonly<Record<"mac" | "other", readonly string[]>> = {
   other: [
     "layout.focus:sidebar",
     "layout.filter:sidebar",
-    // herdr-app cycles spaces with Ctrl+Shift+PgUp/PgDn here; doriface's terminal keeps those, so it cycles with Ctrl+Alt+[ / ].
-    "space.next",
-    "space.prev",
+    // herdr-app cycles spaces with Ghostty's move_tab chord here, so moving a tab takes a chord of doriface's own.
+    "tab.move:left",
+    "tab.move:right",
     "pane.resize:left",
     "pane.resize:right",
     "pane.resize:up",
@@ -43,11 +43,24 @@ describe("doriface-only bindings", () => {
     expect(triggers.filter((trigger) => trigger in PLATFORM_RESERVED)).toEqual([]);
   });
 
-  test("on Linux and Windows moving a tab takes Ghostty's move_tab chord, not its previous/next tab", () => {
+  test.each(["mac", "other"] as const)(
+    "on %s a default takes a reserved chord only where TAKEN_ON_PURPOSE says why",
+    (platform) => {
+      const taken = [...defaultKeymap(platform).keys()].filter((trigger) => trigger in PLATFORM_RESERVED);
+      expect(taken.filter((trigger) => !(trigger in TAKEN_ON_PURPOSE))).toEqual([]);
+      expect(taken.length).toBeGreaterThan(0);
+    },
+  );
+
+  test("every chord taken on purpose is a reserved one", () => {
+    expect(Object.keys(TAKEN_ON_PURPOSE).filter((trigger) => !(trigger in PLATFORM_RESERVED))).toEqual([]);
+  });
+
+  test("on Linux and Windows moving a tab takes Ctrl+Alt+Shift+PgUp / PgDn, since herdr-app's spaces take Ctrl+Shift", () => {
     const keymap = defaultKeymap("other");
     expect([triggersFor(keymap, "tab.move:left"), triggersFor(keymap, "tab.move:right")]).toEqual([
-      ["ctrl+shift+page_up"],
-      ["ctrl+shift+page_down"],
+      ["ctrl+alt+shift+page_up"],
+      ["ctrl+alt+shift+page_down"],
     ]);
   });
 });
