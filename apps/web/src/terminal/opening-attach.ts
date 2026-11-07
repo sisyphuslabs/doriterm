@@ -47,6 +47,10 @@ function openingName(): string {
  * that names it goes right behind the run, so the host hands it to the core once the run has answered and the first
  * screen is one round trip away instead of two. The view that opens the address takes that attach
  * ({@link takeOpeningAttach}). A run that fails takes its attach down with it.
+ *
+ * Only a run this page names itself gets the attach: a name the caller chose (a template's) may already be a live
+ * terminal's, and an attach by it would reach that terminal when the run is refused, so such a run goes alone and its
+ * view attaches once it has started.
  */
 export async function runWithAttach(
   connection: object,
@@ -54,7 +58,8 @@ export async function runWithAttach(
   params: TerminalRunParams,
   display: Display | undefined,
 ): Promise<{ readonly address: string }> {
-  const name = params.name ?? openingName();
+  if (params.name !== undefined && params.name !== null) return calls.run(params);
+  const name = openingName();
   const { cols, rows } = lastSize;
   const ran = calls.run({ ...params, name, size: { cols, rows } });
   const terminal = params.on === undefined || params.on === null ? name : `${params.on}/${name}`;

@@ -1,33 +1,6 @@
-import { FrameDecoder, FrameKind, HEADER_BYTES, RPC_CHANNEL } from "@doriface/protocol";
+import { FrameDecoder, FrameKind, HEADER_BYTES, MAX_PAYLOAD_BYTES, RPC_CHANNEL } from "@doriface/protocol";
 import type { DataHandler, Link } from "./link.ts";
-
-const LF = 0x0a;
-/** A plain line longer than this is not the hello this reads for: the connection is then passed through untouched. */
-const MAX_LINE_BYTES = 64 * 1024;
-
-type Mode = "lines" | "frames" | "off";
-
-interface Rpc {
-  readonly id?: unknown;
-  readonly method?: unknown;
-  readonly params?: unknown;
-  readonly result?: unknown;
-  readonly error?: unknown;
-}
-
-const decoder = new TextDecoder();
-
-function rpcOf(bytes: Uint8Array): Rpc | undefined {
-  try {
-    const value: unknown = JSON.parse(decoder.decode(bytes));
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-const field = (params: unknown, key: string): unknown =>
-  typeof params === "object" && params !== null ? Reflect.get(params, key) : undefined;
+import { field, isFramedHello, isFramedReply, joined, type Mode, rpcOf, scanLines } from "./rpc-lines.ts";
 
 /** The address a run's terminal answers to once started: its name, behind the machine it runs `on`. */
 function addressOfRun(params: unknown): string | undefined {
@@ -37,37 +10,17 @@ function addressOfRun(params: unknown): string | undefined {
   return typeof on === "string" && on !== "" ? `${on}/${name}` : name;
 }
 
-function joined(a: Uint8Array, b: Uint8Array): Uint8Array {
-  if (a.byteLength === 0) return b;
-  const out = new Uint8Array(a.byteLength + b.byteLength);
-  out.set(a);
-  out.set(b, a.byteLength);
+/** The parts joined once, into `total` bytes: a frame of n bytes in k records costs O(n), not O(n * k) (#481). */
+function joinedAll(parts: readonly Uint8Array[], total: number): Uint8Array {
+  if (parts.length === 1 && parts[0] !== undefined) return parts[0];
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.byteLength;
+  }
   return out;
 }
-
-interface LineScan {
-  readonly mode: Mode;
-  readonly rest: Uint8Array;
-  readonly framedAt: number | undefined;
-}
-
-function scanLines(buffer: Uint8Array, switches: (line: Rpc) => boolean): LineScan {
-  let start = 0;
-  for (;;) {
-    const end = buffer.indexOf(LF, start);
-    if (end === -1) {
-      const rest = buffer.slice(start);
-      return { mode: rest.byteLength > MAX_LINE_BYTES ? "off" : "lines", rest, framedAt: undefined };
-    }
-    const line = rpcOf(buffer.subarray(start, end));
-    if (line === undefined) return { mode: "off", rest: new Uint8Array(0), framedAt: undefined };
-    start = end + 1;
-    if (switches(line)) return { mode: "frames", rest: new Uint8Array(0), framedAt: start };
-  }
-}
-
-const isFramedHello = (line: Rpc): boolean => line.method === "hello" && field(line.params, "framed") === true;
-const isFramedReply = (line: Rpc): boolean => line.method === undefined && field(line.result, "framed") === true;
 
 /**
  * Wraps the link to a core so a client can send `terminal.attach` right behind the `terminal.run` that starts its
@@ -86,9 +39,12 @@ export function attachAfterRun(core: Link): Link {
   let head: Uint8Array = new Uint8Array(0);
   /** Bytes of the frame passed on last that are still to come; they pass as they come. */
   let skip = 0;
-  /** A request frame being read whole before it is passed on (or held), and the bytes it still needs. */
+  /** A request frame being read whole before it is passed on (or held), its whole size, and the bytes it still needs. */
   let collecting: Uint8Array[] | undefined;
+  let collectingBytes = 0;
   let need = 0;
+  /** Released attach frames waiting for the frame the client is partway through to end, so none lands inside it. */
+  let released: Uint8Array[] = [];
   const downFrames = new FrameDecoder();
   /** Unanswered runs by request id (JSON text), with the address each one's terminal will answer to. */
   const runs = new Map<string, string>();
@@ -96,11 +52,23 @@ export function attachAfterRun(core: Link): Link {
   const held = new Map<string, Uint8Array[]>();
   let closed = false;
 
+  /** Whether the bytes sent to the core so far end on a frame boundary, so a whole frame can go next. */
+  const atBoundary = (): boolean => collecting === undefined && skip === 0 && head.byteLength === 0;
+
+  /**
+   * The attaches that waited for this address's run go to the core: now, when what the client sent ends on a frame
+   * boundary, or else once the frame it is partway through has gone by ({@link sendFrames}).
+   */
   const release = (address: string): void => {
     if ([...runs.values()].includes(address)) return;
     const frames = held.get(address);
     held.delete(address);
-    for (const frame of frames ?? []) {
+    if (frames === undefined) return;
+    if (!atBoundary()) {
+      released.push(...frames);
+      return;
+    }
+    for (const frame of frames) {
       core.send(frame).catch(() => core.close());
     }
   };
@@ -143,7 +111,15 @@ export function attachAfterRun(core: Link): Link {
       if (end > runStart) out.push(bytes.subarray(runStart, end));
       runStart = end;
     };
+    /** Released attaches go out at the first frame boundary, right after the frame they would have split. */
+    const flushReleased = (): void => {
+      if (released.length === 0 || !atBoundary()) return;
+      passUpTo(at);
+      out.push(...released);
+      released = [];
+    };
     while (at < bytes.byteLength) {
+      flushReleased();
       if (collecting !== undefined) {
         const take = Math.min(need, bytes.byteLength - at);
         collecting.push(bytes.slice(at, at + take));
@@ -151,8 +127,9 @@ export function attachAfterRun(core: Link): Link {
         at += take;
         runStart = at;
         if (need === 0) {
-          requestFrame(collecting.reduce(joined), out);
+          const frame = joinedAll(collecting, collectingBytes);
           collecting = undefined;
+          requestFrame(frame, out);
         }
       } else if (skip > 0) {
         const take = Math.min(skip, bytes.byteLength - at);
@@ -161,6 +138,16 @@ export function attachAfterRun(core: Link): Link {
       } else if (head.byteLength === 0 && bytes.byteLength - at >= HEADER_BYTES) {
         const view = new DataView(bytes.buffer, bytes.byteOffset + at, HEADER_BYTES);
         const length = view.getUint32(5, true);
+        if (length > MAX_PAYLOAD_BYTES) {
+          // No frame hc would read: from here every byte passes on untouched, so hc fails the stream as it would
+          // without this wrapper, and nothing is buffered waiting for the frame's end.
+          up = "off";
+          runs.clear();
+          for (const frames of held.values()) released.push(...frames);
+          held.clear();
+          flushReleased();
+          break;
+        }
         if (view.getUint32(0, true) !== RPC_CHANNEL || view.getUint8(4) !== FrameKind.Data) {
           at += HEADER_BYTES;
           skip = length;
@@ -170,7 +157,8 @@ export function attachAfterRun(core: Link): Link {
         if (end > bytes.byteLength) {
           passUpTo(at);
           collecting = [];
-          need = HEADER_BYTES + length;
+          collectingBytes = HEADER_BYTES + length;
+          need = collectingBytes;
         } else if (holds(bytes.subarray(at + HEADER_BYTES, end), bytes.slice(at, end))) {
           passUpTo(at);
           at = end;
@@ -188,7 +176,8 @@ export function attachAfterRun(core: Link): Link {
         }
       }
     }
-    passUpTo(at);
+    flushReleased();
+    passUpTo(up === "off" ? bytes.byteLength : at);
     return Promise.all(out.map((chunk) => core.send(chunk))).then(() => undefined);
   };
 
@@ -248,6 +237,7 @@ export function attachAfterRun(core: Link): Link {
     close: () => {
       closed = true;
       held.clear();
+      released = [];
       runs.clear();
       core.close();
     },
