@@ -71,6 +71,30 @@ export function replyLabel(prompt: ScreenPrompt, reply: PromptReply): string {
   }
 }
 
+const words = (prompt: ScreenPrompt, id: string) => {
+  const option = optionOf(prompt, id);
+  return option === undefined ? undefined : `${option.label}\n${option.detail ?? ""}`;
+};
+
+/**
+ * The rows a reply's keys pick on the live screen carry the words the card showed for them: the chosen row, every box
+ * a multi-select answer may toggle, or the cancel. A card that showed other words for a row would answer with a
+ * choice the person never saw, so nothing is pressed (#776).
+ */
+export function replyShown(shown: ScreenPrompt, now: ScreenPrompt, reply: PromptReply): boolean {
+  switch (reply.kind) {
+    case "option":
+    case "text":
+      return words(shown, reply.option) !== undefined && words(shown, reply.option) === words(now, reply.option);
+    case "checked":
+      return now.options
+        .filter((option) => option.checked !== undefined)
+        .every((option) => words(shown, option.id) === words(now, option.id));
+    case "cancel":
+      return shown.cancel?.key === now.cancel?.key && shown.cancel?.label === now.cancel?.label;
+  }
+}
+
 /** ↓ or ↑ from the cursor's row to `target`, in the order the rows are drawn; undefined without a cursor on screen. */
 function reach(prompt: ScreenPrompt, target: string): string[] | undefined {
   const ids = prompt.options.map((option) => option.id);

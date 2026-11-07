@@ -15,13 +15,18 @@ describe("the space keys, as herdr-app binds them", () => {
     expect(triggersFor(keymap, "space.next")).toEqual(["alt+super+]"]);
   });
 
-  test("on Linux and Windows Ctrl+1-9 select a space, Alt+1-9 are its tabs, and Ctrl+Alt+[ / ] cycle the spaces", () => {
+  test("on Linux and Windows Alt+1-9 select a space, Ctrl+1-9 are its tabs, and Ctrl+Shift+PgUp / PgDn cycle the spaces", () => {
     const keymap = defaultKeymap("other");
-    expect(spaces("other")).toEqual(Array.from({ length: 9 }, (_, index) => [`ctrl+${index + 1}`]));
-    expect(triggersFor(keymap, "tab.select:1")).toEqual(["alt+1"]);
-    expect(triggersFor(keymap, "tab.select:9")).toEqual(["alt+9"]);
-    expect(triggersFor(keymap, "space.prev")).toEqual(["ctrl+alt+["]);
-    expect(triggersFor(keymap, "space.next")).toEqual(["ctrl+alt+]"]);
+    expect(spaces("other")).toEqual(Array.from({ length: 9 }, (_, index) => [`alt+${index + 1}`]));
+    expect(triggersFor(keymap, "tab.select:1")).toEqual(["ctrl+1"]);
+    expect(triggersFor(keymap, "tab.select:9")).toEqual(["ctrl+9"]);
+    expect(triggersFor(keymap, "space.prev")).toEqual(["ctrl+shift+page_up", "ctrl+alt+["]);
+    expect(triggersFor(keymap, "space.next")).toEqual(["ctrl+shift+page_down", "ctrl+alt+]"]);
+  });
+
+  test("Cmd+Shift+R on a Mac and Ctrl+Shift+R elsewhere rename the tab, beside herdr-app's F2", () => {
+    expect(triggersFor(defaultKeymap("mac"), "tab.rename")).toEqual(["f2", "shift+super+r"]);
+    expect(triggersFor(defaultKeymap("other"), "tab.rename")).toEqual(["f2", "ctrl+shift+r"]);
   });
 
   test("no platform binds a number chord to both a tab and a space", () => {

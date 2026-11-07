@@ -1,4 +1,4 @@
-import { HcConnection, HcHandshakeTimeoutError } from "@doriface/client";
+import { HcConnection, HcHandshakeTimeoutError, HELLO_REQUEST_LINE } from "@doriface/client";
 import type { ByteLink } from "@doriface/client";
 import { base64urlDecode, CloseCode, type SecureLink, secureLink, SecureLinkError } from "@doriface/crypto";
 import { connectRelayClient } from "@doriface/relay-client";
@@ -124,7 +124,7 @@ async function openOnPath(
   if ("connection" in direct) return { connection: direct.connection, path: "direct" };
   signal?.throwIfAborted();
   const relayed = await openRelaySession(settings, deps, signal);
-  const connection = await HcConnection.open(relayed, signal === undefined ? {} : { signal });
+  const connection = await HcConnection.open(relayed, { helloSent: true, ...(signal === undefined ? {} : { signal }) });
   return {
     connection,
     path: "relay",
@@ -185,6 +185,7 @@ async function provedSession(link: SecureLink, leftMs: number, signal: AbortSign
   const left = Math.max(0, leftMs);
   try {
     return await HcConnection.open(link, {
+      helloSent: true,
       handshakeTimeoutMs: left,
       ...(signal === undefined ? {} : { signal }),
     });
@@ -215,7 +216,12 @@ async function openRelaySession(
   return openSessionOn(link, settings, deps);
 }
 
-/** The session both paths run after their socket is open: Noise IK as the initiator, pinned to the paired host key. */
+const HELLO_LINE = new TextEncoder().encode(HELLO_REQUEST_LINE);
+
+/**
+ * The session both paths run after their socket is open: Noise IK as the initiator, pinned to the paired host key. hc's
+ * hello rides in message 1, so its answer can come back with message 2 instead of a round trip later (#1271).
+ */
 async function openSessionOn(link: ByteLink, settings: ConnectionSettings, deps: RelayDeps): Promise<SecureLink> {
   const staticKey = await deviceKeyFor(link, deps);
   try {
@@ -224,6 +230,7 @@ async function openSessionOn(link: ByteLink, settings: ConnectionSettings, deps:
       hostId: settings.hostId,
       staticKey,
       remoteStatic: base64urlDecode(settings.hostKey),
+      early: HELLO_LINE,
     });
   } catch (error) {
     if (error instanceof SecureLinkError && error.code === CloseCode.UnknownDevice) throw new DeviceNotPairedError();

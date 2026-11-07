@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -62,8 +71,10 @@ function install(
   args: readonly string[] = [],
   extraPath: readonly string[] = [],
   extraEnv: Readonly<Record<string, string>> = {},
+  cwd?: string,
 ) {
   const proc = Bun.spawnSync(["/bin/sh", SCRIPT, "--from", `file://${r.release}`, ...args], {
+    cwd,
     env: {
       HOME: r.home,
       PATH: [r.stubs, ...extraPath, "/usr/bin", "/bin"].join(":"),
@@ -182,6 +193,27 @@ describe("install.sh on Linux", () => {
     expect(unit).not.toMatch(/100%bin/);
   });
 
+  test("a path with a dollar sign, a quote and a backslash reaches systemd as itself (#834)", () => {
+    const r = rig("Linux");
+    const bin = join(r.root, 'a$HOME"q\\b');
+    const run = install(r, ["--no-pair", "--bin-dir", bin]);
+    expect(run.code).toBe(0);
+    const unit = readFileSync(join(r.home, ".config", "systemd", "user", "doriface-host.service"), "utf8");
+    // ExecStart expands $VAR, so the $ is doubled there; Environment= gives $ no meaning, so it stays single.
+    expect(unit).toContain(`ExecStart="${join(r.root, 'a$$HOME\\"q\\\\b', "doriface-host")}"`);
+    expect(unit).toContain(`Environment="PATH=${r.root}/a$HOME\\"q\\\\b:`);
+  });
+
+  test("a relative bin dir and state dir are written into the unit as absolute paths (#834)", () => {
+    const r = rig("Linux");
+    const here = realpathSync(r.root);
+    const run = install(r, ["--no-pair", "--bin-dir", "rel-bin"], [], { DORIFACE_HOST_STATE_DIR: "rel-state" }, r.root);
+    expect(run.code).toBe(0);
+    const unit = readFileSync(join(r.home, ".config", "systemd", "user", "doriface-host.service"), "utf8");
+    expect(unit).toContain(`ExecStart="${join(here, "rel-bin", "doriface-host")}"`);
+    expect(unit).toContain(`--state-dir "${join(here, "rel-state")}"`);
+  });
+
   test("keeps an hc already on PATH and runs the service with it", () => {
     const r = rig("Linux", "aarch64");
     const tools = join(r.root, "tools");
@@ -266,6 +298,18 @@ describe("install.sh on macOS", () => {
     expect(run.err).toBe("");
     expect(run.code).toBe(0);
     expect(readFileSync(state, "utf8").trim()).toBe("loaded");
+  });
+
+  test("an old agent that never unloads stops the install after 10 s and never bootstraps the new one (#834)", () => {
+    const r = rig("Darwin", "arm64");
+    stub(r.stubs, "launchctl", `echo "launchctl $*" >> "${r.log}"; exit 0`);
+    // The wait's own clock: each 0.1 s step is recorded instead of slept.
+    stub(r.stubs, "sleep", `echo "sleep $*" >> "${r.log}"`);
+    const run = install(r, ["--no-pair"]);
+    expect(run.code).toBe(1);
+    expect(run.calls.filter((call) => call.startsWith("launchctl print"))).toHaveLength(101);
+    expect(run.calls.filter((call) => call === "sleep 0.1")).toHaveLength(100);
+    expect(run.calls.some((call) => call.startsWith("launchctl bootstrap"))).toBe(false);
   });
 
   test("registers a LaunchAgent that keeps the host running, then pairs", () => {

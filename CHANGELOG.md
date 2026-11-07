@@ -2,6 +2,102 @@
 
 ## Unreleased
 
+## v0.1.9 - 2026-11-08
+
+### Terminal
+
+- A terminal that goes quiet no longer jumps to the top of its history and scrolls back down: a direct connection to the host (the desktop app's own host included) now pings it every 30 s, so the host stops closing the idle session after 90 s and the terminal no longer reattaches. (#1040)
+- A pane out of view no longer fetches its terminal's replay when the host ends the stream while the program still runs: it re-attaches once it is shown, and a program that ended in the meantime closes its tab then. (#1092)
+- A syllable an input method is still composing is drawn as cells at the cursor, as Ghostty draws it: a wide one over two cells at the size it will have once committed (it no longer jumps on commit), underlined over the cells it covers, shifted left at the end of the row, following the cursor if output moves it, and with no cursor drawn meanwhile. (#674)
+
+### Workspace
+
+- Closing a tab while its layout could not be saved says "The layout was not saved" once, and the tab stays in view: the
+  ended session's pane is no longer dropped a second time while the page has not heard the session end yet. (#1328)
+- Right-clicking an agent or a space on the narrowed sidebar (the icon rail), or the title bar of a pane in a split,
+  opens its menu with Rename, as a row on the full sidebar does. (#1348)
+
+## v0.1.8 - 2026-11-07
+
+### Terminal
+
+- Ctrl+C, Ctrl+A and every other Ctrl+letter chord pressed in the middle of a Korean syllable reach the program: the syllable is committed first, then the chord's control byte, in Chromium's order (the key before the input method's commit) and in Safari's (the commit before the key). Another input method's Ctrl keys, such as Japanese conversion, stay with it. (#748)
+- A program that left a synchronized update open (killed mid-frame) no longer keeps the screen frozen while a split divider is dragged: the screen paints one second after the update opened, however many resizes happen meanwhile. (#853)
+- Many panes drawing output at once render as fast as in v0.1.2 again: a pane's link menu and held-selection menu no longer run while closed, which at 50 panes had raised the time the page spent in long tasks about threefold. (#842)
+
+### Machine mesh
+
+- An older app or `doriface-host mesh status` keeps showing the mesh of a host that writes a newer status document: a field it does not know is dropped instead of making it say the host is in no mesh. (#728)
+- When the desktop app restarts this computer's own host, only that connection is dialled again: the sessions open on your other machines stay open instead of closing and reconnecting. (#1140)
+
+### Joining a mesh
+
+- A machine that joins through **Add a machine** while the host's own line to its core is reconnecting is shown as joined once the line is back, instead of the offer reading expired, and a computer clock set back during the offer no longer leaves its link up past the offer's end. (#834)
+
+### Settings
+
+- Changing a field under Advanced connection no longer brings back the machine that was shown when Settings opened: only the changed field is saved, onto the current settings. (#1006)
+
+### Notifications
+
+- A gateway that is not an address no longer leaves notifications silently behind: Settings, Notifications says the move to the new host failed, and notifications stay with the host they were on. (#890)
+
+### Connection and offline wording
+
+- When the app wakes and the host does not answer its check in time, the reconnect note says that check went unanswered instead of claiming the host sent no heartbeat. (#779)
+
+### Host install
+
+- `install.sh` registers the host with the paths you gave it: a `$`, a quote or a backslash in a path no longer changes it in the systemd unit, and a relative `--bin-dir` or `DORIFACE_HOST_STATE_DIR` is written as the absolute path it named when you ran the installer. (#834)
+- The setup tool refuses a `--timeout` that is not a positive number of seconds before it changes anything, instead of waiting for the relay forever. (#821)
+
+### Pairing
+
+- A broken link made by `doriface-host mesh pair` says to run `doriface-host mesh pair` again, not `doriface-host pair`, and a typed code the host refuses says it may be a mesh invite, which `doriface-host mesh join` takes, instead of only that it was used. (#727)
+
+## v0.1.7 - 2026-11-07
+
+### Workspace
+
+- While the sidebar filter holds a query, a machine's header offers no fold button, since every machine shows its matches; its folded state is as it was once the filter is cleared. (#850)
+- An added machine's spaces and tabs keep their branch and diff facts while its mesh line redials, instead of losing them for a moment. (#913)
+- When the host cannot answer with its terminals at first, the agents list says so with Try again, on a phone and in the desktop sidebar, instead of loading forever. (#819)
+- A menu opened right after choosing from New tab's menu stays open and keeps the keyboard: the New tab menu used to hand the keyboard back to the new terminal as it finished closing, which could shut the menu just opened. (#1014)
+
+### Joining a mesh
+
+- `doriface-host mesh join --from-file <file>` reads the join link or code from a file, so it is never on the command line where other users of the machine can read it, and the setup tool's `join --from` now uses it. (#821)
+
+### Web app
+
+- An installed web app keeps one copy of the terminal's icon font: when a new version takes over, it drops the copies earlier versions left (about 1.2 MB each). (#967)
+
+### Settings
+
+- The Connect a machine tab draws a plug instead of a server, matching what it offers, and the Pair a device offer follows a change of connection mode on every screen that shows it. (#813)
+
+### Website
+
+- The doriterm.com landing page has a Pause animations button beside the theme switch: it stops the mesh scenes, the relay pipe and the pairing loop on their still frames, and the page remembers it. (#928)
+- On the doriterm.com landing page, starting the Revoke scene again shows cloud-box at work until its revoke record lands, instead of an empty machine that reads working. (#936)
+- The doriterm.com link preview shows the app's whole agent list: its third idle agent is no longer cut off by the sidebar's Settings footer. (#954)
+
+### Reliability
+
+- A pull request records its changelog line in a file of its own under `changes/unreleased/`, and the release writes those files into its notes, so open pull requests no longer conflict on CHANGELOG.md each time one merges. (#1261)
+
+### Answering agents from the card
+
+- A command, diff, new file, plan or question text that itself draws something shaped like a dialog no longer reads as the dialog: the card answers the dialog drawn at the bottom of the screen, with that dialog's own rows, and presses nothing when a row on the live screen does not say what the card showed for it. Where Codex's screen cannot tell the dialog from the agent's own text, the card offers nothing and the agent is answered in the terminal. (#776)
+
+### Host
+
+- `doriface-host --version` prints the host's version, and `/healthz` and the start-up line report the release the host was built from instead of 0.1.0 on every release. (#1039)
+
+### First run
+
+- The first-run guide's last step, "See it in the agents list", completes when the terminal you started or opened on this device is in the list, not on any terminal the host already had, and a screen reader hears each step complete and "You're set". (#834)
+
 ## v0.1.6 - 2026-11-07
 
 ### Mesh

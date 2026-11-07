@@ -9,6 +9,12 @@ export const FORWARD_QUEUE_BYTES = 1024 * 1024;
 /** The largest frame forwarded; hc's own frames are far smaller, so a larger one is not ours to carry. */
 export const FORWARD_FRAME_BYTES = 16 * 1024 * 1024;
 const CLOSE_OVERFLOW = 1009;
+/**
+ * The only text frames carried: the direct path's keepalive. The page pings and the host answers; without it the host
+ * closes a session that went quiet, and the page reattaches (#1040).
+ */
+const PAGE_TEXT = "ping";
+const HOST_TEXT = "pong";
 
 /** One rendered page's socket to the host: a capability names one target, for one window, once. */
 interface Capability {
@@ -29,6 +35,9 @@ export interface DirectForwarderDeps {
 }
 
 const capabilityOf = (): string => randomBytes(16).toString("base64url");
+
+const sendTo = (socket: WebSocket, frame: Buffer | string): void =>
+  typeof frame === "string" ? socket.send(frame) : socket.send(frame, { binary: true });
 
 /**
  * The byte forwarder behind #449: a page on the app origin asks for one capability, then dials
@@ -139,7 +148,7 @@ export class DirectForwarder {
     let closed = false;
     let heldBytes = 0;
     // Frames the page sends while the target is still connecting: the page's first handshake message is one of them.
-    const held: Buffer[] = [];
+    const held: (Buffer | typeof PAGE_TEXT)[] = [];
     const close = (): void => {
       if (closed) return;
       closed = true;
@@ -158,25 +167,26 @@ export class DirectForwarder {
     this.#live.set(windowId, closes);
 
     page.on("message", (data: Buffer, binary: boolean) => {
-      if (!binary) return close();
+      if (!binary && String(data) !== PAGE_TEXT) return close();
+      const frame = binary ? data : PAGE_TEXT;
       if (outbound.readyState === WebSocket.CONNECTING) {
         heldBytes += data.byteLength;
         if (heldBytes > FORWARD_QUEUE_BYTES) return overflow();
-        held.push(data);
+        held.push(frame);
         return undefined;
       }
       if (outbound.readyState !== WebSocket.OPEN) return close();
       if (outbound.bufferedAmount > FORWARD_QUEUE_BYTES) return overflow();
-      outbound.send(data, { binary: true });
+      sendTo(outbound, frame);
     });
     outbound.on("open", () => {
-      for (const frame of held.splice(0)) outbound.send(frame, { binary: true });
+      for (const frame of held.splice(0)) sendTo(outbound, frame);
       heldBytes = 0;
     });
     outbound.on("message", (data: Buffer, binary: boolean) => {
-      if (!binary) return close();
+      if (!binary && String(data) !== HOST_TEXT) return close();
       if (page.bufferedAmount > FORWARD_QUEUE_BYTES) return overflow();
-      if (page.readyState === WebSocket.OPEN) page.send(data, { binary: true });
+      if (page.readyState === WebSocket.OPEN) sendTo(page, binary ? data : HOST_TEXT);
     });
     page.on("close", close);
     outbound.on("close", close);

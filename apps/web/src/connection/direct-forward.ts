@@ -1,7 +1,6 @@
 import type { ByteLink } from "@doriface/client";
 import { directForwardBridge } from "../desktop/bridge.ts";
-import { DIRECT_SUBPROTOCOL, DirectFailure } from "./direct-attempt.ts";
-import { openWebSocketLink } from "./ws-link.ts";
+import { DirectFailure, openDirectLink } from "./direct-attempt.ts";
 
 /** Whether a plain `ws://` address to another machine can be reached at all here: only through the desktop shell (#449). */
 export function canForwardPlainWs(scope: object = globalThis): boolean {
@@ -19,7 +18,7 @@ export async function openForwardedLink(target: string, signal: AbortSignal | un
   const answer = await bridge.forward();
   if ("refused" in answer) throw new DirectFailure("blocked", answer.refused);
   try {
-    return await openWebSocketLink(answer.url, [DIRECT_SUBPROTOCOL], signal === undefined ? {} : { signal });
+    return await openDirectLink(answer.url, signal);
   } catch (error) {
     await bridge.cancel(answer.url);
     throw error;

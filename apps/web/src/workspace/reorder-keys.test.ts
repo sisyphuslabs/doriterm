@@ -21,15 +21,16 @@ describe("the keys that move a row", () => {
     expect(steps).toEqual([-1, -1, 1, 1]);
   });
 
-  test("elsewhere Ctrl+Shift+PageUp/PageDown moves it, Ghostty's move_tab chord", () => {
-    expect(reorderStep(press("PageUp", { ctrl: true, shift: true }), "other", defaults("other"))).toBe(-1);
-    expect(reorderStep(press("PageDown", { ctrl: true, shift: true }), "other", defaults("other"))).toBe(1);
+  test("elsewhere Ctrl+Alt+Shift+PageUp/PageDown moves it; Ctrl+Shift+PageUp/PageDown are herdr-app's space keys", () => {
+    expect(reorderStep(press("PageUp", { ctrl: true, alt: true, shift: true }), "other", defaults("other"))).toBe(-1);
+    expect(reorderStep(press("PageDown", { ctrl: true, alt: true, shift: true }), "other", defaults("other"))).toBe(1);
+    expect(reorderStep(press("PageDown", { ctrl: true, shift: true }), "other", defaults("other"))).toBeNull();
   });
 
   test("plain arrows (roving focus) and the other platform's chord do not move it", () => {
     expect(reorderStep(press("ArrowDown"), "mac", defaults("mac"))).toBeNull();
     expect(reorderStep(press("ArrowDown", { shift: true }), "mac", defaults("mac"))).toBeNull();
-    expect(reorderStep(press("PageDown", { ctrl: true, shift: true }), "mac", defaults("mac"))).toBeNull();
+    expect(reorderStep(press("PageDown", { ctrl: true, alt: true, shift: true }), "mac", defaults("mac"))).toBeNull();
     expect(reorderStep(press("ArrowDown", { meta: true, shift: true }), "other", defaults("other"))).toBeNull();
   });
 
@@ -38,25 +39,25 @@ describe("the keys that move a row", () => {
       "other",
       new Map([
         ["ctrl+alt+j", "tab.move:right"],
-        ["ctrl+shift+page_down", null],
+        ["ctrl+alt+shift+page_down", null],
       ]),
     );
     expect(reorderStep(press("KeyJ", { ctrl: true, alt: true }), "other", keymap)).toBe(1);
-    expect(reorderStep(press("PageDown", { ctrl: true, shift: true }), "other", keymap)).toBeNull();
-    expect(reorderStep(press("PageUp", { ctrl: true, shift: true }), "other", keymap)).toBe(-1);
+    expect(reorderStep(press("PageDown", { ctrl: true, alt: true, shift: true }), "other", keymap)).toBeNull();
+    expect(reorderStep(press("PageUp", { ctrl: true, alt: true, shift: true }), "other", keymap)).toBe(-1);
   });
 
   test("the menu shows the first chord of each direction, a rebound one included", () => {
     expect(reorderKeys("mac", defaults("mac"))).toEqual({ up: ["⌘", "⇧", "↑"], down: ["⌘", "⇧", "↓"] });
     expect(reorderKeys("other", defaults("other"))).toEqual({
-      up: ["Ctrl", "Shift", "PgUp"],
-      down: ["Ctrl", "Shift", "PgDn"],
+      up: ["Ctrl", "Alt", "Shift", "PgUp"],
+      down: ["Ctrl", "Alt", "Shift", "PgDn"],
     });
     const rebound = resolveKeymap(
       "other",
       new Map([
         ["ctrl+alt+j", "tab.move:right"],
-        ["ctrl+shift+page_down", null],
+        ["ctrl+alt+shift+page_down", null],
       ]),
     );
     expect(reorderKeys("other", rebound).down).toEqual(["Ctrl", "Alt", "J"]);

@@ -114,7 +114,9 @@ async function drag(page: Page, from: string, onto: string, release = true): Pro
 /** The chords that move a focused row on this browser's platform, as the Machines list's move keys test reads them. */
 async function moveKeys(page: Page): Promise<readonly [string, string]> {
   const mac = await page.evaluate(() => /mac/i.test(navigator.platform));
-  return mac ? ["Meta+Shift+ArrowUp", "Meta+Shift+ArrowDown"] : ["Control+Shift+PageUp", "Control+Shift+PageDown"];
+  return mac
+    ? ["Meta+Shift+ArrowUp", "Meta+Shift+ArrowDown"]
+    : ["Control+Alt+Shift+PageUp", "Control+Alt+Shift+PageDown"];
 }
 
 test("a space dragged above another is written to its machine's layout, shown on a second device, and kept by a reload", async ({

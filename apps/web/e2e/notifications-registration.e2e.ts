@@ -89,3 +89,39 @@ test("a connection moved to another host takes notifications along; the old host
   expect(await endpoints()).toEqual([]);
   expect(await savedRoute(page)).toMatchObject({ pushUrl: `ws://127.0.0.1:${E2E_LAYOUT_PORT}/v1/push` });
 });
+
+/** Types a gateway, and waits for the notifications move that change started (see the test above). */
+async function moveGateway(page: Page, address: string): Promise<void> {
+  await settingsSection(page, "This device").click();
+  const gateway = page.getByLabel("Gateway", { exact: true });
+  await gateway.fill(address);
+  await gateway.press("Enter");
+  await page.evaluate(async () => {
+    const recorded: unknown = Reflect.get(window, "__dorifacePushMoves");
+    if (Array.isArray(recorded)) await Promise.all(recorded);
+  });
+}
+
+test("a gateway that is not an address fails the move in view, rejects nothing unhandled, and keeps the route (#890)", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Reflect.set(window, "__dorifacePushMoves", []);
+    const unhandled: string[] = [];
+    Reflect.set(window, "__unhandled", unhandled);
+    addEventListener("unhandledrejection", (event) => void unhandled.push(String(Reflect.get(event, "reason"))));
+  });
+  await turnOn(page);
+  const failed = page.getByText("Could not move notifications to the new host.", { exact: false });
+  await moveGateway(page, `127.0.0.1:${E2E_LAYOUT_PORT}`);
+  // Opening Notifications reads the settings again; the failed move stays in view.
+  await settingsSection(page, "Notifications").click();
+  await expect(failed).toBeVisible();
+  expect(await page.evaluate(() => Reflect.get(window, "__unhandled"))).toEqual([]);
+  expect(await savedRoute(page)).toMatchObject({ pushUrl: `ws://127.0.0.1:${E2E_HOST_PORT}/v1/push` });
+
+  await moveGateway(page, `ws://127.0.0.1:${E2E_HOST_PORT}/v1/hc`);
+  await settingsSection(page, "Notifications").click();
+  await expect(pushState(page)).toHaveAttribute("data-push-state", "on");
+  await expect(failed).toHaveCount(0);
+});
