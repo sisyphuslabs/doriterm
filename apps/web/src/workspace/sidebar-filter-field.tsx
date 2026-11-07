@@ -86,8 +86,8 @@ export function SidebarFilterField() {
 }
 
 /**
- * Opens and closes the filter field, in the Spaces header beside New space: the sidebar's title row keeps its room for
- * the app's name (#873).
+ * Opens and closes the filter field, in the Spaces header beside New space: the title row stays as it is, and the app's
+ * name there ellipsizes only when the row is narrower than it.
  */
 export function FilterButton() {
   const { open } = useSidebarFilter();
