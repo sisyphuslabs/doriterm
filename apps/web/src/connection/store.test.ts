@@ -10,6 +10,13 @@ const { ConnectionStore } = await import("./store.ts");
 Reflect.deleteProperty(globalThis, "localStorage");
 
 const SETTINGS: ConnectionSettings = { ...DEFAULT_SETTINGS, mode: "loopback", token: "t0k" };
+/** Relay mode, which is where a roster means something: rotation is deliberately off for the loopback gateway. */
+const RELAY_SETTINGS: ConnectionSettings = {
+  ...DEFAULT_SETTINGS,
+  mode: "relay",
+  hostId: "a",
+  hostKey: "ka",
+};
 
 afterEach(() => jest.useRealTimers());
 
@@ -305,4 +312,161 @@ test("a direct link that drops sends the next attempt to the relay at once, once
   expect(skip).toEqual([undefined, true]);
   expect(store.state).toMatchObject({ phase: "open", path: "relay" });
   store.stop();
+});
+
+const untilAttempt = (store: InstanceType<typeof ConnectionStore>, attempt: number): Promise<void> =>
+  new Promise((resolve) => {
+    const off = store.subscribe(() => {
+      const state = store.state;
+      if (state.phase !== "connecting" || state.attempt < attempt) return;
+      off();
+      resolve();
+    });
+  });
+
+const untilPhase = (store: InstanceType<typeof ConnectionStore>, phase: string): Promise<void> =>
+  new Promise((resolve) => {
+    if (store.state.phase === phase) return resolve();
+    const off = store.subscribe(() => {
+      if (store.state.phase !== phase) return;
+      off();
+      resolve();
+    });
+  });
+
+const TWO_MEMBERS = [
+  { hostId: "a", hostName: "studio", hostKey: "ka", directUrl: "" },
+  { hostId: "b", hostName: "laptop", hostKey: "kb", directUrl: "" },
+] as const;
+
+test("one host stopping moves the attempt to the next member of the roster (#942)", async () => {
+  const asked: string[] = [];
+  const store = new ConnectionStore({ ...RELAY_SETTINGS, hostId: "a", hostKey: "ka", members: TWO_MEMBERS }, ((
+    settings: ConnectionSettings,
+  ) => {
+    asked.push(settings.hostId);
+    throw new Error("no answer");
+  }) as never);
+  store.start();
+  await untilPhase(store, "failed");
+  expect(asked).toEqual(["a"]);
+  const second = untilAttempt(store, 1);
+  await second;
+  store.stop();
+  expect(asked).toContain("b");
+});
+
+test("a single member is never rotated away from, so one host behaves as it always did", async () => {
+  const asked: string[] = [];
+  const store = new ConnectionStore(
+    {
+      ...RELAY_SETTINGS,
+      hostId: "only",
+      hostKey: "ko",
+      members: [{ hostId: "only", hostName: "studio", hostKey: "ko", directUrl: "" }],
+    },
+    ((settings: ConnectionSettings) => {
+      asked.push(settings.hostId);
+      throw new Error("no answer");
+    }) as never,
+  );
+  store.start();
+  await untilPhase(store, "failed");
+  store.retryNow();
+  await untilAttempt(store, 1);
+  store.stop();
+  expect(new Set(asked)).toEqual(new Set(["only"]));
+});
+
+test("a selected host missing from its own roster is never replaced by the first member", async () => {
+  const asked: string[] = [];
+  const store = new ConnectionStore({ ...RELAY_SETTINGS, hostId: "gone", hostKey: "kg", members: TWO_MEMBERS }, ((
+    settings: ConnectionSettings,
+  ) => {
+    asked.push(settings.hostId);
+    throw new Error("no answer");
+  }) as never);
+  store.start();
+  await untilPhase(store, "failed");
+  store.retryNow();
+  await untilAttempt(store, 1);
+  store.stop();
+  expect(new Set(asked)).toEqual(new Set(["gone"]));
+});
+
+test("loopback never rotates: the address is this computer's own gateway, not a member", async () => {
+  const asked: string[] = [];
+  const store = new ConnectionStore({ ...SETTINGS, hostId: "a", members: TWO_MEMBERS }, ((
+    settings: ConnectionSettings,
+  ) => {
+    asked.push(settings.hostId);
+    throw new Error("no answer");
+  }) as never);
+  store.start();
+  await untilPhase(store, "failed");
+  store.retryNow();
+  await untilAttempt(store, 1);
+  store.stop();
+  expect(new Set(asked)).toEqual(new Set(["a"]));
+});
+
+test("a live link that drops moves the next attempt to another member (#942)", async () => {
+  const asked: string[] = [];
+  const live = standIn("studio");
+  const store = new ConnectionStore({ ...RELAY_SETTINGS, hostId: "a", hostKey: "ka", members: TWO_MEMBERS }, ((
+    settings: ConnectionSettings,
+  ) => {
+    asked.push(settings.hostId);
+    if (asked.length === 1) return Promise.resolve({ connection: live.connection, path: "relay" } as OpenConnection);
+    throw new Error("no answer");
+  }) as never);
+  store.start();
+  await untilPhase(store, "open");
+  // The host stops answering: the live link drops, which arrives through onClose rather than through a failed attempt.
+  for (const close of live.closes) close();
+  await untilPhase(store, "failed");
+  const second = untilAttempt(store, 1);
+  await second;
+  store.stop();
+  expect(asked).toContain("b");
+});
+
+test("pairing with another host puts it in the in-memory roster at once, not only in the file (#994 review)", () => {
+  const store = new ConnectionStore(SETTINGS, (async () => {
+    throw new Error("not dialed in this test");
+  }) as never);
+  store.update({
+    ...SETTINGS,
+    hostId: "new",
+    hostName: "laptop",
+    hostKey: "kn",
+    members: [{ hostId: "old", hostName: "studio", hostKey: "ko", directUrl: "" }],
+  });
+  expect(store.settings.members.map((member) => member.hostId)).toEqual(["new"]);
+  store.stop();
+});
+
+test("a freshly paired host survives its first failure; the app does not fall back to the one before it (#994 HIGH)", async () => {
+  const asked: string[] = [];
+  const store = new ConnectionStore({ ...RELAY_SETTINGS, hostId: "a", hostKey: "ka", members: TWO_MEMBERS }, ((
+    settings: ConnectionSettings,
+  ) => {
+    asked.push(settings.hostId);
+    throw new Error("no answer");
+  }) as never);
+  // The reviewer's scene: pair with c while the roster still names a and b.
+  store.update({
+    ...RELAY_SETTINGS,
+    hostId: "c",
+    hostName: "studio-c",
+    hostKey: "kc",
+    members: TWO_MEMBERS,
+  } as ConnectionSettings);
+  const failed = untilPhase(store, "failed");
+  store.start();
+  await failed;
+  store.stop();
+  expect(store.settings.hostId).toBe("c");
+  expect(store.settings.members.map((member) => member.hostId)).toEqual(["c"]);
+  expect(asked).not.toContain("a");
 });

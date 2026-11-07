@@ -8,6 +8,7 @@ import { MESH_FILE } from "../state/mesh-file.ts";
 import type { MeshStore, MeshTx } from "../state/mesh.ts";
 import type { LeaveReply, RenameReply, RevokeReply } from "./command-replies.ts";
 import { admittedKeys } from "./lineage.ts";
+import { machineKeysOf, meshViewOf } from "./mesh-view.ts";
 import { findMember, memberRef, planRevoke } from "./revoke-plan.ts";
 import type { MeshHooks } from "./host-hooks.ts";
 import { checkFloor } from "./merge.ts";
@@ -65,7 +66,9 @@ export class MeshCommands {
     const meshId = this.deps.store.read()?.meshId;
     if (meshId === undefined) return null;
     const { reply, record } = this.deps.store.transact((tx) => {
-      const plan = planRevoke(tx.records, this.#member(tx), this.#self, request.member, request.compromised);
+      const view = this.#member(tx);
+      const machines = machineKeysOf(meshViewOf(tx.records, view));
+      const plan = planRevoke(tx.records, view, this.#self, request.member, request.compromised, undefined, machines);
       const { target, subjects, reason, lines, needsYes } = plan;
       const preview = { target, subjects, reason, lines, needsYes };
       if (request.preview === true || (needsYes && !request.yes)) {

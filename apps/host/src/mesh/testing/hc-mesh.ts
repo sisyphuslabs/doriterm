@@ -34,6 +34,7 @@ export async function startCoreWith(name: string, env: Readonly<Record<string, s
     devicePub: undefined,
     name,
     hcId: control.coreId,
+    kind: "machine",
   };
   return {
     session,

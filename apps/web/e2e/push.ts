@@ -205,7 +205,7 @@ export async function tapNotification(worker: Worker, tag: string, action: strin
   await expect
     .poll(async () => (await shownNotifications(worker)).some((shown) => shown.tag === tag), { timeout: 15_000 })
     .toBe(true);
-  const fromRecord = await worker.evaluate<boolean>(`(async () => {
+  const tapped = await worker.evaluate<{ fromRecord: boolean; handled: string | null }>(`(async () => {
     const tag = ${JSON.stringify(tag)};
     const [listed] = await self.registration.getNotifications({ tag });
     const shown = self.__shown.get(tag);
@@ -219,11 +219,12 @@ export async function tapNotification(worker: Worker, tag: string, action: strin
       waitUntil: { value: (promise) => { work = promise; } },
     });
     self.dispatchEvent(event);
-    await work;
-    return listed === undefined;
+    const handled = await work.then(() => null, (error) => String(error));
+    return { fromRecord: listed === undefined, handled };
   })()`);
-  if (fromRecord)
+  if (tapped.fromRecord)
     console.warn(`push.ts: Chromium lists no notification tagged ${tag}; tapping the worker's record (#964)`);
+  if (tapped.handled !== null) throw new Error(`the notification's click handler rejected: ${tapped.handled}`);
 }
 
 /** One line to the e2e host's push stream as the loopback client; resolves with its reply. */

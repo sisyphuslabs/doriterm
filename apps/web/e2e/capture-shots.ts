@@ -83,13 +83,13 @@ const refusedWith = (closeCode: number) => async (page: Page) => {
   await page.getByRole("button", { name: "They match" }).click();
   await expect(page.getByText("Pairing did not finish")).toBeVisible({ timeout: 15_000 });
 };
-const SETTINGS = ["Appearance", "Device", "Terminal", "Keybindings"] as const;
+const SETTINGS = ["Appearance", "This device", "Terminal", "Keybindings"] as const;
 /** The mesh panel once its document and the added machine it is checked against have both arrived. */
 const meshLoaded = async (page: Page) => {
   resetMeshDocs();
   await page.goto("/");
   await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
-  await section(page, "Mesh");
+  await section(page, "Machines");
   await expect(page.locator('[data-mesh-group="pending"] [data-mesh-answer]').first()).toBeVisible({ timeout: 20_000 });
 };
 

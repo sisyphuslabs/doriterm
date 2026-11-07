@@ -85,6 +85,7 @@ const status: MeshStatus = {
       hostId: "c".repeat(26),
       fingerprint: member.fingerprint,
       expiresAt: "2026-11-03T12:08:00Z",
+      kind: "machine",
     },
   ],
   budget: { waiting: 1, halvedUntil: "2026-11-03T12:30:00.000Z" },

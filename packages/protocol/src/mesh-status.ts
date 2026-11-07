@@ -176,6 +176,8 @@ export type MeshPendingJoin = {
   readonly hostId: string;
   readonly fingerprint: string;
   readonly expiresAt: string;
+  /** What it joins as: approving a client grants control of every machine it can reach. */
+  readonly kind: "machine" | "client";
 };
 
 export type MeshBudget = {

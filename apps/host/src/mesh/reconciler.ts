@@ -4,6 +4,7 @@ import type { HcMachines } from "./hc-machines.ts";
 import { fallbacks } from "@doriface/mesh";
 import type { MemberEntry } from "./authorize-index.ts";
 import type { MeshView } from "./mesh-view.ts";
+import { machinesOf } from "./mesh-view.ts";
 import { type AddReservation, BUDGET_REFUSAL } from "./line-grants.ts";
 import { meshHostOf, meshVia } from "./via.ts";
 import { renameToMeshName } from "./line-names.ts";
@@ -169,8 +170,9 @@ export class Reconciler {
   async #run(view: MeshView): Promise<void> {
     const { machines, selfHostId } = this.#options;
     // Section 6.4: a host its own view does not list (revoked, over the cap) keeps no mesh machine until it is again.
-    const inView = view.members.some((m) => m.hostId === selfHostId);
-    const others = inView ? view.members.filter((m) => m.hostId !== selfHostId) : [];
+    // A client is not a machine to add: it is reached, never added (design of #942, section 6).
+    const inView = machinesOf(view).some((m) => m.hostId === selfHostId);
+    const others = inView ? machinesOf(view).filter((m) => m.hostId !== selfHostId) : [];
     const desired = new Map(others.map((m) => [m.hostId, m]));
     this.#retries.clearExcept((hostId) => desired.has(hostId));
     const entries = await this.#entries();

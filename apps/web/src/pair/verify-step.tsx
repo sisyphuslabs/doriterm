@@ -28,7 +28,7 @@ export function VerifyStep({ offer }: { readonly offer: PairingOffer }) {
     setOutcome({ kind: "pairing" });
     try {
       await pairAndRemember(offer, deviceName(), (host) =>
-        connectionStore.update({ ...connectionStore.settings, mode: "relay", ...host }),
+        connectionStore.pair({ ...connectionStore.settings, mode: "relay", ...host }),
       );
     } catch (error) {
       setOutcome({ kind: "failed", reason: error instanceof Error ? error.message : String(error) });

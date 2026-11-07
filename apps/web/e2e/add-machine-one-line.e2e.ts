@@ -29,7 +29,7 @@ test("the dialog's one line, run on a second machine, joins it to this host's me
     await expect(command).toBeVisible({ timeout: 30_000 });
     const text = (await command.innerText()).trim();
     const match =
-      /^curl -fsSL https:\/\/github\.com\/sisyphuslabs\/doriface\/releases\/latest\/download\/install\.sh \| sh -s -- --join '(doriface:\/\/pair#[^']+)'$/.exec(
+      /^curl -fsSL https:\/\/github\.com\/sisyphuslabs\/doriterm\/releases\/latest\/download\/install\.sh \| sh -s -- --join '(doriface:\/\/pair#[^']+)'$/.exec(
         text,
       );
     const link = match?.[1] ?? "";

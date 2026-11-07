@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 import type { Shot } from "./capture-shots.ts";
 import { expect } from "./fixtures.ts";
 
-/** The seeded `website` space (seed.ts), named after its folder. */
+/** The seeded `website` space (seed.ts), named by its terminals' `space=website` label. */
 const website = (page: Page) =>
   page.getByRole("complementary", { name: "Workspace" }).getByRole("button", { name: /^website\b/ });
 

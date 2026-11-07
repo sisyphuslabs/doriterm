@@ -72,7 +72,7 @@ test("a connection moved to another host takes notifications along; the old host
   await page.addInitScript(() => Reflect.set(window, "__dorifacePushMoves", []));
   await turnOn(page);
   expect(await savedRoute(page)).toMatchObject({ pushUrl: `ws://127.0.0.1:${E2E_HOST_PORT}/v1/push` });
-  await settingsSection(page, "Connections").click();
+  await settingsSection(page, "This device").click();
   const gateway = page.getByLabel("Gateway", { exact: true });
   await gateway.fill(`ws://127.0.0.1:${E2E_LAYOUT_PORT}/v1/hc`);
   await gateway.press("Enter");

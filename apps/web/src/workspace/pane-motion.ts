@@ -34,7 +34,7 @@ const UNCLIPPED = "inset(0px 0px 0px 0px round 8px)";
  * Moves a pane to its new rectangle (FLIP) with `translate` for its place and `clip-path` for its size: the box takes
  * its final size at once and the drawing slides and opens from where it was. No `scale`: the terminal measures its cell
  * with getBoundingClientRect, which a transform's scale would distort while its ResizeObserver reads the new size
- * (@wterm/dom 0.5.8 `_measureCharSize`), leaving every row drawn at the wrong cell width. A new pane opens from the edge
+ * (@wterm/dom 0.5.9 `_measureCharSize`), leaving every row drawn at the wrong cell width. A new pane opens from the edge
  * it was split from, and a key that cannot move focus nudges the focused pane toward that edge. A window resize moves
  * every pane at once, so it plays no motion.
  */

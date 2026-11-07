@@ -45,7 +45,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.`;
 
-/** licenses/Apache-2.0.txt is wterm's own LICENSE: vercel-labs/wterm at v0.5.8, byte for byte. */
+/** licenses/Apache-2.0.txt is wterm's own LICENSE: vercel-labs/wterm at v0.5.9, byte for byte. */
 const WTERM_LICENSE_SHA256 = "f1932dabb4856eb6f6cba683be864338e654012492642aeb59e5e48483f836c4";
 
 test("Ghostty's section carries its copyright and the whole MIT licence", () => {

@@ -1,5 +1,5 @@
 // docs/getting-started.md, end to end through the hosted relay (#672): the desktop app starts this computer's host,
-// Settings > Connections > Pair a device shows its QR code, and a fresh browser opens what that QR code encodes, the
+// Settings > Connect a machine > Pair a device shows its QR code, and a fresh browser opens what that QR code encodes, the
 // hosted web app's pair page, checks the key, pairs and types into a terminal on this computer. Nothing is stood in:
 // the host dials relay-doriface.omo.dev and the page is doriface.omo.dev, as for a user. The release smoke runs it
 // against the downloaded AppImage, and the From zero workflow against a packed build.
@@ -58,8 +58,8 @@ test("a fresh browser pairs with the desktop app through the hosted relay and ty
   await page.goto(`${originOf(page)}/settings`);
   await page
     .getByRole("navigation", { name: "Settings", exact: true })
-    .getByRole("button", { name: "Connections", exact: true })
-    .or(page.getByRole("tab", { name: "Connections", exact: true }))
+    .getByRole("button", { name: "Connect a machine", exact: true })
+    .or(page.getByRole("tab", { name: "Connect a machine", exact: true }))
     .filter({ visible: true })
     .click();
   await page.getByRole("button", { name: "Pair a device", exact: true }).click();

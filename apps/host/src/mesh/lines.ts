@@ -16,6 +16,11 @@ export type MeshLine =
       readonly mesh: string;
       readonly heads: readonly string[];
       readonly n: Readonly<Record<string, number>>;
+      /**
+       * The mesh-file formats this host reads. Absent means it did not say, which a readiness check must treat as "no"
+       * rather than assume support; an older peer ignores the field entirely (design of #942).
+       */
+      readonly reads?: readonly number[] | undefined;
     }
   | { readonly t: "want"; readonly hashes: readonly string[] }
   | { readonly t: "offer"; readonly mesh: string; readonly inviter: string; readonly nonce: string }

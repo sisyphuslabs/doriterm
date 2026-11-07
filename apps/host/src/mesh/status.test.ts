@@ -197,6 +197,7 @@ describe("mesh status", () => {
         hostId: ids["ci-runner"].hostId,
         fingerprint: fingerprintOf(ids["ci-runner"].noise.publicKey),
         expiresAt: "2026-11-03T12:08:00.000Z",
+        kind: "machine",
       },
     ]);
   });

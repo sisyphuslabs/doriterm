@@ -3,7 +3,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Machine, machine, MeshFixture } from "../testing/mesh-history.ts";
+import { signCard } from "@doriface/mesh";
+import { cardBody } from "../state/mesh.ts";
+import { deviceOf, type Machine, machine, MeshFixture, signPubOf } from "../testing/mesh-history.ts";
 import { linkOf, pairingHost, type PairingHost, runSession } from "../testing/pairing-harness.ts";
 
 const dirs: string[] = [];
@@ -148,5 +150,27 @@ describe("H-5: admitPairing refuses a mesh member's keys", () => {
     expect(run.hostEnd.closeCode).toBe(CloseCode.UnknownDevice);
     expect(host.deps.devices.list()).toEqual([]);
     expect(host.logs).toContain("pairing refused: this key belongs to a mesh member");
+  });
+});
+
+describe("a client's own push association", () => {
+  test("pairing with a client member's session key is accepted, since that key is its own push identity", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "dh-mesh-client-accept-"));
+    dirs.push(dir);
+    const [founder, phone] = [machine("founder"), machine("phone")];
+    const mesh = new MeshFixture(dir, founder);
+    const own = { name: phone.name, hcId: phone.hcId, devicePub: deviceOf(phone) };
+    const card = signCard(
+      cardBody(phone.identity, own, mesh.meshId, signPubOf(founder), undefined, "client"),
+      phone.identity.sign.secretKey,
+    );
+    mesh.record(founder, "admit", { card });
+    expect(mesh.store.authorizeIndex()?.client(deviceOf(phone))?.name).toBe("phone");
+
+    const host = pairingHost({ dir, meshOffer: false, mesh: () => mesh.store });
+    const run = runSession(host, { kind: "lan" }, linkOf(host), { staticKey: rawStaticKey(phone.device) });
+    expect(await run.host).toBeDefined();
+    await run.client;
+    expect(host.deps.devices.list().map((device) => device.clientStaticPub)).toContain(deviceOf(phone));
   });
 });

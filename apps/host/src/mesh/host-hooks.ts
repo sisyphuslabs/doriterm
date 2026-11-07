@@ -28,6 +28,11 @@ export interface MeshHooks {
   live(): MeshLiveFacts;
   /** The highest claim a peer's `hello` holds on this host's counter: the commands sign nothing below it (10.1). */
   floor(): CounterFloor | undefined;
+  /**
+   * Whether every member reads the format a client admission is written in. False while any member has not said so, which
+   * is why the gate is asked before the record is signed and not after (design of #942).
+   */
+  formatReady(): boolean;
 }
 
 export const IDLE_MESH_HOOKS: MeshHooks = {
@@ -35,6 +40,7 @@ export const IDLE_MESH_HOOKS: MeshHooks = {
   confirmations: () => Promise.resolve([]),
   left: () => Promise.resolve(),
   floor: () => undefined,
+  formatReady: () => false,
   live: () => ({
     pending: [],
     peers: new Map(),

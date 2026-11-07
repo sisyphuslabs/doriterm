@@ -70,6 +70,8 @@ export interface PendingJoinFact {
   readonly hostId: string;
   readonly noisePub: string;
   readonly expiresAt: Date;
+  /** What it joins as; the approval copy says what that grants. */
+  readonly kind: "machine" | "client";
 }
 
 export interface BudgetFacts {

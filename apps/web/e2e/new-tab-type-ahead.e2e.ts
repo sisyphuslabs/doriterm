@@ -106,11 +106,8 @@ test("input typed for a terminal that fails to start is reported as not sent, an
   expect(screenOnCore(address)).toEqual(previousScreen);
 });
 
-/**
- * Counts, in the page, the MutationObservers watching the whole body and the terminal.run answers the app has handled:
- * `runAnswers` moves a task after the WebSocket listener that took the answer, so every reaction to it has run.
- */
-const COUNT_LATE_WORK = `{
+/** Counts, in the page, the MutationObservers watching the whole body: a view the type-ahead still waits for. */
+const COUNT_BODY_OBSERVERS = `{
   const live = new Set();
   const Base = MutationObserver;
   window.MutationObserver = class extends Base {
@@ -123,36 +120,25 @@ const COUNT_LATE_WORK = `{
       return super.disconnect();
     }
   };
-  window.lateWork = { bodyObservers: () => live.size, runAnswers: 0 };
-  const sockets = [];
-  const Native = WebSocket;
-  window.WebSocket = class extends Native {
-    constructor(...args) {
-      super(...args);
-      sockets.push(this);
-      this.addEventListener("message", (event) => {
-        const text = event.data instanceof ArrayBuffer ? new TextDecoder("latin1").decode(event.data) : String(event.data);
-        const answer = (text.includes('"result":{') && text.includes('"address"')) || text.includes('"error":{');
-        if (!answer) return;
-        // A task after this message's whole dispatch: every listener, and the promise reactions they started, have run.
-        const channel = new MessageChannel();
-        channel.port1.onmessage = () => void (window.lateWork.runAnswers += 1);
-        channel.port2.postMessage(0);
-      });
-    }
-  };
+  window.bodyObservers = () => live.size;
 }`;
 
 const bodyObservers = (page: Page) =>
-  page.evaluate(() => (window as unknown as { lateWork: { bodyObservers: () => number } }).lateWork.bodyObservers());
-const runAnswers = (page: Page) =>
-  page.evaluate(() => (window as unknown as { lateWork: { runAnswers: number } }).lateWork.runAnswers);
+  page.evaluate(() => (window as unknown as { bodyObservers: () => number }).bodyObservers());
 
-/** Asks for a new tab with terminal.run held and keys typed for it, then leaves the workspace for Settings. */
-async function leaveWhileStarting(page: Page, link: HcSocket): Promise<(fail?: boolean) => void> {
-  const previous = await openNewTerminal(page);
+/**
+ * Asks for a new tab with terminal.run held and keys typed for it, then leaves the workspace for Settings; resolves
+ * with the release and the address of the terminal that asked.
+ */
+async function leaveWhileStarting(
+  page: Page,
+  link: HcSocket,
+): Promise<{ readonly release: (fail?: boolean) => void; readonly previous: string }> {
+  const asked = await openNewTerminal(page);
+  const previous = await asked.getAttribute("data-terminal");
+  if (previous === null) throw new Error("the previous terminal has no address");
   const release = link.hold("terminal.run");
-  await askNewTab(page, previous, "keys");
+  await askNewTab(page, asked, "keys");
   await page.keyboard.type(LINE, { delay: 40 });
   // Too short for the dialog, Settings is a sheet: it keeps the workspace mounted and hides it, so the panes that asked
   // are there but not shown when the run lands.
@@ -160,23 +146,28 @@ async function leaveWhileStarting(page: Page, link: HcSocket): Promise<(fail?: b
   await page.getByRole("link", { name: "Settings" }).first().click();
   await expect(page.locator("[data-terminal]")).toBeHidden();
   await expect(page.getByRole("heading", { level: 2 }).first()).toBeVisible();
-  return release;
+  return { release, previous };
 }
 
-test("a run that answers while Settings hides the workspace arms no observer or timer and shows no toast", async ({
+test("a run that answers while Settings hides the workspace hands its keys over and leaves no observer, timer or toast", async ({
   page,
 }) => {
-  await page.addInitScript({ content: COUNT_LATE_WORK });
+  await page.addInitScript({ content: COUNT_BODY_OBSERVERS });
   const link = await routeHcSocket(page);
   await page.clock.install();
   await page.goto("/");
-  const release = await leaveWhileStarting(page, link);
+  const { release, previous } = await leaveWhileStarting(page, link);
   const observers = await bodyObservers(page);
-  const answers = await runAnswers(page);
 
   release();
-  await expect.poll(() => runAnswers(page), { timeout: 15_000 }).toBeGreaterThan(answers);
-  // The late answer armed nothing: no observer waits for the new terminal's view, and no budget timer runs out.
+  // Settings keeps the workspace mounted, so the run is placed there and its held keys wait for its view to mount. The
+  // keys reaching the new terminal is when that wait ended: the hold is finished (its observer disconnected and its
+  // budget timer cleared) before they are replayed.
+  const fresh = page.locator(`[data-terminal]:not([data-terminal="${previous}"])`);
+  await expect(fresh).toHaveCount(1, { timeout: 15_000 });
+  const address = await fresh.getAttribute("data-terminal");
+  if (address === null) throw new Error("the new terminal has no address");
+  await expect.poll(() => screenOnCore(address).join("\n"), { timeout: 15_000 }).toContain(LINE);
   expect(await bodyObservers(page)).toBe(observers);
   await page.clock.runFor(16_000);
   await expect(page.getByText("What you typed was not sent")).toHaveCount(0);

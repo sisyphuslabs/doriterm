@@ -20,9 +20,9 @@
     "verify:wasm": "bun scripts/verify.ts"
   },
   "devDependencies": {
-    "@wterm/ghostty": "0.5.8"
+    "@wterm/ghostty": "0.5.9"
   },
   "peerDependencies": {
-    "@wterm/ghostty": "0.5.8"
+    "@wterm/ghostty": "0.5.9"
   }
 }

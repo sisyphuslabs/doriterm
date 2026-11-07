@@ -10,11 +10,15 @@ export function undecidableFrom(
   self: string,
   subjects: readonly string[],
   cache: ViewCache,
+  /** The members that may witness: machines. A client never dials and never votes (design of #942, section 8). */
+  mayWitness?: ReadonlySet<string> | undefined,
 ): ReadonlyMap<string, readonly string[]> {
   const own = witnessPool(records, self, subjects, cache);
   const empty = subjects.filter((subject) => (own.get(subject) ?? []).length === 0);
   if (empty.length === 0) return new Map();
-  const candidates = [...view.members].filter((key) => key !== self && !subjects.includes(key));
+  const candidates = [...view.members].filter(
+    (key) => key !== self && !subjects.includes(key) && (mayWitness === undefined || mayWitness.has(key)),
+  );
   const pools = candidates.map((key) => [key, witnessPool(records, key, subjects, cache)] as const);
   return new Map(
     empty.map((subject) => [

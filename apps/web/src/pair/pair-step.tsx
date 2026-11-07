@@ -5,6 +5,8 @@ import { formatCode, normalizeCode } from "./code.ts";
 import type { PairingOffer } from "./fragment.ts";
 import { parsePairingFragment } from "./fragment.ts";
 import { lookupCode } from "./lookup.ts";
+import { ScanButton } from "./scan-button.tsx";
+import { offerFromScan } from "./scan.ts";
 import { Steps } from "./steps.tsx";
 
 /** Takes the 8-character code doriface-host pair shows (or its link) and moves to Verify. */
@@ -18,18 +20,24 @@ export function PairStep({
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const submit = async (): Promise<void> => {
-    const link = text.indexOf("#");
-    const code = normalizeCode(text);
+  const apply = async (candidate: string): Promise<void> => {
+    const link = candidate.indexOf("#");
+    const code = normalizeCode(candidate);
     if (link === -1 && code === null) return setError("Enter the 8 characters the host shows.");
     setBusy(true);
     const parsed =
       link !== -1
-        ? parsePairingFragment(text.slice(link))
+        ? parsePairingFragment(candidate.slice(link))
         : await lookupCode(code ?? "", connectionStore.settings.relayUrl);
     setBusy(false);
     if (parsed.ok) onOffer(parsed.offer);
     else setError(parsed.reason);
+  };
+  const submit = (): Promise<void> => apply(text);
+  const scanned = (scannedText: string): void => {
+    const parsed = offerFromScan(scannedText);
+    setError(parsed.ok ? null : parsed.reason);
+    if (parsed.ok) onOffer(parsed.offer);
   };
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-5 px-6 py-10">
@@ -82,6 +90,7 @@ export function PairStep({
           Pair
         </Button>
       </form>
+      <ScanButton onText={scanned} />
     </main>
   );
 }

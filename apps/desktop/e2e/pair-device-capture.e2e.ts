@@ -81,8 +81,8 @@ async function take({ width, height, mode }: Shot): Promise<void> {
   await page.getByRole("heading", { name: "Settings" }).first().waitFor();
   await page
     .getByRole("navigation", { name: "Settings", exact: true })
-    .getByRole("button", { name: "Connections", exact: true })
-    .or(page.getByRole("tab", { name: "Connections", exact: true }))
+    .getByRole("button", { name: "This device", exact: true })
+    .or(page.getByRole("tab", { name: "This device", exact: true }))
     .filter({ visible: true })
     .click();
   await page.getByRole("button", { name: "Pair a device", exact: true }).click();

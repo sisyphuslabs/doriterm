@@ -58,7 +58,8 @@ export default defineConfig({
   webServer: [
     {
       // Only layout.e2e.ts reads this host, and a file's tests run in one worker, so the workers can share it.
-      command: "bun e2e/host.ts layout",
+      // A capture needs no second machine, and adding one inside a container fails: the capture command sets this.
+      command: `${process.env["E2E_SKIP_MACHINE"] === "1" ? "E2E_SKIP_MACHINE=1 " : ""}bun e2e/host.ts layout`,
       url: `http://127.0.0.1:${E2E_LAYOUT_PORT}/healthz`,
       reuseExistingServer: false,
       gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },

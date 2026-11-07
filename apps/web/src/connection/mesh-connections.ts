@@ -1,0 +1,350 @@
+import type { ConnectionState } from "./store.ts";
+import type { HostStartFailure } from "../desktop/bridge.ts";
+import type { LocalHostStarter } from "./store.ts";
+import type { ConnectionSettings, MemberTarget, Saver } from "./settings.ts";
+import { normalizeSettings, saveSettings } from "./settings.ts";
+
+/**
+ * What the mesh needs from one member's connection. `ConnectionStore` satisfies it structurally; declaring it here keeps this
+ * module free of a runtime import back into the store, so the two never form an import cycle.
+ */
+export interface MemberConnection {
+  readonly settings: ConnectionSettings;
+  readonly state: ConnectionState;
+  subscribe(listener: () => void): () => void;
+  start(): void;
+  stop(): void;
+  retryNow(): void;
+  update(settings: ConnectionSettings): void;
+  restoring(): void;
+  restartsLocalHost(starter: LocalHostStarter): void;
+  hostStartFailed(failure: HostStartFailure): void;
+}
+
+export type StoreFactory = (settings: ConnectionSettings, save: Saver) => MemberConnection;
+
+/** One member and the connection this app holds to it, which is independent of every other member's. */
+export interface MemberEntry {
+  readonly target: MemberTarget;
+  readonly state: ConnectionState;
+}
+
+/** The one object `state` answers with when there is no connection to show: a fresh one per read would loop any rendering store. */
+const UNSET: ConnectionState = { phase: "unconfigured" };
+
+/** Whether a member's dial settings are unchanged, so an edit elsewhere does not tear down a connection it does not concern. */
+const sameTarget = (held: ConnectionSettings, want: ConnectionSettings): boolean =>
+  held.mode === want.mode &&
+  held.relayUrl === want.relayUrl &&
+  held.hostId === want.hostId &&
+  held.hostName === want.hostName &&
+  held.hostKey === want.hostKey &&
+  held.directUrl === want.directUrl &&
+  held.loopbackUrl === want.loopbackUrl &&
+  held.token === want.token;
+
+/**
+ * One connection per member, so a machine going away removes that machine and nothing else.
+ *
+ * Before this, the app held a single connection and, when it failed, moved the selection to the next member and dialled again:
+ * one machine stopping meant every session this app had died with it, which is the behaviour Q reported ("if Air turns off,
+ * everything turns off"). Here every member of the roster gets its own connection and its own retry ladder, so the others are
+ * untouched when one host stops.
+ *
+ * A member's store is dialled with a roster of just itself. Rotation inside a store exists for the single-connection case, and
+ * a per-member store that rotated would dial a member that already has its own connection; with a one-entry roster that code
+ * cannot move at all.
+ */
+export class MeshConnections {
+  #settings: ConnectionSettings;
+  readonly #make: StoreFactory;
+  readonly #stores = new Map<string, MemberConnection>();
+  readonly #targets = new Map<string, MemberTarget>();
+  readonly #listeners = new Set<() => void>();
+  readonly #unsubscribes = new Map<string, () => void>();
+  /**
+   * The desktop app's own-host starter, kept here rather than handed to one connection.
+   *
+   * A fresh install has no member yet when the app registers it, and every connection built afterwards (a pairing, a roster
+   * change) needs it too; forwarding it to whatever happened to exist at boot lost it for all of them (review of #994).
+   */
+  #localHost: LocalHostStarter | null = null;
+  /**
+   * Whether this app is dialling at all.
+   *
+   * Nothing is dialled when the settings are merely read: the boot path decides, because in the desktop app it must stop a stale
+   * saved port before the saved link is tried, and because starting here made every member dial twice (review of #994).
+   */
+  #running = false;
+  /** The members that have been handed to `start()`, so a settings change dials a store that never started and leaves an open one alone. */
+  readonly #started = new Set<string>();
+  /**
+   * The list `entries()` answers with. Rebuilt only when something changes, because it is read through
+   * `useSyncExternalStore`, which compares snapshots by identity and would re-render forever on a fresh array per call.
+   */
+  // Members a pairing leaves behind are not dialled any more: the settings keep only the machine just paired (see `pair`).
+  #snapshot: readonly MemberEntry[] = [];
+
+  constructor(settings: ConnectionSettings, make: StoreFactory) {
+    this.#settings = normalizeSettings(settings);
+    this.#make = make;
+    this.#sync();
+    this.#refresh();
+  }
+
+  get settings(): ConnectionSettings {
+    return this.#settings;
+  }
+
+  /** The selected member's connection, which is the one the workspace shows: the saved selection, or the first member. */
+  get selected(): MemberConnection | undefined {
+    const chosen = this.#stores.get(this.#settings.hostId);
+    if (chosen !== undefined) return chosen;
+    // A saved selection the roster does not hold cannot be dialled, and reporting it as unset would make every screen read "not
+    // connected" while members are up. The first member answers for it until the person picks another.
+    return this.#stores.values().next().value;
+  }
+
+  get state(): ConnectionState {
+    return this.selected?.state ?? UNSET;
+  }
+
+  subscribe = (listener: () => void): (() => void) => {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  };
+
+  /** Every member and its own connection state, for a list that marks one machine offline instead of the whole app. */
+  entries(): readonly MemberEntry[] {
+    return this.#snapshot;
+  }
+
+  /** Takes new settings and keeps the roster: an edit to how this app dials, not a choice of what it dials. */
+  update(settings: ConnectionSettings): void {
+    this.#apply(settings);
+  }
+
+  /**
+   * Pairs with one machine, which REPLACES what this app was bound to.
+   *
+   * Pairing is an intent, not something to infer from the host id: the roster exists so a client reaches every member of a
+   * mesh, and a machine the person paired away from must not stay in it and be dialled forever after (review of #994).
+   */
+  pair(settings: ConnectionSettings): void {
+    // The name belongs to the host that said it (#496): the machine just paired has not said one yet, so the previous
+    // machine's name must not travel with the rest of the settings (review of #994).
+    this.#apply({ ...settings, hostName: "", members: [] });
+  }
+
+  #apply(settings: ConnectionSettings): void {
+    this.#settings = normalizeSettings(settings);
+    saveSettings(this.#settings);
+    // A settings change is the app asking to dial with them, which is how the boot path replaces a stale saved port. Members that
+    // already dialled are left alone; one that was stopped (by `restoring()`) is dialled again, which is the boot case where the
+    // endpoint never changed and nothing else would start it (review of #994).
+    this.#running = true;
+    this.#sync();
+    this.#startAll();
+    this.#notify();
+  }
+
+  /** Shows another member's connection without touching any connection: the others stay open while this app looks elsewhere. */
+  select(hostId: string): void {
+    if (hostId === this.#settings.hostId || !this.#targets.has(hostId)) return;
+    const target = this.#targets.get(hostId);
+    if (target === undefined) return;
+    this.#settings = {
+      ...this.#settings,
+      hostId: target.hostId,
+      hostName: target.hostName,
+      hostKey: target.hostKey,
+      directUrl: target.directUrl,
+    };
+    saveSettings(this.#settings);
+    this.#notify();
+  }
+
+  /**
+   * Begins dialling every member again.
+   *
+   * This is also the "Try now" the first-connect screen offers, which means retry everything: with the started set left in place a
+   * member that had already dialled was skipped and the button did nothing (caught by first-connect-offline in CI).
+   */
+  start(): void {
+    this.#running = true;
+    this.#started.clear();
+    this.#startAll();
+  }
+
+  /** Starts every member that has not been started yet; a member already dialling keeps its connection. */
+  #startAll(): void {
+    for (const [hostId, store] of this.#stores) {
+      if (this.#started.has(hostId)) continue;
+      this.#started.add(hostId);
+      store.start();
+    }
+  }
+
+  /** The desktop app restarting this computer's own host: only the member on loopback is affected, and it will be dialled again. */
+  restoring(): void {
+    // The store stops itself; this records that it must be dialled again by the settings the boot path hands over next.
+    this.#started.clear();
+    this.selected?.restoring();
+  }
+
+  restartsLocalHost(starter: LocalHostStarter): void {
+    this.#localHost = starter;
+    for (const store of this.#stores.values()) store.restartsLocalHost(starter);
+  }
+
+  hostStartFailed(failure: HostStartFailure): void {
+    this.selected?.hostStartFailed(failure);
+  }
+
+  stop(): void {
+    this.#running = false;
+    this.#started.clear();
+    for (const store of this.#stores.values()) store.stop();
+  }
+
+  /** Retries one member: the row a person clicked, not every connection this app holds. */
+  retry(hostId: string): void {
+    this.#stores.get(hostId)?.retryNow();
+  }
+
+  retryNow(): void {
+    for (const store of this.#stores.values()) store.retryNow();
+  }
+
+  /** The members this app dials: the roster, plus the selected host when the two disagree so it is never left unreachable. */
+  #roster(): readonly MemberTarget[] {
+    const { members, hostId, hostName, hostKey, directUrl } = this.#settings;
+    const selected: MemberTarget = { hostId, hostName, hostKey, directUrl };
+    if (members.length > 0) {
+      return hostId !== "" && !members.some((member) => member.hostId === hostId) ? [selected, ...members] : members;
+    }
+    // No roster yet: this computer's own host over loopback is the one machine there is. In relay mode with nothing paired
+    // there is nothing to dial at all.
+    return hostId === "" && this.#settings.mode !== "loopback" ? [] : [selected];
+  }
+
+  #sync(): void {
+    const roster = this.#roster();
+    const keep = new Set(roster.map((member) => member.hostId));
+    for (const [hostId, unsubscribe] of this.#unsubscribes) {
+      if (keep.has(hostId)) continue;
+      unsubscribe();
+      this.#unsubscribes.delete(hostId);
+      this.#stores.get(hostId)?.stop();
+      this.#stores.delete(hostId);
+      this.#targets.delete(hostId);
+    }
+    for (const member of roster) {
+      const existing = this.#stores.get(member.hostId);
+      this.#targets.set(member.hostId, member);
+      if (existing !== undefined) {
+        // The shared settings can change under a member that is already dialled: a new relay, another mode, a fresh loopback
+        // token. Only the members whose slice changed are told, so an untouched connection is not torn down for an edit that
+        // does not concern it.
+        const scoped = this.#scoped(member);
+        if (!sameTarget(existing.settings, scoped)) existing.update(scoped);
+        continue;
+      }
+      this.#stores.set(member.hostId, this.#dial(member));
+    }
+  }
+
+  /** One member's settings: the shared ones, with that member's own address and a roster of just itself. */
+  #scoped(member: MemberTarget): ConnectionSettings {
+    return {
+      ...this.#settings,
+      hostId: member.hostId,
+      hostName: member.hostName,
+      hostKey: member.hostKey,
+      directUrl: member.directUrl,
+      members: [member],
+    };
+  }
+
+  #dial(member: MemberTarget): MemberConnection {
+    const scoped = this.#scoped(member);
+    // A member's store holds a slice of a roster this object owns, so it must not write: saving its slice would replace the
+    // roster with one member.
+    const store = this.#make(scoped, () => undefined);
+    if (this.#localHost !== null) store.restartsLocalHost(this.#localHost);
+    if (this.#running) {
+      this.#started.add(member.hostId);
+      store.start();
+    }
+    this.#unsubscribes.set(
+      member.hostId,
+      store.subscribe(() => this.#onMember(member.hostId, store)),
+    );
+    return store;
+  }
+
+  /**
+   * A member names itself as it answers, and that name is the only way to label it while it is down (#496). The name arrives on
+   * the member's own store, so it is folded back into the roster and saved here, the one place the roster is written.
+   */
+  /**
+   * A member reported a change. The name it answers with is folded into the roster, and the shown machine moves off a dead one.
+   *
+   * The fallback is the base's failover, kept: a store holds a one-member roster, so the rotation inside `ConnectionStore` cannot
+   * run for it, and without this the workspace would stay on the machine that just stopped while the others were open (review of
+   * #994).
+   */
+  #onMember(hostId: string, store: MemberConnection): void {
+    this.#adoptName(hostId, store);
+    this.#failOver();
+    // One notification for both: a reader must see the new selection, not the dead machine the name update was about.
+    this.#notify();
+  }
+
+  #failOver(): void {
+    const current = this.selected;
+    if (current === undefined) return;
+    const phase = current.state.phase;
+    if (phase === "open" || phase === "connecting") return;
+    const live = [...this.#stores.entries()].find(([, store]) => store.state.phase === "open");
+    if (live === undefined) return;
+    const [hostId] = live;
+    const target = this.#targets.get(hostId);
+    if (target === undefined || hostId === this.#settings.hostId) return;
+    this.#settings = {
+      ...this.#settings,
+      hostId: target.hostId,
+      hostName: target.hostName,
+      hostKey: target.hostKey,
+      directUrl: target.directUrl,
+    };
+    saveSettings(this.#settings);
+  }
+
+  #adoptName(hostId: string, store: MemberConnection): void {
+    const name = store.settings.hostName;
+    const target = this.#targets.get(hostId);
+    // Loopback is one gateway for every member, so the hello that answers says nothing about which member replied: adopting it
+    // would rename every machine after the one local host.
+    if (store.settings.mode === "loopback") return;
+    if (target === undefined || name === "" || name === target.hostName) return;
+    const renamed: MemberTarget = { ...target, hostName: name };
+    this.#targets.set(hostId, renamed);
+    const members = this.#settings.members.map((member) => (member.hostId === hostId ? renamed : member));
+    const selected = this.#settings.hostId === hostId ? { hostName: name } : {};
+    this.#settings = normalizeSettings({ ...this.#settings, ...selected, members });
+    saveSettings(this.#settings);
+  }
+
+  #refresh(): void {
+    this.#snapshot = [...this.#targets.values()].map((target) => ({
+      target,
+      state: this.#stores.get(target.hostId)?.state ?? UNSET,
+    }));
+  }
+
+  #notify(): void {
+    this.#refresh();
+    for (const listener of this.#listeners) listener();
+  }
+}

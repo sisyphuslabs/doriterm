@@ -32,7 +32,7 @@ SOFTWARE.
 -------------------------------------------------------------------------
 wterm (https://github.com/vercel-labs/wterm)
 Used: packages/@wterm/ghostty/zig (the WebAssembly export layer that
-@wterm/ghostty loads), tag v0.5.8, modified by patches/wterm/*.patch.
+@wterm/ghostty loads), tag v0.5.9, modified by patches/wterm/*.patch.
 The patches in patches/ghostty/ carry forward WebAssembly changes that
 wterm made to its pinned Ghostty source, rewritten for Ghostty v1.4.0.
 

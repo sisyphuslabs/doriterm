@@ -24,7 +24,7 @@ It needs `hc` on `PATH` (or `HC_BIN`) and Playwright's Chromium (`bunx playwrigh
    - **Long tasks**: count and total of `longtask` entries.
    - **Drawn KiB/s**: the bytes the programs wrote over the time until every pane showed its end line.
    - **Catch-up ms**: from the last program finishing to every pane showing its end line: how far drawing trails the output.
-   - **Heap MB, DOM nodes**: `JSHeapUsedSize` and `Nodes` at the end.
+   - **Heap MB, DOM nodes**: `JSHeapUsedSize` and `Nodes` once recording has stopped and a full garbage collection (`HeapProfiler.collectGarbage`) has run: what the page keeps. Read without that collection they depended on when the collector last ran and swung about 30 MB between runs of one build (#1037).
 4. Hidden phase: the `idle` tab is selected, the same workload runs again, and **Hidden busy** is the main-thread share while the `bench` tab is not shown; then the `bench` tab is selected and **Show catch-up ms** is the time until every pane shows the hidden phase's end line.
 
 Each program starts one `sleep` per tick; at 50 panes that is 500 short processes a second on the machine, the same for every build.
@@ -52,7 +52,8 @@ What the noise says:
 
 - Frame intervals come in whole 60 Hz frames (16.7 ms steps). A single run's p95 at 50 panes spread over two steps (83 to 117 ms), but the median over 5 rounds moved 0.1 ms. The limit is the larger of 1.25 times the baseline and the baseline plus 4 ms: at a baseline of three frames or fewer (50 ms or less, as at 1 and 15 panes and v0.1.2's 50) a one-frame shift of the median fails; at a 66.7 ms baseline the limit is 83.4 ms, so a one-frame shift sits at the line; at 100 ms (the noise run's 50-pane baseline) the limit is 125 ms and one frame passes, two fail.
 - Catch-up is read at a 50 ms poll, so single runs land near 5 or 55 ms; its floor is 100 ms.
-- Heap depends on when garbage collection ran (medians moved up to 8 MB), and the time to catch up once a hidden tab is shown moved 178 ms at 50 panes; their floors are 15 MB and 300 ms.
+- The heap column above was read before the bench collected garbage first; it depended on when the collector last ran, and across release runs one build's 50-pane median moved about 30 MB (v0.1.3: 60.9 then 99.8 MB; v0.1.4: 94.0 then 67.9 MB), which stopped v0.1.5 on noise (#1037). Read after a full collection (Render bench runs 42306731684, `bench/1037-heap-after-gc-noise`, and 42306731425, v0.1.4 against dev `9ec0795b`), every round of a build lands within 0.7 MB (50 panes: 40.1 to 40.7 MB A/A, medians 40.2 / 40.1; v0.1.4 39.9 to 40.5, dev 40.1 to 40.8) and DOM nodes do not move at all within a build. The heap floor stays 15 MB.
+- The time to catch up once a hidden tab is shown moved 178 ms at 50 panes; its floor is 300 ms.
 - The absolute numbers differ between runners: this run's 50-pane frame p95 was 100 ms, while another `ubuntu-24.04` job measured 50 to 67 ms the same day. That is why the gate compares two builds on one runner and never with a stored number.
 
 The first comparison with the last release (Render bench run 42196737507, `v0.1.2` against the branch at dev `b5e2fec4`, 5 rounds) failed at 50 panes: frame p95 50.1 to 66.7 ms (every candidate round 66.7, four of five `v0.1.2` rounds 50), with the median long tasks per run up from 13 (756 ms) to 28 (1,695 ms). The other 20 gated medians were within their limits. That regression on dev is tracked apart from this bench.

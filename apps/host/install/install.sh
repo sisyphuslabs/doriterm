@@ -1,7 +1,7 @@
 #!/bin/sh
-# doriface host installer for Linux and macOS (#668).
+# Doriterm host installer for Linux and macOS (#668).
 #
-#   curl -fsSL https://github.com/sisyphuslabs/doriface/releases/latest/download/install.sh | sh
+#   curl -fsSL https://github.com/sisyphuslabs/doriterm/releases/latest/download/install.sh | sh
 #
 # One step: downloads doriface-host for this OS and CPU and checks it against the release's SHA256SUMS.txt, installs
 # herdr-core when no `hc` is found, registers the host as a user service (systemd --user on Linux, a LaunchAgent on
@@ -10,7 +10,7 @@
 # binary and keeps the host's keys and paired devices.
 set -eu
 
-REPO_RELEASES="https://github.com/sisyphuslabs/doriface/releases"
+REPO_RELEASES="https://github.com/sisyphuslabs/doriterm/releases"
 # The release workflow stamps its tag here, so a published install.sh installs the release it came with.
 release="__DORIFACE_RELEASE__"
 SERVICE_LABEL="dev.omo.doriface-host"
@@ -20,7 +20,7 @@ usage() {
 usage: install.sh [options]
 
   --version <vX.Y.Z>    the release to install (default: the one this script came with, else the latest)
-  --web-origin <url>    the web app the pairing QR code and link open (default: the doriface desktop app's link)
+  --web-origin <url>    the web app the pairing QR code and link open (default: the Doriterm desktop app's link)
   --join <link>         join the mesh of the host that made this link (the app's Add a machine command), instead
                         of printing a pairing
   --bin-dir <dir>       where doriface-host goes (default ~/.local/bin)
@@ -32,9 +32,9 @@ usage: install.sh [options]
 EOF
 }
 
-say() { printf 'doriface: %s\n' "$*"; }
+say() { printf 'Doriterm: %s\n' "$*"; }
 fail() {
-  printf 'doriface: %s\n' "$*" >&2
+  printf 'Doriterm: %s\n' "$*" >&2
   exit 1
 }
 
@@ -188,7 +188,7 @@ if [ "$os" = linux ]; then
   mkdir -p "$unit_dir"
   cat >"$unit" <<EOF
 [Unit]
-Description=doriface host gateway beside herdr-core
+Description=Doriterm host gateway beside herdr-core
 After=network-online.target
 
 [Service]

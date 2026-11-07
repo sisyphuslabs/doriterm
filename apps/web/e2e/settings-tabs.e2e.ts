@@ -76,7 +76,7 @@ test("no tab label is under a paging cue at rest, after paging to the end, or af
   page: tab,
 }) => {
   await tab.goto("/settings");
-  await expect(tab.getByRole("tab", { name: "Connections" })).toBeVisible();
+  await expect(tab.getByRole("tab", { name: "This device" })).toBeVisible();
   await expect(tab.locator('[data-tab-edge="end"]')).toHaveCount(1);
 
   const rest = await strip(tab);
@@ -114,9 +114,9 @@ test("each paging cue takes a 44 pt tap on a phone, at rest and paged to the end
 
 test("a keyboard-focused tab's ring is drawn whole, inside the strip", async ({ page: tab }) => {
   await tab.goto("/settings");
-  await tab.getByRole("tab", { name: "Connections" }).focus();
+  await tab.getByRole("tab", { name: "This device" }).focus();
   await tab.keyboard.press("ArrowRight");
-  const focused = tab.getByRole("tab", { name: "Mesh" });
+  const focused = tab.getByRole("tab", { name: "Machines" });
   await expect(focused).toBeFocused();
   const ring = await focused.evaluate((element) => {
     const style = getComputedStyle(element);

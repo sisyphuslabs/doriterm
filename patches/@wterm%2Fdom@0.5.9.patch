@@ -23,7 +23,7 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 08a9e4df1211ebe8eeefaa1e2dcdbeeee312677e..38aa82563f17e85c1ca63e7afe5bc75ab485ec9e 100644
+index 78a86ffd96eec03222777f40e9db6a0561684c3f..ca0447617d18967c418aba8d8fe551cc510a9fff 100644
 --- a/dist/input.js
 +++ b/dist/input.js
 @@ -70,6 +70,12 @@ const COMPOSITION_INPUT_DEDUP_MS = 250;
@@ -283,16 +283,16 @@ index 08a9e4df1211ebe8eeefaa1e2dcdbeeee312677e..38aa82563f17e85c1ca63e7afe5bc75a
          this.resetInputValue();
          const recent = this.recentCompositionCommit;
          this.recentCompositionCommit = null;
-@@ -816,7 +951,7 @@ export class InputHandler {
-     }
-     keyToSequence(e) {
+@@ -821,7 +956,7 @@ export class InputHandler {
+                 return other;
+         }
          if (e.ctrlKey && !e.altKey && !e.metaKey) {
 -            const control = legacyControlByte(e.key);
 +            const control = legacyControlByte(e.key) ?? physicalControlByte(e);
              if (control !== null)
                  return control;
              if (e.key === "Backspace")
-@@ -850,4 +985,15 @@ export class InputHandler {
+@@ -855,6 +990,17 @@ export class InputHandler {
          return null;
      }
  }
@@ -307,13 +307,14 @@ index 08a9e4df1211ebe8eeefaa1e2dcdbeeee312677e..38aa82563f17e85c1ca63e7afe5bc75a
 +    const letter = /^Key([A-Z])$/.exec(e.code ?? "");
 +    return letter ? String.fromCharCode(letter[1].charCodeAt(0) - 64) : null;
 +}
- //# sourceMappingURL=input.js.map
-\ No newline at end of file
+ /**
+  * xterm modifyOtherKeys level 2: keys whose legacy encoding loses their
+  * modifiers become `CSI 27 ; modifier ; code ~`. Like xterm, and unlike
 diff --git a/dist/renderer.d.ts b/dist/renderer.d.ts
-index 208021ab4fefce3dda7da7f337850a59113cc514..b6c3f70309d5e78e15d656d09f406f268b869f8b 100644
+index dbff0264a6d9d0fe4feea8d7de0ef8c617216b8b..b9be38a24246578ff2713e1e8798a5a8385bb88f 100644
 --- a/dist/renderer.d.ts
 +++ b/dist/renderer.d.ts
-@@ -95,6 +95,8 @@ export declare class Renderer {
+@@ -114,6 +114,8 @@ export declare class Renderer {
      /** Turns the color canvas off so block cells keep their own colored spans. */
      setCanvasSuspended(suspended: boolean): void;
      requestSetup(): void;
@@ -323,10 +324,10 @@ index 208021ab4fefce3dda7da7f337850a59113cc514..b6c3f70309d5e78e15d656d09f406f26
      invalidateColors(): void;
      /** Replaces decorations only, preserving native text selection. */
 diff --git a/dist/renderer.js b/dist/renderer.js
-index a071bc6340f6aef3fdbf62a4fd64aa04795e2c51..d17f03383e0d1e7f14da674e488c14988a6410fc 100644
+index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..7b0dbf34c37f51d6bc357688567a895755d386c3 100644
 --- a/dist/renderer.js
 +++ b/dist/renderer.js
-@@ -157,8 +157,42 @@ function cellSpanPart(className, style, text) {
+@@ -158,8 +158,42 @@ function cellSpanPart(className, style, text) {
          html: `${opening}${content}</span>`,
          opening: flat ? opening : undefined,
          text: flat ? text : undefined,
@@ -369,7 +370,7 @@ index a071bc6340f6aef3fdbf62a4fd64aa04795e2c51..d17f03383e0d1e7f14da674e488c1498
  function safeLinkHref(uri) {
      if (!uri)
          return undefined;
-@@ -549,6 +583,8 @@ export class Renderer {
+@@ -571,6 +605,8 @@ export class Renderer {
          // Keeping their boundaries lets a redraw preserve unchanged Unicode cells.
          const parts = [];
          let linkHtml = "";
@@ -378,7 +379,7 @@ index a071bc6340f6aef3fdbf62a4fd64aa04795e2c51..d17f03383e0d1e7f14da674e488c1498
          const content = {
              text: "",
              specialCells: [],
-@@ -590,14 +626,18 @@ export class Renderer {
+@@ -612,14 +648,18 @@ export class Renderer {
              const nextLinkKey = href ? linkKey : "";
              if (nextLinkKey !== outputLinkKey) {
                  if (outputLinkKey)
@@ -399,7 +400,7 @@ index a071bc6340f6aef3fdbf62a4fd64aa04795e2c51..d17f03383e0d1e7f14da674e488c1498
              else
                  parts.push(content);
          };
-@@ -746,7 +786,10 @@ export class Renderer {
+@@ -768,7 +808,10 @@ export class Renderer {
                  }
                  const ch = cell.chars ?? (cp >= 32 ? String.fromCodePoint(cp) : " ");
                  recordText(ch, col, 2);
@@ -411,7 +412,7 @@ index a071bc6340f6aef3fdbf62a4fd64aa04795e2c51..d17f03383e0d1e7f14da674e488c1498
                  const cursor = cursorCol >= col && cursorCol < col + 2;
                  const cls = cursor ? "term-wide term-cursor" : "term-wide";
                  appendStyledSpan(cls, cursor ? cursorCellStyle(style) : style, ch, cellLinkKey, cellLinkUri);
-@@ -818,7 +861,7 @@ export class Renderer {
+@@ -840,7 +883,7 @@ export class Renderer {
          flushRun(this.cols);
          flushCanvasRun();
          if (outputLinkKey)
@@ -420,7 +421,7 @@ index a071bc6340f6aef3fdbf62a4fd64aa04795e2c51..d17f03383e0d1e7f14da674e488c1498
          this.updateRowParts(rowEl, parts);
          this.rowText.set(rowEl, content);
          if (canvasTop)
-@@ -871,9 +914,9 @@ export class Renderer {
+@@ -893,9 +936,9 @@ export class Renderer {
          }
          const retained = start + parts.length - newEnd;
          const replaced = Math.max(oldEnd - start, newEnd - start);
@@ -432,7 +433,7 @@ index a071bc6340f6aef3fdbf62a4fd64aa04795e2c51..d17f03383e0d1e7f14da674e488c1498
          }
          else {
              // Replace only the changed middle, retaining the native text nodes and
-@@ -882,12 +925,12 @@ export class Renderer {
+@@ -904,12 +947,12 @@ export class Renderer {
              range.setStart(row, start);
              range.setEnd(row, oldEnd);
              range.deleteContents();
@@ -451,7 +452,7 @@ index a071bc6340f6aef3fdbf62a4fd64aa04795e2c51..d17f03383e0d1e7f14da674e488c1498
          }
          this.rowParts.set(row, parts);
      }
-@@ -1286,6 +1329,11 @@ export class Renderer {
+@@ -1330,6 +1373,11 @@ export class Renderer {
      requestSetup() {
          this.needsSetup = true;
      }
@@ -464,10 +465,10 @@ index a071bc6340f6aef3fdbf62a4fd64aa04795e2c51..d17f03383e0d1e7f14da674e488c1498
      invalidateColors() {
          this.colorsChanged = true;
 diff --git a/dist/wterm.d.ts b/dist/wterm.d.ts
-index e307b168727cef08a2d644e33ca8cc4d8c23cfb1..04cbfc73f380b80233da981248ce19056a1dc3fa 100644
+index a6746f499859ba9da2d7884dfd71694205c6d819..7ef2bfcb6c94d74a4e6ff9aec76a6e417fe1467c 100644
 --- a/dist/wterm.d.ts
 +++ b/dist/wterm.d.ts
-@@ -115,6 +115,17 @@ export declare class WTerm {
+@@ -131,6 +131,17 @@ export declare class WTerm {
       * Pass `null` to drop them and answer color queries from the page's CSS again.
       */
      setThemeColors(colors: TerminalThemeColors | null): void;
@@ -486,11 +487,11 @@ index e307b168727cef08a2d644e33ca8cc4d8c23cfb1..04cbfc73f380b80233da981248ce1905
      /**
       * Hands the core the theme colors the page's CSS resolves to, unless the
 diff --git a/dist/wterm.js b/dist/wterm.js
-index 848e1c3f7880842c4439541fc4565ff4a42c0201..7b452098433c6114ec443fcbec152d4ff0d61013 100644
+index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..fffa81453596df9f2d711fca64271d67c61c24cb 100644
 --- a/dist/wterm.js
 +++ b/dist/wterm.js
-@@ -100,6 +100,11 @@ export class WTerm {
-         this._destroyed = false;
+@@ -131,6 +131,11 @@ export class WTerm {
+         };
          this._shouldScrollToBottom = false;
          this._pinnedToBottom = true;
 +        // The user moved the view off the bottom (a scroll, a search reveal, a
@@ -501,7 +502,7 @@ index 848e1c3f7880842c4439541fc4565ff4a42c0201..7b452098433c6114ec443fcbec152d4f
          this._scrollbackDiscardedCount = 0;
          this._programmaticScrollTop = null;
          this._pendingResizeScrollTop = null;
-@@ -184,6 +189,7 @@ export class WTerm {
+@@ -227,6 +232,7 @@ export class WTerm {
                  const match = this._search.matches[this.getSearchState().activeIndex];
                  if (match) {
                      this._shouldScrollToBottom = false;
@@ -509,7 +510,7 @@ index 848e1c3f7880842c4439541fc4565ff4a42c0201..7b452098433c6114ec443fcbec152d4f
                      this._pendingResizeScrollTop = null;
                      this._setScrollTop((match.start.row + 0.5) * this._rowHeight -
                          this.element.clientHeight / 2);
-@@ -306,6 +312,7 @@ export class WTerm {
+@@ -349,6 +355,7 @@ export class WTerm {
              }
              this._programmaticScrollTop = null;
              this._shouldScrollToBottom = false;
@@ -517,15 +518,15 @@ index 848e1c3f7880842c4439541fc4565ff4a42c0201..7b452098433c6114ec443fcbec152d4f
              this._scheduleRender();
          };
          this.element.addEventListener("scroll", this._onScroll, { passive: true });
-@@ -372,6 +379,7 @@ export class WTerm {
-                 maxImageWidth: this.maxImageWidth,
+@@ -418,6 +425,7 @@ export class WTerm {
                  maxImageHeight: this.maxImageHeight,
+                 renderer: this._rendererOption,
              });
 +            this.renderer.setWideGlyphScale(this._wideGlyphScale ?? null);
              this.renderer.setup(this.cols, this.rows);
              this.input = new InputHandler(this.element, (data, preserveScroll = false) => this._deliverInput(data, preserveScroll), () => this.bridge, () => this._charWidth > 0 && this._rowHeight > 0
                  ? { charWidth: this._charWidth, rowHeight: this._rowHeight }
-@@ -407,7 +415,6 @@ export class WTerm {
+@@ -453,7 +461,6 @@ export class WTerm {
              if (!this.autoResize) {
                  this._lockHeight();
              }
@@ -533,7 +534,7 @@ index 848e1c3f7880842c4439541fc4565ff4a42c0201..7b452098433c6114ec443fcbec152d4f
              this._initialRender();
              this._registerWebMCP();
              if (this.cols !== initialCols || this.rows !== initialRows)
-@@ -425,6 +432,7 @@ export class WTerm {
+@@ -471,6 +478,7 @@ export class WTerm {
          return this._pinnedToBottom;
      }
      _scrollToBottom() {
@@ -541,9 +542,9 @@ index 848e1c3f7880842c4439541fc4565ff4a42c0201..7b452098433c6114ec443fcbec152d4f
          this._setScrollTop(this.element.scrollHeight);
      }
      _setScrollTop(value, frame) {
-@@ -445,6 +453,29 @@ export class WTerm {
-         }
-         this.element.scrollTop = target;
+@@ -508,6 +516,29 @@ export class WTerm {
+             throw new Error("This terminal core cannot change its scrollback");
+         this.bridge.setScrollbackLines(this._scrollbackLines);
      }
 +    /**
 +     * Ends an input-method composition still in progress in the terminal's field and returns its preedit, which the
@@ -571,7 +572,7 @@ index 848e1c3f7880842c4439541fc4565ff4a42c0201..7b452098433c6114ec443fcbec152d4f
      /**
       * Apply host colors without writing terminal input or restarting the session.
       * Pass `null` to drop them and answer color queries from the page's CSS again.
-@@ -490,7 +521,7 @@ export class WTerm {
+@@ -553,7 +584,7 @@ export class WTerm {
          this.renderer?.beforeMutation(this.bridge);
          if (this.debug)
              this.debug.traceWrite(data);
@@ -580,7 +581,7 @@ index 848e1c3f7880842c4439541fc4565ff4a42c0201..7b452098433c6114ec443fcbec152d4f
          // Answer theme color queries with the colors the page shows right now.
          if (mayQueryThemeColors(data))
              this._syncCssThemeColors();
-@@ -669,9 +700,17 @@ export class WTerm {
+@@ -732,9 +763,17 @@ export class WTerm {
          this._rectangleDrag.cancel();
          this._historySelection.invalidate();
          this.renderer?.beforeMutation(this.bridge);
@@ -599,7 +600,7 @@ index 848e1c3f7880842c4439541fc4565ff4a42c0201..7b452098433c6114ec443fcbec152d4f
          this._outputAnnouncements.invalidate();
          this.cols = this.bridge.getCols();
          this.rows = this.bridge.getRows();
-@@ -735,6 +774,7 @@ export class WTerm {
+@@ -798,6 +837,7 @@ export class WTerm {
              return false;
          const before = this.element.scrollTop;
          this._shouldScrollToBottom = false;
@@ -607,7 +608,7 @@ index 848e1c3f7880842c4439541fc4565ff4a42c0201..7b452098433c6114ec443fcbec152d4f
          this._searchReveal = false;
          this._pendingResizeScrollTop = target * this._rowHeight;
          this._doRender();
-@@ -1493,14 +1533,15 @@ export class WTerm {
+@@ -1576,14 +1616,15 @@ export class WTerm {
          const height = this._visibleContentHeight(contentHeight);
          const newCols = Math.max(1, Math.floor(containerRect.width / charWidth));
          const newRows = Math.max(1, Math.floor(height / rowHeight));

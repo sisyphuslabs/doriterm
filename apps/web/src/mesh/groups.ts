@@ -39,6 +39,17 @@ export const isOnline = (member: MeshMemberStatus): boolean =>
   !member.overCap && (member.line === "self" || member.line === "connected");
 
 /**
+ * What approving this join grants, said on the row itself.
+ *
+ * A client is owner-equivalent: the gateway forwards its plaintext to hc with no method policy, so approving it is
+ * approving control of every machine it can reach, and the row has to say that rather than call it a device (design of
+ * #942, section 4). A machine joining is the ordinary case and gets no line of its own.
+ */
+export function approvalConsequence(kind: "machine" | "client", name: string): string | undefined {
+  return kind === "client" ? `Approving gives ${name} control of every machine in this mesh.` : undefined;
+}
+
+/**
  * The panel's groups, most urgent first: joins waiting for this device, members an undecidable revoke removed, then
  * the members by whether their line is up, then revoked keys. A member a fail-closed conflict removed is also revoked
  * in the view; it shows once, under the removal that explains it.

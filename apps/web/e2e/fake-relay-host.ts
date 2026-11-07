@@ -11,7 +11,7 @@
 // or the end of stdin, whichever comes first, as before.
 import { startHost } from "@doriface/host";
 import { createHcSession, FakeRelay, RelayClientBridge } from "@doriface/host/testing";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -50,6 +50,13 @@ const pairServer = Bun.serve({
 stage("pair lookup");
 const bridge = new RelayClientBridge(relay);
 const hc = createHcSession("web-e2e-fake-relay");
+// herdr-core names its core from this file, defaulting to the OS hostname; a capture must not carry the machine's own.
+const coreDir = join(hc.env["XDG_STATE_HOME"] ?? "", "herdr-core", hc.name);
+mkdirSync(coreDir, { recursive: true });
+writeFileSync(
+  join(coreDir, "core.json"),
+  JSON.stringify({ id: crypto.randomUUID().replace(/-/g, ""), name: "studio" }),
+);
 stage("session");
 const env = { ...hc.env, ...shellEnv(stateDir) };
 let host: Awaited<ReturnType<typeof startHost>> | undefined;

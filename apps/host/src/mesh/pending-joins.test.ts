@@ -6,6 +6,7 @@ const join = (nonce: string): PendingJoin => ({
   name: "beta",
   noisePub: "noise-beta",
   hostId: "host",
+  kind: "machine",
   fingerprint: "3FA9",
   expiresAt: Date.now() + 60_000,
 });

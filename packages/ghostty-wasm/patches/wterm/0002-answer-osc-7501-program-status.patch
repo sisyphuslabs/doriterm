@@ -94,18 +94,18 @@
      evicted_images: u32,
      positions: PositionTracker,
 +    program_status: ProgramStatusState,
- };
- 
- fn stateFromPtr(ptr: usize) *State {
-@@ -771,6 +810,7 @@
+     /// Bytes of a `CSI ? 4 m` query the parser has consumed so far, so a
+     /// query split across writes is still answered.
+     modify_keys_query: u8,
+@@ -774,6 +813,7 @@
      state.rejected_images = 0;
      state.evicted_images = 0;
      state.positions = .{};
 +    state.program_status = .{};
+     state.modify_keys_query = 0;
      state.stream = .init(.{ .allocator = allocator, .handler = .init(
          allocator,
-         &state.terminal,
-@@ -783,6 +823,7 @@
+@@ -787,6 +827,7 @@
          &state.synchronized_output_generation,
          &state.rejected_images,
          &state.positions,
@@ -113,7 +113,7 @@
      ) });
      state.render = RenderState.empty;
      state.graphics_fingerprint = graphicsFingerprint(state);
-@@ -938,6 +979,24 @@
+@@ -989,6 +1030,24 @@
  
  export fn get_working_directory_ptr(ptr: usize) [*]const u8 {
      return &stateFromPtr(ptr).directory.bytes;

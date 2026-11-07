@@ -34,9 +34,13 @@ export interface MachineSpec {
 export const DEMO_MACHINE: MachineSpec = {
   name: MACHINE_NAME,
   dir: E2E_MACHINE_DIR,
+  // Both terminals sit in `infra`, and its label names the space the sidebar lists them under, as on this machine.
   seeds: [
-    { args: ["--name", "plan"], argv: agent("working", "terraform plan", "Refreshing state") },
-    { args: ["--name", "logs"], argv: ["env", "PS1=$ ", "sh"] },
+    {
+      args: ["--name", "plan", "--label", "space=infra"],
+      argv: agent("working", "terraform plan", "Refreshing state"),
+    },
+    { args: ["--name", "logs", "--label", "space=infra"], argv: ["env", "PS1=$ ", "sh"] },
   ],
 };
 

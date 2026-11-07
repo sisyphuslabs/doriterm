@@ -24,7 +24,7 @@
     "heapMB": {
       "ratio": 1.25,
       "floor": 15,
-      "why": "garbage collection timing: A/A medians moved up to 8 MB"
+      "why": "read after a full garbage collection (#1037): A/A rounds within 0.6 MB at every pane count (run 42306731684); read without one it moved about 30 MB between runs of one build"
     },
     "hiddenBusyShare": {
       "ratio": 1.5,

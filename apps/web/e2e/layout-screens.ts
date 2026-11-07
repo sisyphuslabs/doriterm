@@ -108,7 +108,7 @@ export const SCREENS: readonly Screen[] = [
   {
     name: "unreachable-settings",
     start: "unreachable",
-    open: (page, narrow) => section(page, narrow, "Connections"),
+    open: (page, narrow) => section(page, narrow, "This device"),
   },
   { name: "workspace", start: "layout", open: workspace },
   {
@@ -162,13 +162,13 @@ export const SCREENS: readonly Screen[] = [
       await expect(page.getByRole("combobox", { name: "Command" })).toBeFocused();
     },
   },
-  ...(["Connections", "Appearance", "Device", "Terminal", "Keybindings", "Voice input"] as const).map(
-    (label): Screen => ({
-      name: `settings-${label.toLowerCase()}`,
-      start: "layout",
-      open: (page, narrow) => section(page, narrow, label),
-    }),
-  ),
+  ...(
+    ["This device", "Machines", "Connect a machine", "Appearance", "Terminal", "Keybindings", "Voice input"] as const
+  ).map((label): Screen => ({
+    name: `settings-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    start: "layout",
+    open: (page, narrow) => section(page, narrow, label),
+  })),
   {
     name: "settings-storage-error",
     start: "layout",

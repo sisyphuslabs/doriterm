@@ -158,6 +158,10 @@ for (const panes of PANES) {
       const drawn = performance.now();
       const after = await metrics(cdp);
       const probe = await recording(page, false);
+      // Heap and DOM nodes after a full collection: what the page keeps, not what garbage collection had not reached yet.
+      // Read at the end of the workload they swung 30 MB and 50,000 nodes between runs of one build (#1037).
+      await cdp.send("HeapProfiler.collectGarbage");
+      const kept = await metrics(cdp);
       const frames = frameStats(probe.frames);
       const bytes = addresses.reduce((sum, _, pane) => sum + workloadBytes(WORKLOAD, pane), 0);
 
@@ -187,8 +191,8 @@ for (const panes of PANES) {
           longTaskMs: probe.longTasks.reduce((sum, ms) => sum + ms, 0),
           drawnBytesPerSec: bytes / ((drawn - go) / 1000),
           catchUpMs: drawn - produced,
-          heapMB: (after["JSHeapUsedSize"] ?? 0) / 1024 / 1024,
-          domNodes: after["Nodes"] ?? 0,
+          heapMB: (kept["JSHeapUsedSize"] ?? 0) / 1024 / 1024,
+          domNodes: kept["Nodes"] ?? 0,
         },
         hidden: { busyShare: busy(hiddenBefore, hiddenAfter), showCatchUpMs: caughtUp - shown },
       };

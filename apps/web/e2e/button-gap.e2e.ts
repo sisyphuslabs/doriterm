@@ -5,7 +5,7 @@ test.use({ viewport: { width: 1440, height: 900 } });
 
 test("a Button's own gap between its icon and its label is the one its caller set", async ({ page }) => {
   await page.goto("/settings");
-  const mesh = page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: "Mesh" });
+  const mesh = page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: "Machines" });
   await expect(mesh).toBeVisible();
   const measured = await mesh.evaluate((button) => {
     const icon = button.querySelector("svg");

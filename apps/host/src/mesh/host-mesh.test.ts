@@ -72,6 +72,7 @@ describe("the running host's mesh offers", () => {
       hostId: "h",
       fingerprint: "f",
       expiresAt: Date.now() + 60_000,
+      kind: "machine",
     });
     await host.pair(false);
     expect(await asked).toBe("expired");
@@ -182,6 +183,7 @@ describe("the running host's mesh offers", () => {
       hostId: "h",
       fingerprint: "f",
       expiresAt: Date.now() + 60_000,
+      kind: "machine",
     });
     await host.pairDevice();
     expect(await asked).toBe("expired");
@@ -214,10 +216,18 @@ describe("the running host's pending joins in mesh status (section 4.3)", () => 
       fingerprint: "fp",
       noisePub: "noise-beta",
       expiresAt,
+      kind: "machine" as const,
     };
     void deps.hostMesh.pending.ask(asked);
     expect(deps.hooks.live().pending).toEqual([
-      { nonce: "n1", name: "beta", hostId: "host-beta", noisePub: "noise-beta", expiresAt: new Date(expiresAt) },
+      {
+        nonce: "n1",
+        name: "beta",
+        hostId: "host-beta",
+        noisePub: "noise-beta",
+        expiresAt: new Date(expiresAt),
+        kind: "machine" as const,
+      },
     ]);
     deps.hostMesh.pending.expireAll();
   });

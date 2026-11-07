@@ -9,8 +9,8 @@ const BRAND = join(import.meta.dir, "../brand");
 const PUBLIC = join(import.meta.dir, "../public");
 const DESKTOP = join(import.meta.dir, "../../desktop/build");
 
-const icon = await Bun.file(join(BRAND, "doriface-icon.svg")).text();
-const small = await Bun.file(join(BRAND, "doriface-icon-small.svg")).text();
+const icon = await Bun.file(join(BRAND, "doriterm-icon.svg")).text();
+const small = await Bun.file(join(BRAND, "doriterm-icon-small.svg")).text();
 
 /** The tile colour and the art group of a brand icon, so the art can be re-framed. */
 function parts(svg: string): { tile: string; art: string } {
@@ -85,8 +85,8 @@ function icns(chunks: readonly { type: string; data: Uint8Array }[]): Uint8Array
 }
 
 await mkdir(DESKTOP, { recursive: true });
-await copyFile(join(BRAND, "doriface-icon.svg"), join(PUBLIC, "icon.svg"));
-await copyFile(join(BRAND, "doriface-icon-small.svg"), join(PUBLIC, "favicon.svg"));
+await copyFile(join(BRAND, "doriterm-icon.svg"), join(PUBLIC, "icon.svg"));
+await copyFile(join(BRAND, "doriterm-icon-small.svg"), join(PUBLIC, "favicon.svg"));
 
 const [f16, f32, i192, i512, mask192, mask512, touch180, linux512] = await Promise.all([
   png(small, 16),

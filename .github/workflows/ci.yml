@@ -22,15 +22,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
       # tsc and the web build run under Node; the same Node 24 as the relay job.
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
-      - uses: actions/cache@v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -69,11 +69,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
-      - uses: actions/cache@v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -103,8 +103,8 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
       - run: bun install --frozen-lockfile
@@ -141,18 +141,18 @@ jobs:
             echo "::error::DORIFACE_RELAY_READ_TOKEN is not set, so the relay suites in tests/relay cannot run."
             exit 1
           fi
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         if: env.RELAY_TOKEN_SET == 'true'
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         if: env.RELAY_TOKEN_SET == 'true'
         with:
           bun-version: 1.4.4
       # The relay suites run the private relay under wrangler dev, which needs Node 22 or newer.
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         if: env.RELAY_TOKEN_SET == 'true'
         with:
           node-version: 24
-      - uses: actions/cache@v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: env.RELAY_TOKEN_SET == 'true'
         with:
           path: ~/.bun/install/cache
@@ -229,15 +229,51 @@ jobs:
           fi
       # mesh-attach.e2e.ts is a browser spec that needs this job's relay checkout: the web app paired with one mesh
       # member attaches to a terminal on another, through the mesh (G009 C004). Web e2e has no relay, so it skips it.
-      - uses: actions/cache@v4
+      - name: Playwright version
+        if: env.RELAY_TOKEN_SET == 'true'
+        id: playwright
+        working-directory: apps/web
+        run: |
+          echo "version=$(bunx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          echo "distro=$(. /etc/os-release && echo "$ID-$VERSION_ID")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: env.RELAY_TOKEN_SET == 'true'
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ hashFiles('bun.lock') }}
+      # The .deb files of the system packages Chromium is missing on the image (doriterm#1012); the install step decides
+      # whether they are enough, so this only restores them.
+      - name: Restore the Playwright system packages
+        if: env.RELAY_TOKEN_SET == 'true'
+        id: playwright-apt
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/playwright-apt
+          key: playwright-apt-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.distro }}-${{ steps.playwright.outputs.version }}-${{ hashFiles('.github/scripts/playwright-linux-deps.sh') }}
       - name: Install Chromium
         if: env.RELAY_TOKEN_SET == 'true'
-        run: bunx playwright install --with-deps chromium
+        id: chromium
         working-directory: apps/web
+        timeout-minutes: 12
+        run: |
+          # The browser binary and the system packages are cached separately. playwright-linux-deps.sh installs the
+          # packages from their cache only when Playwright's own check finds its whole list installed, and from the apt
+          # mirror otherwise: doriterm#1012, a mirror at ~38 kB/s ran the every-run download past its limit, and
+          # doriterm#915, skipping the packages instead cost the Korean width assertions their fonts. The installs are
+          # bounded by timeout, and the step by timeout-minutes (doriterm#914).
+          bash "$GITHUB_WORKSPACE/.github/scripts/playwright-linux-deps.sh" "$HOME/.cache/playwright-apt"
+          if compgen -G "$HOME/.cache/ms-playwright/chromium-*" >/dev/null; then
+            echo "browser cache hit: installing the engine without downloading it again"
+            timeout 300 bunx playwright install chromium
+          else
+            timeout 600 bunx playwright install chromium
+          fi
+      - name: Save the Playwright system packages
+        if: env.RELAY_TOKEN_SET == 'true' && steps.chromium.outputs.save-debs == 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/playwright-apt
+          key: ${{ steps.playwright-apt.outputs.cache-primary-key }}
       - name: Browser spec through the mesh
         if: env.RELAY_TOKEN_SET == 'true'
         run: bun run test:e2e e2e/mesh-attach.e2e.ts
@@ -246,7 +282,7 @@ jobs:
           CI: "1"
           DORIFACE_RELAY_DIR: ${{ github.workspace }}/.relay
       - if: always() && env.RELAY_TOKEN_SET == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: relay-web-e2e
           path: |
@@ -260,11 +296,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
-      - uses: actions/cache@v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -283,9 +319,47 @@ jobs:
           echo "HC_BIN=$RUNNER_TEMP/hc/hc" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/hc/hc" --version
       - run: bun install --frozen-lockfile
-      - name: Install Chromium
-        run: bunx playwright install --with-deps chromium
+      - name: Playwright version
+        id: playwright
         working-directory: apps/web
+        run: |
+          echo "version=$(bunx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          echo "distro=$(. /etc/os-release && echo "$ID-$VERSION_ID")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ hashFiles('bun.lock') }}
+      # The .deb files of the system packages Chromium is missing on the image (doriterm#1012); the install step decides
+      # whether they are enough, so this only restores them.
+      - name: Restore the Playwright system packages
+        id: playwright-apt
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/playwright-apt
+          key: playwright-apt-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.distro }}-${{ steps.playwright.outputs.version }}-${{ hashFiles('.github/scripts/playwright-linux-deps.sh') }}
+      - name: Install Chromium
+        id: chromium
+        working-directory: apps/web
+        timeout-minutes: 12
+        run: |
+          # The browser binary and the system packages are cached separately. playwright-linux-deps.sh installs the
+          # packages from their cache only when Playwright's own check finds its whole list installed, and from the apt
+          # mirror otherwise: doriterm#1012, a mirror at ~38 kB/s ran the every-run download past its limit, and
+          # doriterm#915, skipping the packages instead cost the Korean width assertions their fonts. The installs are
+          # bounded by timeout, and the step by timeout-minutes (doriterm#914).
+          bash "$GITHUB_WORKSPACE/.github/scripts/playwright-linux-deps.sh" "$HOME/.cache/playwright-apt"
+          if compgen -G "$HOME/.cache/ms-playwright/chromium-*" >/dev/null; then
+            echo "browser cache hit: installing the engine without downloading it again"
+            timeout 300 bunx playwright install chromium
+          else
+            timeout 600 bunx playwright install chromium
+          fi
+      - name: Save the Playwright system packages
+        if: steps.chromium.outputs.save-debs == 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/playwright-apt
+          key: ${{ steps.playwright-apt.outputs.cache-primary-key }}
       # The e2e workers follow the runner's cores (playwright.config.ts, #342): record what this runner has.
       - name: Runner resources
         run: |
@@ -302,7 +376,7 @@ jobs:
         env:
           CI: "1"
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: web-e2e
           path: |
@@ -318,14 +392,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: 21
@@ -344,11 +418,11 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
       - run: bun install --frozen-lockfile
@@ -367,11 +441,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
-      - uses: actions/cache@v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -421,7 +495,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       # A macOS runner bills ten times a Linux one, so the suite only runs when the change can reach the app: the shell
       # itself, the web client and host binary it packages, and the workspaces under them.
       - name: Decide whether this change reaches the desktop app
@@ -450,12 +524,12 @@ jobs:
             echo "no readable base commit: running the suite"
           fi
           echo "match=$match" >> "$GITHUB_OUTPUT"
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         if: steps.scope.outputs.match == 'true'
         with:
           bun-version: 1.4.4
       # bun's install cache and Electron's own downloads; the packed app itself is rebuilt every run.
-      - uses: actions/cache@v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: steps.scope.outputs.match == 'true'
         with:
           path: |
@@ -519,7 +593,7 @@ jobs:
           DEBUG: pw:browser
         run: bun run test:e2e
       - if: always() && steps.scope.outputs.match == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: desktop-macos-e2e
           path: |
@@ -542,8 +616,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
       - run: bun install --frozen-lockfile
@@ -575,8 +649,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
       - name: Verify the committed wasm against wasm/build.json

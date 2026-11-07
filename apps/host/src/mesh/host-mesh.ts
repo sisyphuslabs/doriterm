@@ -22,6 +22,8 @@ export interface HostMeshOptions {
   readonly sessions: LiveSessions;
   /** The plan this host runs under: a join is refused while the mesh already fills the plan's `machines` limit. */
   readonly policy: PlanPolicy;
+  /** Whether every member reads the format a client admission is written in; see `MeshHooks.formatReady`. */
+  readonly formatReady?: (() => boolean) | undefined;
   readonly hc: HcCoreOptions;
   readonly relay: {
     readonly url: string | undefined;
@@ -96,6 +98,7 @@ export class HostMesh {
       floor,
       policy,
       log,
+      ...(this.#options.formatReady === undefined ? {} : { formatReady: this.#options.formatReady }),
     };
     serveJoin(new MeshLines(secure, INVITER_EXPECTS), secure.remoteStatic, deps).then(
       () => this.#keep(secure),

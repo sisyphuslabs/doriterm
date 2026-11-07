@@ -3,6 +3,7 @@ import { type CardBody, checkName, MAX_MESH_MEMBERS, type Signed, verifyCard } f
 import { type PlanPolicy, requireWithin } from "@doriface/policy";
 import type { MeshStore, OwnCard } from "../state/mesh.ts";
 import type { AuthorizeIndex } from "./authorize-index.ts";
+import { admissionRefusal } from "./format-readiness.ts";
 import { type MeshLines, recordLines } from "./lines.ts";
 import { checkFloor, type CounterFloor } from "./merge.ts";
 import type { PendingJoin, PendingJoins } from "./pending-joins.ts";
@@ -19,6 +20,8 @@ export interface InviteDeps {
   readonly floor: () => CounterFloor | undefined;
   /** The plan this host runs under: its `machines` limit narrows what the protocol admits, and never widens it. */
   readonly policy: PlanPolicy;
+  /** Whether every machine left in the mesh has shown it reads the format a client admission needs (design of #942). */
+  readonly formatReady?: (() => boolean) | undefined;
   readonly log: (line: string) => void;
 }
 
@@ -79,6 +82,8 @@ function sendWelcome(lines: MeshLines, records: readonly Signed[], meshId: strin
  * key) and a mesh that filled up meanwhile, and returns the records to welcome.
  */
 function admit(deps: InviteDeps, meshId: string, inviter: string, card: CardBody, signed: Signed): readonly Signed[] {
+  const refusal = admissionRefusal(card.kind, deps.formatReady?.() === true);
+  if (refusal !== undefined) throw new JoinRefused(refusal);
   return deps.mesh.transact((tx) => {
     const index = deps.mesh.authorizeIndex();
     if (isRejoin(index, card)) return tx.records;
@@ -176,6 +181,7 @@ export async function serveJoin(lines: MeshLines, peerStatic: Uint8Array, deps: 
       hostId: card.hostId,
       fingerprint,
       noisePub: card.noisePub,
+      kind: card.kind === "client" ? ("client" as const) : ("machine" as const),
       expiresAt: deps.expiresAt,
     };
     await decision(lines, deps, join);

@@ -39,7 +39,7 @@ afterAll(async () => {
   await server?.stop(true);
 });
 
-describe("@wterm/ghostty 0.5.8 core on the rebuilt wasm (browser)", () => {
+describe("@wterm/ghostty 0.5.9 core on the rebuilt wasm (browser)", () => {
   test("runs the scenario in a real page against the rebuilt and the stock wasm", async () => {
     if (server === undefined) throw new Error("server did not start");
     await using view = new Bun.WebView({ width: 800, height: 600 });

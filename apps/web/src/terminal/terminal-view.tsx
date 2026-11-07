@@ -482,15 +482,16 @@ export function TerminalView(props: TerminalViewProps) {
         data-ready={wt !== null}
         className={cn("min-h-0 flex-1 bg-term-bg", options.hollowCursor && "cursor-hollow", className)}
         onReady={(ready) => {
-          // The renderer no longer focuses itself as it starts (patches/@wterm%2Fdom@0.5.8.patch); the view decides.
+          // The renderer no longer focuses itself as it starts (patches/@wterm%2Fdom@0.5.9.patch); the view decides.
           focusWhenFree(ready);
           attach(ready);
         }}
         onData={typedInto}
         onResize={(cols, rows) => stream.current?.resize(cols, rows)}
         onFocus={(event) => {
-          // wterm focuses every terminal as it starts (@wterm/dom 0.5.8 wterm.js:410). Only the focused pane's keeps
-          // it; any other hands it back to where it was, so a pane another device adds never takes the keyboard.
+          // wterm focuses the terminal as it starts, and the patch drops that start call; a focus event can still
+          // arrive for a pane the view did not choose. Only the focused pane's keeps it; any other hands it back to
+          // where it was, so a pane another device adds never takes the keyboard.
           if (wt === null && !isFocused.current) return handBack(event);
           stream.current?.focus(true);
         }}

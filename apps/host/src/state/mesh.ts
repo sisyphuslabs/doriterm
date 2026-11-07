@@ -2,6 +2,7 @@ import { base64urlEncode, type HostIdentity } from "@doriface/crypto";
 import {
   type CardBody,
   meshIdOf,
+  type MemberKind,
   parseRecord,
   type RecordBody,
   type Signed,
@@ -17,7 +18,7 @@ import { DeviceStore } from "./devices.ts";
 import { createPrivateJson, ensureStateDir, readJson, writePrivateJson } from "./files.ts";
 import { KnownHosts } from "./known-hosts.ts";
 import { DEFAULT_LOCK_TIMEOUT_MS, withStateLock } from "./lock.ts";
-import { MESH_FILE, type MeshFile, meshFileJson, parseMeshFile } from "./mesh-file.ts";
+import { MESH_FILE, type MeshFile, meshFileJson, newMeshFile, parseMeshFile, writeVersionOf } from "./mesh-file.ts";
 import { type MergeResult, type MeshTx, ownN, Transaction } from "./mesh-tx.ts";
 
 export { CounterBehindError, type MergeResult, type MeshTx } from "./mesh-tx.ts";
@@ -141,17 +142,7 @@ export class MeshStore {
   }
 
   #create(meshId: string, records: readonly Signed[], selfN: number): boolean {
-    const file: MeshFile = {
-      meshId,
-      generation: 1,
-      selfN,
-      records,
-      dangling: [],
-      local: {},
-      notices: {},
-      readOnlyUntil: null,
-      index: undefined,
-    };
+    const file: MeshFile = newMeshFile(meshId, records, selfN);
     const indexed = this.#indexed(file);
     if (!createPrivateJson(this.#path, meshFileJson(indexed), this.#options.durable ?? true)) return false;
     this.#cleanup(indexed);
@@ -182,7 +173,8 @@ export class MeshStore {
   }
 
   #indexed(file: MeshFile, view = this.#evaluate(file.records)): MeshFile {
-    return { ...file, index: indexOf(file.records, view, file.generation) };
+    const index = indexOf(file.records, view, file.generation);
+    return { ...file, version: writeVersionOf(index), index };
   }
 
   readonly #evaluate = (records: readonly Signed[]): View => (this.#options.evaluate ?? viewOf)(records);
@@ -223,9 +215,15 @@ function persistedIndex(file: MeshFile): AuthorizeIndex {
 const nonce = (): string => base64urlEncode(crypto.getRandomValues(new Uint8Array(16)));
 
 /** The card body for this host in mesh `mesh`, invited by `inviter` (both `"-"` in a found). */
-export function cardBody(identity: HostIdentity, card: OwnCard, mesh: string, inviter: string, at = nonce()): CardBody {
-  return {
-    v: 1,
+export function cardBody(
+  identity: HostIdentity,
+  card: OwnCard,
+  mesh: string,
+  inviter: string,
+  at = nonce(),
+  kind?: MemberKind,
+): CardBody {
+  const body = {
     mesh,
     inviter,
     nonce: at,
@@ -234,6 +232,7 @@ export function cardBody(identity: HostIdentity, card: OwnCard, mesh: string, in
     noisePub: base64urlEncode(identity.noise.publicKey),
     ...card,
   };
+  return kind === undefined ? { v: 1, ...body } : { v: 2, kind, ...body };
 }
 
 const foundBody = (identity: HostIdentity, card: Signed): RecordBody => ({

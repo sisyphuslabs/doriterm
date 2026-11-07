@@ -156,7 +156,7 @@ describe("install.sh on Linux", () => {
     });
     const asked = readFileSync(r.log, "utf8");
     expect(asked).toContain(
-      "curl https://github.com/sisyphuslabs/doriface/releases/download/v9.9.9/doriface-host-linux-x64",
+      "curl https://github.com/sisyphuslabs/doriterm/releases/download/v9.9.9/doriface-host-linux-x64",
     );
     expect(asked).not.toContain("/latest/");
 
@@ -168,7 +168,7 @@ describe("install.sh on Linux", () => {
       stderr: "pipe",
     });
     expect(readFileSync(r.log, "utf8")).toContain(
-      "curl https://github.com/sisyphuslabs/doriface/releases/latest/download/doriface-host-linux-x64",
+      "curl https://github.com/sisyphuslabs/doriterm/releases/latest/download/doriface-host-linux-x64",
     );
   });
 

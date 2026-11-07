@@ -1,13 +1,16 @@
 import { Button, Dialog, SettingRow } from "@doriface/ui";
-import { Laptop, Monitor, Server, Smartphone } from "lucide-react";
+import { Laptop, Monitor, Server } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { ConnectionSettings } from "../connection/settings.ts";
 import { hostFailure } from "../connection/host-failure.ts";
 import { connectionStore, useConnection, type ConnectionState } from "../connection/store.ts";
 import { desktopDevices, type DesktopDevicesAnswer } from "../desktop/device-bridge.ts";
-import { desktopPairOffer, type DesktopPairedDevice } from "../desktop/pair-bridge.ts";
+import type { DesktopPairedDevice } from "../desktop/pair-bridge.ts";
+import { hostRouteOf } from "./host-route.ts";
+import { PairDeviceOffer } from "./pair-device-offer.tsx";
 import { deviceSummary, pairedDevicesView, type PairedDevicesView } from "./paired-devices.ts";
-import { PairDeviceDialog } from "./pair-device-dialog.tsx";
+import { sessionPathLabel } from "./session-path.ts";
+import { useHostRoundTrip } from "./use-host-round-trip.ts";
 
 function useConnectionSettings(): ConnectionSettings {
   return useSyncExternalStore(connectionStore.subscribe, () => connectionStore.settings);
@@ -71,9 +74,8 @@ function devicesDescription(view: PairedDevicesView): string {
 export function DevicesSection() {
   const state = useConnection();
   const settings = useConnectionSettings();
-  const [pairing, setPairing] = useState(false);
-  // One relay function for this page: a new one each render would reopen the offer the dialog is showing.
-  const pair = useMemo(() => desktopPairOffer(), []);
+  const route = hostRouteOf(settings);
+  const roundTrip = useHostRoundTrip(state.phase === "open" ? state.connection : null);
   const devices = useMemo(() => desktopDevices(), []);
   const [paired, setPaired] = useState<DesktopDevicesAnswer | null>(null);
   const [revoking, setRevoking] = useState<DesktopPairedDevice | null>(null);
@@ -83,10 +85,6 @@ export function DevicesSection() {
   // link drops or the page is loaded again while it is down (#496). The id is only left when no name was ever learned.
   const name = state.phase === "open" ? state.connection.hello.core.name : settings.hostName;
   const host = name !== "" ? name : settings.mode === "relay" ? settings.hostId || "No host" : settings.loopbackUrl;
-  // Only this computer's own host can be offered to a device: the shell relays its offer, and a host this app merely
-  // reaches over the relay runs somewhere else.
-  const offersItself = pair !== null && settings.mode === "loopback";
-
   useEffect(() => {
     if (devices === null) return;
     let cancelled = false;
@@ -121,18 +119,24 @@ export function DevicesSection() {
   return (
     <>
       <SettingRow title={label(<Monitor aria-hidden />, "This browser")} description="This device" control={null} />
-      <SettingRow title={label(<Server aria-hidden />, host)} description={describe(state)} control={null} />
-      {offersItself ? (
-        <SettingRow
-          title={label(<Smartphone aria-hidden />, "Pair a device")}
-          description="A phone or another computer that pairs with this computer can open its terminals, end to end encrypted."
-          control={
-            <Button size="sm" onClick={() => setPairing(true)}>
-              Pair a device
-            </Button>
-          }
-        />
-      ) : null}
+      <SettingRow
+        title={label(<Server aria-hidden />, host)}
+        description={
+          <>
+            {describe(state)}
+            {state.phase === "open" ? (
+              <span className="block text-muted-foreground">
+                {sessionPathLabel(state.path, state.directReason)}
+                {roundTrip === undefined ? "" : ` · ${roundTrip} ms round trip`}
+              </span>
+            ) : route.label === undefined ? null : (
+              <span className="block text-muted-foreground">{route.label}</span>
+            )}
+          </>
+        }
+        control={null}
+      />
+      <PairDeviceOffer />
       {view.kind === "unsupported" ? null : (
         <>
           <SettingRow
@@ -161,7 +165,6 @@ export function DevicesSection() {
           )}
         </>
       )}
-      <PairDeviceDialog open={pairing} onClose={() => setPairing(false)} pair={pair} />
       <Dialog
         open={revoking !== null}
         alert

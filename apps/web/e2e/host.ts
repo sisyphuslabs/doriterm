@@ -15,6 +15,7 @@ import {
 } from "./config.ts";
 import { LAYOUT_CORE, LAYOUT_DIR, LAYOUT_MACHINE_SPEC, LAYOUT_TERMINALS } from "./layout-seed.ts";
 import { addMachine, runSeeds } from "./machine.ts";
+import { watchParentDeath } from "./parent-death.ts";
 import { seedMeshDoc } from "./mesh-doc.ts";
 import { writeSavedEnv } from "./saved-env.ts";
 import { seed } from "./seed.ts";
@@ -111,17 +112,26 @@ async function shutdown(): Promise<void> {
 }
 process.once("SIGTERM", () => void shutdown());
 process.once("SIGINT", () => void shutdown());
+// A killed run sends this host nothing: Playwright SIGKILLs what it started, so the core and the ports it holds would
+// outlive the run and block the next one (#693). Watching the parent's identity, rather than waiting for a signal,
+// lets it stop itself. Not ppid === 1: under a subreaper or a container init the host reparents to something else.
+watchParentDeath(() => void shutdown());
 try {
   if (layout) {
     const seeds = LAYOUT_TERMINALS.map((terminal) => terminal.seed);
     await runSeeds(hc, env, join(dir, "work", LAYOUT_DIR), seeds);
-    stopMachine = await addMachine(hc, env, join(dir, "machine"), true, LAYOUT_MACHINE_SPEC);
+    // A capture needs no second machine, and adding one inside a container fails, so the capture command may skip it.
+    if (process.env["E2E_SKIP_MACHINE"] !== "1") {
+      stopMachine = await addMachine(hc, env, join(dir, "machine"), true, LAYOUT_MACHINE_SPEC);
+    }
     writeSavedEnv(E2E_LAYOUT_ENV, { ...saved, ready: true });
   } else {
     const capture = process.env["CAPTURE"] === "1";
     if (capture) await seed(hc, env, join(dir, "work"));
     await seedMeshDoc(hc, session, env);
-    stopMachine = await addMachine(hc, env, join(dir, "machine"), capture);
+    if (process.env["E2E_SKIP_MACHINE"] !== "1") {
+      stopMachine = await addMachine(hc, env, join(dir, "machine"), capture);
+    }
     writeSavedEnv(E2E_HOST_ENV, { ...saved, ready: true });
   }
 } catch (error) {

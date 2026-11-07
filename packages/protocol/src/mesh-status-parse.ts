@@ -123,6 +123,7 @@ const isPending = objectOf<MeshPendingJoin>({
   hostId: isId,
   fingerprint: isFingerprint,
   expiresAt: isTime,
+  kind: oneOf("machine", "client"),
 });
 const isBudget = objectOf<MeshBudget>({ waiting: isCount, halvedUntil: nullable(isTime) });
 

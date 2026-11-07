@@ -45,7 +45,7 @@ test("with the storage getters throwing, the app starts on pairing and Settings 
     "aria-pressed",
     "true",
   );
-  await nav.getByRole("button", { name: "Device" }).click();
+  await nav.getByRole("button", { name: "This device" }).click();
   await expect(page.getByRole("switch", { name: "Keep the screen awake" })).not.toBeChecked();
   expect(errors).toEqual([]);
 });
@@ -64,7 +64,7 @@ test.describe("on the phone", () => {
     await expect(
       page.getByLabel("Appearance", { exact: true }).getByRole("button", { name: "System" }),
     ).toHaveAttribute("aria-pressed", "true");
-    await page.getByRole("tab", { name: "Device" }).click();
+    await page.getByRole("tab", { name: "This device" }).click();
     await expect(page.getByRole("switch", { name: "Keep the screen awake" })).not.toBeChecked();
     expect(errors).toEqual([]);
   });

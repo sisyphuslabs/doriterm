@@ -3,13 +3,14 @@ import {
   cardOf,
   type CardBody,
   hashOf,
+  type MemberKind,
   parseRecord,
   type Signed,
   verifyCard,
   type View,
 } from "@doriface/mesh";
 
-/** A member as the host authorizes it: the keys and herdr core id of its current card, and its mesh name. */
+/** A member as the host authorizes it: the keys and herdr core id of its current card, its kind, and its mesh name. */
 export interface MemberEntry {
   readonly signPub: string;
   readonly hostId: string;
@@ -17,6 +18,11 @@ export interface MemberEntry {
   readonly devicePub: string | undefined;
   readonly name: string;
   readonly hcId: string;
+  /**
+   * What its keys may do. Absent means a machine: an index written before kinds existed, or a fixture, could only ever
+   * have been one. A client connects to machines and never dials one (design of #942).
+   */
+  readonly kind?: MemberKind | undefined;
 }
 
 /** A member the view removed, with every Noise and device key any of its cards ever named. */
@@ -74,6 +80,7 @@ const entryOf = (card: CardBody, noisePub: string, name: string): MemberEntry =>
   devicePub: card.devicePub,
   name,
   hcId: card.hcId,
+  kind: card.kind ?? "machine",
 });
 
 /**
@@ -126,6 +133,8 @@ export class AuthorizeIndex {
   readonly #overCap = new Set<string>();
   readonly #revoked = new Set<string>();
   readonly #memberDevices = new Set<string>();
+  /** A client member's session key, by member. It never enters the Noise map: a client must not dial (design of #942). */
+  readonly #clientDevices = new Map<string, MemberEntry>();
   readonly #superseded: ReadonlySet<string>;
   readonly #hcIds = new Set<string>();
   readonly #hostIds = new Set<string>();
@@ -137,6 +146,10 @@ export class AuthorizeIndex {
     this.generation = data.generation;
     this.#superseded = new Set(data.superseded);
     for (const member of data.members) {
+      if (member.kind === "client") {
+        if (member.devicePub !== undefined) this.#clientDevices.set(member.devicePub, member);
+        continue;
+      }
       this.#byNoise.set(member.noisePub, member);
       if (member.devicePub !== undefined) this.#memberDevices.add(member.devicePub);
     }
@@ -147,7 +160,8 @@ export class AuthorizeIndex {
     for (const member of [...data.members, ...data.overCap]) {
       this.#signPubs.add(member.signPub);
       this.#hcIds.add(member.hcId);
-      this.#hostIds.add(member.hostId);
+      // A client has no machine to learn as a host, and its paired entry must survive cleanup for push.
+      if (member.kind !== "client") this.#hostIds.add(member.hostId);
     }
     for (const entry of data.revoked) {
       for (const key of entry.keys) this.#revoked.add(key);
@@ -179,6 +193,15 @@ export class AuthorizeIndex {
   /** Whether an effective card of a signing key other than `signPub` names `key` (a member's, revoked or superseded key). */
   namedByAnother(key: string, signPub: string): boolean {
     return [...(this.#namedBy.get(key) ?? [])].some((by) => by !== signPub);
+  }
+
+  /**
+   * The current client member whose session key this is. A client is admitted on the hc stream and refused on the mesh
+   * stream, so it is found here and never in `member()`, which answers for a member that dials.
+   */
+  client(key: string): MemberEntry | undefined {
+    const entry = this.#clientDevices.get(key);
+    return entry === undefined || this.namedByAnother(key, entry.signPub) ? undefined : entry;
   }
 
   /** Why a key that is not a current member's Noise key may not be a device, if it may not (section 9.2 step 2). */

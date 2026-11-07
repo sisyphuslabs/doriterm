@@ -58,7 +58,7 @@ const setVisibility = (page: Page, state: "hidden" | "visible") =>
   }, state);
 
 async function openDevice(page: Page): Promise<void> {
-  await page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: "Device" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: "This device" }).click();
 }
 
 test("keep the screen awake survives a reload and holds the lock only while a terminal is on screen", async ({

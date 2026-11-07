@@ -22,8 +22,11 @@ const has = (name: string, ...parts: readonly string[]): boolean => parts.every(
 const isArm = (name: string): boolean => name.includes("arm64") || name.includes("aarch64");
 
 const DOWNLOADS: readonly Download[] = [
-  { label: "macOS, Apple silicon", matches: (name) => isArm(name) && (name.endsWith(".dmg") || has(name, "-mac.zip")) },
-  { label: "macOS, Intel", matches: (name) => !isArm(name) && (name.endsWith(".dmg") || has(name, "-mac.zip")) },
+  {
+    label: "macOS, Apple silicon",
+    matches: (name) => isArm(name) && (name.endsWith(".dmg") || name.endsWith("-mac.zip")),
+  },
+  { label: "macOS, Intel", matches: (name) => !isArm(name) && (name.endsWith(".dmg") || name.endsWith("-mac.zip")) },
   { label: "Windows x64", matches: (name) => !isArm(name) && name.endsWith(".exe") },
   { label: "Windows arm64", matches: (name) => isArm(name) && name.endsWith(".exe") },
   { label: "Linux x64", matches: (name) => !isArm(name) && (name.endsWith(".AppImage") || name.endsWith(".deb")) },

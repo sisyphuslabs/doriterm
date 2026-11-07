@@ -5,12 +5,12 @@ export const GHOSTTY = {
   archiveSha256: "7759929eadaddf602d6fd5ad6b3403d854b91b7083975cd984bb525bc8275187",
 } as const;
 
-/** The wterm release whose Zig export layer @wterm/ghostty 0.5.8 loads. */
+/** The wterm release whose Zig export layer @wterm/ghostty 0.5.9 loads. */
 export const WTERM = {
   repository: "vercel-labs/wterm",
-  tag: "v0.5.8",
-  commit: "ff1dd517a7288b015be9da1fc62b17f9d04d49ec",
-  archiveSha256: "075e788b3cdda79219461294ac7998b247b65b8c1251b7499afe3e48a9a57666",
+  tag: "v0.5.9",
+  commit: "f797b1e2dc30242b434f0944c1b5b396e0702da9",
+  archiveSha256: "b84cd4b7424ca7cba6f6c386eb74ca65d427d8e1a1f2add4970b15fa028c9232",
   wrapperDir: "packages/@wterm/ghostty/zig",
 } as const;
 

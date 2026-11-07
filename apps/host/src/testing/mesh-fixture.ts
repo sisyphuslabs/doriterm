@@ -85,6 +85,7 @@ export function meshFixture(now: Date): MeshFixture {
         hostId: ids["ci-runner"].hostId,
         noisePub: noise("ci-runner"),
         expiresAt: new Date(now.getTime() + 8 * MINUTE),
+        kind: "machine",
       },
     ],
     peers: new Map<string, PeerFacts>([

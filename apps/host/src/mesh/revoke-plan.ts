@@ -79,6 +79,8 @@ export function planRevoke(
   ref: string,
   compromised: boolean,
   cache: ViewCache = new ViewCache(),
+  /** Who may answer an undecidable revoke: machines only, since a client never votes (design of #942, section 8). */
+  machines?: ReadonlySet<string> | undefined,
 ): RevokePlan {
   const cardNames = overCapNames(records, view);
   const key = findMember(view, ref, cardNames);
@@ -93,7 +95,7 @@ export function planRevoke(
     throw new Error(`--compromised would name ${keys.length} keys; one revoke names at most ${MAX_REVOKE_SUBJECTS}`);
   }
   const toRef = (k: string): MemberRef => memberRef(view, k, cardNames);
-  const undecidable = [...undecidableFrom(records, view, self, keys, cache)].map(([subject, askFrom]) => ({
+  const undecidable = [...undecidableFrom(records, view, self, keys, cache, machines)].map(([subject, askFrom]) => ({
     subject: toRef(subject),
     present: presentAt(records, subject, cache).map(toRef),
     askFrom: askFrom.map(toRef),

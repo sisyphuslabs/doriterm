@@ -299,6 +299,8 @@ export function startFakeRelayHost(
     /** The host's core already runs one shell, named `existing`, before any device pairs. */
     readonly terminal?: boolean;
     readonly stageDeadlineMs?: number;
+    /** Where the host's first space starts. A capture points this at a plain directory so no git state reaches the shot. */
+    readonly cwd?: string;
     readonly stageDeadlineFrom?: string;
     readonly direct?: boolean;
   } = {},
@@ -315,7 +317,7 @@ export function startFakeRelayHost(
       ...(options.terminal === true ? ["--terminal"] : []),
       ...(options.direct === true ? ["--direct"] : []),
     ],
-    cwd: join(import.meta.dirname, ".."),
+    cwd: options.cwd ?? join(import.meta.dirname, ".."),
     stageDeadlineMs: options.stageDeadlineMs ?? STAGE_DEADLINE_MS,
   });
 }
