@@ -8,7 +8,7 @@ import { pendingToWire } from "./state/pairing.ts";
 export function openControl(
   stateDir: string,
   e2ee: ReturnType<typeof e2eeDeps>,
-  meshStatus: (() => MeshStatus | undefined) | undefined,
+  meshStatus: (() => Promise<MeshStatus | undefined>) | undefined,
   push: HostPush | undefined,
 ) {
   return listenControl(stateDir, async (request, closed) => {
@@ -31,7 +31,7 @@ export function openControl(
       case "mesh-join":
         return e2ee.hostMesh.join(request);
       case "mesh-status":
-        return meshStatus?.() ?? null;
+        return (await meshStatus?.()) ?? null;
       case "mesh-revoke":
         return e2ee.meshCommands.revoke(request);
       case "mesh-rename":

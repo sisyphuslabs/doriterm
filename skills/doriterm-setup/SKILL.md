@@ -34,4 +34,4 @@ Tell the user, per machine: the OS, `install` result, the `relay` line, and the 
 
 ## Options
 
-`--state-dir`, `--src`, `--label`, `--listen` and `--session` (an hc session, a separate core) override the defaults (state dir `~/.local/state/doriface-host-mesh`, label `com.sisyphuslabs.doriface-host` on macOS and unit `doriface-host` on Linux, listener `127.0.0.1:7766`). Once a service is installed, later runs reuse its state dir. `--ref <branch>` installs another branch. `$SETUP uninstall` removes the service and keeps keys, devices, mesh and checkout.
+`--state-dir`, `--src`, `--label`, `--listen` and `--session` (an hc session, a separate core) override the defaults (state dir `~/.local/state/doriface-host-mesh`, label `com.sisyphuslabs.doriface-host` on macOS and unit `doriface-host` on Linux, listener `127.0.0.1:7766`). Once a service is installed, later runs reuse its state dir, and its `--listen` and `--session`; `--listen default` or `--session default` puts it back on the default. `--ref <branch>` installs another branch. `$SETUP uninstall` removes the service and keeps keys, devices, mesh and checkout.

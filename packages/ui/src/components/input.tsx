@@ -13,7 +13,8 @@ export const inputClass = cn(
   "h-(--control) w-full min-w-0 rounded-md border border-input bg-surface px-2.5 text-base text-foreground",
   "placeholder:text-muted-foreground outline-none transition-[border-color,box-shadow] duration-(--duration-micro)",
   "hover:border-ring/60 focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-1 focus-visible:outline-ring/40",
-  "data-disabled:opacity-45 aria-invalid:border-destructive",
+  "data-disabled:border-border data-disabled:bg-muted data-disabled:text-muted-foreground data-disabled:hover:border-border",
+  "aria-invalid:border-destructive",
 );
 
 export function Input({ className, mono = false, invalid, ...props }: InputProps) {

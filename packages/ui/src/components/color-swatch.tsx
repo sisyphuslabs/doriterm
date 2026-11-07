@@ -25,7 +25,7 @@ export function ColorSwatch({ color, label, value, selected = false, className, 
       aria-pressed={selected}
       className={cn(
         "group flex min-w-0 flex-col items-stretch gap-1 rounded-md p-1 text-left outline-none",
-        "hover:bg-hover active:bg-selected focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring disabled:opacity-45",
+        "hover:bg-hover active:bg-selected focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring disabled:pointer-events-none",
         selected && "bg-selected",
         className,
       )}
@@ -41,7 +41,7 @@ export function ColorSwatch({ color, label, value, selected = false, className, 
           </span>
         ) : null}
       </span>
-      <span className="truncate text-2xs text-foreground">{label}</span>
+      <span className="truncate text-2xs text-foreground group-disabled:text-muted-foreground">{label}</span>
       {value === undefined ? null : <span className="truncate font-mono text-2xs text-muted-foreground">{value}</span>}
     </button>
   );
