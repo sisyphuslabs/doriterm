@@ -40,8 +40,10 @@ test("a browser with no pairing joins by an invite, takes input on a terminal, a
 }) => {
   test.setTimeout(180_000);
   const host = await startFakeRelayHost({ machine: true });
+  // The page's context is released with the host on every path, a failing one included.
+  let page: Page | undefined;
   try {
-    const page = await freshBrowser(browser, host);
+    page = await freshBrowser(browser, host);
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Connect to a host" })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(INVITE)).toBeVisible();
@@ -69,8 +71,8 @@ test("a browser with no pairing joins by an invite, takes input on a terminal, a
     await page.reload();
     await expect(page.locator("[data-terminal]").first()).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole("heading", { name: "Connect to a host" })).toHaveCount(0);
-    await page.context().close();
   } finally {
+    await page?.context().close();
     await host.stop();
   }
 });
