@@ -1,6 +1,6 @@
-// The adversarial rows about cards, keys and the cap (the model's scenarios-adversarial.ts A8, A9, A11, A12, A13):
-// a key change needs the member's own signature, a card admits once and only its subject can sign it, and members past
-// the twelfth are over-cap. A `batch` row's records are offered at the real door, as signed records.
+// The adversarial rows about cards, keys and mesh size (the model's scenarios-adversarial.ts A8, A9, A11, A12, A13):
+// a key change needs the member's own signature, a card admits once and only its subject can sign it, and a mesh has
+// no member cap (#806). A `batch` row's records are offered at the real door, as signed records.
 
 import { admit, admitWithCard, card, type Draft, foreignRekey, forgedAdmit, found, rekey, revoke } from "./records.ts";
 import type { Scenario } from "./scenario.ts";
@@ -106,15 +106,15 @@ export const cardScenarios: readonly Scenario[] = [
   },
   {
     id: "A13",
-    title: "over-cap heal: both sides of a partition admitted six, the same two are over-cap everywhere",
+    title:
+      "partition heal past twelve: both sides of a partition admitted six, and all fourteen are members everywhere",
     records: [
       found("F", "A"),
       admit("aB", "A", "B", ["F"]),
       ...chain("p", "A", ["N1", "N2", "N3", "N4", "N5", "N6"], "aB"),
       ...chain("q", "B", ["M1", "M2", "M3", "M4", "M5", "M6"], "aB"),
     ],
-    expectMembers: ["A", "B", "N1", "N2", "N3", "N4", "N5", "N6", "M1", "M2", "M3", "M4"],
+    expectMembers: ["A", "B", "N1", "N2", "N3", "N4", "N5", "N6", "M1", "M2", "M3", "M4", "M5", "M6"],
     expectRevoked: [],
-    expectOverCap: ["M5", "M6"],
   },
 ];

@@ -4,7 +4,6 @@
 import type { Rec } from "../../src/view/dag.ts";
 
 export type { Rec } from "../../src/view/dag.ts";
-export const MAX_MEMBERS = 12;
 
 export const has = (mask: bigint, i: number): boolean => ((mask >> BigInt(i)) & 1n) === 1n;
 export const popcount = (mask: bigint): number => mask.toString(2).replaceAll("0", "").length;

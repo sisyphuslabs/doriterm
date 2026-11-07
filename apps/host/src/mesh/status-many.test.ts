@@ -1,6 +1,6 @@
-// mesh status over PR 2's real view: a mesh one key past the 12-member cap, built from signed records through viewOf.
+// mesh status over PR 2's real view: a thirteen-member mesh (no member cap, #806), from signed records through viewOf.
 import { base64urlEncode, type HostIdentity, hostIdentityFromSecrets } from "@doriface/crypto";
-import { hashOf, MAX_MESH_MEMBERS, meshIdOf, type Signed, signCard, signRecord, viewOf } from "@doriface/mesh";
+import { hashOf, meshIdOf, type Signed, signCard, signRecord, viewOf } from "@doriface/mesh";
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,13 +18,13 @@ const keyOf = (id: HostIdentity): string => base64urlEncode(id.sign.publicKey);
 
 const nameAt = (index: number): string => `box-${String(index + 1).padStart(2, "0")}`;
 const founder = hostIdentityFromSecrets(seed("box-01 sign"), seed("box-01 noise"));
-const joiners = Array.from({ length: MAX_MESH_MEMBERS }, (_, at) =>
+const joiners = Array.from({ length: 12 }, (_, at) =>
   hostIdentityFromSecrets(seed(`${nameAt(at + 1)} sign`), seed(`${nameAt(at + 1)} noise`)),
 );
 const ids = [founder, ...joiners];
 
-/** The founder admits every other key in one chain, so the thirteenth admission lands past the cap. */
-function capRecords(): readonly Signed[] {
+/** The founder admits every other key in one chain: thirteen members. */
+function thirteenRecords(): readonly Signed[] {
   const records: Signed[] = [];
   let mesh = "-";
   for (const [at, id] of ids.entries()) {
@@ -61,7 +61,7 @@ function capRecords(): readonly Signed[] {
   return records;
 }
 
-const records = capRecords();
+const records = thirteenRecords();
 const found = records[0];
 const view = viewOf(records);
 const base = meshFixture(NOW).sources;
@@ -82,10 +82,10 @@ const sources: MeshSources = {
   lines: new Map(),
   witnessPool: () => ({ pool: [keyOf(founder)], ask: null }),
 };
-const over = ids[MAX_MESH_MEMBERS];
+const thirteenth = ids[12];
 
 async function statusText(answer: unknown): Promise<{ code: number; text: string }> {
-  const dir = mkdtempSync(join(tmpdir(), "dh-mesh-cap-"));
+  const dir = mkdtempSync(join(tmpdir(), "dh-mesh-many-"));
   const control = listenControl(dir, async () => answer);
   let text = "";
   try {
@@ -99,34 +99,30 @@ async function statusText(answer: unknown): Promise<{ code: number; text: string
   }
 }
 
-describe("mesh status of a mesh past the 12-member cap, from PR 2's viewOf", () => {
-  test("lists the over-cap key last with its lineage, and no name or key the view does not give it", () => {
-    expect([view.members.size, [...view.overCap]]).toEqual([MAX_MESH_MEMBERS, [over === undefined ? "" : keyOf(over)]]);
+describe("mesh status of a thirteen-member mesh, from PR 2's viewOf", () => {
+  test("lists every member with its name, key and lineage, and none over a cap", () => {
+    expect(view.members.size).toBe(13);
     const status = meshStatus(sources, NOW);
-    expect(status.members.map((member) => [member.hostId, member.overCap])).toEqual(
-      ids.map((id, at) => [id.hostId, at === MAX_MESH_MEMBERS]),
+    expect(status.members.map((member) => [member.hostId, member.name, member.overCap])).toEqual(
+      ids.map((id, at) => [id.hostId, nameAt(at), false]),
     );
     expect(status.members.at(-1)).toMatchObject({
-      name: null,
-      localName: null,
-      fingerprint: null,
+      name: "box-13",
+      localName: "box-13",
       admittedBy: founder.hostId,
     });
+    expect(status.members.at(-1)?.fingerprint).not.toBeNull();
     expect(status.members[0]).toMatchObject({ hostId: founder.hostId, name: "box-01", line: "self", admittedBy: null });
-    expect(status.members[1]?.admittedBy).toBe(founder.hostId);
-    expect(status.members.slice(0, MAX_MESH_MEMBERS).map((member) => member.name)).toEqual(
-      ids.slice(0, MAX_MESH_MEMBERS).map((_, at) => nameAt(at)),
-    );
   });
 
-  test("mesh status prints the founder as the founder, and the over-cap member by its hostId with its admitter", async () => {
+  test("mesh status prints the founder as the founder, and the thirteenth member by name with its admitter", async () => {
     const { code, text } = await statusText(meshStatus(sources, NOW));
     expect(code).toBe(0);
     const lines = text.split("\n");
     const self = lines.findIndex((line) => line.startsWith(`  box-01 ${founder.hostId} `));
     expect(lines[self + 1]).toBe("    this host, founder");
-    const at = lines.indexOf(`  ${over?.hostId}`);
+    const at = lines.findIndex((line) => line.startsWith(`  box-13 ${thirteenth?.hostId} `));
     expect(at).toBeGreaterThan(0);
-    expect(lines[at + 1]).toBe("    absent, admitted by box-01, over the 12-member cap");
+    expect(lines[at + 1]).toBe("    absent, admitted by box-01");
   });
 });

@@ -37,25 +37,19 @@ function lines(view: MeshView, dial: (member: MemberEntry) => Promise<ByteLink>)
 }
 
 describe("line grants (section 7.2)", () => {
-  test("a member past the 12-member cap gets no line: 4401 with the cap as the reason, and no dial", async () => {
+  test("a host that is not a member gets no line: 4401, and no dial", async () => {
     const dialed: string[] = [];
-    const view: MeshView = { members: [a], overCap: [m], revoked: [] };
+    const view: MeshView = { members: [a], revoked: [] };
     const { lines: grants } = lines(view, (target) => {
       dialed.push(target.name);
       return Promise.resolve(closingLink());
     });
-    expect(await grants.grant(m.hostId)).toEqual({
-      ok: false,
-      code: 4401,
-      reason: `host ${m.hostId} is past the mesh's 12-member cap`,
-    });
+    expect(await grants.grant(m.hostId)).toEqual({ ok: false, code: 4401, reason: "not a member of this mesh" });
     expect(dialed).toEqual([]);
   });
 
   test("a rate-limited member is named as such, with its next try", async () => {
-    const { policy, lines: grants } = lines({ members: [a, b], overCap: [], revoked: [] }, () =>
-      Promise.resolve(closingLink()),
-    );
+    const { policy, lines: grants } = lines({ members: [a, b], revoked: [] }, () => Promise.resolve(closingLink()));
     policy.report(b.signPub, 4429);
     expect(await grants.grant(b.hostId)).toEqual({
       ok: false,
@@ -66,7 +60,7 @@ describe("line grants (section 7.2)", () => {
 
   test("a line dial refused for its pass (4412) gates nothing, unlike an offline member (4404)", async () => {
     const refusedFor = (code: number) =>
-      lines({ members: [a, b], overCap: [], revoked: [] }, () => Promise.reject(new RelayCloseError(code, "closed")));
+      lines({ members: [a, b], revoked: [] }, () => Promise.reject(new RelayCloseError(code, "closed")));
     const pass = refusedFor(4412);
     expect(await pass.lines.grant(b.hostId)).toMatchObject({ ok: false, code: 4412 });
     expect(pass.policy.gate(b.signPub)).toBeUndefined();
@@ -76,37 +70,37 @@ describe("line grants (section 7.2)", () => {
   });
 
   test("a line dial that fails without a close code gates the member", async () => {
-    const { policy, lines: grants } = lines({ members: [a, b], overCap: [], revoked: [] }, () =>
+    const { policy, lines: grants } = lines({ members: [a, b], revoked: [] }, () =>
       Promise.reject(new Error("the dial timed out")),
     );
     expect((await grants.grant(b.hostId)).ok).toBe(false);
     expect(policy.gate(b.signPub)?.misses).toBe(1);
   });
 
-  test("closing lines says why: revoked, or past the cap", async () => {
+  test("closing lines closes a revoked member's only, and says why", async () => {
     const [toB, toM] = [closingLink(), closingLink()];
     const links = new Map([
       [b.hostId, toB],
       [m.hostId, toM],
     ]);
-    const { lines: grants } = lines({ members: [a, b, m], overCap: [], revoked: [] }, (target) =>
+    const { lines: grants } = lines({ members: [a, b, m], revoked: [] }, (target) =>
       Promise.resolve(links.get(target.hostId) ?? closingLink()),
     );
     await grants.grant(b.hostId);
     await grants.grant(m.hostId);
-    grants.closeRevoked({ members: [a], overCap: [m], revoked: [b.signPub] });
+    grants.closeRevoked({ members: [a, m], revoked: [b.signPub] });
     expect(toB.closes).toEqual([{ code: 4401, reason: "revoked from the mesh" }]);
-    expect(toM.closes).toEqual([{ code: 4401, reason: "past the mesh's 12-member cap" }]);
+    expect(toM.closes).toEqual([]);
   });
 
   test("a line whose dial finishes after its member was revoked is closed, never handed over (#420)", async () => {
-    let view: MeshView = { members: [a, b], overCap: [], revoked: [] };
+    let view: MeshView = { members: [a, b], revoked: [] };
     const policy = new DialPolicy({ clock: new FakeClock(), random: seededRandom(3), onDue: () => undefined });
     const dialing = Promise.withResolvers<ByteLink>();
     const grants = new LineGrants({ view: () => view, policy, dial: () => dialing.promise, waitMs: 10 });
     const granting = grants.grant(b.hostId);
     await Promise.resolve();
-    view = { members: [a], overCap: [], revoked: [b.signPub] };
+    view = { members: [a], revoked: [b.signPub] };
     grants.closeRevoked(view);
     const late = closingLink();
     dialing.resolve(late);
@@ -117,7 +111,7 @@ describe("line grants (section 7.2)", () => {
 
 describe("a host that keeps no relay uplink (L-E5)", () => {
   test("refuses the line 4404 without gating the member or keeping the token", async () => {
-    const { policy, lines: grants } = lines({ members: [a, b], overCap: [], revoked: [] }, () =>
+    const { policy, lines: grants } = lines({ members: [a, b], revoked: [] }, () =>
       Promise.reject(new NoUplinkError()),
     );
     expect(await grants.grant(b.hostId)).toEqual({ ok: false, code: 4404, reason: new NoUplinkError().message });

@@ -21,8 +21,8 @@ export const selectedIndex = (page: Page) =>
   tabs(page).evaluateAll((els) => els.findIndex((el) => el.getAttribute("aria-selected") === "true"));
 
 /**
- * The number chord that selects a tab by its place, as the platform binds it: Cmd+N on a Mac, Alt+N elsewhere, since
- * Ctrl+N selects a space there.
+ * The number chord that selects a tab by its place, as the platform binds it: Cmd+N on a Mac, Ctrl+N elsewhere, as
+ * herdr-app binds it (#702).
  */
 export const tabNumberChord = (page: Page, place: number): Promise<string> => shortcut(page, `tab.select:${place}`);
 

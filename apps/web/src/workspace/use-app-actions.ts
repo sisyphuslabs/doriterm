@@ -12,6 +12,8 @@ export interface AppActionTargets {
   readonly terminals: readonly Terminal[];
   readonly layout: Layout;
   readonly onNew: () => void;
+  /** Starts a new space, as the New tab menu's New space does (herdr-app's `space.new`). */
+  readonly onNewSpace: () => void;
   /** Starts a terminal beside the focused pane: to its right along a row, below it along a column. */
   readonly onSplit: (axis: Axis, target?: PaneTarget) => void;
   /** Closes a tab, asking first whether its sessions keep running. */
@@ -157,6 +159,7 @@ export function desktopActions(
     terminals,
     layout,
     onNew,
+    onNewSpace,
     onSplit,
     onCloseTab,
     onClosePane,
@@ -213,6 +216,9 @@ export function desktopActions(
         return selectSpace(steppedSpace(spaceKeys, activeSpace, 1));
       case "space.prev":
         return selectSpace(steppedSpace(spaceKeys, activeSpace, -1));
+      case "space.new":
+        onNewSpace();
+        return true;
       case "pane.split":
         if (focused === null || (argument !== "right" && argument !== "down")) return false;
         onSplit(argument === "right" ? "row" : "column");
