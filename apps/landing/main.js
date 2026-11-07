@@ -1,5 +1,27 @@
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const STORAGE_KEY = "doriterm-theme";
+const MOTION_KEY = "doriterm-motion";
+
+function readMotionPaused() {
+  // Blocked site storage throws: the page then starts in motion, and a pause lasts for this page only.
+  try {
+    return localStorage.getItem(MOTION_KEY) === "paused";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The loops move only while motion is allowed: the system does not ask for less, and the reader has not paused them with
+ * the nav's control (WCAG 2.2.2, #928). A paused loop holds its still frame; `onMotionChange` re-syncs a loop on either.
+ */
+const motion = new EventTarget();
+let motionPaused = readMotionPaused();
+const motionAllowed = () => !reducedMotion.matches && !motionPaused;
+const onMotionChange = (sync) => {
+  reducedMotion.addEventListener("change", sync);
+  motion.addEventListener("change", sync);
+};
 
 const randomHex = (bytes) =>
   Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (b) => b.toString(16).padStart(2, "0")).join(" ");
@@ -9,7 +31,7 @@ function whileVisible(element, start, stop) {
   let visible = false;
   let running = false;
   const sync = () => {
-    const should = visible && !reducedMotion.matches && document.visibilityState === "visible";
+    const should = visible && motionAllowed() && document.visibilityState === "visible";
     element.classList.toggle("is-running", should);
     if (should && !running) start();
     if (!should && running) stop();
@@ -19,7 +41,7 @@ function whileVisible(element, start, stop) {
     visible = entry.isIntersecting;
     sync();
   }).observe(element);
-  reducedMotion.addEventListener("change", sync);
+  onMotionChange(sync);
   document.addEventListener("visibilitychange", sync);
 }
 
@@ -97,6 +119,20 @@ function setupLive() {
     const frame = box.querySelector("iframe");
     frame.addEventListener("load", () => postTheme(frame, document.documentElement.dataset.theme ?? "system"));
   }
+}
+
+function setupMotion() {
+  const button = document.querySelector("[data-motion-toggle]");
+  button.setAttribute("aria-pressed", String(motionPaused));
+  button.addEventListener("click", () => {
+    motionPaused = !motionPaused;
+    button.setAttribute("aria-pressed", String(motionPaused));
+    try {
+      if (motionPaused) localStorage.setItem(MOTION_KEY, "paused");
+      else localStorage.removeItem(MOTION_KEY);
+    } catch {}
+    motion.dispatchEvent(new Event("change"));
+  });
 }
 
 function setupTheme() {
@@ -692,7 +728,7 @@ function setupFleet() {
     timer = setTimeout(advance, 5600);
   };
 
-  const running = () => visible && !reducedMotion.matches && document.visibilityState === "visible";
+  const running = () => visible && motionAllowed() && document.visibilityState === "visible";
   const sync = () => {
     cancelAnimationFrame(raf);
     clearTimeout(timer);
@@ -756,10 +792,11 @@ function setupFleet() {
     }
     sync();
   }).observe(root);
-  reducedMotion.addEventListener("change", sync);
+  onMotionChange(sync);
   document.addEventListener("visibilitychange", sync);
 }
 
+setupMotion();
 setupReveal();
 setupTheme();
 setupFleet();
