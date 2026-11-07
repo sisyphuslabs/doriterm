@@ -8,7 +8,6 @@ import { Engine as LegacyEngine, viewOfRecords as legacyViewOfRecords } from "./
 
 export interface Shaped {
   readonly members: Iterable<string>;
-  readonly overCap: Iterable<string>;
   readonly revoked: Iterable<string>;
   readonly eff: Iterable<string>;
   readonly noise: Iterable<readonly [string, string]>;
@@ -22,7 +21,6 @@ export interface Shaped {
 export const shape = (v: Shaped): string =>
   JSON.stringify([
     [...v.members],
-    [...v.overCap],
     [...v.revoked],
     [...v.eff],
     [...v.noise],

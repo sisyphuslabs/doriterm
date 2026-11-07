@@ -23,11 +23,10 @@ export interface FailClosedFact {
 }
 
 /**
- * The part of PR 2's `View` that status reads. `noise` and `name` cover the 12 members only: an over-cap key (section
- * 3.5) has neither. `admitter` covers every admitted key, over-cap ones included, and maps the founder to itself,
- * since its governing admission is its own `found` record; status reads that as no admitter.
+ * The part of PR 2's `View` that status reads. `noise`, `name` and `admitter` cover every member; `admitter` maps
+ * the founder to itself, since its governing admission is its own `found` record; status reads that as no admitter.
  */
-export type ViewFacts = Pick<View, "members" | "overCap" | "revoked" | "noise" | "admitter" | "name">;
+export type ViewFacts = Pick<View, "members" | "revoked" | "noise" | "admitter" | "name">;
 
 export interface LocalFacts {
   readonly meshId: string;

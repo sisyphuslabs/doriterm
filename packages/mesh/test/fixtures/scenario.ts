@@ -16,7 +16,6 @@ export interface Scenario {
   readonly expectName?: Readonly<Record<string, string>>;
   readonly expectNoise?: Readonly<Record<string, string>>;
   readonly expectAdmitter?: Readonly<Record<string, string>>;
-  readonly expectOverCap?: readonly string[];
   /** A disclosed residual: the fail-closed view R3 gives instead of the honest one, asserted so any change shows. */
   readonly residual?: { readonly members: readonly string[]; readonly revoked: readonly string[] };
 }

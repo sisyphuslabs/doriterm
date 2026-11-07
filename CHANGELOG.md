@@ -2,9 +2,20 @@
 
 ## Unreleased
 
-### Devices
+## v0.1.9 - 2026-11-08
 
-- An iPhone keeps its paired identity across a reload. WebKit hands a stored X25519 `CryptoKey` back as null, so the app minted a new key on every load and the host refused the next session as an unknown device, adding a device on every re-pair; the key is now kept as bytes on a browser that cannot hold a `CryptoKey`, and a browser that can is unchanged. (#1333)
+### Terminal
+
+- A terminal that goes quiet no longer jumps to the top of its history and scrolls back down: a direct connection to the host (the desktop app's own host included) now pings it every 30 s, so the host stops closing the idle session after 90 s and the terminal no longer reattaches. (#1040)
+- A pane out of view no longer fetches its terminal's replay when the host ends the stream while the program still runs: it re-attaches once it is shown, and a program that ended in the meantime closes its tab then. (#1092)
+- A syllable an input method is still composing is drawn as cells at the cursor, as Ghostty draws it: a wide one over two cells at the size it will have once committed (it no longer jumps on commit), underlined over the cells it covers, shifted left at the end of the row, following the cursor if output moves it, and with no cursor drawn meanwhile. (#674)
+
+### Workspace
+
+- Closing a tab while its layout could not be saved says "The layout was not saved" once, and the tab stays in view: the
+  ended session's pane is no longer dropped a second time while the page has not heard the session end yet. (#1328)
+- Right-clicking an agent or a space on the narrowed sidebar (the icon rail), or the title bar of a pane in a split,
+  opens its menu with Rename, as a row on the full sidebar does. (#1348)
 
 ## v0.1.8 - 2026-11-07
 

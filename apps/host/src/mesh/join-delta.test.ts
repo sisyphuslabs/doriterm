@@ -1,6 +1,6 @@
-import { CloseCode, generateHostIdentity, generateX25519 } from "@doriface/crypto";
+import { base64urlEncode, CloseCode, generateHostIdentity, generateX25519 } from "@doriface/crypto";
 import { memoryLinkPair, type MemoryEnd } from "@doriface/crypto/testing";
-import { MAX_MESH_MEMBERS, parseRecord, type Signed, signCard } from "@doriface/mesh";
+import { parseRecord, type Signed, signCard } from "@doriface/mesh";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
@@ -154,18 +154,22 @@ describe("the inviter checks the card before the owner is asked (section 4.4 ste
     expect(pending.list()).toEqual([]);
   });
 
-  test("a mesh that is already full refuses before the owner is asked", async () => {
+  test("a thirteenth machine joins a twelve-member mesh, and a fourteenth joins through the thirteenth", async () => {
     const a = side("alpha");
     a.mesh.found(a.m.identity, ownOf(a));
     admitMembers(
       a,
-      Array.from({ length: MAX_MESH_MEMBERS - 1 }, (_, i) => `member${i + 1}`),
+      Array.from({ length: 11 }, (_, i) => `member${i + 1}`),
     );
-    const pending = new PendingJoins();
-    const b = side("beta");
-    const run = runJoin(inviteDeps(a, pending), joinerContext(b, a), b.m.identity.noise.publicKey);
-    expect(await failure(run.invited)).toBe("the mesh is full");
-    expect(pending.list()).toEqual([]);
+    expect(a.mesh.authorizeIndex()?.memberCount).toBe(12);
+    const [b, c] = [side("beta"), side("gamma")];
+    await joined(a, b);
+    await joined(b, c);
+    expect(b.mesh.authorizeIndex()?.memberCount).toBe(14);
+    expect(c.mesh.authorizeIndex()?.memberCount).toBe(14);
+    expect(c.mesh.authorizeIndex()?.member(base64urlEncode(c.m.identity.noise.publicKey))?.hostId).toBe(
+      c.m.identity.hostId,
+    );
   });
 });
 

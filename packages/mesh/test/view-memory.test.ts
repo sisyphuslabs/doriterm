@@ -99,7 +99,7 @@ describe("M-14: a ViewCache holds one mesh's history, not one engine per merge",
   );
 
   test(
-    `2048 admissions, most of them over the cap, keep under ${ADMITS_BUDGET_MB} MB in the cache`,
+    `2048 admissions, every one a member, keep under ${ADMITS_BUDGET_MB} MB in the cache`,
     async () => {
       const held = await heldMb("admits-only-2048");
       expect(held).toBeGreaterThan(0);
