@@ -159,7 +159,7 @@ export function KeybindingsSection() {
           </section>
         );
       })}
-      {shown.length === 0 ? <p className="text-sm text-muted-foreground">No action matches “{query}”.</p> : null}
+      {shown.length === 0 ? <p className="text-prose text-muted-foreground">No action matches “{query}”.</p> : null}
       {parsed === null ? null : <ImportPreview parsed={parsed} onClose={() => setParsed(null)} />}
     </div>
   );

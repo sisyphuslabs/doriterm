@@ -173,10 +173,10 @@ export function TerminalView(props: TerminalViewProps) {
     onEnded,
   });
 
-  if (error !== null) return <p className="p-4 text-sm text-destructive">{error}</p>;
+  if (error !== null) return <p className="p-4 text-prose text-destructive">{error}</p>;
   if (attachment.restarting) {
     return (
-      <p role="status" className="p-4 text-sm text-muted-foreground">
+      <p role="status" className="p-4 text-prose text-muted-foreground">
         The program in this terminal is restarting…
       </p>
     );

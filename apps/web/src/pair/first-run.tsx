@@ -61,7 +61,7 @@ function LocalFirstRun({ bridge, offline }: { readonly bridge: DesktopBridge; re
         }
       />
       {offline ? (
-        <p id="pair-offline" className="text-sm text-muted-foreground">
+        <p id="pair-offline" className="text-prose text-muted-foreground">
           {PAIR_NEEDS_NETWORK}
         </p>
       ) : null}

@@ -67,7 +67,7 @@ export function ThemeBrowser({ options, dark, light, defaultKind, onPick, classN
           ]}
         />
       </div>
-      <p className="text-sm text-muted-foreground">
+      <p className="text-prose text-muted-foreground">
         Dark: <span className="text-foreground">{pickName("dark")}</span>
         <span aria-hidden> · </span>
         Light: <span className="text-foreground">{pickName("light")}</span>

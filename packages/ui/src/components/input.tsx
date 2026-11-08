@@ -44,8 +44,8 @@ export function Field({ label, htmlFor, hint, error, children, className }: Fiel
         {label}
       </label>
       {children}
-      {error === undefined ? null : <p className="text-sm text-destructive">{error}</p>}
-      {error === undefined && hint !== undefined ? <p className="text-sm text-muted-foreground">{hint}</p> : null}
+      {error === undefined ? null : <p className="text-prose text-destructive">{error}</p>}
+      {error === undefined && hint !== undefined ? <p className="text-prose text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }

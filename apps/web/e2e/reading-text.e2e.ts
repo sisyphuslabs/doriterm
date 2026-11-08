@@ -103,4 +103,33 @@ test.describe("1440 day reading paragraphs", () => {
       expect(small).toEqual([]);
     });
   }
+
+  // A notice's title and explanation are reading text too, though the paragraph check above leaves alerts out.
+  for (const name of ["storage-error", "pair-refused-4410"]) {
+    test(`${name} notice text is at least 14 px`, async ({ page }) => {
+      const shot = SHOTS.find((entry) => entry.name === name);
+      if (shot === undefined) throw new Error(`capture ${name} is missing`);
+      if (shot.storageFails === true) {
+        await page.addInitScript(() => {
+          IDBFactory.prototype.open = () => {
+            throw new DOMException("IndexedDB is not available here", "InvalidStateError");
+          };
+        });
+      }
+      await shot.run(page, "1440");
+      await page.evaluate(() => document.fonts.ready);
+      const read = await page.evaluate(() =>
+        [
+          ...document.querySelectorAll(
+            "div[role=alert] p, div[role=alert] p ~ div, div[role=status] p, div[role=status] p ~ div",
+          ),
+        ]
+          .filter((el) => !el.closest(".sr-only,button,code,kbd,.font-mono") && (el.textContent ?? "").trim() !== "")
+          .filter((el) => el.getBoundingClientRect().width > 1)
+          .map((el) => ({ text: (el.textContent ?? "").trim().slice(0, 60), size: getComputedStyle(el).fontSize })),
+      );
+      expect(read.length, "a notice paragraph is on screen").toBeGreaterThan(0);
+      expect(read.filter((entry) => parseFloat(entry.size) < 14)).toEqual([]);
+    });
+  }
 });
