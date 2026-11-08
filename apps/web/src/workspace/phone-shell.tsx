@@ -7,7 +7,6 @@ import { connectionStore } from "../connection/store.ts";
 import { NEW_TAB } from "../keys/actions.ts";
 import { AgentLists } from "./agent-lists.tsx";
 import { PhoneSortMenu } from "./agents-group.tsx";
-import { ComputersList } from "./computers-list.tsx";
 import { onlyThisMachine } from "./machines.ts";
 import type { ListedSpace, Session } from "./model.ts";
 import { PhoneSpace, PhoneSpaceLoading } from "./phone-space.tsx";
@@ -126,7 +125,6 @@ export function PhoneShell(props: PhoneShellProps) {
                 {empty ? (
                   <PhoneEmpty host={connection.hello.core.name} onNew={onNew} onAddMachine={machines.openAddMachine} />
                 ) : null}
-                <ComputersList machines={machines.entries} onAdd={machines.openAddMachine} />
                 {empty && onlyThisMachine(machines.entries) ? null : (
                   <RovingLists>
                     <AgentLists terminals={terminals} active={null} onOpen={onOpen} heading={false} />
