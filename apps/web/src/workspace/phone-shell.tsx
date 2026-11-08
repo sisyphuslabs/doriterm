@@ -39,6 +39,8 @@ export interface PhoneShellProps {
   readonly tabTitle: string | null;
   readonly onOpen: (address: string) => void;
   readonly onBack: () => void;
+  /** Where the open terminal's Back goes when that is a space (its name); null when it goes to the agents list. */
+  readonly backTo: string | null;
   /** The space screen's Back, to the list. */
   readonly onSpaceBack: () => void;
   readonly onNew: () => void;
@@ -53,7 +55,7 @@ export interface PhoneShellProps {
 /** Phones: the agents list first; a space opens its own screen, and a terminal shows full screen with extra keys. */
 export function PhoneShell(props: PhoneShellProps) {
   const { connection, terminals, open, space, panes, tabTitle, onOpen, onBack, onNew, onNewInSpace, onPalette } = props;
-  const { onSession, onSpaceBack, onCloseTab, pushed } = props;
+  const { onSession, onSpaceBack, onCloseTab, pushed, backTo } = props;
   // The open terminal registers its dictation here, so the palette and a bound key reach it from this shell's handler.
   const dictate = useRef<(() => void) | null>(null);
   usePhoneActions(onNew, onSession, () => (dictate.current === null ? false : (dictate.current(), true)));
@@ -170,6 +172,7 @@ export function PhoneShell(props: PhoneShellProps) {
       terminals={terminals}
       panes={panes}
       tabTitle={tabTitle}
+      backTo={backTo}
       onOpen={onOpen}
       onBack={() => {
         setPicked(null);
