@@ -23,6 +23,7 @@ import type { ConnectTarget } from "../connect/target.ts";
 import { loadDeviceKey } from "../state/known-hosts.ts";
 import { MeshStore } from "../state/mesh.ts";
 import { PairingStore } from "../state/pairing.ts";
+import { type JoinTarget, type MeshInvite, meshInviteOf } from "@doriface/mesh/join";
 import { JoinRefused } from "./invite.ts";
 import { JOINER_EXPECTS, MeshLines } from "./lines.ts";
 import { JOIN_DEADLINE_MS, runJoiner } from "./join.ts";
@@ -63,8 +64,14 @@ interface Inviter {
   readonly pairSlot?: string;
 }
 
-/** Section 4.2 step 2: every refusal that needs no network, checked before anything is dialed. */
-async function refuseEarly(options: JoinOptions): Promise<void> {
+const joinTargetOf = (target: ConnectTarget): JoinTarget =>
+  target.kind === "link" ? { kind: "link", mesh: target.link.mesh === true } : { kind: target.kind };
+
+/**
+ * Section 4.2 step 2: every refusal that needs no network, checked before anything is dialed; the device/mesh split
+ * itself is the shared joiner's (`meshInviteOf`), so the host and the browser refuse in the same words.
+ */
+async function refuseEarly(options: JoinOptions): Promise<MeshInvite> {
   const mesh = new MeshStore(options.stateDir, { log: options.log }).read();
   if (mesh !== undefined) throw new JoinRefused(`this host is in mesh ${mesh.meshId} already: run mesh leave first`);
   const offer = new PairingStore(options.stateDir).read();
@@ -73,16 +80,15 @@ async function refuseEarly(options: JoinOptions): Promise<void> {
   }
   if (!checkName(options.name)) throw new JoinRefused(`"${options.name}" is not a valid mesh name`);
   const { target } = options;
-  if (target.kind === "host") throw new JoinRefused("mesh join takes a mesh pairing link or code, not a hostId");
-  if (target.kind === "code") {
+  const invite = meshInviteOf(joinTargetOf(target));
+  if (target.kind !== "link") {
     fingerprintGiven(options.fingerprint);
-    return;
+    return invite;
   }
-  if (target.link.mesh !== true)
-    throw new JoinRefused("this link pairs a device: run doriface-host mesh pair on the member");
-  if (options.yes) return;
+  if (options.yes) return invite;
   const question = `join the mesh of host ${target.link.hostId}, fingerprint ${fingerprintOf(target.link.noiseStaticPub)}?`;
   if (!(await options.confirm(question))) throw new JoinRefused("not joined");
+  return invite;
 }
 
 async function inviterOf(options: JoinOptions): Promise<Inviter> {
@@ -112,7 +118,7 @@ async function inviterOf(options: JoinOptions): Promise<Inviter> {
  * this host's own Noise key and `stream: "mesh"`, then the join exchange. Stores the welcome only once it checked out.
  */
 export async function joinMesh(options: JoinOptions): Promise<Joined> {
-  await refuseEarly(options);
+  const invite = await refuseEarly(options);
   const inviter = await inviterOf(options);
   const dialInviter = async () => {
     const link = await connectRelayClient({
@@ -140,6 +146,14 @@ export async function joinMesh(options: JoinOptions): Promise<Joined> {
   const own = { name: options.name, hcId: options.hcId, ...(devicePub === undefined ? {} : { devicePub }) };
   const mesh = new MeshStore(options.stateDir, { log: options.log });
   const dialed = { hostId: inviter.hostId, noisePub: inviter.hostKey };
-  const meshId = await runJoiner(lines, { identity: options.identity, mesh, own, dialed, deadline, log: options.log });
+  const meshId = await runJoiner(lines, {
+    invite,
+    identity: options.identity,
+    mesh,
+    own,
+    dialed,
+    deadline,
+    log: options.log,
+  });
   return { meshId, hostId: inviter.hostId, secure, lines };
 }
