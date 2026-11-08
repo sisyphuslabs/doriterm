@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Phone
+
+- Tapping a space on a phone opens that space's terminal; it used to move the desktop's tab and leave the phone where it
+  was. (#1390)
+
 ## v0.1.11 - 2026-11-08
 
 ### Machine mesh
