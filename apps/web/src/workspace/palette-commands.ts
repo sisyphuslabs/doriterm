@@ -7,6 +7,7 @@ import { triggerKeys, type Platform } from "../keys/trigger.ts";
 import type { AgentStatus } from "@doriface/ui";
 import { agentStatus } from "./attention.ts";
 import { machineOf, terminalTitle } from "./model.ts";
+import { agentWhere } from "./palette-where.ts";
 import type { ShellAction } from "./shell-actions.ts";
 
 const AGENT = "agent:";
@@ -47,7 +48,13 @@ export function paletteCommands(source: PaletteSource): Command[] {
     .map((terminal): Command => {
       const machine = machineOf(terminal.address);
       const id = `${AGENT}${terminal.address}`;
-      const row: Command = { id, label: terminalTitle(terminal), group: "Agents", status: agentStatus(terminal) };
+      const row: Command = {
+        id,
+        label: terminalTitle(terminal),
+        group: "Agents",
+        status: agentStatus(terminal),
+        where: agentWhere(terminal, source.host),
+      };
       return machine === undefined ? row : Object.assign(row, { hint: machine });
     });
   return [

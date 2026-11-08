@@ -22,6 +22,8 @@ export interface Command {
   readonly status?: AgentStatus;
   /** Listed but not runnable right now, as its disabled toolbar button; the hint says why. */
   readonly disabled?: boolean;
+  /** Where the row lives (place and directory): the line under the list says it while the row is highlighted. */
+  readonly where?: string;
 }
 
 export interface CommandPaletteProps {
@@ -145,6 +147,7 @@ export function CommandPalette({
                       role="option"
                       aria-selected={selected}
                       aria-disabled={command.disabled}
+                      aria-describedby={selected && command.where !== undefined ? `${listId}-where` : undefined}
                       onPointerMove={() => setActive(visible.indexOf(command))}
                       onClick={() => {
                         if (command.disabled !== true) onRun?.(command.id);
@@ -181,6 +184,16 @@ export function CommandPalette({
           ))
         )}
       </div>
+      {current?.where === undefined ? null : (
+        <p
+          id={`${listId}-where`}
+          title={current.where}
+          data-slot="palette-where"
+          className="truncate border-t border-border px-3 py-1.5 font-mono text-xs text-muted-foreground"
+        >
+          {current.where}
+        </p>
+      )}
     </div>
   );
 }

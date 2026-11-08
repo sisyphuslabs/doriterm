@@ -41,7 +41,14 @@ describe("paletteCommands", () => {
     );
     expect([...new Set(commands.map((command) => command.group))]).toEqual(["Agents", "Actions", "Hosts", "General"]);
     expect(commands.filter((command) => command.group === "Agents")).toEqual([
-      { id: "agent:box/t1", label: "deploy", group: "Agents", status: "blocked", hint: "box" },
+      {
+        id: "agent:box/t1",
+        label: "deploy",
+        group: "Agents",
+        status: "blocked",
+        hint: "box",
+        where: "box \u203a doriface \u00b7 /work/doriface",
+      },
     ]);
     expect(commands.find((command) => command.id === "tab.new")?.keys).toEqual(["⌘", "T"]);
     expect(commands.find((command) => command.group === "Hosts")).toMatchObject({ label: "studio", hint: "relay" });
