@@ -88,6 +88,15 @@ for (const [width, screens] of [
             return [phrase, await fullLines(paragraph)] as const;
           }),
         );
+        // fullLines drops each paragraph's last line, so one-line paragraphs measure nothing and a screen that renders
+        // all of them as one line passes every floor below vacuously. The fewest full lines any screen here wraps to is
+        // 2 (pair, one per paragraph); a Linux runner without the named faces draws a wider fallback, which wraps more
+        // lines, not fewer, so this floor holds there too.
+        const screenLines = measured.reduce((total, [, lines]) => total + lines.length, 0);
+        expect(
+          screenLines,
+          `${name} at ${width}: ${measured.map(([phrase, lines]) => `${lines.length} full lines in "${phrase}"`).join(", ")}`,
+        ).toBeGreaterThanOrEqual(2);
         for (const [phrase, counts] of measured) {
           for (const count of counts) {
             expect.soft(count, `${phrase}: ${counts.join(",")}`).toBeGreaterThanOrEqual(floor);
