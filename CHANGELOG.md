@@ -29,6 +29,15 @@
   single host. A device link is refused on that path. This is the plumbing, not a shipped screen - the pair route still
   shows the typed-code screen for a mesh invite until the join UI lands. (#1413)
 
+### Joining a mesh
+
+- A host with no mesh yet admits a browser as its first member, so one machine and one browser are enough to start: the
+  browser joins by a mesh invite over the relay and opens a session to that host. Readiness for a client admission is
+  read from the roster rather than from a runtime that only starts once a mesh exists, and a roster machine that has
+  not answered still blocks the admission. The old check refused the browser after the join had already written the
+  mesh, so it waited for a state the same join had just produced: the state was correct, and only the admission answer
+  was stale. (#1426)
+
 ### Phone
 
 - A phone no longer zooms the page when you tap a field or tap twice: every text field, the terminal's own included at
@@ -39,6 +48,12 @@
   from a terminal to its space and from the space to Agents, and the Back button never leaves the app. (#1406)
 - A screen reader finds Settings on a phone: the full-screen Settings sheet is announced as a dialog named Settings, as
   it is on a wide screen. (#1414)
+
+### Connection and offline wording
+
+- Keys typed right after you come back to the app are no longer lost while it checks that the connection still works:
+  they wait and are sent, in the order typed, once the connection has answered, or on the next connection if it had
+  dropped. Nothing you type is sent twice. (#1432)
 
 ### Website
 
