@@ -13,5 +13,8 @@ test("the phone Gateway requests URL entry without text corrections (#1444)", as
   await expect(gateway).toHaveAttribute("autocapitalize", "off");
   await expect(gateway).toHaveAttribute("autocorrect", "off");
   await expect(gateway).toHaveAttribute("spellcheck", "false");
-  await expect(page.getByLabel("Token", { exact: true })).not.toHaveAttribute("inputmode", "url");
+  const token = page.getByLabel("Token", { exact: true });
+  await expect(token).toBeVisible();
+  await expect(token).toHaveAttribute("type", "password");
+  await expect(token).not.toHaveAttribute("inputmode", "url");
 });
