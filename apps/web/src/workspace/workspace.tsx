@@ -26,6 +26,7 @@ import { PinContext, type PinTerminal } from "./use-pin.ts";
 import { MachinesContext, useMachines } from "./use-machines.ts";
 import { runParamsFor } from "./new-terminal.ts";
 import { entersFromList, phoneOpenKey, rememberOpenKey } from "./phone-route.ts";
+import { spaceRowTarget } from "./phone-space.ts";
 import { useNarrow } from "./use-narrow.ts";
 import { machineIds, tabAddress, tabKey } from "./tab-keys.ts";
 import { findTerminal, type LayoutTab } from "./layout-model.ts";
@@ -364,11 +365,20 @@ export function Workspace({ connection }: WorkspaceProps) {
   const { selectSpace } = layout;
   // The space keys count the spaces as the sidebar lists them, so "space 2" is the second row a person sees.
   const spaceKeys = useMemo(() => spacesInOrder(entries, spaces).map((space) => space.id), [entries, spaces]);
-  const selectedSpace = layout.active?.spaceKey ?? null;
+  // A phone shows one terminal at a time and names it in the route, so a space row has to open a terminal (#1387).
+  const openSpace = useCallback(
+    (key: string) => {
+      selectSpace(key);
+      const address = spaceRowTarget(layout.tabs, layout.spaceTab(key), key);
+      if (address !== null) showOnPhone(address);
+    },
+    [selectSpace, layout.tabs, layout.spaceTab, showOnPhone],
+  );
+  const selectedSpace = (narrow && phoneTab !== null ? phoneTab.tab.spaceKey : null) ?? layout.active?.spaceKey ?? null;
   const moveSpace = useSpaceMove(layouts, failed);
   const spaceSelection = useMemo(
-    () => ({ spaces, selected: selectedSpace, select: selectSpace, move: moveSpace }),
-    [spaces, selectedSpace, selectSpace, moveSpace],
+    () => ({ spaces, selected: selectedSpace, select: narrow ? openSpace : selectSpace, move: moveSpace }),
+    [spaces, selectedSpace, openSpace, selectSpace, moveSpace, narrow],
   );
   return (
     <MachinesContext value={machines}>
