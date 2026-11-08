@@ -43,9 +43,6 @@ export function askingForKeyboard(handle: RefObject<TerminalHandle | null>, soft
   if (!softKeyboard) return;
   const field = fieldOf(handle);
   if (field === null) return;
-  // A field already asking for the keyboard keeps its focus: letting it go would send the program a focus-out and a
-  // focus-in for nothing and drop a syllable still composing.
-  if (field.inputMode === "text") return;
   if (field.ownerDocument.activeElement === field) field.blur();
   field.inputMode = "text";
 }

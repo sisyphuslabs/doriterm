@@ -69,7 +69,7 @@ export function PhoneShell(props: PhoneShellProps) {
   const shown = terminal?.address ?? null;
   const lastShown = useRef(shown);
   useEffect(() => {
-    if (lastShown.current === picked && shown !== picked) setPicked(null);
+    if (shown !== lastShown.current && shown !== picked) setPicked(null);
     lastShown.current = shown;
   }, [shown, picked]);
   // An unanswered list is not an empty one: the empty state waits for the core's first answer (#797).
