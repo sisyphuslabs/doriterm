@@ -15,6 +15,17 @@ for (const phone of [false, true]) {
       ...(baseURL === undefined ? {} : { baseURL }),
       serviceWorkers: "block",
     });
+    // A storage permission prompt may remain open while both people compare the join code.
+    await context.addInitScript(() => {
+      let requests = 0;
+      Reflect.set(globalThis, "__meshPersistRequests", requests);
+      Object.defineProperty(navigator.storage, "persist", {
+        value: () => {
+          Reflect.set(globalThis, "__meshPersistRequests", ++requests);
+          return new Promise<boolean>(() => undefined);
+        },
+      });
+    });
     try {
       const page = await context.newPage();
       await routeOnlyRelay(page, host);
@@ -26,6 +37,7 @@ for (const phone of [false, true]) {
       await expect(page.getByRole("heading", { name: "Join this mesh" })).toBeVisible();
       await page.getByLabel("This browser's name").fill(phone ? "phone-browser" : "desktop-browser");
       await page.getByRole("button", { name: "Join", exact: true }).click();
+      await expect.poll(() => page.evaluate(() => Reflect.get(globalThis, "__meshPersistRequests"))).toBe(1);
       await expect(page.getByLabel("Join code")).toBeVisible();
       const pending = await host.pendingJoin();
       await expect(page.getByLabel("Join code")).toHaveText(pending.code);

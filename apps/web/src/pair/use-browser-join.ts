@@ -64,7 +64,7 @@ export function useBrowserJoin() {
           expiresAt: Date.now() + PAIRING_TTL_MS,
         };
         await deviceStore.put("mesh.browser-name", context.name);
-        await navigator.storage?.persist?.().then(
+        void navigator.storage?.persist?.().then(
           () => undefined,
           () => undefined,
         );
