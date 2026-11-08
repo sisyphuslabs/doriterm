@@ -91,20 +91,33 @@ Rejected: writing the predicted byte into the VT and undoing it when the echo ar
 libghostty cannot rewind, the host's bytes interleave with the local write at an advanced cursor, and a wrapped or wide
 cell corrupts the row. The overlay costs a DOM layer per view and a geometry helper; the write-through costs correctness.
 
-### D2. Confirmation is by screen content with a time bound, not by an input acknowledgement
+### D2. Confirmation is by screen content; only a causal ack or expiry judges a prediction wrong
 
-mosh confirms a prediction against a server frame it knows was computed after the keystroke. We have no such ack (§2).
-Chosen: a prediction is **confirmed** when the real cell at its position shows its text, except where that match proves
-no echo: a blank, or a cell that already showed the same glyph before the key, is removed without confirming anything
-(mosh's `CorrectNoCredit`, `terminaloverlay.cc:91-109`). It is **killed** (and every
-prediction of its epoch with it) when the cell shows something else after `due` has passed, when the real cursor leaves
-the anchored row, when `due` passes with no echo at all, or when the view is reset or re-attached.
-`due = clamp(1.5 * SRTT + 120 ms, 200 ms, 1500 ms)`, where SRTT is the connection's measured call round trip (D7).
+mosh judges a prediction only once the server has acknowledged the frame that carried its key: until
+`late_ack >= expiration_frame` a cell is `Pending` whatever the screen shows (`terminaloverlay.cc:86-90`). We have no
+such ack (§2), and the substitute must keep that property: a late echo means "not yet known", never "wrong".
 
-Trade-off: a program that echoes slowly (a TUI re-rendering under load) can be read as "did not echo", which kills the
-epoch and hides predictions until the next confirmed echo. The cost is a brief disappear-and-reappear of one typed
-character; the alternative, waiting indefinitely, is how a password prompt would show a password. The constants are
-tunables with a measured basis required in the PR (echo latency over the e2e harness at an injected 250 ms RTT).
+Chosen: a prediction is **confirmed** when the real cell at its position shows its text. A match that proves no echo (a
+blank, or a cell that already showed the same glyph before the key: mosh's `CorrectNoCredit`, `terminaloverlay.cc:91-109`)
+confirms nothing and stays pending, holding the predicted cursor, until it is answered or expires. A prediction is
+**incorrect** only on a **causal ack**: a key sent after it has been confirmed (in the same write or an earlier one), so
+the program, which answers keys in order, has answered this one too, and its cell still does not show it. Otherwise it
+only **expires**, at RFC 6298's retransmission timeout over the predictor's echo round trip (D7):
+`max(1000 ms, SRTT + 4 * RTTVAR)`, the RFC's one-second floor included. Time alone never produces "incorrect". An
+incorrect or expired prediction that was drawn resets everything (mosh `reset()`); one that was not drawn kills only its
+epoch and later ones (mosh `kill_epoch`), which hides nothing. The alternate screen turning on, or `reset()` on
+attach, drops everything; tentative predictions on a row the cursor has left are dropped (nothing drawn goes with them).
+
+**Correction (2026-11-08, #1439 HIGH 1).** The first version killed a prediction whose cell showed something else once
+`due = clamp(1.5 * SRTT + 120 ms, 200 ms, 1500 ms)` had passed, and killed every prediction when the cursor left the
+anchored row. Both are judgements made on time or screen state with no ack, which mosh never makes; on a relay whose
+echo spread (270-400 ms) exceeds the typing interval (70 ms), a time-judged "incorrect" in a confirmed epoch makes every
+drawn character vanish and the next key invisible for a round trip. The constants were also chosen, not derived. What
+replaced them is above; the proof is a 200-key run under an order-preserving 270-400 ms jitter with zero resets
+(`prediction-jitter.test.ts`), and the same run with a time-judged "incorrect" injected records 33 judgements.
+
+Trade-off: a key the program never echoes, typed in a confirmed epoch without an Enter before it, stays drawn up to the
+expiry (at least one second) before it goes; an Enter before it makes it silent instead (D3).
 
 Deferred: a core-side input acknowledgement (sequence on DATA, "consumed up to" on output) would make confirmation exact.
 It is a herdr-core protocol change (§5); the predictor takes its confirmation source behind one interface so an ack can
@@ -139,20 +152,20 @@ reporting the pty's ECHO flag (§5), which would let the first key after Enter b
 
 The rule set is closed; a case not listed is not predicted. Each line is one row of the predictor's spec table.
 
-| #   | Input or state                                                                                            | Prediction                                                                                               | Why                                                                                                                                    |
-| --- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| P1  | Anything but exactly one grapheme of printable text (C0, DEL, ESC-led sequences, multi-character strings) | none                                                                                                     | control keys and encoded keys (kitty `CSI u`, arrows, Enter, Tab) are the program's to interpret; a paste is many characters           |
-| P2  | Input from a paste (`PasteDialog`, `TerminalPort.paste`, renderer paste)                                  | none                                                                                                     | even a one-character paste is tagged `paste` at the call site, never inferred from length                                              |
-| P3  | `bridge.usingAltScreen()` true                                                                            | none                                                                                                     | full-screen programs (vim normal mode, less, pickers) treat letters as commands; the win is on the main screen where coding agents run |
-| P4  | Cursor within `width` cells of the right margin (`col + width > cols - 1`)                                | none                                                                                                     | mosh does not predict a wrap either; the shell's wrap and the terminal's differ                                                        |
-| P5  | An IME composition in progress                                                                            | none                                                                                                     | the preedit overlay already shows it; the committed syllable is then predicted as a 2-cell glyph (P7)                                  |
-| P6  | No open stream, link unproven after a wake (D6), or `pending` non-empty                                   | none                                                                                                     | queued input would show as a long phantom; it is sent in order when the stream is back, and the echo draws it                          |
-| P7  | A grapheme of width 2 (Hangul syllable, CJK)                                                              | 2 cells, if P4 allows                                                                                    | width from the existing `CodepointWidths`; a multi-codepoint grapheme (emoji ZWJ) is not predicted                                     |
-| P8  | Backspace (`0x7f`/`0x08` as sent)                                                                         | pops the last unconfirmed prediction when the predicted cursor sits right after it; otherwise P1         | erasing real text is the program's business (readline, wide cells)                                                                     |
-| P9  | After any unpredicted input (P1)                                                                          | no new predictions until a host write leaves no prediction outstanding (the cursor is then the real one) | the cursor is unknown after Enter, an arrow or a chord; existing predictions stay until confirmed or due                               |
-| P10 | Bytes from `writeAutomatic` (query answers)                                                               | none                                                                                                     | never human typing                                                                                                                     |
-| P11 | The view is scrolled away from the end                                                                    | overlay hidden, predictions kept                                                                         | the overlay anchors to active-screen rows; wterm scrolls to the end on the next key anyway                                             |
-| P12 | `observe: true` streams                                                                                   | n/a                                                                                                      | they never type                                                                                                                        |
+| #   | Input or state                                                                                            | Prediction                                                                                           | Why                                                                                                                                                                                                                                          |
+| --- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P1  | Anything but exactly one grapheme of printable text (C0, DEL, ESC-led sequences, multi-character strings) | none                                                                                                 | control keys and encoded keys (kitty `CSI u`, arrows, Enter, Tab) are the program's to interpret; a paste is many characters                                                                                                                 |
+| P2  | Input from a paste (`PasteDialog`, `TerminalPort.paste`, renderer paste)                                  | none                                                                                                 | even a one-character paste is tagged `paste` at the call site, never inferred from length                                                                                                                                                    |
+| P3  | `bridge.usingAltScreen()` true                                                                            | none                                                                                                 | full-screen programs (vim normal mode, less, pickers) treat letters as commands; the win is on the main screen where coding agents run                                                                                                       |
+| P4  | Cursor within `width` cells of the right margin (`col + width > cols - 1`)                                | none                                                                                                 | the shell's wrap and the terminal's differ. (Correction, #1439: mosh does predict the last column and wraps its cursor tentatively, `terminaloverlay.cc:787-795`; this rule is stricter than mosh, see §4.)                                  |
+| P5  | An IME composition in progress                                                                            | none                                                                                                 | the preedit overlay already shows it; the committed syllable is then predicted as a 2-cell glyph (P7)                                                                                                                                        |
+| P6  | No open stream, link unproven after a wake (D6), or `pending` non-empty                                   | none                                                                                                 | queued input would show as a long phantom; it is sent in order when the stream is back, and the echo draws it                                                                                                                                |
+| P7  | A grapheme of width 2 (Hangul syllable, CJK)                                                              | 2 cells, if P4 allows                                                                                | width from the existing `CodepointWidths`; a multi-codepoint grapheme (emoji ZWJ) is not predicted                                                                                                                                           |
+| P8  | Backspace (`0x7f`/`0x08` as sent)                                                                         | pops the last unconfirmed prediction when the predicted cursor sits right after it; otherwise P1     | erasing real text is the program's business (readline, wide cells)                                                                                                                                                                           |
+| P9  | After any unpredicted input (P1)                                                                          | a new epoch (mosh `become_tentative`): later keys are predicted silently until one of them is echoed | the cursor is unknown after Enter, an arrow or a chord; existing predictions stay until confirmed. Every refused input that reaches the program does this (P1-P7, P6 included since held input is sent later); P10 and P12 input never types |
+| P10 | Bytes from `writeAutomatic` (query answers)                                                               | none                                                                                                 | never human typing                                                                                                                                                                                                                           |
+| P11 | The view is scrolled away from the end                                                                    | overlay hidden, predictions kept                                                                     | the overlay anchors to active-screen rows; wterm scrolls to the end on the next key anyway                                                                                                                                                   |
+| P12 | `observe: true` streams                                                                                   | n/a                                                                                                  | they never type                                                                                                                                                                                                                              |
 
 Adaptive display (D8) is a separate gate over the whole table.
 
@@ -212,16 +225,33 @@ dropped into a replay.
 ### D7. One RTT estimator on the connection
 
 `HcConnection` keeps SRTT/RTTVAR (TCP-style EWMA, alpha 1/8) from every channel-0 call that gets an answer; a timed-out
-or aborted call does not feed it. The attach call itself is the first sample. Consumers: the predictor's `due` and
-display gate, the wake probe deadline, the replay quiet window. One number, measured where the bytes travel, instead of
-three guesses.
+or aborted call does not feed it. Consumers: the wake probe deadline and the replay quiet window.
+
+**Correction (2026-11-08, #1439 HIGH 1).** The predictor does not read this estimator. Its expiry and display gate need
+the round trip of an _echo_: keypress to the cell showing it, which includes the host's processing and the output
+pacer's frame wait that a channel-0 call does not. And on a first attach the attach call was started with the run
+(`takeOpeningAttach`, `opening-attach.ts`), so as a sample it measures anything from ~0 ms to more than a round trip. The
+predictor therefore keeps its own RFC 6298 estimator over echoes, seeded by the first confirmation; nothing is drawn
+before that confirmation anyway, so the seed costs nothing visible. Whether the connection's estimator should keep the
+attach call as a sample is a question for its other two consumers, not for the predictor.
 
 ### D8. Predictions are shown adaptively, with underline, and can be turned off
 
-Default `adaptive`: predictions are drawn only when `SRTT >= 60 ms`; on a loopback or LAN link they bring nothing and
-could only glitch. `always` and `off` are offered in Settings. Underline is always on when a prediction is drawn: the
-underline **is** the "unconfirmed" signal, as mosh's. This is a settings row with a clear default and removes no
+Default `adaptive`, mosh's triggers ported with their derivation (`prediction-display.ts`). mosh compares its constants
+(20/30 to show, 50/80 to underline) with `send_interval`, not SRTT, and `send_interval = ceil(SRTT / 2)` clamped to
+[20, 250] (`transportsender-impl.h:61-68`, `stmclient.cc:305`). The port computes `sendInterval` the same way and keeps
+mosh's constants, so in SRTT: drawn above 60 ms, stopped at 40 ms or less only while nothing is outstanding; underlined
+above 160 ms, no longer at 100 ms or less. mosh's glitch trigger is kept too: a prediction outstanding 250 ms shows
+predictions even on a fast link until ten quick confirmations at least 150 ms apart repair it, and one outstanding 5 s
+underlines. The SRTT here is the predictor's echo round trip (D7), which carries the pacer's frame wait (+0-16.7 ms, ~8
+on average) that mosh's transport SRTT does not, so a 10 ms LAN measures about 20-30 ms: still at or under the 40 ms
+off threshold. `always` and `off` are offered in Settings. This is a settings row with a clear default and removes no
 capability, so it ships without a product decision.
+
+**Correction (2026-11-08, #1439 HIGH 2).** The first version drew predictions at `SRTT >= 60 ms` and underlined them
+always. The 60 was mosh's 30 compared with SRTT through the wrong quantity, with no off threshold and no hysteresis, and
+mosh underlines only on a slow link or a glitch (`flagging`), not always. Tested at every boundary, including SRTT 35,
+which draws under the misport and must not.
 
 ### D9. Nothing here depends on herdr-core landing anything
 
@@ -237,6 +267,11 @@ only local bytes written remain the ones written today (`FULL_RESET`, the cursor
 ## 4. Residuals a reviewer should know
 
 - The first key of every epoch, including the first key after each Enter, appears only with its echo (D3, corrected).
+- After a refused key in continuous typing (Enter, an arrow, the right margin under P4), the keys in flight move the
+  real cursor where the predictor cannot follow, so predictions stay silent until typing pauses for about an expiry.
+  Nothing drawn vanishes (the 200-key wrapping run records zero resets and 8 silent `killEpoch`s, 74 of 200 keys
+  drawn); mosh has the same re-anchoring after a kill. Predicting the last column and the wrap as mosh does (P4) would
+  remove the margin case.
 - A large backlog returns as snapshots one RTT apart, not instantly (D5).
 - Scrollback older than 2000 lines is lost on a reconnect (today's behaviour, kept; D5).
 - Replay mode's end is a bound, not a marker (D5); a tail may be paced.

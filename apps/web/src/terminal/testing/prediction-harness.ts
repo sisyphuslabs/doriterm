@@ -1,4 +1,11 @@
-import { type CursorPosition, type PredictionScreen, Predictor, type ScreenCell } from "../prediction.ts";
+import {
+  type CursorPosition,
+  type DisplayMode,
+  type PredictionEvent,
+  type PredictionScreen,
+  Predictor,
+  type ScreenCell,
+} from "../prediction.ts";
 
 /** A terminal model the test writes by hand: cells, a cursor, a width, the alternate screen. */
 export class FakeScreen implements PredictionScreen {
@@ -23,10 +30,11 @@ export class FakeScreen implements PredictionScreen {
     return this.alt;
   }
 
-  /** As a host's echo lands: each code point at the cursor, a wide one over two cells, the cursor after it. */
+  /** As a host's echo lands: each code point at the cursor, a wide one over two cells, wrapping at the last column. */
   echo(text: string): void {
     for (const each of text) {
       const width = widthOf(each) ?? 1;
+      if (this.at.col + width > this.width) this.at = { row: this.at.row + 1, col: 0 };
       this.#cells.set(`${this.at.row}:${this.at.col}`, { char: each.codePointAt(0) ?? 0, width });
       if (width === 2) this.#cells.set(`${this.at.row}:${this.at.col + 1}`, { char: 0, width: 0 });
       this.at = { row: this.at.row, col: this.at.col + width };
@@ -44,10 +52,10 @@ export function widthOf(codepoint: string): number | undefined {
 export interface Harness {
   readonly screen: FakeScreen;
   readonly predictor: Predictor;
-  readonly echoes: number[];
-  /** The test's clock; `srtt` 250 ms gives `due` 495 ms. */
+  readonly events: PredictionEvent[];
   readonly clock: { now: number };
-  readonly link: { ready: boolean; composing: boolean; srtt: number | undefined };
+  /** `mode` is `always` unless a test is about the display gate, so the rules and epochs are tested on their own. */
+  readonly link: { ready: boolean; composing: boolean; mode: DisplayMode };
   /** The host echoes `text` and the view tells the predictor it wrote. */
   readonly hostEchoes: (text: string) => void;
 }
@@ -55,23 +63,23 @@ export interface Harness {
 export function harness(options: { readonly observe?: boolean } = {}): Harness {
   const screen = new FakeScreen();
   const clock = { now: 1000 };
-  const link: Harness["link"] = { ready: true, composing: false, srtt: 250 };
-  const echoes: number[] = [];
+  const link: Harness["link"] = { ready: true, composing: false, mode: "always" };
+  const events: PredictionEvent[] = [];
   const predictor = new Predictor({
     screen,
     widthOf,
     linkReady: () => link.ready,
     composing: () => link.composing,
-    rtt: () => (link.srtt === undefined ? undefined : { srtt: link.srtt }),
     now: () => clock.now,
+    mode: () => link.mode,
     observe: options.observe === true,
-    onEcho: (latency) => echoes.push(latency),
+    onEvent: (event) => events.push(event),
   });
   const hostEchoes = (text: string): void => {
     screen.echo(text);
     predictor.wrote();
   };
-  return { screen, predictor, echoes, clock, link, hostEchoes };
+  return { screen, predictor, events, clock, link, hostEchoes };
 }
 
 /** Puts the predictor in a confirmed epoch: one key typed and echoed. */
@@ -79,3 +87,7 @@ export function confirmed(h: Harness, key = "l"): void {
   h.predictor.typed(key, "key");
   h.hostEchoes(key);
 }
+
+/** The kinds of the events after the confirmations, e.g. `["reset:expired"]`. */
+export const judgements = (h: Harness): string[] =>
+  h.events.flatMap((event) => (event.kind === "confirmed" ? [] : [`${event.kind}:${event.cause}`]));

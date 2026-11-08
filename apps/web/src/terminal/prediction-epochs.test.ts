@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { confirmed, type Harness, harness } from "./testing/prediction-harness.ts";
 
 const texts = (h: Harness): string[] => h.predictor.visible().map((cell) => cell.text);
-const DUE = 495;
+const EXPIRY = 1000;
 
 /** The host answers a submitted line: the cursor goes to the start of the next row, and the view says it wrote. */
 const nextRow = (h: Harness): void => {
@@ -38,12 +38,12 @@ describe("epochs (design note D3)", () => {
     expect(texts(h)).toEqual([]);
   });
 
-  test("a key the host never echoes is drawn at most `due`; after that kill every key is silent until one is echoed", () => {
+  test("a key the host never echoes is drawn until expiry; after that reset every key is silent until one is echoed", () => {
     const h = harness();
     confirmed(h);
     h.predictor.typed("p", "key");
     expect(texts(h)).toEqual(["p"]);
-    h.clock.now += DUE;
+    h.clock.now += EXPIRY;
     h.predictor.tick(h.clock.now);
     expect(texts(h)).toEqual([]);
     for (const key of "assword") {
@@ -58,13 +58,66 @@ describe("epochs (design note D3)", () => {
     const h = harness();
     confirmed(h);
     h.predictor.typed("a", "key");
-    h.clock.now += DUE;
+    h.clock.now += EXPIRY;
     h.predictor.tick(h.clock.now);
     h.predictor.typed("b", "key");
     h.predictor.typed("c", "key");
     expect(texts(h)).toEqual([]);
     h.hostEchoes("b");
     expect(texts(h)).toEqual(["c"]);
+  });
+});
+
+describe("an unpredicted key starts a new epoch (P9, mosh become_tentative)", () => {
+  test("review #1430: a, b, Left, the host echoes ab, then d: d is not drawn where the host will not put it", () => {
+    const h = harness();
+    confirmed(h);
+    h.predictor.typed("a", "key");
+    h.predictor.typed("b", "key");
+    expect(h.predictor.typed("\u001B[D", "key")).toEqual({ kind: "refused", rule: "P1" });
+    h.hostEchoes("ab");
+    h.predictor.typed("d", "key");
+    expect(texts(h)).toEqual([]);
+    expect(h.predictor.visibleCursor()).toBeNull();
+    // The host's answer to Left then d: the cursor went back to col 2 and d was inserted there.
+    h.screen.at = { row: 0, col: 2 };
+    h.screen.echo("db");
+    h.screen.at = { row: 0, col: 3 };
+    h.predictor.wrote();
+    expect(texts(h)).toEqual([]);
+    h.clock.now += EXPIRY;
+    h.predictor.tick(h.clock.now);
+    expect(texts(h)).toEqual([]);
+  });
+
+  test("after an unpredicted key, the first echo in the new epoch makes predictions drawn again", () => {
+    const h = harness();
+    confirmed(h);
+    h.predictor.typed("\u001B[D", "key");
+    h.screen.at = { row: 0, col: 0 };
+    h.predictor.wrote();
+    h.predictor.typed("x", "key");
+    h.predictor.typed("y", "key");
+    expect(texts(h)).toEqual([]);
+    h.hostEchoes("x");
+    expect(texts(h)).toEqual(["y"]);
+  });
+});
+
+describe("what a consumer sees of a prediction", () => {
+  test("visible() and a verdict carry only row, col, text and width", () => {
+    const h = harness();
+    confirmed(h);
+    const verdict = h.predictor.typed("a", "key");
+    expect(verdict.kind === "predicted" ? Object.keys(verdict.cell).toSorted() : []).toEqual([
+      "col",
+      "row",
+      "text",
+      "width",
+    ]);
+    expect(h.predictor.visible().map((cell) => Object.keys(cell).toSorted())).toEqual([
+      ["col", "row", "text", "width"],
+    ]);
   });
 });
 

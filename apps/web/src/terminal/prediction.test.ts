@@ -1,87 +1,94 @@
 import { describe, expect, test } from "bun:test";
-import { DUE_MAX_MS, DUE_MIN_MS, predictionDue } from "./prediction.ts";
-import { confirmed, harness } from "./testing/prediction-harness.ts";
+import { EchoRtt, EXPIRE_FLOOR_MS, expiryMs } from "./prediction-timing.ts";
+import { confirmed, harness, judgements } from "./testing/prediction-harness.ts";
 
 const texts = (h: ReturnType<typeof harness>): string[] => h.predictor.visible().map((cell) => cell.text);
-/** `due` at the harness's srtt of 250 ms: 1.5 * 250 + 120. */
-const DUE = 495;
 
-describe("predictionDue", () => {
-  test("is clamp(1.5 * srtt + 120, 200, 1500) ms, and the ceiling without an estimate", () => {
-    expect(predictionDue({ srtt: 250 })).toBe(495);
-    expect(predictionDue({ srtt: 60 })).toBe(210);
-    expect(predictionDue({ srtt: 1 })).toBe(DUE_MIN_MS);
-    expect(predictionDue({ srtt: 2000 })).toBe(DUE_MAX_MS);
-    expect(predictionDue(undefined)).toBe(DUE_MAX_MS);
+/** The host writes `text` at a cell without the cursor following, as a redraw elsewhere on the row would. */
+const hostWritesAt = (h: ReturnType<typeof harness>, col: number, text: string): void => {
+  const cursor = h.screen.at;
+  h.screen.at = { row: cursor.row, col };
+  h.screen.echo(text);
+  h.screen.at = cursor;
+  h.predictor.wrote();
+};
+
+describe("the echo round trip (seeded by the first confirmation, RFC 6298)", () => {
+  test("the first sample R is srtt R and rttvar R/2; later samples take the 1/8 and 1/4 gains", () => {
+    const rtt = new EchoRtt();
+    expect(rtt.estimate).toBeUndefined();
+    rtt.sample(300);
+    expect(rtt.estimate).toEqual({ srtt: 300, rttvar: 150 });
+    rtt.sample(500);
+    expect(rtt.estimate).toEqual({ srtt: 325, rttvar: 162.5 });
+  });
+
+  test("expiry is the RTO, srtt + 4 * rttvar, never under the RFC's one-second floor", () => {
+    expect(expiryMs(undefined)).toBe(EXPIRE_FLOOR_MS);
+    expect(expiryMs({ srtt: 300, rttvar: 150 })).toBe(1000);
+    expect(expiryMs({ srtt: 800, rttvar: 100 })).toBe(1200);
+  });
+
+  test("nothing seeds it before a key is echoed, and the echo that confirms the first key does", () => {
+    const h = harness();
+    h.predictor.typed("a", "key");
+    h.clock.now += 300;
+    h.predictor.tick(h.clock.now);
+    expect(h.predictor.roundTrip).toBeUndefined();
+    h.hostEchoes("a");
+    expect(h.predictor.roundTrip).toEqual({ srtt: 300, rttvar: 150 });
+    expect(h.events).toEqual([{ kind: "confirmed", latencyMs: 300 }]);
   });
 });
 
-describe("confirmation by screen content, bounded by `due` (design note D2)", () => {
-  test("a different cell before `due` keeps the prediction; the same cell after `due` kills the epoch", () => {
+describe("judgement: time may confirm or expire, never call a prediction wrong (#1439 HIGH 1)", () => {
+  test("a drawn key whose cell shows something else stays drawn until expiry, however late, then goes", () => {
     const h = harness();
     confirmed(h);
     h.predictor.typed("a", "key");
-    h.clock.now += DUE - 1;
-    h.hostEchoes("x");
-    expect(texts(h)).toEqual(["a"]);
-    h.clock.now += 1;
-    h.predictor.wrote();
-    expect(texts(h)).toEqual([]);
-    h.predictor.typed("y", "key");
-    expect(texts(h)).toEqual([]);
+    hostWritesAt(h, 1, "x");
+    h.clock.now += 999;
+    h.predictor.tick(h.clock.now);
+    expect([texts(h), judgements(h)]).toEqual([["a"], []]);
+    h.predictor.tick(h.clock.now + 1);
+    expect([texts(h), judgements(h)]).toEqual([[], ["reset:expired"]]);
   });
 
-  test("tick() keeps an unechoed prediction until `due` and kills it at `due`", () => {
+  test("a later key's echo proves the earlier key answered: a cell showing something else is wrong at once", () => {
     const h = harness();
     confirmed(h);
     h.predictor.typed("a", "key");
-    h.predictor.tick(h.clock.now + DUE - 1);
-    expect(texts(h)).toEqual(["a"]);
-    h.predictor.tick(h.clock.now + DUE);
-    expect(texts(h)).toEqual([]);
-  });
-
-  test("`due` follows the current srtt: at srtt 1000 the same wait is still in time", () => {
-    const h = harness();
-    confirmed(h);
-    h.predictor.typed("a", "key");
-    h.link.srtt = 1000;
-    h.predictor.tick(h.clock.now + DUE + 500);
-    expect(texts(h)).toEqual(["a"]);
-    h.predictor.tick(h.clock.now + DUE_MAX_MS);
-    expect(texts(h)).toEqual([]);
-  });
-
-  test("the cursor leaving the predictions' row kills the epoch at once, before `due`", () => {
-    const h = harness();
-    confirmed(h);
-    h.predictor.typed("a", "key");
-    h.screen.at = { row: 1, col: 0 };
-    h.predictor.wrote();
-    expect(texts(h)).toEqual([]);
     h.predictor.typed("b", "key");
+    hostWritesAt(h, 1, "x");
+    expect(judgements(h)).toEqual([]);
+    hostWritesAt(h, 2, "b");
+    expect([texts(h), judgements(h)]).toEqual([[], ["reset:incorrect"]]);
+  });
+
+  test("an undrawn key judged wrong kills its epoch without a reset: nothing on screen vanishes", () => {
+    const h = harness();
+    h.predictor.typed("a", "key");
+    h.predictor.typed("b", "key");
+    hostWritesAt(h, 0, "x");
+    hostWritesAt(h, 1, "b");
+    expect(judgements(h)).toEqual(["killEpoch:incorrect"]);
+    h.predictor.typed("c", "key");
     expect(texts(h)).toEqual([]);
   });
 
-  test("the alternate screen turning on kills the epoch, so leaving it again starts unconfirmed", () => {
+  test("a confirmed epoch whose keys echo late, out to just under expiry, never resets", () => {
     const h = harness();
     confirmed(h);
-    h.predictor.typed("a", "key");
-    h.screen.alt = true;
-    h.predictor.wrote();
-    expect(texts(h)).toEqual([]);
-    h.screen.alt = false;
-    h.predictor.wrote();
-    h.predictor.typed("b", "key");
-    expect(texts(h)).toEqual([]);
-  });
-
-  test("a confirming echo records its latency, now - sentAt", () => {
-    const h = harness();
-    h.predictor.typed("a", "key");
-    h.clock.now += 180;
-    h.hostEchoes("a");
-    expect(h.echoes).toEqual([180]);
+    for (const key of "late") {
+      h.predictor.typed(key, "key");
+      h.clock.now += 70;
+      h.predictor.tick(h.clock.now);
+    }
+    h.clock.now += 700;
+    h.predictor.tick(h.clock.now);
+    expect(texts(h)).toEqual(["l", "a", "t", "e"]);
+    h.hostEchoes("late");
+    expect([texts(h), judgements(h)]).toEqual([[], []]);
   });
 
   test("a wide prediction is confirmed by the wide cell the host writes", () => {
@@ -91,8 +98,7 @@ describe("confirmation by screen content, bounded by `due` (design note D2)", ()
     h.predictor.typed("a", "key");
     expect(texts(h)).toEqual(["가", "a"]);
     h.hostEchoes("가");
-    expect(h.predictor.visible()).toMatchObject([{ text: "a", col: 3 }]);
-    expect(h.echoes).toHaveLength(2);
+    expect(h.predictor.visible()).toEqual([{ row: 0, col: 3, text: "a", width: 1 }]);
   });
 
   test("bytes are read as UTF-8: one key as bytes is predicted like the same key as text", () => {
@@ -109,34 +115,28 @@ describe("matches that prove no echo (mosh CorrectNoCredit)", () => {
     h.hostEchoes(" ");
     h.predictor.typed("a", "key");
     expect(texts(h)).toEqual([]);
-    expect(h.echoes).toEqual([]);
+    expect(h.events).toEqual([]);
   });
 
-  test("a key over a cell that already shows it never confirms, stays drawn until `due`, then goes without a kill", () => {
+  test("it holds the predicted cursor until answered, so a host write in between does not move the next key", () => {
+    const h = harness();
+    confirmed(h);
+    h.predictor.typed(" ", "key");
+    h.predictor.wrote();
+    expect(h.predictor.typed("-", "key")).toMatchObject({ kind: "predicted", cell: { col: 2 } });
+    h.hostEchoes(" -");
+    expect([texts(h), judgements(h)]).toEqual([[], []]);
+  });
+
+  test("a key over a cell that already shows it goes at expiry without a judgement", () => {
     const h = harness();
     h.screen.echo("ab");
     h.screen.at = { row: 0, col: 0 };
     h.predictor.typed("a", "key");
     h.predictor.wrote();
-    expect(h.echoes).toEqual([]);
-    h.clock.now += DUE;
+    h.clock.now += 1000;
     h.predictor.tick(h.clock.now);
-    expect(h.predictor.typed("b", "key")).toMatchObject({ kind: "predicted", cell: { col: 1 } });
-    h.hostEchoes("a");
-    h.screen.echo("b");
-    h.screen.at = { row: 0, col: 2 };
-    h.predictor.wrote();
-    expect(h.echoes).toEqual([]);
-  });
-
-  test("a key over a different glyph is credited when the host overwrites it", () => {
-    const h = harness();
-    h.screen.echo("x");
-    h.screen.at = { row: 0, col: 0 };
-    h.predictor.typed("a", "key");
-    h.hostEchoes("a");
-    h.predictor.typed("b", "key");
-    expect(texts(h)).toEqual(["b"]);
+    expect([h.predictor.visible(), h.events]).toEqual([[], []]);
   });
 });
 

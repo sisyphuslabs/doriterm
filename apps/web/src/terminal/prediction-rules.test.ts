@@ -115,32 +115,37 @@ describe("the suppression table (design note D4)", () => {
     const h = harness();
     confirmed(h);
     expect(h.predictor.typed("\u007F", "key")).toEqual({ kind: "refused", rule: "P1" });
-    expect(h.predictor.typed("a", "key")).toEqual({ kind: "refused", rule: "P9" });
+    h.predictor.typed("a", "key");
+    expect(texts(h)).toEqual([]);
   });
 
-  test("P9: after Enter nothing new is predicted until a host write moves the cursor, then from the real cursor", () => {
+  test("P9: after Enter the next key is predicted silently, and its own echo makes the keys after it drawn", () => {
     const h = harness();
     confirmed(h);
     h.predictor.typed("\r", "key");
-    expect(h.predictor.typed("x", "key")).toEqual({ kind: "refused", rule: "P9" });
     h.screen.at = { row: 1, col: 0 };
     h.predictor.wrote();
     expect(h.predictor.typed("x", "key")).toMatchObject({ kind: "predicted", cell: { row: 1, col: 0 } });
+    expect(texts(h)).toEqual([]);
+    h.hostEchoes("x");
+    h.predictor.typed("y", "key");
+    expect(texts(h)).toEqual(["y"]);
   });
 
-  test("P9: a write that leaves earlier predictions outstanding does not re-sync, so the freeze holds", () => {
+  test("P9: echoes of keys typed before the Enter do not vouch for the keys typed after it", () => {
     const h = harness();
     confirmed(h);
     h.predictor.typed("a", "key");
     h.predictor.typed("b", "key");
     h.predictor.typed("\r", "key");
     h.hostEchoes("a");
-    expect(h.predictor.typed("c", "key")).toEqual({ kind: "refused", rule: "P9" });
+    h.predictor.typed("c", "key");
+    expect(texts(h)).toEqual(["b"]);
     h.hostEchoes("b");
-    expect(h.predictor.typed("c", "key")).toMatchObject({ kind: "predicted", cell: { col: 3 } });
+    expect(texts(h)).toEqual([]);
   });
 
-  test("every refusal of input that reaches the program freezes; P10 and P12 input never types, so it does not", () => {
+  test("every refusal of input that reaches the program starts a silent epoch; P10 and P12 input never types", () => {
     const freezing: [string, (h: ReturnType<typeof harness>) => unknown][] = [
       ["P1", (h) => h.predictor.typed("\r", "key")],
       ["P2", (h) => h.predictor.typed("a", "paste")],
@@ -182,12 +187,14 @@ describe("the suppression table (design note D4)", () => {
       const h = harness();
       confirmed(h);
       refuse(h);
-      expect([rule, h.predictor.typed("z", "key")]).toEqual([rule, { kind: "refused", rule: "P9" }]);
+      h.predictor.typed("z", "key");
+      expect([rule, texts(h)]).toEqual([rule, []]);
     }
     const h = harness();
     confirmed(h);
-    expect(h.predictor.typed("a", "automatic")).toEqual({ kind: "refused", rule: "P10" });
-    expect(h.predictor.typed("a", "key")).toMatchObject({ kind: "predicted" });
+    expect(h.predictor.typed("0", "automatic")).toEqual({ kind: "refused", rule: "P10" });
+    h.predictor.typed("z", "key");
+    expect(texts(h)).toEqual(["z"]);
   });
 
   test("P10: bytes the terminal answers by itself are not predicted, even one printable character", () => {
