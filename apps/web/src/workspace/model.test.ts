@@ -1,9 +1,7 @@
 import type { JsonObject, Terminal } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
 import {
-  agentCounts,
   asksBeforeClosing,
-  groupAgents,
   liveTabs,
   runsProgram,
   tabPosition,
@@ -169,27 +167,6 @@ describe("tabPosition", () => {
     expect(tabPosition(spaces, terminals, "t3")).toBeUndefined();
     expect(tabPosition(spaces, terminals, "t2")).toBeUndefined();
     expect(tabPosition(spaces, terminals, "t9")).toBeUndefined();
-  });
-});
-
-describe("agentCounts", () => {
-  test("agrees with the agent sections for done, working and idle, leaving out offline and finished terminals", () => {
-    const terminals = [
-      terminal({ address: "t1" }),
-      terminal({ address: "t2", status: { state: "working" } }),
-      terminal({ address: "t3", status: { state: "done" } }),
-      terminal({ address: "t4", status: { state: "working" } }),
-      terminal({ address: "t5", status: { state: "blocked" } }),
-      terminal({ address: "t6", state: "finished" }),
-      { ...terminal({ address: "box/t1", status: { state: "working" } }), offline: true as const },
-    ];
-    const groups = groupAgents(terminals, 0);
-    expect(agentCounts(terminals)).toEqual({
-      done: groups.done.length,
-      working: groups.working.length,
-      idle: groups.idle.length,
-    });
-    expect(agentCounts(terminals)).toEqual({ done: 1, working: 2, idle: 1 });
   });
 });
 

@@ -293,20 +293,3 @@ export function tabPosition(
   const index = live.findIndex((panes) => panes.includes(address));
   return index === -1 ? undefined : { index: index + 1, count: live.length };
 }
-
-export interface AgentCounts {
-  readonly done: number;
-  readonly working: number;
-  readonly idle: number;
-}
-
-/** How many live agents are done, working and idle, as the agent sections count them; offline ones are unknown. */
-export function agentCounts(terminals: readonly Session[]): AgentCounts {
-  const counts = { done: 0, working: 0, idle: 0 };
-  for (const terminal of terminals) {
-    if (terminal.state !== "live") continue;
-    const status = agentStatus(terminal);
-    if (status === "done" || status === "working" || status === "idle") counts[status] += 1;
-  }
-  return counts;
-}

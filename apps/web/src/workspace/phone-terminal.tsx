@@ -124,6 +124,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
     >
       <PhoneHeader
         terminal={terminal}
+        host={connection.hello.core.name}
         tabTitle={tabTitle}
         backTo={backTo}
         onBack={onBack}
@@ -165,7 +166,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
               onPort={onPort}
               // An End of this session leaves the screen only once it has removed the terminal (see afterEnd).
               onEnd={(address, end) => (closesTab(end) ? afterEnd(address, onBack) : undefined)}
-              // The header already has Back to agents; this one closes the ended session.
+              // The header already has Back; this one closes the ended session.
               closeLabel="Close"
               {...(keysControls === null ? {} : { jumpClearance: keysControls })}
               onEnded={() => setEndedView(viewKey)}

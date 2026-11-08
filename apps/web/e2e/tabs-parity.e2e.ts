@@ -571,7 +571,7 @@ test.describe("10: on a phone at 390", () => {
     const bar = page.getByRole("navigation", { name: "Tabs in this space" });
     const previous = bar.getByRole("button", { name: "Previous tab" });
     const next = bar.getByRole("button", { name: "Next tab" });
-    const all = bar.getByRole("button", { name: /^Switch tab, b-one, tab 1 of 2/ });
+    const all = bar.getByRole("button", { name: /^Switch tab, beta, b-one, tab 1 of 2/ });
     // Thumb reach: every target sits in the screen's bottom third.
     const height = page.viewportSize()?.height ?? 0;
     const boxes = await Promise.all([previous, all, next].map(laidOutBox));
@@ -591,14 +591,14 @@ test.describe("10: on a phone at 390", () => {
     await expect(header.getByRole("heading", { name: "b-two", exact: true })).toBeVisible({ timeout: 15_000 });
 
     // Its middle opens the spaces sheet, for a tab of another space.
-    await bar.getByRole("button", { name: /^Switch tab, b-two/ }).tap();
+    await bar.getByRole("button", { name: /^Switch tab, beta, b-two/ }).tap();
     const sheet = page.getByRole("dialog", { name: "Spaces" });
     // Measured at rest: a frame of the open transition reads a row a hair under 44 (#583).
     await opened(sheet);
     await tabRow(sheet.getByRole("region", { name: "alpha" }), "a-two").tap();
     await expect(sheet).toBeHidden();
     await expect(header.getByRole("heading", { name: "a-two", exact: true })).toBeVisible({ timeout: 15_000 });
-    await expect(bar.getByRole("button", { name: /^Switch tab, a-two, tab 2 of 2/ })).toBeVisible();
+    await expect(bar.getByRole("button", { name: /^Switch tab, alpha, a-two, tab 2 of 2/ })).toBeVisible();
   });
 
   test("a split tab is one tab: the tabs bar counts 2/3 for 3 tabs and the sheet lists each tab once", async ({

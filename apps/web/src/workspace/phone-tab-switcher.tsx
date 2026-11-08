@@ -140,13 +140,13 @@ export function PhoneTabSwitcher(props: {
         trigger={
           <Button
             variant="ghost"
-            aria-label={`Switch tab, ${title}, tab ${at + 1} of ${tabs.length}`}
+            aria-label={`Switch tab, ${space === undefined ? "" : `${space}, `}${title}, tab ${at + 1} of ${tabs.length}`}
             className="h-12 min-w-0 flex-1 text-foreground [&>span]:min-w-0"
           >
             {space === undefined ? null : (
-              <span className="min-w-0 shrink-[2] truncate text-muted-foreground">{`${space} ·`}</span>
+              <span className="min-w-0 shrink-[2] truncate font-semibold">{`${space} ·`}</span>
             )}
-            <span className="min-w-0 truncate font-semibold">{title}</span>
+            <span className="min-w-0 truncate font-normal">{title}</span>
             <span data-numeric className="shrink-0 text-xs text-muted-foreground">
               {`${at + 1}/${tabs.length}`}
             </span>

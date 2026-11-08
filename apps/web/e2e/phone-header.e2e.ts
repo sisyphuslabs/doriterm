@@ -52,7 +52,7 @@ test("on a phone the terminal header names the session and where it is, follows 
     await expect(header(page).locator("[data-agent-counts]")).toHaveCount(0);
 
     // Where: the space, and this tab's place among the space's tabs.
-    await expect(header(page).getByText(space, { exact: true })).toBeVisible();
+    await expect(header(page).getByText(new RegExp(` · ${space}$`))).toBeVisible();
     // The tab's place is the bottom tabs bar's, not the header's (#466).
     await expect(page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / })).toContainText("1/2");
     await expect(page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / })).toHaveAccessibleName(

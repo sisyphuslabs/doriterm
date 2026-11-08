@@ -384,7 +384,8 @@ export function Workspace({ connection }: WorkspaceProps) {
                         space={phoneSpace}
                         panes={phonePanes}
                         tabTitle={phoneTitle}
-                        backTo={phone.space === null ? null : (listedSpace?.name ?? null)}
+                        // Back says where it goes: the space it was opened from, by name once the spaces are read ("space" until then).
+                        backTo={phone.space === null ? null : (listedSpace?.name ?? "space")}
                         onOpen={showOnPhone}
                         onBack={phone.back}
                         onSpaceBack={phone.backFromSpace}

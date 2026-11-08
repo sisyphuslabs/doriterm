@@ -79,6 +79,13 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await rows.nth(1).click();
         await expect(title(page)).toHaveAccessibleName("tests", { timeout: 15_000 });
 
+        // Under 360 px Back is the chevron alone, still a 44 px target that says where it goes.
+        await page.setViewportSize({ width: 320, height: 700 });
+        await expect(back.getByText("website")).toBeHidden();
+        const box = await back.boundingBox();
+        expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+        await page.setViewportSize({ width: 390, height: 844 });
+
         await back.click();
         await expect(page.getByRole("heading", { level: 1, name: "website" })).toBeVisible();
       } finally {

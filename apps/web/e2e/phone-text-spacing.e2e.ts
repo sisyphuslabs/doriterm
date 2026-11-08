@@ -22,12 +22,12 @@ async function openPhoneTerminal(page: Page): Promise<void> {
   await expect(header(page).getByRole("button", { name: "Back to agents" })).toBeVisible();
 }
 
-/** Fills the header's action slot with one more 44 px header button, as the mic (#227) does: a copy of the back button. */
+/** Fills the header's action slot with one more 44 px header button, as the mic (#227) does: a copy of the session menu's. */
 async function giveAction(page: Page): Promise<void> {
   await header(page)
     .locator("[data-header-action]")
     .evaluate((slot, name) => {
-      const model = slot.closest("header")?.querySelector('button[aria-label="Back to agents"]');
+      const model = slot.closest("header")?.querySelector('button[aria-label^="Session actions for "]');
       const action = model?.cloneNode(true);
       if (!(action instanceof HTMLElement)) throw new Error("no header button to copy");
       action.setAttribute("aria-label", name);

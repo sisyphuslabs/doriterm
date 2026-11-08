@@ -11,6 +11,8 @@ export interface PhoneHeaderProps {
   readonly terminal: Session;
   /** Its tab's own name; null when the tab has none, so the terminal's title names the screen. */
   readonly tabTitle: string | null;
+  /** This machine's name, for a session on this machine: the place under the title always names the machine. */
+  readonly host: string;
   /** The space Back returns to, by name (it was opened from that space's screen); null when Back goes to the agents. */
   readonly backTo: string | null;
   readonly onBack: () => void;
@@ -23,7 +25,7 @@ export interface PhoneHeaderProps {
  * tabs and the tab's place (n/m) live in the bottom tabs bar alone, one strip as in herdr-app (#466); how many agents
  * need the person is the agents list's to say, not this session's header.
  */
-export function PhoneHeader({ terminal, tabTitle, backTo, onBack, action }: PhoneHeaderProps) {
+export function PhoneHeader({ terminal, host, tabTitle, backTo, onBack, action }: PhoneHeaderProps) {
   // The tab's own name, else the terminal's title: an agent's or a program's name, never the tab's place among its space's.
   const title = tabTitle ?? terminalTitle(terminal);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -32,7 +34,7 @@ export function PhoneHeader({ terminal, tabTitle, backTo, onBack, action }: Phon
   // Where it is: the layout space whose tab shows it (#404), else where it runs.
   const { spaces } = useSpaceSelection();
   const space = spaces.find((each) => each.addresses.includes(terminal.address))?.name ?? spaceName(terminal);
-  const where = machine === undefined ? space : `${machine} · ${space}`;
+  const where = `${machine ?? host} · ${space}`;
   return (
     <header
       data-titlebar
@@ -41,7 +43,6 @@ export function PhoneHeader({ terminal, tabTitle, backTo, onBack, action }: Phon
       <Button
         variant="ghost"
         aria-label={backTo === null ? "Back to agents" : `Back to ${backTo}`}
-        title={backTo ?? "Agents"}
         className="max-w-[7.5rem] min-w-11 shrink-0 gap-0.5 px-1.5 text-foreground [&>span]:min-w-0"
         onClick={onBack}
       >
