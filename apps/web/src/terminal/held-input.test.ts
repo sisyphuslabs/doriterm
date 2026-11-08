@@ -3,7 +3,7 @@ import { type HcConnection, HcTimeoutError } from "@doriface/client";
 import { DEFAULT_RELAY_URL, DEFAULT_SETTINGS } from "../connection/settings.ts";
 import { UnprovenLinks } from "../connection/wake.ts";
 import { HeldInput, type InputSink } from "./held-input.ts";
-import type { TerminalInput } from "./terminal-view.tsx";
+import type { TerminalInput } from "./terminal-view-props.ts";
 
 // store.ts builds the app's store from localStorage as it loads; bun has none, so an empty one stands in for that load.
 Object.assign(globalThis, { localStorage: { getItem: () => null, setItem: () => undefined } });

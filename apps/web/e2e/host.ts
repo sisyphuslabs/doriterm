@@ -10,7 +10,9 @@ import {
   E2E_LAYOUT_ENV,
   E2E_LAYOUT_LEFT,
   E2E_LAYOUT_PORT,
+  E2E_LAYOUT_STOPPED,
   E2E_PUSH_ORIGIN,
+  E2E_RUN_ID,
   E2E_TOKEN,
 } from "./config.ts";
 import { LAYOUT_CORE, LAYOUT_DIR, LAYOUT_MACHINE_SPEC, LAYOUT_TERMINALS } from "./layout-seed.ts";
@@ -52,8 +54,11 @@ writeFileSync(
 // The pid lets the run's leftover check stop a host that outlived its worker. The main host's file is saved again with
 // `ready` once setup has finished: a worker waits for that, so the core it first sees already holds every seed (#226).
 const savedEnv = layout ? E2E_LAYOUT_ENV : E2E_HOST_ENV;
-if (layout) rmSync(E2E_LAYOUT_LEFT, { force: true });
-const saved = { hc, env: own, pid: process.pid };
+if (layout) {
+  rmSync(E2E_LAYOUT_LEFT, { force: true });
+  rmSync(E2E_LAYOUT_STOPPED, { force: true });
+}
+const saved = { hc, env: own, pid: process.pid, run: E2E_RUN_ID };
 writeSavedEnv(savedEnv, saved);
 const host = Bun.spawn(
   [
@@ -105,7 +110,12 @@ async function shutdown(): Promise<void> {
   await host.exited;
   await stopCore();
   await stopMachine?.();
-  if (layout) await stopLeftovers();
+  if (layout) {
+    await stopLeftovers();
+    // The run's teardown waits for this rather than for a fixed time: the host's own word that its cores are stopped,
+    // what it left is recorded, and it is about to exit (#1412).
+    writeFileSync(E2E_LAYOUT_STOPPED, JSON.stringify({ pid: process.pid }));
+  }
   rmSync(savedEnv, { force: true });
   rmSync(dir, { recursive: true, force: true });
   process.exit(0);
