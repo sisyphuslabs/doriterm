@@ -17,7 +17,8 @@ export interface FakeRelayHost {
   readonly pairingOffer: () => Promise<{ readonly link: string; readonly code: string }>;
   /** Starts a second machine and runs `doriface-host mesh join` there with `link`; resolves with its mesh name. */
   readonly join: (link: string) => Promise<string>;
-  readonly meshOffer: () => Promise<{ readonly link: string; readonly code: string }>;
+  readonly meshOffer: (auto?: boolean) => Promise<{ readonly link: string; readonly code: string }>;
+  readonly memberIds: () => Promise<readonly string[]>;
   readonly pendingJoin: () => Promise<{ readonly nonce: string; readonly code: string; readonly name: string }>;
   readonly answerJoin: (nonce: string, code: string, approve: boolean) => Promise<void>;
   /** The host's LAN listener, the address a person sets as the Direct address (#446); empty unless `direct` was asked. */
@@ -296,7 +297,15 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
       directUrl: typeof directUrl === "string" ? directUrl : "",
       pairingOffer: readOffer,
       pairingLink: async () => (await readOffer()).link,
-      meshOffer: () => readOffer("mesh-link"),
+      meshOffer: (auto = false) => readOffer(auto ? "mesh-link-auto" : "mesh-link"),
+      async memberIds() {
+        input.write("members\n");
+        const { members } = await protocol.next("the host's current member identities");
+        if (!Array.isArray(members) || !members.every((id: unknown): id is string => typeof id === "string")) {
+          throw new Error("the host did not report its member identities");
+        }
+        return members;
+      },
       async pendingJoin() {
         input.write("pending\n");
         const { pending } = await protocol.next("a pending browser join", 30_000);

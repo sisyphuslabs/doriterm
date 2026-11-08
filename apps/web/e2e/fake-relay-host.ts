@@ -21,6 +21,7 @@ import { requestControl } from "../../host/src/control.ts";
 import { pendingFromWire } from "../../host/src/state/pairing.ts";
 import { loadHostIdentity } from "../../host/src/state/host-keys.ts";
 import { pairingArtifact } from "../../host/src/pair-link.ts";
+import { isJsonObject } from "@doriface/protocol";
 
 const started = Date.now();
 const say = (line: Readonly<Record<string, unknown>>): void => {
@@ -184,8 +185,10 @@ try {
   });
   for await (const line of createInterface({ input: process.stdin })) {
     if (line.startsWith("join ")) say({ joined: await joinWith(line.slice("join ".length)) });
-    else if (line === "mesh-link") {
-      const offer = pendingFromWire(await requestControl(stateDir, { op: "mesh-pair", auto: false }));
+    else if (line === "mesh-link" || line === "mesh-link-auto") {
+      const offer = pendingFromWire(
+        await requestControl(stateDir, { op: "mesh-pair", auto: line === "mesh-link-auto" }),
+      );
       const identity = loadHostIdentity(stateDir);
       const artifact = pairingArtifact(
         {
@@ -199,6 +202,14 @@ try {
         webOrigin,
       );
       say({ link: artifact.url, code: offer.code });
+    } else if (line === "members") {
+      const status = await requestControl(stateDir, { op: "mesh-status" });
+      if (!isJsonObject(status) || !Array.isArray(status["members"])) throw new Error("no current mesh status");
+      const members = status["members"].map((member) => {
+        if (!isJsonObject(member) || typeof member["hostId"] !== "string") throw new Error("invalid member identity");
+        return member["hostId"];
+      });
+      say({ members });
     } else if (line === "pending") {
       say({ pending: await requestControl(stateDir, { op: "mesh-pending" }) });
     } else if (line.startsWith("answer ")) {
