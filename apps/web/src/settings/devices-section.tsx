@@ -39,12 +39,15 @@ function describe(state: ConnectionState): ReactNode {
   }
 }
 
-function label(icon: ReactNode, text: string) {
+function label(icon: ReactNode, text: string, prefix = "") {
   return (
     <span className="flex items-start gap-2 [&_svg]:size-4 [&_svg]:text-muted-foreground">
       {/* One line tall, so the icon centres on the text's first line however many lines the text takes. */}
       <span className="flex h-[1lh] shrink-0 items-center">{icon}</span>
-      <span className="min-w-0">{text}</span>
+      <span className="min-w-0">
+        {prefix}
+        {text}
+      </span>
     </span>
   );
 }
@@ -123,7 +126,7 @@ function PairedDevicesSection() {
         control={null}
       />
       <SettingRow
-        title={label(<Server aria-hidden />, host)}
+        title={label(<Server aria-hidden />, host, desktopBridge() === null ? "Connected through " : "")}
         description={
           <>
             {describe(state)}
