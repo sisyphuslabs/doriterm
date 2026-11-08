@@ -1,12 +1,23 @@
 import { base64urlEncode, type HostIdentity } from "@doriface/crypto";
 import { signCard } from "@doriface/mesh";
-import { cardBodyFor, checkWelcome, JOIN_DEADLINE_MS, JoinRefused, type MeshLines, runJoinCeremony } from "@doriface/mesh/join";
+import {
+  cardBodyFor,
+  checkWelcome,
+  inviteKindOf,
+  JOIN_DEADLINE_MS,
+  JoinRefused,
+  type MeshInvite,
+  type MeshLines,
+  runJoinCeremony,
+} from "@doriface/mesh/join";
 import type { MeshStore, OwnCard } from "../state/mesh.ts";
 
 export { JOIN_DEADLINE_MS };
 
 /** The host's side of a join: its file identity and its mesh.json, which the shared joiner never sees directly. */
 export interface JoinerContext {
+  /** The target's proof of being a mesh invite, from the refusals `join-dial.ts` runs before anything is dialed. */
+  readonly invite: MeshInvite;
   readonly identity: HostIdentity;
   readonly mesh: MeshStore;
   readonly own: OwnCard;
@@ -39,7 +50,7 @@ export async function runJoiner(lines: MeshLines, ctx: JoinerContext): Promise<s
     checkWelcome(welcome.records, welcome.offer, { identity: member, dialed: ctx.dialed });
     if (!ctx.mesh.adopt(welcome.records, identity)) throw new JoinRefused("a mesh.json appeared on this host meanwhile");
     lines.detach();
-    ctx.log(`mesh: joined mesh ${welcome.offer.mesh} via ${ctx.dialed.hostId}`);
+    ctx.log(`mesh: joined mesh ${welcome.offer.mesh} via ${ctx.dialed.hostId} on a mesh ${inviteKindOf(ctx.invite)}`);
     return welcome.offer.mesh;
   } catch (error) {
     lines.close(4401, error instanceof Error ? error.message : String(error));

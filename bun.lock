@@ -95,6 +95,7 @@
         "@doriface/client": "workspace:*",
         "@doriface/crypto": "workspace:*",
         "@doriface/ghostty-wasm": "workspace:*",
+        "@doriface/mesh": "workspace:*",
         "@doriface/protocol": "workspace:*",
         "@doriface/relay-client": "workspace:*",
         "@doriface/ui": "workspace:*",

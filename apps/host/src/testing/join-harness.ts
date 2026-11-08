@@ -4,6 +4,7 @@ import { OPEN_POLICY, type PlanPolicy } from "@doriface/policy";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { meshInviteOf } from "@doriface/mesh/join";
 import { type InviteDeps, serveJoin } from "../mesh/invite.ts";
 import { type JoinerContext, runJoiner } from "../mesh/join.ts";
 import { INVITER_EXPECTS, JOINER_EXPECTS, MeshLines } from "../mesh/lines.ts";
@@ -68,7 +69,8 @@ export function joinerContext(
   const log = (line: string): void => void joiner.logs.push(line);
   const dialed = { hostId: inviter.m.identity.hostId, noisePub: dialedNoise };
   const deadline = Date.now() + 60_000;
-  return { identity: joiner.m.identity, mesh: joiner.mesh, own: ownOf(joiner), dialed, deadline, log,
+  const invite = meshInviteOf({ kind: "link", mesh: true });
+  return { invite, identity: joiner.m.identity, mesh: joiner.mesh, own: ownOf(joiner), dialed, deadline, log,
     handshakeHash: new Uint8Array(32), yes: true, confirm: async () => true };
 }
 
