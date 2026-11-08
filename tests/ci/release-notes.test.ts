@@ -156,12 +156,91 @@ test("the release workflow checks the CHANGELOG section before any build", () =>
   for (const id of ["desktop", "web"]) expect(workflow.jobs[id]?.needs).toBe("version");
 });
 
-test("CHANGELOG.md has a section with lines for every released version", async () => {
-  const proc = Bun.spawn(["git", "tag", "--list", "v*"], { cwd: ROOT, stdout: "pipe" });
+/**
+ * `--check` in `dir` for v0.1.0-v0.1.2 and every vX.Y.Z tag in HEAD's history. A release tagged on a commit the
+ * tree under test does not contain is not checked, so a branch's result does not change when dev is tagged.
+ */
+async function checkReleasedVersions(dir: string): Promise<{ tag: string; code: number; err: string }[]> {
+  const proc = Bun.spawn(["git", "tag", "--merged", "HEAD", "--list", "v*"], { cwd: dir, stdout: "pipe" });
   const tags = (await new Response(proc.stdout).text()).split("\n").filter((tag) => /^v\d+\.\d+\.\d+$/.test(tag));
   const versions = [...new Set(["v0.1.0", "v0.1.1", "v0.1.2", ...tags])];
-  const results = await Promise.all(
-    versions.map(async (tag) => Object.assign(await run(ROOT, "--check", tag.slice(1)), { tag })),
+  return Promise.all(
+    versions.map(async (tag) => {
+      const { code, err } = await run(dir, "--check", tag.slice(1));
+      return { tag, code, err };
+    }),
   );
+}
+
+async function git(dir: string, ...args: string[]): Promise<void> {
+  const proc = Bun.spawn(
+    [
+      "git",
+      "-c",
+      "user.name=test",
+      "-c",
+      "user.email=test@example.com",
+      "-c",
+      "commit.gpgSign=false",
+      "-c",
+      "tag.gpgSign=false",
+      ...args,
+    ],
+    { cwd: dir, stdout: "ignore", stderr: "pipe" },
+  );
+  const [err, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+  if (code !== 0) throw new Error(`git ${args.join(" ")} failed: ${err}`);
+}
+
+const RELEASED = `# Changelog
+
+## v1.0.0
+
+- First release. (#1)
+
+## v0.1.2
+
+- Fix. (#3)
+
+## v0.1.1
+
+- Fix. (#2)
+
+## v0.1.0
+
+- Start. (#1)
+`;
+
+/** A checkout of RELEASED with v1.0.0 tagged on HEAD and v1.1.0 tagged on a branch HEAD does not contain. */
+async function taggedCheckout(): Promise<string> {
+  const dir = checkout(RELEASED);
+  await git(dir, "init", "-q", "-b", "main");
+  await git(dir, "add", "-A");
+  await git(dir, "commit", "-q", "--no-verify", "-m", "v1.0.0");
+  await git(dir, "tag", "v1.0.0");
+  await git(dir, "checkout", "-q", "-b", "release");
+  await git(dir, "commit", "-q", "--no-verify", "--allow-empty", "-m", "v1.1.0");
+  await git(dir, "tag", "v1.1.0");
+  await git(dir, "checkout", "-q", "main");
+  return dir;
+}
+
+test("a tag outside HEAD's history is not a released version of the tree under test", async () => {
+  const results = await checkReleasedVersions(await taggedCheckout());
+  expect(results.map(({ tag }) => tag)).toEqual(["v0.1.0", "v0.1.1", "v0.1.2", "v1.0.0"]);
   for (const { tag, code, err } of results) expect({ tag, code, err }).toEqual({ tag, code: 0, err: "" });
+});
+
+test("a tag in HEAD's history with no CHANGELOG section fails the check", async () => {
+  const dir = await taggedCheckout();
+  await git(dir, "merge", "-q", "--ff-only", "release");
+  const missing = (await checkReleasedVersions(dir)).find(({ tag }) => tag === "v1.1.0");
+  expect(missing?.code).toBe(1);
+  expect(missing?.err).toContain("## v1.1.0");
+});
+
+test("CHANGELOG.md has a section with lines for every released version", async () => {
+  for (const { tag, code, err } of await checkReleasedVersions(ROOT)) {
+    expect({ tag, code, err }).toEqual({ tag, code: 0, err: "" });
+  }
 });
