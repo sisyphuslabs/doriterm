@@ -9,6 +9,13 @@
 - On a network that reaches the relay through a far city on some connections and a near one on others (seen from
   Korea), a machine reached through the relay answers sooner: the app opens three connections, keeps the one with the
   shortest way to that machine and closes the other two before anything is sent on them. (#1402)
+- The terminal can work out which characters it may draw before the machine echoes them, and when it must stop drawing
+  one and take it back. Nothing is drawn yet: this is the decision layer under a later change, so on its own it changes
+  nothing you see. (#1430)
+- A failed mesh add no longer leaves a host process behind on each attempt; retries respect their delay even when the
+  dial budget is full. (#1442)
+- A finished or failed host test run no longer leaves child processes running and spawning more hosts, including when
+  it uses a custom temporary directory. (#1442)
 
 ### Workspace
 
@@ -21,6 +28,8 @@
   the open terminal, as the page's main content. (#1384)
 - On a phone, tapping the keys bar's Type field keeps the keyboard up: the page scrolling to show the field no longer
   reads as the keyboard closing, which put the keyboard down and dropped the bar behind it. (#1410)
+- On an iPhone, the keys bar and its Type field now sit directly on top of the soft keyboard, so what you type stays in
+  view instead of being hidden behind the keyboard. (#1431)
 
 ### Machine mesh
 
