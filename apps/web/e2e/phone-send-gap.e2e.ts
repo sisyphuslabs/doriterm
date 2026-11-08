@@ -6,8 +6,8 @@ import { key, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 // No clipboard permissions here: WebKit refuses them, and this spec has to run there too (iOS is the phone it guards).
 test.use({ serviceWorkers: "block", ...PHONE });
 
-/** Where CAPTURE=1 writes the phone-width shots of the field and Send, one per theme and state. */
-const OUT = process.env["CAPTURE_DIR"] ?? join(import.meta.dirname, "../test-results/send-gap");
+/** Where CAPTURE=1 writes the phone-width shots of the field and Send, one per state, theme and engine. */
+const OUT = join(import.meta.dirname, "../../../docs/design/app");
 
 const field = (page: Page) => page.getByLabel("Type into the terminal");
 
@@ -47,7 +47,7 @@ for (const theme of ["day", "night"] as const) {
     const shot = async (state: string): Promise<void> => {
       if (process.env["CAPTURE"] !== "1") return;
       await page.screenshot({
-        path: join(OUT, `send-gap-${info.project.name}-${theme}-${state}.png`),
+        path: join(OUT, `phone-send-gap-${state}-390-${theme}-${info.project.name}.png`),
       });
     };
     await shot("idle");
