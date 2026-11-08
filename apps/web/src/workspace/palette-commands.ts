@@ -25,6 +25,8 @@ export interface PaletteSource {
   readonly platform: Platform;
   /** The app actions this shell handles now, from availableActions. */
   readonly actions: readonly ShellAction[];
+  /** The name the sidebar lists a terminal's space under, by address; the palette names the same space. */
+  readonly spaceOf?: (address: string) => string | undefined;
 }
 
 export type PaletteChoice =
@@ -53,7 +55,7 @@ export function paletteCommands(source: PaletteSource): Command[] {
         label: terminalTitle(terminal),
         group: "Agents",
         status: agentStatus(terminal),
-        where: agentWhere(terminal, source.host),
+        where: agentWhere(terminal, source.host, source.spaceOf?.(terminal.address)),
       };
       return machine === undefined ? row : Object.assign(row, { hint: machine });
     });
