@@ -114,6 +114,52 @@ test("an agent that finished where this screen was not looking is Done until sho
   await other.context().close();
 });
 
+test("the status bar's needs-you count opens each terminal that needs you in turn, and is words again once none does", async ({
+  page,
+}) => {
+  const calm = startShell("att-calm");
+  const askA = startShell("att-ask-a");
+  const askB = startShell("att-ask-b");
+  seedSpaces([
+    {
+      folder: "",
+      id: "spc-att1448",
+      name: SPACE,
+      tabs: [
+        { id: "tb-att-calm", name: "calm", terminal: calm },
+        { id: "tb-att-ask-a", name: "ask-a", terminal: askA },
+        { id: "tb-att-ask-b", name: "ask-b", terminal: askB },
+      ],
+    },
+  ]);
+  await page.goto("/");
+  await expect(tabOf(page, "calm")).toHaveAttribute("aria-selected", "true", { timeout: 20_000 });
+  const needsYou = page.getByRole("contentinfo").getByRole("button", { name: /needs you$/ });
+  await expect(needsYou).toHaveCount(0);
+
+  report(askA, "blocked");
+  report(askB, "blocked");
+  await expect(needsYou).toHaveText("2 needs you", { timeout: 15_000 });
+
+  const titles = ["calm", "ask-a", "ask-b"] as const;
+  const selected = async (): Promise<string> => {
+    const states = await Promise.all(titles.map((title) => tabOf(page, title).getAttribute("aria-selected")));
+    return titles[states.indexOf("true")] ?? "none";
+  };
+  await needsYou.click();
+  await expect.poll(selected).toMatch(/^ask-[ab]$/);
+  const first = await selected();
+  await needsYou.click();
+  await expect.poll(selected).toBe(first === "ask-a" ? "ask-b" : "ask-a");
+  await needsYou.click();
+  await expect.poll(selected).toBe(first);
+
+  report(askA, "working");
+  report(askB, "working");
+  await expect(needsYou).toHaveCount(0, { timeout: 15_000 });
+  await expect(page.getByRole("contentinfo")).toContainText("terminals");
+});
+
 test("an agent that finishes in the tab on screen asks for nobody: its row goes straight to Idle", async ({ page }) => {
   const live = startShell("att-live");
   seedSpaces([
