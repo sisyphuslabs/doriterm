@@ -219,21 +219,29 @@ export interface KeyboardButtonProps {
   readonly className?: string;
   /** Show keyboard by default; Show keys where the button opens the keys bar itself (no soft keyboard to raise). */
   readonly label?: string;
+  /** The keyboard glyph by default; another round control over the terminal (read-only browsing) brings its own. */
+  readonly icon?: ReactNode;
+  /** A toggle's state, when the button is one: drawn as a latched key while on. */
+  readonly pressed?: boolean;
 }
 
-export function KeyboardButton({ onPress, className, label = "Show keyboard" }: KeyboardButtonProps) {
+export function KeyboardButton({ onPress, className, label = "Show keyboard", icon, pressed }: KeyboardButtonProps) {
   return (
     <button
       type="button"
       aria-label={label}
+      aria-pressed={pressed}
       onClick={onPress}
       className={cn(
-        "flex size-12 items-center justify-center rounded-full border border-border bg-chrome/90 text-foreground shadow-lg backdrop-blur-md outline-none active:bg-selected [&_svg]:size-5",
+        "flex size-12 items-center justify-center rounded-full border border-border shadow-lg backdrop-blur-md outline-none [&_svg]:size-5",
+        pressed === true
+          ? "bg-primary text-primary-foreground active:opacity-80"
+          : "bg-chrome/90 text-foreground active:bg-selected",
         "focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring",
         className,
       )}
     >
-      <Keyboard />
+      {icon ?? <Keyboard />}
     </button>
   );
 }

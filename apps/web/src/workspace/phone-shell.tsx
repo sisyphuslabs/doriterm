@@ -44,6 +44,8 @@ export interface PhoneShellProps {
   readonly onNew: () => void;
   /** Starts a new tab in the space with this key and opens it. */
   readonly onNewInSpace: (key: string) => void;
+  /** Closes the tab that shows this terminal, as the desktop strip's close does. */
+  readonly onCloseTab: (address: string) => void;
   readonly onPalette: () => void;
   readonly onSession: SessionVerb;
 }
@@ -51,7 +53,7 @@ export interface PhoneShellProps {
 /** Phones: the agents list first; a space opens its own screen, and a terminal shows full screen with extra keys. */
 export function PhoneShell(props: PhoneShellProps) {
   const { connection, terminals, open, space, panes, tabTitle, onOpen, onBack, onNew, onNewInSpace, onPalette } = props;
-  const { onSession, onSpaceBack, pushed } = props;
+  const { onSession, onSpaceBack, onCloseTab, pushed } = props;
   // The open terminal registers its dictation here, so the palette and a bound key reach it from this shell's handler.
   const dictate = useRef<(() => void) | null>(null);
   usePhoneActions(onNew, onSession, () => (dictate.current === null ? false : (dictate.current(), true)));
@@ -160,6 +162,8 @@ export function PhoneShell(props: PhoneShellProps) {
       tabTitle={tabTitle}
       onOpen={onOpen}
       onBack={onBack}
+      onCloseTab={onCloseTab}
+      onNewInSpace={onNewInSpace}
       dictate={dictate}
     />
   );

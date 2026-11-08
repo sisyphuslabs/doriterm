@@ -22,6 +22,7 @@ const SHELL_ACTIONS: Readonly<Record<Shell, readonly string[]>> = {
     "pane.swap:down",
     "pane.equalize",
     "pane.zoom",
+    "agent.waiting",
     "tab.close",
     "tab.rename",
     "tab.move:left",
@@ -88,16 +89,19 @@ function unavailable(id: string, inView: boolean, readOnly: string | null): stri
 /**
  * What the palette lists right now. Rename and End session apply to the session in view, so with none in view they
  * are left out, as a palette leaves out commands that do not apply, and so is moving the active tab past an end of the
- * strip; Split is listed as unavailable until it can run.
+ * strip, and opening the next agent that needs you while nobody does (`waiting`); Split is listed as unavailable until
+ * it can run.
  */
 export function availableActions(
   shell: Shell,
   inView: boolean,
   readOnly: string | null = null,
   strip: Strip = NO_STRIP,
+  waiting = false,
 ): readonly ShellAction[] {
   return SHELL_ACTIONS[shell]
     .filter((id) => inView || !SESSION_ACTIONS.has(id))
+    .filter((id) => id !== "agent.waiting" || waiting)
     .filter((id) => !id.startsWith("tab.move:") || canMove(id, strip))
     .map((id) => {
       const reason = unavailable(id, inView, readOnly);

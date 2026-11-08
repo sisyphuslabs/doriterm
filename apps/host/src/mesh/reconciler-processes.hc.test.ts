@@ -76,7 +76,7 @@ test.each([BUDGET_REFUSAL, "peer refused the hello"])(
       const retry = async (delay: number): Promise<void> => {
         await clock.advance(delay);
         await reconcile.idle();
-        // Token-availability/presence notifications still drive budget retries, subject to the same deadline.
+        // Only the token-availability notification drives a budget retry; the timer drives the hello refusal's.
         if (reason === BUDGET_REFUSAL) await reconcile.budgetAvailable(other.hostId);
         expect(await bridges(local.stateDir)).toEqual([]);
       };
