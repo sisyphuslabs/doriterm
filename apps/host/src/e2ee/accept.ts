@@ -134,6 +134,13 @@ export async function acceptE2ee(
         deps.resumeKey?.(base64urlEncode(hello.remoteStatic)) === true
       )
         return { accept: true };
+      // A removed member's key may still read its own removal on the roster stream, and nothing else (design 10.3).
+      if (
+        hello.stream === "roster" &&
+        peer.kind === "refused" &&
+        index.index?.removed(base64urlEncode(hello.remoteStatic)) === true
+      )
+        return { accept: true };
       if (peer.kind === "refused" && peer.reason !== "unknown device")
         deps.log(`mesh: refused a session: ${peer.reason}`);
       return authorizationOf(peer);

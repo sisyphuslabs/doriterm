@@ -24,6 +24,7 @@ import { PendingJoins } from "./pending-joins.ts";
 import { DeviceStore } from "../state/devices.ts";
 import { byDeadline, JoinRefused, ROSTER_EXPECTS } from "@doriface/mesh/join";
 import { serveRoster, type RosterDeps } from "./roster.ts";
+import { removedKey } from "./roster-removal.ts";
 import { sweepRoster } from "./roster-admits.ts";
 import { finishJoin, JoinResumes } from "./join-resumes.ts";
 import { spendMeshOffer } from "../e2ee/accept.ts";
@@ -103,7 +104,9 @@ export class HostMesh {
         });
       return;
     }
-    if (!this.#options.sessions.add(secure)) return;
+    // A removed member's session is never live: it reads its removal and is closed by serveRoster (design 10.3).
+    const removed = removedKey(this.#options.mesh.authorizeIndex(), key);
+    if (!removed && !this.#options.sessions.add(secure)) return;
     void serveRoster(new MeshLines(secure, ROSTER_EXPECTS), secure.remoteStatic, this.#rosterDeps()).catch(
       (error: unknown) =>
         this.#options.log(`mesh: roster refused: ${error instanceof Error ? error.message : String(error)}`),

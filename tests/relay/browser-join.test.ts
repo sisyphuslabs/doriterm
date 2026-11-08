@@ -139,6 +139,39 @@ scenario("a browser joins the mesh as its own member (#1386, stage 2)", ["join",
     }
   }, 180_000);
 
+  test("a browser removed on another machine learns it from its next roster refresh, over the relay", async () => {
+    const hosts = running();
+    const [a, b] = [hosts.host("a"), hosts.host("b")];
+    const relayUrl = a.tap?.url ?? hosts.relay?.url ?? "";
+    const web = await browser();
+    const joined = await joinComparedBrowser(a, await browserInvite(a, relayUrl), "Pixel 9", web);
+    await hosts.until(
+      "b learns the browser's admission from a",
+      async () => (await statusOf(b)).members.some((member) => member.hostId === web.hostId),
+      120_000,
+    );
+    expect((await b.cli("mesh", "revoke", web.hostId, "--yes")).exit).toBe(0);
+    await hosts.until(
+      "a learns the browser's removal from b",
+      async () => !(await statusOf(a)).members.some((member) => member.hostId === web.hostId),
+      120_000,
+    );
+    const toA = reachableTargets(joined.members).find((target) => target.hostId === a.hostId);
+    if (toA === undefined) throw new Error("a is not among the browser's targets");
+    const identity = { device: web.device, card: web.sign };
+    const transport = hosts.relay?.url ?? relayUrl;
+    const secure = await openRosterSession({ ...toA, relayUrl: transport }, identity);
+    await exchangeRoster(new MeshLines(secure, JOINER_EXPECTS), {
+      identity,
+      bundle: web.membership,
+      source: toA,
+      name: "pixel-9",
+      action: "refresh",
+    });
+    expect(web.membership.snapshot().phase).toBe("removed");
+    expect(web.membership.snapshot().machines).toEqual([]);
+  }, 300_000);
+
   test("a second join by the same browser is refused before anything is dialed: it is a member already", async () => {
     const hosts = running();
     const a = hosts.host("a");

@@ -150,6 +150,8 @@ export class AuthorizeIndex {
   readonly generation: number;
   readonly #byNoise = new Map<string, MemberEntry>();
   readonly #revoked = new Set<string>();
+  /** The removed members whose cards named each revoked key. */
+  readonly #removedBy = new Map<string, Set<string>>();
   readonly #memberDevices = new Set<string>();
   /** A client member's session key, by member. It never enters the Noise map: a client must not dial (design of #942). */
   readonly #clientDevices = new Map<string, MemberEntry>();
@@ -178,7 +180,10 @@ export class AuthorizeIndex {
       if (member.kind !== "client") this.#hostIds.add(member.hostId);
     }
     for (const entry of data.revoked) {
-      for (const key of entry.keys) this.#revoked.add(key);
+      for (const key of entry.keys) {
+        this.#revoked.add(key);
+        this.#removedBy.set(key, (this.#removedBy.get(key) ?? new Set<string>()).add(entry.signPub));
+      }
       this.#hostIds.add(entry.hostId);
     }
     const name = (key: string | undefined, signPub: string): void => {
@@ -226,6 +231,15 @@ export class AuthorizeIndex {
     if (this.#byNoise.has(key) && this.member(key) === undefined)
       return "a Noise key that more than one mesh key names";
     return undefined;
+  }
+
+  /**
+   * Whether `key` is a removed member's (one of `signPub`'s, when given). Such a key opens no session but the roster's,
+   * where it reads only the records up to its own removal (design 10.3), so a removed browser can learn it was removed.
+   */
+  removed(key: string, signPub?: string): boolean {
+    const by = this.#removedBy.get(key);
+    return by !== undefined && (signPub === undefined || by.has(signPub));
   }
 
   /** Whether the key is any member's or revoked member's Noise or device key (no device may hold it). */
