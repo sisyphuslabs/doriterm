@@ -139,9 +139,9 @@ test.describe("a finger on a phone", () => {
 
     // The Type field rides on the keys bar, so it is on the page only while the keyboard is up (the #1409 spec checks it
     // goes with the keyboard): there is no down state to raise the keyboard from. What a tap on it can prove is that the
-    // focus leaves the terminal for a field that asks for a keyboard: this fake lowers the keyboard on any focus move to
-    // something that asks for none (`inputmode="none"`, or no field at all), so the keyboard is up after the move only
-    // because the Type field asks for one. (`getAttribute`, since `inputMode` is not on `HTMLElement | SVGElement`.)
+    // focus leaves the terminal for a field that asks for a keyboard: this fake lowers the keyboard on any focus move that
+    // does not land on a textarea without `inputmode="none"` (phone-key-bar.ts), so the keyboard is up after the move only
+    // because the Type field is such a textarea. (`getAttribute`, since `inputMode` is not on `HTMLElement | SVGElement`.)
     const field = page.getByLabel("Type into the terminal");
     await field.tap();
     await expect(field).toBeFocused();
