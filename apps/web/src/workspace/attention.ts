@@ -66,6 +66,14 @@ export function someoneElseNeedsYou(terminals: readonly Session[], inView: strin
   return next !== null && next !== inView;
 }
 
+/** A live terminal whose agent needs the person: what "N needs you" counts and opens. */
+const waitsForYou = (terminal: Session): boolean => terminal.state === "live" && agentStatus(terminal) === "blocked";
+
+/** How many terminals other than `inView` need you: the phone session sheet's next-agent count (#1467). */
+export function waitingBesides(terminals: readonly Session[], inView: string): number {
+  return terminals.filter((terminal) => terminal.address !== inView && waitsForYou(terminal)).length;
+}
+
 /**
  * The terminal "N needs you" opens (#1448): walking the terminals in the core's order, the first live one that needs the
  * person after `focused`, round to the start; `focused` itself only when it is the only one. Null while nobody waits.
@@ -74,7 +82,7 @@ export function nextNeedingYou(terminals: readonly Session[], focused: string | 
   const from = focused === null ? -1 : terminals.findIndex((terminal) => terminal.address === focused);
   for (let step = 1; step <= terminals.length; step += 1) {
     const terminal = terminals[(from + step) % terminals.length];
-    if (terminal !== undefined && terminal.state === "live" && agentStatus(terminal) === "blocked") {
+    if (terminal !== undefined && waitsForYou(terminal)) {
       return terminal.address;
     }
   }

@@ -156,10 +156,12 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
     >
       <PhoneHeader
         terminal={terminal}
+        terminals={terminals}
         host={connection.hello.core.name}
         tabTitle={tabTitle}
         backTo={backTo}
         onBack={onBack}
+        onOpen={onOpen}
         action={untyped ? null : <DictateButton voice={voice} target={title} ref={mic} />}
       />
       <ConnectionLine />

@@ -101,14 +101,14 @@ for (const width of [320, 390] as const) {
         await expect(sessions).toBeHidden();
 
         await actions.click();
-        await page.getByRole("menuitem", { name: "Rename…" }).click();
+        await page.getByRole("button", { name: "Rename…", exact: true }).click();
         const rename = page.getByRole("dialog", { name: `Rename ${LONG}` });
         await expectInside(rename, "the Rename dialog");
         await rename.getByRole("button", { name: "Cancel" }).click();
         await expect(rename).toBeHidden();
 
         await actions.click();
-        await page.getByRole("menuitem", { name: "End session…" }).click();
+        await page.getByRole("button", { name: "End session…", exact: true }).click();
         await expectInside(page.getByRole("dialog", { name: `End ${LONG}?` }), "the End dialog");
 
         // The session ends while its question is open: the question becomes the statement that it already ended.
@@ -142,7 +142,7 @@ for (const colorScheme of ["light", "dark"] as const) {
       expect(button, "the Show keyboard button has a box").not.toBeNull();
 
       await header.getByRole("button", { name: `Session actions for ${LONG}` }).click();
-      await page.getByRole("menuitem", { name: "End session…" }).click();
+      await page.getByRole("button", { name: "End session…", exact: true }).click();
       const ask = page.getByRole("dialog", { name: `End ${LONG}?` });
       await expectInside(ask, "the End dialog on a short screen");
       expect(

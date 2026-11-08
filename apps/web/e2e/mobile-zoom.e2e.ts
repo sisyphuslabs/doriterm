@@ -117,7 +117,7 @@ for (const [name, device] of PHONES) {
         .getByRole("banner")
         .getByRole("button", { name: /^Session actions for / })
         .click();
-      await page.getByRole("menuitem", { name: "Rename…" }).click();
+      await page.getByRole("button", { name: "Rename…", exact: true }).click();
       const rename = page.getByRole("dialog", { name: /^Rename / }).getByRole("textbox", { name: "Name" });
       await expectNoZoomOnFocus(rename);
       expect(await zoomingFields(page)).toEqual([]);

@@ -5,10 +5,12 @@ import { useFittedLines } from "./fit-lines.ts";
 import { agentStatus } from "./attention.ts";
 import { machineOf, type Session, spaceName, terminalTitle } from "./model.ts";
 import { useSpaceSelection } from "./space-selection.ts";
-import { SessionMenu } from "./session-menu.tsx";
+import { PhoneSessionSheet } from "./phone-session-sheet.tsx";
 
 export interface PhoneHeaderProps {
   readonly terminal: Session;
+  /** Every session, for the session sheet's next agent that needs you (#1467). */
+  readonly terminals: readonly Session[];
   /** Its tab's own name; null when the tab has none, so the terminal's title names the screen. */
   readonly tabTitle: string | null;
   /** This machine's name, for a session on this machine: the place under the title always names the machine. */
@@ -16,6 +18,8 @@ export interface PhoneHeaderProps {
   /** The space Back returns to, by name (it was opened from that space's screen); null when Back goes to the agents. */
   readonly backTo: string | null;
   readonly onBack: () => void;
+  /** Opens another session, as the session sheet's "next agent that needs you" does. */
+  readonly onOpen: (address: string) => void;
   /** One more header control before the switch, such as the mic (#227). */
   readonly action?: ReactNode;
 }
@@ -25,7 +29,7 @@ export interface PhoneHeaderProps {
  * tabs and the tab's place (n/m) live in the bottom tabs bar alone, one strip as in herdr-app (#466); how many agents
  * need the person is the agents list's to say, not this session's header.
  */
-export function PhoneHeader({ terminal, host, tabTitle, backTo, onBack, action }: PhoneHeaderProps) {
+export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBack, onOpen, action }: PhoneHeaderProps) {
   // The tab's own name, else the terminal's title: an agent's or a program's name, never the tab's place among its space's.
   const title = tabTitle ?? terminalTitle(terminal);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -76,7 +80,13 @@ export function PhoneHeader({ terminal, host, tabTitle, backTo, onBack, action }
       <span data-header-action className="contents">
         {action}
       </span>
-      <SessionMenu address={terminal.address} title={terminalTitle(terminal)} placement="header" />
+      <PhoneSessionSheet
+        terminal={terminal}
+        terminals={terminals}
+        title={terminalTitle(terminal)}
+        where={where}
+        onOpen={onOpen}
+      />
     </header>
   );
 }

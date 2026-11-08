@@ -55,7 +55,7 @@ async function confirmEndHolding(page: Page, link: HcSocket, name: string, ...me
     .getByRole("banner")
     .getByRole("button", { name: /^Session actions for / })
     .click();
-  await page.getByRole("menuitem", { name: "End session…" }).click();
+  await page.getByRole("button", { name: "End session…", exact: true }).click();
   const deliver = link.hold(...methods);
   await page
     .getByRole("dialog", { name: `End ${name}?` })
