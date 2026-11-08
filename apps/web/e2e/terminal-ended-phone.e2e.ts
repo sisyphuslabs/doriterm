@@ -27,8 +27,13 @@ test("on a phone, a session that ended while its machine was offline shows as en
   try {
     // The keys bar shows on a touch phone only while the soft keyboard is up.
     await fakeSoftKeyboard(page);
-    await page.goto("/");
+    // The machine reads connected on the Spaces tab (mobile nav phase 3); its agent opens from the Agents tab.
+    await page.goto("/?v=spaces");
     await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
+    await page
+      .getByRole("navigation", { name: "Sections" })
+      .getByRole("button", { name: /^Agents\b/ })
+      .click();
     await agentRow(page, "ended-phone", true).click();
     const terminal = page.locator(`[data-terminal="${MACHINE_NAME}/${local}"]`);
     await expect(terminal).toContainText("$", { timeout: 15_000 });
