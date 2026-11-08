@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Phone
+
+- Tapping the terminal on a phone no longer zooms the page: the keyboard field was 13px, and iOS scales up any field it
+  focuses under 16px. (#1382)
+
 ## v0.1.11 - 2026-11-08
 
 ### Machine mesh
