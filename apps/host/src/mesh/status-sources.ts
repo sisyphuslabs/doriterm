@@ -86,6 +86,7 @@ export interface WitnessFacts {
 }
 
 export interface MeshSources {
+  readonly clientLastSessionAt?: ReadonlyMap<string, number>;
   readonly view: ViewFacts;
   /**
    * The revoke record behind every key in `view.revoked`. Not part of View: PR 2 exports it beside View from the

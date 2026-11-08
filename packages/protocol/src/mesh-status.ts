@@ -104,9 +104,11 @@ const REPLACED_KIND_TEXT: { readonly [K in MeshReplacedKind]: string } = {
 export const replacedMachineText = (replaced: MeshReplacedMachine): string =>
   `replaced machine "${replaced.name}" (${REPLACED_KIND_TEXT[replaced.kind]}) with the mesh line`;
 
-/** Times are ISO 8601 and display only. Every key is a hostId. */
+/** Times are display only: ISO 8601 strings, except lastSessionAt in epoch milliseconds. Every key is a hostId. */
 export type MeshMemberStatus = {
   readonly hostId: string;
+  /** Last authenticated client session this machine accepted; absent when never seen here or for a machine. */
+  readonly lastSessionAt?: number;
   /** The mesh name in the view; null only from an older host's over-cap member (see `overCap`). */
   readonly name: string | null;
   /** The name this host's core gives the machine, which differs after a name fallback; null as for `name`. */

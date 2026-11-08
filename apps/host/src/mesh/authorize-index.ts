@@ -26,6 +26,8 @@ export interface MemberEntry {
   /** The governing admission, retained for device limits, removal previews and the roster marker. */
   readonly admitter?: string | undefined;
   readonly admitId?: string | undefined;
+  /** This machine's last accepted client session, in epoch milliseconds; never signed or gossiped. */
+  readonly lastSessionAt?: number | undefined;
 }
 
 /** A member the view removed, with every Noise and device key any of its cards ever named. */

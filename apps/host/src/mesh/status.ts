@@ -56,8 +56,10 @@ function member(sources: MeshSources, names: Names, key: string, now: Date): Mes
   const stale = since !== null && now.getTime() - since.getTime() > UNREACHABLE_REVOKE_MS;
   const admitter = admitterOf(sources, key);
   const witness = self ? { pool: [], ask: null } : sources.witnessPool(key);
+  const lastSessionAt = sources.clientLastSessionAt?.get(key);
   return {
     hostId,
+    ...(lastSessionAt === undefined ? {} : { lastSessionAt }),
     name,
     localName: local.localNames.get(key) ?? name,
     fingerprint: fingerprintOfKey(noise),

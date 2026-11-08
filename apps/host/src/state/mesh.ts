@@ -61,6 +61,26 @@ export class MeshStore {
     return value === undefined ? undefined : parseMeshFile(value);
   }
 
+  /** An index-only local observation; record history and its generation do not change. */
+  recordClientSession(devicePub: string, at = Date.now()): void {
+    this.#locked(() => {
+      const file = this.read();
+      if (file === undefined) return;
+      const index = file.index;
+      if (index?.generation !== file.generation) throw new Error(`${MESH_FILE}: its authorize index is stale`);
+      const client = new AuthorizeIndex(index).client(devicePub);
+      if (client === undefined) return;
+      const members = index.members.map((member) =>
+        member.signPub === client.signPub ? { ...member, lastSessionAt: at } : member,
+      );
+      writePrivateJson(
+        this.#path,
+        meshFileJson({ ...file, index: { ...index, members } }),
+        this.#options.durable ?? true,
+      );
+    });
+  }
+
   /**
    * The index of the current generation, for a handshake: re-read only when the file changed on disk, and taken from
    * the file as its writer persisted it, never from an earlier file (a replaced mesh.json starts again at generation
@@ -180,7 +200,19 @@ export class MeshStore {
 
   #indexed(file: MeshFile, view = this.#evaluate(file.records)): MeshFile {
     const index = indexOf(file.records, view, file.generation);
-    return { ...file, version: writeVersionOf(index), index };
+    const previous = this.read();
+    const seen = new Map(
+      (previous?.meshId === file.meshId ? (previous.index?.members ?? []) : []).flatMap((member) =>
+        member.kind === "client" && member.lastSessionAt !== undefined
+          ? [[member.signPub, member.lastSessionAt] as const]
+          : [],
+      ),
+    );
+    const members = index.members.map((member) => {
+      const lastSessionAt = member.kind === "client" ? seen.get(member.signPub) : undefined;
+      return lastSessionAt === undefined ? member : { ...member, lastSessionAt };
+    });
+    return { ...file, version: writeVersionOf(index), index: { ...index, members } };
   }
 
   readonly #evaluate = (records: readonly Signed[]): View => (this.#options.evaluate ?? viewOf)(records);
