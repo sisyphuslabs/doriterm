@@ -43,7 +43,7 @@ test.each([false, true])("unpair prints the mesh revoke alternative with running
   let text = "";
   try {
     expect(
-      await devicesCommand(["revoke", noiseOf(c.m), "--state-dir", a.dir], (line) => {
+      await devicesCommand(["--state-dir", a.dir, "revoke", "--", noiseOf(c.m)], (line) => {
         text += line;
       }),
     ).toBe(0);

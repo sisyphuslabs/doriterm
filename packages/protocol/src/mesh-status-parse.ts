@@ -83,7 +83,7 @@ const readLineState: Reader<MeshLineState> = oneOf(
 const readText = when((value): value is string => typeof value === "string" && value.length > 0);
 const readGate = objectOf<MeshGate>({ kind: oneOf("offline"), refusals: readCount, nextProbeAt: readTime });
 const readReplaced = objectOf<MeshReplacedMachine>({ name: readName, kind: oneOf("ssh", "connect", "command") });
-const readMember = objectOf<MeshMemberStatus>({
+const readMemberBase = objectOf<Omit<MeshMemberStatus, "lastSessionAt">>({
   hostId: readId,
   name: nullable(readName),
   localName: nullable(readName),
@@ -103,6 +103,14 @@ const readMember = objectOf<MeshMemberStatus>({
   unreachableSince: nullable(readTime),
   revokeSuggested: readBoolean,
 });
+const readMember: Reader<MeshMemberStatus> = (value) => {
+  const base = readMemberBase(value);
+  if (base === undefined || !isJsonObject(value)) return undefined;
+  const supplied = value["lastSessionAt"];
+  const lastSessionAt = supplied === undefined ? undefined : readCount(supplied);
+  if (supplied !== undefined && lastSessionAt === undefined) return undefined;
+  return { ...base, ...(lastSessionAt === undefined ? {} : { lastSessionAt }) };
+};
 const readRevoked = objectOf<MeshRevokedStatus>({
   hostId: readId,
   name: readName,
