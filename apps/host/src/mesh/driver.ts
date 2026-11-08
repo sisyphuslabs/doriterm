@@ -50,6 +50,7 @@ export class MeshDriver {
     if (member === undefined) return Promise.resolve();
     if (reason === "presence") return this.#reconciler.presence(member);
     if (reason === "added") return this.#reconciler.releaseAdd(member.hostId);
+    if (reason === "budget") return this.#reconciler.budgetAvailable(member.hostId);
     return this.#reconciler.reconcile(this.#view);
   }
 }
