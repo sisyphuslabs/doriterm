@@ -35,18 +35,21 @@ class ManualClock implements RaceClock {
 /** Lets every pending promise reaction run: the macrotask comes only after the microtask queue is empty. */
 const settled = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
+/** A Room round trip in ms (`Infinity`: never answered), or a socket the relay closes before any answer. */
+type Ping = number | { readonly closesAfter: number };
+
 /** A fake relay socket: it opens when the test says, and the Room answers its ping `pingMs` later on the clock. */
 class FakeSocket {
   readonly name: string;
   readonly #opened = Promise.withResolvers<string>();
   readonly #clock: ManualClock;
-  readonly #pingMs: number;
+  readonly #ping: Ping;
   closed = false;
 
-  constructor(name: string, clock: ManualClock, pingMs: number) {
+  constructor(name: string, clock: ManualClock, ping: Ping) {
     this.name = name;
     this.#clock = clock;
-    this.#pingMs = pingMs;
+    this.#ping = ping;
   }
 
   open(): void {
@@ -62,8 +65,10 @@ class FakeSocket {
       opened: this.#opened.promise,
       roundTrip: () => {
         const start = this.#clock.now();
+        const ping = this.#ping;
         return new Promise((resolve) => {
-          if (Number.isFinite(this.#pingMs)) this.#clock.after(this.#pingMs, () => resolve(this.#clock.now() - start));
+          if (typeof ping === "object") this.#clock.after(ping.closesAfter, () => resolve(Number.POSITIVE_INFINITY));
+          else if (Number.isFinite(ping)) this.#clock.after(ping, () => resolve(this.#clock.now() - start));
           else this.#clock.after(1_500, () => resolve(Number.POSITIVE_INFINITY));
         });
       },
@@ -76,7 +81,7 @@ class FakeSocket {
 
 function race(
   clock: ManualClock,
-  pings: readonly number[],
+  pings: readonly Ping[],
   options: { readonly signal?: AbortSignal } = {},
 ): {
   readonly sockets: FakeSocket[];
@@ -172,6 +177,27 @@ describe("best-of-N relay dial: picking the socket nearest the Room", () => {
     await clock.advanceTo(20_000);
     expect(silent.outcome().winner).toBe("a");
     expect(silent.sockets.map((socket) => socket.closed)).toEqual([false, true]);
+  });
+
+  test("a socket refused before any answer does not start the grace: the sockets still waiting are answered and kept", async () => {
+    const clock = new ManualClock();
+    const { sockets, outcome } = race(clock, [{ closesAfter: 20 }, 264, 199]);
+    for (const socket of sockets) socket.open();
+    await clock.advanceTo(10_000);
+    expect(outcome()).toEqual({ winner: "c", at: 199 });
+    expect(sockets.map((socket) => socket.closed)).toEqual([true, true, false]);
+  });
+
+  test("a refused socket is kept only once no other socket is still opening or waiting for its answer", async () => {
+    const clock = new ManualClock();
+    const { sockets, outcome } = race(clock, [{ closesAfter: 20 }, { closesAfter: 30 }]);
+    sockets[0]?.open();
+    await clock.advanceTo(400);
+    expect(outcome().winner).toBeUndefined();
+    sockets[1]?.open();
+    await clock.advanceTo(10_000);
+    expect(outcome()).toEqual({ winner: "a", at: 430 });
+    expect(sockets.map((socket) => socket.closed)).toEqual([false, true]);
   });
 
   test("equal round trips keep the earlier socket", async () => {

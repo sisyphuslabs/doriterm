@@ -55,8 +55,8 @@ function cancelledBy(signal: AbortSignal): Error {
 /**
  * Keeps the entrant with the shortest round trip. The race is decided once some entrant has answered and no other can
  * still beat the best answer: one that is timing can only while it has waited less than that answer took, and none can
- * after `graceMs` past the first answer. Ties keep the earlier entrant; an unanswered entrant (`Infinity`) is kept only
- * when none answered. When every entrant fails to open, the race rejects with the first entrant's error.
+ * after `graceMs` past the first answer. Ties keep the earlier entrant; an unanswered entrant (`Infinity`) starts no
+ * grace and is kept only once every entrant has settled and none answered. When every entrant fails to open, the race rejects with the first entrant's error.
  */
 export function raceFastest<T>(entrants: readonly Entrant<T>[], options: RaceOptions): Promise<T> {
   const clock = options.clock ?? realClock;
@@ -86,10 +86,14 @@ export function raceFastest<T>(entrants: readonly Entrant<T>[], options: RaceOpt
       cancelTimer?.();
       const leader = leaderOf(standings);
       const leading = leader === undefined ? undefined : standings[leader];
-      if (leading?.kind !== "timed" || firstAnswerAt === undefined) {
+      const unsettled = standings.some((standing) => standing.kind === "opening" || standing.kind === "timing");
+      if (leading?.kind !== "timed") {
         const first = standings[0];
-        if (first?.kind === "failed" && standings.every((standing) => standing.kind === "failed"))
-          finish(undefined, first.error);
+        if (first?.kind === "failed" && !unsettled) finish(undefined, first.error);
+        return;
+      }
+      if (firstAnswerAt === undefined) {
+        if (!unsettled) finish(leader);
         return;
       }
       const graceEnds = firstAnswerAt + options.graceMs;
@@ -120,7 +124,7 @@ export function raceFastest<T>(entrants: readonly Entrant<T>[], options: RaceOpt
       const ms = await entrant.roundTrip(value).catch(() => Number.POSITIVE_INFINITY);
       if (decided) return;
       standings[i] = { kind: "timed", value, ms };
-      firstAnswerAt ??= clock.now();
+      if (Number.isFinite(ms)) firstAnswerAt ??= clock.now();
       decide();
     }
     entrants.forEach((entrant, i) => void run(entrant, i));
