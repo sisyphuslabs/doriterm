@@ -15,7 +15,11 @@ const RTT_MS = 300;
 
 type Box = { readonly left: number; readonly top: number; readonly width: number; readonly height: number };
 
-/** Within one CSS px on every edge: where a cell is drawn, not merely that it is. */
+/**
+ * Within one CSS px on every edge of the real cell's box: where a cell is drawn, not merely that it is. This box check,
+ * in all four device and theme configurations and on the wide and wrapped cases, is what the spec proves; a presence
+ * check would pass with the overlay drawn in the wrong cell.
+ */
 function expectSameBox(actual: Box | null | undefined, expected: Box | null | undefined, label: string): void {
   expect(actual, label).toBeTruthy();
   expect(expected, label).toBeTruthy();

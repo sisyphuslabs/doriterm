@@ -35,7 +35,12 @@ export function cellText(cell: Pick<CellData, "char" | "chars">): string {
   return cell.char === 0 ? "" : String.fromCodePoint(cell.char);
 }
 
-/** The screen already shows the prediction: the echo arrived, and drawing it again would double it. */
+/**
+ * The screen already shows the prediction: the echo arrived, and drawing it again would double it. Text AND width must
+ * both match; keep the width check when simplifying. An echo of the predicted glyph at another width (a wide prediction
+ * the terminal laid out narrow, or the reverse) is a different screen: the cells after it sit one column off from where
+ * the predictions after it were placed, so it must not count as confirming this one.
+ */
 function shown(cell: PredictedCell, screen: OverlayScreen): boolean {
   const real = screen.getCell(cell.row, cell.col);
   return cellText(real) === cell.text && (real.width === 2) === (cell.width === 2);
