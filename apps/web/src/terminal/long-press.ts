@@ -43,13 +43,13 @@ function textNodes(row: HTMLElement): Text[] {
   return nodes;
 }
 
-const rowsOf = (doc: Document): HTMLElement[] => [...doc.querySelectorAll<HTMLElement>(ROW)];
+const rowsOf = (terminal: Element): HTMLElement[] => [...terminal.querySelectorAll<HTMLElement>(ROW)];
 
-/** The row the point is on, or the nearest one when it is between rows or past the text. */
-function rowAt(doc: Document, at: Point): HTMLElement | null {
+/** The row of `terminal` the point is on, or the nearest one when it is between rows or past the text. */
+function rowAt(terminal: Element, at: Point): HTMLElement | null {
   let best: HTMLElement | null = null;
   let nearest = Number.POSITIVE_INFINITY;
-  for (const row of rowsOf(doc)) {
+  for (const row of rowsOf(terminal)) {
     const box = row.getBoundingClientRect();
     if (box.height <= 0) continue;
     const away = at.y < box.top ? box.top - at.y : at.y > box.bottom ? at.y - box.bottom : 0;
@@ -87,8 +87,9 @@ function characterAt(row: HTMLElement, x: number): Caret {
   return { row, index: best };
 }
 
-export function caretAt(doc: Document, at: Point): Caret | null {
-  const row = rowAt(doc, at);
+/** The character of `terminal` under `at`, on the row the point is on or nearest to; null when it has no rows. */
+export function caretAt(terminal: Element, at: Point): Caret | null {
+  const row = rowAt(terminal, at);
   return row === null ? null : characterAt(row, at.x);
 }
 
@@ -129,9 +130,10 @@ const before = (a: Caret, b: Caret): boolean => {
  * The word under `at`: the word a text field would select there, its punctuation left out, and one character when it
  * landed on spacing. Null when the point holds no terminal text.
  */
-export function wordRangeAt(doc: Document, at: Point): { readonly range: Range; readonly word: Word } | null {
-  const caret = caretAt(doc, at);
+export function wordRangeAt(terminal: Element, at: Point): { readonly range: Range; readonly word: Word } | null {
+  const caret = caretAt(terminal, at);
   if (caret === null) return null;
+  const doc = terminal.ownerDocument;
   const text = wholeText(caret.row);
   let start = caret.index;
   let end = caret.index;
@@ -150,6 +152,11 @@ export function wordRangeAt(doc: Document, at: Point): { readonly range: Range; 
   const word = { start: { row: caret.row, index: start }, end: { row: caret.row, index: end } };
   const range = rangeOf(doc, word.start, word.end);
   return range === null ? null : { range, word };
+}
+
+/** The text between two carets, whichever comes first: what a drag from one to the other selects. */
+export function rangeBetween(doc: Document, a: Caret, b: Caret): Range | null {
+  return before(b, a) ? rangeOf(doc, b, a) : rangeOf(doc, a, b);
 }
 
 /**

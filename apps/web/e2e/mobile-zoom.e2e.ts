@@ -148,7 +148,11 @@ for (const [name, device] of PHONES) {
           async ([label, target]) => `${label}: ${await target.evaluate((el) => getComputedStyle(el).touchAction)}`,
         ),
       );
-      expect(actions).toEqual(surfaces.map(([label]) => `${label}: manipulation`));
+      // #1396 keeps the terminal on `pan-y pinch-zoom` so one finger pans the scrollback and a pinch still zooms;
+      // every other surface stays `manipulation`, where horizontal panning has nothing to move.
+      expect(actions).toEqual(
+        surfaces.map(([label]) => `${label}: ${label === "terminal" ? "pan-y pinch-zoom" : "manipulation"}`),
+      );
 
       // `manipulation` keeps pinch-zoom; the viewport must not take it away either.
       const viewport = await page.locator('meta[name="viewport"]').getAttribute("content");

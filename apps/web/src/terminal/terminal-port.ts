@@ -1,6 +1,6 @@
 import type { TerminalHandle } from "@wterm/react";
 import { type RefObject, useEffect, useMemo } from "react";
-import type { TerminalInput } from "./terminal-view.tsx";
+import type { TerminalInput } from "./terminal-view-props.ts";
 
 export interface TerminalPort {
   /** The view's input path, so keys queue through a reconnect in order with typed input. */
