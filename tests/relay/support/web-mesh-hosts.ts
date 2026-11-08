@@ -2,12 +2,16 @@
 // browser spec that reaches a terminal on another machine THROUGH THE MESH (mesh-attach.e2e.ts). `mesh pair` on a and
 // `mesh join` on b make the mesh, so b reaches a's core as a machine only through the mesh's own `connect --mesh` line;
 // MESH_JOIN=skip leaves them strangers, which the spec must fail on. A shell named `on-b` runs on b's own core.
-// Prints `READY {"relayUrl": ...}` (a's relay), answers each stdin line `PAIR` with `LINK <fragment>`, a fresh device
-// pairing link to a, and stops every process it started on SIGTERM or SIGINT.
+// Prints `READY {"relayUrl": ..., "machine": ..., "bHostId": ...}` (a's relay, b's machine name on a's core, b's own
+// hostId), answers each stdin line with one line: `PAIR` with `LINK <fragment>`, a fresh device pairing link to a; `MESH`
+// with `LINK <fragment>`, a fresh mesh invite from a (browser-join.e2e.ts joins the mesh with it); `STATUS` with
+// `MEMBERS {"meshId": ..., "a": [...], "b": [...]}`, the members each machine's `mesh status --json` lists. It stops
+// every process it started on SIGTERM or SIGINT.
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startMesh } from "./mesh/mesh.ts";
+import { type Member, meshIdOf, statusOf } from "./mesh/status.ts";
 
 const OFFER = /^https:\/\/web\.example\/pair#\S+$/m;
 const home = mkdtempSync(join(tmpdir(), "on-b-"));
@@ -53,22 +57,51 @@ const shell = Bun.spawn([b.session.hc, "run", "--bg", "--name", "on-b", "--cwd",
 if ((await shell.exited) !== 0) throw new Error(`hc run on b failed: ${await new Response(shell.stderr).text()}`);
 
 const relayUrl = a.tap?.url ?? "";
-process.stdout.write(`READY ${JSON.stringify({ relayUrl, machine })}\n`);
+process.stdout.write(`READY ${JSON.stringify({ relayUrl, machine, bHostId: b.hostId })}\n`);
 
-let pending = Promise.resolve();
-const pairingFragment = async (): Promise<string> => {
-  const offer = await a.cli("pair", "--no-qr", "--web-origin", "https://web.example", "--relay", relayUrl);
-  const url = OFFER.exec(offer.stdout)?.[0];
-  if (offer.exit !== 0 || url === undefined) throw new Error(`pair on a failed: ${offer.stderr}${offer.stdout}`);
+/** A fresh offer's `#` fragment, from the line the CLI printed for it. */
+const fragmentOf = (run: { readonly exit: number; readonly stdout: string; readonly stderr: string }, what: string) => {
+  const url = OFFER.exec(run.stdout)?.[0];
+  if (run.exit !== 0 || url === undefined) throw new Error(`${what} on a failed: ${run.stderr}${run.stdout}`);
   return new URL(url).hash;
 };
+
+const pairingFragment = async (): Promise<string> =>
+  fragmentOf(await a.cli("pair", "--no-qr", "--web-origin", "https://web.example", "--relay", relayUrl), "pair");
+
+/** A mesh invite: what a browser joins with, as the host CLI mints it for a person. */
+const meshFragment = async (): Promise<string> =>
+  fragmentOf(
+    await a.cli("mesh", "pair", "--auto", "--no-qr", "--web-origin", "https://web.example", "--relay", relayUrl),
+    "mesh pair",
+  );
+
+/** The members each machine holds, so a spec can prove an admission from the machines' side and not the browser's word. */
+const membersOfBoth = async (): Promise<{
+  readonly meshId: string;
+  readonly a: readonly Member[];
+  readonly b: readonly Member[];
+}> => ({ meshId: meshIdOf(a), a: (await statusOf(a)).members, b: (await statusOf(b)).members });
+
+const answers: Readonly<Record<string, () => Promise<readonly [string, string]>>> = {
+  PAIR: async () => ["LINK", await pairingFragment()],
+  MESH: async () => ["LINK", await meshFragment()],
+  STATUS: async () => ["MEMBERS", JSON.stringify(await membersOfBoth())],
+};
+
+async function answer(ask: string): Promise<void> {
+  const reply = answers[ask];
+  if (reply === undefined) throw new Error(`web-mesh-hosts: unknown line ${ask}`);
+  const [prefix, body] = await reply();
+  process.stdout.write(`${prefix} ${body}\n`);
+}
+
+let pending = Promise.resolve();
 process.stdin.on("data", (chunk: Buffer) => {
   const asks = chunk
     .toString()
     .split("\n")
-    .filter((line) => line.trim() === "PAIR");
-  pending = asks.reduce(
-    (chain) => chain.then(pairingFragment).then((hash) => void process.stdout.write(`LINK ${hash}\n`)),
-    pending,
-  );
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+  pending = asks.reduce((chain, ask) => chain.then(() => answer(ask)), pending);
 });
