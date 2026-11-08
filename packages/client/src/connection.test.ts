@@ -3,7 +3,16 @@ import { HC_METHODS, HcRpcError, parseJsonRpc, type Frame, type JsonRpcNotificat
 import { HcConnection } from "./connection.ts";
 import { HcConnectionClosedError, HcCoreMismatchError, HcHandshakeError } from "./errors.ts";
 import { FakeCore } from "./testing/fake-core.ts";
-import { bytes, concatBytes, CORE_ID, CORE_NAME, frame, HELLO_REPLY_LINE } from "./testing/fixtures.ts";
+import {
+  bytes,
+  concatBytes,
+  CORE_ID,
+  CORE_NAME,
+  frame,
+  HELLO_REPLY_LINE,
+  STATUS_REPLY,
+  withId,
+} from "./testing/fixtures.ts";
 
 const HEARTBEAT = '{"jsonrpc":"2.0","method":"heartbeat","params":{"seq":7}}';
 
@@ -190,6 +199,17 @@ describe("HcConnection frames and lifetime", () => {
       id: "c1",
       error: { code: -32601, data: { kind: "unknown_method" } },
     });
+  });
+
+  test("one answered call is one round-trip sample", async () => {
+    const core = new FakeCore();
+    const connection = await opened(core);
+    expect(connection.rtt).toBeUndefined();
+    const status = connection.call("server.status");
+    const request = await core.waitRequest("server.status");
+    core.pushFrame(0, 0, withId(STATUS_REPLY, Number(request.id)));
+    await status;
+    expect(connection.rtt?.samples).toBe(1);
   });
 
   test("reports a hang-up as an error and a local close as none", async () => {
