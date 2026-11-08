@@ -163,7 +163,7 @@ const metaOf = (page: string, key: string): string | undefined =>
 
 test("app.doriterm.com previews with the same card as doriterm.com, so the two cannot drift apart", () => {
   const landing = metaOf("landing", "og:image");
-  expect(landing).toBe("https://doriterm.com/og.png");
+  expect(landing).toBe("https://doriterm.com/og-20261108.png");
   expect(metaOf("web", "og:image")).toBe(landing);
   expect(metaOf("web", "twitter:image")).toBe(landing);
 });

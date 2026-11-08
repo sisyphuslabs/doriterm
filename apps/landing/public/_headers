@@ -12,7 +12,12 @@
   ! Cache-Control
   Cache-Control: public, max-age=31536000, immutable
 
-# The social card is linked by absolute URL from other sites, so its name stays fixed.
+# The social card is linked by absolute URL from other sites. Its name carries the date it was made, so a new card is a new
+# name that link-preview caches fetch fresh, and a name never changes in place. /og.png stays for links to the old name.
+/og-20261108.png
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+
 /og.png
   ! Cache-Control
   Cache-Control: public, max-age=86400

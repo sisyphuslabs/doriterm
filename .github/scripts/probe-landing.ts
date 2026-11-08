@@ -43,7 +43,7 @@ function probes(index: string): readonly Probe[] {
       check: (response) => (header(response, "cache-control").includes("immutable") ? undefined : "not immutable"),
     },
     {
-      path: "/og.png",
+      path: "/og-20261108.png",
       check: (response) => (header(response, "content-type") === "image/png" ? undefined : "not image/png"),
     },
   ];

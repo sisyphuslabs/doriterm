@@ -1,0 +1,5 @@
+### Website
+
+- Link previews of doriterm.com and app.doriterm.com show the site as it looks now: the
+  headline above the app's window and phone. The card has a new address, so chat apps and
+  social sites fetch it fresh instead of showing the old one from their cache.
