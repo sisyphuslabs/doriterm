@@ -9,13 +9,13 @@ import { readDisplay } from "./display.ts";
 import { type EndHolder, holdAtEnd } from "./hold-view-at-end.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
 import { openFailure } from "./open-failure.ts";
+import { HISTORY_LINES, noteViewSize, viewAttach } from "./opening-attach.ts";
 import type { OutputPacer } from "./output-pacer.ts";
 import { type TerminalEnd, terminalEnd } from "./terminal-end.ts";
 import { type CoreAnswer, type Settled, settled, type Unsent, unsentReason } from "./terminal-settle.ts";
 import type { TerminalInput } from "./terminal-view.tsx";
 import { useReopenWhenMoved } from "./use-reopen-when-moved.ts";
 
-const HISTORY_LINES = 2_000;
 /** RIS: clears the screen and scrollback before an attach replay draws them again. */
 const FULL_RESET = "\u001bc";
 const encoder = new TextEncoder();
@@ -152,68 +152,72 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     // wterm starts every grid at 80x24 and fits it later; the pty starts at the size the view renders.
     ready.fit();
     const { cols, rows } = ready;
+    noteViewSize(cols, rows);
     const display = readDisplay(ready.element);
     // A reattach after a reconnect says so: the core applies its size only once this viewer is active again.
     const resumed = attachedBefore.current ? { resumed: true } : {};
     // A reattach after a reconnect keeps its screen and has the connection's own status; only a first attach says so.
     if (!attachedBefore.current) setOpening(true);
-    connection
-      .attach({ terminal: address, cols, rows, history: HISTORY_LINES, display, ...resumed }, { autoCredit: false })
-      .then(
-        (attached) => {
-          if (unmounted.current) return void attached.close();
-          setOpening(false);
-          // The program restarted while the line was down: what was typed for it must not reach the new one.
-          if (attachedBefore.current && attached.terminal.pid !== program.current) {
-            void attached.close();
-            if (pending.current.splice(0).length > 0) reportUnsent("restarted");
-            return undefined;
-          }
-          stream.current = attached;
-          // The view in use (the focused pane, in a focused window) was the active viewer before the drop; a FOCUS frame
-          // makes it active again, so the core applies its size now. Other views send no FOCUS, which would report
-          // focus-in to their programs; their size applies when they are focused or resized.
-          const inUse = isFocused.current && document.hasFocus() && ready.element.contains(document.activeElement);
-          if (attachedBefore.current && inUse) attached.focus(true);
-          // A fit while the attach was in flight had no stream to resize.
-          if (ready.cols !== cols || ready.rows !== rows) attached.resize(ready.cols, ready.rows);
-          // Reattached after a reconnect: the replay redraws everything, so the old screen and scrollback go first.
-          if (attachedBefore.current) {
-            pacer.drop();
-            output.reset();
-            handle.current?.write(FULL_RESET);
-            // The reset leaves the scroller at the top, where the replay's rows climb past the reader (#1040).
-            endHold.current?.stop();
-            endHold.current = holdAtEnd(ready.element, () => pacer.busy);
-          }
-          attachedBefore.current = true;
-          const resets = new CursorResets();
-          const credit = (count: number): void => {
-            if (stream.current === attached) attached.consumed(count);
-          };
-          attached.onData((bytes) => {
-            pacer.push(bytes, credit);
-            // A cursor reset (the attach replay starts with one) means the default shape: the configured cursor-style.
-            if (resets.push(bytes))
-              pacer.push(encoder.encode(rendererOptions(terminalConfigStore.config).cursorSequence));
-          });
-          attached.onClose((close) => {
-            if (stream.current === attached) stream.current = null;
-            const end = terminalEnd(close);
-            onEndNow.current?.(address, end);
-            if (end === "lost") settle(null);
-          });
-          for (const data of pending.current.splice(0)) attached.write(data);
-          focusWhenFree(ready);
-          return attached;
-        },
-        (cause: unknown) => {
-          // The connection dropped mid-attach: the next one attaches again (below).
-          if (connection.closed || unmounted.current) return;
-          setOpening(false);
-          settle({ cause });
-        },
+    const attachOwn = () =>
+      connection.attach(
+        { terminal: address, cols, rows, history: HISTORY_LINES, display, ...resumed },
+        { autoCredit: false },
       );
+    viewAttach(connection, address, !attachedBefore.current, { cols, rows, display }, attachOwn).then(
+      ({ stream: attached, cols: askedCols, rows: askedRows }) => {
+        if (unmounted.current) return void attached.close();
+        setOpening(false);
+        // The program restarted while the line was down: what was typed for it must not reach the new one.
+        if (attachedBefore.current && attached.terminal.pid !== program.current) {
+          void attached.close();
+          if (pending.current.splice(0).length > 0) reportUnsent("restarted");
+          return undefined;
+        }
+        stream.current = attached;
+        // The view in use (the focused pane, in a focused window) was the active viewer before the drop; a FOCUS frame
+        // makes it active again, so the core applies its size now. Other views send no FOCUS, which would report
+        // focus-in to their programs; their size applies when they are focused or resized.
+        const inUse = isFocused.current && document.hasFocus() && ready.element.contains(document.activeElement);
+        if (attachedBefore.current && inUse) attached.focus(true);
+        // A fit while the attach was in flight had no stream to resize.
+        if (ready.cols !== askedCols || ready.rows !== askedRows) attached.resize(ready.cols, ready.rows);
+        // Reattached after a reconnect: the replay redraws everything, so the old screen and scrollback go first.
+        if (attachedBefore.current) {
+          pacer.drop();
+          output.reset();
+          handle.current?.write(FULL_RESET);
+          // The reset leaves the scroller at the top, where the replay's rows climb past the reader (#1040).
+          endHold.current?.stop();
+          endHold.current = holdAtEnd(ready.element, () => pacer.busy);
+        }
+        attachedBefore.current = true;
+        const resets = new CursorResets();
+        const credit = (count: number): void => {
+          if (stream.current === attached) attached.consumed(count);
+        };
+        attached.onData((bytes) => {
+          pacer.push(bytes, credit);
+          // A cursor reset (the attach replay starts with one) means the default shape: the configured cursor-style.
+          if (resets.push(bytes))
+            pacer.push(encoder.encode(rendererOptions(terminalConfigStore.config).cursorSequence));
+        });
+        attached.onClose((close) => {
+          if (stream.current === attached) stream.current = null;
+          const end = terminalEnd(close);
+          onEndNow.current?.(address, end);
+          if (end === "lost") settle(null);
+        });
+        for (const data of pending.current.splice(0)) attached.write(data);
+        focusWhenFree(ready);
+        return attached;
+      },
+      (cause: unknown) => {
+        // The connection dropped mid-attach: the next one attaches again (below).
+        if (connection.closed || unmounted.current) return;
+        setOpening(false);
+        settle({ cause });
+      },
+    );
   };
 
   useEffect(() => {

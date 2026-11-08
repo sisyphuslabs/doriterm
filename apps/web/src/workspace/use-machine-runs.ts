@@ -2,6 +2,8 @@ import type { HcConnection } from "@doriface/client";
 import type { TerminalRunParams } from "@doriface/protocol";
 import { useToastManager } from "@doriface/ui";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { readDisplay } from "../terminal/display.ts";
+import { openingCallsOf, runWithAttach } from "../terminal/opening-attach.ts";
 import { failureNotice, startTerminal } from "./start-on.ts";
 import { withoutClaim } from "./use-layout.ts";
 import type { TypeAhead } from "./use-type-ahead.ts";
@@ -40,7 +42,12 @@ export function useMachineRuns(
     (params: TerminalRunParams, place: (address: string) => void = opened, failed?: () => void): void => {
       const core = connection.hello.core.name;
       const hold = typeAhead.hold();
-      void startTerminal((run) => connection.call("terminal.run", run), params, core).then((started) => {
+      const display = readDisplay(document.documentElement);
+      void startTerminal(
+        (run) => runWithAttach(connection, openingCallsOf(connection), run, display),
+        params,
+        core,
+      ).then((started) => {
         if (!mounted.current) return undefined;
         if (started.ok) {
           // Placed either way; claimed (its view takes the keyboard) only while the keyboard is still the new terminal's.
