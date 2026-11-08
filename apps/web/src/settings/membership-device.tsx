@@ -1,20 +1,17 @@
 import { base64urlDecode } from "@doriface/crypto";
-import { meshRevokeCommand } from "@doriface/protocol";
-import { Button, Dialog, Notice, SettingRow } from "@doriface/ui";
+import type { HcConnection } from "@doriface/client";
+import { Button, Dialog, Notice } from "@doriface/ui";
 import { useState } from "react";
 import { connectionStore, useMeshMembers } from "../connection/store.ts";
 import { standalone } from "../device/install.ts";
 import { forgetMembership, useBrowserMembership } from "../mesh/membership-state.ts";
 import { leaveMembership } from "../mesh/roster-refresh.ts";
-import { Command } from "../mesh/mesh-rows.tsx";
+import { useMesh } from "../mesh/use-mesh.ts";
 import { fingerprintOf } from "../pair/fragment.ts";
-import { MeshDevice, MeshMachineList } from "./mesh-device.tsx";
+import { MeshDevice, MeshMachineList, sortedMachines } from "./mesh-device.tsx";
 import { useNavigate } from "@tanstack/react-router";
-
-function RevokeCommand({ name }: { readonly name: string }) {
-  const command = meshRevokeCommand(name);
-  return command === undefined ? null : <Command command={command} label={`Copy the command that removes ${name}`} />;
-}
+import { BrowserMemberList, RevokeCommand } from "./browser-members.tsx";
+import { useNow } from "../workspace/use-now.ts";
 
 export function RemovedMembership() {
   const [error, setError] = useState<string>();
@@ -116,6 +113,7 @@ export function MembershipMachines() {
   const mesh = useBrowserMembership();
   const entries = useMeshMembers();
   const navigate = useNavigate();
+  const observer = sortedMachines(entries).find((entry) => entry.state.phase === "open");
   return (
     <div className="flex flex-col gap-6">
       <MeshMachineList
@@ -127,19 +125,42 @@ export function MembershipMachines() {
           void navigate({ to: "/" });
         }}
       />
-      <section aria-labelledby="browser-members">
-        <h3 id="browser-members" className="text-lg font-semibold">
-          Browsers and phones
-        </h3>
-        {mesh.clients.map((client) => (
-          <SettingRow
-            key={client.signPub}
-            title={`${client.name}${client.signPub === mesh.self?.signPub ? " (this browser)" : ""}`}
-            description={<RevokeCommand name={client.name} />}
-            control={null}
-          />
-        ))}
-      </section>
+      {observer?.state.phase === "open" ? (
+        <ObservedBrowserMembers
+          key={observer.target.hostId}
+          connection={observer.state.connection}
+          observer={observer.target.hostName}
+        />
+      ) : (
+        <BrowserMemberList
+          clients={mesh.clients}
+          self={mesh.self?.signPub}
+          observer={undefined}
+          observations={undefined}
+          now={Date.now()}
+        />
+      )}
     </div>
+  );
+}
+
+function ObservedBrowserMembers({
+  connection,
+  observer,
+}: {
+  readonly connection: HcConnection;
+  readonly observer: string;
+}) {
+  const mesh = useBrowserMembership();
+  const { read } = useMesh(connection);
+  const now = useNow();
+  return (
+    <BrowserMemberList
+      clients={mesh.clients}
+      self={mesh.self?.signPub}
+      observer={observer}
+      observations={read.phase === "ready" ? read.status.members : undefined}
+      now={now}
+    />
   );
 }

@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { relayWebSocketUrl } from "@doriface/crypto";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Page } from "@playwright/test";
@@ -31,12 +32,20 @@ export interface FakeRelayHost {
  * at `toRelay` instead, path and query kept. The e2e web server is a release build, so this is how a spec reaches a
  * test relay without the page knowing it is not the production one.
  */
-export async function routeRelaySockets(page: Page, toRelay: string, pairUrl: string = toRelay): Promise<void> {
+export async function routeRelaySockets(
+  page: Page,
+  toRelay: string,
+  pairUrl: string = toRelay,
+  advertisedRelay?: string,
+): Promise<void> {
   const base = toRelay.replace(/\/+$/, "");
+  const addresses = advertisedRelay === undefined ? [FAKE_RELAY] : [FAKE_RELAY, relayWebSocketUrl(advertisedRelay)];
   // The code path is an HTTP lookup, not a socket: without this the page asks the production relay for a slot only the
   // test relay holds, and every typed code answers "no host is pairing with this code".
-  const httpRelay = FAKE_RELAY.replace(/^wss:/, "https:").replaceAll(".", "\\.");
-  await page.route(new RegExp(`^${httpRelay}/v1/pair/`), async (route) => {
+  const httpRelay = addresses
+    .map((address) => address.replace(/^ws:/, "http:").replace(/^wss:/, "https:").replaceAll(".", "\\."))
+    .join("|");
+  await page.route(new RegExp(`^(?:${httpRelay})/v1/pair/`), async (route) => {
     const target = new URL(route.request().url());
     const answer = await fetch(`${pairUrl}${target.pathname}`);
     // The body is decoded here, so the upstream framing headers would describe bytes this is not: keep the type and let
@@ -50,7 +59,8 @@ export async function routeRelaySockets(page: Page, toRelay: string, pairUrl: st
       body: await answer.text(),
     });
   });
-  await page.routeWebSocket(new RegExp(`^${FAKE_RELAY.replaceAll(".", "\\.")}/v1/client/`), (socket) => {
+  const relayPattern = addresses.map((address) => address.replaceAll(".", "\\.")).join("|");
+  await page.routeWebSocket(new RegExp(`^(?:${relayPattern})/v1/client/`), (socket) => {
     const target = new URL(socket.url());
     const relay = new WebSocket(`${base}${target.pathname}${target.search}`);
     relay.binaryType = "arraybuffer";
@@ -270,6 +280,7 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
     const bridge = first["bridge"];
     const directUrl = first["directUrl"];
     const pairUrl = first["pairUrl"];
+    const advertisedRelay = first["relayUrl"];
     if (typeof bridge !== "string") throw new Error("the fake relay host printed no bridge");
     if (typeof pairUrl !== "string") throw new Error("the fake relay host printed no pair lookup address");
     if (options.direct === true && (typeof directUrl !== "string" || directUrl === ""))
@@ -311,7 +322,8 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
         if (typeof joined !== "string") throw new Error("the fake relay host printed no joined machine");
         return joined;
       },
-      route: (page) => routeRelaySockets(page, bridge, pairUrl),
+      route: (page) =>
+        routeRelaySockets(page, bridge, pairUrl, typeof advertisedRelay === "string" ? advertisedRelay : undefined),
       stop,
     };
   } catch (error) {

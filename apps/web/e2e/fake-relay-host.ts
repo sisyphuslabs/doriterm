@@ -178,6 +178,7 @@ try {
   }
   say({
     bridge: bridge.url,
+    relayUrl: relay.url,
     pairUrl: `http://127.0.0.1:${pairServer.port}`,
     ...(process.argv.includes("--direct") ? { directUrl: host.e2ee?.lanUrls[0] ?? "" } : {}),
   });

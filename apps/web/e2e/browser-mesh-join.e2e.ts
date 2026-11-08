@@ -63,6 +63,9 @@ for (const phone of [false, true]) {
       await expect(page.getByRole("list", { name: "Machines", exact: true })).toContainText("studio");
       await expect(page.getByRole("list", { name: "Machines", exact: true })).toContainText("Online");
       await expect(page.getByText("This machine", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Last session on studio: just now", { exact: true })).toBeVisible({
+        timeout: 25_000,
+      });
       await page.screenshot({ path: info.outputPath("joined-machines.png"), fullPage: true });
       await page.goto("/");
       await expect(page.getByText("existing", { exact: true }).first()).toBeVisible({ timeout: 20_000 });
@@ -182,7 +185,8 @@ test("Safari hands an invite to an empty app partition, compares both screens, t
     await expect(installed.getByLabel("Join code")).toBeVisible();
     const code = await installed.getByLabel("Join code").textContent();
     if (code === null) throw new Error("the joining app did not show its code");
-    await expect(tab.getByLabel("Join code")).toHaveText(code);
+    // The host publishes status every 10 s; the reader can be one more 10 s tick behind it.
+    await expect(tab.getByLabel("Join code")).toHaveText(code, { timeout: 25_000 });
     await tab.getByRole("button", { name: "Approve", exact: true }).click();
     await expect(tab.getByText("Waiting for safari-app to confirm the code", { exact: true })).toBeVisible();
     expect(await savedMembership(installed)).toBeNull();
@@ -191,6 +195,7 @@ test("Safari hands an invite to an empty app partition, compares both screens, t
     await expect(
       tab.getByText("The home-screen app joined. Remove this tab from the mesh?", { exact: true }),
     ).toBeVisible();
+    await expect(tab.getByLabel("Join code")).toHaveCount(0);
     await expect(tab.getByRole("button", { name: "Keep", exact: true })).toBeVisible();
     await tab.screenshot({ path: info.outputPath("safari-cleanup.png"), fullPage: true });
     await tab.getByRole("button", { name: "Remove", exact: true }).click();

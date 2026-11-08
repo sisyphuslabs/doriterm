@@ -106,6 +106,7 @@ function InviteAnswer({ connection, install }: { readonly connection: HcConnecti
           that carried the link.
         </p>
       )}
+      <MeshBody connection={connection} attentionOnly />
     </div>
   );
 }
@@ -142,7 +143,6 @@ export function BrowserInvite({ install = false }: { readonly install?: boolean 
           <div className="flex flex-col gap-4">
             <InviteMachineChoice entries={online} selected={selected.target.hostId} onSelect={setChosen} />
             <InviteAnswer key={selected.target.hostId} connection={selected.state.connection} install={install} />
-            <MeshBody connection={selected.state.connection} attentionOnly />
           </div>
         ) : (
           <p>No machine is online to open an invite.</p>
