@@ -1,4 +1,4 @@
-import type { HcConnection, TerminalStream } from "@doriface/client";
+import type { TerminalStream } from "@doriface/client";
 import { cn } from "@doriface/ui";
 import { Terminal, type TerminalHandle, type WTerm } from "@wterm/react";
 import { type FocusEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -16,9 +16,9 @@ import { useBehaviors, type PendingPaste } from "./use-behaviors.ts";
 import { useFocusAfterSelect } from "./use-focus-after-select.ts";
 import { useLongPressSelect } from "./use-long-press-select.ts";
 import { useSelectionCells } from "./use-selection-cells.ts";
-import type { TerminalEnd } from "./terminal-end.ts";
 import { Ended } from "./ended.tsx";
-import { type TerminalPort, useTerminalPort } from "./terminal-port.ts";
+import { useTerminalPort } from "./terminal-port.ts";
+import type { TerminalViewProps } from "./terminal-view-props.ts";
 import { Unopened } from "./unopened.tsx";
 import { JumpToBottom, TerminalScrollbar, useTerminalScroll } from "./terminal-scroll.tsx";
 import { QuietBusy } from "./quiet-busy.tsx";
@@ -35,44 +35,6 @@ import { useTerminalInput } from "./use-terminal-input.ts";
 import { usePaneVisibility } from "./use-pane-visibility.ts";
 import { useTerminalAttach } from "./use-terminal-attach.ts";
 import { useKeyboardClaim } from "./use-keyboard-claim.ts";
-
-/** Typed text, or the bytes a bound key sends. */
-export type TerminalInput = string | Uint8Array;
-
-export interface TerminalViewProps {
-  readonly connection: HcConnection;
-  readonly address: string;
-  /** The program this view was opened for; views are keyed by it, so a restarted program gets a new view. */
-  readonly pid: number | null;
-  /** Whether the core lists the terminal as live; a view waiting for a restart ends when it stops being live. */
-  readonly live: boolean;
-  readonly focused: boolean;
-  /**
-   * This page asked for this terminal's pane (opened, split, picked it): starting, it takes the keyboard from wherever
-   * it is. Unset where no other device edits what is shown (the phone shows one terminal at a time). Not asked for (a
-   * view another device's layout edit mounts again, #332), it takes the keyboard only from nowhere.
-   */
-  readonly claimed?: boolean;
-  readonly label: string;
-  readonly className?: string;
-  /** Rewrites typed input before it is sent (latched phone modifiers); an empty result sends nothing. */
-  readonly transformInput?: (data: string) => string;
-  /**
-   * A composition is typed as it starts instead of when the input method ends it, through `transformInput`: set while a
-   * phone modifier is latched, so ctrl and a Korean keyboard's ㅊ is ^C at once rather than waiting for the next jamo.
-   */
-  readonly typesComposition?: boolean;
-  /** The view's port for keys pressed outside it (the phone's keys bar); null once it unmounts. */
-  readonly onPort?: (port: TerminalPort | null) => void;
-  /** Every time the stream ends, with why; see TerminalEnd. */
-  readonly onEnd?: (address: string, end: TerminalEnd) => void;
-  /** The action of a view whose program had ended before it attached, which reports it `finished` (default Close tab). */
-  readonly closeLabel?: string;
-  /** Once the view shows that its program had ended before it attached: there is no terminal left to type into. */
-  readonly onEnded?: () => void;
-  /** A CSS length the jump-to-bottom button keeps above the terminal's bottom, for controls floating over it. */
-  readonly jumpClearance?: string;
-}
 
 /**
  * Gives a focus event's focus back to the element that had it, unless that sits in a pane no longer focused (focus

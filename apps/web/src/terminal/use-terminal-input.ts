@@ -5,7 +5,7 @@ import { type RefObject, useCallback, useEffect, useRef } from "react";
 import { pasteInto } from "./terminal-port.ts";
 import { putFiles, quotePaths } from "./paste-files.ts";
 import { scrollTerminal } from "./terminal-scroll.tsx";
-import type { TerminalInput } from "./terminal-view.tsx";
+import type { TerminalInput } from "./terminal-view-props.ts";
 
 export interface TerminalInputPath {
   /** Input typed while no stream is open (attaching, or the connection dropped), sent to the next stream in order. */
