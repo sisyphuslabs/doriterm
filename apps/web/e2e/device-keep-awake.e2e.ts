@@ -87,6 +87,9 @@ test("keep the screen awake survives a reload and holds the lock only while a te
   await page.getByRole("link", { name: "Settings" }).first().click();
   await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
   expect((await wake(page)).active).toBe(1);
+  // Held, not only at the moment the dialog opened: still held once the next frames have drawn.
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  expect((await wake(page)).active).toBe(1);
   // On a screen too short for the dialog Settings is a sheet over the whole page, and no terminal shows.
   await page.setViewportSize({ width: 1280, height: 560 });
   await expect(page.getByRole("dialog", { name: "Settings" })).toHaveCount(0);

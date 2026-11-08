@@ -1,5 +1,5 @@
 import { base64urlDecode, base64urlEncode, CloseCode, fingerprintOf, type HostIdentity } from "@doriface/crypto";
-import { type CardBody, checkName, MAX_MESH_MEMBERS, type Signed, verifyCard } from "@doriface/mesh";
+import { type CardBody, checkName, type Signed, verifyCard } from "@doriface/mesh";
 import { type PlanPolicy, requireWithin } from "@doriface/policy";
 import type { MeshStore, OwnCard } from "../state/mesh.ts";
 import type { AuthorizeIndex } from "./authorize-index.ts";
@@ -79,7 +79,7 @@ function sendWelcome(lines: MeshLines, records: readonly Signed[], meshId: strin
 /**
  * Section 4.4 step 4, in one mesh.json transaction: admits the card unless its key became a member while the join
  * waited (then the welcome only, step 3), refuses what step 3 refuses as it stands now (a twin, a member with another
- * key) and a mesh that filled up meanwhile, and returns the records to welcome.
+ * key) and a plan limit reached meanwhile, and returns the records to welcome.
  */
 function admit(deps: InviteDeps, meshId: string, inviter: string, card: CardBody, signed: Signed): readonly Signed[] {
   const refusal = admissionRefusal(card.kind, deps.formatReady?.() === true);
@@ -90,7 +90,6 @@ function admit(deps: InviteDeps, meshId: string, inviter: string, card: CardBody
     const joining = index?.memberCount ?? 0;
     const room = requireWithin(deps.policy, "machines", joining);
     if (!room.allowed) throw new JoinRefused(room.message);
-    if (joining >= MAX_MESH_MEMBERS) throw new JoinRefused("the mesh is full");
     checkFloor(tx.records, inviter, deps.floor());
     tx.sign(deps.identity, (n, prev) => ({
       v: 2,
@@ -131,22 +130,19 @@ async function decision(lines: MeshLines, deps: InviteDeps, join: PendingJoin): 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 const ANOTHER_KEY = "this host is a member with another Noise key: rekey it, or revoke and re-admit it";
-const OVER_CAP = "this host is a member past the 12-member cap: it is not dialed and cannot sign";
 const KEY_HELD = "this Noise key is another mesh member's";
 
 /**
  * Section 4.4 step 3 against the stored set: true for a member presenting the Noise key the mesh holds for it (the
- * welcome only). Refuses a member with another Noise key or past the cap, and a new signing key presenting a Noise key
- * that another signing key's card names (#90): a twin of a current member would make the admit void (type_ok) and
- * every later record of this host with it, and a twin of a revoked, over-cap or superseded key authorizes nobody.
+ * welcome only). Refuses a member with another Noise key, and a new signing key presenting a Noise key that another
+ * signing key's card names (#90): a twin of a current member would make the admit void (type_ok) and every later
+ * record of this host with it, and a twin of a revoked or superseded key authorizes nobody.
  */
 function isRejoin(index: AuthorizeIndex | undefined, card: CardBody): boolean {
   const holder = index?.member(card.noisePub);
   if (holder?.signPub === card.signPub) return true;
   if (holder !== undefined) throw new JoinRefused(KEY_HELD);
-  if (index?.isMember(card.signPub) === true) {
-    throw new JoinRefused(index.deviceRefusal(card.noisePub) === "over-cap mesh member" ? OVER_CAP : ANOTHER_KEY);
-  }
+  if (index?.isMember(card.signPub) === true) throw new JoinRefused(ANOTHER_KEY);
   if (index?.namedByAnother(card.noisePub, card.signPub) === true) throw new JoinRefused(KEY_HELD);
   return false;
 }
@@ -171,7 +167,6 @@ export async function serveJoin(lines: MeshLines, peerStatic: Uint8Array, deps: 
       lines.detach();
       return card;
     }
-    if ((index?.memberCount ?? 0) >= MAX_MESH_MEMBERS) throw new JoinRefused("the mesh is full");
     const room = requireWithin(deps.policy, "machines", index?.memberCount ?? 0);
     if (!room.allowed) throw new JoinRefused(room.message);
     const fingerprint = fingerprintOf(base64urlDecode(card.noisePub));

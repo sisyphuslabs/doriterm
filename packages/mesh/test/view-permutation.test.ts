@@ -20,7 +20,7 @@ const shuffled = <T>(r: Rng, items: readonly T[]): T[] =>
 const sorted = <T>(m: ReadonlyMap<string, T>): [string, T][] => [...m].toSorted();
 const shape = (records: readonly Rec[]): string => {
   const v = viewOfRecords(records);
-  return JSON.stringify([v.members, v.overCap, v.revoked, sorted(v.noise), sorted(v.admitter), [...v.eff].toSorted()]);
+  return JSON.stringify([v.members, v.revoked, sorted(v.noise), sorted(v.admitter), [...v.eff].toSorted()]);
 };
 
 function adversarialDag(r: Rng): readonly Rec[] {

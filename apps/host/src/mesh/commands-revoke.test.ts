@@ -55,7 +55,7 @@ describe("mesh-revoke on the running host (design 6.1, 6.2)", () => {
   });
 
   test(
-    "--compromised on a member that admitted an over-cap key revokes that key too, so it never becomes a member",
+    "--compromised on a member that admitted the thirteenth member revokes that key too",
     async () => {
       const f = machine("f"),
         a = machine("a"),
@@ -69,7 +69,6 @@ describe("mesh-revoke on the running host (design 6.1, 6.2)", () => {
       expect(reply?.subjects.map((subject) => subject.hostId)).toEqual([a.identity.hostId, z.identity.hostId]);
       const view = viewOf(benchRecords(it));
       expect(view.members.has(signPubOf(z))).toBe(false);
-      expect(view.overCap.has(signPubOf(z))).toBe(false);
       expect(view.revoked.has(signPubOf(z))).toBe(true);
     },
     LARGE_MESH_MS,

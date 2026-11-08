@@ -49,6 +49,38 @@ test("a tapped notice opens its pane, in an open window and in a fresh one", asy
   await expect(fresh).toHaveURL(/\/$/);
 });
 
+test("on a phone a tapped notice switches the open terminal in place, so one Back reaches the list (#999)", async ({
+  page,
+  context,
+}) => {
+  const service = suite.service();
+  await turnOn(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+  const agent = finishingAgent("push-phone", suite.endAfterTest);
+  // Another terminal is open when the notice is tapped: the tap is a switch, which replaces that terminal's entry.
+  const open = finishingAgent("push-phone-open", suite.endAfterTest);
+  const openRow = page.getByRole("button", { name: /push-phone-open/ }).first();
+  await expect(openRow).toBeVisible({ timeout: 20_000 });
+  await openRow.click();
+  await expect(page.locator(`[data-terminal="${open}"]`)).toBeVisible({ timeout: 15_000 });
+  press(agent);
+  const posted = await service.next();
+  const entries = () => page.evaluate(() => history.length);
+  const before = await entries();
+  const worker = await serviceWorker(context);
+  await deliverPush(context, JSON.stringify(posted.notice));
+  await tapNotification(worker, String(posted.notice["n"]), "");
+  await expect(page.locator(`[data-terminal="${agent}"]`)).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => new URL(page.url()).searchParams.get("t")).not.toBeNull();
+  expect(await entries()).toBe(before);
+
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
+  await expect.poll(() => new URL(page.url()).searchParams.get("t")).toBeNull();
+});
+
 test("no notice about the pane this device shows; the other panes still send theirs", async ({ page }) => {
   const service = suite.service();
   await turnOn(page);

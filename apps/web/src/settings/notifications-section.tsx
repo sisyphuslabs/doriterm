@@ -6,6 +6,7 @@ import { useConnection } from "../connection/store.ts";
 import { type DesktopNotices, desktopNotices } from "../push/desktop-notices.ts";
 import { pushSettings, type PushView } from "../push/push-settings.ts";
 import { idOfMachine } from "../workspace/model.ts";
+import { noticeControls } from "./notice-controls.ts";
 import { useMachines } from "../workspace/use-machines.ts";
 
 const NO_TERMINALS: readonly Terminal[] = [];
@@ -140,7 +141,8 @@ export function NotificationsSection() {
     );
   }
   const blocked = view.permission === "denied";
-  const off = !view.on || view.busy;
+  const controls = noticeControls(view, desktop);
+  const off = !controls.editable;
   const setEvent = (event: NoticeEvent, on: boolean): void =>
     void settings.setPrefs({ ...view.prefs, events: { ...view.prefs.events, [event]: on } });
   return (
@@ -150,24 +152,29 @@ export function NotificationsSection() {
           title="Notifications on this device"
           description={statusText(view)}
           control={
-            desktop && blocked ? (
-              <Button loading={view.busy} disabled={view.busy} onClick={() => void settings.load()}>
-                Check again
-              </Button>
-            ) : view.on ? (
-              <Button loading={view.busy} disabled={view.busy} onClick={() => void settings.turnOff()}>
-                Turn off
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                loading={view.busy}
-                disabled={view.busy || blocked}
-                onClick={() => void settings.turnOn()}
-              >
-                Turn on
-              </Button>
-            )
+            <div className="flex gap-2">
+              {controls.actions.map((action) =>
+                action === "check-again" ? (
+                  <Button key={action} loading={view.busy} disabled={view.busy} onClick={() => void settings.load()}>
+                    Check again
+                  </Button>
+                ) : action === "turn-off" ? (
+                  <Button key={action} loading={view.busy} disabled={view.busy} onClick={() => void settings.turnOff()}>
+                    Turn off
+                  </Button>
+                ) : (
+                  <Button
+                    key={action}
+                    variant="primary"
+                    loading={view.busy}
+                    disabled={controls.turnOnDisabled}
+                    onClick={() => void settings.turnOn()}
+                  >
+                    Turn on
+                  </Button>
+                ),
+              )}
+            </div>
           }
         />
         <SettingRow

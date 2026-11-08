@@ -36,12 +36,16 @@ for (const colorScheme of ["light", "dark"] as const) {
       await page.keyboard.press("Enter");
       await page.getByRole("button", { name: "Close settings" }).first().click();
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-      // The workspace is kept, so the tab opened above is still the one in view at 390: the phone opens straight onto it. Its
-      // agent list is a tap away, and that list is what a phone uses to reach any other terminal — this test's one.
+      // The phone's open terminal lives in the route (`/?t=<key>`, #975), and the desktop opened this one with no `?t=`, so at
+      // 390 the phone opens on its agent list: the list is what a phone uses to reach a terminal — this test's one.
       if (width === 390) {
-        const back = page.getByRole("button", { name: "Back to agents" });
-        if (await back.isVisible()) await back.click();
-        const agents = page.locator("button:has([data-floor='name']):has(time)");
+        // Only the phone shell renders this container (phone-shell.tsx, ScrollArea slot="agents-list" -> data-slot), so the
+        // wide sidebar's identical AgentRows can never satisfy the count (#527: they did, before the phone had mounted).
+        const agents = page.locator("[data-slot='agents-list'] button:has([data-floor='name']):has(time)");
+        // Wait for the narrow layout's own switch: the query apps/web/src/workspace/use-narrow.ts:3 reads, which commits the
+        // phone tree a frame or more after setViewportSize resolves (and after Close settings' history.back() lands). The old
+        // isVisible() read the screen before that commit, skipped the click and left the phone on the terminal (#527).
+        await page.waitForFunction(() => matchMedia("(max-width: 767.98px)").matches);
         await expect(agents, "the phone lists the one terminal this test opened").toHaveCount(1, { timeout: 30_000 });
         await agents.click();
       }

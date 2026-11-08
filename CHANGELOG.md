@@ -2,6 +2,137 @@
 
 ## Unreleased
 
+## v0.1.10 - 2026-11-08
+
+### Terminal
+
+- A terminal that reattaches after a reconnect holds the view at the end while the replay streams in, instead of the replay's rows climbing past the reader; scrolling up during the replay still leaves the view where it is. (#1041)
+- Find in a terminal: Cmd+F (Ctrl+Shift+F elsewhere) or the palette opens a find bar that searches the screen and scrollback, marks every match, steps with Enter and Shift+Enter, and keeps each terminal's query (#732)
+- A Korean syllable an input method commits as plain text, with no composition before it, reaches the program as soon as it is committed instead of waiting in the input until the next key. The Korean keyboards that build each syllable in the field (iPhone, iPad, Safari on a Mac) still keep the syllable being typed until it is finished. (#1104)
+
+### Keys
+
+- Cmd+Shift+R (Ctrl+Shift+R on Linux and Windows) renames the tab, beside F2; the desktop app's View > Force Reload no longer takes it. (#702)
+- The default keys follow herdr-app's own key files, and `docs/keymap-herdr-app.md` lists every herdr-app key with what Doriterm does with it. Keys you changed in Settings > Keybindings stay as you set them. Changed defaults: (#702)
+  - macOS: Cmd+W closes the tab (Cmd+Alt+W still does) and Cmd+Shift+W the focused pane; the desktop app's File > Close Window has no key. Cmd+N starts a new space.
+  - Linux and Windows: Ctrl+1-9 select a tab and Alt+1-9 a space (swapped from before). Ctrl+Shift+PgUp / PgDn step through the spaces, so moving a tab is Ctrl+Alt+Shift+PgUp / PgDn. Alt+arrows and Alt+H/J/K/L move focus between panes and Alt+Shift+H/J/K/L swap them. Ctrl+Shift+N starts a new space.
+- New space and Rename tab are in the command palette and the desktop app's Shell menu. (#702)
+- Cmd+/ (Ctrl+? on Linux and Windows) opens a Keyboard shortcuts dialog listing your own keys, grouped as in Settings > Keybindings; the same chord closes it, and the command palette lists it too. (#733)
+
+### Machine mesh
+
+- A mesh takes any number of machines: the 12-member cap is gone, so adding a thirteenth machine no longer fails and mesh status no longer reports a limit. (#814)
+
+### Connection and offline wording
+
+- Connecting to a machine, and reconnecting after a drop or a wake, takes one round trip less: the first terminal call rides in the encrypted handshake and its answer comes back with the host's reply, about 0.2 s sooner on a far machine. The host acts on nothing else before the keys are confirmed. (#1271)
+
+### Host install
+
+- The setup tool's `verify`, `invite`, `join`, `pair` and `uninstall` use the same herdr-core `install` chose: an older or unrelated `hc` earlier in `~/.local/bin` is skipped instead of used. (#821)
+
+### Website
+
+- A link to app.doriterm.com now previews with the same card as doriterm.com. (#1341)
+
+## v0.1.9 - 2026-11-08
+
+### Terminal
+
+- A terminal that goes quiet no longer jumps to the top of its history and scrolls back down: a direct connection to the host (the desktop app's own host included) now pings it every 30 s, so the host stops closing the idle session after 90 s and the terminal no longer reattaches. (#1040)
+- A pane out of view no longer fetches its terminal's replay when the host ends the stream while the program still runs: it re-attaches once it is shown, and a program that ended in the meantime closes its tab then. (#1092)
+- A syllable an input method is still composing is drawn as cells at the cursor, as Ghostty draws it: a wide one over two cells at the size it will have once committed (it no longer jumps on commit), underlined over the cells it covers, shifted left at the end of the row, following the cursor if output moves it, and with no cursor drawn meanwhile. (#674)
+
+### Workspace
+
+- Closing a tab while its layout could not be saved says "The layout was not saved" once, and the tab stays in view: the
+  ended session's pane is no longer dropped a second time while the page has not heard the session end yet. (#1328)
+- Right-clicking an agent or a space on the narrowed sidebar (the icon rail), or the title bar of a pane in a split,
+  opens its menu with Rename, as a row on the full sidebar does. (#1348)
+
+## v0.1.8 - 2026-11-07
+
+### Terminal
+
+- Ctrl+C, Ctrl+A and every other Ctrl+letter chord pressed in the middle of a Korean syllable reach the program: the syllable is committed first, then the chord's control byte, in Chromium's order (the key before the input method's commit) and in Safari's (the commit before the key). Another input method's Ctrl keys, such as Japanese conversion, stay with it. (#748)
+- A program that left a synchronized update open (killed mid-frame) no longer keeps the screen frozen while a split divider is dragged: the screen paints one second after the update opened, however many resizes happen meanwhile. (#853)
+- Many panes drawing output at once render as fast as in v0.1.2 again: a pane's link menu and held-selection menu no longer run while closed, which at 50 panes had raised the time the page spent in long tasks about threefold. (#842)
+
+### Machine mesh
+
+- An older app or `doriface-host mesh status` keeps showing the mesh of a host that writes a newer status document: a field it does not know is dropped instead of making it say the host is in no mesh. (#728)
+- When the desktop app restarts this computer's own host, only that connection is dialled again: the sessions open on your other machines stay open instead of closing and reconnecting. (#1140)
+
+### Joining a mesh
+
+- A machine that joins through **Add a machine** while the host's own line to its core is reconnecting is shown as joined once the line is back, instead of the offer reading expired, and a computer clock set back during the offer no longer leaves its link up past the offer's end. (#834)
+
+### Settings
+
+- Changing a field under Advanced connection no longer brings back the machine that was shown when Settings opened: only the changed field is saved, onto the current settings. (#1006)
+
+### Notifications
+
+- A gateway that is not an address no longer leaves notifications silently behind: Settings, Notifications says the move to the new host failed, and notifications stay with the host they were on. (#890)
+
+### Connection and offline wording
+
+- When the app wakes and the host does not answer its check in time, the reconnect note says that check went unanswered instead of claiming the host sent no heartbeat. (#779)
+
+### Host install
+
+- `install.sh` registers the host with the paths you gave it: a `$`, a quote or a backslash in a path no longer changes it in the systemd unit, and a relative `--bin-dir` or `DORIFACE_HOST_STATE_DIR` is written as the absolute path it named when you ran the installer. (#834)
+- The setup tool refuses a `--timeout` that is not a positive number of seconds before it changes anything, instead of waiting for the relay forever. (#821)
+
+### Pairing
+
+- A broken link made by `doriface-host mesh pair` says to run `doriface-host mesh pair` again, not `doriface-host pair`, and a typed code the host refuses says it may be a mesh invite, which `doriface-host mesh join` takes, instead of only that it was used. (#727)
+
+## v0.1.7 - 2026-11-07
+
+### Workspace
+
+- While the sidebar filter holds a query, a machine's header offers no fold button, since every machine shows its matches; its folded state is as it was once the filter is cleared. (#850)
+- An added machine's spaces and tabs keep their branch and diff facts while its mesh line redials, instead of losing them for a moment. (#913)
+- When the host cannot answer with its terminals at first, the agents list says so with Try again, on a phone and in the desktop sidebar, instead of loading forever. (#819)
+- A menu opened right after choosing from New tab's menu stays open and keeps the keyboard: the New tab menu used to hand the keyboard back to the new terminal as it finished closing, which could shut the menu just opened. (#1014)
+
+### Joining a mesh
+
+- `doriface-host mesh join --from-file <file>` reads the join link or code from a file, so it is never on the command line where other users of the machine can read it, and the setup tool's `join --from` now uses it. (#821)
+
+### Web app
+
+- An installed web app keeps one copy of the terminal's icon font: when a new version takes over, it drops the copies earlier versions left (about 1.2 MB each). (#967)
+
+### Settings
+
+- The Connect a machine tab draws a plug instead of a server, matching what it offers, and the Pair a device offer follows a change of connection mode on every screen that shows it. (#813)
+
+### Website
+
+- The doriterm.com landing page has a Pause animations button beside the theme switch: it stops the mesh scenes, the relay pipe and the pairing loop on their still frames, and the page remembers it. (#928)
+- On the doriterm.com landing page, starting the Revoke scene again shows cloud-box at work until its revoke record lands, instead of an empty machine that reads working. (#936)
+- The doriterm.com link preview shows the app's whole agent list: its third idle agent is no longer cut off by the sidebar's Settings footer. (#954)
+
+### Reliability
+
+- A pull request records its changelog line in a file of its own under `changes/unreleased/`, and the release writes those files into its notes, so open pull requests no longer conflict on CHANGELOG.md each time one merges. (#1261)
+
+### Answering agents from the card
+
+- A command, diff, new file, plan or question text that itself draws something shaped like a dialog no longer reads as the dialog: the card answers the dialog drawn at the bottom of the screen, with that dialog's own rows, and presses nothing when a row on the live screen does not say what the card showed for it. Where Codex's screen cannot tell the dialog from the agent's own text, the card offers nothing and the agent is answered in the terminal. (#776)
+
+### Host
+
+- `doriface-host --version` prints the host's version, and `/healthz` and the start-up line report the release the host was built from instead of 0.1.0 on every release. (#1039)
+
+### First run
+
+- The first-run guide's last step, "See it in the agents list", completes when the terminal you started or opened on this device is in the list, not on any terminal the host already had, and a screen reader hears each step complete and "You're set". (#834)
+
+## v0.1.6 - 2026-11-07
+
 ### Mesh
 
 - When a member's mesh line replaces an earlier ssh or command entry for the same machine, `mesh status` still names the replaced entry if the line was added on a later try, and a removal herdr refuses is retried with its reason shown instead of only logged. (#728)
@@ -9,17 +140,42 @@
 
 ### Terminal
 
+- Closing a pane or a tab takes it off the screen at once, also on a machine reached through the relay: the program still ends behind it, and if it does not, a notice says so and the session keeps running. Before, the tab stayed until the host had answered two round trips, a second or more on a far machine. (#1271)
 - A file pasted with the phone's Paste key while a Korean syllable is still composing lands after that syllable, as pasted text does, and a file refused for size says a size visibly above the 8 MB limit. (#827)
 - On an iPhone or iPad Korean keyboard, a syllable still being typed is sent before Cmd+Backspace kills the line, so it no longer reaches the program after the kill, and a paste a browser inserts with no paste event sends only the pasted text. (#978, #988)
+
+### Workspace
+
+- Terminals a space takes in as tabs line up in the order they started: `t10` no longer comes before `t9`, so a terminal opened from the sidebar shows in the tab it started in. (#1269)
+- A machine renamed while its layout was still loading keeps every tab's terminal: a tab that opened before this screen heard the new name no longer stays on "This terminal didn't open", and attaches at the machine's new name instead. (#852)
 
 ### Notifications
 
 - The push bridge for the phone apps answers 429 once one device token gets more than 120 pushes a minute, so someone who learns a token cannot make that phone show alerts without bound. (#830)
 - In the desktop app, Send test passes only when an agent's notification would: it waits for the app to follow the agents, then fails with the reason when notifications are off, the agents cannot be followed, every event is turned off, or this computer is muted, instead of showing a test that proves none of that. (#796)
+- When this computer refuses Doriterm's notifications while they are on, Settings > Notifications shows Turn off beside Check again, and Send test and the event and machine switches wait until notifications are allowed. (#796)
 
 ### Settings
 
 - A disabled field, number stepper, switch or menu item is dimmed with its own colours instead of fading as a whole, so its text stays readable and a switch still shows whether it is on, in every theme. (#1034)
+- In a browser, the text-size keys Settings > Appearance shows step the terminals' text while Settings is open, as they do in the desktop app, and resizing the window between the Settings dialog and the full-screen sheet keeps the open section and a shortcut being recorded. (#859)
+- With Settings open as a dialog, an agent in the pane behind it notifies again when it finishes or asks for input: the desktop app's notification and the host's web push both held back for that pane as if it were being watched, since the dialog leaves the workspace drawn behind it. (#993)
+
+### Pairing
+
+- Typing a pairing code looks its host up as soon as the first three characters are in, so the key check shows the moment the code is complete instead of most of a second later on a far relay; Pair asks the relay nothing more. (#1271)
+
+### Pairing
+
+- After you confirm a pairing, the workspace opens on the session the pairing just proved instead of reconnecting through the relay, so a newly added machine shows its terminals about a round trip and a handshake sooner (most of a second on a far machine). (#1271)
+
+### Settings
+
+- Settings is one place per question: this device, your machines, and pairing sit on their own screens with the same names everywhere, so each machine shows whether this host has a session open to it now, and this device shows how it reaches the host. (#772)
+
+### Web app
+
+- A disabled button reads as a labelled control instead of an empty grey pill, such as Pair before a code is typed. It is dimmed with its own quiet fill and a grey label of at least 4.5:1 in both themes, where it used to fade the whole button, label included. (#1031)
 
 ## v0.1.5 - 2026-11-07
 
@@ -42,7 +198,6 @@
 ### Workspace
 
 - An agent row shows how far its own todo list has got, as done/total (2/4), read from the list the agent draws: Claude Code's task list when its task tools are on (a long list's folded line counts too), and omp's TODO list with its phases added up. An agent with no list, or one that draws none, shows nothing, and while it waits on a question the row keeps its last count. (#673)
-- A machine renamed while its layout was still loading keeps every tab's terminal: a tab that opened before this screen heard the new name no longer stays on "This terminal didn't open", and attaches at the machine's new name instead. (#852)
 - The sidebar has a filter: the funnel button, Cmd+Alt+F on macOS or Ctrl+Alt+F elsewhere opens a field that narrows machines, spaces and agents to the rows whose shown labels match what is typed (letters in order, any case). The selected space and agent stay as context, a folded machine opens to show its matches, and Escape clears the query, then closes the field and returns to the terminal. (#673)
 
 ### Phone
@@ -60,7 +215,6 @@
 - Your machines lists every machine this app holds its own connection to, each with that machine's own state, so a machine that is away is one row saying so. Each machine has its own connection, which means the others stay usable while one is gone. (#942)
 - A link to app.doriterm.com now unfurls with a preview card: the app as captured, with "Open Doriterm in your browser." (#963)
 - A machine's terminal count and a space's tab count stay on one line however many digits they have: on a phone, "19" no longer breaks into "1" above "9" in the Spaces list. (#899)
-- A disabled button reads as a labelled control instead of an empty grey pill, such as Pair before a code is typed. It is dimmed with its own quiet fill and a grey label of at least 4.5:1 in both themes, where it used to fade the whole button, label included. (#1031)
 
 ### Korean input after selecting text
 
@@ -73,7 +227,6 @@
 - Settings on a phone no longer shows the agent list's Pin and More buttons drawn over its sections: nothing of the workspace kept behind Settings is drawn while it is open. (#898)
 - On a phone, the Settings tab strip's arrows that page to more sections are a full 44 pt tap each. (#900)
 - With Settings open as a dialog, the band over the window's buttons still moves the desktop window, even when Settings is the first screen and the workspace behind has drawn nothing yet. (#969)
-- With Settings open as a dialog, an agent in the pane behind it notifies again when it finishes or asks for input: the desktop app's notification and the host's web push both held back for that pane as if it were being watched, since the dialog leaves the workspace drawn behind it. (#993)
 
 ### Pairing from a phone
 

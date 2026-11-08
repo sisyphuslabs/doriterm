@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { fitAgents } from "./capture-fit-agents.ts";
 import { BAD_LINK, fakeRelay, MESH_LINK, PAIR_CODE, PAIR_LINK } from "./capture-relay.ts";
 import { expect } from "./fixtures.ts";
 import { agentRow, endAgent, startAgent, startShell } from "./agents.ts";
@@ -187,6 +188,7 @@ export const SHOTS: readonly Shot[] = [
       await expect(
         page.locator("[data-terminal]:visible").filter({ has: page.locator(".term-row", { hasText: /\S/ }) }),
       ).toHaveCount(2);
+      await fitAgents(page);
     },
   },
   {

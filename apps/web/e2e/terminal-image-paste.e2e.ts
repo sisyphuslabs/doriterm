@@ -4,6 +4,7 @@ import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import { newOn, reconnect } from "./machine-switch.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
+import { pagePlatform, pressWithCommand, triggersFor } from "./platform-keys.ts";
 import { machineConnected } from "./sidebar-seed.ts";
 
 // #701: an image pasted or dropped into a terminal goes to the terminal's machine as a file (`terminal.put`), and its
@@ -37,13 +38,10 @@ const copyImage = (page: Page, png: string): Promise<void> =>
     await navigator.clipboard.write([new ClipboardItem({ "image/png": new Blob([bytes], { type: "image/png" }) })]);
   }, png);
 
-/** Ctrl+Shift+V as Chrome on Linux delivers it: a keydown carrying the browser's own `paste` command (see #510). */
+/** The platform's paste chord as the browser delivers it: a keydown carrying its own `paste` command (#510, #862). */
 async function pressPaste(page: Page): Promise<void> {
-  const cdp = await page.context().newCDPSession(page);
-  const key = { modifiers: 2 | 8, key: "V", code: "KeyV", windowsVirtualKeyCode: 86 };
-  await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...key, commands: ["paste"] });
-  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", ...key });
-  await cdp.detach();
+  const [chord = ""] = triggersFor(await pagePlatform(page), "terminal.paste");
+  await pressWithCommand(page, chord, "paste");
 }
 
 /** Fires a paste or a drop on the terminal carrying one PNG-typed file `name` with the base64 bytes `png`. */
