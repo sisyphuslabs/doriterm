@@ -90,7 +90,9 @@ export function SettingsRoute() {
     />
   );
   const nothing =
-    shown.length === 0 ? <p className="px-2 py-1 text-prose text-muted-foreground">No setting matches "{query}"</p> : null;
+    shown.length === 0 ? (
+      <p className="px-2 py-1 text-prose text-muted-foreground">No setting matches "{query}"</p>
+    ) : null;
   const mesh = useBrowserMembership();
   const joinedBrowser = mesh.phase !== "empty" && desktopBridge() === null;
   const close = useCloseSettings();
