@@ -104,7 +104,8 @@ export function CommandPalette({
         )}
       </div>
       {counts.length === 0 ? null : (
-        <div className="border-b border-border px-3 py-2">
+        // A phone is narrower than every state at once: the row scrolls sideways rather than spilling past the dialog.
+        <div className="overflow-x-auto border-b border-border px-3 py-2">
           <SegmentedControl<AgentStatus | typeof ALL>
             label="Show agents"
             value={status ?? ALL}

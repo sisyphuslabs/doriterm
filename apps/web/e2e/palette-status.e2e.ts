@@ -12,7 +12,7 @@ endOwnTerminals();
 const SPACE = "pal1454";
 const dialog = (page: Page) => page.getByRole("dialog", { name: "Command palette" });
 const states = (page: Page) => dialog(page).getByRole("group", { name: "Show agents" });
-const option = (page: Page, name: string) => dialog(page).getByRole("option", { name, exact: true });
+const option = (page: Page, name: string) => dialog(page).getByRole("option").filter({ hasText: name });
 
 function startShell(name: string): string {
   const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${SPACE}`, "--", "env", "PS1=$ ", "sh"]);
