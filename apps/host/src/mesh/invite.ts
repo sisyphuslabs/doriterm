@@ -30,6 +30,8 @@ export interface InviteDeps {
   readonly policy: PlanPolicy;
   /** Whether every machine left in the mesh has shown it reads the format a client admission needs (design of #942). */
   readonly formatReady?: (() => boolean) | undefined;
+  /** Announces a committed client admission even if its original transport has disconnected. */
+  readonly changed?: (() => void) | undefined;
   readonly log: (line: string) => void;
 }
 
@@ -80,7 +82,7 @@ function sendWelcome(lines: MeshLines, records: readonly Signed[], meshId: strin
 function admit(deps: InviteDeps, meshId: string, inviter: string, card: CardBody, signed: Signed): readonly Signed[] {
   const refusal = admissionRefusal(card.kind, deps.formatReady?.() === true);
   if (refusal !== undefined) throw new JoinRefused(refusal);
-  return deps.mesh.transact((tx) => {
+  const records = deps.mesh.transact((tx) => {
     if (Date.now() >= deps.expiresAt) throw new JoinRefused("the offer expired before the admit was signed");
     const index = deps.mesh.authorizeIndex();
     if (isRejoin(index, card, tx.records)) return tx.records;
@@ -106,6 +108,8 @@ function admit(deps: InviteDeps, meshId: string, inviter: string, card: CardBody
     );
     return tx.records;
   });
+  if (card.kind === "client") deps.changed?.();
+  return records;
 }
 
 /**

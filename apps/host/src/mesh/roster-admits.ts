@@ -46,7 +46,7 @@ export class RosterAdmits {
 export function sweepRoster(deps: RosterDeps): void {
   if (deps.mesh.read() === undefined) return;
   try {
-    deps.mesh.transact((tx) => {
+    const changed = deps.mesh.transact((tx) => {
       const marker = new RosterAdmits(deps.stateDir);
       const entries = marker.read();
       if (entries === undefined) {
@@ -86,7 +86,9 @@ export function sweepRoster(deps: RosterDeps): void {
           subject: { signPubs, reason: "revoke" },
         }));
       }
+      return removed.length > 0;
     });
+    if (changed === true) deps.changed?.();
   } catch (error) {
     deps.log(`mesh: roster sweep stopped: ${error instanceof Error ? error.message : String(error)}`);
   }

@@ -60,6 +60,7 @@ export function meshDeps(options: MeshDepsOptions) {
     hc,
     relay,
     sync: (s) => sync.adopt(s),
+    changed: () => sync.changed(),
     floor: () => hooks.floor(),
     formatReady: () => hooks.formatReady(),
     log,

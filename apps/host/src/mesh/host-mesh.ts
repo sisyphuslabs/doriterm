@@ -49,6 +49,8 @@ export interface HostMeshOptions {
    * join ran on once the join is over. It owns the session from then on. Without one, the session stays open and idle.
    */
   readonly sync?: ((session: SecureLink) => void) | undefined;
+  /** Announces committed membership records without adopting a client's stream for machine sync. */
+  readonly changed?: (() => void) | undefined;
   /** The highest claim a peer's `hello` holds on this host's counter (section 10.1): a join's admit waits for it. */
   readonly floor: () => CounterFloor | undefined;
   readonly log: (line: string) => void;
@@ -132,6 +134,7 @@ export class HostMesh {
       log,
       devices: new DeviceStore(stateDir),
       formatReady: () => this.#options.formatReady?.() === true,
+      changed: this.#options.changed,
       resume: (lines, key, nonce) => this.#resume(lines, key, nonce),
     };
   }
@@ -174,6 +177,7 @@ export class HostMesh {
       floor,
       policy,
       log,
+      changed: this.#options.changed,
       ...(this.#options.formatReady === undefined ? {} : { formatReady: this.#options.formatReady }),
     };
     serveJoin(new MeshLines(secure, INVITER_EXPECTS), secure.remoteStatic, deps).then(
