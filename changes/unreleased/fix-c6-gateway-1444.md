@@ -1,3 +1,0 @@
-### Settings
-
-- The Gateway field requests the URL keyboard on phones and turns off automatic capitalization and correction. (#1444)
