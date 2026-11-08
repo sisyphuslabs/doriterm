@@ -5,7 +5,7 @@ import { BrowserMemberList } from "./browser-members.tsx";
 const now = 1_800_000_000_000;
 const clients = [{ hostId: "browser", name: "phone-browser", signPub: "self" }];
 
-test("a client row attributes the last accepted session to its reporting machine", () => {
+test("a client row attributes the last recorded session to its reporting machine", () => {
   const html = renderToStaticMarkup(
     <BrowserMemberList
       clients={clients}
@@ -20,7 +20,7 @@ test("a client row attributes the last accepted session to its reporting machine
   expect(html).toContain("Copy the command that removes phone-browser");
 });
 
-test("an absent timestamp is never seen here, without borrowing another client's session", () => {
+test("an absent timestamp is not recorded, without claiming never or borrowing another client's session", () => {
   const html = renderToStaticMarkup(
     <BrowserMemberList
       clients={clients}
@@ -30,7 +30,8 @@ test("an absent timestamp is never seen here, without borrowing another client's
       observations={[{ hostId: "browser" }, { hostId: "other", lastSessionAt: now - 120_000 }]}
     />,
   );
-  expect(html).toContain("Last session on Beta: never");
+  expect(html).toContain("Last session on Beta: not recorded");
+  expect(html).not.toContain("never");
   expect(html).not.toContain("2m ago");
 });
 

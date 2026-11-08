@@ -31,7 +31,7 @@ export function BrowserMemberList({
       {clients.map((client) => {
         const at = observations?.find((member) => member.hostId === client.hostId)?.lastSessionAt;
         const age = at === undefined ? undefined : formatAge(at, now);
-        const time = age === undefined ? "never" : age === "<1m" ? "just now" : `${age} ago`;
+        const time = age === undefined ? "not recorded" : age === "<1m" ? "just now" : `${age} ago`;
         const report =
           observer === undefined || observations === undefined
             ? "Last session: unavailable"
