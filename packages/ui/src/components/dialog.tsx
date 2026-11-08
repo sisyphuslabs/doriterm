@@ -24,7 +24,7 @@ export interface DialogProps {
 const popupClass = "w-[min(28rem,calc(100%-2rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto p-5";
 /** What a dialog opens in when it has one: the field it asks for, never a button. */
 const fieldSelector =
-  "input:not([type=hidden]):not(:disabled), textarea:not(:disabled), select:not(:disabled), [autofocus], [data-autofocus]";
+  "input:not([type=hidden]):not(:disabled), textarea:not(:disabled), select:not(:disabled), [data-autofocus]";
 const titleClass = "text-lg font-semibold text-foreground";
 const descriptionClass = "mt-1.5 text-base text-pretty text-muted-foreground";
 
@@ -55,10 +55,12 @@ export function Dialog({
   // No answer is the default (#1495): a question opens on the dialog itself, named by its title, so Enter neither
   // confirms nor cancels and Tab reaches the buttons in order. A dialog that asks for text opens in its field. A
   // question taller than the screen opens at its title too, since focusing a field below the fold would scroll it away.
+  // A statement to acknowledge (alert) has one answer, OK, which is neither a choice nor destructive: it keeps it.
   const initialFocus = () => {
     const element = panel.current;
     if (element === null) return true;
     if (element.scrollHeight > element.clientHeight) return element;
+    if (alert) return true;
     return element.querySelector<HTMLElement>(fieldSelector) ?? element;
   };
   const popup = (

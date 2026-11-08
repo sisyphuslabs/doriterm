@@ -15,9 +15,9 @@ for (const width of ["390", "1440"] as const satisfies readonly Width[]) {
       isMobile: width === "390",
     });
 
-    test("Close space? opens with focus on the dialog, Enter answers nothing and Tab reaches Cancel", async ({
-      page,
-    }) => {
+    // The shot opens the question at desktop width; at 390 it then narrows the window, so that case proves focus stays
+    // on the dialog through the resize, not where a phone-opened question starts.
+    test("Close space? has focus on the dialog, Enter answers nothing and Tab reaches Cancel", async ({ page }) => {
       const shot = SHOTS.find((entry) => entry.name === "space-close-dialog" && entry.only === width);
       if (shot === undefined) throw new Error("capture space-close-dialog is missing");
       try {
