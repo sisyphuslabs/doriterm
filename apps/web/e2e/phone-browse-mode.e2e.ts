@@ -98,7 +98,13 @@ test("browsing read-only, a swipe scrolls the scrollback and the program hears n
   await expect(terminal).toContainText("200", { timeout: 15_000 });
   await startMouseTracking(page, terminal);
   const viewport = page.locator("[data-slot=terminal-viewport]");
-  await expect.poll(() => viewport.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  // #1491: on a loaded runner the buffer holds "200" before the viewport has laid those rows out, so the default
+  // 5 s poll reads scrollTop 0 and fails on a tree that does not touch browse mode. Wait for the overflow first,
+  // and report the geometry it saw instead of a bare timeout when it never settles.
+  await expect
+    .poll(() => viewport.evaluate((el) => el.scrollHeight - el.clientHeight), { timeout: 20_000 })
+    .toBeGreaterThan(0);
+  await expect.poll(() => viewport.evaluate((el) => el.scrollTop), { timeout: 20_000 }).toBeGreaterThan(0);
   await input(page).blur();
   await browse(page).click();
   await expect(browse(page)).toHaveAttribute("aria-pressed", "true");
