@@ -48,7 +48,8 @@ export const RELAY_BEST_OF_GRACE_MS = 150;
  * serves the same HTTPS on (Cloudflare proxies 8443 and 2053 as it does 443). A browser holds back a WebSocket handshake
  * while another to the same address and port is still connecting (RFC 6455 section 4.1), so three sockets to one port
  * open one after another and the later ones miss the race; on distinct ports they open together (#1418). A relay on an
- * explicit port keeps it for every socket.
+ * explicit port keeps it for every socket. A relay self-hosted on 443 should serve these ports too or refuse them: one
+ * that drops them costs a session only the race's grace (`raceFastest`), never the connect timeout.
  */
 export const RELAY_BEST_OF_PORTS: readonly string[] = ["8443", "2053"];
 /** A socket whose `ping` the Room has not answered within this is kept only if no other socket was answered. */

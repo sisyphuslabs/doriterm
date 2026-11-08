@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type ClientConnectOptions, connectRelayClient } from "./connector.ts";
+import { type ClientConnectOptions, RELAY_CONNECT_TIMEOUT_MS, connectRelayClient } from "./connector.ts";
 import { RelayCloseError } from "./link.ts";
 import type { WebSocketLink } from "./websocket-link.ts";
 
@@ -132,6 +132,23 @@ describe("best-of-N relay dial", () => {
       createSocket: relay.redirect,
     }).then(closeCodeOf, (error: unknown) => (error instanceof RelayCloseError ? error.code : String(error)));
     expect(outcome).toBe(4404);
+  });
+
+  test("a refusal reaches the caller well before the connect timeout when the other ports never answer", async () => {
+    // A network that silently drops 8443 and 2053: those sockets' TCP connects are accepted and never answered.
+    const relay = started(fakeRelay({ closeWith: 4404 }));
+    const silent = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data: () => undefined } });
+    const startedAt = performance.now();
+    const outcome = await connectRelayClient({
+      relayUrl: "https://relay.example",
+      hostId,
+      createSocket: (url) =>
+        new URL(url).port === "" ? relay.redirect(url) : new WebSocket(`ws://127.0.0.1:${silent.port}/`),
+    }).then(closeCodeOf, (error: unknown) => (error instanceof RelayCloseError ? error.code : String(error)));
+    const tookMs = performance.now() - startedAt;
+    silent.stop(true);
+    expect(outcome).toBe(4404);
+    expect(tookMs).toBeLessThan(RELAY_CONNECT_TIMEOUT_MS / 2);
   });
 
   test("pairing sessions, proven dials and relays on loopback open one socket", async () => {
