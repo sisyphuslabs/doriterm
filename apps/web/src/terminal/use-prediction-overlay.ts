@@ -8,6 +8,7 @@ import {
   type PredictedCell,
   placeCells,
 } from "./prediction-cells.ts";
+import { HeldRelease } from "./held-release.ts";
 import { paintedCells, predictedCursor } from "./prediction-hold.ts";
 
 /** Where typing goes next while predictions are painted (null: at the real cursor), and a call when that moves. */
@@ -63,7 +64,8 @@ function predictionSpans(element: HTMLElement, placed: PlacedPrediction): HTMLEl
  * size, and a predicted cursor after the last, while the real cursor is not drawn (`data-predicting`). The terminal is
  * only read: each draw checks the predictions against its cells and cursor (`drawnCells`). A change from the predictor
  * is painted at once, so an addition shows in the frame its key is typed in; a cell that leaves is painted away only
- * once the renderer has painted what replaced it (`paintedCells`): at the next grid change, or one frame later. Hidden
+ * once the renderer has painted what replaced it (`paintedCells`): at the next grid change, or one frame later unless
+ * the program holds a synchronized update open (`HeldRelease`). Hidden
  * while the view is scrolled back from the end (rule P11), since the layer anchors to active-screen rows. Returns the
  * predicted cursor, for the composition to be drawn at.
  */
@@ -81,9 +83,23 @@ export function usePredictionOverlay(wt: WTerm | null, source: OverlaySource | n
     let painted: readonly PredictedCell[] = [];
     let drawn = "";
     let frame = 0;
-    let release = 0;
     let watching = false;
-    const changed = new MutationObserver(() => paint(true));
+    const held = new HeldRelease(
+      {
+        now: () => performance.now(),
+        frame: (run) => {
+          const id = requestAnimationFrame(run);
+          return () => cancelAnimationFrame(id);
+        },
+        timer: (run, ms) => {
+          const id = setTimeout(run, ms);
+          return () => clearTimeout(id);
+        },
+        synchronized: () => view.bridge?.synchronizedOutput?.() ?? false,
+      },
+      () => paint(true),
+    );
+    const changed = new MutationObserver(() => held.rendered());
     const resized = new ResizeObserver(() => schedule());
     const watch = (on: boolean): void => {
       if (on === watching) return;
@@ -118,12 +134,8 @@ export function usePredictionOverlay(wt: WTerm | null, source: OverlaySource | n
       const wanted = drawnCells(predicted, bridge);
       painted = paintedCells(wanted, painted, bridge, rendered);
       watch(predicted.length > 0 || painted.length > 0);
-      if (painted.length > wanted.length && release === 0) {
-        release = requestAnimationFrame(() => {
-          release = 0;
-          paint(true);
-        });
-      }
+      if (painted.length > wanted.length) held.hold();
+      else held.cancel();
       if (painted.length === 0) return hide();
       const host = element.getBoundingClientRect();
       const origin = first.getBoundingClientRect();
@@ -154,7 +166,7 @@ export function usePredictionOverlay(wt: WTerm | null, source: OverlaySource | n
     return () => {
       unsubscribe();
       cancelAnimationFrame(frame);
-      cancelAnimationFrame(release);
+      held.cancel();
       watch(false);
       hide();
     };

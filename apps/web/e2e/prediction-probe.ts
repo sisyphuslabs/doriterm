@@ -1,4 +1,5 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
+import { expect } from "./fixtures.ts";
 
 interface Predictor {
   add(text: string, width: 1 | 2): { row: number; col: number; width: 1 | 2 };
@@ -75,3 +76,16 @@ export const painted = (element: HTMLElement) => {
     predictedCursor: predictedCursor === null ? null : box(predictedCursor),
   };
 };
+
+/**
+ * Waits until the shell at an empty `$` prompt is reading keys: types a marker, waits for its echo, erases it and waits
+ * for the erase. A key typed while the shell is still redrawing its line (a phone's keyboard resizing the grid as the
+ * terminal takes focus) can reach the pty and never be echoed, so a spec about echoes starts only after this.
+ */
+export async function untilShellReads(page: Page, terminal: Locator): Promise<void> {
+  const prompt = terminal.locator(".term-row:not(.term-scrollback-row)");
+  await page.keyboard.type("#");
+  await expect(prompt.filter({ hasText: /^\$ # *$/ })).toHaveCount(1, { timeout: 15_000 });
+  await page.keyboard.press("Backspace");
+  await expect(prompt.filter({ hasText: /^\$ # *$/ })).toHaveCount(0, { timeout: 15_000 });
+}

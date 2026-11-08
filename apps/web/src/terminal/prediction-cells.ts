@@ -27,6 +27,8 @@ export interface OverlayScreen {
   getCursor(): ReturnType<GhosttyCore["getCursor"]>;
   getCell(row: number, col: number): Pick<CellData, "char" | "chars" | "width">;
   usingAltScreen(): boolean;
+  /** A synchronized update (DECSET 2026) is open: the renderer may hold the screen's writes unpainted. */
+  synchronizedOutput?(): boolean;
 }
 
 /** A cell's text as the terminal holds it: "" for a cell nothing was written to. */

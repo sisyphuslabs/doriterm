@@ -12,7 +12,9 @@ export async function startRowSampler(terminal: Locator, row: number, col: numbe
       const probe = document.createElement("div");
       probe.style.cssText = "position:fixed;left:-10px;top:-10px;height:1px;pointer-events:none";
       document.body.appendChild(probe);
-      const samples: { row: string; cells: { text: string; col: number }[] }[] = [];
+      const samples: { row: string; grid: string; core: string; at: number; cells: { text: string; col: number }[] }[] =
+        [];
+      const predictor = Reflect.get(window, "__predictor") as { cell(row: number, col: number): string } | undefined;
       let frame = 0;
       let on = true;
       const sample = (): void => {
@@ -28,7 +30,9 @@ export async function startRowSampler(terminal: Locator, row: number, col: numbe
           cells.push({ text: span.textContent ?? "", col: at });
           if (at >= 0 && at < n) chars[at] = span.textContent ?? "";
         }
-        samples.push({ row: chars.join(""), cells });
+        const grid = [...(rows[r]?.textContent ?? "").padEnd(c + n)].slice(c, c + n).join("");
+        const core = Array.from({ length: n }, (_, at) => predictor?.cell(r, c + at) || " ").join("");
+        samples.push({ row: chars.join(""), grid, core, at: performance.now(), cells });
       };
       new ResizeObserver(() => {
         if (on) sample();
@@ -52,6 +56,11 @@ export async function startRowSampler(terminal: Locator, row: number, col: numbe
 /** One frame as painted: the row's text with the overlay over it, and the overlay's cells by column from `col`. */
 export interface RowSample {
   readonly row: string;
+  /** The grid row's own text, without the overlay. */
+  readonly grid: string;
+  /** The same cells as the terminal's core holds them, written or not yet painted. */
+  readonly core: string;
+  readonly at: number;
   readonly cells: readonly { readonly text: string; readonly col: number }[];
 }
 

@@ -2,7 +2,7 @@ import type { CDPSession, Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { PHONE, openPhoneTerminal } from "./phone-key-bar.ts";
-import { painted, predictTyping, realCell } from "./prediction-probe.ts";
+import { painted, predictTyping, realCell, untilShellReads } from "./prediction-probe.ts";
 import { installPredictor } from "./prediction-stand-in.ts";
 
 // Design review HIGH 3(b) (#1439): while predictions are drawn the real cursor lags the predicted one by every
@@ -47,8 +47,9 @@ for (const device of ["desktop", "phone"] as const) {
       const link = await routeHcSocket(page);
       await installPredictor(page);
       const terminal = await open(page);
-      link.delay(300);
       await terminal.getByRole("textbox").focus();
+      await untilShellReads(page, terminal);
+      link.delay(300);
       await predictTyping(page);
       const release = link.holdFromHost("");
       await page.keyboard.type("ab");
