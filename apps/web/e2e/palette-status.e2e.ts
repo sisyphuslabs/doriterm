@@ -73,8 +73,9 @@ test("the palette filters its agents by state, and draws no filter while they sh
   await expect(option(page, "pal-calm")).toBeVisible();
   await expect(dialog(page).getByRole("group", { name: "Actions" })).toBeVisible();
 
-  // A phone holds the whole row: every segment sits inside the dialog, none scrolled away.
-  await page.setViewportSize({ width: 390, height: 844 });
+  // The narrowest phone holds the whole row: every segment sits inside the dialog, none scrolled away. 320 rather than
+  // 390, so the fit keeps slack for wider fonts than this machine's (CI's Linux fonts are).
+  await page.setViewportSize({ width: 320, height: 640 });
   const frame = await dialog(page).boundingBox();
   const segments = await states(page)
     .getByRole("button")

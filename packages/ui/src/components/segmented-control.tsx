@@ -14,6 +14,8 @@ export interface SegmentedControlProps<T extends string> {
   readonly onValueChange?: (value: T) => void;
   readonly label: string;
   readonly disabled?: boolean;
+  /** Tighter segments, for a row that must fit a phone at its narrowest (the palette's state row, #1454). */
+  readonly compact?: boolean;
   readonly className?: string;
 }
 
@@ -24,6 +26,7 @@ export function SegmentedControl<T extends string>({
   onValueChange,
   label,
   disabled = false,
+  compact = false,
   className,
 }: SegmentedControlProps<T>) {
   return (
@@ -42,7 +45,8 @@ export function SegmentedControl<T extends string>({
           key={option.value}
           value={option.value}
           className={cn(
-            "inline-flex h-[calc(var(--control)-6px)] flex-1 coarse:h-(--control) items-center justify-center gap-1.5 rounded-sm px-3 text-sm whitespace-nowrap text-muted-foreground",
+            "inline-flex h-[calc(var(--control)-6px)] flex-1 coarse:h-(--control) items-center justify-center gap-1.5 rounded-sm text-sm whitespace-nowrap text-muted-foreground",
+            compact ? "px-1.5" : "px-3",
             "outline-none transition-colors duration-(--duration-micro) hover:text-foreground",
             "focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring data-pressed:bg-popover data-pressed:text-foreground data-pressed:shadow-[0_0_0_1px_var(--border)]",
           )}
