@@ -5,7 +5,7 @@ import { useFittedLines } from "./fit-lines.ts";
 import { agentStatus } from "./attention.ts";
 import { agentCounts, machineOf, type Session, spaceName, terminalTitle } from "./model.ts";
 import { useSpaceSelection } from "./space-selection.ts";
-import { SessionMenu } from "./session-menu.tsx";
+import { PhoneSessionSheet } from "./phone-session-sheet.tsx";
 
 export interface PhoneHeaderProps {
   readonly terminal: Session;
@@ -13,6 +13,8 @@ export interface PhoneHeaderProps {
   /** Its tab as the desktop strip reads it (its name, else its number); null when it is in no tab. */
   readonly tabTitle: string | null;
   readonly onBack: () => void;
+  /** Opens another session, as the session sheet's "next agent that needs you" does. */
+  readonly onOpen: (address: string) => void;
   /** One more header control before the switch, such as the mic (#227). */
   readonly action?: ReactNode;
 }
@@ -27,7 +29,7 @@ const COUNTED = [
  * The phone terminal's header: its tab and state, where it is, the agent counts. Switching tabs and the tab's place (n/m)
  * live in the bottom tabs bar alone, one strip as in herdr-app (#466).
  */
-export function PhoneHeader({ terminal, terminals, tabTitle, onBack, action }: PhoneHeaderProps) {
+export function PhoneHeader({ terminal, terminals, tabTitle, onBack, onOpen, action }: PhoneHeaderProps) {
   // The tab, as the desktop strip names it (#466 ruling A); a terminal in no tab has only its own title.
   const title = tabTitle ?? terminalTitle(terminal);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -86,7 +88,13 @@ export function PhoneHeader({ terminal, terminals, tabTitle, onBack, action }: P
       <span data-header-action className="contents">
         {action}
       </span>
-      <SessionMenu address={terminal.address} title={terminalTitle(terminal)} placement="header" />
+      <PhoneSessionSheet
+        terminal={terminal}
+        terminals={terminals}
+        title={terminalTitle(terminal)}
+        where={where}
+        onOpen={onOpen}
+      />
     </header>
   );
 }
