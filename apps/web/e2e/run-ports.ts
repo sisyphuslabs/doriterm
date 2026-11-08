@@ -4,6 +4,9 @@ import { describePortFailure, listPortHolders, type TriedBlock } from "./port-ho
 
 const NAMES = ["E2E_HOST_PORT", "E2E_WEB_PORT", "E2E_LAYOUT_PORT"] as const;
 
+/** Set by the runner in this run's environment, and inherited by every web server, worker and spec: this run's own id. */
+export const E2E_RUN_ID_ENV = "DORIFACE_E2E_RUN_ID";
+
 // Binds port 0 for each, so the OS hands out ports no one holds, then releases them for this run's servers: a block of
 // HOST_BLOCK consecutive free ports for the worker hosts, then one for the web server and one for the layout host
 // (taken while the block is still held, so they never fall inside it). Prints them as JSON.
@@ -77,6 +80,9 @@ export function portsToProbe(tried: readonly TriedBlock[]): readonly number[] {
 }
 
 export function ensureRunPorts(): void {
+  // Before the ports, and never regenerated: a host records the run that started it, so a run stops its own hosts and
+  // leaves another run's alone (#1412).
+  process.env[E2E_RUN_ID_ENV] ??= crypto.randomUUID();
   if (NAMES.every((name) => process.env[name] !== undefined)) return;
   const picked = spawnSync(process.execPath, ["-e", PICK], {
     env: { ...process.env, E2E_HOST_BLOCK: String(HOST_BLOCK), E2E_PORT_TRIES: String(PORT_TRY_LIMIT) },
