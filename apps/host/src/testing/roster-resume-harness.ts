@@ -20,7 +20,7 @@ export function clearRosterResumes(): void {
 }
 const log = () => {};
 
-export function fixture() {
+export function fixture(options: { readonly changed?: () => void } = {}) {
   const a = side("alpha");
   const c = side("browser");
   a.mesh.found(a.m.identity, ownOf(a));
@@ -29,6 +29,7 @@ export function fixture() {
   const slots = new PairingSlots(pairing, a.m.identity.noise.publicKey, undefined, log);
   const sessions = new LiveSessions(devices, log, a.mesh);
   const host = new HostMesh({
+    ...options,
     stateDir: a.dir,
     identity: a.m.identity,
     mesh: a.mesh,

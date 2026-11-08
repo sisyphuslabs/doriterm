@@ -18,14 +18,15 @@ export interface RosterDeps {
   readonly formatReady: () => boolean;
   readonly floor: () => CounterFloor | undefined;
   readonly log: (line: string) => void;
+  readonly changed?: (() => void) | undefined;
   readonly resume?: ((lines: MeshLines, key: string, nonce: string) => Promise<void>) | undefined;
 }
 
-function admitRoster(deps: RosterDeps, card: CardBody, signed: Signed): readonly Signed[] {
+function admitRoster(deps: RosterDeps, card: CardBody, signed: Signed): void {
   const marker = new RosterAdmits(deps.stateDir);
   let before: readonly RosterAdmit[] | undefined;
   let marked = false;
-  return deps.mesh.transact(
+  deps.mesh.transact(
     (tx) => {
       const index = deps.mesh.authorizeIndex();
       if (index?.client(card.noisePub)?.signPub === card.signPub) return tx.records;
@@ -61,10 +62,19 @@ function admitRoster(deps: RosterDeps, card: CardBody, signed: Signed): readonly
       if (marked) marker.writeHeld(before);
     },
   );
+  deps.changed?.();
 }
 
 /** One roster session, bound to its authenticated device key and fresh offer nonce. */
 export async function serveRoster(lines: MeshLines, remoteStatic: Uint8Array, deps: RosterDeps): Promise<void> {
+  // Gossip closes revoked sessions. Finish the reply before announcing, even when a transport failure interrupts it.
+  let changed = false;
+  const writing = {
+    ...deps,
+    changed: () => {
+      changed = true;
+    },
+  };
   try {
     const file = deps.mesh.read();
     if (file === undefined) throw new JoinRefused("this host is in no mesh");
@@ -101,9 +111,10 @@ export async function serveRoster(lines: MeshLines, remoteStatic: Uint8Array, de
           subject: { signPubs: [own.signPub], reason: "leave" },
         }));
       });
+      writing.changed();
     } else {
-      admitRoster(deps, card, signed);
-      sweepRoster(deps);
+      admitRoster(writing, card, signed);
+      sweepRoster(writing);
       deps.mesh.recordClientSession(key);
     }
     for (const line of recordLines(deps.mesh.read()?.records ?? [])) lines.send(line);
@@ -114,5 +125,7 @@ export async function serveRoster(lines: MeshLines, remoteStatic: Uint8Array, de
     const reason = error instanceof Error ? error.message : String(error);
     lines.refuse(CloseCode.UnknownDevice, reason);
     throw error;
+  } finally {
+    if (changed) deps.changed?.();
   }
 }
