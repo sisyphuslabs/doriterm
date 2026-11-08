@@ -22,8 +22,9 @@ function startShellIn(space: string, name: string): string {
 test("the palette says where the highlighted agent lives, and nothing for an action (#1465)", async ({ page }) => {
   const run = Date.now().toString(36);
   const twin = `twin-${run}`;
-  const one = startShellIn(`whr-a-${run}`, `${twin}-a`);
-  const two = startShellIn(`whr-b-${run}`, `${twin}-b`);
+  // Each terminal's own space label differs from the space the sidebar lists it in: the line must name the sidebar's.
+  const one = startShellIn(`lbl-a-${run}`, `${twin}-a`);
+  const two = startShellIn(`lbl-b-${run}`, `${twin}-b`);
   seedSpaces([
     { id: "spc-whr-a", name: `whr-a-${run}`, folder: "", tabs: [{ id: "tb-whr-a", name: "", terminal: one }] },
     { id: "spc-whr-b", name: `whr-b-${run}`, folder: "", tabs: [{ id: "tb-whr-b", name: "", terminal: two }] },
@@ -35,6 +36,7 @@ test("the palette says where the highlighted agent lives, and nothing for an act
   await expect(dialog(page).getByRole("option")).toHaveCount(2);
 
   await expect(where(page)).toContainText(/whr-[ab]-/);
+  await expect(where(page)).not.toContainText("lbl-");
   const first = (await where(page).textContent()) ?? "";
   await page.keyboard.press("ArrowDown");
   await expect(where(page)).not.toHaveText(first);
