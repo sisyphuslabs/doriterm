@@ -45,11 +45,18 @@ export function useShiftDragSelect(wt: WTerm | null): void {
       window.addEventListener("mousemove", select);
       window.addEventListener("mouseup", onUp);
     };
+    // wterm selects a word or line on a double or triple click whatever Shift says; that would add its own selection
+    // beside the held one, so a shift multi-click is cancelled (wterm skips a click whose default is prevented).
+    const onClick = (event: MouseEvent): void => {
+      if (event.shiftKey && event.detail >= 2) event.preventDefault();
+    };
     element.addEventListener("mousedown", onDown, { capture: true });
+    element.addEventListener("click", onClick, { capture: true });
     window.addEventListener("blur", stop);
     return () => {
       stop();
       element.removeEventListener("mousedown", onDown, { capture: true });
+      element.removeEventListener("click", onClick, { capture: true });
       window.removeEventListener("blur", stop);
     };
   }, [wt]);

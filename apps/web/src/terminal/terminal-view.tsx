@@ -5,7 +5,7 @@ import { type FocusEvent, useCallback, useEffect, useMemo, useRef, useState } fr
 import { useScreenAwake } from "../device/keep-awake.ts";
 import { useTerminalConfig } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
-import { useBrowseMode } from "./browse-mode.ts";
+import { isBrowsing, useBrowseMode } from "./browse-mode.ts";
 import { readDisplay } from "./display.ts";
 import { PasteDialog } from "./paste-dialog.tsx";
 import { type Point } from "./long-press.ts";
@@ -227,7 +227,7 @@ export function TerminalView(props: TerminalViewProps) {
               opened={finding}
               onClose={() => {
                 setFinding(null);
-                wt.focus();
+                if (!isBrowsing(wt.element)) wt.focus();
               }}
             />
           )}

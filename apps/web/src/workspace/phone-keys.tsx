@@ -53,7 +53,7 @@ export interface PhoneKeysProps {
   readonly onBarHeight?: (px: number) => void;
   /** The terminal is browsed read-only (browse-mode.ts); the keys are closed and the browse button reads pressed. */
   readonly browsing?: boolean;
-  /** Set on a touch device: a round Browse output button beside the keyboard button turns browsing on and off. */
+  /** Set on a touch device: a round Read-only button beside the keyboard button turns browsing on and off. */
   readonly onBrowse?: (on: boolean) => void;
 }
 
@@ -128,7 +128,7 @@ export function PhoneKeys(props: PhoneKeysProps) {
         {onBrowse === undefined ? null : (
           // The button stays in its slot while on, so the tap that ends browsing lands where the one that began it did.
           <KeyboardButton
-            label="Browse output"
+            label="Read-only"
             icon={<TextSelect />}
             pressed={browsing}
             onPress={() => onBrowse(!browsing)}

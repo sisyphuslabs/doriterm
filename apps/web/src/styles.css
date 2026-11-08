@@ -14,6 +14,13 @@
   scrollbar-width: none;
 }
 
+/* One finger pans the scrollback and two pinch-zoom, but a double tap does nothing: the base's `touch-action:
+   manipulation` (#1382) would also allow horizontal panning, which the grid never needs. Read-only browsing relies on the
+   vertical pan, and the held-press drag cancels `touchmove` itself once it has picked (use-long-press-select.ts). */
+.wterm.wterm {
+  touch-action: pan-y pinch-zoom;
+}
+
 .wterm.wterm::-webkit-scrollbar {
   display: none;
 }
