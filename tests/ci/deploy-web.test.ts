@@ -161,9 +161,14 @@ const metaOf = (page: string, key: string): string | undefined =>
     readFileSync(join(ROOT, "apps", page, "index.html"), "utf8"),
   )?.[1];
 
-test("app.doriterm.com previews with the same card as doriterm.com, so the two cannot drift apart", () => {
-  const landing = metaOf("landing", "og:image");
-  expect(landing).toBe("https://doriterm.com/og.png");
-  expect(metaOf("web", "og:image")).toBe(landing);
-  expect(metaOf("web", "twitter:image")).toBe(landing);
+test("both sites preview with one card at a URL that changes with the card, so crawlers refetch it", () => {
+  const card = readFileSync(join(ROOT, "apps", "landing", "public", "og.png"));
+  const hash = new Bun.CryptoHasher("sha256").update(card).digest("hex").slice(0, 8);
+  // A new card needs this query in both index.html files; crawlers cache the image by its URL.
+  const url = `https://doriterm.com/og.png?v=${hash}`;
+  for (const page of ["landing", "web"]) {
+    expect(metaOf(page, "og:image")).toBe(url);
+    expect(metaOf(page, "twitter:image")).toBe(url);
+    expect(metaOf(page, "og:title")).toBe("Doriterm: Your devices. One terminal.");
+  }
 });
