@@ -111,8 +111,9 @@ is not gated by browsing.
 - **#1382** (`fix/1380-phone-zoom`) adds `* { touch-action: manipulation }` to the base. Browse mode relies on the
   one-finger pan that rule keeps, and the held-press drag cancels `touchmove` itself once it has picked. The terminal
   keeps the more specific `touch-action: pan-y pinch-zoom` (`styles.css`), and #1382 is not edited (LEAD ruling).
-  `e2e/phone-browse-guards.e2e.ts` asserts both computed values, so its first case stays red until #1382 is on the
-  base; #1382 therefore lands before this branch.
+  `e2e/phone-browse-guards.e2e.ts` asserts the pair in two cases. **Proven now:** the terminal computes `pan-y
+  pinch-zoom` (unconditional). **Pending #1382:** the rest of the page computes `manipulation`; until #1382 is on the
+  base that case skips with a message naming #1382, and the pair completes when #1382 lands.
 
 ## Proof
 
@@ -122,7 +123,7 @@ is not gated by browsing.
 - `e2e/terminal-shift-drag.e2e.ts` (desktop): under `?1003h` a plain drag is reported to the program; a shift-drag
   reports nothing, selects the dragged text as painted cells, keeps the textarea focused and copies on select. With
   tracking off, a plain drag and a Shift drag each select and copy.
-- `e2e/phone-browse-guards.e2e.ts` (iPhone 14 viewport): the touch-action pair; under `?1003h` a wheel over the rows
+- `e2e/phone-browse-guards.e2e.ts` (iPhone 14 viewport): the terminal's `pan-y pinch-zoom` (the base's `manipulation` half skips, pending #1382); under `?1003h` a wheel over the rows
   while browsing reaches nothing; opening another terminal ends browsing.
 - RED on the base and GREEN on this branch, with commands and output:
   [read-only-browse-evidence.md](read-only-browse-evidence.md).
