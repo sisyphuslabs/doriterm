@@ -49,6 +49,12 @@ const spaceRow = (page: Page, name: string) => page.getByRole("button", { name: 
 const tabRows = (page: Page) => page.getByRole("region", { name: "Tabs" }).getByRole("button");
 const agentsHeading = (page: Page) => page.getByRole("heading", { name: "Agents", exact: true });
 
+/** How many tabs the saved layout gives the space named `name`. */
+function savedTabs(name: string): number {
+  const doc = getCoreDoc(LAYOUT_DOC) as { spaces?: { name?: string; tabs?: unknown[] }[] } | null;
+  return (doc?.spaces ?? []).find((each) => each.name === name)?.tabs?.length ?? 0;
+}
+
 async function openWebsite(page: Page): Promise<void> {
   await page.goto("/");
   await expect(spaceRow(page, "website")).toBeVisible({ timeout: 20_000 });
@@ -133,11 +139,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         made = await opened.getAttribute("data-terminal");
         expect(Object.values(seeded)).not.toContain(made);
         expect(param(page, "t")).not.toBeNull();
-        const website = (): number => {
-          const doc = getCoreDoc(LAYOUT_DOC) as { spaces?: { name?: string; tabs?: unknown[] }[] } | null;
-          return (doc?.spaces ?? []).find((each) => each.name === "website")?.tabs?.length ?? 0;
-        };
-        await expect.poll(website, { timeout: 15_000 }).toBe(3);
+        await expect.poll(() => savedTabs("website"), { timeout: 15_000 }).toBe(3);
 
         await page.goBack();
         await expect(page.getByRole("heading", { level: 1, name: "website" })).toBeVisible();
