@@ -17,6 +17,10 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { addMachine, DEMO_MACHINE } from "./machine.ts";
 import { shellEnv } from "./shell-env.ts";
+import { requestControl } from "../../host/src/control.ts";
+import { pendingFromWire } from "../../host/src/state/pairing.ts";
+import { loadHostIdentity } from "../../host/src/state/host-keys.ts";
+import { pairingArtifact } from "../../host/src/pair-link.ts";
 
 const started = Date.now();
 const say = (line: Readonly<Record<string, unknown>>): void => {
@@ -179,7 +183,33 @@ try {
   });
   for await (const line of createInterface({ input: process.stdin })) {
     if (line.startsWith("join ")) say({ joined: await joinWith(line.slice("join ".length)) });
-    else say(await pairingOffer());
+    else if (line === "mesh-link") {
+      const offer = pendingFromWire(await requestControl(stateDir, { op: "mesh-pair", auto: false }));
+      const identity = loadHostIdentity(stateDir);
+      const artifact = pairingArtifact(
+        {
+          hostId: identity.hostId,
+          noiseStaticPub: identity.noise.publicKey,
+          signPub: identity.sign.publicKey,
+          linkSecret: offer.linkSecret,
+          relayUrl: relayAddress,
+          mesh: true,
+        },
+        webOrigin,
+      );
+      say({ link: artifact.url, code: offer.code });
+    } else if (line === "pending") {
+      say({ pending: await requestControl(stateDir, { op: "mesh-pending" }) });
+    } else if (line.startsWith("answer ")) {
+      const answer: unknown = JSON.parse(line.slice(7));
+      if (typeof answer !== "object" || answer === null) throw new Error("bad answer");
+      const nonce: unknown = Reflect.get(answer, "nonce");
+      const code: unknown = Reflect.get(answer, "code");
+      const approve: unknown = Reflect.get(answer, "approve");
+      if (typeof nonce !== "string" || typeof code !== "string" || typeof approve !== "boolean")
+        throw new Error("bad answer");
+      say({ answered: await requestControl(stateDir, { op: "mesh-approve", nonce, code, approve }) });
+    } else say(await pairingOffer());
   }
 } catch (error) {
   // A start that fails, or a pairing that does, stops what it started, so no core outlives it, and exits with the

@@ -1,62 +1,68 @@
-import { concatBytes, hostIdOf, type KeyPair } from "@doriface/crypto";
-import type { MemberIdentity } from "@doriface/mesh/join";
-import { ed25519 } from "@noble/curves/ed25519.js";
+import { concatBytes, hostIdOf, type StaticKey } from "@doriface/crypto";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
+import { type CardKey, readOrCreateCardKey, storedKey } from "../connection/card-key.ts";
+import { forgetDeviceKey, isStored, readOrCreateDeviceKey, withIdentityLock } from "../connection/device-key.ts";
 import { deviceStore, type KeyValueStore } from "../storage/idb.ts";
 
-const KEY = "mesh-sign-key";
-const LOCK = "doriface-mesh-sign-key";
-
-interface StoredSignKey {
-  readonly kind: "ed25519";
-  readonly secretKey: Uint8Array;
+export interface BrowserIdentity {
+  readonly device: StaticKey;
+  readonly card: CardKey;
 }
 
-function isStored(value: unknown): value is StoredSignKey {
-  if (typeof value !== "object" || value === null || Reflect.get(value, "kind") !== "ed25519") return false;
-  const secretKey: unknown = Reflect.get(value, "secretKey");
-  return secretKey instanceof Uint8Array && secretKey.length === 32;
+const pending = new WeakMap<KeyValueStore, Promise<BrowserIdentity>>();
+
+/** Check surviving private material before a connection or join is allowed to generate replacement keys. */
+export function hasBrowserIdentity(storage: KeyValueStore = deviceStore): Promise<boolean> {
+  return withIdentityLock(async () => {
+    if (!isStored(await storage.get("device-key"))) return false;
+    const sign = await storage.get("mesh-sign-key");
+    if (storedKey(sign)) return true;
+    if (typeof sign !== "object" || sign === null || Reflect.get(sign, "kind") !== "ed25519") return false;
+    const secretKey: unknown = Reflect.get(sign, "secretKey");
+    return secretKey instanceof Uint8Array && secretKey.length === 32;
+  });
 }
 
-const pairOf = (secretKey: Uint8Array): KeyPair => ({ publicKey: ed25519.getPublicKey(secretKey), secretKey });
-
-async function readOrCreate(storage: KeyValueStore): Promise<KeyPair> {
-  const stored = await storage.get(KEY);
-  if (isStored(stored)) return pairOf(stored.secretKey);
-  const created: StoredSignKey = { kind: "ed25519", secretKey: ed25519.utils.randomSecretKey() };
-  await storage.put(KEY, created);
-  return pairOf(created.secretKey);
-}
-
-const pending = new WeakMap<KeyValueStore, Promise<KeyPair>>();
-
-/**
- * This browser's Ed25519 signing key, generated on first use: the key its member card is signed under and the name
- * every other member knows it by. Raw bytes in IndexedDB (WebCrypto has no Ed25519 everywhere, and a card must be
- * signable with @noble as the host's is); concurrent first calls share one creation, across tabs through the Web
- * Locks API where it exists, as the device key does.
- */
-export function loadSignKey(storage: KeyValueStore = deviceStore): Promise<KeyPair> {
-  const inFlight = pending.get(storage);
-  if (inFlight !== undefined) return inFlight;
-  const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
-  const loading = locks === undefined ? readOrCreate(storage) : locks.request(LOCK, () => readOrCreate(storage));
+/** Both keys share the existing device lock; migration keeps the paired Noise key and the original signing key. */
+export function loadBrowserIdentity(
+  storage: KeyValueStore = deviceStore,
+  subtle: SubtleCrypto | null = globalThis.crypto?.subtle ?? null,
+): Promise<BrowserIdentity> {
+  const held = pending.get(storage);
+  if (held !== undefined) return held;
+  const loading = withIdentityLock(async () => ({
+    device: await readOrCreateDeviceKey(storage, subtle),
+    card: await readOrCreateCardKey(storage, subtle),
+  }));
   pending.set(storage, loading);
   loading.catch(() => pending.delete(storage));
   return loading;
 }
 
+/** A signing capability, never an exported WebCrypto private key. */
+export async function loadSignKey(
+  storage: KeyValueStore = deviceStore,
+  subtle: SubtleCrypto | null = globalThis.crypto?.subtle ?? null,
+): Promise<CardKey> {
+  return (await loadBrowserIdentity(storage, subtle)).card;
+}
+
+export async function resetBrowserIdentity(storage: KeyValueStore = deviceStore): Promise<void> {
+  await pending.get(storage);
+  await withIdentityLock(async () => {
+    await storage.put("mesh-sign-key", null);
+    await forgetDeviceKey(storage);
+    pending.delete(storage);
+  });
+}
+
 const encoder = new TextEncoder();
 
-/**
- * The card's `hcId` for a browser, which runs no herdr core: 32 hex characters (a core id's shape), one per signing
- * key and stable across loads, domain-separated from the hostId that hashes the same key.
- */
+/** Retained for consumers of the first browser membership release. */
 export const clientIdOf = (signPub: Uint8Array): string =>
   bytesToHex(sha256(concatBytes(encoder.encode("doriface-client/1"), signPub)).subarray(0, 16));
 
-/** The identity a browser signs its card with: its signing pair, and the device key it attests as its Noise static. */
-export function memberIdentityOf(sign: KeyPair, noisePub: Uint8Array): MemberIdentity {
+export function memberIdentityOf(sign: Pick<CardKey, "publicKey">, noisePub: Uint8Array) {
   return { hostId: hostIdOf(sign.publicKey), sign, noisePub };
 }

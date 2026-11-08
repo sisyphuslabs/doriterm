@@ -16,7 +16,7 @@ export interface ClientKeys {
 }
 
 /** Uses governing cards and the view's current keys; a client survives only while its admitter is a machine. */
-export function bundleView(records: readonly Signed[], mesh: string, keys: ClientKeys): BundleView {
+export function memberCards(records: readonly Signed[]): readonly CardBody[] {
   const view = viewOf(records);
   const byHash = new Map(records.map((record) => [hashOf(record), record]));
   const members = new Map<string, CardBody>();
@@ -35,10 +35,15 @@ export function bundleView(records: readonly Signed[], mesh: string, keys: Clien
   }
   const machines = [...members.values()].filter((card) => card.kind !== "client");
   const clients = [...members.values()].filter(
-    (card) =>
-      card.kind === "client" &&
-      machines.some((machine) => machine.signPub === view.admitter.get(card.signPub)),
+    (card) => card.kind === "client" && machines.some((machine) => machine.signPub === view.admitter.get(card.signPub)),
   );
+  return [...machines, ...clients];
+}
+
+export function bundleView(records: readonly Signed[], mesh: string, keys: ClientKeys): BundleView {
+  const cards = memberCards(records);
+  const machines = cards.filter((card) => card.kind !== "client");
+  const clients = cards.filter((card) => card.kind === "client");
   const self = clients.find(
     (card) => card.signPub === keys.signPub && card.devicePub === keys.devicePub && card.noisePub === keys.devicePub,
   );

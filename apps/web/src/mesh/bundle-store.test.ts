@@ -2,7 +2,7 @@ import { base64urlEncode, generateHostIdentity } from "@doriface/crypto";
 import { hashOf, meshIdOf, signCard, signRecord, type Signed, type Subject } from "@doriface/mesh";
 import { expect, test } from "bun:test";
 import { memoryStore } from "../storage/idb.ts";
-import { BundleStore } from "./bundle-store.ts";
+import { MembershipStore } from "./membership.ts";
 
 function fixture() {
   const a = generateHostIdentity();
@@ -60,7 +60,7 @@ function fixture() {
 
 test("an anchored welcome derives every machine and no client as a relay target", async () => {
   const f = fixture();
-  const store = new BundleStore(memoryStore(), f.self);
+  const store = new MembershipStore(memoryStore(), f.self);
   await store.accept(f.records, f.anchor);
   expect(store.snapshot().machines.map((m) => m.hostId)).toEqual([f.a.hostId, f.b.hostId]);
   expect(store.snapshot().machines.every((m) => m.directUrl === "")).toBe(true);
@@ -69,14 +69,14 @@ test("an anchored welcome derives every machine and no client as a relay target"
 
 test("one record failing the door keeps none of a welcome", async () => {
   const f = fixture();
-  const store = new BundleStore(memoryStore(), f.self);
+  const store = new MembershipStore(memoryStore(), f.self);
   await expect(store.accept([...f.records, { body: "{}", sig: "invalid" }], f.anchor)).rejects.toThrow();
   expect(store.snapshot().records).toEqual([]);
 });
 
 test("welcome must bind the mesh and the authenticated inviter key", async () => {
   const f = fixture();
-  const store = new BundleStore(memoryStore(), f.self);
+  const store = new MembershipStore(memoryStore(), f.self);
   await expect(store.accept(f.records, { ...f.anchor, hostKey: f.self.devicePub })).rejects.toThrow();
   await expect(store.accept(f.records, { ...f.anchor, mesh: "another" })).rejects.toThrow();
   expect(store.snapshot().records).toEqual([]);
@@ -84,7 +84,7 @@ test("welcome must bind the mesh and the authenticated inviter key", async () =>
 
 test("refresh cannot erase a held revoke by omitting it", async () => {
   const f = fixture();
-  const store = new BundleStore(memoryStore(), f.self);
+  const store = new MembershipStore(memoryStore(), f.self);
   const earlier = [...f.records];
   await store.accept(f.records, f.anchor);
   const revoke = f.revoke(f.b);
@@ -96,7 +96,7 @@ test("refresh cannot erase a held revoke by omitting it", async () => {
 
 test.each(["revoked", "orphaned"])("a %s browser drops all view targets but retains its bundle", async (reason) => {
   const f = fixture();
-  const store = new BundleStore(memoryStore(), f.self);
+  const store = new MembershipStore(memoryStore(), f.self);
   await store.accept(f.records, f.anchor);
   const revoke = f.revoke(reason === "revoked" ? f.browser : f.a);
   await store.refresh([revoke], f.anchor);
@@ -107,7 +107,7 @@ test.each(["revoked", "orphaned"])("a %s browser drops all view targets but reta
 
 test("refresh refuses a source not already in the held view with its pinned key", async () => {
   const f = fixture();
-  const store = new BundleStore(memoryStore(), f.self);
+  const store = new MembershipStore(memoryStore(), f.self);
   await store.accept(f.records, f.anchor);
   await expect(store.refresh([], { ...f.anchor, hostKey: f.self.devicePub })).rejects.toThrow();
   expect(store.snapshot().machines).toHaveLength(2);
@@ -115,7 +115,7 @@ test("refresh refuses a source not already in the held view with its pinned key"
 
 test("refresh is bounded once per open and ten minutes per member", () => {
   const f = fixture();
-  const store = new BundleStore(memoryStore(), f.self);
+  const store = new MembershipStore(memoryStore(), f.self);
   const first = {};
   expect(store.claimRefresh(f.a.hostId, first, 0)).toBe(true);
   expect(store.claimRefresh(f.a.hostId, first, 600_001)).toBe(false);

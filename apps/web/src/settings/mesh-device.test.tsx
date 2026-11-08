@@ -42,12 +42,14 @@ test("only the desktop shell's own computer gets the local marker", () => {
 });
 
 test("one settling member changes only its own row", () => {
+  const [first, second] = entries;
+  if (first === undefined || second === undefined) throw new Error("the test requires two machines");
   const settling: MemberEntry = {
-    ...entries[0]!,
+    ...first,
     state: { phase: "failed", settling: true, error: new Error("settling"), retryInMs: 1_000, retryAt: 0, stale: null },
   };
   const html = renderToStaticMarkup(
-    <MeshMachineList entries={[settling, entries[1]!]} ownComputer={undefined} retry={() => {}} />,
+    <MeshMachineList entries={[settling, second]} ownComputer={undefined} retry={() => {}} />,
   );
   expect(html.match(/Settling/g)).toHaveLength(1);
   expect(html).toContain("Beta");

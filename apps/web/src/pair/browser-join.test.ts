@@ -2,25 +2,45 @@ import { base64urlEncode } from "@doriface/crypto";
 import { memoryLinkPair } from "@doriface/crypto/testing";
 import { joinCommit, JOINER_EXPECTS, MeshLines } from "@doriface/mesh/join";
 import { expect, test } from "bun:test";
-import { loadBrowserIdentity } from "../connection/browser-identity.ts";
+import { loadBrowserIdentity } from "../mesh/identity.ts";
 import { memoryStore } from "../storage/idb.ts";
-import { BundleStore } from "../mesh/bundle-store.ts";
-import { BrowserJoin, loadJoinAnchor } from "./browser-join.ts";
+import { MembershipStore } from "../mesh/membership.ts";
+import { BrowserJoin, loadJoinAnchor } from "../mesh/join-state.ts";
 
 const hash = new Uint8Array(32).fill(1);
 const contribution = new Uint8Array(32).fill(2);
-const offer = { t: "offer", mesh: "mesh", inviter: base64urlEncode(hash), nonce: base64urlEncode(hash.subarray(0, 16)), commit: joinCommit(hash, contribution) } as const;
+const offer = {
+  t: "offer",
+  mesh: "mesh",
+  inviter: base64urlEncode(hash),
+  nonce: base64urlEncode(hash.subarray(0, 16)),
+  commit: joinCommit(hash, contribution),
+} as const;
+
+const pair = () => {
+  const [a, b] = memoryLinkPair();
+  return {
+    host: new MeshLines(a, ["card", "confirm", "abort", "resume"]),
+    client: new MeshLines(b, JOINER_EXPECTS),
+    close: () => a.close(),
+  };
+};
 
 async function setup() {
   const storage = memoryStore();
   const identity = await loadBrowserIdentity(storage, null);
-  const bundle = new BundleStore(storage, { signPub: base64urlEncode(identity.card.publicKey), devicePub: base64urlEncode(identity.device.publicKey) });
+  const bundle = new MembershipStore(storage, {
+    signPub: base64urlEncode(identity.card.publicKey),
+    devicePub: base64urlEncode(identity.device.publicKey),
+  });
   const join = new BrowserJoin(storage, identity, bundle);
-  const pair = () => {
-    const [a, b] = memoryLinkPair();
-    return { host: new MeshLines(a, ["card", "confirm", "abort", "resume"]), client: new MeshLines(b, JOINER_EXPECTS), close: () => a.close() };
+  const context = {
+    name: "phone",
+    relayUrl: "wss://relay.invalid",
+    inviterName: "studio",
+    dialed: { hostId: "inviter", noisePub: base64urlEncode(hash) },
+    expiresAt: Date.now() + 60_000,
   };
-  const context = { name: "phone", relayUrl: "wss://relay.invalid", inviterName: "studio", dialed: { hostId: "inviter", noisePub: base64urlEncode(hash) }, expiresAt: Date.now() + 60_000 };
   return { storage, bundle, join, pair, context };
 }
 
@@ -88,7 +108,10 @@ test("a dropped session resumes the same code without another card; refused resu
   const anchor = await loadJoinAnchor(run.storage);
   if (anchor === undefined) throw new Error("anchor lost");
   const second = run.pair();
-  const resumed = run.join.run({ lines: second.client, handshakeHash: contribution }, { ...run.context, resume: anchor });
+  const resumed = run.join.run(
+    { lines: second.client, handshakeHash: contribution },
+    { ...run.context, resume: anchor },
+  );
   expect(await second.host.next()).toEqual({ t: "resume", nonce: offer.nonce });
   const again = reaches(run.join, "comparing");
   second.host.send({ t: "reveal", Ni: base64urlEncode(contribution) });

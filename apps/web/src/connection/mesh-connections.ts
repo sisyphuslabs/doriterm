@@ -404,14 +404,23 @@ export class MeshConnections {
   #refresh(): void {
     const selected = this.#targets.get(this.#selection ?? this.#settings.hostId) ?? this.#targets.values().next().value;
     const learned = selected !== undefined && !this.#pairedRoster().some((paired) => paired.hostId === selected.hostId);
-    this.#visibleSettings = selected === undefined ? this.#settings : {
-      ...this.#settings, ...selected, ...(learned ? { mode: "relay", viewMember: true } : {}),
-    };
-    this.#snapshot = [...this.#targets.values()].map((target) => ({
-      target,
-      state: this.#stores.get(target.hostId)?.state ?? UNSET,
-      ...(this.#lastSeen.has(target.hostId) ? { lastSeen: this.#lastSeen.get(target.hostId) } : {}),
-    }));
+    this.#visibleSettings =
+      selected === undefined
+        ? this.#settings
+        : {
+            ...this.#settings,
+            ...selected,
+            ...(learned ? { mode: "relay", viewMember: true } : {}),
+          };
+    this.#snapshot = [...this.#targets.values()].map((target) =>
+      Object.assign(
+        {
+          target,
+          state: this.#stores.get(target.hostId)?.state ?? UNSET,
+        },
+        this.#lastSeen.has(target.hostId) ? { lastSeen: this.#lastSeen.get(target.hostId) } : {},
+      ),
+    );
   }
 
   #notify(): void {

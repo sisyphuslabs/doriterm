@@ -4,9 +4,11 @@ import { expect, test } from "./fixtures.ts";
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
 
-test("a mesh invite says it adds a machine and never offers to pair this browser", async ({ page }) => {
+test("a mesh invite opens browser membership and keeps the computer command in details", async ({ page }) => {
   await page.goto(MESH_LINK);
-  await expect(page.getByRole("heading", { name: "This link adds a machine to a mesh" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Join this mesh" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Join", exact: true })).toBeVisible();
+  await page.getByText("I meant to add a computer", { exact: true }).click();
   await expect(page.locator("code").filter({ hasText: "doriface-host mesh join <link>" })).toBeVisible();
   await expect(page.getByRole("button", { name: "They match" })).toHaveCount(0);
 });

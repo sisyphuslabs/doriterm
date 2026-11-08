@@ -65,10 +65,12 @@ export function MeshMachineList({
   entries,
   ownComputer,
   retry,
+  openMember,
 }: {
   readonly entries: readonly MemberEntry[];
   readonly ownComputer: string | undefined;
   readonly retry: (hostId: string) => void;
+  readonly openMember?: (hostId: string) => void;
 }) {
   return (
     <ul aria-label="Machines" className="flex flex-col divide-y divide-border">
@@ -90,12 +92,20 @@ export function MeshMachineList({
                 {entry.state.phase !== "open" && entry.lastSeen !== undefined ? (
                   <span className="block">{`Last seen ${formatAge(entry.lastSeen, Date.now())} ago`}</span>
                 ) : null}
-                {entry.state.phase === "host-failed" ? <span className="block">{entry.state.failure.message}</span> : null}
+                {entry.state.phase === "host-failed" ? (
+                  <span className="block">{entry.state.failure.message}</span>
+                ) : null}
               </>
             }
             control={
-              entry.state.phase === "failed" ? (
-                <Button size="sm" onClick={() => retry(entry.target.hostId)}>Try now</Button>
+              entry.state.phase === "open" && openMember !== undefined ? (
+                <Button size="sm" onClick={() => openMember(entry.target.hostId)}>
+                  Open
+                </Button>
+              ) : entry.state.phase === "failed" ? (
+                <Button size="sm" onClick={() => retry(entry.target.hostId)}>
+                  Try now
+                </Button>
               ) : null
             }
           />

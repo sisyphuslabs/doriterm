@@ -5,6 +5,7 @@ import { normalizeCode } from "./code.ts";
 import { parsePairingFragment, type PairingOffer } from "./fragment.ts";
 import { pasteInvite } from "./invite-handoff.ts";
 import { SlotLookups } from "./slot-lookups.ts";
+import { useOnline } from "../pwa/use-online.ts";
 
 /** The same entry point for a fresh tab and a separate, empty iOS home-screen storage partition. */
 export function JoinEntry({ onOffer }: { readonly onOffer: (offer: PairingOffer) => void }) {
@@ -12,6 +13,7 @@ export function JoinEntry({ onOffer }: { readonly onOffer: (offer: PairingOffer)
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [lookups] = useState(() => new SlotLookups(connectionStore.settings.relayUrl));
+  const online = useOnline();
   const apply = async (candidate: string): Promise<void> => {
     setBusy(true);
     setError(undefined);
@@ -34,16 +36,54 @@ export function JoinEntry({ onOffer }: { readonly onOffer: (offer: PairingOffer)
       <p className="text-base text-muted-foreground">
         Open an invite from a machine you can see, or ask a member for one by a call or in person.
       </p>
-      <Button onClick={() => void pasteInvite().then(apply, (cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))}>
+      {!online ? (
+        <Notice title="You are offline" tone="warning">
+          <span id="join-needs-network">Joining a mesh needs a network. Reconnect, then open or paste an invite.</span>
+        </Notice>
+      ) : null}
+      <Button
+        size="lg"
+        disabled={!online}
+        aria-describedby={online ? undefined : "join-needs-network"}
+        onClick={() =>
+          void pasteInvite().then(apply, (cause: unknown) =>
+            setError(cause instanceof Error ? cause.message : String(cause)),
+          )
+        }
+      >
         Paste invite
       </Button>
-      <form className="flex flex-col gap-5" onSubmit={(event) => { event.preventDefault(); void apply(text); }}>
+      <form
+        className="flex flex-col gap-5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void apply(text);
+        }}
+      >
         <Field label="Invite link or code" htmlFor="mesh-invite" error={error}>
-          <Input id="mesh-invite" value={text} onValueChange={setText} autoComplete="off" spellCheck={false} />
+          <Input
+            id="mesh-invite"
+            className="min-h-11"
+            value={text}
+            onValueChange={setText}
+            autoComplete="off"
+            spellCheck={false}
+          />
         </Field>
-        <Button type="submit" variant="primary" loading={busy} disabled={text.trim() === ""}>Continue</Button>
+        <Button
+          type="submit"
+          size="lg"
+          variant="primary"
+          loading={busy}
+          disabled={!online || text.trim() === ""}
+          aria-describedby={online ? undefined : "join-needs-network"}
+        >
+          Continue
+        </Button>
       </form>
-      {!navigator.onLine ? <Notice title="You are offline">Joining needs a connection to the relay.</Notice> : null}
+      <Button size="lg" render={<a href="/settings#connect" />}>
+        Connect a machine
+      </Button>
     </main>
   );
 }

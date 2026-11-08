@@ -13,7 +13,7 @@ import { useMachines } from "../workspace/use-machines.ts";
 import { useNow } from "../workspace/use-now.ts";
 import { desktopBridge } from "../desktop/bridge.ts";
 import { useConnectionSettings } from "../connection/store.ts";
-import { useBrowserMembership } from "../mesh/browser-membership.ts";
+import { useBrowserMembership } from "../mesh/membership-state.ts";
 import { MembershipMachines } from "./membership-device.tsx";
 
 const NO_TERMINALS: readonly Terminal[] = [];

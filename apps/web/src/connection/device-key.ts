@@ -14,7 +14,7 @@ const ALGORITHM = { name: "X25519" } as const;
 type StoredWebCrypto = { readonly kind: "webcrypto"; readonly privateKey: CryptoKey; readonly publicKey: Uint8Array };
 type StoredRaw = { readonly kind: "raw"; readonly privateKey: Uint8Array };
 
-function isStored(value: unknown): value is StoredWebCrypto | StoredRaw {
+export function isStored(value: unknown): value is StoredWebCrypto | StoredRaw {
   if (typeof value !== "object" || value === null) return false;
   const kind: unknown = Reflect.get(value, "kind");
   const privateKey: unknown = Reflect.get(value, "privateKey");

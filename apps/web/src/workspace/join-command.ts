@@ -33,7 +33,8 @@ const callsOf = (connection: HcConnection): OfferCalls => ({
 export function offerFor(value: unknown, request: string): JoinOffer | undefined {
   const doc = parseMeshOfferDoc(value);
   if (doc?.request !== request) return undefined;
-  if ("link" in doc) return { phase: "ready", command: joinCommand(doc.link), link: doc.link, expiresAt: doc.expiresAt };
+  if ("link" in doc)
+    return { phase: "ready", command: joinCommand(doc.link), link: doc.link, expiresAt: doc.expiresAt };
   if ("error" in doc) return { phase: "failed", reason: doc.error };
   if ("expired" in doc) return { phase: "expired" };
   if ("joined" in doc) return { phase: "joined", name: doc.joined.name };

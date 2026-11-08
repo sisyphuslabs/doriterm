@@ -16,6 +16,9 @@ export interface FakeRelayHost {
   readonly pairingOffer: () => Promise<{ readonly link: string; readonly code: string }>;
   /** Starts a second machine and runs `doriface-host mesh join` there with `link`; resolves with its mesh name. */
   readonly join: (link: string) => Promise<string>;
+  readonly meshOffer: () => Promise<{ readonly link: string; readonly code: string }>;
+  readonly pendingJoin: () => Promise<{ readonly nonce: string; readonly code: string; readonly name: string }>;
+  readonly answerJoin: (nonce: string, code: string, approve: boolean) => Promise<void>;
   /** The host's LAN listener, the address a person sets as the Direct address (#446); empty unless `direct` was asked. */
   readonly directUrl: string;
   /** Call before the page dials the relay: its `/v1/client/...` sockets go to the fake relay's client bridge. */
@@ -271,8 +274,8 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
     if (typeof pairUrl !== "string") throw new Error("the fake relay host printed no pair lookup address");
     if (options.direct === true && (typeof directUrl !== "string" || directUrl === ""))
       throw new Error("the fake relay host printed no direct address");
-    const readOffer = async (): Promise<{ readonly link: string; readonly code: string }> => {
-      input.write("link\n");
+    const readOffer = async (command = "link"): Promise<{ readonly link: string; readonly code: string }> => {
+      input.write(`${command}\n`);
       const { link, code } = await protocol.next("a pairing link");
       if (typeof link !== "string" || typeof code !== "string")
         throw new Error("the fake relay host printed no pairing link or code");
@@ -282,6 +285,25 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
       directUrl: typeof directUrl === "string" ? directUrl : "",
       pairingOffer: readOffer,
       pairingLink: async () => (await readOffer()).link,
+      meshOffer: () => readOffer("mesh-link"),
+      async pendingJoin() {
+        input.write("pending\n");
+        const { pending } = await protocol.next("a pending browser join", 30_000);
+        if (
+          !isLine(pending) ||
+          typeof pending["nonce"] !== "string" ||
+          typeof pending["code"] !== "string" ||
+          typeof pending["name"] !== "string"
+        ) {
+          throw new Error("the host did not publish a committed pending join");
+        }
+        return { nonce: pending["nonce"], code: pending["code"], name: pending["name"] };
+      },
+      async answerJoin(nonce, code, approve) {
+        input.write(`answer ${JSON.stringify({ nonce, code, approve })}\n`);
+        const { answered } = await protocol.next("a browser join decision");
+        if (!isLine(answered) || answered["decided"] !== true) throw new Error("the host refused the compared code");
+      },
       async join(link) {
         input.write(`join ${link}\n`);
         // A second core, a second host and a join through the relay: more than one startup stage's worth.

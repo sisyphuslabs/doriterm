@@ -1,16 +1,21 @@
-import { generateEd25519, generateX25519, hostIdOf, rawStaticKey } from "@doriface/crypto";
+import { browserInvite, joinComparedBrowser } from "./support/compared-browser.ts";
+import { base64urlEncode, hostIdOf } from "@doriface/crypto";
+import { JOINER_EXPECTS, MeshLines } from "../../packages/mesh/src/join/index.ts";
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { connect } from "../../apps/web/src/connection/connect.ts";
 import { DEFAULT_SETTINGS } from "../../apps/web/src/connection/settings.ts";
-import { joinMesh } from "../../apps/web/src/mesh/join.ts";
+import { joinMesh, openRosterSession } from "../../apps/web/src/mesh/join.ts";
 import { MembershipStore, reachableTargets } from "../../apps/web/src/mesh/membership.ts";
 import { parsePairingFragment } from "../../apps/web/src/pair/fragment.ts";
 import { memoryStore } from "../../apps/web/src/storage/idb.ts";
 import { untilFullMesh } from "./support/mesh/echo.ts";
 import { type Mesh, startMesh, TEARDOWN_MS } from "./support/mesh/mesh.ts";
 import { scenario } from "./support/mesh/present.ts";
-import { browserInvite, joinComparedBrowser } from "./support/compared-browser.ts";
 import { meshIdOf, statusOf } from "./support/mesh/status.ts";
+import { exchangeRoster } from "../../apps/web/src/mesh/roster-client.ts";
+import { MeshConnections } from "../../apps/web/src/connection/mesh-connections.ts";
+import { ConnectionStore } from "../../apps/web/src/connection/store.ts";
+import { loadBrowserIdentity } from "../../apps/web/src/mesh/identity.ts";
 
 const OFFER_URL = /https:\/\/\S*pair#\S+/;
 
@@ -22,20 +27,25 @@ const running = (): Mesh => {
 };
 
 /**
- * Browser identity and membership storage for the shared committed ceremony, the relay and two real hosts.
+ * The browser as the web app's own modules run it: its X25519 device key and Ed25519 signing key in a memory store, so
+ * the join exercises the web joiner, the relay and two real hosts, with no browser-only storage in the way.
  */
-function browser() {
-  const device = rawStaticKey(generateX25519());
-  const sign = generateEd25519();
+async function browser() {
   const logs: string[] = [];
-  const membership = new MembershipStore(memoryStore());
+  const storage = memoryStore();
+  const identity = await loadBrowserIdentity(storage, null);
+  const device = identity.device;
+  const sign = identity.card;
+  const keys = { signPub: base64urlEncode(sign.publicKey), devicePub: base64urlEncode(device.publicKey) };
+  const membership = new MembershipStore(storage, keys);
   const deps = {
     loadDeviceKey: async () => device,
     loadSignKey: async () => sign,
     membership,
+    storage,
     log: (line: string) => void logs.push(line),
   };
-  return { device, sign, logs, membership, deps, hostId: hostIdOf(sign.publicKey) };
+  return { device, sign, logs, membership, storage, keys, deps, hostId: hostIdOf(sign.publicKey) };
 }
 
 scenario("a browser joins the mesh as its own member (#1386, stage 2)", ["join", "sync"], () => {
@@ -50,14 +60,14 @@ scenario("a browser joins the mesh as its own member (#1386, stage 2)", ["join",
     expect([receipt?.alive, receipt?.listening]).toEqual([[], []]);
   }, TEARDOWN_MS);
 
-  test("by a's mesh invite the browser becomes a client member on a AND b, and opens a session to b over the relay", async () => {
+  test("a browser admitted by a cold-starts, refreshes and opens a terminal on b after a stops, over the relay", async () => {
     const hosts = running();
     const [a, b] = [hosts.host("a"), hosts.host("b")];
     const relayUrl = a.tap?.url ?? hosts.relay?.url ?? "";
     const offer = await browserInvite(a, relayUrl);
     expect(offer.target).toBe("mesh");
 
-    const web = browser();
+    const web = await browser();
     const joined = await joinComparedBrowser(a, offer, "Chrome on macOS", web);
     expect(joined.meshId).toBe(meshIdOf(a));
     expect(joined.membership.signPub).toBeString();
@@ -77,21 +87,62 @@ scenario("a browser joins the mesh as its own member (#1386, stage 2)", ["join",
     const toB = targets.find((target) => target.hostId === b.hostId);
     if (toB === undefined) throw new Error("b is not among the browser's targets");
 
-    const relayOnly = { ...DEFAULT_SETTINGS, mode: "relay" as const, relayUrl: hosts.relay?.url ?? relayUrl, ...toB };
-    const opened = await connect(relayOnly, undefined, { loadDeviceKey: web.deps.loadDeviceKey });
+    await a.stop();
+    const restored = new MembershipStore(web.storage, web.keys);
+    await restored.load();
+    expect(
+      restored
+        .snapshot()
+        .machines.map((target) => target.hostId)
+        .toSorted(),
+    ).toEqual([a.hostId, b.hostId].toSorted());
+    const transport = hosts.relay?.url ?? relayUrl;
+    const roster = new MeshConnections(
+      { ...DEFAULT_SETTINGS, relayUrl: transport },
+      (settings) =>
+        new ConnectionStore(
+          settings,
+          (target, options) =>
+            connect({ ...target, relayUrl: transport }, options, { loadDeviceKey: web.deps.loadDeviceKey }),
+          () => undefined,
+        ),
+    );
+    roster.setViewMembers(restored.snapshot().machines);
+    roster.start();
     try {
-      expect(opened.path).toBe("relay");
-      expect(opened.connection.hello.framed).toBe(true);
-      expect((await opened.connection.call("terminal.list", {})).terminals).toBeArray();
+      await hosts.until("browser connects to b with a stopped", () =>
+        roster.entries().some((entry) => entry.target.hostId === b.hostId && entry.state.phase === "open"),
+      );
+      roster.select(b.hostId);
+      const state = roster.state;
+      if (state.phase !== "open") throw new Error("b did not open");
+      expect(state.path).toBe("relay");
+      expect(roster.entries().find((entry) => entry.target.hostId === a.hostId)?.state.phase).not.toBe("open");
+      const terminal = await state.connection.call("terminal.run", { argv: ["/bin/sh"] });
+      expect((await state.connection.call("terminal.get", { terminal: terminal.address })).state).toBe("live");
+      await state.connection.call("terminal.kill", { terminal: terminal.address });
+      await state.connection.call("terminal.rm", { terminal: terminal.address });
+      const browserIdentity = { device: web.device, card: web.sign };
+      const secure = await openRosterSession({ ...toB, relayUrl: transport }, browserIdentity);
+      await exchangeRoster(new MeshLines(secure, JOINER_EXPECTS), {
+        identity: browserIdentity,
+        bundle: restored,
+        source: toB,
+        name: "chrome-on-macos",
+        action: "refresh",
+      });
+      expect(restored.snapshot().phase).toBe("joined");
+      expect(restored.snapshot().machines.map((target) => target.hostId)).toContain(b.hostId);
     } finally {
-      opened.connection.close();
+      roster.stop();
+      await a.start();
     }
   }, 180_000);
 
   test("a second join by the same browser is refused before anything is dialed: it is a member already", async () => {
     const hosts = running();
     const a = hosts.host("a");
-    const web = browser();
+    const web = await browser();
     await web.membership.adopt({
       meshId: meshIdOf(a),
       records: [],

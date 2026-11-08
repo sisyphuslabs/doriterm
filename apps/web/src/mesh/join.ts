@@ -1,5 +1,6 @@
 import {
   closeCodeOf,
+  base64urlDecode,
   type KeyPair,
   type PairingSecret,
   type SecureLink,
@@ -15,11 +16,17 @@ import { loadSignKey } from "./identity.ts";
 import { type BrowserJoined, joinOnLink } from "./joiner.ts";
 import { meshNameOf } from "./member-name.ts";
 import { MembershipStore } from "./membership.ts";
+import type { CardKey } from "../connection/card-key.ts";
+import type { BrowserIdentity } from "./identity.ts";
+import type { BrowserJoinAnchor } from "../pair/join-anchor.ts";
+import type { KeyValueStore } from "../storage/idb.ts";
 
 export interface JoinDeps extends RelayDeps {
-  readonly loadSignKey: () => Promise<KeyPair>;
+  readonly loadSignKey: () => Promise<CardKey | KeyPair>;
   readonly membership: MembershipStore;
   readonly log?: ((line: string) => void) | undefined;
+  readonly confirm?: ((code: string) => Promise<boolean>) | undefined;
+  readonly storage?: KeyValueStore;
 }
 
 export const BROWSER_JOIN_DEPS: JoinDeps = { ...BROWSER_DEPS, loadSignKey, membership: new MembershipStore() };
@@ -69,7 +76,7 @@ export async function refuseEarly(offer: PairingOffer, membership: MembershipSto
 
 interface Dialed {
   readonly secure: SecureLink;
-  readonly sign: KeyPair;
+  readonly sign: CardKey | KeyPair;
   readonly device: StaticKey;
 }
 
@@ -128,8 +135,53 @@ export async function joinMesh(
       name,
       membership: deps.membership,
       log: deps.log,
+      confirm: deps.confirm,
+      handshakeHash: secure.handshakeHash,
+      ...(deps.storage === undefined ? {} : { storage: deps.storage }),
     });
   } finally {
     secure.close();
+  }
+}
+
+/** UI uses the same relay dial as the programmatic joiner, with the shared invite guard before it. */
+export async function openBrowserJoin(
+  offer: PairingOffer,
+  identity: BrowserIdentity,
+  name: string,
+): Promise<SecureLink> {
+  meshInviteOf(joinTargetOf(offer));
+  return (
+    await dialInviter(offer, name, {
+      loadDeviceKey: async () => identity.device,
+      loadSignKey: async () => identity.card,
+      membership: BROWSER_JOIN_DEPS.membership,
+    })
+  ).secure;
+}
+
+export function openBrowserResume(anchor: BrowserJoinAnchor, identity: BrowserIdentity): Promise<SecureLink> {
+  return openRosterSession(
+    { hostId: anchor.dialed.hostId, hostKey: anchor.dialed.noisePub, relayUrl: anchor.relayUrl },
+    identity,
+  );
+}
+
+export async function openRosterSession(
+  member: { readonly hostId: string; readonly hostKey: string; readonly relayUrl: string },
+  identity: BrowserIdentity,
+): Promise<SecureLink> {
+  const link = await connectRelayClient({ relayUrl: member.relayUrl, hostId: member.hostId });
+  try {
+    return await secureLink(link, {
+      role: "initiator",
+      hostId: member.hostId,
+      staticKey: identity.device,
+      remoteStatic: base64urlDecode(member.hostKey),
+      stream: "roster",
+    });
+  } catch (error) {
+    link.close();
+    throw error;
   }
 }

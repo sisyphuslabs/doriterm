@@ -1,3 +1,4 @@
+import { browserInvite, joinComparedBrowser } from "./support/compared-browser.ts";
 import { generateEd25519, generateX25519, hostIdOf, rawStaticKey } from "@doriface/crypto";
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
@@ -9,7 +10,6 @@ import { MembershipStore, reachableTargets } from "../../apps/web/src/mesh/membe
 import { parsePairingFragment } from "../../apps/web/src/pair/fragment.ts";
 import { memoryStore } from "../../apps/web/src/storage/idb.ts";
 import { DEVICE_LINK_REFUSAL } from "../../packages/mesh/src/join/index.ts";
-import { browserInvite, joinComparedBrowser } from "./support/compared-browser.ts";
 import type { CliResult } from "./support/mesh/mesh-host.ts";
 import { type Mesh, startMesh, TEARDOWN_MS } from "./support/mesh/mesh.ts";
 import { scenario } from "./support/mesh/present.ts";
@@ -25,20 +25,23 @@ const running = (): Mesh => {
 };
 
 /**
- * Browser identity and membership storage for the shared committed ceremony, the relay and one real host.
+ * The browser as the web app's own modules run it: its X25519 device key and Ed25519 signing key in a memory store, so
+ * the join exercises the web joiner, the relay and one real host, with no browser-only storage in the way.
  */
 function browser() {
   const device = rawStaticKey(generateX25519());
   const sign = generateEd25519();
   const logs: string[] = [];
-  const membership = new MembershipStore(memoryStore());
+  const storage = memoryStore();
+  const membership = new MembershipStore(storage);
   const deps = {
     loadDeviceKey: async () => device,
     loadSignKey: async () => sign,
     membership,
+    storage,
     log: (line: string) => void logs.push(line),
   };
-  return { device, sign, logs, membership, deps, hostId: hostIdOf(sign.publicKey) };
+  return { device, sign, logs, membership, storage, deps, hostId: hostIdOf(sign.publicKey) };
 }
 
 function offerUrl(run: CliResult, what: string): string {

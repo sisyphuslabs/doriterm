@@ -30,12 +30,17 @@ describe("the membership record", () => {
     expect((await store.read())?.meshId).toBe("mesh-1");
   });
 
-  test("the same mesh may be adopted again: a re-join replaces the bundle", async () => {
+  test("the same mesh may be adopted again while preserving its verified history", async () => {
+    const a = side("alpha");
+    a.mesh.found(a.m.identity, { name: a.m.name, hcId: a.m.hcId });
+    const held = a.mesh.read();
+    if (held === undefined) throw new Error("fixture did not found a mesh");
     const store = new MembershipStore(memoryStore());
-    await store.adopt(membership("mesh-1"));
-    const again = { ...membership("mesh-1"), joinedAt: "2026-11-09T00:00:00.000Z" };
+    await store.adopt({ ...membership(held.meshId), records: held.records });
+    const again = { ...membership(held.meshId), records: [], joinedAt: "2026-11-09T00:00:00.000Z" };
     expect(await store.adopt(again)).toBe(true);
     expect((await store.read())?.joinedAt).toBe("2026-11-09T00:00:00.000Z");
+    expect((await store.read())?.records).toEqual(held.records);
   });
 
   test("a malformed stored value reads as no membership", async () => {

@@ -8,7 +8,7 @@ export type { Verdict } from "./mesh-reader.ts";
 export interface Mesh {
   readonly read: MeshRead;
   /** Settles once the documents, read again after the write, are shown. */
-  readonly answer: (nonce: string, verdict: Verdict) => Promise<void>;
+  readonly answer: (nonce: string, verdict: Verdict, code?: string) => Promise<void>;
 }
 
 /**
@@ -29,6 +29,9 @@ export function useMesh(connection: HcConnection): Mesh {
       stop();
     };
   }, [reader]);
-  const answer = useCallback((nonce: string, verdict: Verdict) => reader.answer(nonce, verdict), [reader]);
+  const answer = useCallback(
+    (nonce: string, verdict: Verdict, code?: string) => reader.answer(nonce, verdict, code),
+    [reader],
+  );
   return { read, answer };
 }

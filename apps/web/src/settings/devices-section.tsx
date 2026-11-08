@@ -12,7 +12,7 @@ import { sessionPathLabel } from "./session-path.ts";
 import { linkFacts } from "./round-trip.ts";
 import { useHostRoundTrip } from "./use-host-round-trip.ts";
 import { desktopBridge } from "../desktop/bridge.ts";
-import { useBrowserMembership } from "../mesh/browser-membership.ts";
+import { useBrowserMembership } from "../mesh/membership-state.ts";
 import { MembershipDeviceSection } from "./membership-device.tsx";
 
 function describe(state: ConnectionState): ReactNode {
@@ -117,28 +117,33 @@ function PairedDevicesSection() {
 
   return (
     <>
-      <SettingRow title={label(<Monitor aria-hidden />, desktopBridge() === null ? "This browser" : host)}
-        description={desktopBridge() === null ? `Connected through ${host}` : "This device"} control={null} />
-      {desktopBridge() === null ? <Button render={<a href="/join" />}>Join a mesh</Button> : (
       <SettingRow
-        title={label(<Server aria-hidden />, host)}
-        description={
-          <>
-            {describe(state)}
-            {state.phase === "open" ? (
-              <span className="block text-muted-foreground">
-                {sessionPathLabel(state.path, state.directReason)}
-                {linkFacts(state.connectMs, roundTrip).map((fact) =>
-                  fact.kind === "connect" ? ` · connected in ${fact.ms} ms` : ` · ${fact.ms} ms round trip`,
-                )}
-              </span>
-            ) : route.label === undefined ? null : (
-              <span className="block text-muted-foreground">{route.label}</span>
-            )}
-          </>
-        }
+        title={label(<Monitor aria-hidden />, desktopBridge() === null ? "This browser" : host)}
+        description={desktopBridge() === null ? `Connected through ${host}` : "This device"}
         control={null}
       />
+      {desktopBridge() === null ? (
+        <Button render={<a href="/join" />}>Join a mesh</Button>
+      ) : (
+        <SettingRow
+          title={label(<Server aria-hidden />, host)}
+          description={
+            <>
+              {describe(state)}
+              {state.phase === "open" ? (
+                <span className="block text-muted-foreground">
+                  {sessionPathLabel(state.path, state.directReason)}
+                  {linkFacts(state.connectMs, roundTrip).map((fact) =>
+                    fact.kind === "connect" ? ` · connected in ${fact.ms} ms` : ` · ${fact.ms} ms round trip`,
+                  )}
+                </span>
+              ) : route.label === undefined ? null : (
+                <span className="block text-muted-foreground">{route.label}</span>
+              )}
+            </>
+          }
+          control={null}
+        />
       )}
       <PairDeviceOffer />
       {view.kind === "unsupported" ? null : (

@@ -1,14 +1,15 @@
 import { MAX_RECORDS, type Signed } from "@doriface/mesh";
 import { JoinRefused, type MeshLines } from "@doriface/mesh/join";
-import type { BrowserIdentity } from "../connection/browser-identity.ts";
+import type { BrowserIdentity } from "../mesh/identity.ts";
 import { browserCard } from "./browser-card.ts";
-import type { BundleStore } from "./bundle-store.ts";
+import type { MembershipStore } from "./membership.ts";
 
 export interface RosterContext {
   readonly identity: BrowserIdentity;
-  readonly bundle: BundleStore;
+  readonly bundle: MembershipStore;
   readonly source: { readonly hostId: string; readonly hostKey: string };
   readonly name: string;
+  readonly relayUrl?: string;
   readonly action: "refresh" | "leave";
 }
 
@@ -22,17 +23,19 @@ export async function exchangeRoster(lines: MeshLines, context: RosterContext): 
     lines.expect("records", "done", "refused");
     lines.send(context.action === "leave" ? { t: "leave", card } : { t: "card", ...card });
     const records: Signed[] = [];
-    let line = await lines.next();
-    while (line.t === "records") {
+    const receive = async (): ReturnType<MeshLines["next"]> => {
+      const line = await lines.next();
+      if (line.t !== "records") return line;
       records.push(...line.records);
       if (records.length > MAX_RECORDS) throw new JoinRefused("The roster holds too many records.");
-      line = await lines.next();
-    }
+      return receive();
+    };
+    const line = await receive();
     if (line.t === "refused") throw new JoinRefused(line.reason);
     if (line.t !== "done" || line.mesh !== offer.mesh) throw new JoinRefused("The roster ended for another mesh.");
     lines.expect();
     const source = { ...context.source, mesh: offer.mesh, inviter: offer.inviter };
-    if (context.bundle.snapshot().phase === "empty") await context.bundle.accept(records, source);
+    if (context.bundle.snapshot().phase === "empty") await context.bundle.accept(records, source, context.relayUrl);
     else await context.bundle.refresh(records, source);
     if (context.action === "leave" && context.bundle.snapshot().phase !== "removed") {
       throw new JoinRefused("The machine did not confirm this browser's removal.");

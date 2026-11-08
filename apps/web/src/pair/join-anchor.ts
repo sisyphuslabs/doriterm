@@ -12,7 +12,11 @@ export const JOIN_ANCHOR_KEY = "mesh.join-anchor";
 export async function loadJoinAnchor(storage: KeyValueStore = deviceStore): Promise<BrowserJoinAnchor | undefined> {
   const saved = await storage.get(JOIN_ANCHOR_KEY);
   if (saved == null) return undefined;
-  if (typeof saved !== "object") throw new JoinRefused("The saved join cannot be read. Ask for a new invite");
+  const unreadable = async (): Promise<never> => {
+    await storage.put(JOIN_ANCHOR_KEY, null);
+    throw new JoinRefused("The saved join cannot be read. Ask for a new invite");
+  };
+  if (typeof saved !== "object") return unreadable();
   const field = (key: string): unknown => Reflect.get(saved, key);
   const offer = parseLine(JSON.stringify(field("offer")));
   const dialed = field("dialed");
@@ -24,18 +28,37 @@ export async function loadJoinAnchor(storage: KeyValueStore = deviceStore): Prom
   const relayUrl = field("relayUrl");
   const inviterName = field("inviterName");
   if (
-    offer === undefined || offer === "unknown" || offer.t !== "offer" || offer.commit === undefined ||
-    typeof dialed !== "object" || dialed === null ||
-    typeof h !== "string" || typeof Nj !== "string" ||
-    typeof expiresAt !== "number" || typeof confirmed !== "boolean" ||
-    typeof name !== "string" || typeof relayUrl !== "string" || typeof inviterName !== "string"
-  ) throw new JoinRefused("The saved join cannot be read. Ask for a new invite");
+    offer === undefined ||
+    offer === "unknown" ||
+    offer.t !== "offer" ||
+    offer.commit === undefined ||
+    typeof dialed !== "object" ||
+    dialed === null ||
+    typeof h !== "string" ||
+    typeof Nj !== "string" ||
+    typeof expiresAt !== "number" ||
+    typeof confirmed !== "boolean" ||
+    typeof name !== "string" ||
+    typeof relayUrl !== "string" ||
+    typeof inviterName !== "string"
+  )
+    return unreadable();
   const hostId: unknown = Reflect.get(dialed, "hostId");
   const noisePub: unknown = Reflect.get(dialed, "noisePub");
-  if (typeof hostId !== "string" || typeof noisePub !== "string") throw new JoinRefused("Ask for a new invite");
+  if (typeof hostId !== "string" || typeof noisePub !== "string") return unreadable();
   if (Date.now() >= expiresAt) {
     await storage.put(JOIN_ANCHOR_KEY, null);
     throw new JoinRefused("Ask for a new invite");
   }
-  return { offer: { ...offer, commit: offer.commit }, dialed: { hostId, noisePub }, h, Nj, expiresAt, confirmed, name, relayUrl, inviterName };
+  return {
+    offer: { ...offer, commit: offer.commit },
+    dialed: { hostId, noisePub },
+    h,
+    Nj,
+    expiresAt,
+    confirmed,
+    name,
+    relayUrl,
+    inviterName,
+  };
 }

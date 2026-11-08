@@ -23,8 +23,9 @@ import { usePendingUpdate } from "../update/update-store.ts";
 import { useCloseSettings } from "../settings/use-close-settings.ts";
 import { useSettingsInDialog } from "../settings/settings-dialog.tsx";
 import { VoiceSection } from "../settings/voice-section.tsx";
-import { useBrowserMembership } from "../mesh/browser-membership.ts";
+import { useBrowserMembership } from "../mesh/membership-state.ts";
 import { desktopBridge } from "../desktop/bridge.ts";
+import { BrowserInvite } from "../settings/browser-invite.tsx";
 
 const SECTIONS = [
   { id: "device", label: "This device", icon: <MonitorSmartphone /> },
@@ -151,40 +152,54 @@ export function SettingsRoute() {
           >
             {section === "device" ? (
               <>
-                {joinedBrowser ? <Lead>This browser is a member of the mesh. Each machine has its own connection.</Lead> : <Lead>
-                  This app talks to one host: the computer that runs your terminals. Here is which host it reaches,
-                  whether it is there now, this device's own settings, and under Advanced connection the route this app
-                  takes to that host. The defaults work for everyone; change them only for a self-hosted relay or a
-                  development host.
-                </Lead>}
+                {joinedBrowser ? (
+                  <Lead>This browser is a member of the mesh. Each machine has its own connection.</Lead>
+                ) : (
+                  <Lead>
+                    This app talks to one host: the computer that runs your terminals. Here is which host it reaches,
+                    whether it is there now, this device's own settings, and under Advanced connection the route this
+                    app takes to that host. The defaults work for everyone; change them only for a self-hosted relay or
+                    a development host.
+                  </Lead>
+                )}
                 <Group title={joinedBrowser ? "This member" : "Host"}>
                   <DevicesSection />
                 </Group>
                 <Group title="This device">
                   <DeviceSection />
                 </Group>
-                {!joinedBrowser ? <Group title="Advanced connection">
-                  <ConnectionSection />
-                </Group> : null}
+                {!joinedBrowser ? (
+                  <Group title="Advanced connection">
+                    <ConnectionSection />
+                  </Group>
+                ) : null}
               </>
             ) : section === "machines" ? (
               <>
-                <Lead>
-                  These are the computers this host reaches: the ones that joined your mesh, and any you added by hand.
-                </Lead>
+                {joinedBrowser ? (
+                  <Lead>These are the machines in your mesh. Each row shows this browser's own connection.</Lead>
+                ) : (
+                  <Lead>
+                    These are the computers this host reaches: the ones that joined your mesh, and any you added by
+                    hand.
+                  </Lead>
+                )}
                 <Group title="Machines">
                   {!joinedBrowser && members.length > 1 ? <MembersSection /> : null}
                   <MachinesSection />
                   {/* What a row's state means sits under the rows, where a reader meets it: on a phone the list leads (#1007). */}
-                  <p className="pt-3 text-sm text-pretty text-muted-foreground">
-                    Adding one by hand reaches it without the mesh; connecting one joins it first. A machine that
-                    answers reads Connected, one still being dialled reads Connecting, and one that needs a login says
-                    so; when a machine is offline the row says when it was last seen and, where the host knows a cause,
-                    what it is.
-                  </p>
+                  {!joinedBrowser ? (
+                    <p className="pt-3 text-sm text-pretty text-muted-foreground">
+                      Adding one by hand reaches it without the mesh; connecting one joins it first. A machine that
+                      answers reads Connected, one still being dialled reads Connecting, and one that needs a login says
+                      so; when a machine is offline the row says when it was last seen and, where the host knows a
+                      cause, what it is.
+                    </p>
+                  ) : null}
                 </Group>
                 <Group title="In your mesh">
-                  <MeshSection />
+                  <BrowserInvite />
+                  <MeshSection attentionOnly={joinedBrowser} />
                 </Group>
               </>
             ) : section === "pair" ? (

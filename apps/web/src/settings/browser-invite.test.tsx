@@ -7,9 +7,15 @@ import type { HcConnection } from "@doriface/client";
 test("an invite defaults to the first online machine by name, never an offline machine", () => {
   const connection = { hello: {} } as HcConnection;
   const entries: readonly MemberEntry[] = [
-    { target: { hostId: "c", hostName: "Zulu", hostKey: "", directUrl: "" }, state: { phase: "open", connection, transport: "relay" } },
+    {
+      target: { hostId: "c", hostName: "Zulu", hostKey: "", directUrl: "" },
+      state: { phase: "open", connection, path: "relay" },
+    },
     { target: { hostId: "a", hostName: "Alpha", hostKey: "", directUrl: "" }, state: { phase: "unconfigured" } },
-    { target: { hostId: "b", hostName: "Beta", hostKey: "", directUrl: "" }, state: { phase: "open", connection, transport: "relay" } },
+    {
+      target: { hostId: "b", hostName: "Beta", hostKey: "", directUrl: "" },
+      state: { phase: "open", connection, path: "relay" },
+    },
   ];
   const choices = onlineInviters(entries);
   expect(choices.map((entry) => entry.target.hostId)).toEqual(["b", "c"]);
