@@ -1,6 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import type { UnprovenLinks } from "../connection/wake.ts";
-import type { TerminalInput } from "./terminal-view.tsx";
+import type { TerminalInput } from "./terminal-view-props.ts";
 
 /** Where input goes: the open stream, which answers false once it is no longer open. */
 export interface InputSink {
