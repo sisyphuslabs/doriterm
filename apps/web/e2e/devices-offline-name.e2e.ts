@@ -55,6 +55,7 @@ for (const width of [1440, 390]) {
       expect(name).not.toBe("This browser");
       expect(hostId.length).toBeGreaterThan(0);
       expect(name).not.toContain(hostId);
+      await page.screenshot({ path: test.info().outputPath("legacy-browser-host.png"), fullPage: true });
 
       // A later load starts from what the app itself saved, the way a phone that reopens the page does.
       const saved = await stored(page);

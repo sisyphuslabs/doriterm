@@ -119,32 +119,29 @@ function PairedDevicesSection() {
     <>
       <SettingRow
         title={label(<Monitor aria-hidden />, desktopBridge() === null ? "This browser" : host)}
-        description={desktopBridge() === null ? `Connected through ${host}` : "This device"}
+        description={desktopBridge() === null ? "Not in a mesh" : "This device"}
         control={null}
       />
-      {desktopBridge() === null ? (
-        <Button render={<a href="/join" />}>Join a mesh</Button>
-      ) : (
-        <SettingRow
-          title={label(<Server aria-hidden />, host)}
-          description={
-            <>
-              {describe(state)}
-              {state.phase === "open" ? (
-                <span className="block text-muted-foreground">
-                  {sessionPathLabel(state.path, state.directReason)}
-                  {linkFacts(state.connectMs, roundTrip).map((fact) =>
-                    fact.kind === "connect" ? ` · connected in ${fact.ms} ms` : ` · ${fact.ms} ms round trip`,
-                  )}
-                </span>
-              ) : route.label === undefined ? null : (
-                <span className="block text-muted-foreground">{route.label}</span>
-              )}
-            </>
-          }
-          control={null}
-        />
-      )}
+      <SettingRow
+        title={label(<Server aria-hidden />, host)}
+        description={
+          <>
+            {describe(state)}
+            {state.phase === "open" ? (
+              <span className="block text-muted-foreground">
+                {sessionPathLabel(state.path, state.directReason)}
+                {linkFacts(state.connectMs, roundTrip).map((fact) =>
+                  fact.kind === "connect" ? ` · connected in ${fact.ms} ms` : ` · ${fact.ms} ms round trip`,
+                )}
+              </span>
+            ) : route.label === undefined ? null : (
+              <span className="block text-muted-foreground">{route.label}</span>
+            )}
+          </>
+        }
+        control={null}
+      />
+      {desktopBridge() === null ? <Button render={<a href="/join" />}>Join a mesh</Button> : null}
       <PairDeviceOffer />
       {view.kind === "unsupported" ? null : (
         <>
