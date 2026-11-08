@@ -215,24 +215,32 @@ anywhere.
 
 ## 8. Relay-only transport
 
-Every connection the web client makes to a member is a relay session: `connectRelayClient` to the member's hostId,
-then Noise IK pinned to the member's key from the view.
+Every connection a browser makes to a member is a relay session: `connectRelayClient` to the member's hostId, then
+Noise IK pinned to the member's key from the view. Today `connect()` tries a saved direct address first and falls back to
+the relay only when direct misses its 300 ms budget (`apps/web/src/connection/connect.ts`, `openDirect`,
+`DIRECT_BUDGET_MS`).
 
-- `connect()` drops the direct attempt for every web client: `openDirect` and its race, the saved `directUrl`, the LAN
-  URLs a host sends in message 2 (`lanUrls`), and the per-member `directUrl` in `MemberTarget`. Saved settings keep
-  parsing a `directUrl` (downgrade) and ignore it.
-- **The one exception** is the desktop shell's `loopback` mode to the host on the same computer. It is a local socket
-  authenticated by a token, not a network path, and it carries no device key (revision 4 §4). The shell reaches every
-  other member over the relay.
-- The join (§4), the roster stream (§5), hc sessions and the push stream all go over the relay.
-- The status bar's path label says **Relay** on every web session. The Direct label and its reasons (#446) are removed
-  from the web.
-- **Proof** (§14): an e2e whose page refuses every WebSocket that is not the relay's origin, and still joins, lists the
-  mesh and opens a terminal.
+| case                                              | behaviour                                                                                                                                                                                                                                                        |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| a browser (web surface), any member               | **no direct path at all** (#1381). The web's `ConnectionPath` set is `relay`, plus `loopback` for a page served by a host on the same computer (local development). `openDirect` and its race, the saved `directUrl` and the LAN URLs a host sends are not used  |
+| any client, a member learned from the view (§6)   | relay only **by construction**: a learned `MemberTarget` carries no `directUrl` (§6), so the direct race is never entered. This holds on the desktop shell too                                                                                                   |
+| the desktop shell, a host it paired with directly | keeps `direct` then `relay` (#446), and `loopback` to the host on the same computer. The shell is not the web surface #1381 orders onto the relay; a paired host on the same LAN is a different trust position from a learned member reached across the internet |
+| every mesh read                                   | the mesh document and the machine list ride the ordinary session (`apps/web/src/mesh/mesh-reader.ts`: `doc.get`, `doc.set`, `machine.list`), so they follow the rows above. There is no separate mesh transport                                                  |
+| the join (§4), the roster stream (§5), push       | over the relay, from every client                                                                                                                                                                                                                                |
+| a member's relay session drops                    | that member's own store reconnects on its own retry ladder (`MeshConnections`: one connection and one ladder per member, #994). Other members' sessions are untouched                                                                                            |
+| what it costs                                     | the browser loses the local-network win of the 300 ms direct race and puts the relay round trip in front of every call. The desktop shell keeps its fast local path to its paired host                                                                           |
 
-The relay-transport lane (the relay path's owner) contributes its rows to this section in this PR: relay reconnect and
-backoff per member, the relay's per-session limits as seen from a client with N members, and the hub's behaviour when a
-member's uplink is down. Until those land, the rows above are the contract the web side implements.
+- **Which surface.** The direct race runs only where the desktop shell's forwarder is present (`canForwardPlainWs()`,
+  `apps/web/src/connection/direct-forward.ts`). In a plain browser `connect()` goes straight to the relay. Saved settings
+  keep parsing a `directUrl` (downgrade) and a browser ignores it.
+- **Loopback** is a local socket authenticated by a token, not a network path, and it carries no device key (revision 4
+  §4).
+- The status bar's path label says **Relay** on every browser session. The Direct label and its reasons (#446) remain
+  only in the desktop shell.
+- **Proof** (§14): an e2e in which the page refuses every WebSocket that is not the relay's origin, so every direct dial
+  fails, and the browser still joins, renders the mesh status and drives a session to a learned member end to end. It
+  is the blocking proof for the web surface: without it "learned members go through the relay" describes the code and
+  is not a measured fact.
 
 ## 9. Comparing keys at a join
 
@@ -369,6 +377,7 @@ web builds.
 | unpair races an admit                               | the admit re-reads `devices.json` inside its `mesh.json` transaction, and the sweep runs after every admit                                                                                                                        |
 | a revoked member hides its revoke from a browser    | union with history retention: a revoke the browser holds is never dropped. A browser that never learned the revoke dials the revoked member, which is the partition limit of §10.2                                                |
 | the relay redirects a dial                          | each session is Noise IK, pinned to the member's Noise key from the verified view. The relay sees ciphertext only                                                                                                                 |
+| the relay carries a learned member's session        | a learned member was never paired with this browser, but its session is Noise IK pinned to its Noise key from the verified view, exactly as a paired session is pinned. The relay sees nothing and cannot substitute itself       |
 | the relay as the only path (§8)                     | the relay now sees which members a browser talks to, when, and how much, where a LAN session hid that before. The relay down means no web session at all. Both are the cost of #1381's order, stated here                         |
 | script injection in the app's origin                | can use the keys while the page is open (owner-equivalent, revision 4 §4); cannot copy a non-extractable key out; can copy raw-byte keys (WebKit). Same as today's device key. Removal is §10.3                                   |
 | storage cleared or evicted                          | the identity is gone, nothing is recoverable from the server side, and the old card is a member nobody can use until removed (§7)                                                                                                 |
@@ -388,6 +397,8 @@ web builds.
 | new browser, inviter host older than #956                             | the client card is refused (unknown kind); the join page says the host needs an update                                                                                      |
 | new browser, a member older than this design                          | the roster stream is refused at the handshake; that member is still dialled over the relay and accepts the browser once its index holds the admit (#956 hosts read clients) |
 | older web build, new host                                             | never opens the roster stream and still pairs with `doriface-host pair`. Nothing changes                                                                                    |
+| older web build, new host, learned members exist in the mesh          | the old client never learns them and keeps working through its paired host. The roster stream is not a prerequisite for the mesh working                                    |
+| desktop shell, a host it paired with on the same LAN                  | direct then relay, as today (§8); its learned members are relay only                                                                                                        |
 | a mesh with a machine that has not shown format support               | admission is refused with the readiness sentence; a paired device keeps working through its host                                                                            |
 | a mesh at its plan's `machines` limit                                 | a browser is still admitted when the admitting machine has `devices` room; a machine join at limit-1 still succeeds after any number of client admissions                   |
 | the admitting member stops right after the admit, before B synced it  | B refuses with 4401; for a view member that is "settling", and B is retried on the ladder until it accepts                                                                  |
@@ -434,11 +445,14 @@ Three pull requests, one behaviour each. Each is `Part of #942` and `Part of #13
      member's 4401 is still "Pair it again"; a paired member wins over a view member with the same hostId;
    - both keys are created once across two concurrent loads; a store that cannot keep a `CryptoKey` gets raw bytes;
    - an empty store after a clear shows **Join a mesh**, not a broken session.
-3. **Web: relay only** — `connect()` without the direct path; the Relay label; the settings parser ignoring
-   `directUrl`. Tests: no direct dial happens with a saved `directUrl` and LAN URLs offered; the e2e below.
+3. **Web: relay only** — `connect()` without the direct path in a browser; the Relay label; the settings parser ignoring
+   `directUrl` in a browser. Tests: in a browser no direct dial happens with a saved `directUrl` and LAN URLs offered;
+   with the shell's forwarder present a paired host still races direct; a learned member is never dialled direct on
+   either surface; the e2e below.
 
 **E2e (CI):** a desktop browser and a phone (mobile emulation) each join through an invite on the fake relay, with every
-WebSocket that is not the relay refused by the page, and each opens a terminal. The fake relay holds one uplink (#1297),
+WebSocket that is not the relay refused by the page, and each renders the mesh status and opens a terminal on a member
+it learned from the view. The fake relay holds one uplink (#1297),
 so the "A stopped" half is measured on real hosts.
 
 **Acceptance on two real machines:** A and B in one mesh; a desktop browser and a phone browser that each joined with an
