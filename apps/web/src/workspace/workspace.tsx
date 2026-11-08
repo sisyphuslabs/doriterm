@@ -37,7 +37,7 @@ import { useDropOnce } from "./use-drop-once.ts";
 import { useLayoutDocs } from "./use-layout-docs.ts";
 import { GitFactsContext, useGitFacts } from "./git-facts.ts";
 import { TodoProgressContext, useTodoProgress } from "./todo-progress.ts";
-import { layoutSpaces, tabTitle } from "./model.ts";
+import { layoutSpaces } from "./model.ts";
 import { SpaceSelectionContext } from "./space-selection.ts";
 import { useSpaceMove } from "./space-order.ts";
 import { useAdoptLoose } from "./use-adopt-loose.ts";
@@ -259,14 +259,9 @@ export function Workspace({ connection }: WorkspaceProps) {
   const closing = layout.tabs.find((tab) => tab.key === closingTab);
   const phoneTab = phoneOpen === null ? null : findTerminal(layout.tabs, phoneOpen);
   const phonePanes = phoneTab?.tab.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? [];
-  // The phone's header reads the tab as the desktop strip does: its name, else its place among its space's tabs.
-  const phoneTitle =
-    phoneTab === null
-      ? null
-      : tabTitle(
-          phoneTab.tab.name,
-          layout.tabs.filter((tab) => tab.spaceKey === phoneTab.tab.spaceKey).indexOf(phoneTab.tab),
-        );
+  // The phone's header reads the tab's own name; an unnamed tab reads its terminal's (the header's fallback), never its
+  // place among the space's tabs: a bare "2" names nothing on a screen of its own.
+  const phoneTitle = phoneTab === null || phoneTab.tab.name === "" ? null : phoneTab.tab.name;
   usePushPresence(inView);
   useNoticeOpen(connectionStore.settings.mode === "relay" ? connectionStore.settings.hostId : undefined, opened);
   // What this screen reads for attention: a finish it has looked at reads idle here, and only here (#611).
@@ -389,6 +384,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                         space={phoneSpace}
                         panes={phonePanes}
                         tabTitle={phoneTitle}
+                        backTo={phone.space === null ? null : (listedSpace?.name ?? null)}
                         onOpen={showOnPhone}
                         onBack={phone.back}
                         onSpaceBack={phone.backFromSpace}

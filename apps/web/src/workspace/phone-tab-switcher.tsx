@@ -1,7 +1,8 @@
 import { AgentRow, Button, IconButton, Sheet, SidebarSection } from "@doriface/ui";
 import { ChevronLeft, ChevronRight, ChevronUp, Plus, X } from "lucide-react";
 import { type ReactElement, useState } from "react";
-import { liveTabs, type Session, terminalTitle, titledTabs, toAgent } from "./model.ts";
+import { liveTabs, type Session, toAgent } from "./model.ts";
+import { lastSaid, tabLabel } from "./phone-space-rows.ts";
 import { useSpaceSelection } from "./space-selection.ts";
 import { useNow } from "./use-now.ts";
 
@@ -35,30 +36,39 @@ export function SpaceSheet(props: {
             count={space.tabs}
           >
             {/*
-              One row per tab, named as the strip names it (its name, else its number), the terminal it opens after it:
-              the open pane when it is this tab's, else the tab's first live pane.
+              One row per tab that shows a live terminal, for the terminal it opens: the open pane when it is this tab's,
+              else the tab's first live pane. It is named by its tab, else by that terminal (never its place, #1387),
+              and reads what that terminal said last.
             */}
-            {titledTabs(space, terminals).flatMap(({ title, panes }) => {
-              const shown = panes.includes(active) ? active : panes[0];
+            {space.tabPanes.flatMap((panes, at) => {
+              const live = panes.filter((address) =>
+                terminals.some((e) => e.address === address && e.state === "live"),
+              );
+              const shown = live.includes(active) ? active : live[0];
               return terminals
                 .filter((entry) => entry.address === shown)
-                .map((entry) => (
-                  <div key={entry.address} className="flex min-w-0 items-center gap-1">
-                    <div className="min-w-0 flex-1">
-                      <AgentRow
-                        agent={{ ...toAgent(entry, now), name: title, detail: terminalTitle(entry) }}
-                        selected={entry.address === active}
-                        onSelect={pick}
+                .map((entry) => {
+                  const { detail: _where, ...agent } = toAgent(entry, now);
+                  const said = lastSaid(entry);
+                  const name = tabLabel(space.tabNames[at] ?? "", entry);
+                  return (
+                    <div key={entry.address} className="flex min-w-0 items-center gap-1">
+                      <div className="min-w-0 flex-1">
+                        <AgentRow
+                          agent={{ ...agent, name, ...(said === "" ? {} : { detail: said }) }}
+                          selected={entry.address === active}
+                          onSelect={pick}
+                        />
+                      </div>
+                      <IconButton
+                        label={`Close ${name}`}
+                        icon={<X />}
+                        size="md"
+                        onClick={() => onCloseTab(entry.address)}
                       />
                     </div>
-                    <IconButton
-                      label={`Close ${title}`}
-                      icon={<X />}
-                      size="md"
-                      onClick={() => onCloseTab(entry.address)}
-                    />
-                  </div>
-                ));
+                  );
+                });
             })}
             <Button
               variant="ghost"
@@ -95,7 +105,7 @@ export function PhoneTabSwitcher(props: {
   readonly terminals: readonly Session[];
   readonly tabs: readonly (readonly string[])[];
   readonly active: string;
-  /** The open tab as the strip reads it: its name, else its number. */
+  /** The open tab's name, else its terminal's title. */
   readonly title: string;
   readonly onOpen: (address: string) => void;
   /** How much of its right end the round buttons take (roundButtonsClearance); its controls stay clear of it. */
@@ -104,6 +114,8 @@ export function PhoneTabSwitcher(props: {
   readonly onNewInSpace: (space: string) => void;
 }) {
   const { terminals, tabs, active, title, onOpen, onCloseTab, onNewInSpace, clearance } = props;
+  const { spaces } = useSpaceSelection();
+  const space = spaces.find((each) => each.addresses.includes(active))?.name;
   const at = tabs.findIndex((panes) => panes.includes(active));
   if (at === -1) return null;
   const step = (by: 1 | -1): void => {
@@ -131,6 +143,9 @@ export function PhoneTabSwitcher(props: {
             aria-label={`Switch tab, ${title}, tab ${at + 1} of ${tabs.length}`}
             className="h-12 min-w-0 flex-1 text-foreground [&>span]:min-w-0"
           >
+            {space === undefined ? null : (
+              <span className="min-w-0 shrink-[2] truncate text-muted-foreground">{`${space} ·`}</span>
+            )}
             <span className="min-w-0 truncate font-semibold">{title}</span>
             <span data-numeric className="shrink-0 text-xs text-muted-foreground">
               {`${at + 1}/${tabs.length}`}

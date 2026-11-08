@@ -9,7 +9,6 @@ import {
   tabPosition,
   tabTitle,
   terminalTitle,
-  titledTabs,
   layoutSpaces,
   type SpacesSource,
 } from "./model.ts";
@@ -164,19 +163,6 @@ describe("tabPosition", () => {
     ]);
     const first = listed[0];
     expect(first === undefined ? [] : liveTabs(first, many)).toEqual([["t1"], ["t2", "t3", "t4"], ["t5"]]);
-  });
-
-  test("titledTabs names each live tab as the strip does: its name, else its place among all its space's tabs", () => {
-    const many = ["t1", "t2", "t4", "t5"].map((address) => terminal({ address }));
-    const doc = docOf([{ id: "s", folder: "/w", tabs: [["t1"], ["t3"], ["t4", "t2"], ["t5"]] }]);
-    const tabs = (doc["spaces"] as { tabs: { name: string }[] }[])[0]?.tabs ?? [];
-    if (tabs[2] !== undefined) tabs[2].name = "logs";
-    const [space] = layoutSpaces([here(doc)], many);
-    expect(space === undefined ? [] : titledTabs(space, many)).toEqual([
-      { title: "1", panes: ["t1"] },
-      { title: "logs", panes: ["t4", "t2"] },
-      { title: "4", panes: ["t5"] },
-    ]);
   });
 
   test("a finished terminal, one in no tab and an unknown one have no position", () => {

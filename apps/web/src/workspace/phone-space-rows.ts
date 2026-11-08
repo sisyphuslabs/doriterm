@@ -2,6 +2,12 @@ import type { Agent, AgentStatus } from "@doriface/ui";
 import { agentStatus } from "./attention.ts";
 import { type ListedSpace, type Session, terminalTitle, toAgent } from "./model.ts";
 
+/** A tab as a phone names it: its own name, else the terminal it shows; never its place among its space's tabs. */
+export const tabLabel = (name: string, terminal: Session): string => (name === "" ? terminalTitle(terminal) : name);
+
+/** What a terminal said last (its status message, else its status title); empty when it said nothing. */
+export const lastSaid = (terminal: Session): string => terminal.status?.msg ?? terminal.status?.title ?? "";
+
 /** Most urgent first: a split tab reads as the pane that most needs the person. */
 const URGENCY: readonly AgentStatus[] = ["blocked", "working", "done", "idle", "unknown"];
 const urgency = (terminal: Session): number => URGENCY.indexOf(agentStatus(terminal));
@@ -22,10 +28,8 @@ export function spaceTabRows(space: ListedSpace, terminals: readonly Session[], 
     );
     if (lead === undefined) return [];
     const { detail: _where, machine: _machine, ...agent } = toAgent(lead, nowMs);
-    const said = lead.status?.msg ?? lead.status?.title ?? "";
-    const detail = shown.length > 1 ? `${shown.length} panes` : said;
-    const name = space.tabNames[at] ?? "";
-    return [{ ...agent, name: name === "" ? terminalTitle(lead) : name, ...(detail === "" ? {} : { detail }) }];
+    const detail = shown.length > 1 ? `${shown.length} panes` : lastSaid(lead);
+    return [{ ...agent, name: tabLabel(space.tabNames[at] ?? "", lead), ...(detail === "" ? {} : { detail }) }];
   });
 }
 

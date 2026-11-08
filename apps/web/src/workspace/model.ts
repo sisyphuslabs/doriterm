@@ -281,21 +281,6 @@ export function liveTabs(space: ListedSpace, terminals: readonly Terminal[]): re
     .filter((panes) => panes.length > 0);
 }
 
-/** A tab of a space that shows a live terminal: its title as the strip reads it, and its live panes in order. */
-export interface LiveTab {
-  readonly title: string;
-  readonly panes: readonly string[];
-}
-
-/** The tabs of a space that show a live terminal, in tab order, each titled as the strip titles it (tabTitle). */
-export function titledTabs(space: ListedSpace, terminals: readonly Terminal[]): readonly LiveTab[] {
-  const liveAt = new Set(terminals.filter((t) => t.state === "live").map((t) => t.address));
-  return space.tabPanes.flatMap((panes, at) => {
-    const live = panes.filter((address) => liveAt.has(address));
-    return live.length === 0 ? [] : [{ title: tabTitle(space.tabNames[at] ?? "", at), panes: live }];
-  });
-}
-
 /** Where a terminal sits in the listed space whose tabs show it; none when it is finished or in no space's tab. */
 export function tabPosition(
   spaces: readonly ListedSpace[],
