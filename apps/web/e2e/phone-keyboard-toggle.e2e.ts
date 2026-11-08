@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import { devices, type Page } from "@playwright/test";
 import { endAgent, startShell } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { fakeSoftKeyboard, key, keysBar, showKeyboard } from "./phone-key-bar.ts";
@@ -91,6 +91,62 @@ test("a session picked from Switch session takes the keyboard once: left by the 
     endAgent("host", first);
     endAgent("host", second);
   }
+});
+
+const { defaultBrowserType: _iphoneBrowser, ...IPHONE } = devices["iPhone 14"];
+const { defaultBrowserType: _pixelBrowser, ...PIXEL } = devices["Pixel 7"];
+const phone = (browserName: string) => (browserName === "webkit" ? IPHONE : PIXEL);
+
+/**
+ * A finger on a phone, as each engine stands for one (#1409): WebKit, the engine iOS uses, is an iPhone and Chromium a
+ * Pixel. Run with `E2E_BROWSERS=all --project=chromium --project=webkit` for both; the default run is Chromium alone.
+ */
+test.describe("a finger on a phone", () => {
+  test.use({
+    userAgent: async ({ browserName }, use) => use(phone(browserName).userAgent),
+    deviceScaleFactor: async ({ browserName }, use) => use(phone(browserName).deviceScaleFactor),
+    isMobile: async ({ browserName }, use) => use(phone(browserName).isMobile),
+    hasTouch: async ({ browserName }, use) => use(phone(browserName).hasTouch),
+  });
+
+  test("a finger's tap on the terminal asks for no keyboard, the keyboard button does, and the Type field still raises one (#1375)", async ({
+    page,
+  }) => {
+    // A real touch sequence (touchstart/touchend, then the synthesized click), as a phone's browser delivers a tap. What
+    // decides the soft keyboard on iOS is the focused field's `inputmode`, so the assertions read that attribute as well
+    // as the keys bar.
+    await fakeSoftKeyboard(page);
+    const { input } = await openTerminal(page);
+    const box = await page.locator("[data-terminal]").boundingBox();
+    if (box === null) throw new Error("the terminal is not laid out");
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(input).toBeFocused();
+    await expect(input).toHaveAttribute("inputmode", "none");
+    await expectDown(page);
+
+    await key(page, "Show keyboard").tap();
+    await expect(input).toBeFocused();
+    await expect(input).toHaveAttribute("inputmode", "text");
+    await expectUp(page);
+
+    // The keyboard button puts it down again, and the field asks for none until the button asks again.
+    await key(page, "Hide keyboard").tap();
+    await expectDown(page);
+    await expect(input).toHaveAttribute("inputmode", "none");
+    await key(page, "Show keyboard").tap();
+    await expect(input).toHaveAttribute("inputmode", "text");
+    await expectUp(page);
+
+    // The Type field is its own element, outside the terminal, and never carries the terminal's `inputmode="none"`: a tap
+    // on it focuses it with the keyboard up. (`getAttribute`, since `inputMode` is not on `HTMLElement | SVGElement`.)
+    const field = page.getByLabel("Type into the terminal");
+    await field.tap();
+    await expect(field).toBeFocused();
+    expect(
+      await field.evaluate((el) => el.closest("[data-terminal]") === null && el.getAttribute("inputmode") !== "none"),
+    ).toBe(true);
+    await expectUp(page);
+  });
 });
 
 test("with the terminal focused and no keyboard up, the toggle reads Show keyboard; it reads Hide keyboard only while one covers the page", async ({
