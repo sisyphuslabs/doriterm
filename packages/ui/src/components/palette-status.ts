@@ -6,8 +6,11 @@ import type { AgentStatus } from "./status.tsx";
  * is nothing to answer there until it is back.
  */
 const ORDER: readonly AgentStatus[] = ["blocked", "working", "done", "idle"];
-/** With All, at most four segments: DESIGN.md's limit for a segmented control. */
-const MOST = 3;
+/**
+ * With All, three segments: they fit a 320 px touch phone at its larger type with room for wider platform fonts (#1454),
+ * and All still lists every agent.
+ */
+const MOST = 2;
 
 export interface StatusCount {
   readonly status: AgentStatus;
@@ -15,7 +18,7 @@ export interface StatusCount {
 }
 
 /**
- * The states the palette's agent rows are in, most urgent first and at most three, with how many rows are in each
+ * The states the palette's agent rows are in, most urgent first and at most two, with how many rows are in each
  * (#1454). Empty unless at least two states differ: a filter over one state would filter nothing.
  */
 export function statusCounts(commands: readonly Command[]): readonly StatusCount[] {
