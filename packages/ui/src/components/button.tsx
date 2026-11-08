@@ -1,6 +1,6 @@
 import { Button as BaseButton } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
-import type { ComponentProps, ReactNode } from "react";
+import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
 import { Spinner } from "./spinner.tsx";
 
@@ -42,11 +42,21 @@ export interface ButtonProps
   extends Omit<ComponentProps<typeof BaseButton>, "className" | "children">, VariantProps<typeof buttonVariants> {
   readonly className?: string;
   readonly children?: ReactNode;
-  /** Keeps the label's box (the label stays in place, unseen, under a centred spinner) and blocks input. */
+  /** Blocks input at once; after one second a spinner replaces the label without changing its box. */
   readonly loading?: boolean;
 }
 
 export function Button({ className, variant, size, loading = false, disabled, children, ...props }: ButtonProps) {
+  const [delayed, setDelayed] = useState(false);
+  useEffect(() => {
+    if (!loading) {
+      setDelayed(false);
+      return;
+    }
+    const timer = setTimeout(() => setDelayed(true), 1000);
+    return () => clearTimeout(timer);
+  }, [loading]);
+  const spinning = loading && delayed;
   return (
     <BaseButton
       {...props}
@@ -55,12 +65,12 @@ export function Button({ className, variant, size, loading = false, disabled, ch
       aria-busy={loading || undefined}
       className={cn(buttonVariants({ variant, size }), className)}
     >
-      {loading ? (
+      {spinning ? (
         <span className="absolute inset-0 flex items-center justify-center">
           <Spinner />
         </span>
       ) : null}
-      <span className={cn("inline-flex items-center justify-center gap-[inherit]", loading && "opacity-0")}>
+      <span className={cn("inline-flex items-center justify-center gap-[inherit]", spinning && "opacity-0")}>
         {children}
       </span>
     </BaseButton>
