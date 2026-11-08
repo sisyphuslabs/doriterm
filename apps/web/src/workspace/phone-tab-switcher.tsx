@@ -65,7 +65,7 @@ export function useSpaceTabs(terminals: readonly Session[], address: string): re
  * The phone's tab switcher within thumb reach (#466 10B): a bar at the bottom of the terminal screen that steps to the
  * space's previous and next tab and opens the spaces sheet, with 44 px targets. herdr-app has no phone screen to follow,
  * so it sits where a phone keeps its toolbars; it leaves the terminal's own scrolling and selection alone. Its right end
- * is left to the round keyboard button, which floats there level with it.
+ * is left to the round buttons (the keyboard button, and Read-only beside it), which float there level with it.
  */
 export function PhoneTabSwitcher(props: {
   readonly terminals: readonly Session[];
@@ -74,8 +74,10 @@ export function PhoneTabSwitcher(props: {
   /** The open tab as the strip reads it: its name, else its number. */
   readonly title: string;
   readonly onOpen: (address: string) => void;
+  /** How much of its right end the round buttons take (roundButtonsClearance); its controls stay clear of it. */
+  readonly clearance: string;
 }) {
-  const { terminals, tabs, active, title, onOpen } = props;
+  const { terminals, tabs, active, title, onOpen, clearance } = props;
   const at = tabs.findIndex((panes) => panes.includes(active));
   if (at === -1) return null;
   const step = (by: 1 | -1): void => {
@@ -87,7 +89,8 @@ export function PhoneTabSwitcher(props: {
     <nav
       aria-label="Tabs in this space"
       data-phone-tabs
-      className="flex shrink-0 items-center gap-1 border-t border-border bg-chrome pt-1 pr-[4.5rem] pb-[max(1rem,calc(var(--safe-bottom)+0.5rem))] pl-1.5"
+      className="flex shrink-0 items-center gap-1 border-t border-border bg-chrome pt-1 pb-[max(1rem,calc(var(--safe-bottom)+0.5rem))] pl-1.5"
+      style={{ paddingRight: clearance }}
     >
       {several ? <IconButton label="Previous tab" icon={<ChevronLeft />} size="md" onClick={() => step(-1)} /> : null}
       <SpaceSheet

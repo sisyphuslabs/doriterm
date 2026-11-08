@@ -25,6 +25,15 @@ const CORNER = "absolute bottom-[max(1rem,calc(var(--safe-bottom)+0.5rem))] z-10
 const CORNER_RIGHT = "right-[max(1rem,calc(var(--safe-right)+0.5rem))]";
 const LEFT_OF_CORNER = "right-[calc(max(1rem,calc(var(--safe-right)+0.5rem))+3.5rem)]";
 
+/**
+ * How far in from its right edge a bar level with the round buttons (the tabs bar) keeps clear of them: the corner's
+ * inset past the safe area, then 3.5rem a slot (a button's 3rem and a 0.5rem gap). Two slots where Read-only shows,
+ * which keeps the slot left of the corner even while the keyboard button is hidden.
+ */
+export function roundButtonsClearance(slots: 1 | 2): string {
+  return `calc(max(1rem, calc(var(--safe-right) + 0.5rem)) - var(--safe-right) + ${slots * 3.5}rem)`;
+}
+
 /** How far up from the terminal's bottom the arrow pad reaches: its 0.5rem gap, three 3rem rows with their gaps and padding. */
 export const DIRECTION_PAD_CLEARANCE = "calc(0.5rem + 9rem + 0.5rem + 0.75rem + 2px)";
 

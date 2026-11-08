@@ -23,6 +23,7 @@ import {
   KEYS_BAR_HEIGHT,
   keysBottom,
   PhoneKeys,
+  roundButtonsClearance,
 } from "./phone-keys.tsx";
 import { ConnectionLine } from "./reconnect-status.tsx";
 import { afterEnd } from "./session-actions.ts";
@@ -181,6 +182,8 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
           active={terminal.address}
           title={tabTitle ?? title}
           onOpen={onOpen}
+          // A touch device's Read-only button takes the slot left of the keyboard button's; a mouse-only one has none.
+          clearance={roundButtonsClearance(mouseOnly ? 1 : 2)}
         />
       ) : null}
       {dictating ? (
