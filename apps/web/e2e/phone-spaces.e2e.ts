@@ -10,6 +10,7 @@ test("a space row on a phone opens that space's terminal", async ({ page }) => {
   try {
     await page.goto("/");
     expect(new URL(page.url()).search).toBe("");
+    await page.getByRole("navigation", { name: "Sections" }).getByRole("button", { name: "Spaces" }).click();
     const spaces = page.getByRole("region", { name: "Spaces" });
     await expect(spaces).toBeVisible({ timeout: 20_000 });
     const row = spaces.getByRole("button", { name: /^api / }).first();
