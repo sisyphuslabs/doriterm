@@ -1,52 +1,14 @@
 import type { Page } from "@playwright/test";
 
-/**
- * Call before page.goto: a stand-in predictor behind the overlay's test hook (`window.__dorifacePredict`, removed with
- * the real predictor's wiring). `predict` adds a cell at the terminal's cursor, after any cell already predicted on its
- * row, as typing ahead of the echo does; `realCell` reads the terminal's own core, never the page.
- */
-export async function installPredictor(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    interface Cell {
-      row: number;
-      col: number;
-      text: string;
-      width: 1 | 2;
-    }
-    interface Screen {
-      cursor(): { row: number; col: number };
-      cell(row: number, col: number): string;
-    }
-    Reflect.set(window, "__dorifacePredict", (screen: Screen) => {
-      const cells: Cell[] = [];
-      const listeners = new Set<() => void>();
-      Reflect.set(window, "__predictor", {
-        add: (text: string, width: 1 | 2): Cell => {
-          const cursor = screen.cursor();
-          const last = cells.at(-1);
-          const col = last !== undefined && last.row === cursor.row ? last.col + last.width : cursor.col;
-          const cell = { row: cursor.row, col, text, width };
-          cells.push(cell);
-          for (const listener of listeners) listener();
-          return cell;
-        },
-        cell: (row: number, col: number): string => screen.cell(row, col),
-      });
-      return {
-        visible: () => cells,
-        subscribe: (listener: () => void) => {
-          listeners.add(listener);
-          return () => listeners.delete(listener);
-        },
-      };
-    });
-  });
-}
-
 interface Predictor {
   add(text: string, width: 1 | 2): { row: number; col: number; width: 1 | 2 };
+  typing(on: boolean): void;
   cell(row: number, col: number): string;
 }
+
+/** From now on the stand-in predicts each printable key and each committed composition, as the input path will. */
+export const predictTyping = (page: Page) =>
+  page.evaluate(() => (Reflect.get(window, "__predictor") as Predictor).typing(true));
 
 /**
  * Predicts `text` and counts the animation frames until the overlay draws it, so a spec can bound the delay; -1 when it

@@ -118,6 +118,10 @@
   text-decoration: underline;
   text-decoration-thickness: max(1px, var(--term-device-pixel, 1px));
 }
+/* A composition is drawn at the predicted cursor (use-preedit.ts) and, as for the real one, no cursor is drawn there. */
+.wterm[data-preedit] .term-prediction-cursor {
+  display: none;
+}
 /* The predicted cursor in the shape the program or the settings chose, as wterm draws the real one, held steady. */
 .wterm .term-prediction-cursor {
   outline: 1px solid var(--term-app-cursor, var(--term-cursor));

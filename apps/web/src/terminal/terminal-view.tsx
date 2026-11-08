@@ -150,9 +150,9 @@ export function TerminalView(props: TerminalViewProps) {
   useTerminalPort(handle, typed, onPort, pasteFiles);
   useBehaviors(wt, stream, options, onUnsafePaste, pasteFiles);
   useTerminalFont(wt, config);
-  usePreedit(wt);
   const prediction = useMemo(() => predictionSeam(wt), [wt]);
-  usePredictionOverlay(wt, prediction);
+  const predictedCursor = usePredictionOverlay(wt, prediction);
+  usePreedit(wt, predictedCursor);
   // Wide characters in the output are laid out in idle time, so scrolling back to them is not the first time (#286).
   const warmup = useRef<GlyphWarmup | null>(null);
   useEffect(() => {

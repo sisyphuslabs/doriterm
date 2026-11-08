@@ -5,6 +5,8 @@ import { cellText, type OverlaySource } from "./prediction-cells.ts";
 export interface SeamScreen {
   cursor(): { readonly row: number; readonly col: number };
   cell(row: number, col: number): string;
+  /** Called right after each write reaches the terminal, inside the frame that wrote it, as the predictor's own hook. */
+  onWrite(listener: () => void): () => void;
 }
 
 /**
@@ -15,7 +17,17 @@ export interface SeamScreen {
 export function predictionSeam(wt: WTerm | null): OverlaySource | null {
   const seam: unknown = Reflect.get(globalThis, "__dorifacePredict");
   if (wt === null || typeof seam !== "function") return null;
+  const writes = new Set<() => void>();
+  const write = wt.write.bind(wt);
+  wt.write = (data) => {
+    write(data);
+    for (const listener of writes) listener();
+  };
   const screen: SeamScreen = {
+    onWrite: (listener) => {
+      writes.add(listener);
+      return () => writes.delete(listener);
+    },
     cursor: () => {
       const cursor = wt.bridge?.getCursor();
       return { row: cursor?.row ?? 0, col: cursor?.col ?? 0 };

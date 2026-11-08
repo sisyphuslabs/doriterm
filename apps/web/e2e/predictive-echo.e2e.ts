@@ -3,7 +3,8 @@ import { gridSize } from "./core-size.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { type HcSocket, routeHcSocket } from "./hc-socket.ts";
 import { PHONE, openPhoneTerminal } from "./phone-key-bar.ts";
-import { installPredictor, painted, predict, realCell } from "./prediction-probe.ts";
+import { painted, predict, realCell } from "./prediction-probe.ts";
+import { installPredictor } from "./prediction-stand-in.ts";
 
 // A key typed over a slow link is drawn at once as a predicted cell over the grid, underlined, in its own layer: the
 // terminal's own cells never hold it (design D1, plan S5). Placed by the cursor cell's box, at a phone's 3x pixel ratio
