@@ -52,14 +52,14 @@ the host CLI's `mesh join <code>` has today, and the link path is pinned to the 
 
 ## 3. What the host's `JoinerContext` needed, and what the browser supplies
 
-| host (`origin/dev` before the lift) | browser |
-| --- | --- |
-| `identity: HostIdentity` from the state dir | an Ed25519 pair in IndexedDB (`apps/web/src/mesh/identity.ts`, `loadSignKey`) and the existing X25519 device key (`apps/web/src/connection/device-key.ts`) as the Noise static |
-| `mesh: MeshStore` (`mesh.json`) and its `adopt` | `MembershipStore.adopt` over the device's IndexedDB store; a membership of another mesh wins, as a `mesh.json` that appeared meanwhile does on a host |
-| `own.name` from `--name` or the hostname | `meshNameOf(deviceName())`: the device name slugged to herdr's machine-name rule |
-| `own.hcId` from the herdr core | `clientIdOf(signPub)`: a browser runs no core, so a stable id derived from its signing key stands in |
-| `own.devicePub` from `device-key.json` | the same device key, as the card's `devicePub`: it is the session key a host looks up for a client |
-| the CLI's `--yes` and fingerprint confirmation | none; the early refusals are the shared guard and "this browser is a member already" |
+| host (`origin/dev` before the lift)             | browser                                                                                                                                                                        |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `identity: HostIdentity` from the state dir     | an Ed25519 pair in IndexedDB (`apps/web/src/mesh/identity.ts`, `loadSignKey`) and the existing X25519 device key (`apps/web/src/connection/device-key.ts`) as the Noise static |
+| `mesh: MeshStore` (`mesh.json`) and its `adopt` | `MembershipStore.adopt` over the device's IndexedDB store; a membership of another mesh wins, as a `mesh.json` that appeared meanwhile does on a host                          |
+| `own.name` from `--name` or the hostname        | `meshNameOf(deviceName())`: the device name slugged to herdr's machine-name rule                                                                                               |
+| `own.hcId` from the herdr core                  | `clientIdOf(signPub)`: a browser runs no core, so a stable id derived from its signing key stands in                                                                           |
+| `own.devicePub` from `device-key.json`          | the same device key, as the card's `devicePub`: it is the session key a host looks up for a client                                                                             |
+| the CLI's `--yes` and fingerprint confirmation  | none; the early refusals are the shared guard and "this browser is a member already"                                                                                           |
 
 ## 4. The member record and the "this device" question (Q, 2026-11-08)
 
