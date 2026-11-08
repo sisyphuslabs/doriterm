@@ -7,7 +7,7 @@ import { Touch } from "./touch.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE, permissions: ["clipboard-read", "clipboard-write"] });
 
-const browse = (page: Page) => key(page, "Browse output");
+const browse = (page: Page) => key(page, "Read-only");
 const painted = (page: Page) => page.locator(".term-selection-cells > div");
 const input = (page: Page) => page.locator("[data-terminal] textarea");
 

@@ -25,6 +25,27 @@ async function drag(page: Page, span: { from: [number, number]; to: [number, num
   await page.mouse.up();
 }
 
+const clipboard = (page: Page) => page.evaluate(() => navigator.clipboard.readText());
+
+test("with mouse tracking off, a plain drag and a Shift drag each select and copy on select", async ({ page }) => {
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await page.keyboard.type("printf 'alpha %s gamma\\n' beta; printf 'delta %s zeta\\n' epsilon\r");
+  await expect(terminal).toContainText("delta epsilon zeta", { timeout: 15_000 });
+
+  await page.evaluate(() => navigator.clipboard.writeText("nothing"));
+  await drag(page, await dragSpan(terminal, "alpha beta gamma"));
+  await expect.poll(() => clipboard(page)).toContain("pha beta");
+
+  await page.evaluate(() => navigator.clipboard.writeText("nothing"));
+  await page.keyboard.down("Shift");
+  await drag(page, await dragSpan(terminal, "delta epsilon zeta"));
+  await page.keyboard.up("Shift");
+  await expect.poll(() => painted(page).count()).toBeGreaterThan(0);
+  await expect.poll(() => clipboard(page)).toContain("elta epsilon");
+});
+
 test("under a program that tracks the mouse, a plain drag is reported to it and selects nothing", async ({ page }) => {
   await page.goto("/");
   const terminal = await openNewTerminal(page);
@@ -54,6 +75,9 @@ test("under a program that tracks the mouse, Shift and a drag select the text an
   await page.keyboard.up("Shift");
   await expect.poll(() => painted(page).count()).toBeGreaterThan(0);
   await expect(input).toBeFocused();
+  // Copy on select (on by default) takes the held range when the drag ends, with no chord.
+  await expect.poll(() => clipboard(page)).toContain("elta epsilon");
+  await page.evaluate(() => navigator.clipboard.writeText("nothing"));
   // The held range copies as the Copy action does: Cmd/Ctrl+C with no document selection reads it.
   await page.keyboard.press(process.platform === "darwin" ? "Meta+c" : "Control+Shift+c");
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("elta epsilon");
