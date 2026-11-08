@@ -1,0 +1,85 @@
+import { Button, Kbd, StatusBar, StatusBarItem } from "@doriface/ui";
+import { Folder, Monitor } from "lucide-react";
+import { useActionKeys } from "../keys/use-action-keys.ts";
+import { agentStatus, nextNeedingYou } from "./attention.ts";
+import { machineOf, type Session, spaceName } from "./model.ts";
+import { ConnectionPathItem, ReconnectStatus } from "./reconnect-status.tsx";
+
+export interface DesktopStatusBarProps {
+  readonly terminals: readonly Session[];
+  /** The live terminals on reachable machines: what the bar counts. */
+  readonly live: readonly Session[];
+  /** False until the core has listed its terminals; the count would read 0 until then. */
+  readonly loaded: boolean;
+  readonly focusedAddress: string | null;
+  readonly focusedTerminal: Session | undefined;
+  /** The focused terminal's machine, else the connected core's. */
+  readonly focusedMachine: string;
+  /** Opens a terminal as the sidebar's row does. */
+  readonly onOpen: (address: string) => void;
+  readonly onPalette: () => void;
+}
+
+/** The desktop's footer: where the focused terminal is, how many there are and who needs you, and the palette. */
+export function DesktopStatusBar(props: DesktopStatusBarProps) {
+  const { terminals, live, loaded, focusedAddress, focusedTerminal, focusedMachine, onOpen, onPalette } = props;
+  const paletteKeys = useActionKeys("app.palette");
+  const blocked = live.filter((terminal) => agentStatus(terminal) === "blocked").length;
+  const next = nextNeedingYou(terminals, focusedAddress);
+  return (
+    <StatusBar
+      start={
+        <>
+          {/* A terminal on another machine shows its full hc address (build-box/t3): what hc commands take. */}
+          <span data-status-machine className="flex min-w-0">
+            <span className="sr-only">Machine: </span>
+            <StatusBarItem icon={<Monitor aria-hidden />}>
+              {focusedAddress !== null && machineOf(focusedAddress) !== undefined ? focusedAddress : focusedMachine}
+            </StatusBarItem>
+          </span>
+          {focusedTerminal === undefined ? null : (
+            // The space gives way first, so a long name never pushes the terminal count out of the bar.
+            <span data-status-space className="flex max-w-48 min-w-0">
+              <span className="sr-only">Space: </span>
+              <StatusBarItem icon={<Folder aria-hidden />}>{spaceName(focusedTerminal)}</StatusBarItem>
+            </span>
+          )}
+          {loaded ? (
+            <span className="flex shrink-0">
+              <StatusBarItem>
+                {live.length} {live.length === 1 ? "terminal" : "terminals"}
+                {next === null ? null : (
+                  <>
+                    {" · "}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title="Open the next terminal that needs you"
+                      onClick={() => onOpen(next)}
+                      className="h-5 px-1 text-xs text-status-blocked-text hover:text-status-blocked-text"
+                    >
+                      {blocked} needs you
+                    </Button>
+                  </>
+                )}
+              </StatusBarItem>
+            </span>
+          ) : null}
+          <ReconnectStatus />
+          <ConnectionPathItem />
+        </>
+      }
+      end={
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onPalette}
+          className="h-5 gap-1.5 px-1 text-xs text-muted-foreground"
+        >
+          {paletteKeys === undefined ? null : <Kbd keys={paletteKeys} />}
+          Commands
+        </Button>
+      }
+    />
+  );
+}

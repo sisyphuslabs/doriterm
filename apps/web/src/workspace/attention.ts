@@ -60,6 +60,21 @@ export function withAttention(terminals: readonly Session[], seen: Seen): readon
   return marked ? shown : terminals;
 }
 
+/**
+ * The terminal "N needs you" opens (#1448): walking the terminals in the core's order, the first live one that needs the
+ * person after `focused`, round to the start; `focused` itself only when it is the only one. Null while nobody waits.
+ */
+export function nextNeedingYou(terminals: readonly Session[], focused: string | null): string | null {
+  const from = focused === null ? -1 : terminals.findIndex((terminal) => terminal.address === focused);
+  for (let step = 1; step <= terminals.length; step += 1) {
+    const terminal = terminals[(from + step) % terminals.length];
+    if (terminal !== undefined && terminal.state === "live" && agentStatus(terminal) === "blocked") {
+      return terminal.address;
+    }
+  }
+  return null;
+}
+
 /** A pane of the tab in view: what `panesInView` reads (a `LayoutPane` of `layout-model.ts`). */
 export interface PaneShown {
   readonly id: string;
