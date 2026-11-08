@@ -1,9 +1,9 @@
 import { Button, Kbd, StatusBar, StatusBarItem } from "@doriface/ui";
-import { Folder, Monitor } from "lucide-react";
+import { Monitor } from "lucide-react";
 import { useActionKeys } from "../keys/use-action-keys.ts";
 import { agentStatus, nextNeedingYou } from "./attention.ts";
 import { machineOf, type Session, spaceName } from "./model.ts";
-import { ConnectionPathItem, ReconnectStatus } from "./reconnect-status.tsx";
+import { ConnectedStatus, ConnectionPathItem, ReconnectStatus } from "./reconnect-status.tsx";
 
 export interface DesktopStatusBarProps {
   readonly terminals: readonly Session[];
@@ -39,9 +39,13 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
           </span>
           {focusedTerminal === undefined ? null : (
             // The space gives way first, so a long name never pushes the terminal count out of the bar.
-            <span data-status-space className="flex max-w-48 min-w-0">
+            <span data-status-space className="-ml-2.5 flex max-w-48 min-w-0 items-center gap-1.5">
+              {/* One breadcrumb with the machine (#1456): the bar's gap closes up and a separator a reader skips joins them. */}
+              <span aria-hidden data-status-place-separator="" className="shrink-0">
+                ›
+              </span>
               <span className="sr-only">Space: </span>
-              <StatusBarItem icon={<Folder aria-hidden />}>{spaceName(focusedTerminal)}</StatusBarItem>
+              <StatusBarItem>{spaceName(focusedTerminal)}</StatusBarItem>
             </span>
           )}
           {loaded ? (
@@ -69,15 +73,18 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
         </>
       }
       end={
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onPalette}
-          className="h-5 gap-1.5 px-1 text-xs text-muted-foreground"
-        >
-          {paletteKeys === undefined ? null : <Kbd keys={paletteKeys} />}
-          Commands
-        </Button>
+        <>
+          <ConnectedStatus />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onPalette}
+            className="h-5 gap-1.5 px-1 text-xs text-muted-foreground"
+          >
+            {paletteKeys === undefined ? null : <Kbd keys={paletteKeys} />}
+            Commands
+          </Button>
+        </>
       }
     />
   );
