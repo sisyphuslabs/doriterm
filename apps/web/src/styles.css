@@ -83,6 +83,11 @@
 .wterm[data-preedit] textarea {
   opacity: 0 !important;
 }
+/* Browsed read-only (browse-mode.ts): a press lands on the rows, never on the input wterm lays over the cursor's cell
+   (which it gives pointer-events inline), so no tap moves focus into it and raises the soft keyboard. */
+.wterm[data-browsing="true"] textarea {
+  pointer-events: none !important;
+}
 /* The cursor is not drawn in any shape: wterm's blink keyframes and its bar, underline and hollow rules would otherwise
    still paint it, so these win with !important (an animation overrides any declaration that is not). */
 .wterm[data-preedit] .term-cursor {

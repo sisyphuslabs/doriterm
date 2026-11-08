@@ -1,4 +1,5 @@
-import { DirectionPad, ExtraKeysBar, KeyboardButton, Menu, MenuItem } from "@doriface/ui";
+import { cn, DirectionPad, ExtraKeysBar, KeyboardButton, Menu, MenuItem } from "@doriface/ui";
+import { TextSelect } from "lucide-react";
 import { type RefObject, useCallback, useState } from "react";
 import { activeEntries, specialEntries } from "../keybar/entries.ts";
 import { toExtra } from "../keybar/render.tsx";
@@ -18,6 +19,11 @@ export const KEYS_BAR_HEIGHT = "3.75rem";
 
 /** How far up from the terminal's bottom the round keyboard button reaches: its 3rem and the gap below it. */
 export const KEYBOARD_BUTTON_CLEARANCE = "calc(max(1rem, calc(var(--safe-bottom) + 0.5rem)) + 3rem)";
+
+/** The round buttons' corner, and the slot one button to its left. */
+const CORNER = "absolute bottom-[max(1rem,calc(var(--safe-bottom)+0.5rem))] z-10";
+const CORNER_RIGHT = "right-[max(1rem,calc(var(--safe-right)+0.5rem))]";
+const LEFT_OF_CORNER = "right-[calc(max(1rem,calc(var(--safe-right)+0.5rem))+3.5rem)]";
 
 /** How far up from the terminal's bottom the arrow pad reaches: its 0.5rem gap, three 3rem rows with their gaps and padding. */
 export const DIRECTION_PAD_CLEARANCE = "calc(0.5rem + 9rem + 0.5rem + 0.75rem + 2px)";
@@ -45,6 +51,10 @@ export interface PhoneKeysProps {
   readonly onKeys?: (shown: boolean) => void;
   /** The bar's height in px as it is drawn (taller while the field has a row of its own); 0 while it is closed. */
   readonly onBarHeight?: (px: number) => void;
+  /** The terminal is browsed read-only (browse-mode.ts); the keys are closed and the browse button reads pressed. */
+  readonly browsing?: boolean;
+  /** Set on a touch device: a round Browse output button beside the keyboard button turns browsing on and off. */
+  readonly onBrowse?: (on: boolean) => void;
 }
 
 /** Reports an element's border-box height as it changes, and 0 once it is gone. */
@@ -89,6 +99,8 @@ export function PhoneKeys(props: PhoneKeysProps) {
     onPacks,
     onKeys,
     onBarHeight,
+    browsing = false,
+    onBrowse,
   } = props;
   const [typing, setTyping] = useState(false);
   const [barHeight, setBarHeight] = useState(0);
@@ -112,14 +124,28 @@ export function PhoneKeys(props: PhoneKeysProps) {
   };
   if (!open) {
     return (
-      <KeyboardButton
-        {...(onKeys === undefined ? {} : { label: "Show keys" })}
-        onPress={() => {
-          onKeys?.(true);
-          port.current?.focus();
-        }}
-        className="absolute right-[max(1rem,calc(var(--safe-right)+0.5rem))] bottom-[max(1rem,calc(var(--safe-bottom)+0.5rem))] z-10"
-      />
+      <>
+        {onBrowse === undefined ? null : (
+          // The button stays in its slot while on, so the tap that ends browsing lands where the one that began it did.
+          <KeyboardButton
+            label="Browse output"
+            icon={<TextSelect />}
+            pressed={browsing}
+            onPress={() => onBrowse(!browsing)}
+            className={cn(CORNER, LEFT_OF_CORNER)}
+          />
+        )}
+        {browsing ? null : (
+          <KeyboardButton
+            {...(onKeys === undefined ? {} : { label: "Show keys" })}
+            onPress={() => {
+              onKeys?.(true);
+              port.current?.focus();
+            }}
+            className={cn(CORNER, CORNER_RIGHT)}
+          />
+        )}
+      </>
     );
   }
   const bottom = keysBottom(inset);

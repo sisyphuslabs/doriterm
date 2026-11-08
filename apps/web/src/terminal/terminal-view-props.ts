@@ -28,6 +28,11 @@ export interface TerminalViewProps {
    * phone modifier is latched, so ctrl and a Korean keyboard's ㅊ is ^C at once rather than waiting for the next jamo.
    */
   readonly typesComposition?: boolean;
+  /**
+   * The terminal is browsed read-only (browse-mode.ts): touches and clicks reach neither the program nor its input, no
+   * soft keyboard comes up, and a held finger's menu offers Copy alone.
+   */
+  readonly browsing?: boolean;
   /** The view's port for keys pressed outside it (the phone's keys bar); null once it unmounts. */
   readonly onPort?: (port: TerminalPort | null) => void;
   /** Every time the stream ends, with why; see TerminalEnd. */

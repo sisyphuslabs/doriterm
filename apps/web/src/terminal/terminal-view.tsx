@@ -5,6 +5,7 @@ import { type FocusEvent, useCallback, useEffect, useMemo, useRef, useState } fr
 import { useScreenAwake } from "../device/keep-awake.ts";
 import { useTerminalConfig } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
+import { useBrowseMode } from "./browse-mode.ts";
 import { readDisplay } from "./display.ts";
 import { PasteDialog } from "./paste-dialog.tsx";
 import { type Point } from "./long-press.ts";
@@ -52,6 +53,7 @@ function handBack(event: FocusEvent<HTMLElement>): void {
 export function TerminalView(props: TerminalViewProps) {
   const { connection, address, pid, live, focused, label, className, transformInput, onPort, onEnd } = props;
   const { closeLabel = "Close tab", onEnded, jumpClearance, claimed = true, typesComposition = false } = props;
+  const { browsing = false } = props;
   const config = useTerminalConfig();
   const options = useMemo(() => rendererOptions(config), [config]);
   const dark = useDarkScheme();
@@ -129,10 +131,11 @@ export function TerminalView(props: TerminalViewProps) {
   useLongPressSelect(wt, setSelectAt);
   useShiftDragSelect(wt);
   useSelectionCells(wt);
+  useBrowseMode(wt, browsing);
   const closeSelectionMenu = useCallback((): void => {
     setSelectAt(null);
-    handle.current?.focus();
-  }, []);
+    if (!browsing) handle.current?.focus();
+  }, [browsing]);
   const attachment = useTerminalAttach({
     connection,
     address,
@@ -251,6 +254,7 @@ export function TerminalView(props: TerminalViewProps) {
         trimCopy={options.trimCopy}
         pasteFiles={pasteFiles}
         onClose={closeSelectionMenu}
+        readOnly={browsing}
       />
     </div>
   );

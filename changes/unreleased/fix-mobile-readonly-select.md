@@ -1,3 +1,9 @@
+### Phone
+
+- A round Browse output button beside the keyboard button turns the terminal read-only: one finger scrolls, a held
+  finger selects and a drag takes what it reaches, and a tap reaches neither the program nor the keyboard. A tap on
+  the pressed button ends it.
+
 ### Terminal
 
 - Holding Shift and dragging with the mouse selects the text under a program that tracks the mouse, instead of
