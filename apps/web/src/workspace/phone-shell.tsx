@@ -9,7 +9,8 @@ import { AgentLists } from "./agent-lists.tsx";
 import { PhoneSortMenu } from "./agents-group.tsx";
 import { onlyThisMachine } from "./machines.ts";
 import type { ListedSpace, Session } from "./model.ts";
-import { PhoneSpace } from "./phone-space.tsx";
+import { PhoneSpace, PhoneSpaceLoading } from "./phone-space.tsx";
+import { useArrivalReady } from "./use-arrival-ready.ts";
 import { ConnectionLine, ConnectionPathItem, ReconnectStatus } from "./reconnect-status.tsx";
 import { usePendingUpdate } from "../update/update-store.ts";
 import { FirstRunGuideCard } from "../pair/first-run-guide-card.tsx";
@@ -25,14 +26,21 @@ export interface PhoneShellProps {
   readonly connection: HcConnection;
   readonly terminals: readonly Session[];
   readonly open: string | null;
-  /** The space whose screen shows under the open terminal, or on its own when none is open; null for the list. */
-  readonly space: ListedSpace | null;
+  /**
+   * The space whose screen shows under the open terminal, or on its own when none is open; "loading" while the space the
+   * address names is not read yet; null for the list.
+   */
+  readonly space: ListedSpace | "loading" | null;
+  /** Whether the screen in view was reached by a push, the only arrival a pushed screen slides in for. */
+  readonly pushed: boolean;
   /** The terminals of the tab that shows the open one, in its panes' order; one when that tab is not split. */
   readonly panes: readonly string[];
   /** The open terminal's tab as the strip reads it (its name, else its number); null when it is in no tab. */
   readonly tabTitle: string | null;
   readonly onOpen: (address: string) => void;
   readonly onBack: () => void;
+  /** The space screen's Back, to the list. */
+  readonly onSpaceBack: () => void;
   readonly onNew: () => void;
   /** Starts a new tab in the space with this key and opens it. */
   readonly onNewInSpace: (key: string) => void;
@@ -43,7 +51,7 @@ export interface PhoneShellProps {
 /** Phones: the agents list first; a space opens its own screen, and a terminal shows full screen with extra keys. */
 export function PhoneShell(props: PhoneShellProps) {
   const { connection, terminals, open, space, panes, tabTitle, onOpen, onBack, onNew, onNewInSpace, onPalette } = props;
-  const { onSession } = props;
+  const { onSession, onSpaceBack, pushed } = props;
   // The open terminal registers its dictation here, so the palette and a bound key reach it from this shell's handler.
   const dictate = useRef<(() => void) | null>(null);
   usePhoneActions(onNew, onSession, () => (dictate.current === null ? false : (dictate.current(), true)));
@@ -55,14 +63,18 @@ export function PhoneShell(props: PhoneShellProps) {
     ? terminals.filter((entry) => entry.state === "live").map((entry) => entry.address)
     : [];
   const empty = machines.terminalsLoaded && live.length === 0;
-  if (terminal === undefined && space !== null && machines.terminalsLoaded) {
+  // A screen pushed after the first loaded paint arrives with motion (DESIGN.md 6); the first screen does not.
+  useArrivalReady(machines.terminalsLoaded);
+  if (terminal === undefined && space === "loading") return <PhoneSpaceLoading onBack={onSpaceBack} />;
+  if (terminal === undefined && space !== null && space !== "loading") {
     return (
       <PhoneSpace
         space={space}
         terminals={terminals}
         host={connection.hello.core.name}
+        arrive={pushed}
         onOpen={onOpen}
-        onBack={onBack}
+        onBack={onSpaceBack}
         onNew={() => onNewInSpace(space.id)}
       />
     );

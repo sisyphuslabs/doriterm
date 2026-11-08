@@ -348,7 +348,15 @@ export function Workspace({ connection }: WorkspaceProps) {
         : { spaces, selected: selectedSpace, select: selectSpace, move: moveSpace },
     [narrow, spaces, selectedSpace, selectSpace, showSpace, moveSpace],
   );
-  const phoneSpace = phone.space === null ? null : (spaces.find((each) => each.id === phone.space) ?? null);
+  // A space is known once the terminals and every layout document are read; until then its screen says it is loading.
+  const spacesRead = fed.loaded && layout.restored;
+  const listedSpace = phone.space === null ? undefined : spaces.find((each) => each.id === phone.space);
+  const phoneSpace = phone.space === null ? null : (listedSpace ?? (spacesRead ? null : "loading"));
+  const { dropSpace } = phone;
+  const spaceGone = phone.space !== null && listedSpace === undefined && spacesRead;
+  useEffect(() => {
+    if (spaceGone) dropSpace();
+  }, [spaceGone, dropSpace]);
   return (
     <MachinesContext value={machines}>
       <GitFactsContext value={gitOf}>
@@ -382,6 +390,8 @@ export function Workspace({ connection }: WorkspaceProps) {
                         tabTitle={phoneTitle}
                         onOpen={showOnPhone}
                         onBack={phone.back}
+                        onSpaceBack={phone.backFromSpace}
+                        pushed={phone.pushed}
                         onNew={() => newTerminal()}
                         onNewInSpace={newTabIn}
                         onPalette={onPalette}

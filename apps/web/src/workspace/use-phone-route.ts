@@ -24,6 +24,12 @@ export interface PhoneNavigation {
   readonly showSpace: (key: string) => void;
   /** One level up: the screen under this one, never out of the app. */
   readonly back: () => void;
+  /** The space screen's Back: to the list, also when the address still names a terminal that has gone. */
+  readonly backFromSpace: () => void;
+  /** Forgets a space that is no longer listed (closed here or elsewhere), in place: the list shows, no entry is added. */
+  readonly dropSpace: () => void;
+  /** Whether the last move between entries went forward (a push): only then does a pushed screen slide in. */
+  readonly pushed: boolean;
 }
 
 /**
@@ -49,6 +55,13 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
   const path = useRouterState({ select: (state) => state.location.pathname });
   const index = useRouterState({ select: (state) => state.location.state[ENTRY_INDEX] });
   landed ??= index;
+  // The direction of the last move between entries: a push raises the index, a pop or a Back lowers it.
+  const lastIndex = useRef(index);
+  const forward = useRef(false);
+  if (index !== lastIndex.current) {
+    forward.current = index > lastIndex.current;
+    lastIndex.current = index;
+  }
   const route = phoneRoute(search);
   const listed = path === "/" ? route : PHONE_LIST;
   // Settings and pairing are routes with no terminal or space in them: they say nothing about either, so the last ones
@@ -81,5 +94,12 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     if (landed !== null && index > landed) router.history.back();
     else go(phoneParent(listed), true);
   }, [go, index, listed, router]);
-  return { open, space, show, showSpace, back };
+  const backFromSpace = useCallback(() => {
+    if (listed.terminal === null) back();
+    else go(PHONE_LIST, true);
+  }, [back, go, listed.terminal]);
+  const dropSpace = useCallback(() => {
+    if (path === "/" && listed.space !== null) go({ space: null, terminal: listed.terminal }, true);
+  }, [go, listed.space, listed.terminal, path]);
+  return { open, space, show, showSpace, back, backFromSpace, dropSpace, pushed: forward.current };
 }

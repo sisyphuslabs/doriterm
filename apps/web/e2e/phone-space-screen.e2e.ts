@@ -128,6 +128,28 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
       }
     });
 
+    test("a space closed while its screen is open gives way to the list, in place", async ({ page }) => {
+      const seeded = seed();
+      try {
+        await openWebsite(page);
+        const entries = await page.evaluate(() => history.length);
+        // Another device closes website: only infra is left in the saved layout.
+        seedSpaces([
+          {
+            id: "spc-infra",
+            name: "infra",
+            folder: mkdtempSync(join(tmpdir(), "phone-space-left-")),
+            tabs: [{ id: "tb-plan", name: "", terminal: seeded.plan }],
+          },
+        ]);
+        await expect(agentsHeading(page)).toBeVisible({ timeout: 15_000 });
+        await expect.poll(() => param(page, "s")).toBeNull();
+        expect(await page.evaluate(() => history.length), "the gone space is replaced, not stacked").toBe(entries);
+      } finally {
+        end(seeded);
+      }
+    });
+
     test("New tab in a space starts a tab in that space and opens it over the space's screen", async ({ page }) => {
       const seeded = seed();
       let made: string | null = null;
