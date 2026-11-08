@@ -1,12 +1,14 @@
 // The browser's own mesh join, reachable from a page: the test-only entry `mesh-join-browser.e2e.ts` bundles and serves
 // to one page of the real app, because no shipped route reaches `src/mesh/join.ts` yet (the join UI is stage 4 of #1386).
+// The join compares a code with the inviting machine: the spec exposes `approveJoinCode` to the page, which has the
+// inviting machine approve the code the page derived, as the two people would.
 // Nothing under `src/` imports this file and the app's build does not include it, so it puts no code in front of a user.
-// Every function here runs in the page: `joinMesh` and `connect` are called with no deps, so the join uses the page's own
-// WebCrypto device key, its own Ed25519 signing key and its own IndexedDB store.
+// Every function here runs in the page: `joinMesh` and `connect` use the browser's default deps, so the join uses the
+// page's own WebCrypto device key, its own Ed25519 signing key and its own IndexedDB store.
 import { connect } from "../src/connection/connect.ts";
 import { loadDeviceKey } from "../src/connection/device-key.ts";
 import { DEFAULT_SETTINGS } from "../src/connection/settings.ts";
-import { joinMesh } from "../src/mesh/join.ts";
+import { BROWSER_JOIN_DEPS, joinMesh } from "../src/mesh/join.ts";
 import { MembershipStore, membersOf, type MeshMember, reachableTargets } from "../src/mesh/membership.ts";
 import { parsePairingFragment } from "../src/pair/fragment.ts";
 
@@ -40,7 +42,10 @@ const summary = (member: MeshMember): MeshMember => ({
 export async function join(hash: string, deviceName: string): Promise<Joined> {
   const parsed = parsePairingFragment(hash);
   if (!parsed.ok) throw new Error(parsed.reason);
-  const joined = await joinMesh(parsed.offer, deviceName);
+  const approve: unknown = Reflect.get(globalThis, "approveJoinCode");
+  if (typeof approve !== "function") throw new Error("the spec exposed no approveJoinCode");
+  const confirm = async (code: string): Promise<boolean> => (await Reflect.apply(approve, globalThis, [code])) === true;
+  const joined = await joinMesh(parsed.offer, deviceName, { ...BROWSER_JOIN_DEPS, confirm });
   const own = joined.members.find((member) => member.signPub === joined.membership.signPub);
   if (own === undefined) throw new Error("the welcome named no member with this browser's key");
   return {

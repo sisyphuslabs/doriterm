@@ -124,10 +124,15 @@ test("at 390x844 the page's own WebCrypto and IndexedDB join the mesh and reach 
   expect(page.viewportSize()).toEqual(PHONE);
   expect(viewport).toEqual({ ...PHONE, ratio: 3 });
 
+  // The code the page derives goes to the inviting machine, which approves it only if its pending join shows the same.
+  await page.exposeFunction(
+    "approveJoinCode",
+    async (code: string) => (await ask(`APPROVE ${code}`, "APPROVED ")) === "yes",
+  );
   const hash = await ask("MESH", "LINK ");
 
-  // Everything below runs inside the page: `join` and `reach` are the modules under src/mesh, called with no deps, so
-  // the device key, the signing key and the membership are the page's own.
+  // Everything below runs inside the page: `join` and `reach` are the modules under src/mesh, on the browser's default
+  // deps, so the device key, the signing key and the membership are the page's own.
   const proof: Answer = await page.evaluate(
     async ({ specifier, fragment, deviceName }) => {
       const loaded: unknown = await import(specifier);

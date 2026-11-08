@@ -4,7 +4,9 @@
 // MESH_JOIN=skip leaves them strangers, which the spec must fail on. A shell named `on-b` runs on b's own core.
 // Prints `READY {"relayUrl": ..., "machine": ..., "bHostId": ...}` (a's relay, b's machine name on a's core, b's own
 // hostId), answers each stdin line with one line: `PAIR` with `LINK <fragment>`, a fresh device pairing link to a; `MESH`
-// with `LINK <fragment>`, a fresh mesh invite from a (browser-join.e2e.ts joins the mesh with it); `STATUS` with
+// with `LINK <fragment>`, a fresh mesh invite from a that asks for a code (mesh-join-browser.e2e.ts joins with it);
+// `APPROVE <code>` with `APPROVED yes` once a approved the pending join showing that code (else `APPROVED no`, the
+// reason on stderr), the inviting person's half of the comparison; `STATUS` with
 // `MEMBERS {"meshId": ..., "a": [...], "b": [...]}`, the members each machine's `mesh status --json` lists. `STOP`
 // stops b's host process and answers `STOPPED` once a's core lists b as not connected; `START` starts it again on the
 // same state (its shell lives on in b's core), dials it from a at once instead of at hc's next redial, and answers
@@ -12,6 +14,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { approveOnInviter, browserInviteUrl } from "./compared-browser.ts";
 import { startMesh } from "./mesh/mesh.ts";
 import { type Member, meshIdOf, statusOf } from "./mesh/status.ts";
 
@@ -73,12 +76,18 @@ const fragmentOf = (run: { readonly exit: number; readonly stdout: string; reado
 const pairingFragment = async (): Promise<string> =>
   fragmentOf(await a.cli("pair", "--no-qr", "--web-origin", "https://web.example", "--relay", relayUrl), "pair");
 
-/** A mesh invite: what a browser joins with, as the host CLI mints it for a person. */
-const meshFragment = async (): Promise<string> =>
-  fragmentOf(
-    await a.cli("mesh", "pair", "--auto", "--no-qr", "--web-origin", "https://web.example", "--relay", relayUrl),
-    "mesh pair",
-  );
+/** A mesh invite that asks for a code: a browser may join only on one (an --auto invite is for machines). */
+const meshFragment = async (): Promise<string> => new URL(await browserInviteUrl(a, relayUrl)).hash;
+
+const approve = async (code: string): Promise<string> => {
+  try {
+    await approveOnInviter(a, code);
+    return "APPROVED yes";
+  } catch (error) {
+    process.stderr.write(`mesh-hosts: not approved: ${String(error)}\n`);
+    return "APPROVED no";
+  }
+};
 
 /** The members each machine holds, so a spec can prove an admission from the machines' side and not the browser's word. */
 const membersOfBoth = async (): Promise<{
@@ -108,19 +117,21 @@ const startB = async (): Promise<string> => {
   return "STARTED";
 };
 
-/** Each ask's one answer line. */
-const answers: Readonly<Record<string, () => Promise<string>>> = {
+/** Each ask's one answer line, given what follows the ask's first word. */
+const answers: Readonly<Record<string, (arg: string) => Promise<string>>> = {
   PAIR: async () => `LINK ${await pairingFragment()}`,
   MESH: async () => `LINK ${await meshFragment()}`,
+  APPROVE: approve,
   STATUS: async () => `MEMBERS ${JSON.stringify(await membersOfBoth())}`,
   STOP: stopB,
   START: startB,
 };
 
 async function answer(ask: string): Promise<void> {
-  const reply = answers[ask];
+  const [verb = "", ...rest] = ask.split(" ");
+  const reply = answers[verb];
   if (reply === undefined) throw new Error(`web-mesh-hosts: unknown line ${ask}`);
-  process.stdout.write(`${await reply()}\n`);
+  process.stdout.write(`${await reply(rest.join(" "))}\n`);
 }
 
 let pending = Promise.resolve();
