@@ -115,7 +115,9 @@ test.describe("the reporter's Android PWA", () => {
     viewport: { width: 800, height: 1280 },
   });
 
-  test("an Android tablet keeps a Hangul face and draws the syllable (#959)", async ({ page }) => {
+  test("a tablet-sized viewport with an Android user agent keeps a Hangul face and draws the syllable (#959)", async ({
+    page,
+  }) => {
     await page.goto("/");
 
     const stack = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--font-term"));

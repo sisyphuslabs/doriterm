@@ -1,3 +1,5 @@
+import type { HcConnection } from "@doriface/client";
+
 /**
  * The call a wake sends to prove an open link got no answer in time, so the link was dropped (#653). It names that call:
  * the link's heartbeats may have kept arriving, so this is not a silent link (#779).
@@ -13,6 +15,40 @@ export class WakeProbeUnansweredError extends Error {
     this.timeoutMs = timeoutMs;
   }
 }
+
+type Proved = (connection: HcConnection, proven: boolean) => void;
+
+/**
+ * The open links a wake is asking to prove themselves, for everything that writes into them (#1370). A key written into a
+ * half-open socket is lost, and writing it again after a reconnect would type it twice when the socket was alive, so
+ * input for a link listed here waits. `settle` says whether the link answered (write what waited) or not (it is being
+ * dropped, and what waited goes to the next stream).
+ */
+export class UnprovenLinks {
+  readonly #links = new Set<HcConnection>();
+  readonly #listeners = new Set<Proved>();
+
+  has(connection: HcConnection): boolean {
+    return this.#links.has(connection);
+  }
+
+  start(connection: HcConnection): void {
+    this.#links.add(connection);
+  }
+
+  settle(connection: HcConnection, proven: boolean): void {
+    if (!this.#links.delete(connection)) return;
+    for (const listener of this.#listeners) listener(connection, proven);
+  }
+
+  subscribe(listener: Proved): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+}
+
+/** The app's one list: its stores prove links into it, and its terminal views hold input by it. */
+export const unprovenLinks = new UnprovenLinks();
 
 /** The page events that mean "this page can work again", as the store needs them. */
 export interface WakeSources {

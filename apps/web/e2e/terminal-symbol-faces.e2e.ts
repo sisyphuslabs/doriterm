@@ -15,7 +15,15 @@ const PROBES = {
   "agent marks": "⏺⎿✻✳✢",
   arrows: "→←⇒↵⧉",
   status: "●◆✓✔✘★⚡⚠ⓘ",
-  powerline: "\ue0a0\ue0b0\ue0b2",
+  "powerline E0A0": "\ue0a0",
+  "powerline E0B0": "x\ue0b0",
+  "powerline E0B1": "x\ue0b1",
+  "powerline E0B2": "x\ue0b2",
+  "powerline E0B3": "x\ue0b3",
+  "powerline E0B4": "x\ue0b4",
+  "powerline E0B5": "x\ue0b5",
+  "powerline E0B6": "x\ue0b6",
+  "powerline E0B7": "x\ue0b7",
   "nerd icons": "\uf015\uf07b\ue718\uf113",
 } as const;
 
@@ -63,5 +71,8 @@ test("symbols, spinners and icons in the terminal are drawn by faces the app shi
         timeout: 10_000,
       })
       .toEqual([]);
+    // oxlint-disable-next-line no-await-in-loop -- the faces of the row just checked, for the run's record
+    const faces = [...new Set((await facesOf(page, text)).map((face) => face.name))];
+    console.log(`${name}: ${faces.join(", ")}`);
   }
 });

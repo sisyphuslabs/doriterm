@@ -3,6 +3,7 @@ import type { WTerm } from "@wterm/react";
 import { useEffect, type RefObject } from "react";
 import type { RendererOptions } from "../ghostty/render-options.ts";
 import { copiedText } from "./copied-text.ts";
+import { heldSelection } from "./held-selection.ts";
 import { choosePaste, filesOf } from "./paste-files.ts";
 
 export interface PendingPaste {
@@ -56,8 +57,9 @@ export function useBehaviors(
       onFiles(files);
     });
     if (copyOnSelect) {
+      // A shift-drag's selection is the view's own (use-shift-drag-select.ts), not wterm's.
       on("mouseup", () => {
-        const text = wt.getSelectionText();
+        const text = wt.getSelectionText() ?? heldSelection(element)?.text ?? null;
         if (text !== null && text !== "") {
           void navigator.clipboard?.writeText(copiedText(text, trimCopy)).catch(() => undefined);
         }

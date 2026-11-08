@@ -40,6 +40,42 @@
     caret-color: var(--ring);
   }
 
+  /*
+   * iOS zooms the page whenever a field it focuses has a font-size under 16px, and it keeps that zoom (#1380). The
+   * terminal's keyboard sink is such a field once the text size is under 12pt: @wterm/dom creates it with
+   * `font: inherit`, so it takes the terminal's own size (#1382); find is another at 15px. On a touch screen every field
+   * is therefore at least 16px. The sink shows nothing but the caret and a composing syllable, so raising its size costs
+   * no visible space. `!important` wins over the package's inline `font: inherit` and over the fields' own text-size
+   * utilities.
+   */
+  @media (pointer: coarse) {
+    input:not(
+      [type="checkbox"],
+      [type="radio"],
+      [type="range"],
+      [type="color"],
+      [type="file"],
+      [type="button"],
+      [type="submit"],
+      [type="reset"],
+      [type="image"],
+      [type="hidden"]
+    ),
+    textarea,
+    select {
+      font-size: max(16px, 1em) !important;
+    }
+  }
+
+  /*
+   * No double-tap zoom: a quick second tap on the terminal, a key or a button is a second tap (#1380). `manipulation`
+   * keeps panning and pinch-zoom, and the viewport keeps user scaling, so a person can still zoom on purpose. A
+   * `touch-none` utility, for a drag handle, still wins over this base rule.
+   */
+  * {
+    touch-action: manipulation;
+  }
+
   :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
@@ -97,5 +133,20 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-property: opacity, background-color, color, border-color !important;
+  }
+
+  /* Ongoing work stays perceivable without rotation, including compact status glyphs. */
+  [data-slot="spinner"] {
+    animation: progress-opacity 1.8s ease-in-out infinite !important;
+  }
+}
+
+@keyframes progress-opacity {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.65;
   }
 }

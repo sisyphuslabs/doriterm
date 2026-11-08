@@ -8,7 +8,9 @@ import { NEW_TAB } from "../keys/actions.ts";
 import { AgentLists } from "./agent-lists.tsx";
 import { PhoneSortMenu } from "./agents-group.tsx";
 import { onlyThisMachine } from "./machines.ts";
-import type { Session } from "./model.ts";
+import type { ListedSpace, Session } from "./model.ts";
+import { PhoneSpace, PhoneSpaceLoading } from "./phone-space.tsx";
+import { useArrivalReady } from "./use-arrival-ready.ts";
 import { ConnectionLine, ConnectionPathItem, ReconnectStatus } from "./reconnect-status.tsx";
 import { usePendingUpdate } from "../update/update-store.ts";
 import { FirstRunGuideCard } from "../pair/first-run-guide-card.tsx";
@@ -24,20 +26,34 @@ export interface PhoneShellProps {
   readonly connection: HcConnection;
   readonly terminals: readonly Session[];
   readonly open: string | null;
+  /**
+   * The space whose screen shows under the open terminal, or on its own when none is open; "loading" while the space the
+   * address names is not read yet; null for the list.
+   */
+  readonly space: ListedSpace | "loading" | null;
+  /** Whether the screen in view was reached by a push, the only arrival a pushed screen slides in for. */
+  readonly pushed: boolean;
   /** The terminals of the tab that shows the open one, in its panes' order; one when that tab is not split. */
   readonly panes: readonly string[];
   /** The open terminal's tab as the strip reads it (its name, else its number); null when it is in no tab. */
   readonly tabTitle: string | null;
   readonly onOpen: (address: string) => void;
   readonly onBack: () => void;
+  /** The space screen's Back, to the list. */
+  readonly onSpaceBack: () => void;
   readonly onNew: () => void;
+  /** Starts a new tab in the space with this key and opens it. */
+  readonly onNewInSpace: (key: string) => void;
+  /** Closes the tab that shows this terminal, as the desktop strip's close does. */
+  readonly onCloseTab: (address: string) => void;
   readonly onPalette: () => void;
   readonly onSession: SessionVerb;
 }
 
-/** Phones: the agents list first; opening one shows its terminal full screen with extra keys. */
+/** Phones: the agents list first; a space opens its own screen, and a terminal shows full screen with extra keys. */
 export function PhoneShell(props: PhoneShellProps) {
-  const { connection, terminals, open, panes, tabTitle, onOpen, onBack, onNew, onPalette, onSession } = props;
+  const { connection, terminals, open, space, panes, tabTitle, onOpen, onBack, onNew, onNewInSpace, onPalette } = props;
+  const { onSession, onSpaceBack, onCloseTab, pushed } = props;
   // The open terminal registers its dictation here, so the palette and a bound key reach it from this shell's handler.
   const dictate = useRef<(() => void) | null>(null);
   usePhoneActions(onNew, onSession, () => (dictate.current === null ? false : (dictate.current(), true)));
@@ -52,6 +68,25 @@ export function PhoneShell(props: PhoneShellProps) {
     ? terminals.filter((entry) => entry.state === "live").map((entry) => entry.address)
     : [];
   const empty = machines.terminalsLoaded && live.length === 0;
+  // A screen pushed after the first loaded paint arrives with motion (DESIGN.md 6); the first screen does not.
+  useArrivalReady(machines.terminalsLoaded);
+  // A space's rows are its live terminals: until the terminals are listed (or when that failed) the screen says so,
+  // never "Nothing is running".
+  if (terminal === undefined && (space === "loading" || (space !== null && !machines.terminalsLoaded)))
+    return <PhoneSpaceLoading error={machines.terminalsError} onRetry={machines.retryTerminals} onBack={onSpaceBack} />;
+  if (terminal === undefined && space !== null && space !== "loading") {
+    return (
+      <PhoneSpace
+        space={space}
+        terminals={terminals}
+        host={connection.hello.core.name}
+        arrive={pushed}
+        onOpen={onOpen}
+        onBack={onSpaceBack}
+        onNew={() => onNewInSpace(space.id)}
+      />
+    );
+  }
   if (terminal === undefined) {
     const route = connectionStore.settings.mode === "relay" ? "relay" : "loopback";
     return (
@@ -84,25 +119,28 @@ export function PhoneShell(props: PhoneShellProps) {
           />
         </header>
         <ConnectionLine />
-        <ScrollArea slot="agents-list" className="flex-1">
-          <FirstRunGuideCard listVisible live={live} onNew={onNew} />
-          {machines.terminalsLoaded ? (
-            <>
-              {empty ? (
-                <PhoneEmpty host={connection.hello.core.name} onNew={onNew} onAddMachine={machines.openAddMachine} />
-              ) : null}
-              {empty && onlyThisMachine(machines.entries) ? null : (
-                <RovingLists>
-                  <AgentLists terminals={terminals} active={null} onOpen={onOpen} heading={false} />
-                </RovingLists>
-              )}
-            </>
-          ) : machines.terminalsError !== null ? (
-            <TerminalsLoadError cause={machines.terminalsError} onRetry={machines.retryTerminals} />
-          ) : (
-            <PhoneListLoading />
-          )}
-        </ScrollArea>
+        {/* The page's one main landmark: the list, under the header (#1378). */}
+        <main className="flex min-h-0 flex-1 flex-col">
+          <ScrollArea slot="agents-list" className="flex-1">
+            <FirstRunGuideCard listVisible live={live} onNew={onNew} />
+            {machines.terminalsLoaded ? (
+              <>
+                {empty ? (
+                  <PhoneEmpty host={connection.hello.core.name} onNew={onNew} onAddMachine={machines.openAddMachine} />
+                ) : null}
+                {empty && onlyThisMachine(machines.entries) ? null : (
+                  <RovingLists>
+                    <AgentLists terminals={terminals} active={null} onOpen={onOpen} heading={false} />
+                  </RovingLists>
+                )}
+              </>
+            ) : machines.terminalsError !== null ? (
+              <TerminalsLoadError cause={machines.terminalsError} onRetry={machines.retryTerminals} />
+            ) : (
+              <PhoneListLoading />
+            )}
+          </ScrollArea>
+        </main>
         <StatusBar
           className="h-[calc(var(--statusbar-height)+var(--safe-bottom))] pb-(--safe-bottom)"
           start={
@@ -130,6 +168,8 @@ export function PhoneShell(props: PhoneShellProps) {
         setPicked(null);
         onBack();
       }}
+      onCloseTab={onCloseTab}
+      onNewInSpace={onNewInSpace}
       dictate={dictate}
       claimed={picked === terminal.address}
       onPick={(address) => {
