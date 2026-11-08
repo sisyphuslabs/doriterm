@@ -1,6 +1,6 @@
 import { Button } from "@doriface/ui";
 import { Monitor, Plus, Server } from "lucide-react";
-import { type MachineEntry, stateLabel } from "./machines.ts";
+import type { Computer } from "./computers.ts";
 
 /**
  * Every computer this phone can use, in one list, whatever brought it here (#1296).
@@ -14,9 +14,9 @@ export function ComputersList({
   onAdd,
   onPick,
 }: {
-  readonly machines: readonly MachineEntry[];
+  readonly machines: readonly Computer[];
   readonly onAdd: () => void;
-  readonly onPick?: (machine: MachineEntry) => void;
+  readonly onPick?: (machine: Computer) => void;
 }) {
   return (
     <section aria-label="Computers" className="flex flex-col gap-1 px-3 py-2">
@@ -29,10 +29,10 @@ export function ComputersList({
               onClick={() => onPick?.(machine)}
               className="flex w-full min-w-0 items-center gap-2 rounded-md px-1 py-2 text-left text-sm hover:bg-accent"
             >
-              {machine.local ? <Monitor aria-hidden className="size-4" /> : <Server aria-hidden className="size-4" />}
+              {machine.state === "this" ? <Monitor aria-hidden className="size-4" /> : <Server aria-hidden className="size-4" />}
               <span className="min-w-0 flex-1 truncate">{machine.name}</span>
               <span className="text-xs text-muted-foreground">
-                {machine.local ? "this computer" : stateLabel(machine.state)}
+                {machine.state === "this" ? "this computer" : machine.state === "offline" ? (machine.reason ?? "offline") : "connected"}
               </span>
             </button>
           </li>

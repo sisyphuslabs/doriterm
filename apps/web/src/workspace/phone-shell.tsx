@@ -3,11 +3,12 @@ import { IconButton, ScrollArea, StatusBar, StatusBarItem } from "@doriface/ui";
 import { Link } from "@tanstack/react-router";
 import { Monitor, Plus, Search, Settings } from "lucide-react";
 import { useRef } from "react";
-import { connectionStore } from "../connection/store.ts";
+import { connectionStore, useMeshMembers } from "../connection/store.ts";
 import { NEW_TAB } from "../keys/actions.ts";
 import { AgentLists } from "./agent-lists.tsx";
 import { PhoneSortMenu } from "./agents-group.tsx";
 import { ComputersList } from "./computers-list.tsx";
+import { unifyComputers } from "./computers.ts";
 import { onlyThisMachine } from "./machines.ts";
 import type { Session } from "./model.ts";
 import { ConnectionLine, ConnectionPathItem, ReconnectStatus } from "./reconnect-status.tsx";
@@ -43,6 +44,7 @@ export function PhoneShell(props: PhoneShellProps) {
   const dictate = useRef<(() => void) | null>(null);
   usePhoneActions(onNew, onSession, () => (dictate.current === null ? false : (dictate.current(), true)));
   const machines = useMachinesContext();
+  const members = useMeshMembers();
   const update = usePendingUpdate();
   const terminal = terminals.find((entry) => entry.address === open);
   // An unanswered list is not an empty one: the empty state waits for the core's first answer (#797).
@@ -91,7 +93,7 @@ export function PhoneShell(props: PhoneShellProps) {
                 {empty ? (
                   <PhoneEmpty host={connection.hello.core.name} onNew={onNew} onAddMachine={machines.openAddMachine} />
                 ) : null}
-                <ComputersList machines={machines.entries} onAdd={machines.openAddMachine} />
+                <ComputersList machines={unifyComputers(machines.entries, members, connection.hello.core.name)} onAdd={machines.openAddMachine} />
                 {empty && onlyThisMachine(machines.entries) ? null : (
                   <RovingLists>
                     <AgentLists terminals={terminals} active={null} onOpen={onOpen} heading={false} />
