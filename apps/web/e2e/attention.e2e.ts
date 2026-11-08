@@ -33,7 +33,8 @@ function startShell(name: string): string {
 
 /** Types into the shell a report of `state` over OSC 7501, as an agent sends when its turn changes. */
 function report(address: string, state: string): void {
-  hcOn("host", ["send", address, `printf '\\033]7501;state=${state}\\033\\\\'`]);
+  // hc refuses to type into a blocked terminal unless forced: the report that ends the block has to be.
+  hcOn("host", ["send", "--force", address, `printf '\\033]7501;state=${state}\\033\\\\'`]);
 }
 
 /** A second device: its own browser context, so its own storage and its own reading of the same core. */
