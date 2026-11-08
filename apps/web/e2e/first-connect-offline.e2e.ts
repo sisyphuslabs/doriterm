@@ -105,12 +105,12 @@ test("with nothing configured yet, the first-run screen keeps its next steps and
   await page.addInitScript(() => localStorage.removeItem("doriface.connection"));
   await osOfflineFromStart(page);
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Connect to a host" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Join a mesh" })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("status").filter({ hasText: OFFLINE_NOTICE })).toBeVisible();
   // Pairing needs a network, so it is not the enabled first step while offline.
   await expect(page.getByRole("link", { name: "Pair a host" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Pair a host" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Pair a host" })).toHaveAccessibleDescription(/needs a network/);
+  await expect(page.getByRole("button", { name: "Paste invite" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Paste invite" })).toHaveAccessibleDescription(/needs a network/);
 });
 
 test("the pairing page says the device is offline, and a lookup that cannot reach the relay promises no QR scan", async ({
@@ -120,10 +120,15 @@ test("the pairing page says the device is offline, and a lookup that cannot reac
   await osOfflineFromStart(page);
   await page.route(/\/v1\/pair\//, (route) => route.abort("internetdisconnected"));
   await page.goto("/pair");
-  await expect(page.getByRole("heading", { name: "Pair this device" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Join a mesh" })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("status").filter({ hasText: OFFLINE_NOTICE })).toBeVisible();
-  await page.getByRole("textbox", { name: "Pairing code" }).fill("ABCD2345");
-  await page.getByRole("button", { name: "Pair" }).click();
+  await page.getByLabel("Invite link or code").fill("ABCD2345");
+  await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
+    window.dispatchEvent(new Event("online"));
+  });
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   const reason = page.getByText(/relay cannot be reached/);
   await expect(reason).toBeVisible({ timeout: 15_000 });
   await expect(reason).not.toContainText(/scan/i);

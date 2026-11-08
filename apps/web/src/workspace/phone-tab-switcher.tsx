@@ -1,7 +1,8 @@
 import { AgentRow, Button, IconButton, Sheet, SidebarSection } from "@doriface/ui";
-import { ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, Plus, X } from "lucide-react";
 import { type ReactElement, useState } from "react";
-import { liveTabs, type Session, terminalTitle, titledTabs, toAgent } from "./model.ts";
+import { liveTabs, type Session, toAgent } from "./model.ts";
+import { rowDetail, tabLabel } from "./phone-space-rows.ts";
 import { useSpaceSelection } from "./space-selection.ts";
 import { useNow } from "./use-now.ts";
 
@@ -10,9 +11,13 @@ export function SpaceSheet(props: {
   readonly terminals: readonly Session[];
   readonly active: string;
   readonly onOpen: (address: string) => void;
+  /** Closes the tab that shows `address`, as the desktop strip's close does (its questions included) (#1463). */
+  readonly onCloseTab: (address: string) => void;
+  /** Starts a terminal in a new tab of that space. */
+  readonly onNewInSpace: (space: string) => void;
   readonly trigger: ReactElement;
 }) {
-  const { terminals, active, onOpen, trigger } = props;
+  const { terminals, active, onOpen, onCloseTab, onNewInSpace, trigger } = props;
   // The layout documents' spaces, as the sidebar lists them (#404).
   const { spaces } = useSpaceSelection();
   const [open, setOpen] = useState(false);
@@ -31,22 +36,51 @@ export function SpaceSheet(props: {
             count={space.tabs}
           >
             {/*
-              One row per tab, named as the strip names it (its name, else its number), the terminal it opens after it:
-              the open pane when it is this tab's, else the tab's first live pane.
+              One row per tab that shows a live terminal, for the terminal it opens: the open pane when it is this tab's,
+              else the tab's first live pane. It is named by its tab, else by that terminal (never its place, #1387),
+              and reads what that terminal said last.
             */}
-            {titledTabs(space, terminals).flatMap(({ title, panes }) => {
-              const shown = panes.includes(active) ? active : panes[0];
+            {space.tabPanes.flatMap((panes, at) => {
+              const live = panes.filter((address) =>
+                terminals.some((e) => e.address === address && e.state === "live"),
+              );
+              const shown = live.includes(active) ? active : live[0];
               return terminals
                 .filter((entry) => entry.address === shown)
-                .map((entry) => (
-                  <AgentRow
-                    key={entry.address}
-                    agent={{ ...toAgent(entry, now), name: title, detail: terminalTitle(entry) }}
-                    selected={entry.address === active}
-                    onSelect={pick}
-                  />
-                ));
+                .map((entry) => {
+                  const { detail: _where, ...agent } = toAgent(entry, now);
+                  const said = rowDetail(space.tabNames[at] ?? "", entry);
+                  const name = tabLabel(space.tabNames[at] ?? "", entry);
+                  return (
+                    <div key={entry.address} className="flex min-w-0 items-center gap-1">
+                      <div className="min-w-0 flex-1">
+                        <AgentRow
+                          agent={{ ...agent, name, ...(said === "" ? {} : { detail: said }) }}
+                          selected={entry.address === active}
+                          onSelect={pick}
+                        />
+                      </div>
+                      <IconButton
+                        label={`Close ${name}`}
+                        icon={<X />}
+                        size="md"
+                        onClick={() => onCloseTab(entry.address)}
+                      />
+                    </div>
+                  );
+                });
             })}
+            <Button
+              variant="ghost"
+              className="h-11 justify-start gap-2 px-2 text-muted-foreground"
+              onClick={() => {
+                setOpen(false);
+                onNewInSpace(space.id);
+              }}
+            >
+              <Plus aria-hidden />
+              New tab
+            </Button>
           </SidebarSection>
         ))}
       </div>
@@ -65,17 +99,23 @@ export function useSpaceTabs(terminals: readonly Session[], address: string): re
  * The phone's tab switcher within thumb reach (#466 10B): a bar at the bottom of the terminal screen that steps to the
  * space's previous and next tab and opens the spaces sheet, with 44 px targets. herdr-app has no phone screen to follow,
  * so it sits where a phone keeps its toolbars; it leaves the terminal's own scrolling and selection alone. Its right end
- * is left to the round keyboard button, which floats there level with it.
+ * is left to the round buttons (the keyboard button, and Read-only beside it), which float there level with it.
  */
 export function PhoneTabSwitcher(props: {
   readonly terminals: readonly Session[];
   readonly tabs: readonly (readonly string[])[];
   readonly active: string;
-  /** The open tab as the strip reads it: its name, else its number. */
+  /** The open tab's name, else its terminal's title. */
   readonly title: string;
   readonly onOpen: (address: string) => void;
+  /** How much of its right end the round buttons take (roundButtonsClearance); its controls stay clear of it. */
+  readonly clearance: string;
+  readonly onCloseTab: (address: string) => void;
+  readonly onNewInSpace: (space: string) => void;
 }) {
-  const { terminals, tabs, active, title, onOpen } = props;
+  const { terminals, tabs, active, title, onOpen, onCloseTab, onNewInSpace, clearance } = props;
+  const { spaces } = useSpaceSelection();
+  const space = spaces.find((each) => each.addresses.includes(active))?.name;
   const at = tabs.findIndex((panes) => panes.includes(active));
   if (at === -1) return null;
   const step = (by: 1 | -1): void => {
@@ -87,20 +127,34 @@ export function PhoneTabSwitcher(props: {
     <nav
       aria-label="Tabs in this space"
       data-phone-tabs
-      className="flex shrink-0 items-center gap-1 border-t border-border bg-chrome pt-1 pr-[4.5rem] pb-[max(1rem,calc(var(--safe-bottom)+0.5rem))] pl-1.5"
+      className="flex shrink-0 items-center gap-1 border-t border-border bg-chrome pt-1 pb-[max(1rem,calc(var(--safe-bottom)+0.5rem))] pl-1.5"
+      style={{ paddingRight: clearance }}
     >
       {several ? <IconButton label="Previous tab" icon={<ChevronLeft />} size="md" onClick={() => step(-1)} /> : null}
       <SpaceSheet
         terminals={terminals}
         active={active}
         onOpen={onOpen}
+        onCloseTab={onCloseTab}
+        onNewInSpace={onNewInSpace}
         trigger={
           <Button
             variant="ghost"
-            aria-label={`Switch tab, ${title}, tab ${at + 1} of ${tabs.length}`}
-            className="h-12 min-w-0 flex-1 text-foreground [&>span]:min-w-0"
+            aria-label={`Switch tab, ${space === undefined ? "" : `${space}, `}${title}, tab ${at + 1} of ${tabs.length}`}
+            className="@container h-12 min-w-0 flex-1 text-foreground [&>span]:min-w-0"
           >
-            <span className="min-w-0 truncate font-semibold">{title}</span>
+            {/*
+              The space goes first when the bar is narrow (both round buttons beside it): the header already names it, and
+              the tab's own name is what the stepper is for. The accessible name keeps it.
+            */}
+            {space === undefined ? null : (
+              <span title={space} className="min-w-0 shrink-[2] truncate font-semibold @max-[13rem]:hidden">
+                {`${space} ·`}
+              </span>
+            )}
+            <span title={title} className="min-w-0 truncate font-normal">
+              {title}
+            </span>
             <span data-numeric className="shrink-0 text-xs text-muted-foreground">
               {`${at + 1}/${tabs.length}`}
             </span>

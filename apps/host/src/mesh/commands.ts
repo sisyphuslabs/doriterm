@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { withStateLock } from "../state/lock.ts";
 import { MESH_FILE } from "../state/mesh-file.ts";
 import type { MeshStore, MeshTx } from "../state/mesh.ts";
-import type { LeaveReply, RenameReply, RevokeReply } from "./command-replies.ts";
+import type { LeaveReply, MemberRef, RenameReply, RevokeReply } from "./command-replies.ts";
 import { machineKeysOf, meshViewOf } from "./mesh-view.ts";
 import { findMember, memberRef, planRevoke } from "./revoke-plan.ts";
 import type { MeshHooks } from "./host-hooks.ts";
@@ -68,12 +68,14 @@ export class MeshCommands {
       const view = this.#member(tx);
       const machines = machineKeysOf(meshViewOf(tx.records, view));
       const plan = planRevoke(tx.records, view, this.#self, request.member, request.compromised, undefined, machines);
-      const { target, subjects, reason, lines, needsYes } = plan;
-      const preview = { target, subjects, reason, lines, needsYes };
+      const { target, subjects, reason, lines } = plan;
+      const clients = this.#clientsOf(plan.keys);
+      const needsYes = plan.needsYes || clients.length > 0;
+      const preview = { target, subjects, clients, reason, lines, needsYes };
       if (request.preview === true || (needsYes && !request.yes)) {
         return { reply: { written: false, ...preview }, record: undefined };
       }
-      const named = subjects.map((subject) => subject.hostId);
+      const named = [...subjects, ...clients].map((subject) => subject.hostId);
       if (request.expect !== undefined && named.join(" ") !== request.expect.join(" ")) {
         throw new Error(
           `the mesh changed since the preview: this revoke would now name ${subjects.map((s) => s.name).join(", ")}; run it again`,
@@ -113,10 +115,25 @@ export class MeshCommands {
     return reply;
   }
 
-  async leave(): Promise<LeaveReply | null> {
+  leavePreview(): { readonly clients: readonly MemberRef[] } {
+    return { clients: this.#clientsOf([this.#self]) };
+  }
+
+  #clientsOf(admitters: readonly string[]): readonly MemberRef[] {
+    return (this.deps.store.authorizeIndex()?.clients() ?? [])
+      .filter((client) => client.admitter !== undefined && admitters.includes(client.admitter))
+      .map(({ hostId, name }) => ({ hostId, name }))
+      .toSorted((a, b) => a.hostId.localeCompare(b.hostId));
+  }
+
+  async leave(expect?: readonly string[]): Promise<LeaveReply | null> {
     const meshId = this.deps.store.read()?.meshId;
     if (meshId === undefined) return null;
     const { view, record } = this.deps.store.transact((tx) => {
+      const clients = this.leavePreview().clients.map((client) => client.hostId);
+      if (expect !== undefined && clients.join(" ") !== expect.join(" ")) {
+        throw new Error("the clients leaving with this machine changed since the preview; run it again");
+      }
       const current = tx.view();
       if (!current.members.has(this.#self)) return { view: current, record: undefined };
       const signed = this.#sign(tx, meshId, "revoke", { signPubs: [this.#self], reason: "leave" });

@@ -66,7 +66,10 @@ export class Reconciler {
   readonly status = new Map<string, LineStatus>();
   readonly #options: ReconcilerOptions;
   readonly #stuck = new Map<string, Stuck>();
-  /** Unreachable, hc_missing, incompatible; a line refused for the dial budget is re-added by the policy's due. */
+  /**
+   * A refused add waits: an unreachable member for its backoff or its presence, a budget refusal for the budget's event.
+   * Another view or another member's retry never releases either.
+   */
   readonly #retries: ProbeBackoff;
   /** Newly admitted members whose add waits for the 0-5 s jitter (section 8.2). */
   readonly #held = new Set<string>();
@@ -123,11 +126,19 @@ export class Reconciler {
     return this.#latest === undefined ? this.#running : this.reconcile(this.#latest);
   }
 
+  /** The policy's budget wake: the tokens a budget-refused add needs are free, so that add is due now. */
+  budgetAvailable(hostId: string): Promise<void> {
+    this.#retries.budgetAvailable(hostId);
+    return this.#latest === undefined ? this.#running : this.reconcile(this.#latest);
+  }
+
   /**
    * Presence of a member: herdr dials a line that is not connected now (`machine.connect`), and a member with no line
    * yet (its add failed while it was offline) is added now.
    */
   async presence(member: MemberEntry): Promise<void> {
+    // The member is reachable now: a retry its unreachability armed is due, even one whose add is still in flight.
+    this.#retries.present(member.hostId);
     let entries: readonly MeshEntry[];
     try {
       entries = await this.#entries();
@@ -233,6 +244,7 @@ export class Reconciler {
   }
 
   async #add(member: MemberEntry, list: readonly MachineView[], key: string): Promise<void> {
+    if (!this.#retries.ready(member.hostId)) return;
     const stuck = this.#stuck.get(member.hostId);
     if (stuck !== undefined && stuck.key === key && this.#options.clock.now() < stuck.until) return;
     this.#stuck.delete(member.hostId);
@@ -242,6 +254,7 @@ export class Reconciler {
     } catch (error) {
       return this.#stick(member, key, `invalid_host: ${messageOf(error)}`);
     }
+    this.#retries.begin(member.hostId);
     await this.#addAs(member, { list, key, via }, [member.name, ...fallbacks(member.name, member.hostId)]);
   }
 
@@ -269,7 +282,7 @@ export class Reconciler {
       if (kind === "already_added") return this.#migrate(member, attempt, name);
       this.status.set(member.hostId, { state: "retrying", reason: `${kind}: ${messageOf(error)}` });
       this.#options.log(`mesh: adding machine ${name} failed (${kind}): ${messageOf(error)}; retrying`);
-      if (!messageOf(error).includes(BUDGET_REFUSAL)) this.#retries.later(member.hostId);
+      this.#retries.later(member.hostId, !messageOf(error).includes(BUDGET_REFUSAL));
     }
   }
 
@@ -303,7 +316,7 @@ export class Reconciler {
     }
     this.status.set(member.hostId, { state: "retrying", reason: done.reason });
     log(`mesh: replacing machine ${old.name} with ${tried}'s mesh line is retried: ${done.reason}`);
-    if (!done.reason.includes(BUDGET_REFUSAL)) this.#retries.later(member.hostId);
+    this.#retries.later(member.hostId, !done.reason.includes(BUDGET_REFUSAL));
   }
 
   /** `machine.add` once both of its upgrades are reserved; a refused reservation throws as herdr's refusal would. */
@@ -325,6 +338,7 @@ export class Reconciler {
   }
 
   #stick(member: MemberEntry, key: string, reason: string): void {
+    this.#retries.clear(member.hostId);
     this.#stuck.set(member.hostId, { key, until: this.#options.clock.now() + STUCK_RETRY_MS });
     this.status.set(member.hostId, { state: "stuck", reason });
     this.#options.log(`mesh: STUCK ${member.name}: ${reason}`);

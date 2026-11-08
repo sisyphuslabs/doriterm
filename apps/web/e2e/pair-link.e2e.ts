@@ -4,19 +4,21 @@ import { expect, test } from "./fixtures.ts";
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
 
-test("a mesh invite says it adds a machine and never offers to pair this browser", async ({ page }) => {
+test("a mesh invite opens browser membership and keeps the computer command in details", async ({ page }) => {
   await page.goto(MESH_LINK);
-  await expect(page.getByRole("heading", { name: "This link adds a machine to a mesh" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Join this mesh" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Join", exact: true })).toBeVisible();
+  await page.getByText("I meant to add a computer", { exact: true }).click();
   await expect(page.locator("code").filter({ hasText: "doriface-host mesh join <link>" })).toBeVisible();
   await expect(page.getByRole("button", { name: "They match" })).toHaveCount(0);
 });
 
-test("an unusable pairing link leads on to typing the code", async ({ page }) => {
+test("an unusable pairing link leads to the mesh invite entry", async ({ page }) => {
   await page.goto(BAD_LINK);
   await expect(page.getByText("This pairing link cannot be used")).toBeVisible();
-  await page.getByRole("link", { name: "Type a pairing code" }).click();
-  await expect(page.getByRole("heading", { name: "Pair this device" })).toBeVisible();
-  await expect(page.getByLabel("Pairing code")).toBeVisible();
+  await page.getByRole("link", { name: "Enter an invite" }).click();
+  await expect(page.getByRole("heading", { name: "Join a mesh" })).toBeVisible();
+  await expect(page.getByLabel("Invite link or code")).toBeVisible();
 });
 
 for (const [kind, link, command] of [

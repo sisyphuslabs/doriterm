@@ -11,6 +11,9 @@ import { deviceSummary, pairedDevicesView, type PairedDevicesView } from "./pair
 import { sessionPathLabel } from "./session-path.ts";
 import { linkFacts } from "./round-trip.ts";
 import { useHostRoundTrip } from "./use-host-round-trip.ts";
+import { desktopBridge } from "../desktop/bridge.ts";
+import { useBrowserMembership } from "../mesh/membership-state.ts";
+import { MembershipDeviceSection } from "./membership-device.tsx";
 
 function describe(state: ConnectionState): ReactNode {
   switch (state.phase) {
@@ -36,12 +39,15 @@ function describe(state: ConnectionState): ReactNode {
   }
 }
 
-function label(icon: ReactNode, text: string) {
+function label(icon: ReactNode, text: string, prefix = "") {
   return (
     <span className="flex items-start gap-2 [&_svg]:size-4 [&_svg]:text-muted-foreground">
       {/* One line tall, so the icon centres on the text's first line however many lines the text takes. */}
       <span className="flex h-[1lh] shrink-0 items-center">{icon}</span>
-      <span className="min-w-0">{text}</span>
+      <span className="min-w-0">
+        {prefix}
+        {text}
+      </span>
     </span>
   );
 }
@@ -67,7 +73,7 @@ function devicesDescription(view: PairedDevicesView): string {
  * the devices already paired. The list and the revoke come from the shell, which asks the running host over its
  * token-guarded loopback, so a member revokes a lost phone from the computer it was paired to, with no terminal.
  */
-export function DevicesSection() {
+function PairedDevicesSection() {
   const state = useConnection();
   const settings = useConnectionSettings();
   const route = hostRouteOf(settings);
@@ -114,9 +120,13 @@ export function DevicesSection() {
 
   return (
     <>
-      <SettingRow title={label(<Monitor aria-hidden />, "This browser")} description="This device" control={null} />
       <SettingRow
-        title={label(<Server aria-hidden />, host)}
+        title={label(<Monitor aria-hidden />, desktopBridge() === null ? "This browser" : host)}
+        description={desktopBridge() === null ? "Not in a mesh" : "This device"}
+        control={null}
+      />
+      <SettingRow
+        title={label(<Server aria-hidden />, host, desktopBridge() === null ? "Connected through " : "")}
         description={
           <>
             {describe(state)}
@@ -134,6 +144,7 @@ export function DevicesSection() {
         }
         control={null}
       />
+      {desktopBridge() === null ? <Button render={<a href="/join" />}>Join a mesh</Button> : null}
       <PairDeviceOffer />
       {view.kind === "unsupported" ? null : (
         <>
@@ -190,4 +201,9 @@ export function DevicesSection() {
       />
     </>
   );
+}
+
+export function DevicesSection() {
+  const mesh = useBrowserMembership();
+  return mesh.phase !== "empty" && desktopBridge() === null ? <MembershipDeviceSection /> : <PairedDevicesSection />;
 }

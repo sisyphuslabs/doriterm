@@ -36,12 +36,12 @@ test("with the storage getters throwing, the app starts on pairing and Settings 
   await page.setViewportSize({ width: 1440, height: 900 });
   const errors = await openWithStorageRefused(page);
   // No saved host can be read, so the app opens on pairing; Settings is reached by its address.
-  await expect(page.getByRole("heading", { name: "Connect to a host" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Join a mesh" })).toBeVisible();
   await page.goto("/settings");
   await expect(page).toHaveURL(/\/settings$/);
   const nav = page.getByRole("navigation", { name: "Settings" });
   await nav.getByRole("button", { name: "Appearance" }).click();
-  await expect(page.getByLabel("Appearance", { exact: true }).getByRole("button", { name: "System" })).toHaveAttribute(
+  await expect(page.getByLabel("Appearance", { exact: true }).getByRole("button", { name: "Dark" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -56,14 +56,15 @@ test.describe("on the phone", () => {
   test("with the storage getters throwing, the app starts on pairing and Settings works (#553)", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     const errors = await openWithStorageRefused(page);
-    await expect(page.getByRole("heading", { name: "Connect to a host" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Join a mesh" })).toBeVisible();
     await page.goto("/settings");
     await expect(page).toHaveURL(/\/settings$/);
     await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
     await page.getByRole("tab", { name: "Appearance" }).click();
-    await expect(
-      page.getByLabel("Appearance", { exact: true }).getByRole("button", { name: "System" }),
-    ).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByLabel("Appearance", { exact: true }).getByRole("button", { name: "Dark" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await page.getByRole("tab", { name: "This device" }).click();
     await expect(page.getByRole("switch", { name: "Keep the screen awake" })).not.toBeChecked();
     expect(errors).toEqual([]);

@@ -1,10 +1,11 @@
-import type { HcConnection, TerminalStream } from "@doriface/client";
+import type { TerminalStream } from "@doriface/client";
 import { cn } from "@doriface/ui";
 import { Terminal, type TerminalHandle, type WTerm } from "@wterm/react";
 import { type FocusEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useScreenAwake } from "../device/keep-awake.ts";
 import { useTerminalConfig } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
+import { isBrowsing, useBrowseMode } from "./browse-mode.ts";
 import { readDisplay } from "./display.ts";
 import { PasteDialog } from "./paste-dialog.tsx";
 import { type Point } from "./long-press.ts";
@@ -16,9 +17,10 @@ import { useBehaviors, type PendingPaste } from "./use-behaviors.ts";
 import { useFocusAfterSelect } from "./use-focus-after-select.ts";
 import { useLongPressSelect } from "./use-long-press-select.ts";
 import { useSelectionCells } from "./use-selection-cells.ts";
-import type { TerminalEnd } from "./terminal-end.ts";
+import { useShiftDragSelect } from "./use-shift-drag-select.ts";
 import { Ended } from "./ended.tsx";
-import { type TerminalPort, useTerminalPort } from "./terminal-port.ts";
+import { askingForKeyboard, quietKeyboard, useTerminalPort } from "./terminal-port.ts";
+import type { TerminalViewProps } from "./terminal-view-props.ts";
 import { Unopened } from "./unopened.tsx";
 import { JumpToBottom, TerminalScrollbar, useTerminalScroll } from "./terminal-scroll.tsx";
 import { QuietBusy } from "./quiet-busy.tsx";
@@ -36,45 +38,8 @@ import { useTerminalCore } from "./use-terminal-core.ts";
 import { useTerminalInput } from "./use-terminal-input.ts";
 import { usePaneVisibility } from "./use-pane-visibility.ts";
 import { useTerminalAttach } from "./use-terminal-attach.ts";
+import { useMachineLine } from "./use-machine-line.ts";
 import { useKeyboardClaim } from "./use-keyboard-claim.ts";
-
-/** Typed text, or the bytes a bound key sends. */
-export type TerminalInput = string | Uint8Array;
-
-export interface TerminalViewProps {
-  readonly connection: HcConnection;
-  readonly address: string;
-  /** The program this view was opened for; views are keyed by it, so a restarted program gets a new view. */
-  readonly pid: number | null;
-  /** Whether the core lists the terminal as live; a view waiting for a restart ends when it stops being live. */
-  readonly live: boolean;
-  readonly focused: boolean;
-  /**
-   * This page asked for this terminal's pane (opened, split, picked it): starting, it takes the keyboard from wherever
-   * it is. Unset where no other device edits what is shown (the phone shows one terminal at a time). Not asked for (a
-   * view another device's layout edit mounts again, #332), it takes the keyboard only from nowhere.
-   */
-  readonly claimed?: boolean;
-  readonly label: string;
-  readonly className?: string;
-  /** Rewrites typed input before it is sent (latched phone modifiers); an empty result sends nothing. */
-  readonly transformInput?: (data: string) => string;
-  /**
-   * A composition is typed as it starts instead of when the input method ends it, through `transformInput`: set while a
-   * phone modifier is latched, so ctrl and a Korean keyboard's ㅊ is ^C at once rather than waiting for the next jamo.
-   */
-  readonly typesComposition?: boolean;
-  /** The view's port for keys pressed outside it (the phone's keys bar); null once it unmounts. */
-  readonly onPort?: (port: TerminalPort | null) => void;
-  /** Every time the stream ends, with why; see TerminalEnd. */
-  readonly onEnd?: (address: string, end: TerminalEnd) => void;
-  /** The action of a view whose program had ended before it attached, which reports it `finished` (default Close tab). */
-  readonly closeLabel?: string;
-  /** Once the view shows that its program had ended before it attached: there is no terminal left to type into. */
-  readonly onEnded?: () => void;
-  /** A CSS length the jump-to-bottom button keeps above the terminal's bottom, for controls floating over it. */
-  readonly jumpClearance?: string;
-}
 
 /**
  * Gives a focus event's focus back to the element that had it, unless that sits in a pane no longer focused (focus
@@ -90,7 +55,15 @@ function handBack(event: FocusEvent<HTMLElement>): void {
 /** One libghostty terminal attached to one hc channel; output credit returns once it is written. */
 export function TerminalView(props: TerminalViewProps) {
   const { connection, address, pid, live, focused, label, className, transformInput, onPort, onEnd } = props;
-  const { closeLabel = "Close tab", onEnded, jumpClearance, claimed = true, typesComposition = false } = props;
+  const {
+    closeLabel = "Close tab",
+    onEnded,
+    jumpClearance,
+    claimed = true,
+    softKeyboard = false,
+    typesComposition = false,
+  } = props;
+  const { browsing = false } = props;
   const config = useTerminalConfig();
   const options = useMemo(() => rendererOptions(config), [config]);
   const dark = useDarkScheme();
@@ -122,7 +95,7 @@ export function TerminalView(props: TerminalViewProps) {
   useEffect(() => () => pacer.drop(), [pacer]);
   const { core, error } = useTerminalCore();
 
-  const { isFocused, focusWhenFree } = useKeyboardClaim(handle, focused, claimed);
+  const { isFocused, focusWhenFree } = useKeyboardClaim(handle, focused, claimed, softKeyboard);
 
   // The default cursor shape is the terminal's own state, set locally; programs still override it.
   useEffect(() => handle.current?.write(options.cursorSequence), [wt, options.cursorSequence]);
@@ -147,7 +120,12 @@ export function TerminalView(props: TerminalViewProps) {
   const scroll = useTerminalScroll(wt);
   const outputShown = useRef(scroll.changed);
   outputShown.current = scroll.changed;
-  useTerminalPort(handle, typed, onPort, pasteFiles);
+  useTerminalPort(handle, typed, onPort, pasteFiles, softKeyboard);
+  // A touch surface's field asks for no soft keyboard on its own: a press in the terminal leaves it down, and only the
+  // keys that ask for one raise it (#1375).
+  useEffect(() => {
+    if (wt !== null && softKeyboard) quietKeyboard(wt.element);
+  }, [wt, softKeyboard]);
   useBehaviors(wt, stream, options, onUnsafePaste, pasteFiles);
   useTerminalFont(wt, config);
   const prediction = useMemo(() => predictionSeam(wt), [wt]);
@@ -166,13 +144,16 @@ export function TerminalView(props: TerminalViewProps) {
   }, [wt]);
   useTerminalActions(wt, typed, focused, pasteFiles, openFind);
   const shown = usePaneVisibility(wt, pacer);
+  const away = useMachineLine(connection, address, shown);
   useFocusAfterSelect(wt, options.trimCopy);
   useLongPressSelect(wt, setSelectAt);
+  useShiftDragSelect(wt);
   useSelectionCells(wt);
+  useBrowseMode(wt, browsing);
   const closeSelectionMenu = useCallback((): void => {
     setSelectAt(null);
-    handle.current?.focus();
-  }, []);
+    if (!browsing) handle.current?.focus();
+  }, [browsing]);
   const attachment = useTerminalAttach({
     connection,
     address,
@@ -251,6 +232,15 @@ export function TerminalView(props: TerminalViewProps) {
       {attachment.opening ? (
         <QuietBusy label="Opening terminal" text="Opening…" className="absolute inset-0 z-10 bg-term-bg" />
       ) : null}
+      {away === null ? null : (
+        // Keys typed now wait for the machine (HeldInput, #1489); the line overlays the top row and takes no room.
+        <p
+          role="status"
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-muted/95 px-3 py-1 text-center text-sm text-muted-foreground"
+        >
+          Reconnecting to {away}. Your typing will be sent.
+        </p>
+      )}
       {wt === null ? null : (
         <>
           <TerminalScrollbar wt={wt} scroll={scroll} />
@@ -264,6 +254,8 @@ export function TerminalView(props: TerminalViewProps) {
               opened={finding}
               onClose={() => {
                 setFinding(null);
+                if (isBrowsing(wt.element)) return;
+                askingForKeyboard(handle, softKeyboard);
                 wt.focus();
               }}
             />
@@ -281,7 +273,8 @@ export function TerminalView(props: TerminalViewProps) {
         onPaste={(text) => {
           typed(text);
           setPaste(null);
-          // The confirmed paste is the line now being typed: the terminal takes the keyboard back, as a tap in it does.
+          // The confirmed paste is the line now being typed: the terminal takes the keyboard back, as its keys do.
+          askingForKeyboard(handle, softKeyboard);
           handle.current?.focus();
         }}
       />
@@ -291,6 +284,7 @@ export function TerminalView(props: TerminalViewProps) {
         trimCopy={options.trimCopy}
         pasteFiles={pasteFiles}
         onClose={closeSelectionMenu}
+        readOnly={browsing}
       />
     </div>
   );

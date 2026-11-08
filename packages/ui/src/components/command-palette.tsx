@@ -4,7 +4,11 @@ import { cn } from "../lib/cn.ts";
 import { Button } from "./button.tsx";
 import { Kbd } from "./kbd.tsx";
 import { overlaySurface } from "./overlay.ts";
+import { agentCount, shownStatus, statusCounts, withStatus } from "./palette-status.ts";
+import { SegmentedControl } from "./segmented-control.tsx";
 import { STATUS_LABEL, StatusIndicator, type AgentStatus } from "./status.tsx";
+
+const ALL = "all";
 
 export interface Command {
   readonly id: string;
@@ -18,6 +22,8 @@ export interface Command {
   readonly status?: AgentStatus;
   /** Listed but not runnable right now, as its disabled toolbar button; the hint says why. */
   readonly disabled?: boolean;
+  /** Where the row lives (place and directory): the line under the list says it while the row is highlighted. */
+  readonly where?: string;
 }
 
 export interface CommandPaletteProps {
@@ -49,8 +55,17 @@ export function CommandPalette({
 }: CommandPaletteProps) {
   const [query, setQuery] = useState(defaultQuery);
   const [active, setActive] = useState(0);
+  const [chosen, setChosen] = useState<AgentStatus | null>(null);
   const listId = useId();
-  const visible = useMemo(() => commands.filter((command) => matches(command, query)), [commands, query]);
+  const inputId = useId();
+  const counts = useMemo(() => statusCounts(commands), [commands]);
+  const status = shownStatus(counts, chosen);
+  // A chosen state that emptied has fallen back to All: forget it, so a later agent in that state does not bring it back.
+  if (chosen !== null && status === null) setChosen(null);
+  const visible = useMemo(
+    () => withStatus(commands, status).filter((command) => matches(command, query)),
+    [commands, query, status],
+  );
   const groups = useMemo(() => [...new Set(visible.map((command) => command.group))], [visible]);
   const current = visible[Math.min(active, visible.length - 1)];
 
@@ -70,13 +85,17 @@ export function CommandPalette({
   return (
     <div className={cn(overlaySurface, "flex w-[min(40rem,100%)] flex-col overflow-hidden", className)}>
       <div className="flex items-center gap-2.5 border-b border-border px-3">
+        <label id={`${inputId}-label`} htmlFor={inputId} className="sr-only">
+          Command
+        </label>
         <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         <input
+          id={inputId}
           role="combobox"
           aria-expanded
           aria-controls={listId}
           aria-activedescendant={current === undefined ? undefined : `${listId}-${current.id}`}
-          aria-label="Command"
+          aria-labelledby={`${inputId}-label`}
           value={query}
           placeholder={placeholder}
           onChange={(event) => {
@@ -84,7 +103,7 @@ export function CommandPalette({
             setActive(0);
           }}
           onKeyDown={onKeyDown}
-          className="h-12 min-w-0 flex-1 bg-transparent text-lg text-foreground outline-none placeholder:text-muted-foreground"
+          className="-mx-1.5 h-12 min-w-0 flex-1 rounded-md bg-transparent px-1.5 text-lg text-foreground outline-none placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring"
         />
         <Kbd keys={["esc"]} />
         {onCancel === undefined ? null : (
@@ -93,6 +112,23 @@ export function CommandPalette({
           </Button>
         )}
       </div>
+      {counts.length === 0 ? null : (
+        <div className="border-b border-border px-3 py-2">
+          <SegmentedControl<AgentStatus | typeof ALL>
+            label="Show agents"
+            compact
+            value={status ?? ALL}
+            onValueChange={(value) => {
+              setChosen(value === ALL ? null : value);
+              setActive(0);
+            }}
+            options={[
+              { value: ALL, label: `All ${agentCount(commands)}` },
+              ...counts.map(({ status: each, count }) => ({ value: each, label: `${STATUS_LABEL[each]} ${count}` })),
+            ]}
+          />
+        </div>
+      )}
       <div
         id={listId}
         role="listbox"
@@ -104,7 +140,7 @@ export function CommandPalette({
           <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing matches "{query}".</p>
         ) : (
           groups.map((group) => (
-            <div key={group} role="group" aria-label={group} className="pb-1">
+            <div key={group} role="group" aria-label={group} className="pb-4 coarse:pb-9">
               <p className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">{group}</p>
               {visible
                 .filter((command) => command.group === group)
@@ -117,6 +153,7 @@ export function CommandPalette({
                       role="option"
                       aria-selected={selected}
                       aria-disabled={command.disabled}
+                      aria-describedby={selected && command.where !== undefined ? `${listId}-where` : undefined}
                       onPointerMove={() => setActive(visible.indexOf(command))}
                       onClick={() => {
                         if (command.disabled !== true) onRun?.(command.id);
@@ -153,6 +190,16 @@ export function CommandPalette({
           ))
         )}
       </div>
+      {current?.where === undefined ? null : (
+        <p
+          id={`${listId}-where`}
+          title={current.where}
+          data-slot="palette-where"
+          className="truncate border-t border-border px-3 py-1.5 font-mono text-xs text-muted-foreground"
+        >
+          {current.where}
+        </p>
+      )}
     </div>
   );
 }

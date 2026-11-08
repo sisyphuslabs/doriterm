@@ -72,7 +72,8 @@ export async function pairRig(): Promise<PairRig> {
 
 /** Carries the page's sockets on the release relay's client path to the test relay's bridge, as a phone's would go. */
 export async function routeRelay(page: Page, bridgeUrl: string): Promise<void> {
-  await page.routeWebSocket(/^wss:\/\/relay-doriface\.omo\.dev\/v1\/client\//, (socket) => {
+  // Any port: a session's second and third sockets dial the relay's other HTTPS ports (#1418).
+  await page.routeWebSocket(/^wss:\/\/relay-doriface\.omo\.dev(:\d+)?\/v1\/client\//, (socket) => {
     const target = new URL(socket.url());
     const relay = new WebSocket(`${bridgeUrl}${target.pathname}${target.search}`);
     relay.binaryType = "arraybuffer";

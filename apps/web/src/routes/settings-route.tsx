@@ -1,7 +1,6 @@
-import { Button, IconButton, ScrollArea, Tab, TabList, Tabs, cn } from "@doriface/ui";
-import { ArrowLeft, Bell, Keyboard, Mic, Network, Palette, PanelBottom, Plug, SquareTerminal } from "lucide-react";
-import { useState, type ReactNode } from "react";
-import { MonitorSmartphone } from "lucide-react";
+import { Button, IconButton, Input, ScrollArea, Tab, TabList, Tabs, cn } from "@doriface/ui";
+import { ArrowLeft } from "lucide-react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { currentPlatform, triggerKeys } from "../keys/trigger.ts";
 import { AppearanceSection } from "../settings/appearance-section.tsx";
 import { ConnectionSection } from "../settings/connection-section.tsx";
@@ -12,7 +11,6 @@ import { KeyboardSection } from "../settings/keyboard-section.tsx";
 import { MeshSection } from "../settings/mesh-section.tsx";
 import { MachinesSection } from "../settings/machines-section.tsx";
 import { MembersSection } from "../settings/members-section.tsx";
-import { useMeshMembers } from "../connection/store.ts";
 import { NotificationsSection } from "../settings/notifications-section.tsx";
 import { PairSection } from "../settings/pair-section.tsx";
 import { TerminalSection } from "../settings/terminal-section.tsx";
@@ -23,19 +21,11 @@ import { usePendingUpdate } from "../update/update-store.ts";
 import { useCloseSettings } from "../settings/use-close-settings.ts";
 import { useSettingsInDialog } from "../settings/settings-dialog.tsx";
 import { VoiceSection } from "../settings/voice-section.tsx";
-
-const SECTIONS = [
-  { id: "device", label: "This device", icon: <MonitorSmartphone /> },
-  { id: "machines", label: "Machines", icon: <Network /> },
-  { id: "pair", label: "Connect a machine", icon: <Plug /> },
-  { id: "terminal", label: "Terminal", icon: <SquareTerminal /> },
-  { id: "keyboard", label: "Keyboard", icon: <PanelBottom /> },
-  { id: "notifications", label: "Notifications", icon: <Bell /> },
-  { id: "appearance", label: "Appearance", icon: <Palette /> },
-  { id: "keybindings", label: "Keybindings", icon: <Keyboard /> },
-  { id: "voice", label: "Voice input", icon: <Mic /> },
-] as const;
-type SectionId = (typeof SECTIONS)[number]["id"];
+import { useBrowserMembership } from "../mesh/membership-state.ts";
+import { desktopBridge } from "../desktop/bridge.ts";
+import { BrowserInvite } from "../settings/browser-invite.tsx";
+import { SECTIONS, type SectionId } from "../settings/settings-sections.tsx";
+import { matchSections } from "../settings/settings-search.ts";
 
 /** The section a link asked for (a hash, so it survives a reload), else the one Settings always opens on. */
 function firstSection(): SectionId {
@@ -60,12 +50,35 @@ function Lead({ children }: { readonly children: ReactNode }) {
 /** Section navigation beside the form; changes apply as they are made. */
 export function SettingsRoute() {
   const [section, setSection] = useState<SectionId>(firstSection);
-  const members = useMeshMembers();
+  const [query, setQuery] = useState("");
+  const shown = matchSections(SECTIONS, query);
+  const search = (
+    <Input
+      aria-label="Search settings"
+      type="search"
+      placeholder="Search settings"
+      value={query}
+      onValueChange={(next: string) => setQuery(next)}
+      onKeyDown={(event) => {
+        const first = shown[0];
+        if (event.key === "Enter" && first !== undefined) setSection(first.id);
+      }}
+    />
+  );
+  const nothing =
+    shown.length === 0 ? <p className="px-2 py-1 text-sm text-muted-foreground">No setting matches "{query}"</p> : null;
+  const mesh = useBrowserMembership();
+  const joinedBrowser = mesh.phase !== "empty" && desktopBridge() === null;
   const close = useCloseSettings();
   const update = usePendingUpdate();
   // In the dialog its header is not the window's titlebar: it neither moves the window nor makes room for its controls.
   const dialog = useSettingsInDialog();
   const titlebar = dialog ? {} : { "data-titlebar": "" };
+  // The full-screen sheet takes focus as it opens, as the dialog does, unless something in it already has it (#1495).
+  const view = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!dialog && !view.current?.contains(document.activeElement)) view.current?.focus({ preventScroll: true });
+  }, [dialog]);
   const back = (
     <IconButton
       label="Close settings"
@@ -76,8 +89,10 @@ export function SettingsRoute() {
   );
   return (
     <div
+      ref={view}
+      tabIndex={-1}
       className={cn(
-        "flex h-full min-h-0 flex-col bg-background md:flex-row",
+        "flex h-full min-h-0 flex-col bg-background outline-none md:flex-row",
         !dialog && "pt-(--safe-top) pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left)",
       )}
     >
@@ -86,9 +101,12 @@ export function SettingsRoute() {
         <div {...titlebar} className="flex items-center gap-1 pt-3 pr-2 pb-1 pl-[var(--titlebar-inset-start,0.5rem)]">
           {back}
           <h1 className="text-xl font-semibold text-foreground">Settings</h1>
+          {/* In the title row, so the phone header keeps its height and the sections below do not move (#1460). */}
+          <div className="ml-2 min-w-0 flex-1">{search}</div>
         </div>
+        {nothing}
         <TabList className="scroll-px-2 px-2">
-          {SECTIONS.map((entry) => (
+          {shown.map((entry) => (
             <Tab key={entry.id} value={entry.id}>
               {entry.label}
             </Tab>
@@ -109,7 +127,9 @@ export function SettingsRoute() {
           {back}
           <h1 className="text-lg font-semibold text-foreground">Settings</h1>
         </div>
-        {SECTIONS.map((entry) => (
+        <div className="mb-1">{search}</div>
+        {nothing}
+        {shown.map((entry) => (
           <Button
             key={entry.id}
             variant="ghost"
@@ -147,40 +167,54 @@ export function SettingsRoute() {
           >
             {section === "device" ? (
               <>
-                <Lead>
-                  This app talks to one host: the computer that runs your terminals. Here is which host it reaches,
-                  whether it is there now, this device's own settings, and under Advanced connection the route this app
-                  takes to that host. The defaults work for everyone; change them only for a self-hosted relay or a
-                  development host.
-                </Lead>
-                <Group title="Host">
+                {joinedBrowser ? (
+                  <Lead>This browser is a member of the mesh. Each machine has its own connection.</Lead>
+                ) : (
+                  <Lead>
+                    This app talks to one host: the computer that runs your terminals. Here is which host it reaches,
+                    whether it is there now, this device's own settings, and under Advanced connection the route this
+                    app takes to that host. The defaults work for everyone; change them only for a self-hosted relay or
+                    a development host.
+                  </Lead>
+                )}
+                <Group title={joinedBrowser ? "This member" : "Host"}>
                   <DevicesSection />
                 </Group>
                 <Group title="This device">
                   <DeviceSection />
                 </Group>
-                <Group title="Advanced connection">
-                  <ConnectionSection />
-                </Group>
+                {!joinedBrowser ? (
+                  <Group title="Advanced connection">
+                    <ConnectionSection />
+                  </Group>
+                ) : null}
               </>
             ) : section === "machines" ? (
               <>
-                <Lead>
-                  These are the computers this host reaches: the ones that joined your mesh, and any you added by hand.
-                </Lead>
+                {joinedBrowser ? (
+                  <Lead>These are the machines in your mesh. Each row shows this browser's own connection.</Lead>
+                ) : (
+                  <Lead>
+                    These are the computers this host reaches: the ones that joined your mesh, and any you added by
+                    hand.
+                  </Lead>
+                )}
                 <Group title="Machines">
-                  {members.length > 1 ? <MembersSection /> : null}
+                  {!joinedBrowser ? <MembersSection /> : null}
                   <MachinesSection />
                   {/* What a row's state means sits under the rows, where a reader meets it: on a phone the list leads (#1007). */}
-                  <p className="pt-3 text-sm text-pretty text-muted-foreground">
-                    Adding one by hand reaches it without the mesh; connecting one joins it first. A machine that
-                    answers reads Connected, one still being dialled reads Connecting, and one that needs a login says
-                    so; when a machine is offline the row says when it was last seen and, where the host knows a cause,
-                    what it is.
-                  </p>
+                  {!joinedBrowser ? (
+                    <p className="pt-3 text-sm text-pretty text-muted-foreground">
+                      Adding one by hand reaches it without the mesh; connecting one joins it first. A machine that
+                      answers reads Connected, one still being dialled reads Connecting, and one that needs a login says
+                      so; when a machine is offline the row says when it was last seen and, where the host knows a
+                      cause, what it is.
+                    </p>
+                  ) : null}
                 </Group>
                 <Group title="In your mesh">
-                  <MeshSection />
+                  <BrowserInvite />
+                  <MeshSection attentionOnly={joinedBrowser} />
                 </Group>
               </>
             ) : section === "pair" ? (

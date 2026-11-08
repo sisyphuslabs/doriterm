@@ -28,6 +28,10 @@ const LEFT_FILE = "suite-left.json";
 export interface RunProcess {
   readonly pid: number;
   readonly command: string;
+  /** An owned session leader can be stopped as a group, including children forked between scans. */
+  readonly group?: number;
+  /** Captured by the process-table scan; prevents retaining ownership across PID reuse. */
+  readonly started?: string;
   /** Whether it is a herdr process (`herdr-core` or its `hc` alias). */
   readonly herdr: boolean;
   /**
@@ -46,6 +50,15 @@ const isHerdr = (argv0: string): boolean => ["herdr-core", "hc"].includes(basena
 
 const hasCode = (error: unknown, ...codes: readonly string[]): boolean =>
   error instanceof Error && "code" in error && typeof error.code === "string" && codes.includes(error.code);
+
+/** Signal an owned pid (or an explicitly owned negative process-group id); an exited process needs no signal. */
+export function signalProcess(pid: number, signal: "SIGTERM" | "SIGKILL"): void {
+  try {
+    process.kill(pid, signal);
+  } catch (error) {
+    if (!hasCode(error, "ESRCH")) throw error;
+  }
+}
 
 /** The first of `paths` under `dir`. */
 const under = (dir: string, paths: Iterable<string>): string | undefined => {
@@ -149,6 +162,7 @@ async function macRun(run: TestRun): Promise<RunProcess[]> {
 interface ProcessRow {
   readonly pid: number;
   readonly ppid: number;
+  readonly pgid: number;
   /** When it started, as `ps` prints it: with its pid, it names one process even if the pid is reused later. */
   readonly started: string;
   readonly command: string;
@@ -156,7 +170,7 @@ interface ProcessRow {
 
 /** Every process of the machine with its parent and start time, from `ps` (the same columns on Linux and macOS). */
 async function processTable(): Promise<{ rows: ProcessRow[]; self: number }> {
-  const ps = Bun.spawn(["ps", "-A", "-o", "pid=,ppid=,lstart=,command="], {
+  const ps = Bun.spawn(["ps", "-A", "-o", "pid=,ppid=,pgid=,stat=,lstart=,command="], {
     env: { ...process.env, LC_ALL: "C" },
     stdout: "pipe",
     stderr: "inherit",
@@ -164,11 +178,19 @@ async function processTable(): Promise<{ rows: ProcessRow[]; self: number }> {
   const [text, code] = await Promise.all([new Response(ps.stdout).text(), ps.exited]);
   if (code !== 0) throw new Error(`ps exited ${code}`);
   const rows = text.split("\n").flatMap((line) => {
-    const match = /^\s*(\d+)\s+(\d+)\s+(\S+\s+\S+\s+\d+\s+\d+:\d+:\d+\s+\d+)\s+(.*)$/.exec(line);
+    const match = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(\S+\s+\S+\s+\d+\s+\d+:\d+:\d+\s+\d+)\s+(.*)$/.exec(line);
     if (match === null) return [];
-    const [, pid, ppid, started, command] = match;
+    const [, pid, ppid, pgid, state, started, command] = match;
+    // Zombies have already exited and cannot fork or hold resources; only their parent can reap their status.
+    if (state?.startsWith("Z")) return [];
     return [
-      { pid: Number(pid), ppid: Number(ppid), started: (started ?? "").replace(/\s+/g, " "), command: command ?? "" },
+      {
+        pid: Number(pid),
+        ppid: Number(ppid),
+        pgid: Number(pgid),
+        started: (started ?? "").replace(/\s+/g, " "),
+        command: command ?? "",
+      },
     ];
   });
   return { rows, self: ps.pid };
@@ -213,19 +235,55 @@ async function leftProcesses(run: TestRun): Promise<RunProcess[]> {
   const same = rows.filter((row) => recorded.some((entry) => entry.pid === row.pid && entry.started === row.started));
   return [...same, ...descendants(new Set(same.map((row) => row.pid)), rows)].map((row) => ({
     pid: row.pid,
+    started: row.started,
     command: row.command,
     herdr: isHerdr(row.command.split(" ")[0] ?? ""),
     where: "left by the suite when it ended",
   }));
 }
 
-/** The processes of `run` (see RunProcess). */
-export async function runProcesses(run: TestRun): Promise<RunProcess[]> {
+/** The processes of `run`, including previously discovered descendants while their PID/start identity still matches. */
+export async function runProcesses(run: TestRun, previous: readonly RunProcess[] = []): Promise<RunProcess[]> {
   if (process.platform !== "linux" && process.platform !== "darwin")
     throw new Error(`no process scan on ${process.platform}`);
+  const before = new Map((await processTable()).rows.map((row) => [row.pid, row.started]));
   const found = process.platform === "linux" ? linuxRun(run) : await macRun(run);
-  const pids = new Set(found.map((one) => one.pid));
-  return [...found, ...(await leftProcesses(run)).filter((one) => !pids.has(one.pid))];
+  const discovered = [
+    ...found.map((one) => ({
+      pid: one.pid,
+      command: one.command,
+      herdr: one.herdr,
+      where: one.where,
+      started: before.get(one.pid),
+    })),
+    ...(await leftProcesses(run)),
+    ...previous,
+  ];
+  // A child may scrub its environment. Capture descendants while their marked parent is still alive.
+  const { rows, self } = await processTable();
+  const owned = new Map<number, RunProcess>();
+  for (const row of rows) {
+    const known = discovered.find((one) => one.pid === row.pid && one.started === row.started);
+    if (known !== undefined) owned.set(row.pid, { ...known, started: row.started });
+  }
+  for (const row of descendants(new Set(owned.keys()), rows)) {
+    if (!owned.has(row.pid))
+      owned.set(row.pid, { ...row, herdr: isHerdr(row.command.split(" ")[0] ?? ""), where: "child of a run process" });
+  }
+  return rows.flatMap((row) => {
+    const one = owned.get(row.pid);
+    if (one === undefined || row.pid === process.pid || row.pid === self) return [];
+    return [
+      {
+        pid: one.pid,
+        command: one.command,
+        herdr: one.herdr,
+        where: one.where,
+        started: row.started,
+        ...(row.pgid === row.pid ? { group: row.pgid } : {}),
+      },
+    ];
+  });
 }
 
 /** The herdr processes of `run`. */
@@ -244,7 +302,7 @@ const ROUNDS = 120;
 const EMPTY_SCANS = 3;
 
 /**
- * Stops every process of `run` (see runProcesses) by its pid, and returns them: a shell a test left can start a core
+ * Stops every process of `run` (see runProcesses) by its owned group or pid, and returns them: a shell a test left can start a core
  * after any scan for cores alone, and `hc server stop` does not stop a core launchd started. It first gives them GRACE_ROUNDS to exit by themselves, then stops what is left and
  * scans again until EMPTY_SCANS scans in a row find none, so a core started meanwhile (by such a shell, or a dialer's reconnect) is
  * stopped and returned too. A pid that is not a child of this process has no exit event, so each round waits ROUND_MS
@@ -252,24 +310,23 @@ const EMPTY_SCANS = 3;
  */
 export async function stopRunProcesses(run: TestRun): Promise<RunProcess[]> {
   const seen = new Map<number, RunProcess>();
+  const known = new Map<number, RunProcess>();
   const round = async (n: number, empty: number): Promise<RunProcess[]> => {
-    const found = await runProcesses(run);
+    const found = await runProcesses(run, [...known.values()]);
+    for (const child of found) known.set(child.pid, child);
     if (found.length === 0) {
       if (empty + 1 === EMPTY_SCANS) return [...seen.values()];
       await Bun.sleep(ROUND_MS);
       return round(n + 1, empty + 1);
     }
-    if (n === ROUNDS) {
+    if (n >= ROUNDS) {
       throw new Error(`processes of run ${run.mark} still running after ${(ROUNDS * ROUND_MS) / 1000} s of stops`);
     }
     for (const core of n < GRACE_ROUNDS ? [] : found) {
       seen.set(core.pid, core);
-      try {
-        process.kill(core.pid, n < (GRACE_ROUNDS + ROUNDS) / 2 ? "SIGTERM" : "SIGKILL");
-      } catch (error) {
-        // exited between the scan and the signal
-        if (!hasCode(error, "ESRCH")) throw error;
-      }
+      // A group gets one terminal signal: stopping just its supervisor first lets a child keep respawning.
+      const signal = core.group !== undefined || n >= (GRACE_ROUNDS + ROUNDS) / 2 ? "SIGKILL" : "SIGTERM";
+      signalProcess(core.group === undefined ? core.pid : -core.group, signal);
     }
     await Bun.sleep(ROUND_MS);
     return round(n + 1, 0);

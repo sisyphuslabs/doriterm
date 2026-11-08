@@ -17,10 +17,19 @@ export type ControlRequest =
       readonly expect?: readonly string[] | undefined;
     }
   | { readonly op: "mesh-rename"; readonly member: string; readonly name: string }
-  | { readonly op: "mesh-leave" }
+  | {
+      readonly op: "mesh-leave";
+      readonly preview?: boolean | undefined;
+      readonly expect?: readonly string[] | undefined;
+    }
   | { readonly op: "mesh-pair"; readonly auto: boolean }
   | { readonly op: "mesh-pending" }
-  | { readonly op: "mesh-approve"; readonly nonce: string; readonly approve: boolean }
+  | {
+      readonly op: "mesh-approve";
+      readonly nonce: string;
+      readonly approve: boolean;
+      readonly code?: string | undefined;
+    }
   | {
       readonly op: "mesh-join";
       readonly target: string;
@@ -28,6 +37,7 @@ export type ControlRequest =
       readonly name: string | undefined;
       readonly relay: string | undefined;
       readonly yes: boolean;
+      readonly ask?: boolean | undefined;
     };
 
 const optionalString = (value: unknown): string | undefined => {
@@ -60,8 +70,13 @@ export function parseRequest(line: string): ControlRequest {
     case "mesh-changed":
     case "mesh-pending":
     case "mesh-status":
-    case "mesh-leave":
       return { op };
+    case "mesh-leave":
+      return {
+        op,
+        ...(get("preview") === undefined ? {} : { preview: get("preview") === true }),
+        ...(get("expect") === undefined ? {} : { expect: optionalStrings(get("expect")) }),
+      };
     case "mesh-revoke":
       return {
         op: "mesh-revoke",
@@ -76,7 +91,12 @@ export function parseRequest(line: string): ControlRequest {
     case "mesh-pair":
       return { op: "mesh-pair", auto: get("auto") === true };
     case "mesh-approve":
-      return { op: "mesh-approve", nonce: field(get("nonce"), isString), approve: field(get("approve"), isBoolean) };
+      return {
+        op: "mesh-approve",
+        nonce: field(get("nonce"), isString),
+        approve: field(get("approve"), isBoolean),
+        code: optionalString(get("code")),
+      };
     case "mesh-join":
       return {
         op: "mesh-join",
@@ -85,6 +105,7 @@ export function parseRequest(line: string): ControlRequest {
         name: optionalString(get("name")),
         relay: optionalString(get("relay")),
         yes: get("yes") === true,
+        ask: get("ask") === true,
       };
     default:
       throw new Error("unknown control request");

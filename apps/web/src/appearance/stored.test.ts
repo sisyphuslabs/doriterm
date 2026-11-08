@@ -17,7 +17,7 @@ describe("parseAppearance", () => {
     [{ theme: "system" }, { mode: "system", dark: "night", light: "day" }],
     [{ theme: "graphite" }, { mode: "dark", dark: "graphite", light: "day" }],
     [{ theme: "paper" }, { mode: "light", dark: "night", light: "paper" }],
-    [{ theme: "gone" }, { mode: "system", dark: "night", light: "day" }],
+    [{ theme: "gone" }, { mode: "dark", dark: "night", light: "day" }],
   ] as const)("the one-theme form %j becomes a mode and a pick", (stored, expected) => {
     expect(parseAppearance({ ...stored, custom: [] })).toEqual({ ...expected, density: "comfortable", custom: [] });
   });

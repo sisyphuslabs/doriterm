@@ -8,6 +8,7 @@ import { toggleShortcuts } from "../keys/shortcuts-store.ts";
 import type { Direction } from "../layout/neighbor.ts";
 import type { Axis } from "@doriface/protocol/layout";
 import type { Layout, PaneTarget } from "./use-layout.ts";
+import { nextNeedingYou } from "./attention.ts";
 
 export interface AppActionTargets {
   readonly terminals: readonly Terminal[];
@@ -241,6 +242,8 @@ export function desktopActions(
         return openAgent(layout, neighbour(live, focused, 1));
       case "agent.prev":
         return openAgent(layout, neighbour(live, focused, -1));
+      case "agent.waiting":
+        return openAgent(layout, nextNeedingYou(terminals, focused));
       case "layout.toggle":
         onToggleSidebar();
         return true;

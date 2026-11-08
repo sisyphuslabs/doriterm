@@ -14,7 +14,7 @@ afterEach(removeSides);
 
 const autoJoins = (): PendingJoins => {
   const pending = new PendingJoins();
-  pending.setAuto(Date.now() + 60_000);
+  void pending.next().then((join) => pending.decide(join.nonce, true, join.code));
   return pending;
 };
 
@@ -31,6 +31,9 @@ function browser(membership = new MembershipStore(memoryStore())): BrowserJoiner
     device: rawStaticKey(generateX25519()),
     name: "chrome-on-macos",
     membership,
+    storage: memoryStore(),
+    handshakeHash: new Uint8Array(32),
+    confirm: async () => true,
   };
 }
 
@@ -68,7 +71,7 @@ describe("a browser's join, approved", () => {
     expect(index?.client(devicePub)?.kind).toBe("client");
     expect(index?.client(devicePub)?.name).toBe("chrome-on-macos");
     expect(index?.member(devicePub)).toBeUndefined();
-    expect([inviterEnd.closeCode, joinerEnd.closeCode]).toEqual([undefined, undefined]);
+    expect([inviterEnd.closeCode, joinerEnd.closeCode]).toEqual([undefined, 1000]);
   });
 
   test("the member list it derives names itself by its signing key, and the targets are the machines alone", async () => {
@@ -132,7 +135,7 @@ describe("a browser's join, refused", () => {
     const { joined } = run(a, readyInviter(a, pending), browser(membership));
     const asked = await pending.next();
     await membership.adopt(other);
-    pending.decide(asked.nonce, true);
+    pending.decide(asked.nonce, true, asked.code);
     expect(await failure(joined)).toBe("a mesh appeared on this member meanwhile");
     expect((await membership.read())?.meshId).toBe("other-mesh");
   });

@@ -131,6 +131,8 @@ test("every page runs only this origin's scripts and connects only to this origi
     "'self'",
     "https://relay-doriface.omo.dev",
     "wss://relay-doriface.omo.dev",
+    "wss://relay-doriface.omo.dev:8443",
+    "wss://relay-doriface.omo.dev:2053",
   ]);
   expect(directives.get("style-src")).toEqual(["'self'", `'sha256-${await baseUiScrollbarStyleHash()}'`]);
   expect(directives.get("img-src")).toEqual(["'self'"]);
@@ -171,4 +173,6 @@ test("both sites preview with one card at a URL that changes with the card, so c
     expect(metaOf(page, "twitter:image")).toBe(url);
     expect(metaOf(page, "og:title")).toBe("Doriterm: Your devices. One terminal.");
   }
+  // The GitHub social preview is uploaded from this copy, so the repo and the sites show one card.
+  expect(readFileSync(join(ROOT, ".github", "social-preview.png")).equals(card)).toBe(true);
 });

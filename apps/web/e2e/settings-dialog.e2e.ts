@@ -11,6 +11,8 @@ test.use({ serviceWorkers: "block" });
 
 const settingsDialog = (page: Page) => page.getByRole("dialog", { name: "Settings" });
 const workspace = (page: Page) => page.locator('aside[aria-label="Workspace"]');
+/** The full-screen sheet a phone shows Settings in; it is a dialog named Settings too, filling the window. */
+const settingsSheet = (page: Page) => page.locator("[data-settings-sheet]");
 
 /** The address of the terminal whose input holds DOM focus. */
 const focusedTerminal = (page: Page) =>
@@ -145,8 +147,24 @@ test.describe("on a phone", () => {
   test("Settings is a full-screen sheet, with the workspace hidden under it (#673)", async ({ page }) => {
     await page.goto("/settings");
     await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible({ timeout: 15_000 });
-    await expect(settingsDialog(page)).toHaveCount(0);
+    await expect(settingsSheet(page)).toBeVisible();
+    await expect(settingsDialog(page)).toHaveAttribute("data-settings-sheet");
+    expect(await settingsSheet(page).boundingBox()).toEqual({ x: 0, y: 0, width: 390, height: 844 });
     await expect(workspace(page)).toBeHidden();
+  });
+
+  test("opening Settings moves focus into the sheet, onto no action button (#1495)", async ({ page }) => {
+    await page.goto("/settings");
+    await expect(page.getByRole("heading", { name: "This device", level: 2 }).first()).toBeVisible({ timeout: 15_000 });
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const active = document.activeElement;
+          return active !== null && active !== document.body && active.closest("[data-settings-sheet]") !== null;
+        }),
+      )
+      .toBe(true);
+    expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe("BUTTON");
   });
 });
 
@@ -178,7 +196,8 @@ test.describe("Settings across the md breakpoint, and its zoom keys (#859)", () 
     await expect(recorder).toBeFocused();
 
     await page.setViewportSize({ width: 700, height: 800 });
-    await expect(settingsDialog(page)).toHaveCount(0);
+    await expect(settingsSheet(page)).toBeVisible();
+    await expect(page.locator("[data-settings-dialog]")).toHaveCount(0);
     await expect(page.getByRole("tab", { name: "Keybindings", selected: true })).toBeVisible();
     await expect(recorder).toBeFocused();
 

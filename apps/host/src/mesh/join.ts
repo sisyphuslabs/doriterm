@@ -1,10 +1,14 @@
-import type { HostIdentity } from "@doriface/crypto";
+import { base64urlEncode, type HostIdentity } from "@doriface/crypto";
+import { signCard } from "@doriface/mesh";
 import {
+  cardBodyFor,
+  checkWelcome,
+  inviteKindOf,
   JOIN_DEADLINE_MS,
   JoinRefused,
   type MeshInvite,
   type MeshLines,
-  runJoiner as runSharedJoiner,
+  runJoinCeremony,
 } from "@doriface/mesh/join";
 import type { MeshStore, OwnCard } from "../state/mesh.ts";
 
@@ -22,24 +26,38 @@ export interface JoinerContext {
   /** Milliseconds since the epoch by which the offer and the whole welcome must have arrived. */
   readonly deadline: number;
   readonly log: (line: string) => void;
+  readonly handshakeHash: Uint8Array;
+  readonly yes: boolean;
+  readonly confirm: ((code: string) => Promise<boolean>) | undefined;
 }
 
 /**
  * Runs the shared joiner (section 4.4) with this host's identity and a version 1 card, storing a checked welcome with
  * `MeshStore.adopt` (a mesh.json that appeared meanwhile wins and the join fails).
  */
-export function runJoiner(lines: MeshLines, ctx: JoinerContext): Promise<string> {
+export async function runJoiner(lines: MeshLines, ctx: JoinerContext): Promise<string> {
   const { identity } = ctx;
-  return runSharedJoiner(lines, {
-    invite: ctx.invite,
-    identity: { hostId: identity.hostId, sign: identity.sign, noisePub: identity.noise.publicKey },
-    own: ctx.own,
-    dialed: ctx.dialed,
-    deadline: ctx.deadline,
-    adopt: (records) => {
-      if (!ctx.mesh.adopt(records, identity)) throw new JoinRefused("a mesh.json appeared on this host meanwhile");
-      return true;
-    },
-    log: ctx.log,
+  const member = { hostId: identity.hostId, sign: identity.sign, noisePub: identity.noise.publicKey };
+  const welcome = await runJoinCeremony(lines, {
+    kind: "machine",
+    handshakeHash: ctx.handshakeHash,
+    dialed: { hostId: ctx.dialed.hostId, noisePub: base64urlEncode(ctx.dialed.noisePub) },
+    expiresAt: ctx.deadline,
+    yes: ctx.yes,
+    confirm: ctx.confirm,
+    card: async (offer) => signCard(cardBodyFor(member, ctx.own, offer), identity.sign.secretKey),
+    saveAnchor: async () => undefined,
+    clearAnchor: async () => undefined,
   });
+  try {
+    checkWelcome(welcome.records, welcome.offer, { identity: member, dialed: ctx.dialed });
+    if (!ctx.mesh.adopt(welcome.records, identity))
+      throw new JoinRefused("a mesh.json appeared on this host meanwhile");
+    lines.detach();
+    ctx.log(`mesh: joined mesh ${welcome.offer.mesh} via ${ctx.dialed.hostId} on a mesh ${inviteKindOf(ctx.invite)}`);
+    return welcome.offer.mesh;
+  } catch (error) {
+    lines.close(4401, error instanceof Error ? error.message : String(error));
+    throw error;
+  }
 }

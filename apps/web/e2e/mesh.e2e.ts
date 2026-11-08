@@ -69,6 +69,7 @@ test("an expired join offers no answer and does not wait for approval", async ({
 test("approving a pending join writes the answer and shows it in place", async ({ page }) => {
   await openMesh(page);
   const pending = group(page, "pending");
+  await expect(pending.getByLabel("Join code")).toHaveText("123 456");
   await pending.locator('[data-mesh-answer="open"] [data-mesh-verdict="approve"]').click();
   await expect(pending.locator('[data-mesh-answer="approve"]')).toHaveCount(1, { timeout: 15_000 });
   await page.reload();
@@ -80,6 +81,7 @@ test("a join whose answer another writer replaced takes an answer again", async 
   setCoreDoc(MESH_APPROVAL_DOC, { deny: OLD_RUNNER_NONCE });
   await openMesh(page);
   const pending = group(page, "pending");
+  await expect(pending.getByLabel("Join code")).toHaveText("123 456");
   await pending.locator('[data-mesh-answer="open"] [data-mesh-verdict="approve"]').click();
   await expect(pending.locator('[data-mesh-answer="approve"]')).toHaveCount(1, { timeout: 15_000 });
   setCoreDoc(MESH_APPROVAL_DOC, { deny: OLD_RUNNER_NONCE });

@@ -1,7 +1,8 @@
 import { Button as BaseButton } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
-import type { ComponentProps, ReactNode } from "react";
+import { type ComponentProps, type ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
+import { useDelayedTrue } from "../lib/spinner-delay.ts";
 import { Spinner } from "./spinner.tsx";
 
 export const buttonVariants = cva(
@@ -10,7 +11,7 @@ export const buttonVariants = cva(
     "outline-none transition-[background-color,color,opacity,transform] duration-(--duration-micro) ease-out",
     "focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring",
     // Disabled is dimmed with its own colours, never a fade of the whole button, which fades the label with its fill
-    // (#1031): a label of at least 4.5:1 on the filled variants and 3:1 on ghost, on every surface in both themes.
+    // (#1031): a label of at least 4.5:1 on every variant (#1496) and a ghost icon of 3:1, on every surface in both themes.
     // Loading also sets disabled, but a working button is busy, not unavailable: it keeps its colours (aria-busy).
     "active:scale-[0.97] data-disabled:pointer-events-none",
     "[&_svg]:size-4 [&_svg]:shrink-0",
@@ -24,7 +25,7 @@ export const buttonVariants = cva(
         secondary:
           "border border-border bg-raised text-foreground hover:bg-selected data-disabled:not-aria-busy:bg-transparent data-disabled:not-aria-busy:text-muted-foreground",
         ghost:
-          "text-muted-foreground hover:bg-hover hover:text-foreground data-disabled:not-aria-busy:text-muted-foreground/72",
+          "text-foreground/85 hover:bg-hover hover:text-foreground data-disabled:not-aria-busy:text-muted-foreground data-disabled:not-aria-busy:[&_svg]:text-muted-foreground/72",
         destructive:
           "bg-destructive text-destructive-foreground hover:opacity-88 data-disabled:not-aria-busy:bg-selected data-disabled:not-aria-busy:text-foreground/70",
       },
@@ -42,11 +43,12 @@ export interface ButtonProps
   extends Omit<ComponentProps<typeof BaseButton>, "className" | "children">, VariantProps<typeof buttonVariants> {
   readonly className?: string;
   readonly children?: ReactNode;
-  /** Keeps the label's box (the label stays in place, unseen, under a centred spinner) and blocks input. */
+  /** Blocks input at once; after one second a spinner replaces the label without changing its box. */
   readonly loading?: boolean;
 }
 
 export function Button({ className, variant, size, loading = false, disabled, children, ...props }: ButtonProps) {
+  const spinning = useDelayedTrue(loading);
   return (
     <BaseButton
       {...props}
@@ -55,12 +57,12 @@ export function Button({ className, variant, size, loading = false, disabled, ch
       aria-busy={loading || undefined}
       className={cn(buttonVariants({ variant, size }), className)}
     >
-      {loading ? (
+      {spinning ? (
         <span className="absolute inset-0 flex items-center justify-center">
           <Spinner />
         </span>
       ) : null}
-      <span className={cn("inline-flex items-center justify-center gap-[inherit]", loading && "opacity-0")}>
+      <span className={cn("inline-flex items-center justify-center gap-[inherit]", spinning && "opacity-0")}>
         {children}
       </span>
     </BaseButton>

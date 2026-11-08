@@ -3,7 +3,15 @@ import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveHcBin } from "./hc-session.ts";
-import { recordLeft, RUN_MARK, runCores, runProcesses, stopRunProcesses, type TestRun } from "./run-cores.ts";
+import {
+  recordLeft,
+  RUN_MARK,
+  runCores,
+  runProcesses,
+  signalProcess,
+  stopRunProcesses,
+  type TestRun,
+} from "./run-cores.ts";
 
 const encoder = new TextEncoder();
 
@@ -95,6 +103,55 @@ test("a process carrying a run's mark is found by it and stopped", async () => {
     await marked.exited;
     expect(await runProcesses(run)).toEqual([]);
   } finally {
+    await stopRunProcesses(run);
+    rmSync(run.dir, { recursive: true, force: true });
+  }
+}, 60_000);
+
+test("an unmarked grandchild stays owned after its parent exits on TERM (#1433)", async () => {
+  const run = newRun();
+  const script = `
+    import { closeSync } from "node:fs";
+    process.on("SIGTERM", () => {});
+    console.log(process.pid);
+    closeSync(1);
+    setTimeout(() => {}, 30_000);
+  `;
+  const parent = Bun.spawn(
+    [
+      process.execPath,
+      "-e",
+      `
+    import { closeSync } from "node:fs";
+    const child = Bun.spawn([process.execPath, "-e", ${JSON.stringify(script)}], {
+      env: {}, stdin: "ignore", stdout: "pipe", stderr: "ignore"
+    });
+    const pid = await new Response(child.stdout).text();
+    console.log(pid.trim());
+    closeSync(1);
+    await child.exited;
+  `,
+    ],
+    {
+      env: { ...process.env, [RUN_MARK]: run.mark },
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "ignore",
+    },
+  );
+  const child = Number((await new Response(parent.stdout).text()).trim());
+  try {
+    expect(child).toBeGreaterThan(0);
+    expect((await runProcesses(run)).map((one) => one.pid)).toContain(child);
+    const stopped = await stopRunProcesses(run);
+    await parent.exited;
+    expect(stopped.map((one) => one.pid)).toContain(child);
+    expect(alive(child)).toBe(false);
+    expect(await runProcesses(run)).toEqual([]);
+  } finally {
+    parent.kill("SIGKILL");
+    await parent.exited;
+    if (Number.isInteger(child) && child > 0) signalProcess(child, "SIGKILL");
     await stopRunProcesses(run);
     rmSync(run.dir, { recursive: true, force: true });
   }

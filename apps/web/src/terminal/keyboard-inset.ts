@@ -105,13 +105,20 @@ export function useSoftKeyboard(scope: HTMLElement | null): { readonly up: boole
     const follow = (event: FocusEvent): void =>
       setTyping(typingIn(scope, event.type === "focusout" ? event.relatedTarget : event.target));
     // A tap in the terminal, or its input taking the focus from one, asks for the keyboard; a focus without a tap does
-    // not, as no browser raises a keyboard for it.
-    const ask = (): void => layoutKeyboard.ask(performance.now());
+    // not, as no browser raises a keyboard for it. A field that carries `inputmode="none"` asks for none, as on a phone
+    // whose keys raise the keyboard (#1375): the shrink a split screen makes must not read as one.
+    const asksForKeyboard = (): boolean => {
+      const active = document.activeElement;
+      return active instanceof HTMLElement && active.inputMode !== "none" && typingIn(scope);
+    };
+    const ask = (): void => {
+      if (asksForKeyboard()) layoutKeyboard.ask(performance.now());
+    };
     scope?.addEventListener("pointerdown", ask, { signal: abort.signal });
     document.addEventListener(
       "focusin",
       () => {
-        if (typingIn(scope) && navigator.userActivation?.isActive !== false) ask();
+        if (navigator.userActivation?.isActive !== false) ask();
       },
       { signal: abort.signal },
     );
@@ -121,9 +128,12 @@ export function useSoftKeyboard(scope: HTMLElement | null): { readonly up: boole
     const viewport = window.visualViewport;
     let wasOpen = false;
     const measure = (): void => {
-      const inset = viewport === null ? 0 : keyboardInset(window.innerHeight, viewport);
-      const overlaid = viewport === null ? 0 : keyboardHeight(window.innerHeight, viewport);
-      const open = layoutKeyboard.measure(window.innerWidth, window.innerHeight, performance.now()) || overlaid > 0;
+      // The layout viewport, which the keys are placed in: WebKit on iOS shrinks window.innerHeight with the visual
+      // viewport over the keyboard, so measured from it the keyboard would take no room and hide the keys (#1409).
+      const layoutHeight = document.documentElement.clientHeight;
+      const inset = viewport === null ? 0 : keyboardInset(layoutHeight, viewport);
+      const overlaid = viewport === null ? 0 : keyboardHeight(layoutHeight, viewport);
+      const open = layoutKeyboard.measure(window.innerWidth, layoutHeight, performance.now()) || overlaid > 0;
       if (wasOpen && !open && typingIn(scope) && document.activeElement instanceof HTMLElement) {
         document.activeElement.blur();
       }

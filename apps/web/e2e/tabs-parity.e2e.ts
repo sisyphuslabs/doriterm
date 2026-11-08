@@ -22,6 +22,9 @@ import { LAYOUT_DOC, paneOf, seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
 
+/** A tab's row in the Spaces sheet, not its Close control or the space's New tab (#1463). */
+const TAB_ROW = /^(?!Close |New tab$)/;
+
 test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 
 endOwnTerminals();
@@ -546,7 +549,7 @@ test.describe("10: on a phone at 390", () => {
     );
     for (const height of heights) expect(height).toBeGreaterThanOrEqual(44);
     const beta = sheet.getByRole("region", { name: "beta" });
-    await expect(beta.getByRole("button")).toHaveCount(2);
+    await expect(beta.getByRole("button", { name: TAB_ROW })).toHaveCount(2);
     await expect(tabRow(beta, "b-one")).toContainText("parity-b1");
     await expect(tabRow(beta, "b-two")).toContainText("parity-b2");
     await expect(tabRow(beta, "parity-b1")).toHaveCount(0);
@@ -568,7 +571,7 @@ test.describe("10: on a phone at 390", () => {
     const bar = page.getByRole("navigation", { name: "Tabs in this space" });
     const previous = bar.getByRole("button", { name: "Previous tab" });
     const next = bar.getByRole("button", { name: "Next tab" });
-    const all = bar.getByRole("button", { name: /^Switch tab, b-one, tab 1 of 2/ });
+    const all = bar.getByRole("button", { name: /^Switch tab, beta, b-one, tab 1 of 2/ });
     // Thumb reach: every target sits in the screen's bottom third.
     const height = page.viewportSize()?.height ?? 0;
     const boxes = await Promise.all([previous, all, next].map(laidOutBox));
@@ -588,14 +591,14 @@ test.describe("10: on a phone at 390", () => {
     await expect(header.getByRole("heading", { name: "b-two", exact: true })).toBeVisible({ timeout: 15_000 });
 
     // Its middle opens the spaces sheet, for a tab of another space.
-    await bar.getByRole("button", { name: /^Switch tab, b-two/ }).tap();
+    await bar.getByRole("button", { name: /^Switch tab, beta, b-two/ }).tap();
     const sheet = page.getByRole("dialog", { name: "Spaces" });
     // Measured at rest: a frame of the open transition reads a row a hair under 44 (#583).
     await opened(sheet);
     await tabRow(sheet.getByRole("region", { name: "alpha" }), "a-two").tap();
     await expect(sheet).toBeHidden();
     await expect(header.getByRole("heading", { name: "a-two", exact: true })).toBeVisible({ timeout: 15_000 });
-    await expect(bar.getByRole("button", { name: /^Switch tab, a-two, tab 2 of 2/ })).toBeVisible();
+    await expect(bar.getByRole("button", { name: /^Switch tab, alpha, a-two, tab 2 of 2/ })).toBeVisible();
   });
 
   test("a split tab is one tab: the tabs bar counts 2/3 for 3 tabs and the sheet lists each tab once", async ({
@@ -623,8 +626,8 @@ test.describe("10: on a phone at 390", () => {
     await page.goto("/");
     await agentRow(page, "split-w2", false).click();
     const header = page.getByRole("banner");
-    // An unnamed tab reads its number, whichever of its panes is in view (ruling A).
-    await expect(header.getByRole("heading", { name: "2", exact: true })).toBeVisible({ timeout: 15_000 });
+    // An unnamed tab reads the terminal in view, never its number (mobile nav phase 2).
+    await expect(header.getByRole("heading", { name: "split-w2", exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / })).toContainText("2/3");
     await expect(page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / })).toHaveAccessibleName(
       /tab 2 of 3$/,
@@ -632,18 +635,17 @@ test.describe("10: on a phone at 390", () => {
     const panes = page.getByRole("navigation", { name: "Panes in this tab" });
     await panes.getByRole("button", { name: "Next pane" }).click();
     await expect(page.locator(`[data-terminal="${twoBeside}"]`)).toBeVisible({ timeout: 15_000 });
-    await expect(header.getByRole("heading", { name: "2", exact: true })).toBeVisible();
+    await expect(header.getByRole("heading", { name: "split-w2b", exact: true })).toBeVisible();
     const tabSwitch = page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / });
     await expect(tabSwitch).toContainText("2/3");
 
     await tabSwitch.click();
     await opened(page.getByRole("dialog", { name: "Spaces" }));
     const web = page.getByRole("dialog", { name: "Spaces" }).getByRole("region", { name: "web" });
-    // One row per tab, read as the strip reads it (its number); the split tab's row opens the pane in view.
-    await expect(web.getByRole("button")).toHaveCount(3);
-    await expect(tabRow(web, "1")).toContainText("split-w1");
-    await expect(tabRow(web, "2")).toContainText("split-w2b");
-    await expect(tabRow(web, "3")).toContainText("split-w3");
-    await expect(tabRow(web, "2")).toHaveAttribute("aria-current", "true");
+    // One row per tab, each unnamed one read by the terminal it opens; the split tab's row opens the pane in view.
+    await expect(web.getByRole("button", { name: TAB_ROW })).toHaveCount(3);
+    await expect(tabRow(web, "split-w1")).toHaveCount(1);
+    await expect(tabRow(web, "split-w3")).toHaveCount(1);
+    await expect(tabRow(web, "split-w2b")).toHaveAttribute("aria-current", "true");
   });
 });

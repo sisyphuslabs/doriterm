@@ -4,6 +4,7 @@ import type { Browser, Page } from "@playwright/test";
 import { endAgent } from "./agents.ts";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
 import { expect, test } from "./fixtures.ts";
+import { routeHcSocket } from "./hc-socket.ts";
 import { hcOn } from "./machine-switch.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -125,4 +126,37 @@ test("double-click edits a space's name in place: Esc puts it back, Enter commit
   await Promise.all([other, page].map((device) => expect(spaceRow(device, before)).toHaveCount(0)));
   expect(shells.map(spaceInHc)).toEqual([after, after]);
   await other.context().close();
+});
+
+test("a rename still writing keeps its question: Cancel waits, Escape does nothing, and a refused write says why there (#1498)", async ({
+  page,
+}) => {
+  const before = `rn1498-${test.info().repeatEachIndex}`;
+  startIn(before, "rn1498-one");
+  const socket = await routeHcSocket(page);
+  await page.goto("/");
+  await expect(spaceRow(page, before)).toBeVisible({ timeout: 20_000 });
+  await spaceRow(page, before).hover();
+  await sidebar(page)
+    .getByRole("button", { name: `More for ${before}` })
+    .click();
+  await page.getByRole("menuitem", { name: "Rename space\u2026" }).click();
+  const question = page.getByRole("dialog", { name: `Rename ${before}` });
+  await question.getByRole("textbox", { name: "Name" }).fill(`${before}-b`);
+
+  // The layout write is held, as a slow host would hold it: the rename is in flight, not finished.
+  const release = socket.hold("doc.set");
+  socket.staleWrites(true);
+  await question.getByRole("button", { name: "Rename" }).click();
+  await expect(question.getByRole("button", { name: "Rename" })).toHaveAttribute("aria-busy", "true");
+  await expect(question.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(question).toBeVisible();
+
+  // The write is refused on every retry: the question stays up and says why.
+  release();
+  await expect(
+    question.getByText("The layout kept changing on another device, so this change was not saved"),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(question).toBeVisible();
 });

@@ -2,6 +2,127 @@
 
 ## Unreleased
 
+## v0.1.13 - 2026-11-08
+
+### New
+
+- "Open the next agent that needs you" is a command in the palette while someone needs you, and an action you can bind
+  in Settings > Keybindings. ([#1453](https://github.com/sisyphuslabs/doriterm/pull/1453))
+- The command palette can narrow its agents to one state: when they are in more than one, counted segments under the
+  search field offer All and the two most urgent states (Needs you first, then Working, Done or Idle).
+  ([#1457](https://github.com/sisyphuslabs/doriterm/pull/1457))
+- The desktop status bar says Connected while the session is healthy, and reads the place as one machine › space
+  breadcrumb. ([#1468](https://github.com/sisyphuslabs/doriterm/pull/1468))
+
+### Fixed
+
+- Loading buttons keep their label for the first second, so quick actions no longer flash a spinner. With reduced
+  motion, pending work shows a gentle opacity pulse instead of a spinning icon.
+  ([#1452](https://github.com/sisyphuslabs/doriterm/pull/1452))
+- A wait says what it waits for straight away and shows a spinner only once it has lasted about a second, so opening a
+  terminal no longer opens on a blank pane. Connecting to your host names the session at once, and the workspace shows a
+  status instead of a blank screen while its code loads. ([#1520](https://github.com/sisyphuslabs/doriterm/pull/1520))
+- A close or rename question no longer lets itself be dismissed while its write is still going: Cancel waits, Escape and
+  a click outside do nothing, and a refused write says why in the question that stays open.
+  ([#1521](https://github.com/sisyphuslabs/doriterm/pull/1521))
+- Sidebar sections read as groups: each title lines up with its rows and sits closer to them than to the section above,
+  and the command palette leaves more room between its groups.
+  ([#1522](https://github.com/sisyphuslabs/doriterm/pull/1522))
+- The command palette's field shows a focus ring while you type in it, in light and dark themes.
+  ([#1504](https://github.com/sisyphuslabs/doriterm/pull/1504))
+
+### Phone
+
+- A session whose tab has no name is titled by its agent instead of a bare number, in the header, the switch sheet and
+  the stepper. Back says where it returns: to the space the session was opened from, else to the agents list. The header
+  no longer repeats the agent counts the list already shows.
+  ([#1440](https://github.com/sisyphuslabs/doriterm/pull/1440))
+- The Spaces sheet can close a tab and start a new one: each tab row has a Close control, and each space ends with New
+  tab. ([#1464](https://github.com/sisyphuslabs/doriterm/pull/1464))
+
+### Mesh & relay
+
+- Keys typed into a terminal on another machine while its connection is down are no longer lost silently: they wait, the
+  terminal says it is reconnecting, and they are sent once, Ctrl+C first, when the machine is back. Keys still waiting
+  after 10 s are dropped and you are told they were not sent.
+  ([#1513](https://github.com/sisyphuslabs/doriterm/pull/1513))
+- With two machines paired, each row in Settings > Machines other than the one you are on has Switch to this machine, so
+  you move between them without pairing again. A stopped machine's row offers Retry instead.
+  ([#1416](https://github.com/sisyphuslabs/doriterm/pull/1416))
+- In the web app and the installed app on a phone, a machine reached through the relay answers sooner on a network that
+  reaches the relay through a far city on some connections and a near one on others: the three connections the app tries
+  open together instead of one after another, so the nearest one can win. Notifications and their answers open one
+  connection instead of three. ([#1437](https://github.com/sisyphuslabs/doriterm/pull/1437))
+
+## v0.1.12 - 2026-11-08
+
+### New
+
+- Settings has a Search field at the top of the section list: it narrows the list to the sections that hold what you
+  type, and Enter opens the first. ([#1461](https://github.com/sisyphuslabs/doriterm/pull/1461))
+- "N needs you" in the desktop status bar is a button: each click opens the next terminal that needs you, in turn.
+  ([#1449](https://github.com/sisyphuslabs/doriterm/pull/1449))
+- Holding Shift and dragging with the mouse selects text even under a program that tracks the mouse; the program is told
+  nothing about the drag. ([#1396](https://github.com/sisyphuslabs/doriterm/pull/1396))
+- A fresh install opens in the dark Night theme on a bundled monospace face that draws powerline glyphs. A person who
+  already chose a light or system appearance keeps it. ([#1407](https://github.com/sisyphuslabs/doriterm/pull/1407))
+- Links to doriterm.com, app.doriterm.com and the GitHub repository preview with a new card, and the card's address
+  changes with the card, so Slack, KakaoTalk and X never show an old cached image.
+  ([#1373](https://github.com/sisyphuslabs/doriterm/pull/1373),
+  [#1458](https://github.com/sisyphuslabs/doriterm/pull/1458))
+
+### Fixed
+
+- A new tab shows its prompt one round trip sooner: the page asks for the new terminal's screen together with the
+  terminal itself, instead of after it has started. Most noticeable on a machine reached through the relay.
+  ([#1359](https://github.com/sisyphuslabs/doriterm/pull/1359))
+- A terminal opened from the list no longer waits behind saving the tab, so a busy disk on that machine no longer holds
+  back the prompt. ([#1360](https://github.com/sisyphuslabs/doriterm/pull/1360))
+- Keys typed right after you come back to the app are no longer lost while it checks the connection: they are sent in
+  the order typed once the connection answers, or on the next connection if it dropped, and never twice.
+  ([#1432](https://github.com/sisyphuslabs/doriterm/pull/1432))
+- A screen reader can jump straight to the terminals: the workspace marks its panes, and on a phone the agents list or
+  the open terminal, as the page's main content. ([#1384](https://github.com/sisyphuslabs/doriterm/pull/1384))
+- Command search and inline space rename keep their field label while you type, so a screen reader still names the
+  field. ([#1451](https://github.com/sisyphuslabs/doriterm/pull/1451))
+- Voice input's reading text and the note under a Keybindings row are no longer caption size; they meet the design
+  system's size floors. ([#1459](https://github.com/sisyphuslabs/doriterm/pull/1459))
+
+### Phone
+
+- A round Read-only button beside the keyboard button turns the terminal read-only: one finger scrolls, a held finger
+  selects and a drag takes what it reaches, and a tap reaches neither the program nor the keyboard. Tap the button again
+  to end it. ([#1396](https://github.com/sisyphuslabs/doriterm/pull/1396))
+- Tapping a space opens that space's own screen: its running tabs, each named after its tab or agent, and a New tab
+  button for that space at the bottom. Back walks back one screen at a time and never leaves the app.
+  ([#1406](https://github.com/sisyphuslabs/doriterm/pull/1406))
+- The page no longer zooms when you tap a field or tap twice; pinching to zoom still works.
+  ([#1382](https://github.com/sisyphuslabs/doriterm/pull/1382))
+- Tapping the keys bar's Type field keeps the keyboard up, instead of the page's scroll to the field closing it.
+  ([#1410](https://github.com/sisyphuslabs/doriterm/pull/1410))
+- On an iPhone, the keys bar and its Type field sit directly on top of the soft keyboard, so what you type stays in
+  view. ([#1431](https://github.com/sisyphuslabs/doriterm/pull/1431))
+- The Gateway field brings up the URL keyboard and turns off automatic capitalization and correction.
+  ([#1450](https://github.com/sisyphuslabs/doriterm/pull/1450))
+- A screen reader finds Settings: the full-screen Settings sheet is announced as a dialog named Settings, as on a wide
+  screen. ([#1414](https://github.com/sisyphuslabs/doriterm/pull/1414))
+
+### Mesh & relay
+
+- In a browser, every session goes through the relay and the status bar says Relay instead of Direct. The desktop app
+  still reaches a host on the same network directly when it answers.
+  ([#1422](https://github.com/sisyphuslabs/doriterm/pull/1422))
+- A machine reached through the relay answers sooner on a network that routes some connections through a far city: the
+  app opens three connections and keeps the one with the shortest way to that machine.
+  ([#1402](https://github.com/sisyphuslabs/doriterm/pull/1402))
+- A host with no mesh yet admits a browser as its first member, so one machine and one browser are enough to start.
+  ([#1426](https://github.com/sisyphuslabs/doriterm/pull/1426))
+- After a network split heals, a machine whose add was refused for the dial budget is added as soon as the budget has
+  room, and a member that comes back online is added at once instead of after its retry delay.
+  ([#1471](https://github.com/sisyphuslabs/doriterm/pull/1471))
+- A failed mesh add no longer leaves a host process behind on each attempt, and retries keep their delay when the dial
+  budget is full. ([#1442](https://github.com/sisyphuslabs/doriterm/pull/1442))
+
 ## v0.1.11 - 2026-11-08
 
 ### Machine mesh

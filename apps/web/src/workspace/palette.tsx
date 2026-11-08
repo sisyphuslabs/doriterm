@@ -7,6 +7,7 @@ import { useOverrides } from "../keys/keymap-store.ts";
 import { runAction } from "../keys/dispatcher.ts";
 import { currentPlatform } from "../keys/trigger.ts";
 import { choiceOf, paletteCommands } from "./palette-commands.ts";
+import type { ListedSpace } from "./model.ts";
 import type { ShellAction } from "./shell-actions.ts";
 import { useOverlayFocus } from "./use-overlay-focus.ts";
 
@@ -15,18 +16,29 @@ export interface PaletteProps {
   readonly host: string;
   readonly route: string;
   readonly actions: readonly ShellAction[];
+  /** The spaces as the sidebar lists them, to name an agent's space the same way. */
+  readonly spaces: readonly ListedSpace[];
   readonly onOpenTerminal: (address: string) => void;
   readonly onClose: () => void;
 }
 
 /** The palette over the dimmed workspace, near the top; Escape or the backdrop closes it. */
-export function Palette({ terminals, host, route, actions, onOpenTerminal, onClose }: PaletteProps) {
+export function Palette({ terminals, host, route, actions, spaces, onOpenTerminal, onClose }: PaletteProps) {
   const navigate = useNavigate();
   const overrides = useOverrides();
   const commands = useMemo(() => {
     const platform = currentPlatform();
-    return paletteCommands({ terminals, host, route, actions, platform, keymap: resolveKeymap(platform, overrides) });
-  }, [terminals, host, route, actions, overrides]);
+    const named = new Map(spaces.flatMap((space) => space.addresses.map((address) => [address, space.name] as const)));
+    return paletteCommands({
+      terminals,
+      host,
+      route,
+      actions,
+      platform,
+      keymap: resolveKeymap(platform, overrides),
+      spaceOf: (address) => named.get(address),
+    });
+  }, [terminals, host, route, actions, spaces, overrides]);
   const frame = useRef<HTMLDivElement>(null);
   useOverlayFocus(frame, '[role="combobox"]');
   const run = (id: string): void => {

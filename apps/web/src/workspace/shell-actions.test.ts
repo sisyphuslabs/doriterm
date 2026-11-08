@@ -1,71 +1,10 @@
-import type { Terminal } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
 import { actionFor } from "../keys/actions.ts";
 import { availableActions, type Shell } from "./shell-actions.ts";
 import { desktopActions, phoneActions } from "./use-app-actions.ts";
 import type { LayoutTab } from "./layout-model.ts";
-import type { Layout } from "./use-layout.ts";
+import { layout, noop, spaces, tab, terminal } from "./shell-actions.fixture.ts";
 
-const terminal = (address: string): Terminal => ({
-  address,
-  argv: ["sh"],
-  cols: 80,
-  rows: 24,
-  created_ms: 0,
-  cwd: "/work",
-  labels: {},
-  screen: "exact",
-  state: "live",
-});
-const noop = (): void => undefined;
-/** The spaces the space keys count, in the order the sidebar lists them, and where selecting one goes. */
-const spaces = (calls: string[] = []) => ({
-  spaceKeys: ["space:spc1", "space:spc2", "space:spc3"] as const,
-  onSelectSpace: (key: string) => calls.push(key),
-});
-const pane = { id: "p1", address: "t1", mod: null };
-const tab: LayoutTab = {
-  key: "tb1",
-  id: "tb1",
-  space: "spc1",
-  spaceKey: "space:spc1",
-  machine: null,
-  name: "",
-  root: { children: [{ content: { terminal: "t1" }, id: "p1", type: "block" }], id: "tb1", type: "row" },
-  panes: [pane],
-  readOnly: null,
-  transient: false,
-};
-const layout: Layout = {
-  tabs: [tab],
-  shown: [tab],
-  selectSpace: noop,
-  active: tab,
-  focused: pane,
-  zoomed: null,
-  selectTab: noop,
-  focusPane: noop,
-  openTerminal: noop,
-  split: noop,
-  dropPane: noop,
-  closeTab: noop,
-  go: () => false,
-  bumped: null,
-  fresh: null,
-  claimed: null,
-  seen: {},
-  remember: noop,
-  resize: () => Promise.resolve(true),
-  resizeFocused: () => false,
-  equalize: () => true,
-  toggleZoom: () => true,
-  move: () => Promise.resolve(false),
-  swap: () => true,
-  moveTab: noop,
-  renameTab: () => Promise.resolve(),
-  restored: true,
-  lastMove: null,
-};
 const handlers = {
   desktop: desktopActions(
     {
@@ -210,6 +149,27 @@ describe("space rename (#395)", () => {
   });
 });
 
+const dictateDesktop = (onDictate: () => boolean) =>
+  desktopActions(
+    {
+      terminals: [],
+      layout,
+      ...spaces(),
+      onNew: noop,
+      onNewSpace: () => undefined,
+      onSplit: noop,
+      onCloseTab: noop,
+      onClosePane: noop,
+      onRenameTab: noop,
+      onToggleSidebar: noop,
+      onFocusSidebar: noop,
+      onFilterSidebar: noop,
+      onSession: () => true,
+      onDictate,
+    },
+    noop,
+  );
+
 describe("dictation (#194)", () => {
   test.each(["desktop", "phone"] as const)(
     "%s: Dictate is a palette row with a session in view, and left out without",
@@ -222,28 +182,8 @@ describe("dictation (#194)", () => {
 
   test("the row and a bound key run the shell's dictation, and leave the key alone when it has none", () => {
     const runs: string[] = [];
-    const desktop = (onDictate: () => boolean) =>
-      desktopActions(
-        {
-          terminals: [],
-          layout,
-          ...spaces(),
-          onNew: noop,
-          onNewSpace: () => undefined,
-          onSplit: noop,
-          onCloseTab: noop,
-          onClosePane: noop,
-          onRenameTab: noop,
-          onToggleSidebar: noop,
-          onFocusSidebar: noop,
-          onFilterSidebar: noop,
-          onSession: () => true,
-          onDictate,
-        },
-        noop,
-      );
-    expect(desktop(() => (runs.push("desktop"), true))("voice.dictate")).toBe(true);
-    expect(desktop(() => false)("voice.dictate")).toBe(false);
+    expect(dictateDesktop(() => (runs.push("desktop"), true))("voice.dictate")).toBe(true);
+    expect(dictateDesktop(() => false)("voice.dictate")).toBe(false);
     expect(
       phoneActions(
         noop,

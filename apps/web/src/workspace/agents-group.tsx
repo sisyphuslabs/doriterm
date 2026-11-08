@@ -137,7 +137,7 @@ export function AgentsGroup({ terminals, active, onOpen, rail = false, heading =
   );
   const groups = useMemo(() => filterAgentGroups(all, query, active), [all, query, active]);
   const list = (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-6 pt-3">
       {groups.map((group) => (
         <SidebarSection
           key={group.key}

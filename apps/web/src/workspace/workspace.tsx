@@ -2,7 +2,6 @@ import type { TerminalRunParams } from "@doriface/protocol";
 import type { HcConnection } from "@doriface/client";
 import { useToastManager } from "@doriface/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { connectionStore } from "../connection/store.ts";
 import { useActionHandler } from "../keys/dispatcher.ts";
 import { ShortcutsHelp } from "../keys/shortcuts-dialog.tsx";
@@ -11,6 +10,7 @@ import { closesTab, type TerminalEnd } from "../terminal/terminal-end.ts";
 import { CloseTabDialog } from "./close-tab-dialog.tsx";
 import { AddMachineDialog } from "./add-machine-dialog.tsx";
 import { guideStore } from "../pair/first-run-guide.ts";
+import { usePhoneRoute } from "./use-phone-route.ts";
 import { DesktopShell } from "./desktop-shell.tsx";
 import { Palette } from "./palette.tsx";
 import { SessionContext, type SessionAsk } from "./session-context.ts";
@@ -18,6 +18,7 @@ import { SessionDialogs } from "./session-dialogs.tsx";
 import { SpaceClose } from "./space-close-dialog.tsx";
 import { SpaceRename } from "./space-rename-dialog.tsx";
 import { availableActions } from "./shell-actions.ts";
+import { someoneElseNeedsYou } from "./attention.ts";
 import { PhoneShell } from "./phone-shell.tsx";
 import type { SessionVerb } from "./use-app-actions.ts";
 import { useMachineRuns } from "./use-machine-runs.ts";
@@ -25,9 +26,8 @@ import { PIN_LABEL, spacesInOrder } from "./sidebar-model.ts";
 import { PinContext, type PinTerminal } from "./use-pin.ts";
 import { MachinesContext, useMachines } from "./use-machines.ts";
 import { runParamsFor } from "./new-terminal.ts";
-import { entersFromList, phoneOpenKey, rememberOpenKey } from "./phone-route.ts";
 import { useNarrow } from "./use-narrow.ts";
-import { machineIds, tabAddress, tabKey } from "./tab-keys.ts";
+import { machineIds } from "./tab-keys.ts";
 import { findTerminal, type LayoutTab } from "./layout-model.ts";
 import { useLayout, type PaneTarget } from "./use-layout.ts";
 import { chainedSplit, SplitChain } from "./split-chain.ts";
@@ -37,7 +37,7 @@ import { useDropOnce } from "./use-drop-once.ts";
 import { useLayoutDocs } from "./use-layout-docs.ts";
 import { GitFactsContext, useGitFacts } from "./git-facts.ts";
 import { TodoProgressContext, useTodoProgress } from "./todo-progress.ts";
-import { layoutSpaces, tabTitle } from "./model.ts";
+import { layoutSpaces, phoneTabTitle } from "./model.ts";
 import { SpaceSelectionContext } from "./space-selection.ts";
 import { useSpaceMove } from "./space-order.ts";
 import { useAdoptLoose } from "./use-adopt-loose.ts";
@@ -144,46 +144,8 @@ export function Workspace({ connection }: WorkspaceProps) {
   useAdoptLoose(layouts, fed.loaded ? terminals : null, failed);
   const narrow = useNarrow();
   const ids = useMemo(() => machineIds(views), [views]);
-  // Whether this screen pushed the entry the phone is on: a cold open on ?t= has none behind it, so its Back may not pop.
-  const openFromList = useRef(false);
-  // Settings and pairing are routes with no terminal in them: they say nothing about which terminal is open, so the last
-  // one the list had stays open under them (the workspace is kept mounted there, and so is the terminal).
-  const lastPhoneKey = useRef<string | null>(null);
-  // The phone's open terminal is a history entry (`?t=`), so Android's Back returns to the list instead of leaving the
-  // app (the browser has nothing else to pop), and a reload reopens what was open without pushing a second entry.
-  const navigate = useNavigate();
-  const router = useRouter();
-  const routeSearch = useRouterState({ select: (state) => state.location.search as { readonly t?: unknown } });
-  const routePath = useRouterState({ select: (state) => state.location.pathname });
-  const routeKey = typeof routeSearch.t === "string" ? routeSearch.t : null;
-  const routeTerminal = routePath === "/" ? routeKey : null;
-  // Settings keeps the workspace mounted (#607), so it must keep the phone's open terminal too: a route that is not the
-  // list says nothing about `?t=`, so the key is read there and the last one carries across (phone-route.ts).
-  lastPhoneKey.current = rememberOpenKey(routePath, routeKey, lastPhoneKey.current);
-  const phoneKey = phoneOpenKey(routePath, routeKey, lastPhoneKey.current);
-  const phoneOpen = phoneKey === null || !narrow ? null : (tabAddress(phoneKey, ids) ?? null);
-  const showOnPhone = useCallback(
-    (address: string) => {
-      // Opening a terminal is what the first-run guide is waiting for (#668); this stays even when no entry is pushed.
-      guideStore.opened(address);
-      // A desktop keeps no history entries of its own: its New tab and its notices are not navigations, and pushing one
-      // made Back step through no-op entries and a landing run close the screen behind it.
-      if (!narrow) return;
-      const key = tabKey(address, ids);
-      // Only a push puts a list entry under this terminal; a switch replaces the entry that is already there.
-      if (entersFromList(routeTerminal)) openFromList.current = true;
-      // Switching inside an open terminal replaces that entry, so one Back still leaves the terminal for the list;
-      // only entering from the list adds one.
-      void navigate({ href: `/?t=${encodeURIComponent(key)}`, replace: routeTerminal !== null });
-    },
-    [ids, navigate, narrow, routeTerminal],
-  );
-  const hideOnPhone = useCallback(() => {
-    // A cold open on `?t=` has no list behind it, so popping would leave the app; that case goes to the list instead.
-    if (openFromList.current) router.history.back();
-    else void navigate({ href: "/", replace: true });
-    openFromList.current = false;
-  }, [navigate, router]);
+  const phone = usePhoneRoute(narrow, ids);
+  const { open: phoneOpen, show: showOnPhone } = phone;
   const [palette, setPalette] = useState(false);
   const [ask, setAsk] = useState<SessionAsk | null>(null);
   const [spaceAsk, setSpaceAsk] = useState<string | null>(null);
@@ -242,6 +204,18 @@ export function Workspace({ connection }: WorkspaceProps) {
       },
     );
   };
+  // The latest `opened`: a tab started from a space screen is placed once that space is the selected one (addTab's `near`).
+  const openedNow = useRef(opened);
+  openedNow.current = opened;
+  const newTabIn = (key: string): void => {
+    const space = spaces.find((each) => each.id === key);
+    const near = terminals.find((terminal) => terminal.state === "live" && space?.addresses.includes(terminal.address));
+    layout.selectSpace(key);
+    runs.start(runParamsFor(near, space), (address) => {
+      guideStore.opened(address);
+      openedNow.current(address);
+    });
+  };
   const split = (axis: Axis, target?: PaneTarget): void => {
     const from =
       target === undefined
@@ -285,14 +259,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   const closing = layout.tabs.find((tab) => tab.key === closingTab);
   const phoneTab = phoneOpen === null ? null : findTerminal(layout.tabs, phoneOpen);
   const phonePanes = phoneTab?.tab.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? [];
-  // The phone's header reads the tab as the desktop strip does: its name, else its place among its space's tabs.
-  const phoneTitle =
-    phoneTab === null
-      ? null
-      : tabTitle(
-          phoneTab.tab.name,
-          layout.tabs.filter((tab) => tab.spaceKey === phoneTab.tab.spaceKey).indexOf(phoneTab.tab),
-        );
+  const phoneTitle = phoneTab === null ? null : phoneTabTitle(phoneTab.tab.name);
   usePushPresence(inView);
   useNoticeOpen(connectionStore.settings.mode === "relay" ? connectionStore.settings.hostId : undefined, opened);
   // What this screen reads for attention: a finish it has looked at reads idle here, and only here (#611).
@@ -366,10 +333,24 @@ export function Workspace({ connection }: WorkspaceProps) {
   const spaceKeys = useMemo(() => spacesInOrder(entries, spaces).map((space) => space.id), [entries, spaces]);
   const selectedSpace = layout.active?.spaceKey ?? null;
   const moveSpace = useSpaceMove(layouts, failed);
+  // A phone's space row opens that space's screen (#1387); the desktop's selection is not the phone's, so none is marked.
+  const { showSpace } = phone;
   const spaceSelection = useMemo(
-    () => ({ spaces, selected: selectedSpace, select: selectSpace, move: moveSpace }),
-    [spaces, selectedSpace, selectSpace, moveSpace],
+    () =>
+      narrow
+        ? { spaces, selected: null, select: showSpace, move: moveSpace }
+        : { spaces, selected: selectedSpace, select: selectSpace, move: moveSpace },
+    [narrow, spaces, selectedSpace, selectSpace, showSpace, moveSpace],
   );
+  // A space is known once the terminals and every layout document are read; until then its screen says it is loading.
+  const spacesRead = fed.loaded && layout.restored;
+  const listedSpace = phone.space === null ? undefined : spaces.find((each) => each.id === phone.space);
+  const phoneSpace = phone.space === null ? null : (listedSpace ?? (spacesRead ? null : "loading"));
+  const { dropSpace } = phone;
+  const spaceGone = phone.space !== null && listedSpace === undefined && spacesRead;
+  useEffect(() => {
+    if (spaceGone) dropSpace();
+  }, [spaceGone, dropSpace]);
   return (
     <MachinesContext value={machines}>
       <GitFactsContext value={gitOf}>
@@ -398,11 +379,21 @@ export function Workspace({ connection }: WorkspaceProps) {
                         connection={connection}
                         terminals={sessions}
                         open={phoneOpen}
+                        space={phoneSpace}
                         panes={phonePanes}
                         tabTitle={phoneTitle}
+                        // Back says where it goes: the space it was opened from, by name once the spaces are read ("space" until then).
+                        backTo={phone.space === null ? null : (listedSpace?.name ?? "space")}
                         onOpen={showOnPhone}
-                        onBack={hideOnPhone}
+                        onBack={phone.back}
+                        onSpaceBack={phone.backFromSpace}
+                        pushed={phone.pushed}
                         onNew={() => newTerminal()}
+                        onNewInSpace={newTabIn}
+                        onCloseTab={(address) => {
+                          const found = findTerminal(layout.tabs, address);
+                          if (found !== null) closeTab(found.tab.key);
+                        }}
                         onPalette={onPalette}
                         onSession={onSession}
                       />
@@ -475,6 +466,7 @@ export function Workspace({ connection }: WorkspaceProps) {
             {palette ? (
               <Palette
                 terminals={sessions}
+                spaces={spaces}
                 host={connection.hello.core.name}
                 route={connectionStore.settings.mode === "relay" ? "relay" : "loopback"}
                 actions={availableActions(
@@ -485,6 +477,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                     keys: layout.shown.map((tab) => tab.key),
                     active: layout.active?.key ?? null,
                   },
+                  someoneElseNeedsYou(sessions, inView),
                 )}
                 onOpenTerminal={opened}
                 onClose={() => setPalette(false)}
