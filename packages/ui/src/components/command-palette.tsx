@@ -4,7 +4,11 @@ import { cn } from "../lib/cn.ts";
 import { Button } from "./button.tsx";
 import { Kbd } from "./kbd.tsx";
 import { overlaySurface } from "./overlay.ts";
+import { shownStatus, statusCounts, withStatus } from "./palette-status.ts";
+import { SegmentedControl } from "./segmented-control.tsx";
 import { STATUS_LABEL, StatusIndicator, type AgentStatus } from "./status.tsx";
+
+const ALL = "all";
 
 export interface Command {
   readonly id: string;
@@ -49,8 +53,14 @@ export function CommandPalette({
 }: CommandPaletteProps) {
   const [query, setQuery] = useState(defaultQuery);
   const [active, setActive] = useState(0);
+  const [chosen, setChosen] = useState<AgentStatus | null>(null);
   const listId = useId();
-  const visible = useMemo(() => commands.filter((command) => matches(command, query)), [commands, query]);
+  const counts = useMemo(() => statusCounts(commands), [commands]);
+  const status = shownStatus(counts, chosen);
+  const visible = useMemo(
+    () => withStatus(commands, status).filter((command) => matches(command, query)),
+    [commands, query, status],
+  );
   const groups = useMemo(() => [...new Set(visible.map((command) => command.group))], [visible]);
   const current = visible[Math.min(active, visible.length - 1)];
 
@@ -93,6 +103,22 @@ export function CommandPalette({
           </Button>
         )}
       </div>
+      {counts.length === 0 ? null : (
+        <div className="border-b border-border px-3 py-2">
+          <SegmentedControl<AgentStatus | typeof ALL>
+            label="Show agents"
+            value={status ?? ALL}
+            onValueChange={(value) => {
+              setChosen(value === ALL ? null : value);
+              setActive(0);
+            }}
+            options={[
+              { value: ALL, label: `All ${counts.reduce((sum, { count }) => sum + count, 0)}` },
+              ...counts.map(({ status: each, count }) => ({ value: each, label: `${STATUS_LABEL[each]} ${count}` })),
+            ]}
+          />
+        </div>
+      )}
       <div
         id={listId}
         role="listbox"
