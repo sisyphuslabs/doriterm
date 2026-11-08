@@ -3,23 +3,26 @@ import { PHONE_LIST, phoneHref, phoneOpenKey, phoneParent, phoneRoute, rememberO
 
 describe("the phone's place, read from and written to the list's address", () => {
   test("a space screen and a terminal opened from it round-trip through the address", () => {
-    const route = { space: "space:local/spc web", terminal: "local/tb-1" };
+    const route = { section: "spaces", space: "space:local/spc web", terminal: "local/tb-1" } as const;
     const href = phoneHref(route);
-    expect(href).toBe("/?s=space%3Alocal%2Fspc%20web&t=local%2Ftb-1");
+    expect(href).toBe("/?v=spaces&s=space%3Alocal%2Fspc%20web&t=local%2Ftb-1");
     const search = Object.fromEntries(new URL(href, "http://phone").searchParams);
     expect(phoneRoute(search)).toEqual(route);
   });
 
   test("the bare list is /, and a param that is empty or not text names nothing", () => {
     expect(phoneHref(PHONE_LIST)).toBe("/");
-    expect(phoneRoute({ s: "", t: 7 })).toEqual(PHONE_LIST);
+    expect(phoneRoute({ v: "other", s: "", t: 7 })).toEqual(PHONE_LIST);
     expect(phoneRoute({})).toEqual(PHONE_LIST);
   });
 
-  test("Back closes a terminal to the screen it came from, and a space to the list", () => {
-    expect(phoneParent({ space: "s1", terminal: "t1" })).toEqual({ space: "s1", terminal: null });
-    expect(phoneParent({ space: null, terminal: "t1" })).toEqual(PHONE_LIST);
-    expect(phoneParent({ space: "s1", terminal: null })).toEqual(PHONE_LIST);
+  test("Back closes a terminal to the screen it came from, a space to its section's list, and Spaces to Agents", () => {
+    const spaces = { section: "spaces", space: null, terminal: null } as const;
+    expect(phoneParent({ ...spaces, space: "s1", terminal: "t1" })).toEqual({ ...spaces, space: "s1" });
+    expect(phoneParent({ ...PHONE_LIST, terminal: "t1" })).toEqual(PHONE_LIST);
+    expect(phoneParent({ ...spaces, space: "s1" })).toEqual(spaces);
+    expect(phoneParent({ ...PHONE_LIST, space: "s1" })).toEqual(PHONE_LIST);
+    expect(phoneParent(spaces)).toEqual(PHONE_LIST);
   });
 });
 
