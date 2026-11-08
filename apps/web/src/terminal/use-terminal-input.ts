@@ -1,0 +1,90 @@
+import type { HcConnection, TerminalStream } from "@doriface/client";
+import { useToastManager } from "@doriface/ui";
+import type { TerminalHandle, WTerm } from "@wterm/react";
+import { type RefObject, useCallback, useEffect, useRef } from "react";
+import { pasteInto } from "./terminal-port.ts";
+import { putFiles, quotePaths } from "./paste-files.ts";
+import { scrollTerminal } from "./terminal-scroll.tsx";
+import type { TerminalInput } from "./terminal-view.tsx";
+
+export interface TerminalInputPath {
+  /** Input typed while no stream is open (attaching, or the connection dropped), sent to the next stream in order. */
+  readonly pending: RefObject<TerminalInput[]>;
+  /** Input typed into the renderer, rewritten as the host asks (latched phone modifiers). */
+  readonly typedInto: (data: string) => void;
+  /** Input from outside the renderer (the phone's keys, a bound key, a confirmed paste). */
+  readonly typed: (data: TerminalInput) => void;
+  /** Files sent to the terminal's machine, their paths pasted there. */
+  readonly pasteFiles: (files: readonly File[]) => void;
+}
+
+interface InputSources {
+  readonly wt: WTerm | null;
+  readonly handle: RefObject<TerminalHandle | null>;
+  readonly stream: RefObject<TerminalStream | null>;
+  readonly connection: HcConnection;
+  readonly address: string;
+  readonly transformInput: ((data: string) => string) | undefined;
+  readonly typesComposition: boolean;
+}
+
+/** What a pane does with what the person types: one ordered path to the program, queued while no stream is open. */
+export function useTerminalInput(sources: InputSources): TerminalInputPath {
+  const { wt, handle, stream, connection, address, transformInput, typesComposition } = sources;
+  const toasts = useToastManager();
+  // Every human-input write goes through send, so keys pressed during a reconnect replay in the order pressed.
+  const pending = useRef<TerminalInput[]>([]);
+  const send = useCallback(
+    (data: TerminalInput): void => {
+      if (stream.current?.write(data) !== true) pending.current.push(data);
+    },
+    [stream],
+  );
+  const typedInto = (data: string): void => {
+    const input = transformInput?.(data) ?? data;
+    if (input !== "") send(input);
+  };
+  // Typed input from outside the renderer scrolls to the bottom, as wterm already does for keys typed into it. A
+  // syllable still composing in the renderer's field goes first, as typed: the key must not overtake it (#652).
+  const typed = useCallback(
+    (data: TerminalInput): void => {
+      const instance = handle.current?.instance;
+      if (instance !== null && instance !== undefined) {
+        const preedit = instance.takeComposition();
+        if (preedit !== "") send(preedit);
+        scrollTerminal(instance, { to: "bottom" });
+      }
+      send(data);
+    },
+    [handle, send],
+  );
+  // herdr-app's send_image: files go to the terminal's machine (`terminal.put`), and where they landed is pasted there,
+  // bracketed when the program asked, so an agent on any machine reads the image by its path (#701).
+  const latestConnection = useRef(connection);
+  latestConnection.current = connection;
+  const pasteFiles = useCallback(
+    (files: readonly File[]): void => {
+      void putFiles(latestConnection.current, address, files).then(({ paths, refused }) => {
+        for (const why of refused) toasts.add({ type: "warning", title: why });
+        const element = handle.current?.instance?.element;
+        if (paths.length > 0 && element !== undefined) pasteInto(element, quotePaths(paths));
+        return paths;
+      });
+    },
+    [address, toasts, handle],
+  );
+  // A composition is typed as it starts (see TerminalViewProps.typesComposition).
+  const typesCompositionNow = useRef(typedInto);
+  typesCompositionNow.current = typedInto;
+  useEffect(() => {
+    if (wt === null || !typesComposition) return undefined;
+    const onInput = (event: Event): void => {
+      if (!(event instanceof InputEvent) || !event.isComposing) return;
+      const preedit = wt.takeComposition();
+      if (preedit !== "") typesCompositionNow.current(preedit);
+    };
+    wt.element.addEventListener("input", onInput);
+    return () => wt.element.removeEventListener("input", onInput);
+  }, [wt, typesComposition]);
+  return { pending, typedInto, typed, pasteFiles };
+}
