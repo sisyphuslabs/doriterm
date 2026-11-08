@@ -51,6 +51,12 @@ test("the Spaces sheet closes a tab as the strip's close does and starts a new t
   await section.getByRole("button", { name: "Close t2", exact: true }).click();
   // The sheet stays open, so several tabs can go in a row; the closed one leaves it.
   await expect(section.getByRole("button", { name: "Close t2", exact: true })).toHaveCount(0, { timeout: 15_000 });
+  // A space's last tab takes the space with it, so its close asks first, over the sheet; Cancel keeps it.
+  await section.getByRole("button", { name: "Close t1", exact: true }).click();
+  const question = page.getByRole("dialog", { name: "Close space?" });
+  await expect(question).toBeVisible();
+  await question.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(question).toBeHidden();
   await expect(section.getByRole("button", { name: "Close t1", exact: true })).toBeVisible();
   await sheet(page).getByRole("button", { name: "Done", exact: true }).click();
   await expect(switcher(page)).toContainText("1/1");
