@@ -1,7 +1,7 @@
 import { devices, type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { fakeHostOs } from "./host-os.ts";
-import { fakeSoftKeyboard, PHONE, showKeyboard } from "./phone-key-bar.ts";
+import { fakeSoftKeyboard, PHONE } from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE });
 
@@ -44,7 +44,8 @@ async function openTerminal(page: Page): Promise<Locator> {
   await page.getByRole("banner").getByRole("button", { name: "New tab" }).click();
   const terminal = page.locator("[data-terminal]");
   await expect(terminal).toContainText("$", { timeout: 15_000 });
-  await showKeyboard(page, 336);
+  // A phone raises its keyboard only from its keys (#1375): the button focuses the terminal, and the fake keyboard with it.
+  await page.getByRole("button", { name: "Show keyboard", exact: true }).click();
   await expect(keysBar(page)).toBeVisible();
   return terminal;
 }

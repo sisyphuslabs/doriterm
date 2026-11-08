@@ -2,6 +2,8 @@ import { parseArgs } from "node:util";
 import { requestControl } from "../control.ts";
 import { deviceIdOf, DeviceStore, type PairedDevice } from "../state/devices.ts";
 import { defaultStateDir } from "../state/files.ts";
+import { MeshStore } from "../state/mesh.ts";
+import { meshRevokeCommand } from "@doriface/protocol";
 
 export const DEVICES_USAGE = `usage: doriface-host devices list [--state-dir <dir>]
        doriface-host devices revoke <id> [--state-dir <dir>]
@@ -44,6 +46,16 @@ export async function devicesCommand(args: readonly string[], out: (text: string
   }
   const removed = store.revoke(handle ?? "");
   if (removed.length === 0) throw new Error(`no paired device has the id ${JSON.stringify(handle)}`);
+  const index = new MeshStore(stateDir, { log: (message) => out(`${printable(message)}\n`) }).authorizeIndex();
+  for (const device of removed) {
+    const client = index?.client(device.clientStaticPub);
+    if (client !== undefined) {
+      const command = meshRevokeCommand(client.name);
+      out(
+        `Mesh membership ends when the admitting host is running and reachable. To end it now, run ${printable(command ?? `doriface-host mesh revoke ${client.hostId}`)} on any running member.\n`,
+      );
+    }
+  }
   await requestControl(stateDir, { op: "devices-changed" });
   for (const device of removed) out(`revoked ${line(device)}`);
   return 0;

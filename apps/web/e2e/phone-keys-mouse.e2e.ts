@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
-import { fakeSoftKeyboard, key, keysBar, PHONE, showKeyboard } from "./phone-key-bar.ts";
+import { fakeSoftKeyboard, key, keysBar, PHONE } from "./phone-key-bar.ts";
 
 // A narrow desktop window driven by a mouse and a physical keyboard: the phone shell, with no soft keyboard (#287).
 test.use({ serviceWorkers: "block", viewport: { width: 390, height: 844 }, hasTouch: false, isMobile: false });
@@ -19,6 +19,8 @@ test("with a mouse, Show keys opens the keys bar itself, its keys reach the term
   page,
 }) => {
   const { terminal, input } = await openTerminal(page);
+  // A fine pointer has no soft keyboard to raise, so this surface still takes the focus as it opens (#1375).
+  await expect(input).toBeFocused();
   await expect(keysBar(page)).toHaveCount(0);
   // Nothing claims a soft keyboard this device does not have (#274).
   await expect(key(page, "Show keyboard")).toHaveCount(0);
@@ -48,7 +50,7 @@ test.describe("on a touch phone", () => {
   test("the bar still rides on the soft keyboard, and the button says Show keyboard, not Show keys", async ({
     page,
   }) => {
-    await fakeSoftKeyboard(page, { raiseOnFocus: false });
+    await fakeSoftKeyboard(page);
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
     expect(await page.evaluate(() => matchMedia("(any-pointer: coarse)").matches)).toBe(true);
@@ -57,7 +59,8 @@ test.describe("on a touch phone", () => {
     await expect(key(page, "Show keyboard")).toBeVisible();
     await expect(key(page, "Show keys")).toHaveCount(0);
     await expect(keysBar(page)).toHaveCount(0);
-    await showKeyboard(page, 336);
+    // The button is what raises the keyboard, and the bar rides it (#1375).
+    await key(page, "Show keyboard").click();
     await expect(keysBar(page)).toBeVisible();
     await expect(key(page, "Hide keyboard")).toBeVisible();
   });

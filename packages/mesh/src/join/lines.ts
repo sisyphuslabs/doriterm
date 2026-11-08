@@ -23,8 +23,19 @@ export type MeshLine =
       readonly reads?: readonly number[] | undefined;
     }
   | { readonly t: "want"; readonly hashes: readonly string[] }
-  | { readonly t: "offer"; readonly mesh: string; readonly inviter: string; readonly nonce: string }
-  | { readonly t: "card"; readonly body: string; readonly sig: string }
+  | {
+      readonly t: "offer";
+      readonly mesh: string;
+      readonly inviter: string;
+      readonly nonce: string;
+      readonly commit?: string | undefined;
+    }
+  | { readonly t: "card"; readonly body: string; readonly sig: string; readonly sas?: string | undefined }
+  | { readonly t: "reveal"; readonly Ni: string }
+  | { readonly t: "confirm" }
+  | { readonly t: "abort" }
+  | { readonly t: "resume"; readonly nonce: string }
+  | { readonly t: "leave"; readonly card: Signed }
   | { readonly t: "records"; readonly records: readonly Signed[] }
   | { readonly t: "done"; readonly mesh: string }
   | { readonly t: "refused"; readonly reason: string };
@@ -34,6 +45,7 @@ export type LineType = MeshLine["t"];
 /** What each side of a join reads first (section 4.4): the inviter a card, the joiner the offer; or a refusal. */
 export const INVITER_EXPECTS: readonly LineType[] = ["card", "refused"];
 export const JOINER_EXPECTS: readonly LineType[] = ["offer", "refused"];
+export const ROSTER_EXPECTS: readonly LineType[] = ["card", "leave", "resume", "refused"];
 /** What a sync session reads (section 5.2): heads and counters, asks, records, the end of a batch, or a refusal. */
 export const SYNC_EXPECTS: readonly LineType[] = ["hello", "want", "records", "done", "refused"];
 
@@ -46,6 +58,9 @@ export interface LineLink {
 }
 
 const encoder = new TextEncoder();
+
+/** A protocol violation differs from a dropped transport: it must not keep a resumable join anchor. */
+export class MeshProtocolError extends Error {}
 
 /** The welcome's `records` lines: as many records per line as fit {@link MAX_LINE_BYTES}, in the given order. */
 export function recordLines(records: readonly Signed[], maxBytes = MAX_LINE_BYTES): MeshLine[] {
@@ -134,8 +149,8 @@ export class MeshLines {
   }
 
   close(code: number, reason: string): void {
+    this.#end(code === CloseCode.CryptoFailure ? new MeshProtocolError(reason) : new Error(reason));
     this.#link.close(code, reason);
-    this.#end(new Error(reason));
   }
 
   /** The join is over: stops reading the session, which stays open for whoever serves it next. */

@@ -191,6 +191,8 @@ async function pair(
     hostId: host.hostId,
     ...socketOf(options),
     ...(pairSlot === undefined ? {} : { pairSlot }),
+    // One socket: the pairing session closes once the host stored this machine (#1418).
+    bestOf: 1,
   });
   const secure = await secureLink(link, initiator(host, options.device, pairing)).catch((error: unknown) => {
     throw refusal(host.hostId, error);

@@ -15,6 +15,7 @@ describe("join command", () => {
     expect(offerFor({ request: "r0", link: "doriface://pair#a", expiresAt: 5 }, "r1")).toBeUndefined();
     expect(offerFor({ request: "r1", link: "doriface://pair#a", expiresAt: 5 }, "r1")).toEqual({
       phase: "ready",
+      link: "doriface://pair#a",
       command: joinCommand("doriface://pair#a"),
       expiresAt: 5,
     });

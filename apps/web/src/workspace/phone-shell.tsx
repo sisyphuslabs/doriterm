@@ -2,7 +2,7 @@ import type { HcConnection } from "@doriface/client";
 import { IconButton, ScrollArea, StatusBar, StatusBarItem } from "@doriface/ui";
 import { Link } from "@tanstack/react-router";
 import { Monitor, Plus, Search, Settings } from "lucide-react";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { connectionStore } from "../connection/store.ts";
 import { NEW_TAB } from "../keys/actions.ts";
 import { AgentLists } from "./agent-lists.tsx";
@@ -39,6 +39,8 @@ export interface PhoneShellProps {
   readonly tabTitle: string | null;
   readonly onOpen: (address: string) => void;
   readonly onBack: () => void;
+  /** Where the open terminal's Back goes when that is a space (its name); null when it goes to the agents list. */
+  readonly backTo: string | null;
   /** The space screen's Back, to the list. */
   readonly onSpaceBack: () => void;
   readonly onNew: () => void;
@@ -53,13 +55,23 @@ export interface PhoneShellProps {
 /** Phones: the agents list first; a space opens its own screen, and a terminal shows full screen with extra keys. */
 export function PhoneShell(props: PhoneShellProps) {
   const { connection, terminals, open, space, panes, tabTitle, onOpen, onBack, onNew, onNewInSpace, onPalette } = props;
-  const { onSession, onSpaceBack, onCloseTab, pushed } = props;
+  const { onSession, onSpaceBack, onCloseTab, pushed, backTo } = props;
   // The open terminal registers its dictation here, so the palette and a bound key reach it from this shell's handler.
   const dictate = useRef<(() => void) | null>(null);
   usePhoneActions(onNew, onSession, () => (dictate.current === null ? false : (dictate.current(), true)));
   const machines = useMachinesContext();
   const update = usePendingUpdate();
   const terminal = terminals.find((entry) => entry.address === open);
+  // A session picked from the keys bar is the person asking for its keyboard: its view takes the keyboard as it opens.
+  // The ask is answered once that keyboard is up, and it ends when the session is left by any route (the app's Back, the
+  // system Back, the tabs bar, the list), so a later reopen or re-attach of that session raises nothing (#1375).
+  const [picked, setPicked] = useState<string | null>(null);
+  const shown = terminal?.address ?? null;
+  const lastShown = useRef(shown);
+  useEffect(() => {
+    if (shown !== lastShown.current && shown !== picked) setPicked(null);
+    lastShown.current = shown;
+  }, [shown, picked]);
   // An unanswered list is not an empty one: the empty state waits for the core's first answer (#797).
   const live = machines.terminalsLoaded
     ? terminals.filter((entry) => entry.state === "live").map((entry) => entry.address)
@@ -160,11 +172,21 @@ export function PhoneShell(props: PhoneShellProps) {
       terminals={terminals}
       panes={panes}
       tabTitle={tabTitle}
+      backTo={backTo}
       onOpen={onOpen}
-      onBack={onBack}
+      onBack={() => {
+        setPicked(null);
+        onBack();
+      }}
       onCloseTab={onCloseTab}
       onNewInSpace={onNewInSpace}
       dictate={dictate}
+      claimed={picked === terminal.address}
+      onClaimed={() => setPicked(null)}
+      onPick={(address) => {
+        setPicked(address);
+        onOpen(address);
+      }}
     />
   );
 }

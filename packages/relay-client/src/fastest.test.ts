@@ -188,16 +188,25 @@ describe("best-of-N relay dial: picking the socket nearest the Room", () => {
     expect(sockets.map((socket) => socket.closed)).toEqual([true, true, false]);
   });
 
-  test("a refused socket is kept only once no other socket is still opening or waiting for its answer", async () => {
+  test("a refused socket is kept once no other socket is waiting for its answer", async () => {
     const clock = new ManualClock();
     const { sockets, outcome } = race(clock, [{ closesAfter: 20 }, { closesAfter: 30 }]);
-    sockets[0]?.open();
-    await clock.advanceTo(400);
-    expect(outcome().winner).toBeUndefined();
-    sockets[1]?.open();
+    for (const socket of sockets) socket.open();
     await clock.advanceTo(10_000);
-    expect(outcome()).toEqual({ winner: "a", at: 430 });
+    expect(outcome()).toEqual({ winner: "a", at: 30 });
     expect(sockets.map((socket) => socket.closed)).toEqual([false, true]);
+  });
+
+  test("a socket that has not opened is waited for at most the grace after another was refused, and closed when it opens", async () => {
+    // A network that drops traffic to another port leaves that socket opening until its connect timeout (#1437).
+    const clock = new ManualClock();
+    const { sockets, outcome } = race(clock, [{ closesAfter: 20 }, 50, 50]);
+    sockets[0]?.open();
+    await clock.advanceTo(10_000);
+    expect(outcome()).toEqual({ winner: "a", at: 20 + 150 });
+    sockets[1]?.open();
+    await settled();
+    expect(sockets[1]?.closed).toBe(true);
   });
 
   test("equal round trips keep the earlier socket", async () => {

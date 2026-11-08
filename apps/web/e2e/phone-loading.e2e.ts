@@ -29,7 +29,7 @@ test("while the first list is unanswered the phone says it is loading, and the e
 
   const loading = page.getByRole("status", { name: "Loading agents" });
   await expect(loading).toBeVisible({ timeout: 20_000 });
-  // The quiet busy state draws itself once the wait outlasts its delay, so this is the state on screen, not a flash.
+  // The quiet busy state says what it waits for at once, so this is the state on screen, not a flash.
   await expect(loading).toHaveCSS("opacity", "1");
   await expect(page.getByText("No terminals yet")).toHaveCount(0);
 

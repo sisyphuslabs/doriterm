@@ -10,5 +10,9 @@ const subscribe = (listener: () => void): (() => void) => {
 };
 
 export function useOnline(): boolean {
-  return useSyncExternalStore(subscribe, () => navigator.onLine);
+  return useSyncExternalStore(
+    subscribe,
+    () => navigator.onLine,
+    () => true,
+  );
 }

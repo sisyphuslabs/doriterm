@@ -1,6 +1,12 @@
 import { requestControl } from "../control.ts";
 import { PUSH_WITHIN_MS } from "../mesh/commands.ts";
-import { type MemberRef, parseLeaveReply, parseRenameReply, parseRevokeReply } from "../mesh/command-replies.ts";
+import {
+  type MemberRef,
+  parseLeavePreview,
+  parseLeaveReply,
+  parseRenameReply,
+  parseRevokeReply,
+} from "../mesh/command-replies.ts";
 import { printable } from "./devices.ts";
 
 // `mesh revoke`, `mesh rename` and `mesh leave`: each asks the running host on the state dir, which signs (design
@@ -36,12 +42,15 @@ export async function revokeMember(
   if (shown === null) return 1;
   const preview = parseRevokeReply(shown);
   line(context, `revoke ${refs(preview.subjects)} (${preview.reason})`);
+  if (preview.clients.length > 0) {
+    line(context, `these browsers and phones leave the mesh with ${preview.target.name}: ${refs(preview.clients)}`);
+  }
   for (const text of preview.lines) line(context, text);
   if (preview.needsYes && !yes && !(await context.confirm("write this revoke? [y/N] "))) {
     line(context, "not written: run it again with --yes to write this revoke");
     return 1;
   }
-  const expect = preview.subjects.map((subject) => subject.hostId);
+  const expect = [...preview.subjects, ...preview.clients].map((subject) => subject.hostId);
   const answer = await ask(context, { ...request, yes: true, preview: false, expect });
   if (answer === null) return 1;
   const reply = parseRevokeReply(answer);
@@ -66,8 +75,22 @@ export async function renameMember(context: ChangeContext, member: string, name:
   return 0;
 }
 
-export async function leaveMesh(context: ChangeContext): Promise<number> {
-  const answer = await ask(context, { op: "mesh-leave" });
+export async function leaveMesh(context: ChangeContext, yes = false): Promise<number> {
+  const shown = await ask(context, { op: "mesh-leave", preview: true });
+  if (shown === null) return 1;
+  const preview = parseLeavePreview(shown);
+  if (preview.clients.length > 0) {
+    line(context, `these browsers and phones leave the mesh with this machine: ${refs(preview.clients)}`);
+    if (!yes && !(await context.confirm("leave this mesh? [y/N] "))) {
+      line(context, "not left");
+      return 1;
+    }
+  }
+  const answer = await ask(context, {
+    op: "mesh-leave",
+    preview: false,
+    expect: preview.clients.map((client) => client.hostId),
+  });
   if (answer === null) return 1;
   const reply = parseLeaveReply(answer);
   const names = (members: typeof reply.members) => members.map((ref) => ref.name).join(", ");

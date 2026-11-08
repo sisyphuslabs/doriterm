@@ -10,6 +10,8 @@ import { type JoinerContext, runJoiner } from "../mesh/join.ts";
 import { INVITER_EXPECTS, JOINER_EXPECTS, MeshLines } from "../mesh/lines.ts";
 import { PendingJoins } from "../mesh/pending-joins.ts";
 import { MeshStore } from "../state/mesh.ts";
+import { DeviceStore } from "../state/devices.ts";
+import { JoinResumes } from "../mesh/join-resumes.ts";
 import { cardFor, type Machine, machine, signPubOf } from "./mesh-history.ts";
 
 /** One side of a join: a machine with its own state dir and mesh store, and what it logged. */
@@ -47,6 +49,10 @@ export function inviteDeps(
     identity: inviter.m.identity,
     mesh: inviter.mesh,
     pending,
+    resumes: new JoinResumes(),
+    devices: new DeviceStore(inviter.dir),
+    handshakeHash: new Uint8Array(32),
+    spend: () => true,
     own,
     expiresAt,
     floor: () => undefined,
@@ -64,7 +70,18 @@ export function joinerContext(
   const dialed = { hostId: inviter.m.identity.hostId, noisePub: dialedNoise };
   const deadline = Date.now() + 60_000;
   const invite = meshInviteOf({ kind: "link", mesh: true });
-  return { invite, identity: joiner.m.identity, mesh: joiner.mesh, own: ownOf(joiner), dialed, deadline, log };
+  return {
+    invite,
+    identity: joiner.m.identity,
+    mesh: joiner.mesh,
+    own: ownOf(joiner),
+    dialed,
+    deadline,
+    log,
+    handshakeHash: new Uint8Array(32),
+    yes: true,
+    confirm: async () => true,
+  };
 }
 
 export interface JoinRun {

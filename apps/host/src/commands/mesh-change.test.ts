@@ -9,6 +9,7 @@ interface Run {
   readonly code: number;
   readonly text: string;
   readonly asked: readonly ControlRequest[];
+  readonly shownBeforeQuestion: readonly string[];
 }
 
 /** Runs `mesh <args>` against a control socket answering each request with the next of `answers`, then null. */
@@ -20,10 +21,14 @@ async function run(args: readonly string[], answers: readonly unknown[], termina
     return answers[asked.length - 1] ?? null;
   });
   let text = "";
+  const shownBeforeQuestion: string[] = [];
   try {
-    const confirm = () => Promise.resolve(terminal);
+    const confirm = () => {
+      shownBeforeQuestion.push(text);
+      return Promise.resolve(terminal);
+    };
     const code = await meshCommand([...args, "--state-dir", dir], (chunk) => void (text += chunk), confirm);
-    return { code, text, asked };
+    return { code, text, asked, shownBeforeQuestion };
   } finally {
     control.stop();
     rmSync(dir, { recursive: true, force: true });
@@ -45,6 +50,18 @@ const ask = { op: "mesh-revoke", member: "a", compromised: true } as const;
 const write = { ...ask, yes: true, preview: false, expect: [a.hostId, d.hostId] };
 
 describe("doriface-host mesh revoke", () => {
+  test.each([false, true])("dependent browsers are printed before a revoke with yes=%s", async (yes) => {
+    const preview = { ...revoke(false), clients: [f] };
+    const out = await run(
+      ["revoke", "--compromised", "a", ...(yes ? ["--yes"] : [])],
+      [preview, { ...preview, written: true }],
+      true,
+    );
+    expect(out.text).toContain(`these browsers and phones leave the mesh with a: f (${f.hostId})`);
+    expect(out.shownBeforeQuestion).toHaveLength(yes ? 0 : 1);
+    if (!yes) expect(out.shownBeforeQuestion[0]).toContain(`f (${f.hostId})`);
+    expect(out.asked[1]).toMatchObject({ expect: [a.hostId, d.hostId, f.hostId] });
+  });
   test("previews first, prints each subject's name and hostId, then writes exactly the previewed subjects", async () => {
     const out = await run(["revoke", "--compromised", "a", "--yes"], [revoke(false), revoke(true)]);
     expect(out.asked).toEqual([{ ...ask, yes: true, preview: true }, write]);
@@ -90,10 +107,31 @@ describe("doriface-host mesh rename", () => {
 });
 
 describe("doriface-host mesh leave", () => {
+  test("declining leave preserves the machine and names its dependent browsers first", async () => {
+    const out = await run(["leave"], [{ clients: [f] }]);
+    expect(out.code).toBe(1);
+    expect(out.asked).toEqual([{ op: "mesh-leave", preview: true }]);
+    expect(out.shownBeforeQuestion[0]).toContain(`f (${f.hostId})`);
+  });
+
+  test("--yes leaves after printing its browsers without asking", async () => {
+    const reply = { signed: true, members: [], confirmed: [], revokeCommand: null, machinesKept: null };
+    const out = await run(["leave", "--yes"], [{ clients: [f] }, reply]);
+    expect(out.code).toBe(0);
+    expect(out.text).toContain(`f (${f.hostId})`);
+    expect(out.shownBeforeQuestion).toEqual([]);
+    expect(out.asked).toEqual([
+      { op: "mesh-leave", preview: true },
+      { op: "mesh-leave", preview: false, expect: [f.hostId] },
+    ]);
+  });
   test("sends mesh-leave and exits 0 once it left", async () => {
     const reply = { signed: true, members: [f, d], confirmed: [f], revokeCommand: null, machinesKept: null };
-    const out = await run(["leave"], [reply]);
-    expect(out.asked).toEqual([{ op: "mesh-leave" }]);
+    const out = await run(["leave"], [{ clients: [] }, reply]);
+    expect(out.asked).toEqual([
+      { op: "mesh-leave", preview: true },
+      { op: "mesh-leave", preview: false, expect: [] },
+    ]);
     expect(out.code).toBe(0);
   });
 
@@ -105,7 +143,7 @@ describe("doriface-host mesh leave", () => {
       revokeCommand: "doriface-host mesh revoke a",
       machinesKept: null,
     };
-    expect((await run(["leave"], [reply])).text).toContain("doriface-host mesh revoke a");
+    expect((await run(["leave"], [{ clients: [] }, reply])).text).toContain("doriface-host mesh revoke a");
   });
 
   test("a mesh machine it could not remove exits 1, after leaving", async () => {
@@ -116,7 +154,7 @@ describe("doriface-host mesh leave", () => {
       revokeCommand: null,
       machinesKept: 'Error: "b" is still in herdr',
     };
-    const out = await run(["leave"], [reply]);
+    const out = await run(["leave"], [{ clients: [] }, reply]);
     expect(out.code).toBe(1);
     expect(out.text).toContain('"b"');
   });

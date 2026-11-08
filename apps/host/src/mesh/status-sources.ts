@@ -71,6 +71,8 @@ export interface PendingJoinFact {
   readonly expiresAt: Date;
   /** What it joins as; the approval copy says what that grants. */
   readonly kind: "machine" | "client";
+  readonly code?: string;
+  readonly joinerConfirmed?: boolean;
 }
 
 export interface BudgetFacts {
@@ -84,6 +86,7 @@ export interface WitnessFacts {
 }
 
 export interface MeshSources {
+  readonly clientLastSessionAt?: ReadonlyMap<string, number>;
   readonly view: ViewFacts;
   /**
    * The revoke record behind every key in `view.revoked`. Not part of View: PR 2 exports it beside View from the

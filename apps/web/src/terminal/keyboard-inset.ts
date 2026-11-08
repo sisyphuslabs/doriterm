@@ -105,13 +105,20 @@ export function useSoftKeyboard(scope: HTMLElement | null): { readonly up: boole
     const follow = (event: FocusEvent): void =>
       setTyping(typingIn(scope, event.type === "focusout" ? event.relatedTarget : event.target));
     // A tap in the terminal, or its input taking the focus from one, asks for the keyboard; a focus without a tap does
-    // not, as no browser raises a keyboard for it.
-    const ask = (): void => layoutKeyboard.ask(performance.now());
+    // not, as no browser raises a keyboard for it. A field that carries `inputmode="none"` asks for none, as on a phone
+    // whose keys raise the keyboard (#1375): the shrink a split screen makes must not read as one.
+    const asksForKeyboard = (): boolean => {
+      const active = document.activeElement;
+      return active instanceof HTMLElement && active.inputMode !== "none" && typingIn(scope);
+    };
+    const ask = (): void => {
+      if (asksForKeyboard()) layoutKeyboard.ask(performance.now());
+    };
     scope?.addEventListener("pointerdown", ask, { signal: abort.signal });
     document.addEventListener(
       "focusin",
       () => {
-        if (typingIn(scope) && navigator.userActivation?.isActive !== false) ask();
+        if (navigator.userActivation?.isActive !== false) ask();
       },
       { signal: abort.signal },
     );

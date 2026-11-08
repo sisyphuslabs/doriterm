@@ -55,7 +55,7 @@ async function endHolding(phone: Page, link: HcSocket, name: string, ...methods:
     .getByRole("banner")
     .getByRole("button", { name: /^Session actions for / })
     .click();
-  await phone.getByRole("menuitem", { name: "End session…" }).click();
+  await phone.getByRole("button", { name: "End session…", exact: true }).click();
   const deliver = link.hold(...methods);
   await phone
     .getByRole("dialog", { name: `End ${name}?` })
@@ -125,7 +125,7 @@ test("a session renamed and ended on a phone is removed even when the page close
   const name = `end-at-once-${address}`;
   const actions = page.getByRole("banner").getByRole("button", { name: /^Session actions for / });
   await actions.click();
-  await page.getByRole("menuitem", { name: "Rename…" }).click();
+  await page.getByRole("button", { name: "Rename…", exact: true }).click();
   await page
     .getByRole("dialog", { name: /^Rename / })
     .getByRole("textbox", { name: "Name" })
@@ -133,7 +133,7 @@ test("a session renamed and ended on a phone is removed even when the page close
   await page.keyboard.press("Enter");
   await expect(screenOf(page, name)).toBeVisible();
   await actions.click();
-  await page.getByRole("menuitem", { name: "End session…" }).click();
+  await page.getByRole("button", { name: "End session…", exact: true }).click();
   // The kill's answer has not come back when the page closes, as over a slow relay: the answer is held, never released.
   link.holdFromHost('"state":"finished"');
   await page

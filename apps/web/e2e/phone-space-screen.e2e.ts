@@ -143,7 +143,14 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         const link = await routeHcSocket(cold);
         const release = link.hold("terminal.list", "events.subscribe");
         await cold.goto(url);
-        await expect.poll(() => link.sent().some((frame) => frame.includes('"method":"terminal.list"'))).toBe(true);
+        // Both first requests held before either fails: a feed that subscribed in the meantime would load the list (#1491).
+        await expect
+          .poll(() =>
+            ["terminal.list", "events.subscribe"].every((method) =>
+              link.sent().some((frame) => frame.includes(`"method":"${method}"`)),
+            ),
+          )
+          .toBe(true);
         release(true);
         const notice = cold.getByRole("alert").filter({ hasText: "Could not load the agents" });
         await expect(notice).toBeVisible({ timeout: 15_000 });

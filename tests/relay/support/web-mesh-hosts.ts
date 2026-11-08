@@ -5,8 +5,10 @@
 // Prints `READY {"relayUrl": ..., "machine": ..., "bHostId": ...}` (a's relay, b's machine name on a's core, b's own
 // hostId), answers each stdin line with one line: `PAIR` with `LINK <fragment>`, a fresh device pairing link to a; `MESH`
 // with `LINK <fragment>`, a fresh mesh invite from a (browser-join.e2e.ts joins the mesh with it); `STATUS` with
-// `MEMBERS {"meshId": ..., "a": [...], "b": [...]}`, the members each machine's `mesh status --json` lists. It stops
-// every process it started on SIGTERM or SIGINT.
+// `MEMBERS {"meshId": ..., "a": [...], "b": [...]}`, the members each machine's `mesh status --json` lists. `STOP`
+// stops b's host process and answers `STOPPED` once a's core lists b as not connected; `START` starts it again on the
+// same state (its shell lives on in b's core), dials it from a at once instead of at hc's next redial, and answers
+// `STARTED` once a lists it connected. It stops every process it started on SIGTERM or SIGINT.
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -39,6 +41,8 @@ process.once("SIGINT", stop);
 const a = mesh.host("a");
 const b = mesh.host("b");
 const bCore = (await mesh.core("b")).hello.core.id;
+const stateOfB = async (): Promise<string | undefined> =>
+  (await (await mesh.core("a")).call("machine.list")).machines.find((machine) => machine.id === bCore)?.state;
 const machineOfB = async (): Promise<string | undefined> =>
   (await (await mesh.core("a")).call("machine.list")).machines.find(
     (machine) => machine.state === "connected" && machine.id === bCore,
@@ -83,17 +87,40 @@ const membersOfBoth = async (): Promise<{
   readonly b: readonly Member[];
 }> => ({ meshId: meshIdOf(a), a: (await statusOf(a)).members, b: (await statusOf(b)).members });
 
-const answers: Readonly<Record<string, () => Promise<readonly [string, string]>>> = {
-  PAIR: async () => ["LINK", await pairingFragment()],
-  MESH: async () => ["LINK", await meshFragment()],
-  STATUS: async () => ["MEMBERS", JSON.stringify(await membersOfBoth())],
+const stopB = async (): Promise<string> => {
+  await b.stop();
+  await mesh.until("b not connected on a's core", async () => (await stateOfB()) !== "connected", 60_000);
+  return "STOPPED";
+};
+const startB = async (): Promise<string> => {
+  await b.start();
+  const aCore = await mesh.core("a");
+  await mesh.until(
+    "b connected again on a's core",
+    async () => {
+      if ((await stateOfB()) === "connected") return true;
+      // A refused dial is fine: hc records it, and the next turn of this wait dials again.
+      await aCore.call("machine.connect", { machine }).catch(() => undefined);
+      return (await stateOfB()) === "connected";
+    },
+    60_000,
+  );
+  return "STARTED";
+};
+
+/** Each ask's one answer line. */
+const answers: Readonly<Record<string, () => Promise<string>>> = {
+  PAIR: async () => `LINK ${await pairingFragment()}`,
+  MESH: async () => `LINK ${await meshFragment()}`,
+  STATUS: async () => `MEMBERS ${JSON.stringify(await membersOfBoth())}`,
+  STOP: stopB,
+  START: startB,
 };
 
 async function answer(ask: string): Promise<void> {
   const reply = answers[ask];
   if (reply === undefined) throw new Error(`web-mesh-hosts: unknown line ${ask}`);
-  const [prefix, body] = await reply();
-  process.stdout.write(`${prefix} ${body}\n`);
+  process.stdout.write(`${await reply()}\n`);
 }
 
 let pending = Promise.resolve();

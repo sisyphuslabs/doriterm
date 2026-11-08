@@ -87,6 +87,9 @@ test("the list step waits for the terminal this device opened, not the host's ow
     // This device starts a terminal and ends it; the host's own shell, `existing`, stays live.
     await guide(page).getByRole("button", { name: "Start a terminal" }).click();
     await expect(page.locator("[data-terminal]")).toContainText("$", { timeout: 30_000 });
+    // A phone's terminal takes no focus of its own (#1375): a press gives it the focus, with no soft keyboard, and the
+    // typed keys follow it.
+    await page.locator("[data-terminal]").click();
     await page.keyboard.type("exit");
     await page.keyboard.press("Enter");
     await expect(page.getByRole("button", { name: "Back to agents" })).toHaveCount(0, { timeout: 30_000 });

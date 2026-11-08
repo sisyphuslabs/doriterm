@@ -1,7 +1,9 @@
 import { HcConnection } from "@doriface/client";
-import { HcRpcError, type JsonValue, MESH_OFFER_DOC, parseMeshOfferDoc } from "@doriface/protocol";
+import { HcRpcError, type JsonValue, MESH_APPROVAL_DOC, MESH_OFFER_DOC, parseMeshOfferDoc } from "@doriface/protocol";
 import { type Clock, monotonicClock } from "./clock.ts";
 import { type ChildByteLink, type HcTarget, spawnHcLink } from "./hc-machines.ts";
+import { answerMeshApproval, type MeshDecision } from "./approval-doc.ts";
+import { docStoreOf } from "./status-doc.ts";
 
 export const RETRY_MS = 5_000;
 
@@ -64,9 +66,10 @@ export function serveMeshOffers(
   onAdmitted: (
     listener: (join: { readonly name: string; readonly hostId: string; readonly expiresAt: number }) => void,
   ) => () => void,
-  open: () => Promise<MeshOffer>,
+  open: (client: boolean) => Promise<MeshOffer>,
   openLink: (core: HcTarget) => OfferLink = spawnHcLink,
   time: MeshOfferTime = systemTime,
+  decide?: MeshDecision,
 ): MeshOfferService {
   const first = Promise.withResolvers<void>();
   let stopped = false;
@@ -140,11 +143,19 @@ export function serveMeshOffers(
     await dropIfExpired(connection, time.wallNow());
     const doc = await connection.call("doc.get", { name: MESH_OFFER_DOC });
     const current = parseMeshOfferDoc(doc.value);
-    if (current === undefined || Object.keys(current).length > 1 || answering === current.request) return;
+    if (
+      current === undefined ||
+      "link" in current ||
+      "error" in current ||
+      "expired" in current ||
+      "joined" in current ||
+      answering === current.request
+    )
+      return;
     const { request } = current;
     answering = request;
     try {
-      const offer = await open();
+      const offer = await open(current.client === true);
       // Followed before the link is out: a machine can join the moment a client reads it.
       const unfollow = follow(request, offer.expiresAt);
       if (await write(connection, { request, link: offer.link, expiresAt: offer.expiresAt }, doc.version)) {
@@ -181,8 +192,15 @@ export function serveMeshOffers(
       live = connection;
       const handle = (): void =>
         void answer(connection).catch((error: unknown) => log(`mesh offer: cannot answer a request: ${String(error)}`));
+      const approve = (): void => {
+        if (decide !== undefined)
+          void answerMeshApproval(docStoreOf(connection), decide).catch((error: unknown) =>
+            log(`mesh: cannot answer an approval: ${String(error)}`),
+          );
+      };
       feed.onEvent((event) => {
         if (event.type === "doc" && event.machine === undefined && event.data.name === MESH_OFFER_DOC) handle();
+        if (event.type === "doc" && event.machine === undefined && event.data.name === MESH_APPROVAL_DOC) approve();
       });
       feed.onClose(() => {
         if (live === connection) live = undefined;
@@ -192,6 +210,7 @@ export function serveMeshOffers(
       first.resolve();
       // A request written while the host was away is answered now.
       handle();
+      approve();
     } catch (error) {
       child.close();
       if (stopped) return;

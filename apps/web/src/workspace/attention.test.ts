@@ -5,6 +5,7 @@ import {
   marksInView,
   nextNeedingYou,
   someoneElseNeedsYou,
+  waitingBesides,
   panesInView,
   type Session,
   withAttention,
@@ -188,6 +189,23 @@ describe("someoneElseNeedsYou", () => {
     expect(someoneElseNeedsYou(one, "a")).toBe(true);
     expect(someoneElseNeedsYou(one, null)).toBe(true);
     expect(someoneElseNeedsYou([session({ address: "a" })], null)).toBe(false);
+  });
+});
+
+describe("waitingBesides", () => {
+  const blocked = { status: { state: "blocked" } } as const;
+
+  test("counts the live agents that need you other than the one in view, never an offline or ended one (#1467)", () => {
+    const terminals = [
+      session({ address: "a", ...blocked }),
+      session({ address: "b", ...blocked }),
+      session({ address: "c", ...blocked, offline: true }),
+      session({ address: "d", ...blocked, state: "finished" }),
+      session({ address: "e", status: { state: "working" } }),
+    ];
+    expect(waitingBesides(terminals, "a")).toBe(1);
+    expect(waitingBesides(terminals, "e")).toBe(2);
+    expect(waitingBesides([], "a")).toBe(0);
   });
 });
 

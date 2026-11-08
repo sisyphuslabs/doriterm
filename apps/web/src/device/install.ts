@@ -32,10 +32,10 @@ function isPrompt(event: Event): event is Event & InstallPrompt {
   return typeof Reflect.get(event, "prompt") === "function";
 }
 
-const standalone = (): boolean =>
+export const standalone = (): boolean =>
   matchMedia("(display-mode: standalone)").matches || Reflect.get(navigator, "standalone") === true;
 
-const isIos = (): boolean =>
+export const isIos = (): boolean =>
   /iPad|iPhone|iPod/.test(navigator.userAgent) ||
   (navigator.userAgent.includes("Macintosh") && navigator.maxTouchPoints > 1);
 

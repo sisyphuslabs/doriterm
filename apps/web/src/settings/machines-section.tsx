@@ -11,6 +11,10 @@ import { RetryButton } from "../workspace/retry-button.tsx";
 import { formatAge } from "../workspace/model.ts";
 import { useMachines } from "../workspace/use-machines.ts";
 import { useNow } from "../workspace/use-now.ts";
+import { desktopBridge } from "../desktop/bridge.ts";
+import { useConnectionSettings } from "../connection/store.ts";
+import { useBrowserMembership } from "../mesh/membership-state.ts";
+import { MembershipMachines } from "./membership-device.tsx";
 
 const NO_TERMINALS: readonly Terminal[] = [];
 
@@ -67,6 +71,8 @@ function AddedMachine(props: { view: MachineView; now: number; onRetry: () => Pr
 }
 
 function MachineRows({ connection }: { readonly connection: HcConnection }) {
+  const settings = useConnectionSettings();
+  const ownComputer = desktopBridge() !== null && settings.mode === "loopback";
   const { views, retry, listError, entries } = useMachines(connection, NO_TERMINALS);
   const now = useNow();
   const [adding, setAdding] = useState(false);
@@ -77,7 +83,7 @@ function MachineRows({ connection }: { readonly connection: HcConnection }) {
           <SettingRow
             className="border-b-0"
             title={title(<Monitor aria-hidden />, connection.hello.core.name)}
-            description="This machine"
+            description={ownComputer ? "This machine" : "Online · Relay"}
             control={null}
           />
         </li>
@@ -100,6 +106,8 @@ function MachineRows({ connection }: { readonly connection: HcConnection }) {
 /** Every machine this host reaches, this one first: its state, and when it was last seen and why when it is offline. */
 export function MachinesSection() {
   const state = useConnection();
+  const mesh = useBrowserMembership();
+  if (mesh.phase !== "empty") return <MembershipMachines />;
   if (state.phase !== "open") {
     return (
       <Notice tone="info" title="Not connected">

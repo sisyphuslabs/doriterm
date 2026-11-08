@@ -84,7 +84,14 @@ export class SubscriptionStore {
 
   /** Drops every subscription of a device that is no longer paired (a revoke); the loopback owner stays. */
   keepOwners(paired: ReadonlySet<string>): void {
-    this.#update((all) => all.filter((entry) => entry.owner === LOOPBACK_OWNER || paired.has(entry.owner)));
+    withStateLock(this.#dir, () => this.keepOwnersHeld(paired));
+  }
+
+  /** The mesh index rebuild already owns the state lock. */
+  keepOwnersHeld(owners: ReadonlySet<string>): void {
+    const before = this.list();
+    const after = before.filter((entry) => entry.owner === LOOPBACK_OWNER || owners.has(entry.owner));
+    if (after.length !== before.length) writePrivateJson(this.#path, { version: 1, subscriptions: after });
   }
 
   #update(change: (all: readonly StoredSubscription[]) => readonly StoredSubscription[]): void {

@@ -1,5 +1,4 @@
 import { devices, type Page } from "@playwright/test";
-import { endAgent, startAgent } from "./agents.ts";
 import { expect, laidOutBox, test } from "./fixtures.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
@@ -15,36 +14,20 @@ const TEXT_SPACING = `
 const header = (page: Page) => page.getByRole("banner");
 const ACTION = "Header action";
 
-/** Two-digit counts in every state, the widest the counts get in practice: 11 done, 11 working, 15 idle at least. */
-const LARGE = { done: 11, working: 11, idle: 15 } as const;
-const started: string[] = [];
-test.beforeAll(() => {
-  for (const [state, count] of Object.entries(LARGE)) {
-    for (let index = 0; index < count; index += 1)
-      started.push(startAgent("host", `wide-${state}-${index}`, state, "wide"));
-  }
-});
-test.afterAll(() => {
-  for (const address of started.splice(0)) endAgent("host", address);
-});
-
 async function openPhoneTerminal(page: Page): Promise<void> {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
   await header(page).getByRole("button", { name: "New tab" }).click();
   await expect(page.locator("[data-terminal]")).toContainText("$", { timeout: 15_000 });
   await expect(header(page).getByRole("button", { name: "Back to agents" })).toBeVisible();
-  await expect(header(page).locator("[data-agent-counts]")).toHaveText(/^\d{2,} done, \d{2,} working, \d{2,} idle$/, {
-    timeout: 15_000,
-  });
 }
 
-/** Fills the header's action slot with one more 44 px header button, as the mic (#227) does: a copy of the back button. */
+/** Fills the header's action slot with one more 44 px header button, as the mic (#227) does: a copy of the session menu's. */
 async function giveAction(page: Page): Promise<void> {
   await header(page)
     .locator("[data-header-action]")
     .evaluate((slot, name) => {
-      const model = slot.closest("header")?.querySelector('button[aria-label="Back to agents"]');
+      const model = slot.closest("header")?.querySelector('button[aria-label^="Session actions for "]');
       const action = model?.cloneNode(true);
       if (!(action instanceof HTMLElement)) throw new Error("no header button to copy");
       action.setAttribute("aria-label", name);
@@ -78,18 +61,13 @@ async function expectHeaderHolds(page: Page, width: number, withAction: boolean)
   });
   expect(spills).toEqual([]);
 
-  // Every text row and the counts end inside the header and the screen; the counts are never cut. (The tab's place, n/m,
-  // is the bottom tabs bar's since #466.)
-  const parts = [bar.getByRole("heading", { level: 1 }), bar.locator("p"), bar.locator("[data-agent-counts]")];
+  // Every text row ends inside the header and the screen. (The tab's place, n/m, is the bottom tabs bar's since #466.)
+  const parts = [bar.getByRole("heading", { level: 1 }), bar.locator("p")];
   const placed = await Promise.all(parts.map(laidOutBox));
   for (const part of placed) {
     expect(part.y + part.height).toBeLessThanOrEqual(bottom + 0.5);
     expect(part.x + part.width).toBeLessThanOrEqual(width + 0.5);
   }
-  const cut = await Promise.all(
-    parts.slice(2).map((part) => part.evaluate((el) => el.scrollWidth > el.clientWidth + 1)),
-  );
-  expect(cut).toEqual([false]);
 
   // The terminal begins below the header, never under it. It can hold its prompt text before it lays out its first
   // row, so each box is read once laid out.
