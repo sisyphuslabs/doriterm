@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Command } from "./command-palette.tsx";
-import { shownStatus, statusCounts, withStatus } from "./palette-status.ts";
+import { agentCount, shownStatus, statusCounts, withStatus } from "./palette-status.ts";
 import type { AgentStatus } from "./status.tsx";
 
 const agent = (id: string, status: AgentStatus): Command => ({ id, label: id, group: "Agents", status });
@@ -46,5 +46,19 @@ describe("the palette's state filter (#1454)", () => {
     expect(shownStatus(counts, "done")).toBeNull();
     expect(shownStatus([], "idle")).toBeNull();
     expect(shownStatus(counts, null)).toBeNull();
+  });
+
+  test("All counts every agent, the states without a segment and an offline machine's included", () => {
+    const many = [
+      agent("a", "blocked"),
+      agent("b", "working"),
+      agent("c", "done"),
+      agent("d", "idle"),
+      agent("e", "unknown"),
+      action("x"),
+    ];
+    expect(statusCounts(many)).toHaveLength(3);
+    expect(agentCount(many)).toBe(5);
+    expect(withStatus(many, null).filter((command) => command.status !== undefined)).toHaveLength(agentCount(many));
   });
 });
