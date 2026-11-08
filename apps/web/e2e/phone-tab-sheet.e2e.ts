@@ -1,6 +1,6 @@
 import { devices, type Page } from "@playwright/test";
 import { agentRow } from "./agents.ts";
-import { expect, opened, test } from "./fixtures.ts";
+import { expect, laidOutBox, opened, test } from "./fixtures.ts";
 import { seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
@@ -47,6 +47,15 @@ test("the Spaces sheet closes a tab as the strip's close does and starts a new t
   await switcher(page).click();
   await opened(sheet(page));
   const section = sheet(page).getByRole("region", { name: space });
+  // Both new controls take a 44 px tap, as every phone target does (#1030).
+  for (const control of [
+    section.getByRole("button", { name: "Close t2", exact: true }),
+    section.getByRole("button", { name: "New tab", exact: true }),
+  ]) {
+    // oxlint-disable-next-line no-await-in-loop -- measured at rest, one after the other
+    const box = await laidOutBox(control);
+    expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(44);
+  }
   // The same close as the desktop strip's: an idle shell asks nothing (confirm-close-surface), so the tab just goes.
   await section.getByRole("button", { name: "Close t2", exact: true }).click();
   // The sheet stays open, so several tabs can go in a row; the closed one leaves it.
