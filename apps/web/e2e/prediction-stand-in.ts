@@ -3,7 +3,8 @@ import type { Page } from "@playwright/test";
 /**
  * Call before page.goto: a stand-in predictor behind the overlay's test hook (`window.__dorifacePredict`, removed with
  * the real predictor's wiring), shaped as the overlay's contract asks of the real one (#1430):
- * - `visible()` is the unconfirmed tail in typing order; a cell leaves it at the write that shows its text, synchronously
+ * - `visible()` is the unconfirmed tail in typing order; a cell leaves it at the write that echoes it (the real cursor
+ *   passes it with its text in place), synchronously
  *   (mosh's Correct, terminaloverlay.cc:546-549), and the overlay decides when that removal is painted;
  * - every change is announced synchronously.
  * Cells come from `__predictor.add`, or, once `__predictor.typing(true)`, from each printable key and each committed
@@ -40,13 +41,20 @@ export async function installPredictor(page: Page): Promise<void> {
         changed();
         return cell;
       };
+      // A cell is confirmed only once the real cursor has passed it with its text in place, in typing order. A cell
+      // that already held the text before the echo (a blank cell holds " ") is not an echo: confirming it early would
+      // place the next key at the lagging real cursor, a column left of where it belongs (#1434 CI, phone).
       screen.onWrite?.(() => {
-        const before = cells.length;
-        for (let index = cells.length - 1; index >= 0; index -= 1) {
-          const cell = cells[index];
-          if (cell !== undefined && screen.cell(cell.row, cell.col) === cell.text) cells.splice(index, 1);
+        const cursor = screen.cursor();
+        let confirmed = 0;
+        for (const cell of cells) {
+          const passed = cursor.row > cell.row || (cursor.row === cell.row && cursor.col >= cell.col + cell.width);
+          if (!passed || screen.cell(cell.row, cell.col) !== cell.text) break;
+          confirmed += 1;
         }
-        if (cells.length !== before) changed();
+        if (confirmed === 0) return;
+        cells.splice(0, confirmed);
+        changed();
       });
       document.addEventListener(
         "keydown",

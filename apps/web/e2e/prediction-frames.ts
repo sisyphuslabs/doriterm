@@ -2,7 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 
 /**
  * Records what each frame paints on one row from `col`, `length` cells: an overlay cell where the prediction layer draws
- * one, else the grid row's own text. Sampled in a ResizeObserver callback, which runs after every animation-frame
+ * one, else the grid row's own text, plus where each overlay cell sits. Sampled in a ResizeObserver callback, which runs after every animation-frame
  * callback of the frame (the pacer's write, the renderer, the overlay) and before the paint, so a sample is the frame as
  * painted, not a midpoint of it. Narrow text only: the grid row's text is read one character per cell.
  */
@@ -12,7 +12,7 @@ export async function startRowSampler(terminal: Locator, row: number, col: numbe
       const probe = document.createElement("div");
       probe.style.cssText = "position:fixed;left:-10px;top:-10px;height:1px;pointer-events:none";
       document.body.appendChild(probe);
-      const samples: string[] = [];
+      const samples: { row: string; cells: { text: string; col: number }[] }[] = [];
       let frame = 0;
       let on = true;
       const sample = (): void => {
@@ -20,13 +20,15 @@ export async function startRowSampler(terminal: Locator, row: number, col: numbe
         const first = element.querySelector(".term-grid .term-row:not(.term-scrollback-row)")?.getBoundingClientRect();
         const rows = element.querySelectorAll(".term-grid .term-row:not(.term-scrollback-row)");
         const chars = [...(rows[r]?.textContent ?? "").padEnd(c + n)].slice(c, c + n);
+        const cells: { text: string; col: number }[] = [];
         for (const span of element.querySelectorAll(".term-prediction-cell")) {
           const box = span.getBoundingClientRect();
           if (first === undefined || Math.round((box.top - first.top) / first.height) !== r) continue;
           const at = Math.round((box.left - first.left) / cell) - c;
+          cells.push({ text: span.textContent ?? "", col: at });
           if (at >= 0 && at < n) chars[at] = span.textContent ?? "";
         }
-        samples.push(chars.join(""));
+        samples.push({ row: chars.join(""), cells });
       };
       new ResizeObserver(() => {
         if (on) sample();
@@ -47,9 +49,15 @@ export async function startRowSampler(terminal: Locator, row: number, col: numbe
   );
 }
 
-/** Stops the sampler and returns every frame's painted row text, in order. */
+/** One frame as painted: the row's text with the overlay over it, and the overlay's cells by column from `col`. */
+export interface RowSample {
+  readonly row: string;
+  readonly cells: readonly { readonly text: string; readonly col: number }[];
+}
+
+/** Stops the sampler and returns every frame, in order. */
 export const stopRowSampler = (page: Page) =>
-  page.evaluate(() => (Reflect.get(window, "__rowSamples") as () => string[])());
+  page.evaluate(() => (Reflect.get(window, "__rowSamples") as () => RowSample[])());
 
 /** How many leading characters of `typed` a painted row shows. */
 export const shownPrefix = (painted: string, typed: string): number => {

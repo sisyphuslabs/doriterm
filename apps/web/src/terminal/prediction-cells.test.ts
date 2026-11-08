@@ -96,6 +96,11 @@ describe("drawnCells validates predictions against the terminal's own cells and 
     expect(drawnCells([at(0, 0, flag)], shown)).toEqual([]);
   });
 
+  test("a predicted space is drawn over a blank cell: a blank does not show that the space was echoed", () => {
+    expect(drawnCells([at(3, 7, " ")], screen({ row: 3, col: 7 }, { "3,7": { text: " " } }))).toEqual([at(3, 7, " ")]);
+    expect(drawnCells([at(3, 7, " ")], screen({ row: 3, col: 7 }))).toEqual([at(3, 7, " ")]);
+  });
+
   test("a different character under a prediction does not confirm it", () => {
     const other = screen({ row: 3, col: 8 }, { "3,7": { text: "x" } });
     expect(drawnCells([at(3, 7, "l")], other)).toEqual([at(3, 7, "l")]);
