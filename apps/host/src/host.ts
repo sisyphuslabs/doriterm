@@ -90,6 +90,7 @@ async function serve(
           stateDir,
           hostId: e2ee.identity.hostId,
           devices: e2ee.devices,
+          mesh: e2ee.mesh,
           hc: { hc: options.hc, session: options.session, env: options.env },
           extraOrigins: options.pushTestOrigins,
           log: options.log,
@@ -125,9 +126,9 @@ async function serve(
   let meshDoc: MeshStatusPublisher | undefined;
   let offers: MeshOfferService | undefined;
   // A one-line Add a machine (#668): a client asks for a mesh offer through a core document, and the host answers it.
-  const meshOffer = async () => {
+  const meshOffer = async (client: boolean) => {
     if (e2ee === undefined) throw new Error("this host keeps no state, so it cannot open a mesh offer");
-    const offer = await e2ee.hostMesh.pair(true);
+    const offer = await e2ee.hostMesh.pair(!client);
     const keys = e2ee.identity;
     const link = pairingArtifact(
       {
@@ -183,6 +184,7 @@ async function serve(
         : new DeviceSurface({
             devices: e2ee.devices,
             changed: async () => {
+              e2ee.hostMesh.sweepRoster();
               await e2ee.sessions.closeRevoked();
               push?.prune();
             },
@@ -210,7 +212,15 @@ async function serve(
             );
       if (e2ee !== undefined) {
         const pending = e2ee.hostMesh.pending;
-        offers ??= serveMeshOffers(core, options.log, (listener) => pending.onAdmitted(listener), meshOffer);
+        offers ??= serveMeshOffers(
+          core,
+          options.log,
+          (listener) => pending.onAdmitted(listener),
+          meshOffer,
+          undefined,
+          undefined,
+          (nonce, approve, code) => pending.decide(nonce, approve, code),
+        );
       }
       return new HcPipe({ hc: options.hc, session: options.session, env: options.env, log: options.log });
     },

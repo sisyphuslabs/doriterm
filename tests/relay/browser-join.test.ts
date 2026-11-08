@@ -9,6 +9,7 @@ import { memoryStore } from "../../apps/web/src/storage/idb.ts";
 import { untilFullMesh } from "./support/mesh/echo.ts";
 import { type Mesh, startMesh, TEARDOWN_MS } from "./support/mesh/mesh.ts";
 import { scenario } from "./support/mesh/present.ts";
+import { browserInvite, joinComparedBrowser } from "./support/compared-browser.ts";
 import { meshIdOf, statusOf } from "./support/mesh/status.ts";
 
 const OFFER_URL = /https:\/\/\S*pair#\S+/;
@@ -21,8 +22,7 @@ const running = (): Mesh => {
 };
 
 /**
- * The browser as the web app's own modules run it: its X25519 device key and Ed25519 signing key in a memory store, so
- * the join exercises the web joiner, the relay and two real hosts, with no browser-only storage in the way.
+ * Browser identity and membership storage for the shared committed ceremony, the relay and two real hosts.
  */
 function browser() {
   const device = rawStaticKey(generateX25519());
@@ -54,24 +54,11 @@ scenario("a browser joins the mesh as its own member (#1386, stage 2)", ["join",
     const hosts = running();
     const [a, b] = [hosts.host("a"), hosts.host("b")];
     const relayUrl = a.tap?.url ?? hosts.relay?.url ?? "";
-    const offer = await a.cli(
-      "mesh",
-      "pair",
-      "--auto",
-      "--no-qr",
-      "--web-origin",
-      "https://web.example",
-      "--relay",
-      relayUrl,
-    );
-    const url = OFFER_URL.exec(offer.stdout)?.[0];
-    if (offer.exit !== 0 || url === undefined) throw new Error(`mesh pair on a failed: ${offer.stderr}${offer.stdout}`);
-    const parsed = parsePairingFragment(new URL(url).hash);
-    if (!parsed.ok) throw new Error(parsed.reason);
-    expect(parsed.offer.target).toBe("mesh");
+    const offer = await browserInvite(a, relayUrl);
+    expect(offer.target).toBe("mesh");
 
     const web = browser();
-    const joined = await joinMesh(parsed.offer, "Chrome on macOS", web.deps);
+    const joined = await joinComparedBrowser(a, offer, "Chrome on macOS", web);
     expect(joined.meshId).toBe(meshIdOf(a));
     expect(joined.membership.signPub).toBeString();
 

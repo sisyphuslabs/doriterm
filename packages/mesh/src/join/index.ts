@@ -19,6 +19,7 @@ export {
   MAX_QUEUED_LINES,
   type MeshLine,
   MeshLines,
+  MeshProtocolError,
   recordLines,
   SYNC_EXPECTS,
 } from "./lines.ts";

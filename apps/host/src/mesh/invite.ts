@@ -1,18 +1,25 @@
 import { base64urlDecode, base64urlEncode, CloseCode, fingerprintOf, type HostIdentity } from "@doriface/crypto";
 import { type CardBody, checkName, type Signed, verifyCard } from "@doriface/mesh";
-import { byDeadline, JoinRefused } from "@doriface/mesh/join";
+import { byDeadline, joinCode, joinCommit, JoinRefused, MeshProtocolError } from "@doriface/mesh/join";
 import { type PlanPolicy, requireWithin } from "@doriface/policy";
 import type { MeshStore, OwnCard } from "../state/mesh.ts";
-import type { AuthorizeIndex } from "./authorize-index.ts";
+import { clientDeviceCount, isRejoin } from "./admission.ts";
 import { admissionRefusal } from "./format-readiness.ts";
 import { type MeshLines, recordLines } from "./lines.ts";
 import { checkFloor, type CounterFloor } from "./merge.ts";
 import type { PendingJoin, PendingJoins } from "./pending-joins.ts";
+import type { DeviceStore } from "../state/devices.ts";
+import { finishJoin, type JoinResumes } from "./join-resumes.ts";
 
 export interface InviteDeps {
   readonly identity: HostIdentity;
   readonly mesh: MeshStore;
   readonly pending: PendingJoins;
+  readonly resumes: JoinResumes;
+  readonly devices: DeviceStore;
+  readonly handshakeHash: Uint8Array;
+  /** Spends the original pairing claim on its first card, rather than on the handshake. */
+  readonly spend: () => boolean;
   /** This host's own card fields, for the found it writes when it has no mesh yet. */
   readonly own: () => Promise<OwnCard>;
   /** The offer's expiry: a pending join expires with it. */
@@ -71,10 +78,15 @@ function admit(deps: InviteDeps, meshId: string, inviter: string, card: CardBody
   const refusal = admissionRefusal(card.kind, deps.formatReady?.() === true);
   if (refusal !== undefined) throw new JoinRefused(refusal);
   return deps.mesh.transact((tx) => {
+    if (Date.now() >= deps.expiresAt) throw new JoinRefused("the offer expired before the admit was signed");
     const index = deps.mesh.authorizeIndex();
-    if (isRejoin(index, card)) return tx.records;
-    const joining = index?.memberCount ?? 0;
-    const room = requireWithin(deps.policy, "machines", joining);
+    if (isRejoin(index, card, tx.records)) return tx.records;
+    const client = card.kind === "client";
+    const joining = client
+      ? clientDeviceCount(index, deps.devices, inviter) -
+        (deps.devices.list().some((device) => device.clientStaticPub === card.devicePub) ? 1 : 0)
+      : (index?.machineCount ?? 0);
+    const room = requireWithin(deps.policy, client ? "devices" : "machines", joining);
     if (!room.allowed) throw new JoinRefused(room.message);
     checkFloor(tx.records, inviter, deps.floor());
     tx.sign(deps.identity, (n, prev) => ({
@@ -94,46 +106,6 @@ function admit(deps: InviteDeps, meshId: string, inviter: string, card: CardBody
 }
 
 /**
- * Section 4.3: the inviting member's decision. A `refused` line from the joiner (the only line the parser hands on
- * now: any other closes the session), or the session's end, drops the pending join instead, and so does a session
- * that ended before an automatic approval.
- */
-async function decision(lines: MeshLines, deps: InviteDeps, join: PendingJoin): Promise<void> {
-  const left = lines.next().then(
-    (line) => ({ left: `the joiner gave up: ${line.t === "refused" ? line.reason : line.t}` }),
-    (error: unknown) => ({ left: `the session closed before the join was decided: ${messageOf(error)}` }),
-  );
-  const decided = await Promise.race([deps.pending.ask(join), left]);
-  if (typeof decided === "object") {
-    deps.pending.expire(join.nonce);
-    throw new JoinRefused(decided.left);
-  }
-  const closed = lines.closed;
-  if (closed !== undefined) throw new JoinRefused(`the session closed before the join was decided: ${closed.message}`);
-  if (decided !== "approved") throw new JoinRefused(`the join was ${decided} on the inviting member`);
-}
-
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
-
-const ANOTHER_KEY = "this host is a member with another Noise key: rekey it, or revoke and re-admit it";
-const KEY_HELD = "this Noise key is another mesh member's";
-
-/**
- * Section 4.4 step 3 against the stored set: true for a member presenting the Noise key the mesh holds for it (the
- * welcome only). Refuses a member with another Noise key, and a new signing key presenting a Noise key that another
- * signing key's card names (#90): a twin of a current member would make the admit void (type_ok) and every later
- * record of this host with it, and a twin of a revoked or superseded key authorizes nobody.
- */
-function isRejoin(index: AuthorizeIndex | undefined, card: CardBody): boolean {
-  const holder = index?.member(card.noisePub);
-  if (holder?.signPub === card.signPub) return true;
-  if (holder !== undefined) throw new JoinRefused(KEY_HELD);
-  if (index?.isMember(card.signPub) === true) throw new JoinRefused(ANOTHER_KEY);
-  if (index?.namedByAnother(card.noisePub, card.signPub) === true) throw new JoinRefused(KEY_HELD);
-  return false;
-}
-
-/**
  * The inviting member's side of a join (sections 4.3 and 4.4), on a session the mesh offer admitted: offer, card
  * (before the offer expires), the confirmation, the admit, then the welcome. A refusal sends `refused` and closes 4401;
  * otherwise the join's parser lets go of the session, which stays open for sync. Resolves with the admitted card.
@@ -141,22 +113,43 @@ function isRejoin(index: AuthorizeIndex | undefined, card: CardBody): boolean {
 export async function serveJoin(lines: MeshLines, peerStatic: Uint8Array, deps: InviteDeps): Promise<CardBody> {
   try {
     const meshId = await meshIdFor(deps);
-    const offer = { mesh: meshId, inviter: base64urlEncode(deps.identity.sign.publicKey), nonce: nonce() };
+    const Ni = crypto.getRandomValues(new Uint8Array(32));
+    const commit = deps.pending.isAuto() ? undefined : joinCommit(deps.handshakeHash, Ni);
+    const offer = { mesh: meshId, inviter: base64urlEncode(deps.identity.sign.publicKey), nonce: nonce(), commit };
     lines.send({ t: "offer", ...offer });
     const reply = await byDeadline(lines.next(), deps.expiresAt, "the offer expired before the card arrived");
     lines.expect("refused");
     if (reply.t !== "card") throw new JoinRefused(`expected a card, got ${reply.t}`);
+    if (!deps.spend()) throw new JoinRefused("this invite was used");
+    if (lines.closed !== undefined) throw lines.closed;
     const card = checkCard(reply, offer, peerStatic);
+    if (card.kind === "client" && commit === undefined) {
+      throw new JoinRefused("this invite is for a machine; ask for an invite for a browser");
+    }
+    if (commit !== undefined && reply.sas === undefined) {
+      throw new JoinRefused(
+        "this machine's doriface-host is too old to join on an invite that asks: update it, or use Add a machine's one-line command",
+      );
+    }
     const index = deps.mesh.authorizeIndex();
-    if (isRejoin(index, card)) {
-      sendWelcome(lines, deps.mesh.read()?.records ?? [], meshId);
+    isRejoin(index, card, deps.mesh.read()?.records ?? []);
+    if (commit === undefined) {
+      sendWelcome(lines, admit(deps, meshId, offer.inviter, card, reply), meshId);
       lines.detach();
       return card;
     }
-    const room = requireWithin(deps.policy, "machines", index?.memberCount ?? 0);
+    const client = card.kind === "client";
+    const count = client
+      ? clientDeviceCount(index, deps.devices, offer.inviter) -
+        (deps.devices.list().some((device) => device.clientStaticPub === card.devicePub) ? 1 : 0)
+      : (index?.machineCount ?? 0);
+    const room = requireWithin(deps.policy, client ? "devices" : "machines", count);
     if (!room.allowed) throw new JoinRefused(room.message);
+    const refusal = admissionRefusal(card.kind, deps.formatReady?.() === true);
+    if (refusal !== undefined) throw new JoinRefused(refusal);
     const fingerprint = fingerprintOf(base64urlDecode(card.noisePub));
-    const join = {
+    if (reply.sas === undefined) throw new JoinRefused("the card needs a join contribution");
+    const join: PendingJoin = {
       nonce: offer.nonce,
       name: card.name,
       hostId: card.hostId,
@@ -164,16 +157,27 @@ export async function serveJoin(lines: MeshLines, peerStatic: Uint8Array, deps: 
       noisePub: card.noisePub,
       kind: card.kind === "client" ? ("client" as const) : ("machine" as const),
       expiresAt: deps.expiresAt,
+      code: joinCode(deps.handshakeHash, Ni, base64urlDecode(reply.sas)),
+      joinerConfirmed: false,
     };
-    await decision(lines, deps, join);
-    sendWelcome(lines, admit(deps, meshId, offer.inviter, card, { body: reply.body, sig: reply.sig }), meshId);
-    lines.detach();
-    deps.pending.admitted(join);
+    const welcome = deps.pending.ask(join).then((decision) => {
+      if (decision !== "approved") throw new JoinRefused(`the join was ${decision} on the inviting member`);
+      const records = admit(deps, meshId, offer.inviter, card, { body: reply.body, sig: reply.sig });
+      deps.pending.admitted(join);
+      return records;
+    });
+    const resumable = { join, card, Ni: base64urlEncode(Ni), welcome, records: () => deps.mesh.read()?.records ?? [] };
+    deps.resumes.keep(resumable);
+    await finishJoin(lines, resumable, deps.pending);
     return card;
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
+    const failure =
+      lines.closed instanceof MeshProtocolError
+        ? new JoinRefused(`the session closed before the join was decided: ${lines.closed.message}`)
+        : error;
+    const reason = failure instanceof Error ? failure.message : String(failure);
     deps.log(`mesh: join refused: ${reason}`);
     lines.refuse(CloseCode.UnknownDevice, reason);
-    throw error;
+    throw failure;
   }
 }

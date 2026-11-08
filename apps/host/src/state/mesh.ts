@@ -18,6 +18,7 @@ import { AuthorizeIndex, indexOf } from "../mesh/authorize-index.ts";
 import { DeviceStore } from "./devices.ts";
 import { createPrivateJson, ensureStateDir, readJson, writePrivateJson } from "./files.ts";
 import { KnownHosts } from "./known-hosts.ts";
+import { SubscriptionStore } from "../push/subscriptions.ts";
 import { DEFAULT_LOCK_TIMEOUT_MS, withStateLock } from "./lock.ts";
 import { MESH_FILE, type MeshFile, meshFileJson, newMeshFile, parseMeshFile, writeVersionOf } from "./mesh-file.ts";
 import { type MergeResult, type MeshTx, ownN, Transaction } from "./mesh-tx.ts";
@@ -100,17 +101,22 @@ export class MeshStore {
    * cleaned, in the same hold. Nothing `fn` merged after its last signature is written if it throws; a counter it persisted stays, with
    * the records and held pool it was derived from.
    */
-  transact<T>(fn: (tx: MeshTx) => T): T {
+  transact<T>(fn: (tx: MeshTx) => T, rollback?: () => void): T {
     return this.#locked(() => {
       const tx = new Transaction(this.#require(), {
         evaluate: this.#evaluate,
         persistCounter: (file, selfN, view) => this.#persistCounter(file, selfN, view),
         log: this.#options.log,
       });
-      const value = fn(tx);
-      const next = tx.commit();
-      if (next !== undefined) this.#write(next.file, next.view);
-      return value;
+      try {
+        const value = fn(tx);
+        const next = tx.commit();
+        if (next !== undefined) this.#write(next.file, next.view);
+        return value;
+      } catch (error) {
+        rollback?.();
+        throw error;
+      }
     });
   }
 
@@ -181,12 +187,23 @@ export class MeshStore {
 
   #cleanup(file: MeshFile): void {
     if (file.index === undefined) return;
-    const { keys, hostIds } = new AuthorizeIndex(file.index).cleanup();
+    const index = new AuthorizeIndex(file.index);
+    const { keys, hostIds } = index.cleanup();
     for (const device of new DeviceStore(this.#dir).removeKeysHeld(keys)) {
       this.#options.log(`mesh: removed paired device "${device.name}": its key belongs to a mesh member`);
     }
     for (const hostId of new KnownHosts(this.#dir).removeHostsHeld(hostIds)) {
       this.#options.log(`mesh: removed saved host ${hostId}: the mesh reaches it now`);
+    }
+    try {
+      new SubscriptionStore(this.#dir).keepOwnersHeld(
+        new Set([
+          ...new DeviceStore(this.#dir).list().map((device) => device.clientStaticPub),
+          ...index.clients().flatMap((client) => (client.devicePub === undefined ? [] : [client.devicePub])),
+        ]),
+      );
+    } catch (error) {
+      this.#options.log(`mesh: cannot prune push subscriptions: ${String(error)}`);
     }
   }
 

@@ -1,4 +1,12 @@
-import { DEFAULT_RELAY_URL, type HostIdentity, PAIRING_TTL_MS, type SecureLink, SessionKind } from "@doriface/crypto";
+import {
+  base64urlEncode,
+  CloseCode,
+  DEFAULT_RELAY_URL,
+  type HostIdentity,
+  PAIRING_TTL_MS,
+  type SecureLink,
+  SessionKind,
+} from "@doriface/crypto";
 import type { PlanPolicy } from "@doriface/policy";
 import { PairingStore } from "../state/pairing.ts";
 import type { CreateSocket, RelayProofs } from "@doriface/relay-client";
@@ -13,6 +21,12 @@ import { joinMesh } from "./join-dial.ts";
 import { INVITER_EXPECTS, MeshLines } from "./lines.ts";
 import type { CounterFloor } from "./merge.ts";
 import { PendingJoins } from "./pending-joins.ts";
+import { DeviceStore } from "../state/devices.ts";
+import { byDeadline, JoinRefused, ROSTER_EXPECTS } from "@doriface/mesh/join";
+import { serveRoster, type RosterDeps } from "./roster.ts";
+import { sweepRoster } from "./roster-admits.ts";
+import { finishJoin, JoinResumes } from "./join-resumes.ts";
+import { spendMeshOffer } from "../e2ee/accept.ts";
 
 export interface HostMeshOptions {
   readonly stateDir: string;
@@ -46,6 +60,7 @@ export interface MeshJoinRequest {
   readonly name: string | undefined;
   readonly relay: string | undefined;
   readonly yes: boolean;
+  readonly ask?: boolean | undefined;
 }
 
 /**
@@ -55,6 +70,7 @@ export interface MeshJoinRequest {
  */
 export class HostMesh {
   readonly pending = new PendingJoins();
+  readonly resumes = new JoinResumes();
   readonly #options: HostMeshOptions;
   readonly #core: () => Promise<HcCore>;
   #offerExpiresAt: number;
@@ -62,8 +78,61 @@ export class HostMesh {
   constructor(options: HostMeshOptions) {
     this.#options = options;
     this.#core = hcCoreReader(options.hc);
+    this.pending.onAdmitted(() => this.sweepRoster());
     const offer = new PairingStore(options.stateDir).read();
     this.#offerExpiresAt = offer?.mesh === true ? offer.expiresAt : 0;
+  }
+
+  resumeKey(key: string): boolean {
+    return this.pending.list().some(({ nonce }) => this.resumes.get(nonce, key) !== undefined);
+  }
+
+  roster(secure: SecureLink): void {
+    const key = base64urlEncode(secure.remoteStatic);
+    if (this.resumeKey(key) && this.#options.mesh.authorizeIndex()?.client(key) === undefined) {
+      const lines = new MeshLines(secure, ["resume"]);
+      void byDeadline(lines.next(), Date.now() + PAIRING_TTL_MS, "Ask for a new invite")
+        .then((line) => {
+          if (line.t !== "resume") throw new JoinRefused("Ask for a new invite");
+          return this.#resume(lines, key, line.nonce);
+        })
+        .catch((error: unknown) => {
+          lines.refuse(CloseCode.UnknownDevice, error instanceof Error ? error.message : String(error));
+        });
+      return;
+    }
+    if (!this.#options.sessions.add(secure)) return;
+    void serveRoster(new MeshLines(secure, ROSTER_EXPECTS), secure.remoteStatic, this.#rosterDeps()).catch(
+      (error: unknown) =>
+        this.#options.log(`mesh: roster refused: ${error instanceof Error ? error.message : String(error)}`),
+    );
+  }
+
+  async #resume(lines: MeshLines, key: string, nonce: string): Promise<void> {
+    const pending = this.resumes.get(nonce, key);
+    if (pending === undefined) throw new JoinRefused("Ask for a new invite");
+    await finishJoin(lines, pending, this.pending);
+    lines.close(1000, "the join is complete");
+  }
+
+  sweepRoster(): void {
+    sweepRoster(this.#rosterDeps());
+    this.#options.sessions.closeRevoked();
+  }
+
+  #rosterDeps(): RosterDeps {
+    const { stateDir, identity, mesh, policy, floor, log } = this.#options;
+    return {
+      stateDir,
+      identity,
+      mesh,
+      policy,
+      floor,
+      log,
+      devices: new DeviceStore(stateDir),
+      formatReady: () => this.#options.formatReady?.() === true,
+      resume: (lines, key, nonce) => this.#resume(lines, key, nonce),
+    };
   }
 
   /**
@@ -72,6 +141,7 @@ export class HostMesh {
    */
   async pair(auto: boolean): Promise<PendingPairing> {
     this.pending.expireAll();
+    this.resumes.clear();
     const offer = await this.#options.slots.open(true);
     this.#offerExpiresAt = offer.expiresAt;
     this.pending.setAuto(auto ? offer.expiresAt : 0);
@@ -81,6 +151,7 @@ export class HostMesh {
   /** Opens a device offer, which replaces any mesh offer: that offer's pending joins expire with it. */
   pairDevice(): Promise<PendingPairing> {
     this.pending.expireAll();
+    this.resumes.clear();
     return this.#options.slots.open(false);
   }
 
@@ -93,6 +164,10 @@ export class HostMesh {
       identity,
       mesh,
       pending: this.pending,
+      resumes: this.resumes,
+      devices: new DeviceStore(this.#options.stateDir),
+      handshakeHash: secure.handshakeHash,
+      spend: () => spendMeshOffer(secure),
       own: () => this.#own(undefined),
       expiresAt,
       floor,
@@ -101,13 +176,20 @@ export class HostMesh {
       ...(this.#options.formatReady === undefined ? {} : { formatReady: this.#options.formatReady }),
     };
     serveJoin(new MeshLines(secure, INVITER_EXPECTS), secure.remoteStatic, deps).then(
-      () => this.#keep(secure),
+      (card) => {
+        this.sweepRoster();
+        if (card.kind === "client") return secure.close(1000, "the join is complete");
+        return this.#keep(secure);
+      },
       () => undefined,
     );
   }
 
   /** `mesh join` run by this host: refusals, the pairing handshake with the host key, the welcome, then it stays up. */
-  async join(request: MeshJoinRequest): Promise<{ readonly meshId: string; readonly hostId: string }> {
+  async join(
+    request: MeshJoinRequest,
+    confirm?: (code: string) => Promise<boolean>,
+  ): Promise<{ readonly meshId: string; readonly hostId: string }> {
     const { stateDir, identity, relay, log } = this.#options;
     const own = await this.#own(request.name);
     const joined = await joinMesh({
@@ -118,7 +200,8 @@ export class HostMesh {
       name: own.name,
       hcId: own.hcId,
       yes: request.yes,
-      confirm: async () => false,
+      ask: request.ask === true,
+      confirm: confirm ?? (async () => false),
       relayUrl: request.relay,
       defaultRelayUrl: relay.url ?? DEFAULT_RELAY_URL,
       createSocket: relay.createSocket,

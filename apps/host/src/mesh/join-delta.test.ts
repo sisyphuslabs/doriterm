@@ -55,7 +55,10 @@ describe("section 4.4 step 3: a member re-joins through any member", () => {
     await joined(a, c);
     rmSync(join(b.dir, "mesh.json"));
     const before = types(c);
-    const run = runJoin(inviteDeps(c, new PendingJoins()), joinerContext(b, c), b.m.identity.noise.publicKey);
+    const pending = new PendingJoins();
+    const run = runJoin(inviteDeps(c, pending), joinerContext(b, c), b.m.identity.noise.publicKey);
+    const asked = await pending.next();
+    pending.decide(asked.nonce, true, asked.code);
     expect(await run.joined).toBe(c.mesh.read()?.meshId ?? "");
     expect(types(c)).toEqual(before);
     expect(b.mesh.read()?.records).toEqual(c.mesh.read()?.records);
@@ -78,7 +81,10 @@ describe("section 4.4 step 3: a member re-joins through any member", () => {
     }));
     c.mesh.merge(a.mesh.read()?.records ?? []);
     rmSync(join(b.dir, "mesh.json"));
-    const run = runJoin(inviteDeps(c, new PendingJoins()), joinerContext(b, c), b.m.identity.noise.publicKey);
+    const pending = new PendingJoins();
+    const run = runJoin(inviteDeps(c, pending), joinerContext(b, c), b.m.identity.noise.publicKey);
+    const asked = await pending.next();
+    pending.decide(asked.nonce, true, asked.code);
     expect(await run.joined).toBe(meshId);
     expect(b.mesh.authorizeIndex()?.isMember(signPubOf(a.m))).toBe(false);
   });

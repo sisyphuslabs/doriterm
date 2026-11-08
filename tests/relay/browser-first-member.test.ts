@@ -9,6 +9,7 @@ import { MembershipStore, reachableTargets } from "../../apps/web/src/mesh/membe
 import { parsePairingFragment } from "../../apps/web/src/pair/fragment.ts";
 import { memoryStore } from "../../apps/web/src/storage/idb.ts";
 import { DEVICE_LINK_REFUSAL } from "../../packages/mesh/src/join/index.ts";
+import { browserInvite, joinComparedBrowser } from "./support/compared-browser.ts";
 import type { CliResult } from "./support/mesh/mesh-host.ts";
 import { type Mesh, startMesh, TEARDOWN_MS } from "./support/mesh/mesh.ts";
 import { scenario } from "./support/mesh/present.ts";
@@ -24,8 +25,7 @@ const running = (): Mesh => {
 };
 
 /**
- * The browser as the web app's own modules run it: its X25519 device key and Ed25519 signing key in a memory store, so
- * the join exercises the web joiner, the relay and one real host, with no browser-only storage in the way.
+ * Browser identity and membership storage for the shared committed ceremony, the relay and one real host.
  */
 function browser() {
   const device = rawStaticKey(generateX25519());
@@ -91,22 +91,11 @@ scenario("a host with no mesh admits a browser as its first member (#1415)", ["j
     const relayUrl = a.tap?.url ?? hosts.relay?.url ?? "";
     expect(existsSync(meshFile(a.stateDir))).toBe(false);
 
-    const offer = await a.cli(
-      "mesh",
-      "pair",
-      "--auto",
-      "--no-qr",
-      "--web-origin",
-      "https://web.example",
-      "--relay",
-      relayUrl,
-    );
-    const parsed = parsePairingFragment(new URL(offerUrl(offer, "mesh pair on a")).hash);
-    if (!parsed.ok) throw new Error(parsed.reason);
-    expect(parsed.offer.target).toBe("mesh");
+    const offer = await browserInvite(a, relayUrl);
+    expect(offer.target).toBe("mesh");
 
     const web = browser();
-    const joined = await joinMesh(parsed.offer, "Chrome on macOS", web.deps);
+    const joined = await joinComparedBrowser(a, offer, "Chrome on macOS", web);
     expect(joined.meshId).toBe(meshIdOf(a));
     expect(joined.meshId).toBeString();
 

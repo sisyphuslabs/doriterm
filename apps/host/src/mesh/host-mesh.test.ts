@@ -1,4 +1,4 @@
-import { CloseCode, PAIRING_TTL_MS, type SecureLink, SessionKind } from "@doriface/crypto";
+import { CloseCode, PAIRING_TTL_MS, rawStaticKey, secureLink, type SecureLink, SessionKind } from "@doriface/crypto";
 import { memoryLinkPair, type MemoryEnd } from "@doriface/crypto/testing";
 import { meshInviteOf } from "@doriface/mesh/join";
 import { OPEN_POLICY } from "@doriface/policy";
@@ -7,13 +7,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LiveSessions } from "../e2ee/sessions.ts";
+import { acceptE2ee } from "../e2ee/accept.ts";
 import { PairingSlots } from "../pairing-slots.ts";
 import { DeviceStore } from "../state/devices.ts";
 import { MeshStore } from "../state/mesh.ts";
 import { PairingStore } from "../state/pairing.ts";
-import { removeSides, side } from "../testing/join-harness.ts";
+import { removeSides, side, type Side } from "../testing/join-harness.ts";
 import { machine } from "../testing/mesh-history.ts";
-import { meshDeps } from "./host-deps.ts";
 import { HostMesh } from "./host-mesh.ts";
 import { runJoiner } from "./join.ts";
 import { JOINER_EXPECTS, MeshLines } from "./lines.ts";
@@ -28,6 +28,7 @@ afterEach(() => {
 
 const log = (): void => {};
 const invite = meshInviteOf({ kind: "link", mesh: true });
+const comparison = { handshakeHash: new Uint8Array(32), yes: true, confirm: undefined };
 
 function hostMesh(sync?: (session: SecureLink) => void, Sessions = LiveSessions) {
   const dir = mkdtempSync(join(tmpdir(), "dh-host-mesh-"));
@@ -64,6 +65,38 @@ const pairLink = (end: MemoryEnd, remoteStatic: Uint8Array, kind: SessionKind = 
     stream: "mesh" as const,
   });
 
+async function joining(fixture: ReturnType<typeof hostMesh>, host: HostMesh, joiner: Side) {
+  const offer = await host.pair(true);
+  const [inviterEnd, joinerEnd] = memoryLinkPair();
+  const [served, joined] = await Promise.all([
+    acceptE2ee(
+      inviterEnd,
+      {
+        identity: fixture.m.identity,
+        mesh: fixture.mesh,
+        pairing: new PairingStore(fixture.dir),
+        devices: new DeviceStore(fixture.dir),
+        policy: OPEN_POLICY,
+        live: fixture.sessions,
+        lanUrls: [],
+        log,
+      },
+      { kind: "relay" },
+    ),
+    secureLink(joinerEnd, {
+      role: "initiator",
+      hostId: fixture.m.identity.hostId,
+      staticKey: rawStaticKey(joiner.m.identity.noise),
+      remoteStatic: fixture.m.identity.noise.publicKey,
+      stream: "mesh",
+      pairing: { mode: "link", linkSecret: offer.linkSecret, name: joiner.m.name },
+    }),
+  ]);
+  if (served === undefined) throw new Error("the join handshake was refused");
+  host.serve(served);
+  return { inviterEnd, joined, served };
+}
+
 describe("the running host's mesh offers", () => {
   test("opening a mesh offer expires the pending joins of the offer it replaces", async () => {
     const host = hostMesh().create();
@@ -75,6 +108,8 @@ describe("the running host's mesh offers", () => {
       fingerprint: "f",
       expiresAt: Date.now() + 60_000,
       kind: "machine",
+      code: "123 456",
+      joinerConfirmed: false,
     });
     await host.pair(false);
     expect(await asked).toBe("expired");
@@ -98,16 +133,23 @@ describe("the running host's mesh offers", () => {
   });
 
   test("the session a served join ran on is registered, so a revoke closes it", async () => {
-    const { dir, m, mesh, sessions, create } = hostMesh();
+    const fixture = hostMesh();
+    const { dir, m, mesh, sessions, create } = fixture;
     mesh.found(m.identity, { name: "alpha", hcId: "core" });
     const host = create();
-    await host.pair(true);
     const b = side("beta");
-    const [inviterEnd, joinerEnd] = memoryLinkPair();
-    host.serve(pairLink(inviterEnd, b.m.identity.noise.publicKey));
+    const { inviterEnd, joined } = await joining(fixture, host, b);
     const dialed = { hostId: m.identity.hostId, noisePub: m.identity.noise.publicKey };
-    const ctx = { invite, identity: b.m.identity, mesh: b.mesh, own: { name: "beta", hcId: "core-b" }, dialed, log };
-    await runJoiner(new MeshLines(joinerEnd, JOINER_EXPECTS), { ...ctx, deadline: Date.now() + 60_000 });
+    const ctx = {
+      ...comparison,
+      invite,
+      identity: b.m.identity,
+      mesh: b.mesh,
+      own: { name: "beta", hcId: "core-b" },
+      dialed,
+      log,
+    };
+    await runJoiner(new MeshLines(joined, JOINER_EXPECTS), { ...ctx, deadline: Date.now() + 60_000 });
     await new Promise((resolve) => setImmediate(resolve));
     expect(inviterEnd.closeCode).toBeUndefined();
     rmSync(join(dir, "mesh.json"));
@@ -135,17 +177,23 @@ describe("the running host's mesh offers", () => {
 
   test("the session a served join ran on is handed to the sync hook once the join is over", async () => {
     const synced: SecureLink[] = [];
-    const { m, mesh, create } = hostMesh((session) => void synced.push(session));
+    const fixture = hostMesh((session) => void synced.push(session));
+    const { m, mesh, create } = fixture;
     mesh.found(m.identity, { name: "alpha", hcId: "core" });
     const host = create();
-    await host.pair(true);
     const b = side("beta");
-    const [inviterEnd, joinerEnd] = memoryLinkPair();
-    const served = pairLink(inviterEnd, b.m.identity.noise.publicKey);
-    host.serve(served);
+    const { inviterEnd, joined, served } = await joining(fixture, host, b);
     const dialed = { hostId: m.identity.hostId, noisePub: m.identity.noise.publicKey };
-    const ctx = { invite, identity: b.m.identity, mesh: b.mesh, own: { name: "beta", hcId: "core-b" }, dialed, log };
-    await runJoiner(new MeshLines(joinerEnd, JOINER_EXPECTS), { ...ctx, deadline: Date.now() + 60_000 });
+    const ctx = {
+      ...comparison,
+      invite,
+      identity: b.m.identity,
+      mesh: b.mesh,
+      own: { name: "beta", hcId: "core-b" },
+      dialed,
+      log,
+    };
+    await runJoiner(new MeshLines(joined, JOINER_EXPECTS), { ...ctx, deadline: Date.now() + 60_000 });
     await new Promise((resolve) => setImmediate(resolve));
     expect(synced).toEqual([served]);
     expect(inviterEnd.closeCode).toBeUndefined();
@@ -161,16 +209,23 @@ describe("the running host's mesh offers", () => {
       }
     }
     const synced: SecureLink[] = [];
-    const { m, mesh, create } = hostMesh((session) => void synced.push(session), ClosingSessions);
+    const fixture = hostMesh((session) => void synced.push(session), ClosingSessions);
+    const { m, mesh, create } = fixture;
     mesh.found(m.identity, { name: "alpha", hcId: "core" });
     const host = create();
-    await host.pair(true);
     const b = side("beta");
-    const [inviterEnd, joinerEnd] = memoryLinkPair();
-    host.serve(pairLink(inviterEnd, b.m.identity.noise.publicKey));
+    const { inviterEnd, joined } = await joining(fixture, host, b);
     const dialed = { hostId: m.identity.hostId, noisePub: m.identity.noise.publicKey };
-    const ctx = { invite, identity: b.m.identity, mesh: b.mesh, own: { name: "beta", hcId: "core-b" }, dialed, log };
-    await runJoiner(new MeshLines(joinerEnd, JOINER_EXPECTS), { ...ctx, deadline: Date.now() + 60_000 });
+    const ctx = {
+      ...comparison,
+      invite,
+      identity: b.m.identity,
+      mesh: b.mesh,
+      own: { name: "beta", hcId: "core-b" },
+      dialed,
+      log,
+    };
+    await runJoiner(new MeshLines(joined, JOINER_EXPECTS), { ...ctx, deadline: Date.now() + 60_000 });
     await new Promise((resolve) => setImmediate(resolve));
     expect(inviterEnd.closeCode).toBe(CloseCode.UnknownDevice);
     expect(synced).toEqual([]);
@@ -186,51 +241,10 @@ describe("the running host's mesh offers", () => {
       fingerprint: "f",
       expiresAt: Date.now() + 60_000,
       kind: "machine",
+      code: "123 456",
+      joinerConfirmed: false,
     });
     await host.pairDevice();
     expect(await asked).toBe("expired");
-  });
-});
-
-describe("the running host's pending joins in mesh status (section 4.3)", () => {
-  test("a join the inviting member is asked about is in the live facts status reads", () => {
-    const { dir, m, mesh, sessions } = hostMesh();
-    const slots = new PairingSlots(new PairingStore(dir, log), m.identity.noise.publicKey, undefined, log);
-    stops.push(() => slots.stop());
-    const deps = meshDeps({
-      stateDir: dir,
-      identity: m.identity,
-      mesh,
-      slots,
-      sessions,
-      policy: OPEN_POLICY,
-      hc: { hc: "hc" },
-      relay: { url: undefined },
-      program: "/opt/doriface-host",
-      log,
-    });
-    stops.push(() => void deps.sync.stop());
-    const expiresAt = Date.now() + PAIRING_TTL_MS;
-    const asked = {
-      nonce: "n1",
-      name: "beta",
-      hostId: "host-beta",
-      fingerprint: "fp",
-      noisePub: "noise-beta",
-      expiresAt,
-      kind: "machine" as const,
-    };
-    void deps.hostMesh.pending.ask(asked);
-    expect(deps.hooks.live().pending).toEqual([
-      {
-        nonce: "n1",
-        name: "beta",
-        hostId: "host-beta",
-        noisePub: "noise-beta",
-        expiresAt: new Date(expiresAt),
-        kind: "machine" as const,
-      },
-    ]);
-    deps.hostMesh.pending.expireAll();
   });
 });

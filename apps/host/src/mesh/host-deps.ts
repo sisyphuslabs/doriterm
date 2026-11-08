@@ -65,20 +65,25 @@ export function meshDeps(options: MeshDepsOptions) {
     log,
   });
   const pending = (): readonly PendingJoinFact[] =>
-    hostMesh.pending.list().map(({ nonce, name, hostId, noisePub, expiresAt, kind }) => ({
+    hostMesh.pending.list().map(({ nonce, name, hostId, noisePub, expiresAt, kind, code, joinerConfirmed }) => ({
       nonce,
       name,
       hostId,
       noisePub,
       expiresAt: new Date(expiresAt),
       kind,
+      code,
+      joinerConfirmed,
     }));
   const hooks = options.hooks ?? syncHooks(sync, monotonicClock, pending);
+  hostMesh.sweepRoster();
   return {
     hooks,
     hostMesh,
+    resumeKey: (key: string) => hostMesh.resumeKey(key),
     sync,
     meshStream: (secure: SecureLink) => hostMesh.serve(secure),
+    rosterStream: (secure: SecureLink) => hostMesh.roster(secure),
     meshPresence: (secure: SecureLink) => sync.presence(secure),
     meshCommands: new MeshCommands({ store: mesh, stateDir, identity, closeRevoked, hooks, log }),
     meshStatus: () => storedMeshStatus(mesh, identity, hooks),

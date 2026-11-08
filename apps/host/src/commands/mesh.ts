@@ -9,7 +9,7 @@ import { printable } from "./devices.ts";
 export const MESH_USAGE = `usage: doriface-host mesh status [--json] [--state-dir <dir>]
        doriface-host mesh revoke [--compromised] [--yes] <member> [--state-dir <dir>]
        doriface-host mesh rename <member> <name> [--state-dir <dir>]
-       doriface-host mesh leave [--state-dir <dir>]
+       doriface-host mesh leave [--yes] [--state-dir <dir>]
 
   status asks the running host on the state dir: line states, presence and the dial budget live only there
   revoke signs a revoke of <member> (its mesh name or hostId); --compromised also names every member it admitted
@@ -51,7 +51,7 @@ export async function meshCommand(
     }
     return renameMember(context, rest[0], rest[1]);
   }
-  if (command === "leave" && rest.length === 0) return leaveMesh(context);
+  if (command === "leave" && rest.length === 0) return leaveMesh(context, values.yes);
   if (command !== "status" || rest.length !== 0) throw new Error(`unknown mesh command: ${positionals.join(" ")}`);
   const reply = await requestControl(stateDir, { op: "mesh-status" });
   if (reply === undefined) throw new Error(`no doriface-host is running on ${stateDir}`);

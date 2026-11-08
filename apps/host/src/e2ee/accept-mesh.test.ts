@@ -7,6 +7,7 @@ import { signCard } from "@doriface/mesh";
 import { cardBody } from "../state/mesh.ts";
 import { deviceOf, type Machine, machine, MeshFixture, signPubOf } from "../testing/mesh-history.ts";
 import { linkOf, pairingHost, type PairingHost, runSession } from "../testing/pairing-harness.ts";
+import { spendMeshOffer } from "./accept.ts";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -126,11 +127,15 @@ describe("H-1: pairing kinds against the offer's kind", () => {
     expect(host.deps.devices.list()).toEqual([]);
   });
 
-  test("a machine join on a mesh offer is accepted, burns the offer and stores no device", async () => {
+  test("a mesh handshake reserves its offer until the first card spends it once, and stores no device", async () => {
     const { host } = meshed(true);
     const run = runSession(host, { kind: "lan" }, linkOf(host, "laptop"), { stream: "mesh" });
     const secure = await run.host;
     expect(secure?.stream).toBe("mesh");
+    if (secure === undefined) throw new Error("the mesh handshake was refused");
+    expect(host.pairing.read()).toBeDefined();
+    expect(spendMeshOffer(secure)).toBe(true);
+    expect(spendMeshOffer(secure)).toBe(false);
     expect(host.pairing.read()).toBeUndefined();
     expect(host.deps.devices.list()).toEqual([]);
   });
