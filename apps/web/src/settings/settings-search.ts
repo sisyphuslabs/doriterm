@@ -8,6 +8,9 @@ const SECTION_WORDS: Readonly<Record<SectionId, readonly string[]>> = {
   device: [
     "host",
     "this device",
+    "pair a device",
+    "paired devices",
+    "revoke",
     "add to home screen",
     "install",
     "keep the screen awake",
@@ -21,10 +24,10 @@ const SECTION_WORDS: Readonly<Record<SectionId, readonly string[]>> = {
   machines: ["mesh", "members", "join requests", "approval", "approve", "revoke", "remove", "online", "offline"],
   pair: ["pair", "invite", "join", "mesh", "phone", "command", "qr"],
   terminal: ["font", "font size", "cursor", "scrollback", "ghostty", "config", "colors", "padding", "opacity", "bell"],
-  keyboard: ["key bar", "keys bar", "your keys", "packs", "extra keys", "phone keys"],
+  keyboard: ["key bar", "keys bar", "your keys", "packs", "extra keys", "phone keys", "ctrl chords"],
   notifications: ["alerts", "push", "test notification", "following"],
   appearance: ["theme", "dark", "light", "night", "day", "density", "text size", "font size", "herdr-app theme"],
-  keybindings: ["shortcuts", "shortcut", "chords", "bindings", "import keybindings"],
+  keybindings: ["shortcuts", "shortcut", "bindings", "import keybindings"],
   voice: ["dictation", "dictate", "speech recognition", "microphone", "language"],
 };
 

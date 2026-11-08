@@ -14,6 +14,9 @@ describe("searching across settings (#1460)", () => {
     ["dictation", ["voice"]],
     ["invite", ["pair"]],
     ["approval", ["machines"]],
+    ["pair a device", ["device"]],
+    ["revoke", ["device", "machines"]],
+    ["chords", ["keyboard"]],
   ] as const)("%s finds the sections that hold it, in list order", (query, ids) => {
     expect(found(query)).toEqual([...ids]);
   });
