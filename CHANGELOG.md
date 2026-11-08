@@ -34,6 +34,11 @@
 - A phone no longer zooms the page when you tap a field or tap twice: every text field, the terminal's own included at
   any text size, is at least 16px on a touch screen, and a quick second tap is a second tap. Pinching to zoom still
   works. (#1382)
+- Tapping a space now opens that space's own screen: its running tabs, each named after its tab or its agent, and
+  "New tab in <space>" at the bottom. Before, the tap only moved a highlight. Back walks back one screen at a time,
+  from a terminal to its space and from the space to Agents, and the Back button never leaves the app. (#1406)
+- A screen reader finds Settings on a phone: the full-screen Settings sheet is announced as a dialog named Settings, as
+  it is on a wide screen. (#1414)
 
 ### Website
 
