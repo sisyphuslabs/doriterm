@@ -65,8 +65,16 @@ function Root() {
     <>
       {sheet ? (
         // No z-index: a menu or dialog Settings portals to the body paints in DOM order, and a layer above it would
-        // cover the menu (the workspace behind is invisible, so this layer only has to paint over nothing).
-        <div className="fixed inset-0 bg-background">
+        // cover the menu (the workspace behind is invisible, so this layer only has to paint over nothing). It is a modal
+        // dialog named Settings, as the wide screen's is: the workspace under it is hidden from assistive tech, so the
+        // sheet is the page's one landmark (#1378).
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Settings"
+          data-settings-sheet
+          className="fixed inset-0 bg-background"
+        >
           <SettingsSlot frame={frame} refocus={refocus} />
         </div>
       ) : null}

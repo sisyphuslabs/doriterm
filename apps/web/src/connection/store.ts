@@ -1,4 +1,4 @@
-import { type HcConnection, HcTimeoutError } from "@doriface/client";
+import type { HcConnection } from "@doriface/client";
 import { useSyncExternalStore } from "react";
 import type { HostStartFailure } from "../desktop/bridge.ts";
 import { AttemptBudget, AttemptTimeoutError } from "./attempt-budget.ts";
@@ -17,7 +17,8 @@ import {
   saveSettings,
   staysOnThisComputer,
 } from "./settings.ts";
-import { resumeOnWake, WakeProbeUnansweredError } from "./wake.ts";
+import { resumeOnWake } from "./wake.ts";
+import { WakeProbe, type WakeProbing } from "./wake-probe.ts";
 
 /**
  * `stale` is the connection that dropped while this one retries: its workspace stays on screen meanwhile.
@@ -36,6 +37,8 @@ export type ConnectionState =
        * store did not dial the session itself (one pairing proved and handed over, #1271): no figure rather than a guess.
        */
       readonly connectMs?: number | undefined;
+      /** A wake is asking this link to prove itself (#1370): input typed meanwhile waits rather than going into it. */
+      readonly proving?: boolean | undefined;
     }
   /** This computer's host did not start: nothing is tried until a start succeeds. */
   | { readonly phase: "host-failed"; readonly failure: HostStartFailure }
@@ -58,11 +61,6 @@ const BACKOFF_MS = [500, 1_000, 2_000, 5_000, 10_000] as const;
  */
 const STABLE_CONNECTION_MS = 10_000;
 
-/**
- * How long a wake gives an open link to answer one call before it is treated as gone: a socket the page slept on can be
- * half-open, and the heartbeat alone would take its whole timeout to notice (#653).
- */
-const WAKE_PROBE_MS = 10_000;
 /** This computer's host, as the desktop app runs it: where it listens now, and why it did not start. */
 export interface LocalHostStarter {
   start(): Promise<{ readonly url: string; readonly token: string }>;
@@ -90,23 +88,29 @@ export class ConnectionStore {
   #current = 0;
   /** A wake already asked for this tick: several page events must cost one attempt, not three. */
   #wakeQueued = false;
-  /** The open connection a wake is asking right now, so several page events cost one call. */
-  #probing: HcConnection | null = null;
   /** Why the store closed a connection itself, kept with that connection so no other drop can take it. */
   #closedFor: { readonly connection: HcConnection; readonly reason: Error } | null = null;
   readonly #budget = new AttemptBudget();
   readonly #connect: typeof connect;
   readonly #save: Saver;
+  /** A wake's check on the open link: a socket the page slept on can be half-open (#653), and input must not go into it. */
+  readonly #wake: WakeProbe;
 
   /**
    * `save` is how this store records a change to its settings. A store that owns the saved settings writes them itself; one that
    * is a single member of a mesh (`mesh-connections.ts`) passes a no-op, because its settings are a slice of a roster another
    * object owns, and writing that slice back would replace the roster with it.
    */
-  constructor(settings: ConnectionSettings, open: typeof connect = connect, save: Saver = saveSettings) {
+  constructor(
+    settings: ConnectionSettings,
+    open: typeof connect = connect,
+    save: Saver = saveSettings,
+    probing: WakeProbing = {},
+  ) {
     this.#settings = lockRelay(settings);
     this.#connect = open;
     this.#save = save;
+    this.#wake = new WakeProbe(probing);
   }
 
   get settings(): ConnectionSettings {
@@ -170,7 +174,7 @@ export class ConnectionStore {
   }
 
   stop(): void {
-    this.#probing = null;
+    this.#wake.stop();
     this.#closedFor = null;
     clearTimeout(this.#timer);
     clearTimeout(this.#stableTimer);
@@ -416,27 +420,22 @@ export class ConnectionStore {
   }
 
   /**
-   * Asks the open link one call the core answers at once. An answer of any kind, an error included, proves the link and
-   * leaves it alone; no answer within {@link WAKE_PROBE_MS} closes it, and the drop reconnects as any other drop does.
+   * Checks the open link (see WakeProbe): the open state says so while the check is out, and a check that goes unanswered
+   * closes the link, so the drop reconnects as any other drop does.
    */
   #probe(connection: HcConnection): void {
-    if (this.#probing === connection) return;
-    this.#probing = connection;
-    connection
-      .call("terminal.list", {}, { timeoutMs: WAKE_PROBE_MS })
-      .then(
-        () => undefined,
-        (error: unknown) => {
-          // A stop, or a newer connection, ended this probe's claim on the link while it waited.
-          if (!(error instanceof HcTimeoutError) || this.#probing !== connection) return;
-          if (this.#state.phase !== "open" || this.#state.connection !== connection) return;
-          this.#closedFor = { connection, reason: new WakeProbeUnansweredError(error.method, error.timeoutMs) };
-          connection.close();
-        },
-      )
-      .finally(() => {
-        if (this.#probing === connection) this.#probing = null;
-      });
+    this.#wake.ask(
+      connection,
+      (proving) => {
+        const state = this.#state;
+        if (state.phase === "open" && state.connection === connection) this.#set({ ...state, proving });
+      },
+      (reason) => {
+        if (this.#state.phase !== "open" || this.#state.connection !== connection) return;
+        this.#closedFor = { connection, reason };
+        connection.close();
+      },
+    );
   }
 
   #set(state: ConnectionState): void {

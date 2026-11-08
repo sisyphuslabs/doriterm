@@ -1,6 +1,4 @@
 import type { Clock } from "./clock.ts";
-import { CLIENT_ADMISSION_FORMAT, formatReadiness } from "./format-readiness.ts";
-import { machinesOf } from "./mesh-view.ts";
 import type { Gossip } from "./gossip.ts";
 import type { MeshView } from "./mesh-view.ts";
 import type { Reconciler } from "./reconciler.ts";
@@ -19,6 +17,8 @@ export interface SyncHandle {
     | undefined;
   changed(): void;
   stop(): void | Promise<void>;
+  /** Whether every machine member reads the format a client admission needs; see `MeshHooks.formatReady`. */
+  formatReady(): boolean;
   /** The running mesh's live facts. */
   live(): SyncFacts;
 }
@@ -74,13 +74,6 @@ export function syncHooks(sync: SyncHandle, clock: Clock, pending: () => readonl
     live: () => ({ ...sync.live(), pending: pending() }),
     refreshLines: () => sync.runtime?.reconciler.refreshLines() ?? Promise.resolve(),
     floor: () => sync.gossip?.floor(),
-    formatReady: () => {
-      const running = sync.gossip;
-      if (running === undefined) return false;
-      const members = machinesOf(running.view)
-        .map((member) => member.signPub)
-        .filter((signPub) => signPub !== running.self);
-      return formatReadiness(members, running.formatAnswers(), CLIENT_ADMISSION_FORMAT).kind === "ready";
-    },
+    formatReady: () => sync.formatReady(),
   };
 }
