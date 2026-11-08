@@ -144,9 +144,9 @@ export function PhoneTabSwitcher(props: {
             className="h-12 min-w-0 flex-1 text-foreground [&>span]:min-w-0"
           >
             {space === undefined ? null : (
-              <span className="min-w-0 shrink-[2] truncate font-semibold">{`${space} ·`}</span>
+              <span title={space} className="min-w-0 shrink-[2] truncate font-semibold">{`${space} ·`}</span>
             )}
-            <span className="min-w-0 truncate font-normal">{title}</span>
+            <span title={title} className="min-w-0 truncate font-normal">{title}</span>
             <span data-numeric className="shrink-0 text-xs text-muted-foreground">
               {`${at + 1}/${tabs.length}`}
             </span>
