@@ -28,7 +28,7 @@ const space = (tabPanes: readonly (readonly string[])[], tabNames: readonly stri
 });
 
 describe("a space screen's rows", () => {
-  test("an unnamed tab reads its terminal's name and what it said, never its place", () => {
+  test("an unnamed tab reads its terminal's name and what it said, never its place; a named one says which terminal", () => {
     const rows = spaceTabRows(
       space([["t1"], ["t2"]], ["", "notes"]),
       [
@@ -39,7 +39,7 @@ describe("a space screen's rows", () => {
     );
     expect(rows.map((row) => [row.id, row.name, row.detail, row.status])).toEqual([
       ["t1", "deploy", "Approve the production deploy", "blocked"],
-      ["t2", "notes", undefined, "idle"],
+      ["t2", "notes", "shell", "idle"],
     ]);
   });
 
@@ -70,6 +70,7 @@ describe("a space screen's subtitle", () => {
     const done = { id: "b", name: "tests", status: "done" } as const;
     expect(spaceSummary("studio", [blocked, done])).toBe("studio · 2 tabs · 1 needs you");
     expect(spaceSummary("studio", [done])).toBe("studio · 1 tab");
+    expect(spaceSummary("studio", [blocked, { ...blocked, id: "c" }])).toBe("studio · 2 tabs · 2 need you");
     expect(spaceSummary("build-box", [])).toBe("build-box · no running tabs");
   });
 });

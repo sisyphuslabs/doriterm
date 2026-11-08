@@ -35,8 +35,10 @@ export interface PhoneTerminalProps {
   readonly terminals: readonly Session[];
   /** The terminals of the tab that shows this one, in its panes' order; one when that tab is not split. */
   readonly panes: readonly string[];
-  /** Its tab as the strip reads it (its name, else its number); null when it is in no tab. */
+  /** Its tab's own name; null when the tab has none (or it is in no tab), so the terminal's title names it. */
   readonly tabTitle: string | null;
+  /** The space its Back returns to, by name; null when Back goes to the agents list. */
+  readonly backTo: string | null;
   readonly onOpen: (address: string) => void;
   readonly onBack: () => void;
   /** The Spaces sheet's tab controls: close the tab that shows an address, start a tab in a space (#1463). */
@@ -48,7 +50,19 @@ export interface PhoneTerminalProps {
 
 /** One session full screen on a phone, its terminal kept clear of the soft keyboard and the keys bar riding on it. */
 export function PhoneTerminal(props: PhoneTerminalProps) {
-  const { connection, terminal, terminals, panes, tabTitle, onOpen, onBack, onCloseTab, onNewInSpace, dictate } = props;
+  const {
+    connection,
+    terminal,
+    terminals,
+    panes,
+    tabTitle,
+    backTo,
+    onOpen,
+    onBack,
+    onCloseTab,
+    onNewInSpace,
+    dictate,
+  } = props;
   const port = useRef<TerminalPort | null>(null);
   const onPort = useCallback((next: TerminalPort | null) => {
     port.current = next;
@@ -122,7 +136,9 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
       <PhoneHeader
         terminal={terminal}
         terminals={terminals}
+        host={connection.hello.core.name}
         tabTitle={tabTitle}
+        backTo={backTo}
         onBack={onBack}
         onOpen={onOpen}
         action={untyped ? null : <DictateButton voice={voice} target={title} ref={mic} />}
@@ -163,7 +179,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
               onPort={onPort}
               // An End of this session leaves the screen only once it has removed the terminal (see afterEnd).
               onEnd={(address, end) => (closesTab(end) ? afterEnd(address, onBack) : undefined)}
-              // The header already has Back to agents; this one closes the ended session.
+              // The header already has Back; this one closes the ended session.
               closeLabel="Close"
               {...(keysControls === null ? {} : { jumpClearance: keysControls })}
               onEnded={() => setEndedView(viewKey)}

@@ -1,7 +1,7 @@
 import type { Terminal } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
 import type { MachineEntry } from "./machines.ts";
-import { agentCounts } from "./model.ts";
+import { agentStatus } from "./attention.ts";
 import { agentGroups, assignColors, machineGroups, PIN_LABEL } from "./sidebar-model.ts";
 
 const terminal = (address: string, state: string | undefined, labels: Record<string, string> = {}): Terminal => ({
@@ -51,14 +51,19 @@ describe("agentGroups", () => {
     expect(groups[0]?.agents[0]).toMatchObject({ id: "t1", status: "done", pinned: true });
   });
 
-  test("each group counts the rows it shows, and per state the sections together count what agentCounts() does", () => {
+  test("each group counts the rows it shows, and per state the sections together count the live agents in it", () => {
     const pinned = fleet.map((one) =>
       one.address === "t2" ? { ...one, labels: { ...one.labels, [PIN_LABEL]: "1" } } : one,
     );
     const groups = agentGroups(pinned, 0, "status");
     for (const group of groups) expect(group.count).toBe(group.agents.length);
     const shown = groups.flatMap((group) => group.agents);
-    const counts = agentCounts(pinned);
+    const live = pinned.filter((one) => one.state === "live");
+    const counts = {
+      done: live.filter((one) => agentStatus(one) === "done").length,
+      working: live.filter((one) => agentStatus(one) === "working").length,
+      idle: live.filter((one) => agentStatus(one) === "idle").length,
+    };
     for (const state of ["done", "working", "idle"] as const)
       expect(shown.filter((agent) => agent.status === state)).toHaveLength(counts[state]);
     expect(groups.find((group) => group.key === "working")?.count).toBe(1);

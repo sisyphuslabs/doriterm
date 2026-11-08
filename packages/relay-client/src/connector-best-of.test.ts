@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type ClientConnectOptions, connectRelayClient } from "./connector.ts";
+import { type ClientConnectOptions, RELAY_CONNECT_TIMEOUT_MS, connectRelayClient } from "./connector.ts";
 import { RelayCloseError } from "./link.ts";
 import type { WebSocketLink } from "./websocket-link.ts";
 
@@ -60,7 +60,7 @@ function fakeRelay(behaviour: {
         : new Promise((resolve) => {
             waiters.push({ count, resolve });
           }),
-    redirect: (url) => new WebSocket(url.replace("wss://relay.example", `ws://127.0.0.1:${server.port}`)),
+    redirect: (url) => new WebSocket(url.replace(/^wss:\/\/relay\.example(:\d+)?/, `ws://127.0.0.1:${server.port}`)),
     stop: () => server.stop(true),
   };
 }
@@ -100,6 +100,30 @@ describe("best-of-N relay dial", () => {
     expect(relay.accepted[1]?.binary[0]).toEqual(new Uint8Array([1, 3, 5, 1]));
   });
 
+  test("the other sockets to a relay on the default HTTPS port go to its edge's other HTTPS ports", async () => {
+    // A browser holds back a WebSocket handshake while another to the same address and port is still connecting, so
+    // three sockets to one port open one after another and the later ones miss the race (#1418).
+    const relay = started(fakeRelay({ answersPing: () => true }));
+    const dialed = async (relayUrl: string): Promise<string[]> => {
+      const urls: string[] = [];
+      const link = await connectRelayClient({
+        relayUrl,
+        hostId,
+        createSocket: (url) => {
+          urls.push(url);
+          return relay.redirect(url);
+        },
+      });
+      const closed = closeCodeOf(link);
+      link.close();
+      await closed;
+      return urls.map((url) => new URL(url).port);
+    };
+    expect(await dialed("https://relay.example")).toEqual(["", "8443", "2053"]);
+    expect(await dialed("wss://relay.example:443")).toEqual(["", "8443", "2053"]);
+    expect(await dialed("https://relay.example:4443")).toEqual(["4443", "4443", "4443"]);
+  });
+
   test("a refusal still reaches the caller as the kept link's close code", async () => {
     const relay = started(fakeRelay({ closeWith: 4404 }));
     const outcome = await connectRelayClient({
@@ -108,6 +132,23 @@ describe("best-of-N relay dial", () => {
       createSocket: relay.redirect,
     }).then(closeCodeOf, (error: unknown) => (error instanceof RelayCloseError ? error.code : String(error)));
     expect(outcome).toBe(4404);
+  });
+
+  test("a refusal reaches the caller well before the connect timeout when the other ports never answer", async () => {
+    // A network that silently drops 8443 and 2053: those sockets' TCP connects are accepted and never answered.
+    const relay = started(fakeRelay({ closeWith: 4404 }));
+    const silent = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data: () => undefined } });
+    const startedAt = performance.now();
+    const outcome = await connectRelayClient({
+      relayUrl: "https://relay.example",
+      hostId,
+      createSocket: (url) =>
+        new URL(url).port === "" ? relay.redirect(url) : new WebSocket(`ws://127.0.0.1:${silent.port}/`),
+    }).then(closeCodeOf, (error: unknown) => (error instanceof RelayCloseError ? error.code : String(error)));
+    const tookMs = performance.now() - startedAt;
+    silent.stop(true);
+    expect(outcome).toBe(4404);
+    expect(tookMs).toBeLessThan(RELAY_CONNECT_TIMEOUT_MS / 2);
   });
 
   test("pairing sessions, proven dials and relays on loopback open one socket", async () => {

@@ -131,6 +131,8 @@ test("every page runs only this origin's scripts and connects only to this origi
     "'self'",
     "https://relay-doriface.omo.dev",
     "wss://relay-doriface.omo.dev",
+    "wss://relay-doriface.omo.dev:8443",
+    "wss://relay-doriface.omo.dev:2053",
   ]);
   expect(directives.get("style-src")).toEqual(["'self'", `'sha256-${await baseUiScrollbarStyleHash()}'`]);
   expect(directives.get("img-src")).toEqual(["'self'"]);

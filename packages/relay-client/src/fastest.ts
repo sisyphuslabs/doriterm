@@ -55,8 +55,11 @@ function cancelledBy(signal: AbortSignal): Error {
 /**
  * Keeps the entrant with the shortest round trip. The race is decided once some entrant has answered and no other can
  * still beat the best answer: one that is timing can only while it has waited less than that answer took, and none can
- * after `graceMs` past the first answer. Ties keep the earlier entrant; an unanswered entrant (`Infinity`) starts no
- * grace and is kept only once every entrant has settled and none answered. When every entrant fails to open, the race rejects with the first entrant's error.
+ * after `graceMs` past the first answer. Ties keep the earlier entrant; an unanswered entrant (`Infinity`) is kept only
+ * once none answered and none is still waiting for its answer, and one still opening is waited for at most `graceMs`
+ * past the first entrant that settled, answered or not: a socket to a port the network silently drops never opens, and
+ * would otherwise hold a refusal until its connect timeout. When every entrant fails to open, the race rejects with the
+ * first entrant's error.
  */
 export function raceFastest<T>(entrants: readonly Entrant<T>[], options: RaceOptions): Promise<T> {
   const clock = options.clock ?? realClock;
@@ -64,6 +67,7 @@ export function raceFastest<T>(entrants: readonly Entrant<T>[], options: RaceOpt
   const standings: Standing<T>[] = entrants.map(() => ({ kind: "opening" }));
   let decided = false;
   let firstAnswerAt: number | undefined;
+  let firstSettledAt: number | undefined;
   let cancelTimer: (() => void) | undefined;
   return new Promise<T>((resolve, reject) => {
     function finish(winner: number | undefined, error?: unknown): void {
@@ -92,8 +96,13 @@ export function raceFastest<T>(entrants: readonly Entrant<T>[], options: RaceOpt
         if (first?.kind === "failed" && !unsettled) finish(undefined, first.error);
         return;
       }
+      const now = clock.now();
       if (firstAnswerAt === undefined) {
-        if (!unsettled) finish(leader);
+        if (!unsettled) return finish(leader);
+        if (standings.some((standing) => standing.kind === "timing")) return;
+        const openingEnds = (firstSettledAt ?? now) + options.graceMs;
+        if (openingEnds <= now) return finish(leader);
+        cancelTimer = clock.after(openingEnds - now, decide);
         return;
       }
       const graceEnds = firstAnswerAt + options.graceMs;
@@ -102,7 +111,6 @@ export function raceFastest<T>(entrants: readonly Entrant<T>[], options: RaceOpt
         if (standing.kind === "opening") nextCheck = Math.min(nextCheck, graceEnds);
         if (standing.kind === "timing") nextCheck = Math.min(nextCheck, graceEnds, standing.since + leading.ms);
       }
-      const now = clock.now();
       if (nextCheck <= now || nextCheck === Number.POSITIVE_INFINITY) return finish(leader);
       cancelTimer = clock.after(nextCheck - now, decide);
     }
@@ -124,6 +132,7 @@ export function raceFastest<T>(entrants: readonly Entrant<T>[], options: RaceOpt
       const ms = await entrant.roundTrip(value).catch(() => Number.POSITIVE_INFINITY);
       if (decided) return;
       standings[i] = { kind: "timed", value, ms };
+      firstSettledAt ??= clock.now();
       if (Number.isFinite(ms)) firstAnswerAt ??= clock.now();
       decide();
     }

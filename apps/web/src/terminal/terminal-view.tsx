@@ -29,6 +29,8 @@ import { TerminalLinks } from "./terminal-links.tsx";
 import { useTerminalActions } from "./use-terminal-actions.ts";
 import { useTerminalFont } from "./use-terminal-font.ts";
 import { usePreedit } from "./use-preedit.ts";
+import { usePredictionOverlay } from "./use-prediction-overlay.ts";
+import { predictionSeam } from "./prediction-seam.ts";
 import { wideGlyphScaler } from "./face-scales.ts";
 import { GlyphWarmup } from "./glyph-warmup.ts";
 import { SelectionMenu } from "./selection-menu.tsx";
@@ -36,6 +38,7 @@ import { useTerminalCore } from "./use-terminal-core.ts";
 import { useTerminalInput } from "./use-terminal-input.ts";
 import { usePaneVisibility } from "./use-pane-visibility.ts";
 import { useTerminalAttach } from "./use-terminal-attach.ts";
+import { useMachineLine } from "./use-machine-line.ts";
 import { useKeyboardClaim } from "./use-keyboard-claim.ts";
 
 /**
@@ -113,7 +116,9 @@ export function TerminalView(props: TerminalViewProps) {
   useTerminalPort(handle, typed, onPort, pasteFiles);
   useBehaviors(wt, stream, options, onUnsafePaste, pasteFiles);
   useTerminalFont(wt, config);
-  usePreedit(wt);
+  const prediction = useMemo(() => predictionSeam(wt), [wt]);
+  const predictedCursor = usePredictionOverlay(wt, prediction);
+  usePreedit(wt, predictedCursor);
   // Wide characters in the output are laid out in idle time, so scrolling back to them is not the first time (#286).
   const warmup = useRef<GlyphWarmup | null>(null);
   useEffect(() => {
@@ -127,6 +132,7 @@ export function TerminalView(props: TerminalViewProps) {
   }, [wt]);
   useTerminalActions(wt, typed, focused, pasteFiles, openFind);
   const shown = usePaneVisibility(wt, pacer);
+  const away = useMachineLine(connection, address, shown);
   useFocusAfterSelect(wt, options.trimCopy);
   useLongPressSelect(wt, setSelectAt);
   useShiftDragSelect(wt);
@@ -214,6 +220,15 @@ export function TerminalView(props: TerminalViewProps) {
       {attachment.opening ? (
         <QuietBusy label="Opening terminal" text="Opening…" className="absolute inset-0 z-10 bg-term-bg" />
       ) : null}
+      {away === null ? null : (
+        // Keys typed now wait for the machine (HeldInput, #1489); the line overlays the top row and takes no room.
+        <p
+          role="status"
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-muted/95 px-3 py-1 text-center text-sm text-muted-foreground"
+        >
+          Reconnecting to {away}. Your typing will be sent.
+        </p>
+      )}
       {wt === null ? null : (
         <>
           <TerminalScrollbar wt={wt} scroll={scroll} />

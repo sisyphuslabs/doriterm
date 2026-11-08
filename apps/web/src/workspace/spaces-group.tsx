@@ -135,7 +135,7 @@ export function SpacesGroup({ onOpen, rail = false, query = "", filterable = fal
 /** Holds the spaces' place, labeled, until the first machine.list answer: one row, where the first machine row goes. */
 function SpacesLoading({ rail }: { readonly rail: boolean }) {
   return (
-    <SidebarSection title="Spaces" {...(rail ? { className: "[&>header]:sr-only" } : {})}>
+    <SidebarSection title="Spaces" className={rail ? "[&>header]:sr-only" : "pt-2"}>
       <div
         role="status"
         aria-label="Loading machines and spaces"
@@ -259,7 +259,7 @@ function SpacesLists({
             ),
           }
         : {})}
-      {...(rail ? { className: "[&>header]:sr-only" } : {})}
+      className={rail ? "[&>header]:sr-only" : "pt-2"}
     >
       {/* While the link is down the connection notice says it once; the failed list would only repeat it (#545). */}
       {machines.listError === undefined || linkDown !== null ? null : (
@@ -268,7 +268,7 @@ function SpacesLists({
       {grouped === undefined ? (
         <section aria-label="Spaces on this machine">{listOf(shownSpaces, false)}</section>
       ) : (
-        <div ref={list} className="relative flex flex-col gap-2">
+        <div ref={list} className="relative flex flex-col gap-6">
           {overlay}
           {grouped.map(({ machine, spaces: own }, index) => (
             <MachineGroup
