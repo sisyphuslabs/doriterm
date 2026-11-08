@@ -131,5 +131,14 @@ export function useBrowserJoin() {
     }, 1_000);
     return () => clearTimeout(timer.current);
   }, [state, busy, resume]);
-  return { state, failure, device, busy, inviter, start: execute, answer: (matches: boolean) => flow?.answer(matches), resume };
+  return {
+    state,
+    failure,
+    device,
+    busy,
+    inviter,
+    start: execute,
+    answer: (matches: boolean) => flow?.answer(matches),
+    resume,
+  };
 }

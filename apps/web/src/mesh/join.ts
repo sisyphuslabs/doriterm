@@ -62,8 +62,10 @@ function refusalOf(mode: OfferSecret["mode"], error: unknown): JoinRefused | und
 /** A typed code that opens a device pairing (`doriface-host pair`), not a mesh invite: it pairs this browser instead. */
 export class DeviceCodeOffer extends Error {
   override readonly name = "DeviceCodeOffer";
-  constructor(readonly offer: PairingOffer) {
+  readonly offer: PairingOffer;
+  constructor(offer: PairingOffer) {
     super("this code pairs a device with its host");
+    this.offer = offer;
   }
 }
 
