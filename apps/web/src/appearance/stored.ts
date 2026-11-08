@@ -15,7 +15,7 @@ export interface Appearance {
 }
 
 export const DEFAULT_APPEARANCE: Appearance = {
-  mode: "system",
+  mode: "dark",
   dark: "night",
   light: "day",
   density: "comfortable",
@@ -60,7 +60,8 @@ export function parseAppearance(stored: unknown): Appearance {
   if (mode !== undefined) return { ...base, mode };
   const legacy = text(stored, "theme");
   const pinned = legacy === undefined ? undefined : choices.get(legacy);
-  if (legacy === undefined || pinned === undefined) return { ...base, mode: "system" };
+  if (legacy === "system") return { ...base, mode: "system" };
+  if (legacy === undefined || pinned === undefined) return { ...base, mode: DEFAULT_APPEARANCE.mode };
   return pinned.theme.light ? { ...base, mode: "light", light: legacy } : { ...base, mode: "dark", dark: legacy };
 }
 

@@ -3,6 +3,7 @@ import type { WTerm } from "@wterm/react";
 import { Copy, ExternalLink } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { openTerminalLink } from "../desktop/bridge.ts";
+import { isBrowsing } from "./browse-mode.ts";
 import { type CellAt, type CellSource, linkAt, showsOtherTarget, type TerminalLink } from "./links.ts";
 
 /** The key that makes a click open a link, as in Ghostty: Cmd on a Mac, Ctrl elsewhere. */
@@ -146,7 +147,8 @@ export function TerminalLinks({ wt }: { readonly wt: WTerm }) {
   const link = offer?.link;
   const close = (): void => {
     setOffer(null);
-    wt.focus();
+    // A terminal browsed read-only keeps its keyboard away; a tap on a link there is still a read.
+    if (!isBrowsing(wt.element)) wt.focus();
   };
   return (
     <>

@@ -1,7 +1,9 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { onTestFinished } from "bun:test";
 import { createHcSession, type HcSession } from "../../testing/hc-session.ts";
+import { signalProcess } from "../../testing/run-cores.ts";
 import { type HcControl, type HcMachines, openHcControl, spawnHcLink } from "../hc-machines.ts";
 import { type LineSocket, listenLineSocket } from "../line-socket.ts";
 import type { LineGrants } from "../line-grants.ts";
@@ -9,6 +11,32 @@ import type { MemberEntry } from "../authorize-index.ts";
 import { shellQuote } from "../via.ts";
 
 const CLI = join(import.meta.dir, "..", "..", "cli.ts");
+
+/** Runs the real CLI for the mesh refusal tests. */
+export async function bridge(...args: readonly string[]): Promise<{ code: number; reason: string }> {
+  const child = Bun.spawn([process.execPath, CLI, "connect", ...args], {
+    env: process.env,
+    detached: process.platform !== "win32",
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  let stopping: Promise<void> | undefined;
+  const stop = (): Promise<void> =>
+    (stopping ??= (async () => {
+      if (process.platform === "win32") child.kill("SIGKILL");
+      else signalProcess(-child.pid, "SIGKILL");
+      await child.exited;
+    })());
+  // A timed-out or abandoned call cannot reach its finally, so the test also owns the entire child group.
+  onTestFinished(stop);
+  try {
+    const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+    return { code, reason: stderr.trim().split("\n").at(-1) ?? "" };
+  } finally {
+    await stop();
+  }
+}
 
 /** A scratch herdr core with a control connection, and the mesh member card that names it. */
 export interface Core {

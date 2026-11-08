@@ -51,6 +51,8 @@ export const ACTIONS: readonly ActionDef[] = [
   app("pane.zoom", "Zoom pane", "toggle_split_zoom"),
   app("agent.next", "Next agent"),
   app("agent.prev", "Previous agent"),
+  // No default chord, as with Dictate: any free one would collide with a terminal program (#1448).
+  app("agent.waiting", "Open the next agent that needs you"),
   app("layout.toggle:sidebar", "Show or hide the sidebar"),
   app("layout.focus:sidebar", "Move focus between the terminal and the sidebar"),
   app("layout.filter:sidebar", "Filter the sidebar"),

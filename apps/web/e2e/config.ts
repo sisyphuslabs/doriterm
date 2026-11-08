@@ -1,8 +1,11 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureRunPorts } from "./run-ports.ts";
+import { E2E_RUN_ID_ENV, ensureRunPorts } from "./run-ports.ts";
 
 ensureRunPorts();
+
+/** This run's own id: the host a run starts records it, so a host another run started is not this run's to stop (#1412). */
+export const E2E_RUN_ID = process.env[E2E_RUN_ID_ENV] ?? "";
 
 /**
  * A port of this run's, from the environment: e2e/run-ports.ts picks free ones per run (#37), so any number of runs on
@@ -36,6 +39,11 @@ export const E2E_LAYOUT_PORT = port("E2E_LAYOUT_PORT");
 export const E2E_LAYOUT_ENV = join(tmpdir(), `doriface-web-e2e-${E2E_LAYOUT_PORT}-host.json`);
 /** What the layout host had to stop as it shut down (hc processes it left), for the run's teardown to fail on (#251). */
 export const E2E_LAYOUT_LEFT = join(tmpdir(), `doriface-web-e2e-${E2E_LAYOUT_PORT}-left.json`);
+/**
+ * What the layout host writes as its last step before it exits, so the run's teardown waits for that exit rather than
+ * for a wall clock (#1412).
+ */
+export const E2E_LAYOUT_STOPPED = join(tmpdir(), `doriface-web-e2e-${E2E_LAYOUT_PORT}-stopped.json`);
 export const E2E_LAYOUT_MACHINE_DIR = join(tmpdir(), `doriface-web-e2e-${E2E_LAYOUT_PORT}-machine`);
 /**
  * The test push services the e2e hosts may post web push notices to (`--push-test-origin`): any port on loopback,

@@ -1,15 +1,13 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import type { ByteLink } from "@doriface/crypto";
-import { join } from "node:path";
 import { monotonicClock } from "./clock.ts";
 import { DialPolicy } from "./dial-policy.ts";
 import { LineGrants } from "./line-grants.ts";
 import { seededRandom } from "./testing/fake-clock.ts";
-import { hostIdFor, localHost } from "./testing/hc-mesh.ts";
+import { bridge, hostIdFor, localHost } from "./testing/hc-mesh.ts";
 import type { MemberEntry } from "./authorize-index.ts";
 import type { MeshView } from "./mesh-view.ts";
 
-const CLI = join(import.meta.dir, "..", "cli.ts");
 const local = localHost();
 afterAll(() => local.dispose());
 
@@ -40,16 +38,6 @@ function fakeLink(): ByteLink & { readonly closes: (number | undefined)[] } {
       for (const listener of listeners) listener(undefined);
     },
   };
-}
-
-async function bridge(...args: readonly string[]): Promise<{ code: number; reason: string }> {
-  const child = Bun.spawn([process.execPath, CLI, "connect", ...args], {
-    stdin: "ignore",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
-  return { code, reason: stderr.trim().split("\n").at(-1) ?? "" };
 }
 
 describe("connect --mesh refusals (R-12)", () => {

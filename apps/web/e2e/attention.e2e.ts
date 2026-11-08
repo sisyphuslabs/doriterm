@@ -33,7 +33,8 @@ function startShell(name: string): string {
 
 /** Types into the shell a report of `state` over OSC 7501, as an agent sends when its turn changes. */
 function report(address: string, state: string): void {
-  hcOn("host", ["send", address, `printf '\\033]7501;state=${state}\\033\\\\'`]);
+  // hc refuses to type into a blocked terminal unless forced: the report that ends the block has to be.
+  hcOn("host", ["send", "--force", address, `printf '\\033]7501;state=${state}\\033\\\\'`]);
 }
 
 /** A second device: its own browser context, so its own storage and its own reading of the same core. */
@@ -112,6 +113,52 @@ test("an agent that finished where this screen was not looking is Done until sho
   await expect(rowOf(page, "Done", "att-flip")).toBeVisible();
 
   await other.context().close();
+});
+
+test("the status bar's needs-you count opens each terminal that needs you in turn, and is words again once none does", async ({
+  page,
+}) => {
+  const calm = startShell("att-calm");
+  const askA = startShell("att-ask-a");
+  const askB = startShell("att-ask-b");
+  seedSpaces([
+    {
+      folder: "",
+      id: "spc-att1448",
+      name: SPACE,
+      tabs: [
+        { id: "tb-att-calm", name: "calm", terminal: calm },
+        { id: "tb-att-ask-a", name: "ask-a", terminal: askA },
+        { id: "tb-att-ask-b", name: "ask-b", terminal: askB },
+      ],
+    },
+  ]);
+  await page.goto("/");
+  await expect(tabOf(page, "calm")).toHaveAttribute("aria-selected", "true", { timeout: 20_000 });
+  const needsYou = page.getByRole("contentinfo").getByRole("button", { name: /needs you$/ });
+  await expect(needsYou).toHaveCount(0);
+
+  report(askA, "blocked");
+  report(askB, "blocked");
+  await expect(needsYou).toHaveText("2 needs you", { timeout: 15_000 });
+
+  const titles = ["calm", "ask-a", "ask-b"] as const;
+  const selected = async (): Promise<string> => {
+    const states = await Promise.all(titles.map((title) => tabOf(page, title).getAttribute("aria-selected")));
+    return titles[states.indexOf("true")] ?? "none";
+  };
+  await needsYou.click();
+  await expect.poll(selected).toMatch(/^ask-[ab]$/);
+  const first = await selected();
+  await needsYou.click();
+  await expect.poll(selected).toBe(first === "ask-a" ? "ask-b" : "ask-a");
+  await needsYou.click();
+  await expect.poll(selected).toBe(first);
+
+  report(askA, "working");
+  report(askB, "working");
+  await expect(needsYou).toHaveCount(0, { timeout: 15_000 });
+  await expect(page.getByRole("contentinfo")).toContainText("terminals");
 });
 
 test("an agent that finishes in the tab on screen asks for nobody: its row goes straight to Idle", async ({ page }) => {

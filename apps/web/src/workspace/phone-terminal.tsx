@@ -23,6 +23,7 @@ import {
   KEYS_BAR_HEIGHT,
   keysBottom,
   PhoneKeys,
+  roundButtonsClearance,
 } from "./phone-keys.tsx";
 import { ConnectionLine } from "./reconnect-status.tsx";
 import { afterEnd } from "./session-actions.ts";
@@ -38,13 +39,16 @@ export interface PhoneTerminalProps {
   readonly tabTitle: string | null;
   readonly onOpen: (address: string) => void;
   readonly onBack: () => void;
+  /** The Spaces sheet's tab controls: close the tab that shows an address, start a tab in a space (#1463). */
+  readonly onCloseTab: (address: string) => void;
+  readonly onNewInSpace: (space: string) => void;
   /** Where this terminal registers its dictation for the shell's palette row and bound key; null while it takes none. */
   readonly dictate: RefObject<(() => void) | null>;
 }
 
 /** One session full screen on a phone, its terminal kept clear of the soft keyboard and the keys bar riding on it. */
 export function PhoneTerminal(props: PhoneTerminalProps) {
-  const { connection, terminal, terminals, panes, tabTitle, onOpen, onBack, dictate } = props;
+  const { connection, terminal, terminals, panes, tabTitle, onOpen, onBack, onCloseTab, onNewInSpace, dictate } = props;
   const port = useRef<TerminalPort | null>(null);
   const onPort = useCallback((next: TerminalPort | null) => {
     port.current = next;
@@ -54,6 +58,8 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   // A mouse-only device has no soft keyboard to ride on: its keys bar is opened and closed by hand (#287).
   const mouseOnly = useMouseOnly();
   const [keysShown, setKeysShown] = useState(false);
+  // Read-only browsing (browse-mode.ts) belongs to the terminal it was turned on for: opening another ends it.
+  const [browsingOn, setBrowsingOn] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const [pad, setPad] = useState(false);
   // The keys bar as drawn, which grows while its field has a row of its own; the terminal keeps clear of all of it.
@@ -68,26 +74,29 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   const title = terminalTitle(terminal);
   const machine = machineOf(terminal.address);
   const offline = terminal.offline === true && machine !== undefined;
+  const browsing = browsingOn === terminal.address && !ended && !offline;
+  const setBrowsing = (on: boolean): void => setBrowsingOn(on ? terminal.address : null);
   const host = useHostPlatform(connection, machine, offline);
   const sticky = useStickyKeys(port, host);
   const voice = useDictation();
   const mic = useRef<HTMLButtonElement>(null);
   const { toggle } = voice;
-  // An ended view or an offline machine has nothing to type into: no mic, no dictation from the palette, and one under
-  // way ends.
+  // An ended view, an offline machine or a terminal browsed read-only has nothing to type into: no mic, no dictation
+  // from the palette, and one under way ends.
+  const untyped = offline || ended || browsing;
   useEffect(() => {
-    dictate.current = offline || ended ? null : toggle;
+    dictate.current = untyped ? null : toggle;
     return () => {
       dictate.current = null;
     };
-  }, [dictate, offline, ended, toggle]);
+  }, [dictate, untyped, toggle]);
   useEffect(() => {
-    if (ended || offline) voice.dictation.close();
-  }, [ended, offline, voice.dictation]);
-  const dictating = voice.state.kind !== "idle" && !ended && !offline;
+    if (untyped) voice.dictation.close();
+  }, [untyped, voice.dictation]);
+  const dictating = voice.state.kind !== "idle" && !untyped;
   // The packs panel takes the screen for a moment, so the bar stays under it as it does under the session menu: closing
   // the panel puts the person back on the terminal's keyboard.
-  const keysOpen = !ended && !dictating && (keyboard.up || menu || packs || (mouseOnly && keysShown));
+  const keysOpen = !ended && !dictating && !browsing && (keyboard.up || menu || packs || (mouseOnly && keysShown));
   // The tabs bar takes the bottom while nothing rides there: the keys bar, with the soft keyboard, and dictation do.
   const tabs = useSpaceTabs(terminals, terminal.address);
   const tabsBar = !keysOpen && !dictating && tabs.some((tab) => tab.includes(terminal.address));
@@ -115,7 +124,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
         terminals={terminals}
         tabTitle={tabTitle}
         onBack={onBack}
-        action={offline || ended ? null : <DictateButton voice={voice} target={title} ref={mic} />}
+        action={untyped ? null : <DictateButton voice={voice} target={title} ref={mic} />}
       />
       <ConnectionLine />
       <PaneSwitcher panes={panes} open={terminal.address} onOpen={onOpen} />
@@ -149,6 +158,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
               label={`${title} output`}
               transformInput={sticky.transform}
               typesComposition={sticky.latched.size > 0}
+              browsing={browsing}
               onPort={onPort}
               // An End of this session leaves the screen only once it has removed the terminal (see afterEnd).
               onEnd={(address, end) => (closesTab(end) ? afterEnd(address, onBack) : undefined)}
@@ -159,6 +169,14 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
             />
           )}
         </RegionBoundary>
+        {browsing ? (
+          <p
+            role="status"
+            className="pointer-events-none absolute top-2 right-4 z-10 rounded-full border border-border bg-chrome/90 px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-lg backdrop-blur-md"
+          >
+            Read-only
+          </p>
+        ) : null}
       </main>
       {tabsBar ? (
         <PhoneTabSwitcher
@@ -167,6 +185,10 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
           active={terminal.address}
           title={tabTitle ?? title}
           onOpen={onOpen}
+          // A touch device's Read-only button takes the slot left of the keyboard button's; a mouse-only one has none.
+          clearance={roundButtonsClearance(mouseOnly ? 1 : 2)}
+          onCloseTab={onCloseTab}
+          onNewInSpace={onNewInSpace}
         />
       ) : null}
       {dictating ? (
@@ -199,7 +221,8 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
             onPad={setPad}
             onBarHeight={setBarHeight}
             onPacks={() => setPacks(true)}
-            {...(mouseOnly ? { onKeys: setKeysShown } : {})}
+            browsing={browsing}
+            {...(mouseOnly ? { onKeys: setKeysShown } : { onBrowse: setBrowsing })}
           />
         </>
       )}
