@@ -18,6 +18,7 @@ export function SpaceNameInput({ space, onClose }: SpaceNameInputProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const errorId = useId();
+  const inputId = useId();
   const commit = (): void => {
     if (busy) return;
     if (name.trim() === space.name) return onClose();
@@ -32,9 +33,13 @@ export function SpaceNameInput({ space, onClose }: SpaceNameInputProps) {
   return (
     // A terminal its first click opened must not take the keyboard from the field as it starts (mayTakeFocus).
     <div data-holds-keyboard className="flex flex-col gap-1">
+      <label id={`${inputId}-label`} htmlFor={inputId} className="sr-only">
+        Rename space {space.name}
+      </label>
       <Input
+        id={inputId}
         autoFocus
-        aria-label={`Rename space ${space.name}`}
+        aria-labelledby={`${inputId}-label`}
         {...(error === null ? {} : { "aria-describedby": errorId })}
         invalid={error !== null}
         value={name}

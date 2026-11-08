@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { connect } from "./connect.ts";
+import { installShellForwarder } from "./direct-forward.test-support.ts";
 import { DEFAULT_SETTINGS } from "./settings.ts";
 
 const HOST_ID = "a".repeat(26);
@@ -60,7 +61,9 @@ test("a connect the caller abandons rejects at once and closes the relay socket 
   }
 });
 
-test("an attempt the caller abandoned does not dial the relay at all", async () => {
+// Only the desktop shell races a direct leg first (#1381 §8); a browser goes to the relay at once.
+test("in the desktop shell, an attempt abandoned during the direct leg does not dial the relay at all", async () => {
+  const shell = installShellForwarder();
   const cancelled = new AbortController();
   const lan = neverAnswers({ open: () => cancelled.abort(new Error("the person changed the settings")) });
   let relayDials = 0;
@@ -80,6 +83,7 @@ test("an attempt the caller abandoned does not dial the relay at all", async () 
     expect(String(outcome)).toContain("the person changed the settings");
     expect(relayDials).toBe(0);
   } finally {
+    shell.restore();
     lan.stop();
     relay.stop();
   }

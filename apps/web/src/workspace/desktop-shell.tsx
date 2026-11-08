@@ -1,16 +1,6 @@
 import type { HcConnection } from "@doriface/client";
-import {
-  type AgentStatus,
-  Button,
-  cn,
-  IconButton,
-  Kbd,
-  StatusBar,
-  StatusBarItem,
-  TabBar,
-  type WorkspaceTab,
-} from "@doriface/ui";
-import { Bot, Columns2, Folder, Monitor, PanelLeft, Rows2, SquareTerminal, Terminal } from "lucide-react";
+import { type AgentStatus, cn, IconButton, TabBar, type WorkspaceTab } from "@doriface/ui";
+import { Bot, Columns2, PanelLeft, Rows2, SquareTerminal, Terminal } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { actionChosen } from "../keys/dispatcher.ts";
 import { useActionKeys } from "../keys/use-action-keys.ts";
@@ -18,7 +8,7 @@ import { DictateButton } from "../voice/dictate-button.tsx";
 import { useDictation } from "../voice/use-dictation.ts";
 import { VoiceDock } from "../voice/voice-dock.tsx";
 import { agentStatus } from "./attention.ts";
-import { machineOf, programKind, type Session, spaceName, tabTitle, terminalTitle } from "./model.ts";
+import { machineOf, programKind, type Session, tabTitle, terminalTitle } from "./model.ts";
 import { NewTabMenu } from "./new-tab-menu.tsx";
 import { FirstRunGuideCard } from "../pair/first-run-guide-card.tsx";
 import { guideStore } from "../pair/first-run-guide.ts";
@@ -27,7 +17,7 @@ import { QuietBusy } from "../terminal/quiet-busy.tsx";
 import { usePaneSends } from "./pane-sends.ts";
 import { panelId, SplitPanes } from "./split-panes.tsx";
 import { RenameDialog } from "./rename-dialog.tsx";
-import { ConnectionPathItem, ReconnectStatus } from "./reconnect-status.tsx";
+import { DesktopStatusBar } from "./desktop-status-bar.tsx";
 import { SessionMenu } from "./session-menu.tsx";
 import { Sidebar } from "./sidebar.tsx";
 import { sidebarFilter } from "./sidebar-filter-field.tsx";
@@ -125,7 +115,6 @@ export function DesktopShell(props: DesktopShellProps) {
   } = props;
   const [sidebar, setSidebar] = useSidebarShown();
   const [{ rail }, setSidebarSize] = useSidebarSize();
-  const paletteKeys = useActionKeys("app.palette");
   const sidebarKeys = useActionKeys("layout.toggle:sidebar");
   const newTabKeys = useActionKeys("tab.new");
   const moveLeftKeys = useActionKeys("tab.move:left");
@@ -211,7 +200,13 @@ export function DesktopShell(props: DesktopShellProps) {
   // As on the phone: no tabs means nothing is open only once the saved layout has answered, or once the core has listed
   // no live terminal (then there is nothing for the layout to bring back).
   const nothingOpen = layout.restored || (loaded && live.length === 0);
-  const blocked = live.filter((terminal) => agentStatus(terminal) === "blocked").length;
+  const openTerminal = (address: string): void => {
+    guideStore.opened(address);
+    if (findTerminal(layout.tabs, address) === null) {
+      attachAhead(connection, openingCallsOf(connection), address, readDisplay(document.documentElement));
+    }
+    layout.openTerminal(address);
+  };
   useArrivalReady(
     workspaceSettled(loaded, { open: layout.tabs.map((tab) => tab.key), restored: layout.restored }, live.length),
   );
@@ -249,18 +244,7 @@ export function DesktopShell(props: DesktopShellProps) {
         onNew={onNew}
       />
       {sidebar ? (
-        <Sidebar
-          terminals={terminals}
-          active={focusedAddress}
-          onOpen={(address) => {
-            guideStore.opened(address);
-            if (findTerminal(layout.tabs, address) === null) {
-              attachAhead(connection, openingCallsOf(connection), address, readDisplay(document.documentElement));
-            }
-            layout.openTerminal(address);
-          }}
-          onPalette={onPalette}
-        />
+        <Sidebar terminals={terminals} active={focusedAddress} onOpen={openTerminal} onPalette={onPalette} />
       ) : null}
       {/* The titlebar's leading strip, beside the toggle and, with the sidebar hidden, before it: it keeps the chrome and
           the window drag where the tab strip's own box used to reach (#643). It comes before the toggle so the toggle's
@@ -382,46 +366,15 @@ export function DesktopShell(props: DesktopShellProps) {
             }
           />
         </main>
-        <StatusBar
-          start={
-            <>
-              {/* A terminal on another machine shows its full hc address (build-box/t3): what hc commands take. */}
-              <span data-status-machine className="flex min-w-0">
-                <span className="sr-only">Machine: </span>
-                <StatusBarItem icon={<Monitor aria-hidden />}>
-                  {focusedAddress !== null && machineOf(focusedAddress) !== undefined ? focusedAddress : focusedMachine}
-                </StatusBarItem>
-              </span>
-              {focusedTerminal === undefined ? null : (
-                // The space gives way first, so a long name never pushes the terminal count out of the bar.
-                <span data-status-space className="flex max-w-48 min-w-0">
-                  <span className="sr-only">Space: </span>
-                  <StatusBarItem icon={<Folder aria-hidden />}>{spaceName(focusedTerminal)}</StatusBarItem>
-                </span>
-              )}
-              {loaded ? (
-                <span className="flex shrink-0">
-                  <StatusBarItem>
-                    {live.length} {live.length === 1 ? "terminal" : "terminals"}
-                    {blocked > 0 ? <span className="text-status-blocked-text"> · {blocked} needs you</span> : null}
-                  </StatusBarItem>
-                </span>
-              ) : null}
-              <ReconnectStatus />
-              <ConnectionPathItem />
-            </>
-          }
-          end={
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onPalette}
-              className="h-5 gap-1.5 px-1 text-xs text-muted-foreground"
-            >
-              {paletteKeys === undefined ? null : <Kbd keys={paletteKeys} />}
-              Commands
-            </Button>
-          }
+        <DesktopStatusBar
+          terminals={terminals}
+          live={live}
+          loaded={loaded}
+          focusedAddress={focusedAddress}
+          focusedTerminal={focusedTerminal}
+          focusedMachine={focusedMachine}
+          onOpen={openTerminal}
+          onPalette={onPalette}
         />
       </div>
     </div>

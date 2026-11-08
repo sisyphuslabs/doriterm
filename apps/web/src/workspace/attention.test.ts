@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { agentStatus, attentionMark, marksInView, panesInView, type Session, withAttention } from "./attention.ts";
+import {
+  agentStatus,
+  attentionMark,
+  marksInView,
+  nextNeedingYou,
+  panesInView,
+  type Session,
+  withAttention,
+} from "./attention.ts";
 import { groupAgents } from "./model.ts";
 
 const session = (fields: Partial<Session> = {}): Session => ({
@@ -134,6 +142,39 @@ describe("marksInView", () => {
     expect(marksInView(terminals, ["t1", "t3", "t4"])).toEqual({ t1: "3" });
     expect(marksInView(terminals, ["t2"])).toEqual({ t2: "42" });
     expect(marksInView(terminals, [])).toEqual({});
+  });
+});
+
+describe("nextNeedingYou", () => {
+  const blocked = { status: { state: "blocked" } } as const;
+  const terminals = [
+    session({ address: "a" }),
+    session({ address: "b", ...blocked }),
+    session({ address: "c", status: { state: "working" } }),
+    session({ address: "d", ...blocked }),
+  ];
+
+  test.each([
+    ["nothing in focus: the first that needs you", null, "b"],
+    ["after a terminal that does not need you", "a", "b"],
+    ["after one that needs you: the next one", "b", "d"],
+    ["past a working one", "c", "d"],
+    ["after the last: round to the first", "d", "b"],
+    ["focus on a terminal that is gone", "zz", "b"],
+  ] as const)("%s", (_name, focused, expected) => {
+    expect(nextNeedingYou(terminals, focused)).toBe(expected);
+  });
+
+  test("the only one that needs you is itself the next, even in focus", () => {
+    const one = [session({ address: "a" }), session({ address: "b", ...blocked })];
+    expect(nextNeedingYou(one, "b")).toBe("b");
+  });
+
+  test("none when nobody waits, and an offline or ended terminal never counts", () => {
+    expect(nextNeedingYou([session({ address: "a" })], null)).toBeNull();
+    expect(nextNeedingYou([session({ address: "a", ...blocked, offline: true })], null)).toBeNull();
+    expect(nextNeedingYou([session({ address: "a", ...blocked, state: "finished" })], null)).toBeNull();
+    expect(nextNeedingYou([], "a")).toBeNull();
   });
 });
 
