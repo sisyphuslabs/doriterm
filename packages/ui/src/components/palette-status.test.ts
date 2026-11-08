@@ -13,11 +13,10 @@ describe("the palette's state filter (#1454)", () => {
     expect(statusCounts(commands)).toEqual([
       { status: "blocked", count: 1 },
       { status: "working", count: 1 },
-      { status: "idle", count: 2 },
     ]);
   });
 
-  test("at most the three most urgent states, and never an offline machine's, so the row stays within 2-4 segments", () => {
+  test("at most the two most urgent states, and never an offline machine's, so the row stays within 2-3 segments", () => {
     const every = [
       agent("a", "idle"),
       agent("b", "done"),
@@ -25,7 +24,7 @@ describe("the palette's state filter (#1454)", () => {
       agent("d", "blocked"),
       agent("e", "unknown"),
     ];
-    expect(statusCounts(every).map(({ status }) => status)).toEqual(["blocked", "working", "done"]);
+    expect(statusCounts(every).map(({ status }) => status)).toEqual(["blocked", "working"]);
     expect(statusCounts([agent("a", "idle"), agent("e", "unknown")])).toEqual([]);
   });
 
@@ -57,7 +56,7 @@ describe("the palette's state filter (#1454)", () => {
       agent("e", "unknown"),
       action("x"),
     ];
-    expect(statusCounts(many)).toHaveLength(3);
+    expect(statusCounts(many)).toHaveLength(2);
     expect(agentCount(many)).toBe(5);
     expect(withStatus(many, null).filter((command) => command.status !== undefined)).toHaveLength(agentCount(many));
   });
