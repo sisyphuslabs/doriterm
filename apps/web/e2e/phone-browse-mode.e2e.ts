@@ -107,7 +107,8 @@ test("browsing read-only, a swipe scrolls the scrollback and the program hears n
   const before = await viewport.evaluate((el) => el.scrollTop);
   const at = await pointOnRowStart(terminal, "delta epsilon zeta");
   await touch.down(at);
-  await touch.drag(at, { x: at.x, y: at.y + 200 });
+  // A quick flick, as a thumb swipes: the scroll carries on after the finger lifts (#1491).
+  await touch.drag(at, { x: at.x, y: at.y + 200 }, 3);
   await touch.up({ x: at.x, y: at.y + 200 });
   await expect.poll(() => viewport.evaluate((el) => el.scrollTop)).toBeLessThan(before);
   await expect(painted(page)).toHaveCount(0);
