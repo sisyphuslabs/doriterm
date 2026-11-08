@@ -50,9 +50,10 @@ export interface OpenOptions {
 const thisPage = (): PageAccess => ({ ...pageAccess(), forwardsPlainWs: canForwardPlainWs() });
 
 /**
- * Opens a framed herdr-core connection with the given settings. In relay mode a saved direct address is tried first with
- * the same pinned Noise session; the relay carries the session when direct does not answer within the budget, or fails
- * for any reason, so a broken direct address never costs the connection (#446 §2).
+ * Opens a framed herdr-core connection with the given settings. In relay mode the desktop shell tries a saved direct
+ * address first with the same pinned Noise session; the relay carries the session when direct does not answer within the
+ * budget, or fails for any reason, so a broken direct address never costs the connection (#446 §2). A browser has no
+ * direct path: its sessions are the relay's (#1381 §8).
  */
 export async function connect(
   settings: ConnectionSettings,
@@ -144,6 +145,9 @@ async function openDirect(
   deps: RelayDeps,
   options: OpenOptions,
 ): Promise<DirectOutcome> {
+  // #1381 §8: a browser reaches every member over the relay. Only the desktop shell's forwarder may dial a saved
+  // address, so everywhere else connect() goes to the relay and the address an older file holds is left unused.
+  if (!canForwardPlainWs()) return { reason: undefined };
   if (options.skipDirect === true) return { reason: undefined };
   const address = parseDirectAddress(settings.directUrl);
   if (!address.usable) return { reason: address.reason === "no address is set" ? undefined : "unusable-address" };

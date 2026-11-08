@@ -1,7 +1,6 @@
-import { Button, IconButton, ScrollArea, Tab, TabList, Tabs, cn } from "@doriface/ui";
-import { ArrowLeft, Bell, Keyboard, Mic, Network, Palette, PanelBottom, Plug, SquareTerminal } from "lucide-react";
+import { Button, IconButton, Input, ScrollArea, Tab, TabList, Tabs, cn } from "@doriface/ui";
+import { ArrowLeft } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { MonitorSmartphone } from "lucide-react";
 import { currentPlatform, triggerKeys } from "../keys/trigger.ts";
 import { AppearanceSection } from "../settings/appearance-section.tsx";
 import { ConnectionSection } from "../settings/connection-section.tsx";
@@ -26,19 +25,8 @@ import { VoiceSection } from "../settings/voice-section.tsx";
 import { useBrowserMembership } from "../mesh/membership-state.ts";
 import { desktopBridge } from "../desktop/bridge.ts";
 import { BrowserInvite } from "../settings/browser-invite.tsx";
-
-const SECTIONS = [
-  { id: "device", label: "This device", icon: <MonitorSmartphone /> },
-  { id: "machines", label: "Machines", icon: <Network /> },
-  { id: "pair", label: "Connect a machine", icon: <Plug /> },
-  { id: "terminal", label: "Terminal", icon: <SquareTerminal /> },
-  { id: "keyboard", label: "Keyboard", icon: <PanelBottom /> },
-  { id: "notifications", label: "Notifications", icon: <Bell /> },
-  { id: "appearance", label: "Appearance", icon: <Palette /> },
-  { id: "keybindings", label: "Keybindings", icon: <Keyboard /> },
-  { id: "voice", label: "Voice input", icon: <Mic /> },
-] as const;
-type SectionId = (typeof SECTIONS)[number]["id"];
+import { SECTIONS, type SectionId } from "../settings/settings-sections.tsx";
+import { matchSections } from "../settings/settings-search.ts";
 
 /** The section a link asked for (a hash, so it survives a reload), else the one Settings always opens on. */
 function firstSection(): SectionId {
@@ -63,6 +51,23 @@ function Lead({ children }: { readonly children: ReactNode }) {
 /** Section navigation beside the form; changes apply as they are made. */
 export function SettingsRoute() {
   const [section, setSection] = useState<SectionId>(firstSection);
+  const [query, setQuery] = useState("");
+  const shown = matchSections(SECTIONS, query);
+  const search = (
+    <Input
+      aria-label="Search settings"
+      type="search"
+      placeholder="Search settings"
+      value={query}
+      onValueChange={(next: string) => setQuery(next)}
+      onKeyDown={(event) => {
+        const first = shown[0];
+        if (event.key === "Enter" && first !== undefined) setSection(first.id);
+      }}
+    />
+  );
+  const nothing =
+    shown.length === 0 ? <p className="px-2 py-1 text-sm text-muted-foreground">No setting matches "{query}"</p> : null;
   const members = useMeshMembers();
   const mesh = useBrowserMembership();
   const joinedBrowser = mesh.phase !== "empty" && desktopBridge() === null;
@@ -91,9 +96,12 @@ export function SettingsRoute() {
         <div {...titlebar} className="flex items-center gap-1 pt-3 pr-2 pb-1 pl-[var(--titlebar-inset-start,0.5rem)]">
           {back}
           <h1 className="text-xl font-semibold text-foreground">Settings</h1>
+          {/* In the title row, so the phone header keeps its height and the sections below do not move (#1460). */}
+          <div className="ml-2 min-w-0 flex-1">{search}</div>
         </div>
+        {nothing}
         <TabList className="scroll-px-2 px-2">
-          {SECTIONS.map((entry) => (
+          {shown.map((entry) => (
             <Tab key={entry.id} value={entry.id}>
               {entry.label}
             </Tab>
@@ -114,7 +122,9 @@ export function SettingsRoute() {
           {back}
           <h1 className="text-lg font-semibold text-foreground">Settings</h1>
         </div>
-        {SECTIONS.map((entry) => (
+        <div className="mb-1">{search}</div>
+        {nothing}
+        {shown.map((entry) => (
           <Button
             key={entry.id}
             variant="ghost"

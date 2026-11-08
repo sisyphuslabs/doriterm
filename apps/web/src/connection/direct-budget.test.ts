@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { type PairingOffer, parsePairingFragment } from "../pair/fragment.ts";
 import { pairAndRemember, type RememberedHost } from "../pair/handshake.ts";
 import { connect } from "./connect.ts";
+import { installShellForwarder, type ShellForwarder } from "./direct-forward.test-support.ts";
 import { DEFAULT_SETTINGS } from "./settings.ts";
 
 const CLI = join(import.meta.dir, "..", "..", "..", "host", "src", "cli.ts");
@@ -22,6 +23,7 @@ let bridge: RelayClientBridge;
 let hc: HcSession;
 let host: Host;
 let saved: RememberedHost;
+let shell: ShellForwarder | undefined;
 let lanUrl: string;
 
 async function newOffer(): Promise<{ readonly link: PairingOffer; readonly code: string }> {
@@ -62,9 +64,12 @@ beforeAll(async () => {
   const first = remembered[0];
   if (first === undefined) throw new Error("pairing saved nothing");
   saved = first;
+  // The stalled direct race below is the desktop shell's (#1381 §8): its forwarder is what keeps a saved address usable.
+  shell = installShellForwarder();
 }, 120_000);
 
 afterAll(async () => {
+  shell?.restore();
   await host.stop();
   await bridge.stop();
   await relay.stop();
@@ -81,7 +86,7 @@ const settingsWith = (directUrl: string): typeof DEFAULT_SETTINGS => ({
   directUrl,
 });
 
-test("a host that proves its key and then stalls the hello is not a session: the relay carries it inside the budget (#640)", async () => {
+test("the desktop shell's host that proves its key and then stalls the hello is not a session: the relay carries it inside the budget (#640)", async () => {
   const started = performance.now();
   const opened = await connect(settingsWith(lanUrl), undefined, deps, { budgetMs: 300 });
   const elapsed = performance.now() - started;

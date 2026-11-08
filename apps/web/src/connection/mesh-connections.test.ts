@@ -281,6 +281,16 @@ describe("one connection per member", () => {
     expect(mesh.entries().map((entry) => entry.target.hostId)).toEqual(["a", "b", "c"]);
   });
 
+  it("dials a member learned from the view with no direct address, so only the relay can carry it (#1381 §8)", () => {
+    const learned: MemberTarget = { hostId: "b", hostName: "laptop", hostKey: "key-b", directUrl: "" };
+    const { made } = running(settingsWith([member("a"), learned], "a"));
+    expect(
+      made
+        .filter((connection) => connection.settings.hostId === "b")
+        .map((connection) => connection.settings.directUrl),
+    ).toEqual([""]);
+  });
+
   it("keeps the other members open when one host stops", () => {
     const { mesh, made } = running(settingsWith([member("a"), member("b"), member("c")]));
     const [first, second, third] = made;
