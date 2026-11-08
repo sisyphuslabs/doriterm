@@ -120,6 +120,7 @@ test("the pair route joins a mesh with a typed code and both confirmations", asy
     await expect(page).toHaveURL(/\/settings#machines$/);
     await page.getByRole("button", { name: "Open", exact: true }).click();
     await expect(page.getByRole("region", { name: "Getting started" })).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText("this machine", { exact: true })).toHaveCount(0);
     await page.screenshot({ path: info.outputPath("typed-membership-workspace.png"), fullPage: true });
   } finally {
     await context.close();

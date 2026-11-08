@@ -9,7 +9,7 @@ for (const phone of [false, true]) {
     browser,
     baseURL,
   }, info) => {
-    const host = await startFakeRelayHost({ terminal: true });
+    const host = await startFakeRelayHost({ terminal: true, machine: true });
     const context = await browser.newContext({
       ...(phone ? devices["iPhone 14"] : { viewport: { width: 1440, height: 900 } }),
       ...(baseURL === undefined ? {} : { baseURL }),
@@ -59,8 +59,10 @@ for (const phone of [false, true]) {
       await page.screenshot({ path: info.outputPath("joined-machines.png"), fullPage: true });
       await page.goto("/");
       await expect(page.getByText("existing", { exact: true }).first()).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByText("this machine", { exact: true })).toHaveCount(0);
       await page.reload();
       await expect(page.getByText("existing", { exact: true }).first()).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByText("this machine", { exact: true })).toHaveCount(0);
     } finally {
       await context.close();
       await host.stop();

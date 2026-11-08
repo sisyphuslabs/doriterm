@@ -5,6 +5,8 @@ import { type Browser, expect, type Page, test } from "@playwright/test";
 import { pressNewTab } from "./fixtures.ts";
 import { routeRelaySockets } from "./relay-route.ts";
 import { PRIVATE_RELAY_SKIP } from "./private-relay.ts";
+import { RUN_DIR } from "./run-dir.ts";
+import { shellEnv } from "./shell-env.ts";
 
 // Two devices paired with one host through the private relay: a space renamed on one shows on the other at once (#395).
 // The relay-host helper runs a real host and hc under wrangler dev, so this needs a relay checkout (DORIFACE_RELAY_DIR,
@@ -30,7 +32,10 @@ test.beforeAll(async () => {
   test.setTimeout(180_000);
   // Playwright sets FORCE_COLOR for its workers; wrangler would colour the line the helper waits for.
   const { FORCE_COLOR: _colour, ...inherited } = process.env;
-  helper = spawn("bun", [HELPER], { stdio: ["pipe", "pipe", "inherit"], env: { ...inherited, NO_COLOR: "1" } });
+  helper = spawn("bun", [HELPER], {
+    stdio: ["pipe", "pipe", "inherit"],
+    env: { ...inherited, ...shellEnv(RUN_DIR), NO_COLOR: "1" },
+  });
   if (helper.stdout === null) throw new Error("relay-host has no stdout");
   reader = createInterface({ input: helper.stdout })[Symbol.asyncIterator]();
   ({ relayUrl } = JSON.parse(await nextLine("READY ")) as { relayUrl: string });
@@ -45,7 +50,7 @@ test.afterAll(async () => {
 
 const sidebar = (page: Page) => page.getByRole("complementary", { name: "Workspace" });
 const spaceRows = (page: Page) =>
-  sidebar(page).getByRole("region", { name: "Spaces on this machine" }).getByRole("button");
+  sidebar(page).getByRole("region", { name: "Spaces on connected machine" }).getByRole("button");
 const spaceRow = (page: Page, name: string) =>
   sidebar(page).getByRole("button", { name: new RegExp(`^${name}(?: |$)`) });
 
@@ -90,5 +95,14 @@ test("over the relay, a space renamed on one device shows its new name on the ot
   await expect(dialog).toBeHidden();
   await Promise.all([one, two].map((device) => expect(spaceRow(device, renamed)).toBeVisible({ timeout: 30_000 })));
   await Promise.all([one, two].map((device) => expect(spaceRow(device, before)).toHaveCount(0)));
+  // This private core is outside the worker's terminal fixture; end the shell this test opened (#226).
+  await spaceRow(one, renamed).hover();
+  await sidebar(one)
+    .getByRole("button", { name: `More for ${renamed}` })
+    .click();
+  await one.getByRole("menuitem", { name: "Close space…" }).click();
+  await one.getByRole("dialog", { name: "Close space?" }).getByRole("button", { name: "Close", exact: true }).click();
+  await expect(one.getByRole("dialog", { name: "Close space?" })).toHaveCount(0);
+  await Promise.all([one, two].map((device) => expect(spaceRow(device, renamed)).toHaveCount(0)));
   await Promise.all([one.context().close(), two.context().close()]);
 });
