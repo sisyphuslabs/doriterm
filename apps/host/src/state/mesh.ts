@@ -18,6 +18,7 @@ import { AuthorizeIndex, indexOf } from "../mesh/authorize-index.ts";
 import { DeviceStore } from "./devices.ts";
 import { createPrivateJson, ensureStateDir, readJson, writePrivateJson } from "./files.ts";
 import { KnownHosts } from "./known-hosts.ts";
+import { SubscriptionStore } from "../push/subscriptions.ts";
 import { DEFAULT_LOCK_TIMEOUT_MS, withStateLock } from "./lock.ts";
 import { MESH_FILE, type MeshFile, meshFileJson, newMeshFile, parseMeshFile, writeVersionOf } from "./mesh-file.ts";
 import { type MergeResult, type MeshTx, ownN, Transaction } from "./mesh-tx.ts";
@@ -186,12 +187,23 @@ export class MeshStore {
 
   #cleanup(file: MeshFile): void {
     if (file.index === undefined) return;
-    const { keys, hostIds } = new AuthorizeIndex(file.index).cleanup();
+    const index = new AuthorizeIndex(file.index);
+    const { keys, hostIds } = index.cleanup();
     for (const device of new DeviceStore(this.#dir).removeKeysHeld(keys)) {
       this.#options.log(`mesh: removed paired device "${device.name}": its key belongs to a mesh member`);
     }
     for (const hostId of new KnownHosts(this.#dir).removeHostsHeld(hostIds)) {
       this.#options.log(`mesh: removed saved host ${hostId}: the mesh reaches it now`);
+    }
+    try {
+      new SubscriptionStore(this.#dir).keepOwnersHeld(
+        new Set([
+          ...new DeviceStore(this.#dir).list().map((device) => device.clientStaticPub),
+          ...index.clients().flatMap((client) => (client.devicePub === undefined ? [] : [client.devicePub])),
+        ]),
+      );
+    } catch (error) {
+      this.#options.log(`mesh: cannot prune push subscriptions: ${String(error)}`);
     }
   }
 

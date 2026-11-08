@@ -14,11 +14,15 @@ export function isRejoin(index: AuthorizeIndex | undefined, card: CardBody, reco
   if (holder !== undefined) throw new JoinRefused(KEY_HELD);
   if (index?.isMember(card.signPub) === true) throw new JoinRefused(ANOTHER_KEY);
   if (index?.namedByAnother(card.noisePub, card.signPub) === true) throw new JoinRefused(KEY_HELD);
-  if (card.kind === "client" && records.some((record) => {
-    const body = parseRecord(record);
-    const signed = body?.type === "admit" ? cardOf(body) : undefined;
-    return signed !== undefined && verifyCard(signed)?.signPub === card.signPub;
-  })) throw new JoinRefused(CLIENT_REMOVED);
+  if (
+    card.kind === "client" &&
+    records.some((record) => {
+      const body = parseRecord(record);
+      const signed = body?.type === "admit" ? cardOf(body) : undefined;
+      return signed !== undefined && verifyCard(signed)?.signPub === card.signPub;
+    })
+  )
+    throw new JoinRefused(CLIENT_REMOVED);
   return false;
 }
 
@@ -26,7 +30,8 @@ export function isRejoin(index: AuthorizeIndex | undefined, card: CardBody, reco
 export function clientDeviceCount(index: AuthorizeIndex | undefined, devices: DeviceStore, admitter: string): number {
   return new Set([
     ...devices.list().map((device) => device.clientStaticPub),
-    ...(index?.clients() ?? []).filter((client) => client.admitter === admitter).flatMap((client) =>
-      client.devicePub === undefined ? [] : [client.devicePub]),
+    ...(index?.clients() ?? [])
+      .filter((client) => client.admitter === admitter)
+      .flatMap((client) => (client.devicePub === undefined ? [] : [client.devicePub])),
   ]).size;
 }

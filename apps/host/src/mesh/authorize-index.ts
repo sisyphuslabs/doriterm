@@ -104,12 +104,21 @@ export function indexOf(records: readonly Signed[], view: View, generation: numb
     if (card.kind === "client") {
       const author = byHash.get(view.governing.get(admitter ?? "") ?? "");
       const authorCard = author === undefined ? undefined : cardOfRecord(author);
-      if (admitter === undefined || !view.members.has(admitter) || authorCard === undefined || authorCard.kind === "client") return [];
+      if (
+        admitter === undefined ||
+        !view.members.has(admitter) ||
+        authorCard === undefined ||
+        authorCard.kind === "client"
+      )
+        return [];
     }
-    return [{
-      ...entryOf(card, view.noise.get(signPub) ?? card.noisePub, view.name.get(signPub) ?? card.name),
-      admitter, admitId: view.governing.get(signPub),
-    }];
+    return [
+      {
+        ...entryOf(card, view.noise.get(signPub) ?? card.noisePub, view.name.get(signPub) ?? card.name),
+        admitter,
+        admitId: view.governing.get(signPub),
+      },
+    ];
   };
   const revoked = [...view.revoked].flatMap((signPub): RevokedEntry[] => {
     const cards = everything.get(signPub) ?? [];

@@ -17,7 +17,7 @@ export const MESH_APPROVAL_DOC = "doriface-mesh-approve";
 export const MESH_OFFER_DOC = "doriface-mesh-offer";
 
 export type MeshOfferDoc =
-  | { readonly request: string }
+  | { readonly request: string; readonly client?: boolean }
   | { readonly request: string; readonly link: string; readonly expiresAt: number }
   | { readonly request: string; readonly error: string }
   | { readonly request: string; readonly expired: true }
@@ -40,7 +40,9 @@ export function parseMeshOfferDoc(value: unknown): MeshOfferDoc | undefined {
     const hostId: unknown = Reflect.get(joined, "hostId");
     if (typeof name === "string" && typeof hostId === "string") return { request, joined: { name, hostId } };
   }
-  return { request };
+  const client: unknown = Reflect.get(value, "client");
+  if (client !== undefined && typeof client !== "boolean") return undefined;
+  return { request, ...(client === undefined ? {} : { client }) };
 }
 
 /** The `v` of the status document; a reader refuses any other value. */
@@ -182,6 +184,9 @@ export type MeshPendingJoin = {
   readonly expiresAt: string;
   /** What it joins as: approving a client grants control of every machine it can reach. */
   readonly kind: "machine" | "client";
+  /** Absent only in documents from hosts predating committed joins. */
+  readonly code?: string;
+  readonly joinerConfirmed?: boolean;
 };
 
 export type MeshBudget = {

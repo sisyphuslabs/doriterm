@@ -38,7 +38,7 @@ export function openControl(
       case "mesh-rename":
         return e2ee.meshCommands.rename(request);
       case "mesh-leave":
-        return e2ee.meshCommands.leave();
+        return request.preview === true ? e2ee.meshCommands.leavePreview() : e2ee.meshCommands.leave(request.expect);
     }
   });
 }

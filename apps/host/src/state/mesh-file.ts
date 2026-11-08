@@ -55,7 +55,17 @@ function memberEntry(value: unknown): MemberEntry | undefined {
   // Client indexes from before the admitter binding must be rebuilt at startup.
   if (kind === "client" && (admitter === undefined || admitId === undefined)) return undefined;
   // An index written before the kind existed says machine, which is all those members could have been.
-  return { signPub, hostId, noisePub, devicePub, name, hcId, kind: kind === "client" ? "client" : "machine", admitter, admitId };
+  return {
+    signPub,
+    hostId,
+    noisePub,
+    devicePub,
+    name,
+    hcId,
+    kind: kind === "client" ? "client" : "machine",
+    admitter,
+    admitId,
+  };
 }
 
 function revokedEntry(value: unknown): RevokedEntry | undefined {

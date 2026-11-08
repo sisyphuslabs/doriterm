@@ -54,7 +54,7 @@ export function sessionPeer(
   if (stream === "push" || stream === "roster") {
     // A machine member's keys never open a push stream: a machine has no browser to notify. A client's notices are
     // served by the paired entry it keeps for exactly that purpose, which is what devicePeer answers for.
-    if (mesh?.kind === "member") return { kind: "refused", reason: `a machine member has no ${stream} stream` };
+    if (mesh?.kind === "member") return { kind: "refused", reason: `a mesh member has no ${stream} stream` };
     if (mesh?.kind === "refused") return mesh;
     if (mesh?.kind === "client") return mesh;
     return devicePeer(devices, key);

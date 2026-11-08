@@ -39,16 +39,20 @@ export async function runJoiner(lines: MeshLines, ctx: JoinerContext): Promise<s
   const { identity } = ctx;
   const member = { hostId: identity.hostId, sign: identity.sign, noisePub: identity.noise.publicKey };
   const welcome = await runJoinCeremony(lines, {
-    kind: "machine", handshakeHash: ctx.handshakeHash,
+    kind: "machine",
+    handshakeHash: ctx.handshakeHash,
     dialed: { hostId: ctx.dialed.hostId, noisePub: base64urlEncode(ctx.dialed.noisePub) },
-    expiresAt: ctx.deadline, yes: ctx.yes, confirm: ctx.confirm,
+    expiresAt: ctx.deadline,
+    yes: ctx.yes,
+    confirm: ctx.confirm,
     card: async (offer) => signCard(cardBodyFor(member, ctx.own, offer), identity.sign.secretKey),
     saveAnchor: async () => undefined,
     clearAnchor: async () => undefined,
   });
   try {
     checkWelcome(welcome.records, welcome.offer, { identity: member, dialed: ctx.dialed });
-    if (!ctx.mesh.adopt(welcome.records, identity)) throw new JoinRefused("a mesh.json appeared on this host meanwhile");
+    if (!ctx.mesh.adopt(welcome.records, identity))
+      throw new JoinRefused("a mesh.json appeared on this host meanwhile");
     lines.detach();
     ctx.log(`mesh: joined mesh ${welcome.offer.mesh} via ${ctx.dialed.hostId} on a mesh ${inviteKindOf(ctx.invite)}`);
     return welcome.offer.mesh;

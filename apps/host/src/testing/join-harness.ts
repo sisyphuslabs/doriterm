@@ -70,8 +70,18 @@ export function joinerContext(
   const dialed = { hostId: inviter.m.identity.hostId, noisePub: dialedNoise };
   const deadline = Date.now() + 60_000;
   const invite = meshInviteOf({ kind: "link", mesh: true });
-  return { invite, identity: joiner.m.identity, mesh: joiner.mesh, own: ownOf(joiner), dialed, deadline, log,
-    handshakeHash: new Uint8Array(32), yes: true, confirm: async () => true };
+  return {
+    invite,
+    identity: joiner.m.identity,
+    mesh: joiner.mesh,
+    own: ownOf(joiner),
+    dialed,
+    deadline,
+    log,
+    handshakeHash: new Uint8Array(32),
+    yes: true,
+    confirm: async () => true,
+  };
 }
 
 export interface JoinRun {

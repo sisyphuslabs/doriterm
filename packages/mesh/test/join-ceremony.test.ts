@@ -201,13 +201,38 @@ test("a refused resume deletes the anchor immediately and asks for another invit
 test("an already confirmed resume accepts a roster offer but keeps its original anchor", async () => {
   const run = ceremony();
   const anchor: JoinAnchor = {
-    offer, dialed, h: base64urlEncode(h), Nj: base64urlEncode(Ni),
-    expiresAt: Date.now() + 60_000, confirmed: true,
+    offer,
+    dialed,
+    h: base64urlEncode(h),
+    Nj: base64urlEncode(Ni),
+    expiresAt: Date.now() + 60_000,
+    confirmed: true,
   };
   const done = runJoinCeremony(run.client, { ...run.options, resume: anchor });
-  const outcome = done.then((welcome) => welcome.offer, (error: unknown) => String(error));
+  const outcome = done.then(
+    (welcome) => welcome.offer,
+    (error: unknown) => String(error),
+  );
   await run.host.next();
   run.host.send({ ...offer, nonce: "fresh-roster-nonce", commit: undefined });
   run.host.send({ t: "done", mesh: offer.mesh });
   expect(await outcome).toEqual(offer);
+});
+
+test("a resume refused at the authenticated session deletes its anchor immediately", async () => {
+  const run = ceremony();
+  const anchor: JoinAnchor = {
+    offer,
+    dialed,
+    h: base64urlEncode(h),
+    Nj: base64urlEncode(Ni),
+    expiresAt: Date.now() + 60_000,
+    confirmed: false,
+  };
+  await run.options.saveAnchor(anchor);
+  const failed = failureOf(runJoinCeremony(run.client, { ...run.options, resume: anchor }));
+  await run.host.next();
+  run.hostEnd.close(4401, "unknown device");
+  expect(await failed).toBe("Ask for a new invite");
+  expect(run.anchor()).toBeUndefined();
 });

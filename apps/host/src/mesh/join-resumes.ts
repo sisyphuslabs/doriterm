@@ -1,5 +1,5 @@
 import type { CardBody, Signed } from "@doriface/mesh";
-import { JoinRefused, type MeshLines, recordLines } from "@doriface/mesh/join";
+import { JoinRefused, type MeshLines, MeshProtocolError, recordLines } from "@doriface/mesh/join";
 import type { PendingJoin, PendingJoins } from "./pending-joins.ts";
 
 export interface ResumableJoin {
@@ -7,6 +7,7 @@ export interface ResumableJoin {
   readonly card: CardBody;
   readonly Ni: string;
   readonly welcome: Promise<readonly Signed[]>;
+  readonly records: () => readonly Signed[];
 }
 
 /** A spent offer belongs to the card's device key until its original expiry, even after admission. */
@@ -25,11 +26,6 @@ export class JoinResumes {
     return entry?.card.devicePub === devicePub && now < entry.join.expiresAt ? entry : undefined;
   }
 
-  hasKey(devicePub: string): boolean {
-    return [...this.#joins.values()].some(({ value }) =>
-      value.card.devicePub === devicePub && Date.now() < value.join.expiresAt);
-  }
-
   drop(nonce: string): void {
     const entry = this.#joins.get(nonce);
     if (entry !== undefined) clearTimeout(entry.timer);
@@ -44,7 +40,8 @@ export class JoinResumes {
 /** Either session may carry confirmation; losing it never withdraws the pending admission. */
 export async function finishJoin(lines: MeshLines, resumed: ResumableJoin, pending: PendingJoins): Promise<void> {
   if (!pending.list().some((join) => join.nonce === resumed.join.nonce)) {
-    const records = await resumed.welcome;
+    await resumed.welcome;
+    const records = resumed.records();
     for (const line of recordLines(records)) lines.send(line);
     lines.send({ t: "done", mesh: resumed.card.mesh });
     lines.detach();
@@ -52,16 +49,22 @@ export async function finishJoin(lines: MeshLines, resumed: ResumableJoin, pendi
   }
   lines.expect("confirm", "abort", "refused");
   const hear = async (): Promise<never> => {
-    const line = await lines.next();
+    const line = await lines.next().catch((error: unknown) => {
+      if (!(error instanceof MeshProtocolError)) throw error;
+      pending.decide(resumed.join.nonce, false);
+      throw new JoinRefused(`the session closed before the join was decided: ${error.message}`);
+    });
     if (line.t === "confirm") {
       pending.confirm(resumed.join.nonce);
       lines.expect("abort", "refused");
       return hear();
     }
     pending.decide(resumed.join.nonce, false);
+    if (line.t === "refused") throw new JoinRefused(`the joiner gave up: ${line.reason}`);
     throw new JoinRefused("not joined");
   };
   const incoming = hear();
+  if (lines.closed !== undefined) await incoming;
   lines.send({ t: "reveal", Ni: resumed.Ni });
   const records = await Promise.race([resumed.welcome, incoming]);
   for (const line of recordLines(records)) lines.send(line);

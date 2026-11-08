@@ -86,6 +86,10 @@ export class PendingJoins {
   decide(nonce: string, approve: boolean, code?: string): boolean {
     const waiting = this.#waiting.get(nonce);
     if (waiting === undefined) return false;
+    if (Date.now() >= waiting.join.expiresAt) {
+      this.#settle(nonce, "expired");
+      return false;
+    }
     if (!approve) return this.#settle(nonce, "denied");
     if (code === undefined) throw new JoinRefused("update this client to approve");
     if (code !== waiting.join.code) throw new JoinRefused("the approval code does not match this join");
@@ -97,6 +101,10 @@ export class PendingJoins {
   confirm(nonce: string): boolean {
     const waiting = this.#waiting.get(nonce);
     if (waiting === undefined) return false;
+    if (Date.now() >= waiting.join.expiresAt) {
+      this.#settle(nonce, "expired");
+      return false;
+    }
     waiting.join = { ...waiting.join, joinerConfirmed: true };
     if (waiting.approved) this.#settle(nonce, "approved");
     return true;

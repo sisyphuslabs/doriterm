@@ -2,13 +2,13 @@ import { base64urlEncode } from "@doriface/crypto";
 import { memoryLinkPair } from "@doriface/crypto/testing";
 import { signCard } from "@doriface/mesh";
 import { joinCode, joinCommit, MeshLines } from "@doriface/mesh/join";
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import { cardBody } from "../state/mesh.ts";
 import { failure, inviteDeps, removeSides, side } from "../testing/join-harness.ts";
 import { noiseOf } from "../testing/mesh-history.ts";
 import { serveJoin } from "./invite.ts";
 import { PendingJoins } from "./pending-joins.ts";
-import { JoinResumes } from "./join-resumes.ts";
+import { finishJoin, JoinResumes } from "./join-resumes.ts";
 
 afterEach(removeSides);
 const h = new Uint8Array(32).fill(11);
@@ -26,9 +26,21 @@ async function begin(auto = false, kind: "client" | "machine" = "client", sas = 
   const served = failure(serveJoin(new MeshLines(hostEnd, ["card", "refused"]), c.m.identity.noise.publicKey, deps));
   const offer = await client.next();
   if (offer.t !== "offer") throw new Error("no offer");
-  const card = signCard(cardBody(c.m.identity, {
-    name: "browser", hcId: kind === "client" ? "" : "core-browser", devicePub: noiseOf(c.m),
-  }, offer.mesh, offer.inviter, offer.nonce, kind), c.m.identity.sign.secretKey);
+  const card = signCard(
+    cardBody(
+      c.m.identity,
+      {
+        name: "browser",
+        hcId: kind === "client" ? "" : "core-browser",
+        devicePub: noiseOf(c.m),
+      },
+      offer.mesh,
+      offer.inviter,
+      offer.nonce,
+      kind,
+    ),
+    c.m.identity.sign.secretKey,
+  );
   client.send({ t: "card", ...card, ...(sas ? { sas: base64urlEncode(Nj) } : {}) });
   return { a, c, pending, resumes, client, hostEnd, clientEnd, deps, offer, served };
 }
@@ -53,19 +65,22 @@ test("an asking offer reveals its commitment and both ends derive the pending co
   expect(await run.served).toContain("denied");
 });
 
-test.each(["approve-first", "confirm-first"] as const)("%s admits once and only after both decisions", async (order) => {
-  const run = await begin();
-  await run.client.next();
-  const asked = await run.pending.next();
-  if (order === "approve-first") run.pending.decide(asked.nonce, true, asked.code);
-  else run.client.send({ t: "confirm" });
-  expect(run.a.mesh.read()?.records).toHaveLength(1);
-  if (order === "approve-first") run.client.send({ t: "confirm" });
-  else run.pending.decide(asked.nonce, true, asked.code);
-  expect(await run.served).toBe("resolved");
-  expect(run.a.mesh.read()?.records).toHaveLength(2);
-  run.resumes.clear();
-});
+test.each(["approve-first", "confirm-first"] as const)(
+  "%s admits once and only after both decisions",
+  async (order) => {
+    const run = await begin();
+    await run.client.next();
+    const asked = await run.pending.next();
+    if (order === "approve-first") run.pending.decide(asked.nonce, true, asked.code);
+    else run.client.send({ t: "confirm" });
+    expect(run.a.mesh.read()?.records).toHaveLength(1);
+    if (order === "approve-first") run.client.send({ t: "confirm" });
+    else run.pending.decide(asked.nonce, true, asked.code);
+    expect(await run.served).toBe("resolved");
+    expect(run.a.mesh.read()?.records).toHaveLength(2);
+    run.resumes.clear();
+  },
+);
 
 test("abort withdraws the pending join and signs nothing", async () => {
   const run = await begin();
@@ -96,4 +111,47 @@ test("dropping after the card keeps the pending join and its original reveal for
   expect(run.resumes.get(asked.nonce, "other-key")).toBeUndefined();
   run.pending.decide(asked.nonce, false);
   run.resumes.clear();
+});
+
+test("resuming an admitted join refreshes records written after its first welcome", async () => {
+  const run = await begin();
+  await run.client.next();
+  const asked = await run.pending.next();
+  run.pending.decide(asked.nonce, true, asked.code);
+  run.client.send({ t: "confirm" });
+  expect(await run.served).toBe("resolved");
+  run.a.mesh.sign(run.a.m.identity, (n, prev) => ({
+    v: 2,
+    mesh: run.offer.mesh,
+    type: "ack",
+    by: run.offer.inviter,
+    n,
+    prev,
+    at: "2026-11-08T00:00:00.000Z",
+  }));
+  const retained = run.resumes.get(asked.nonce, noiseOf(run.c.m));
+  if (retained === undefined) throw new Error("the admitted join was not retained");
+  const [hostEnd, clientEnd] = memoryLinkPair(true);
+  const client = new MeshLines(clientEnd, ["records", "done"]);
+  await finishJoin(new MeshLines(hostEnd, ["resume"]), retained, run.pending);
+  const records = await client.next();
+  if (records.t !== "records") throw new Error("no refreshed records");
+  expect(records.records).toEqual(run.a.mesh.read()?.records ?? []);
+  run.resumes.clear();
+});
+
+test("an approved join that reaches its transaction after expiry signs nothing", async () => {
+  const run = await begin();
+  await run.client.next();
+  const asked = await run.pending.next();
+  run.pending.confirm(asked.nonce);
+  run.pending.decide(asked.nonce, true, asked.code);
+  const clock = spyOn(Date, "now").mockReturnValue(asked.expiresAt);
+  try {
+    expect(await run.served).toContain("expired");
+    expect(run.a.mesh.read()?.records).toHaveLength(1);
+  } finally {
+    clock.mockRestore();
+    run.resumes.clear();
+  }
 });

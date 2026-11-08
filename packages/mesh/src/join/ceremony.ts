@@ -1,4 +1,4 @@
-import { base64urlDecode, base64urlEncode, CloseCode } from "@doriface/crypto";
+import { base64urlDecode, base64urlEncode, CloseCode, closeCodeOf } from "@doriface/crypto";
 import { MAX_RECORDS, type MemberKind, type Signed } from "../records/types.ts";
 import { joinCode, joinCommit } from "./code.ts";
 import type { Offer } from "./joiner.ts";
@@ -115,23 +115,30 @@ export async function runJoinCeremony(lines: MeshLines, ctx: JoinCeremony): Prom
       await ctx.saveAnchor(anchor);
     }
     lines.expect("records", "done", "refused");
+    if (lines.closed !== undefined) {
+      return { offer, records: await readWelcome(lines, offer.mesh, await incoming) };
+    }
     lines.send({ t: "confirm" });
     return { offer, records: await readWelcome(lines, offer.mesh, await incoming) };
   };
   try {
     return await byDeadline(run(), expiresAt, "Ask for a new invite");
   } catch (error) {
+    const failure = error instanceof JoinRefused ? error : (lines.closed ?? error);
+    const refusedSession = failure instanceof Error && closeCodeOf(failure) === CloseCode.UnknownDevice;
     if (
       !sentCard ||
-      error instanceof JoinRefused ||
-      error instanceof MeshProtocolError ||
+      refusedSession ||
+      failure instanceof JoinRefused ||
+      failure instanceof MeshProtocolError ||
       lines.closed instanceof MeshProtocolError
     ) {
       if (sentCard && lines.closed === undefined) lines.send({ t: "abort" });
       await ctx.clearAnchor();
     }
-    lines.close(CloseCode.UnknownDevice, error instanceof Error ? error.message : String(error));
-    throw error;
+    lines.close(CloseCode.UnknownDevice, failure instanceof Error ? failure.message : String(failure));
+    if (ctx.resume !== undefined && refusedSession) throw new JoinRefused("Ask for a new invite", { cause: failure });
+    throw failure;
   }
 }
 
@@ -140,7 +147,11 @@ async function readWelcome(lines: MeshLines, mesh: string, first?: MeshLine): Pr
   const read = async (line: MeshLine): Promise<readonly Signed[]> => {
     if (line.t === "records") {
       records.push(...line.records);
-      if (records.length > MAX_RECORDS) throw new JoinRefused("the welcome holds more records than a mesh may");
+      if (records.length > MAX_RECORDS) {
+        const reason = "the welcome holds more records than a mesh may";
+        lines.close(CloseCode.CryptoFailure, reason);
+        throw new JoinRefused(reason);
+      }
       return read(await lines.next());
     }
     if (line.t === "refused") throw new JoinRefused(line.reason);

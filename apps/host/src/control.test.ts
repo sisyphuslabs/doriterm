@@ -41,26 +41,45 @@ describe("control socket", () => {
   test("the control client asks on the first reply and returns only the final reply", async () => {
     listeners.push(listenControl(dir, async (_, __, question) => ({ confirmed: await question("123 456") })));
     const seen: string[] = [];
-    const result = await requestControl(dir, {
-      op: "mesh-join", target: "invite", yes: true, ask: true,
-      fingerprint: undefined, name: undefined, relay: undefined,
-    }, async (code) => { seen.push(code); return true; });
+    const result = await requestControl(
+      dir,
+      {
+        op: "mesh-join",
+        target: "invite",
+        yes: true,
+        ask: true,
+        fingerprint: undefined,
+        name: undefined,
+        relay: undefined,
+      },
+      async (code) => {
+        seen.push(code);
+        return true;
+      },
+    );
     expect(result).toEqual({ confirmed: true });
     expect(seen).toEqual(["123 456"]);
   });
   test("an older mesh-join request without ask cannot start a question", () => {
     expect(parseRequest('{"op":"mesh-join","target":"invite","yes":true}')).toEqual({
-      op: "mesh-join", target: "invite", yes: true, ask: false,
-      fingerprint: undefined, name: undefined, relay: undefined,
+      op: "mesh-join",
+      target: "invite",
+      yes: true,
+      ask: false,
+      fingerprint: undefined,
+      name: undefined,
+      relay: undefined,
     });
   });
 
   test("the second control line answers the waiting join without dispatching a second request", async () => {
     let requests = 0;
-    listeners.push(listenControl(dir, async (_, __, question) => {
-      requests += 1;
-      return { confirmed: await question("123 456") };
-    }));
+    listeners.push(
+      listenControl(dir, async (_, __, question) => {
+        requests += 1;
+        return { confirmed: await question("123 456") };
+      }),
+    );
     const first = Promise.withResolvers<string>();
     const closed = Promise.withResolvers<string>();
     let text = "";
@@ -71,15 +90,23 @@ describe("control socket", () => {
           text += chunk.toString();
           if (text.includes("\n")) first.resolve(text.slice(0, text.indexOf("\n")));
         },
-        close() { closed.resolve(text); },
+        close() {
+          closed.resolve(text);
+        },
       },
     });
     socket.write('{"op":"mesh-join","target":"invite","ask":true,"yes":true}\n');
     expect(JSON.parse(await first.promise)).toEqual({ state: "code", code: "123 456" });
     expect(requests).toBe(1);
     socket.write('{"confirm":false}\n');
-    expect((await closed.promise).trim().split("\n").map((line) => JSON.parse(line))).toEqual([
-      { state: "code", code: "123 456" }, { ok: true, result: { confirmed: false } },
+    expect(
+      (await closed.promise)
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line)),
+    ).toEqual([
+      { state: "code", code: "123 456" },
+      { ok: true, result: { confirmed: false } },
     ]);
     expect(requests).toBe(1);
   });
@@ -87,10 +114,19 @@ describe("control socket", () => {
   test("closing the control connection answers the waiting join false", async () => {
     const answer = Promise.withResolvers<boolean>();
     const code = Promise.withResolvers<void>();
-    listeners.push(listenControl(dir, async (_, __, question) => {
-      answer.resolve(await question("123 456"));
-    }));
-    const socket = await Bun.connect({ unix: controlSocketPath(dir), socket: { data() { code.resolve(); } } });
+    listeners.push(
+      listenControl(dir, async (_, __, question) => {
+        answer.resolve(await question("123 456"));
+      }),
+    );
+    const socket = await Bun.connect({
+      unix: controlSocketPath(dir),
+      socket: {
+        data() {
+          code.resolve();
+        },
+      },
+    });
     socket.write('{"op":"mesh-join","target":"invite","ask":true}\n');
     await code.promise;
     socket.end();

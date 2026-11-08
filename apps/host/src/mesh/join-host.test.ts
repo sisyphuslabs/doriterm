@@ -85,12 +85,26 @@ describe("J-1: a link join run by the joiner's running host", () => {
     const offer = pendingFromWire(await requestControl(a.dir, { op: "mesh-pair", auto: false }));
     const identity = loadHostIdentity(a.dir);
     const target = buildPairingUrl({
-      webOrigin: "https://doriface.example", hostId: identity.hostId, noiseStaticPub: identity.noise.publicKey,
-      signPub: identity.sign.publicKey, linkSecret: offer.linkSecret, relayUrl: bridge.url, mesh: true,
+      webOrigin: "https://doriface.example",
+      hostId: identity.hostId,
+      noiseStaticPub: identity.noise.publicKey,
+      signPub: identity.sign.publicKey,
+      linkSecret: offer.linkSecret,
+      relayUrl: bridge.url,
+      mesh: true,
     });
     const result = await requestControl(b.dir, {
-      op: "mesh-join", target, fingerprint: undefined, name: undefined, relay: undefined, yes: true, ask,
-    }).then(() => "joined", (error: unknown) => String(error));
+      op: "mesh-join",
+      target,
+      fingerprint: undefined,
+      name: undefined,
+      relay: undefined,
+      yes: true,
+      ask,
+    }).then(
+      () => "joined",
+      (error: unknown) => String(error),
+    );
     expect(result).toContain("this invite asks for a code");
     expect(result).toContain("terminal");
     expect(result).toContain("one-line command");
@@ -106,13 +120,34 @@ describe("J-1: a link join run by the joiner's running host", () => {
     const offer = pendingFromWire(await requestControl(a.dir, { op: "mesh-pair", auto: false }));
     const identity = loadHostIdentity(a.dir);
     const target = buildPairingUrl({
-      webOrigin: "https://doriface.example", hostId: identity.hostId, noiseStaticPub: identity.noise.publicKey,
-      signPub: identity.sign.publicKey, linkSecret: offer.linkSecret, relayUrl: bridge.url, mesh: true,
+      webOrigin: "https://doriface.example",
+      hostId: identity.hostId,
+      noiseStaticPub: identity.noise.publicKey,
+      signPub: identity.sign.publicKey,
+      linkSecret: offer.linkSecret,
+      relayUrl: bridge.url,
+      mesh: true,
     });
     const codes: string[] = [];
-    const result = await requestControl(b.dir, {
-      op: "mesh-join", target, fingerprint: undefined, name: undefined, relay: undefined, yes: true, ask: true,
-    }, async (code) => { codes.push(code); return false; }).then(() => "joined", (error: unknown) => String(error));
+    const result = await requestControl(
+      b.dir,
+      {
+        op: "mesh-join",
+        target,
+        fingerprint: undefined,
+        name: undefined,
+        relay: undefined,
+        yes: true,
+        ask: true,
+      },
+      async (code) => {
+        codes.push(code);
+        return false;
+      },
+    ).then(
+      () => "joined",
+      (error: unknown) => String(error),
+    );
     expect(result).toContain("not joined");
     expect(codes).toHaveLength(1);
     expect(records(a.dir)).toHaveLength(1);

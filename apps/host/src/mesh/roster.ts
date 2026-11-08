@@ -25,30 +25,42 @@ function admitRoster(deps: RosterDeps, card: CardBody, signed: Signed): readonly
   const marker = new RosterAdmits(deps.stateDir);
   let before: readonly RosterAdmit[] | undefined;
   let marked = false;
-  return deps.mesh.transact((tx) => {
-    const index = deps.mesh.authorizeIndex();
-    if (index?.client(card.noisePub)?.signPub === card.signPub) return tx.records;
-    const refusal = admissionRefusal("client", deps.formatReady());
-    if (refusal !== undefined) throw new JoinRefused(refusal);
-    if (isRejoin(index, card, tx.records)) return tx.records;
-    const paired = deps.devices.list();
-    if (!paired.some((device) => device.clientStaticPub === card.devicePub)) {
-      throw new JoinRefused("this device is no longer paired");
-    }
-    const self = base64urlEncode(deps.identity.sign.publicKey);
-    const room = requireWithin(deps.policy, "devices", clientDeviceCount(index, deps.devices, self) - 1);
-    if (!room.allowed) throw new JoinRefused(room.message);
-    checkFloor(tx.records, self, deps.floor());
-    const admit = tx.sign(deps.identity, (n, prev) => ({
-      v: 2, mesh: card.mesh, type: "admit", by: self, n, prev, subject: { card: signed },
-    }));
-    before = marker.read();
-    marked = true;
-    marker.writeHeld([...(before ?? []), { admitId: hashOf(admit), signPub: card.signPub, devicePub: card.noisePub }]);
-    return tx.records;
-  }, () => {
-    if (marked) marker.writeHeld(before);
-  });
+  return deps.mesh.transact(
+    (tx) => {
+      const index = deps.mesh.authorizeIndex();
+      if (index?.client(card.noisePub)?.signPub === card.signPub) return tx.records;
+      const refusal = admissionRefusal("client", deps.formatReady());
+      if (refusal !== undefined) throw new JoinRefused(refusal);
+      if (isRejoin(index, card, tx.records)) return tx.records;
+      const paired = deps.devices.list();
+      if (!paired.some((device) => device.clientStaticPub === card.devicePub)) {
+        throw new JoinRefused("this device is no longer paired");
+      }
+      const self = base64urlEncode(deps.identity.sign.publicKey);
+      const room = requireWithin(deps.policy, "devices", clientDeviceCount(index, deps.devices, self) - 1);
+      if (!room.allowed) throw new JoinRefused(room.message);
+      checkFloor(tx.records, self, deps.floor());
+      const admit = tx.sign(deps.identity, (n, prev) => ({
+        v: 2,
+        mesh: card.mesh,
+        type: "admit",
+        by: self,
+        n,
+        prev,
+        subject: { card: signed },
+      }));
+      before = marker.read();
+      marked = true;
+      marker.writeHeld([
+        ...(before ?? []),
+        { admitId: hashOf(admit), signPub: card.signPub, devicePub: card.noisePub },
+      ]);
+      return tx.records;
+    },
+    () => {
+      if (marked) marker.writeHeld(before);
+    },
+  );
 }
 
 /** One roster session, bound to its authenticated device key and fresh offer nonce. */
@@ -80,7 +92,12 @@ export async function serveRoster(lines: MeshLines, remoteStatic: Uint8Array, de
         if (own?.signPub !== card.signPub) throw new JoinRefused("only the session's current client may leave");
         checkFloor(tx.records, inviter, deps.floor());
         tx.sign(deps.identity, (n, prev) => ({
-          v: 2, mesh: file.meshId, type: "revoke", by: inviter, n, prev,
+          v: 2,
+          mesh: file.meshId,
+          type: "revoke",
+          by: inviter,
+          n,
+          prev,
           subject: { signPubs: [own.signPub], reason: "leave" },
         }));
       });

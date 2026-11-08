@@ -178,6 +178,8 @@ export function meshStatus(sources: MeshSources, now: Date): MeshStatus {
       fingerprint: fingerprintOfKey(join.noisePub),
       expiresAt: join.expiresAt.toISOString(),
       kind: join.kind,
+      ...(join.code === undefined ? {} : { code: join.code }),
+      ...(join.joinerConfirmed === undefined ? {} : { joinerConfirmed: join.joinerConfirmed }),
     })),
     budget: {
       waiting: budget.waiting,

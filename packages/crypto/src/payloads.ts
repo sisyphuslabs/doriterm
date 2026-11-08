@@ -83,7 +83,12 @@ export type Hello =
   | { readonly kind: "session"; readonly early: Uint8Array; readonly stream: Stream | undefined };
 
 function streamOf(value: unknown, pairing: boolean): Stream | undefined {
-  if (value === undefined || value === "mesh" || ((value === "hc" || value === "push" || value === "roster") && !pairing)) return value;
+  if (
+    value === undefined ||
+    value === "mesh" ||
+    ((value === "hc" || value === "push" || value === "roster") && !pairing)
+  )
+    return value;
   throw new PayloadError(`stream ${JSON.stringify(value)} is not valid on a ${pairing ? "pairing" : "session"}`);
 }
 

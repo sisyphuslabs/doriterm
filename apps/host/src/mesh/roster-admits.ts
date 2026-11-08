@@ -60,9 +60,15 @@ export function sweepRoster(deps: RosterDeps): void {
       const paired = new Set(deps.devices.list().map((device) => device.clientStaticPub));
       const self = base64urlEncode(deps.identity.sign.publicKey);
       const clients = deps.mesh.authorizeIndex()?.clients() ?? [];
-      const current = entries.filter((entry) => clients.some((client) =>
-        client.signPub === entry.signPub && client.admitId === entry.admitId &&
-        client.devicePub === entry.devicePub && client.admitter === self));
+      const current = entries.filter((entry) =>
+        clients.some(
+          (client) =>
+            client.signPub === entry.signPub &&
+            client.admitId === entry.admitId &&
+            client.devicePub === entry.devicePub &&
+            client.admitter === self,
+        ),
+      );
       const removed = current.filter((entry) => !paired.has(entry.devicePub)).map((entry) => entry.signPub);
       if (current.length !== entries.length) marker.writeHeld(current);
       checkFloor(tx.records, self, deps.floor());
@@ -71,7 +77,13 @@ export function sweepRoster(deps: RosterDeps): void {
       for (let i = 0; i < removed.length; i += MAX_REVOKE_SUBJECTS) {
         const signPubs = removed.slice(i, i + MAX_REVOKE_SUBJECTS);
         tx.sign(deps.identity, (n, prev) => ({
-          v: 2, mesh, type: "revoke", by: self, n, prev, subject: { signPubs, reason: "revoke" },
+          v: 2,
+          mesh,
+          type: "revoke",
+          by: self,
+          n,
+          prev,
+          subject: { signPubs, reason: "revoke" },
         }));
       }
     });

@@ -79,29 +79,33 @@ export function listenControl(stateDir: string, handle: ControlHandler): Control
             continue;
           }
           socket.data.started = true;
-          Promise.resolve().then(() => {
-            const request = parseRequest(line);
-            return handle(request, socket.data.closed.signal, (code) => {
-              if (request.op !== "mesh-join" || request.ask !== true) return Promise.resolve(false);
-              const answer = Promise.withResolvers<boolean>();
-              const finish = (confirmed: boolean): void => {
-                socket.data.answer = undefined;
-                socket.data.closed.signal.removeEventListener("abort", stop);
-                answer.resolve(confirmed);
-              };
-              const stop = (): void => finish(false);
-              socket.data.answer = (raw) => {
-                try {
-                  const value: unknown = JSON.parse(raw);
-                  finish(typeof value === "object" && value !== null && "confirm" in value && value.confirm === true);
-                } catch { finish(false); }
-              };
-              socket.data.closed.signal.addEventListener("abort", stop, { once: true });
-              if (socket.data.closed.signal.aborted) stop();
-              else socket.write(`${JSON.stringify({ state: "code", code })}\n`);
-              return answer.promise;
-            });
-          }).then(
+          Promise.resolve()
+            .then(() => {
+              const request = parseRequest(line);
+              return handle(request, socket.data.closed.signal, (code) => {
+                if (request.op !== "mesh-join" || request.ask !== true) return Promise.resolve(false);
+                const answer = Promise.withResolvers<boolean>();
+                const finish = (confirmed: boolean): void => {
+                  socket.data.answer = undefined;
+                  socket.data.closed.signal.removeEventListener("abort", stop);
+                  answer.resolve(confirmed);
+                };
+                const stop = (): void => finish(false);
+                socket.data.answer = (raw) => {
+                  try {
+                    const value: unknown = JSON.parse(raw);
+                    finish(typeof value === "object" && value !== null && "confirm" in value && value.confirm === true);
+                  } catch {
+                    finish(false);
+                  }
+                };
+                socket.data.closed.signal.addEventListener("abort", stop, { once: true });
+                if (socket.data.closed.signal.aborted) stop();
+                else socket.write(`${JSON.stringify({ state: "code", code })}\n`);
+                return answer.promise;
+              });
+            })
+            .then(
               (result) => reply(socket, { ok: true, result }),
               (error: unknown) =>
                 reply(socket, { ok: false, error: error instanceof Error ? error.message : String(error) }),
@@ -146,7 +150,10 @@ export async function requestControl(
             text = text.slice(end + 1);
             void (confirm?.(line.code) ?? Promise.resolve(false)).then(
               (answer) => socket.write(`${JSON.stringify({ confirm: answer })}\n`),
-              (error: unknown) => { socket.end(); reject(error); },
+              (error: unknown) => {
+                socket.end();
+                reject(error);
+              },
             );
           } catch (error) {
             socket.end();

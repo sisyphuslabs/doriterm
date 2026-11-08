@@ -1,4 +1,12 @@
-import { base64urlEncode, CloseCode, DEFAULT_RELAY_URL, type HostIdentity, PAIRING_TTL_MS, type SecureLink, SessionKind } from "@doriface/crypto";
+import {
+  base64urlEncode,
+  CloseCode,
+  DEFAULT_RELAY_URL,
+  type HostIdentity,
+  PAIRING_TTL_MS,
+  type SecureLink,
+  SessionKind,
+} from "@doriface/crypto";
 import type { PlanPolicy } from "@doriface/policy";
 import { PairingStore } from "../state/pairing.ts";
 import type { CreateSocket, RelayProofs } from "@doriface/relay-client";
@@ -70,26 +78,34 @@ export class HostMesh {
   constructor(options: HostMeshOptions) {
     this.#options = options;
     this.#core = hcCoreReader(options.hc);
+    this.pending.onAdmitted(() => this.sweepRoster());
     const offer = new PairingStore(options.stateDir).read();
     this.#offerExpiresAt = offer?.mesh === true ? offer.expiresAt : 0;
   }
 
+  resumeKey(key: string): boolean {
+    return this.pending.list().some(({ nonce }) => this.resumes.get(nonce, key) !== undefined);
+  }
+
   roster(secure: SecureLink): void {
     const key = base64urlEncode(secure.remoteStatic);
-    if (this.resumes.hasKey(key) && this.#options.mesh.authorizeIndex()?.client(key) === undefined) {
+    if (this.resumeKey(key) && this.#options.mesh.authorizeIndex()?.client(key) === undefined) {
       const lines = new MeshLines(secure, ["resume"]);
       void byDeadline(lines.next(), Date.now() + PAIRING_TTL_MS, "Ask for a new invite")
-        .then(async (line) => {
+        .then((line) => {
           if (line.t !== "resume") throw new JoinRefused("Ask for a new invite");
-          await this.#resume(lines, key, line.nonce);
-        }).catch((error: unknown) => {
+          return this.#resume(lines, key, line.nonce);
+        })
+        .catch((error: unknown) => {
           lines.refuse(CloseCode.UnknownDevice, error instanceof Error ? error.message : String(error));
         });
       return;
     }
     if (!this.#options.sessions.add(secure)) return;
-    void serveRoster(new MeshLines(secure, ROSTER_EXPECTS), secure.remoteStatic, this.#rosterDeps()).catch((error: unknown) =>
-      this.#options.log(`mesh: roster refused: ${error instanceof Error ? error.message : String(error)}`));
+    void serveRoster(new MeshLines(secure, ROSTER_EXPECTS), secure.remoteStatic, this.#rosterDeps()).catch(
+      (error: unknown) =>
+        this.#options.log(`mesh: roster refused: ${error instanceof Error ? error.message : String(error)}`),
+    );
   }
 
   async #resume(lines: MeshLines, key: string, nonce: string): Promise<void> {
@@ -106,9 +122,17 @@ export class HostMesh {
 
   #rosterDeps(): RosterDeps {
     const { stateDir, identity, mesh, policy, floor, log } = this.#options;
-    return { stateDir, identity, mesh, policy, floor, log, devices: new DeviceStore(stateDir),
+    return {
+      stateDir,
+      identity,
+      mesh,
+      policy,
+      floor,
+      log,
+      devices: new DeviceStore(stateDir),
       formatReady: () => this.#options.formatReady?.() === true,
-      resume: (lines, key, nonce) => this.#resume(lines, key, nonce) };
+      resume: (lines, key, nonce) => this.#resume(lines, key, nonce),
+    };
   }
 
   /**
@@ -154,15 +178,18 @@ export class HostMesh {
     serveJoin(new MeshLines(secure, INVITER_EXPECTS), secure.remoteStatic, deps).then(
       (card) => {
         this.sweepRoster();
-        if (card.kind === "client") secure.close(1000, "the join is complete");
-        else this.#keep(secure);
+        if (card.kind === "client") return secure.close(1000, "the join is complete");
+        return this.#keep(secure);
       },
       () => undefined,
     );
   }
 
   /** `mesh join` run by this host: refusals, the pairing handshake with the host key, the welcome, then it stays up. */
-  async join(request: MeshJoinRequest, confirm?: (code: string) => Promise<boolean>): Promise<{ readonly meshId: string; readonly hostId: string }> {
+  async join(
+    request: MeshJoinRequest,
+    confirm?: (code: string) => Promise<boolean>,
+  ): Promise<{ readonly meshId: string; readonly hostId: string }> {
     const { stateDir, identity, relay, log } = this.#options;
     const own = await this.#own(request.name);
     const joined = await joinMesh({

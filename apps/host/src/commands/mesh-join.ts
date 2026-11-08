@@ -115,10 +115,19 @@ async function pair(args: readonly string[], out: (text: string) => void): Promi
   const { nonce, name, kind, code } = pending;
   if (typeof code !== "string") throw new Error("update the inviting host to compare a join code");
   out("Compare by a call or in person, not in the chat that carried the link.\n");
-  const approve = await ask(`admit "${String(name)}" (${kind === "client" ? "browser" : "machine"}) code ${code}? Approve only if the joining screen shows the same code`, out);
+  const approve = await ask(
+    `admit "${String(name)}" (${kind === "client" ? "browser" : "machine"}) code ${code}? Approve only if the joining screen shows the same code`,
+    out,
+  );
   const decided = await requestControl(stateDir, { op: "mesh-approve", nonce, approve, code });
   const done = isRecord(decided) && decided["decided"] === true;
-  out(done ? (approve ? "approved; waiting for the joiner to confirm the code\n" : "denied\n") : "the join expired or was decided elsewhere\n");
+  out(
+    done
+      ? approve
+        ? "approved; waiting for the joiner to confirm the code\n"
+        : "denied\n"
+      : "the join expired or was decided elsewhere\n",
+  );
 }
 
 async function join(args: readonly string[], out: (text: string) => void, log: (line: string) => void): Promise<void> {
@@ -152,7 +161,14 @@ async function join(args: readonly string[], out: (text: string) => void, log: (
     if (matched) out(`waiting for approval on ${inviter}\n`);
     return matched;
   };
-  const request = { target: given, fingerprint: values.fingerprint, name: values.name, relay: values.relay, yes, ask: canAsk };
+  const request = {
+    target: given,
+    fingerprint: values.fingerprint,
+    name: values.name,
+    relay: values.relay,
+    yes,
+    ask: canAsk,
+  };
   if (await controlIsLive(stateDir)) {
     const joined = await requestControl(stateDir, { op: "mesh-join", ...request }, confirm);
     const meshId = isRecord(joined) ? joined["meshId"] : undefined;

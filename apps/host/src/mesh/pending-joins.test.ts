@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { type PendingJoin, PendingJoins } from "./pending-joins.ts";
 
 const join = (nonce: string): PendingJoin => ({
@@ -45,6 +45,23 @@ test("auto never approves a client and no pending join can lack its code", async
   expect(() => pending.ask({ ...join("bad"), code: "" })).toThrow("code");
   pending.decide("client", false);
   expect(await asked).toBe("denied");
+});
+
+test.each(["approve", "confirm"] as const)("a late %s cannot beat an expired join's timer", async (last) => {
+  const pending = new PendingJoins();
+  const card = join("late");
+  const result = pending.ask(card);
+  if (last === "approve") pending.confirm(card.nonce);
+  else pending.decide(card.nonce, true, card.code);
+  const clock = spyOn(Date, "now").mockReturnValue(card.expiresAt);
+  try {
+    expect(last === "approve" ? pending.decide(card.nonce, true, card.code) : pending.confirm(card.nonce)).toBe(false);
+    expect(await result).toBe("expired");
+    expect(pending.list()).toEqual([]);
+  } finally {
+    clock.mockRestore();
+    pending.expireAll();
+  }
 });
 
 describe("pending joins (section 4.3)", () => {

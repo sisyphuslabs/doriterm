@@ -22,16 +22,37 @@ test("the roster admits paired and client keys while refusing machine, revoked a
   expect(peer(machineDevice.publicKey).kind).toBe("refused");
   expect(peer(generateX25519().publicKey).kind).toBe("refused");
   const mesh = a.mesh.read()?.meshId ?? "";
-  const card = signCard(cardBody(c.m.identity, { name: "browser", hcId: "", devicePub: noiseOf(c.m) }, mesh, signPubOf(a.m), undefined, "client"), c.m.identity.sign.secretKey);
+  const card = signCard(
+    cardBody(
+      c.m.identity,
+      { name: "browser", hcId: "", devicePub: noiseOf(c.m) },
+      mesh,
+      signPubOf(a.m),
+      undefined,
+      "client",
+    ),
+    c.m.identity.sign.secretKey,
+  );
   a.mesh.sign(a.m.identity, (n, prev) => ({
-    v: 2, mesh, type: "admit", by: signPubOf(a.m), n, prev, subject: { card },
+    v: 2,
+    mesh,
+    type: "admit",
+    by: signPubOf(a.m),
+    n,
+    prev,
+    subject: { card },
   }));
   devices.revoke(noiseOf(c.m));
   expect(peer(c.m.identity.noise.publicKey).kind).toBe("client");
   expect(sessionPeer("push", c.m.identity.noise.publicKey, a.mesh.authorizeIndex(), devices).kind).toBe("client");
   expect(sessionPeer("push", a.m.identity.noise.publicKey, a.mesh.authorizeIndex(), devices).kind).toBe("refused");
   a.mesh.sign(a.m.identity, (n, prev) => ({
-    v: 2, mesh, type: "revoke", by: signPubOf(a.m), n, prev,
+    v: 2,
+    mesh,
+    type: "revoke",
+    by: signPubOf(a.m),
+    n,
+    prev,
     subject: { signPubs: [signPubOf(c.m)], reason: "revoke" },
   }));
   expect(peer(c.m.identity.noise.publicKey).kind).toBe("refused");
