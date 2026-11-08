@@ -11,7 +11,6 @@ import { KeyboardSection } from "../settings/keyboard-section.tsx";
 import { MeshSection } from "../settings/mesh-section.tsx";
 import { MachinesSection } from "../settings/machines-section.tsx";
 import { MembersSection } from "../settings/members-section.tsx";
-import { useMeshMembers } from "../connection/store.ts";
 import { NotificationsSection } from "../settings/notifications-section.tsx";
 import { PairSection } from "../settings/pair-section.tsx";
 import { TerminalSection } from "../settings/terminal-section.tsx";
@@ -68,7 +67,6 @@ export function SettingsRoute() {
   );
   const nothing =
     shown.length === 0 ? <p className="px-2 py-1 text-sm text-muted-foreground">No setting matches "{query}"</p> : null;
-  const members = useMeshMembers();
   const mesh = useBrowserMembership();
   const joinedBrowser = mesh.phase !== "empty" && desktopBridge() === null;
   const close = useCloseSettings();
@@ -195,7 +193,7 @@ export function SettingsRoute() {
                   </Lead>
                 )}
                 <Group title="Machines">
-                  {!joinedBrowser && members.length > 1 ? <MembersSection /> : null}
+                  {!joinedBrowser ? <MembersSection /> : null}
                   <MachinesSection />
                   {/* What a row's state means sits under the rows, where a reader meets it: on a phone the list leads (#1007). */}
                   {!joinedBrowser ? (

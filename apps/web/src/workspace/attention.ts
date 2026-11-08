@@ -60,6 +60,12 @@ export function withAttention(terminals: readonly Session[], seen: Seen): readon
   return marked ? shown : terminals;
 }
 
+/** Whether some terminal other than the one in view needs you: the next-needs-you action has somewhere to go (#1448). */
+export function someoneElseNeedsYou(terminals: readonly Session[], inView: string | null): boolean {
+  const next = nextNeedingYou(terminals, inView);
+  return next !== null && next !== inView;
+}
+
 /**
  * The terminal "N needs you" opens (#1448): walking the terminals in the core's order, the first live one that needs the
  * person after `focused`, round to the start; `focused` itself only when it is the only one. Null while nobody waits.
