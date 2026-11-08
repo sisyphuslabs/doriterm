@@ -7,6 +7,7 @@ import { triggerKeys, type Platform } from "../keys/trigger.ts";
 import type { AgentStatus } from "@doriface/ui";
 import { agentStatus } from "./attention.ts";
 import { machineOf, terminalTitle } from "./model.ts";
+import { agentWhere } from "./palette-where.ts";
 import type { ShellAction } from "./shell-actions.ts";
 
 const AGENT = "agent:";
@@ -24,6 +25,8 @@ export interface PaletteSource {
   readonly platform: Platform;
   /** The app actions this shell handles now, from availableActions. */
   readonly actions: readonly ShellAction[];
+  /** The name the sidebar lists a terminal's space under, by address; the palette names the same space. */
+  readonly spaceOf?: (address: string) => string | undefined;
 }
 
 export type PaletteChoice =
@@ -47,7 +50,13 @@ export function paletteCommands(source: PaletteSource): Command[] {
     .map((terminal): Command => {
       const machine = machineOf(terminal.address);
       const id = `${AGENT}${terminal.address}`;
-      const row: Command = { id, label: terminalTitle(terminal), group: "Agents", status: agentStatus(terminal) };
+      const row: Command = {
+        id,
+        label: terminalTitle(terminal),
+        group: "Agents",
+        status: agentStatus(terminal),
+        where: agentWhere(terminal, source.host, source.spaceOf?.(terminal.address)),
+      };
       return machine === undefined ? row : Object.assign(row, { hint: machine });
     });
   return [

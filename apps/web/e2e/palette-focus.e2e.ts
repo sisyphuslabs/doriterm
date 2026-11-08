@@ -69,3 +69,29 @@ test("the open palette keeps keyboard input while a terminal starts and waits fo
   await expect(page.locator('[data-focused="true"] [data-terminal]')).toContainText("$", { timeout: 15_000 });
   await expect(combobox).toHaveValue("abc");
 });
+
+for (const theme of ["day", "night"] as const) {
+  test.describe(`palette focus ring, ${theme}`, () => {
+    test.use({ viewport: { width: 1440, height: 900 }, colorScheme: theme === "day" ? "light" : "dark" });
+
+    test("the palette field opened from the keyboard shows a focus indicator (#1495)", async ({ page }, testInfo) => {
+      await page.goto("/");
+      const opener = (await openNewTerminal(page)).getByRole("textbox");
+      await opener.focus();
+      await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+      const combobox = page.getByRole("combobox", { name: "Command" });
+      await expect(combobox).toBeFocused();
+      const style = await combobox.evaluate((input) => {
+        const computed = getComputedStyle(input);
+        return {
+          visible: input.matches(":focus-visible"),
+          outline: computed.outlineStyle,
+          shadow: computed.boxShadow,
+        };
+      });
+      await page.screenshot({ path: testInfo.outputPath(`palette-focus-1440-${theme}.png`), animations: "disabled" });
+      expect(style.visible).toBe(true);
+      expect(style.outline !== "none" || style.shadow !== "none", JSON.stringify(style)).toBe(true);
+    });
+  });
+}

@@ -1,6 +1,5 @@
 import {
   base64urlEncode,
-  fingerprintOf,
   type HostIdentity,
   type PairingSecret,
   rawStaticKey,
@@ -39,6 +38,7 @@ export interface JoinOptions {
   readonly hcId: string;
   /** Skips the link's interactive confirmation; never a typed code's fingerprint. */
   readonly yes: boolean;
+  readonly ask?: boolean | undefined;
   readonly confirm: (question: string) => Promise<boolean>;
   readonly relayUrl: string | undefined;
   readonly defaultRelayUrl: string;
@@ -81,13 +81,10 @@ async function refuseEarly(options: JoinOptions): Promise<MeshInvite> {
   if (!checkName(options.name)) throw new JoinRefused(`"${options.name}" is not a valid mesh name`);
   const { target } = options;
   const invite = meshInviteOf(joinTargetOf(target));
-  if (target.kind !== "link") {
-    fingerprintGiven(options.fingerprint);
-    return invite;
+  if (options.fingerprint !== undefined) fingerprintGiven(options.fingerprint);
+  if (target.kind === "link" && options.fingerprint !== undefined) {
+    confirmFingerprint(options.fingerprint, target.link.noiseStaticPub);
   }
-  if (options.yes) return invite;
-  const question = `join the mesh of host ${target.link.hostId}, fingerprint ${fingerprintOf(target.link.noiseStaticPub)}?`;
-  if (!(await options.confirm(question))) throw new JoinRefused("not joined");
   return invite;
 }
 
@@ -102,7 +99,7 @@ async function inviterOf(options: JoinOptions): Promise<Inviter> {
   const relayUrl = options.relayUrl ?? options.defaultRelayUrl;
   const record = await lookupPairSlot({ relayUrl, code: target.code });
   if (record === undefined) throw new JoinRefused("no host is offering this code on the relay: it may have expired");
-  confirmFingerprint(options.fingerprint, record.noiseStaticPub);
+  if (options.fingerprint !== undefined) confirmFingerprint(options.fingerprint, record.noiseStaticPub);
   const pairing = { mode: "code", code: target.code, name } as const;
   return {
     hostId: record.hostId,
@@ -127,6 +124,8 @@ export async function joinMesh(options: JoinOptions): Promise<Joined> {
       ...(options.createSocket === undefined ? {} : { createSocket: options.createSocket }),
       ...(options.proofs === undefined ? {} : { proofs: options.proofs }),
       ...(inviter.pairSlot === undefined ? {} : { pairSlot: inviter.pairSlot }),
+      // One socket: the join ceremony closes once the welcome is stored (#1418).
+      bestOf: 1,
     });
     return secureLink(link, {
       role: "initiator",
@@ -154,6 +153,9 @@ export async function joinMesh(options: JoinOptions): Promise<Joined> {
     dialed,
     deadline,
     log: options.log,
+    handshakeHash: secure.handshakeHash,
+    yes: options.yes,
+    confirm: options.ask === true ? options.confirm : undefined,
   });
   return { meshId, hostId: inviter.hostId, secure, lines };
 }

@@ -11,9 +11,10 @@ export function openControl(
   meshStatus: (() => Promise<MeshStatus | undefined>) | undefined,
   push: HostPush | undefined,
 ) {
-  return listenControl(stateDir, async (request, closed) => {
+  return listenControl(stateDir, async (request, closed, confirm) => {
     switch (request.op) {
       case "devices-changed":
+        e2ee.hostMesh.sweepRoster();
         push?.prune();
         return e2ee.sessions.closeRevoked();
       case "mesh-changed":
@@ -27,9 +28,9 @@ export function openControl(
       case "mesh-pending":
         return e2ee.hostMesh.pending.next(closed);
       case "mesh-approve":
-        return { decided: e2ee.hostMesh.pending.decide(request.nonce, request.approve) };
+        return { decided: e2ee.hostMesh.pending.decide(request.nonce, request.approve, request.code) };
       case "mesh-join":
-        return e2ee.hostMesh.join(request);
+        return e2ee.hostMesh.join(request, confirm);
       case "mesh-status":
         return (await meshStatus?.()) ?? null;
       case "mesh-revoke":
@@ -37,7 +38,7 @@ export function openControl(
       case "mesh-rename":
         return e2ee.meshCommands.rename(request);
       case "mesh-leave":
-        return e2ee.meshCommands.leave();
+        return request.preview === true ? e2ee.meshCommands.leavePreview() : e2ee.meshCommands.leave(request.expect);
     }
   });
 }

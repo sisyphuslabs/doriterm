@@ -3,15 +3,39 @@ import { describe, expect, test } from "bun:test";
 import { memoryStore } from "../storage/idb.ts";
 import { clientIdOf, loadSignKey, memberIdentityOf } from "./identity.ts";
 import { meshNameOf } from "./member-name.ts";
+import { ed25519 } from "@noble/curves/ed25519.js";
 
 describe("the browser's member identity", () => {
+  test("upgrading the first browser join release retains its signing identity", async () => {
+    const storage = memoryStore();
+    const secretKey = ed25519.utils.randomSecretKey();
+    await storage.put("mesh-sign-key", { kind: "ed25519", secretKey });
+    const sign = await loadSignKey(storage);
+    expect(sign.kind).toBe("webcrypto");
+    expect(sign.publicKey).toEqual(ed25519.getPublicKey(secretKey));
+    const message = new Uint8Array([7, 8, 9]);
+    expect(ed25519.verify(await sign.sign(message), message, sign.publicKey)).toBe(true);
+  });
+
+  test("new signing keys cannot be exported when IndexedDB preserves CryptoKeys", async () => {
+    const storage = memoryStore();
+    await loadSignKey(storage);
+    const saved = await storage.get("mesh-sign-key");
+    const privateKey: unknown = Reflect.get(Object(saved), "privateKey");
+    expect(privateKey).toBeInstanceOf(CryptoKey);
+    if (!(privateKey instanceof CryptoKey)) throw new Error("signing key was stored as bytes");
+    expect(privateKey.extractable).toBe(false);
+    await expect(crypto.subtle.exportKey("pkcs8", privateKey)).rejects.toThrow();
+  });
+
   test("the signing key is created once and read back the same on every later load", async () => {
     const storage = memoryStore();
     const [first, second] = await Promise.all([loadSignKey(storage), loadSignKey(storage)]);
     const again = await loadSignKey(storage);
     expect(first.publicKey).toEqual(second.publicKey);
     expect(again.publicKey).toEqual(first.publicKey);
-    expect(first.secretKey).toHaveLength(32);
+    const message = new Uint8Array([1, 2, 3]);
+    expect(ed25519.verify(await first.sign(message), message, first.publicKey)).toBe(true);
   });
 
   test("two browsers never share a key", async () => {
@@ -23,7 +47,8 @@ describe("the browser's member identity", () => {
     const storage = memoryStore();
     await storage.put("mesh-sign-key", { kind: "ed25519", secretKey: "not bytes" });
     const pair = await loadSignKey(storage);
-    expect(pair.secretKey).toBeInstanceOf(Uint8Array);
+    const message = new Uint8Array([4, 5, 6]);
+    expect(ed25519.verify(await pair.sign(message), message, pair.publicKey)).toBe(true);
   });
 
   test("the hostId is the one every member derives from the signing key", async () => {

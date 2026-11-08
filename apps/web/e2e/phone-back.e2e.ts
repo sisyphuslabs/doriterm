@@ -173,7 +173,7 @@ test("a switch inside an open terminal replaces its entry, so one Back reaches t
     expect(await page.evaluate(() => history.length), "entering a terminal adds one entry").toBe(before + 1);
 
     // Switch session, from inside the open terminal: the switch replaces the entry rather than adding one.
-    await page.locator(`[data-terminal="${first}"]`).getByRole("textbox").focus();
+    await key(page, "Show keyboard").click();
     await key(page, "Switch session").click();
     await page
       .getByRole("menu")

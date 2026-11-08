@@ -3,11 +3,14 @@ import { Link } from "@tanstack/react-router";
 import { guideStore } from "../pair/first-run-guide.ts";
 import { install, useInstallOffer } from "../device/install.ts";
 import { keepAwakeStore, screenWakeLock, useKeepAwake } from "../device/keep-awake.ts";
+import { useBrowserMembership } from "../mesh/membership-state.ts";
+import { BrowserInvite } from "./browser-invite.tsx";
 
 /** Settings that belong to this browser or device rather than to an account: the screen, and installing the app. */
 export function DeviceSection() {
   const keepAwake = useKeepAwake();
   const offer = useInstallOffer();
+  const mesh = useBrowserMembership();
   const rows = [
     screenWakeLock() === null ? null : (
       <SettingRow
@@ -36,6 +39,8 @@ export function DeviceSection() {
           </Button>
         }
       />
+    ) : offer?.kind === "ios" && mesh.phase === "joined" ? (
+      <BrowserInvite key="install" install />
     ) : offer?.kind === "ios" ? (
       <SettingRow
         key="install"

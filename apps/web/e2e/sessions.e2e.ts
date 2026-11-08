@@ -88,7 +88,9 @@ test("closing a tab whose shell runs a program asks first: Cancel leaves it runn
   await expect(page.getByRole("contentinfo")).toContainText(`${before - 1} terminal`, { timeout: 15_000 });
 });
 
-test("Close in the close prompt is styled destructive like End session, and Enter does not close", async ({ page }) => {
+test("Close in the close prompt is styled destructive like End session, and Enter answers nothing", async ({
+  page,
+}) => {
   await page.goto("/");
   const terminal = await openNewTerminal(page);
   await sessionMenu(page, "End session…");
@@ -103,7 +105,10 @@ test("Close in the close prompt is styled destructive like End session, and Ente
   const ask = page.getByRole("dialog", { name: /^Close .+\?$/ });
   const end = ask.getByRole("button", { name: "Close" });
   expect(await end.evaluate((button) => getComputedStyle(button).backgroundColor)).toBe(destructive);
+  // No answer is the default (#1495): Enter leaves the question up and the terminal running; Escape dismisses it.
   await page.keyboard.press("Enter");
+  await expect(ask).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(ask).toBeHidden();
   await expect(page.getByRole("contentinfo")).toContainText(`${before} terminal`);
   await expect(page.getByRole("tab", { selected: true })).toBeVisible();

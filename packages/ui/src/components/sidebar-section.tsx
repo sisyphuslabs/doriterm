@@ -18,7 +18,8 @@ export function SidebarSection({ title, count, tone, action, children, className
   const heading = useId();
   return (
     <section ref={ref} aria-labelledby={heading} className={cn("flex flex-col gap-px", className)}>
-      <header className="flex min-h-7 items-center gap-2 px-2 text-xs font-medium">
+      {/* The title starts on its rows' label column (a row's px-2, size-4 glyph and gap-2.5), so it heads them. */}
+      <header className="flex min-h-7 items-center gap-2 pr-2 pl-8.5 text-xs font-medium">
         <h2 id={heading} className={cn("min-w-0 flex-1 truncate text-muted-foreground", tone)}>
           {title}
         </h2>

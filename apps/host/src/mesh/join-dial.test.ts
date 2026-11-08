@@ -1,4 +1,4 @@
-import { buildPairingUrl, createPairingOffer, DEFAULT_RELAY_URL } from "@doriface/crypto";
+import { buildPairingUrl, createPairingOffer, DEFAULT_RELAY_URL, fingerprintOf } from "@doriface/crypto";
 import { afterEach, describe, expect, test } from "bun:test";
 import { parseTarget } from "../connect/target.ts";
 import { PairingStore } from "../state/pairing.ts";
@@ -46,13 +46,27 @@ function attempt(joiner: Side, target: string, extra: Partial<JoinOptions> = {})
   return { outcome: failure(joinMesh(options)), dials, asked };
 }
 
-describe("J-2: a typed code needs --fingerprint, and --yes does not skip it", () => {
+describe("J-2: code comparison replaces the fingerprint question, with an optional extra pin", () => {
   test.each([[false], [true]])(
-    "a code without --fingerprint (yes=%p) is refused before any lookup or dial",
+    "a code without --fingerprint (yes=%p) reaches the slot lookup without asking",
     async (yes) => {
-      const run = attempt(side("joiner"), "7KQ3 9D2M", { yes });
-      expect(await run.outcome).toContain("a typed code needs --fingerprint");
-      expect(run.dials).toEqual([]);
+      let lookedUp = false;
+      const relay = Bun.serve({
+        port: 0,
+        fetch() {
+          lookedUp = true;
+          return new Response(null, { status: 404 });
+        },
+      });
+      try {
+        const run = attempt(side("joiner"), "7KQ3 9D2M", { yes, relayUrl: relay.url.toString() });
+        expect(await run.outcome).toContain("no host is offering this code");
+        expect(lookedUp).toBe(true);
+        expect(run.asked).toEqual([]);
+        expect(run.dials).toEqual([]);
+      } finally {
+        await relay.stop(true);
+      }
     },
   );
 
@@ -62,14 +76,26 @@ describe("J-2: a typed code needs --fingerprint, and --yes does not skip it", ()
     expect(run.dials).toEqual([]);
   });
 
-  test("a link asks for confirmation unless --yes; a no dials nothing, a --yes dials", async () => {
+  test("a link dials before asking because its comparison code comes from the authenticated session", async () => {
     const asked = attempt(side("joiner"), linkTo(true));
-    expect(await asked.outcome).toBe("not joined");
-    expect(asked.asked).toHaveLength(1);
-    expect(asked.dials).toEqual([]);
+    expect(await asked.outcome).toBe("dialed");
+    expect(asked.asked).toEqual([]);
+    expect(asked.dials).toHaveLength(1);
     const yes = attempt(side("joiner"), linkTo(true), { yes: true });
     expect(await yes.outcome).toBe("dialed");
     expect(yes.asked).toEqual([]);
+  });
+
+  test.each([false, true])("a supplied fingerprint is checked before dialing with yes=%s", async (yes) => {
+    const mismatch = attempt(side("joiner"), linkTo(true), { yes, fingerprint: "FFFF FFFF FFFF FFFF" });
+    expect(await mismatch.outcome).toContain("fingerprint");
+    expect(mismatch.dials).toEqual([]);
+    const matched = attempt(side("joiner"), linkTo(true), {
+      yes,
+      fingerprint: fingerprintOf(inviter.m.identity.noise.publicKey),
+    });
+    expect(await matched.outcome).toBe("dialed");
+    expect(matched.dials).toHaveLength(1);
   });
 });
 

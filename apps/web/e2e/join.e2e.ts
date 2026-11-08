@@ -6,7 +6,6 @@ import { type FakeRelayHost, startFakeRelayHost } from "./relay-route.ts";
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
 
-const INVITE = /invite link a member sent you/;
 const PAIRED = "This device now reaches the host through the relay";
 
 /** A browser that has never paired: its own storage and key, and no seeded settings, so the app's landing shows. */
@@ -45,8 +44,8 @@ test("a browser with no pairing joins by an invite, takes input on a terminal, a
   try {
     page = await freshBrowser(browser, host);
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Connect to a host" })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(INVITE)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Join a mesh" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByLabel("Invite link or code")).toBeVisible();
 
     const link = await host.pairingLink();
     await page.goto(link);
@@ -70,7 +69,7 @@ test("a browser with no pairing joins by an invite, takes input on a terminal, a
     // A revisit needs no new invite: the browser kept its device key and the pairing it saved.
     await page.reload();
     await expect(page.locator("[data-terminal]").first()).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByRole("heading", { name: "Connect to a host" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Join a mesh" })).toHaveCount(0);
   } finally {
     await page?.context().close();
     await host.stop();

@@ -3,7 +3,9 @@ import { useToastManager } from "@doriface/ui";
 import type { TerminalHandle, WTerm } from "@wterm/react";
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { unprovenLinks } from "../connection/wake.ts";
-import { HeldInput } from "./held-input.ts";
+import { machineOf } from "../workspace/model.ts";
+import { type Dropped, HeldInput, HOLD_MS } from "./held-input.ts";
+import { machineLines } from "./machine-lines.ts";
 import { pasteInto } from "./terminal-port.ts";
 import { putFiles, quotePaths } from "./paste-files.ts";
 import { scrollTerminal } from "./terminal-scroll.tsx";
@@ -33,12 +35,23 @@ interface InputSources {
   readonly typesComposition: boolean;
 }
 
+/** Why input that waited for a machine's line was not sent, as the person is told. */
+export function notSent(why: Dropped, machine: string): string {
+  return why === "expired"
+    ? `Typed input was not sent because ${machine} did not reconnect within ${HOLD_MS / 1000} s`
+    : `Typed input was not sent because too much was typed while ${machine} was reconnecting`;
+}
+
 /** What a pane does with what the person types: one ordered path to the program, queued while no stream is open. */
 export function useTerminalInput(sources: InputSources): TerminalInputPath {
   const { wt, handle, stream, connection, address, transformInput, typesComposition } = sources;
   const toasts = useToastManager();
   const latestConnection = useRef(connection);
   latestConnection.current = connection;
+  const latestAddress = useRef(address);
+  latestAddress.current = address;
+  const latestToasts = useRef(toasts);
+  latestToasts.current = toasts;
   // Every human-input write goes through send, so keys pressed during a reconnect or a wake replay in the order pressed.
   const [held] = useState(
     () =>
@@ -46,6 +59,11 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
         unprovenLinks,
         () => latestConnection.current,
         () => stream.current,
+        {
+          lines: machineLines,
+          machine: () => machineOf(latestAddress.current),
+          dropped: (why, machine) => latestToasts.current.add({ type: "warning", title: notSent(why, machine) }),
+        },
       ),
   );
   useEffect(() => held.watch(), [held]);

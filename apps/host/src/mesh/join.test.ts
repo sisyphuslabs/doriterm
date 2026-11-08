@@ -74,7 +74,7 @@ describe("J-3: the inviting member's confirmation", () => {
     const asked = await pending.next();
     expect([asked.name, asked.hostId]).toEqual(["beta", b.m.identity.hostId]);
     expect(records(a).map((record) => parseRecord(record)?.type)).toEqual(["found"]);
-    expect(pending.decide(asked.nonce, true)).toBe(true);
+    expect(pending.decide(asked.nonce, true, asked.code)).toBe(true);
     expect(await run.joined).toBe(a.mesh.read()?.meshId ?? "");
   });
 
@@ -109,7 +109,7 @@ describe("J-4: races", () => {
     const asked = await pending.next();
     b.mesh.found(b.m.identity, ownOf(b));
     const own = b.mesh.read()?.meshId;
-    pending.decide(asked.nonce, true);
+    pending.decide(asked.nonce, true, asked.code);
     expect(await failure(run.joined)).toBe("a mesh.json appeared on this host meanwhile");
     expect(b.mesh.read()?.meshId).toBe(own ?? "");
   });

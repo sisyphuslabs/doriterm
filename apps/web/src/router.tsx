@@ -8,6 +8,7 @@ import { ActionsPaused } from "./keys/dispatcher.ts";
 import { keyboardIsIdle, mayTakeFocus } from "./terminal/may-take-focus.ts";
 import { capturePairingLink } from "./pair/link-capture.ts";
 import { PairRoute } from "./routes/pair-route.tsx";
+import { JoinLanding } from "./pair/join-landing.tsx";
 import { SettingsRoute } from "./routes/settings-route.tsx";
 import { SettingsDialog, SettingsInDialog, useSettingsSheet } from "./settings/settings-dialog.tsx";
 import { WorkspaceRoute } from "./routes/workspace-route.tsx";
@@ -119,6 +120,7 @@ const root = createRootRoute({ component: Root });
 const routes = [
   createRoute({ getParentRoute: () => root, path: "/", component: () => null }),
   createRoute({ getParentRoute: () => root, path: "/pair", component: PairRoute }),
+  createRoute({ getParentRoute: () => root, path: "/join", component: JoinLanding }),
   createRoute({ getParentRoute: () => root, path: "/settings", component: SettingsRoute }),
 ];
 

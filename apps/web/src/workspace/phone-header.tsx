@@ -1,34 +1,32 @@
-import { IconButton, StatusChip, StatusIndicator, cn } from "@doriface/ui";
+import { Button, StatusChip, StatusIndicator } from "@doriface/ui";
 import { ChevronLeft } from "lucide-react";
 import { type ReactNode, useRef } from "react";
 import { useFittedLines } from "./fit-lines.ts";
 import { agentStatus } from "./attention.ts";
-import { agentCounts, machineOf, type Session, spaceName, terminalTitle } from "./model.ts";
+import { machineOf, type Session, spaceName, terminalTitle } from "./model.ts";
 import { useSpaceSelection } from "./space-selection.ts";
 import { SessionMenu } from "./session-menu.tsx";
 
 export interface PhoneHeaderProps {
   readonly terminal: Session;
-  readonly terminals: readonly Session[];
-  /** Its tab as the desktop strip reads it (its name, else its number); null when it is in no tab. */
+  /** Its tab's own name; null when the tab has none, so the terminal's title names the screen. */
   readonly tabTitle: string | null;
+  /** This machine's name, for a session on this machine: the place under the title always names the machine. */
+  readonly host: string;
+  /** The space Back returns to, by name (it was opened from that space's screen); null when Back goes to the agents. */
+  readonly backTo: string | null;
   readonly onBack: () => void;
   /** One more header control before the switch, such as the mic (#227). */
   readonly action?: ReactNode;
 }
 
-const COUNTED = [
-  { status: "done", word: "done" },
-  { status: "working", word: "working" },
-  { status: "idle", word: "idle" },
-] as const;
-
 /**
- * The phone terminal's header: its tab and state, where it is, the agent counts. Switching tabs and the tab's place (n/m)
- * live in the bottom tabs bar alone, one strip as in herdr-app (#466).
+ * The phone terminal's header: Back, labelled with where it goes, then the tab and its state and where it is. Switching
+ * tabs and the tab's place (n/m) live in the bottom tabs bar alone, one strip as in herdr-app (#466); how many agents
+ * need the person is the agents list's to say, not this session's header.
  */
-export function PhoneHeader({ terminal, terminals, tabTitle, onBack, action }: PhoneHeaderProps) {
-  // The tab, as the desktop strip names it (#466 ruling A); a terminal in no tab has only its own title.
+export function PhoneHeader({ terminal, host, tabTitle, backTo, onBack, action }: PhoneHeaderProps) {
+  // The tab's own name, else the terminal's title: an agent's or a program's name, never the tab's place among its space's.
   const title = tabTitle ?? terminalTitle(terminal);
   const heading = useRef<HTMLHeadingElement>(null);
   const titleLines = useFittedLines(heading, title);
@@ -36,14 +34,22 @@ export function PhoneHeader({ terminal, terminals, tabTitle, onBack, action }: P
   // Where it is: the layout space whose tab shows it (#404), else where it runs.
   const { spaces } = useSpaceSelection();
   const space = spaces.find((each) => each.addresses.includes(terminal.address))?.name ?? spaceName(terminal);
-  const where = machine === undefined ? space : `${machine} · ${space}`;
-  const counts = agentCounts(terminals);
+  const where = `${machine ?? host} · ${space}`;
   return (
     <header
       data-titlebar
       className="flex min-h-12 shrink-0 items-center gap-1 border-b border-border bg-chrome pt-[env(safe-area-inset-top)] pr-1.5 pl-[var(--titlebar-inset-start,0.375rem)]"
     >
-      <IconButton label="Back to agents" icon={<ChevronLeft />} size="md" onClick={onBack} />
+      <Button
+        variant="ghost"
+        aria-label={backTo === null ? "Back to agents" : `Back to ${backTo}`}
+        className="max-w-[7.5rem] min-w-11 shrink-0 gap-0.5 px-1.5 text-foreground [&>span]:min-w-0"
+        onClick={onBack}
+      >
+        <ChevronLeft aria-hidden />
+        {/* Under 360 px the chevron alone: the title keeps the row (its accessible name still says where Back goes). */}
+        <span className="min-w-0 truncate max-[359px]:hidden">{backTo ?? "Agents"}</span>
+      </Button>
       {/* A container: the status chip shows its word only where the title keeps a readable share of the row (#479). */}
       <div className="@container flex min-w-0 flex-1 flex-col py-1">
         <div className="flex min-w-0 items-start gap-2">
@@ -62,25 +68,9 @@ export function PhoneHeader({ terminal, terminals, tabTitle, onBack, action }: P
           <StatusChip status={agentStatus(terminal)} className="hidden @min-[22rem]:inline-flex" />
           <StatusIndicator status={agentStatus(terminal)} className="mt-1 size-3.5 shrink-0 @min-[22rem]:hidden" />
         </div>
-        {/* Under text spacing the counts wrap to a line of their own before the place gives up its last letters. */}
-        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs leading-tight text-muted-foreground">
-          <p title={where} className="min-w-0 grow basis-8 truncate">
-            {where}
-          </p>
-          <span data-agent-counts data-numeric className="ml-auto flex shrink-0 items-center gap-1.5">
-            {COUNTED.map(({ status, word }, index) => (
-              <span key={status} className="inline-flex items-center gap-0.5">
-                <StatusIndicator
-                  status={status}
-                  decorative
-                  className={cn("size-3", counts[status] === 0 && "[&_svg]:animate-none")}
-                />
-                {counts[status]}
-                <span className="sr-only">{index === COUNTED.length - 1 ? ` ${word}` : ` ${word}, `}</span>
-              </span>
-            ))}
-          </span>
-        </div>
+        <p title={where} className="min-w-0 truncate text-xs leading-tight text-muted-foreground">
+          {where}
+        </p>
       </div>
       {/* `contents`: an empty slot draws no box and takes no gap; a control in it is one more header item. */}
       <span data-header-action className="contents">

@@ -1,5 +1,6 @@
 import type { HcTarget } from "../mesh/hc-machines.ts";
 import type { DeviceStore } from "../state/devices.ts";
+import type { MeshStore } from "../state/mesh.ts";
 import { type CoreFeed, startCoreFeed } from "./core-feed.ts";
 import { PushService } from "./push-service.ts";
 import { type PushLink, servePushStream } from "./push-stream.ts";
@@ -21,6 +22,7 @@ export interface HostPushOptions {
   readonly stateDir: string;
   readonly hostId: string;
   readonly devices: DeviceStore;
+  readonly mesh?: MeshStore | undefined;
   readonly hc: HcTarget;
   readonly extraOrigins?: readonly string[] | undefined;
   readonly log: (line: string) => void;
@@ -33,7 +35,13 @@ export interface HostPushOptions {
 export async function startHostPush(options: HostPushOptions): Promise<HostPush> {
   const { stateDir, devices, log } = options;
   const subscriptions = new SubscriptionStore(stateDir);
-  const paired = (): ReadonlySet<string> => new Set(devices.list().map((device) => device.clientStaticPub));
+  const paired = (): ReadonlySet<string> =>
+    new Set([
+      ...devices.list().map((device) => device.clientStaticPub),
+      ...(options.mesh?.authorizeIndex()?.clients() ?? []).flatMap((client) =>
+        client.devicePub === undefined ? [] : [client.devicePub],
+      ),
+    ]);
   const service = new PushService({
     hostId: options.hostId,
     vapid: await loadVapidKey(stateDir),
@@ -42,7 +50,9 @@ export async function startHostPush(options: HostPushOptions): Promise<HostPush>
     deviceName: (owner) =>
       owner === LOOPBACK_OWNER
         ? "this computer"
-        : (devices.list().find((device) => device.clientStaticPub === owner)?.name ?? "a paired device"),
+        : (devices.list().find((device) => device.clientStaticPub === owner)?.name ??
+          options.mesh?.authorizeIndex()?.client(owner)?.name ??
+          "a paired device"),
     extraOrigins: options.extraOrigins,
     onSubscribe: () => follow(),
     log,

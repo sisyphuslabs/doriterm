@@ -11,10 +11,10 @@ async function pendingPair(page: Page) {
     await route.fulfill({ status: 404, body: "" });
   });
   await page.goto("/pair");
-  await page.getByLabel("Pairing code").fill(PAIR_CODE);
+  await page.getByLabel("Invite link or code").fill(PAIR_CODE);
   await page.clock.install();
   await page.clock.pauseAt(new Date());
-  const button = page.getByRole("button", { name: "Pair", exact: true });
+  const button = page.getByRole("button", { name: "Continue", exact: true });
   await button.click();
   await expect(button).toHaveAttribute("aria-busy", "true");
   return { button, finish };
@@ -24,7 +24,7 @@ test("a fast pairing request keeps its label and never flashes a spinner (#1443)
   const { button, finish } = await pendingPair(page);
   await page.clock.runFor(500);
   expect(await button.locator("svg").count()).toBe(0);
-  await expect(button.getByText("Pair", { exact: true })).toHaveCSS("opacity", "1");
+  await expect(button.getByText("Continue", { exact: true })).toHaveCSS("opacity", "1");
   finish();
   await expect(button).not.toHaveAttribute("aria-busy", "true");
   await page.clock.runFor(1000);

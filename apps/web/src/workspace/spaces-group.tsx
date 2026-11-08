@@ -1,8 +1,6 @@
 import {
   IconButton,
   MachineHeader,
-  Menu,
-  MenuItem,
   Notice,
   RowWithActions,
   SidebarSection,
@@ -10,8 +8,11 @@ import {
   cn,
   type Space,
 } from "@doriface/ui";
-import { ArrowDown, ArrowUp, Ellipsis, Pencil, Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
+import { desktopBridge } from "../desktop/bridge.ts";
+import { useConnectionSettings } from "../connection/store.ts";
+import { SpaceActions, SpaceMenuItems } from "./space-actions.tsx";
 import { machineCause } from "./machine-cause.ts";
 import { type HeaderButton, MachineGroup } from "./machine-group.tsx";
 import { stateLabel, type MachineEntry } from "./machines.ts";
@@ -20,8 +21,6 @@ import { useConnectionNotice } from "./reconnect-status.tsx";
 import { RetryButton } from "./retry-button.tsx";
 import { SpaceList, type SpaceReorder } from "./space-list.tsx";
 import { SpaceNameInput } from "./space-name-input.tsx";
-import { useSpaceClosing } from "./space-close-context.ts";
-import { useSpaceRenaming } from "./space-rename-context.ts";
 import { filterMachineGroups, filterSpaces } from "./sidebar-filter.ts";
 import { FilterButton } from "./sidebar-filter-field.tsx";
 import { machineGroups } from "./sidebar-model.ts";
@@ -56,54 +55,6 @@ function MachineNotice({ name }: { readonly name: string }) {
   );
 }
 
-/**
- * A space row's "..." menu: Rename space asks for the new name; Close space asks before it ends the space's tabs. Move
- * up and Move down are the list's single-pointer path (WCAG 2.5.7), with the move keys the rows themselves take.
- */
-function SpaceActions({ space, reorder }: { readonly space: Space; readonly reorder: SpaceReorder | undefined }) {
-  return (
-    <Menu align="end" trigger={<IconButton label={`More for ${space.name}`} icon={<Ellipsis />} className="size-6" />}>
-      <SpaceMenuItems space={space} reorder={reorder} />
-    </Menu>
-  );
-}
-
-/** What can be done with a space: its "..." menu and its right-click menu hold the same items. */
-function SpaceMenuItems({ space, reorder }: { readonly space: Space; readonly reorder: SpaceReorder | undefined }) {
-  const renaming = useSpaceRenaming();
-  const closing = useSpaceClosing();
-  return (
-    <>
-      <MenuItem icon={<Pencil />} onClick={() => renaming.ask(space.id)}>
-        Rename space…
-      </MenuItem>
-      {reorder === undefined ? null : (
-        <>
-          <MenuItem
-            icon={<ArrowUp />}
-            disabled={reorder.index === 0}
-            {...(reorder.keys.up === undefined ? {} : { keys: reorder.keys.up })}
-            onClick={() => reorder.move(reorder.index - 1)}
-          >
-            Move up
-          </MenuItem>
-          <MenuItem
-            icon={<ArrowDown />}
-            disabled={reorder.index === reorder.count - 1}
-            {...(reorder.keys.down === undefined ? {} : { keys: reorder.keys.down })}
-            onClick={() => reorder.move(reorder.index + 1)}
-          >
-            Move down
-          </MenuItem>
-        </>
-      )}
-      <MenuItem icon={<X />} destructive onClick={() => closing.ask(space.id)}>
-        Close space…
-      </MenuItem>
-    </>
-  );
-}
-
 /** herdr-app's row under a machine with no spaces yet: starts the first one there. */
 function NewSpaceThere({ disabled, onClick }: { readonly disabled: boolean; readonly onClick: () => void }) {
   return (
@@ -135,7 +86,7 @@ export function SpacesGroup({ onOpen, rail = false, query = "", filterable = fal
 /** Holds the spaces' place, labeled, until the first machine.list answer: one row, where the first machine row goes. */
 function SpacesLoading({ rail }: { readonly rail: boolean }) {
   return (
-    <SidebarSection title="Spaces" {...(rail ? { className: "[&>header]:sr-only" } : {})}>
+    <SidebarSection title="Spaces" className={rail ? "[&>header]:sr-only" : "pt-2"}>
       <div
         role="status"
         aria-label="Loading machines and spaces"
@@ -159,6 +110,8 @@ function SpacesLists({
   readonly filterable: boolean;
   readonly machines: ReturnType<typeof useMachinesContext>;
 }) {
+  const settings = useConnectionSettings();
+  const ownComputer = desktopBridge() !== null && settings.mode === "loopback";
   // The layout documents' spaces (#404): picking one shows it on the tab it showed last.
   const { spaces, selected, select, move } = useSpaceSelection();
   const colors = useSpaceColors(useMemo(() => spaces.map((space) => space.id), [spaces]));
@@ -231,8 +184,8 @@ function SpacesLists({
     <MachineHeader
       {...(button === undefined ? {} : { buttonProps: button })}
       name={machine.name}
-      local={machine.local}
-      state={linkDown !== null ? linkDown : machine.local ? "this machine" : stateLabel(machine.state)}
+      local={machine.local && ownComputer}
+      state={linkDown !== null ? linkDown : machine.local && ownComputer ? "this machine" : stateLabel(machine.state)}
       alarm={linkDown === null && ALARM.has(machine.state)}
       live={machine.live}
       connected={linkDown === null && machine.state === "connected"}
@@ -259,16 +212,18 @@ function SpacesLists({
             ),
           }
         : {})}
-      {...(rail ? { className: "[&>header]:sr-only" } : {})}
+      className={rail ? "[&>header]:sr-only" : "pt-2"}
     >
       {/* While the link is down the connection notice says it once; the failed list would only repeat it (#545). */}
       {machines.listError === undefined || linkDown !== null ? null : (
         <MachinesListError cause={machines.listError} className="mx-1 mt-1" />
       )}
       {grouped === undefined ? (
-        <section aria-label="Spaces on this machine">{listOf(shownSpaces, false)}</section>
+        <section aria-label={ownComputer ? "Spaces on this machine" : "Spaces on connected machine"}>
+          {listOf(shownSpaces, false)}
+        </section>
       ) : (
-        <div ref={list} className="relative flex flex-col gap-2">
+        <div ref={list} className="relative flex flex-col gap-6">
           {overlay}
           {grouped.map(({ machine, spaces: own }, index) => (
             <MachineGroup

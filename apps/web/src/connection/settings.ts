@@ -13,6 +13,8 @@ export interface MemberTarget {
 }
 
 export interface ConnectionSettings {
+  /** Derived from a verified bundle, never loaded as a saved pairing. */
+  readonly viewMember?: boolean;
   readonly mode: ConnectionMode;
   /** Base URL of the relay; the client path is appended. */
   readonly relayUrl: string;

@@ -71,16 +71,15 @@ const scrollToEnd = (page: Page) =>
   page.locator("[data-slot=settings-body]").evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
 const typeCode = async (page: Page) => {
   await page.goto("/pair");
-  await page.getByLabel("Pairing code").fill(PAIR_CODE);
+  await page.getByLabel("Invite link or code").fill(PAIR_CODE);
 };
-const verifyTypedCode = async (page: Page) => {
-  await typeCode(page);
-  await page.getByRole("button", { name: "Pair" }).click();
+const verifyInvite = async (page: Page) => {
+  await page.goto(PAIR_LINK);
   await expect(page.getByRole("heading", { name: "Check the host's key" })).toBeVisible();
 };
 const refusedWith = (closeCode: number) => async (page: Page) => {
   await fakeRelay(page, closeCode);
-  await verifyTypedCode(page);
+  await verifyInvite(page);
   await page.getByRole("button", { name: "They match" }).click();
   await expect(page.getByText("Pairing did not finish")).toBeVisible({ timeout: 15_000 });
 };
@@ -122,7 +121,7 @@ export const SHOTS: readonly Shot[] = [
     start: "pairing",
     run: async (page) => {
       await fakeRelay(page, 4410);
-      await verifyTypedCode(page);
+      await verifyInvite(page);
     },
   },
   {
@@ -155,7 +154,7 @@ export const SHOTS: readonly Shot[] = [
     start: "pairing",
     run: async (page) => {
       await fakeRelay(page, 4410);
-      await verifyTypedCode(page);
+      await verifyInvite(page);
       await page.getByRole("button", { name: "They don't match" }).click();
       await expect(page.getByText("Do not pair with this host")).toBeVisible();
     },

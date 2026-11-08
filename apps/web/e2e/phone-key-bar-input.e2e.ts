@@ -128,6 +128,8 @@ test("a latched modifier does not follow Switch session to another terminal", as
   await page.getByRole("banner").getByRole("button", { name: "New tab" }).click();
   await expect(page.locator("[data-terminal]")).not.toHaveAttribute("data-terminal", address, { timeout: 15_000 });
   await expect(page.locator("[data-terminal]")).toContainText("$", { timeout: 15_000 });
+  // A new terminal opens with the keyboard down on a phone: the keys bar's button is what raises it (#1375).
+  await key(page, "Show keyboard").click();
 
   const ctrl = key(page, "Control");
   await ctrl.click();
@@ -153,6 +155,8 @@ test("Switch session lists the terminals and opens the one picked", async ({ pag
   const second = page.locator("[data-terminal]");
   await expect(second).not.toHaveAttribute("data-terminal", firstAddress, { timeout: 15_000 });
   await expect(second).toContainText("$", { timeout: 15_000 });
+  // A new terminal opens with the keyboard down on a phone: the keys bar's button is what raises it (#1375).
+  await key(page, "Show keyboard").click();
 
   await key(page, "Switch session").click();
   await page.getByRole("menuitem", { name: new RegExp(`keys-one-${firstAddress}`) }).click();

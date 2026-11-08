@@ -4,8 +4,6 @@ import { type FakeRelayHost, startFakeRelayHost } from "./relay-route.ts";
 
 test.use({ serviceWorkers: "block" });
 
-const INVITE = /invite link a member sent you/;
-
 async function freshBrowser(browser: Browser, host: FakeRelayHost): Promise<Page> {
   const page = await (await browser.newContext({ serviceWorkers: "block" })).newPage();
   await page.setViewportSize({ width: 390, height: 844 });
@@ -44,11 +42,7 @@ test("a phone that cannot receive a link scans the host's QR and joins", async (
     }, invite);
 
     await page.goto("/");
-    await expect(page.getByText(INVITE)).toBeVisible({ timeout: 30_000 });
-    await page
-      .getByRole("link", { name: "Pair a host" })
-      .or(page.getByRole("button", { name: "Pair a host" }))
-      .click();
+    await expect(page.getByRole("heading", { name: "Join a mesh" })).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: "Scan the QR code" }).click();
     await expect(page.getByRole("figure").filter({ hasText: "Host key (SHA-256)" })).toBeVisible({ timeout: 60_000 });
     await page.getByRole("button", { name: "They match" }).click();

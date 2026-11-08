@@ -1,4 +1,5 @@
 import { cn } from "../lib/cn.ts";
+import { useDelayedTrue } from "../lib/spinner-delay.ts";
 
 export interface SpinnerProps {
   readonly className?: string;
@@ -21,5 +22,18 @@ export function Spinner({ className, label }: SpinnerProps) {
       <circle cx="8" cy="8" r="6" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
       <path d="M8 2a6 6 0 0 1 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
+  );
+}
+
+/**
+ * A spinner for a wait that may still be quick: it stays hidden until {@link SPINNER_DELAY_MS} passes, and its box is
+ * kept while it waits, so its arrival moves nothing around it.
+ */
+export function DelayedSpinner({ className }: { readonly className?: string }) {
+  const shown = useDelayedTrue(true);
+  return (
+    <span aria-hidden="true" className={cn("inline-flex size-3 shrink-0 items-center justify-center", className)}>
+      {shown ? <Spinner /> : null}
+    </span>
   );
 }

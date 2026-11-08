@@ -228,7 +228,8 @@ jobs:
             exit 1
           fi
       # mesh-attach.e2e.ts is a browser spec that needs this job's relay checkout: the web app paired with one mesh
-      # member attaches to a terminal on another, through the mesh (G009 C004). Web e2e has no relay, so it skips it.
+      # member attaches to a terminal on another, through the mesh (G009 C004). mesh-input-hold.e2e.ts types into that
+      # terminal while the other member's line is down (#1489). Web e2e has no relay, so it skips both.
       - name: Playwright version
         if: env.RELAY_TOKEN_SET == 'true'
         id: playwright
@@ -278,7 +279,7 @@ jobs:
           key: ${{ steps.playwright-apt.outputs.cache-primary-key }}
       - name: Browser spec through the mesh
         if: env.RELAY_TOKEN_SET == 'true'
-        run: bun run test:e2e e2e/mesh-attach.e2e.ts
+        run: bun run test:e2e e2e/mesh-attach.e2e.ts e2e/mesh-input-hold.e2e.ts
         working-directory: apps/web
         env:
           CI: "1"

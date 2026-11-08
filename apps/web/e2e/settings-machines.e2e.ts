@@ -11,7 +11,7 @@ test.describe("Settings, Machines", () => {
     await page.getByRole("button", { name: "Machines" }).click();
     await expect(page.getByRole("heading", { name: "Machines", level: 2 })).toBeVisible();
     const list = page.getByRole("list", { name: "Machines" });
-    await expect(list.getByRole("listitem").filter({ hasText: "studio" })).toContainText("This machine", {
+    await expect(list.getByRole("listitem").filter({ hasText: "studio" })).toContainText("Online", {
       timeout: 15_000,
     });
     const added = list.getByRole("listitem").filter({ hasText: MACHINE_NAME });
@@ -42,7 +42,7 @@ test.describe("Settings, Machines", () => {
     }) => {
       await page.goto("/settings#machines");
       const list = page.getByRole("list", { name: "Machines" });
-      await expect(list.getByRole("listitem").first()).toContainText("This machine", { timeout: 15_000 });
+      await expect(list.getByRole("listitem").first()).toContainText("Online", { timeout: 15_000 });
       const viewport = page.viewportSize();
       if (viewport === null) throw new Error("no viewport");
       // The list leads: its heading sits in the screen's top third, not under a screenful of explanation.

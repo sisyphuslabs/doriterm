@@ -1,3 +1,4 @@
+import { browserInvite, joinComparedBrowser } from "./support/compared-browser.ts";
 import { generateEd25519, generateX25519, hostIdOf, rawStaticKey } from "@doriface/crypto";
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
@@ -31,14 +32,16 @@ function browser() {
   const device = rawStaticKey(generateX25519());
   const sign = generateEd25519();
   const logs: string[] = [];
-  const membership = new MembershipStore(memoryStore());
+  const storage = memoryStore();
+  const membership = new MembershipStore(storage);
   const deps = {
     loadDeviceKey: async () => device,
     loadSignKey: async () => sign,
     membership,
+    storage,
     log: (line: string) => void logs.push(line),
   };
-  return { device, sign, logs, membership, deps, hostId: hostIdOf(sign.publicKey) };
+  return { device, sign, logs, membership, storage, deps, hostId: hostIdOf(sign.publicKey) };
 }
 
 function offerUrl(run: CliResult, what: string): string {
@@ -91,22 +94,11 @@ scenario("a host with no mesh admits a browser as its first member (#1415)", ["j
     const relayUrl = a.tap?.url ?? hosts.relay?.url ?? "";
     expect(existsSync(meshFile(a.stateDir))).toBe(false);
 
-    const offer = await a.cli(
-      "mesh",
-      "pair",
-      "--auto",
-      "--no-qr",
-      "--web-origin",
-      "https://web.example",
-      "--relay",
-      relayUrl,
-    );
-    const parsed = parsePairingFragment(new URL(offerUrl(offer, "mesh pair on a")).hash);
-    if (!parsed.ok) throw new Error(parsed.reason);
-    expect(parsed.offer.target).toBe("mesh");
+    const offer = await browserInvite(a, relayUrl);
+    expect(offer.target).toBe("mesh");
 
     const web = browser();
-    const joined = await joinMesh(parsed.offer, "Chrome on macOS", web.deps);
+    const joined = await joinComparedBrowser(a, offer, "Chrome on macOS", web);
     expect(joined.meshId).toBe(meshIdOf(a));
     expect(joined.meshId).toBeString();
 
