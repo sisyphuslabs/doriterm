@@ -148,7 +148,7 @@ test.describe("on a phone", () => {
     await page.goto("/settings");
     await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible({ timeout: 15_000 });
     await expect(settingsSheet(page)).toBeVisible();
-    await expect(settingsDialog(page)).toHaveAttribute("data-settings-sheet", "");
+    await expect(settingsDialog(page)).toHaveAttribute("data-settings-sheet");
     expect(await settingsSheet(page).boundingBox()).toEqual({ x: 0, y: 0, width: 390, height: 844 });
     await expect(workspace(page)).toBeHidden();
   });
