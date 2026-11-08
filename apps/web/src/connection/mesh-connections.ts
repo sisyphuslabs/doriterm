@@ -405,7 +405,7 @@ export class MeshConnections {
     const selected = this.#targets.get(this.#selection ?? this.#settings.hostId) ?? this.#targets.values().next().value;
     const learned = selected !== undefined && !this.#pairedRoster().some((paired) => paired.hostId === selected.hostId);
     this.#visibleSettings =
-      selected === undefined
+      selected === undefined || selected.hostId === this.#settings.hostId
         ? this.#settings
         : {
             ...this.#settings,
