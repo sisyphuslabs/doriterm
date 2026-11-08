@@ -57,7 +57,11 @@ const switcher = (page: Page) => page.locator("[data-phone-tabs]").getByRole("bu
 const sheetOf = (page: Page) => page.getByRole("dialog", { name: "Switch" });
 const segment = (page: Page, name: RegExp) =>
   sheetOf(page).getByRole("group", { name: "Show" }).getByRole("button", { name });
-const rowsIn = (page: Page, region: string) => sheetOf(page).getByRole("region", { name: region }).getByRole("button");
+/** A space's tab rows in the sheet: not their Close buttons or the space's New tab (#1464). */
+const rowsIn = (page: Page, region: string) =>
+  sheetOf(page)
+    .getByRole("region", { name: region })
+    .getByRole("button", { name: /^(?!Close |New tab$)/ });
 const named = (page: Page, region: string, name: string) =>
   rowsIn(page, region).filter({ has: page.locator(`[data-floor="name"]`, { hasText: new RegExp(`^${name}$`) }) });
 
