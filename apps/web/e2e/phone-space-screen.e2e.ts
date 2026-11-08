@@ -118,8 +118,8 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await expect(agentsHeading(page)).toBeVisible();
         await expect.poll(() => param(page, "s")).toBeNull();
 
-        // Straight onto the space's own address on a page of its own, with nothing of the app behind it: a plain pop
-        // would leave the app for the blank page, so only the guard's replace reaches Agents.
+        // Straight onto the space's own address on a page of its own, with nothing of the app behind it: a plain pop has no
+        // entry of the app to land on, so only the guard's replace reaches Agents.
         const cold = await page.context().newPage();
         await cold.goto(url);
         await expect(cold.getByRole("heading", { level: 1, name: "infra" })).toBeVisible({ timeout: 20_000 });
@@ -167,27 +167,31 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
           const frames: { readonly width: number; readonly moving: boolean }[] = [];
           Reflect.set(window, "slideFrames", frames);
           const sample = (): void => {
-            // Only the arriving screen's own motion counts: a spinner elsewhere is not the slide.
+            // Only the arriving screen's own transform transition counts: a spinner or a button's colour is not the slide.
             const moving = document
               .getAnimations()
               .some(
                 (motion) =>
                   motion.playState === "running" &&
+                  motion instanceof CSSTransition &&
+                  motion.transitionProperty === "transform" &&
                   motion.effect instanceof KeyframeEffect &&
                   motion.effect.target instanceof Element &&
-                  motion.effect.target.closest(".motion-arrive") !== null,
+                  motion.effect.target.classList.contains("motion-arrive"),
               );
             frames.push({ width: document.scrollingElement?.scrollWidth ?? 0, moving });
-            // Until the slide has run and settled (or a bound, which then fails the check below).
+            // Until the slide has run and settled, or about two seconds (a bound the check below then fails).
             const settled = !moving && frames.some((frame) => frame.moving);
-            if (!settled && frames.length < 600) requestAnimationFrame(sample);
+            if (!settled && frames.length < 120) requestAnimationFrame(sample);
             else Reflect.set(window, "slideDone", true);
           };
           requestAnimationFrame(sample);
         });
         await spaceRow(page, "website").click();
         await expect(page.getByRole("heading", { level: 1, name: "website" })).toBeVisible();
-        await expect.poll(() => page.evaluate(() => Reflect.get(window, "slideDone") === true)).toBe(true);
+        await expect
+          .poll(() => page.evaluate(() => Reflect.get(window, "slideDone") === true), { timeout: 15_000 })
+          .toBe(true);
         const frames = await page.evaluate(
           () => Reflect.get(window, "slideFrames") as { readonly width: number; readonly moving: boolean }[],
         );
