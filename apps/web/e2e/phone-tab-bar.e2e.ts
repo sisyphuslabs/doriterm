@@ -183,6 +183,34 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
       }
     });
 
+    test("the Agents tab reaches the agents after a space closed under Spaces replaced its entry", async ({ page }) => {
+      const seeded = seed();
+      try {
+        await openAgents(page);
+        await spacesTab(page).click();
+        await spaceRow(page, "website").first().click();
+        await expect(title(page, "website")).toBeVisible();
+        // Another device closes website: its screen gives way to the Spaces list in place, with no agents list under it.
+        seedSpaces([
+          {
+            id: "spc-infra",
+            name: "infra",
+            folder: mkdtempSync(join(tmpdir(), "phone-tab-bar-left-")),
+            tabs: [
+              { id: "tb-plan", name: "", terminal: seeded.plan },
+              { id: "tb-review", name: "", terminal: seeded.review },
+            ],
+          },
+        ]);
+        await expect(title(page, "Spaces")).toBeVisible({ timeout: 15_000 });
+        await agentsTab(page).click();
+        await expect(title(page, "Agents")).toBeVisible();
+        expect(new URL(page.url()).search).toBe("");
+      } finally {
+        end(seeded);
+      }
+    });
+
     test("the Settings tab opens Settings", async ({ page }) => {
       const seeded = seed();
       try {
