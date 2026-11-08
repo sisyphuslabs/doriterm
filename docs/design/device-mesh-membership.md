@@ -1,7 +1,9 @@
 # Devices and browsers are mesh members: membership, the web's join, relay-only transport
 
 Status: revision 5 for the design gate, 2026-11-08. Issues #942 and #1381. Revision 5 folds revision 4's FIX_FIRST (§15):
-the joining side confirms the join code too (§9). Revision 4 folded revision 3's FIX_FIRST and the relay transport rows
+the joining side confirms the join code too (§9). It also adds two of the owner's follow-ups: what "This device" and the
+machine list show on a joined browser, with no device bound to one host (§4.5), and the iOS home-screen app, whose
+storage is separate from Safari's (§7.1). Revision 4 folded revision 3's FIX_FIRST and the relay transport rows
 (§8). Revision 2 (device membership) was folded from revision 1's FIX_FIRST and was not
 yet re-reviewed when the scope widened. Revision 3 kept revision 2's mechanism
 (§5, §6 and §10 are revision 2's §2, §3 and §4, with their folds) and adds what #1381 and the owner's follow-up ask for:
@@ -111,6 +113,38 @@ auto-admitted, as today. `PendingJoins` approves every join while `setAuto` is o
 
 The browser shows no long fingerprint in this flow. The join code, confirmed on **both** screens, replaces it (§9). The
 join is complete only when the approver approved **and** the joining person confirmed; either one alone admits nothing.
+
+### 4.5 "This device" and the machine list on a joined browser
+
+Today the web names two things as "the thing I am on": Settings > This device shows **This browser** described as
+"This device", and right under it the one host the browser is set up for, with its connection state
+(`apps/web/src/settings/devices-section.tsx`, the `Host` group in `apps/web/src/routes/settings-route.tsx`). The machine
+list then puts that host first as **This machine** (`apps/web/src/settings/machines-section.tsx`, titled from
+`connection.hello.core.name`). On a phone that reads as "this phone belongs to that computer". After the join it is false:
+the browser is a member of the mesh, and no machine is its host.
+
+**The rule: no device is attached to a single host.** A label that singles out one machine is shown only where it is a
+fact about the computer the person is holding.
+
+| surface                                             | "This device" shows                                                                                                                                                                                                                                                                                            | the machine list shows                                                                                                                                                                                                                                                                                                                                                                                                  |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| a joined browser or phone (tab, or installed app)   | one row for **this member**: its member name ("Pixel 9"), kind (browser, or home-screen app), "Member of _mesh_ · N machines online", and under Details its own fingerprint. Then **Leave this mesh** (§10.4). No host row, no "set up for", no per-host connection state: each machine's state is in the list | every **machine** member of the held view (§6), all in one shape: name, state (online, settling, offline), last seen, and the session path (**Relay**, §8). Sorted online first, then by name. No row reads **This machine**, and none is marked as the one the browser joined through, was paired with, or refreshed from. A stopped machine is one offline row among the others, and nothing else on the page changes |
+| a joined browser, the **Browsers and phones** group | —                                                                                                                                                                                                                                                                                                              | every client member (§10.3), this browser's own row marked **(this browser)**, the others with their last session time                                                                                                                                                                                                                                                                                                  |
+| the desktop shell, on its own computer's host       | that computer, as today: the shell is the machine's own window, so "This device" is the machine                                                                                                                                                                                                                | the same rows as a browser, with this computer's own row marked **This machine**, because it is the computer the person is at. Its other machines have the same shape as on a phone                                                                                                                                                                                                                                     |
+| `doriface-host mesh status` (CLI)                   | —                                                                                                                                                                                                                                                                                                              | as today: the machine it runs on marked as itself, then the others; client members in their own group                                                                                                                                                                                                                                                                                                                   |
+| a browser paired with one host and in no mesh (§11) | **This browser**, "Connected through _studio_", and **Join a mesh**: the one case where a host is named, because it is the browser's only way in and it is shown as that, not as "This machine"                                                                                                                | that host's rows, as today, with no **This machine** label                                                                                                                                                                                                                                                                                                                                                              |
+| a migrated device (paired, then admitted, §11)      | as a joined browser                                                                                                                                                                                                                                                                                            | as a joined browser: its paired host is one machine among the others. The pairing shows only on that host's own device list (`doriface-host devices`), for revocation                                                                                                                                                                                                                                                   |
+
+- **The same row shape on every client.** A phone, a desktop browser, the iOS home-screen app and the desktop shell
+  list the same machines with the same names and states. Two markers differ, and both are computed locally:
+  **(this browser)** on a client's own row, and **This machine** on the shell's own computer. Neither is ever taken from
+  a name a member supplies.
+- **The Host group goes away for a joined browser.** Settings > This device keeps the browser's own settings (theme,
+  keys bar, notifications). The per-host route and "Advanced connection" remain only where a host is configured by hand:
+  the shell, a self-hosted relay, and local development.
+- **A stopped machine does not take the page with it.** The acceptance case (A stopped): A's row reads offline with its
+  last-seen time, B's reads online, and This device is unchanged. Today the whole Host row turns to the failure state of
+  the one paired host.
 
 ## 5. The `"roster"` stream
 
@@ -229,6 +263,46 @@ anywhere.
 - **Non-extractable is not "safe from the page".** A script running in the app's origin can use the key while the page
   is open. It cannot copy it out where WebCrypto holds it. Raw-byte storage (WebKit) can be copied by such a script. §12
   states this.
+
+### 7.1 The iOS home-screen app has its own storage
+
+On iOS, **Add to Home Screen** makes a web app whose storage (IndexedDB, Cache Storage, cookies) is a separate partition
+from Safari's, though the origin is the same. A browser that joined in Safari therefore opens the installed app with no
+keys and no bundle, and today it asks to pair again. The installed app always launches at the manifest's `start_url`
+(`/`, `apps/web/vite.config.ts`), so nothing can be handed to it through the launch URL. On Android and desktop
+Chromium, an installed app shares the browser's storage, and none of this applies.
+
+**Decision: the home-screen app joins as its own client member, on the same phone, with an invite that the phone
+carries over through the pasteboard. No key leaves either partition.**
+
+| when                                                                   | Safari (the tab)                                                                                                                                                                                                                                              | the home-screen app, first launch                                                                                                                                                                                                                                                                                             |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **before joining** (an invite opened in Safari on iOS, not standalone) | the join page (§4.4 step 1) adds **Join in the home-screen app** above **Join**: it copies the invite link to the pasteboard and shows the Add to Home Screen steps. No card was sent, so the invite is not spent. Joining in Safari stays possible           | shows **Join a mesh** with **Paste invite** (a user gesture, so iOS's paste prompt is the only extra tap) and a code field. Pasting runs the ordinary join (§4): the join code on both screens, the inviter's approver confirms, the app confirms. The phone ends with one member, the app                                    |
+| **already a member in Safari**                                         | Settings > Install (`apps/web/src/device/install.ts`, the iOS instructions) opens a client invite on the machine the tab is connected to (§4.2), copies its link, and shows the steps. The tab stays a web client of the inviter, so it is an approver (§4.4) | **Paste invite**, then the join code. The person switches to the Safari tab, which shows the pending join **Approve "iPhone (home-screen app)"?** with the same code, taps **Approve**, and back in the app taps **The codes match**. Two taps and one app switch on the one phone; no other computer, QR code or fingerprint |
+| after the app joined                                                   | the tab shows **The home-screen app joined. Remove this tab from the mesh?** **Remove** (the tab's `leave`, §10.4) / **Keep**. Remove is the default: one member per phone is one key fewer to lose                                                           | a client member like any other (§4.5): its own name, its own row, the same machine list                                                                                                                                                                                                                                       |
+
+After **Paste invite** the app overwrites the pasteboard with an empty string, so the link does not linger there.
+
+**Why this and not the alternatives:**
+
+- **Carrying the key across** (an exported key in the pasteboard or a link) is rejected. The card key and the device key
+  are owner-equivalent on every machine (revision 4 §4), they are non-extractable where WebKit allows it (§7), and the
+  pasteboard is readable by other apps. An invite is single-use, expires in 10 minutes and is gated by two
+  confirmations; a key is none of those.
+- **Skipping the confirmations because both screens are on one phone** is rejected. The pasteboard is a transport other
+  apps can read and write, so the link is untrusted exactly as a link in a messenger is. A link another app read and
+  used first shows the approver a pending join whose code is not the app's, and the app gets "this invite was used". A
+  link another app replaced is a substituted link: the app's code does not match the Safari tab's (which shows none, or
+  another), and the person answers **The codes differ** (§9). The confirmations cost two taps on one phone.
+- **A one-tap approval with no code** is rejected for the same reason: without the code, a substituted link is approved
+  by its substituter (the revision 4 HIGH, §15).
+- **The relay or an account vouching** that the app and the tab are one phone is rejected as in §9: the relay is not a
+  trust root.
+- **Recovering the Safari identity in the app** is not possible and not attempted: the partition is the browser's, and
+  §7's storage-cleared rule already says an identity that is gone is not recovered.
+
+If the Safari tab was evicted too (no visit for 7 days), the person joins the app with an invite from any machine (§4.2),
+as a new browser does.
 
 ## 8. Relay-only transport
 
@@ -503,6 +577,9 @@ web builds.
 | the relay carries a learned member's session        | a learned member was never paired with this browser, but its session is Noise IK pinned to its Noise key from the verified view, exactly as a paired session is pinned. The relay sees nothing and cannot substitute itself                                                                                                                                                      |
 | the relay as the only path (§8)                     | the relay now sees which members a browser talks to, when, and how much, where a LAN session hid that before. The relay down means no web session at all. Both are the cost of #1381's order, stated here                                                                                                                                                                        |
 | script injection in the app's origin                | can use the keys while the page is open (owner-equivalent, revision 4 §4); cannot copy a non-extractable key out; can copy raw-byte keys (WebKit). Same as today's device key. Removal is §10.3                                                                                                                                                                                  |
+| the iOS home-screen app's invite in the pasteboard  | another app can read or replace it while it is there. Read and used first: the approver sees a code that is not the app's and denies, and the app gets "this invite was used". Replaced: a substituted link, caught by the app's own confirmation against the Safari tab (§7.1, §9). The app clears the pasteboard after the paste. No key ever goes through the pasteboard      |
+| two members on one phone (Safari and the app)       | each has its own keys in its own partition, and each is revocable alone (§10.3). The tab offers to leave once the app joined (§7.1); a kept tab is one more owner-equivalent key on the phone, stated here                                                                                                                                                                       |
+| a member names itself "This machine"                | the **This machine** and **(this browser)** markers are computed locally from the session (§4.5), never from a member's name; names pass `checkName` and `namedByAnother` as today                                                                                                                                                                                               |
 | storage cleared or evicted                          | the identity is gone, nothing is recoverable from the server side, and the old card is a member nobody can use until removed (§7)                                                                                                                                                                                                                                                |
 | the browser poses as a machine                      | its card is `kind: "client"`. Its key is kept out of the Noise map, so it is refused on `"mesh"`, refused on `"roster"` as a machine, and the `core.id` rule is unchanged                                                                                                                                                                                                        |
 | the browser admits others, or votes                 | it signs nothing but its own card. A client is not a record author or witness (`packages/mesh/src/view`). It can ask its machine to open an invite, which that machine's owner-equivalent hc already allows                                                                                                                                                                      |
@@ -535,6 +612,9 @@ web builds.
 | CLI `mesh join <link or code>` on a machine, offer that asks          | the fingerprint question (link) and the required `--fingerprint` (code) become the required code question `does <host> show code 482 913? [y/N]`, with no `--yes` bypass (§9)           |
 | CLI `mesh join` on an auto offer (#668)                               | unchanged: the fingerprint question for a link, `--fingerprint` for a code, `--yes` as today                                                                                            |
 | replacing or retiring a machine that invited browsers                 | `mesh revoke <it>` / `mesh leave` names the browsers and phones it admitted, which leave the mesh with it (§10.1); each joins again through another member's invite                     |
+| iOS: a browser that joined in Safari opens the home-screen app        | the app has its own storage partition: it shows **Join a mesh** with **Paste invite**, and joins as its own member with an invite the Safari tab opens and approves (§7.1)              |
+| Android or desktop Chromium: an installed app                         | shares the browser's storage, so it is already the same member. Nothing to do                                                                                                           |
+| older web build, "This machine" and the Host group                    | unchanged on an older build. A new build shows them only on the desktop shell's own computer and for a browser that is paired but in no mesh (§4.5)                                     |
 | B listed twice while A is up (A's hc lists B, and B is a view member) | as with two pairings today (#1331); showing machines per member from the client's own sessions is #1296                                                                                 |
 
 ## 14. Rollout and tests
@@ -592,7 +672,15 @@ Three pull requests, one behaviour each. Each is `Part of #942` and `Part of #13
    - an offer without `commit` is refused; a join session that breaks after the offer is not run again; **Join again**
      makes new keys;
    - the join page sends `confirm` only from **The codes match**, shows "Waiting for approval" after it, and on **The
-     codes differ** sends `abort`, stores nothing and dials nobody.
+     codes differ** sends `abort`, stores nothing and dials nobody;
+   - "This device" and the machine list (§4.5): a joined browser shows one row for itself and no Host group; its machine
+     list has every view member in one shape, no **This machine** row and no row marked as the one it joined through;
+     with a member offline that row alone turns offline; the desktop shell marks only its own computer **This machine**;
+     a paired browser in no mesh shows "Connected through _host_";
+   - the iOS home-screen app (§7.1): standalone with empty storage shows **Join a mesh** with **Paste invite**, never a
+     broken session; a paste runs the ordinary join and then clears the pasteboard; on iOS Safari, **Join in the
+     home-screen app** copies the link without sending a card (the offer is not spent); after the app joins, the tab's
+     **Remove** sends its `leave` and the app stays a member; an offer without `commit` is refused in the app as in a tab.
 3. **Web: relay only** — a new gate in `openDirect`: on the web surface it returns without dialling, so `connect()` goes
    to the relay; the Relay label; the settings parser ignoring `directUrl` in a browser. Tests: in a browser no direct dial happens with a saved `directUrl` and LAN URLs offered;
    with the shell's forwarder present a paired host still races direct; a learned member is never dialled direct on
@@ -603,8 +691,23 @@ WebSocket that is not the relay refused by the page, and each renders the mesh s
 it learned from the view. The fake relay holds one uplink (#1297),
 so the "A stopped" half is measured on real hosts.
 
+**E2e (CI), the iOS home-screen app** (§7.1), in Playwright's WebKit with an iPhone profile: the Safari tab is one
+browser context and the home-screen app a **second context**, so the two have separate storage as on iOS, and the second
+context starts in standalone display mode (an init script makes `matchMedia("(display-mode: standalone)")` and
+`navigator.standalone` true, as the app sees them). Cases: the tab joins; the app context starts with no keys and shows
+**Join a mesh**; the tab opens the invite, the app pastes it, the tab approves the pending join with the code the app
+shows, the app confirms; the app is a member with a signing key different from the tab's, renders the mesh status and
+opens a terminal on a learned member, relay only; the tab's **Remove** leaves and the app keeps working. Negative: a
+link substituted between the tab and the app ends in **The codes differ** with nothing stored. The same flow before
+joining: the invite opened in the tab and joined in the app leaves the tab with no member. Playwright's WebKit cannot
+read a real pasteboard, so the e2e enters the link into the paste field; the clipboard read itself runs in Chromium,
+where the permission can be granted. Screenshots of This device and the machine list (§4.5) are kept for the phone and the
+desktop browser.
+
 **Acceptance on two real machines:** A and B in one mesh; a desktop browser and a phone browser that each joined with an
-invite from A; A's host stopped; both still list B and open a terminal on B.
+invite from A; A's host stopped; both still list B and open a terminal on B, and neither shows a **This machine** row or
+a host the browser belongs to (§4.5). On a real iPhone, once per release that touches §7.1: join in Safari, Add to Home
+Screen, open the app, join it with the tab's invite in two taps, and check that the app reaches B with A stopped.
 
 ## 15. Review findings and where they are answered
 
@@ -630,9 +733,11 @@ invite from A; A's host stopped; both still list B and open a terminal on B.
 | LOW: legacy device pairing has no ask step                               | §12 residual row; follow-up                                                                            |
 | LOW: a refresh resends the whole record set                              | §12 row; follow-up                                                                                     |
 
-| finding (revision 4, FIX_FIRST)                                                             | answered in                                                                                                                                                                                                                                  |
-| ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| HIGH: the join code gates only the approver; a substituted link or a man-in-the-middle wins | §9 `confirm`/`abort`: the joiner's person confirms against the real inviter's screen, the host signs only with both; §9 "What each side verifies"; §4.4 step 2, 2b, 3d; machine CLI code question without `--yes`; §12 rows; §13 rows; tests |
-| LOW: the admitter binding also evicts invite-approved browsers                              | §10.1: kept uniform (records do not say how a client was admitted), and `mesh revoke`/`mesh leave` list the browsers that leave with the machine and ask; §12, §13 rows; test                                                                |
-| LOW: an aborted admit transaction leaves a marker entry that a later invite admit matches   | §10.5: the entry carries the admit record's id, an abort removes it, and the sweep matches only the client's governing admit; test                                                                                                           |
-| LOW: §8 says a plain browser already goes straight to the relay                             | §8 "Which surface": today's direct dial from a plain page is stated, and the relay-only rule is the new gate in `openDirect` (PR 3)                                                                                                          |
+| finding (revision 4, FIX_FIRST)                                                             | answered in                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| HIGH: the join code gates only the approver; a substituted link or a man-in-the-middle wins | §9 `confirm`/`abort`: the joiner's person confirms against the real inviter's screen, the host signs only with both; §9 "What each side verifies"; §4.4 step 2, 2b, 3d; machine CLI code question without `--yes`; §12 rows; §13 rows; tests                                |
+| LOW: the admitter binding also evicts invite-approved browsers                              | §10.1: kept uniform (records do not say how a client was admitted), and `mesh revoke`/`mesh leave` list the browsers that leave with the machine and ask; §12, §13 rows; test                                                                                               |
+| LOW: an aborted admit transaction leaves a marker entry that a later invite admit matches   | §10.5: the entry carries the admit record's id, an abort removes it, and the sweep matches only the client's governing admit; test                                                                                                                                          |
+| owner's follow-up: "This device" attaches only to the remote phone                          | §4.5: a joined browser shows one row for itself and every machine in one shape, with no **This machine** row and no host it belongs to; **This machine** only on the shell's own computer; §12, §13 rows; tests and acceptance                                              |
+| owner's follow-up: the iOS home-screen app forces a re-pair (separate storage)              | §7.1: the app joins as its own member with an invite the Safari tab opens and approves through the pasteboard, both codes confirmed, no key moved; alternatives and their reasons; §12, §13 rows; WebKit e2e with a second, standalone context and a real-iPhone acceptance |
+| LOW: §8 says a plain browser already goes straight to the relay                             | §8 "Which surface": today's direct dial from a plain page is stated, and the relay-only rule is the new gate in `openDirect` (PR 3)                                                                                                                                         |
