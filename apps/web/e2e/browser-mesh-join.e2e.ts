@@ -19,7 +19,9 @@ for (const phone of [false, true]) {
     await context.addInitScript(() => {
       let requests = 0;
       Reflect.set(globalThis, "__meshPersistRequests", requests);
-      Object.defineProperty(navigator.storage, "persist", {
+      const storage = navigator.storage;
+      Object.defineProperty(navigator, "storage", { value: storage });
+      Object.defineProperty(storage, "persist", {
         value: () => {
           Reflect.set(globalThis, "__meshPersistRequests", ++requests);
           return new Promise<boolean>(() => undefined);
