@@ -142,6 +142,7 @@ export async function serveJoin(lines: MeshLines, peerStatic: Uint8Array, deps: 
     isRejoin(index, card, deps.mesh.read()?.records ?? []);
     if (commit === undefined) {
       sendWelcome(lines, admit(deps, meshId, offer.inviter, card, reply), meshId);
+      deps.pending.admitted({ name: card.name, hostId: card.hostId, expiresAt: deps.expiresAt });
       lines.detach();
       return card;
     }

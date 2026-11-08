@@ -18,6 +18,9 @@ export interface PendingJoin {
 
 export type JoinDecision = "approved" | "denied" | "expired";
 
+/** Offer completion also covers automatic machine joins, which have no pending comparison. */
+type AdmittedJoin = Pick<PendingJoin, "name" | "hostId" | "expiresAt">;
+
 interface Waiting {
   join: PendingJoin;
   approved: boolean;
@@ -33,7 +36,7 @@ interface Waiting {
 export class PendingJoins {
   readonly #waiting = new Map<string, Waiting>();
   readonly #watchers = new Set<(join: PendingJoin) => void>();
-  readonly #admitted = new Set<(join: PendingJoin) => void>();
+  readonly #admitted = new Set<(join: AdmittedJoin) => void>();
   #autoUntil = 0;
 
   /** Approves every join until `until` (the `--auto` offer's expiry); 0 turns it off. */
@@ -59,16 +62,16 @@ export class PendingJoins {
     return decided.promise;
   }
 
-  /** Calls `listener` with each join this host admits from now on, after its welcome is sent; returns the unsubscribe. */
-  onAdmitted(listener: (join: PendingJoin) => void): () => void {
+  /** Calls `listener` after each admission is persisted; returns the unsubscribe. */
+  onAdmitted(listener: (join: AdmittedJoin) => void): () => void {
     this.#admitted.add(listener);
     return () => {
       this.#admitted.delete(listener);
     };
   }
 
-  /** A join was admitted and welcomed (section 4.4): tells whoever follows the offer it came on. */
-  admitted(join: PendingJoin): void {
+  /** A join was admitted (section 4.4): tells whoever follows the offer it came on. */
+  admitted(join: AdmittedJoin): void {
     for (const listener of this.#admitted) listener(join);
   }
 
