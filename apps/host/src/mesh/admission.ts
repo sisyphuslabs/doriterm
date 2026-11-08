@@ -9,11 +9,16 @@ export const CLIENT_REMOVED = "this browser was removed from the mesh: join agai
 
 /** A current client refreshes; a client signing key with any previous admit is never admitted again. */
 export function isRejoin(index: AuthorizeIndex | undefined, card: CardBody, records: readonly Signed[]): boolean {
+  if (
+    [card.noisePub, card.devicePub].some(
+      (key) => key !== undefined && index?.namedByAnother(key, card.signPub) === true,
+    )
+  )
+    throw new JoinRefused(KEY_HELD);
   const holder = card.kind === "client" ? index?.client(card.devicePub ?? "") : index?.member(card.noisePub);
   if (holder?.signPub === card.signPub) return true;
   if (holder !== undefined) throw new JoinRefused(KEY_HELD);
   if (index?.isMember(card.signPub) === true) throw new JoinRefused(ANOTHER_KEY);
-  if (index?.namedByAnother(card.noisePub, card.signPub) === true) throw new JoinRefused(KEY_HELD);
   if (
     card.kind === "client" &&
     records.some((record) => {

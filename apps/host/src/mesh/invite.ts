@@ -61,6 +61,9 @@ function checkCard(
     throw new JoinRefused("the card is not for this offer");
   }
   if (card.noisePub !== base64urlEncode(peer)) throw new JoinRefused("the card's Noise key is not the session's");
+  if (card.kind === "client" && card.devicePub !== card.noisePub) {
+    throw new JoinRefused("the client's device key is not the session's");
+  }
   return card;
 }
 

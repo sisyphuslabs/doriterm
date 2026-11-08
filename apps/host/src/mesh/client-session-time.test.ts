@@ -1,83 +1,20 @@
-import { rawStaticKey, secureLink, type Stream } from "@doriface/crypto";
-import { memoryLinkPair } from "@doriface/crypto/testing";
 import { signCard } from "@doriface/mesh";
 import { MeshLines } from "@doriface/mesh/join";
 import { parseMeshStatus } from "@doriface/protocol";
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { join } from "node:path";
-import { acceptE2ee } from "../e2ee/accept.ts";
 import { writePrivateJson } from "../state/files.ts";
 import { cardBody, MeshStore } from "../state/mesh.ts";
 import { meshFileJson } from "../state/mesh-file.ts";
-import { side, type Side } from "../testing/join-harness.ts";
 import { noiseOf, signPubOf } from "../testing/mesh-history.ts";
-import { clearRosterResumes, fixture, open, required } from "../testing/roster-resume-harness.ts";
+import { fixture, open, required } from "../testing/roster-resume-harness.ts";
 import { IDLE_MESH_HOOKS } from "./host-hooks.ts";
 import { storedMeshStatus } from "./status-store.ts";
 
-const closes: (() => void)[] = [];
-afterEach(() => {
-  for (const close of closes.splice(0)) close();
-  clearRosterResumes();
-});
+import { accept, clients, status, lastSeen, clearClientSessions } from "../testing/client-session-harness.ts";
+
+afterEach(clearClientSessions);
 const AT = 1_790_000_000_000;
-
-function clients() {
-  const f = fixture();
-  const other = side("other-browser");
-  const mesh = f.a.mesh.read()?.meshId ?? "";
-  for (const client of [f.c, other]) {
-    const card = signCard(
-      cardBody(
-        client.m.identity,
-        {
-          name: client.m.name,
-          hcId: "",
-          devicePub: noiseOf(client.m),
-        },
-        mesh,
-        signPubOf(f.a.m),
-        undefined,
-        "client",
-      ),
-      client.m.identity.sign.secretKey,
-    );
-    f.a.mesh.sign(f.a.m.identity, (n, prev) => ({
-      v: 2,
-      mesh,
-      type: "admit",
-      by: signPubOf(f.a.m),
-      n,
-      prev,
-      subject: { card },
-    }));
-  }
-  return { ...f, other, mesh };
-}
-
-async function accept(f: ReturnType<typeof clients>, stream: Stream | undefined, who: Side = f.c) {
-  const [hostEnd, clientEnd] = memoryLinkPair(true);
-  const [host, client] = await Promise.all([
-    acceptE2ee(hostEnd, f.deps, { kind: "relay" }),
-    secureLink(clientEnd, {
-      role: "initiator",
-      hostId: f.a.m.identity.hostId,
-      staticKey: rawStaticKey(who.m.identity.noise),
-      remoteStatic: f.a.m.identity.noise.publicKey,
-      ...(stream === undefined ? {} : { stream }),
-    }).catch(() => undefined),
-  ]);
-  closes.push(() => {
-    host?.close();
-    client?.close();
-  });
-  return host;
-}
-
-const status = (f: ReturnType<typeof clients>, store = f.a.mesh) =>
-  storedMeshStatus(store, f.a.m.identity, IDLE_MESH_HOOKS);
-const lastSeen = (f: ReturnType<typeof clients>, store = f.a.mesh) =>
-  status(f, store)?.members.find((member) => member.hostId === f.c.m.identity.hostId)?.lastSessionAt;
 
 test.each([undefined, "roster", "push"] as const)(
   "an accepted %s client session is local status that survives restart",
@@ -101,13 +38,13 @@ test.each([undefined, "roster", "push"] as const)(
     ).toBe(AT);
     const restarted = new MeshStore(f.a.dir, { log: () => {} });
     expect(lastSeen(f, restarted)).toBe(AT);
-    const later = spyOn(Date, "now").mockReturnValue(AT + 2000);
+    const later = spyOn(Date, "now").mockReturnValue(AT + 300_000);
     try {
       expect(await accept(f, stream)).toBeDefined();
     } finally {
       later.mockRestore();
     }
-    expect(lastSeen(f, restarted)).toBe(AT + 2000);
+    expect(lastSeen(f, restarted)).toBe(AT + 300_000);
     expect(restarted.read()?.records).toEqual(before ?? []);
   },
 );
@@ -200,7 +137,7 @@ test("a paired roster session records its client time when the signed card estab
   expect(current?.members.find((member) => member.hostId === f.c.m.identity.hostId)?.lastSessionAt).toBe(AT);
 });
 
-test("a later roster card does not change the time its current client's session was accepted", async () => {
+test("a current client is observed only after its later roster card is accepted", async () => {
   const f = clients();
   const clock = spyOn(Date, "now").mockReturnValue(AT);
   try {
@@ -230,7 +167,7 @@ test("a later roster card does not change the time its current client's session 
     });
     expect((await client.next()).t).toBe("records");
     expect((await client.next()).t).toBe("done");
-    expect(lastSeen(f)).toBe(AT);
+    expect(lastSeen(f)).toBe(AT + 1000);
   } finally {
     clock.mockRestore();
   }
