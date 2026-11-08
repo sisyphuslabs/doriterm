@@ -149,6 +149,8 @@ function SpacesLists({
         />
       </div>
     );
+    // A phone row only opens its space: the space screen's header holds what can be done with it.
+    if (phone) return button;
     return (
       <RowWithActions
         row={button}

@@ -1,5 +1,5 @@
-import { AgentRow, Button, EmptyState, ScrollArea, SidebarSection } from "@doriface/ui";
-import { ChevronLeft, Plus, SquareTerminal } from "lucide-react";
+import { AgentRow, Button, EmptyState, IconButton, Menu, ScrollArea, SidebarSection } from "@doriface/ui";
+import { ChevronLeft, Ellipsis, Plus, SquareTerminal } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ListedSpace, Session } from "./model.ts";
 import type { PhoneSection } from "./phone-route.ts";
@@ -8,6 +8,7 @@ import { QuietBusy } from "../terminal/quiet-busy.tsx";
 import { TerminalsLoadError } from "./terminals-load-error.tsx";
 import { ConnectionLine } from "./reconnect-status.tsx";
 import { useSpaceClosing } from "./space-close-context.ts";
+import { SpaceMenuItems } from "./space-actions.tsx";
 import { useNow } from "./use-now.ts";
 import { useKeptScroll } from "./kept-scroll.ts";
 
@@ -41,6 +42,11 @@ export function PhoneSpace({ space, terminals, host, arrive, from, onOpen, onBac
       arrive={arrive}
       from={from}
       onBack={onBack}
+      actions={
+        <Menu align="end" trigger={<IconButton label={`More for ${space.name}`} icon={<Ellipsis />} size="md" />}>
+          <SpaceMenuItems space={space} reorder={undefined} />
+        </Menu>
+      }
       title={
         <>
           <h1 title={space.name} className="truncate text-base leading-tight font-semibold text-foreground">
@@ -117,6 +123,8 @@ function SpaceFrame(props: {
   readonly from: PhoneSection;
   readonly onBack: () => void;
   readonly title: ReactNode;
+  /** The space's own "..." at the header's end; none while the space is still loading. */
+  readonly actions?: ReactNode;
   readonly children: ReactNode;
 }) {
   // The clip keeps the slide's first frames inside the screen: no sideways scroll or pan while it arrives.
@@ -140,6 +148,7 @@ function SpaceFrame(props: {
             {props.from === "agents" ? "Agents" : "Spaces"}
           </Button>
           <div className="flex min-w-0 flex-1 flex-col py-1">{props.title}</div>
+          {props.actions}
         </header>
         <ConnectionLine />
         <main className="flex min-h-0 flex-1 flex-col">{props.children}</main>

@@ -1,6 +1,8 @@
 import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef } from "react";
 import { guideStore } from "../pair/first-run-guide.ts";
+import { hasPendingNotice } from "../push/notice-open.ts";
+import { loadPhonePlace, savePhonePlace } from "./phone-place.ts";
 import {
   PHONE_LIST,
   type PhoneRoute,
@@ -50,6 +52,14 @@ let landed: number | null = null;
 
 /** The history entry the Spaces tab pushed over the agents list: the only one the Agents tab may pop back from. */
 let spacesOverAgents: number | null = null;
+
+/**
+ * Whether this page has decided where a cold start on the bare list goes (the remembered place, or nowhere), and the
+ * address it sent the phone to: the place is kept again only once the route has reached it.
+ */
+let placeDecided = false;
+let restoring: string | null = null;
+let saved: string | null = null;
 
 /** The router's place of an entry in this tab's history (@tanstack/history), counted from the page's first entry. */
 const ENTRY_INDEX = "__TSR_index";
@@ -167,6 +177,28 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     if (listed.terminal === null) back();
     else go({ ...listed, space: null, terminal: null, sheet: false }, true);
   }, [back, go, listed]);
+  // A cold start on the bare list (the home screen's icon) picks up where the phone was; an address that names a place, a
+  // tapped notice, or a page that has already moved, wins. From then on every place the list route reaches is kept.
+  const place = phoneHref({ ...listed, sheet: false });
+  useEffect(() => {
+    if (!narrow || path !== "/") return;
+    if (!placeDecided) {
+      placeDecided = true;
+      const remembered = loadPhonePlace();
+      if (place === "/" && landed === index && !hasPendingNotice() && phoneHref(remembered) !== "/") {
+        restoring = phoneHref(remembered);
+        go(remembered, true);
+        return;
+      }
+    }
+    if (restoring !== null) {
+      if (place !== restoring) return;
+      restoring = null;
+    }
+    if (place === saved) return;
+    saved = place;
+    savePhonePlace(listed);
+  }, [go, index, listed, narrow, path, place]);
   const dropSpace = useCallback(() => {
     if (path === "/" && listed.space !== null) go({ ...listed, space: null }, true);
   }, [go, listed, path]);
