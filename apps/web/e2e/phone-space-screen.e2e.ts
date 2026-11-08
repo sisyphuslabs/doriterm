@@ -173,15 +173,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await page.evaluate(() => {
           const frames: { readonly width: number; readonly moving: boolean }[] = [];
           Reflect.set(window, "slideFrames", frames);
-          // The slide's start is an event, not a frame that happened to be sampled: a loaded machine may render few frames.
-          document.addEventListener("transitionrun", (event) => {
-            const arriving =
-              event.propertyName === "transform" &&
-              event.target instanceof Element &&
-              event.target.classList.contains("motion-arrive");
-            if (arriving) Reflect.set(window, "slideRan", true);
-          });
-          const sample = (): void => {
+          const record = (): boolean => {
             // Only the arriving screen's own transform transition counts: a spinner or a button's colour is not the slide.
             const moving = document
               .getAnimations()
@@ -195,9 +187,27 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
                   motion.effect.target.classList.contains("motion-arrive"),
               );
             frames.push({ width: document.scrollingElement?.scrollWidth ?? 0, moving });
+            return moving;
+          };
+          // The slide's start also takes a frame, so a loaded machine that paints few frames still measures one mid-slide;
+          // its end (or cancel) closes the sampling, so a slide no frame saw moving fails the check below, not the wait.
+          for (const type of ["transitionrun", "transitionend", "transitioncancel"]) {
+            document.addEventListener(type, (event) => {
+              const arriving =
+                event instanceof TransitionEvent &&
+                event.propertyName === "transform" &&
+                event.target instanceof Element &&
+                event.target.classList.contains("motion-arrive");
+              if (!arriving) return;
+              record();
+              if (type !== "transitionrun") Reflect.set(window, "slideDone", true);
+            });
+          }
+          const sample = (): void => {
+            if (Reflect.get(window, "slideDone") === true) return;
+            const moving = record();
             // Until the slide has run and settled; the poll below bounds the wait, however slowly frames come.
-            const ran = Reflect.get(window, "slideRan") === true || frames.some((frame) => frame.moving);
-            if (ran && !moving) Reflect.set(window, "slideDone", true);
+            if (frames.some((frame) => frame.moving) && !moving) Reflect.set(window, "slideDone", true);
             else requestAnimationFrame(sample);
           };
           requestAnimationFrame(sample);
@@ -211,8 +221,8 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
           () => Reflect.get(window, "slideFrames") as { readonly width: number; readonly moving: boolean }[],
         );
         expect(
-          (await page.evaluate(() => Reflect.get(window, "slideRan") === true)) || frames.some((frame) => frame.moving),
-          "the slide ran while it was sampled",
+          frames.some((frame) => frame.moving),
+          "a sampled frame shows the slide moving",
         ).toBe(true);
         expect(Math.max(...frames.map((frame) => frame.width))).toBeLessThanOrEqual(390);
       } finally {
