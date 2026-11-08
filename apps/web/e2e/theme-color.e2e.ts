@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { BUILTIN_PALETTES, resolveTheme } from "@doriface/ui";
-import { expect, test } from "./fixtures.ts";
+import { expect, followSystemAppearance, test } from "./fixtures.ts";
 
 test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 
@@ -29,6 +29,7 @@ async function expectFollowsTheme(page: Page): Promise<string> {
 }
 
 test("the browser chrome colour follows the scheme both ways and a live switch in Settings", async ({ page }) => {
+  await followSystemAppearance(page);
   await page.emulateMedia({ colorScheme: "light" });
   await page.goto("/settings");
   const day = await expectFollowsTheme(page);
