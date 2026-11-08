@@ -13,12 +13,12 @@ test("a mesh invite opens browser membership and keeps the computer command in d
   await expect(page.getByRole("button", { name: "They match" })).toHaveCount(0);
 });
 
-test("an unusable pairing link leads on to typing the code", async ({ page }) => {
+test("an unusable pairing link leads to the mesh invite entry", async ({ page }) => {
   await page.goto(BAD_LINK);
   await expect(page.getByText("This pairing link cannot be used")).toBeVisible();
-  await page.getByRole("link", { name: "Type a pairing code" }).click();
-  await expect(page.getByRole("heading", { name: "Pair this device" })).toBeVisible();
-  await expect(page.getByLabel("Pairing code")).toBeVisible();
+  await page.getByRole("link", { name: "Enter an invite" }).click();
+  await expect(page.getByRole("heading", { name: "Join a mesh" })).toBeVisible();
+  await expect(page.getByLabel("Invite link or code")).toBeVisible();
 });
 
 for (const [kind, link, command] of [

@@ -9,6 +9,7 @@ import { BrowserJoin } from "../mesh/join-state.ts";
 import type { PairingOffer } from "./fragment.ts";
 import { JOIN_ANCHOR_KEY, loadJoinAnchor, type BrowserJoinAnchor } from "./join-anchor.ts";
 import { openBrowserJoin, openBrowserResume, refuseEarly, BROWSER_JOIN_DEPS } from "../mesh/join.ts";
+import { guideStore } from "./first-run-guide.ts";
 
 const subscribeEmpty = () => () => undefined;
 const empty = () => undefined;
@@ -75,6 +76,7 @@ export function useBrowserJoin() {
           },
         );
         if (controller.snapshot().phase === "joined") {
+          guideStore.start();
           connectionStore.edit({ relayUrl: context.relayUrl });
           connectionStore.start();
           window.location.assign("/settings#machines");

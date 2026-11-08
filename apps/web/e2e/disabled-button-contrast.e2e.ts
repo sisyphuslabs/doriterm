@@ -20,7 +20,7 @@ for (const theme of ["day", "night"] as const) {
       );
     });
 
-    test("the pairing screen's disabled Pair keeps a legible label on every surface, on a fill unlike the enabled one", async ({
+    test("the invite entry's disabled Continue keeps a legible label on every surface, on a fill unlike the enabled one", async ({
       page,
     }) => {
       await page.addInitScript(
@@ -28,7 +28,7 @@ for (const theme of ["day", "night"] as const) {
         JSON.stringify(PAIRING_SETTINGS),
       );
       await page.goto("/pair");
-      const pair = page.getByRole("button", { name: "Pair", exact: true });
+      const pair = page.getByRole("button", { name: "Continue", exact: true });
       await expect(pair).toBeDisabled();
       // Each measurement paints the parent and restores it inside one synchronous page call, so they cannot interleave.
       const everywhere = await Promise.all(
@@ -40,29 +40,29 @@ for (const theme of ["day", "night"] as const) {
       }
     });
 
-    test("offline, the first-run's disabled Pair a host keeps a legible label", async ({ page, context }) => {
+    test("offline, the first-run's disabled Paste invite keeps a legible label", async ({ page, context }) => {
       await page.addInitScript(() => localStorage.removeItem("doriface.connection"));
       await page.goto("/");
       await context.setOffline(true);
-      const button = page.getByRole("button", { name: "Pair a host" });
+      const button = page.getByRole("button", { name: "Paste invite" });
       await expect(button).toBeDisabled();
       const measured = await measure(page, button);
       await context.setOffline(false);
       expect(measured.ratio, measured.label).toBeGreaterThanOrEqual(4.5);
     });
 
-    test("Pair keeps its primary colours while it looks the code up: it is working, not unavailable", async ({
+    test("Continue keeps its primary colours while it looks the code up: it is working, not unavailable", async ({
       page,
     }) => {
       await page.addInitScript(
         (stored) => localStorage.setItem("doriface.connection", stored),
         JSON.stringify(PAIRING_SETTINGS),
       );
-      // The lookup is never answered, so Pair stays busy for as long as the test looks at it.
+      // The lookup is never answered, so Continue stays busy for as long as the test looks at it.
       await page.route("https://relay-doriface.omo.dev/v1/pair/*", () => undefined);
       await page.goto("/pair");
-      await page.getByLabel("Pairing code").fill(PAIR_CODE);
-      const pair = page.getByRole("button", { name: "Pair", exact: true });
+      await page.getByLabel("Invite link or code").fill(PAIR_CODE);
+      const pair = page.getByRole("button", { name: "Continue", exact: true });
       await pair.click();
       await expect(pair).toHaveAttribute("aria-busy", "true");
       const measured = await measure(page, pair, { svg: true });

@@ -18,6 +18,9 @@ for (const phone of [false, true]) {
     try {
       const page = await context.newPage();
       await routeOnlyRelay(page, host);
+      await page.goto("/pair");
+      await expect(page.getByRole("heading", { name: "Join a mesh", exact: true })).toBeVisible();
+      await page.screenshot({ path: info.outputPath("invite-entry.png"), fullPage: true });
       const offer = await host.meshOffer();
       await page.goto(offer.link);
       await expect(page.getByRole("heading", { name: "Join this mesh" })).toBeVisible();
