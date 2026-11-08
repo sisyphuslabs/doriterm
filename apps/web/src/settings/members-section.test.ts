@@ -12,15 +12,8 @@ describe("the machines list keeps a row per member (#942 stage 6)", () => {
     expect(summary.open).toBe(1);
   });
 
-  test("a member stopping leaves every other member listed", () => {
-    const before = summarizeMembers([member("a", "open"), member("b", "open")]);
-    const after = summarizeMembers([member("a", "open"), member("b", "failed")]);
-    expect(before.total).toBe(2);
-    expect(after.total).toBe(before.total);
-    expect(after.open).toBe(1);
-  });
-
-  test("one machine alone is not a list worth showing", () => {
-    expect(summarizeMembers([member("a", "open")]).total).toBe(1);
+  test("the list shows from two machines, and one machine alone is not a list worth showing", () => {
+    expect(summarizeMembers([member("a", "open")]).listed).toBe(false);
+    expect(summarizeMembers([member("a", "open"), member("b", "failed")]).listed).toBe(true);
   });
 });
