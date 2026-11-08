@@ -239,8 +239,9 @@ export function TerminalView(props: TerminalViewProps) {
               opened={finding}
               onClose={() => {
                 setFinding(null);
+                if (isBrowsing(wt.element)) return;
                 askingForKeyboard(handle, softKeyboard);
-                if (!isBrowsing(wt.element)) wt.focus();
+                wt.focus();
               }}
             />
           )}

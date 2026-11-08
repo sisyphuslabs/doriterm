@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { endAgent, startShell } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { fakeSoftKeyboard, key, keysBar, showKeyboard } from "./phone-key-bar.ts";
 
@@ -49,6 +50,47 @@ test("opening a terminal raises no keyboard on its own: it stays down until the 
   await key(page, "Hide keyboard").click();
   await expectDown(page);
   await expect(input).not.toBeFocused();
+});
+
+test("a session picked from Switch session takes the keyboard once: left by the system Back and opened again, it raises none (#1375)", async ({
+  page,
+}) => {
+  const first = startShell("host", "pickone");
+  const second = startShell("host", "picktwo");
+  try {
+    await fakeSoftKeyboard(page);
+    await page.goto("/");
+    const one = page.getByRole("button", { name: /pickone/ }).first();
+    await expect(one).toBeVisible({ timeout: 20_000 });
+    await one.click();
+    await expect(page.locator(`[data-terminal="${first}"]`)).toContainText("$", { timeout: 15_000 });
+    await key(page, "Show keyboard").click();
+    await expectUp(page);
+
+    // Picking a session from the keys bar asks for its keyboard: the picked view takes it as it opens.
+    await key(page, "Switch session").click();
+    await page
+      .getByRole("menu")
+      .getByRole("menuitem", { name: /picktwo/ })
+      .click();
+    const picked = page.locator(`[data-terminal="${second}"]`);
+    await expect(picked).toContainText("$", { timeout: 15_000 });
+    await expectUp(page);
+
+    // The system Back leaves it without the app's own Back button; opening it again from the list is no new ask.
+    await page.goBack();
+    await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
+    await page
+      .getByRole("button", { name: /picktwo/ })
+      .first()
+      .click();
+    await expect(picked).toContainText("$", { timeout: 15_000 });
+    await expect(picked.locator("textarea")).not.toBeFocused();
+    await expectDown(page);
+  } finally {
+    endAgent("host", first);
+    endAgent("host", second);
+  }
 });
 
 test("with the terminal focused and no keyboard up, the toggle reads Show keyboard; it reads Hide keyboard only while one covers the page", async ({

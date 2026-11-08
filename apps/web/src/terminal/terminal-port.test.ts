@@ -50,6 +50,14 @@ describe("the soft keyboard a focus may raise (#1375)", () => {
     expect(field.inputMode).toBe("text");
   });
 
+  test("a focused field that already asks for the keyboard keeps its focus: nothing is let go", () => {
+    const { handle, field, order } = withField(true);
+    field.inputMode = "text";
+    askingForKeyboard(handle, true);
+    expect(order).toEqual([]);
+    expect(field.inputMode).toBe("text");
+  });
+
   test("a surface with no soft keyboard to raise, and a terminal whose field is not there yet, are left alone", () => {
     const { handle, field, order } = withField(true);
     askingForKeyboard(handle, false);

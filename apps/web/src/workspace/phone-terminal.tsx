@@ -51,12 +51,14 @@ export interface PhoneTerminalProps {
   readonly claimed: boolean;
   /** A session picked from the keys bar, which is the person asking for its keyboard as it opens. */
   readonly onPick: (address: string) => void;
+  /** The keyboard a pick asked for is up: the ask is answered, so a later re-attach takes none of its own (#1375). */
+  readonly onClaimed: () => void;
 }
 
 /** One session full screen on a phone, its terminal kept clear of the soft keyboard and the keys bar riding on it. */
 export function PhoneTerminal(props: PhoneTerminalProps) {
   const { connection, terminal, terminals, panes, tabTitle, onOpen, onBack, onCloseTab, onNewInSpace, dictate } = props;
-  const { claimed, onPick } = props;
+  const { claimed, onPick, onClaimed } = props;
   const port = useRef<TerminalPort | null>(null);
   const onPort = useCallback((next: TerminalPort | null) => {
     port.current = next;
@@ -68,6 +70,9 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   // The keyboard is down again — closed by its own key, by the keys' Hide, or by the focus moving away — so the field asks
   // for none until the keys ask again, and the next press in the terminal raises nothing (#1375). A press that lets the
   // field go and takes it back in the same gesture is no dismissal: this waits a frame for the focus to come back.
+  useEffect(() => {
+    if (claimed && keyboard.up) onClaimed();
+  }, [claimed, keyboard.up]);
   useEffect(() => {
     if (keyboard.up) return undefined;
     const frame = requestAnimationFrame(() => port.current?.quiet());
