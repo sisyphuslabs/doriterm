@@ -26,28 +26,6 @@ describe("mesh status", () => {
     expect(memberNamed("tablet")?.fingerprint).toBe(fingerprintOf(ids.tablet.noise.publicKey));
   });
 
-  test("an over-cap member is listed after the members and marked over the cap", () => {
-    const { keys } = fixture;
-    const view = { ...fixture.sources.view };
-    const overCap = meshStatus(
-      {
-        ...fixture.sources,
-        view: {
-          ...view,
-          members: new Set([...view.members].filter((key) => key !== keys.laptop)),
-          overCap: new Set([keys.laptop]),
-        },
-      },
-      NOW,
-    );
-    expect(overCap.members.map((member) => [member.name, member.overCap])).toEqual([
-      ["studio", false],
-      ["build-box", false],
-      ["tablet", false],
-      ["laptop", true],
-    ]);
-  });
-
   test("a member whose name fell back on this core shows the name it has here", () => {
     const renamed = meshStatus(withLocal({ localNames: new Map([[fixture.keys.laptop, "laptop-q3zd"]]) }), NOW);
     expect(renamed.members.map((member) => [member.name, member.localName])).toEqual([
@@ -197,6 +175,7 @@ describe("mesh status", () => {
         hostId: ids["ci-runner"].hostId,
         fingerprint: fingerprintOf(ids["ci-runner"].noise.publicKey),
         expiresAt: "2026-11-03T12:08:00.000Z",
+        kind: "machine",
       },
     ]);
   });

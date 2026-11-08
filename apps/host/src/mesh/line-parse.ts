@@ -27,6 +27,16 @@ const signedOf = (value: unknown): Signed | undefined => {
 
 const stringsOf = (value: unknown): string[] | undefined =>
   Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
+/**
+ * The mesh-file formats a peer says it reads. A hello without the field is a peer that did not say; a malformed one is
+ * refused rather than read as support, because the point of the field is the gate that keeps an old reader from holding
+ * a record it cannot understand (design of #942, section 4).
+ */
+const readsOf = (value: unknown): number[] | undefined | false => {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return false;
+  return value.every((item) => typeof item === "number" && Number.isSafeInteger(item) && item > 0) ? value : false;
+};
 const hashesOf = (value: unknown): string[] | undefined => {
   const hashes = stringsOf(value);
   return hashes?.every((hash) => canonical(hash, HASH_CHARS)) === true ? hashes : undefined;
@@ -66,9 +76,10 @@ export function parseLine(text: string): MeshLine | "unknown" | undefined {
   switch (value["t"]) {
     case "hello": {
       const [mesh, heads, n] = [get("mesh"), hashesOf(value["heads"]), countersOf(value["n"])];
-      return value["v"] !== 2 || mesh === undefined || heads === undefined || n === undefined
+      const reads = readsOf(value["reads"]);
+      return value["v"] !== 2 || mesh === undefined || heads === undefined || n === undefined || reads === false
         ? undefined
-        : { t: "hello", v: 2, mesh, heads, n };
+        : { t: "hello", v: 2, mesh, heads, n, reads };
     }
     case "want": {
       const hashes = hashesOf(value["hashes"]);

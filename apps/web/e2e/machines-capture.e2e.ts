@@ -60,7 +60,9 @@ async function shoot(page: Page, shot: Shot, name: string): Promise<void> {
 async function remoteShell(page: Page): Promise<void> {
   await newOn(page).click({ force: true });
   const focused = page.locator('[data-focused="true"] [data-terminal]');
-  await expect(focused).toHaveAttribute("data-terminal", new RegExp(`^${MACHINE_NAME}/t\\d+$`), { timeout: 15_000 });
+  await expect(focused).toHaveAttribute("data-terminal", new RegExp(`^${MACHINE_NAME}/t[0-9a-z]+$`), {
+    timeout: 15_000,
+  });
   await expect(focused).toContainText("$", { timeout: 15_000 });
   await focused.click();
   // A login shell's prompt names the machine and user running the capture; a neutral one keeps them out of it.

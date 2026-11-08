@@ -2,7 +2,7 @@ import { meshStatus } from "@doriface/host";
 import { meshFixture } from "@doriface/host/testing";
 import type { MachineView, MeshMemberStatus, MeshStatus } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
-import { disagreement, meshGroups, pendingAnswer } from "./groups.ts";
+import { approvalConsequence, disagreement, meshGroups, pendingAnswer } from "./groups.ts";
 
 const NOW = new Date("2026-11-03T12:00:00.000Z");
 const fixture = meshFixture(NOW);
@@ -179,5 +179,15 @@ describe("disagreement with machine.list", () => {
     const machines = [machine("build-box", "connected")];
     expect(disagreement(status, machines, "x".repeat(26))).toEqual({ otherHost: true, names: [] });
     expect(disagreement(status, machines, fixture.ids.studio.hostId)).toBeUndefined();
+  });
+});
+
+describe("what approving a join grants", () => {
+  test("a client's row says it gets control of every machine, in the row's own words", () => {
+    expect(approvalConsequence("client", "phone")).toBe("Approving gives phone control of every machine in this mesh.");
+  });
+
+  test("a machine's row adds nothing, because joining the mesh is the ordinary case", () => {
+    expect(approvalConsequence("machine", "studio")).toBeUndefined();
   });
 });

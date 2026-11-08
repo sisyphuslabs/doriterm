@@ -3,13 +3,14 @@ import {
   cardOf,
   type CardBody,
   hashOf,
+  type MemberKind,
   parseRecord,
   type Signed,
   verifyCard,
   type View,
 } from "@doriface/mesh";
 
-/** A member as the host authorizes it: the keys and herdr core id of its current card, and its mesh name. */
+/** A member as the host authorizes it: the keys and herdr core id of its current card, its kind, and its mesh name. */
 export interface MemberEntry {
   readonly signPub: string;
   readonly hostId: string;
@@ -17,6 +18,11 @@ export interface MemberEntry {
   readonly devicePub: string | undefined;
   readonly name: string;
   readonly hcId: string;
+  /**
+   * What its keys may do. Absent means a machine: an index written before kinds existed, or a fixture, could only ever
+   * have been one. A client connects to machines and never dials one (design of #942).
+   */
+  readonly kind?: MemberKind | undefined;
 }
 
 /** A member the view removed, with every Noise and device key any of its cards ever named. */
@@ -36,12 +42,11 @@ export interface NamingEntry {
 export interface IndexData {
   readonly generation: number;
   readonly members: readonly MemberEntry[];
-  readonly overCap: readonly MemberEntry[];
   readonly revoked: readonly RevokedEntry[];
   /** Every other Noise or device key a current member's cards ever named: refused and cleaned like a revoked key. */
   readonly superseded: readonly string[];
   /**
-   * For every current, over-cap and revoked member, the keys its effective cards name. Only these contest a key: a
+   * For every current and revoked member, the keys its effective cards name. Only these contest a key: a
    * card the view ignores (void under R1, or signed after its signer's revoke) names nothing here.
    */
   readonly named: readonly NamingEntry[];
@@ -74,13 +79,14 @@ const entryOf = (card: CardBody, noisePub: string, name: string): MemberEntry =>
   devicePub: card.devicePub,
   name,
   hcId: card.hcId,
+  kind: card.kind ?? "machine",
 });
 
 /**
  * Derives the index from the records and their view. A member's core id, device key and hostId come from its
  * governing admission's card (a later re-admit or rekey card cannot change them), its Noise key and name from the
- * view. Every other key a member's cards ever named is superseded. An over-cap key is refused on every effective
- * card it holds (stricter than its governing card alone), and a revoked key on every card it ever had. What contests
+ * view. Every other key a member's cards ever named is superseded, and a revoked key is refused on every card it ever
+ * had. What contests
  * a key (`named`) comes from effective cards only, so a record the view ignores cannot take a member's key away.
  */
 export function indexOf(records: readonly Signed[], view: View, generation: number): IndexData {
@@ -93,8 +99,6 @@ export function indexOf(records: readonly Signed[], view: View, generation: numb
     if (card === undefined) return [];
     return [entryOf(card, view.noise.get(signPub) ?? card.noisePub, view.name.get(signPub) ?? card.name)];
   };
-  const overCap = (signPub: string): MemberEntry[] =>
-    (effective.get(signPub) ?? []).map((card) => entryOf(card, card.noisePub, card.name));
   const revoked = [...view.revoked].flatMap((signPub): RevokedEntry[] => {
     const cards = everything.get(signPub) ?? [];
     const first = cards[0];
@@ -105,14 +109,13 @@ export function indexOf(records: readonly Signed[], view: View, generation: numb
   const superseded = members.flatMap(({ signPub, noisePub, devicePub }) =>
     (everything.get(signPub) ?? []).flatMap(keysOf).filter((key) => key !== noisePub && key !== devicePub),
   );
-  const named = [...new Set([...view.members, ...view.overCap, ...view.revoked])].flatMap((signPub): NamingEntry[] => {
+  const named = [...new Set([...view.members, ...view.revoked])].flatMap((signPub): NamingEntry[] => {
     const keys = (effective.get(signPub) ?? []).flatMap(keysOf);
     return keys.length === 0 ? [] : [{ signPub, keys: [...new Set(keys)] }];
   });
   return {
     generation,
     members,
-    overCap: [...view.overCap].flatMap(overCap),
     revoked,
     superseded: [...new Set(superseded)],
     named,
@@ -123,31 +126,33 @@ export function indexOf(records: readonly Signed[], view: View, generation: numb
 export class AuthorizeIndex {
   readonly generation: number;
   readonly #byNoise = new Map<string, MemberEntry>();
-  readonly #overCap = new Set<string>();
   readonly #revoked = new Set<string>();
   readonly #memberDevices = new Set<string>();
+  /** A client member's session key, by member. It never enters the Noise map: a client must not dial (design of #942). */
+  readonly #clientDevices = new Map<string, MemberEntry>();
   readonly #superseded: ReadonlySet<string>;
   readonly #hcIds = new Set<string>();
   readonly #hostIds = new Set<string>();
   readonly #signPubs = new Set<string>();
-  /** The signing keys whose effective cards name each key (current, over-cap and revoked members). */
+  /** The signing keys whose effective cards name each key (current and revoked members). */
   readonly #namedBy = new Map<string, Set<string>>();
 
   constructor(data: IndexData) {
     this.generation = data.generation;
     this.#superseded = new Set(data.superseded);
     for (const member of data.members) {
+      if (member.kind === "client") {
+        if (member.devicePub !== undefined) this.#clientDevices.set(member.devicePub, member);
+        continue;
+      }
       this.#byNoise.set(member.noisePub, member);
       if (member.devicePub !== undefined) this.#memberDevices.add(member.devicePub);
     }
-    for (const member of data.overCap) {
-      this.#overCap.add(member.noisePub);
-      if (member.devicePub !== undefined) this.#overCap.add(member.devicePub);
-    }
-    for (const member of [...data.members, ...data.overCap]) {
+    for (const member of data.members) {
       this.#signPubs.add(member.signPub);
       this.#hcIds.add(member.hcId);
-      this.#hostIds.add(member.hostId);
+      // A client has no machine to learn as a host, and its paired entry must survive cleanup for push.
+      if (member.kind !== "client") this.#hostIds.add(member.hostId);
     }
     for (const entry of data.revoked) {
       for (const key of entry.keys) this.#revoked.add(key);
@@ -159,7 +164,7 @@ export class AuthorizeIndex {
       by.add(signPub);
       this.#namedBy.set(key, by);
     };
-    for (const entry of [...data.members, ...data.overCap]) {
+    for (const entry of data.members) {
       name(entry.noisePub, entry.signPub);
       name(entry.devicePub, entry.signPub);
     }
@@ -167,8 +172,8 @@ export class AuthorizeIndex {
   }
 
   /**
-   * The current, not over-cap member whose Noise key this is, when no other signing key's effective card names it
-   * (#90): a key that two members hold, that a revoked member's card named before its revoke, or that is another
+   * The current member whose Noise key this is, when no other signing key's effective card names it (#90): a key that
+   * two members hold, that a revoked member's card named before its revoke, or that is another
    * member's superseded key authorizes nobody. A void card, or one signed after its signer's revoke, contests nothing.
    */
   member(key: string): MemberEntry | undefined {
@@ -181,10 +186,18 @@ export class AuthorizeIndex {
     return [...(this.#namedBy.get(key) ?? [])].some((by) => by !== signPub);
   }
 
+  /**
+   * The current client member whose session key this is. A client is admitted on the hc stream and refused on the mesh
+   * stream, so it is found here and never in `member()`, which answers for a member that dials.
+   */
+  client(key: string): MemberEntry | undefined {
+    const entry = this.#clientDevices.get(key);
+    return entry === undefined || this.namedByAnother(key, entry.signPub) ? undefined : entry;
+  }
+
   /** Why a key that is not a current member's Noise key may not be a device, if it may not (section 9.2 step 2). */
   deviceRefusal(key: string): string | undefined {
     if (this.#revoked.has(key)) return "revoked mesh member";
-    if (this.#overCap.has(key)) return "over-cap mesh member";
     if (this.#memberDevices.has(key)) return "this key belongs to a mesh member: use the mesh line";
     if (this.#superseded.has(key)) return "a superseded key of a mesh member";
     if (this.#byNoise.has(key) && this.member(key) === undefined)
@@ -197,7 +210,7 @@ export class AuthorizeIndex {
     return this.#byNoise.has(key) || this.deviceRefusal(key) !== undefined;
   }
 
-  /** Members in the view, over-cap ones included: what the 12-member cap counts. */
+  /** Members in the view: what a plan's `machines` limit counts. */
   get memberCount(): number {
     return this.#signPubs.size;
   }
@@ -212,13 +225,7 @@ export class AuthorizeIndex {
 
   /** Keys and hostIds no paired-device or known-hosts store may keep (sections 4.5 and 6.7). */
   cleanup(): { readonly keys: ReadonlySet<string>; readonly hostIds: ReadonlySet<string> } {
-    const keys = new Set([
-      ...this.#byNoise.keys(),
-      ...this.#memberDevices,
-      ...this.#overCap,
-      ...this.#revoked,
-      ...this.#superseded,
-    ]);
+    const keys = new Set([...this.#byNoise.keys(), ...this.#memberDevices, ...this.#revoked, ...this.#superseded]);
     return { keys, hostIds: this.#hostIds };
   }
 }

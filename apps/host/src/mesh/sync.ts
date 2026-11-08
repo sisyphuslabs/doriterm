@@ -4,6 +4,7 @@ import { headsOf } from "../state/mesh-tx.ts";
 import { countersOf, missingSince, signerFirst } from "./anti-entropy.ts";
 import type { Clock } from "./clock.ts";
 import { deadline } from "./deadline.ts";
+import { MESH_READS } from "../state/mesh-file.ts";
 import { type LineLink, type MeshLine, MeshLines, recordLines, SYNC_EXPECTS } from "./lines.ts";
 import type { MergeResult } from "./merge.ts";
 
@@ -28,7 +29,12 @@ export interface SyncHost {
    * The peer said which heads it holds, and the highest `n` it holds of each signer (its `hello`). True when that
    * claims a counter of this host's key the host now waits on: the peer then owes a `done` like an answer.
    */
-  heard(peer: string, heads: readonly string[], n: Readonly<Record<string, number>>): boolean;
+  heard(
+    peer: string,
+    heads: readonly string[],
+    n: Readonly<Record<string, number>>,
+    reads?: readonly number[],
+  ): boolean;
   /** These records carry this host's own records a claim waits on: the line is merged at once (section 10.1). */
   meets(records: readonly Signed[]): boolean;
   /** The peer owed a `done` past ANSWER_MS with no line of progress; the session closes 4400 right after. */
@@ -109,7 +115,7 @@ export class SyncSession {
     this.#retiring = this.#clock.after(this.#lingerMs, () => this.close(CloseCode.UnknownDevice, reason));
   }
 
-  /** Back in the view (under the cap again): the retirement is called off. */
+  /** Back in the view (re-admitted): the retirement is called off. */
   keep(): void {
     this.#retiring?.();
     this.#retiring = undefined;
@@ -139,7 +145,14 @@ export class SyncSession {
   #hello(): void {
     this.#saidHello = true;
     const records = this.#host.records();
-    this.#send({ t: "hello", v: 2, mesh: this.#host.meshId, heads: headsOf(records), n: countersOf(records) });
+    this.#send({
+      t: "hello",
+      v: 2,
+      mesh: this.#host.meshId,
+      heads: headsOf(records),
+      n: countersOf(records),
+      reads: MESH_READS,
+    });
     this.#owesAnswer();
   }
 
@@ -168,7 +181,7 @@ export class SyncSession {
     this.#touch();
     switch (line.t) {
       case "hello":
-        return this.#heard(line.mesh, line.heads, line.n);
+        return this.#heard(line.mesh, line.heads, line.n, line.reads);
       case "records":
         if (this.#received + line.records.length > MAX_RECORDS) {
           return this.close(CloseCode.CryptoFailure, `more than ${MAX_RECORDS} records before done`);
@@ -197,7 +210,12 @@ export class SyncSession {
     }
   }
 
-  #heard(mesh: string, heads: readonly string[], n: Readonly<Record<string, number>>): void {
+  #heard(
+    mesh: string,
+    heads: readonly string[],
+    n: Readonly<Record<string, number>>,
+    reads: readonly number[] | undefined,
+  ): void {
     if (mesh !== this.#host.meshId) {
       this.#lines.refuse(CloseCode.UnknownDevice, "a mesh stream from another mesh");
       return this.#ended();
@@ -207,7 +225,7 @@ export class SyncSession {
       return this.close(CloseCode.CryptoFailure, `a peer claimed more than ${MAX_RECORDS} heads`);
     }
     for (const head of heads) this.#peerHeads.add(head);
-    if (this.#host.heard(this.peer, heads, n)) this.#owesAnswer();
+    if (this.#host.heard(this.peer, heads, n, reads)) this.#owesAnswer();
     if (!this.#saidHello) this.#hello();
     this.#sendRecords(...signerFirst(this.#unsent(), this.peer));
   }

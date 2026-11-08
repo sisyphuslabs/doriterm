@@ -27,6 +27,15 @@ test("a phone session through the production relay", async ({ browser }) => {
     await page.getByRole("button", { name: "New tab" }).click({ timeout: 30_000 });
     const terminal = page.locator("[data-terminal]");
     await expect(terminal).toContainText("$", { timeout: 90_000 });
+    // The prompt comes from the capture host's own rcfile, so nothing is typed here and no echo can satisfy the check
+    // (#926). What is asserted is the state the shots depend on: the last line of the buffer IS the neutral prompt.
+    const lastLine = async (): Promise<string> => {
+      const lines = (await terminal.innerText()).trimEnd().split("\n");
+      let last = "";
+      for (const line of lines) if (line.trim() !== "") last = line;
+      return last.trim();
+    };
+    await expect.poll(lastLine, { timeout: 90_000 }).toBe("demo@my-laptop:~/project$");
     await page.keyboard.type("printf 'relay-%s\\n' 'alpha-line more'\r");
     await expect(terminal).toContainText("relay-alpha-line more", { timeout: 30_000 });
     const shot = async (name: string): Promise<void> => {
@@ -53,6 +62,7 @@ test("a phone session through the production relay", async ({ browser }) => {
 
     await page.evaluate(() => navigator.clipboard.writeText("한글붙여넣기"));
     await key(page, "Paste").click();
+    await expect(terminal).toContainText("한글붙여넣기", { timeout: 30_000 });
     await shot("paste");
     await page.keyboard.press("Enter");
     await expect(terminal).toContainText("command not found", { timeout: 30_000 });

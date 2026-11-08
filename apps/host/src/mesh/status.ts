@@ -44,10 +44,9 @@ function namesOf(sources: MeshSources): Names {
 function member(sources: MeshSources, names: Names, key: string, now: Date): MeshMemberStatus {
   const { view, local } = sources;
   const hostId = names.hostId(key);
-  const overCap = view.overCap.has(key);
   const name = view.name.get(key);
   const noise = view.noise.get(key);
-  if (!overCap && (name === undefined || noise === undefined)) {
+  if (name === undefined || noise === undefined) {
     throw new Error(`mesh status: the view has no Noise key or name for member ${hostId}`);
   }
   const self = key === local.self;
@@ -59,11 +58,11 @@ function member(sources: MeshSources, names: Names, key: string, now: Date): Mes
   const witness = self ? { pool: [], ask: null } : sources.witnessPool(key);
   return {
     hostId,
-    name: name ?? null,
-    localName: local.localNames.get(key) ?? name ?? null,
-    fingerprint: noise === undefined ? null : fingerprintOfKey(noise),
+    name,
+    localName: local.localNames.get(key) ?? name,
+    fingerprint: fingerprintOfKey(noise),
     admittedBy: admitter === undefined ? null : names.hostId(admitter),
-    overCap,
+    overCap: false,
     line: self ? "self" : (line?.state ?? "absent"),
     lineReason: line !== undefined && MESH_LINE_STATES_WITH_REASON.includes(line.state) ? line.reason : null,
     helloCoreId: line?.helloCoreId ?? null,
@@ -149,7 +148,7 @@ function stuckOf(sources: MeshSources, names: Names, now: Date): MeshStuckReason
   if (local.counter.file < local.counter.mesh) {
     reasons.push({ kind: "counter_behind", file: local.counter.file, mesh: local.counter.mesh });
   }
-  for (const key of [...view.members, ...view.overCap]) {
+  for (const key of view.members) {
     const stuck = sources.lines.get(key)?.stuck;
     if (stuck !== undefined && stuck !== null) reasons.push({ ...stuck, member: names.hostId(key) });
   }
@@ -168,7 +167,7 @@ export function meshStatus(sources: MeshSources, now: Date): MeshStatus {
     generation: local.generation,
     sync: stuck.length === 0 ? "ok" : "stuck",
     stuck,
-    members: [...view.members, ...view.overCap].map((key) => member(sources, names, key, now)),
+    members: [...view.members].map((key) => member(sources, names, key, now)),
     revoked: revokedOf(sources, names),
     removed: removedOf(sources, names),
     notices: noticesOf(sources, names, now),
@@ -178,6 +177,7 @@ export function meshStatus(sources: MeshSources, now: Date): MeshStatus {
       hostId: join.hostId,
       fingerprint: fingerprintOfKey(join.noisePub),
       expiresAt: join.expiresAt.toISOString(),
+      kind: join.kind,
     })),
     budget: {
       waiting: budget.waiting,

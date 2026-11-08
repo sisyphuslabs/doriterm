@@ -8,6 +8,8 @@ import {
   MAX_BODY_BYTES,
   MAX_PREV,
   MAX_REVOKE_SUBJECTS,
+  MEMBER_KINDS,
+  type MemberKind,
   RECORD_TYPES,
   type RecordBody,
   type RecordType,
@@ -132,16 +134,26 @@ export function parseRecord(record: Signed): RecordBody | undefined {
 }
 
 function cardBodyOf(body: JsonObject): CardBody | undefined {
-  const { v, mesh, inviter, nonce, hostId, signPub, noisePub, devicePub, name, hcId } = body;
-  if (v !== 1 || !isKey(signPub) || !isKey(noisePub) || (devicePub !== undefined && !isKey(devicePub))) {
+  const { v, kind, mesh, inviter, nonce, hostId, signPub, noisePub, devicePub, name, hcId } = body;
+  if (v !== 1 && v !== 2) return undefined;
+  // A version 1 card can only mean a machine: that is the only kind the format ever carried, so reading it as anything
+  // else would reinterpret history. Version 2 must say which kind it is, and an unknown kind is refused rather than
+  // guessed (design of #942).
+  const memberKind: MemberKind | undefined = v === 1 ? "machine" : MEMBER_KINDS.find((known) => known === kind);
+  if (memberKind === undefined) return undefined;
+  if (!isKey(signPub) || !isKey(noisePub) || (devicePub !== undefined && !isKey(devicePub))) {
     return undefined;
   }
+  // A client is reached by its session key and has no Noise line of its own to dial from, so a client card without a
+  // devicePub would name a member nothing can reach (design of #942). A machine may carry one or not.
+  if (memberKind === "client" && devicePub === undefined) return undefined;
   if (typeof mesh !== "string" || typeof inviter !== "string" || typeof nonce !== "string") return undefined;
   if (!decodes(nonce, 16) || typeof hostId !== "string" || typeof hcId !== "string") return undefined;
   if (typeof name !== "string" || !checkName(name)) return undefined;
   if (hostIdOf(base64urlDecode(signPub)) !== hostId) return undefined;
   return {
-    v: 1,
+    v,
+    kind: memberKind,
     mesh,
     inviter,
     nonce,

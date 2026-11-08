@@ -4,7 +4,8 @@ import { deliverPush, pushEndpointAllowed, type PushFetch } from "@doriface/host
 import type { VapidKey } from "@doriface/host/push/web-push";
 import { decryptPushBody, receiverKeys, type ReceiverKeys } from "@doriface/host/testing/push-receiver";
 import { describe, expect, test } from "bun:test";
-import { type BridgeConfig, createBridge } from "./bridge.ts";
+import { type BridgeConfig, createBridge, type TokenLimiter, tokenKey } from "./bridge.ts";
+import { limiterOf } from "./worker.ts";
 
 const ORIGIN = "https://push-doriface.omo.dev";
 const NOTICE: PushNotice = { v: 1, n: "AAAAAAAAAAAAAAAAAAAAAA", k: "permission", h: "abcdefghijklmnopqrstuvwxyz" };
@@ -494,5 +495,99 @@ describe("provider tokens: reuse, expiry and renewal (#717 review)", () => {
       ),
     );
     expect(await send(`${ORIGIN}/v1/fcm/${FCM_TOKEN}`, NOW)).toEqual({ delivery: "failed", status: 502 });
+  });
+});
+
+/** A limiter that lets `limit` pushes through per key, as the Workers binding does within one period. */
+function countingLimiter(limit: number): TokenLimiter & { readonly keys: string[] } {
+  const counts = new Map<string, number>();
+  const keys: string[] = [];
+  return {
+    keys,
+    allows: async (key) => {
+      keys.push(key);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+      return (counts.get(key) ?? 0) <= limit;
+    },
+  };
+}
+
+describe("a rate limit per device token (#830)", () => {
+  test("a burst above the limit to one token is answered 429 and forwarded no further; another token is unaffected", async () => {
+    const { sent, fetch } = upstream();
+    const limiter = countingLimiter(3);
+    const bridge = createBridge(await config(), { fetch, now: () => NOW, limiter });
+    const keys = await receiverKeys();
+    const vapid = await vapidKey();
+    const statuses: number[] = [];
+    const post: PushFetch = async (url, init) => {
+      const reply = await bridge(new Request(url, init));
+      statuses.push(reply.status);
+      return reply;
+    };
+    const push = (endpoint: string) => deliverPush({ endpoint, ...keys }, NOTICE, vapid, post, { now: () => NOW });
+    const burst = await Promise.all([1, 2, 3, 4, 5].map(() => push(`${ORIGIN}/v1/apns/${APNS_TOKEN}`)));
+    expect(statuses.toSorted()).toEqual([201, 201, 201, 429, 429]);
+    // The host folds 429 into a failure, which keeps the subscription (deliver.ts): never "gone".
+    expect(burst.toSorted()).toEqual(["failed", "failed", "sent", "sent", "sent"]);
+    expect(sent.filter((request) => request.url.includes(APNS_TOKEN))).toHaveLength(3);
+
+    expect(await push(`${ORIGIN}/v1/fcm/${FCM_TOKEN}`)).toBe("sent");
+    expect(statuses.at(-1)).toBe(201);
+  });
+
+  test("the limiter is keyed by a hash of provider and token, never the token itself", async () => {
+    const limiter = countingLimiter(10);
+    const { fetch } = upstream();
+    const bridge = createBridge(await config(), { fetch, now: () => NOW, limiter });
+    const keys = await receiverKeys();
+    const post: PushFetch = (url, init) => bridge(new Request(url, init));
+    await deliverPush({ endpoint: `${ORIGIN}/v1/apns/${APNS_TOKEN}`, ...keys }, NOTICE, await vapidKey(), post, {
+      now: () => NOW,
+    });
+    expect(limiter.keys).toEqual([await tokenKey("apns", APNS_TOKEN)]);
+    expect(limiter.keys[0]).not.toContain(APNS_TOKEN);
+    expect(await tokenKey("apns", APNS_TOKEN)).not.toBe(await tokenKey("apns-sandbox", APNS_TOKEN));
+  });
+
+  test("an APNs token in another letter case counts against the same allowance and reaches APNs as one token", async () => {
+    const { sent, fetch } = upstream();
+    const limiter = countingLimiter(2);
+    const bridge = createBridge(await config(), { fetch, now: () => NOW, limiter });
+    const keys = await receiverKeys();
+    const vapid = await vapidKey();
+    const post: PushFetch = (url, init) => bridge(new Request(url, init));
+    const push = (token: string) =>
+      deliverPush({ endpoint: `${ORIGIN}/v1/apns/${token}`, ...keys }, NOTICE, vapid, post, { now: () => NOW });
+    // APNs reads a device token in any letter case as the same device.
+    const results = [];
+    for (const token of [APNS_TOKEN.toLowerCase(), APNS_TOKEN.toUpperCase(), APNS_TOKEN.toUpperCase()]) {
+      // oxlint-disable-next-line no-await-in-loop -- the limiter counts in order
+      results.push(await push(token));
+    }
+    expect(results).toEqual(["sent", "sent", "failed"]);
+    expect(new Set(limiter.keys)).toEqual(new Set([await tokenKey("apns", APNS_TOKEN.toLowerCase())]));
+    expect(sent.map((request) => request.url.split("/").at(-1))).toEqual([
+      APNS_TOKEN.toLowerCase(),
+      APNS_TOKEN.toLowerCase(),
+    ]);
+  });
+
+  test("a request the bridge refuses (no valid VAPID) spends nothing of the token's allowance", async () => {
+    const limiter = countingLimiter(1);
+    const bridge = createBridge(await config(), { fetch: upstream().fetch, now: () => NOW, limiter });
+    const refused = await bridge(new Request(`${ORIGIN}/v1/apns/${APNS_TOKEN}`, { method: "POST", body: "x" }));
+    expect(refused.status).not.toBe(429);
+    expect(limiter.keys).toEqual([]);
+  });
+
+  test("the Worker reads the binding's answer as the limiter's, and runs without one", async () => {
+    const asked: string[] = [];
+    const limiter = limiterOf({
+      TOKEN_LIMIT: { limit: async ({ key }) => (asked.push(key), { success: key === "ok" }) },
+    });
+    expect([await limiter?.allows("ok"), await limiter?.allows("spent")]).toEqual([true, false]);
+    expect(asked).toEqual(["ok", "spent"]);
+    expect(limiterOf({})).toBeUndefined();
   });
 });

@@ -7,6 +7,8 @@ export type Migration =
   | { readonly kind: "added"; readonly name: string }
   /** The dial budget had no room for the line's add: nothing was removed. */
   | { readonly kind: "refused"; readonly reason: string }
+  /** herdr did not remove the earlier entry: it is in the list as it was, and the reserved pair is given back. */
+  | { readonly kind: "unremoved"; readonly reason: string }
   /** The line's add failed after the removal, and the earlier entry was added back. */
   | { readonly kind: "restored"; readonly reason: string }
   /** Another entry still holds the core (a second `already_added`); the earlier entry was added back. */
@@ -49,7 +51,13 @@ export async function migrate(
   // A fresh pair: the add that met `already_added` spent one upgrade on herdr's probe and dropped the rest.
   const reserved = await parts.reserve?.();
   if (reserved !== undefined && !reserved.ok) return { kind: "refused", reason: reserved.reason };
-  await parts.machines.rm(old.name);
+  try {
+    await parts.machines.rm(old.name);
+  } catch (error) {
+    // Nothing was removed, so nothing is added: the pair taken for the line's add goes back (#728).
+    if (reserved?.ok === true) reserved.failed();
+    return { kind: "unremoved", reason: `removing ${old.name} failed: ${kindOf(error)}: ${messageOf(error)}` };
+  }
   parts.log(`mesh: removed machine ${old.name} to replace it with the mesh line`);
   try {
     return { kind: "added", name: await addNamed(parts.machines, names, via) };

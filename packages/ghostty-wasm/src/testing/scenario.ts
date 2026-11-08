@@ -28,10 +28,17 @@ function rowText(core: GhosttyCore, row: number): string {
   return text.trimEnd();
 }
 
-function writeAll(core: GhosttyCore, input: string): Promise<void> {
-  const { promise, resolve } = Promise.withResolvers<void>();
-  core.writeString(input, resolve);
-  return promise;
+/**
+ * Writes `input` into the core. The core writes synchronously, calling back once per chunk before it returns; one that
+ * takes nothing (disposed, no terminal, no buffer for the input) returns without calling back, so waiting for that call
+ * would wait forever. That fails here at once instead (#1002).
+ */
+export async function writeAll(core: GhosttyCore, input: string): Promise<void> {
+  let chunks = 0;
+  core.writeString(input, () => {
+    chunks += 1;
+  });
+  if (chunks === 0) throw new Error("the core wrote nothing: it has no terminal, or no buffer for the input");
 }
 
 export async function runScenario(wasmUrl: string): Promise<ScenarioResult> {

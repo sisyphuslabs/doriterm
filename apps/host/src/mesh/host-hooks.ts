@@ -26,8 +26,15 @@ export interface MeshHooks {
   /** After `mesh leave` deleted mesh.json: removes this host's mesh machines (section 6.5). */
   left(): Promise<void>;
   live(): MeshLiveFacts;
+  /** Reads herdr's machine list again before a status read, bounded, so `live()` names each line as herdr does (#754). */
+  refreshLines(): Promise<void>;
   /** The highest claim a peer's `hello` holds on this host's counter: the commands sign nothing below it (10.1). */
   floor(): CounterFloor | undefined;
+  /**
+   * Whether every member reads the format a client admission is written in. False while any member has not said so, which
+   * is why the gate is asked before the record is signed and not after (design of #942).
+   */
+  formatReady(): boolean;
 }
 
 export const IDLE_MESH_HOOKS: MeshHooks = {
@@ -35,6 +42,8 @@ export const IDLE_MESH_HOOKS: MeshHooks = {
   confirmations: () => Promise.resolve([]),
   left: () => Promise.resolve(),
   floor: () => undefined,
+  formatReady: () => false,
+  refreshLines: () => Promise.resolve(),
   live: () => ({
     pending: [],
     peers: new Map(),

@@ -5,28 +5,26 @@ name: Capture text
 # and fail on the shapes a leak takes (tests/ci/capture-text.ts).
 #
 # Runs only when an image under docs/ or .github/assets changes, or when this check itself changes, so a normal pull
-# request never pays for it.
+# request never pays for it. Path filters match case-sensitively, so each extension is spelt as a character class per
+# letter and x.Png starts the job as x.png does (tests/ci/capture-text.test.ts evaluates these patterns).
 on:
   pull_request:
     paths:
-      - "docs/**/*.png"
-      - "docs/**/*.PNG"
-      - "docs/**/*.jpg"
-      - "docs/**/*.JPG"
-      - "docs/**/*.jpeg"
-      - "docs/**/*.JPEG"
-      - "docs/**/*.webp"
-      - "docs/**/*.WEBP"
-      - ".github/assets/**/*.png"
-      - ".github/assets/**/*.PNG"
-      - ".github/assets/**/*.jpg"
-      - ".github/assets/**/*.JPG"
-      - ".github/assets/**/*.jpeg"
-      - ".github/assets/**/*.JPEG"
-      - ".github/assets/**/*.webp"
-      - ".github/assets/**/*.WEBP"
+      - "docs/**/*.[pP][nN][gG]"
+      - "docs/**/*.[jJ][pP][gG]"
+      - "docs/**/*.[jJ][pP][eE][gG]"
+      - "docs/**/*.[wW][eE][bB][pP]"
+      - "docs/**/*.[gG][iI][fF]"
+      - "docs/**/*.[sS][vV][gG]"
+      - ".github/assets/**/*.[pP][nN][gG]"
+      - ".github/assets/**/*.[jJ][pP][gG]"
+      - ".github/assets/**/*.[jJ][pP][eE][gG]"
+      - ".github/assets/**/*.[wW][eE][bB][pP]"
+      - ".github/assets/**/*.[gG][iI][fF]"
+      - ".github/assets/**/*.[sS][vV][gG]"
       - "tests/ci/capture-text.ts"
       - "tests/ci/capture-text.test.ts"
+      - "tests/ci/capture-text-fixtures.ts"
       - ".github/workflows/capture-text.yml"
 
 permissions:
@@ -41,11 +39,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
       - name: Install tesseract
@@ -59,7 +57,7 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          mapfile -t changed < <(git diff --name-only --no-renames --diff-filter=AM "$BASE...HEAD" -- ':(icase)*.png' ':(icase)*.jpg' ':(icase)*.jpeg' ':(icase)*.webp')
+          mapfile -t changed < <(git diff --name-only --no-renames --diff-filter=AM "$BASE...HEAD" -- ':(icase)*.png' ':(icase)*.jpg' ':(icase)*.jpeg' ':(icase)*.webp' ':(icase)*.gif' ':(icase)*.svg')
           if [ "${#changed[@]}" -eq 0 ]; then
             echo "no changed images"
             exit 0

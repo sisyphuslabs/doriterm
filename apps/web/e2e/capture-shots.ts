@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { fitAgents } from "./capture-fit-agents.ts";
 import { BAD_LINK, fakeRelay, MESH_LINK, PAIR_CODE, PAIR_LINK } from "./capture-relay.ts";
 import { expect } from "./fixtures.ts";
 import { agentRow, endAgent, startAgent, startShell } from "./agents.ts";
@@ -89,7 +90,7 @@ const meshLoaded = async (page: Page) => {
   resetMeshDocs();
   await page.goto("/");
   await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
-  await section(page, "Your machines");
+  await section(page, "Machines");
   await expect(page.locator('[data-mesh-group="pending"] [data-mesh-answer]').first()).toBeVisible({ timeout: 20_000 });
 };
 
@@ -187,6 +188,7 @@ export const SHOTS: readonly Shot[] = [
       await expect(
         page.locator("[data-terminal]:visible").filter({ has: page.locator(".term-row", { hasText: /\S/ }) }),
       ).toHaveCount(2);
+      await fitAgents(page);
     },
   },
   {
@@ -240,7 +242,7 @@ export const SHOTS: readonly Shot[] = [
     start: "connected",
     run: async (page) => {
       await page.goto("/settings");
-      await expect(page.getByRole("heading", { name: "Connection", level: 2 })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "This device", level: 2 }).first()).toBeVisible();
     },
   },
   ...SETTINGS.map((label): Shot => ({

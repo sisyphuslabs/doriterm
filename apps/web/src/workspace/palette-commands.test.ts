@@ -47,6 +47,12 @@ describe("paletteCommands", () => {
     expect(commands.find((command) => command.group === "Hosts")).toMatchObject({ label: "studio", hint: "relay" });
   });
 
+  test("lists Filter the sidebar with its key, as it lists the other sidebar actions (#848)", () => {
+    const filter = paletteCommands(source([])).find((command) => command.id === "layout.filter:sidebar");
+    expect(filter).toMatchObject({ label: "Filter the sidebar", group: "Actions" });
+    expect(filter?.keys?.toSorted()).toEqual(["⌘", "⌥", "F"].toSorted());
+  });
+
   test("agents that need you come first", () => {
     const commands = paletteCommands(
       source([
@@ -62,7 +68,14 @@ describe("paletteCommands", () => {
 
   test("a phone's palette lists only what the phone shell handles", () => {
     const labels = paletteCommands(source([], "phone")).map((command) => command.label);
-    expect(labels).toEqual(["New tab", "Larger terminal text", "Smaller terminal text", "studio", "Open settings"]);
+    expect(labels).toEqual([
+      "New tab",
+      "Larger terminal text",
+      "Smaller terminal text",
+      "studio",
+      "Keyboard shortcuts",
+      "Open settings",
+    ]);
   });
 
   test("split is listed as unavailable, with the reason, until a terminal whose layout takes edits is in view", () => {

@@ -43,17 +43,21 @@ test("a stopped host leaves no line of its one-line Add a machine service to the
   try {
     // The service answers a request, so it is running before the host stops.
     const feed = await core.subscribe();
-    const answered = Promise.withResolvers<void>();
-    const check = async (): Promise<void> => {
-      const doc = parseMeshOfferDoc((await core.call("doc.get", { name: MESH_OFFER_DOC })).value);
-      if (doc !== undefined && Object.keys(doc).length > 1) answered.resolve();
-    };
+    let changed = Promise.withResolvers<void>();
     feed.onEvent((event) => {
-      if (event.type === "doc" && event.data.name === MESH_OFFER_DOC) void check();
+      if (event.type === "doc" && event.data.name === MESH_OFFER_DOC) changed.resolve();
     });
     const { version } = await core.call("doc.get", { name: MESH_OFFER_DOC });
     await core.call("doc.set", { name: MESH_OFFER_DOC, value: { request: "r" }, version });
-    await answered.promise;
+    // One read at a time, each awaited here: a read still in flight when the connection closes below would be failed
+    // by that close with nobody waiting on it (#1004).
+    const answered = async (): Promise<void> => {
+      await changed.promise;
+      changed = Promise.withResolvers<void>();
+      const doc = parseMeshOfferDoc((await core.call("doc.get", { name: MESH_OFFER_DOC })).value);
+      if (doc === undefined || Object.keys(doc).length <= 1) return answered();
+    };
+    await answered();
     feed.close();
   } finally {
     core.close();

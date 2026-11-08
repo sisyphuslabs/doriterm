@@ -249,7 +249,7 @@
          }
      }
  };
-@@ -523,6 +524,7 @@
+@@ -523,14 +524,13 @@
      graphics_generation: u32,
      graphics_fingerprint: u64,
      graphics_screen: u32,
@@ -257,7 +257,15 @@
      rejected_images: u32,
      evicted_images: u32,
      positions: PositionTracker,
-@@ -566,11 +568,11 @@
+     /// Bytes of a `CSI ? 4 m` query the parser has consumed so far, so a
+     /// query split across writes is still answered.
+     modify_keys_query: u8,
+-    /// History limit in lines; null keeps the byte budget passed to init.
+-    scrollback_lines: ?u32,
+ };
+ 
+ fn stateFromPtr(ptr: usize) *State {
+@@ -571,11 +571,11 @@
      while (images.next()) |entry| {
          const image = entry.value_ptr;
          mix(&fingerprint, image.id);
@@ -271,7 +279,7 @@
      }
  
      mix(&fingerprint, activeStorage(state).placements.count());
-@@ -580,7 +582,7 @@
+@@ -585,7 +585,7 @@
          const placement = entry.value_ptr;
          const pin = switch (placement.location) {
              .pin => |p| p,
@@ -280,7 +288,7 @@
          };
          const point = screen.pages.pointFromPin(.screen, pin.*) orelse {
              mix(&fingerprint, entry.key_ptr.image_id);
-@@ -616,7 +618,7 @@
+@@ -621,7 +621,7 @@
  fn refreshGraphicsGeneration(state: *State) void {
      const screen = @intFromEnum(state.terminal.screens.active_key);
      const storage = activeStorage(state);
@@ -289,7 +297,7 @@
  
      const fingerprint = graphicsFingerprint(state);
      if (fingerprint != state.graphics_fingerprint) {
-@@ -627,7 +629,7 @@
+@@ -632,7 +632,7 @@
      // This field is informational in upstream Ghostty. Clearing it here
      // makes it a useful change hint for this adapter without affecting the
      // terminal's image storage or compositor behavior.
@@ -298,7 +306,7 @@
  }
  
  fn writeU32(buf: [*]u8, offset: usize, value: u32) void {
-@@ -662,7 +664,7 @@
+@@ -667,7 +667,7 @@
      // transmit counter. Use that resident value as the cache-busting version
      // instead of keeping a side map of every ID ever mentioned by a terminal.
      // This means evicted/deleted IDs release all version metadata immediately.
@@ -307,7 +315,13 @@
      base &= 0x7fffffff;
      if (base == 0) base = 1;
      return base | (@as(u32, @intFromEnum(state.terminal.screens.active_key)) << 31);
-@@ -678,7 +680,7 @@
+@@ -678,27 +678,23 @@
+     var count: usize = 0;
+     var it = activeStorage(state).placements.iterator();
+     const screen = state.terminal.screens.active;
+-    const hidden = hiddenRows(state);
+     while (it.next()) |entry| {
+         if (count == capacity) break;
          const placement = entry.value_ptr;
          const pin = switch (placement.location) {
              .pin => |p| p,
@@ -316,7 +330,22 @@
          };
          const point = screen.pages.pointFromPin(.screen, pin.*) orelse continue;
          const image = activeStorage(state).imageById(entry.key_ptr.image_id) orelse continue;
-@@ -719,9 +721,9 @@
+         const coord = point.coord();
+-        // Placements anchored in rows hidden past the line limit are gone
+-        // for the host, like those in discarded rows.
+-        if (coord.y < hidden) continue;
+         const placement_id = entry.key_ptr.placement_id.id;
+         const placement_tag: u32 = @intFromEnum(entry.key_ptr.placement_id.tag);
+         const offset = count * GRAPHICS_PLACEMENT_RECORD_BYTES;
+         writeU32(buf, offset, image.id);
+         writeU32(buf, offset + 4, placement_id);
+         writeU32(buf, offset + 8, imageVersionFor(state, image.id));
+-        writeU32(buf, offset + 12, @intCast(coord.y - hidden));
++        writeU32(buf, offset + 12, coord.y);
+         writeU32(buf, offset + 16, coord.x);
+         writeU32(buf, offset + 20, placement.x_offset);
+         writeU32(buf, offset + 24, placement.y_offset);
+@@ -728,9 +724,9 @@
      colors.foreground.default = themeRgb(values[0]);
      colors.background.default = themeRgb(values[1]);
      colors.cursor.default = themeRgb(values[2]);
@@ -328,7 +357,7 @@
      state.terminal.flags.dirty.palette = true;
  }
  
-@@ -734,10 +736,10 @@
+@@ -743,10 +739,10 @@
      image_storage_limit: u32,
  ) usize {
      const state = allocator.create(State) catch return 0;
@@ -341,16 +370,17 @@
          .kitty_image_storage_limit = image_storage_limit,
          .colors = .{
              .background = .init(.{
-@@ -769,7 +771,7 @@
-     state.rejected_images = 0;
+@@ -779,8 +775,7 @@
      state.evicted_images = 0;
      state.positions = .{};
+     state.modify_keys_query = 0;
+-    state.scrollback_lines = null;
 -    state.stream = .initAlloc(allocator, .init(
 +    state.stream = .init(.{ .allocator = allocator, .handler = .init(
          allocator,
          &state.terminal,
          &state.responses,
-@@ -781,11 +783,11 @@
+@@ -792,11 +787,11 @@
          &state.synchronized_output_generation,
          &state.rejected_images,
          &state.positions,
@@ -364,25 +394,94 @@
      return @intFromPtr(state);
  }
  
-@@ -800,7 +802,7 @@
+@@ -811,72 +806,19 @@
  
  export fn resize(ptr: usize, cols: u16, rows: u16) void {
      const state = stateFromPtr(ptr);
 -    state.terminal.resize(allocator, cols, rows) catch {};
+-    // Rows per page depend on the width, so the byte budget follows it.
+-    if (state.scrollback_lines) |lines| applyScrollbackLines(state, lines);
 +    state.terminal.resize(allocator, .{ .cols = cols, .rows = rows }) catch {};
      refreshGraphicsGeneration(state);
  }
  
-@@ -829,7 +831,7 @@
-                 continue;
+-/// Keep `lines` rows of history. Ghostty budgets scrollback in bytes and
+-/// prunes whole pages, so this converts lines to standard pages at the current
+-/// width; rows retained past the limit are reported as discarded.
++/// Keep `lines` physical rows of history. Ghostty prunes complete historical
++/// pages, so the retained history may sit slightly above the limit, and a page
++/// overlapping the active area is never split for it.
+ export fn set_scrollback_lines(ptr: usize, lines: u32) void {
+     const state = stateFromPtr(ptr);
+-    // Rows hidden under the old limit were already reported as discarded, so
+-    // they go before a higher limit could show them again.
+-    dropHiddenHistory(state);
+-    state.scrollback_lines = lines;
+-    applyScrollbackLines(state, lines);
+-    dropHiddenHistory(state);
+-}
+-
+-/// Erase primary history rows past the line limit and count them as
+-/// discarded, as Ghostty does when it prunes a page.
+-fn dropHiddenHistory(state: *State) void {
+-    const lines = state.scrollback_lines orelse return;
+     const primary = state.terminal.screens.get(.primary) orelse return;
+-    const pages = &primary.pages;
+-    const excess = (pages.total_rows -| state.terminal.rows) -| lines;
+-    if (excess == 0) return;
+-    for (state.positions.entries) |slot| if (slot) |entry| {
+-        if (entry.screen != primary) continue;
+-        const pt = pages.pointFromPin(.history, entry.pin.*) orelse continue;
+-        if (pt.history.y < excess) entry.pin.garbage = true;
+-    };
+-    const storage = &primary.kitty_images;
+-    var it = storage.placements.iterator();
+-    while (it.next()) |entry| {
+-        const pin = switch (entry.value_ptr.location) {
+-            .pin => |p| p,
+-            .virtual => continue,
+-        };
+-        const pt = pages.pointFromPin(.history, pin.*) orelse continue;
+-        if (pt.history.y >= excess) continue;
+-        entry.value_ptr.deinit(primary);
+-        storage.placements.removeByPtr(entry.key_ptr);
+-        storage.dirty = true;
+-    }
+-    primary.eraseRows(
+-        .{ .history = .{} },
+-        .{ .history = .{ .y = @intCast(excess - 1) } },
+-    );
+-    pages.discarded_rows += excess;
++    primary.pages.setMaxLines(lines);
+ }
+ 
+-fn applyScrollbackLines(state: *State, lines: u32) void {
+-    const page = vt.page;
+-    const cap = page.std_capacity.adjust(.{ .cols = state.terminal.cols }) catch return;
+-    // The budget covers every page, the active area's included, and pruning
+-    // drops a whole page before the next one fills: two spare pages keep at
+-    // least `lines` rows of history at all times.
+-    const history = std.math.divCeil(usize, lines, cap.rows) catch return;
+-    const active = std.math.divCeil(usize, state.terminal.rows, cap.rows) catch return;
+-    const pages = if (lines == 0) 0 else history + active + 2;
+-    const bytes = pages *| page.Page.layout(page.std_capacity).total_size;
+-    const primary = state.terminal.screens.get(.primary) orelse return;
+-    primary.pages.explicit_max_size = bytes;
+-}
+-
+ // -- Data input -------------------------------------------------
+ 
+ export fn write(ptr: usize, data_ptr: [*]const u8, data_len: u32) void {
+@@ -906,7 +848,7 @@
              }
          }
+         const from_ground = stream.parser.state == .ground;
 -        stream.next(rem[0]) catch {};
 +        stream.next(rem[0]);
+         trackModifyKeysQuery(state, rem[0], from_ground);
          rem = rem[1..];
      }
-     refreshGraphicsGeneration(state);
-@@ -872,9 +874,9 @@
+@@ -983,9 +925,9 @@
                  stream.csiDispatch(.{
                      .intermediates = &intermediates,
                      .params = params[0..count],
@@ -394,7 +493,7 @@
                  return i + 1;
              },
              else => return 0,
-@@ -891,7 +893,7 @@
+@@ -1002,7 +944,7 @@
          const b = bytes[i];
          if (b < 0x80) {
              if (b < 0x20 or b == 0x7f) break;
@@ -403,7 +502,7 @@
              i += 1;
              continue;
          }
-@@ -899,7 +901,7 @@
+@@ -1010,7 +952,7 @@
          if (i + len > bytes.len) break;
          const cp = std.unicode.utf8Decode(bytes[i .. i + len]) catch break;
          if (cp < 0xa0) break;
@@ -412,7 +511,7 @@
          i += len;
      }
      return i;
-@@ -1033,7 +1035,7 @@
+@@ -1144,7 +1086,7 @@
      out: *[cell_bytes]u8,
  ) void {
      const cp: u32 = switch (raw.content_tag) {
@@ -421,7 +520,7 @@
          else => 0,
      };
  
-@@ -1044,7 +1046,7 @@
+@@ -1155,7 +1097,7 @@
  
      const fg = if (has_fg) resolveRgb(style.fg_color, palette) else color.RGB{};
      const bg = if (has_bg_cell) switch (raw.content_tag) {
@@ -430,7 +529,7 @@
          .bg_color_rgb => blk: {
              const c = raw.content.color_rgb;
              break :blk color.RGB{ .r = c.r, .g = c.g, .b = c.b };
-@@ -1179,7 +1181,7 @@
+@@ -1290,7 +1232,7 @@
      const raw = cells.items(.raw);
      if (col >= raw.len or raw[col].content_tag != .codepoint_grapheme) return 0;
      return encodeGrapheme(
@@ -439,7 +538,7 @@
          cells.items(.grapheme)[col],
          buf_ptr,
          buf_len,
-@@ -1194,7 +1196,7 @@
+@@ -1305,7 +1247,7 @@
  ) u32 {
      const cells = pin.cells(.all);
      if (col >= cells.len or !cells[col].hyperlink) return 0;
@@ -448,7 +547,7 @@
      const link_id = page.lookupHyperlink(&cells[col]) orelse return 0;
      const entry = page.hyperlink_set.get(page.memory, link_id);
      const uri = entry.uri.slice(page.memory);
-@@ -1395,13 +1397,14 @@
+@@ -1511,13 +1453,14 @@
      if (imageVersionFor(state, image_id) != version) return null;
      if (image.format != .rgb and image.format != .rgba) return null;
      if (image.width == 0 or image.height == 0) return null;
@@ -465,7 +564,7 @@
      return image;
  }
  
-@@ -1423,15 +1426,16 @@
+@@ -1539,15 +1482,16 @@
          4,
      ) catch return 0;
      if (buf_ptr == 0 or buf_len < size) return 0;
@@ -486,16 +585,96 @@
              out[dst + 3] = 255;
          },
          else => return 0,
-@@ -1562,7 +1566,7 @@
+@@ -1576,9 +1520,7 @@
+     if (state.terminal.screens.active_key != .primary or
+         (direction != -1 and direction != 1)) return -1;
+     const pages = &state.terminal.screens.active.pages;
+-    const hidden = hiddenRows(state);
+-    const native_row = std.math.add(usize, row, hidden) catch return -1;
+-    const origin = pages.pin(.{ .screen = .{ .y = @intCast(native_row), .x = 0 } }) orelse return -1;
++    const origin = pages.pin(.{ .screen = .{ .y = row, .x = 0 } }) orelse return -1;
+     const start = if (direction < 0)
+         origin.up(1) orelse return -1
+     else next: {
+@@ -1602,9 +1544,7 @@
+         prompt = prior;
+     }
+     const point = pages.pointFromPin(.screen, prompt) orelse return -1;
+-    // A prompt in rows hidden past the line limit is gone for the host.
+-    if (point.screen.y < hidden) return -1;
+-    return @floatFromInt(point.screen.y - hidden);
++    return @floatFromInt(point.screen.y);
+ }
+ 
+ fn promptContinues(pin: vt.Pin) bool {
+@@ -1618,8 +1558,7 @@
+     const tracker = &state.positions;
+     if (tracker.next_id == std.math.maxInt(u32) or col >= state.terminal.cols) return 0;
+     const screen = state.terminal.screens.active;
+-    const native_row = std.math.add(usize, row, hiddenRows(state)) catch return 0;
+-    const pin = screen.pages.pin(.{ .screen = .{ .y = @intCast(native_row), .x = @intCast(col) } }) orelse return 0;
++    const pin = screen.pages.pin(.{ .screen = .{ .y = row, .x = @intCast(col) } }) orelse return 0;
+     for (&tracker.entries) |*slot| {
+         if (slot.* != null) continue;
+         const tracked = screen.pages.trackPin(pin) catch return 0;
+@@ -1637,11 +1576,8 @@
+         if (entry.id != id) continue;
+         if (entry.pin.garbage or entry.screen != state.terminal.screens.active) return -1;
+         const pt = entry.screen.pages.pointFromPin(.screen, entry.pin.*) orelse return -1;
+-        // Rows hidden past the line limit read as discarded.
+-        const hidden = hiddenRows(state);
+-        if (pt.screen.y < hidden) return -1;
+         // Both integers fit exactly in an IEEE double (u32 row and u16 col).
+-        return @floatFromInt(@as(u64, pt.screen.y - hidden) * 65536 + pt.screen.x);
++        return @floatFromInt(@as(u64, pt.screen.y) * 65536 + pt.screen.x);
+     };
+     return -1;
+ }
+@@ -1680,39 +1616,23 @@
+     return rowWrapFlags(pin);
+ }
+ 
+-/// History rows Ghostty retains, which may exceed `scrollback_lines`.
++/// History rows Ghostty retains.
+ fn retainedHistory(state: *State) usize {
+     const screen: *Screen = state.terminal.screens.active;
      var total: usize = 0;
      var node_ = screen.pages.pages.first;
      while (node_) |node| : (node_ = node.next) {
 -        total += node.data.size.rows;
 +        total += node.rows();
      }
-     if (total <= state.terminal.rows) return 0;
-     return @intCast(total - state.terminal.rows);
-@@ -1631,7 +1635,7 @@
+     return total -| state.terminal.rows;
+ }
+ 
+-/// Rows retained past the line limit, hidden from the oldest end.
+-fn hiddenHistory(state: *State, retained: usize) usize {
+-    const lines = state.scrollback_lines orelse return 0;
+-    return retained -| lines;
+-}
+-
+-/// Native screen rows before the first row the host can see. Host rows and
+-/// prompts are counted from there, as the reported scrollback is.
+-fn hiddenRows(state: *State) usize {
+-    return hiddenHistory(state, retainedHistory(state));
+-}
+-
+ export fn get_scrollback_count(ptr: usize) u32 {
+-    const state = stateFromPtr(ptr);
+-    const retained = retainedHistory(state);
+-    return @intCast(retained - hiddenHistory(state, retained));
++    return @intCast(retainedHistory(stateFromPtr(ptr)));
+ }
+ 
+ export fn get_scrollback_discarded_count(ptr: usize) u32 {
+-    const state = stateFromPtr(ptr);
+-    const discarded = state.terminal.screens.active.pages.discardedRows();
+-    return @truncate(discarded +| hiddenHistory(state, retainedHistory(state)));
++    return @truncate(stateFromPtr(ptr).terminal.screens.active.pages.discardedRows());
+ }
+ 
+ /// Write one scrollback row into a JS-provided buffer, using the same cell
+@@ -1773,7 +1693,7 @@
      const cells = pin.cells(.all);
      if (col >= cells.len or cells[col].content_tag != .codepoint_grapheme) return 0;
      return encodeGrapheme(

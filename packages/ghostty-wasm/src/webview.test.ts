@@ -10,6 +10,17 @@ const AWAIT_SCENARIO = `new Promise((resolve) => {
   if ("ghosttyScenario" in globalThis) resolve(globalThis.ghosttyScenario);
   else addEventListener("ghostty-scenario", () => resolve(globalThis.ghosttyScenario), { once: true });
 })`;
+/**
+ * Each phase has its own deadline, inside the test's, so a browser slow to start reads as a launch problem and a page
+ * that never publishes reads as the scenario's (#1002): one run sat out the whole 60 s ceiling with no word of which.
+ */
+const LOAD_MS = 30_000;
+const SCENARIO_MS = 20_000;
+function within<T>(phase: string, ms: number, work: Promise<T>): Promise<T> {
+  const { promise: late, reject } = Promise.withResolvers<never>();
+  const timer = setTimeout(() => reject(new Error(`${phase} did not finish within ${ms / 1000} s`)), ms);
+  return Promise.race([work, late]).finally(() => clearTimeout(timer));
+}
 const PROGRAM_STATUS_REPLY = "\x1b]7501;?:states=idle,working,done,blocked,error:kinds=permission,question,auth\x1b\\";
 
 let server: ReturnType<typeof Bun.serve> | undefined;
@@ -39,12 +50,12 @@ afterAll(async () => {
   await server?.stop(true);
 });
 
-describe("@wterm/ghostty 0.5.8 core on the rebuilt wasm (browser)", () => {
+describe("@wterm/ghostty 0.5.9 core on the rebuilt wasm (browser)", () => {
   test("runs the scenario in a real page against the rebuilt and the stock wasm", async () => {
     if (server === undefined) throw new Error("server did not start");
     await using view = new Bun.WebView({ width: 800, height: 600 });
-    await view.navigate(server.url.href);
-    const result = await view.evaluate(AWAIT_SCENARIO);
+    await within("starting the browser and loading the page", LOAD_MS, view.navigate(server.url.href));
+    const result = await within("the page's scenario", SCENARIO_MS, view.evaluate(AWAIT_SCENARIO));
     console.log(`webview scenario: ${JSON.stringify(result)}`);
 
     expect(result).toMatchObject({

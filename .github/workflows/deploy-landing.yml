@@ -47,6 +47,8 @@ env:
 jobs:
   staging:
     name: Landing staging
+    # Its secrets come from the staging environment: a token scoped to the staging hosts, once the settings hold one (#816).
+    environment: staging
     if: >-
       (github.event_name == 'push') ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev') ||
@@ -56,19 +58,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
       - name: Build apps/landing
         run: bun run --cwd apps/landing build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: landing-dist
           path: apps/landing/dist
           include-hidden-files: true
           if-no-files-found: error
+      # The pull request's own wrangler.jsonc is what deploys: anything but the staging worker and host stops here (#816).
+      - name: Staging deploys to staging only
+        run: bun .github/scripts/deploy-target.ts apps/landing/wrangler.jsonc staging doriterm-landing-staging staging.doriterm.com
       - name: Deploy staging
         working-directory: apps/landing
         env:
@@ -80,22 +85,26 @@ jobs:
 
   production:
     name: Landing production
+    # Its secrets come from the production environment, which only dev and an approval reach once the settings say so.
+    environment: production
     needs: staging
     if: github.ref == 'refs/heads/dev' && github.event_name == 'workflow_dispatch' && inputs.production
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - name: The app the page links to answers
         run: curl -fsS --max-time 15 -o /dev/null https://app.doriterm.com/
       # The bytes staging served and passed, not a second build.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: landing-dist
           path: apps/landing/dist
+      - name: Production deploys to production only
+        run: bun .github/scripts/deploy-target.ts apps/landing/wrangler.jsonc "" doriterm-landing doriterm.com www.doriterm.com
       - name: Deploy production
         working-directory: apps/landing
         env:

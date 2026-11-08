@@ -1,12 +1,5 @@
 import type { HcConnection } from "@doriface/client";
-import {
-  HcRpcError,
-  isJsonObject,
-  type JsonValue,
-  MESH_STATUS_DOC,
-  type MeshStatus,
-  parseMeshStatus,
-} from "@doriface/protocol";
+import { HcRpcError, isJsonObject, type JsonValue, MESH_STATUS_DOC, type MeshStatus } from "@doriface/protocol";
 
 /** herdr's documents: `doc.get` and a `doc.set` that refuses with `conflict` when the version moved. */
 export interface DocStore {
@@ -43,8 +36,12 @@ export function publishMeshStatus(
   return attemptPublish(store, current, self, 1);
 }
 
-/** This host's own document left over from a mesh it has left: it says `self` is us, and we are in no mesh. */
-const ours = (value: JsonValue, self: string): boolean => parseMeshStatus(value)?.self === self;
+/**
+ * This host's own document left over from a mesh it has left: its `self` field is us, and we are in no mesh. Only that
+ * field is read, not the whole document: a document this host wrote in a shape the current parser refuses (an older
+ * version, or one no longer consistent) is still ours to clear (#809).
+ */
+const ours = (value: JsonValue, self: string): boolean => isJsonObject(value) && value["self"] === self;
 
 async function attemptPublish(
   store: DocStore,
@@ -55,9 +52,7 @@ async function attemptPublish(
   const doc = await store.get(MESH_STATUS_DOC);
   const status = current();
   if (status === undefined && !ours(doc.value, self)) return "unchanged";
-  if (status === undefined ? doc.value === null : isJsonObject(doc.value) && Bun.deepEquals(doc.value, status)) {
-    return "unchanged";
-  }
+  if (status !== undefined && isJsonObject(doc.value) && Bun.deepEquals(doc.value, status)) return "unchanged";
   try {
     await store.set(MESH_STATUS_DOC, status ?? null, doc.version);
     return status === undefined ? "cleared" : "written";

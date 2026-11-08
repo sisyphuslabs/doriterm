@@ -8,6 +8,8 @@ import { NoUplinkError } from "./no-uplink.ts";
 /** The bridge's refusal when no dial token freed in time; the reconciler re-adds on the budget's due, not a backoff. */
 export const BUDGET_REFUSAL = "waiting for the dial budget";
 
+const REVOKED = "revoked from the mesh";
+
 export type LineGrant =
   | { readonly ok: true; readonly link: ByteLink }
   | { readonly ok: false; readonly code: number; readonly reason: string };
@@ -96,7 +98,7 @@ export class LineGrants {
       // A revocation that landed while this dial was in flight already ran closeRevoked, which could not see this line.
       const now = this.#member(hostId);
       if (!("signPub" in now) || now.signPub !== member.signPub) {
-        link.close(4401, this.#closeReason(this.#options.view(), member.signPub));
+        link.close(4401, REVOKED);
         return "signPub" in now ? { ok: false, code: 4401, reason: "not a member of this mesh" } : now;
       }
       this.#register(member.signPub, link);
@@ -151,10 +153,7 @@ export class LineGrants {
   #member(hostId: string): MemberEntry | Refusal {
     const view = this.#options.view();
     const member = view.members.find((entry) => entry.hostId === hostId);
-    if (member !== undefined) return member;
-    const capped = view.overCap.some((entry) => entry.hostId === hostId);
-    const reason = capped ? `host ${hostId} is past the mesh's 12-member cap` : "not a member of this mesh";
-    return { ok: false, code: 4401, reason };
+    return member ?? { ok: false, code: 4401, reason: "not a member of this mesh" };
   }
 
   #refused(member: MemberEntry, grant: Exclude<Grant, { readonly ok: true }>): Refusal {
@@ -181,15 +180,8 @@ export class LineGrants {
     const current = new Set(view.members.map((member) => member.signPub));
     for (const [key, links] of this.#open) {
       if (current.has(key)) continue;
-      const reason = this.#closeReason(view, key);
-      for (const link of links) link.close(4401, reason);
+      for (const link of links) link.close(4401, REVOKED);
     }
-  }
-
-  #closeReason(view: MeshView, key: string): string {
-    return view.overCap.some((member) => member.signPub === key)
-      ? "past the mesh's 12-member cap"
-      : "revoked from the mesh";
   }
 
   #register(key: string, link: ByteLink): void {

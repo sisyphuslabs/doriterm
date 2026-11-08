@@ -163,16 +163,7 @@ export const SCREENS: readonly Screen[] = [
     },
   },
   ...(
-    [
-      "This device",
-      "Your machines",
-      "Pair a phone or computer",
-      "Advanced connection",
-      "Appearance",
-      "Terminal",
-      "Keybindings",
-      "Voice input",
-    ] as const
+    ["This device", "Machines", "Connect a machine", "Appearance", "Terminal", "Keybindings", "Voice input"] as const
   ).map((label): Screen => ({
     name: `settings-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
     start: "layout",

@@ -1,7 +1,7 @@
 import { HOST_ID_PATTERN } from "@doriface/relay-client";
 import { MAX_REVOKE_SUBJECTS, presentAt, type Signed, type View, ViewCache } from "@doriface/mesh";
 import type { MemberRef } from "./command-replies.ts";
-import { admittedKeys, overCapNames, subtreeOf } from "./lineage.ts";
+import { subtreeOf } from "./lineage.ts";
 import { hostIdOfKey } from "./status.ts";
 import { undecidableFrom } from "./witness.ts";
 
@@ -23,26 +23,21 @@ export interface RevokePlan {
   readonly needsYes: boolean;
 }
 
-export const memberRef = (view: View, key: string, cardNames?: ReadonlyMap<string, string>): MemberRef => ({
+export const memberRef = (view: View, key: string): MemberRef => ({
   hostId: hostIdOfKey(key),
-  name: view.name.get(key) ?? cardNames?.get(key) ?? hostIdOfKey(key),
+  name: view.name.get(key) ?? hostIdOfKey(key),
 });
 
 /**
- * The admitted key a member reference names in `view`: an exact hostId first, then a member's mesh name, then an
- * over-cap key's card name (`cardNames`; over-cap keys have no mesh name), so a member renamed to another member's
- * hostId cannot redirect a revoke of that host.
+ * The member a member reference names in `view`: an exact hostId first, so a member renamed to another member's hostId
+ * cannot redirect a revoke of that host; then a mesh name, unless the reference is shaped like a hostId, so a card name
+ * that copies a revoked host's hostId cannot either.
  */
-export const findMember = (
-  view: View,
-  ref: string,
-  cardNames: ReadonlyMap<string, string> = new Map(),
-): string | undefined =>
-  admittedKeys(view).find((key) => hostIdOfKey(key) === ref) ??
-  admittedKeys(view).find((key) => view.name.get(key) === ref) ??
-  (HOST_ID_PATTERN.test(ref) ? undefined : [...view.overCap].find((key) => cardNames.get(key) === ref));
+export const findMember = (view: View, ref: string): string | undefined =>
+  [...view.members].find((key) => hostIdOfKey(key) === ref) ??
+  (HOST_ID_PATTERN.test(ref) ? undefined : [...view.members].find((key) => view.name.get(key) === ref));
 
-/** Every listed key with its hostId: an over-cap key's card name is its owner's choice and may copy another's. */
+/** Every listed key with its hostId. */
 const names = (refs: readonly MemberRef[]): string =>
   refs.map((ref) => (ref.name === ref.hostId ? ref.hostId : `${ref.name} (${ref.hostId})`)).join(", ");
 
@@ -79,21 +74,20 @@ export function planRevoke(
   ref: string,
   compromised: boolean,
   cache: ViewCache = new ViewCache(),
+  /** Who may answer an undecidable revoke: machines only, since a client never votes (design of #942, section 8). */
+  machines?: ReadonlySet<string> | undefined,
 ): RevokePlan {
-  const cardNames = overCapNames(records, view);
-  const key = findMember(view, ref, cardNames);
+  const key = findMember(view, ref);
   if (key === undefined)
-    throw new Error(
-      `no member "${ref}" in this host's view of the mesh (a member by mesh name or hostId, an over-cap key by card name or hostId)`,
-    );
+    throw new Error(`no member "${ref}" in this host's view of the mesh (a member by mesh name or hostId)`);
   if (key === self) throw new Error("that is this host: to take it out of the mesh, run doriface-host mesh leave");
   const subtree = subtreeOf(view, key);
   const keys = compromised ? [key, ...subtree] : [key];
   if (keys.length > MAX_REVOKE_SUBJECTS) {
     throw new Error(`--compromised would name ${keys.length} keys; one revoke names at most ${MAX_REVOKE_SUBJECTS}`);
   }
-  const toRef = (k: string): MemberRef => memberRef(view, k, cardNames);
-  const undecidable = [...undecidableFrom(records, view, self, keys, cache)].map(([subject, askFrom]) => ({
+  const toRef = (k: string): MemberRef => memberRef(view, k);
+  const undecidable = [...undecidableFrom(records, view, self, keys, cache, machines)].map(([subject, askFrom]) => ({
     subject: toRef(subject),
     present: presentAt(records, subject, cache).map(toRef),
     askFrom: askFrom.map(toRef),

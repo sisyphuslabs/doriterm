@@ -38,6 +38,7 @@ export function peer(name: string): Peer {
     hostId: m.identity.hostId,
     noisePub: noiseOf(m),
     devicePub: deviceOf(m),
+    kind: "machine",
     name,
     hcId: m.hcId,
   };

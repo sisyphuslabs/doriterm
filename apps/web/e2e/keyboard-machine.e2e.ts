@@ -16,7 +16,9 @@ test("a machine with no terminals keeps New space on it reachable from the keybo
   await expect(newOn(page)).toBeFocused();
   await page.keyboard.press("Enter");
   const focused = page.locator('[data-focused="true"] [data-terminal]');
-  await expect(focused).toHaveAttribute("data-terminal", new RegExp(`^${MACHINE_NAME}/t\\d+$`), { timeout: 15_000 });
+  await expect(focused).toHaveAttribute("data-terminal", new RegExp(`^${MACHINE_NAME}/t[0-9a-z]+$`), {
+    timeout: 15_000,
+  });
   await expect(focused).toContainText("$", { timeout: 15_000 });
   await focused.click();
   await page.keyboard.type("exit\r");

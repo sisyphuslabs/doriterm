@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { startFakeRelayHost } from "./relay-route.ts";
+import { type DeadlineClock, startFakeRelayHost } from "./relay-route.ts";
 
 const here = import.meta.dirname;
 
@@ -44,12 +44,43 @@ test("a start that dies fails at once with its exit, not with a timeout (#502)",
   expect(Date.now() - started).toBeLessThan(8_000);
 }, 10_000);
 
+/** Virtual time for the fake host's deadlines: one fires only when the test moves time past it. */
+class TestClock implements DeadlineClock {
+  #now = 0;
+  #timers = new Map<symbol, { readonly at: number; readonly run: () => void }>();
+
+  after(ms: number, run: () => void): () => void {
+    const id = Symbol("deadline");
+    this.#timers.set(id, { at: this.#now + ms, run });
+    return () => this.#timers.delete(id);
+  }
+
+  advance(ms: number): void {
+    this.#now += ms;
+    for (const [id, timer] of [...this.#timers].toSorted(([, x], [, y]) => x.at - y.at)) {
+      if (timer.at > this.#now || !this.#timers.delete(id)) continue;
+      timer.run();
+    }
+  }
+
+  /** When each armed deadline falls due. */
+  due(): readonly number[] {
+    return [...this.#timers.values()].map((timer) => timer.at);
+  }
+}
+
 test("a pairing link asked for long after the start gets its own deadline, not the start's (#502)", async () => {
-  const host = await startFakeRelayHost({ machine: true, stageDeadlineMs: 1_500 });
+  // The test's clock runs the deadlines, so how long the host takes to start or to answer cannot spend them (#780).
+  const clock = new TestClock();
+  const host = await startFakeRelayHost({ machine: true, stageDeadlineMs: 1_500, clock });
   try {
+    expect(clock.due()).toEqual([]);
     // The time between the start and this ask is the condition: a window left over from the startup would be spent.
-    await Bun.sleep(1_800);
-    expect(await host.pairingLink()).toContain("/pair#");
+    clock.advance(1_800);
+    const link = host.pairingLink();
+    expect(clock.due()).toEqual([3_300]);
+    expect(await link).toContain("/pair#");
+    expect(clock.due()).toEqual([]);
   } finally {
     await host.stop();
   }

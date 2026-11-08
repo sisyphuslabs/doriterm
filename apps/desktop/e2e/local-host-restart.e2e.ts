@@ -93,11 +93,13 @@ test("when the app's own host dies, a new one starts and the terminal answers ag
   const [host] = localHostPids(main);
   if (host === undefined) throw new Error("the app runs no doriface-host");
   process.kill(host, "SIGKILL");
-  await expect(page.getByText(/Reconnecting/)).toBeVisible({ timeout: 15_000 });
+  // The status bar's connection notice; a New terminal the drop cut off says Reconnecting too, in a toast (#1010).
+  const reconnecting = page.getByRole("status").filter({ hasText: /Reconnecting/ });
+  await expect(reconnecting).toBeVisible({ timeout: 15_000 });
 
   // A new host, not the dead one, and the page connected to it again.
   await expect.poll(() => localHostPids(main).filter((pid) => pid !== host).length, { timeout: 30_000 }).toBe(1);
-  await expect(page.getByText(/Reconnecting/)).toHaveCount(0, { timeout: 30_000 });
+  await expect(reconnecting).toHaveCount(0, { timeout: 30_000 });
   await terminal.getByRole("textbox").focus();
   await page.keyboard.type("echo host-came-back");
   await page.keyboard.press("Enter");

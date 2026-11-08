@@ -104,14 +104,46 @@ it reports.
 
 ## Changelog
 
-A pull request that changes what users get adds one line under `## Unreleased` in `CHANGELOG.md`, in the subsection it
-belongs to: what changed for them in plain words, not how it was built, with the pull request number. The `Changelog`
-check fails a pull request that changes a file under `apps/` or `packages/` (tests, e2e specs, fixtures, the showcase
-and Markdown aside) and adds no such line. When nothing changes for users, a refactor or a build tweak, add the
-`no-changelog` label; the check runs again on its own.
+A pull request that changes what users get adds one file of its own, `changes/unreleased/<pr-number>.md`, and leaves
+`CHANGELOG.md` alone. Before the pull request has a number, name the file for the branch in lowercase (`fix-paste.md`)
+and rename it once it does. The file holds the section the change belongs to and one line saying what changed for users,
+in plain words, not how it was built, with the pull request number:
 
-A release moves the Unreleased lines into a `## vX.Y.Z - YYYY-MM-DD` section. The release workflow refuses a tag whose
-section is missing or has no lines, before it builds anything, and publishes the section as the release notes.
+```md
+### Terminal
+
+- A file pasted while a Korean syllable is still composing lands after that syllable. (#827)
+```
+
+A fragment may carry several `###` sections with several `- ` lines each; a long line can go on over lines indented two
+spaces. The sections are the ones `CHANGELOG.md` uses, listed in `CANONICAL_HEADINGS` in
+`.github/scripts/changelog-fragments.ts`: another spelling of one (`Mesh` for `Machine mesh`, `The phone` for
+`Phone`) is written under the listed name, and a name outside the list is kept as written. `changes/README.md` has the
+format.
+
+Every pull request owns its own file, so a merge into `dev` never conflicts with the others, as lines under
+`## Unreleased` did. A pull request that adds such a line still passes while open pull requests convert, the next time
+they are touched.
+
+The `Changelog` check fails a pull request that changes a file under `apps/` or `packages/` (tests, e2e specs,
+fixtures, the showcase and Markdown aside) and adds no fragment, and fails any fragment the release could not place.
+When nothing changes for users, a refactor or a build tweak, add the `no-changelog` label; the check runs again on its
+own.
+
+### Releasing
+
+A release pull request sets the version in `apps/desktop/package.json` (and `bun.lock`), then runs
+
+```sh
+bun .github/scripts/changelog-assemble.ts
+```
+
+It writes the `## Unreleased` lines and every fragment into a `## vX.Y.Z - YYYY-MM-DD` section for that version (today
+in UTC; `--date` sets another day) below an empty `## Unreleased`, one `###` section per heading in the listed order,
+and deletes the fragments. Running it again changes nothing. Reword the lines in the section where needed and commit the
+result. The `Changelog` check refuses a new release section that leaves fragments or Unreleased lines behind. The
+release workflow refuses a tag whose section is missing or has no lines, before it builds anything, and publishes the
+section as the release notes; a prerelease with no section of its own takes the Unreleased lines and the fragments.
 
 ## Commits
 

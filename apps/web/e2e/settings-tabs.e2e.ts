@@ -116,7 +116,7 @@ test("a keyboard-focused tab's ring is drawn whole, inside the strip", async ({ 
   await tab.goto("/settings");
   await tab.getByRole("tab", { name: "This device" }).focus();
   await tab.keyboard.press("ArrowRight");
-  const focused = tab.getByRole("tab", { name: "Your machines" });
+  const focused = tab.getByRole("tab", { name: "Machines" });
   await expect(focused).toBeFocused();
   const ring = await focused.evaluate((element) => {
     const style = getComputedStyle(element);

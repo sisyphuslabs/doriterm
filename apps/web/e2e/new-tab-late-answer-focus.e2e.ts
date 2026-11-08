@@ -21,6 +21,9 @@ test("a run that answers after a menu was opened leaves the keyboard in the menu
   // The core started it and the feed lists it; the page has not heard the run's answer.
   await count.grown();
   expect(answers()).toBe(answersBefore);
+  // Choosing Terminal starts closing New tab's menu, and the feed can list the terminal before that close ends. A menu
+  // opened inside the close is #1014's case (the next test); this one opens once New tab's menu is gone (#1349).
+  await expect(page.getByRole("menuitem", { name: /^Terminal/ })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Session actions" }).click();
   const rename = page.getByRole("menuitem", { name: "Rename…" });
@@ -33,7 +36,9 @@ test("a run that answers after a menu was opened leaves the keyboard in the menu
   await expect.poll(writes, { timeout: 15_000 }).toBeGreaterThan(writesBefore);
   const address = await page.evaluate(() => {
     const ids = [...document.querySelectorAll("[data-terminal]")].map((el) => el.getAttribute("data-terminal") ?? "");
-    return ids.toSorted((a, b) => Number(b.slice(1)) - Number(a.slice(1)))[0] ?? "";
+    // hc numbers terminals t1 ... t19, t1b, t1c ... (digits, then letters in order): a longer id is newer, and ids of
+    // one length order as text. Number("1b") is NaN, so a numeric sort picks any of them once a core passes t19.
+    return ids.toSorted((a, b) => b.length - a.length || (a < b ? 1 : a > b ? -1 : 0))[0] ?? "";
   });
   await expect(page.locator(`[data-terminal="${address}"][data-ready="true"]`).first()).toContainText("$", {
     timeout: 15_000,
@@ -42,4 +47,30 @@ test("a run that answers after a menu was opened leaves the keyboard in the menu
 
   await expect(rename).toBeVisible();
   expect(await page.evaluate(() => document.activeElement?.closest("[data-terminal]") === null)).toBe(true);
+});
+
+// New tab's menu hands the keyboard back once its closing animation ends; a menu opened before then owns it, and the
+// closing one must not take it back (#1014). The animation is slowed so the second menu reliably opens inside it.
+test("a menu opened while New tab's menu is still closing keeps the keyboard once that menu is gone (#1014)", async ({
+  page,
+}) => {
+  const link = await routeHcSocket(page);
+  await page.goto("/");
+  await openNewTerminal(page);
+  await page.addStyleTag({
+    content: "[data-ending-style] { transition-duration: 1500ms !important; animation-duration: 1500ms !important; }",
+  });
+  // The run's answer is held, so the keyboard stays in the box that holds what is typed for the new terminal.
+  const releaseAnswer = link.holdFromHost(RUN_ANSWER);
+  await pressNewTab(page.getByRole("button", { name: "New tab" }).first());
+  const closing = page.getByRole("menuitem", { name: /^Terminal/ });
+  await page.getByRole("button", { name: "Session actions" }).click();
+  const rename = page.getByRole("menuitem", { name: "Rename…" });
+  await expect(rename).toBeVisible();
+  await expect(closing).toHaveCount(0, { timeout: 5_000 });
+  await expect(rename).toBeVisible();
+  expect(await page.evaluate(() => document.activeElement?.closest('[role="menu"]')?.textContent ?? "")).toContain(
+    "Rename…",
+  );
+  releaseAnswer();
 });

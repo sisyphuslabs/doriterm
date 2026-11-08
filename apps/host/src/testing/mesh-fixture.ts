@@ -51,7 +51,6 @@ export function meshFixture(now: Date): MeshFixture {
   const sources: MeshSources = {
     view: {
       members: new Set(members.map(key)),
-      overCap: new Set(),
       revoked: new Set([key("kiosk"), key("spare")]),
       noise: new Map(members.map((name) => [key(name), noise(name)])),
       admitter: new Map([
@@ -85,6 +84,7 @@ export function meshFixture(now: Date): MeshFixture {
         hostId: ids["ci-runner"].hostId,
         noisePub: noise("ci-runner"),
         expiresAt: new Date(now.getTime() + 8 * MINUTE),
+        kind: "machine",
       },
     ],
     peers: new Map<string, PeerFacts>([

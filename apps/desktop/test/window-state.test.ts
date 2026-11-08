@@ -1,13 +1,139 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, jest, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parsePlacement, restorePlacement } from "../src/config/window-state.ts";
+import { parsePlacement, restorePlacement, type Area } from "../src/config/window-state.ts";
 import { DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE } from "../src/config/window.ts";
-import { savedPlacement } from "../src/main/window-state.ts";
+import { PLACEMENT_SETTLE_MS, rememberPlacement, savedPlacement } from "../src/main/window-state.ts";
 
 const laptop = { x: 0, y: 25, width: 1470, height: 931 };
 const external = { x: 1470, y: 0, width: 2560, height: 1415 };
+
+/** A window's placement events, and the bounds it currently has: what the saver reads between events. */
+function placedWindow(bounds: Area) {
+  const listeners = new Map<string, () => void>();
+  let placed = bounds;
+  let destroyed = false;
+  const window = {
+    onMove: (listener: () => void) => void listeners.set("move", listener),
+    onResize: (listener: () => void) => void listeners.set("resize", listener),
+    onClose: (listener: () => void) => void listeners.set("close", listener),
+    isDestroyed: () => destroyed,
+    normalBounds: () => {
+      if (destroyed) throw new Error("Object has been destroyed");
+      return placed;
+    },
+  };
+  return {
+    window,
+    fire: (event: "move" | "resize" | "close"): void => listeners.get(event)?.(),
+    moveTo: (next: Area): void => void (placed = next),
+    destroy: (): void => void (destroyed = true),
+  };
+}
+
+/** A placement file of this test's own, removed however the test ends. */
+function placementFile(): { readonly file: string; readonly done: () => void } {
+  const dir = mkdtempSync(join(tmpdir(), "dd-placement-"));
+  return { file: join(dir, "placement.json"), done: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+const resting = { x: 40, y: 60, width: 1000, height: 700 };
+
+describe("window placement while the window moves", () => {
+  afterEach(() => jest.useRealTimers());
+
+  test("a move saves where the window came to rest, so a crash still reopens it there", () => {
+    jest.useFakeTimers();
+    const { file, done } = placementFile();
+    try {
+      const { window, fire, moveTo } = placedWindow({ x: 10, y: 20, width: 900, height: 600 });
+      rememberPlacement(window, file);
+      moveTo(resting);
+      fire("move");
+      expect(savedPlacement(file), "nothing is written before the window rests").toBeUndefined();
+      jest.advanceTimersByTime(PLACEMENT_SETTLE_MS);
+      expect(savedPlacement(file)).toEqual(resting);
+    } finally {
+      done();
+    }
+  });
+
+  test("a drag writes once, at rest: nothing while it moves, then the bounds it ended on", () => {
+    jest.useFakeTimers();
+    const { file, done } = placementFile();
+    try {
+      const { window, fire, moveTo } = placedWindow({ x: 0, y: 0, width: 900, height: 600 });
+      rememberPlacement(window, file);
+      for (const x of [20, 60, 120]) {
+        moveTo({ x, y: 0, width: 900, height: 600 });
+        fire("move");
+        jest.advanceTimersByTime(Math.floor(PLACEMENT_SETTLE_MS / 3));
+        expect(savedPlacement(file), "a drag still moving is not written").toBeUndefined();
+      }
+      moveTo({ x: 120, y: 0, width: 1400, height: 900 });
+      fire("resize");
+      jest.advanceTimersByTime(PLACEMENT_SETTLE_MS);
+      expect(savedPlacement(file)).toEqual({ x: 120, y: 0, width: 1400, height: 900 });
+    } finally {
+      done();
+    }
+  });
+
+  test("closing writes a placement the settle had not written yet, and leaves it alone after", () => {
+    jest.useFakeTimers();
+    const { file, done } = placementFile();
+    try {
+      const { window, fire, moveTo } = placedWindow({ x: 0, y: 0, width: 900, height: 600 });
+      rememberPlacement(window, file);
+      moveTo(resting);
+      fire("move");
+      fire("close");
+      expect(savedPlacement(file), "closing does not wait for the settle").toEqual(resting);
+      moveTo({ x: 5, y: 5, width: 500, height: 400 });
+      jest.advanceTimersByTime(PLACEMENT_SETTLE_MS * 2);
+      expect(savedPlacement(file), "no save runs after the window closed").toEqual(resting);
+    } finally {
+      done();
+    }
+  });
+
+  test("a move or resize during teardown schedules nothing, so no save reads the destroyed window (#818)", () => {
+    jest.useFakeTimers();
+    const { file, done } = placementFile();
+    try {
+      const { window, fire, moveTo, destroy } = placedWindow(resting);
+      rememberPlacement(window, file);
+      fire("close");
+      destroy();
+      moveTo({ x: 5, y: 5, width: 500, height: 400 });
+      fire("move");
+      fire("resize");
+      expect(() => jest.advanceTimersByTime(PLACEMENT_SETTLE_MS * 2)).not.toThrow();
+      expect(savedPlacement(file)).toEqual(resting);
+    } finally {
+      done();
+    }
+  });
+
+  test("a close that was cancelled leaves the window open, and its later moves are still saved (#1113)", () => {
+    jest.useFakeTimers();
+    const { file, done } = placementFile();
+    try {
+      const { window, fire, moveTo } = placedWindow(resting);
+      rememberPlacement(window, file);
+      // A `close` listener (or the page's beforeunload) called preventDefault: Electron sent `close`, the window stayed.
+      fire("close");
+      const later = { x: 300, y: 200, width: 1100, height: 800 };
+      moveTo(later);
+      fire("move");
+      jest.advanceTimersByTime(PLACEMENT_SETTLE_MS);
+      expect(savedPlacement(file)).toEqual(later);
+    } finally {
+      done();
+    }
+  });
+});
 
 describe("window placement across launches", () => {
   test("a saved placement on a display comes back as it was", () => {

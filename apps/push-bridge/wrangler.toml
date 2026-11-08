@@ -8,3 +8,14 @@ routes = [{ pattern = "push-doriface.omo.dev", custom_domain = true }]
 APNS_TEAM_ID = ""
 APNS_KEY_ID = ""
 APNS_TOPIC = "dev.omo.doriface"
+
+# Per-device-token push limit (#830): 120 pushes a minute per token, counted per Cloudflare location. A host sends one
+# terminal at most one notice of a kind per 30 s (apps/host/src/push/trigger.ts REPEAT_MS), so a token stays under this
+# unless dozens of agents change state in the same minute. namespace_id is an account-unique integer.
+[[ratelimits]]
+name = "TOKEN_LIMIT"
+namespace_id = "830"
+
+[ratelimits.simple]
+limit = 120
+period = 60

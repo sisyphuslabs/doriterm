@@ -105,14 +105,18 @@ export const replacedMachineText = (replaced: MeshReplacedMachine): string =>
 /** Times are ISO 8601 and display only. Every key is a hostId. */
 export type MeshMemberStatus = {
   readonly hostId: string;
-  /** The mesh name in the view; null only over the cap, since the view names its first 12 members only. */
+  /** The mesh name in the view; null only from an older host's over-cap member (see `overCap`). */
   readonly name: string | null;
-  /** The name this host's core gives the machine, which differs after a name fallback; null only over the cap. */
+  /** The name this host's core gives the machine, which differs after a name fallback; null as for `name`. */
   readonly localName: string | null;
-  /** The member's Noise key fingerprint, as `fingerprint` prints it; null only over the cap, as for `name`. */
+  /** The member's Noise key fingerprint, as `fingerprint` prints it; null as for `name`. */
   readonly fingerprint: string | null;
-  /** The member that admitted it, over the cap too; null for the founder, whose governing admission is its own found record. */
+  /** The member that admitted it; null for the founder, whose governing admission is its own found record. */
   readonly admittedBy: string | null;
+  /**
+   * A mesh has no member cap (#806), so a host writes false. A host that predates that wrote true for an admitted key
+   * past its 12th member (not dialed, cannot sign), and readers still parse it.
+   */
   readonly overCap: boolean;
   readonly line: MeshLineState;
   /** herdr's reason, for the states in MESH_LINE_STATES_WITH_REASON only. */
@@ -176,6 +180,8 @@ export type MeshPendingJoin = {
   readonly hostId: string;
   readonly fingerprint: string;
   readonly expiresAt: string;
+  /** What it joins as: approving a client grants control of every machine it can reach. */
+  readonly kind: "machine" | "client";
 };
 
 export type MeshBudget = {
@@ -194,7 +200,7 @@ export type MeshStatus = {
   readonly generation: number;
   readonly sync: "ok" | "stuck";
   readonly stuck: readonly MeshStuckReason[];
-  /** Members in member order, over-cap ones last. */
+  /** Members in member order (an older host lists its over-cap keys last). */
   readonly members: readonly MeshMemberStatus[];
   readonly revoked: readonly MeshRevokedStatus[];
   readonly removed: readonly MeshRemovedStatus[];

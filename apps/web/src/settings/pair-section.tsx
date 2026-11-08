@@ -4,7 +4,7 @@ import { PairDeviceOffer } from "./pair-device-offer.tsx";
 
 /**
  * How another computer or a phone joins this one. Both directions are commands on the host, so this screen names them
- * and says where the join waits; the host's own view of a pending join is approved under Your machines. On the desktop
+ * and says where the join waits; the host's own view of a pending join is approved under Machines. On the desktop
  * app the same screen also offers this computer without a command line, since that is the answer a reader who opened it
  * is looking for (review of #772).
  */

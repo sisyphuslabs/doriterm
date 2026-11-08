@@ -1,9 +1,11 @@
 name: Changelog
 
-# A pull request that changes what users get (apps/ or packages/, outside tests, fixtures and docs) adds a line under
-# "## Unreleased" in CHANGELOG.md, or carries the no-changelog label when nothing changes for users. The release
-# workflow refuses a tag whose CHANGELOG section is missing or empty (release-notes.ts --check), so a line missed here
-# is a line missing from a release. Adding or removing the label runs this check again, and only this one.
+# A pull request that changes what users get (apps/ or packages/, outside tests, fixtures and docs) adds a changelog
+# fragment, changes/unreleased/<pr-number>.md (a line under "## Unreleased" in CHANGELOG.md is still accepted while open
+# pull requests convert), or carries the no-changelog label when nothing changes for users. A release pull request
+# writes the fragments into its version section with changelog-assemble.ts. The release workflow refuses a tag whose
+# CHANGELOG section is missing or empty (release-notes.ts --check), so a line missed here is a line missing from a
+# release. Adding or removing the label runs this check again, and only this one.
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
@@ -21,14 +23,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
-      - name: A user-facing change has an Unreleased line
+      - name: A user-facing change has a changelog fragment
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}

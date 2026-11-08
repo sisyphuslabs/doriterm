@@ -71,6 +71,7 @@ describe("MEDIUM-1: writing the counter never re-tags a stale index as current",
       devicePub: undefined,
       name: "ghost",
       hcId: ghost.hcId,
+      kind: "machine" as const,
     };
     const stale = { ...file.index, generation: file.generation - 1, members: [...file.index.members, ghostEntry] };
     writePrivateJson(join(dir, "mesh.json"), meshFileJson({ ...file, index: stale }));

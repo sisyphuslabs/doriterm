@@ -16,12 +16,18 @@ afterEach(() => {
 });
 
 /** A copy of release-notes.ts next to a CHANGELOG.md of the test's own, laid out as in the repository. */
-function checkout(changelog: string): string {
+function checkout(changelog: string, fragments: Record<string, string> = {}): string {
   const dir = mkdtempSync(join(tmpdir(), "release-notes-"));
   dirs.push(dir);
   mkdirSync(join(dir, ".github", "scripts"), { recursive: true });
   copyFileSync(SCRIPT, join(dir, ".github", "scripts", "release-notes.ts"));
+  copyFileSync(
+    join(ROOT, ".github", "scripts", "changelog-fragments.ts"),
+    join(dir, ".github", "scripts", "changelog-fragments.ts"),
+  );
   writeFileSync(join(dir, "CHANGELOG.md"), changelog);
+  if (Object.keys(fragments).length > 0) mkdirSync(join(dir, "changes", "unreleased"), { recursive: true });
+  for (const [name, text] of Object.entries(fragments)) writeFileSync(join(dir, "changes", "unreleased", name), text);
   mkdirSync(join(dir, "assets"));
   writeFileSync(join(dir, "assets", "Doriterm-1.2.0-x86_64.AppImage"), "");
   return dir;
@@ -73,6 +79,24 @@ test("the notes carry the version's own CHANGELOG section", async () => {
   expect(out).toContain("Doriterm-1.2.0-x86_64.AppImage");
 });
 
+test("the downloads list the zip and the installer but not their .blockmap or the update feed", async () => {
+  const dir = checkout(CHANGELOG);
+  for (const name of [
+    "Doriterm-1.2.0-arm64-mac.zip",
+    "Doriterm-1.2.0-arm64-mac.zip.blockmap",
+    "Doriterm-1.2.0-x64-setup.exe",
+    "Doriterm-1.2.0-x64-setup.exe.blockmap",
+    "latest-mac.yml",
+  ]) {
+    writeFileSync(join(dir, "assets", name), "");
+  }
+  const { code, out } = await run(dir, "1.2.0", "assets");
+  expect(code).toBe(0);
+  expect(out).toContain("- **macOS, Apple silicon:** `Doriterm-1.2.0-arm64-mac.zip`\n");
+  expect(out).toContain("- **Windows x64:** `Doriterm-1.2.0-x64-setup.exe`\n");
+  expect(out).not.toContain(".blockmap");
+});
+
 test("a release with no CHANGELOG section is refused, in --check and when writing the notes", async () => {
   const dir = checkout(CHANGELOG);
   const calls = [
@@ -111,6 +135,15 @@ test("a prerelease takes its version's section, else Unreleased, and is refused 
 
   const bare = checkout("# Changelog\n\n## Unreleased\n\n### Terminals\n");
   expect((await run(bare, "--check", "1.3.0-rc.1")).code).toBe(1);
+});
+
+test("a prerelease's Unreleased notes carry the fragments too, under their headings", async () => {
+  const dir = checkout(CHANGELOG, {
+    "12.md": "### terminals\n\n- From a fragment. (#12)\n",
+  });
+  const { code, out } = await run(dir, "1.3.0-rc.1", "assets");
+  expect(code).toBe(0);
+  expect(out).toContain("### Terminal\n\n- Something coming. (#9)\n- From a fragment. (#12)\n");
 });
 
 test("the release workflow checks the CHANGELOG section before any build", () => {

@@ -47,26 +47,40 @@ jobs:
     timeout-minutes: 50
     steps:
       # Only for the guide and its runner; the guide clones the repository again, anonymously, from the public URL.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
+      # The guide runs `playwright install --with-deps` as written; this only bounds the apt requests it makes (doriterm#914).
+      - name: Bound apt's mirror requests
+        run: bash .github/scripts/apt-bounds.sh
       - name: Follow CONTRIBUTING.md from zero
         run: bun tests/ci/from-zero.ts CONTRIBUTING.md
         env:
           FROM_ZERO_REV: ${{ github.sha }}
+      # The guide clones into its own temp tree, so a failing e2e case leaves its trace and report there and nowhere the
+      # workspace's own artifact steps would find them (#1343).
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: from-zero-contributor-e2e
+          path: |
+            ${{ runner.temp }}/from-zero-*/work-*/doriterm/apps/web/test-results
+            ${{ runner.temp }}/from-zero-*/work-*/doriterm/apps/web/playwright-report
+          if-no-files-found: ignore
+          retention-days: 3
 
   user-guide:
     name: From zero (user guide, hosted relay)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
       - name: Install herdr-core
@@ -94,7 +108,7 @@ jobs:
           DORIFACE_HOSTED_RELAY_SMOKE: "1"
         run: xvfb-run --auto-servernum bun run test:e2e e2e/hosted-relay-pair.e2e.ts
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: user-guide-e2e
           path: |

@@ -100,7 +100,7 @@ function AgentActions({ agent }: { readonly agent: Agent }) {
   return (
     <>
       <IconButton
-        label={`${pinned ? "Unpin" : "Pin"} ${agent.name}`}
+        label={pinned ? `Unpin ${agent.name}` : `Pin ${agent.name} to the top`}
         icon={pinned ? <PinOff /> : <Pin />}
         className="size-6 coarse:hidden"
         onClick={() => pin(agent.id, !pinned)}
@@ -156,8 +156,9 @@ export function AgentsGroup({ terminals, active, onOpen, rail = false, heading =
                 rail={rail}
               />
             );
+            // The rail has no room for the hover actions, but its right-click opens the same menu (#699).
             return rail ? (
-              <div key={agent.id}>{row}</div>
+              <RowWithActions key={agent.id} row={row} actions={null} menu={<AgentMenuItems agent={agent} />} />
             ) : (
               <RowWithActions
                 key={agent.id}

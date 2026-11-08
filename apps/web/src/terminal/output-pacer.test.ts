@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { dirname, join } from "node:path";
 import { FRAME_BYTES, type FrameTimer, OutputPacer, SYNCHRONIZED_UNPACED_MS } from "./output-pacer.ts";
 
 /** Animation frames that run only when the test says so. */
@@ -12,6 +13,24 @@ function manualFrames() {
 }
 
 const bytes = (length: number, fill = 0x61) => new Uint8Array(length).fill(fill);
+
+describe("OutputPacer.busy", () => {
+  test("it reports queued output until a frame writes it", () => {
+    const frames = manualFrames();
+    const written: number[] = [];
+    const pacer = new OutputPacer(
+      (frame) => written.push(frame.byteLength),
+      frames.frame,
+      () => 0,
+    );
+    expect(pacer.busy).toBe(false);
+    pacer.push(bytes(4));
+    expect(pacer.busy).toBe(true);
+    frames.nextFrame();
+    expect(pacer.busy).toBe(false);
+    expect(written).toEqual([4]);
+  });
+});
 
 describe("OutputPacer (#560)", () => {
   test("output that arrives within a frame is written once, on the frame, and credited only then", () => {
@@ -170,4 +189,11 @@ describe("OutputPacer in a synchronized update (#757)", () => {
     clock.nextFrame();
     expect(written.slice(2)).toEqual([FRAME_BYTES]);
   });
+});
+
+test("the unpaced window is the synchronized-output hold of the @wterm/dom that is installed (#1020)", async () => {
+  const bundle = join(dirname(Bun.resolveSync("@wterm/dom", import.meta.dir)), "wterm.js");
+  const hold = /\bSYNCHRONIZED_OUTPUT_TIMEOUT_MS = (\d+);/.exec(await Bun.file(bundle).text())?.[1];
+  expect(hold).toBeDefined();
+  expect(Number(hold)).toBe(SYNCHRONIZED_UNPACED_MS);
 });

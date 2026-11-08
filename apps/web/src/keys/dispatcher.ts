@@ -23,10 +23,24 @@ function dispatch(scope: Scope, action: string): boolean {
   return fallbacks.get(action)?.() ?? false;
 }
 
+let chosen = false;
+
+/**
+ * True while an action chosen from a list (the palette, the desktop app's menu) runs, rather than one a key sent. A
+ * modal that lists the action closes once it runs, so a handler's guard against acting behind a modal does not apply.
+ */
+export const actionChosen = (): boolean => chosen;
+
 /** Runs a bound action as if its key was pressed; false when no handler took it. */
 export function runAction(id: string): boolean {
   const action = actionFor(id);
-  return action !== null && dispatch(action.scope, id);
+  if (action === null) return false;
+  chosen = true;
+  try {
+    return dispatch(action.scope, id);
+  } finally {
+    chosen = false;
+  }
 }
 
 /** True under a view that is kept but not shown (the workspace under Settings): its handlers take no action. */
@@ -48,6 +62,10 @@ export function useActionHandler(scope: Scope, handler: ActionHandler): void {
 
 function inTerminal(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest(".wterm") !== null;
+}
+
+function inFindBar(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('[data-slot="find-bar"]') !== null;
 }
 
 const NOT_TEXT = new Set([
@@ -94,7 +112,13 @@ export function useKeymapDispatcher(): void {
       if (id === undefined) return;
       const action = actionFor(id);
       if (action === null) return;
-      if (action.scope === "terminal" && !inTerminal(event.target)) return;
+      // Find asked for again from its own field selects the query again, as from the terminal.
+      if (
+        action.scope === "terminal" &&
+        !inTerminal(event.target) &&
+        !(id === "terminal.search" && inFindBar(event.target))
+      )
+        return;
       // A focused terminal program keeps its own control keys: the key reaches it uncancelled, as it would from the shell.
       if (TERMINAL_KEEPS.has(id) && inTerminal(event.target)) return;
       // The tab move keys stay with a text field (they select text) and with a reorderable row (they move the row).

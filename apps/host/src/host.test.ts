@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import packageJson from "../package.json" with { type: "json" };
+import release from "../../desktop/package.json" with { type: "json" };
 import { generateToken, SUBPROTOCOL } from "./auth.ts";
 import { type Host, startHost } from "./host.ts";
 import { createHcSession, HELLO, type HcSession, rpcFrame } from "./testing/hc-session.ts";
@@ -41,7 +41,7 @@ describe("doriface-host against a real hc", () => {
     const version = Bun.spawnSync([session.hc, "--version"]).stdout.toString().trim();
     expect(await res.json()).toEqual({
       ok: true,
-      hostVersion: packageJson.version,
+      hostVersion: release.version,
       hcVersion: version.replace(/^hc /, ""),
     });
   });

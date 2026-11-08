@@ -2,7 +2,7 @@ import type { MeshPendingJoin, MeshRemovedStatus, MeshStatus, MeshStuckReason } 
 import { Button, Fingerprint, Notice, SettingRow } from "@doriface/ui";
 import { useState } from "react";
 import { formatAge } from "../workspace/model.ts";
-import { type Disagreement, pendingAnswer } from "./groups.ts";
+import { type Disagreement, approvalConsequence, pendingAnswer } from "./groups.ts";
 import { Command, type NameOf } from "./mesh-rows.tsx";
 import type { Verdict } from "./use-mesh.ts";
 
@@ -56,6 +56,7 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
   };
   const left = Date.parse(join.expiresAt) - now;
   const state = pendingAnswer(join, now, answered);
+  const consequence = approvalConsequence(join.kind, join.name);
   // The offer can end while the row is up, before the groups move it.
   if (state === "expired") return <ExpiredJoinRow join={join} self={self} now={now} />;
   return (
@@ -70,6 +71,7 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
             value={join.fingerprint.replaceAll(" ", "")}
           />
           {failure === undefined ? null : <span className="mt-1 block text-status-blocked-text">{failure}</span>}
+          {consequence === undefined ? null : <span className="mt-1 block">{consequence}</span>}
         </>
       }
       control={

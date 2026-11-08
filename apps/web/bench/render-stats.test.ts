@@ -10,7 +10,13 @@ import {
   workloadBytes,
 } from "./render-stats.ts";
 
-const run = (panes: number, over: Partial<BenchRun["visible"]> = {}, hidden: Partial<BenchRun["hidden"]> = {}) =>
+const run = (
+  panes: number,
+  over: Partial<BenchRun["visible"]> = {},
+  hidden: Partial<BenchRun["hidden"]> = {},
+  unpaced: Partial<BenchRun["unpaced"]> = {},
+  closeMs: readonly number[] = [40, 50, 60, 50, 45],
+) =>
   ({
     build: "x",
     panes,
@@ -22,23 +28,26 @@ const run = (panes: number, over: Partial<BenchRun["visible"]> = {}, hidden: Par
       busyShare: 0.3,
       longTasks: 2,
       longTaskMs: 120,
-      drawnBytesPerSec: 100_000,
       catchUpMs: 50,
       heapMB: 40,
       domNodes: 5_000,
       ...over,
     },
     hidden: { busyShare: 0.05, showCatchUpMs: 300, ...hidden },
+    unpaced: { drawnBytesPerSec: 2_000_000, ...unpaced },
+    prompt: { closeMs },
   }) satisfies BenchRun;
 
 const LIMITS: Thresholds = {
   frameP95: { ratio: 1.25, floor: 4 },
-  busyShare: { ratio: 1.25, floor: 0.05 },
+  busyShare: { ratio: 1.25, floor: 0.05, ceiling: 1 },
+  longTaskMs: { ratio: 1.5, floor: 500 },
   catchUpMs: { ratio: 1.5, floor: 100 },
   drawnBytesPerSec: { ratio: 0.8, floor: 0 },
   heapMB: { ratio: 1.25, floor: 10 },
   hiddenBusyShare: { ratio: 1.5, floor: 0.05 },
   showCatchUpMs: { ratio: 1.5, floor: 200 },
+  closePromptMs: { ratio: 1.5, floor: 50, max: 200 },
 };
 
 describe("frameStats", () => {
@@ -67,8 +76,8 @@ describe("gridOf", () => {
 });
 
 test("workloadBytes counts what every pane's program writes in one phase", () => {
-  // chunk printed with a newline per tick, then the end line.
-  expect(workloadBytes({ chunk: "abc", ticks: 4 }, 7)).toBe(4 * 4 + "bench-end-1-7\n".length);
+  // chunk printed with a newline per tick, then the phase's end line.
+  expect(workloadBytes({ chunk: "abc", ticks: 4 }, 7, 3)).toBe(4 * 4 + "bench-end-3-7\n".length);
 });
 
 test("median of an even count is the mean of the middle two", () => {
@@ -77,6 +86,19 @@ test("median of an even count is the mean of the middle two", () => {
 });
 
 describe("compareRuns", () => {
+  test("fails a Close prompt past its 200 ms budget even when the baseline was as slow (#986)", () => {
+    const slow = [210, 220, 230, 215, 225];
+    const verdict = compareRuns([run(15, {}, {}, {}, slow)], [run(15, {}, {}, {}, slow)], LIMITS);
+    expect(verdict.regressions.map((row) => `${row.metric}:${row.candidate}:${row.limit}`)).toEqual([
+      "closePromptMs:220:200",
+    ]);
+  });
+
+  test("reads a Close prompt as the median of its clicks, so one slow click does not fail the gate", () => {
+    const verdict = compareRuns([run(15)], [run(15, {}, {}, {}, [40, 900, 50, 45, 60])], LIMITS);
+    expect(verdict.regressions).toEqual([]);
+  });
+
   test("passes a candidate within the recorded limits", () => {
     const verdict = compareRuns([run(15)], [run(15, { frameP95: 22 })], LIMITS);
     expect(verdict.regressions).toEqual([]);
@@ -92,8 +114,24 @@ describe("compareRuns", () => {
   });
 
   test("reads drawn bytes per second as worse when it drops", () => {
-    const verdict = compareRuns([run(50)], [run(50, { drawnBytesPerSec: 70_000 })], LIMITS);
+    const verdict = compareRuns([run(50)], [run(50, {}, {}, { drawnBytesPerSec: 1_400_000 })], LIMITS);
     expect(verdict.regressions.map((row) => row.metric)).toEqual(["drawnBytesPerSec"]);
+  });
+
+  test("fails long-task time past both the ratio and the floor, where main busy is already saturated", () => {
+    // #842's 50-pane regression: 756 -> 1,695 ms of long tasks with the main thread busy in both builds.
+    const saturated = { busyShare: 0.97, longTaskMs: 756 };
+    const verdict = compareRuns([run(50, saturated)], [run(50, { busyShare: 0.98, longTaskMs: 1_695 })], LIMITS);
+    expect(verdict.regressions.map((row) => row.metric)).toEqual(["longTaskMs"]);
+    // 0 -> 400 ms is past any ratio but under the floor: noise.
+    expect(compareRuns([run(1, { longTaskMs: 0 })], [run(1, { longTaskMs: 400 })], LIMITS).regressions).toEqual([]);
+  });
+
+  test("reports main busy ungated where its limit is past the share's ceiling, and gates it below", () => {
+    const fifty = compareRuns([run(50, { busyShare: 0.97 })], [run(50, { busyShare: 0.99 })], LIMITS).rows;
+    expect(fifty.find((row) => row.metric === "busyShare")).toMatchObject({ gated: false, regressed: false });
+    const fifteen = compareRuns([run(15, { busyShare: 0.3 })], [run(15, { busyShare: 0.5 })], LIMITS);
+    expect(fifteen.regressions.map((row) => row.metric)).toEqual(["busyShare"]);
   });
 
   test("compares the medians of repeated runs, so one noisy run does not fail the gate", () => {

@@ -12,10 +12,12 @@ export interface GuideState {
   readonly status: GuideStatus;
   /** This device started a terminal, or opened one from the agents list, since the guide started. */
   readonly opened: boolean;
+  /** The terminal it last started or opened; null before that, or in a record an app before #834 saved. */
+  readonly address: string | null;
 }
 
 export const GUIDE_KEY = "doriface.firstRunGuide";
-const OFF: GuideState = { status: "off", opened: false };
+const OFF: GuideState = { status: "off", opened: false, address: null };
 const STATUSES: readonly GuideStatus[] = ["off", "active", "skipped", "done"];
 
 export function loadGuide(storage: Pick<StorageLike, "getItem"> = guardedLocalStorage()): GuideState {
@@ -28,8 +30,11 @@ export function loadGuide(storage: Pick<StorageLike, "getItem"> = guardedLocalSt
   if (typeof parsed !== "object" || parsed === null) return OFF;
   const status: unknown = Reflect.get(parsed, "status");
   const opened: unknown = Reflect.get(parsed, "opened");
+  const address: unknown = Reflect.get(parsed, "address");
   const known = STATUSES.find((entry) => entry === status);
-  return known === undefined ? OFF : { status: known, opened: opened === true };
+  return known === undefined
+    ? OFF
+    : { status: known, opened: opened === true, address: typeof address === "string" ? address : null };
 }
 
 export class GuideStore {
@@ -55,12 +60,13 @@ export class GuideStore {
 
   /** A pairing finished on this device, or Settings reopened the guide: every step after pairing starts over. */
   start(): void {
-    this.#set({ status: "active", opened: false });
+    this.#set({ status: "active", opened: false, address: null });
   }
 
-  /** This device started or opened a terminal; counts only while the guide runs. */
-  opened(): void {
-    if (this.#value.status === "active" && !this.#value.opened) this.#set({ ...this.#value, opened: true });
+  /** This device started or opened the terminal at `address`; counts only while the guide runs. */
+  opened(address: string): void {
+    if (this.#value.status === "active" && this.#value.address !== address)
+      this.#set({ ...this.#value, opened: true, address });
   }
 
   skip(): void {
@@ -95,13 +101,16 @@ export interface GuideStep {
 export interface GuideFacts {
   /** The agents list is on screen (always on a desktop; on a phone, when no terminal fills the screen). */
   readonly listVisible: boolean;
-  /** The list holds at least one live terminal. */
-  readonly listedLive: boolean;
+  /** The addresses of the live terminals the list holds. */
+  readonly live: readonly string[];
 }
 
 /** The three steps in order, each done by its own event; the first one not done is current. */
 export function guideSteps(state: GuideState, facts: GuideFacts): readonly GuideStep[] {
-  const done = [true, state.opened, state.opened && facts.listVisible && facts.listedLive];
+  // The list step is about the terminal this device opened, not any live one the host already had (#834). A record
+  // from before #834 names none, so for it any live terminal still counts.
+  const listed = state.address === null ? facts.live.length > 0 : facts.live.includes(state.address);
+  const done = [true, state.opened, state.opened && facts.listVisible && listed];
   const current = done.indexOf(false);
   const labels = [
     ["pair", "Pair this device"],

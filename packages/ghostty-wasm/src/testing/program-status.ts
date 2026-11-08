@@ -26,7 +26,7 @@ function numeric(invoke: Invoke): Call {
   };
 }
 
-/** GhosttyCore 0.5.8 has no getter for OSC 7501, so this drives the raw exports. */
+/** GhosttyCore 0.5.9 has no getter for OSC 7501, so this drives the raw exports. */
 export async function readRootProgramStatus(wasm: Uint8Array, input: string): Promise<ProgramStatus | null> {
   const { instance } = await WebAssembly.instantiate(wasm, { env: { log: () => undefined } });
   const { exports } = instance;

@@ -120,13 +120,18 @@ try {
   if (layout) {
     const seeds = LAYOUT_TERMINALS.map((terminal) => terminal.seed);
     await runSeeds(hc, env, join(dir, "work", LAYOUT_DIR), seeds);
-    stopMachine = await addMachine(hc, env, join(dir, "machine"), true, LAYOUT_MACHINE_SPEC);
+    // A capture needs no second machine, and adding one inside a container fails, so the capture command may skip it.
+    if (process.env["E2E_SKIP_MACHINE"] !== "1") {
+      stopMachine = await addMachine(hc, env, join(dir, "machine"), true, LAYOUT_MACHINE_SPEC);
+    }
     writeSavedEnv(E2E_LAYOUT_ENV, { ...saved, ready: true });
   } else {
     const capture = process.env["CAPTURE"] === "1";
     if (capture) await seed(hc, env, join(dir, "work"));
     await seedMeshDoc(hc, session, env);
-    stopMachine = await addMachine(hc, env, join(dir, "machine"), capture);
+    if (process.env["E2E_SKIP_MACHINE"] !== "1") {
+      stopMachine = await addMachine(hc, env, join(dir, "machine"), capture);
+    }
     writeSavedEnv(E2E_HOST_ENV, { ...saved, ready: true });
   }
 } catch (error) {

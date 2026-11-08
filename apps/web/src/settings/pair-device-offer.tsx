@@ -2,17 +2,18 @@ import { Button, SettingRow } from "@doriface/ui";
 import { Smartphone } from "lucide-react";
 import { useMemo, useState } from "react";
 import { desktopPairOffer } from "../desktop/pair-bridge.ts";
-import { connectionStore } from "../connection/store.ts";
+import { useConnectionSettings } from "../connection/store.ts";
 import { PairDeviceDialog } from "./pair-device-dialog.tsx";
 
 /**
  * Offers this computer to another device without a command line, on the screen a reader opens to pair one. It draws
  * nothing unless this app runs on its own host: the shell relays the offer, and a host this app merely reaches over the
- * relay runs somewhere else. Both This device and Pair a phone or computer show it, so the desktop answer is never one
+ * relay runs somewhere else. Both This device and Connect a machine show it, so the desktop answer is never one
  * screen away from the question that led there (review of #772).
  */
 export function PairDeviceOffer() {
-  const settings = connectionStore.settings;
+  // Subscribed, so the offer follows a mode change on any screen that shows it, not only one whose parent subscribes.
+  const settings = useConnectionSettings();
   // One relay function for this page: a new one each render would reopen the offer the dialog is showing.
   const pair = useMemo(() => desktopPairOffer(), []);
   const [pairing, setPairing] = useState(false);

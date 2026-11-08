@@ -5,6 +5,7 @@ import type { DesktopPlatform } from "../shared/bridge.ts";
 const ITEMS: readonly (readonly [string, string] | null | readonly [string, readonly (readonly [string, string])[]])[] =
   [
     ["tab.new", "New Tab"],
+    ["tab.rename", "Rename Tab…"],
     null,
     ["pane.split:right", "Split Right"],
     ["pane.split:down", "Split Down"],
@@ -45,6 +46,7 @@ const ITEMS: readonly (readonly [string, string] | null | readonly [string, read
     ["Select Space", Array.from({ length: 9 }, (_, index) => [`space.select:${index + 1}`, `${index + 1}`] as const)],
     ["space.prev", "Previous Space"],
     ["space.next", "Next Space"],
+    ["space.new", "New Space"],
   ];
 
 export const SHELL_MENU_ACTIONS: ReadonlySet<string> = new Set(

@@ -5,11 +5,15 @@ import { expect, test } from "./fixtures.ts";
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
 test.use({ ...phone, serviceWorkers: "block" });
 
-/** A count's box against its own font size: one line of text stays under two font sizes tall, a wrapped one does not. */
+/**
+ * The lines a count's digits are drawn on: its text has one box per line it runs through, so this counts the wrap itself
+ * rather than inferring it from the element's height, which a taller line height would grow too (#984).
+ */
 const lines = (count: Locator) =>
   count.evaluate((element) => {
-    const box = element.getBoundingClientRect();
-    return box.height < 2 * Number.parseFloat(getComputedStyle(element).fontSize) ? 1 : 2;
+    const text = document.createRange();
+    text.selectNodeContents(element);
+    return new Set([...text.getClientRects()].map((box) => Math.round(box.top))).size;
   });
 
 const started: string[] = [];

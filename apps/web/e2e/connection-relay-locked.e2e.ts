@@ -1,4 +1,4 @@
-// A release build reaches only the production relay (#389): Settings > Advanced connection offers no relay address to edit and
+// A release build reaches only the production relay (#389): Settings > This device offers no relay address to edit and
 // no Loopback dev switch, and a custom relay address saved by an older build is never dialled.
 import { devices, type Page } from "@playwright/test";
 import { join } from "node:path";
@@ -21,12 +21,12 @@ async function saveCustomRelay(page: Page): Promise<void> {
   await page.addInitScript((value) => localStorage.setItem("doriface.connection", value), JSON.stringify(link));
 }
 
-test("Settings > Advanced connection offers no relay address to edit and no Loopback dev switch", async ({ page }) => {
+test("Settings > This device offers no relay address to edit and no Loopback dev switch", async ({ page }) => {
   await saveCustomRelay(page);
   // Nothing in this spec leaves the browser: the production relay is answered here and closes at once.
   await page.routeWebSocket(PRODUCTION, (ws) => ws.close());
   await page.goto("/settings");
-  await page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: "Advanced connection" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: "This device" }).click();
   await expect(page.getByText("relay-doriface.omo.dev", { exact: true })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Relay address" })).toHaveCount(0);
   await expect(page.getByText("Loopback dev")).toHaveCount(0);
@@ -35,7 +35,7 @@ test("Settings > Advanced connection offers no relay address to edit and no Loop
 
 test("a link to this computer offers its gateway but no Connect through switch either", async ({ page }) => {
   await page.goto("/settings");
-  await page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: "Advanced connection" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: "This device" }).click();
   await expect(page.getByRole("textbox", { name: "Gateway", exact: true })).toBeVisible();
   await expect(page.getByLabel("Connect through")).toHaveCount(0);
   await expect(page.getByText("Loopback dev")).toHaveCount(0);
@@ -78,8 +78,8 @@ test.describe("capture", () => {
         await page.goto("/settings");
         await (
           width === "1440"
-            ? page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: "Advanced connection" })
-            : page.getByRole("tab", { name: "Advanced connection" })
+            ? page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: "This device" })
+            : page.getByRole("tab", { name: "This device" })
         ).click();
         await expect(page.getByText("relay-doriface.omo.dev", { exact: true })).toBeVisible();
         await page.evaluate(() => document.fonts.ready);

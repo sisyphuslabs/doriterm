@@ -1,16 +1,5 @@
 import { Button, IconButton, ScrollArea, Tab, TabList, Tabs, cn } from "@doriface/ui";
-import {
-  ArrowLeft,
-  Bell,
-  Keyboard,
-  Link2,
-  Mic,
-  Network,
-  Palette,
-  PanelBottom,
-  Server,
-  SquareTerminal,
-} from "lucide-react";
+import { ArrowLeft, Bell, Keyboard, Mic, Network, Palette, PanelBottom, Plug, SquareTerminal } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { MonitorSmartphone } from "lucide-react";
 import { currentPlatform, triggerKeys } from "../keys/trigger.ts";
@@ -22,6 +11,8 @@ import { KeybindingsSection } from "../settings/keybindings-section.tsx";
 import { KeyboardSection } from "../settings/keyboard-section.tsx";
 import { MeshSection } from "../settings/mesh-section.tsx";
 import { MachinesSection } from "../settings/machines-section.tsx";
+import { MembersSection } from "../settings/members-section.tsx";
+import { useMeshMembers } from "../connection/store.ts";
 import { NotificationsSection } from "../settings/notifications-section.tsx";
 import { PairSection } from "../settings/pair-section.tsx";
 import { TerminalSection } from "../settings/terminal-section.tsx";
@@ -35,9 +26,8 @@ import { VoiceSection } from "../settings/voice-section.tsx";
 
 const SECTIONS = [
   { id: "device", label: "This device", icon: <MonitorSmartphone /> },
-  { id: "machines", label: "Your machines", icon: <Network /> },
-  { id: "pair", label: "Pair a phone or computer", icon: <Server /> },
-  { id: "connection", label: "Advanced connection", icon: <Link2 /> },
+  { id: "machines", label: "Machines", icon: <Network /> },
+  { id: "pair", label: "Connect a machine", icon: <Plug /> },
   { id: "terminal", label: "Terminal", icon: <SquareTerminal /> },
   { id: "keyboard", label: "Keyboard", icon: <PanelBottom /> },
   { id: "notifications", label: "Notifications", icon: <Bell /> },
@@ -70,6 +60,7 @@ function Lead({ children }: { readonly children: ReactNode }) {
 /** Section navigation beside the form; changes apply as they are made. */
 export function SettingsRoute() {
   const [section, setSection] = useState<SectionId>(firstSection);
+  const members = useMeshMembers();
   const close = useCloseSettings();
   const update = usePendingUpdate();
   // In the dialog its header is not the window's titlebar: it neither moves the window nor makes room for its controls.
@@ -158,7 +149,9 @@ export function SettingsRoute() {
               <>
                 <Lead>
                   This app talks to one host: the computer that runs your terminals. Here is which host it reaches,
-                  whether it is there now, and this device's own settings.
+                  whether it is there now, this device's own settings, and under Advanced connection the route this app
+                  takes to that host. The defaults work for everyone; change them only for a self-hosted relay or a
+                  development host.
                 </Lead>
                 <Group title="Host">
                   <DevicesSection />
@@ -166,39 +159,39 @@ export function SettingsRoute() {
                 <Group title="This device">
                   <DeviceSection />
                 </Group>
+                <Group title="Advanced connection">
+                  <ConnectionSection />
+                </Group>
               </>
             ) : section === "machines" ? (
               <>
                 <Lead>
-                  A mesh is a group of computers that trust each other, so this app uses all of them without pairing
-                  each one. A machine added by hand is reachable on its own. Every machine is here, with whether this
-                  host has a session open to it.
+                  These are the computers this host reaches: the ones that joined your mesh, and any you added by hand.
                 </Lead>
+                <Group title="Machines">
+                  {members.length > 1 ? <MembersSection /> : null}
+                  <MachinesSection />
+                  {/* What a row's state means sits under the rows, where a reader meets it: on a phone the list leads (#1007). */}
+                  <p className="pt-3 text-sm text-pretty text-muted-foreground">
+                    Adding one by hand reaches it without the mesh; connecting one joins it first. A machine that
+                    answers reads Connected, one still being dialled reads Connecting, and one that needs a login says
+                    so; when a machine is offline the row says when it was last seen and, where the host knows a cause,
+                    what it is.
+                  </p>
+                </Group>
                 <Group title="In your mesh">
                   <MeshSection />
-                </Group>
-                <Group title="Added to this host">
-                  <MachinesSection />
                 </Group>
               </>
             ) : section === "pair" ? (
               <>
                 <Lead>
-                  One command on your host opens an invite, and the other computer or phone joins with it. A join waits
-                  for your approval under Your machines before it is part of the mesh.
+                  Connecting a machine joins it to your mesh: one command on this host opens an invite, and the other
+                  computer or phone joins with it. A join waits for your approval under Machines before that machine is
+                  reachable.
                 </Lead>
-                <Group title="Pair">
+                <Group title="Connect a machine">
                   <PairSection />
-                </Group>
-              </>
-            ) : section === "connection" ? (
-              <>
-                <Lead>
-                  How this app reaches its host. The defaults work for everyone; change them only for a self-hosted
-                  relay or a development host.
-                </Lead>
-                <Group title="Connection">
-                  <ConnectionSection />
                 </Group>
               </>
             ) : section === "terminal" ? (

@@ -7,6 +7,7 @@ import type { MeshStore } from "../state/mesh.ts";
 import { monotonicClock } from "./clock.ts";
 import { MeshCommands } from "./commands.ts";
 import type { MeshHooks } from "./host-hooks.ts";
+import type { PendingJoinFact } from "./status-sources.ts";
 import { HostMesh } from "./host-mesh.ts";
 import { HostSync } from "./host-sync.ts";
 import { meshProgram } from "./program.ts";
@@ -60,15 +61,17 @@ export function meshDeps(options: MeshDepsOptions) {
     relay,
     sync: (s) => sync.adopt(s),
     floor: () => hooks.floor(),
+    formatReady: () => hooks.formatReady(),
     log,
   });
-  const pending = () =>
-    hostMesh.pending.list().map(({ nonce, name, hostId, noisePub, expiresAt }) => ({
+  const pending = (): readonly PendingJoinFact[] =>
+    hostMesh.pending.list().map(({ nonce, name, hostId, noisePub, expiresAt, kind }) => ({
       nonce,
       name,
       hostId,
       noisePub,
       expiresAt: new Date(expiresAt),
+      kind,
     }));
   const hooks = options.hooks ?? syncHooks(sync, monotonicClock, pending);
   return {
@@ -79,5 +82,6 @@ export function meshDeps(options: MeshDepsOptions) {
     meshPresence: (secure: SecureLink) => sync.presence(secure),
     meshCommands: new MeshCommands({ store: mesh, stateDir, identity, closeRevoked, hooks, log }),
     meshStatus: () => storedMeshStatus(mesh, identity, hooks),
+    refreshMeshLines: () => hooks.refreshLines(),
   };
 }

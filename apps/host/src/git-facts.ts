@@ -8,7 +8,7 @@ import {
   parseGitFacts,
   type Terminal,
 } from "@doriface/protocol";
-import { type HcTarget, type KillableLink, spawnHcLink } from "./mesh/hc-machines.ts";
+import { handshakeOf, type HcTarget, type KillableLink, spawnHcLink } from "./mesh/hc-machines.ts";
 
 const TICK_MS = 5_000;
 const GIT_TIMEOUT_MS = 5_000;
@@ -169,7 +169,7 @@ export function publishGitFacts(
         }),
       );
       try {
-        const connection = await HcConnection.open(current);
+        const connection = await HcConnection.open(current, handshakeOf(core));
         try {
           const listed = await connection.call("terminal.list", {});
           await writeGitFacts(connection, await collectGitFacts(dirsOf(listed.terminals), run));

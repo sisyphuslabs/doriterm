@@ -46,9 +46,9 @@ export class LiveSessions {
   }
 
   /**
-   * Closes every session whose key is neither a current mesh member's nor a paired device's, and every one whose key
-   * the mesh refuses as a device (a revoked or over-cap member, a member's device key). When a store cannot be read,
-   * no session can be shown to be authorized, so every one is closed.
+   * Closes every session whose key is neither a current machine member's, a current client member's, nor a paired
+   * device's, and every one whose key the mesh refuses as a device (a revoked member, a machine's device key). When a
+   * store cannot be read, no session can be shown to be authorized, so every one is closed.
    */
   closeRevoked(): void {
     this.#closeRevoked();
@@ -67,7 +67,9 @@ export class LiveSessions {
       index = undefined;
     }
     for (const [key, sessions] of this.#byKey) {
-      const member = index?.member(key) !== undefined;
+      // A client is a member of the roster without a machine line, so it is kept by its own lookup: `member()` answers
+      // for a key that dials, and a revoked client is in neither (design of #942).
+      const member = index?.member(key) !== undefined || index?.client(key) !== undefined;
       if (member || (paired.has(key) && index?.deviceRefusal(key) === undefined)) continue;
       for (const session of sessions) {
         closed.add(session);

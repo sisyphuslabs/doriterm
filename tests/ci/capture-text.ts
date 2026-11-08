@@ -28,7 +28,10 @@ const isNeutral = (name: string): boolean => NEUTRAL_NAMES.has(name.toLowerCase(
 
 /** Registry-style suffixes an `@` in prose takes; they name a package, not an account on a computer. */
 const PACKAGE_SUFFIX = /^(?:latest|next|beta|alpha|canary|stable)$/i;
-const REGISTRY_HOSTS = /^(?:github\.com|npmjs\.(?:com|org)|golang\.org|pypi\.org)$/i;
+/** The domains reserved for examples (RFC 2606, RFC 6761): a placeholder uses them, and a real capture never shows one. */
+const RESERVED_EXAMPLE = /^(?:example(?:\.(?:com|org|net))?|[a-z0-9.-]+\.example)$/i;
+/** `git@<host>:owner/repo` is a clone URL: every git host's SSH user is `git`, which names no one. */
+const CLONE_URL = /^git@(?:github\.com|gitlab\.com|bitbucket\.org|codeberg\.org)$/i;
 
 const ACCOUNT_AT_HOST = /\b([a-z][a-z0-9._-]*)@([a-z][a-z0-9.-]*[a-z0-9])/gi;
 const HOME_PATH = /\/(?:Users|home)\/([A-Za-z][A-Za-z0-9._-]*)/g;
@@ -51,7 +54,7 @@ export function classify(ocrText: string): Verdict {
     const account = match[1] ?? "";
     const host = match[2] ?? "";
     if (isNeutral(account) && isNeutral(host)) continue;
-    if (PACKAGE_SUFFIX.test(host) || REGISTRY_HOSTS.test(host)) continue;
+    if (PACKAGE_SUFFIX.test(host) || RESERVED_EXAMPLE.test(host) || CLONE_URL.test(`${account}@${host}`)) continue;
     if (account.length < 2) continue;
     add("prompt: account at host");
   }
@@ -67,7 +70,9 @@ export function classify(ocrText: string): Verdict {
   return { ok: findings.length === 0, findings };
 }
 
-async function ocr(path: string): Promise<string> {
+/** The text a capture shows: an SVG's own character data (OCR cannot read one), any other image's OCR. */
+export async function captureText(path: string): Promise<string> {
+  if (/\.svg$/i.test(path)) return (await Bun.file(path).text()).replace(/<[^>]*>/g, " ");
   const result = await $`tesseract ${path} -`
     .env({ ...process.env, OMP_THREAD_LIMIT: "1" })
     .quiet()
@@ -99,7 +104,7 @@ if (import.meta.main) {
   const limit = Math.max(1, Math.min(8, cpus().length));
   const verdicts = await mapWithLimit(images, limit, async (image) => ({
     image,
-    verdict: classify(await ocr(image)),
+    verdict: classify(await captureText(image)),
   }));
   let failed = 0;
   for (const { image, verdict } of verdicts) {

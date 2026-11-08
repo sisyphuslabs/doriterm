@@ -73,9 +73,29 @@ jobs:
           echo "HC_BIN=$RUNNER_TEMP/hc/hc" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/hc/hc" --version
       - run: bun install --frozen-lockfile
+      - name: Playwright version
+        id: playwright
+        working-directory: apps/web
+        run: echo "version=$(bunx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ hashFiles('bun.lock') }}
       - name: Install Chromium
         working-directory: apps/web
-        run: bunx playwright install --with-deps chromium
+        timeout-minutes: 12
+        run: |
+          # This job had no browser cache, so its warm branch could never hit and every run paid a full download.
+          # It has one now; the system packages are still ensured every run, because they are not in that cache.
+          # apt-bounds.sh bounds every apt request install-deps makes; the rest is bounded by timeout and by the step's
+          # timeout-minutes (doriterm#914).
+          bash "$GITHUB_WORKSPACE/.github/scripts/apt-bounds.sh"
+          timeout 300 bunx playwright install-deps chromium
+          if compgen -G "$HOME/.cache/ms-playwright/chromium-*" >/dev/null; then
+            timeout 300 bunx playwright install chromium
+          else
+            timeout 600 bunx playwright install chromium
+          fi
       - name: Pick the baseline
         env:
           REQUESTED: ${{ inputs.baseline }}

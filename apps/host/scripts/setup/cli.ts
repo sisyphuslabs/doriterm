@@ -31,8 +31,10 @@ const USAGE = `usage: bun apps/host/scripts/setup/cli.ts <command> [options]
   --src <dir>        the checkout (default ~/.local/share/doriface-host/src)
   --state-dir <dir>  the host's state (default: the installed service's, else ~/.local/state/doriface-host-mesh)
   --label <name>     the LaunchAgent label or systemd unit name (default com.sisyphuslabs.doriface-host / doriface-host)
-  --listen <h:p>     the host's loopback listener (default 127.0.0.1:7766)
-  --session <name>   the hc session (a separate core) the host serves (default: hc's default core)
+  --listen <h:p>     the host's loopback listener (default: the installed service's, else 127.0.0.1:7766;
+                     "default" goes back to 127.0.0.1:7766)
+  --session <name>   the hc session (a separate core) the host serves (default: the installed service's, else hc's
+                     default core; "default" goes back to hc's default core)
   --timeout <s>      how long install waits for the relay (default 90)`;
 
 const report: Report = (step, status, detail) => {
@@ -63,6 +65,11 @@ async function main(argv: readonly string[]): Promise<number> {
     process.stdout.write(`${USAGE}\n`);
     return values.help ? 0 : 2;
   }
+  // Read before any step runs: a timeout that is not a positive number would make the relay wait never end (#821).
+  const timeoutS = Number(values.timeout);
+  if (!Number.isFinite(timeoutS) || timeoutS <= 0) {
+    throw new SetupError("timeout", `--timeout wants a positive number of seconds, not "${values.timeout}"`);
+  }
   const context = setupContext(report, {
     src: values.src,
     stateDir: values["state-dir"],
@@ -85,7 +92,7 @@ async function main(argv: readonly string[]): Promise<number> {
       }
       const paths = resolvePaths(context, await ensureHc(context));
       const service = await ensureService(context, paths, process.env["DORITERM_SETUP_REEXEC"] !== undefined);
-      if (service.restarted) await waitForRelay(context, paths, service.logFrom, Number(values.timeout) * 1000);
+      if (service.restarted) await waitForRelay(context, paths, service.logFrom, timeoutS * 1000);
       await verify(context, paths);
       return 0;
     }
@@ -116,7 +123,7 @@ async function main(argv: readonly string[]): Promise<number> {
   }
 }
 
-async function ensureHcQuiet(context: ReturnType<typeof setupContext>): Promise<string> {
+function ensureHcQuiet(context: ReturnType<typeof setupContext>): Promise<string> {
   return findHc(context);
 }
 

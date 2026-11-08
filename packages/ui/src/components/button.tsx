@@ -9,17 +9,24 @@ export const buttonVariants = cva(
     "relative inline-flex shrink-0 select-none items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium",
     "outline-none transition-[background-color,color,opacity,transform] duration-(--duration-micro) ease-out",
     "focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring",
-    "active:scale-[0.97] data-disabled:pointer-events-none data-disabled:opacity-45",
+    // Disabled is dimmed with its own colours, never a fade of the whole button, which fades the label with its fill
+    // (#1031): a label of at least 4.5:1 on the filled variants and 3:1 on ghost, on every surface in both themes.
+    // Loading also sets disabled, but a working button is busy, not unavailable: it keeps its colours (aria-busy).
+    "active:scale-[0.97] data-disabled:pointer-events-none",
     "[&_svg]:size-4 [&_svg]:shrink-0",
     "after:absolute after:-inset-1 coarse:after:min-h-11 coarse:after:min-w-11",
   ],
   {
     variants: {
       variant: {
-        primary: "bg-primary text-primary-foreground hover:opacity-88",
-        secondary: "border border-border bg-raised text-foreground hover:bg-selected",
-        ghost: "text-muted-foreground hover:bg-hover hover:text-foreground",
-        destructive: "bg-destructive text-destructive-foreground hover:opacity-88",
+        primary:
+          "bg-primary text-primary-foreground hover:opacity-88 data-disabled:not-aria-busy:bg-selected data-disabled:not-aria-busy:text-foreground/70",
+        secondary:
+          "border border-border bg-raised text-foreground hover:bg-selected data-disabled:not-aria-busy:bg-transparent data-disabled:not-aria-busy:text-muted-foreground",
+        ghost:
+          "text-muted-foreground hover:bg-hover hover:text-foreground data-disabled:not-aria-busy:text-muted-foreground/72",
+        destructive:
+          "bg-destructive text-destructive-foreground hover:opacity-88 data-disabled:not-aria-busy:bg-selected data-disabled:not-aria-busy:text-foreground/70",
       },
       size: {
         sm: "h-(--control-sm) px-2.5 text-sm",

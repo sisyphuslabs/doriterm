@@ -16,7 +16,9 @@ test.describe("machines added with hc machine add", () => {
     await expect(machineRow(page)).toContainText("connected", { timeout: 20_000 });
     await newOn(page).click({ force: true });
     const focused = page.locator('[data-focused="true"] [data-terminal]');
-    await expect(focused).toHaveAttribute("data-terminal", new RegExp(`^${MACHINE_NAME}/t\\d+$`), { timeout: 15_000 });
+    await expect(focused).toHaveAttribute("data-terminal", new RegExp(`^${MACHINE_NAME}/t[0-9a-z]+$`), {
+      timeout: 15_000,
+    });
     const address = await focused.getAttribute("data-terminal");
     // A tab carries no machine tag, as its space is one machine's (#404): the status bar's machine item carries the full
     // hc address the old pane header showed.

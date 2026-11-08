@@ -1,4 +1,4 @@
-// #458: the direct-address feature is hidden. Settings > Advanced connection offers no Direct address and shows the relay with
+// #458: the direct-address feature is hidden. Settings > This device offers no Direct address and shows the relay with
 // no field to edit it, in a release build and in a dev build (E2E_WEB_MODE=development), and adding a machine offers
 // only the relay path. A dev build still reads another relay and the direct address from saved settings.
 import type { Page } from "@playwright/test";
@@ -27,12 +27,10 @@ async function saveRelayLink(page: Page): Promise<void> {
   await Promise.all([PRODUCTION, CUSTOM].map((relay) => page.routeWebSocket(relay, (ws) => ws.close())));
 }
 
-test("Settings > Advanced connection has no Direct address and shows the relay with no field to edit", async ({
-  page,
-}) => {
+test("Settings > This device has no Direct address and shows the relay with no field to edit", async ({ page }) => {
   await saveRelayLink(page);
   await page.goto("/settings");
-  await page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: "Advanced connection" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: "This device" }).click();
   await expect(
     page.getByText(DEV_BUILD ? "relay.custom.invalid" : "relay-doriface.omo.dev", { exact: true }),
   ).toBeVisible();
