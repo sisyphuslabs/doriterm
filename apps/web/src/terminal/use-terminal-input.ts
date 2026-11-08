@@ -7,7 +7,7 @@ import { HeldInput } from "./held-input.ts";
 import { pasteInto } from "./terminal-port.ts";
 import { putFiles, quotePaths } from "./paste-files.ts";
 import { scrollTerminal } from "./terminal-scroll.tsx";
-import type { TerminalInput } from "./terminal-view.tsx";
+import type { TerminalInput } from "./terminal-view-props.ts";
 
 export interface TerminalInputPath {
   /**

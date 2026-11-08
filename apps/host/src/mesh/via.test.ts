@@ -35,6 +35,9 @@ describe("the pinned via (R-1)", () => {
     const hostId = hostIdFor("b");
     const via = meshVia("/opt/doriface-host", "/state", hostId);
     expect(meshHostOf(via, "/opt/doriface-host", "/state")).toBe(hostId);
+    expect(
+      meshHostOf(`'/opt/doriface-host' connect --mesh --state-dir '/state' ${hostId}`, "/opt/doriface-host", "/state"),
+    ).toBe(hostId);
     expect(meshHostOf(`'/opt/doriface-host' connect ${hostId}`, "/opt/doriface-host", "/state")).toBeUndefined();
     expect(meshHostOf(via, "/other/doriface-host", "/state")).toBeUndefined();
     expect(meshHostOf(via, "/opt/doriface-host", "/other")).toBeUndefined();

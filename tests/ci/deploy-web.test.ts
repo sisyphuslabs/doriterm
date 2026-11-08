@@ -171,4 +171,6 @@ test("both sites preview with one card at a URL that changes with the card, so c
     expect(metaOf(page, "twitter:image")).toBe(url);
     expect(metaOf(page, "og:title")).toBe("Doriterm: Your devices. One terminal.");
   }
+  // The GitHub social preview is uploaded from this copy, so the repo and the sites show one card.
+  expect(readFileSync(join(ROOT, ".github", "social-preview.png")).equals(card)).toBe(true);
 });
