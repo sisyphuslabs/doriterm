@@ -16,7 +16,7 @@ function unreachableSync() {
     log: (line) => void logs.push(line),
   });
   const announced = (): boolean => logs.some((line) => line.includes("cannot announce the membership change"));
-  return { f, announced };
+  return { f, logs, announced };
 }
 
 afterEach(clearPropagation);
@@ -49,11 +49,13 @@ test("a throwing announcement does not fail a roster leave", async () => {
 });
 
 test("a throwing announcement does not undo the revoke a roster sweep committed", async () => {
-  const { f, announced } = unreachableSync();
+  const { f, logs, announced } = unreachableSync();
   f.devices.add(f.c.m.identity.noise.publicKey, "browser");
   await roster(f);
   f.devices.revoke(noiseOf(f.c.m));
+  logs.length = 0;
   f.host.sweepRoster();
   expect(f.a.mesh.authorizeIndex()?.client(noiseOf(f.c.m))).toBeUndefined();
   expect(announced()).toBe(true);
+  expect(logs.filter((line) => line.includes("roster sweep stopped"))).toEqual([]);
 });
