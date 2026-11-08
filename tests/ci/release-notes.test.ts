@@ -157,13 +157,15 @@ test("the release workflow checks the CHANGELOG section before any build", () =>
 });
 
 /**
- * `--check` in `dir` for v0.1.0-v0.1.2 and every vX.Y.Z tag in HEAD's history. A release tagged on a commit the
+ * `--check` in `dir` for v0.1.0-v0.1.5 and every vX.Y.Z tag in HEAD's history. A release tagged on a commit the
  * tree under test does not contain is not checked, so a branch's result does not change when dev is tagged.
+ * v0.1.0-v0.1.2 are listed by name as before. v0.1.3-v0.1.5 are too: they are tagged on release-PR heads that were
+ * squash-merged, so no branch off dev has those tags in its history.
  */
 async function checkReleasedVersions(dir: string): Promise<{ tag: string; code: number; err: string }[]> {
   const proc = Bun.spawn(["git", "tag", "--merged", "HEAD", "--list", "v*"], { cwd: dir, stdout: "pipe" });
   const tags = (await new Response(proc.stdout).text()).split("\n").filter((tag) => /^v\d+\.\d+\.\d+$/.test(tag));
-  const versions = [...new Set(["v0.1.0", "v0.1.1", "v0.1.2", ...tags])];
+  const versions = [...new Set(["v0.1.0", "v0.1.1", "v0.1.2", "v0.1.3", "v0.1.4", "v0.1.5", ...tags])];
   return Promise.all(
     versions.map(async (tag) => {
       const { code, err } = await run(dir, "--check", tag.slice(1));
@@ -184,6 +186,8 @@ async function git(dir: string, ...args: string[]): Promise<void> {
       "commit.gpgSign=false",
       "-c",
       "tag.gpgSign=false",
+      "-c",
+      "core.hooksPath=/dev/null",
       ...args,
     ],
     { cwd: dir, stdout: "ignore", stderr: "pipe" },
@@ -197,19 +201,7 @@ const RELEASED = `# Changelog
 ## v1.0.0
 
 - First release. (#1)
-
-## v0.1.2
-
-- Fix. (#3)
-
-## v0.1.1
-
-- Fix. (#2)
-
-## v0.1.0
-
-- Start. (#1)
-`;
+${[5, 4, 3, 2, 1, 0].map((patch) => `\n## v0.1.${patch}\n\n- A change. (#${patch + 2})\n`).join("")}`;
 
 /** A checkout of RELEASED with v1.0.0 tagged on HEAD and v1.1.0 tagged on a branch HEAD does not contain. */
 async function taggedCheckout(): Promise<string> {
@@ -227,7 +219,7 @@ async function taggedCheckout(): Promise<string> {
 
 test("a tag outside HEAD's history is not a released version of the tree under test", async () => {
   const results = await checkReleasedVersions(await taggedCheckout());
-  expect(results.map(({ tag }) => tag)).toEqual(["v0.1.0", "v0.1.1", "v0.1.2", "v1.0.0"]);
+  expect(results.map(({ tag }) => tag)).toEqual(["v0.1.0", "v0.1.1", "v0.1.2", "v0.1.3", "v0.1.4", "v0.1.5", "v1.0.0"]);
   for (const { tag, code, err } of results) expect({ tag, code, err }).toEqual({ tag, code: 0, err: "" });
 });
 
