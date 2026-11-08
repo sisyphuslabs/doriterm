@@ -64,7 +64,8 @@ test.describe("at 390 with touch", () => {
   test("New space and Collapse each take a tap 10 px past their drawn box, and their hit areas do not meet", async ({
     page,
   }) => {
-    await page.goto("/");
+    // The machines and their spaces are the phone's Spaces tab (mobile nav phase 3).
+    await page.goto("/?v=spaces");
     const group = spaces(page).getByRole("region").first();
     const add = group.getByRole("button", { name: /^New space on / });
     const fold = group.getByRole("button", { name: /^Collapse / });
