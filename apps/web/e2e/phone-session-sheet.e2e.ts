@@ -54,7 +54,7 @@ test("the phone header's ... is one sheet: where the session lives, the next age
   await expect(sheet.getByRole("button", { name: /^Open the next agent that needs you/ })).toHaveCount(0);
   await sheet.getByRole("button", { name: "Find in terminal", exact: true }).click();
   await expect(sheet).toBeHidden();
-  await expect(page.getByRole("searchbox", { name: "Find in terminal" })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Find in terminal" })).toBeFocused();
   await page.keyboard.press("Escape");
 
   await actions.click();

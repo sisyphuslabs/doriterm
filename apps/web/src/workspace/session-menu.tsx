@@ -5,8 +5,6 @@ import { useAskSession } from "./session-context.ts";
 export interface SessionMenuProps {
   readonly address: string;
   readonly title: string;
-  /** `strip`: the desktop tab strip's compact glyph; `header`: the phone terminal header's full control target. */
-  readonly placement?: "strip" | "header";
 }
 
 /** What can be done with a terminal's session: its "..." menu and a split pane header's right-click hold the same items. */
@@ -25,19 +23,10 @@ export function SessionMenuItems({ address }: { readonly address: string }) {
 }
 
 /** The actions on a terminal's session: rename it, or end its program. */
-export function SessionMenu({ address, title, placement = "strip" }: SessionMenuProps) {
+export function SessionMenu({ address, title }: SessionMenuProps) {
   const label = `Session actions for ${title}`;
   return (
-    <Menu
-      align="end"
-      trigger={
-        placement === "header" ? (
-          <IconButton label={label} icon={<Ellipsis />} size="md" />
-        ) : (
-          <IconButton label={label} icon={<Ellipsis />} className="size-6" />
-        )
-      }
-    >
+    <Menu align="end" trigger={<IconButton label={label} icon={<Ellipsis />} className="size-6" />}>
       <SessionMenuItems address={address} />
     </Menu>
   );

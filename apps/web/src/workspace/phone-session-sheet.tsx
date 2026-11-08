@@ -2,7 +2,7 @@ import { Button, IconButton, Sheet, cn } from "@doriface/ui";
 import { CircleAlert, Ellipsis, Pencil, Power, Search } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { runAction } from "../keys/dispatcher.ts";
-import { agentStatus, nextNeedingYou } from "./attention.ts";
+import { nextNeedingYou, waitingBesides } from "./attention.ts";
 import type { Session } from "./model.ts";
 import { useAskSession } from "./session-context.ts";
 
@@ -46,9 +46,7 @@ export function PhoneSessionSheet({ terminal, terminals, title, where, onOpen }:
   const ask = useAskSession();
   const { address } = terminal;
   const next = nextNeedingYou(terminals, address);
-  const waiting = terminals.filter(
-    (each) => each.address !== address && each.state === "live" && agentStatus(each) === "blocked",
-  ).length;
+  const waiting = waitingBesides(terminals, address);
   const act = (run: () => void) => () => {
     setOpen(false);
     run();
