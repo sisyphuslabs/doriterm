@@ -27,6 +27,8 @@ import { TerminalLinks } from "./terminal-links.tsx";
 import { useTerminalActions } from "./use-terminal-actions.ts";
 import { useTerminalFont } from "./use-terminal-font.ts";
 import { usePreedit } from "./use-preedit.ts";
+import { usePredictionOverlay } from "./use-prediction-overlay.ts";
+import { predictionSeam } from "./prediction-seam.ts";
 import { wideGlyphScaler } from "./face-scales.ts";
 import { GlyphWarmup } from "./glyph-warmup.ts";
 import { SelectionMenu } from "./selection-menu.tsx";
@@ -149,6 +151,8 @@ export function TerminalView(props: TerminalViewProps) {
   useBehaviors(wt, stream, options, onUnsafePaste, pasteFiles);
   useTerminalFont(wt, config);
   usePreedit(wt);
+  const prediction = useMemo(() => predictionSeam(wt), [wt]);
+  usePredictionOverlay(wt, prediction);
   // Wide characters in the output are laid out in idle time, so scrolling back to them is not the first time (#286).
   const warmup = useRef<GlyphWarmup | null>(null);
   useEffect(() => {

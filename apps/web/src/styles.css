@@ -84,13 +84,60 @@
   opacity: 0 !important;
 }
 /* The cursor is not drawn in any shape: wterm's blink keyframes and its bar, underline and hollow rules would otherwise
-   still paint it, so these win with !important (an animation overrides any declaration that is not). */
-.wterm[data-preedit] .term-cursor {
+   still paint it, so these win with !important (an animation overrides any declaration that is not). A prediction
+   draws its own cursor after the predicted cells instead (use-prediction-overlay.ts). */
+.wterm[data-preedit] .term-cursor,
+.wterm[data-predicting] .term-grid .term-cursor {
   outline: none !important;
   box-shadow: none !important;
   background: var(--term-cell-bg, transparent) !important;
   color: var(--term-cell-fg, inherit) !important;
   animation: none !important;
+}
+
+/* Predicted cells (use-prediction-overlay.ts) sit over the grid in their own layer, in the terminal's colours, opaque
+   over the cell they cover and underlined: the underline says the echo has not confirmed them yet (design D8). */
+.wterm .term-prediction {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+.wterm .term-prediction > span {
+  position: absolute;
+  display: block;
+  width: calc(var(--term-span-cols, 1) * var(--term-cell-width, 1ch));
+  height: var(--term-row-height);
+  line-height: var(--term-row-height);
+  white-space: pre;
+}
+.wterm .term-prediction-cell {
+  color: var(--term-app-fg, var(--term-fg));
+  background: var(--term-app-bg, var(--term-bg));
+  text-decoration: underline;
+  text-decoration-thickness: max(1px, var(--term-device-pixel, 1px));
+}
+/* The predicted cursor in the shape the program or the settings chose, as wterm draws the real one, held steady. */
+.wterm .term-prediction-cursor {
+  outline: 1px solid var(--term-app-cursor, var(--term-cursor));
+  outline-offset: -1px;
+}
+.wterm:is(.focused, :active) .term-prediction[data-cursor-shape="block"] .term-prediction-cursor {
+  outline: none;
+  background: var(--term-app-cursor, var(--term-cursor));
+}
+.wterm.cursor-hollow:is(.focused, :active) .term-prediction[data-cursor-shape="block"] .term-prediction-cursor {
+  outline: 1px solid var(--term-app-cursor, var(--term-cursor));
+  background: none;
+}
+.wterm:is(.focused, :active) .term-prediction[data-cursor-shape="bar"] .term-prediction-cursor {
+  outline: none;
+  box-shadow: inset 2px 0 0 var(--term-app-cursor, var(--term-cursor));
+}
+.wterm:is(.focused, :active) .term-prediction[data-cursor-shape="underline"] .term-prediction-cursor {
+  outline: none;
+  box-shadow: inset 0 -2px 0 var(--term-app-cursor, var(--term-cursor));
 }
 
 /* A two-cell glyph is sized to fill its cells as Ghostty sizes a fallback face (use-wide-glyph-scale.ts); what is left
