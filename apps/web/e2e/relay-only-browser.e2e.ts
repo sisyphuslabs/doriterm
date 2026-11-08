@@ -120,7 +120,8 @@ async function connectsOverTheRelayAlone(page: Page, phone: boolean): Promise<vo
 
     // A later load with a Direct address in the file still reaches the host, and dials no direct socket to do it.
     await withDirectAddress(page, paired, host.directUrl);
-    await page.goto("/");
+    // A phone reopens a bare / where it was (the terminal); an address that names the Spaces list wins over that.
+    await page.goto(phone ? "/?v=spaces" : "/");
     await pathSaysRelay(page, phone);
     await terminalOpens(page, phone);
 
