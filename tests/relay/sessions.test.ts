@@ -66,6 +66,40 @@ describe("client sessions through the relay", () => {
     host.uplink.stop();
   });
 
+  test("a best-of-three dial keeps one of its three sessions and closes the other two before they carry a byte", async () => {
+    const ip = testIp();
+    const host = await startTestHost(relay.url, ip);
+    const client = await connectRelayClient({
+      relayUrl: relay.url,
+      hostId: host.uplink.hostId,
+      createSocket: socketFrom(ip),
+      bestOf: 3,
+    });
+    const sessions = await inOrder(times(3), () => host.sessions.take());
+    const carrier = Promise.withResolvers<number>();
+    const carried: number[] = [];
+    sessions.forEach((session, index) =>
+      session.onData(() => {
+        carried.push(index);
+        carrier.resolve(index);
+      }),
+    );
+    const up = crypto.getRandomValues(new Uint8Array(1024));
+    const kept = sessions[await (client.send(up), carrier.promise)];
+    if (kept === undefined) throw new Error("no session carried the client's bytes");
+    const atHost = received(kept);
+    const atClient = received(client);
+    const down = crypto.getRandomValues(new Uint8Array(2048));
+    await kept.send(down);
+    expect(await atClient.take()).toEqual(down);
+    client.send(up);
+    expect(await atHost.take()).toEqual(up);
+    const losers = sessions.filter((session) => session !== kept);
+    expect(await Promise.all(losers.map(closedWith))).toEqual([CloseCode.Normal, CloseCode.Normal]);
+    expect(new Set(carried)).toEqual(new Set([sessions.indexOf(kept)]));
+    host.uplink.stop();
+  }, 30_000);
+
   test("a host closing a session closes the client socket", async () => {
     const ip = testIp();
     const host = await startTestHost(relay.url, ip);

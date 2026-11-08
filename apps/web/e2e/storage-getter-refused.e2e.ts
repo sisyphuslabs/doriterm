@@ -41,7 +41,7 @@ test("with the storage getters throwing, the app starts on pairing and Settings 
   await expect(page).toHaveURL(/\/settings$/);
   const nav = page.getByRole("navigation", { name: "Settings" });
   await nav.getByRole("button", { name: "Appearance" }).click();
-  await expect(page.getByLabel("Appearance", { exact: true }).getByRole("button", { name: "System" })).toHaveAttribute(
+  await expect(page.getByLabel("Appearance", { exact: true }).getByRole("button", { name: "Dark" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -61,9 +61,10 @@ test.describe("on the phone", () => {
     await expect(page).toHaveURL(/\/settings$/);
     await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
     await page.getByRole("tab", { name: "Appearance" }).click();
-    await expect(
-      page.getByLabel("Appearance", { exact: true }).getByRole("button", { name: "System" }),
-    ).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByLabel("Appearance", { exact: true }).getByRole("button", { name: "Dark" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await page.getByRole("tab", { name: "This device" }).click();
     await expect(page.getByRole("switch", { name: "Keep the screen awake" })).not.toBeChecked();
     expect(errors).toEqual([]);

@@ -1,5 +1,6 @@
 import { CloseCode, PAIRING_TTL_MS, type SecureLink, SessionKind } from "@doriface/crypto";
 import { memoryLinkPair, type MemoryEnd } from "@doriface/crypto/testing";
+import { meshInviteOf } from "@doriface/mesh/join";
 import { OPEN_POLICY } from "@doriface/policy";
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -26,6 +27,7 @@ afterEach(() => {
 });
 
 const log = (): void => {};
+const invite = meshInviteOf({ kind: "link", mesh: true });
 
 function hostMesh(sync?: (session: SecureLink) => void, Sessions = LiveSessions) {
   const dir = mkdtempSync(join(tmpdir(), "dh-host-mesh-"));
@@ -104,7 +106,7 @@ describe("the running host's mesh offers", () => {
     const [inviterEnd, joinerEnd] = memoryLinkPair();
     host.serve(pairLink(inviterEnd, b.m.identity.noise.publicKey));
     const dialed = { hostId: m.identity.hostId, noisePub: m.identity.noise.publicKey };
-    const ctx = { identity: b.m.identity, mesh: b.mesh, own: { name: "beta", hcId: "core-b" }, dialed, log };
+    const ctx = { invite, identity: b.m.identity, mesh: b.mesh, own: { name: "beta", hcId: "core-b" }, dialed, log };
     await runJoiner(new MeshLines(joinerEnd, JOINER_EXPECTS), { ...ctx, deadline: Date.now() + 60_000 });
     await new Promise((resolve) => setImmediate(resolve));
     expect(inviterEnd.closeCode).toBeUndefined();
@@ -142,7 +144,7 @@ describe("the running host's mesh offers", () => {
     const served = pairLink(inviterEnd, b.m.identity.noise.publicKey);
     host.serve(served);
     const dialed = { hostId: m.identity.hostId, noisePub: m.identity.noise.publicKey };
-    const ctx = { identity: b.m.identity, mesh: b.mesh, own: { name: "beta", hcId: "core-b" }, dialed, log };
+    const ctx = { invite, identity: b.m.identity, mesh: b.mesh, own: { name: "beta", hcId: "core-b" }, dialed, log };
     await runJoiner(new MeshLines(joinerEnd, JOINER_EXPECTS), { ...ctx, deadline: Date.now() + 60_000 });
     await new Promise((resolve) => setImmediate(resolve));
     expect(synced).toEqual([served]);
@@ -167,7 +169,7 @@ describe("the running host's mesh offers", () => {
     const [inviterEnd, joinerEnd] = memoryLinkPair();
     host.serve(pairLink(inviterEnd, b.m.identity.noise.publicKey));
     const dialed = { hostId: m.identity.hostId, noisePub: m.identity.noise.publicKey };
-    const ctx = { identity: b.m.identity, mesh: b.mesh, own: { name: "beta", hcId: "core-b" }, dialed, log };
+    const ctx = { invite, identity: b.m.identity, mesh: b.mesh, own: { name: "beta", hcId: "core-b" }, dialed, log };
     await runJoiner(new MeshLines(joinerEnd, JOINER_EXPECTS), { ...ctx, deadline: Date.now() + 60_000 });
     await new Promise((resolve) => setImmediate(resolve));
     expect(inviterEnd.closeCode).toBe(CloseCode.UnknownDevice);

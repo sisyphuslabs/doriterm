@@ -92,7 +92,8 @@ test("keep the screen awake survives a reload and holds the lock only while a te
   expect((await wake(page)).active).toBe(1);
   // On a screen too short for the dialog Settings is a sheet over the whole page, and no terminal shows.
   await page.setViewportSize({ width: 1280, height: 560 });
-  await expect(page.getByRole("dialog", { name: "Settings" })).toHaveCount(0);
+  await expect(page.locator("[data-settings-sheet]")).toBeVisible();
+  await expect(page.locator("[data-settings-dialog]")).toHaveCount(0);
   await expect.poll(async () => (await wake(page)).active, { message: "released once no terminal shows" }).toBe(0);
 });
 

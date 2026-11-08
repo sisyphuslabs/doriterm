@@ -81,6 +81,13 @@ describe("the roster stage 3 needs", () => {
     const saved2 = { ...CUSTOM, members: [{ hostName: "ghost" }, { hostId: "b", hostName: "laptop", hostKey: "kb" }] };
     expect(loadSettings(saved(saved2), { devBuild: false }).members.map((member) => member.hostId)).toEqual(["h", "b"]);
   });
+
+  test("a saved direct address still loads, so a file the desktop shell wrote keeps it for the shell (#1381 §8)", () => {
+    const value = "ws://192.168.1.20:7767/v1/e2ee";
+    const loaded = loadSettings(saved({ ...CUSTOM, directUrl: value }), { devBuild: false });
+    expect(loaded.directUrl).toBe(value);
+    expect(loaded.members.find((member) => member.hostId === "h")?.directUrl).toBe(value);
+  });
 });
 
 describe("saving keeps the roster and the selected host in agreement", () => {

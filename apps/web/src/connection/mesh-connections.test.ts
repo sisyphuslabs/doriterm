@@ -245,6 +245,16 @@ describe("one connection per member", () => {
     expect(mesh.entries().map((entry) => entry.target.hostId)).toEqual(["a", "b", "c"]);
   });
 
+  it("dials a member learned from the view with no direct address, so only the relay can carry it (#1381 §8)", () => {
+    const learned: MemberTarget = { hostId: "b", hostName: "laptop", hostKey: "key-b", directUrl: "" };
+    const { made } = running(settingsWith([member("a"), learned], "a"));
+    expect(
+      made
+        .filter((connection) => connection.settings.hostId === "b")
+        .map((connection) => connection.settings.directUrl),
+    ).toEqual([""]);
+  });
+
   it("keeps the other members open when one host stops", () => {
     const { mesh, made } = running(settingsWith([member("a"), member("b"), member("c")]));
     const [first, second, third] = made;
@@ -252,6 +262,9 @@ describe("one connection per member", () => {
     expect(second?.state.phase).toBe("open");
     expect(third?.state.phase).toBe("open");
     expect(mesh.entries().filter((entry) => entry.state.phase === "open")).toHaveLength(2);
+    // The stopped member keeps its row: it stays in entries(), saying it is down, so the list never shrinks (#942 stage 6).
+    expect(mesh.entries().map((entry) => entry.target.hostId)).toEqual(["a", "b", "c"]);
+    expect(mesh.entries()[0]?.state.phase).not.toBe("open");
   });
 
   it("shows the selected member's state, and switching shows another without closing any", () => {
