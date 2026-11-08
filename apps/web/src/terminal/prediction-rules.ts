@@ -55,8 +55,25 @@ const decoder = new TextDecoder();
  * Reads one input as the rules see it. Bytes are decoded as UTF-8; a malformed sequence decodes to U+FFFD and is not
  * printable here. A backspace is DEL or BS as sent, alone.
  */
+export const decodeInput = (input: string | Uint8Array): string =>
+  typeof input === "string" ? input : decoder.decode(input);
+
+/**
+ * The input submits a line: CR or LF anywhere in it (Enter, Ctrl-J, a pasted line), or Enter as the kitty keyboard
+ * protocol encodes it (`CSI 13 u`, with or without modifiers).
+ */
+const KITTY_ENTER_AFTER_ESC = /^\[13(?:;[\d:]*)?u/;
+
+export const submitsLine = (text: string): boolean =>
+  text.includes("\r") ||
+  text.includes("\n") ||
+  text
+    .split("\u001B")
+    .slice(1)
+    .some((sequence) => KITTY_ENTER_AFTER_ESC.test(sequence));
+
 export function readInput(input: string | Uint8Array): InputShape {
-  const text = typeof input === "string" ? input : decoder.decode(input);
+  const text = decodeInput(input);
   if (text === "\u007F" || text === "\b") return { kind: "backspace" };
   const codepoints = [...text];
   if (codepoints.length === 0 || !codepoints.every((each) => printable(each.codePointAt(0) ?? 0))) {

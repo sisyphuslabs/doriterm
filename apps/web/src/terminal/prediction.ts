@@ -1,4 +1,11 @@
-import { type PredictionSource, readInput, type SuppressionRule, suppressedBy } from "./prediction-rules.ts";
+import {
+  decodeInput,
+  type PredictionSource,
+  readInput,
+  submitsLine,
+  type SuppressionRule,
+  suppressedBy,
+} from "./prediction-rules.ts";
 
 export type { PredictionSource, SuppressionRule } from "./prediction-rules.ts";
 
@@ -91,7 +98,8 @@ const shows = (cell: ScreenCell, text: string, width: number): boolean =>
  * the terminal model; they are cells for an overlay to draw. Each carries the epoch it was made in, and the cells are
  * shown only while that epoch is confirmed, i.e. one of its predictions was echoed by the host. A kill (a mismatch past
  * `due`, no echo by `due`, the cursor leaving the row, the alternate screen, a reset) drops every prediction and starts
- * a new, unconfirmed epoch, so what is typed next is predicted silently until the host echoes one of it. There is no
+ * a new, unconfirmed epoch, so what is typed next is predicted silently until the host echoes one of it; a submitted
+ * line starts a new epoch too, keeping what was predicted before it. There is no
  * input acknowledgement in the protocol, so `due` is the only bound on how long an unechoed character is drawn.
  */
 export class Predictor {
@@ -104,6 +112,11 @@ export class Predictor {
   #frozen = false;
   #altScreen = false;
   #scrolledAway = false;
+  #shown: { readonly from: readonly Prediction[]; readonly upTo: number; readonly cells: readonly Prediction[] } = {
+    from: [],
+    upTo: 0,
+    cells: [],
+  };
 
   constructor(sources: PredictorSources) {
     this.#sources = sources;
@@ -112,7 +125,16 @@ export class Predictor {
   /** One input on its way to the program. Never changes what is sent; only decides what is drawn meanwhile. */
   typed(input: string | Uint8Array, source: PredictionSource): Verdict {
     const { screen } = this.#sources;
-    const shape = readInput(input);
+    const text = decodeInput(input);
+    // A submitted line starts a new epoch, as mosh does on CR (become_tentative, terminaloverlay.cc:798-799), so the
+    // first key typed after Enter is never drawn before its echo. A prediction is drawn for up to `due` (~495 ms at
+    // srtt 250), and the one input where that window is unacceptable is a password: the line just submitted may be the
+    // command that turns echo off and asks for one. Losing the drawn prediction on type-Enter-type is the price, a
+    // missing nicety against a credential character on screen. This deliberately departs from the first draft of
+    // docs/design/remote-input-feel.md D3, which showed that key for up to `due` and called it mosh's residual; it is
+    // not mosh's. If code and note disagree again, correct the note rather than let them silently diverge.
+    if (submitsLine(text)) this.#epoch += 1;
+    const shape = readInput(text);
     const at = this.#cursor ?? screen.cursor();
     const last = this.#predictions.at(-1);
     const width = shape.kind === "grapheme" && shape.codepoints === 1 ? this.#sources.widthOf(shape.text) : undefined;
@@ -176,15 +198,24 @@ export class Predictor {
     this.#scrolledAway = away;
   }
 
-  /** The cells to draw: empty unless their epoch is confirmed. The same array until the predictions change. */
+  /**
+   * The cells to draw: those whose epoch is confirmed, so keys typed before an Enter stay drawn while the keys after it
+   * wait for an echo. The same array until the predictions or the confirmed epoch change.
+   */
   visible(): readonly PredictedCell[] {
-    if (this.#scrolledAway || this.#epoch !== this.#confirmedEpoch) return [];
-    return this.#predictions;
+    if (this.#scrolledAway) return [];
+    const shown = this.#shown;
+    if (shown.from === this.#predictions && shown.upTo === this.#confirmedEpoch) return shown.cells;
+    const upTo = this.#confirmedEpoch;
+    const cells = this.#predictions.filter((prediction) => prediction.epoch <= upTo);
+    this.#shown = { from: this.#predictions, upTo, cells };
+    return cells;
   }
 
-  /** Where the predicted cursor is drawn while cells are, else null (the real cursor shows). */
+  /** Where the predicted cursor is drawn: after the last drawn cell, else null (the real cursor shows). */
   visibleCursor(): CursorPosition | null {
-    return this.visible().length > 0 ? this.#cursor : null;
+    const last = this.visible().at(-1);
+    return last === undefined ? null : { row: last.row, col: last.col + last.width };
   }
 
   #predict(text: string, width: 1 | 2, at: CursorPosition): PredictedCell {

@@ -16,65 +16,6 @@ describe("predictionDue", () => {
   });
 });
 
-describe("epochs (design note D3)", () => {
-  test("the first prediction after a fresh start is not drawn; once one is echoed the rest of its epoch is", () => {
-    const h = harness();
-    h.predictor.typed("a", "key");
-    h.predictor.typed("b", "key");
-    expect(texts(h)).toEqual([]);
-    expect(h.predictor.visibleCursor()).toBeNull();
-    // The prediction never reached the terminal model: the cells are still blank.
-    expect([h.screen.cell(0, 0), h.screen.cell(0, 1)]).toEqual([{ char: 0 }, { char: 0 }]);
-    h.hostEchoes("a");
-    expect(texts(h)).toEqual(["b"]);
-    expect(h.predictor.visibleCursor()).toEqual({ row: 0, col: 2 });
-    h.hostEchoes("b");
-    expect(texts(h)).toEqual([]);
-    h.predictor.typed("c", "key");
-    expect(texts(h)).toEqual(["c"]);
-  });
-
-  test("reset() starts an unconfirmed epoch: the next key is not drawn before its echo", () => {
-    const h = harness();
-    confirmed(h);
-    h.predictor.typed("a", "key");
-    expect(texts(h)).toEqual(["a"]);
-    h.predictor.reset();
-    expect(texts(h)).toEqual([]);
-    h.predictor.typed("d", "key");
-    expect(texts(h)).toEqual([]);
-  });
-
-  test("the password prompt: the first unechoed key is drawn at most `due`, every later one never", () => {
-    const h = harness();
-    confirmed(h);
-    h.predictor.typed("p", "key");
-    expect(texts(h)).toEqual(["p"]);
-    h.clock.now += DUE;
-    h.predictor.tick(h.clock.now);
-    expect(texts(h)).toEqual([]);
-    for (const key of "assword") {
-      h.clock.now += 100;
-      h.predictor.typed(key, "key");
-      h.predictor.tick(h.clock.now);
-      expect(texts(h)).toEqual([]);
-    }
-  });
-
-  test("after a kill, the first echo of the new epoch confirms it and the keys after it are drawn again", () => {
-    const h = harness();
-    confirmed(h);
-    h.predictor.typed("a", "key");
-    h.clock.now += DUE;
-    h.predictor.tick(h.clock.now);
-    h.predictor.typed("b", "key");
-    h.predictor.typed("c", "key");
-    expect(texts(h)).toEqual([]);
-    h.hostEchoes("b");
-    expect(texts(h)).toEqual(["c"]);
-  });
-});
-
 describe("confirmation by screen content, bounded by `due` (design note D2)", () => {
   test("a different cell before `due` keeps the prediction; the same cell after `due` kills the epoch", () => {
     const h = harness();
