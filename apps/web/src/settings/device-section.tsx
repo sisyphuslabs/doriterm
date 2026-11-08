@@ -40,7 +40,7 @@ export function DeviceSection() {
       <SettingRow
         key="install"
         title="Add to Home Screen"
-        description="In Safari, tap Share, then Add to Home Screen. Doriterm then opens in its own window."
+        description="In Safari, tap Share, then Add to Home Screen. Doriterm then opens in its own window and pairs once as a device of its own: iOS keeps a Home Screen app's storage apart from Safari's."
         control={null}
       />
     ) : null,
