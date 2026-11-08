@@ -44,6 +44,9 @@ export interface PhoneNavigation {
  */
 let landed: number | null = null;
 
+/** The history entry the Spaces tab pushed over the agents list: the only one the Agents tab may pop back from. */
+let spacesOverAgents: number | null = null;
+
 /** The router's place of an entry in this tab's history (@tanstack/history), counted from the page's first entry. */
 const ENTRY_INDEX = "__TSR_index";
 
@@ -102,13 +105,17 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     (section: PhoneSection) => {
       const atRoot = listed.space === null && listed.terminal === null;
       if (section === listed.section && atRoot) return;
-      // Spaces is one entry over the agents, so the Agents tab goes back down to it rather than stacking another.
-      if (section === "agents" && listed.section === "spaces" && atRoot && landed !== null && index > landed) {
+      // Spaces is one entry over the agents, so the Agents tab goes back down to it rather than stacking another - but
+      // only from the very entry the Spaces tab pushed: one that replaced a space gone from under it (dropSpace) has no
+      // Agents list below it, so that one is replaced by the agents in place.
+      if (section === "agents" && listed.section === "spaces" && atRoot && spacesOverAgents === index) {
+        spacesOverAgents = null;
         router.history.back();
         return;
       }
       if (section === "agents") return go(PHONE_LIST, true);
       // From the agents, Spaces is entered (one entry); within Spaces, its tab goes back to its own list in place.
+      if (listed.section !== "spaces") spacesOverAgents = index + 1;
       return go({ section: "spaces", space: null, terminal: null }, listed.section === "spaces");
     },
     [go, index, listed, router],
