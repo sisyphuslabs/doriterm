@@ -14,6 +14,24 @@ function manualFrames() {
 
 const bytes = (length: number, fill = 0x61) => new Uint8Array(length).fill(fill);
 
+describe("OutputPacer.busy", () => {
+  test("it reports queued output until a frame writes it", () => {
+    const frames = manualFrames();
+    const written: number[] = [];
+    const pacer = new OutputPacer(
+      (frame) => written.push(frame.byteLength),
+      frames.frame,
+      () => 0,
+    );
+    expect(pacer.busy).toBe(false);
+    pacer.push(bytes(4));
+    expect(pacer.busy).toBe(true);
+    frames.nextFrame();
+    expect(pacer.busy).toBe(false);
+    expect(written).toEqual([4]);
+  });
+});
+
 describe("OutputPacer (#560)", () => {
   test("output that arrives within a frame is written once, on the frame, and credited only then", () => {
     const clock = manualFrames();

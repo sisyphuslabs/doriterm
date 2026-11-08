@@ -4,6 +4,21 @@ import { memoryStore, type KeyValueStore } from "../storage/idb.ts";
 import { loadDeviceKey } from "./device-key.ts";
 
 describe("loadDeviceKey", () => {
+  test("WebKit hands a stored CryptoKey back as null, and the device keeps one identity across loads (#1329)", async () => {
+    const backing = memoryStore();
+    const lossy = (): KeyValueStore => ({
+      get: async (key) => {
+        const value = await backing.get(key);
+        return (value as { readonly kind?: string } | null)?.kind === "webcrypto" ? null : value;
+      },
+      put: (key, value) => backing.put(key, value),
+    });
+    const subtle = globalThis.crypto.subtle;
+    const first = await loadDeviceKey(lossy(), subtle);
+    const afterReload = await loadDeviceKey(lossy(), subtle);
+    expect(afterReload.publicKey).toEqual(first.publicKey);
+  });
+
   test("without WebCrypto X25519 it keeps raw bytes and agrees with a noble peer", async () => {
     const storage = memoryStore();
     const key = await loadDeviceKey(storage, null);
@@ -13,6 +28,18 @@ describe("loadDeviceKey", () => {
     expect(shared).toEqual(x25519.getSharedSecret(peerPrivate, key.publicKey));
     const again = await loadDeviceKey(storage, null);
     expect(again.publicKey).toEqual(key.publicKey);
+  });
+
+  test("a store that throws on write is not read as a browser that cannot keep keys (#1329 review)", async () => {
+    const backing = memoryStore();
+    const storage: KeyValueStore = {
+      get: (key) => backing.get(key),
+      put: (key, value) => {
+        if (key === "device-key.probe") throw new Error("QuotaExceededError");
+        return backing.put(key, value);
+      },
+    };
+    await expect(loadDeviceKey(storage, globalThis.crypto.subtle)).rejects.toThrow("QuotaExceededError");
   });
 
   test("a failed load is retried on the next call", async () => {

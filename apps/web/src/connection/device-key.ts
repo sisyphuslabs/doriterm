@@ -73,11 +73,40 @@ async function generateWebCrypto(subtle: SubtleCrypto): Promise<StoredWebCrypto>
   return { kind: "webcrypto", privateKey: pair.privateKey, publicKey };
 }
 
+const PROBE = "device-key.probe";
+const keepsKeys = new WeakMap<KeyValueStore, Promise<boolean>>();
+
+/**
+ * Whether this store gives a stored CryptoKey back. WebKit's IndexedDB hands an X25519 CryptoKey back as null
+ * (bugs.webkit.org 312279), so the key must be kept as bytes there or the device is new on every load (#1329).
+ *
+ * Only a null read-back is that browser's behaviour. A store that throws (busy, quota, abort) says nothing about whether it
+ * can keep a CryptoKey, so it is raised rather than read as "this browser cannot": answering false there would quietly drop
+ * a working browser to raw bytes.
+ */
+async function keepsStoredKeys(storage: KeyValueStore, subtle: SubtleCrypto): Promise<boolean> {
+  const held = keepsKeys.get(storage);
+  if (held !== undefined) return held;
+  const probe = (async (): Promise<boolean> => {
+    const pair = await generateWebCrypto(subtle);
+    await storage.put(PROBE, pair);
+    const back = await storage.get(PROBE);
+    return isStored(back) && back.kind === "webcrypto";
+  })();
+  keepsKeys.set(storage, probe);
+  try {
+    return await probe;
+  } catch (cause) {
+    keepsKeys.delete(storage);
+    throw cause;
+  }
+}
+
 async function readOrCreate(storage: KeyValueStore, subtle: SubtleCrypto | null): Promise<DeviceKey> {
   const stored = await storage.get(KEY);
   if (isStored(stored))
     return stored.kind === "webcrypto" && subtle !== null ? fromWebCrypto(subtle, stored) : fromRaw(asRaw(stored));
-  if (subtle !== null && (await webCryptoX25519(subtle))) {
+  if (subtle !== null && (await webCryptoX25519(subtle)) && (await keepsStoredKeys(storage, subtle))) {
     const generated = await generateWebCrypto(subtle);
     await storage.put(KEY, generated);
     return fromWebCrypto(subtle, generated);

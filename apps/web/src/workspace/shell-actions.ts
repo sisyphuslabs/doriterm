@@ -40,6 +40,7 @@ const SHELL_ACTIONS: Readonly<Record<Shell, readonly string[]>> = {
     "layout.filter:sidebar",
     "app.zoom_in",
     "app.zoom_out",
+    "app.help",
     "app.settings",
   ],
   phone: [
@@ -51,6 +52,7 @@ const SHELL_ACTIONS: Readonly<Record<Shell, readonly string[]>> = {
     "terminal.search",
     "app.zoom_in",
     "app.zoom_out",
+    "app.help",
     "app.settings",
   ],
 };
