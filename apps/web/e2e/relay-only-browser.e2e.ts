@@ -4,7 +4,8 @@ import { type FakeRelayHost, startFakeRelayHost } from "./relay-route.ts";
 
 // #1381 §8, PR 3: a browser reaches every member over the relay. The page refuses every WebSocket that is not the
 // relay's, so a direct dial cannot succeed; the workspace and the mesh status still come up over the relay alone.
-test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
+// A desktop browser and a phone (mobile emulation) both run it (design §14 item 3).
+test.use({ serviceWorkers: "block" });
 
 const SETTINGS_KEY = "doriface.connection";
 
@@ -45,9 +46,13 @@ async function withDirectAddress(page: Page, paired: string, directUrl: string):
   await page.addInitScript(([key, value]) => localStorage.setItem(key, value), seeded);
 }
 
-/** The relay line the Add machine dialog offers, the one `doriface-host mesh join` takes. */
-async function joinOneMachine(page: Page, host: FakeRelayHost): Promise<void> {
-  await page.getByRole("button", { name: "Add machine" }).click({ timeout: 60_000 });
+/**
+ * The relay line the Add machine dialog offers, the one `doriface-host mesh join` takes. A desktop opens it from the
+ * sidebar; a phone has no sidebar and opens it from Settings, Machines.
+ */
+async function joinOneMachine(page: Page, host: FakeRelayHost, phone: boolean): Promise<void> {
+  if (phone) await openMachines(page);
+  await page.getByRole("button", { name: phone ? "Add a machine" : "Add machine" }).click({ timeout: 60_000 });
   const dialog = page.getByRole("dialog", { name: "Add a machine" });
   const command = dialog.getByLabel("Join command");
   await expect(command).toBeVisible({ timeout: 30_000 });
@@ -67,8 +72,30 @@ async function openMachines(page: Page): Promise<void> {
     .click();
 }
 
-test("a browser connects over the relay alone and renders the workspace and the mesh status", async ({ page }) => {
-  test.setTimeout(240_000);
+/**
+ * The only sockets a page may have refused are its own loopback probes for a host on the same computer (`/v1/hc`), which
+ * design §8 keeps; anything else refused is a dial past the relay.
+ */
+function pastTheRelay(refused: readonly string[]): string[] {
+  return refused.filter((url) => {
+    const parsed = new URL(url);
+    const loopback = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost" || parsed.hostname === "[::1]";
+    return !(loopback && parsed.pathname.startsWith("/v1/hc"));
+  });
+}
+
+/** A desktop shows the terminal beside the list; a phone shows the agents list first, and a tap opens the terminal. */
+async function terminalOpens(page: Page, phone: boolean): Promise<void> {
+  if (phone)
+    await page
+      .getByRole("region", { name: "Agents" })
+      .getByRole("button", { name: /existing/ })
+      .first()
+      .click({ timeout: 30_000 });
+  await expect(page.locator("[data-terminal]").first()).toBeVisible({ timeout: 30_000 });
+}
+
+async function connectsOverTheRelayAlone(page: Page, phone: boolean): Promise<void> {
   const host = await startFakeRelayHost({ direct: true, terminal: true });
   try {
     const refused = await refuseEverySocketButTheRelay(page);
@@ -78,16 +105,16 @@ test("a browser connects over the relay alone and renders the workspace and the 
     // The session pairing proved is a browser session too: it says Relay, with no direct address saved at all.
     await expect(page.locator('[data-connection-path="relay"]')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("contentinfo")).toContainText("Relay");
-    await expect(page.locator("[data-terminal]").first()).toBeVisible({ timeout: 30_000 });
+    await terminalOpens(page, phone);
 
     // A later load with a Direct address in the file still reaches the host, and dials no direct socket to do it.
     await withDirectAddress(page, paired, host.directUrl);
     await page.goto("/");
-    await expect(page.locator("[data-terminal]").first()).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator('[data-connection-path="relay"]')).toBeVisible();
+    await expect(page.locator('[data-connection-path="relay"]')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("contentinfo")).toContainText("Relay");
+    await terminalOpens(page, phone);
 
-    await joinOneMachine(page, host);
+    await joinOneMachine(page, host, phone);
     await openMachines(page);
     await expect(page.locator("[data-mesh-group]").first()).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('[data-mesh-group="online"]')).toContainText("studio");
@@ -105,9 +132,29 @@ test("a browser connects over the relay alone and renders the workspace and the 
     await expect(page.getByText(/^Direct to this host/)).toHaveCount(0);
     await expect(page.getByText(/or direct to/)).toHaveCount(0);
 
-    // Nothing but the relay was ever dialled: a direct attempt would be refused here, and it never happened.
+    // Nothing but the relay was ever dialled: a direct attempt would be refused here, and it never happened. The only
+    // refusals allowed are the loopback probes for a host on this computer.
     expect(refused.filter((url) => url.includes("/v1/e2ee"))).toEqual([]);
+    expect(pastTheRelay(refused)).toEqual([]);
   } finally {
     await host.stop();
   }
+}
+
+test.describe("a desktop browser", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("connects over the relay alone and renders the workspace and the mesh status", async ({ page }) => {
+    test.setTimeout(240_000);
+    await connectsOverTheRelayAlone(page, false);
+  });
+});
+
+test.describe("a phone", () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  test("connects over the relay alone and renders the workspace and the mesh status", async ({ page }) => {
+    test.setTimeout(240_000);
+    await connectsOverTheRelayAlone(page, true);
+  });
 });
