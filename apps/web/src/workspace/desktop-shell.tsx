@@ -172,6 +172,7 @@ export function DesktopShell(props: DesktopShellProps) {
     spaceKeys,
     onSelectSpace,
     onNew,
+    onNewSpace,
     onSplit,
     onCloseTab,
     onClosePane,

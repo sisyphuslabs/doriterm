@@ -92,7 +92,7 @@ function dateOf(value: unknown): Date | null {
 }
 
 function localOf(file: MeshFile, view: View, self: string, live: MeshLiveFacts): LocalFacts {
-  const keys = [...view.members, ...view.overCap, ...view.revoked];
+  const keys = [...view.members, ...view.revoked];
   const byHostId = new Map(keys.map((key) => [hostIdOfKey(key), key]));
   const localNames = new Map(
     Object.entries(file.local).flatMap(([hostId, entry]) => {
@@ -131,11 +131,10 @@ export function meshSourcesOf(
   /** The founder is admitted by its own found record; PR 7's ViewFacts gives it no admitter. */
   const foundHash = parsed.find(({ body }) => body.type === "found")?.hash;
   /** A host its own view no longer holds lists the view's members only, and says it is possibly revoked. */
-  const inView = view.members.has(self) || view.overCap.has(self);
+  const inView = view.members.has(self);
   return {
     view: {
       members: view.members,
-      overCap: view.overCap,
       revoked: view.revoked,
       noise: view.noise,
       admitter: new Map([...view.admitter].filter(([key]) => view.governing.get(key) !== foundHash)),

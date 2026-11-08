@@ -47,8 +47,8 @@ export class LiveSessions {
 
   /**
    * Closes every session whose key is neither a current machine member's, a current client member's, nor a paired
-   * device's, and every one whose key the mesh refuses as a device (a revoked or over-cap member, a machine's device
-   * key). When a store cannot be read, no session can be shown to be authorized, so every one is closed.
+   * device's, and every one whose key the mesh refuses as a device (a revoked member, a machine's device key). When a
+   * store cannot be read, no session can be shown to be authorized, so every one is closed.
    */
   closeRevoked(): void {
     this.#closeRevoked();

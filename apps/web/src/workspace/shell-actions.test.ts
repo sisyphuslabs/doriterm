@@ -1,5 +1,6 @@
 import type { Terminal } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
+import { actionFor } from "../keys/actions.ts";
 import { availableActions, type Shell } from "./shell-actions.ts";
 import { desktopActions, phoneActions } from "./use-app-actions.ts";
 import type { LayoutTab } from "./layout-model.ts";
@@ -72,6 +73,7 @@ const handlers = {
       layout,
       ...spaces(),
       onNew: noop,
+      onNewSpace: noop,
       onSplit: noop,
       onCloseTab: noop,
       onClosePane: noop,
@@ -93,12 +95,22 @@ const handlers = {
 } satisfies Record<Shell, (action: string) => boolean>;
 
 describe("every palette row runs something", () => {
-  test.each(["desktop", "phone"] as const)("%s: its handler takes every action its palette lists", (shell) => {
+  test.each(["desktop", "phone"] as const)("%s: its handler takes every app action its palette lists", (shell) => {
     const unhandled = availableActions(shell, true)
       .map((action) => action.id)
-      .filter((id) => !handlers[shell](id));
+      .filter((id) => actionFor(id)?.scope === "app" && !handlers[shell](id));
     expect(unhandled).toEqual([]);
   });
+
+  test.each(["desktop", "phone"] as const)(
+    "%s: every other row is a terminal action, which the focused terminal takes",
+    (shell) => {
+      const others = availableActions(shell, true)
+        .map((action) => action.id)
+        .filter((id) => actionFor(id)?.scope !== "app");
+      expect(others).toEqual(["terminal.search"]);
+    },
+  );
 });
 
 const sessionRows = (shell: Shell, inView: boolean) =>
@@ -142,6 +154,7 @@ describe("moving a tab", () => {
           },
           ...spaces(),
           onNew: noop,
+          onNewSpace: () => undefined,
           onSplit: noop,
           onCloseTab: noop,
           onClosePane: noop,
@@ -216,6 +229,7 @@ describe("dictation (#194)", () => {
           layout,
           ...spaces(),
           onNew: noop,
+          onNewSpace: () => undefined,
           onSplit: noop,
           onCloseTab: noop,
           onClosePane: noop,
@@ -258,6 +272,7 @@ const spaceHandler = (spaceKeys: readonly string[], active: string | null, calls
       spaceKeys,
       onSelectSpace: (key) => calls.push(key),
       onNew: noop,
+      onNewSpace: () => undefined,
       onSplit: noop,
       onCloseTab: noop,
       onClosePane: noop,

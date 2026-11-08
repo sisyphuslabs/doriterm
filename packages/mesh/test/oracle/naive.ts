@@ -3,7 +3,7 @@
 // distinct past set and every pairwise meet bottom-up in increasing size, so view(past(x)) and the view of every common
 // past are ready before any set that contains x. Test-only: `src/` never imports it.
 
-import { canonical, has, isAdmission, MAX_MEMBERS, pasts, popcount, type Rec, subjectsOf, topo } from "./naive-dag.ts";
+import { canonical, has, isAdmission, pasts, popcount, type Rec, subjectsOf, topo } from "./naive-dag.ts";
 
 export interface Lite {
   readonly members: readonly string[];
@@ -203,17 +203,16 @@ function lite(
     if (g !== undefined) gov.push([k, g]);
   }
   const governed = gov.toSorted((a, b) => canon.indexOf(a[1]) - canon.indexOf(b[1]));
-  const ranked = governed.slice(0, MAX_MEMBERS);
   const noise = new Map<string, string>();
   const admitter = new Map<string, string>(governed.map(([k, g]) => [k, rec(g).by]));
   const governing = new Map<string, number>(governed);
-  for (const [k, g] of ranked) {
+  for (const [k, g] of governed) {
     const rekeys = eff.filter((r) => rec(r).type === "rekey" && rec(r).subject === k && has(past[r] ?? 0n, g));
     const tops = rekeys.filter((r) => !rekeys.some((o) => o !== r && has(past[o] ?? 0n, r)));
     const top = tops.map(rec).toSorted((a, b) => (a.id < b.id ? -1 : 1))[0];
     noise.set(k, (top ?? rec(g)).card?.noise ?? "?");
   }
-  const members = ranked.map(([k]) => k);
+  const members = governed.map(([k]) => k);
   const revoked = keys.filter((k) => !gov.some(([g]) => g === k) && effRev(k).length > 0).toSorted();
   return { members, revoked, noise, admitter, governing, eff: eff.map((i) => rec(i).id) };
 }

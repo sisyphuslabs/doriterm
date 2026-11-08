@@ -4,6 +4,7 @@ import { terminalConfigStore } from "../ghostty/config-store.ts";
 import { single, withValues, withoutKey, type TerminalConfig } from "../ghostty/config.ts";
 import { KEY_BY_NAME } from "../ghostty/keys.ts";
 import { useActionHandler, type ActionHandler } from "../keys/dispatcher.ts";
+import { toggleShortcuts } from "../keys/shortcuts-store.ts";
 import type { Direction } from "../layout/neighbor.ts";
 import type { Axis } from "@doriface/protocol/layout";
 import type { Layout, PaneTarget } from "./use-layout.ts";
@@ -12,6 +13,8 @@ export interface AppActionTargets {
   readonly terminals: readonly Terminal[];
   readonly layout: Layout;
   readonly onNew: () => void;
+  /** Starts a new space, as the New tab menu's New space does (herdr-app's `space.new`). */
+  readonly onNewSpace: () => void;
   /** Starts a terminal beside the focused pane: to its right along a row, below it along a column. */
   readonly onSplit: (axis: Axis, target?: PaneTarget) => void;
   /** Closes a tab, asking first whether its sessions keep running. */
@@ -42,6 +45,7 @@ function sessionAction(action: string, onSession: SessionVerb): boolean {
   if (action === "session.rename") return onSession("rename");
   if (action === "session.end") return onSession("end");
   if (action === "space.rename") return onSession("rename-space");
+  if (action === "app.help") return (toggleShortcuts(), true);
   return stepTerminalFont(action);
 }
 
@@ -157,6 +161,7 @@ export function desktopActions(
     terminals,
     layout,
     onNew,
+    onNewSpace,
     onSplit,
     onCloseTab,
     onClosePane,
@@ -213,6 +218,9 @@ export function desktopActions(
         return selectSpace(steppedSpace(spaceKeys, activeSpace, 1));
       case "space.prev":
         return selectSpace(steppedSpace(spaceKeys, activeSpace, -1));
+      case "space.new":
+        onNewSpace();
+        return true;
       case "pane.split":
         if (focused === null || (argument !== "right" && argument !== "down")) return false;
         onSplit(argument === "right" ? "row" : "column");

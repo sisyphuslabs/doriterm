@@ -15,20 +15,11 @@ export function revokedBy(records: readonly Signed[]): ReadonlySet<string> {
 
 /**
  * Section 6.2: a revoked member's inbound sessions close at once through LiveSessions; one this host dialed, at the
- * view change or later (section 5.3's last push to it), retires within the linger; back in the view (under the cap
- * again), it stays.
+ * view change or later (section 5.3's last push to it), retires within the linger; back in the view (re-admitted),
+ * it stays.
  */
 export function retireIfGone(session: SyncSession, view: MeshView, self: string): void {
   if (session.dialer !== self) return;
-  const reason = retireReason(view, session.peer);
-  if (reason === undefined) session.keep();
-  else session.retire(reason);
-}
-
-/** Why a sync session this host dialed to `peer` retires; undefined while `peer` is a member. */
-function retireReason(view: MeshView, peer: string): string | undefined {
-  if (view.members.some((member) => member.signPub === peer)) return undefined;
-  return view.overCap.some((member) => member.signPub === peer)
-    ? "past the mesh's 12-member cap"
-    : "revoked from the mesh";
+  if (view.members.some((member) => member.signPub === session.peer)) session.keep();
+  else session.retire("revoked from the mesh");
 }

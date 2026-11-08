@@ -2,6 +2,54 @@
 
 ## Unreleased
 
+## v0.1.10 - 2026-11-08
+
+### Terminal
+
+- A terminal that reattaches after a reconnect holds the view at the end while the replay streams in, instead of the replay's rows climbing past the reader; scrolling up during the replay still leaves the view where it is. (#1041)
+- Find in a terminal: Cmd+F (Ctrl+Shift+F elsewhere) or the palette opens a find bar that searches the screen and scrollback, marks every match, steps with Enter and Shift+Enter, and keeps each terminal's query (#732)
+- A Korean syllable an input method commits as plain text, with no composition before it, reaches the program as soon as it is committed instead of waiting in the input until the next key. The Korean keyboards that build each syllable in the field (iPhone, iPad, Safari on a Mac) still keep the syllable being typed until it is finished. (#1104)
+
+### Keys
+
+- Cmd+Shift+R (Ctrl+Shift+R on Linux and Windows) renames the tab, beside F2; the desktop app's View > Force Reload no longer takes it. (#702)
+- The default keys follow herdr-app's own key files, and `docs/keymap-herdr-app.md` lists every herdr-app key with what Doriterm does with it. Keys you changed in Settings > Keybindings stay as you set them. Changed defaults: (#702)
+  - macOS: Cmd+W closes the tab (Cmd+Alt+W still does) and Cmd+Shift+W the focused pane; the desktop app's File > Close Window has no key. Cmd+N starts a new space.
+  - Linux and Windows: Ctrl+1-9 select a tab and Alt+1-9 a space (swapped from before). Ctrl+Shift+PgUp / PgDn step through the spaces, so moving a tab is Ctrl+Alt+Shift+PgUp / PgDn. Alt+arrows and Alt+H/J/K/L move focus between panes and Alt+Shift+H/J/K/L swap them. Ctrl+Shift+N starts a new space.
+- New space and Rename tab are in the command palette and the desktop app's Shell menu. (#702)
+- Cmd+/ (Ctrl+? on Linux and Windows) opens a Keyboard shortcuts dialog listing your own keys, grouped as in Settings > Keybindings; the same chord closes it, and the command palette lists it too. (#733)
+
+### Machine mesh
+
+- A mesh takes any number of machines: the 12-member cap is gone, so adding a thirteenth machine no longer fails and mesh status no longer reports a limit. (#814)
+
+### Connection and offline wording
+
+- Connecting to a machine, and reconnecting after a drop or a wake, takes one round trip less: the first terminal call rides in the encrypted handshake and its answer comes back with the host's reply, about 0.2 s sooner on a far machine. The host acts on nothing else before the keys are confirmed. (#1271)
+
+### Host install
+
+- The setup tool's `verify`, `invite`, `join`, `pair` and `uninstall` use the same herdr-core `install` chose: an older or unrelated `hc` earlier in `~/.local/bin` is skipped instead of used. (#821)
+
+### Website
+
+- A link to app.doriterm.com now previews with the same card as doriterm.com. (#1341)
+
+## v0.1.9 - 2026-11-08
+
+### Terminal
+
+- A terminal that goes quiet no longer jumps to the top of its history and scrolls back down: a direct connection to the host (the desktop app's own host included) now pings it every 30 s, so the host stops closing the idle session after 90 s and the terminal no longer reattaches. (#1040)
+- A pane out of view no longer fetches its terminal's replay when the host ends the stream while the program still runs: it re-attaches once it is shown, and a program that ended in the meantime closes its tab then. (#1092)
+- A syllable an input method is still composing is drawn as cells at the cursor, as Ghostty draws it: a wide one over two cells at the size it will have once committed (it no longer jumps on commit), underlined over the cells it covers, shifted left at the end of the row, following the cursor if output moves it, and with no cursor drawn meanwhile. (#674)
+
+### Workspace
+
+- Closing a tab while its layout could not be saved says "The layout was not saved" once, and the tab stays in view: the
+  ended session's pane is no longer dropped a second time while the page has not heard the session end yet. (#1328)
+- Right-clicking an agent or a space on the narrowed sidebar (the icon rail), or the title bar of a pane in a split,
+  opens its menu with Rename, as a row on the full sidebar does. (#1348)
+
 ## v0.1.8 - 2026-11-07
 
 ### Terminal

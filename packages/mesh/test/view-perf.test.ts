@@ -61,3 +61,19 @@ test("M-14: one merge at 4096 records costs under a tenth of a cold view of the 
   expect(median / coldMs).toBeLessThan(MERGE_SHARE_OF_COLD);
   expect(median).toBeLessThan(10 * DESIGN_MERGE_MS);
 }, 120_000);
+
+/**
+ * A mesh has no member cap (#806): the same 4096-record log written by 64 members costs no more than the 12-member one
+ * above. Measured on a development machine at load average 44: 64 members 0.22 s against 1.13 s for 12, since a larger
+ * mesh spends more of its log on admissions and acks and has fewer conflicts left to decide. Same budget as above.
+ */
+test("M-14: a cold view of a 64-member mesh at 4096 records stays within the same budget", () => {
+  const wide = bigMesh({ records: MAX_RECORDS, revokes: 64, seed: 20261103, members: 64 });
+  const ms = Math.min(
+    timed(() => void viewOfRecords(wide).eff.size),
+    timed(() => void viewOfRecords(wide).eff.size),
+  );
+  console.log(`cold view, 64 members: ${wide.length} records in ${ms.toFixed(0)} ms (budget ${COLD_BUDGET_MS} ms)`);
+  expect(viewOfRecords(wide).members.length).toBe(64);
+  expect(ms).toBeLessThan(COLD_BUDGET_MS);
+}, 120_000);

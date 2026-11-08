@@ -5,26 +5,34 @@ import { type PastSet, type Rec, subjectsOf } from "./dag.ts";
 import type { Engine } from "./engine.ts";
 import type { RuleView } from "./membership.ts";
 
+/** A member's current Noise key in `view`: a rekey's, else its governing admission's card. */
+function noiseOf(e: Engine, view: RuleView, k: string): string | undefined {
+  const gov = view.governing.get(k);
+  return view.rekeyed.get(k) ?? (gov === undefined ? undefined : e.dag.rec(gov).card?.noise);
+}
+
 /** Whether the card's Noise key is the current Noise key of a member other than `subject` (a twin, #90). */
-function twin(r: Rec, before: RuleView | undefined): boolean {
+function twin(e: Engine, r: Rec, before: RuleView | undefined): boolean {
+  if (before === undefined) return false;
   const noise = r.card?.noise;
-  return (before?.members ?? []).some((k) => k !== r.subject && before?.noise.get(k) === noise);
+  return [...before.governing.keys()].some((k) => k !== r.subject && noiseOf(e, before, k) === noise);
 }
 
 /** type_ok(x, view(past(x))). */
 function typeOk(e: Engine, r: Rec, before: RuleView | undefined): boolean {
-  const members = before?.members ?? [];
+  const isMember = (k: string): boolean => before?.governing.has(k) === true;
   switch (r.type) {
     case "found":
       return false;
     case "admit": {
       const subject = r.subject ?? "";
-      return (!members.includes(subject) || r.card?.noise === before?.noise.get(subject)) && !twin(r, before);
+      const sameKey = before !== undefined && r.card?.noise === noiseOf(e, before, subject);
+      return (!isMember(subject) || sameKey) && !twin(e, r, before);
     }
     case "name":
-      return members.includes(r.subject ?? "");
+      return isMember(r.subject ?? "");
     case "rekey":
-      return r.by === r.subject && !twin(r, before);
+      return r.by === r.subject && !twin(e, r, before);
     case "revoke": {
       const subjects = subjectsOf(r);
       const known = new Set(
@@ -41,7 +49,8 @@ function typeOk(e: Engine, r: Rec, before: RuleView | undefined): boolean {
 function authorized(e: Engine, id: string): boolean {
   return e.once("pa", id, () => {
     const r = e.dag.rec(id);
-    return e.membersBefore(id).has(r.by) && typeOk(e, r, e.before(id));
+    const before = e.before(id);
+    return before?.governing.has(r.by) === true && typeOk(e, r, before);
   });
 }
 
@@ -114,7 +123,7 @@ export function common(e: Engine, a: string, b: string): PastSet {
 /** CM(a, b) = members(view(C(a, b))). */
 export function commonMembers(e: Engine, a: string, b: string): readonly string[] {
   const c = common(e, a, b);
-  return c.size === 0 ? [] : e.view(c).members;
+  return c.size === 0 ? [] : [...e.view(c).governing.keys()];
 }
 
 /**
@@ -124,7 +133,7 @@ export function commonMembers(e: Engine, a: string, b: string): readonly string[
  * excludes no voter (contract notation).
  */
 export function lineage(e: Engine, key: string, view: RuleView | undefined, C: PastSet): readonly string[] | undefined {
-  const commonMembersSet = new Set(C.size === 0 ? [] : e.view(C).members);
+  const commonMembersSet = new Set(C.size === 0 ? [] : e.view(C).governing.keys());
   const out: string[] = [];
   const passed = new Set<string>();
   for (let k = key; !passed.has(k);) {

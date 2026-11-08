@@ -43,6 +43,14 @@ captureInstallPrompt();
 // The desktop shell serves the app from its own app: scheme; an offline cache there only reloads the window,
 // so earlier desktop builds' workers and caches are removed instead. The iOS and Android apps carry the build
 // themselves and push through APNs and FCM (#705), so they run no worker either.
+/**
+ * A tapped notification's pane opens in the workspace. Already there, nothing navigates: the pane's own open records
+ * its entry (a phone's ?t=), so a push here left a dead list entry behind the terminal (#999). From another screen
+ * (Settings) the workspace takes that screen's entry rather than adding one.
+ */
+const toWorkspace = (): void => {
+  if (router.state.location.pathname !== "/") void router.navigate({ to: "/", replace: true });
+};
 const native = isNativeShell();
 if (!native && (location.protocol === "https:" || location.protocol === "http:")) {
   // A new worker waits until Reload to update (the sidebar's Settings dot says one does), so no page is swapped mid-use.
@@ -63,12 +71,12 @@ if (!native && (location.protocol === "https:" || location.protocol === "http:")
   void resumeUpdate(updateDeps);
   // A tapped notification opens the app at /?notice=<id>, or reaches an open window as a message.
   captureNotice();
-  listenForNotices(() => void router.navigate({ to: "/" }));
+  listenForNotices(toWorkspace);
   followConnection();
 } else {
   void removeServiceWorkers();
   if (native) {
-    listenForAppNotices(() => void router.navigate({ to: "/" }));
+    listenForAppNotices(toWorkspace);
     followConnection();
     // The app's status and navigation bars take the theme in view, as the desktop window does.
     paintBars();
@@ -105,7 +113,7 @@ if (desktopBridge() !== null) {
   // The Shell menu runs the page's own actions and shows the page's own keys for them.
   onDesktopRunAction((action) => void runAction(action));
   // A clicked notification opens its pane in the workspace, from Settings too.
-  listenForDesktopNotices(() => void router.navigate({ to: "/" }));
+  listenForDesktopNotices(toWorkspace);
   reportMenuKeys();
   // The shell may forward bytes to this page's saved Direct address and nothing else (#449).
   const forwarder = directForwardBridge();

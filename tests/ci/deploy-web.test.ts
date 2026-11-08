@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { evaluate, type Value } from "./gh-expression.ts";
 
-type Step = { name?: string; if?: string; run?: string; uses?: string };
+type Step = { id?: string; name?: string; if?: string; run?: string; uses?: string };
 type Job = { needs?: string; if?: string; steps: Step[] };
 type Workflow = { concurrency: { group: string; "cancel-in-progress": string | boolean }; jobs: Record<string, Job> };
 type Route = { pattern: string; zone_id?: string; custom_domain?: boolean };
@@ -77,6 +77,28 @@ test("production deploys only from dev, after staging was deployed and probed, f
     "bun .github/scripts/probe-web.ts https://doriface.omo.dev",
   ]);
   expect(production.steps.some((step) => step.uses?.startsWith("actions/download-artifact"))).toBe(true);
+});
+
+// #929: a deploy that failed leaves nothing new to probe; each probe retries for minutes, so probing then only burns time.
+test("each host is probed only after that job's deploy succeeded, and a failed probe does not skip the next host", () => {
+  for (const job of Object.values(workflow.jobs)) {
+    const deploy = job.steps.findIndex((step) => step.run?.startsWith('bunx "$WRANGLER" deploy'));
+    const deployId = job.steps[deploy]?.id;
+    const probes = job.steps.slice(deploy + 1).filter((step) => step.run?.includes("probe-web.ts"));
+    expect(probes.length).toBe(2);
+    const probed = (outcome: string, status: "success" | "failure"): boolean[] =>
+      probes.map((probe) =>
+        Boolean(
+          evaluate(probe.if ?? "success()", {
+            contexts: { steps: deployId === undefined ? {} : { [deployId]: { outcome } } },
+            status,
+          }),
+        ),
+      );
+    expect(probed("failure", "failure")).toEqual([false, false]);
+    expect(probed("success", "failure")).toEqual([false, true]);
+    expect(probed("success", "success")).toEqual([true, true]);
+  }
 });
 
 test("app.doriterm.com and the omo.dev host each serve the build with the SPA fallback, so /pair loads the app", () => {

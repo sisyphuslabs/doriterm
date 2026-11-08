@@ -1,7 +1,7 @@
 import { Badge, Button, Dialog, Input, Notice } from "@doriface/ui";
 import { asSentence } from "../storage/sentence.ts";
 import { useMemo, useState } from "react";
-import { ACTIONS, actionFor, type ActionDef, type Scope } from "../keys/actions.ts";
+import { ACTIONS, actionFor, SCOPE_LABEL, type ActionDef } from "../keys/actions.ts";
 import { keymapStore, NewerKeymapError, useKeymapError, useOverrides } from "../keys/keymap-store.ts";
 import {
   importKeybinds,
@@ -18,8 +18,6 @@ import {
 import { currentPlatform } from "../keys/trigger.ts";
 import { download } from "./download.ts";
 import { KeybindingRow } from "./keybinding-row.tsx";
-
-const SCOPE_LABEL: Readonly<Record<Scope, string>> = { app: "App", terminal: "Terminal" };
 
 function ImportPreview({ parsed, onClose }: { readonly parsed: ParsedKeybinds; readonly onClose: () => void }) {
   const applied = parsed.lines.filter((line) => line.status === "applies").length;

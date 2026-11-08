@@ -35,7 +35,6 @@ export class Shared {
   readonly #perSet = new WeakMap<RecordSet, Tables>();
   readonly #heads = new WeakMap<PastSet, readonly string[]>();
   readonly #before = new Map<string, RuleView | undefined>();
-  readonly #members = new Map<string, ReadonlySet<string>>();
   /** The rule view of each set evaluated so far, under the set's heads, and of each context. No statuses. */
   readonly #views = new Map<string, RuleView>();
   readonly #contexts = new Map<string, RuleView>();
@@ -107,14 +106,6 @@ export class Shared {
     const view = compute();
     this.#before.set(id, view);
     return view;
-  }
-
-  membersBefore(id: string, compute: () => ReadonlySet<string>): ReadonlySet<string> {
-    const known = this.#members.get(id);
-    if (known !== undefined) return known;
-    const members = compute();
-    this.#members.set(id, members);
-    return members;
   }
 
   /** The view of the set with these heads: the one of its context, evaluated once with the first such set. */

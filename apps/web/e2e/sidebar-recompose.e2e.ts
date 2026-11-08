@@ -91,7 +91,7 @@ test("hover shows only Pin and More; a pin lifts the agent into Pinned, in hc, a
   await page.goto("/");
   const row = rows(group(page, "Working")).filter({ hasText: "rc-pin" });
   await expect(row).toBeVisible({ timeout: 20_000 });
-  const pin = sidebar(page).getByRole("button", { name: "Pin rc-pin" });
+  const pin = sidebar(page).getByRole("button", { name: /^Pin rc-pin to the top$/ });
   const more = sidebar(page).getByRole("button", { name: "More for rc-pin" });
   await expect(pin).toBeHidden();
   await row.hover();
@@ -170,7 +170,7 @@ test("keyboard: the edge toggles the rail with Enter and steps with arrows; a ro
   await expect(row).toBeVisible({ timeout: 20_000 });
   await row.focus();
   await page.keyboard.press("ArrowRight");
-  await expect(aside.getByRole("button", { name: "Pin rc-keys" })).toBeFocused();
+  await expect(aside.getByRole("button", { name: /^Pin rc-keys to the top$/ })).toBeFocused();
   await page.keyboard.press("ArrowRight");
   await expect(aside.getByRole("button", { name: "More for rc-keys" })).toBeFocused();
   const edge = page.getByRole("separator", { name: "Resize sidebar" });

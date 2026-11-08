@@ -13,8 +13,8 @@ export type Peer =
 
 /**
  * The mesh check (section 9.2, first column steps 1 and 2): a current member's Noise key is a machine; a client member's
- * session key is a client; a revoked or over-cap member's key is refused; anything else is not the mesh's to decide. A
- * MACHINE's device key is still refused by the index itself, because a machine reaches its peers over its mesh line.
+ * session key is a client; a revoked member's key is refused; anything else is not the mesh's to decide. A MACHINE's
+ * device key is still refused by the index itself, because a machine reaches its peers over its mesh line.
  */
 export function meshPeer(index: AuthorizeIndex | undefined, key: string): Peer | undefined {
   const member = index?.member(key);

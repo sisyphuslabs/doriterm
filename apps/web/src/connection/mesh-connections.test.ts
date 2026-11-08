@@ -347,15 +347,18 @@ describe("one connection per member", () => {
     const { mesh } = running(previous);
     mesh.pair({ ...previous, hostId: "c", hostKey: "k-c", directUrl: "", members: [] });
     expect(mesh.settings.hostName).toBe("");
-    expect(mesh.entries().map((entry) => entry.target.hostName)).toEqual([""]);
+    expect(mesh.entries().find((entry) => entry.target.hostId === "c")?.target.hostName).toBe("");
+    expect(mesh.entries().find((entry) => entry.target.hostId === "a")?.target.hostName).toBe("Air");
   });
 
-  it("pairing replaces the roster, so a machine paired away from is not dialled again", () => {
+  it("pairing keeps the machines already held, so one phone reaches several computers (#942)", () => {
     const { mesh, made } = running(settingsWith([member("a"), member("b")]));
     mesh.pair({ ...settingsWith([member("c")], "c"), members: [member("a"), member("b")] });
-    expect(mesh.entries().map((entry) => entry.target.hostId)).toEqual(["c"]);
+    expect(mesh.entries().map((entry) => entry.target.hostId)).toContain("c");
+    expect(mesh.entries().map((entry) => entry.target.hostId)).toContain("a");
+    expect(mesh.entries().map((entry) => entry.target.hostId)).toContain("b");
     expect(made.map((connection) => connection.settings.hostId)).toContain("c");
-    expect(made.find((connection) => connection.settings.hostId === "a")?.stopped).toBe(1);
+    expect(made.find((connection) => connection.settings.hostId === "a")?.stopped).toBe(0);
   });
 
   it("an ordinary edit keeps the roster rather than replacing it", () => {
