@@ -30,6 +30,9 @@ const set = (next: PendingNotice | ClickedTerminal | null): void => {
   for (const listener of listeners) listener();
 };
 
+/** Whether a tapped notice is waiting to open its pane: it, not the phone's remembered place, decides what a start shows. */
+export const hasPendingNotice = (): boolean => pending !== null;
+
 /** The answer a tapped action left in the address: `allow`, or `option:<id>` for one of the prompt's rows. */
 function answerOf(value: string | null): PageAnswer | undefined {
   if (value === "allow") return { kind: "allow" };

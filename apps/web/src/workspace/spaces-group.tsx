@@ -70,8 +70,17 @@ function SpaceActions({ space, reorder }: { readonly space: Space; readonly reor
   );
 }
 
-/** What can be done with a space: its "..." menu and its right-click menu hold the same items. */
-function SpaceMenuItems({ space, reorder }: { readonly space: Space; readonly reorder: SpaceReorder | undefined }) {
+/**
+ * What can be done with a space: its "..." menu and its right-click menu hold the same items, and on a phone the space
+ * screen's own "..." (its rows hold none).
+ */
+export function SpaceMenuItems({
+  space,
+  reorder,
+}: {
+  readonly space: Pick<Space, "id">;
+  readonly reorder: SpaceReorder | undefined;
+}) {
   const renaming = useSpaceRenaming();
   const closing = useSpaceClosing();
   return (
@@ -196,6 +205,8 @@ function SpacesLists({
         />
       </div>
     );
+    // A phone row only opens its space: the space screen's header holds what can be done with it.
+    if (phone) return button;
     return (
       <RowWithActions
         row={button}
