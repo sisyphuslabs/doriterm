@@ -106,5 +106,36 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         end(seeded);
       }
     });
+    test("a cold open of a session's address says where Back goes, and goes there", async ({ page }) => {
+      const seeded = seed();
+      try {
+        await page.goto("/");
+        await page
+          .getByRole("button", { name: /^website\b/ })
+          .first()
+          .click();
+        await page.getByRole("region", { name: "Tabs" }).getByRole("button").filter({ hasText: "deploy" }).click();
+        await expect(page.locator(`[data-terminal="${seeded.deploy}"]`)).toBeVisible({ timeout: 20_000 });
+        const fromSpace = new URL(page.url());
+        const bare = new URL(fromSpace);
+        bare.searchParams.delete("s");
+
+        // From a space: a page of its own on the session's address, with nothing of the app behind it.
+        const cold = await page.context().newPage();
+        await cold.goto(fromSpace.pathname + fromSpace.search);
+        await expect(cold.locator(`[data-terminal="${seeded.deploy}"]`)).toBeVisible({ timeout: 20_000 });
+        await header(cold).getByRole("button", { name: "Back to website" }).click();
+        await expect(cold.getByRole("heading", { level: 1, name: "website" })).toBeVisible();
+
+        // From no space: Back says the agents list and goes there.
+        const coldBare = await page.context().newPage();
+        await coldBare.goto(bare.pathname + bare.search);
+        await expect(coldBare.locator(`[data-terminal="${seeded.deploy}"]`)).toBeVisible({ timeout: 20_000 });
+        await header(coldBare).getByRole("button", { name: "Back to agents" }).click();
+        await expect(coldBare.getByRole("heading", { name: "Agents", exact: true })).toBeVisible();
+      } finally {
+        end(seeded);
+      }
+    });
   });
 }

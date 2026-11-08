@@ -6,6 +6,7 @@ import {
   runsProgram,
   tabPosition,
   tabTitle,
+  phoneTabTitle,
   terminalTitle,
   layoutSpaces,
   type SpacesSource,
@@ -167,6 +168,13 @@ describe("tabPosition", () => {
     expect(tabPosition(spaces, terminals, "t3")).toBeUndefined();
     expect(tabPosition(spaces, terminals, "t2")).toBeUndefined();
     expect(tabPosition(spaces, terminals, "t9")).toBeUndefined();
+  });
+});
+
+describe("phoneTabTitle", () => {
+  test("a phone titles a tab by its own name, else by nothing so its terminal's title shows, never by a place", () => {
+    expect(phoneTabTitle("fix login")).toBe("fix login");
+    expect(phoneTabTitle("")).toBeNull();
   });
 });
 

@@ -75,11 +75,17 @@ export function terminalTitle(terminal: Terminal): string {
 
 /**
  * A tab's title as herdr-app's strip reads it (#466 ruling A): its own name, else its place in its space counted from 1.
- * It does not follow the pane in focus; the desktop strip and the phone's header both read it.
+ * It does not follow the pane in focus; the desktop strip reads it (the phone reads {@link phoneTabTitle}).
  */
 export function tabTitle(name: string, position: number): string {
   return name !== "" ? name : String(position + 1);
 }
+
+/**
+ * A tab's title on a phone's header: its own name, else null so the header reads its terminal's title. Never its place
+ * among the space's tabs: a bare "2" names nothing on a screen of its own.
+ */
+export const phoneTabTitle = (name: string): string | null => (name === "" ? null : name);
 
 export function machineOf(address: string): string | undefined {
   const slash = address.indexOf("/");
