@@ -67,11 +67,12 @@ test("a layout host that leaves a core running fails the teardown, which names i
     const leaked = await leakCore(dir);
     expect(alive(leaked)).toBe(true);
 
-    const left = await stopLayoutHost();
+    const report = await stopLayoutHost();
     await host.exited;
-    expect(left).toHaveLength(1);
-    expect(left[0]).toStartWith(`pid ${leaked}: `);
-    expect(left[0]).not.toContain("HC_SOCKET");
+    expect(report.infra).toEqual([]);
+    expect(report.left).toHaveLength(1);
+    expect(report.left[0]).toStartWith(`pid ${leaked}: `);
+    expect(report.left[0]).not.toContain("HC_SOCKET");
     expect(alive(leaked)).toBe(false);
   } finally {
     host.kill("SIGTERM");
@@ -82,7 +83,7 @@ test("a layout host that leaves a core running fails the teardown, which names i
 test("a layout host that stops its cores leaves the teardown nothing to report", async () => {
   const { host } = await startLayoutHost();
   try {
-    expect(await stopLayoutHost()).toEqual([]);
+    expect(await stopLayoutHost()).toEqual({ left: [], infra: [] });
   } finally {
     host.kill("SIGTERM");
     await host.exited;

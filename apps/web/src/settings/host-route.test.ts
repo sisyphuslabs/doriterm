@@ -18,11 +18,20 @@ describe("how this app reaches its host", () => {
     });
   });
 
-  test("a known direct address is named beside the relay, never claimed for it", () => {
-    const route = hostRouteOf({ ...base, hostId: "a-paired-host", directUrl: "https://192.0.2.10:7766" });
+  test("a known direct address is named beside the relay, never claimed for it, in the shell that can dial it (#446)", () => {
+    const route = hostRouteOf({ ...base, hostId: "a-paired-host", directUrl: "https://192.0.2.10:7766" }, true);
     expect(route.route).toBe("relay");
     expect(route.label).toContain("or direct to 192.0.2.10:7766 when it answers");
     expect(route.label).toContain("end-to-end encrypted");
+  });
+
+  test("a browser names only the relay, whatever direct address a file left behind (#1381 §8)", () => {
+    const route = hostRouteOf({ ...base, hostId: "a-paired-host", directUrl: "https://192.0.2.10:7766" });
+    expect(route).toEqual({
+      route: "relay",
+      address: "relay.example.dev",
+      label: "Through the relay relay.example.dev · end-to-end encrypted",
+    });
   });
 
   test("the loopback gateway says plain text, and says it is for development", () => {
