@@ -1,7 +1,8 @@
 import type { HcConnection } from "@doriface/client";
-import { IconButton, ScrollArea } from "@doriface/ui";
-import { Plus, Search } from "lucide-react";
+import { IconButton, ScrollArea, StatusBar, StatusBarItem } from "@doriface/ui";
+import { Monitor, Plus, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { connectionStore } from "../connection/store.ts";
 import { NEW_TAB } from "../keys/actions.ts";
 import { AgentLists, PhoneSpaceLists } from "./agent-lists.tsx";
 import { PhoneSortMenu } from "./agents-group.tsx";
@@ -10,7 +11,7 @@ import type { ListedSpace, Session } from "./model.ts";
 import { PhoneSpace, PhoneSpaceLoading } from "./phone-space.tsx";
 import { useArrivalReady } from "./use-arrival-ready.ts";
 import { useKeptScroll } from "./kept-scroll.ts";
-import { ConnectionLine } from "./reconnect-status.tsx";
+import { ConnectionLine, ConnectionPathItem, ReconnectStatus } from "./reconnect-status.tsx";
 import type { PhoneSection } from "./phone-route.ts";
 import { PhoneTabBar } from "./phone-tab-bar.tsx";
 import { FirstRunGuideCard } from "../pair/first-run-guide-card.tsx";
@@ -147,6 +148,23 @@ export function PhoneShell(props: PhoneShellProps) {
             )}
           </ScrollArea>
         </main>
+        {/*
+          The machines' list carries how this device reaches them: the core, the path (Relay or Direct) and a reconnect in
+          progress. The agents list leaves that to the connection line under its header.
+        */}
+        {section === "spaces" ? (
+          <StatusBar
+            start={
+              <>
+                <StatusBarItem icon={<Monitor aria-hidden />}>
+                  {`${connection.hello.core.name} · ${connectionStore.settings.mode === "relay" ? "relay" : "loopback"}`}
+                </StatusBarItem>
+                <ConnectionPathItem />
+                <ReconnectStatus compact />
+              </>
+            }
+          />
+        ) : null}
         <PhoneTabBar section={section} terminals={terminals} onSection={onSection} />
       </div>
     );

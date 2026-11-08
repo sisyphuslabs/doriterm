@@ -84,6 +84,18 @@ function pastTheRelay(refused: readonly string[]): string[] {
   });
 }
 
+/**
+ * The path the session takes, as the status bar says it: a desktop's is always there; a phone's is on its Spaces tab
+ * (mobile nav phase 3), which this opens and leaves again for the agents list.
+ */
+async function pathSaysRelay(page: Page, phone: boolean): Promise<void> {
+  const sections = page.getByRole("navigation", { name: "Sections" });
+  if (phone) await sections.getByRole("button", { name: "Spaces", exact: true }).click({ timeout: 30_000 });
+  await expect(page.locator('[data-connection-path="relay"]')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("contentinfo")).toContainText("Relay");
+  if (phone) await sections.getByRole("button", { name: /^Agents\b/ }).click();
+}
+
 /** A desktop shows the terminal beside the list; a phone shows the agents list first, and a tap opens the terminal. */
 async function terminalOpens(page: Page, phone: boolean): Promise<void> {
   if (phone)
@@ -103,15 +115,13 @@ async function connectsOverTheRelayAlone(page: Page, phone: boolean): Promise<vo
 
     const paired = await pairAndOpen(page, host);
     // The session pairing proved is a browser session too: it says Relay, with no direct address saved at all.
-    await expect(page.locator('[data-connection-path="relay"]')).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole("contentinfo")).toContainText("Relay");
+    await pathSaysRelay(page, phone);
     await terminalOpens(page, phone);
 
     // A later load with a Direct address in the file still reaches the host, and dials no direct socket to do it.
     await withDirectAddress(page, paired, host.directUrl);
     await page.goto("/");
-    await expect(page.locator('[data-connection-path="relay"]')).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole("contentinfo")).toContainText("Relay");
+    await pathSaysRelay(page, phone);
     await terminalOpens(page, phone);
 
     await joinOneMachine(page, host, phone);

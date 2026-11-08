@@ -174,13 +174,12 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
           const frames: { readonly width: number; readonly moving: boolean }[] = [];
           Reflect.set(window, "slideFrames", frames);
           // The slide's start is an event, not a frame that happened to be sampled: a loaded machine may render few frames.
-          const arriving = (event: Event): boolean =>
-            event instanceof TransitionEvent &&
-            event.propertyName === "transform" &&
-            event.target instanceof Element &&
-            event.target.classList.contains("motion-arrive");
           document.addEventListener("transitionrun", (event) => {
-            if (arriving(event)) Reflect.set(window, "slideRan", true);
+            const arriving =
+              event.propertyName === "transform" &&
+              event.target instanceof Element &&
+              event.target.classList.contains("motion-arrive");
+            if (arriving) Reflect.set(window, "slideRan", true);
           });
           const sample = (): void => {
             // Only the arriving screen's own transform transition counts: a spinner or a button's colour is not the slide.
