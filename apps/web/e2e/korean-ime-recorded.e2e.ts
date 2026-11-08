@@ -1,6 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
-import { KOREAN_SPACE_RECORDINGS, type RecordedStep } from "./korean-ime-recorded.ts";
+import { KOREAN_SPACE_RECORDINGS, KOREAN_SPACE_WEBKIT_ORDERS, type RecordedStep } from "./korean-ime-recorded.ts";
 
 test.use({ serviceWorkers: "block" });
 
@@ -50,7 +50,7 @@ async function replay(field: Locator, steps: readonly RecordedStep[]): Promise<v
   }, steps);
 }
 
-for (const recording of KOREAN_SPACE_RECORDINGS) {
+for (const recording of [...KOREAN_SPACE_RECORDINGS, ...KOREAN_SPACE_WEBKIT_ORDERS]) {
   test(`${recording.platform}: ${recording.name} reaches the program as typed (#1508)`, async ({ page }) => {
     const terminal = await openReader(page);
     await replay(terminal.getByRole("textbox"), recording.steps);
