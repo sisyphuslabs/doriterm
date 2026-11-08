@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { endAgent, startAgent } from "./agents.ts";
 import { getCoreDoc } from "./core-doc.ts";
+import { routeHcSocket } from "./hc-socket.ts";
 import { expect, test } from "./fixtures.ts";
 import { LAYOUT_DOC, seedSpaces } from "./layout-doc.ts";
 
@@ -123,6 +124,57 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await page.getByRole("button", { name: "Back to agents" }).click();
         await expect(agentsHeading(page)).toBeVisible();
         await expect.poll(() => param(page, "s")).toBeNull();
+      } finally {
+        end(seeded);
+      }
+    });
+
+    test("a cold open of a space whose terminal list failed says why, with Try again, and Back still works", async ({
+      page,
+    }) => {
+      const seeded = seed();
+      try {
+        await openWebsite(page);
+        const url = page.url();
+        // A page of its own whose very first answers fail: nothing of the first page's list carries over.
+        const cold = await page.context().newPage();
+        const link = await routeHcSocket(cold);
+        const release = link.hold("terminal.list", "events.subscribe");
+        await cold.goto(url);
+        await expect.poll(() => link.sent().some((frame) => frame.includes('"method":"terminal.list"'))).toBe(true);
+        release(true);
+        const notice = cold.getByRole("alert").filter({ hasText: "Could not load the agents" });
+        await expect(notice).toBeVisible({ timeout: 15_000 });
+        await expect(cold.getByRole("button", { name: "Back to agents" })).toBeVisible();
+        link.hold();
+        await notice.getByRole("button", { name: "Try again" }).click();
+        await expect(cold.getByRole("heading", { level: 1, name: "website" })).toBeVisible({ timeout: 15_000 });
+      } finally {
+        end(seeded);
+      }
+    });
+
+    test("no frame of the space screen's slide reaches past the screen's edge", async ({ page }) => {
+      const seeded = seed();
+      try {
+        await page.goto("/");
+        await expect(spaceRow(page, "website")).toBeVisible({ timeout: 20_000 });
+        await expect.poll(() => page.evaluate(() => document.documentElement.hasAttribute("data-ready"))).toBe(true);
+        // Every frame from the tap until the slide has settled: the page never grows wider than the screen.
+        await page.evaluate(() => {
+          const widths: number[] = [];
+          Reflect.set(window, "slideWidths", widths);
+          const sample = (): void => {
+            widths.push(document.scrollingElement?.scrollWidth ?? 0);
+            if (widths.length < 30) requestAnimationFrame(sample);
+          };
+          requestAnimationFrame(sample);
+        });
+        await spaceRow(page, "website").click();
+        await expect(page.getByRole("heading", { level: 1, name: "website" })).toBeVisible();
+        await expect.poll(() => page.evaluate(() => (Reflect.get(window, "slideWidths") as number[]).length)).toBe(30);
+        const widths = await page.evaluate(() => Reflect.get(window, "slideWidths") as number[]);
+        expect(Math.max(...widths)).toBeLessThanOrEqual(390);
       } finally {
         end(seeded);
       }

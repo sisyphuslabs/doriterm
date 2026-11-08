@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import type { ListedSpace, Session } from "./model.ts";
 import { spaceSummary, spaceTabRows } from "./phone-space-rows.ts";
 import { QuietBusy } from "../terminal/quiet-busy.tsx";
+import { TerminalsLoadError } from "./terminals-load-error.tsx";
 import { ConnectionLine } from "./reconnect-status.tsx";
 import { useSpaceClosing } from "./space-close-context.ts";
 import { useNow } from "./use-now.ts";
@@ -82,11 +83,22 @@ export function PhoneSpace({ space, terminals, host, arrive, onOpen, onBack, onN
   );
 }
 
-/** A space the address names before the spaces are read: its screen, saying what it waits for (a cold open of `?s=`). */
-export function PhoneSpaceLoading({ onBack }: { readonly onBack: () => void }) {
+/**
+ * A space the address names before the spaces are read (a cold open of `?s=`): its screen, saying what it waits for, or,
+ * when the terminals could not be listed, why, with Try again (as the list says it).
+ */
+export function PhoneSpaceLoading(props: {
+  readonly error: string | null;
+  readonly onRetry: () => void;
+  readonly onBack: () => void;
+}) {
   return (
-    <SpaceFrame arrive={false} onBack={onBack} title={<h1 className="sr-only">Space</h1>}>
-      <QuietBusy label="Loading the space" text="Loading the space…" className="h-full" />
+    <SpaceFrame arrive={false} onBack={props.onBack} title={<h1 className="sr-only">Space</h1>}>
+      {props.error === null ? (
+        <QuietBusy label="Loading the space" text="Loading the space…" className="h-full" />
+      ) : (
+        <TerminalsLoadError cause={props.error} onRetry={props.onRetry} />
+      )}
     </SpaceFrame>
   );
 }
@@ -98,28 +110,31 @@ function SpaceFrame(props: {
   readonly title: ReactNode;
   readonly children: ReactNode;
 }) {
+  // The clip keeps the slide's first frames inside the screen: no sideways scroll or pan while it arrives.
   return (
-    <div
-      {...(props.arrive ? {} : { "data-arrived": "" })}
-      className="motion-arrive flex h-dvh min-h-0 min-w-0 flex-col bg-sidebar pr-(--safe-right) pl-(--safe-left) [--arrive-from:translateX(1.5rem)]"
-    >
-      <header
-        data-titlebar
-        className="flex min-h-[calc(3rem+var(--safe-top))] shrink-0 items-center gap-2 border-b border-border pt-(--safe-top) pr-4 pl-[var(--titlebar-inset-start,0.375rem)]"
+    <div className="h-dvh overflow-x-clip">
+      <div
+        {...(props.arrive ? {} : { "data-arrived": "" })}
+        className="motion-arrive flex h-dvh min-h-0 min-w-0 flex-col bg-sidebar pr-(--safe-right) pl-(--safe-left) [--arrive-from:translateX(1.5rem)]"
       >
-        <Button
-          variant="ghost"
-          aria-label="Back to agents"
-          className="gap-0.5 px-1.5 text-foreground"
-          onClick={props.onBack}
+        <header
+          data-titlebar
+          className="flex min-h-[calc(3rem+var(--safe-top))] shrink-0 items-center gap-2 border-b border-border pt-(--safe-top) pr-4 pl-[var(--titlebar-inset-start,0.375rem)]"
         >
-          <ChevronLeft aria-hidden />
-          Agents
-        </Button>
-        <div className="flex min-w-0 flex-1 flex-col py-1">{props.title}</div>
-      </header>
-      <ConnectionLine />
-      <main className="flex min-h-0 flex-1 flex-col">{props.children}</main>
+          <Button
+            variant="ghost"
+            aria-label="Back to agents"
+            className="gap-0.5 px-1.5 text-foreground"
+            onClick={props.onBack}
+          >
+            <ChevronLeft aria-hidden />
+            Agents
+          </Button>
+          <div className="flex min-w-0 flex-1 flex-col py-1">{props.title}</div>
+        </header>
+        <ConnectionLine />
+        <main className="flex min-h-0 flex-1 flex-col">{props.children}</main>
+      </div>
     </div>
   );
 }

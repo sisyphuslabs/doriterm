@@ -65,7 +65,10 @@ export function PhoneShell(props: PhoneShellProps) {
   const empty = machines.terminalsLoaded && live.length === 0;
   // A screen pushed after the first loaded paint arrives with motion (DESIGN.md 6); the first screen does not.
   useArrivalReady(machines.terminalsLoaded);
-  if (terminal === undefined && space === "loading") return <PhoneSpaceLoading onBack={onSpaceBack} />;
+  // A space's rows are its live terminals: until the terminals are listed (or when that failed) the screen says so,
+  // never "Nothing is running".
+  if (terminal === undefined && (space === "loading" || (space !== null && !machines.terminalsLoaded)))
+    return <PhoneSpaceLoading error={machines.terminalsError} onRetry={machines.retryTerminals} onBack={onSpaceBack} />;
   if (terminal === undefined && space !== null && space !== "loading") {
     return (
       <PhoneSpace
