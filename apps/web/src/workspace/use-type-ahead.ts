@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useMouseOnly } from "../terminal/keyboard-inset.ts";
+import { keyboardUnasked } from "../terminal/may-take-focus.ts";
 import { type HeldInput, keyInit, replay, terminalInput } from "./type-ahead.ts";
+import { useNarrow } from "./use-narrow.ts";
 
 /** Why held input was given up: the terminal did not start, or its view did not mount in time. */
 export type DropReason = "failed" | "slow";
@@ -53,6 +56,11 @@ export function useTypeAhead(dropped: (reason: DropReason) => void): TypeAhead {
   const newest = useRef<number | null>(null);
   const report = useRef(dropped);
   report.current = dropped;
+  // A touch phone's catcher would raise a soft keyboard nobody asked for: there only the keyboard button raises one (#1375).
+  const narrow = useNarrow();
+  const mouseOnly = useMouseOnly();
+  const phoneTouch = useRef(false);
+  phoneTouch.current = narrow && !mouseOnly;
 
   useEffect(() => {
     const input = catcher.current;
@@ -95,7 +103,7 @@ export function useTypeAhead(dropped: (reason: DropReason) => void): TypeAhead {
     before.current.set(id, document.activeElement);
     newest.current = id;
     awake(catcher.current, true);
-    catcher.current?.focus({ preventScroll: true });
+    if (!phoneTouch.current) catcher.current?.focus({ preventScroll: true });
     return id;
   }, []);
 
@@ -131,7 +139,7 @@ export function useTypeAhead(dropped: (reason: DropReason) => void): TypeAhead {
         // Read before finish, which puts the hold out of the page: a person who moved on keeps the keyboard there.
         const last = newest.current === id && keyboardStayed(catcher.current, address);
         const queue = finish(id);
-        if (last) input.focus({ preventScroll: true });
+        if (last && !keyboardUnasked(input)) input.focus({ preventScroll: true });
         replay(input, queue);
       };
       const now = terminalInput(document, address);

@@ -3,6 +3,7 @@
 // and that terminal in the agents list. The guide can be skipped, and Settings opens it again.
 import { devices, type Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { raiseKeyboard } from "./phone-key-bar.ts";
 import { type FakeRelayHost, startFakeRelayHost } from "./relay-route.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
@@ -87,6 +88,7 @@ test("the list step waits for the terminal this device opened, not the host's ow
     // This device starts a terminal and ends it; the host's own shell, `existing`, stays live.
     await guide(page).getByRole("button", { name: "Start a terminal" }).click();
     await expect(page.locator("[data-terminal]")).toContainText("$", { timeout: 30_000 });
+    await raiseKeyboard(page);
     await page.keyboard.type("exit");
     await page.keyboard.press("Enter");
     await expect(page.getByRole("button", { name: "Back to agents" })).toHaveCount(0, { timeout: 30_000 });

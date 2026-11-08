@@ -65,7 +65,15 @@ export async function openPhoneTerminal(
   await page.getByRole("banner").getByRole("button", { name: "New tab" }).click();
   const terminal = page.locator("[data-terminal]");
   await expect(terminal).toContainText("$", { timeout: 15_000 });
+  await raiseKeyboard(page);
   return terminal;
+}
+
+/** A touch phone's soft keyboard comes up only from its keyboard button (#1375); a mouse-only window has none to raise. */
+export async function raiseKeyboard(page: Page): Promise<void> {
+  if (!(await page.evaluate(() => matchMedia("(any-pointer: coarse)").matches))) return;
+  await key(page, "Show keyboard").click();
+  await expect(page.locator("[data-terminal] textarea")).toBeFocused();
 }
 
 export const keysBar = (page: Page) => page.getByRole("toolbar", { name: "Terminal keys" });

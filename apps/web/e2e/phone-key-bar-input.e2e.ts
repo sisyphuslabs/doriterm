@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { E2E_HOST_ENV } from "./config.ts";
 import { expect, test } from "./fixtures.ts";
-import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
+import { key, keysBar, openPhoneTerminal, PHONE, raiseKeyboard } from "./phone-key-bar.ts";
 import { readSavedEnv } from "./saved-env.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE });
@@ -128,6 +128,7 @@ test("a latched modifier does not follow Switch session to another terminal", as
   await page.getByRole("banner").getByRole("button", { name: "New tab" }).click();
   await expect(page.locator("[data-terminal]")).not.toHaveAttribute("data-terminal", address, { timeout: 15_000 });
   await expect(page.locator("[data-terminal]")).toContainText("$", { timeout: 15_000 });
+  await raiseKeyboard(page);
 
   const ctrl = key(page, "Control");
   await ctrl.click();
@@ -153,6 +154,7 @@ test("Switch session lists the terminals and opens the one picked", async ({ pag
   const second = page.locator("[data-terminal]");
   await expect(second).not.toHaveAttribute("data-terminal", firstAddress, { timeout: 15_000 });
   await expect(second).toContainText("$", { timeout: 15_000 });
+  await raiseKeyboard(page);
 
   await key(page, "Switch session").click();
   await page.getByRole("menuitem", { name: new RegExp(`keys-one-${firstAddress}`) }).click();

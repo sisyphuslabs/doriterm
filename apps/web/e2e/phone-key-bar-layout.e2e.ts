@@ -23,15 +23,16 @@ test("entering split screen with the terminal focused is no keyboard: no key bar
   await expect(input).toBeFocused();
   // Long after anything asked for a keyboard, the window is halved for split screen.
   await page.clock.runFor(KEYBOARD_REQUEST_MS + 1000);
+  // The keyboard was asked for (openPhoneTerminal presses the toggle), so the toggle stays pressed with no bar.
   await page.setViewportSize({ width: PORTRAIT.width, height: 420 });
-  await expect(key(page, "Show keyboard")).toBeVisible();
+  await expect(key(page, "Hide keyboard")).toHaveAttribute("aria-pressed", "true");
   await expect(keysBar(page)).toHaveCount(0);
 
   await page.setViewportSize(PORTRAIT);
-  await expect(key(page, "Show keyboard")).toBeVisible();
+  await expect(key(page, "Hide keyboard")).toHaveAttribute("aria-pressed", "true");
   await expect(input).toBeFocused();
 
-  // A tap in the terminal in split screen raises a keyboard, measured from the half screen.
+  // With the keyboard asked for, a tap in the terminal in split screen raises one, measured from the half screen.
   await page.setViewportSize({ width: PORTRAIT.width, height: 420 });
   await page.locator("[data-terminal]").click();
   await page.setViewportSize({ width: PORTRAIT.width, height: 420 - 200 });

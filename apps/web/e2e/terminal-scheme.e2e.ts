@@ -1,6 +1,6 @@
 import { devices, type Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
-import { fakeSoftKeyboard } from "./phone-key-bar.ts";
+import { fakeSoftKeyboard, raiseKeyboard } from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 
@@ -57,6 +57,7 @@ test.describe("phone", () => {
     await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
     await page.getByRole("banner").getByRole("button", { name: "New tab" }).click();
     await expect(page.locator("[data-terminal]")).toContainText("$", { timeout: 15_000 });
+    await raiseKeyboard(page);
     await expect.poll(added).toBeGreaterThan(0);
     const before = await added();
     // Each tap of the latching ctrl key re-renders the phone terminal screen and its terminal view.

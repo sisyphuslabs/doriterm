@@ -5,7 +5,7 @@ import { agentRow, endAgent, startShell } from "./agents.ts";
 import { setConfirmClose } from "./close-confirm.ts";
 import { expect, test } from "./fixtures.ts";
 import { hcOn } from "./machine-switch.ts";
-import { fakeSoftKeyboard, key, PHONE } from "./phone-key-bar.ts";
+import { fakeSoftKeyboard, key, PHONE, raiseKeyboard } from "./phone-key-bar.ts";
 
 /** 200 characters with no break opportunity: no space, hyphen or punctuation. */
 const LONG = `unbroken${"x".repeat(192)}`;
@@ -91,6 +91,8 @@ for (const width of [320, 390] as const) {
         await actions.hover();
         await expectInside(tooltip(page, `Session actions for ${LONG}`), "the session actions tooltip");
 
+        await expect(page.locator("[data-terminal]")).toContainText("$", { timeout: 15_000 });
+        await raiseKeyboard(page);
         await expect(page.getByRole("toolbar", { name: "Terminal keys" })).toBeVisible({ timeout: 15_000 });
         await key(page, "Switch session").click();
         const sessions = page.getByRole("menu");

@@ -35,6 +35,8 @@ import { useTerminalInput } from "./use-terminal-input.ts";
 import { usePaneVisibility } from "./use-pane-visibility.ts";
 import { useTerminalAttach } from "./use-terminal-attach.ts";
 import { useKeyboardClaim } from "./use-keyboard-claim.ts";
+import { useKeyboardAsk } from "./use-keyboard-ask.ts";
+import { keyboardUnasked } from "./may-take-focus.ts";
 
 /** Typed text, or the bytes a bound key sends. */
 export type TerminalInput = string | Uint8Array;
@@ -53,6 +55,11 @@ export interface TerminalViewProps {
    * view another device's layout edit mounts again, #332), it takes the keyboard only from nowhere.
    */
   readonly claimed?: boolean;
+  /**
+   * Set on a touch screen, where a focus in the terminal raises the soft keyboard: whether the person asked for it (the
+   * keys' keyboard button). Until then the view takes the keyboard on no start, tap or press of its own (#1375).
+   */
+  readonly softKeyboard?: boolean;
   readonly label: string;
   readonly className?: string;
   /** Rewrites typed input before it is sent (latched phone modifiers); an empty result sends nothing. */
@@ -89,6 +96,7 @@ function handBack(event: FocusEvent<HTMLElement>): void {
 export function TerminalView(props: TerminalViewProps) {
   const { connection, address, pid, live, focused, label, className, transformInput, onPort, onEnd } = props;
   const { closeLabel = "Close tab", onEnded, jumpClearance, claimed = true, typesComposition = false } = props;
+  const { softKeyboard } = props;
   const config = useTerminalConfig();
   const options = useMemo(() => rendererOptions(config), [config]);
   const dark = useDarkScheme();
@@ -165,9 +173,11 @@ export function TerminalView(props: TerminalViewProps) {
   useFocusAfterSelect(wt, options.trimCopy);
   useLongPressSelect(wt, setSelectAt);
   useSelectionCells(wt);
+  useKeyboardAsk(wt, softKeyboard);
   const closeSelectionMenu = useCallback((): void => {
     setSelectAt(null);
-    handle.current?.focus();
+    const element = handle.current?.instance?.element;
+    if (element === undefined || !keyboardUnasked(element)) handle.current?.focus();
   }, []);
   const attachment = useTerminalAttach({
     connection,
@@ -217,7 +227,11 @@ export function TerminalView(props: TerminalViewProps) {
   if (core === null) return <div className={cn("min-h-0 flex-1 bg-term-bg", className)} aria-busy="true" />;
   return (
     // The scrollbar and the jump button overlay the terminal: neither takes room from the grid.
-    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col" aria-busy={attachment.opening}>
+    <div
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col"
+      aria-busy={attachment.opening}
+      data-soft-keyboard={softKeyboard === false ? "unasked" : undefined}
+    >
       <Terminal
         ref={handle}
         core={core}

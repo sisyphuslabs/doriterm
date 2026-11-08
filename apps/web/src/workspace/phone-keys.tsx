@@ -43,6 +43,11 @@ export interface PhoneKeysProps {
    * soft keyboard and the bar's key puts it down.
    */
   readonly onKeys?: (shown: boolean) => void;
+  /**
+   * Set on a touch screen: whether the person asked for the soft keyboard, and how the keyboard button asks or lets go
+   * (#1375). The round button toggles it, pressed while asked; the bar's key puts it down.
+   */
+  readonly keyboard?: { readonly asked: boolean; readonly onAsk: (asked: boolean) => void };
   /** The bar's height in px as it is drawn (taller while the field has a row of its own); 0 while it is closed. */
   readonly onBarHeight?: (px: number) => void;
 }
@@ -64,7 +69,7 @@ function useHeightReport(report: ((px: number) => void) | undefined): (element: 
   );
 }
 
-function hideKeyboard(): void {
+export function hideKeyboard(): void {
   if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
 }
 
@@ -88,6 +93,7 @@ export function PhoneKeys(props: PhoneKeysProps) {
     onPad,
     onPacks,
     onKeys,
+    keyboard,
     onBarHeight,
   } = props;
   const [typing, setTyping] = useState(false);
@@ -114,7 +120,14 @@ export function PhoneKeys(props: PhoneKeysProps) {
     return (
       <KeyboardButton
         {...(onKeys === undefined ? {} : { label: "Show keys" })}
+        {...(keyboard === undefined
+          ? {}
+          : { pressed: keyboard.asked, label: keyboard.asked ? "Hide keyboard" : "Show keyboard" })}
         onPress={() => {
+          if (keyboard !== undefined) {
+            keyboard.onAsk(!keyboard.asked);
+            return;
+          }
           onKeys?.(true);
           port.current?.focus();
         }}
@@ -154,7 +167,10 @@ export function PhoneKeys(props: PhoneKeysProps) {
           />
         }
         {...(onKeys === undefined
-          ? { onHideKeyboard: hideKeyboard }
+          ? {
+              onHideKeyboard: () => (keyboard === undefined ? hideKeyboard() : keyboard.onAsk(false)),
+              hidePressed: true,
+            }
           : { hideLabel: "Hide keys", onHideKeyboard: () => onKeys(false) })}
         renderSessions={(trigger) => (
           <Menu

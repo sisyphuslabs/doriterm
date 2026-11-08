@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
-import { fakeSoftKeyboard, key, keysBar, PHONE, showKeyboard } from "./phone-key-bar.ts";
+import { fakeSoftKeyboard, key, keysBar, PHONE, showKeyboard, raiseKeyboard } from "./phone-key-bar.ts";
 
 // A narrow desktop window driven by a mouse and a physical keyboard: the phone shell, with no soft keyboard (#287).
 test.use({ serviceWorkers: "block", viewport: { width: 390, height: 844 }, hasTouch: false, isMobile: false });
@@ -57,6 +57,7 @@ test.describe("on a touch phone", () => {
     await expect(key(page, "Show keyboard")).toBeVisible();
     await expect(key(page, "Show keys")).toHaveCount(0);
     await expect(keysBar(page)).toHaveCount(0);
+    await raiseKeyboard(page);
     await showKeyboard(page, 336);
     await expect(keysBar(page)).toBeVisible();
     await expect(key(page, "Hide keyboard")).toBeVisible();

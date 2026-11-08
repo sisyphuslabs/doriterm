@@ -89,6 +89,8 @@ export interface ExtraKeysBarProps {
   readonly onHideKeyboard?: () => void;
   /** The hide button's name: Hide keyboard by default; Hide keys where the bar shows without a soft keyboard. */
   readonly hideLabel?: string;
+  /** The hide button is the soft keyboard's toggle, pressed while the keyboard the person asked for is up. */
+  readonly hidePressed?: boolean;
   /** Wraps the Switch session button, e.g. in the menu it opens. */
   readonly renderSessions?: (trigger: ReactElement) => ReactNode;
   readonly className?: string;
@@ -202,6 +204,7 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
           <button
             type="button"
             aria-label={props.hideLabel ?? "Hide keyboard"}
+            aria-pressed={props.hidePressed}
             onMouseDown={keepFocus}
             onClick={props.onHideKeyboard}
             className={cn(key, idleKey, inputActive && "col-start-2 row-start-2")}
@@ -219,16 +222,19 @@ export interface KeyboardButtonProps {
   readonly className?: string;
   /** Show keyboard by default; Show keys where the button opens the keys bar itself (no soft keyboard to raise). */
   readonly label?: string;
+  /** Set where the button toggles the soft keyboard: whether the person has asked for it and it has not gone down. */
+  readonly pressed?: boolean;
 }
 
-export function KeyboardButton({ onPress, className, label = "Show keyboard" }: KeyboardButtonProps) {
+export function KeyboardButton({ onPress, className, label = "Show keyboard", pressed }: KeyboardButtonProps) {
   return (
     <button
       type="button"
       aria-label={label}
+      aria-pressed={pressed}
       onClick={onPress}
       className={cn(
-        "flex size-12 items-center justify-center rounded-full border border-border bg-chrome/90 text-foreground shadow-lg backdrop-blur-md outline-none active:bg-selected [&_svg]:size-5",
+        "flex size-12 items-center justify-center rounded-full border border-border bg-chrome/90 text-foreground shadow-lg backdrop-blur-md outline-none active:bg-selected aria-pressed:bg-selected [&_svg]:size-5",
         "focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring",
         className,
       )}

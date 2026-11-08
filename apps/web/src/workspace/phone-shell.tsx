@@ -2,7 +2,7 @@ import type { HcConnection } from "@doriface/client";
 import { IconButton, ScrollArea, StatusBar, StatusBarItem } from "@doriface/ui";
 import { Link } from "@tanstack/react-router";
 import { Monitor, Plus, Search, Settings } from "lucide-react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { connectionStore } from "../connection/store.ts";
 import { NEW_TAB } from "../keys/actions.ts";
 import { AgentLists } from "./agent-lists.tsx";
@@ -44,6 +44,9 @@ export function PhoneShell(props: PhoneShellProps) {
   const machines = useMachinesContext();
   const update = usePendingUpdate();
   const terminal = terminals.find((entry) => entry.address === open);
+  // The soft keyboard the person asked for outlives a switch of session from the keys bar, never the agents list (#1375).
+  const [keyboardAsked, setKeyboardAsked] = useState(false);
+  if (terminal === undefined && keyboardAsked) setKeyboardAsked(false);
   // An unanswered list is not an empty one: the empty state waits for the core's first answer (#797).
   const live = machines.terminalsLoaded
     ? terminals.filter((entry) => entry.state === "live").map((entry) => entry.address)
@@ -125,6 +128,8 @@ export function PhoneShell(props: PhoneShellProps) {
       onOpen={onOpen}
       onBack={onBack}
       dictate={dictate}
+      keyboardAsked={keyboardAsked}
+      onKeyboardAsked={setKeyboardAsked}
     />
   );
 }

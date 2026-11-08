@@ -1,5 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { ApprovalOverlay } from "../approval/approval-overlay.tsx";
 import { RegionBoundary } from "../crash/region-boundary.tsx";
 import { useKeyBarSettings } from "../keybar/store.ts";
@@ -19,6 +20,7 @@ import { PaneSwitcher } from "./phone-pane-switcher.tsx";
 import { PhoneTabSwitcher, useSpaceTabs } from "./phone-tab-switcher.tsx";
 import {
   DIRECTION_PAD_CLEARANCE,
+  hideKeyboard,
   KEYBOARD_BUTTON_CLEARANCE,
   KEYS_BAR_HEIGHT,
   keysBottom,
@@ -40,11 +42,18 @@ export interface PhoneTerminalProps {
   readonly onBack: () => void;
   /** Where this terminal registers its dictation for the shell's palette row and bound key; null while it takes none. */
   readonly dictate: RefObject<(() => void) | null>;
+  /**
+   * On a touch screen the soft keyboard comes up only when the keyboard button asks for it, never on a touch of the
+   * terminal (#1375); the shell keeps whether it was asked for across a switch of session.
+   */
+  readonly keyboardAsked: boolean;
+  readonly onKeyboardAsked: (asked: boolean) => void;
 }
 
 /** One session full screen on a phone, its terminal kept clear of the soft keyboard and the keys bar riding on it. */
 export function PhoneTerminal(props: PhoneTerminalProps) {
   const { connection, terminal, terminals, panes, tabTitle, onOpen, onBack, dictate } = props;
+  const { keyboardAsked: asked, onKeyboardAsked: setAsked } = props;
   const port = useRef<TerminalPort | null>(null);
   const onPort = useCallback((next: TerminalPort | null) => {
     port.current = next;
@@ -54,6 +63,30 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   // A mouse-only device has no soft keyboard to ride on: its keys bar is opened and closed by hand (#287).
   const mouseOnly = useMouseOnly();
   const [keysShown, setKeysShown] = useState(false);
+  // The asked-for keyboard goes with the focus: a blur to nowhere is the keyboard going down (its own key, Hide
+  // keyboard, a tap elsewhere).
+  useEffect(() => {
+    if (scope === null || mouseOnly) return undefined;
+    const away = (event: FocusEvent): void => {
+      if (event.relatedTarget === null) setAsked(false);
+    };
+    scope.addEventListener("focusout", away);
+    return () => scope.removeEventListener("focusout", away);
+  }, [scope, mouseOnly, setAsked]);
+  const ask = useCallback(
+    (next: boolean): void => {
+      // A field that already has the focus (dictation typed into it) raises no keyboard when focused again: it lets go first.
+      hideKeyboard();
+      if (!next) {
+        setAsked(false);
+        return;
+      }
+      // The view asks for a keyboard (inputmode) before the focus, or the focus raises none.
+      flushSync(() => setAsked(true));
+      port.current?.focus();
+    },
+    [setAsked],
+  );
   const [menu, setMenu] = useState(false);
   const [pad, setPad] = useState(false);
   // The keys bar as drawn, which grows while its field has a row of its own; the terminal keeps clear of all of it.
@@ -145,6 +178,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
               pid={terminal.pid ?? null}
               live={terminal.state === "live"}
               focused
+              {...(mouseOnly ? {} : { softKeyboard: asked })}
               label={`${title} output`}
               transformInput={sticky.transform}
               typesComposition={sticky.latched.size > 0}
@@ -198,7 +232,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
             onPad={setPad}
             onBarHeight={setBarHeight}
             onPacks={() => setPacks(true)}
-            {...(mouseOnly ? { onKeys: setKeysShown } : {})}
+            {...(mouseOnly ? { onKeys: setKeysShown } : { keyboard: { asked, onAsk: ask } })}
           />
         </>
       )}

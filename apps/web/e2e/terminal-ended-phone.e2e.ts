@@ -12,7 +12,7 @@ import {
   OFFLINE_BOUND_MS,
   OFFLINE_TEST_TIMEOUT_MS,
 } from "./machine-switch.ts";
-import { fakeSoftKeyboard } from "./phone-key-bar.ts";
+import { fakeSoftKeyboard, raiseKeyboard } from "./phone-key-bar.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -32,6 +32,7 @@ test("on a phone, a session that ended while its machine was offline shows as en
     await agentRow(page, "ended-phone", true).click();
     const terminal = page.locator(`[data-terminal="${MACHINE_NAME}/${local}"]`);
     await expect(terminal).toContainText("$", { timeout: 15_000 });
+    await raiseKeyboard(page);
     const keys = page.getByRole("toolbar", { name: "Terminal keys" });
     await expect(keys).toBeVisible();
 
