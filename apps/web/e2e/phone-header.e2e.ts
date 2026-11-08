@@ -62,11 +62,12 @@ test("on a phone the terminal header names the session and where it is, follows 
     // The header follows the open session's own state as hc reports it, without a reload.
     const shown = started[0];
     if (shown === undefined) throw new Error("no first terminal started");
-    report(shown, "working");
+    // Needs you: a still glyph, so the sheet opened below settles (a working spinner never stops).
+    report(shown, "blocked");
     await expect(
       header(page)
-        .getByRole("img", { name: "Working" })
-        .or(header(page).getByText("Working", { exact: true }))
+        .getByRole("img", { name: "Needs you" })
+        .or(header(page).getByText("Needs you", { exact: true }))
         .first(),
     ).toBeAttached({ timeout: 15_000 });
 

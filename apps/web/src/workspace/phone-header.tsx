@@ -42,11 +42,12 @@ export function PhoneHeader({ terminal, tabTitle, backTo, onBack, action }: Phon
         variant="ghost"
         aria-label={backTo === null ? "Back to agents" : `Back to ${backTo}`}
         title={backTo ?? "Agents"}
-        className="max-w-[7.5rem] shrink-0 gap-0.5 px-1.5 text-foreground [&>span]:min-w-0"
+        className="max-w-[7.5rem] min-w-11 shrink-0 gap-0.5 px-1.5 text-foreground [&>span]:min-w-0"
         onClick={onBack}
       >
         <ChevronLeft aria-hidden />
-        <span className="min-w-0 truncate">{backTo ?? "Agents"}</span>
+        {/* Under 360 px the chevron alone: the title keeps the row (its accessible name still says where Back goes). */}
+        <span className="min-w-0 truncate max-[359px]:hidden">{backTo ?? "Agents"}</span>
       </Button>
       {/* A container: the status chip shows its word only where the title keeps a readable share of the row (#479). */}
       <div className="@container flex min-w-0 flex-1 flex-col py-1">

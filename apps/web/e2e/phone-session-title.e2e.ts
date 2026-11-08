@@ -51,7 +51,10 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
       const seeded = seed();
       try {
         await page.goto("/");
-        await page.getByRole("button", { name: /^website\b/ }).first().click();
+        await page
+          .getByRole("button", { name: /^website\b/ })
+          .first()
+          .click();
         await page.getByRole("region", { name: "Tabs" }).getByRole("button").filter({ hasText: "deploy" }).click();
         await expect(page.locator(`[data-terminal="${seeded.deploy}"]`)).toBeVisible({ timeout: 20_000 });
 

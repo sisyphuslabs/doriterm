@@ -626,8 +626,8 @@ test.describe("10: on a phone at 390", () => {
     await page.goto("/");
     await agentRow(page, "split-w2", false).click();
     const header = page.getByRole("banner");
-    // An unnamed tab reads its number, whichever of its panes is in view (ruling A).
-    await expect(header.getByRole("heading", { name: "2", exact: true })).toBeVisible({ timeout: 15_000 });
+    // An unnamed tab reads the terminal in view, never its number (mobile nav phase 2).
+    await expect(header.getByRole("heading", { name: "split-w2", exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / })).toContainText("2/3");
     await expect(page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / })).toHaveAccessibleName(
       /tab 2 of 3$/,
@@ -635,18 +635,17 @@ test.describe("10: on a phone at 390", () => {
     const panes = page.getByRole("navigation", { name: "Panes in this tab" });
     await panes.getByRole("button", { name: "Next pane" }).click();
     await expect(page.locator(`[data-terminal="${twoBeside}"]`)).toBeVisible({ timeout: 15_000 });
-    await expect(header.getByRole("heading", { name: "2", exact: true })).toBeVisible();
+    await expect(header.getByRole("heading", { name: "split-w2b", exact: true })).toBeVisible();
     const tabSwitch = page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / });
     await expect(tabSwitch).toContainText("2/3");
 
     await tabSwitch.click();
     await opened(page.getByRole("dialog", { name: "Spaces" }));
     const web = page.getByRole("dialog", { name: "Spaces" }).getByRole("region", { name: "web" });
-    // One row per tab, read as the strip reads it (its number); the split tab's row opens the pane in view.
+    // One row per tab, each unnamed one read by the terminal it opens; the split tab's row opens the pane in view.
     await expect(web.getByRole("button", { name: TAB_ROW })).toHaveCount(3);
-    await expect(tabRow(web, "1")).toContainText("split-w1");
-    await expect(tabRow(web, "2")).toContainText("split-w2b");
-    await expect(tabRow(web, "3")).toContainText("split-w3");
-    await expect(tabRow(web, "2")).toHaveAttribute("aria-current", "true");
+    await expect(tabRow(web, "split-w1")).toHaveCount(1);
+    await expect(tabRow(web, "split-w3")).toHaveCount(1);
+    await expect(tabRow(web, "split-w2b")).toHaveAttribute("aria-current", "true");
   });
 });

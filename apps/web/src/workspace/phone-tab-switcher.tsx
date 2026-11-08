@@ -2,7 +2,7 @@ import { AgentRow, Button, IconButton, Sheet, SidebarSection } from "@doriface/u
 import { ChevronLeft, ChevronRight, ChevronUp, Plus, X } from "lucide-react";
 import { type ReactElement, useState } from "react";
 import { liveTabs, type Session, toAgent } from "./model.ts";
-import { lastSaid, tabLabel } from "./phone-space-rows.ts";
+import { rowDetail, tabLabel } from "./phone-space-rows.ts";
 import { useSpaceSelection } from "./space-selection.ts";
 import { useNow } from "./use-now.ts";
 
@@ -49,7 +49,7 @@ export function SpaceSheet(props: {
                 .filter((entry) => entry.address === shown)
                 .map((entry) => {
                   const { detail: _where, ...agent } = toAgent(entry, now);
-                  const said = lastSaid(entry);
+                  const said = rowDetail(space.tabNames[at] ?? "", entry);
                   const name = tabLabel(space.tabNames[at] ?? "", entry);
                   return (
                     <div key={entry.address} className="flex min-w-0 items-center gap-1">
