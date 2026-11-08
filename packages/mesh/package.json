@@ -8,7 +8,8 @@
   ],
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./join": "./src/join/index.ts"
   },
   "dependencies": {
     "@doriface/crypto": "workspace:*",
