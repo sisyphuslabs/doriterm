@@ -96,10 +96,11 @@ export const SUPPRESSION_TABLE: readonly SuppressionRow[] = [
       context.input.kind === "grapheme" && (context.input.codepoints !== 1 || !knownWidth(context.width)),
     tentative: true,
   },
-  // P4: a prediction never reaches the last column, since the shell's wrap and the terminal's differ.
+  // P4: a grapheme that does not fit in the row is not predicted (the terminal would wrap it, a wide one with a spacer).
+  // One that ends in the last column is predicted, tentatively, and the predicted cursor wraps (mosh, Predictor).
   {
     rule: "P4",
-    refuses: (context) => context.input.kind === "grapheme" && context.col + (context.width ?? 1) > context.cols - 1,
+    refuses: (context) => context.input.kind === "grapheme" && context.col + (context.width ?? 1) > context.cols,
     tentative: true,
   },
 ];

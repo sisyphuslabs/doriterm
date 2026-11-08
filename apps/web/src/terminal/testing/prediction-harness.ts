@@ -7,12 +7,26 @@ import {
   type ScreenCell,
 } from "../prediction.ts";
 
-/** A terminal model the test writes by hand: cells, a cursor, a width, the alternate screen. */
+/**
+ * A terminal model the test writes by hand: cells, a cursor, a size, the alternate screen. It wraps as a terminal does:
+ * a glyph written into the last column leaves the cursor there with a wrap pending, the next glyph goes to the start
+ * of the next row, and on the last row that scrolls the screen up.
+ */
 export class FakeScreen implements PredictionScreen {
-  readonly #cells = new Map<string, ScreenCell>();
-  at: CursorPosition = { row: 0, col: 0 };
+  #cells = new Map<string, ScreenCell>();
+  /** The column after the last glyph written; `width` while a wrap is pending. */
+  #position: CursorPosition = { row: 0, col: 0 };
   width = 80;
+  height = 24;
   alt = false;
+
+  get at(): CursorPosition {
+    return { row: this.#position.row, col: Math.min(this.#position.col, this.width - 1) };
+  }
+
+  set at(position: CursorPosition) {
+    this.#position = position;
+  }
 
   cursor(): CursorPosition {
     return this.at;
@@ -26,19 +40,40 @@ export class FakeScreen implements PredictionScreen {
     return this.width;
   }
 
+  rows(): number {
+    return this.height;
+  }
+
   altScreen(): boolean {
     return this.alt;
   }
 
-  /** As a host's echo lands: each code point at the cursor, a wide one over two cells, wrapping at the last column. */
+  /** As a host's echo lands: each code point at the cursor, a wide one over two cells, wrapping past the last column. */
   echo(text: string): void {
     for (const each of text) {
       const width = widthOf(each) ?? 1;
-      if (this.at.col + width > this.width) this.at = { row: this.at.row + 1, col: 0 };
-      this.#cells.set(`${this.at.row}:${this.at.col}`, { char: each.codePointAt(0) ?? 0, width });
-      if (width === 2) this.#cells.set(`${this.at.row}:${this.at.col + 1}`, { char: 0, width: 0 });
-      this.at = { row: this.at.row, col: this.at.col + width };
+      let { row, col } = this.#position;
+      if (col + width > this.width) {
+        row += 1;
+        col = 0;
+      }
+      if (row === this.height) {
+        this.#scroll();
+        row -= 1;
+      }
+      this.#cells.set(`${row}:${col}`, { char: each.codePointAt(0) ?? 0, width });
+      if (width === 2) this.#cells.set(`${row}:${col + 1}`, { char: 0, width: 0 });
+      this.#position = { row, col: col + width };
     }
+  }
+
+  #scroll(): void {
+    const moved = new Map<string, ScreenCell>();
+    for (const [key, cell] of this.#cells) {
+      const [row, col] = key.split(":").map(Number);
+      if (row !== undefined && col !== undefined && row > 0) moved.set(`${row - 1}:${col}`, cell);
+    }
+    this.#cells = moved;
   }
 }
 

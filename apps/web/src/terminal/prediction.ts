@@ -23,6 +23,7 @@ export interface PredictionScreen {
   cursor(): CursorPosition;
   cell(row: number, col: number): ScreenCell;
   cols(): number;
+  rows(): number;
   altScreen(): boolean;
 }
 
@@ -170,10 +171,11 @@ export class Predictor {
     this.#altScreen = altScreen;
     if (entered) this.#drop(0, "alt-screen");
     else this.#cull(this.#sources.now());
-    // Undrawn predictions left on a row the cursor has left were made from a cursor that Enter (or another unmodelled
-    // key) has since moved; dropping them hides nothing and lets the next key start from the real cursor.
+    // Undrawn predictions on a row above the cursor were made from a cursor that Enter (or another unmodelled key) has
+    // since moved down; dropping them hides nothing and lets the next key start from the real cursor. Predictions below
+    // the cursor are the ones a wrap put on the next row, waiting for the host to get there.
     const row = screen.cursor().row;
-    const stale = this.#predictions.find((each) => each.epoch > this.#confirmedEpoch && each.row !== row);
+    const stale = this.#predictions.find((each) => each.epoch > this.#confirmedEpoch && each.row < row);
     if (stale !== undefined) this.#drop(this.#confirmedEpoch + 1, "row-left");
     if (this.#predictions.length === 0) this.#cursor = null;
   }
@@ -224,7 +226,14 @@ export class Predictor {
   }
 
   #predict(text: string, width: 1 | 2, at: CursorPosition): Prediction {
-    const before = this.#sources.screen.cell(at.row, at.col);
+    const { screen } = this.#sources;
+    // The last column, as mosh predicts it (terminaloverlay.cc:752-756, 789-795): tentatively, since a program may draw
+    // its own wrap mark there or the cursor may already be in the terminal's pending wrap; and the predicted cursor then
+    // wraps to the start of the next row, tentatively again. On the last row the screen scrolls instead, which
+    // predictions do not follow (mosh: "Don't try to predict scroll"), so the cursor stays on that row.
+    const wraps = at.col + width === screen.cols();
+    if (wraps) this.#epoch += 1;
+    const before = screen.cell(at.row, at.col);
     const cell: Prediction = {
       row: at.row,
       col: at.col,
@@ -237,6 +246,10 @@ export class Predictor {
     };
     this.#predictions = [...this.#predictions, cell];
     this.#cursor = { row: at.row, col: at.col + width };
+    if (wraps) {
+      this.#epoch += 1;
+      this.#cursor = { row: Math.min(at.row + 1, screen.rows() - 1), col: 0 };
+    }
     return cell;
   }
 

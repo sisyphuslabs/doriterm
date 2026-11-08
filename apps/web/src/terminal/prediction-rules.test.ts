@@ -51,17 +51,17 @@ describe("the suppression table (design note D4)", () => {
     expect(texts(h)).toEqual([]);
   });
 
-  test("P4: nothing is predicted into the last column; one cell left of it is", () => {
+  test("P4: a grapheme that does not fit in the row is not predicted; one that ends in the last column is", () => {
     const h = harness();
     confirmed(h);
     h.screen.at = { row: 0, col: 79 };
     h.predictor.wrote();
-    expect(h.predictor.typed("a", "key")).toEqual({ kind: "refused", rule: "P4" });
-    const left = harness();
-    confirmed(left);
-    left.screen.at = { row: 0, col: 78 };
-    left.predictor.wrote();
-    expect(left.predictor.typed("a", "key")).toMatchObject({ kind: "predicted", cell: { col: 78 } });
+    expect(h.predictor.typed("가", "key")).toEqual({ kind: "refused", rule: "P4" });
+    const last = harness();
+    confirmed(last);
+    last.screen.at = { row: 0, col: 79 };
+    last.predictor.wrote();
+    expect(last.predictor.typed("a", "key")).toMatchObject({ kind: "predicted", cell: { col: 79 } });
   });
 
   test("P5: while an input method composes, the preedit shows it and nothing is predicted", () => {
@@ -80,16 +80,17 @@ describe("the suppression table (design note D4)", () => {
     expect(texts(h)).toEqual([]);
   });
 
-  test("P7: a Hangul syllable is one two-cell prediction, refused at cols - 2 where a narrow key is not", () => {
+  test("P7: a Hangul syllable is one two-cell prediction, refused at cols - 1 where a narrow key is not", () => {
     const h = harness();
     confirmed(h);
     expect(h.predictor.typed("가", "key")).toMatchObject({ kind: "predicted", cell: { col: 1, width: 2, text: "가" } });
     expect(h.predictor.visibleCursor()).toEqual({ row: 0, col: 3 });
     const edge = harness();
     confirmed(edge);
-    edge.screen.at = { row: 0, col: 78 };
+    edge.screen.at = { row: 0, col: 79 };
     edge.predictor.wrote();
     expect(edge.predictor.typed("가", "key")).toEqual({ kind: "refused", rule: "P4" });
+    expect(edge.predictor.typed("a", "key")).toMatchObject({ kind: "predicted", cell: { col: 79 } });
   });
 
   test("P7: a multi-codepoint grapheme, or a code point of unknown width, is not predicted", () => {
