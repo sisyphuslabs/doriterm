@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { type PairingOffer, parsePairingFragment } from "../pair/fragment.ts";
 import { pairAndRemember, type RememberedHost } from "../pair/handshake.ts";
 import { connect, type OpenConnection } from "./connect.ts";
+import { installShellForwarder, type ShellForwarder } from "./direct-forward.test-support.ts";
 import { DEFAULT_SETTINGS } from "./settings.ts";
 
 const CLI = join(import.meta.dir, "..", "..", "..", "host", "src", "cli.ts");
@@ -21,6 +22,7 @@ let hc: HcSession;
 let host: Host;
 let other: Host;
 let saved: RememberedHost;
+let shell: ShellForwarder | undefined;
 let lanUrl: string;
 let otherLanUrl: string;
 
@@ -93,9 +95,12 @@ beforeAll(async () => {
   const first = remembered[0];
   if (first === undefined) throw new Error("pairing saved nothing");
   saved = first;
+  // These are the desktop shell's sessions (#1381 §8): its forwarder is what keeps a saved address usable at all.
+  shell = installShellForwarder();
 }, 60_000);
 
 afterAll(async () => {
+  shell?.restore();
   await host.stop();
   await other.stop();
   await bridge.stop();
@@ -110,7 +115,7 @@ function settingsWith(directUrl: string): typeof DEFAULT_SETTINGS {
   return { ...DEFAULT_SETTINGS, ...saved, mode: "relay", relayUrl: bridge.url, directUrl };
 }
 
-describe("a saved direct address is used with the relay as its fallback (#446)", () => {
+describe("the desktop shell uses a saved direct address with the relay as its fallback (#446, #1381 §8)", () => {
   test("an address that answers carries the session, and the relay is never dialed", async () => {
     const before = relayDials();
     const opened: OpenConnection = await connect(settingsWith(lanUrl), undefined, deps);

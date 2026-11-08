@@ -25,6 +25,7 @@ import {
 import type { ByteLink } from "./link.ts";
 import type { Unsubscribe } from "./listeners.ts";
 import { EventFeed } from "./event-feed.ts";
+import { RttEstimator, type RttEstimate } from "./rtt.ts";
 import { TerminalStream } from "./terminal-stream.ts";
 import { isStreamChannel, Wire } from "./wire.ts";
 
@@ -99,6 +100,7 @@ export class HcConnection {
   readonly features: ReadonlySet<string>;
   readonly raw: RawFrames;
   readonly #wire: Wire;
+  readonly #rtt = new RttEstimator();
   readonly #callTimeoutMs: number | undefined;
 
   private constructor(wire: Wire, hello: HelloResult, callTimeoutMs: number | undefined) {
@@ -179,10 +181,14 @@ export class HcConnection {
     if (this.#wire.isClosed) return Promise.reject(new HcConnectionClosedError("connection is closed"));
     const signal = options.signal;
     if (signal?.aborted === true) return Promise.reject(signal.reason);
-    const { id, promise } = this.#wire.calls.start((result) => {
-      if (!isResultOf(method, result)) throw new HcProtocolError(`${method} replied with a non-object result`);
-      return adopt(result);
-    });
+    const sentAt = this.#rtt.mark();
+    const { id, promise } = this.#wire.calls.start(
+      (result) => {
+        if (!isResultOf(method, result)) throw new HcProtocolError(`${method} replied with a non-object result`);
+        return adopt(result);
+      },
+      () => this.#answered(method, sentAt),
+    );
     try {
       this.#wire.sendRpc(encodeRequest(id, method, params));
     } catch (error) {
@@ -210,8 +216,21 @@ export class HcConnection {
     }
   }
 
+  /** A call the core answered: a round trip, unless the call waits by design and its time is the program's work. */
+  #answered(method: HcMethod, sentAt: number): void {
+    if (!WAITING_METHODS.has(method)) this.#rtt.sample(sentAt);
+  }
+
   get closed(): boolean {
     return this.#wire.isClosed;
+  }
+
+  /**
+   * The measured round trip of the calls the core answered (design D7): one number for the wake probe's deadline, the
+   * replay quiet window and the predictor's display gate. `undefined` until the first answer arrives.
+   */
+  get rtt(): RttEstimate | undefined {
+    return this.#rtt.estimate;
   }
 
   onNotification(listener: (notification: JsonRpcNotification) => void): Unsubscribe {
