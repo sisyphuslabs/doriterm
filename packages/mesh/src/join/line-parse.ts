@@ -87,13 +87,35 @@ export function parseLine(text: string): MeshLine | "unknown" | undefined {
     }
     case "offer": {
       const [mesh, inviter, nonce] = [get("mesh"), get("inviter"), get("nonce")];
-      return mesh === undefined || inviter === undefined || nonce === undefined
+      const commit = get("commit");
+      return mesh === undefined ||
+        inviter === undefined ||
+        nonce === undefined ||
+        (value["commit"] !== undefined && (commit === undefined || !canonical(commit, HASH_CHARS)))
         ? undefined
-        : { t: "offer", mesh, inviter, nonce };
+        : { t: "offer", mesh, inviter, nonce, ...(commit === undefined ? {} : { commit }) };
     }
     case "card": {
       const card = signedOf(value);
-      return card === undefined ? undefined : { t: "card", ...card };
+      const sas = get("sas");
+      return card === undefined || (value["sas"] !== undefined && (sas === undefined || !canonical(sas, HASH_CHARS)))
+        ? undefined
+        : { t: "card", ...card, ...(sas === undefined ? {} : { sas }) };
+    }
+    case "reveal": {
+      const Ni = get("Ni");
+      return Ni === undefined || !canonical(Ni, HASH_CHARS) ? undefined : { t: "reveal", Ni };
+    }
+    case "confirm":
+    case "abort":
+      return { t: value["t"] };
+    case "resume": {
+      const nonce = get("nonce");
+      return nonce === undefined ? undefined : { t: "resume", nonce };
+    }
+    case "leave": {
+      const card = signedOf(value["card"]);
+      return card === undefined ? undefined : { t: "leave", card };
     }
     case "records": {
       const records = recordsOf(value["records"]);
