@@ -65,6 +65,7 @@ for (const theme of ["day", "night"] as const) {
       const pair = page.getByRole("button", { name: "Pair", exact: true });
       await pair.click();
       await expect(pair).toHaveAttribute("aria-busy", "true");
+      await expect(pair.locator("svg")).toBeVisible();
       const measured = await measure(page, pair, { svg: true });
       // Its fill is the enabled primary fill, and its spinner is drawn in the primary label colour on it.
       expect(measured.fromEnabled, measured.label).toBeLessThan(1.05);
