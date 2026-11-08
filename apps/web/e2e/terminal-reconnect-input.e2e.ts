@@ -1,7 +1,7 @@
 import { devices } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
-import { fakeSoftKeyboard } from "./phone-key-bar.ts";
+import { fakeSoftKeyboard, key } from "./phone-key-bar.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
@@ -41,7 +41,8 @@ test.describe("on a phone", () => {
     const terminal = page.locator("[data-terminal]");
     await expect(terminal).toContainText("$", { timeout: 15_000 });
     const input = terminal.getByRole("textbox");
-    await input.focus();
+    // Opening a terminal leaves the keyboard down, so the arrow pad is the keyboard button's to bring up (#1375).
+    await key(page, "Show keyboard").click();
 
     await socket.drop(true);
     await expect.poll(socket.refused, { timeout: 15_000 }).toBeGreaterThan(0);
