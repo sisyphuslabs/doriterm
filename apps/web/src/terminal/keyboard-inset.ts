@@ -111,8 +111,11 @@ export function useSoftKeyboard(scope: HTMLElement | null): { readonly up: boole
     const viewport = window.visualViewport;
     let wasOpen = false;
     const measure = (): void => {
-      const inset = viewport === null ? 0 : keyboardInset(window.innerHeight, viewport);
-      const open = layoutKeyboard.measure(window.innerWidth, window.innerHeight, performance.now()) || inset > 0;
+      // The layout viewport, which the keys are placed in: WebKit on iOS shrinks window.innerHeight with the visual
+      // viewport over the keyboard, so measured from it the keyboard would take no room and hide the keys (#1409).
+      const layoutHeight = document.documentElement.clientHeight;
+      const inset = viewport === null ? 0 : keyboardInset(layoutHeight, viewport);
+      const open = layoutKeyboard.measure(window.innerWidth, layoutHeight, performance.now()) || inset > 0;
       if (wasOpen && !open && typingIn(scope) && document.activeElement instanceof HTMLElement) {
         document.activeElement.blur();
       }
