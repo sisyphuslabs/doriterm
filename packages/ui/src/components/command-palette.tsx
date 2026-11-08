@@ -111,6 +111,7 @@ export function CommandPalette({
         <div className="border-b border-border px-3 py-2">
           <SegmentedControl<AgentStatus | typeof ALL>
             label="Show agents"
+            compact
             value={status ?? ALL}
             onValueChange={(value) => {
               setChosen(value === ALL ? null : value);
