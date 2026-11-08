@@ -12,7 +12,8 @@ const prefixOf = (program: string, stateDir: string): string =>
  */
 export function meshVia(program: string, stateDir: string, hostId: string): string {
   if (!HOST_ID_PATTERN.test(hostId)) throw new TypeError(`not a hostId: ${JSON.stringify(hostId)}`);
-  return `${prefixOf(program, stateDir)}${hostId}`;
+  // hc owns and kills its sh child when the hello fails. Replace that shell so it owns the bridge itself.
+  return `exec ${prefixOf(program, stateDir)}${hostId}`;
 }
 
 /**
@@ -20,7 +21,8 @@ export function meshVia(program: string, stateDir: string, hostId: string): stri
  * dir. Any other command, a bare `doriface-host connect` among them, is not a mesh machine.
  */
 export function meshHostOf(target: string, program: string, stateDir: string): string | undefined {
-  const prefix = prefixOf(program, stateDir);
+  // Previously stored lines have no exec prefix; they still belong to this host.
+  const prefix = `${target.startsWith("exec ") ? "exec " : ""}${prefixOf(program, stateDir)}`;
   if (!target.startsWith(prefix)) return undefined;
   const hostId = target.slice(prefix.length);
   return HOST_ID_PATTERN.test(hostId) ? hostId : undefined;
