@@ -10,7 +10,7 @@
  * --compare checks every other build against the named one with the thresholds file and exits 1 on a regression.
  * The runs, the table and the verdict are written to the out dir (render-bench.json, render-bench.md).
  */
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { type BenchRun, type Thresholds, compareRuns, renderTable, renderVerdict } from "./render-stats.ts";
@@ -39,6 +39,8 @@ const builds = values.build.map((spec) => {
 });
 if (builds.length === 0) builds.push({ label: "candidate", dist: "" });
 const runsDir = join(out, "runs");
+// The table and the medians are this invocation's runs only: an earlier bench into the same --out left its own (#844).
+rmSync(runsDir, { recursive: true, force: true });
 mkdirSync(runsDir, { recursive: true });
 
 for (let round = 0; round < rounds; round += 1) {
