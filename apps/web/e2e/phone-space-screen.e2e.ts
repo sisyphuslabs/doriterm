@@ -118,12 +118,14 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await expect(agentsHeading(page)).toBeVisible();
         await expect.poll(() => param(page, "s")).toBeNull();
 
-        // Straight onto the space's own address, with nothing of this page's behind it: Back must not leave the app.
-        await page.goto(url);
-        await expect(page.getByRole("heading", { level: 1, name: "infra" })).toBeVisible({ timeout: 20_000 });
-        await page.getByRole("button", { name: "Back to agents" }).click();
-        await expect(agentsHeading(page)).toBeVisible();
-        await expect.poll(() => param(page, "s")).toBeNull();
+        // Straight onto the space's own address on a page of its own, with nothing of the app behind it: a plain pop
+        // would leave the app for the blank page, so only the guard's replace reaches Agents.
+        const cold = await page.context().newPage();
+        await cold.goto(url);
+        await expect(cold.getByRole("heading", { level: 1, name: "infra" })).toBeVisible({ timeout: 20_000 });
+        await cold.getByRole("button", { name: "Back to agents" }).click();
+        await expect(agentsHeading(cold)).toBeVisible();
+        await expect.poll(() => param(cold, "s")).toBeNull();
       } finally {
         end(seeded);
       }
@@ -162,19 +164,38 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await expect.poll(() => page.evaluate(() => document.documentElement.hasAttribute("data-ready"))).toBe(true);
         // Every frame from the tap until the slide has settled: the page never grows wider than the screen.
         await page.evaluate(() => {
-          const widths: number[] = [];
-          Reflect.set(window, "slideWidths", widths);
+          const frames: { readonly width: number; readonly moving: boolean }[] = [];
+          Reflect.set(window, "slideFrames", frames);
           const sample = (): void => {
-            widths.push(document.scrollingElement?.scrollWidth ?? 0);
-            if (widths.length < 30) requestAnimationFrame(sample);
+            // Only the arriving screen's own motion counts: a spinner elsewhere is not the slide.
+            const moving = document
+              .getAnimations()
+              .some(
+                (motion) =>
+                  motion.playState === "running" &&
+                  motion.effect instanceof KeyframeEffect &&
+                  motion.effect.target instanceof Element &&
+                  motion.effect.target.closest(".motion-arrive") !== null,
+              );
+            frames.push({ width: document.scrollingElement?.scrollWidth ?? 0, moving });
+            // Until the slide has run and settled (or a bound, which then fails the check below).
+            const settled = !moving && frames.some((frame) => frame.moving);
+            if (!settled && frames.length < 600) requestAnimationFrame(sample);
+            else Reflect.set(window, "slideDone", true);
           };
           requestAnimationFrame(sample);
         });
         await spaceRow(page, "website").click();
         await expect(page.getByRole("heading", { level: 1, name: "website" })).toBeVisible();
-        await expect.poll(() => page.evaluate(() => (Reflect.get(window, "slideWidths") as number[]).length)).toBe(30);
-        const widths = await page.evaluate(() => Reflect.get(window, "slideWidths") as number[]);
-        expect(Math.max(...widths)).toBeLessThanOrEqual(390);
+        await expect.poll(() => page.evaluate(() => Reflect.get(window, "slideDone") === true)).toBe(true);
+        const frames = await page.evaluate(
+          () => Reflect.get(window, "slideFrames") as { readonly width: number; readonly moving: boolean }[],
+        );
+        expect(
+          frames.some((frame) => frame.moving),
+          "the slide ran while it was sampled",
+        ).toBe(true);
+        expect(Math.max(...frames.map((frame) => frame.width))).toBeLessThanOrEqual(390);
       } finally {
         end(seeded);
       }
