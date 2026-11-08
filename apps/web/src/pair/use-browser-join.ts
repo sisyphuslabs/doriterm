@@ -8,7 +8,7 @@ import { deviceStore } from "../storage/idb.ts";
 import { BrowserJoin } from "../mesh/join-state.ts";
 import type { PairingOffer } from "./fragment.ts";
 import { JOIN_ANCHOR_KEY, loadJoinAnchor, type BrowserJoinAnchor } from "./join-anchor.ts";
-import { openBrowserJoin, openBrowserResume, refuseEarly, BROWSER_JOIN_DEPS } from "../mesh/join.ts";
+import { DeviceCodeOffer, openBrowserJoin, openBrowserResume, refuseEarly, BROWSER_JOIN_DEPS } from "../mesh/join.ts";
 import { guideStore } from "./first-run-guide.ts";
 
 const subscribeEmpty = () => () => undefined;
@@ -18,6 +18,7 @@ const empty = () => undefined;
 export function useBrowserJoin() {
   const [flow, setFlow] = useState<BrowserJoin>();
   const [failure, setFailure] = useState<string>();
+  const [device, setDevice] = useState<PairingOffer>();
   const [busy, setBusy] = useState(false);
   const [inviter, setInviter] = useState("the inviting machine");
   const active = useRef<BrowserJoin | undefined>(undefined);
@@ -82,6 +83,10 @@ export function useBrowserJoin() {
           window.location.assign("/settings#machines");
         }
       } catch (error) {
+        if (error instanceof DeviceCodeOffer) {
+          if (run === generation.current) setDevice(error.offer);
+          return;
+        }
         const refused = resume !== undefined && error instanceof Error && closeCodeOf(error) === 4401;
         if (refused) await deviceStore.put(JOIN_ANCHOR_KEY, null);
         if (run === generation.current)
@@ -126,5 +131,5 @@ export function useBrowserJoin() {
     }, 1_000);
     return () => clearTimeout(timer.current);
   }, [state, busy, resume]);
-  return { state, failure, busy, inviter, start: execute, answer: (matches: boolean) => flow?.answer(matches), resume };
+  return { state, failure, device, busy, inviter, start: execute, answer: (matches: boolean) => flow?.answer(matches), resume };
 }

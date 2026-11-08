@@ -7,6 +7,7 @@ import { deviceName } from "./device-name.ts";
 import type { PairingOffer } from "./fragment.ts";
 import { carryInvite } from "./invite-handoff.ts";
 import { useBrowserJoin } from "./use-browser-join.ts";
+import { VerifyStep } from "./verify-step.tsx";
 import { meshNameOf } from "../mesh/member-name.ts";
 
 /** A browser joins with its own card, and only its person's answer confirms the shared join ceremony. */
@@ -17,6 +18,8 @@ export function MeshInvite({ offer }: { readonly offer?: PairingOffer }) {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string>();
   const state = flow.state;
+  // A typed code from `doriface-host pair` opens a device pairing: the same code pairs this browser with that host.
+  if (flow.device !== undefined) return <VerifyStep offer={flow.device} />;
   const transfer = async (): Promise<void> => {
     if (offer?.secret.mode !== "link") return;
     try {

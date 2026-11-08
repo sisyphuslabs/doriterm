@@ -59,6 +59,26 @@ function refusalOf(mode: OfferSecret["mode"], error: unknown): JoinRefused | und
   return reason === undefined ? undefined : new JoinRefused(reason, { cause: error });
 }
 
+/** A typed code that opens a device pairing (`doriface-host pair`), not a mesh invite: it pairs this browser instead. */
+export class DeviceCodeOffer extends Error {
+  override readonly name = "DeviceCodeOffer";
+  constructor(readonly offer: PairingOffer) {
+    super("this code pairs a device with its host");
+  }
+}
+
+/**
+ * Why the inviter's handshake failed. A typed code does not say which offer it opens, and a host refuses a mesh join on
+ * a device pairing offer with UnknownDevice before it counts the attempt (`kindRefusal`, `claimCode`), so that refusal
+ * hands the same code to the device pairing. A code that was used or replaced is refused there in that flow's words.
+ */
+export function dialRefusalOf(offer: PairingOffer, error: unknown): Error | undefined {
+  if (offer.secret.mode === "code" && error instanceof Error && closeCodeOf(error) === CloseCode.UnknownDevice) {
+    return new DeviceCodeOffer({ ...offer, target: "device" });
+  }
+  return refusalOf(offer.secret.mode, error);
+}
+
 /** A link says what it admits; a code's offer kind is the inviter's to judge (the shared guard's rule). */
 const joinTargetOf = (offer: PairingOffer): JoinTarget =>
   offer.secret.mode === "code" ? { kind: "code" } : { kind: "link", mesh: offer.target === "mesh" };
@@ -109,7 +129,7 @@ async function dialInviter(offer: PairingOffer, name: string, deps: JoinDeps): P
     });
     return { secure, sign, device };
   } catch (error) {
-    throw refusalOf(secret.mode, error) ?? error;
+    throw dialRefusalOf(offer, error) ?? error;
   }
 }
 

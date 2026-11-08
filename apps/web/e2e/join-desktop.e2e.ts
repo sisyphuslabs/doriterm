@@ -71,6 +71,25 @@ test("a desktop browser keeps legacy fingerprint verification when pasting a dev
   }
 });
 
+test("a desktop browser still pairs by typing the code doriface-host pair shows", async ({ browser }) => {
+  test.setTimeout(180_000);
+  const host = await startFakeRelayHost({ machine: true });
+  const context = await browser.newContext({ serviceWorkers: "block" });
+  try {
+    const { code } = await host.pairingOffer();
+    const page = await desktopPage(context, host);
+    await page.goto("/pair");
+    await inviteScreen(page);
+    await page.getByLabel("Invite link or code").fill(`${code.slice(0, 4)} ${code.slice(4)}`);
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Join", exact: true }).click();
+    await confirmAndPair(page);
+  } finally {
+    await context.close();
+    await host.stop();
+  }
+});
+
 test("typing a mesh code looks its host up from the third character on, and Continue asks nothing more (#1271)", async ({
   browser,
 }) => {
