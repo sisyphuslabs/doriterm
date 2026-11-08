@@ -60,6 +60,12 @@ export function withAttention(terminals: readonly Session[], seen: Seen): readon
   return marked ? shown : terminals;
 }
 
+/** Whether some terminal other than the one in view needs you: the next-needs-you action has somewhere to go (#1448). */
+export function someoneElseNeedsYou(terminals: readonly Session[], inView: string | null): boolean {
+  const next = nextNeedingYou(terminals, inView);
+  return next !== null && next !== inView;
+}
+
 /** A live terminal whose agent needs the person: what "N needs you" counts and opens. */
 const waitsForYou = (terminal: Session): boolean => terminal.state === "live" && agentStatus(terminal) === "blocked";
 

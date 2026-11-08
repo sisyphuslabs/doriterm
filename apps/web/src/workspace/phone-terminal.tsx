@@ -39,13 +39,16 @@ export interface PhoneTerminalProps {
   readonly tabTitle: string | null;
   readonly onOpen: (address: string) => void;
   readonly onBack: () => void;
+  /** The Spaces sheet's tab controls: close the tab that shows an address, start a tab in a space (#1463). */
+  readonly onCloseTab: (address: string) => void;
+  readonly onNewInSpace: (space: string) => void;
   /** Where this terminal registers its dictation for the shell's palette row and bound key; null while it takes none. */
   readonly dictate: RefObject<(() => void) | null>;
 }
 
 /** One session full screen on a phone, its terminal kept clear of the soft keyboard and the keys bar riding on it. */
 export function PhoneTerminal(props: PhoneTerminalProps) {
-  const { connection, terminal, terminals, panes, tabTitle, onOpen, onBack, dictate } = props;
+  const { connection, terminal, terminals, panes, tabTitle, onOpen, onBack, onCloseTab, onNewInSpace, dictate } = props;
   const port = useRef<TerminalPort | null>(null);
   const onPort = useCallback((next: TerminalPort | null) => {
     port.current = next;
@@ -185,6 +188,8 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
           onOpen={onOpen}
           // A touch device's Read-only button takes the slot left of the keyboard button's; a mouse-only one has none.
           clearance={roundButtonsClearance(mouseOnly ? 1 : 2)}
+          onCloseTab={onCloseTab}
+          onNewInSpace={onNewInSpace}
         />
       ) : null}
       {dictating ? (
