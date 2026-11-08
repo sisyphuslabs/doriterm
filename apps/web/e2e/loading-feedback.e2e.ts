@@ -29,6 +29,12 @@ test("a fast pairing request keeps its label and never flashes a spinner (#1443)
   await expect(button).not.toHaveAttribute("aria-busy", "true");
   await page.clock.runFor(1000);
   expect(await button.locator("svg").count()).toBe(0);
+  // A second press gets a fresh one-second delay, not a stale timer from the first.
+  await page.route("https://relay-doriface.omo.dev/v1/pair/*", () => new Promise<void>(() => {}));
+  await button.click();
+  await expect(button).toHaveAttribute("aria-busy", "true");
+  await page.clock.runFor(500);
+  expect(await button.locator("svg").count()).toBe(0);
 });
 
 test("a pending request shows its spinner after one second and clears it on completion (#1443)", async ({ page }) => {
