@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+## v0.1.12 - 2026-11-08
+
+### Terminal
+
+- On a network that reaches the relay through a far city on some connections and a near one on others (seen from
+  Korea), a machine reached through the relay answers sooner: the app opens three connections, keeps the one with the
+  shortest way to that machine and closes the other two before anything is sent on them. (#1402)
+
+### Workspace
+
+- A new tab shows its prompt one round trip sooner: the page asks for the new terminal's screen together with the
+  terminal itself, instead of after the terminal has started. Most noticeable on a machine reached through the relay.
+  (#1359)
+- A terminal opened from the list no longer waits behind saving the tab: its screen is asked for first and the tab is
+  saved once the screen is on its way, so a busy disk on that machine no longer holds back the prompt. (#1360)
+- A screen reader can jump straight to the terminals: the workspace marks its panes, and on a phone the agents list or
+  the open terminal, as the page's main content. (#1384)
+- On a phone, tapping the keys bar's Type field keeps the keyboard up: the page scrolling to show the field no longer
+  reads as the keyboard closing, which put the keyboard down and dropped the bar behind it. (#1410)
+
+### Machine mesh
+
+- The join ceremony is now a shared library with a browser implementation: a browser can become a client member by
+  accepting a mesh invite, and reaches every machine the signed welcome names over the relay, instead of pairing to a
+  single host. A device link is refused on that path. This is the plumbing, not a shipped screen - the pair route still
+  shows the typed-code screen for a mesh invite until the join UI lands. (#1413)
+
+### Phone
+
+- A phone no longer zooms the page when you tap a field or tap twice: every text field, the terminal's own included at
+  any text size, is at least 16px on a touch screen, and a quick second tap is a second tap. Pinching to zoom still
+  works. (#1382)
+
+### Website
+
+- Links to doriterm.com and app.doriterm.com preview with the current card in Slack, KakaoTalk and X: the card's URL changes with the card, so an old cached image is not shown, and both titles read "Doriterm". (#1373)
+
+### Appearance
+
+- A fresh install opens in the dark Night theme on a bundled monospace face that draws powerline glyphs, instead of
+  following the device. A person who already chose a light or system appearance keeps it. (#1407)
+
 ## v0.1.11 - 2026-11-08
 
 ### Machine mesh
