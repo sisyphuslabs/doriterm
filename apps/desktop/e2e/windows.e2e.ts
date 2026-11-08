@@ -135,12 +135,16 @@ test("new-window clicks and window.open navigate the one window in place", async
 test("Escape and the close control leave Settings in the desktop window", async () => {
   const page = await appPage();
   const origin = originOf(page);
+  const closeControl = page.getByRole("button", { name: "Close settings" }).first();
   await page.goto(`${origin}/`);
   await page.goto(`${origin}/settings`);
+  // goto returns at the load event, which can come before React has drawn anything; Escape goes to Settings once it is
+  // on screen, as a person's does (#1367).
+  await expect(closeControl).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page).toHaveURL(`${origin}/`);
   await page.goto(`${origin}/settings`);
-  await page.getByRole("button", { name: "Close settings" }).first().click();
+  await closeControl.click();
   await expect(page).toHaveURL(`${origin}/`);
   expect(await windowCount()).toBe(1);
 });

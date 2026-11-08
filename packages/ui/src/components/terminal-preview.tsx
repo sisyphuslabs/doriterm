@@ -1,4 +1,5 @@
 import { cn } from "../lib/cn.ts";
+import { FIND_CURRENT_CLASS, FIND_MATCH_CLASS } from "./find-bar.tsx";
 
 /** One run of text in one ANSI colour (0-15), or the default foreground when omitted. */
 export interface TerminalSpan {
@@ -6,6 +7,8 @@ export interface TerminalSpan {
   readonly color?: number;
   readonly bold?: boolean;
   readonly dim?: boolean;
+  /** A find match drawn over the text, as the live terminal draws it. */
+  readonly mark?: "match" | "current";
 }
 
 export type TerminalLine = readonly TerminalSpan[];
@@ -40,7 +43,12 @@ export function TerminalPreview({ lines, cursor = false, label, className }: Ter
             <span
               key={`${row}-${index}`}
               style={span.color === undefined ? undefined : { color: `var(--term-color-${span.color})` }}
-              className={cn(span.bold === true && "font-bold", span.dim === true && "text-(--term-faint)")}
+              className={cn(
+                span.bold === true && "font-bold",
+                span.dim === true && "text-(--term-faint)",
+                span.mark === "match" && FIND_MATCH_CLASS,
+                span.mark === "current" && FIND_CURRENT_CLASS,
+              )}
             >
               {span.text}
             </span>

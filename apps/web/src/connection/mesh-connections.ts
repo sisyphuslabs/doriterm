@@ -85,7 +85,6 @@ export class MeshConnections {
    * The list `entries()` answers with. Rebuilt only when something changes, because it is read through
    * `useSyncExternalStore`, which compares snapshots by identity and would re-render forever on a fresh array per call.
    */
-  // Members a pairing leaves behind are not dialled any more: the settings keep only the machine just paired (see `pair`).
   #snapshot: readonly MemberEntry[] = [];
 
   constructor(settings: ConnectionSettings, make: StoreFactory) {
@@ -136,15 +135,24 @@ export class MeshConnections {
   }
 
   /**
-   * Pairs with one machine, which REPLACES what this app was bound to.
+   * Pairs with one machine, which ADDS it to what this app reaches.
    *
-   * Pairing is an intent, not something to infer from the host id: the roster exists so a client reaches every member of a
-   * mesh, and a machine the person paired away from must not stay in it and be dialled forever after (review of #994).
+   * One phone reaches several computers: a machine paired earlier stays in the roster until it is removed on purpose, and
+   * removal is its own act rather than a side effect of pairing again (#942).
    */
   pair(settings: ConnectionSettings, opened?: OpenConnection): void {
-    // The name belongs to the host that said it (#496): the machine just paired has not said one yet, so the previous
-    // machine's name must not travel with the rest of the settings (review of #994).
-    this.#apply({ ...settings, hostName: "", members: [] }, opened);
+    // The name belongs to the host that said it (#496), so the machine just paired starts without one and its own hello
+    // fills it in.
+    const roster = [
+      ...this.#settings.members.filter((member) => member.hostId !== settings.hostId),
+      {
+        hostId: settings.hostId,
+        hostName: "",
+        hostKey: settings.hostKey,
+        directUrl: settings.directUrl,
+      },
+    ];
+    this.#apply({ ...settings, hostName: "", members: roster }, opened);
   }
 
   /** `opened` is a session to the selected member that pairing already proved: its store runs on it instead of dialing. */

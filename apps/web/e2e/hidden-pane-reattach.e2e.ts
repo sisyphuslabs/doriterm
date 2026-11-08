@@ -25,6 +25,18 @@ function answerTo(socket: HcSocket, method: string, terminal: string): string | 
   return socket.received().find((text) => new RegExp(`"id":${id}[,}]`).test(text) && text.includes('"result"'));
 }
 
+/**
+ * The host's answer to the last attach that opened `terminal`, found by the terminal it names: a new terminal's first
+ * attach asks for it by the name its run gave it, before its address is known (#1351).
+ */
+function attachAnswer(socket: HcSocket, terminal: string): string | undefined {
+  return socket
+    .received()
+    .findLast(
+      (text) => text.includes('"result"') && text.includes('"channel":') && text.includes(`"address":"${terminal}"`),
+    );
+}
+
 /** A core CLOSE with no exit facts on a stream channel: the core ended the stream while the program still runs. */
 function coreClose(channel: number): Buffer {
   const frame = Buffer.alloc(9);
@@ -75,7 +87,7 @@ test("a pane out of view waits to re-attach until it is shown, so a drop replays
 
 test("a pane out of view whose stream the core ends waits to re-attach until it is shown (#906)", async ({ page }) => {
   const { socket, hidden, shown } = await twoTabs(page);
-  const channel = /"channel":(\d+)/.exec(answerTo(socket, "terminal.attach", hidden) ?? "")?.[1];
+  const channel = /"channel":(\d+)/.exec(attachAnswer(socket, hidden) ?? "")?.[1];
   if (channel === undefined) throw new Error("the host's answer to the hidden pane's attach names no channel");
   socket.sendFromHost(coreClose(Number(channel)));
 

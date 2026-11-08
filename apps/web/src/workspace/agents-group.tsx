@@ -100,7 +100,7 @@ function AgentActions({ agent }: { readonly agent: Agent }) {
   return (
     <>
       <IconButton
-        label={`${pinned ? "Unpin" : "Pin"} ${agent.name}`}
+        label={pinned ? `Unpin ${agent.name}` : `Pin ${agent.name} to the top`}
         icon={pinned ? <PinOff /> : <Pin />}
         className="size-6 coarse:hidden"
         onClick={() => pin(agent.id, !pinned)}

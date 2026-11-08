@@ -25,6 +25,7 @@ export {
   type KeyboardButtonProps,
 } from "./components/extra-keys-bar.tsx";
 export { DEFAULT_EXTRA_KEYS } from "./components/extra-keys-defaults.tsx";
+export { FIND_CURRENT_CLASS, FIND_MATCH_CLASS, FindBar, type FindBarProps } from "./components/find-bar.tsx";
 export { Fingerprint, type FingerprintProps } from "./components/fingerprint.tsx";
 export { FontFamilyList, type FontFamilyListProps } from "./components/font-family-list.tsx";
 export { IconButton, type IconButtonProps } from "./components/icon-button.tsx";
@@ -70,6 +71,12 @@ export { Popover, type PopoverProps } from "./components/popover.tsx";
 export { QrCode, type QrCodeProps } from "./components/qr-code.tsx";
 export { ScrollArea, type ScrollAreaProps } from "./components/scroll-area.tsx";
 export { SegmentedControl, type SegmentOption, type SegmentedControlProps } from "./components/segmented-control.tsx";
+export {
+  ShortcutList,
+  type ShortcutGroup,
+  type ShortcutListProps,
+  type ShortcutRow,
+} from "./components/shortcut-list.tsx";
 export { ShortcutField, type ShortcutFieldProps, type ShortcutState } from "./components/shortcut-field.tsx";
 export { SettingRow, type SettingReason, type SettingRowProps } from "./components/setting-row.tsx";
 export { Sheet, SheetPanel, type SheetProps } from "./components/sheet.tsx";

@@ -1,5 +1,5 @@
 {
-  "measured": "A/A noise: Render bench run 42196735742 (bench/670-noise, ubuntu-24.04, 5 rounds, self-a vs self-b); Close prompt: run 42338764501 (bench/986-close-prompt-noise, same setup); A/B: run 42196737507 (bench/670, v0.1.2 vs candidate). See docs/render-bench.md.",
+  "measured": "A/A noise: Render bench run 42196735742 (bench/670-noise, ubuntu-24.04, 5 rounds, self-a vs self-b); Close prompt: run 42338764501 (bench/986-close-prompt-noise, same setup); A/B: run 42196737507 (bench/670, v0.1.2 vs candidate). See docs/render-bench.md. Long-task time, the ungated main busy at 50 panes and the unpaced drawn bytes per second (#844): A/A run 42328540413 (bench/844-gates-noise), A/B run 42328540737 (bench/844-gates, against v0.1.5, whose web code is the candidate's).",
   "limits": {
     "frameP95": {
       "ratio": 1.25,
@@ -9,7 +9,13 @@
     "busyShare": {
       "ratio": 1.25,
       "floor": 0.05,
-      "why": "A/A medians moved at most 0.017"
+      "ceiling": 1,
+      "why": "A/A medians moved at most 0.017; a share cannot pass 1, so where the limit does (50 panes, already 97-98% busy) the row is reported ungated and long-task time gates instead (#844)"
+    },
+    "longTaskMs": {
+      "ratio": 2,
+      "floor": 500,
+      "why": "50 panes: A/A medians 1580 / 1370 ms (rounds 1160 to 2173), and two builds with the same web code (v0.1.5 and the candidate) 1521 / 2198 ms, 1.45x; 0 at 1 and 15 panes. 2x fails #842's 756 to 1,695 ms (2.24x) and passes that spread (docs/render-bench.md)"
     },
     "catchUpMs": {
       "ratio": 1.5,
@@ -17,9 +23,9 @@
       "why": "read at a 50 ms poll, so runs land near 5 or 55 ms; A/A medians moved 41 ms at 15 panes"
     },
     "drawnBytesPerSec": {
-      "ratio": 0.9,
+      "ratio": 0.85,
       "floor": 0,
-      "why": "A/A medians moved under 0.5%"
+      "why": "unpaced phase (#844): A/A medians moved 7.5% at 1 pane (single rounds 774 to 884 KiB/s), 1.4% at 15 and 0.5% at 50"
     },
     "heapMB": {
       "ratio": 1.25,

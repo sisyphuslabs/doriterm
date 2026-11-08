@@ -4,6 +4,7 @@ import type { WebSocketHandler } from "bun";
 import { type Context, Hono, type Next } from "hono";
 import { type BunWebSocketData, upgradeWebSocket } from "hono/bun";
 import type { WSEvents } from "hono/ws";
+import { attachAfterRun } from "./attach-after-run.ts";
 import { checkBearer, checkHandshake } from "./auth.ts";
 import { bridge } from "./bridge.ts";
 import { AmbiguousDeviceError, type DeviceSurface, UnknownDeviceError } from "./device-surface.ts";
@@ -179,7 +180,7 @@ export function createGateway(options: GatewayOptions): Gateway {
     }
     const exited = pipe.exited.finally(() => children.delete(exited));
     children.add(exited);
-    void bridge(link, pipe, (error) => log(`connection closed: ${String(error)}`));
+    void bridge(link, attachAfterRun(pipe), (error) => log(`connection closed: ${String(error)}`));
   };
 
   const serveE2ee = async (wire: E2eeWire, transport: E2eeTransport): Promise<void> => {

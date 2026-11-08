@@ -2,6 +2,56 @@
 
 ## Unreleased
 
+## v0.1.11 - 2026-11-08
+
+### Machine mesh
+
+- Pairing a machine adds it to your machines instead of replacing the one paired before: a phone reaches every computer it paired, each with its own connection, and the machine just paired is the one shown. (#942)
+
+### Phone
+
+- Back in the installed app walks out of a terminal to your agents list and only leaves the app from the list, so a
+  terminal is no longer one Back gesture from closing Doriterm. (#975)
+- An agent row's pin says what it pins: Pin <agent> to the top, on the button and as its tooltip. (#879)
+- Tapping a notification while a terminal is open on a phone switches to its terminal in place, so one Back reaches the list instead of an extra list entry. (#999)
+
+### Web app
+
+- An iPhone keeps its paired identity across a reload. WebKit hands a stored X25519 `CryptoKey` back as null, so the app minted a new key on every load and the host refused the next session as an unknown device, adding a device on every re-pair; the key is now kept as bytes on a browser that cannot hold a `CryptoKey`, and a browser that can is unchanged. (#1333)
+
+## v0.1.10 - 2026-11-08
+
+### Terminal
+
+- A terminal that reattaches after a reconnect holds the view at the end while the replay streams in, instead of the replay's rows climbing past the reader; scrolling up during the replay still leaves the view where it is. (#1041)
+- Find in a terminal: Cmd+F (Ctrl+Shift+F elsewhere) or the palette opens a find bar that searches the screen and scrollback, marks every match, steps with Enter and Shift+Enter, and keeps each terminal's query (#732)
+- A Korean syllable an input method commits as plain text, with no composition before it, reaches the program as soon as it is committed instead of waiting in the input until the next key. The Korean keyboards that build each syllable in the field (iPhone, iPad, Safari on a Mac) still keep the syllable being typed until it is finished. (#1104)
+
+### Keys
+
+- Cmd+Shift+R (Ctrl+Shift+R on Linux and Windows) renames the tab, beside F2; the desktop app's View > Force Reload no longer takes it. (#702)
+- The default keys follow herdr-app's own key files, and `docs/keymap-herdr-app.md` lists every herdr-app key with what Doriterm does with it. Keys you changed in Settings > Keybindings stay as you set them. Changed defaults: (#702)
+  - macOS: Cmd+W closes the tab (Cmd+Alt+W still does) and Cmd+Shift+W the focused pane; the desktop app's File > Close Window has no key. Cmd+N starts a new space.
+  - Linux and Windows: Ctrl+1-9 select a tab and Alt+1-9 a space (swapped from before). Ctrl+Shift+PgUp / PgDn step through the spaces, so moving a tab is Ctrl+Alt+Shift+PgUp / PgDn. Alt+arrows and Alt+H/J/K/L move focus between panes and Alt+Shift+H/J/K/L swap them. Ctrl+Shift+N starts a new space.
+- New space and Rename tab are in the command palette and the desktop app's Shell menu. (#702)
+- Cmd+/ (Ctrl+? on Linux and Windows) opens a Keyboard shortcuts dialog listing your own keys, grouped as in Settings > Keybindings; the same chord closes it, and the command palette lists it too. (#733)
+
+### Machine mesh
+
+- A mesh takes any number of machines: the 12-member cap is gone, so adding a thirteenth machine no longer fails and mesh status no longer reports a limit. (#814)
+
+### Connection and offline wording
+
+- Connecting to a machine, and reconnecting after a drop or a wake, takes one round trip less: the first terminal call rides in the encrypted handshake and its answer comes back with the host's reply, about 0.2 s sooner on a far machine. The host acts on nothing else before the keys are confirmed. (#1271)
+
+### Host install
+
+- The setup tool's `verify`, `invite`, `join`, `pair` and `uninstall` use the same herdr-core `install` chose: an older or unrelated `hc` earlier in `~/.local/bin` is skipped instead of used. (#821)
+
+### Website
+
+- A link to app.doriterm.com now previews with the same card as doriterm.com. (#1341)
+
 ## v0.1.9 - 2026-11-08
 
 ### Terminal

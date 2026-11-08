@@ -123,13 +123,13 @@ function rowOf(core: CellSource, row: number) {
   };
 }
 
-/** One logical line, wrapped rows joined: its text and the cell each character came from. */
-interface Line {
+/** One logical line, wrapped rows joined: its text and the cell each character (code point) came from. */
+export interface Line {
   readonly text: string;
   readonly cells: readonly (CellAt & { readonly uri: string | undefined })[];
 }
 
-function lineAround(core: CellSource, row: number): Line | null {
+export function lineAround(core: CellSource, row: number): Line | null {
   if (rowOf(core, row) === null) return null;
   let first = row;
   for (;;) {
@@ -158,7 +158,7 @@ function lineAround(core: CellSource, row: number): Line | null {
 }
 
 /** The cells from index `start` to `end` (exclusive) of a line, as one run per row. */
-function runsOf(line: Line, start: number, end: number): LinkRun[] {
+export function runsOf(line: Line, start: number, end: number): LinkRun[] {
   const runs: LinkRun[] = [];
   for (const cell of line.cells.slice(start, end)) {
     const last = runs.at(-1);
