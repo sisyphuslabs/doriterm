@@ -24,7 +24,7 @@ export const buttonVariants = cva(
         secondary:
           "border border-border bg-raised text-foreground hover:bg-selected data-disabled:not-aria-busy:bg-transparent data-disabled:not-aria-busy:text-muted-foreground",
         ghost:
-          "text-foreground/80 hover:bg-hover hover:text-foreground data-disabled:not-aria-busy:text-muted-foreground data-disabled:not-aria-busy:[&_svg]:text-muted-foreground/72",
+          "text-foreground/85 hover:bg-hover hover:text-foreground data-disabled:not-aria-busy:text-muted-foreground data-disabled:not-aria-busy:[&_svg]:text-muted-foreground/72",
         destructive:
           "bg-destructive text-destructive-foreground hover:opacity-88 data-disabled:not-aria-busy:bg-selected data-disabled:not-aria-busy:text-foreground/70",
       },

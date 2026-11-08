@@ -85,7 +85,9 @@ for (const theme of ["day", "night"] as const) {
     });
     test.afterEach(() => reconnect());
 
-    test("Keybindings' disabled Reset all keeps a 4.5:1 label on every surface", async ({ page }) => {
+    test("Keybindings' disabled Reset all keeps a 4.5:1 label on every surface, a visible step from the enabled one", async ({
+      page,
+    }) => {
       const shot = SHOTS.find((entry) => entry.name === "settings-keybindings");
       if (shot === undefined) throw new Error("capture settings-keybindings is missing");
       await shot.run(page, "1440");
@@ -95,6 +97,27 @@ for (const theme of ["day", "night"] as const) {
         [undefined, ...SURFACES].map((surface) => measure(page, reset, surface === undefined ? {} : { surface })),
       );
       for (const measured of everywhere) expect(measured.ratio, measured.label).toBeGreaterThanOrEqual(4.5);
+
+      // The same button with its disabled marks lifted paints the enabled ghost label it is dimmed from.
+      const marks = (on: boolean) =>
+        reset.evaluate((element, disabled) => {
+          for (const name of ["disabled", "data-disabled"]) {
+            if (disabled) element.setAttribute(name, "");
+            else element.removeAttribute(name);
+          }
+        }, on);
+      for (const surface of ["background", "surface", "chrome"] as const) {
+        // oxlint-disable-next-line no-await-in-loop -- the marks are lifted and restored around each surface in turn
+        await marks(false);
+        // oxlint-disable-next-line no-await-in-loop -- as above
+        const enabled = await measure(page, reset, { surface });
+        // oxlint-disable-next-line no-await-in-loop -- as above
+        await marks(true);
+        // oxlint-disable-next-line no-await-in-loop -- as above
+        const disabled = await measure(page, reset, { surface, enabled: enabled.ink });
+        expect(disabled.ratio, disabled.label).toBeGreaterThanOrEqual(4.5);
+        expect(disabled.step, disabled.label).toBeGreaterThanOrEqual(1.5);
+      }
     });
 
     test("an offline machine's New space icon is dimmed a visible step from the enabled one, still 3:1 on the sidebar", async ({
@@ -109,7 +132,8 @@ for (const theme of ["day", "night"] as const) {
       await expect(add, `${MACHINE_NAME} goes offline`).toBeDisabled({ timeout: OFFLINE_BOUND_MS });
       const disabled = await measure(page, add, { svg: true, enabled: enabled.ink });
       expect(disabled.ratio, disabled.label).toBeGreaterThanOrEqual(3);
-      // The 3:1 floor caps how far a ghost glyph can dim (the enabled one is 5.3:1 to 7.3:1 on the sidebar).
+      // The 3:1 floor caps how far a ghost glyph can dim: the enabled one is drawn in --muted-foreground, not the ghost
+      // label colour, and measures 5.3:1 by day and 7.3:1 by night on the sidebar.
       expect(disabled.step, disabled.label).toBeGreaterThanOrEqual(1.7);
       // The floor holds on every surface a ghost Button sits on, not only the sidebar it is measured in above (#1034).
       const everywhere = await Promise.all(SURFACES.map((surface) => measure(page, add, { svg: true, surface })));
