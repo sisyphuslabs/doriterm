@@ -1,7 +1,8 @@
 import { Button as BaseButton } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
-import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
+import { type ComponentProps, type ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
+import { useDelayedTrue } from "../lib/spinner-delay.ts";
 import { Spinner } from "./spinner.tsx";
 
 export const buttonVariants = cva(
@@ -47,16 +48,7 @@ export interface ButtonProps
 }
 
 export function Button({ className, variant, size, loading = false, disabled, children, ...props }: ButtonProps) {
-  const [delayed, setDelayed] = useState(false);
-  useEffect(() => {
-    if (!loading) {
-      setDelayed(false);
-      return;
-    }
-    const timer = setTimeout(() => setDelayed(true), 1000);
-    return () => clearTimeout(timer);
-  }, [loading]);
-  const spinning = loading && delayed;
+  const spinning = useDelayedTrue(loading);
   return (
     <BaseButton
       {...props}

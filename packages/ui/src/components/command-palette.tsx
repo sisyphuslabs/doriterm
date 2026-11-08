@@ -101,7 +101,7 @@ export function CommandPalette({
             setActive(0);
           }}
           onKeyDown={onKeyDown}
-          className="h-12 min-w-0 flex-1 bg-transparent text-lg text-foreground outline-none placeholder:text-muted-foreground"
+          className="-mx-1.5 h-12 min-w-0 flex-1 rounded-md bg-transparent px-1.5 text-lg text-foreground outline-none placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring"
         />
         <Kbd keys={["esc"]} />
         {onCancel === undefined ? null : (
@@ -138,7 +138,7 @@ export function CommandPalette({
           <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing matches "{query}".</p>
         ) : (
           groups.map((group) => (
-            <div key={group} role="group" aria-label={group} className="pb-1">
+            <div key={group} role="group" aria-label={group} className="pb-4 coarse:pb-9">
               <p className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">{group}</p>
               {visible
                 .filter((command) => command.group === group)

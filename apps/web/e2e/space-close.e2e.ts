@@ -5,6 +5,7 @@ import { endAgent } from "./agents.ts";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
 import { getCoreDoc } from "./core-doc.ts";
 import { expect, terminalCount, test } from "./fixtures.ts";
+import { routeHcSocket } from "./hc-socket.ts";
 import { hcOn } from "./machine-switch.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -121,4 +122,41 @@ test("a space closed from its menu asks first, naming its tabs; Escape and Cance
   // to it.
   started.splice(0);
   await other.context().close();
+});
+
+test("a close still writing keeps its question: Cancel waits, Escape does nothing, and a refused write says why there (#1498)", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const name = `cl1498-${test.info().repeatEachIndex}`;
+  startIn(name, "cl1498-one");
+  const socket = await routeHcSocket(page);
+  await page.goto("/");
+  await expect(spaceRow(page, name)).toBeVisible({ timeout: 20_000 });
+  await openSpaceMenu(page, name);
+  await page.getByRole("menuitem", { name: "Close space\u2026" }).click();
+  const question = ask(page);
+  await expect(question).toContainText(`${name} \u2014 1 tab, 1 terminal`);
+
+  // The layout write is held, as a slow host would hold it: the close is in flight, not finished.
+  const release = socket.hold("doc.set");
+  socket.staleWrites(true);
+  await question.getByRole("button", { name: "Close" }).click();
+  await expect(question.getByRole("button", { name: "Close" })).toHaveAttribute("aria-busy", "true");
+  // The held write comes after the close ended its program: nothing is left for the cleanup to stop.
+  await expect
+    .poll(() => socket.sent().filter((frame) => frame.includes('"method":"doc.set"')).length, { timeout: 15_000 })
+    .toBe(1);
+  started.splice(0);
+  await expect(question.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(question).toBeVisible();
+
+  // The write is refused on every retry: the question stays up and says why.
+  release();
+  await expect(question.getByText("The space was not closed")).toBeVisible({ timeout: 15_000 });
+  await expect(
+    question.getByText("The layout kept changing on another device, so this change was not saved"),
+  ).toBeVisible();
+  await expect(question).toBeVisible();
 });

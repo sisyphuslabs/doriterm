@@ -71,13 +71,14 @@ export function SpaceClose({ connection, terminals, layouts, spaces, ask, onAsk,
         <Dialog
           open
           onOpenChange={(open) => {
-            if (!open) onAsk(null);
+            // A close that is writing cannot be taken back: its question stays until the write settles (#1498).
+            if (!open && !busy) onAsk(null);
           }}
           title="Close space?"
           description={`${asked.name} \u2014 ${counted(asked.tabs, "tab")}, ${counted(asked.terminals, "terminal")}`}
           actions={
             <>
-              <Button variant="ghost" onClick={() => onAsk(null)}>
+              <Button variant="ghost" onClick={() => onAsk(null)} disabled={busy}>
                 Cancel
               </Button>
               <Button variant="destructive" loading={busy} onClick={() => submit(ask)}>
