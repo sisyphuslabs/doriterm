@@ -18,7 +18,7 @@ import { SessionDialogs } from "./session-dialogs.tsx";
 import { SpaceClose } from "./space-close-dialog.tsx";
 import { SpaceRename } from "./space-rename-dialog.tsx";
 import { availableActions } from "./shell-actions.ts";
-import { nextNeedingYou } from "./attention.ts";
+import { someoneElseNeedsYou } from "./attention.ts";
 import { PhoneShell } from "./phone-shell.tsx";
 import type { SessionVerb } from "./use-app-actions.ts";
 import { useMachineRuns } from "./use-machine-runs.ts";
@@ -477,7 +477,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                     keys: layout.shown.map((tab) => tab.key),
                     active: layout.active?.key ?? null,
                   },
-                  nextNeedingYou(sessions, inView) !== null,
+                  someoneElseNeedsYou(sessions, inView),
                 )}
                 onOpenTerminal={opened}
                 onClose={() => setPalette(false)}
