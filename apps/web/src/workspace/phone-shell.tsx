@@ -81,25 +81,28 @@ export function PhoneShell(props: PhoneShellProps) {
           />
         </header>
         <ConnectionLine />
-        <ScrollArea slot="agents-list" className="flex-1">
-          <FirstRunGuideCard listVisible live={live} onNew={onNew} />
-          {machines.terminalsLoaded ? (
-            <>
-              {empty ? (
-                <PhoneEmpty host={connection.hello.core.name} onNew={onNew} onAddMachine={machines.openAddMachine} />
-              ) : null}
-              {empty && onlyThisMachine(machines.entries) ? null : (
-                <RovingLists>
-                  <AgentLists terminals={terminals} active={null} onOpen={onOpen} heading={false} />
-                </RovingLists>
-              )}
-            </>
-          ) : machines.terminalsError !== null ? (
-            <TerminalsLoadError cause={machines.terminalsError} onRetry={machines.retryTerminals} />
-          ) : (
-            <PhoneListLoading />
-          )}
-        </ScrollArea>
+        {/* The page's one main landmark: the list, under the header (#1378). */}
+        <main className="flex min-h-0 flex-1 flex-col">
+          <ScrollArea slot="agents-list" className="flex-1">
+            <FirstRunGuideCard listVisible live={live} onNew={onNew} />
+            {machines.terminalsLoaded ? (
+              <>
+                {empty ? (
+                  <PhoneEmpty host={connection.hello.core.name} onNew={onNew} onAddMachine={machines.openAddMachine} />
+                ) : null}
+                {empty && onlyThisMachine(machines.entries) ? null : (
+                  <RovingLists>
+                    <AgentLists terminals={terminals} active={null} onOpen={onOpen} heading={false} />
+                  </RovingLists>
+                )}
+              </>
+            ) : machines.terminalsError !== null ? (
+              <TerminalsLoadError cause={machines.terminalsError} onRetry={machines.retryTerminals} />
+            ) : (
+              <PhoneListLoading />
+            )}
+          </ScrollArea>
+        </main>
         <StatusBar
           className="h-[calc(var(--statusbar-height)+var(--safe-bottom))] pb-(--safe-bottom)"
           start={
