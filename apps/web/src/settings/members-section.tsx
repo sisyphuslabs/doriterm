@@ -1,4 +1,4 @@
-import { Notice, SettingRow, cn } from "@doriface/ui";
+import { Button, Notice, SettingRow, cn } from "@doriface/ui";
 import { Monitor, Server } from "lucide-react";
 import type { ReactNode } from "react";
 import type { MemberEntry } from "../connection/mesh-connections.ts";
@@ -27,6 +27,16 @@ export interface MembersSummary {
 
 export function summarizeMembers(entries: readonly MemberEntry[]): MembersSummary {
   return { total: entries.length, open: entries.filter((entry) => entry.state.phase === "open").length };
+}
+
+/**
+ * Which member a "Switch to this machine" action applies to: every member that is not the one this app is attached to
+ * (#1296). Returned as the host id so the rule can be tested without rendering the row, and `undefined` when there is
+ * nothing to switch to — one machine, or none.
+ */
+export function switchTarget(entries: readonly MemberEntry[], activeHostId: string): string | undefined {
+  const other = entries.find((entry) => entry.target.hostId !== activeHostId);
+  return other?.target.hostId;
 }
 
 function title(icon: ReactNode, name: string) {
@@ -86,7 +96,17 @@ export function MembersSection() {
                       connectionStore.retry(entry.target.hostId);
                     }}
                   />
-                ) : null
+                ) : entry.target.hostId === selectedHostId ? null : (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      connectionStore.select(entry.target.hostId);
+                    }}
+                  >
+                    Switch to this machine
+                  </Button>
+                )
               }
             />
           </li>
