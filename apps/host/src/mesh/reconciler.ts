@@ -66,7 +66,10 @@ export class Reconciler {
   readonly status = new Map<string, LineStatus>();
   readonly #options: ReconcilerOptions;
   readonly #stuck = new Map<string, Stuck>();
-  /** Every retryable refusal shares a deadline; another view or budget event cannot bypass it. */
+  /**
+   * A refused add waits: an unreachable member for its backoff or its presence, a budget refusal for the budget's event.
+   * Another view or another member's retry never releases either.
+   */
   readonly #retries: ProbeBackoff;
   /** Newly admitted members whose add waits for the 0-5 s jitter (section 8.2). */
   readonly #held = new Set<string>();
@@ -123,7 +126,7 @@ export class Reconciler {
     return this.#latest === undefined ? this.#running : this.reconcile(this.#latest);
   }
 
-  /** A policy budget wake may release an add, but cannot shorten its failed-attempt deadline. */
+  /** The policy's budget wake: the tokens a budget-refused add needs are free, so that add is due now. */
   budgetAvailable(hostId: string): Promise<void> {
     this.#retries.budgetAvailable(hostId);
     return this.#latest === undefined ? this.#running : this.reconcile(this.#latest);
@@ -134,6 +137,8 @@ export class Reconciler {
    * yet (its add failed while it was offline) is added now.
    */
   async presence(member: MemberEntry): Promise<void> {
+    // The member is reachable now: a retry its unreachability armed is due, even one whose add is still in flight.
+    this.#retries.present(member.hostId);
     let entries: readonly MeshEntry[];
     try {
       entries = await this.#entries();
