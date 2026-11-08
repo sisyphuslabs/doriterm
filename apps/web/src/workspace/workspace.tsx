@@ -466,6 +466,7 @@ export function Workspace({ connection }: WorkspaceProps) {
             {palette ? (
               <Palette
                 terminals={sessions}
+                spaces={spaces}
                 host={connection.hello.core.name}
                 route={connectionStore.settings.mode === "relay" ? "relay" : "loopback"}
                 actions={availableActions(
