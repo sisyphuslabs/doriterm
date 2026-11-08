@@ -13,6 +13,9 @@ export const PHONE = { ...iphone, viewport: { width: 390, height: 844 } };
  * The keyboard's shape (#1409): `innerHeightFollows` makes `window.innerHeight` report the visual viewport, as WebKit on
  * iOS does, while the page itself (its `dvh` and `documentElement.clientHeight`) keeps its height; `pan` is how far
  * the browser scrolls the visual viewport down the page while the keyboard is up (its `offsetTop`), in CSS px.
+ *
+ * A field whose `inputmode` is `"none"` raises nothing either, as iOS and Chrome treat it: a phone's terminal keeps its
+ * field that way until its keys ask for the keyboard (#1375).
  */
 export async function fakeSoftKeyboard(
   page: Page,
@@ -41,17 +44,18 @@ export async function fakeSoftKeyboard(
         viewport.dispatchEvent(new Event("resize"));
       };
       document.addEventListener("focusin", () => {
-        if (raise && document.activeElement instanceof HTMLTextAreaElement && keyboard === 0) softKeyboard(336);
+        const active = document.activeElement;
+        if (!raise || keyboard !== 0) return;
+        // `inputmode="none"` is a focus that asks for no soft keyboard, as iOS and Chrome treat it (#1375).
+        if (active instanceof HTMLTextAreaElement && active.inputMode !== "none") softKeyboard(336);
       });
       document.addEventListener("focusout", (event) => {
         const next = event.relatedTarget;
         queueMicrotask(() => {
-          if (
-            !(next instanceof HTMLTextAreaElement) &&
-            !(document.activeElement instanceof HTMLTextAreaElement) &&
-            keyboard > 0
-          )
-            softKeyboard(0);
+          const active = document.activeElement;
+          const wasTyping = next instanceof HTMLTextAreaElement && next.inputMode !== "none";
+          const isTyping = active instanceof HTMLTextAreaElement && active.inputMode !== "none";
+          if (!wasTyping && !isTyping && keyboard > 0) softKeyboard(0);
         });
       });
       // iOS pans the visual viewport (offsetTop) to keep a focused field in view; it fires scroll, not resize.
@@ -84,6 +88,9 @@ export interface KeyboardShape {
  * `overlay`: the soft keyboard covers the page and shrinks only the visual viewport (iOS Safari, Chrome's default);
  * a `KeyboardShape` is that keyboard in the shape given. `resize`: the browser shrinks the layout viewport for it
  * instead; the spec resizes the page to open it.
+ *
+ * A phone raises its keyboard only when the keys ask for it (#1375), so this opens the terminal and presses its keyboard
+ * button, as a person does before typing.
  */
 export async function openPhoneTerminal(
   page: Page,
@@ -98,6 +105,7 @@ export async function openPhoneTerminal(
   await page.getByRole("banner").getByRole("button", { name: "New tab" }).click();
   const terminal = page.locator("[data-terminal]");
   await expect(terminal).toContainText("$", { timeout: 15_000 });
+  await key(page, "Show keyboard").click();
   return terminal;
 }
 

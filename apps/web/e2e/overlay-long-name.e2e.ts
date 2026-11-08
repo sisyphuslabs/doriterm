@@ -91,6 +91,7 @@ for (const width of [320, 390] as const) {
         await actions.hover();
         await expectInside(tooltip(page, `Session actions for ${LONG}`), "the session actions tooltip");
 
+        await key(page, "Show keyboard").click();
         await expect(page.getByRole("toolbar", { name: "Terminal keys" })).toBeVisible({ timeout: 15_000 });
         await key(page, "Switch session").click();
         const sessions = page.getByRole("menu");

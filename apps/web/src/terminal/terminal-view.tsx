@@ -19,7 +19,7 @@ import { useLongPressSelect } from "./use-long-press-select.ts";
 import { useSelectionCells } from "./use-selection-cells.ts";
 import { useShiftDragSelect } from "./use-shift-drag-select.ts";
 import { Ended } from "./ended.tsx";
-import { useTerminalPort } from "./terminal-port.ts";
+import { askingForKeyboard, quietKeyboard, useTerminalPort } from "./terminal-port.ts";
 import type { TerminalViewProps } from "./terminal-view-props.ts";
 import { Unopened } from "./unopened.tsx";
 import { JumpToBottom, TerminalScrollbar, useTerminalScroll } from "./terminal-scroll.tsx";
@@ -55,7 +55,14 @@ function handBack(event: FocusEvent<HTMLElement>): void {
 /** One libghostty terminal attached to one hc channel; output credit returns once it is written. */
 export function TerminalView(props: TerminalViewProps) {
   const { connection, address, pid, live, focused, label, className, transformInput, onPort, onEnd } = props;
-  const { closeLabel = "Close tab", onEnded, jumpClearance, claimed = true, typesComposition = false } = props;
+  const {
+    closeLabel = "Close tab",
+    onEnded,
+    jumpClearance,
+    claimed = true,
+    softKeyboard = false,
+    typesComposition = false,
+  } = props;
   const { browsing = false } = props;
   const config = useTerminalConfig();
   const options = useMemo(() => rendererOptions(config), [config]);
@@ -88,7 +95,7 @@ export function TerminalView(props: TerminalViewProps) {
   useEffect(() => () => pacer.drop(), [pacer]);
   const { core, error } = useTerminalCore();
 
-  const { isFocused, focusWhenFree } = useKeyboardClaim(handle, focused, claimed);
+  const { isFocused, focusWhenFree } = useKeyboardClaim(handle, focused, claimed, softKeyboard);
 
   // The default cursor shape is the terminal's own state, set locally; programs still override it.
   useEffect(() => handle.current?.write(options.cursorSequence), [wt, options.cursorSequence]);
@@ -113,7 +120,12 @@ export function TerminalView(props: TerminalViewProps) {
   const scroll = useTerminalScroll(wt);
   const outputShown = useRef(scroll.changed);
   outputShown.current = scroll.changed;
-  useTerminalPort(handle, typed, onPort, pasteFiles);
+  useTerminalPort(handle, typed, onPort, pasteFiles, softKeyboard);
+  // A touch surface's field asks for no soft keyboard on its own: a press in the terminal leaves it down, and only the
+  // keys that ask for one raise it (#1375).
+  useEffect(() => {
+    if (wt !== null && softKeyboard) quietKeyboard(wt.element);
+  }, [wt, softKeyboard]);
   useBehaviors(wt, stream, options, onUnsafePaste, pasteFiles);
   useTerminalFont(wt, config);
   const prediction = useMemo(() => predictionSeam(wt), [wt]);
@@ -242,7 +254,9 @@ export function TerminalView(props: TerminalViewProps) {
               opened={finding}
               onClose={() => {
                 setFinding(null);
-                if (!isBrowsing(wt.element)) wt.focus();
+                if (isBrowsing(wt.element)) return;
+                askingForKeyboard(handle, softKeyboard);
+                wt.focus();
               }}
             />
           )}
@@ -259,7 +273,8 @@ export function TerminalView(props: TerminalViewProps) {
         onPaste={(text) => {
           typed(text);
           setPaste(null);
-          // The confirmed paste is the line now being typed: the terminal takes the keyboard back, as a tap in it does.
+          // The confirmed paste is the line now being typed: the terminal takes the keyboard back, as its keys do.
+          askingForKeyboard(handle, softKeyboard);
           handle.current?.focus();
         }}
       />
