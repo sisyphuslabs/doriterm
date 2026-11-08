@@ -34,7 +34,7 @@ describe("the mesh file format guard", () => {
 
   test("a member's kind survives a persisted index, and an index that predates kinds reads as a machine", () => {
     const client = { signPub: "s", hostId: "h", noisePub: "n", name: "phone", hcId: "c", kind: "client" };
-    const withKind = parseMeshFile({
+    const withoutBinding = parseMeshFile({
       version: 3,
       meshId: "m",
       generation: 1,
@@ -42,7 +42,20 @@ describe("the mesh file format guard", () => {
       records: [record],
       index: { generation: 1, members: [client], revoked: [], superseded: [], named: [] },
     });
+    expect(withoutBinding.index).toBeUndefined();
+    const withKind = parseMeshFile({
+      ...meshFileJson(withoutBinding),
+      index: {
+        generation: 1,
+        members: [{ ...client, admitter: "inviter", admitId: "governing-admit" }],
+        revoked: [],
+        superseded: [],
+        named: [],
+      },
+    });
     expect(withKind.index?.members[0]?.kind).toBe("client");
+    expect(withKind.index?.members[0]?.admitter).toBe("inviter");
+    expect(withKind.index?.members[0]?.admitId).toBe("governing-admit");
     const legacy = { signPub: "s", hostId: "h", noisePub: "n", name: "box", hcId: "c" };
     const older = parseMeshFile({
       version: 2,

@@ -80,6 +80,33 @@ test("a current client's same signing and device keys refresh instead of ANOTHER
   expect(isRejoin(a.mesh.authorizeIndex(), body, a.mesh.read()?.records ?? [])).toBe(true);
 });
 
+test("a client cannot take another signing member's current device key", () => {
+  const { a, b, body } = family();
+  const signed = signCard(
+    { ...body, hostId: b.m.identity.hostId, signPub: signPubOf(b.m) },
+    b.m.identity.sign.secretKey,
+  );
+  const card = verifyCard(signed);
+  if (card === undefined) throw new Error("the client card did not verify");
+  expect(() => isRejoin(a.mesh.authorizeIndex(), card, a.mesh.read()?.records ?? [])).toThrow(
+    "this Noise key is another mesh member's",
+  );
+});
+
+test("a current client cannot refresh its signing membership with another device key", () => {
+  const { a, c, body } = family();
+  const other = side("other-device");
+  const signed = signCard(
+    { ...body, noisePub: noiseOf(other.m), devicePub: noiseOf(other.m) },
+    c.m.identity.sign.secretKey,
+  );
+  const card = verifyCard(signed);
+  if (card === undefined) throw new Error("the client card did not verify");
+  expect(() => isRejoin(a.mesh.authorizeIndex(), card, a.mesh.read()?.records ?? [])).toThrow(
+    "this host is a member with another Noise key",
+  );
+});
+
 test("another signer holding a client's key is refused", () => {
   const { a, c, body } = family();
   const twin = side("twin");
