@@ -140,8 +140,11 @@ export async function startMeshHost(options: MeshHostOptions): Promise<MeshHost>
     stateWrites.close();
     await stop();
     await Promise.all(children.map((child) => reap(child)));
-    await session.dispose();
-    rmSync(scratch, { recursive: true, force: true });
+    try {
+      await session.dispose();
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
   };
   const spawnOwned = (kind: Owned["kind"], argv: readonly string[]): Bun.Subprocess<"pipe", "pipe", "pipe"> => {
     const child = Bun.spawn([...argv], {

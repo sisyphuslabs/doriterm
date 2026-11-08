@@ -159,8 +159,11 @@ export async function startMesh(options: MeshOptions = {}): Promise<Mesh> {
     unhook();
     const owns = await owned();
     for (const close of closers.splice(0)) close();
-    await Promise.all(hosts.map((host) => host.dispose()));
+    // Every host and the relay stop even when one host's stop fails, and that failure is the dispose's.
+    const stops = await Promise.allSettled(hosts.map((host) => host.dispose()));
     await relay?.stop();
+    const stopFailed = stops.find((stop) => stop.status === "rejected");
+    if (stopFailed !== undefined) throw stopFailed.reason;
     const ports = hosts.flatMap((host) => (host.tap === undefined ? [] : [host.tap.port]));
     const listening = (await Promise.all(ports.map(async (port) => ((await portListens(port)) ? [port] : [])))).flat();
     const alive = new Map((await outliving(owns)).map((process) => [process.pid, process]));
@@ -189,7 +192,7 @@ export async function startMesh(options: MeshOptions = {}): Promise<Mesh> {
   const failed = starts.find((start) => start.status === "rejected");
   if (failed !== undefined) {
     unhook();
-    await Promise.all(hosts.map((each) => each.dispose()));
+    await Promise.allSettled(hosts.map((each) => each.dispose()));
     await relay?.stop();
     throw failed.reason;
   }
