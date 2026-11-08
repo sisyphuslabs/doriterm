@@ -1,14 +1,12 @@
-import { Button, EmptyState, Notice } from "@doriface/ui";
+import { Button, EmptyState } from "@doriface/ui";
 import { Link } from "@tanstack/react-router";
-import { Monitor, Server } from "lucide-react";
+import { Monitor } from "lucide-react";
 import { useState } from "react";
 import { connectionStore } from "../connection/store.ts";
 import { desktopBridge, type DesktopBridge, type HostStartFailure } from "../desktop/bridge.ts";
 import { startFailure, startThisComputer } from "../desktop/local-host.ts";
 import { HostStartNotice } from "./host-start-notice.tsx";
-import { Steps } from "./steps.tsx";
-
-const HOST_GUIDE = "https://github.com/sisyphuslabs/doriterm#readme";
+import { JoinLanding } from "./join-landing.tsx";
 
 /** Pairing reaches the relay, so offline it is shown, disabled, with why; nothing else here needs a network. */
 const PAIR_NEEDS_NETWORK = "Pairing a host needs a network.";
@@ -71,32 +69,5 @@ function LocalFirstRun({ bridge, offline }: { readonly bridge: DesktopBridge; re
 export function FirstRun({ offline = false }: { readonly offline?: boolean }) {
   const bridge = desktopBridge();
   if (bridge !== null) return <LocalFirstRun bridge={bridge} offline={offline} />;
-  return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-6 px-6 py-10">
-      {offline ? (
-        <div id="pair-offline" className="w-full max-w-md">
-          <Notice tone="warning" title="You are offline">
-            {PAIR_NEEDS_NETWORK} The steps below work once it is back.
-          </Notice>
-        </div>
-      ) : null}
-      <Steps current={0} />
-      <EmptyState
-        icon={<Server />}
-        size="screen"
-        title="Connect to a host"
-        description="Doriterm shows the terminals and agents of a mesh. Open the invite link a member sent you, or start a host on a computer you control and pair the code it prints."
-        actions={
-          <>
-            <PairAHost offline={offline} primary />
-            <Button variant="ghost" size="lg" render={<a href={HOST_GUIDE} target="_blank" rel="noreferrer" />}>
-              How to start a host
-            </Button>
-          </>
-        }
-      >
-        <code className="rounded-md bg-raised px-3 py-2 text-sm text-foreground">doriface-host pair</code>
-      </EmptyState>
-    </main>
-  );
+  return <JoinLanding />;
 }

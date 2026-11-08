@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { CloseCode, type SecureLink, SessionKind } from "@doriface/crypto";
+import { CloseCode, rawStaticKey, secureLink, type SecureLink, SessionKind } from "@doriface/crypto";
+import { acceptE2ee } from "../e2ee/accept.ts";
 import { memoryLinkPair } from "@doriface/crypto/testing";
 import { OPEN_POLICY } from "@doriface/policy";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -82,21 +83,37 @@ describe("a join the running host approves (section 10.1, #154)", () => {
       ...NO_HC,
     });
     try {
-      await deps.hostMesh.pair(true);
+      const offer = await deps.hostMesh.pair(true);
       const joiner = side("gamma");
       const [inviterEnd, joinerEnd] = memoryLinkPair();
-      deps.hostMesh.serve(
-        Object.assign(inviterEnd, {
-          kind: SessionKind.PairLink,
-          remoteStatic: joiner.m.identity.noise.publicKey,
-          handshakeHash: new Uint8Array(32),
-          peerName: "gamma",
-          lanUrls: [],
-          stream: "mesh" as const,
+      const [served, secure] = await Promise.all([
+        acceptE2ee(
+          inviterEnd,
+          {
+            identity: a.machine.identity,
+            mesh,
+            devices: new DeviceStore(dir),
+            pairing: new PairingStore(dir),
+            policy: OPEN_POLICY,
+            live: sessions,
+            lanUrls: [],
+            log,
+          },
+          { kind: "relay" },
+        ),
+        secureLink(joinerEnd, {
+          role: "initiator",
+          hostId: a.machine.identity.hostId,
+          staticKey: rawStaticKey(joiner.m.identity.noise),
+          remoteStatic: a.machine.identity.noise.publicKey,
+          pairing: { mode: "link", linkSecret: offer.linkSecret, name: "gamma" },
+          stream: "mesh",
         }),
-      );
+      ]);
+      if (served === undefined) throw new Error("the join handshake was refused");
+      deps.hostMesh.serve(served);
       const inviter = { m: a.machine, dir, mesh, logs: [] };
-      const joined = runJoiner(new MeshLines(joinerEnd, JOINER_EXPECTS), joinerContext(joiner, inviter)).then(
+      const joined = runJoiner(new MeshLines(secure, JOINER_EXPECTS), joinerContext(joiner, inviter)).then(
         () => "joined",
         (error: unknown) => String(error),
       );

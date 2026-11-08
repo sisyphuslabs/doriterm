@@ -6,7 +6,7 @@ import { memoryLinkPair } from "@doriface/crypto/testing";
 import { hashOf, parseRecord, type Signed } from "@doriface/mesh";
 import { OPEN_POLICY } from "@doriface/policy";
 import { CounterBehindError } from "../state/mesh.ts";
-import { failure, joinerContext, removeSides, runJoin, side } from "../testing/join-harness.ts";
+import { failure, inviteDeps, joinerContext, removeSides, runJoin, side } from "../testing/join-harness.ts";
 import { MeshCommands } from "./commands.ts";
 import { DialPolicy } from "./dial-policy.ts";
 import { Gossip } from "./gossip.ts";
@@ -81,11 +81,9 @@ function restoredB(seed: number) {
   const approveJoin = (joiner: string) => {
     const pending = new PendingJoins();
     pending.setAuto(Date.now() + 60_000);
-    const card = async () => ({ name: b.name, hcId: b.hcId });
-    const deps = { identity: b.machine.identity, mesh: store, pending, own: card, expiresAt: Date.now() + 60_000 };
     const joining = side(joiner);
     const inviter = { m: b.machine, dir: stateDir, mesh: store, logs: [] };
-    const invite = { ...deps, policy: OPEN_POLICY, floor: () => gossip.floor(), log: () => undefined };
+    const invite = { ...inviteDeps(inviter, pending, Date.now() + 60_000, OPEN_POLICY), floor: () => gossip.floor() };
     return runJoin(invite, joinerContext(joining, inviter), joining.m.identity.noise.publicKey);
   };
   return { commands, claim, deliver, ownNs, at, approveJoin, records: () => store.read()?.records ?? [] };

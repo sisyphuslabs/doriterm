@@ -1,6 +1,7 @@
 import { generateHostIdentity, generateX25519 } from "@doriface/crypto";
 import { parseRecord, type Signed, signCard } from "@doriface/mesh";
 import { afterEach, describe, expect, test } from "bun:test";
+import { parsePolicy } from "@doriface/policy";
 import { cardBody } from "../state/mesh.ts";
 import {
   failure,
@@ -24,6 +25,24 @@ const autoJoins = (): PendingJoins => {
   pending.setAuto(Date.now() + 60_000);
   return pending;
 };
+
+test("refreshing an admitted machine does not consume another machine slot at the limit", async () => {
+  const [a, b] = [side("alpha"), side("beta")];
+  const lost = runJoin(inviteDeps(a, autoJoins()), joinerContext(b, a), b.m.identity.noise.publicKey);
+  lost.inviterEnd.tap = (bytes) => (isWelcome(bytes) ? [] : [bytes]);
+  await lost.invited;
+  lost.inviterEnd.close(1001, "the relay dropped the session");
+  await failure(lost.joined);
+  const before = records(a);
+  const policy = parsePolicy('{"limits":{"machines":2}}');
+  const retry = runJoin(
+    inviteDeps(a, autoJoins(), Date.now() + 60_000, policy),
+    joinerContext(b, a),
+    b.m.identity.noise.publicKey,
+  );
+  expect(await retry.joined).toBe(a.mesh.read()?.meshId ?? "");
+  expect(records(a)).toEqual(before);
+});
 
 /** A machine `inviter` admitted and then revoked, as the stored set records it. */
 function admittedThenRevoked(inviter: Side): Machine {
@@ -66,7 +85,10 @@ describe("section 4.4 step 3: a member whose welcome was lost joins again", () =
     expect(b.mesh.read()).toBeUndefined();
     expect(types(a)).toEqual(["found", "admit"]);
 
-    const retry = runJoin(inviteDeps(a, new PendingJoins()), joinerContext(b, a), b.m.identity.noise.publicKey);
+    const pending = new PendingJoins();
+    const retry = runJoin(inviteDeps(a, pending), joinerContext(b, a), b.m.identity.noise.publicKey);
+    const asked = await pending.next();
+    pending.decide(asked.nonce, true, asked.code);
     expect(await retry.joined).toBe(a.mesh.read()?.meshId ?? "");
     expect(types(a)).toEqual(["found", "admit"]);
     expect(records(b)).toEqual(records(a));
@@ -90,7 +112,7 @@ describe("section 4.4 step 3: a member whose welcome was lost joins again", () =
       prev,
       subject: { card: earlier },
     }));
-    pending.decide(asked.nonce, true);
+    pending.decide(asked.nonce, true, asked.code);
     expect(await run.joined).toBe(meshId);
     expect(types(a)).toEqual(["found", "admit"]);
     expect(records(b)).toEqual(records(a));
@@ -115,7 +137,7 @@ describe("section 4.4 step 3: a member whose welcome was lost joins again", () =
       prev,
       subject: { card },
     }));
-    pending.decide(asked.nonce, true);
+    pending.decide(asked.nonce, true, asked.code);
     expect(await failure(run.invited)).toContain("this host is a member with another Noise key");
     expect(b.mesh.read()).toBeUndefined();
   });
@@ -143,7 +165,7 @@ describe("section 4.4 step 3: a member whose welcome was lost joins again", () =
       prev,
       subject: { card },
     }));
-    pending.decide(asked.nonce, true);
+    pending.decide(asked.nonce, true, asked.code);
     expect(await failure(run.invited)).toBe("this Noise key is another mesh member's");
     expect(types(a)).toEqual(["found", "admit"]);
     expect(twinSide.mesh.read()).toBeUndefined();

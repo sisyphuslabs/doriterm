@@ -26,9 +26,9 @@ test("the first-run page has one main landmark, around its steps", async ({ page
   // No host chosen yet: the fixture's stored connection is removed before the app reads it.
   await page.addInitScript(() => localStorage.removeItem("doriface.connection"));
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Connect to a host" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("heading", { name: "Join a mesh" })).toBeVisible({ timeout: 20_000 });
   await expect(main(page)).toHaveCount(1);
-  await expect(main(page).getByRole("heading", { name: "Connect to a host" })).toBeVisible();
+  await expect(main(page).getByRole("heading", { name: "Join a mesh" })).toBeVisible();
 });
 
 // Settings covers the workspace at every width and hides it from assistive tech, so its landmark is the modal dialog it

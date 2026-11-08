@@ -83,7 +83,7 @@ const readLineState: Reader<MeshLineState> = oneOf(
 const readText = when((value): value is string => typeof value === "string" && value.length > 0);
 const readGate = objectOf<MeshGate>({ kind: oneOf("offline"), refusals: readCount, nextProbeAt: readTime });
 const readReplaced = objectOf<MeshReplacedMachine>({ name: readName, kind: oneOf("ssh", "connect", "command") });
-const readMember = objectOf<MeshMemberStatus>({
+const readMemberBase = objectOf<Omit<MeshMemberStatus, "lastSessionAt">>({
   hostId: readId,
   name: nullable(readName),
   localName: nullable(readName),
@@ -103,6 +103,14 @@ const readMember = objectOf<MeshMemberStatus>({
   unreachableSince: nullable(readTime),
   revokeSuggested: readBoolean,
 });
+const readMember: Reader<MeshMemberStatus> = (value) => {
+  const base = readMemberBase(value);
+  if (base === undefined || !isJsonObject(value)) return undefined;
+  const supplied = value["lastSessionAt"];
+  const lastSessionAt = supplied === undefined ? undefined : readCount(supplied);
+  if (supplied !== undefined && lastSessionAt === undefined) return undefined;
+  return { ...base, ...(lastSessionAt === undefined ? {} : { lastSessionAt }) };
+};
 const readRevoked = objectOf<MeshRevokedStatus>({
   hostId: readId,
   name: readName,
@@ -122,7 +130,7 @@ const readNotice = objectOf<MeshNotice>({
   seenAt: readTime,
   until: readTime,
 });
-const readPending = objectOf<MeshPendingJoin>({
+const readPendingBase = objectOf<Omit<MeshPendingJoin, "code" | "joinerConfirmed">>({
   nonce: readString,
   name: readName,
   hostId: readId,
@@ -130,6 +138,19 @@ const readPending = objectOf<MeshPendingJoin>({
   expiresAt: readTime,
   kind: oneOf("machine", "client"),
 });
+const readPending: Reader<MeshPendingJoin> = (value) => {
+  const base = readPendingBase(value);
+  if (base === undefined || !isJsonObject(value)) return undefined;
+  const code = value["code"];
+  const joinerConfirmed = value["joinerConfirmed"];
+  if (code !== undefined && (typeof code !== "string" || !/^\d{3} \d{3}$/.test(code))) return undefined;
+  if (joinerConfirmed !== undefined && typeof joinerConfirmed !== "boolean") return undefined;
+  return {
+    ...base,
+    ...(code === undefined ? {} : { code }),
+    ...(joinerConfirmed === undefined ? {} : { joinerConfirmed }),
+  };
+};
 const readBudget = objectOf<MeshBudget>({ waiting: readCount, halvedUntil: nullable(readTime) });
 
 const STATUS: Shape<MeshStatus> = {

@@ -11,6 +11,8 @@ import { HostStartNotice } from "../pair/host-start-notice.tsx";
 import { useOnline } from "../pwa/use-online.ts";
 import { QuietBusy } from "../terminal/quiet-busy.tsx";
 import { lazy, Suspense, useState } from "react";
+import { restoreMembership, useBrowserMembership, useMembershipFailure } from "../mesh/membership-state.ts";
+import { RemovedMembership } from "../settings/membership-device.tsx";
 
 const Workspace = lazy(() => import("../workspace/workspace.tsx").then((module) => ({ default: module.Workspace })));
 
@@ -37,6 +39,18 @@ function HostStartFailed({ failure }: { readonly failure: HostStartFailure }) {
 export function WorkspaceRoute() {
   const state = useConnection();
   const online = useOnline();
+  const mesh = useBrowserMembership();
+  const membershipFailure = useMembershipFailure();
+  if (membershipFailure !== undefined)
+    return (
+      <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-4 p-6">
+        <Notice title="Could not read this browser's membership" tone="error">
+          {membershipFailure}
+        </Notice>
+        <Button onClick={() => void restoreMembership()}>Try again</Button>
+      </main>
+    );
+  if (mesh.phase === "removed" && state.phase !== "open") return <RemovedMembership />;
   // A link to this computer needs no network, so a lost network is never its cause (as in reconnect-status.tsx).
   const offline = !online && !staysOnThisComputer(connectionStore.settings);
   const shown =

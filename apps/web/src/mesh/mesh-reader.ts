@@ -93,9 +93,12 @@ export class MeshReader {
     this.#onRead?.(next);
   }
 
-  async answer(nonce: string, verdict: Verdict): Promise<void> {
+  async answer(nonce: string, verdict: Verdict, code?: string): Promise<void> {
+    if (verdict === "approve" && (code === undefined || !/^\d{3} \d{3}$/.test(code))) {
+      throw new Error("Update this client to approve with the join code.");
+    }
     const { version } = await this.#calls.doc(MESH_APPROVAL_DOC);
-    const value = verdict === "approve" ? { approve: nonce } : { deny: nonce };
+    const value = verdict === "approve" ? { approve: nonce, code: code ?? "" } : { deny: nonce };
     try {
       await this.#calls.setDoc(MESH_APPROVAL_DOC, value, version);
     } finally {

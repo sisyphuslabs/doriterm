@@ -1,6 +1,6 @@
 import { base64urlDecode, base64urlEncode, CloseCode, hostIdOf, PAIRING_TTL_MS } from "@doriface/crypto";
 import { door } from "../door.ts";
-import { hashOf, meshIdOf, parseRecord, signCard } from "../records/codec.ts";
+import { cardOf, hashOf, meshIdOf, parseRecord, signCard, verifyCard } from "../records/codec.ts";
 import { MAX_RECORDS, type MemberKind, type Signed } from "../records/types.ts";
 import { viewOf } from "../view/engine.ts";
 import { cardBodyFor, type MemberIdentity, type OwnCard } from "./card.ts";
@@ -28,6 +28,16 @@ export interface JoinerContext {
 export const JOIN_DEADLINE_MS = PAIRING_TTL_MS + 60_000;
 
 export type Offer = Extract<MeshLine, { t: "offer" }>;
+
+/** Public keys only: a browser may hold the private signing key as a non-extractable CryptoKey. */
+export interface WelcomeContext {
+  readonly identity: {
+    readonly sign: { readonly publicKey: Uint8Array };
+    readonly noisePub: Uint8Array;
+  };
+  readonly kind?: MemberKind | undefined;
+  readonly dialed: JoinerContext["dialed"];
+}
 
 /**
  * Reads `records` lines until `done`, then expects nothing more; a `refused` line ends the join with the inviter's
@@ -60,7 +70,7 @@ function tooLarge(lines: MeshLines, reason: string): never {
  * that attempt's welcome was lost: step 3's idempotent re-join, through any member, even after the admitter left).
  * Trusts nothing else in the welcome.
  */
-export function checkWelcome(records: readonly Signed[], offer: Offer, ctx: JoinerContext): void {
+export function checkWelcome(records: readonly Signed[], offer: Offer, ctx: WelcomeContext): void {
   const stored: Signed[] = [];
   for (const record of records) {
     const verdict = door(record, stored);
@@ -72,11 +82,19 @@ export function checkWelcome(records: readonly Signed[], offer: Offer, ctx: Join
   if (founds.length !== 1 || found === undefined) throw new JoinRefused("the welcome does not hold exactly one found");
   if (meshIdOf(found) !== offer.mesh) throw new JoinRefused("the welcome is for another mesh");
   const view = viewOf(stored);
+  const byHash = new Map(stored.map((record) => [hashOf(record), record]));
+  const governingCard = (signPub: string) => {
+    const record = byHash.get(view.governing.get(signPub) ?? "");
+    const body = record === undefined ? undefined : parseRecord(record);
+    const signed = body === undefined ? undefined : cardOf(body);
+    return signed === undefined ? undefined : verifyCard(signed);
+  };
   const inviter = offer.inviter;
   const inviterHost = hostIdOf(base64urlDecode(inviter));
   if (!view.members.has(inviter) || inviterHost !== ctx.dialed.hostId) {
     throw new JoinRefused("the dialed host is not the inviting member of this mesh");
   }
+  if (governingCard(inviter)?.kind === "client") throw new JoinRefused("the inviting member is not a machine");
   if (view.noise.get(inviter) !== base64urlEncode(ctx.dialed.noisePub)) {
     throw new JoinRefused("the inviting member's key in the mesh is not the key this host dialed");
   }
@@ -86,6 +104,19 @@ export function checkWelcome(records: readonly Signed[], offer: Offer, ctx: Join
   }
   if (view.noise.get(self) !== base64urlEncode(ctx.identity.noisePub)) {
     throw new JoinRefused("the welcome admits this host with another Noise key");
+  }
+  const own = governingCard(self);
+  if ((own?.kind ?? "machine") !== (ctx.kind ?? "machine")) {
+    throw new JoinRefused(`the welcome does not admit this member as a ${ctx.kind ?? "machine"}`);
+  }
+  if (ctx.kind === "client") {
+    if (own?.devicePub !== base64urlEncode(ctx.identity.noisePub)) {
+      throw new JoinRefused("the welcome admits this client with another device key");
+    }
+    const admitter = view.admitter.get(self);
+    if (admitter === undefined || !view.members.has(admitter) || governingCard(admitter)?.kind === "client") {
+      throw new JoinRefused("this client's admitting machine is no longer a member");
+    }
   }
 }
 

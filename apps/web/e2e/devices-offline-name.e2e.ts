@@ -48,13 +48,15 @@ for (const width of [1440, 390]) {
       await pair(page, host);
 
       await page.goto("/settings");
-      await expect(paired(page)).toContainText("Connected", { timeout: 30_000 });
+      await expect(paired(page).getByRole("paragraph").nth(3)).toContainText(/^Connected/, { timeout: 30_000 });
       const name = (await hostName(page).innerText()).trim();
       const hostId = (JSON.parse(await stored(page)) as { hostId?: string }).hostId ?? "";
       expect(name).not.toBe("");
       expect(name).not.toBe("This browser");
+      expect(name).toMatch(/^Connected through /);
       expect(hostId.length).toBeGreaterThan(0);
       expect(name).not.toContain(hostId);
+      await page.screenshot({ path: test.info().outputPath("legacy-browser-host.png"), fullPage: true });
 
       // A later load starts from what the app itself saved, the way a phone that reopens the page does.
       const saved = await stored(page);

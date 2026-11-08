@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { relayWebSocketUrl } from "@doriface/crypto";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Page } from "@playwright/test";
@@ -16,6 +17,10 @@ export interface FakeRelayHost {
   readonly pairingOffer: () => Promise<{ readonly link: string; readonly code: string }>;
   /** Starts a second machine and runs `doriface-host mesh join` there with `link`; resolves with its mesh name. */
   readonly join: (link: string) => Promise<string>;
+  readonly meshOffer: (auto?: boolean) => Promise<{ readonly link: string; readonly code: string }>;
+  readonly memberIds: () => Promise<readonly string[]>;
+  readonly pendingJoin: () => Promise<{ readonly nonce: string; readonly code: string; readonly name: string }>;
+  readonly answerJoin: (nonce: string, code: string, approve: boolean) => Promise<void>;
   /** The host's LAN listener, the address a person sets as the Direct address (#446); empty unless `direct` was asked. */
   readonly directUrl: string;
   /** Call before the page dials the relay: its `/v1/client/...` sockets go to the fake relay's client bridge. */
@@ -28,12 +33,20 @@ export interface FakeRelayHost {
  * at `toRelay` instead, path and query kept. The e2e web server is a release build, so this is how a spec reaches a
  * test relay without the page knowing it is not the production one.
  */
-export async function routeRelaySockets(page: Page, toRelay: string, pairUrl: string = toRelay): Promise<void> {
+export async function routeRelaySockets(
+  page: Page,
+  toRelay: string,
+  pairUrl: string = toRelay,
+  advertisedRelay?: string,
+): Promise<void> {
   const base = toRelay.replace(/\/+$/, "");
+  const addresses = advertisedRelay === undefined ? [FAKE_RELAY] : [FAKE_RELAY, relayWebSocketUrl(advertisedRelay)];
   // The code path is an HTTP lookup, not a socket: without this the page asks the production relay for a slot only the
   // test relay holds, and every typed code answers "no host is pairing with this code".
-  const httpRelay = FAKE_RELAY.replace(/^wss:/, "https:").replaceAll(".", "\\.");
-  await page.route(new RegExp(`^${httpRelay}/v1/pair/`), async (route) => {
+  const httpRelay = addresses
+    .map((address) => address.replace(/^ws:/, "http:").replace(/^wss:/, "https:").replaceAll(".", "\\."))
+    .join("|");
+  await page.route(new RegExp(`^(?:${httpRelay})/v1/pair/`), async (route) => {
     const target = new URL(route.request().url());
     const answer = await fetch(`${pairUrl}${target.pathname}`);
     // The body is decoded here, so the upstream framing headers would describe bytes this is not: keep the type and let
@@ -47,8 +60,9 @@ export async function routeRelaySockets(page: Page, toRelay: string, pairUrl: st
       body: await answer.text(),
     });
   });
+  const relayPattern = addresses.map((address) => address.replaceAll(".", "\\.")).join("|");
   // Any port: a session's second and third sockets dial the relay's other HTTPS ports (#1418).
-  await page.routeWebSocket(new RegExp(`^${FAKE_RELAY.replaceAll(".", "\\.")}(:\\d+)?/v1/client/`), (socket) => {
+  await page.routeWebSocket(new RegExp(`^(?:${relayPattern})(:\\d+)?/v1/client/`), (socket) => {
     const target = new URL(socket.url());
     const relay = new WebSocket(`${base}${target.pathname}${target.search}`);
     relay.binaryType = "arraybuffer";
@@ -268,12 +282,13 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
     const bridge = first["bridge"];
     const directUrl = first["directUrl"];
     const pairUrl = first["pairUrl"];
+    const advertisedRelay = first["relayUrl"];
     if (typeof bridge !== "string") throw new Error("the fake relay host printed no bridge");
     if (typeof pairUrl !== "string") throw new Error("the fake relay host printed no pair lookup address");
     if (options.direct === true && (typeof directUrl !== "string" || directUrl === ""))
       throw new Error("the fake relay host printed no direct address");
-    const readOffer = async (): Promise<{ readonly link: string; readonly code: string }> => {
-      input.write("link\n");
+    const readOffer = async (command = "link"): Promise<{ readonly link: string; readonly code: string }> => {
+      input.write(`${command}\n`);
       const { link, code } = await protocol.next("a pairing link");
       if (typeof link !== "string" || typeof code !== "string")
         throw new Error("the fake relay host printed no pairing link or code");
@@ -283,6 +298,33 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
       directUrl: typeof directUrl === "string" ? directUrl : "",
       pairingOffer: readOffer,
       pairingLink: async () => (await readOffer()).link,
+      meshOffer: (auto = false) => readOffer(auto ? "mesh-link-auto" : "mesh-link"),
+      async memberIds() {
+        input.write("members\n");
+        const { members } = await protocol.next("the host's current member identities");
+        if (!Array.isArray(members) || !members.every((id: unknown): id is string => typeof id === "string")) {
+          throw new Error("the host did not report its member identities");
+        }
+        return members;
+      },
+      async pendingJoin() {
+        input.write("pending\n");
+        const { pending } = await protocol.next("a pending browser join", 30_000);
+        if (
+          !isLine(pending) ||
+          typeof pending["nonce"] !== "string" ||
+          typeof pending["code"] !== "string" ||
+          typeof pending["name"] !== "string"
+        ) {
+          throw new Error("the host did not publish a committed pending join");
+        }
+        return { nonce: pending["nonce"], code: pending["code"], name: pending["name"] };
+      },
+      async answerJoin(nonce, code, approve) {
+        input.write(`answer ${JSON.stringify({ nonce, code, approve })}\n`);
+        const { answered } = await protocol.next("a browser join decision");
+        if (!isLine(answered) || answered["decided"] !== true) throw new Error("the host refused the compared code");
+      },
       async join(link) {
         input.write(`join ${link}\n`);
         // A second core, a second host and a join through the relay: more than one startup stage's worth.
@@ -290,7 +332,8 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
         if (typeof joined !== "string") throw new Error("the fake relay host printed no joined machine");
         return joined;
       },
-      route: (page) => routeRelaySockets(page, bridge, pairUrl),
+      route: (page) =>
+        routeRelaySockets(page, bridge, pairUrl, typeof advertisedRelay === "string" ? advertisedRelay : undefined),
       stop,
     };
   } catch (error) {

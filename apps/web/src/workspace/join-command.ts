@@ -14,14 +14,14 @@ export function joinCommand(link: string): string {
 
 export type JoinOffer =
   | { readonly phase: "asking" }
-  | { readonly phase: "ready"; readonly command: string; readonly expiresAt: number }
+  | { readonly phase: "ready"; readonly command: string; readonly link: string; readonly expiresAt: number }
   | { readonly phase: "expired" }
   | { readonly phase: "joined"; readonly name: string }
   | { readonly phase: "failed"; readonly reason: string };
 
 interface OfferCalls {
   get(): Promise<{ value: unknown; version: number }>;
-  set(value: { request: string }, version: number): Promise<unknown>;
+  set(value: { request: string; client?: true }, version: number): Promise<unknown>;
 }
 
 const callsOf = (connection: HcConnection): OfferCalls => ({
@@ -33,7 +33,8 @@ const callsOf = (connection: HcConnection): OfferCalls => ({
 export function offerFor(value: unknown, request: string): JoinOffer | undefined {
   const doc = parseMeshOfferDoc(value);
   if (doc?.request !== request) return undefined;
-  if ("link" in doc) return { phase: "ready", command: joinCommand(doc.link), expiresAt: doc.expiresAt };
+  if ("link" in doc)
+    return { phase: "ready", command: joinCommand(doc.link), link: doc.link, expiresAt: doc.expiresAt };
   if ("error" in doc) return { phase: "failed", reason: doc.error };
   if ("expired" in doc) return { phase: "expired" };
   if ("joined" in doc) return { phase: "joined", name: doc.joined.name };
@@ -44,7 +45,7 @@ export function offerFor(value: unknown, request: string): JoinOffer | undefined
  * While `open`, asks this host for a single-use mesh offer through the offer document and follows the document's events
  * on its own event feed until the host answers; a host that does not answer in {@link OFFER_ANSWER_MS} cannot make one.
  */
-export function useJoinOffer(connection: HcConnection, open: boolean): JoinOffer {
+export function useJoinOffer(connection: HcConnection, open: boolean, client = false): JoinOffer {
   const [offer, setOffer] = useState<JoinOffer>({ phase: "asking" });
   useEffect(() => {
     if (!open) return;
@@ -81,7 +82,7 @@ export function useJoinOffer(connection: HcConnection, open: boolean): JoinOffer
         }
       });
       const { version } = await calls.get();
-      await calls.set({ request }, version);
+      await calls.set({ request, ...(client ? { client: true } : {}) }, version);
       await read();
     })().catch((error: unknown) =>
       settle({ phase: "failed", reason: error instanceof Error ? error.message : String(error) }),
@@ -91,6 +92,6 @@ export function useJoinOffer(connection: HcConnection, open: boolean): JoinOffer
       clearTimeout(timer);
       feed?.close();
     };
-  }, [connection, open]);
+  }, [connection, open, client]);
   return offer;
 }

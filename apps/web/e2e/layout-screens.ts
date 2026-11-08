@@ -1,7 +1,7 @@
 // The layout spec's screens: each opens one state of the app with the layout host's long names on the page.
 import type { Page } from "@playwright/test";
 import { pickFile } from "./file-input";
-import { BAD_LINK, fakeRelay, PAIR_CODE, PAIR_LINK, PAIRING_SETTINGS } from "./capture-relay.ts";
+import { BAD_LINK, fakeRelay, PAIR_LINK, PAIRING_SETTINGS } from "./capture-relay.ts";
 import { E2E_LAYOUT_PORT, E2E_TOKEN } from "./config.ts";
 import { expect } from "./fixtures.ts";
 import { setCoreDoc } from "./core-doc.ts";
@@ -78,9 +78,9 @@ export const SCREENS: readonly Screen[] = [
     start: "pairing",
     open: async (page) => {
       await page.goto("/pair");
-      await page.getByLabel("Pairing code").fill(LONG_VALUE);
-      await page.getByRole("button", { name: "Pair" }).click();
-      await expect(page.getByText("Enter the 8 characters")).toBeVisible();
+      await page.getByLabel("Invite link or code").fill(LONG_VALUE);
+      await page.getByRole("button", { name: "Continue", exact: true }).click();
+      await expect(page.getByText("Paste an invite link or enter its 8-character code.")).toBeVisible();
     },
   },
   { name: "pair-verify", start: "pairing", open: (page) => page.goto(PAIR_LINK) },
@@ -90,9 +90,7 @@ export const SCREENS: readonly Screen[] = [
     start: "pairing",
     open: async (page) => {
       await fakeRelay(page, 4429);
-      await page.goto("/pair");
-      await page.getByLabel("Pairing code").fill(PAIR_CODE);
-      await page.getByRole("button", { name: "Pair" }).click();
+      await page.goto(PAIR_LINK);
       await page.getByRole("button", { name: "They match" }).click();
       await expect(page.getByText("Pairing did not finish")).toBeVisible({ timeout: 15_000 });
     },

@@ -309,11 +309,10 @@ for (const { title, order } of ORDERS) {
     const spaces = page.getByRole("region", { name: "Spaces" });
     const shared = rows(spaces).filter({ hasText: SHARED_SPACE });
     await expect(shared).toHaveCount(2, { timeout: 20_000 });
-    // Each machine's spaces sit under its own header, in the order the person put the machines. This machine's group is
-    // the one whose header says so; never "the first group", which the machine order can move.
+    // Select the fixture's connected computer by name; the person can put either machine first.
     const thisMachine = spaces
       .locator("[data-drag-id]")
-      .filter({ has: page.locator("[data-machine-header]").filter({ hasText: "this machine" }) });
+      .filter({ has: page.locator('[data-machine-header="studio"]') });
     const here = rows(thisMachine).filter({ hasText: SHARED_SPACE });
     const there = rows(spaces.getByRole("region", { name: LONG_MACHINE, exact: true })).filter({
       hasText: SHARED_SPACE,

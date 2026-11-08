@@ -26,7 +26,11 @@ export interface CardPlacement {
   readonly kind?: MemberKind | undefined;
 }
 
-export function cardBodyFor(identity: MemberIdentity, card: OwnCard, placement: CardPlacement): CardBody {
+export function cardBodyFor(
+  identity: Omit<MemberIdentity, "sign"> & { readonly sign: Pick<KeyPair, "publicKey"> },
+  card: OwnCard,
+  placement: CardPlacement,
+): CardBody {
   const body = {
     mesh: placement.mesh,
     inviter: placement.inviter,

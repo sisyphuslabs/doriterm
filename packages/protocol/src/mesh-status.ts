@@ -17,7 +17,7 @@ export const MESH_APPROVAL_DOC = "doriface-mesh-approve";
 export const MESH_OFFER_DOC = "doriface-mesh-offer";
 
 export type MeshOfferDoc =
-  | { readonly request: string }
+  | { readonly request: string; readonly client?: boolean }
   | { readonly request: string; readonly link: string; readonly expiresAt: number }
   | { readonly request: string; readonly error: string }
   | { readonly request: string; readonly expired: true }
@@ -40,7 +40,9 @@ export function parseMeshOfferDoc(value: unknown): MeshOfferDoc | undefined {
     const hostId: unknown = Reflect.get(joined, "hostId");
     if (typeof name === "string" && typeof hostId === "string") return { request, joined: { name, hostId } };
   }
-  return { request };
+  const client: unknown = Reflect.get(value, "client");
+  if (client !== undefined && typeof client !== "boolean") return undefined;
+  return { request, ...(client === undefined ? {} : { client }) };
 }
 
 /** The `v` of the status document; a reader refuses any other value. */
@@ -102,9 +104,11 @@ const REPLACED_KIND_TEXT: { readonly [K in MeshReplacedKind]: string } = {
 export const replacedMachineText = (replaced: MeshReplacedMachine): string =>
   `replaced machine "${replaced.name}" (${REPLACED_KIND_TEXT[replaced.kind]}) with the mesh line`;
 
-/** Times are ISO 8601 and display only. Every key is a hostId. */
+/** Times are display only: ISO 8601 strings, except lastSessionAt in epoch milliseconds. Every key is a hostId. */
 export type MeshMemberStatus = {
   readonly hostId: string;
+  /** Last recorded admitted client session here; writes may be throttled. Absent for machines or no saved observation. */
+  readonly lastSessionAt?: number;
   /** The mesh name in the view; null only from an older host's over-cap member (see `overCap`). */
   readonly name: string | null;
   /** The name this host's core gives the machine, which differs after a name fallback; null as for `name`. */
@@ -182,6 +186,9 @@ export type MeshPendingJoin = {
   readonly expiresAt: string;
   /** What it joins as: approving a client grants control of every machine it can reach. */
   readonly kind: "machine" | "client";
+  /** Absent only in documents from hosts predating committed joins. */
+  readonly code?: string;
+  readonly joinerConfirmed?: boolean;
 };
 
 export type MeshBudget = {

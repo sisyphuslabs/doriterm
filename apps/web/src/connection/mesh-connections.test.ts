@@ -138,6 +138,42 @@ afterEach(() => {
   globalThis.localStorage?.clear?.();
 });
 
+describe("verified view members", () => {
+  it("dials learned members independently without saving them as pairings", () => {
+    const { mesh, made } = running(settingsWith([member("a")]));
+    mesh.setViewMembers([member("a", "view alpha"), member("b", "beta")]);
+    expect(made).toHaveLength(2);
+    expect(made[1]?.settings).toMatchObject({ hostId: "b", directUrl: "", viewMember: true });
+    expect(made[1]?.started).toBe(1);
+    mesh.select("b");
+    expect(mesh.settings.hostId).toBe("b");
+    const snapshot = mesh.settings;
+    expect(mesh.settings).toBe(snapshot);
+    expect(loadSettings().members.map((m) => m.hostId)).not.toContain("b");
+    mesh.setViewMembers([]);
+    expect(mesh.entries().map((entry) => entry.target.hostId)).toEqual(["a"]);
+    expect(made[1]?.stopped).toBe(1);
+  });
+
+  it("a paired key wins over another key in the view for the same host", () => {
+    const paired = { ...member("a"), directUrl: "https://paired.invalid" };
+    const { mesh, made } = running({ ...settingsWith([paired]), directUrl: paired.directUrl });
+    mesh.setViewMembers([{ ...member("a"), hostKey: "view-key" }]);
+    expect(mesh.entries()[0]?.target).toEqual(paired);
+    expect(made[0]?.settings.hostKey).toBe(paired.hostKey);
+    expect(made[0]?.updates).toBe(0);
+  });
+
+  it("a stopped member keeps its last-seen time without changing another member", () => {
+    const { mesh, made } = running(settingsWith([member("a"), member("b")]));
+    const before = mesh.entries()[0]?.lastSeen;
+    made[0]?.fail();
+    expect(before).toBeNumber();
+    expect(mesh.entries()[0]?.lastSeen).toBe(before);
+    expect(mesh.entries()[1]?.state.phase).toBe("open");
+  });
+});
+
 /** A session pairing proved, standing in for the open HcConnection: its hello's name and close are all that is read. */
 function provedSession(name = "Build Box"): { readonly opened: OpenConnection; readonly closed: () => number } {
   let closes = 0;

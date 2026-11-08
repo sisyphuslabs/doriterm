@@ -50,15 +50,27 @@ function shownBy(reader: MeshReader): { readonly reads: MeshRead[]; readonly sto
 
 const answeredOf = (read: MeshRead | undefined) => (read?.phase === "ready" ? read.answered : undefined);
 const APPROVED = { nonce: OPEN, verdict: "approve" } as const;
+const CODE = "123 456";
 
 describe("MeshReader", () => {
+  test("approval carries the code the person compared and rejects a missing code before writing", async () => {
+    const { calls, nextRequest } = heldCore();
+    const reader = new MeshReader(calls);
+    const answered = reader.answer(OPEN, "approve", CODE);
+    (await nextRequest())([]);
+    await answered;
+    expect((await calls.doc(MESH_APPROVAL_DOC)).value).toEqual({ approve: OPEN, code: CODE });
+    await expect(reader.answer(OTHER, "approve")).rejects.toThrow("code");
+    expect((await calls.doc(MESH_APPROVAL_DOC)).value).toEqual({ approve: OPEN, code: CODE });
+  });
+
   test("a read that started before an answer never replaces the answer's own read", async () => {
     const { calls, nextRequest } = heldCore();
     const reader = new MeshReader(calls);
     const { reads } = shownBy(reader);
     const periodic = reader.refresh();
     const periodicReply = await nextRequest();
-    const answer = reader.answer(OPEN, "approve");
+    const answer = reader.answer(OPEN, "approve", CODE);
     const answerReply = await nextRequest();
     answerReply([]);
     await answer;
@@ -72,7 +84,7 @@ describe("MeshReader", () => {
     const { calls, nextRequest } = heldCore();
     const reader = new MeshReader(calls);
     const { reads } = shownBy(reader);
-    const answer = reader.answer(OPEN, "approve");
+    const answer = reader.answer(OPEN, "approve", CODE);
     const ownReply = await nextRequest();
     const later = reader.refresh();
     const laterReply = await nextRequest();

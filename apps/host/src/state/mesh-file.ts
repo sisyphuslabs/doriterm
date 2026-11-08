@@ -45,13 +45,33 @@ const strings = (value: unknown): value is readonly string[] =>
 
 function memberEntry(value: unknown): MemberEntry | undefined {
   if (!isRecord(value)) return undefined;
-  const { signPub, hostId, noisePub, devicePub, name, hcId, kind } = value;
+  const { signPub, hostId, noisePub, devicePub, name, hcId, kind, admitter, admitId, lastSessionAt } = value;
   if (typeof signPub !== "string" || typeof hostId !== "string" || typeof noisePub !== "string") return undefined;
   if (typeof name !== "string" || typeof hcId !== "string") return undefined;
   if (devicePub !== undefined && typeof devicePub !== "string") return undefined;
   if (kind !== undefined && kind !== "machine" && kind !== "client") return undefined;
+  if (admitter !== undefined && typeof admitter !== "string") return undefined;
+  if (admitId !== undefined && typeof admitId !== "string") return undefined;
+  if (
+    lastSessionAt !== undefined &&
+    (typeof lastSessionAt !== "number" || !Number.isSafeInteger(lastSessionAt) || lastSessionAt < 0)
+  )
+    return undefined;
+  // Client indexes from before the admitter binding must be rebuilt at startup.
+  if (kind === "client" && (admitter === undefined || admitId === undefined)) return undefined;
   // An index written before the kind existed says machine, which is all those members could have been.
-  return { signPub, hostId, noisePub, devicePub, name, hcId, kind: kind === "client" ? "client" : "machine" };
+  return {
+    signPub,
+    hostId,
+    noisePub,
+    devicePub,
+    name,
+    hcId,
+    kind: kind === "client" ? "client" : "machine",
+    admitter,
+    admitId,
+    ...(lastSessionAt === undefined ? {} : { lastSessionAt }),
+  };
 }
 
 function revokedEntry(value: unknown): RevokedEntry | undefined {

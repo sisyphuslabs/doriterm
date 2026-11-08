@@ -1,5 +1,6 @@
 import {
   closeCodeOf,
+  base64urlDecode,
   type KeyPair,
   type PairingSecret,
   type SecureLink,
@@ -15,11 +16,17 @@ import { loadSignKey } from "./identity.ts";
 import { type BrowserJoined, joinOnLink } from "./joiner.ts";
 import { meshNameOf } from "./member-name.ts";
 import { MembershipStore } from "./membership.ts";
+import type { CardKey } from "../connection/card-key.ts";
+import type { BrowserIdentity } from "./identity.ts";
+import type { BrowserJoinAnchor } from "../pair/join-anchor.ts";
+import type { KeyValueStore } from "../storage/idb.ts";
 
 export interface JoinDeps extends RelayDeps {
-  readonly loadSignKey: () => Promise<KeyPair>;
+  readonly loadSignKey: () => Promise<CardKey | KeyPair>;
   readonly membership: MembershipStore;
   readonly log?: ((line: string) => void) | undefined;
+  readonly confirm?: ((code: string) => Promise<boolean>) | undefined;
+  readonly storage?: KeyValueStore;
 }
 
 export const BROWSER_JOIN_DEPS: JoinDeps = { ...BROWSER_DEPS, loadSignKey, membership: new MembershipStore() };
@@ -52,6 +59,28 @@ function refusalOf(mode: OfferSecret["mode"], error: unknown): JoinRefused | und
   return reason === undefined ? undefined : new JoinRefused(reason, { cause: error });
 }
 
+/** A typed code that opens a device pairing (`doriface-host pair`), not a mesh invite: it pairs this browser instead. */
+export class DeviceCodeOffer extends Error {
+  override readonly name = "DeviceCodeOffer";
+  readonly offer: PairingOffer;
+  constructor(offer: PairingOffer) {
+    super("this code pairs a device with its host");
+    this.offer = offer;
+  }
+}
+
+/**
+ * Why the inviter's handshake failed. A typed code does not say which offer it opens, and a host refuses a mesh join on
+ * a device pairing offer with UnknownDevice before it counts the attempt (`kindRefusal`, `claimCode`), so that refusal
+ * hands the same code to the device pairing. A code that was used or replaced is refused there in that flow's words.
+ */
+export function dialRefusalOf(offer: PairingOffer, error: unknown): Error | undefined {
+  if (offer.secret.mode === "code" && error instanceof Error && closeCodeOf(error) === CloseCode.UnknownDevice) {
+    return new DeviceCodeOffer({ ...offer, target: "device" });
+  }
+  return refusalOf(offer.secret.mode, error);
+}
+
 /** A link says what it admits; a code's offer kind is the inviter's to judge (the shared guard's rule). */
 const joinTargetOf = (offer: PairingOffer): JoinTarget =>
   offer.secret.mode === "code" ? { kind: "code" } : { kind: "link", mesh: offer.target === "mesh" };
@@ -69,7 +98,7 @@ export async function refuseEarly(offer: PairingOffer, membership: MembershipSto
 
 interface Dialed {
   readonly secure: SecureLink;
-  readonly sign: KeyPair;
+  readonly sign: CardKey | KeyPair;
   readonly device: StaticKey;
 }
 
@@ -104,7 +133,7 @@ async function dialInviter(offer: PairingOffer, name: string, deps: JoinDeps): P
     });
     return { secure, sign, device };
   } catch (error) {
-    throw refusalOf(secret.mode, error) ?? error;
+    throw dialRefusalOf(offer, error) ?? error;
   }
 }
 
@@ -130,8 +159,53 @@ export async function joinMesh(
       name,
       membership: deps.membership,
       log: deps.log,
+      confirm: deps.confirm,
+      handshakeHash: secure.handshakeHash,
+      ...(deps.storage === undefined ? {} : { storage: deps.storage }),
     });
   } finally {
     secure.close();
+  }
+}
+
+/** UI uses the same relay dial as the programmatic joiner, with the shared invite guard before it. */
+export async function openBrowserJoin(
+  offer: PairingOffer,
+  identity: BrowserIdentity,
+  name: string,
+): Promise<SecureLink> {
+  meshInviteOf(joinTargetOf(offer));
+  return (
+    await dialInviter(offer, name, {
+      loadDeviceKey: async () => identity.device,
+      loadSignKey: async () => identity.card,
+      membership: BROWSER_JOIN_DEPS.membership,
+    })
+  ).secure;
+}
+
+export function openBrowserResume(anchor: BrowserJoinAnchor, identity: BrowserIdentity): Promise<SecureLink> {
+  return openRosterSession(
+    { hostId: anchor.dialed.hostId, hostKey: anchor.dialed.noisePub, relayUrl: anchor.relayUrl },
+    identity,
+  );
+}
+
+export async function openRosterSession(
+  member: { readonly hostId: string; readonly hostKey: string; readonly relayUrl: string },
+  identity: BrowserIdentity,
+): Promise<SecureLink> {
+  const link = await connectRelayClient({ relayUrl: member.relayUrl, hostId: member.hostId });
+  try {
+    return await secureLink(link, {
+      role: "initiator",
+      hostId: member.hostId,
+      staticKey: identity.device,
+      remoteStatic: base64urlDecode(member.hostKey),
+      stream: "roster",
+    });
+  } catch (error) {
+    link.close();
+    throw error;
   }
 }
