@@ -50,6 +50,7 @@ export function CommandPalette({
   const [query, setQuery] = useState(defaultQuery);
   const [active, setActive] = useState(0);
   const listId = useId();
+  const inputId = useId();
   const visible = useMemo(() => commands.filter((command) => matches(command, query)), [commands, query]);
   const groups = useMemo(() => [...new Set(visible.map((command) => command.group))], [visible]);
   const current = visible[Math.min(active, visible.length - 1)];
@@ -70,13 +71,17 @@ export function CommandPalette({
   return (
     <div className={cn(overlaySurface, "flex w-[min(40rem,100%)] flex-col overflow-hidden", className)}>
       <div className="flex items-center gap-2.5 border-b border-border px-3">
+        <label id={`${inputId}-label`} htmlFor={inputId} className="sr-only">
+          Command
+        </label>
         <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         <input
+          id={inputId}
           role="combobox"
           aria-expanded
           aria-controls={listId}
           aria-activedescendant={current === undefined ? undefined : `${listId}-${current.id}`}
-          aria-label="Command"
+          aria-labelledby={`${inputId}-label`}
           value={query}
           placeholder={placeholder}
           onChange={(event) => {

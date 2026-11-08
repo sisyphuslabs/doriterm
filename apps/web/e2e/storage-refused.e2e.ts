@@ -15,7 +15,7 @@ test("with storage reads refused, the app still starts, with the default appeara
   await page.goto("/settings");
   const nav = page.getByRole("navigation", { name: "Settings" });
   await nav.getByRole("button", { name: "Appearance" }).click();
-  await expect(page.getByLabel("Appearance", { exact: true }).getByRole("button", { name: "System" })).toHaveAttribute(
+  await expect(page.getByLabel("Appearance", { exact: true }).getByRole("button", { name: "Dark" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );

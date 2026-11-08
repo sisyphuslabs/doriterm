@@ -1,14 +1,17 @@
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 
 /**
- * A core's hc binary and environment, as the e2e host saved them for the specs, the host's pid when it saved one, and
- * whether the host has finished setting up (its seeds started and its machine added, with that machine's seeds listed).
+ * A core's hc binary and environment, as the e2e host saved them for the specs, the host's pid when it saved one,
+ * whether the host has finished setting up (its seeds started and its machine added, with that machine's seeds listed),
+ * and the run that started it.
  */
 export interface SavedEnv {
   readonly hc: string;
   readonly env: Readonly<Record<string, string>>;
   readonly pid?: number;
   readonly ready?: boolean;
+  /** The run id of the run that started this host (E2E_RUN_ID): another run's host is not this run's to stop (#1412). */
+  readonly run?: string;
 }
 
 /**
@@ -29,10 +32,12 @@ export function readSavedEnv(file: string): SavedEnv {
   const { hc, env } = value;
   if (typeof hc !== "string" || typeof env !== "object" || env === null) throw new Error(`${file} is malformed`);
   const pid: unknown = Reflect.get(value, "pid");
+  const run: unknown = Reflect.get(value, "run");
   const saved = {
     hc,
     env: Object.fromEntries(Object.entries(env).map(([key, entry]) => [key, String(entry)])),
     ...(Reflect.get(value, "ready") === true ? { ready: true } : {}),
+    ...(typeof run === "string" ? { run } : {}),
   };
   return typeof pid === "number" ? { ...saved, pid } : saved;
 }

@@ -50,6 +50,17 @@ export const test = base.extend<{ loopbackUrl: string; ownTerminals: undefined }
 
 export { expect } from "@playwright/test";
 
+/**
+ * Makes the appearance follow the device, as a person who picked System has it; the default is dark. It writes only
+ * when nothing is stored, so a pick made later in the test survives a reload.
+ */
+export async function followSystemAppearance(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    if (localStorage.getItem("doriface.appearance") === null)
+      localStorage.setItem("doriface.appearance", JSON.stringify({ mode: "system", custom: [] }));
+  });
+}
+
 /** How many live terminals the e2e core holds, this machine's and the added machine's, as hc lists them. */
 function liveOnCore(): number {
   const { hc, env } = readSavedEnv(E2E_HOST_ENV);

@@ -35,6 +35,9 @@ export function ConnectionSection() {
           aria-label={title}
           mono
           type={secret ? "password" : "text"}
+          inputMode={id === "loopbackUrl" ? "url" : undefined}
+          autoCapitalize="off"
+          autoCorrect="off"
           spellCheck={false}
           autoComplete="off"
           value={draft[id]}
