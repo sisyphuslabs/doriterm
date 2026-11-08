@@ -109,7 +109,7 @@ export function CommandPalette({
           <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing matches "{query}".</p>
         ) : (
           groups.map((group) => (
-            <div key={group} role="group" aria-label={group} className="pb-1">
+            <div key={group} role="group" aria-label={group} className="pb-4 coarse:pb-9">
               <p className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">{group}</p>
               {visible
                 .filter((command) => command.group === group)
