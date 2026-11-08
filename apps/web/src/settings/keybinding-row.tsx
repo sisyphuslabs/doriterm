@@ -125,7 +125,7 @@ export function KeybindingRow({
           <>
             <span className="block font-mono text-xs">{displayActionId(action.id)}</span>
             {TERMINAL_KEEPS.has(action.id) ? (
-              <span className="block text-xs">A focused terminal program keeps this key.</span>
+              <span className="block">A focused terminal program keeps this key.</span>
             ) : null}
           </>
         ) : (
