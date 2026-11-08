@@ -133,7 +133,7 @@ export async function stopLayoutHost(
         left: [],
         infra: [
           `the layout host (pid ${pid}) did not exit within ${withinMs} ms of SIGTERM, so this run could not check ` +
-            "what it left behind; no test failed, and this is infrastructure, not a test result",
+            "what it left behind; this is infrastructure, and test results are reported separately",
         ],
       };
     }

@@ -171,7 +171,10 @@ test("a layout host this run started, that never exits, is reported as infrastru
     expect(logged).toHaveLength(1);
     expect(logged[0]).toStartWith("E2E_INFRA_TIMEOUT: ");
     expect(logged[0]).toContain(`pid ${host.pid}`);
-    expect(logged[0]).toContain("no test failed");
+    expect(logged[0]).toContain("test results are reported separately");
+    // The teardown never sees test results, so it must not claim any test did or did not fail: the message says
+    // infrastructure and points the reader at the results instead.
+    expect(logged[0]).not.toContain("no test failed");
     // The record the fixtures write is this run's: with an empty id the check above would compare two blanks.
     expect(RUN).not.toBe("");
   } finally {
