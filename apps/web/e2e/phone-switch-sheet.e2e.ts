@@ -188,5 +188,34 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         end(seeded);
       }
     });
+
+    test("two tabs that read the same name get Close buttons that say which tab", async ({ page }) => {
+      const root = mkdtempSync(join(tmpdir(), "phone-switch-twins-"));
+      const twins = [startAgent("host", "rev-a", "blocked", "twins"), startAgent("host", "rev-b", "done", "twins")];
+      seedSpaces([
+        {
+          id: "spc-twins",
+          name: "twins",
+          folder: root,
+          tabs: twins.map((terminal, at) => ({ id: `tb-twin-${at}`, name: "review", terminal })),
+        },
+      ]);
+      try {
+        await page.goto("/?v=spaces");
+        await page
+          .getByRole("button", { name: /^twins\b/ })
+          .first()
+          .click();
+        await page.getByRole("region", { name: "Tabs" }).getByRole("button").first().click();
+        await expect(page.locator("[data-terminal]")).toHaveCount(1, { timeout: 20_000 });
+        await openSheet(page);
+        const region = sheetOf(page).getByRole("region", { name: "twins" });
+        await expect(region.getByRole("button", { name: "Close review, tab 1", exact: true })).toHaveCount(1);
+        await expect(region.getByRole("button", { name: "Close review, tab 2", exact: true })).toHaveCount(1);
+        await expect(region.getByRole("button", { name: "Close review", exact: true })).toHaveCount(0);
+      } finally {
+        twins.forEach((address) => endAgent("host", address));
+      }
+    });
   });
 }

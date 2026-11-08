@@ -25,6 +25,11 @@ function tabRows(
   onPick: (address: string) => void,
   onClose: (address: string) => void,
 ): readonly ReactElement[] {
+  // Two tabs can show terminals with one title (two agents both "claude"): their Close buttons then say which tab.
+  const names = space.tabPanes.map((panes, at) => {
+    const first = terminals.find((entry) => panes.includes(entry.address) && entry.state === "live");
+    return first === undefined ? "" : tabLabel(space.tabNames[at] ?? "", first);
+  });
   return space.tabPanes.flatMap((panes, at) => {
     const live = panes.flatMap((address) =>
       terminals.filter((entry) => entry.address === address && entry.state === "live"),
@@ -36,6 +41,7 @@ function tabRows(
     const { detail: _where, ...agent } = toAgent(shown, nowMs);
     const said = rowDetail(space.tabNames[at] ?? "", shown);
     const name = tabLabel(space.tabNames[at] ?? "", shown);
+    const closes = names.filter((each) => each === name).length > 1 ? `${name}, tab ${at + 1}` : name;
     // Each row closes its tab as the desktop strip's close does, questions included (#1463).
     return [
       <div key={shown.address} className="flex min-w-0 items-center gap-1">
@@ -46,7 +52,7 @@ function tabRows(
             onSelect={onPick}
           />
         </div>
-        <IconButton label={`Close ${name}`} icon={<X />} size="md" onClick={() => onClose(shown.address)} />
+        <IconButton label={`Close ${closes}`} icon={<X />} size="md" onClick={() => onClose(shown.address)} />
       </div>,
     ];
   });
