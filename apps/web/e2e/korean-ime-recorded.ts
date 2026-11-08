@@ -1,0 +1,1644 @@
+/**
+ * Korean typed next to a space, RECORDED from a real input method (#1508): real USB keystrokes from a JetKVM into a Mac mini's
+ * console session, the macOS 2-Set Korean input source composing them, into a page running this repo's terminal input code
+ * (2026-11-08). Each step is an event the browser fired, in order; an "edit" is the text change between that step's beforeinput
+ * and input, at the selection the beforeinput reported (a composition's text replaces the composition so far).
+ *
+ * - Chromium (Electron 45): the space joins the composition (the preedit becomes "글 "), the composition ends carrying it,
+ *   and the space's keydown reads keyCode 229.
+ * - Safari: no composition events. Each jamo is an insertText or insertReplacementText with its keydown (keyCode 229) after
+ *   the edit; a space first replaces the syllable with itself, then fires its own keydown (keyCode 32).
+ */
+
+export type RecordedStep =
+  | {
+      readonly kind: "keydown" | "keyup";
+      readonly key: string;
+      readonly code: string;
+      readonly keyCode: number;
+      readonly composing: boolean;
+    }
+  | { readonly kind: "compositionstart" }
+  | { readonly kind: "compositionupdate" | "compositionend"; readonly data: string }
+  | {
+      readonly kind: "edit";
+      readonly inputType: string;
+      readonly data: string;
+      readonly composing: boolean;
+      readonly from: number;
+      readonly to: number;
+    };
+
+export interface RecordedTyping {
+  readonly name: string;
+  readonly platform: string;
+  readonly steps: readonly RecordedStep[];
+  /** What the program reads, in hex. */
+  readonly bytes: string;
+}
+
+export const KOREAN_SPACE_RECORDINGS: readonly RecordedTyping[] = [
+  {
+    "name": "han geul han Enter, keys 20 ms apart",
+    "platform": "macOS Electron 45 (Chromium 156), 2-Set Korean",
+    "steps": [
+      {
+        "kind": "keydown",
+        "key": "ㅎ",
+        "code": "KeyG",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "compositionstart"
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "ㅎ"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "ㅎ",
+        "composing": true,
+        "from": 0,
+        "to": 0
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅎ",
+        "code": "KeyG",
+        "keyCode": 71,
+        "composing": true
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 229,
+        "composing": true
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "하"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "하",
+        "composing": true,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 75,
+        "composing": true
+      },
+      {
+        "kind": "keydown",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 229,
+        "composing": true
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "한"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "한",
+        "composing": true,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keyup",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 83,
+        "composing": true
+      },
+      {
+        "kind": "keydown",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 229,
+        "composing": true
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "한 "
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "한 ",
+        "composing": true,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "compositionend",
+        "data": "한 "
+      },
+      {
+        "kind": "keyup",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 32,
+        "composing": false
+      },
+      {
+        "kind": "keydown",
+        "key": "ㄱ",
+        "code": "KeyR",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "compositionstart"
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "ㄱ"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "ㄱ",
+        "composing": true,
+        "from": 0,
+        "to": 0
+      },
+      {
+        "kind": "keyup",
+        "key": "ㄱ",
+        "code": "KeyR",
+        "keyCode": 82,
+        "composing": true
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅡ",
+        "code": "KeyM",
+        "keyCode": 229,
+        "composing": true
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "그"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "그",
+        "composing": true,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅡ",
+        "code": "KeyM",
+        "keyCode": 77,
+        "composing": true
+      },
+      {
+        "kind": "keydown",
+        "key": "ㄹ",
+        "code": "KeyF",
+        "keyCode": 229,
+        "composing": true
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "글"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "글",
+        "composing": true,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keyup",
+        "key": "ㄹ",
+        "code": "KeyF",
+        "keyCode": 70,
+        "composing": true
+      },
+      {
+        "kind": "keydown",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 229,
+        "composing": true
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "글 "
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "글 ",
+        "composing": true,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "compositionend",
+        "data": "글 "
+      },
+      {
+        "kind": "keyup",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 32,
+        "composing": false
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅎ",
+        "code": "KeyG",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "compositionstart"
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "ㅎ"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "ㅎ",
+        "composing": true,
+        "from": 0,
+        "to": 0
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅎ",
+        "code": "KeyG",
+        "keyCode": 71,
+        "composing": true
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 229,
+        "composing": true
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "하"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "하",
+        "composing": true,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 75,
+        "composing": true
+      },
+      {
+        "kind": "keydown",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 229,
+        "composing": true
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "한"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "한",
+        "composing": true,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keyup",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 83,
+        "composing": true
+      },
+      {
+        "kind": "keydown",
+        "key": "Enter",
+        "code": "Enter",
+        "keyCode": 229,
+        "composing": true
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "한"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "한",
+        "composing": true,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "compositionend",
+        "data": "한"
+      },
+      {
+        "kind": "keyup",
+        "key": "Enter",
+        "code": "Enter",
+        "keyCode": 13,
+        "composing": false
+      },
+      {
+        "kind": "keydown",
+        "key": "Enter",
+        "code": "Enter",
+        "keyCode": 13,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "Enter",
+        "code": "Enter",
+        "keyCode": 13,
+        "composing": false
+      }
+    ],
+    "bytes": "ed 95 9c 20 ea b8 80 20 ed 95 9c 0d"
+  },
+  {
+    "name": "han geul han Enter, keys 50 ms apart",
+    "platform": "macOS Electron 45 (Chromium 156), 2-Set Korean",
+    "steps": [
+      {
+        "kind": "keydown",
+        "key": "ㅎ",
+        "code": "KeyG",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "compositionstart"
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "ㅎ"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "ㅎ",
+        "composing": true,
+        "from": 0,
+        "to": 0
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅎ",
+        "code": "KeyG",
+        "keyCode": 71,
+        "composing": true
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 229,
+        "composing": true
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "하"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "하",
+        "composing": true,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 75,
+        "composing": true
+      },
+      {
+        "kind": "keydown",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 229,
+        "composing": true
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "한"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "한",
+        "composing": true,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keyup",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 83,
+        "composing": true
+      },
+      {
+        "kind": "keydown",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 229,
+        "composing": true
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "한 "
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "한 ",
+        "composing": true,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "compositionend",
+        "data": "한 "
+      },
+      {
+        "kind": "keyup",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 32,
+        "composing": false
+      },
+      {
+        "kind": "keydown",
+        "key": "ㄱ",
+        "code": "KeyR",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "compositionstart"
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "ㄱ"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "ㄱ",
+        "composing": true,
+        "from": 0,
+        "to": 0
+      },
+      {
+        "kind": "keyup",
+        "key": "ㄱ",
+        "code": "KeyR",
+        "keyCode": 82,
+        "composing": true
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅡ",
+        "code": "KeyM",
+        "keyCode": 229,
+        "composing": true
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "그"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "그",
+        "composing": true,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅡ",
+        "code": "KeyM",
+        "keyCode": 77,
+        "composing": true
+      },
+      {
+        "kind": "keydown",
+        "key": "ㄹ",
+        "code": "KeyF",
+        "keyCode": 229,
+        "composing": true
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "글"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "글",
+        "composing": true,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keyup",
+        "key": "ㄹ",
+        "code": "KeyF",
+        "keyCode": 70,
+        "composing": true
+      },
+      {
+        "kind": "keydown",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 229,
+        "composing": true
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "글 "
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "글 ",
+        "composing": true,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "compositionend",
+        "data": "글 "
+      },
+      {
+        "kind": "keyup",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 32,
+        "composing": false
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅎ",
+        "code": "KeyG",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "compositionstart"
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "ㅎ"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "ㅎ",
+        "composing": true,
+        "from": 0,
+        "to": 0
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅎ",
+        "code": "KeyG",
+        "keyCode": 71,
+        "composing": true
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 229,
+        "composing": true
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "하"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "하",
+        "composing": true,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 75,
+        "composing": true
+      },
+      {
+        "kind": "keydown",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 229,
+        "composing": true
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "한"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "한",
+        "composing": true,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keyup",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 83,
+        "composing": true
+      },
+      {
+        "kind": "keydown",
+        "key": "Enter",
+        "code": "Enter",
+        "keyCode": 229,
+        "composing": true
+      },
+      {
+        "kind": "compositionupdate",
+        "data": "한"
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertCompositionText",
+        "data": "한",
+        "composing": true,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "compositionend",
+        "data": "한"
+      },
+      {
+        "kind": "keyup",
+        "key": "Enter",
+        "code": "Enter",
+        "keyCode": 13,
+        "composing": false
+      },
+      {
+        "kind": "keydown",
+        "key": "Enter",
+        "code": "Enter",
+        "keyCode": 13,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "Enter",
+        "code": "Enter",
+        "keyCode": 13,
+        "composing": false
+      }
+    ],
+    "bytes": "ed 95 9c 20 ea b8 80 20 ed 95 9c 0d"
+  },
+  {
+    "name": "han geul han Enter, keys 30 ms apart",
+    "platform": "macOS Safari 26.6.2, 2-Set Korean",
+    "steps": [
+      {
+        "kind": "edit",
+        "inputType": "insertText",
+        "data": "ㅎ",
+        "composing": false,
+        "from": 0,
+        "to": 0
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅎ",
+        "code": "KeyG",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅎ",
+        "code": "KeyG",
+        "keyCode": 71,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "하",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 75,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "한",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 83,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "한",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 32,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 32,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertText",
+        "data": "ㄱ",
+        "composing": false,
+        "from": 0,
+        "to": 0
+      },
+      {
+        "kind": "keydown",
+        "key": "ㄱ",
+        "code": "KeyR",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㄱ",
+        "code": "KeyR",
+        "keyCode": 82,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "그",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅡ",
+        "code": "KeyM",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅡ",
+        "code": "KeyM",
+        "keyCode": 77,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "글",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "ㄹ",
+        "code": "KeyF",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㄹ",
+        "code": "KeyF",
+        "keyCode": 70,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "글",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 32,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 32,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertText",
+        "data": "ㅎ",
+        "composing": false,
+        "from": 0,
+        "to": 0
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅎ",
+        "code": "KeyG",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅎ",
+        "code": "KeyG",
+        "keyCode": 71,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "하",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 75,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "한",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 83,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "한",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "Enter",
+        "code": "Enter",
+        "keyCode": 13,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "Enter",
+        "code": "Enter",
+        "keyCode": 13,
+        "composing": false
+      }
+    ],
+    "bytes": "ed 95 9c 20 ea b8 80 20 ed 95 9c 0d"
+  },
+  {
+    "name": "annyeong haseyo han Enter, keys 15 ms apart",
+    "platform": "macOS Safari 26.6.2, 2-Set Korean",
+    "steps": [
+      {
+        "kind": "keyup",
+        "key": "ㅇ",
+        "code": "KeyD",
+        "keyCode": 68,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertText",
+        "data": "ㅇ",
+        "composing": false,
+        "from": 0,
+        "to": 0
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅇ",
+        "code": "KeyD",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "아",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 75,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 83,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "안",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "안",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertText",
+        "data": "ㄴ",
+        "composing": false,
+        "from": 1,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 83,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅕ",
+        "code": "KeyU",
+        "keyCode": 85,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "녀",
+        "composing": false,
+        "from": 1,
+        "to": 2
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅕ",
+        "code": "KeyU",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "녕",
+        "composing": false,
+        "from": 1,
+        "to": 2
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅇ",
+        "code": "KeyD",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅇ",
+        "code": "KeyD",
+        "keyCode": 68,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "녕",
+        "composing": false,
+        "from": 1,
+        "to": 2
+      },
+      {
+        "kind": "keydown",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 32,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 32,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertText",
+        "data": "ㅎ",
+        "composing": false,
+        "from": 0,
+        "to": 0
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅎ",
+        "code": "KeyG",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅎ",
+        "code": "KeyG",
+        "keyCode": 71,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "하",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 75,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "핫",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅅ",
+        "code": "KeyT",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅅ",
+        "code": "KeyT",
+        "keyCode": 84,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "하",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertText",
+        "data": "세",
+        "composing": false,
+        "from": 1,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅔ",
+        "code": "KeyP",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅔ",
+        "code": "KeyP",
+        "keyCode": 80,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "셍",
+        "composing": false,
+        "from": 1,
+        "to": 2
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅇ",
+        "code": "KeyD",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅇ",
+        "code": "KeyD",
+        "keyCode": 68,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "세",
+        "composing": false,
+        "from": 1,
+        "to": 2
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertText",
+        "data": "요",
+        "composing": false,
+        "from": 2,
+        "to": 2
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅛ",
+        "code": "KeyY",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅛ",
+        "code": "KeyY",
+        "keyCode": 89,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "요",
+        "composing": false,
+        "from": 2,
+        "to": 3
+      },
+      {
+        "kind": "keydown",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 32,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 32,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertText",
+        "data": "ㅎ",
+        "composing": false,
+        "from": 0,
+        "to": 0
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅎ",
+        "code": "KeyG",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅎ",
+        "code": "KeyG",
+        "keyCode": 71,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "하",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 75,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "한",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 83,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "한",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "Enter",
+        "code": "Enter",
+        "keyCode": 13,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "Enter",
+        "code": "Enter",
+        "keyCode": 13,
+        "composing": false
+      }
+    ],
+    "bytes": "ec 95 88 eb 85 95 20 ed 95 98 ec 84 b8 ec 9a 94 20 ed 95 9c 0d"
+  },
+  {
+    "name": "space first, then han geul Enter",
+    "platform": "macOS Safari 26.6.2, 2-Set Korean",
+    "steps": [
+      {
+        "kind": "keydown",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 32,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 32,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertText",
+        "data": "ㅎ",
+        "composing": false,
+        "from": 0,
+        "to": 0
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅎ",
+        "code": "KeyG",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅎ",
+        "code": "KeyG",
+        "keyCode": 71,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "하",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅏ",
+        "code": "KeyK",
+        "keyCode": 75,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "한",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㄴ",
+        "code": "KeyS",
+        "keyCode": 83,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "한",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 32,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": " ",
+        "code": "Space",
+        "keyCode": 32,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertText",
+        "data": "ㄱ",
+        "composing": false,
+        "from": 0,
+        "to": 0
+      },
+      {
+        "kind": "keydown",
+        "key": "ㄱ",
+        "code": "KeyR",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㄱ",
+        "code": "KeyR",
+        "keyCode": 82,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "그",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "ㅡ",
+        "code": "KeyM",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㅡ",
+        "code": "KeyM",
+        "keyCode": 77,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "글",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "ㄹ",
+        "code": "KeyF",
+        "keyCode": 229,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "ㄹ",
+        "code": "KeyF",
+        "keyCode": 70,
+        "composing": false
+      },
+      {
+        "kind": "edit",
+        "inputType": "insertReplacementText",
+        "data": "글",
+        "composing": false,
+        "from": 0,
+        "to": 1
+      },
+      {
+        "kind": "keydown",
+        "key": "Enter",
+        "code": "Enter",
+        "keyCode": 13,
+        "composing": false
+      },
+      {
+        "kind": "keyup",
+        "key": "Enter",
+        "code": "Enter",
+        "keyCode": 13,
+        "composing": false
+      }
+    ],
+    "bytes": "20 ed 95 9c 20 ea b8 80 0d"
+  }
+];
