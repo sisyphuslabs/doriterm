@@ -71,7 +71,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         // it, so the tab's own name keeps the room and is never cut.
         await expect(switcher(page).getByText("website ·", { exact: true })).toBeHidden();
         const name = switcher(page).getByText("deploy", { exact: true });
-        expect(await name.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+        await expect.poll(() => name.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 
         // The switch sheet names its rows the same way: no "1 \u00b7" before them.
         await switcher(page).click();
