@@ -37,6 +37,7 @@ function threeMembers(closeRevokedOnMerge = false) {
     runtime: undefined,
     changed: () => undefined,
     stop: () => atA.gossip.stop(),
+    formatReady: () => false,
     live: () => NOT_RUNNING,
   };
   const stateDir = mkdtempSync(join(tmpdir(), "dh-sync-hooks-"));
@@ -152,6 +153,7 @@ async function coreWithMachines(machines: FakeMachines) {
     gossip: undefined,
     runtime,
     changed: () => undefined,
+    formatReady: () => false,
     live: () => NOT_RUNNING,
     stop: () => {
       stopped.push("sync");

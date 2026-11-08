@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { expect, followSystemAppearance, openNewTerminal, test } from "./fixtures.ts";
 import { loadKoreanFonts } from "./korean-fonts.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -226,6 +226,7 @@ for (const colorScheme of ["light", "dark"] as const) {
     test("IME preedit text is dark on a light field, legible on the browser's composition highlight", async ({
       page,
     }) => {
+      await followSystemAppearance(page);
       await page.goto("/");
       const terminal = await openNewTerminal(page);
       await terminal.getByRole("textbox").focus();

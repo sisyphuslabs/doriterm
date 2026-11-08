@@ -49,7 +49,14 @@ function restoredB(seed: number) {
     identity: b.machine.identity,
     closeRevoked: () => undefined,
     hooks: syncHooks(
-      { gossip, runtime: undefined, changed: () => undefined, stop: () => undefined, live: () => NOT_RUNNING },
+      {
+        gossip,
+        runtime: undefined,
+        changed: () => undefined,
+        formatReady: () => false,
+        stop: () => undefined,
+        live: () => NOT_RUNNING,
+      },
       clock,
       () => [],
     ),
