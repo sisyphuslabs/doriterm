@@ -1,5 +1,5 @@
 import { AgentRow, Button, IconButton, Sheet, SidebarSection } from "@doriface/ui";
-import { ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, Plus, X } from "lucide-react";
 import { type ReactElement, useState } from "react";
 import { liveTabs, type Session, terminalTitle, titledTabs, toAgent } from "./model.ts";
 import { useSpaceSelection } from "./space-selection.ts";
@@ -10,9 +10,13 @@ export function SpaceSheet(props: {
   readonly terminals: readonly Session[];
   readonly active: string;
   readonly onOpen: (address: string) => void;
+  /** Closes the tab that shows `address`, as the desktop strip's close does (its questions included) (#1463). */
+  readonly onCloseTab: (address: string) => void;
+  /** Starts a terminal in a new tab of that space. */
+  readonly onNewInSpace: (space: string) => void;
   readonly trigger: ReactElement;
 }) {
-  const { terminals, active, onOpen, trigger } = props;
+  const { terminals, active, onOpen, onCloseTab, onNewInSpace, trigger } = props;
   // The layout documents' spaces, as the sidebar lists them (#404).
   const { spaces } = useSpaceSelection();
   const [open, setOpen] = useState(false);
@@ -39,14 +43,34 @@ export function SpaceSheet(props: {
               return terminals
                 .filter((entry) => entry.address === shown)
                 .map((entry) => (
-                  <AgentRow
-                    key={entry.address}
-                    agent={{ ...toAgent(entry, now), name: title, detail: terminalTitle(entry) }}
-                    selected={entry.address === active}
-                    onSelect={pick}
-                  />
+                  <div key={entry.address} className="flex min-w-0 items-center gap-1">
+                    <div className="min-w-0 flex-1">
+                      <AgentRow
+                        agent={{ ...toAgent(entry, now), name: title, detail: terminalTitle(entry) }}
+                        selected={entry.address === active}
+                        onSelect={pick}
+                      />
+                    </div>
+                    <IconButton
+                      label={`Close ${title}`}
+                      icon={<X />}
+                      size="md"
+                      onClick={() => onCloseTab(entry.address)}
+                    />
+                  </div>
                 ));
             })}
+            <Button
+              variant="ghost"
+              className="h-11 justify-start gap-2 px-2 text-muted-foreground"
+              onClick={() => {
+                setOpen(false);
+                onNewInSpace(space.id);
+              }}
+            >
+              <Plus aria-hidden />
+              New tab
+            </Button>
           </SidebarSection>
         ))}
       </div>
@@ -74,8 +98,10 @@ export function PhoneTabSwitcher(props: {
   /** The open tab as the strip reads it: its name, else its number. */
   readonly title: string;
   readonly onOpen: (address: string) => void;
+  readonly onCloseTab: (address: string) => void;
+  readonly onNewInSpace: (space: string) => void;
 }) {
-  const { terminals, tabs, active, title, onOpen } = props;
+  const { terminals, tabs, active, title, onOpen, onCloseTab, onNewInSpace } = props;
   const at = tabs.findIndex((panes) => panes.includes(active));
   if (at === -1) return null;
   const step = (by: 1 | -1): void => {
@@ -94,6 +120,8 @@ export function PhoneTabSwitcher(props: {
         terminals={terminals}
         active={active}
         onOpen={onOpen}
+        onCloseTab={onCloseTab}
+        onNewInSpace={onNewInSpace}
         trigger={
           <Button
             variant="ghost"

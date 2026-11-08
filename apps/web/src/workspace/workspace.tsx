@@ -394,6 +394,10 @@ export function Workspace({ connection }: WorkspaceProps) {
                         pushed={phone.pushed}
                         onNew={() => newTerminal()}
                         onNewInSpace={newTabIn}
+                        onCloseTab={(address) => {
+                          const found = findTerminal(layout.tabs, address);
+                          if (found !== null) closeTab(found.tab.key);
+                        }}
                         onPalette={onPalette}
                         onSession={onSession}
                       />
