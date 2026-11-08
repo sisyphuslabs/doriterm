@@ -77,7 +77,10 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await switcher(page).click();
         const sheet = page.getByRole("dialog", { name: "Spaces" });
         await opened(sheet);
-        const rows = sheet.getByRole("region", { name: "website" }).getByRole("button");
+        // Each tab's row, not its Close or the space's New tab (#1464).
+        const rows = sheet
+          .getByRole("region", { name: "website" })
+          .getByRole("button", { name: /^(?!Close |New tab$)/ });
         await expect(rows).toHaveCount(2);
         await expect(rows.nth(0).locator('[data-floor="name"]')).toHaveText("deploy");
         await expect(rows.nth(1).locator('[data-floor="name"]')).toHaveText("tests");

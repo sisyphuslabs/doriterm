@@ -50,8 +50,19 @@ export interface PhoneTerminalProps {
 
 /** One session full screen on a phone, its terminal kept clear of the soft keyboard and the keys bar riding on it. */
 export function PhoneTerminal(props: PhoneTerminalProps) {
-  const { connection, terminal, terminals, panes, tabTitle, backTo, onOpen, onBack, onCloseTab, onNewInSpace, dictate } =
-    props;
+  const {
+    connection,
+    terminal,
+    terminals,
+    panes,
+    tabTitle,
+    backTo,
+    onOpen,
+    onBack,
+    onCloseTab,
+    onNewInSpace,
+    dictate,
+  } = props;
   const port = useRef<TerminalPort | null>(null);
   const onPort = useCallback((next: TerminalPort | null) => {
     port.current = next;
