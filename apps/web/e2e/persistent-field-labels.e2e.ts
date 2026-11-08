@@ -6,10 +6,15 @@ test.use({ serviceWorkers: "block" });
 
 async function associatedLabel(field: Locator, name: string) {
   await expect(field).toHaveAttribute("aria-labelledby", /\S+/);
-  const label = await field.evaluate((el) =>
-    document.getElementById(el.getAttribute("aria-labelledby") ?? "")?.textContent?.trim(),
-  );
-  expect(label).toBe(name);
+  const label = await field.evaluate((el) => {
+    const target = document.getElementById(el.getAttribute("aria-labelledby") ?? "");
+    return {
+      text: target?.textContent?.trim(),
+      isLabel: target instanceof HTMLLabelElement,
+      forField: target instanceof HTMLLabelElement && el.id !== "" && target.htmlFor === el.id,
+    };
+  });
+  expect(label).toEqual({ text: name, isLabel: true, forField: true });
 }
 
 for (const width of [390, 1440] as const) {
