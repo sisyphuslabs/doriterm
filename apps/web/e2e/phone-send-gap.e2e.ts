@@ -12,13 +12,8 @@ const OUT = join(import.meta.dirname, "../../../docs/design/app");
 const field = (page: Page) => page.getByLabel("Type into the terminal");
 
 /** The space between the field's right edge and Send's left edge, and both controls' sizes, in CSS px. */
-async function measure(
-  page: Page,
-): Promise<{ gap: number; send: { width: number; height: number }; field: number }> {
-  const [box, send] = await Promise.all([
-    field(page).boundingBox(),
-    key(page, "Send").boundingBox(),
-  ]);
+async function measure(page: Page): Promise<{ gap: number; send: { width: number; height: number }; field: number }> {
+  const [box, send] = await Promise.all([field(page).boundingBox(), key(page, "Send").boundingBox()]);
   if (box === null || send === null) throw new Error("the field or Send is not laid out");
   return {
     gap: send.x - (box.x + box.width),
@@ -53,12 +48,8 @@ for (const theme of ["day", "night"] as const) {
     await shot("idle");
 
     await field(page).click();
-    await page.keyboard.type(
-      "echo one two three four five six seven eight nine ten eleven twelve thirteen",
-    );
-    await expect
-      .poll(async () => (await field(page).boundingBox())?.height ?? 0)
-      .toBeGreaterThan(44);
+    await page.keyboard.type("echo one two three four five six seven eight nine ten eleven twelve thirteen");
+    await expect.poll(async () => (await field(page).boundingBox())?.height ?? 0).toBeGreaterThan(44);
     const grown = await measure(page);
     expect(grown.gap).toBe(8);
     expect(grown.send).toEqual({ width: 44, height: 44 });
