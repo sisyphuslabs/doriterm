@@ -3,7 +3,9 @@
 // `mesh join` on b make the mesh, so b reaches a's core as a machine only through the mesh's own `connect --mesh` line;
 // MESH_JOIN=skip leaves them strangers, which the spec must fail on. A shell named `on-b` runs on b's own core.
 // Prints `READY {"relayUrl": ...}` (a's relay), answers each stdin line `PAIR` with `LINK <fragment>`, a fresh device
-// pairing link to a, and stops every process it started on SIGTERM or SIGINT.
+// pairing link to a, and stops every process it started on SIGTERM or SIGINT. `STOP` stops b's host process and answers
+// `STOPPED` once a's core lists b as not connected; `START` starts it again on the same state (its shell lives on in
+// b's core), dials it from a at once instead of at hc's next redial, and answers `STARTED` once a lists it connected.
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -35,6 +37,8 @@ process.once("SIGINT", stop);
 const a = mesh.host("a");
 const b = mesh.host("b");
 const bCore = (await mesh.core("b")).hello.core.id;
+const stateOfB = async (): Promise<string | undefined> =>
+  (await (await mesh.core("a")).call("machine.list")).machines.find((machine) => machine.id === bCore)?.state;
 const machineOfB = async (): Promise<string | undefined> =>
   (await (await mesh.core("a")).call("machine.list")).machines.find(
     (machine) => machine.state === "connected" && machine.id === bCore,
@@ -62,13 +66,34 @@ const pairingFragment = async (): Promise<string> => {
   if (offer.exit !== 0 || url === undefined) throw new Error(`pair on a failed: ${offer.stderr}${offer.stdout}`);
   return new URL(url).hash;
 };
-process.stdin.on("data", (chunk: Buffer) => {
-  const asks = chunk
-    .toString()
-    .split("\n")
-    .filter((line) => line.trim() === "PAIR");
-  pending = asks.reduce(
-    (chain) => chain.then(pairingFragment).then((hash) => void process.stdout.write(`LINK ${hash}\n`)),
-    pending,
+const stopB = async (): Promise<void> => {
+  await b.stop();
+  await mesh.until("b not connected on a's core", async () => (await stateOfB()) !== "connected", 60_000);
+  process.stdout.write("STOPPED\n");
+};
+const startB = async (): Promise<void> => {
+  await b.start();
+  const aCore = await mesh.core("a");
+  await mesh.until(
+    "b connected again on a's core",
+    async () => {
+      if ((await stateOfB()) === "connected") return true;
+      // A refused dial is fine: hc records it, and the next turn of this wait dials again.
+      await aCore.call("machine.connect", { machine }).catch(() => undefined);
+      return (await stateOfB()) === "connected";
+    },
+    60_000,
   );
+  process.stdout.write("STARTED\n");
+};
+const ASKS: Readonly<Record<string, () => Promise<void>>> = {
+  PAIR: async () => void process.stdout.write(`LINK ${await pairingFragment()}\n`),
+  STOP: stopB,
+  START: startB,
+};
+process.stdin.on("data", (chunk: Buffer) => {
+  for (const line of chunk.toString().split("\n")) {
+    const ask = ASKS[line.trim()];
+    if (ask !== undefined) pending = pending.then(ask);
+  }
 });
