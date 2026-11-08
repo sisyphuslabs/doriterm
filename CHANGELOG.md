@@ -4,85 +4,72 @@
 
 ## v0.1.12 - 2026-11-08
 
-### Terminal
+### New
 
-- On a network that reaches the relay through a far city on some connections and a near one on others (seen from
-  Korea), a machine reached through the relay answers sooner: the app opens three connections, keeps the one with the
-  shortest way to that machine and closes the other two before anything is sent on them. (#1402)
-- A failed mesh add no longer leaves a host process behind on each attempt; retries respect their delay even when the
-  dial budget is full. (#1442)
+- Settings has a Search field at the top of the section list: it narrows the list to the sections that hold what you
+  type, and Enter opens the first. ([#1461](https://github.com/sisyphuslabs/doriterm/pull/1461))
+- "N needs you" in the desktop status bar is a button: each click opens the next terminal that needs you, in turn.
+  ([#1449](https://github.com/sisyphuslabs/doriterm/pull/1449))
+- Holding Shift and dragging with the mouse selects text even under a program that tracks the mouse; the program is told
+  nothing about the drag. ([#1396](https://github.com/sisyphuslabs/doriterm/pull/1396))
+- A fresh install opens in the dark Night theme on a bundled monospace face that draws powerline glyphs. A person who
+  already chose a light or system appearance keeps it. ([#1407](https://github.com/sisyphuslabs/doriterm/pull/1407))
+- Links to doriterm.com, app.doriterm.com and the GitHub repository preview with a new card, and the card's address
+  changes with the card, so Slack, KakaoTalk and X never show an old cached image.
+  ([#1373](https://github.com/sisyphuslabs/doriterm/pull/1373),
+  [#1458](https://github.com/sisyphuslabs/doriterm/pull/1458))
 
-### Workspace
+### Fixed
 
 - A new tab shows its prompt one round trip sooner: the page asks for the new terminal's screen together with the
-  terminal itself, instead of after the terminal has started. Most noticeable on a machine reached through the relay.
-  (#1359)
-- A terminal opened from the list no longer waits behind saving the tab: its screen is asked for first and the tab is
-  saved once the screen is on its way, so a busy disk on that machine no longer holds back the prompt. (#1360)
+  terminal itself, instead of after it has started. Most noticeable on a machine reached through the relay.
+  ([#1359](https://github.com/sisyphuslabs/doriterm/pull/1359))
+- A terminal opened from the list no longer waits behind saving the tab, so a busy disk on that machine no longer holds
+  back the prompt. ([#1360](https://github.com/sisyphuslabs/doriterm/pull/1360))
+- Keys typed right after you come back to the app are no longer lost while it checks the connection: they are sent in
+  the order typed once the connection answers, or on the next connection if it dropped, and never twice.
+  ([#1432](https://github.com/sisyphuslabs/doriterm/pull/1432))
 - A screen reader can jump straight to the terminals: the workspace marks its panes, and on a phone the agents list or
-  the open terminal, as the page's main content. (#1384)
-- On a phone, tapping the keys bar's Type field keeps the keyboard up: the page scrolling to show the field no longer
-  reads as the keyboard closing, which put the keyboard down and dropped the bar behind it. (#1410)
-- On an iPhone, the keys bar and its Type field now sit directly on top of the soft keyboard, so what you type stays in
-  view instead of being hidden behind the keyboard. (#1431)
-- "N needs you" in the desktop status bar is a button now: each click opens the next terminal that needs you, in turn.
-  (#1448)
-- Command search and inline space rename have persistent associated field labels, including while typing, without changing their layout. (#1451)
-
-### Machine mesh
-
-- The join ceremony is now a shared library with a browser implementation: a browser can become a client member by
-  accepting a mesh invite, and reaches every machine the signed welcome names over the relay, instead of pairing to a
-  single host. A device link is refused on that path. This is the plumbing, not a shipped screen - the pair route still
-  shows the typed-code screen for a mesh invite until the join UI lands. (#1413)
-
-### Joining a mesh
-
-- A host with no mesh yet admits a browser as its first member, so one machine and one browser are enough to start: the
-  browser joins by a mesh invite over the relay and opens a session to that host. Readiness for a client admission is
-  read from the roster rather than from a runtime that only starts once a mesh exists, and a roster machine that has
-  not answered still blocks the admission. The old check refused the browser after the join had already written the
-  mesh, so it waited for a state the same join had just produced: the state was correct, and only the admission answer
-  was stale. (#1426)
+  the open terminal, as the page's main content. ([#1384](https://github.com/sisyphuslabs/doriterm/pull/1384))
+- Command search and inline space rename keep their field label while you type, so a screen reader still names the
+  field. ([#1451](https://github.com/sisyphuslabs/doriterm/pull/1451))
+- Voice input's reading text and the note under a Keybindings row are no longer caption size; they meet the design
+  system's size floors. ([#1459](https://github.com/sisyphuslabs/doriterm/pull/1459))
 
 ### Phone
 
-- A phone no longer zooms the page when you tap a field or tap twice: every text field, the terminal's own included at
-  any text size, is at least 16px on a touch screen, and a quick second tap is a second tap. Pinching to zoom still
-  works. (#1382)
-- Tapping a space now opens that space's own screen: its running tabs, each named after its tab or its agent, and
-  "New tab in <space>" at the bottom. Before, the tap only moved a highlight. Back walks back one screen at a time,
-  from a terminal to its space and from the space to Agents, and the Back button never leaves the app. (#1406)
-- A screen reader finds Settings on a phone: the full-screen Settings sheet is announced as a dialog named Settings, as
-  it is on a wide screen. (#1414)
+- A round Read-only button beside the keyboard button turns the terminal read-only: one finger scrolls, a held finger
+  selects and a drag takes what it reaches, and a tap reaches neither the program nor the keyboard. Tap the button again
+  to end it. ([#1396](https://github.com/sisyphuslabs/doriterm/pull/1396))
+- Tapping a space opens that space's own screen: its running tabs, each named after its tab or agent, and a New tab
+  button for that space at the bottom. Back walks back one screen at a time and never leaves the app.
+  ([#1406](https://github.com/sisyphuslabs/doriterm/pull/1406))
+- The page no longer zooms when you tap a field or tap twice; pinching to zoom still works.
+  ([#1382](https://github.com/sisyphuslabs/doriterm/pull/1382))
+- Tapping the keys bar's Type field keeps the keyboard up, instead of the page's scroll to the field closing it.
+  ([#1410](https://github.com/sisyphuslabs/doriterm/pull/1410))
+- On an iPhone, the keys bar and its Type field sit directly on top of the soft keyboard, so what you type stays in
+  view. ([#1431](https://github.com/sisyphuslabs/doriterm/pull/1431))
+- The Gateway field brings up the URL keyboard and turns off automatic capitalization and correction.
+  ([#1450](https://github.com/sisyphuslabs/doriterm/pull/1450))
+- A screen reader finds Settings: the full-screen Settings sheet is announced as a dialog named Settings, as on a wide
+  screen. ([#1414](https://github.com/sisyphuslabs/doriterm/pull/1414))
 
-### Web app
+### Mesh & relay
 
-- Voice input's reading text meets the design system's size floors: the words heard while listening are body size
-  (14 px, 17 px on a phone), and the status line and the hint under the transcript are secondary size (13 px, 15 px on a
-  phone) instead of caption size. (#1447)
-
-### Settings
-
-- The Gateway field requests the URL keyboard on phones and turns off automatic capitalization and correction. (#1450)
-- In Keybindings, the sentence "A focused terminal program keeps this key." is secondary size like the rest of a row's
-  description, no longer caption size. (#1447)
-
-### Connection and offline wording
-
-- Keys typed right after you come back to the app are no longer lost while it checks that the connection still works:
-  they wait and are sent, in the order typed, once the connection has answered, or on the next connection if it had
-  dropped. Nothing you type is sent twice. (#1432)
-
-### Website
-
-- Links to doriterm.com and app.doriterm.com preview with the current card in Slack, KakaoTalk and X: the card's URL changes with the card, so an old cached image is not shown, and both titles read "Doriterm". (#1373)
-- Links to doriterm.com, app.doriterm.com and the GitHub repository preview with a new card: the headline in Timeless beside the site's mesh, relay and fleet artwork. (#1458)
-
-### Appearance
-
-- A fresh install opens in the dark Night theme on a bundled monospace face that draws powerline glyphs, instead of
-  following the device. A person who already chose a light or system appearance keeps it. (#1407)
+- In a browser, every session goes through the relay and the status bar says Relay instead of Direct. The desktop app
+  still reaches a host on the same network directly when it answers.
+  ([#1422](https://github.com/sisyphuslabs/doriterm/pull/1422))
+- A machine reached through the relay answers sooner on a network that routes some connections through a far city: the
+  app opens three connections and keeps the one with the shortest way to that machine.
+  ([#1402](https://github.com/sisyphuslabs/doriterm/pull/1402))
+- A host with no mesh yet admits a browser as its first member, so one machine and one browser are enough to start.
+  ([#1426](https://github.com/sisyphuslabs/doriterm/pull/1426))
+- After a network split heals, a machine whose add was refused for the dial budget is added as soon as the budget has
+  room, and a member that comes back online is added at once instead of after its retry delay.
+  ([#1471](https://github.com/sisyphuslabs/doriterm/pull/1471))
+- A failed mesh add no longer leaves a host process behind on each attempt, and retries keep their delay when the dial
+  budget is full. ([#1442](https://github.com/sisyphuslabs/doriterm/pull/1442))
 
 ## v0.1.11 - 2026-11-08
 
