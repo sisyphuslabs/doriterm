@@ -31,6 +31,27 @@ test("the first-run page has one main landmark, around its steps", async ({ page
   await expect(main(page).getByRole("heading", { name: "Connect to a host" })).toBeVisible();
 });
 
+// Settings covers the workspace at every width and hides it from assistive tech, so its landmark is the modal dialog it
+// is drawn in: one Settings dialog, and no main landmark beside or inside it.
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 1440, height: 900 },
+]) {
+  test.describe(`Settings at ${viewport.width}`, () => {
+    test.use({ viewport });
+
+    test("Settings exposes one landmark, its modal dialog", async ({ page }) => {
+      await page.goto("/settings");
+      const settings = page.getByRole("dialog", { name: "Settings" });
+      await expect(settings).toBeVisible({ timeout: 15_000 });
+      await expect(settings).toHaveAttribute("aria-modal", "true");
+      await expect(page.getByRole("dialog")).toHaveCount(1);
+      await expect(settings.getByRole("heading", { name: "Settings" })).toBeVisible();
+      await expect(main(page)).toHaveCount(0);
+    });
+  });
+}
+
 test.describe("on a phone", () => {
   const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
   test.use(phone);
