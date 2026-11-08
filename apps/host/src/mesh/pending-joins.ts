@@ -1,4 +1,6 @@
-/** A join that passed the card checks and waits for the inviting member's confirmation (section 4.3). */
+import { JoinRefused } from "@doriface/mesh/join";
+
+/** A join whose committed comparison waits for both people (CLEAR section 9). */
 export interface PendingJoin {
   readonly nonce: string;
   readonly name: string;
@@ -10,12 +12,15 @@ export interface PendingJoin {
   readonly kind: "machine" | "client";
   /** Milliseconds since the epoch: the offer's expiry, which the pending join shares. */
   readonly expiresAt: number;
+  readonly code: string;
+  readonly joinerConfirmed: boolean;
 }
 
 export type JoinDecision = "approved" | "denied" | "expired";
 
 interface Waiting {
-  readonly join: PendingJoin;
+  join: PendingJoin;
+  approved: boolean;
   readonly decided: PromiseWithResolvers<JoinDecision>;
   readonly timer: ReturnType<typeof setTimeout>;
 }
@@ -36,12 +41,18 @@ export class PendingJoins {
     this.#autoUntil = until;
   }
 
+  isAuto(now = Date.now()): boolean {
+    return now < this.#autoUntil;
+  }
+
   ask(join: PendingJoin, now = Date.now()): Promise<JoinDecision> {
+    if (!/^\d{3} \d{3}$/.test(join.code)) throw new JoinRefused("a pending join needs its join code");
+    const existing = this.#waiting.get(join.nonce);
+    if (existing !== undefined) return existing.decided.promise;
     if (now >= join.expiresAt) return Promise.resolve("expired");
-    if (now < this.#autoUntil) return Promise.resolve("approved");
     const decided = Promise.withResolvers<JoinDecision>();
     const timer = setTimeout(() => this.#settle(join.nonce, "expired"), join.expiresAt - now);
-    this.#waiting.set(join.nonce, { join, decided, timer });
+    this.#waiting.set(join.nonce, { join, decided, timer, approved: join.kind === "machine" && this.isAuto(now) });
     const watchers = [...this.#watchers];
     this.#watchers.clear();
     for (const watcher of watchers) watcher(join);
@@ -72,8 +83,23 @@ export class PendingJoins {
   }
 
   /** Approves or denies the pending join with this nonce; false when there is none (decided, expired, unknown). */
-  decide(nonce: string, approve: boolean): boolean {
-    return this.#settle(nonce, approve ? "approved" : "denied");
+  decide(nonce: string, approve: boolean, code?: string): boolean {
+    const waiting = this.#waiting.get(nonce);
+    if (waiting === undefined) return false;
+    if (!approve) return this.#settle(nonce, "denied");
+    if (code === undefined) throw new JoinRefused("update this client to approve");
+    if (code !== waiting.join.code) throw new JoinRefused("the approval code does not match this join");
+    waiting.approved = true;
+    if (waiting.join.joinerConfirmed) this.#settle(nonce, "approved");
+    return true;
+  }
+
+  confirm(nonce: string): boolean {
+    const waiting = this.#waiting.get(nonce);
+    if (waiting === undefined) return false;
+    waiting.join = { ...waiting.join, joinerConfirmed: true };
+    if (waiting.approved) this.#settle(nonce, "approved");
+    return true;
   }
 
   list(): readonly PendingJoin[] {

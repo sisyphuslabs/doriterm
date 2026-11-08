@@ -8,7 +8,43 @@ const join = (nonce: string): PendingJoin => ({
   hostId: "host",
   kind: "machine",
   fingerprint: "3FA9",
+  code: "123 456",
+  joinerConfirmed: false,
   expiresAt: Date.now() + 60_000,
+});
+
+test.each(["approve-first", "confirm-first"] as const)("both confirmations are required in %s order", async (order) => {
+  const pending = new PendingJoins();
+  const asked = pending.ask(join("a"));
+  if (order === "approve-first") pending.decide("a", true, "123 456");
+  else pending.confirm("a");
+  expect(pending.list()).toHaveLength(1);
+  expect(pending.list()[0]?.joinerConfirmed).toBe(order === "confirm-first");
+  if (order === "approve-first") pending.confirm("a");
+  else pending.decide("a", true, "123 456");
+  expect(await asked).toBe("approved");
+  expect(pending.list()).toEqual([]);
+});
+
+test("missing and wrong approval codes cannot approve, while denial needs none", async () => {
+  const pending = new PendingJoins();
+  const asked = pending.ask(join("a"));
+  expect(() => pending.decide("a", true)).toThrow("update this client to approve");
+  expect(() => pending.decide("a", true, "987 654")).toThrow("code");
+  expect(pending.list()).toHaveLength(1);
+  expect(pending.decide("a", false)).toBe(true);
+  expect(await asked).toBe("denied");
+});
+
+test("auto never approves a client and no pending join can lack its code", async () => {
+  const pending = new PendingJoins();
+  pending.setAuto(Date.now() + 60_000);
+  const asked = pending.ask({ ...join("client"), kind: "client" });
+  pending.confirm("client");
+  expect(pending.list()).toHaveLength(1);
+  expect(() => pending.ask({ ...join("bad"), code: "" })).toThrow("code");
+  pending.decide("client", false);
+  expect(await asked).toBe("denied");
 });
 
 describe("pending joins (section 4.3)", () => {

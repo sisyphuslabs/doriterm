@@ -31,6 +31,7 @@ export interface E2eeDeps {
   readonly pairing: PairingStore;
   /** The mesh membership, when this host keeps one; its authorize index is consulted before the devices. */
   readonly mesh?: MeshStore | undefined;
+  readonly resumeKey?: ((key: string) => boolean) | undefined;
   readonly log: (line: string) => void;
   /** IP-literal LAN URLs of this host's `/v1/e2ee`, sent to clients in message 2. */
   readonly lanUrls: readonly string[];
@@ -45,6 +46,14 @@ export interface E2eeDeps {
 }
 
 const refuse = (closeCode: number, reason: string): Authorization => ({ accept: false, closeCode, reason });
+const meshClaims = new WeakMap<SecureLink, PairingClaim>();
+
+/** A mesh offer is spent by its first card, leaving a no-terminal refusal before the card unspent. */
+export function spendMeshOffer(secure: SecureLink): boolean {
+  const claim = meshClaims.get(secure);
+  meshClaims.delete(secure);
+  return claim?.complete() === true;
+}
 
 const HELLO_LINE = new TextEncoder().encode(HELLO_REQUEST_LINE);
 
@@ -116,6 +125,8 @@ export async function acceptE2ee(
       const index = meshIndex(deps);
       if ("refused" in index) return refuse(1011, index.refused);
       const peer = sessionPeer(hello.stream, hello.remoteStatic, index.index, deps.devices);
+      if (hello.stream === "roster" && peer.kind === "refused" && peer.reason === "unknown device" &&
+        deps.resumeKey?.(base64urlEncode(hello.remoteStatic)) === true) return { accept: true };
       if (peer.kind === "refused" && peer.reason !== "unknown device")
         deps.log(`mesh: refused a session: ${peer.reason}`);
       return authorizationOf(peer);
@@ -150,11 +161,11 @@ export async function acceptE2ee(
     return undefined;
   }
   if (secure.kind !== SessionKind.Session && secure.stream === "mesh") {
-    if (claim?.complete() !== true) {
-      deps.log("mesh join refused: the offer was already used");
-      secure.close(CloseCode.UnknownDevice, "the pairing offer was already used");
+    if (claim === undefined) {
+      secure.close(CloseCode.UnknownDevice, "no mesh pairing claim");
       return undefined;
     }
+    meshClaims.set(secure, claim);
     deps.log(`mesh join from "${deviceName}"`);
   } else if (secure.kind !== SessionKind.Session) {
     const index = meshIndex(deps);

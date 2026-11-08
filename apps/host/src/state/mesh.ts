@@ -100,17 +100,22 @@ export class MeshStore {
    * cleaned, in the same hold. Nothing `fn` merged after its last signature is written if it throws; a counter it persisted stays, with
    * the records and held pool it was derived from.
    */
-  transact<T>(fn: (tx: MeshTx) => T): T {
+  transact<T>(fn: (tx: MeshTx) => T, rollback?: () => void): T {
     return this.#locked(() => {
       const tx = new Transaction(this.#require(), {
         evaluate: this.#evaluate,
         persistCounter: (file, selfN, view) => this.#persistCounter(file, selfN, view),
         log: this.#options.log,
       });
-      const value = fn(tx);
-      const next = tx.commit();
-      if (next !== undefined) this.#write(next.file, next.view);
-      return value;
+      try {
+        const value = fn(tx);
+        const next = tx.commit();
+        if (next !== undefined) this.#write(next.file, next.view);
+        return value;
+      } catch (error) {
+        rollback?.();
+        throw error;
+      }
     });
   }
 

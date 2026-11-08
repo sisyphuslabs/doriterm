@@ -9,7 +9,7 @@ import { type Host, startHost } from "../host.ts";
 import { parseRecord } from "@doriface/mesh";
 import { loadHostIdentity } from "../state/host-keys.ts";
 import { MeshStore } from "../state/mesh.ts";
-import { pendingFromWire } from "../state/pairing.ts";
+import { PairingStore, pendingFromWire } from "../state/pairing.ts";
 import { FakeRelay } from "../testing/fake-relay.ts";
 import { createHcSession, type HcSession } from "../testing/hc-session.ts";
 import { RelayClientBridge } from "../testing/relay-client-bridge.ts";
@@ -78,6 +78,47 @@ afterAll(async () => {
 const records = (dir: string) => new MeshStore(dir, { log: () => {} }).read()?.records;
 
 describe("J-1: a link join run by the joiner's running host", () => {
+  test.each([false, undefined])("ask=%s closes before the card and leaves an asking offer unspent", async (ask) => {
+    const a = await start("inviter", true);
+    await relay.answers.next();
+    const b = await start("joiner", false);
+    const offer = pendingFromWire(await requestControl(a.dir, { op: "mesh-pair", auto: false }));
+    const identity = loadHostIdentity(a.dir);
+    const target = buildPairingUrl({
+      webOrigin: "https://doriface.example", hostId: identity.hostId, noiseStaticPub: identity.noise.publicKey,
+      signPub: identity.sign.publicKey, linkSecret: offer.linkSecret, relayUrl: bridge.url, mesh: true,
+    });
+    const result = await requestControl(b.dir, {
+      op: "mesh-join", target, fingerprint: undefined, name: undefined, relay: undefined, yes: true, ask,
+    }).then(() => "joined", (error: unknown) => String(error));
+    expect(result).toContain("this invite asks for a code");
+    expect(result).toContain("terminal");
+    expect(result).toContain("one-line command");
+    expect(new PairingStore(a.dir).read()?.expiresAt).toBe(offer.expiresAt);
+    expect(records(a.dir)).toHaveLength(1);
+    expect(records(b.dir)).toBeUndefined();
+  });
+
+  test("an interactive join answers N through the running host even with yes", async () => {
+    const a = await start("asking", true);
+    await relay.answers.next();
+    const b = await start("declining", false);
+    const offer = pendingFromWire(await requestControl(a.dir, { op: "mesh-pair", auto: false }));
+    const identity = loadHostIdentity(a.dir);
+    const target = buildPairingUrl({
+      webOrigin: "https://doriface.example", hostId: identity.hostId, noiseStaticPub: identity.noise.publicKey,
+      signPub: identity.sign.publicKey, linkSecret: offer.linkSecret, relayUrl: bridge.url, mesh: true,
+    });
+    const codes: string[] = [];
+    const result = await requestControl(b.dir, {
+      op: "mesh-join", target, fingerprint: undefined, name: undefined, relay: undefined, yes: true, ask: true,
+    }, async (code) => { codes.push(code); return false; }).then(() => "joined", (error: unknown) => String(error));
+    expect(result).toContain("not joined");
+    expect(codes).toHaveLength(1);
+    expect(records(a.dir)).toHaveLength(1);
+    expect(records(b.dir)).toBeUndefined();
+    expect(new PairingStore(a.dir).read()).toBeUndefined();
+  });
   test("mesh pair on A, mesh join on B's host: both hold the welcome, the joiner's ack of its admission reaches the inviter on the kept session, and both files are equal", async () => {
     const a = await start("alpha", true);
     await relay.answers.next();

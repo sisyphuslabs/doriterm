@@ -1,6 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import type { MeshStatus } from "./mesh-status.ts";
 import { parseMeshStatus } from "./mesh-status-parse.ts";
+import { parseMeshOfferDoc } from "./mesh-status.ts";
+
+test("a browser invite request preserves the requirement to ask", () => {
+  expect(parseMeshOfferDoc({ request: "browser-invite", client: true })).toEqual({
+    request: "browser-invite", client: true,
+  });
+});
+
+test("pending join readers retain the compared code and the joining person's confirmation", () => {
+  const pending = {
+    nonce: "join", name: "browser", hostId: "b".repeat(26),
+    fingerprint: member.fingerprint, expiresAt: "2026-11-03T12:08:00.000Z",
+    kind: "client", code: "123 456", joinerConfirmed: true,
+  };
+  expect(parseMeshStatus({ ...status, pending: [pending] })?.pending).toEqual([pending]);
+});
 
 const member = {
   hostId: "h".repeat(26),

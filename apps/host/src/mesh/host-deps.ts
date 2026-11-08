@@ -74,11 +74,14 @@ export function meshDeps(options: MeshDepsOptions) {
       kind,
     }));
   const hooks = options.hooks ?? syncHooks(sync, monotonicClock, pending);
+  hostMesh.sweepRoster();
   return {
     hooks,
     hostMesh,
+    resumeKey: (key: string) => hostMesh.resumes.hasKey(key),
     sync,
     meshStream: (secure: SecureLink) => hostMesh.serve(secure),
+    rosterStream: (secure: SecureLink) => hostMesh.roster(secure),
     meshPresence: (secure: SecureLink) => sync.presence(secure),
     meshCommands: new MeshCommands({ store: mesh, stateDir, identity, closeRevoked, hooks, log }),
     meshStatus: () => storedMeshStatus(mesh, identity, hooks),

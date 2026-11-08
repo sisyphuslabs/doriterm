@@ -58,7 +58,7 @@ function splitLine(payload: Uint8Array): {
  * mesh stream, `"push"` a device's push stream (web push subscriptions and notice answers). On a pairing, absent is a
  * device pairing and `"mesh"` a machine join.
  */
-export type Stream = "hc" | "mesh" | "push";
+export type Stream = "hc" | "mesh" | "push" | "roster";
 
 /** The mesh and push streams start with their own lines, so their message 1 carries no early bytes. */
 const takesEarly = (stream: Stream | undefined): boolean => stream === undefined || stream === "hc";
@@ -83,7 +83,7 @@ export type Hello =
   | { readonly kind: "session"; readonly early: Uint8Array; readonly stream: Stream | undefined };
 
 function streamOf(value: unknown, pairing: boolean): Stream | undefined {
-  if (value === undefined || value === "mesh" || ((value === "hc" || value === "push") && !pairing)) return value;
+  if (value === undefined || value === "mesh" || ((value === "hc" || value === "push" || value === "roster") && !pairing)) return value;
   throw new PayloadError(`stream ${JSON.stringify(value)} is not valid on a ${pairing ? "pairing" : "session"}`);
 }
 

@@ -197,3 +197,17 @@ test("a refused resume deletes the anchor immediately and asks for another invit
   expect(await failure).toContain("Ask for a new invite");
   expect(run.anchor()).toBeUndefined();
 });
+
+test("an already confirmed resume accepts a roster offer but keeps its original anchor", async () => {
+  const run = ceremony();
+  const anchor: JoinAnchor = {
+    offer, dialed, h: base64urlEncode(h), Nj: base64urlEncode(Ni),
+    expiresAt: Date.now() + 60_000, confirmed: true,
+  };
+  const done = runJoinCeremony(run.client, { ...run.options, resume: anchor });
+  const outcome = done.then((welcome) => welcome.offer, (error: unknown) => String(error));
+  await run.host.next();
+  run.host.send({ ...offer, nonce: "fresh-roster-nonce", commit: undefined });
+  run.host.send({ t: "done", mesh: offer.mesh });
+  expect(await outcome).toEqual(offer);
+});

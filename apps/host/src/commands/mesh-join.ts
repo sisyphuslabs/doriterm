@@ -25,8 +25,8 @@ export const MESH_JOIN_USAGE = `usage: doriface-host mesh pair [--auto] [--no-qr
 
   mesh pair opens a single-use offer (10 minutes) for another machine to join this host's mesh. The running host
   serves the join and asks here before it admits the machine (--auto admits without asking, for scripts).
-  mesh join joins the mesh of the member that printed the link or code. A typed code needs --fingerprint (at least
-  its first 4 groups); --yes skips only a link's confirmation.
+  mesh join compares a short code with the inviting machine. --yes trusts a one-line machine invite; it never
+  answers a code question. --fingerprint adds a pin from another channel on every kind of invite.
 
   --state-dir <dir>  the host's state (default $DORIFACE_HOST_STATE_DIR, else $XDG_STATE_HOME/doriface-host)
   --web-origin <url> print <url>/pair#… instead of doriface://pair#… (both are mesh join arguments)
@@ -112,11 +112,13 @@ async function pair(args: readonly string[], out: (text: string) => void): Promi
     clearTimeout(timer),
   );
   if (!isRecord(pending) || typeof pending["nonce"] !== "string") throw new Error("the running host sent no join");
-  const { nonce, name, hostId, fingerprint } = pending;
-  const approve = await ask(`admit "${String(name)}" ${String(hostId)} fingerprint ${String(fingerprint)}?`, out);
-  const decided = await requestControl(stateDir, { op: "mesh-approve", nonce, approve });
+  const { nonce, name, kind, code } = pending;
+  if (typeof code !== "string") throw new Error("update the inviting host to compare a join code");
+  out("Compare by a call or in person, not in the chat that carried the link.\n");
+  const approve = await ask(`admit "${String(name)}" (${kind === "client" ? "browser" : "machine"}) code ${code}? Approve only if the joining screen shows the same code`, out);
+  const decided = await requestControl(stateDir, { op: "mesh-approve", nonce, approve, code });
   const done = isRecord(decided) && decided["decided"] === true;
-  out(done ? (approve ? "admitted\n" : "denied\n") : "the join expired or was decided elsewhere\n");
+  out(done ? (approve ? "approved; waiting for the joiner to confirm the code\n" : "denied\n") : "the join expired or was decided elsewhere\n");
 }
 
 async function join(args: readonly string[], out: (text: string) => void, log: (line: string) => void): Promise<void> {
@@ -140,15 +142,19 @@ async function join(args: readonly string[], out: (text: string) => void, log: (
   const wait = values["wait-host"] === undefined ? undefined : waitSeconds(values["wait-host"]);
   const target = parseTarget(given);
   const stateDir = values["state-dir"] ?? defaultStateDir();
-  const question =
-    target.kind === "link"
-      ? `join the mesh of host ${target.link.hostId}, fingerprint ${fingerprintOf(target.link.noiseStaticPub)}?`
-      : undefined;
   if (wait !== undefined) await waitForHost(stateDir, Date.now() + wait * 1000, out);
-  const yes = values.yes || (question !== undefined && (await ask(question, out)));
-  const request = { target: given, fingerprint: values.fingerprint, name: values.name, relay: values.relay, yes };
+  const yes = values.yes;
+  const canAsk = process.stdin.isTTY === true;
+  const inviter = target.kind === "link" ? target.link.hostId : "the inviting machine";
+  const confirm = async (code: string): Promise<boolean> => {
+    out("Compare by a call or in person, not in the chat that carried the link.\n");
+    const matched = await ask(`does ${inviter} show code ${code}?`, out);
+    if (matched) out(`waiting for approval on ${inviter}\n`);
+    return matched;
+  };
+  const request = { target: given, fingerprint: values.fingerprint, name: values.name, relay: values.relay, yes, ask: canAsk };
   if (await controlIsLive(stateDir)) {
-    const joined = await requestControl(stateDir, { op: "mesh-join", ...request });
+    const joined = await requestControl(stateDir, { op: "mesh-join", ...request }, confirm);
     const meshId = isRecord(joined) ? joined["meshId"] : undefined;
     return out(`joined mesh ${String(meshId)}; the running host keeps the session for sync\n`);
   }
@@ -162,7 +168,8 @@ async function join(args: readonly string[], out: (text: string) => void, log: (
     name: values.name ?? core.name,
     hcId: core.id,
     yes,
-    confirm: async () => false,
+    ask: canAsk,
+    confirm,
     relayUrl: values.relay,
     defaultRelayUrl: DEFAULT_RELAY_URL,
     proofs: await openReadOnlyRelayPasses(stateDir, identity, log),

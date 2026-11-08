@@ -57,7 +57,7 @@ export async function clientFlight(
     );
     return finishing(SessionKind.Session, handshake, first);
   }
-  if (opts.stream === "hc" || opts.stream === "push") {
+  if (opts.stream === "hc" || opts.stream === "push" || opts.stream === "roster") {
     throw new PayloadError(`stream "${opts.stream}" is not valid on a pairing`);
   }
   const hello = encodePairingHello(pairing.name, opts.stream);

@@ -36,6 +36,7 @@ export interface GatewayOptions {
     | (E2eeDeps & {
         readonly sessions: LiveSessions;
         readonly meshStream?: MeshStreamHandler;
+        readonly rosterStream?: MeshStreamHandler;
         /** Every authenticated session, so a member's hc line counts as its presence (section 8.2). */
         readonly meshPresence?: MeshStreamHandler;
       })
@@ -189,6 +190,11 @@ export function createGateway(options: GatewayOptions): Gateway {
     if (secure === undefined) return;
     e2ee.meshPresence?.(secure);
     if (secure.stream === "mesh") return serveMesh(secure);
+    if (secure.stream === "roster") {
+      if (e2ee.rosterStream === undefined) secure.close(1000, "this host serves no roster stream");
+      else e2ee.rosterStream(secure);
+      return;
+    }
     if (secure.stream === "push") return servePush(secure);
     // A pairing session is not gated by authorize's session limit, yet the new device keeps it as its workspace.
     const room =

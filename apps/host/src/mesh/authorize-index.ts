@@ -23,6 +23,9 @@ export interface MemberEntry {
    * have been one. A client connects to machines and never dials one (design of #942).
    */
   readonly kind?: MemberKind | undefined;
+  /** The governing admission, retained for device limits, removal previews and the roster marker. */
+  readonly admitter?: string | undefined;
+  readonly admitId?: string | undefined;
 }
 
 /** A member the view removed, with every Noise and device key any of its cards ever named. */
@@ -97,7 +100,16 @@ export function indexOf(records: readonly Signed[], view: View, generation: numb
     const governing = byHash.get(view.governing.get(signPub) ?? "");
     const card = governing === undefined ? undefined : cardOfRecord(governing);
     if (card === undefined) return [];
-    return [entryOf(card, view.noise.get(signPub) ?? card.noisePub, view.name.get(signPub) ?? card.name)];
+    const admitter = view.admitter.get(signPub);
+    if (card.kind === "client") {
+      const author = byHash.get(view.governing.get(admitter ?? "") ?? "");
+      const authorCard = author === undefined ? undefined : cardOfRecord(author);
+      if (admitter === undefined || !view.members.has(admitter) || authorCard === undefined || authorCard.kind === "client") return [];
+    }
+    return [{
+      ...entryOf(card, view.noise.get(signPub) ?? card.noisePub, view.name.get(signPub) ?? card.name),
+      admitter, admitId: view.governing.get(signPub),
+    }];
   };
   const revoked = [...view.revoked].flatMap((signPub): RevokedEntry[] => {
     const cards = everything.get(signPub) ?? [];
@@ -213,6 +225,15 @@ export class AuthorizeIndex {
   /** Members in the view: what a plan's `machines` limit counts. */
   get memberCount(): number {
     return this.#signPubs.size;
+  }
+
+  /** A plan's machines limit counts only machines, never browsers or phones. */
+  get machineCount(): number {
+    return this.#byNoise.size;
+  }
+
+  clients(): readonly MemberEntry[] {
+    return [...this.#clientDevices.values()].filter((entry) => this.client(entry.devicePub ?? "") !== undefined);
   }
 
   isMember(signPub: string): boolean {

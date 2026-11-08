@@ -1,6 +1,5 @@
 import {
   base64urlEncode,
-  fingerprintOf,
   type HostIdentity,
   type PairingSecret,
   rawStaticKey,
@@ -38,6 +37,7 @@ export interface JoinOptions {
   readonly hcId: string;
   /** Skips the link's interactive confirmation; never a typed code's fingerprint. */
   readonly yes: boolean;
+  readonly ask?: boolean | undefined;
   readonly confirm: (question: string) => Promise<boolean>;
   readonly relayUrl: string | undefined;
   readonly defaultRelayUrl: string;
@@ -74,15 +74,11 @@ async function refuseEarly(options: JoinOptions): Promise<void> {
   if (!checkName(options.name)) throw new JoinRefused(`"${options.name}" is not a valid mesh name`);
   const { target } = options;
   if (target.kind === "host") throw new JoinRefused("mesh join takes a mesh pairing link or code, not a hostId");
-  if (target.kind === "code") {
-    fingerprintGiven(options.fingerprint);
-    return;
-  }
+  if (options.fingerprint !== undefined) fingerprintGiven(options.fingerprint);
+  if (target.kind === "code") return;
   if (target.link.mesh !== true)
     throw new JoinRefused("this link pairs a device: run doriface-host mesh pair on the member");
-  if (options.yes) return;
-  const question = `join the mesh of host ${target.link.hostId}, fingerprint ${fingerprintOf(target.link.noiseStaticPub)}?`;
-  if (!(await options.confirm(question))) throw new JoinRefused("not joined");
+  if (options.fingerprint !== undefined) confirmFingerprint(options.fingerprint, target.link.noiseStaticPub);
 }
 
 async function inviterOf(options: JoinOptions): Promise<Inviter> {
@@ -96,7 +92,7 @@ async function inviterOf(options: JoinOptions): Promise<Inviter> {
   const relayUrl = options.relayUrl ?? options.defaultRelayUrl;
   const record = await lookupPairSlot({ relayUrl, code: target.code });
   if (record === undefined) throw new JoinRefused("no host is offering this code on the relay: it may have expired");
-  confirmFingerprint(options.fingerprint, record.noiseStaticPub);
+  if (options.fingerprint !== undefined) confirmFingerprint(options.fingerprint, record.noiseStaticPub);
   const pairing = { mode: "code", code: target.code, name } as const;
   return {
     hostId: record.hostId,
@@ -140,6 +136,8 @@ export async function joinMesh(options: JoinOptions): Promise<Joined> {
   const own = { name: options.name, hcId: options.hcId, ...(devicePub === undefined ? {} : { devicePub }) };
   const mesh = new MeshStore(options.stateDir, { log: options.log });
   const dialed = { hostId: inviter.hostId, noisePub: inviter.hostKey };
-  const meshId = await runJoiner(lines, { identity: options.identity, mesh, own, dialed, deadline, log: options.log });
+  const meshId = await runJoiner(lines, { identity: options.identity, mesh, own, dialed, deadline, log: options.log,
+    handshakeHash: secure.handshakeHash, yes: options.yes,
+    confirm: options.ask === true ? options.confirm : undefined });
   return { meshId, hostId: inviter.hostId, secure, lines };
 }
