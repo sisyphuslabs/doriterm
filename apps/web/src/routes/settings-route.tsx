@@ -91,8 +91,9 @@ export function SettingsRoute() {
         <div {...titlebar} className="flex items-center gap-1 pt-3 pr-2 pb-1 pl-[var(--titlebar-inset-start,0.5rem)]">
           {back}
           <h1 className="text-xl font-semibold text-foreground">Settings</h1>
+          {/* In the title row, so the phone header keeps its height and the sections below do not move (#1460). */}
+          <div className="ml-2 min-w-0 flex-1">{search}</div>
         </div>
-        <div className="px-2 pb-1">{search}</div>
         {nothing}
         <TabList className="scroll-px-2 px-2">
           {shown.map((entry) => (
