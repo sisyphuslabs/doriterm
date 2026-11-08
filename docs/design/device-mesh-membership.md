@@ -1,7 +1,8 @@
 # Devices and browsers are mesh members: membership, the web's join, relay-only transport
 
-Status: revision 4 for the design gate, 2026-11-08. Issues #942 and #1381. Revision 4 folds revision 3's FIX_FIRST (§15)
-and the relay transport rows (§8). Revision 2 (device membership) was folded from revision 1's FIX_FIRST and was not
+Status: revision 5 for the design gate, 2026-11-08. Issues #942 and #1381. Revision 5 folds revision 4's FIX_FIRST (§15):
+the joining side confirms the join code too (§9). Revision 4 folded revision 3's FIX_FIRST and the relay transport rows
+(§8). Revision 2 (device membership) was folded from revision 1's FIX_FIRST and was not
 yet re-reviewed when the scope widened. Revision 3 kept revision 2's mechanism
 (§5, §6 and §10 are revision 2's §2, §3 and §4, with their folds) and adds what #1381 and the owner's follow-up ask for:
 
@@ -48,7 +49,7 @@ Three things are missing, all of them in the client or at its edge:
 
 | how the browser arrives                               | path                                                                 | approval                                             |
 | ----------------------------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------- |
-| **a join link or code from any member** (new default) | the existing mesh join on a mesh offer, with a `kind: "client"` card | always asked on the inviter, with the join code (§9) |
+| **a join link or code from any member** (new default) | the existing mesh join on a mesh offer, with a `kind: "client"` card | the join code, confirmed on both sides (§9)          |
 | **already paired with one host** (migration)          | the `"roster"` stream admits the paired key (§5)                     | none: the pairing already was the approval (§5, §11) |
 
 Both end in the same state: the browser is a client member of the mesh, it holds a verified record bundle (§6), and it
@@ -69,8 +70,8 @@ The browser runs the join a machine runs today (`apps/host/src/mesh/join-dial.ts
 
 The session is a pairing session (IKpsk2) over the relay: a link carries the inviter's hostId, Noise key and link secret;
 a typed code runs CPace on a `?pair=<slot>` session, exactly as `mesh join <code>` does. The host side is `serveJoin`
-unchanged except for the join code's commitment exchange (§9), the plan rule (§5.2) and "client invites always ask"
-(§4.3). The browser runs **one** join session per invite: a session that breaks after the offer ends the attempt with
+unchanged except for the join code's commitment exchange and the joiner's confirmation (§9), the plan rule (§5.2) and
+"client invites always ask" (§4.3). The browser runs **one** join session per invite: a session that breaks after the offer ends the attempt with
 "Ask for a new invite", and the browser never runs it again on its own (§9 says why).
 
 After `done` the browser closes the join session and stores the bundle. It never keeps the mesh stream open: a client
@@ -98,16 +99,18 @@ auto-admitted, as today. `PendingJoins` approves every join while `setAuto` is o
 
 ### 4.4 Join flow UX
 
-| step | joining browser (phone or desktop)                                                                                                                                                                                                             | approving member (the inviter's CLI, or any web client connected to it)                                                                                                             |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | opens the link (or scans the QR, or types the code on `/join`). Sees **Join this mesh**: the inviter's name, "This browser becomes a member and reaches every machine in the mesh". Name field prefilled from the device. One button: **Join** | nothing yet                                                                                                                                                                         |
-| 2    | **Waiting for approval on _studio_**, and the join code `482 913` in large digits: "Check that _studio_ shows the same code"                                                                                                                   | a pending join appears: **Approve "Pixel 9" (browser)?** with the join code `482 913`: "Approve only if the joining screen shows the same code". **Approve** / **The codes differ** |
-| 3a   | codes match, approved: **Joined.** The machine list opens and fills in as each member answers                                                                                                                                                  | "Pixel 9 joined the mesh"                                                                                                                                                           |
-| 3b   | denied: **Not joined: _studio_ denied this browser.** "Ask for a new invite." The link is spent                                                                                                                                                | "Denied. The invite is spent; open a new one"                                                                                                                                       |
-| 3c   | the offer expired, was used, or the inviter is unreachable: the existing sentences (`handshake.ts` `REASONS`), with "mesh pair" in place of "pair"                                                                                             | nothing                                                                                                                                                                             |
+| step | joining browser (phone or desktop)                                                                                                                                                                                                                                                                            | approving member (the inviter's CLI, or any web client connected to it)                                                                                                             |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | opens the link (or scans the QR, or types the code on `/join`). Sees **Join this mesh**: the inviter's name, "This browser becomes a member and reaches every machine in the mesh". Name field prefilled from the device. One button: **Join**                                                                | nothing yet                                                                                                                                                                         |
+| 2    | **Does _studio_ show this code?** The join code `482 913` in large digits: "Look at _studio_'s screen, or ask the person who sent the invite. If it shows no code or another one, the invite is not from your mesh." **The codes match** / **The codes differ**. Nothing is stored and nothing is dialled yet | a pending join appears: **Approve "Pixel 9" (browser)?** with the join code `482 913`: "Approve only if the joining screen shows the same code". **Approve** / **The codes differ** |
+| 2b   | after **The codes match**: **Waiting for approval on _studio_**, the code still shown                                                                                                                                                                                                                         | after **Approve**, until the joiner confirms: "Waiting for _Pixel 9_ to confirm the code"                                                                                           |
+| 3a   | both confirmed: **Joined.** The machine list opens and fills in as each member answers                                                                                                                                                                                                                        | "Pixel 9 joined the mesh"                                                                                                                                                           |
+| 3b   | denied: **Not joined: _studio_ denied this browser.** "Ask for a new invite." The link is spent                                                                                                                                                                                                               | "Denied. The invite is spent; open a new one"                                                                                                                                       |
+| 3c   | the offer expired, was used, or the inviter is unreachable: the existing sentences (`handshake.ts` `REASONS`), with "mesh pair" in place of "pair"                                                                                                                                                            | nothing                                                                                                                                                                             |
+| 3d   | **The codes differ**: **Not joined.** "This invite may not come from your mesh. Ask for a new one from a machine you can see." Nothing was stored                                                                                                                                                             | "The joining screen showed a different code. The invite is spent; open a new one"                                                                                                   |
 
-The browser never shows a host fingerprint to compare in this flow. A link already carries the inviter's key, and a
-typed code proves it through CPace; §9 says why the join code replaces the comparison.
+The browser shows no long fingerprint in this flow. The join code, confirmed on **both** screens, replaces it (§9). The
+join is complete only when the approver approved **and** the joining person confirmed; either one alone admits nothing.
 
 ## 5. The `"roster"` stream
 
@@ -246,9 +249,13 @@ the relay only when direct misses its 300 ms budget (`apps/web/src/connection/co
 | a member's uplink is down                         | the relay closes that dial with 4404 (host offline). Only that member's store backs off (`backoffDelay`, at most 30 s) and shows the member offline                                                                                                                                                                |
 | what it costs                                     | the browser loses the local-network win of the 300 ms direct race and puts the relay round trip in front of every call. The desktop shell keeps its fast local path to its paired host                                                                                                                             |
 
-- **Which surface.** The direct race runs only where the desktop shell's forwarder is present (`canForwardPlainWs()`,
-  `apps/web/src/connection/direct-forward.ts`). In a plain browser `connect()` goes straight to the relay. Saved settings
-  keep parsing a `directUrl` (downgrade) and a browser ignores it.
+- **Which surface, today and after PR 3.** Today a plain browser **does** take a direct path: `directDial` dials `wss://`
+  and loopback addresses from any page, and plain `ws://` from a page that is not a secure context
+  (`apps/web/src/connection/direct-address.ts:63-67`), and `connect()` races that dial against the relay. PR 3 (§14)
+  adds a gate at the top of `openDirect` (`apps/web/src/connection/connect.ts`): unless the desktop shell's forwarder is
+  present (`canForwardPlainWs()`, `apps/web/src/connection/direct-forward.ts`), it returns without dialling, so
+  `connect()` goes to the relay. The loopback path of a page served by a host on the same computer is a separate path
+  (above) and is unchanged. Saved settings keep parsing a `directUrl` (downgrade) and a browser ignores it.
 - **Loopback** is a local socket authenticated by a token, not a network path, and it carries no device key (revision 4
   §4).
 - The status bar's path label says **Relay** on every browser session. The Direct label and its reasons (#446) remain
@@ -262,17 +269,17 @@ the relay only when direct misses its 300 ms budget (`apps/web/src/connection/co
 
 Today a mesh join asks a person to compare two 40-character fingerprints. The CLI `mesh join <link>` asks "join the mesh
 of host H, fingerprint XXXX XXXX …?"; `mesh pair` asks "admit N H fingerprint XXXX XXXX …?"; the web's pending-join row
-shows the joiner's fingerprint. People do not compare ten groups of hex reliably, and the joiner-side question checks
-something the link already proved.
+shows the joiner's fingerprint. People do not compare ten groups of hex reliably. This section replaces both questions
+with one 6-digit code that **both** people confirm, each against the other side's screen.
 
 **The rule:** a comparison step names the trust problem it solves, or it is not in the flow.
 
-| comparison                                | the problem it would solve                                                | decision                                                                                                                                                                      |
-| ----------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| joiner checks the inviter's key (link)    | a link from someone else's host, or a link substituted in transit         | **replaced by the join code**: a substituted link puts the joiner in a session with the substituter, whose join code is independent of the one the real inviter shows (below) |
-| joiner checks the inviter's key (code)    | the relay answering the slot lookup with another host that knows the code | **replaced by the join code**: CPace proves only that the other end knows the code, and a leaked code is known to the attacker too. The join code is what catches this        |
-| approver checks the joiner                | a leaked invite used by someone else                                      | **kept, as a 6-digit join code** shown on both sides                                                                                                                          |
-| relay or account "vouches" for the joiner | —                                                                         | **not used**: the relay is outside the trust boundary (it holds no key that opens a session), so it cannot vouch                                                              |
+| comparison                                | the problem it would solve                                                | decision                                                                                                                                                                                                                                                   |
+| ----------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| joiner checks the inviter's key (link)    | a link from someone else's host, or a link substituted in transit         | **replaced by the joiner's confirmation of the join code**: a substituted link puts the joiner in a session with the substituter. The real inviter shows no code for it, or an independent one (below), so the joining person answers **The codes differ** |
+| joiner checks the inviter's key (code)    | the relay answering the slot lookup with another host that knows the code | **replaced by the joiner's confirmation of the join code**: CPace proves only that the other end knows the code, and a leaked code is known to the attacker too. The confirmed join code is what catches this                                              |
+| approver checks the joiner                | a leaked invite used by someone else                                      | **kept, as a 6-digit join code** that the approver confirms                                                                                                                                                                                                |
+| relay or account "vouches" for the joiner | —                                                                         | **not used**: the relay is outside the trust boundary (it holds no key that opens a session), so it cannot vouch                                                                                                                                           |
 
 **The join code** is a short authentication string with a commitment, the construction of Bluetooth's numeric
 comparison: the side that answers last commits to its contribution before it sees the other's. Without the commitment,
@@ -287,37 +294,67 @@ host   -> reveal  { Ni }                                    (Ni: 32 fresh random
 device    closes the session unless SHA-256("doriface/1.3 join commit" || h || Ni) == commit
 both      code = uint32_be(HKDF-SHA256(ikm = h || Ni || Nj, salt = "", info = "doriface/1.3 mesh join code", 4)) mod 1_000_000
           shown as "482 913"
+device -> confirm { }                                       (only after the joining person chose "The codes match")
+          or abort { }                                      ("The codes differ": the device closes the session)
+host      signs the admit only when it holds both the approver's Approve and the device's confirm
+host   -> records ..., done                                 (the welcome, as today)
 ```
+
+The two confirmations are independent and may come in either order. The host waits for both while the offer's 10
+minutes last; an `abort`, a **The codes differ** on the approver, a dropped session or the expiry withdraws the pending
+join, and the offer stays spent. The joiner stores nothing and dials no member before its person confirms: a welcome can
+only arrive after `confirm`, and the joiner refuses one that arrives earlier.
 
 `h` is the session's Noise handshake hash (`SecureLink.handshakeHash`). It binds both static keys, both ephemerals and
 the pairing psk.
 
 - **An attacker as the inviter** (a substituted link, or the relay sending the victim's slot to a host that knows a
-  leaked code) commits to `Ni` before it sees `Nj`. `Nj` is fresh and uniform, so the victim's code is uniform whatever
-  the attacker sends.
+  leaked code). The attacker is also the approver of the victim's join, so its own Approve proves nothing; what stops it
+  is the **joiner's** confirmation. The joining person compares the code with the real inviter's screen. That screen
+  shows no pending join at all, or, if the attacker also joined the real offer as itself, the code of the attacker's
+  own session. The attacker commits to `Ni` before it sees `Nj`, and `Nj` is fresh and uniform, so the victim's code is
+  uniform whatever the attacker sends: it equals the real inviter's code with probability 10^-6. Otherwise the person
+  answers **The codes differ**, the browser stores nothing and the machine CLI exits "not joined".
 - **An attacker as the joiner** on the real offer picks `Nj` without knowing `Ni`, which the commitment hides. The
-  approver's code is uniform whatever the attacker sends.
-- **Both at once** (a leaked code and a malicious relay): the two codes are independent and uniform, so the two screens
-  match with probability 10^-6. **The offer is spent by the first card it receives**, whatever happens after: a session
-  that drops before the decision withdraws its pending join and does not reopen the offer. The joiner runs one session
-  per invite (§4.1). So an invite gives an attacker one try at 1 in 10^6, and a denial or a mismatch spends it.
-- The wire gains `commit`, `sas` and `reveal`, nothing else. The host adds `code` to the pending join (`PendingJoin`,
-  the mesh status document's pending entry, the `mesh-pending` control answer); the browser computes its own.
+  approver's code is uniform whatever the attacker sends, so the real approver's confirmation catches it.
+- **Both at once** (a leaked code and a malicious relay): the attacker wins only if a human confirms on each screen a
+  code that the other real screen shows. The two codes are independent and uniform, so they match with probability
+  10^-6. **The offer is spent by the first card it receives**, whatever happens after: a session that drops before both
+  decisions withdraws its pending join and does not reopen the offer. The joiner runs one session per invite (§4.1). So
+  an invite gives an attacker one try at 1 in 10^6, and a denial or a mismatch on either side spends it.
+- This is Bluetooth numeric comparison as specified: **both** devices require their person's confirmation.
+- The wire gains `commit`, `sas`, `reveal`, `confirm` and `abort`, nothing else. The host adds `code` and
+  `joinerConfirmed` to the pending join (`PendingJoin`, the mesh status document's pending entry, the `mesh-pending`
+  control answer); the browser computes its own code.
 - **Which offers carry it.** Every offer that asks: always for a browser (§4.3), and a machine's join on an offer that
   is not auto. A browser refuses an offer without `commit` ("this machine needs an update"). An auto offer (#668,
   machines only) carries none. There the joining machine keeps today's fingerprint question (`confirmFingerprint`,
   `apps/host/src/mesh/join-dial.ts`), because nobody compares a code on an auto offer. A machine that gets an offer
   without `commit` asks the fingerprint question, so stripping the commitment gains an attacker nothing.
+- **The machine CLI on an offer that asks.** `mesh join` replaces today's fingerprint question (link) and the required
+  `--fingerprint` (code) with a required code question: `does <host> show code 482 913? [y/N]`. `--yes` does not
+  answer it; a scripted machine join uses an auto offer (#668), which keeps today's fingerprint rules. A `--fingerprint`
+  given on an offer that asks is still checked against the inviter's key, as an extra pin. Only `y` sends `confirm`;
+  anything else sends `abort` and exits "not joined". So the joining machine keeps a human check on every offer that
+  asks, with 6 digits instead of 40 hex characters.
+
+**What each side verifies:**
+
+| side                                   | the software checks                                                                                                                                                                                                                                       | the person confirms                                                                   | without it                                                    |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| joiner (browser, or machine CLI)       | the session's static key is the link's inviter key (link), or the other end knows the code (CPace); `reveal` opens `commit`; the welcome passes §4.1's checks (the inviter is a machine member with the key it dialled, the joiner is the client it sent) | the real inviter's screen shows this code: **The codes match**, which sends `confirm` | no `confirm` is sent, nothing is stored, no member is dialled |
+| approver (inviter's CLI or web client) | the card's signature, kind and offer binding (`verifyCard`); the plan and format rules; one card per offer                                                                                                                                                | the joining screen shows this code: **Approve**                                       | no admit is signed                                            |
+| inviter host                           | holds both decisions before it signs the admit; spends the offer on the first card                                                                                                                                                                        | —                                                                                     | —                                                             |
 
 **What each side shows, and when:**
 
-| surface                                          | when                                 | shows                                                                                                                                        | mismatch                                                                                                          |
-| ------------------------------------------------ | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| joining browser                                  | from the reveal until the decision   | "Waiting for approval on _studio_" and the code `482 913`, large, tabular digits                                                             | the approver denies; the browser shows "Not joined: _studio_ denied this browser. Ask for a new invite."          |
-| approving web client (any client of the inviter) | while the join is pending            | name, kind (browser or machine), the code `482 913`, **Approve** / **The codes differ**. The joiner's long fingerprint stays under "Details" | **The codes differ** denies, spends the offer, and the row reads "Denied: the codes differed. Open a new invite." |
-| `doriface-host mesh pair` (CLI)                  | when the join arrives                | `admit "Pixel 9" (browser) code 482 913? Approve only if the joining screen shows the same code [y/N]`                                       | `N` denies, as today                                                                                              |
-| `doriface-host mesh join` (machine CLI)          | while waiting, on an offer that asks | `waiting for approval on <host>: code 482 913`. The question about the inviter's fingerprint is asked only on an offer without `commit`      | the inviter denies; the command prints the refusal, as today                                                      |
-| a member's list, after the join                  | any time                             | each member's long fingerprint, as today (`mesh-rows.tsx`), for audit                                                                        | —                                                                                                                 |
+| surface                                          | when                                    | shows                                                                                                                                                              | mismatch                                                                                                                                                                                               |
+| ------------------------------------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| joining browser                                  | from the reveal until both decisions    | "Does _studio_ show this code?" and the code `482 913`, large, tabular digits, **The codes match** / **The codes differ**; then "Waiting for approval on _studio_" | **The codes differ** sends `abort`: "Not joined. This invite may not come from your mesh." Nothing is stored. The approver's denial: "Not joined: _studio_ denied this browser. Ask for a new invite." |
+| approving web client (any client of the inviter) | while the join is pending               | name, kind (browser or machine), the code `482 913`, **Approve** / **The codes differ**. The joiner's long fingerprint stays under "Details"                       | **The codes differ** denies, spends the offer, and the row reads "Denied: the codes differed. Open a new invite."                                                                                      |
+| `doriface-host mesh pair` (CLI)                  | when the join arrives                   | `admit "Pixel 9" (browser) code 482 913? Approve only if the joining screen shows the same code [y/N]`                                                             | `N` denies, as today                                                                                                                                                                                   |
+| `doriface-host mesh join` (machine CLI)          | after the reveal, on an offer that asks | `does <host> show code 482 913? [y/N]`, then `waiting for approval on <host>`. The fingerprint question is asked only on an offer without `commit`                 | `N` sends `abort` and exits "not joined"; the inviter's denial prints the refusal, as today                                                                                                            |
+| a member's list, after the join                  | any time                                | each member's long fingerprint, as today (`mesh-rows.tsx`), for audit                                                                                              | —                                                                                                                                                                                                      |
 
 No comparison is shown when nobody is asked: a paired device's admission on the roster stream (§5.3), a machine on an
 auto offer (#668), and every refresh.
@@ -338,6 +375,18 @@ rule to its held view (§6).
 
 An orphan has no way back with the same keys. §5.1 refuses to admit its `signPub` again, so no host re-signs an admit
 for it on every refresh, which would fill the record log (`door`'s "mesh log full"). It joins again with new keys (§7).
+
+**The binding covers every client the machine admitted**, including browsers a person approved through its invites.
+Records do not say how a client was admitted, and the binding must be derived the same way on every host, so it is not
+scoped to roster admissions. The cost is that retiring a machine also removes the browsers it invited, so the commands
+that retire one say so before they act:
+
+- `doriface-host mesh revoke <machine>` and `doriface-host mesh leave` list the client members whose governing admit
+  that machine signed (`these browsers and phones leave the mesh with <machine>: Pixel 9, office laptop`) and ask
+  `[y/N]`. `--yes` skips only the question; the list is still printed.
+- The web's machine row **Remove** shows the same list in its confirmation.
+- Each removed browser shows "This browser was removed from the mesh" with **Join again** (§6), and joins through any
+  other member's invite with new keys.
 
 ### 10.2 From the mesh
 
@@ -380,11 +429,14 @@ roster stream stays a member only while this host still pairs its key._ It is en
 
 **The roster-admit marker.** No record says how a client was admitted, so the host keeps a local file,
 `roster-admits.json` in its state dir (0600, under the state lock, like `devices.json`). It holds one entry
-`{ signPub, devicePub }` per client this host admitted on the roster stream. The entry is written inside the admit's
-transaction (§5), under the same lock and before the `mesh.json` commit: the marker first (temporary file and rename),
-then the admit. A crash between the two leaves a marker whose client is not a member; the sweep ignores it and prunes it.
-The sweep revokes only a client that is in the marker, is governed by this host's admit, and whose `devicePub` is not in
-`devices.json`. A browser that joined on an invite (§4) is never in the marker, so the sweep never revokes it, at start or
+`{ admitId, signPub, devicePub }` per client this host admitted on the roster stream, where `admitId` is the id of the
+signed `admit` record (known before the commit). The entry is written inside the admit's transaction (§5), under the
+same lock and before the `mesh.json` commit: the marker first (temporary file and rename), then the admit. A transaction
+that aborts without crashing (a failed `mesh.json` write, a refusal after the marker was written) removes its entry
+before it releases the lock. A crash between the two leaves an entry whose admit was never stored; the sweep ignores it
+and prunes it. The sweep revokes only a client whose **governing admit's id** is an entry's `admitId`, whose governing
+admit is this host's, and whose `devicePub` is not in `devices.json`. So a stale entry can never match a later admit of
+the same keys, which has another id. A browser that joined on an invite (§4) is never in the marker, so the sweep never revokes it, at start or
 later.
 
 The sweep also runs after every admit. When `devices.json` or the marker cannot be read or does not parse, the sweep
@@ -436,13 +488,14 @@ web builds.
 
 | threat                                              | answer                                                                                                                                                                                                                                                                                                                                                                           |
 | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| a leaked invite link or code                        | the offer expires in 10 minutes and is spent by the first card; a client invite always asks (§4.3); both sides compare the join code (§9). The commitment makes each side's code uniform whatever an attacker sends (one try per invite, 1 in 10^6)                                                                                                                              |
-| the relay sits in the middle of a join              | a relay without the link secret or the code cannot finish the handshake. A relay that also holds a leaked code, or sends the slot to a host that does, sits in the inviter's seat, and the join code catches it (§9, one try at 1 in 10^6)                                                                                                                                       |
-| a substituted invite link                           | the joiner's session is with the substituter, whose code is independent of the real inviter's (§9). The fingerprint question is gone only on offers that carry the commitment                                                                                                                                                                                                    |
+| a leaked invite link or code                        | the offer expires in 10 minutes and is spent by the first card; a client invite always asks (§4.3). The approver confirms that the joining screen shows its code, so a stranger using the leaked invite is denied. The commitment makes each side's code uniform whatever an attacker sends (one try per invite, 1 in 10^6)                                                      |
+| the relay sits in the middle of a join              | a relay without the link secret or the code cannot finish the handshake (a link pins the inviter's key). A relay that also holds a leaked code, or sends the slot to a host that does, sits in the inviter's seat and approves its own pending join; the **joiner's** confirmation against the real inviter's screen catches it (§9, one try at 1 in 10^6)                       |
+| a substituted invite link                           | the joiner's session is with the substituter, which approves its own pending join. The joining person must confirm that the real inviter's screen shows the same code; that screen shows none, or an independent one (§9), so the person answers **The codes differ** and nothing is stored. The machine CLI's code question has no `--yes` bypass                               |
+| the joining side skips the comparison               | it cannot finish: the joiner sends `confirm` only from its person's **The codes match**, the host signs no admit without it, and a joiner refuses a welcome that arrives before its own `confirm` (§9)                                                                                                                                                                           |
 | legacy device pairing in a mesh (residual)          | `doriface-host pair` has no approver step, and §5.3 turns a paired device into a member without asking. A leaked device-pairing link is therefore owner-equivalent mesh-wide, as it is today through the paired host's hc. Stated here; an ask step for device pairing in a mesh is a follow-up                                                                                  |
 | the relay vouching instead of a comparison          | not used (§9): the relay holds no key that opens a session, so its word is not a trust root                                                                                                                                                                                                                                                                                      |
 | a member feeds the browser a forged roster          | every record passes `door` against the held set, and membership is `viewOf`. Only a member can admit, and the view's own rules hold                                                                                                                                                                                                                                              |
-| the admitting host is revoked, or leaves            | the admitter binding (§10.1) de-authorizes every client it admitted, on every member, at the write that revokes it                                                                                                                                                                                                                                                               |
+| the admitting host is revoked, or leaves            | the admitter binding (§10.1) de-authorizes every client it admitted, on every member, at the write that revokes it. This includes browsers a person approved through that host's invites; `mesh revoke` and `mesh leave` list them and ask first (§10.1)                                                                                                                         |
 | a migrated device is unpaired on its admitting host | revoked mesh-wide once that host runs and reaches the others. Until then it reaches B: §10.5 states this, and `devices revoke` points to `mesh revoke` on a live member                                                                                                                                                                                                          |
 | unpair races an admit                               | the admit re-reads `devices.json` inside its `mesh.json` transaction, and the sweep runs after every admit                                                                                                                                                                                                                                                                       |
 | a revoked member hides its revoke from a browser    | union with history retention: a revoke the browser holds is never dropped. A browser that never learned the revoke dials the revoked member, which is the partition limit of §10.2                                                                                                                                                                                               |
@@ -479,7 +532,9 @@ web builds.
 | `doriface-host connect --mesh`, mesh lines, gossip                    | unchanged                                                                                                                                                                               |
 | push                                                                  | a migrated device keeps its push subscriptions on its paired host (owner = its device key, unchanged). A joined browser registers on the machines it chooses as a client member (§10.6) |
 | older pending-join reader (status document)                           | `code` is an extra field; `objectOf` reads only named fields, so an older web client shows the fingerprint row as today                                                                 |
-| CLI `mesh join <link>` on a machine                                   | the fingerprint question is gone for a link; the command shows the join code while it waits                                                                                             |
+| CLI `mesh join <link or code>` on a machine, offer that asks          | the fingerprint question (link) and the required `--fingerprint` (code) become the required code question `does <host> show code 482 913? [y/N]`, with no `--yes` bypass (§9)           |
+| CLI `mesh join` on an auto offer (#668)                               | unchanged: the fingerprint question for a link, `--fingerprint` for a code, `--yes` as today                                                                                            |
+| replacing or retiring a machine that invited browsers                 | `mesh revoke <it>` / `mesh leave` names the browsers and phones it admitted, which leave the mesh with it (§10.1); each joins again through another member's invite                     |
 | B listed twice while A is up (A's hc lists B, and B is a view member) | as with two pairings today (#1331); showing machines per member from the client's own sessions is #1296                                                                                 |
 
 ## 14. Rollout and tests
@@ -499,17 +554,26 @@ Three pull requests, one behaviour each. Each is `Part of #942` and `Part of #13
      in no mesh means refused and nothing founded; the old stream union still refuses `"roster"` (decode test);
    - a client card on an auto offer is asked, not admitted; the pending join carries the code both ends compute from
      the same handshake (one test drives both ends of a real `secureLink` pair);
+   - both confirmations: after Approve and no `confirm`, nothing is signed and the pending join reads "waiting for the
+     joiner"; `confirm` and then Approve, in either order, admits once; an `abort` withdraws the pending join, signs
+     nothing and leaves the offer spent; a joiner that receives a welcome before it sent `confirm` refuses it;
+   - substituted inviter: a joiner dialled to an inviter that approves its own pending join does not store a bundle
+     until its person confirms, and **The codes differ** stores nothing; `mesh join` on an offer that asks exits "not
+     joined" on `N`, and `--yes` does not answer the code question; a `--fingerprint` that does not match still refuses;
    - commitment: a `reveal` that does not match `commit` is refused by the joiner; an inviter whose `Ni` changes after
      the commit is caught; the offer is spent by the first card, and a session dropped before the decision does not
      reopen it; a machine joiner asks the fingerprint question on an offer without `commit`;
    - marker: an invite-joined client survives the sweep at start and on `devices-changed`; an unpaired roster-admitted
-     device is revoked; a missing or unparsable marker signs nothing;
+     device is revoked; a missing or unparsable marker signs nothing; an admit transaction that aborts (a failed
+     `mesh.json` write) leaves no marker entry, and a stale entry whose `admitId` is not the client's governing admit
+     never matches a later invite admit of the same keys;
    - orphan: after A's revoke, a device also paired with B is refused on B's roster stream, and the record count does
      not grow over repeated refreshes; the same browser with new keys is admitted;
    - push: a client member opens the push stream on a machine and registers; a revoked or orphaned client's
      subscriptions are pruned at the index rebuild; a machine member is still refused;
    - admitter binding: after `mesh revoke` or `mesh leave` of A, a client A admitted is refused on B's hc stream and its
-     open session there closes;
+     open session there closes; `mesh revoke A` and `mesh leave` on A list every client A admitted (roster and invite)
+     before asking, and `--yes` skips only the question;
    - race: a device unpaired between the handshake and the admit is not admitted and nothing is signed; the sweep signs
      nothing when `devices.json` cannot be read; `devices revoke` of a client member prints the `mesh revoke` hint;
    - plan: with `machines` = N, client admissions at N-1 and N machines succeed and a machine join at N-1 still
@@ -526,9 +590,11 @@ Three pull requests, one behaviour each. Each is `Part of #942` and `Part of #13
    - both keys are created once across two concurrent loads; a store that cannot keep a `CryptoKey` gets raw bytes;
    - an empty store after a clear shows **Join a mesh**, not a broken session;
    - an offer without `commit` is refused; a join session that breaks after the offer is not run again; **Join again**
-     makes new keys.
-3. **Web: relay only** — `connect()` without the direct path in a browser; the Relay label; the settings parser ignoring
-   `directUrl` in a browser. Tests: in a browser no direct dial happens with a saved `directUrl` and LAN URLs offered;
+     makes new keys;
+   - the join page sends `confirm` only from **The codes match**, shows "Waiting for approval" after it, and on **The
+     codes differ** sends `abort`, stores nothing and dials nobody.
+3. **Web: relay only** — a new gate in `openDirect`: on the web surface it returns without dialling, so `connect()` goes
+   to the relay; the Relay label; the settings parser ignoring `directUrl` in a browser. Tests: in a browser no direct dial happens with a saved `directUrl` and LAN URLs offered;
    with the shell's forwarder present a paired host still races direct; a learned member is never dialled direct on
    either surface; the e2e below.
 
@@ -563,3 +629,10 @@ invite from A; A's host stopped; both still list B and open a terminal on B.
 | LOW: relay rows left to another lane                                     | §8 rows: per-member sessions and limits, 4404 and backoff                                              |
 | LOW: legacy device pairing has no ask step                               | §12 residual row; follow-up                                                                            |
 | LOW: a refresh resends the whole record set                              | §12 row; follow-up                                                                                     |
+
+| finding (revision 4, FIX_FIRST)                                                             | answered in                                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| HIGH: the join code gates only the approver; a substituted link or a man-in-the-middle wins | §9 `confirm`/`abort`: the joiner's person confirms against the real inviter's screen, the host signs only with both; §9 "What each side verifies"; §4.4 step 2, 2b, 3d; machine CLI code question without `--yes`; §12 rows; §13 rows; tests |
+| LOW: the admitter binding also evicts invite-approved browsers                              | §10.1: kept uniform (records do not say how a client was admitted), and `mesh revoke`/`mesh leave` list the browsers that leave with the machine and ask; §12, §13 rows; test                                                                |
+| LOW: an aborted admit transaction leaves a marker entry that a later invite admit matches   | §10.5: the entry carries the admit record's id, an abort removes it, and the sweep matches only the client's governing admit; test                                                                                                           |
+| LOW: §8 says a plain browser already goes straight to the relay                             | §8 "Which surface": today's direct dial from a plain page is stated, and the relay-only rule is the new gate in `openDirect` (PR 3)                                                                                                          |
