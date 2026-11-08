@@ -25,6 +25,9 @@
   reads as the keyboard closing, which put the keyboard down and dropped the bar behind it. (#1410)
 - On an iPhone, the keys bar and its Type field now sit directly on top of the soft keyboard, so what you type stays in
   view instead of being hidden behind the keyboard. (#1431)
+- "N needs you" in the desktop status bar is a button now: each click opens the next terminal that needs you, in turn.
+  (#1448)
+- Command search and inline space rename have persistent associated field labels, including while typing, without changing their layout. (#1451)
 
 ### Machine mesh
 
@@ -53,6 +56,18 @@
 - A screen reader finds Settings on a phone: the full-screen Settings sheet is announced as a dialog named Settings, as
   it is on a wide screen. (#1414)
 
+### Web app
+
+- Voice input's reading text meets the design system's size floors: the words heard while listening are body size
+  (14 px, 17 px on a phone), and the status line and the hint under the transcript are secondary size (13 px, 15 px on a
+  phone) instead of caption size. (#1447)
+
+### Settings
+
+- The Gateway field requests the URL keyboard on phones and turns off automatic capitalization and correction. (#1450)
+- In Keybindings, the sentence "A focused terminal program keeps this key." is secondary size like the rest of a row's
+  description, no longer caption size. (#1447)
+
 ### Connection and offline wording
 
 - Keys typed right after you come back to the app are no longer lost while it checks that the connection still works:
@@ -62,6 +77,7 @@
 ### Website
 
 - Links to doriterm.com and app.doriterm.com preview with the current card in Slack, KakaoTalk and X: the card's URL changes with the card, so an old cached image is not shown, and both titles read "Doriterm". (#1373)
+- Links to doriterm.com, app.doriterm.com and the GitHub repository preview with a new card: the headline in Timeless beside the site's mesh, relay and fleet artwork. (#1458)
 
 ### Appearance
 
