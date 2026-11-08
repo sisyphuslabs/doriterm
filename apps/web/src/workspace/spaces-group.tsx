@@ -38,6 +38,8 @@ export interface SpacesGroupProps {
   readonly query?: string;
   /** Shows the filter button in the header: only where the filter field is (the desktop sidebar, not the phone list). */
   readonly filterable?: boolean;
+  /** The phone's Spaces screen: its title already says "Spaces", and each row opens the space's own screen. */
+  readonly phone?: boolean;
 }
 
 const ALARM = new Set(["unreachable", "needs_login"]);
@@ -126,10 +128,12 @@ function NewSpaceThere({ disabled, onClick }: { readonly disabled: boolean; read
  * The spaces. With one machine they are one list whose header starts a new space; once more than one machine is
  * known, each machine is a list headed by its row (state, terminal count, New space there), in the machines' order.
  */
-export function SpacesGroup({ onOpen, rail = false, query = "", filterable = false }: SpacesGroupProps) {
+export function SpacesGroup({ onOpen, rail = false, query = "", filterable = false, phone = false }: SpacesGroupProps) {
   const machines = useMachinesContext();
   if (!machines.machinesListed) return <SpacesLoading rail={rail} />;
-  return <SpacesLists onOpen={onOpen} rail={rail} query={query} filterable={filterable} machines={machines} />;
+  return (
+    <SpacesLists onOpen={onOpen} rail={rail} query={query} filterable={filterable} phone={phone} machines={machines} />
+  );
 }
 
 /** Holds the spaces' place, labeled, until the first machine.list answer: one row, where the first machine row goes. */
@@ -152,11 +156,13 @@ function SpacesLists({
   rail,
   query,
   filterable,
+  phone,
   machines,
 }: SpacesGroupProps & {
   readonly rail: boolean;
   readonly query: string;
   readonly filterable: boolean;
+  readonly phone: boolean;
   readonly machines: ReturnType<typeof useMachinesContext>;
 }) {
   // The layout documents' spaces (#404): picking one shows it on the tab it showed last.
@@ -180,7 +186,14 @@ function SpacesLists({
         className="contents"
         {...(reorder === undefined ? {} : { "data-reorder-keys": "", onKeyDown: reorder.onKeyDown })}
       >
-        <SpaceRow space={space} selected={space.id === selected} onSelect={select} rail={rail} hideMachine={grouped} />
+        <SpaceRow
+          space={space}
+          selected={space.id === selected}
+          onSelect={select}
+          rail={rail}
+          hideMachine={grouped}
+          chevron={phone}
+        />
       </div>
     );
     return (
@@ -221,7 +234,8 @@ function SpacesLists({
     machine.local ? machines.start({}) : machines.newTerminalOn(machine.name);
   const showFilter = filterable && !rail;
   const newHere =
-    allGrouped !== undefined || local === undefined || rail ? undefined : (
+    // The phone's Spaces screen hides this header under its own title, whose + already starts one.
+    allGrouped !== undefined || local === undefined || rail || phone ? undefined : (
       <IconButton label="New space" icon={<Plus />} onClick={() => machines.start({})} />
     );
   // While this device's own link is down, the machine list it last read is not news: no row claims a live link (#476).
@@ -259,7 +273,7 @@ function SpacesLists({
             ),
           }
         : {})}
-      className={rail ? "[&>header]:sr-only" : "pt-2"}
+      className={rail || phone ? "[&>header]:sr-only" : "pt-2"}
     >
       {/* While the link is down the connection notice says it once; the failed list would only repeat it (#545). */}
       {machines.listError === undefined || linkDown !== null ? null : (

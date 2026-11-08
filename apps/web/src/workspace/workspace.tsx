@@ -388,6 +388,8 @@ export function Workspace({ connection }: WorkspaceProps) {
                         onBack={phone.back}
                         onSpaceBack={phone.backFromSpace}
                         pushed={phone.pushed}
+                        section={phone.section}
+                        onSection={phone.showSection}
                         onNew={() => newTerminal()}
                         onNewInSpace={newTabIn}
                         onCloseTab={(address) => {

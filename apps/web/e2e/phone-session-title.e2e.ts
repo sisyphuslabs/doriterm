@@ -50,7 +50,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
     }) => {
       const seeded = seed();
       try {
-        await page.goto("/");
+        await page.goto("/?v=spaces");
         await page
           .getByRole("button", { name: /^website\b/ })
           .first()
