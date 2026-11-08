@@ -165,8 +165,10 @@ describe("a client's own push association", () => {
     const [founder, phone] = [machine("founder"), machine("phone")];
     const mesh = new MeshFixture(dir, founder);
     const own = { name: phone.name, hcId: phone.hcId, devicePub: deviceOf(phone) };
+    // A browser's session key is its device key (design 4.1), so the joining identity presents the device key as noise.
+    const session = { ...phone.identity, noise: phone.device };
     const card = signCard(
-      cardBody(phone.identity, own, mesh.meshId, signPubOf(founder), undefined, "client"),
+      cardBody(session, own, mesh.meshId, signPubOf(founder), undefined, "client"),
       phone.identity.sign.secretKey,
     );
     mesh.record(founder, "admit", { card });

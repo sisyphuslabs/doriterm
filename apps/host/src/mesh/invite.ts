@@ -4,6 +4,7 @@ import { byDeadline, joinCode, joinCommit, JoinRefused, MeshProtocolError } from
 import { type PlanPolicy, requireWithin } from "@doriface/policy";
 import type { MeshStore, OwnCard } from "../state/mesh.ts";
 import { clientDeviceCount, isRejoin } from "./admission.ts";
+import { announceChange } from "./announce.ts";
 import { admissionRefusal } from "./format-readiness.ts";
 import { type MeshLines, recordLines } from "./lines.ts";
 import { checkFloor, type CounterFloor } from "./merge.ts";
@@ -108,7 +109,7 @@ function admit(deps: InviteDeps, meshId: string, inviter: string, card: CardBody
     );
     return tx.records;
   });
-  if (card.kind === "client") deps.changed?.();
+  if (card.kind === "client") announceChange(deps);
   return records;
 }
 
