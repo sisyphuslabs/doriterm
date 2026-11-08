@@ -22,6 +22,9 @@
     },
     {
       "path": "../../apps/host"
+    },
+    {
+      "path": "../../apps/web"
     }
   ]
 }

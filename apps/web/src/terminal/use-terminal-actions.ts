@@ -7,7 +7,7 @@ import { useActionHandler } from "../keys/dispatcher.ts";
 import { heldSelection } from "./held-selection.ts";
 import { readClipboardImage } from "./paste-files.ts";
 import { scrollTerminal } from "./terminal-scroll.tsx";
-import type { TerminalInput } from "./terminal-view.tsx";
+import type { TerminalInput } from "./terminal-view-props.ts";
 
 /** Select alls still being made, per terminal; Copy waits for its terminal's. */
 const selectingAll = new WeakMap<WTerm, Promise<unknown>>();

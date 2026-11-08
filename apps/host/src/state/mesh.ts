@@ -11,6 +11,7 @@ import {
   type View,
   viewOf,
 } from "@doriface/mesh";
+import { cardBodyFor, type OwnCard } from "@doriface/mesh/join";
 import { statSync } from "node:fs";
 import { join } from "node:path";
 import { AuthorizeIndex, indexOf } from "../mesh/authorize-index.ts";
@@ -35,8 +36,7 @@ export interface MeshStoreOptions {
   readonly durable?: boolean | undefined;
 }
 
-/** The card a host puts in its own `found`, `admit` or `rekey`: everything but the mesh, inviter and nonce. */
-export type OwnCard = Omit<CardBody, "v" | "mesh" | "inviter" | "nonce" | "hostId" | "signPub" | "noisePub">;
+export type { OwnCard };
 
 /**
  * `mesh.json` under the state lock (sections 8.4 and 10.1). Every write evaluates the view once, persists the
@@ -212,27 +212,17 @@ function persistedIndex(file: MeshFile): AuthorizeIndex {
   return new AuthorizeIndex(file.index);
 }
 
-const nonce = (): string => base64urlEncode(crypto.getRandomValues(new Uint8Array(16)));
-
 /** The card body for this host in mesh `mesh`, invited by `inviter` (both `"-"` in a found). */
 export function cardBody(
   identity: HostIdentity,
   card: OwnCard,
   mesh: string,
   inviter: string,
-  at = nonce(),
+  at?: string,
   kind?: MemberKind,
 ): CardBody {
-  const body = {
-    mesh,
-    inviter,
-    nonce: at,
-    hostId: identity.hostId,
-    signPub: base64urlEncode(identity.sign.publicKey),
-    noisePub: base64urlEncode(identity.noise.publicKey),
-    ...card,
-  };
-  return kind === undefined ? { v: 1, ...body } : { v: 2, kind, ...body };
+  const member = { hostId: identity.hostId, sign: identity.sign, noisePub: identity.noise.publicKey };
+  return cardBodyFor(member, card, { mesh, inviter, nonce: at, kind });
 }
 
 const foundBody = (identity: HostIdentity, card: Signed): RecordBody => ({

@@ -19,6 +19,7 @@ export {
   type HcCoreMismatch,
 } from "./errors.ts";
 export { HELLO_REQUEST_LINE } from "./hello.ts";
+export { RttEstimator, type RttEstimate } from "./rtt.ts";
 export { createMemoryLinkPair, LinkClosedError, type ByteLink } from "./link.ts";
 export type { Unsubscribe } from "./listeners.ts";
 export type { StreamClose } from "./stream-close.ts";

@@ -48,7 +48,7 @@ async function offlineMember() {
 }
 
 describe("a member offline when the reconciler ran is added once it is back (H-54-1, real hc)", () => {
-  test("on its presence", async () => {
+  test("on its presence, before the failed add's retry deadline (#1470)", async () => {
     const { x, reach, policy, reconciler, driver, names } = await offlineMember();
     expect(reconciler.status.get(x.member.hostId)?.state).toBe("retrying");
     expect(await names()).toEqual([]);

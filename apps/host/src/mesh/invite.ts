@@ -1,5 +1,6 @@
 import { base64urlDecode, base64urlEncode, CloseCode, fingerprintOf, type HostIdentity } from "@doriface/crypto";
 import { type CardBody, checkName, type Signed, verifyCard } from "@doriface/mesh";
+import { byDeadline, JoinRefused } from "@doriface/mesh/join";
 import { type PlanPolicy, requireWithin } from "@doriface/policy";
 import type { MeshStore, OwnCard } from "../state/mesh.ts";
 import type { AuthorizeIndex } from "./authorize-index.ts";
@@ -25,24 +26,9 @@ export interface InviteDeps {
   readonly log: (line: string) => void;
 }
 
-export class JoinRefused extends Error {
-  override readonly name = "JoinRefused";
-}
+export { byDeadline, JoinRefused };
 
 const nonce = (): string => base64urlEncode(crypto.getRandomValues(new Uint8Array(16)));
-
-/** Settles like `promise`, or rejects with `JoinRefused(reason)` once the clock reaches `at`. */
-export async function byDeadline<T>(promise: Promise<T>, at: number, reason: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new JoinRefused(reason)), Math.max(0, at - Date.now()));
-  });
-  try {
-    return await Promise.race([promise, late]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 /** Founds the mesh if this host has none (a concurrent founding wins and is used), and returns its id. */
 async function meshIdFor(deps: InviteDeps): Promise<string> {

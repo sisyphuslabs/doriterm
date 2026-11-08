@@ -16,17 +16,22 @@ const WORDS: Readonly<Record<MemberEntry["state"]["phase"], string>> = {
 const PROBLEMS = new Set(["failed", "host-failed"]);
 
 /**
- * How many machines the list shows and how many of them read connected, decided away from React so the rule can be
- * tested: every member this app holds a session to keeps its own row, and one member dropping says so in that row
- * instead of taking the list with it (#1296, #942 stage 6).
+ * Whether the list is shown, how many rows it has and how many read connected, decided away from React so the rule can
+ * be tested: every member this app holds a session to keeps its own row, one member dropping says so in that row instead
+ * of taking the list with it, and a single machine is no list at all (#1296, #942 stage 6).
  */
 export interface MembersSummary {
+  readonly listed: boolean;
   readonly total: number;
   readonly open: number;
 }
 
 export function summarizeMembers(entries: readonly MemberEntry[]): MembersSummary {
-  return { total: entries.length, open: entries.filter((entry) => entry.state.phase === "open").length };
+  return {
+    listed: entries.length >= 2,
+    total: entries.length,
+    open: entries.filter((entry) => entry.state.phase === "open").length,
+  };
 }
 
 /**
@@ -73,8 +78,7 @@ export function MembersSection() {
   const members = useMeshMembers();
   const selectedHostId = useConnectionSettings().hostId;
   const summary = summarizeMembers(members);
-  if (summary.total < 2) return null;
-  const open = summary.open;
+  if (!summary.listed) return null;
   return (
     <div className="flex flex-col gap-3">
       <ul className="flex flex-col divide-y divide-border">
@@ -112,7 +116,7 @@ export function MembersSection() {
           </li>
         ))}
       </ul>
-      {open === members.length ? null : (
+      {summary.open === summary.total ? null : (
         <Notice tone="info" title="One machine down is one machine down">
           Each machine has its own connection, so the others stay usable while one is away.
         </Notice>
