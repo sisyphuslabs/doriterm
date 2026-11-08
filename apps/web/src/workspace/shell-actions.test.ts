@@ -40,6 +40,7 @@ const layout: Layout = {
   tabs: [tab],
   shown: [tab],
   selectSpace: noop,
+  spaceTab: () => null,
   active: tab,
   focused: pane,
   zoomed: null,

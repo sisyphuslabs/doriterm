@@ -44,6 +44,8 @@ export interface Layout extends PaneMoves {
   readonly shown: readonly LayoutTab[];
   /** Shows the space `key` (`spaceKey`) on the tab it showed last, else its first tab. */
   readonly selectSpace: (key: string) => void;
+  /** The tab a space shows: the one it showed last, else its first; null when it holds no tab. */
+  readonly spaceTab: (key: string) => string | null;
   readonly active: LayoutTab | null;
   readonly focused: LayoutPane | null;
   readonly zoomed: string | null;
@@ -298,13 +300,19 @@ export function useLayout(
     },
     [addTab, show, tabs],
   );
+  const spaceTab = useCallback(
+    (key: string): string | null => {
+      const inSpace = tabs.filter((tab) => tab.spaceKey === key);
+      return (inSpace.find((tab) => tab.key === view.spaces[key]) ?? inSpace[0])?.key ?? null;
+    },
+    [tabs, view.spaces],
+  );
   const selectSpace = useCallback(
     (key: string): void => {
-      const inSpace = tabs.filter((tab) => tab.spaceKey === key);
-      const target = inSpace.find((tab) => tab.key === view.spaces[key]) ?? inSpace[0];
-      if (target !== undefined) show(target.key, null);
+      const target = spaceTab(key);
+      if (target !== null) show(target, null);
     },
-    [show, tabs, view.spaces],
+    [show, spaceTab],
   );
 
   const split = useCallback(
@@ -399,6 +407,7 @@ export function useLayout(
     tabs,
     shown,
     selectSpace,
+    spaceTab,
     active,
     focused,
     zoomed,
