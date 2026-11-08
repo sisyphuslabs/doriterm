@@ -53,6 +53,12 @@ export interface TerminalViewProps {
    * view another device's layout edit mounts again, #332), it takes the keyboard only from nowhere.
    */
   readonly claimed?: boolean;
+  /**
+   * Whether a focus here raises a soft keyboard, which only a press may ask for: on a phone the keyboard would come up
+   * over the output as the view starts, so the view takes no focus of its own and the keys bar's button asks for it
+   * (#1375). Unset, as on a desktop or a narrow window driven by a mouse, the view takes the focus as it starts.
+   */
+  readonly softKeyboard?: boolean;
   readonly label: string;
   readonly className?: string;
   /** Rewrites typed input before it is sent (latched phone modifiers); an empty result sends nothing. */
@@ -88,7 +94,14 @@ function handBack(event: FocusEvent<HTMLElement>): void {
 /** One libghostty terminal attached to one hc channel; output credit returns once it is written. */
 export function TerminalView(props: TerminalViewProps) {
   const { connection, address, pid, live, focused, label, className, transformInput, onPort, onEnd } = props;
-  const { closeLabel = "Close tab", onEnded, jumpClearance, claimed = true, typesComposition = false } = props;
+  const {
+    closeLabel = "Close tab",
+    onEnded,
+    jumpClearance,
+    claimed = true,
+    softKeyboard = false,
+    typesComposition = false,
+  } = props;
   const config = useTerminalConfig();
   const options = useMemo(() => rendererOptions(config), [config]);
   const dark = useDarkScheme();
@@ -120,7 +133,7 @@ export function TerminalView(props: TerminalViewProps) {
   useEffect(() => () => pacer.drop(), [pacer]);
   const { core, error } = useTerminalCore();
 
-  const { isFocused, focusWhenFree } = useKeyboardClaim(handle, focused, claimed);
+  const { isFocused, focusWhenFree } = useKeyboardClaim(handle, focused, claimed, softKeyboard);
 
   // The default cursor shape is the terminal's own state, set locally; programs still override it.
   useEffect(() => handle.current?.write(options.cursorSequence), [wt, options.cursorSequence]);

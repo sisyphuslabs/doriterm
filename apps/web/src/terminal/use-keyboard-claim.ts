@@ -11,17 +11,21 @@ export interface KeyboardClaim {
 
 /**
  * When a view moves the keyboard into itself: as the focused pane, unless a modal is open, and from wherever the
- * keyboard is only when this page asked for its pane (`claimed`, see TerminalViewProps), else only from nowhere.
+ * keyboard is only when this page asked for its pane (`claimed`, see TerminalViewProps), else only from nowhere, and
+ * never on a surface whose focus raises a soft keyboard the person did not ask for (`softKeyboard`, there).
  */
 export function useKeyboardClaim(
   handle: RefObject<TerminalHandle | null>,
   focused: boolean,
   claimed: boolean,
+  softKeyboard: boolean,
 ): KeyboardClaim {
   const isClaimed = useRef(claimed);
   isClaimed.current = claimed;
+  const isSoftKeyboard = useRef(softKeyboard);
+  isSoftKeyboard.current = softKeyboard;
   const mayTakeKeyboard = (element: HTMLElement): boolean =>
-    mayTakeFocus(element) && (isClaimed.current || keyboardIsIdle(element));
+    !isSoftKeyboard.current && mayTakeFocus(element) && (isClaimed.current || keyboardIsIdle(element));
 
   // Becoming the focused pane (a tab closed, a split moved) takes keyboard focus, unless a modal is open over it.
   useEffect(() => {

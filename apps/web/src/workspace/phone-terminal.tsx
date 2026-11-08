@@ -145,6 +145,9 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
               pid={terminal.pid ?? null}
               live={terminal.state === "live"}
               focused
+              // A soft keyboard is the phone's to ask for, so opening a terminal leaves it down (#1375); a narrow window
+              // driven by a mouse has none to raise, and keeps taking the focus as it starts (#287).
+              softKeyboard={!mouseOnly}
               label={`${title} output`}
               transformInput={sticky.transform}
               typesComposition={sticky.latched.size > 0}

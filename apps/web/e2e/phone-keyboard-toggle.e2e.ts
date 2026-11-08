@@ -2,8 +2,9 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { fakeSoftKeyboard, key, keysBar, showKeyboard } from "./phone-key-bar.ts";
 
-// A touch phone: the keyboard toggle has to follow the keyboard itself, not the terminal's focus (#274). A mouse-only
-// window of this width opens the keys bar by hand instead (phone-keys-mouse.e2e.ts, #287).
+// A touch phone: the keyboard toggle has to follow the keyboard itself, not the terminal's focus (#274), and opening a
+// terminal raises no keyboard of its own — only the keyboard button does (#1375). A mouse-only window of this width
+// opens the keys bar by hand instead (phone-keys-mouse.e2e.ts, #287).
 test.use({ serviceWorkers: "block", viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
 async function openTerminal(page: Page) {
@@ -27,11 +28,31 @@ async function expectUp(page: Page): Promise<void> {
   await expect(key(page, "Show keyboard")).toHaveCount(0);
 }
 
+test("opening a terminal raises no keyboard on its own: it stays down until the keyboard button asks for it (#1375)", async ({
+  page,
+}) => {
+  // A phone whose keyboard rises for any focus: an opening that focuses the terminal raises it, as it did.
+  await fakeSoftKeyboard(page);
+  const { input } = await openTerminal(page);
+  await expect(input).not.toBeFocused();
+  await expectDown(page);
+
+  await key(page, "Show keyboard").click();
+  await expect(input).toBeFocused();
+  await expectUp(page);
+
+  await key(page, "Hide keyboard").click();
+  await expectDown(page);
+  await expect(input).not.toBeFocused();
+});
+
 test("with the terminal focused and no keyboard up, the toggle reads Show keyboard; it reads Hide keyboard only while one covers the page", async ({
   page,
 }) => {
   await fakeSoftKeyboard(page, { raiseOnFocus: false });
   const { input } = await openTerminal(page);
+  // The button is what puts the focus in the terminal, now (#1375).
+  await key(page, "Show keyboard").click();
   await expect(input).toBeFocused();
   await expectDown(page);
 
@@ -48,11 +69,12 @@ test("a browser that shrinks the page for the keyboard: Show keyboard while it i
   page,
 }) => {
   const { input } = await openTerminal(page);
-  await expect(input).toBeFocused();
+  await expect(input).not.toBeFocused();
   await expectDown(page);
 
   // A tap in the terminal raises the keyboard, which shrinks the page.
   await page.locator("[data-terminal]").click();
+  await expect(input).toBeFocused();
   await page.setViewportSize({ width: 390, height: 844 - 336 });
   await expectUp(page);
 
@@ -66,7 +88,12 @@ test("Hide keyboard and a tap outside put it down, Show keyboard brings it up, a
 }) => {
   await fakeSoftKeyboard(page);
   const { input } = await openTerminal(page);
+  // Nothing raises the keyboard on opening; the button does (#1375).
+  await expectDown(page);
+
+  await key(page, "Show keyboard").click();
   await expectUp(page);
+  await expect(input).toBeFocused();
 
   await key(page, "Hide keyboard").click();
   await expectDown(page);

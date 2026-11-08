@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useMouseOnly } from "../terminal/keyboard-inset.ts";
+import { useNarrow } from "./use-narrow.ts";
 import { type HeldInput, keyInit, replay, terminalInput } from "./type-ahead.ts";
 
 /** Why held input was given up: the terminal did not start, or its view did not mount in time. */
@@ -7,7 +9,10 @@ export type DropReason = "failed" | "slow";
 export interface TypeAhead {
   /** Takes the keyboard for a terminal being started, before its address is known; returns the hold. */
   readonly hold: () => number;
-  /** Hands the hold's input to the terminal at `address` once its view has mounted; the newest hold also gets focus. */
+  /**
+   * Hands the hold's input to the terminal at `address` once its view has mounted; the newest hold also gets focus,
+   * except on a phone, where only the keys bar asks for the keyboard (#1375).
+   */
   readonly deliver: (hold: number, address: string) => void;
   /** The terminal never came: focus goes back where it was, and input typed for it is reported as not sent. */
   readonly release: (hold: number) => void;
@@ -45,6 +50,14 @@ const awake = (input: HTMLTextAreaElement | null, on: boolean): void => {
 };
 
 export function useTypeAhead(dropped: (reason: DropReason) => void): TypeAhead {
+  const narrow = useNarrow();
+  const mouseOnly = useMouseOnly();
+  // Below the desktop layout's width on a device with a soft keyboard, the hold waits for the terminal without taking
+  // the keyboard, on the way in or on handover: opening a terminal would otherwise raise the keyboard over the output
+  // before anyone asked for it (#1375). A mouse-only window of that width has no soft keyboard to raise (#287).
+  const takesKeyboard = !narrow || mouseOnly;
+  const taking = useRef(takesKeyboard);
+  taking.current = takesKeyboard;
   const catcher = useRef<HTMLTextAreaElement | null>(null);
   const held = useRef(new Map<number, HeldInput[]>());
   const before = useRef(new Map<number, Element | null>());
@@ -94,8 +107,10 @@ export function useTypeAhead(dropped: (reason: DropReason) => void): TypeAhead {
     held.current.set(id, []);
     before.current.set(id, document.activeElement);
     newest.current = id;
-    awake(catcher.current, true);
-    catcher.current?.focus({ preventScroll: true });
+    if (taking.current) {
+      awake(catcher.current, true);
+      catcher.current?.focus({ preventScroll: true });
+    }
     return id;
   }, []);
 
@@ -129,7 +144,7 @@ export function useTypeAhead(dropped: (reason: DropReason) => void): TypeAhead {
     (id: number, address: string): void => {
       const hand = (input: HTMLTextAreaElement): void => {
         // Read before finish, which puts the hold out of the page: a person who moved on keeps the keyboard there.
-        const last = newest.current === id && keyboardStayed(catcher.current, address);
+        const last = taking.current && newest.current === id && keyboardStayed(catcher.current, address);
         const queue = finish(id);
         if (last) input.focus({ preventScroll: true });
         replay(input, queue);

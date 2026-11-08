@@ -52,6 +52,9 @@ export async function showKeyboard(page: Page, px: number): Promise<void> {
 /**
  * `overlay`: the soft keyboard covers the page and shrinks only the visual viewport (iOS Safari, Chrome's default).
  * `resize`: the browser shrinks the layout viewport for it instead; the spec resizes the page to open it.
+ *
+ * A phone raises its keyboard only when the keys ask for it (#1375), so this opens the terminal and presses its keyboard
+ * button, as a person does before typing.
  */
 export async function openPhoneTerminal(
   page: Page,
@@ -65,6 +68,7 @@ export async function openPhoneTerminal(
   await page.getByRole("banner").getByRole("button", { name: "New tab" }).click();
   const terminal = page.locator("[data-terminal]");
   await expect(terminal).toContainText("$", { timeout: 15_000 });
+  await key(page, "Show keyboard").click();
   return terminal;
 }
 
