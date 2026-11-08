@@ -2,6 +2,7 @@ import { Spinner, StatusBarItem } from "@doriface/ui";
 import { Cable, Globe, WifiOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { DirectReason } from "../connection/direct-attempt.ts";
+import { canForwardPlainWs } from "../connection/direct-forward.ts";
 import { staysOnThisComputer } from "../connection/settings.ts";
 import { connectionStore, useConnection } from "../connection/store.ts";
 import { useOnline } from "../pwa/use-online.ts";
@@ -80,12 +81,25 @@ const DIRECT_REASONS: Record<DirectReason, string> = {
 };
 
 /**
- * The transport the open session runs on, shown while a direct address is saved: Direct, or Relay with the reason direct
- * did not carry it. A phone shows it in its own bar, whose screen has no tooltip (#446 §5).
+ * The transport the open session runs on. A browser reaches every member over the relay (#1381 §8), so its label says
+ * Relay on every session; the Direct label and its reasons (#446) are the desktop shell's, whose paired host still races
+ * direct and whose forwarder is the only thing that may dial one. A phone shows it in its own bar, whose screen has no
+ * tooltip.
  */
 export function ConnectionPathItem() {
   const state = useConnection();
   if (state.phase !== "open" || connectionStore.settings.mode !== "relay") return null;
+  if (!canForwardPlainWs()) {
+    return (
+      <span
+        data-connection-path="relay"
+        className="flex shrink-0"
+        title="Relay: every session from a browser goes through the relay."
+      >
+        <StatusBarItem icon={<Globe aria-hidden />}>Relay</StatusBarItem>
+      </span>
+    );
+  }
   if (connectionStore.settings.directUrl.trim() === "") return null;
   const direct = state.path === "direct";
   const reason = state.directReason;
