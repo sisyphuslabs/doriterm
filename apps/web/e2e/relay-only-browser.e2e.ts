@@ -116,21 +116,14 @@ async function connectsOverTheRelayAlone(page: Page, phone: boolean): Promise<vo
 
     await joinOneMachine(page, host, phone);
     await openMachines(page);
-    await expect(page.locator("[data-mesh-group]").first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('[data-mesh-group="online"]')).toContainText("studio");
-    await expect(page.locator("[data-mesh-group]").filter({ hasText: "joiner" })).toHaveCount(1, {
-      timeout: 20_000,
-    });
+    // Once its host is in a mesh, the paired browser becomes a member itself (design 11) and lists every machine.
+    const machines = page.getByRole("list", { name: "Machines" }).getByRole("listitem");
+    await expect(machines.filter({ hasText: "studio" })).toContainText("Online · Relay", { timeout: 20_000 });
+    await expect(machines.filter({ hasText: "joiner" })).toHaveCount(1, { timeout: 20_000 });
 
-    // The settings session line says the relay alone, though the file still holds a direct address.
-    await page
-      .getByRole("tab", { name: "Device" })
-      .or(page.getByRole("button", { name: "Device" }))
-      .first()
-      .click();
-    await expect(page.getByText(/^Through the relay\b/)).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(/^Direct to this host/)).toHaveCount(0);
-    await expect(page.getByText(/or direct to/)).toHaveCount(0);
+    // Each machine's session line says the relay alone, though the file still holds a direct address.
+    await expect(machines.filter({ hasText: "joiner" })).toContainText("Relay");
+    await expect(page.getByText(/Direct to this host|or direct to/)).toHaveCount(0);
 
     // Nothing but the relay was ever dialled: a direct attempt would be refused here, and it never happened. The only
     // refusals allowed are the loopback probes for a host on this computer.
