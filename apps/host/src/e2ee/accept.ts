@@ -187,12 +187,6 @@ export async function acceptE2ee(
     }
     deps.log(`paired device "${deviceName}"`);
   }
-  if (
-    secure.kind === SessionKind.Session &&
-    (secure.stream === undefined || secure.stream === "roster" || secure.stream === "push")
-  ) {
-    deps.mesh?.recordClientSession(base64urlEncode(secure.remoteStatic));
-  }
   return secure;
 }
 

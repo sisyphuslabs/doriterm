@@ -70,7 +70,6 @@ export async function serveRoster(lines: MeshLines, remoteStatic: Uint8Array, de
     if (file === undefined) throw new JoinRefused("this host is in no mesh");
     const inviter = base64urlEncode(deps.identity.sign.publicKey);
     const key = base64urlEncode(remoteStatic);
-    const wasClient = deps.mesh.authorizeIndex()?.client(key) !== undefined;
     const nonce = base64urlEncode(crypto.getRandomValues(new Uint8Array(16)));
     lines.send({ t: "offer", mesh: file.meshId, inviter, nonce });
     const reply = await byDeadline(lines.next(), Date.now() + 60_000, "the roster request expired");
@@ -105,7 +104,7 @@ export async function serveRoster(lines: MeshLines, remoteStatic: Uint8Array, de
     } else {
       admitRoster(deps, card, signed);
       sweepRoster(deps);
-      if (!wasClient) deps.mesh.recordClientSession(key);
+      deps.mesh.recordClientSession(key);
     }
     for (const line of recordLines(deps.mesh.read()?.records ?? [])) lines.send(line);
     lines.send({ t: "done", mesh: file.meshId });

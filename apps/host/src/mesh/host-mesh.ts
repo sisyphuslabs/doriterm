@@ -111,9 +111,8 @@ export class HostMesh {
   async #resume(lines: MeshLines, key: string, nonce: string): Promise<void> {
     const pending = this.resumes.get(nonce, key);
     if (pending === undefined) throw new JoinRefused("Ask for a new invite");
-    const wasClient = this.#options.mesh.authorizeIndex()?.client(key) !== undefined;
     await finishJoin(lines, pending, this.pending);
-    if (!wasClient) this.#options.mesh.recordClientSession(key);
+    this.#options.mesh.recordClientSession(key);
     lines.close(1000, "the join is complete");
   }
 

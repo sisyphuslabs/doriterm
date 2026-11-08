@@ -39,6 +39,8 @@ export interface MeshStoreOptions {
 
 export type { OwnCard };
 
+const CLIENT_SESSION_WRITE_INTERVAL_MS = 5 * 60_000;
+
 /**
  * `mesh.json` under the state lock (sections 8.4 and 10.1). Every write evaluates the view once, persists the
  * authorize index with the records at a new `generation`, and in the same lock hold removes every paired device and
@@ -61,24 +63,42 @@ export class MeshStore {
     return value === undefined ? undefined : parseMeshFile(value);
   }
 
-  /** An index-only local observation; record history and its generation do not change. */
+  /** Best-effort local observation, at most once per client per five minutes; never waits for a busy state lock. */
   recordClientSession(devicePub: string, at = Date.now()): void {
-    this.#locked(() => {
-      const file = this.read();
-      if (file === undefined) return;
-      const index = file.index;
-      if (index?.generation !== file.generation) throw new Error(`${MESH_FILE}: its authorize index is stale`);
-      const client = new AuthorizeIndex(index).client(devicePub);
-      if (client === undefined) return;
-      const members = index.members.map((member) =>
-        member.signPub === client.signPub ? { ...member, lastSessionAt: at } : member,
+    try {
+      const seen = this.authorizeIndex()?.client(devicePub);
+      if (
+        seen === undefined ||
+        (seen.lastSessionAt !== undefined && at - seen.lastSessionAt < CLIENT_SESSION_WRITE_INTERVAL_MS)
+      )
+        return;
+      withStateLock(
+        this.#dir,
+        () => {
+          const file = this.read();
+          if (file === undefined) return;
+          const index = file.index;
+          if (index?.generation !== file.generation) throw new Error(`${MESH_FILE}: its authorize index is stale`);
+          const client = new AuthorizeIndex(index).client(devicePub);
+          if (client === undefined) return;
+          if (client.lastSessionAt !== undefined && at - client.lastSessionAt < CLIENT_SESSION_WRITE_INTERVAL_MS)
+            return;
+          const members = index.members.map((member) =>
+            member.signPub === client.signPub ? { ...member, lastSessionAt: at } : member,
+          );
+          writePrivateJson(
+            this.#path,
+            meshFileJson({ ...file, index: { ...index, members } }),
+            this.#options.durable ?? true,
+          );
+        },
+        0,
       );
-      writePrivateJson(
-        this.#path,
-        meshFileJson({ ...file, index: { ...index, members } }),
-        this.#options.durable ?? true,
+    } catch (error) {
+      this.#options.log(
+        `mesh: cannot record client session: ${error instanceof Error ? error.message : String(error)}`,
       );
-    });
+    }
   }
 
   /**
