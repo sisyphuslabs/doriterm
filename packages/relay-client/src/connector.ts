@@ -43,6 +43,14 @@ export interface ClientConnectOptions {
 export const RELAY_BEST_OF = 3;
 /** How long after the first socket's answer a slower-opening socket may still beat it. */
 export const RELAY_BEST_OF_GRACE_MS = 150;
+/**
+ * Where a best-of-N dial's second and third sockets go when the relay is on the default HTTPS port: other ports its edge
+ * serves the same HTTPS on (Cloudflare proxies 8443 and 2053 as it does 443). A browser holds back a WebSocket handshake
+ * while another to the same address and port is still connecting (RFC 6455 section 4.1), so three sockets to one port
+ * open one after another and the later ones miss the race; on distinct ports they open together (#1418). A relay on an
+ * explicit port keeps it for every socket.
+ */
+export const RELAY_BEST_OF_PORTS: readonly string[] = ["8443", "2053"];
 /** A socket whose `ping` the Room has not answered within this is kept only if no other socket was answered. */
 export const RELAY_PROBE_TIMEOUT_MS = 1_500;
 
@@ -85,8 +93,8 @@ export async function connectRelayClient(options: ClientConnectOptions): Promise
   if (signal?.aborted === true) throw cancelledBy(signal);
   const count = socketCount(options);
   if (count === 1) return openSocket(options).opened;
-  const entrants = Array.from({ length: count }, () => {
-    const { ws, opened } = openSocket(options);
+  const entrants = Array.from({ length: count }, (_, index) => {
+    const { ws, opened } = openSocket(options, index);
     return {
       opened,
       roundTrip: () => roomRoundTrip(ws, RELAY_PROBE_TIMEOUT_MS),
@@ -96,18 +104,32 @@ export async function connectRelayClient(options: ClientConnectOptions): Promise
   return raceFastest(entrants, { graceMs: RELAY_BEST_OF_GRACE_MS, signal });
 }
 
+/** The relay URL a best-of-N dial's `index`th socket dials: see {@link RELAY_BEST_OF_PORTS}. */
+function socketRelayUrl(relayUrl: string, index: number): string {
+  const port = RELAY_BEST_OF_PORTS[index - 1];
+  if (port === undefined) return relayUrl;
+  const url = new URL(relaySocketUrl(relayUrl, "/"));
+  if (url.protocol !== "wss:" || url.port !== "") return relayUrl;
+  url.port = port;
+  return url.toString();
+}
+
 /** One client socket: `opened` resolves with its link once it is open. */
-function openSocket(options: ClientConnectOptions): {
+function openSocket(
+  options: ClientConnectOptions,
+  index = 0,
+): {
   readonly ws: WebSocket;
   readonly opened: Promise<WebSocketLink>;
 } {
   const { hostId, pairSlot, signal } = options;
+  const relayUrl = socketRelayUrl(options.relayUrl, index);
   const query = new URLSearchParams(pairSlot === undefined ? [] : [["pair", pairSlot]]);
   query.set(...CREDIT_QUERY);
   const relayOrigin = relayOriginOf(relaySocketUrl(options.relayUrl, "/"));
   const proof = options.proofs?.proof("client", hostId, relayOrigin);
   if (proof !== undefined) query.set(PROOF_QUERY, proof);
-  const url = relaySocketUrl(options.relayUrl, `/v1/client/${hostId}?${query.toString()}`);
+  const url = relaySocketUrl(relayUrl, `/v1/client/${hostId}?${query.toString()}`);
   const ws = (options.createSocket ?? defaultCreateSocket)(url);
   const link = new WebSocketLink(ws, options.pingIntervalMs ?? PING_INTERVAL_MS, { credit: true });
   if (proof !== undefined) {
@@ -117,7 +139,7 @@ function openSocket(options: ClientConnectOptions): {
     });
   }
   // The URL may carry a proof: errors (and so logs) name the path only.
-  const path = relaySocketUrl(options.relayUrl, `/v1/client/${hostId}`);
+  const path = relaySocketUrl(relayUrl, `/v1/client/${hostId}`);
   const timeoutMs = options.timeoutMs ?? RELAY_CONNECT_TIMEOUT_MS;
   const opened = new Promise<WebSocketLink>((resolve, reject) => {
     let timer: ReturnType<typeof setTimeout> | undefined;

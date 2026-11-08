@@ -106,7 +106,9 @@ export async function openPushLink(route: PushRoute, options: PushLinkOptions = 
   }
   const direct = await openDirectPush(route, options);
   if (direct !== undefined) return direct;
-  const link = await connectRelayClient({ relayUrl: route.relayUrl, hostId: route.hostId });
+  // One socket: a push session carries a request or two and closes, so a second and third socket would only add a Room
+  // round trip to every notice and answer (#1418).
+  const link = await connectRelayClient({ relayUrl: route.relayUrl, hostId: route.hostId, bestOf: 1 });
   try {
     return await secureLink(link, {
       role: "initiator",

@@ -43,7 +43,7 @@ export async function fakeRelay(page: Page, closeCode: number): Promise<void> {
   await page.route("https://relay-doriface.omo.dev/v1/pair/*", (route) =>
     route.fulfill({ json: signedAnswer(route.request().url()) }),
   );
-  await page.routeWebSocket(/^wss:\/\/relay-doriface\.omo\.dev\//, (ws) => {
+  await page.routeWebSocket(/^wss:\/\/relay-doriface\.omo\.dev(:\d+)?\//, (ws) => {
     ws.onMessage(() => ws.close({ code: closeCode, reason: "refused" }));
   });
 }
