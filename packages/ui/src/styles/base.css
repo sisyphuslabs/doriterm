@@ -40,6 +40,19 @@
     caret-color: var(--ring);
   }
 
+  /*
+   * iOS zooms the page whenever a field it focuses has a font-size under 16px, and it keeps that zoom. The terminal's
+   * keyboard sink is such a field: @wterm/dom creates it with `font: inherit`, so it takes the terminal's own size
+   * (13px at the default), and a tap that gives the terminal the keyboard therefore zooms the page (#1379). The sink
+   * shows nothing but the caret and a composing syllable, so raising its size costs no visible space. `!important`
+   * wins over the package's inline `font: inherit`; page pinch-zoom elsewhere stays available.
+   */
+  @media (pointer: coarse) {
+    [data-terminal] textarea {
+      font-size: 16px !important;
+    }
+  }
+
   :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
