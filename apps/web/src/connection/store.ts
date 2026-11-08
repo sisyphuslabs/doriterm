@@ -2,7 +2,7 @@ import { type HcConnection, HcTimeoutError } from "@doriface/client";
 import { useSyncExternalStore } from "react";
 import type { HostStartFailure } from "../desktop/bridge.ts";
 import { AttemptBudget, AttemptTimeoutError } from "./attempt-budget.ts";
-import { connect, type ConnectionPath, type OpenConnection } from "./connect.ts";
+import { connect, DeviceNotPairedError, type ConnectionPath, type OpenConnection } from "./connect.ts";
 import type { DirectReason } from "./direct-attempt.ts";
 import { helloName } from "./hello-name.ts";
 import { isFinal } from "./host-failure.ts";
@@ -41,6 +41,7 @@ export type ConnectionState =
   | { readonly phase: "host-failed"; readonly failure: HostStartFailure }
   | {
       readonly phase: "failed";
+      readonly settling?: boolean;
       readonly error: Error;
       readonly retryInMs: number | null;
       /** When the next attempt starts (Date.now() epoch ms), or null with retryInMs. */
@@ -334,7 +335,10 @@ export class ConnectionStore {
 
   #retry(error: Error, attempt: number): void {
     this.#disarmStable();
-    if (isFinal(error)) {
+    const settling =
+      this.#settings.viewMember === true &&
+      (error instanceof DeviceNotPairedError || ("code" in error && error.code === 4401));
+    if (isFinal(error) && !settling) {
       this.#stale = null;
       this.#set({ phase: "failed", error, retryInMs: null, retryAt: null, stale: null });
       return;
@@ -346,7 +350,14 @@ export class ConnectionStore {
     // (review of #994).
     if (this.#settings.mode !== "loopback") this.#rotateMember();
     const delay = BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)] ?? 10_000;
-    this.#set({ phase: "failed", error, retryInMs: delay, retryAt: Date.now() + delay, stale: this.#stale });
+    this.#set({
+      phase: "failed",
+      error: settling ? new Error("Settling: waiting for this machine to learn this browser's membership.") : error,
+      ...(settling ? { settling: true } : {}),
+      retryInMs: delay,
+      retryAt: Date.now() + delay,
+      stale: this.#stale,
+    });
     this.#wait(attempt);
   }
 

@@ -1,0 +1,49 @@
+import { Button, Field, Input, Notice } from "@doriface/ui";
+import { useState } from "react";
+import { connectionStore } from "../connection/store.ts";
+import { normalizeCode } from "./code.ts";
+import { parsePairingFragment, type PairingOffer } from "./fragment.ts";
+import { pasteInvite } from "./invite-handoff.ts";
+import { SlotLookups } from "./slot-lookups.ts";
+
+/** The same entry point for a fresh tab and a separate, empty iOS home-screen storage partition. */
+export function JoinEntry({ onOffer }: { readonly onOffer: (offer: PairingOffer) => void }) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | undefined>();
+  const [busy, setBusy] = useState(false);
+  const [lookups] = useState(() => new SlotLookups(connectionStore.settings.relayUrl));
+  const apply = async (candidate: string): Promise<void> => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      const hash = candidate.indexOf("#");
+      const code = normalizeCode(candidate);
+      if (hash === -1 && code === null) throw new Error("Paste an invite link or enter its 8-character code.");
+      const parsed = hash >= 0 ? parsePairingFragment(candidate.slice(hash)) : await lookups.offer(code ?? "");
+      if (!parsed.ok) throw new Error(parsed.reason);
+      onOffer(hash < 0 ? { ...parsed.offer, target: "mesh" } : parsed.offer);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-5 px-6 py-10">
+      <h1 className="text-2xl font-semibold text-balance">Join a mesh</h1>
+      <p className="text-base text-muted-foreground">
+        Open an invite from a machine you can see, or ask a member for one by a call or in person.
+      </p>
+      <Button onClick={() => void pasteInvite().then(apply, (cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))}>
+        Paste invite
+      </Button>
+      <form className="flex flex-col gap-5" onSubmit={(event) => { event.preventDefault(); void apply(text); }}>
+        <Field label="Invite link or code" htmlFor="mesh-invite" error={error}>
+          <Input id="mesh-invite" value={text} onValueChange={setText} autoComplete="off" spellCheck={false} />
+        </Field>
+        <Button type="submit" variant="primary" loading={busy} disabled={text.trim() === ""}>Continue</Button>
+      </form>
+      {!navigator.onLine ? <Notice title="You are offline">Joining needs a connection to the relay.</Notice> : null}
+    </main>
+  );
+}

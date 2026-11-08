@@ -102,7 +102,7 @@ async function keepsStoredKeys(storage: KeyValueStore, subtle: SubtleCrypto): Pr
   }
 }
 
-async function readOrCreate(storage: KeyValueStore, subtle: SubtleCrypto | null): Promise<DeviceKey> {
+export async function readOrCreateDeviceKey(storage: KeyValueStore, subtle: SubtleCrypto | null): Promise<DeviceKey> {
   const stored = await storage.get(KEY);
   if (isStored(stored))
     return stored.kind === "webcrypto" && subtle !== null ? fromWebCrypto(subtle, stored) : fromRaw(asRaw(stored));
@@ -119,6 +119,17 @@ async function readOrCreate(storage: KeyValueStore, subtle: SubtleCrypto | null)
 const pending = new WeakMap<KeyValueStore, Promise<DeviceKey>>();
 const LOCK = "doriface-device-key";
 
+/** Serializes device and card custody together, including first join and local identity removal. */
+export async function withIdentityLock<T>(action: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
+  return locks === undefined ? action() : locks.request(LOCK, action);
+}
+
+export async function forgetDeviceKey(storage: KeyValueStore): Promise<void> {
+  await storage.put(KEY, null);
+  pending.delete(storage);
+}
+
 /**
  * Loads the device key, generating it on first use. The private half is a non-extractable
  * CryptoKey when WebCrypto has X25519, else 32 raw bytes; either survives in IndexedDB by structured clone.
@@ -131,9 +142,7 @@ export function loadDeviceKey(
 ): Promise<DeviceKey> {
   const inFlight = pending.get(storage);
   if (inFlight !== undefined) return inFlight;
-  const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
-  const loading =
-    locks === undefined ? readOrCreate(storage, subtle) : locks.request(LOCK, () => readOrCreate(storage, subtle));
+  const loading = withIdentityLock(() => readOrCreateDeviceKey(storage, subtle));
   pending.set(storage, loading);
   // A failure is not remembered: the next call tries the store again.
   loading.catch(() => pending.delete(storage));

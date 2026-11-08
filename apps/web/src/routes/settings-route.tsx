@@ -23,6 +23,8 @@ import { usePendingUpdate } from "../update/update-store.ts";
 import { useCloseSettings } from "../settings/use-close-settings.ts";
 import { useSettingsInDialog } from "../settings/settings-dialog.tsx";
 import { VoiceSection } from "../settings/voice-section.tsx";
+import { useBrowserMembership } from "../mesh/browser-membership.ts";
+import { desktopBridge } from "../desktop/bridge.ts";
 
 const SECTIONS = [
   { id: "device", label: "This device", icon: <MonitorSmartphone /> },
@@ -61,6 +63,8 @@ function Lead({ children }: { readonly children: ReactNode }) {
 export function SettingsRoute() {
   const [section, setSection] = useState<SectionId>(firstSection);
   const members = useMeshMembers();
+  const mesh = useBrowserMembership();
+  const joinedBrowser = mesh.phase !== "empty" && desktopBridge() === null;
   const close = useCloseSettings();
   const update = usePendingUpdate();
   // In the dialog its header is not the window's titlebar: it neither moves the window nor makes room for its controls.
@@ -147,21 +151,21 @@ export function SettingsRoute() {
           >
             {section === "device" ? (
               <>
-                <Lead>
+                {joinedBrowser ? <Lead>This browser is a member of the mesh. Each machine has its own connection.</Lead> : <Lead>
                   This app talks to one host: the computer that runs your terminals. Here is which host it reaches,
                   whether it is there now, this device's own settings, and under Advanced connection the route this app
                   takes to that host. The defaults work for everyone; change them only for a self-hosted relay or a
                   development host.
-                </Lead>
-                <Group title="Host">
+                </Lead>}
+                <Group title={joinedBrowser ? "This member" : "Host"}>
                   <DevicesSection />
                 </Group>
                 <Group title="This device">
                   <DeviceSection />
                 </Group>
-                <Group title="Advanced connection">
+                {!joinedBrowser ? <Group title="Advanced connection">
                   <ConnectionSection />
-                </Group>
+                </Group> : null}
               </>
             ) : section === "machines" ? (
               <>
@@ -169,7 +173,7 @@ export function SettingsRoute() {
                   These are the computers this host reaches: the ones that joined your mesh, and any you added by hand.
                 </Lead>
                 <Group title="Machines">
-                  {members.length > 1 ? <MembersSection /> : null}
+                  {!joinedBrowser && members.length > 1 ? <MembersSection /> : null}
                   <MachinesSection />
                   {/* What a row's state means sits under the rows, where a reader meets it: on a phone the list leads (#1007). */}
                   <p className="pt-3 text-sm text-pretty text-muted-foreground">

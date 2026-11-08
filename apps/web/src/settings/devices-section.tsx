@@ -11,6 +11,9 @@ import { deviceSummary, pairedDevicesView, type PairedDevicesView } from "./pair
 import { sessionPathLabel } from "./session-path.ts";
 import { linkFacts } from "./round-trip.ts";
 import { useHostRoundTrip } from "./use-host-round-trip.ts";
+import { desktopBridge } from "../desktop/bridge.ts";
+import { useBrowserMembership } from "../mesh/browser-membership.ts";
+import { MembershipDeviceSection } from "./membership-device.tsx";
 
 function describe(state: ConnectionState): ReactNode {
   switch (state.phase) {
@@ -67,7 +70,7 @@ function devicesDescription(view: PairedDevicesView): string {
  * the devices already paired. The list and the revoke come from the shell, which asks the running host over its
  * token-guarded loopback, so a member revokes a lost phone from the computer it was paired to, with no terminal.
  */
-export function DevicesSection() {
+function PairedDevicesSection() {
   const state = useConnection();
   const settings = useConnectionSettings();
   const route = hostRouteOf(settings);
@@ -114,7 +117,9 @@ export function DevicesSection() {
 
   return (
     <>
-      <SettingRow title={label(<Monitor aria-hidden />, "This browser")} description="This device" control={null} />
+      <SettingRow title={label(<Monitor aria-hidden />, desktopBridge() === null ? "This browser" : host)}
+        description={desktopBridge() === null ? `Connected through ${host}` : "This device"} control={null} />
+      {desktopBridge() === null ? <Button render={<a href="/join" />}>Join a mesh</Button> : (
       <SettingRow
         title={label(<Server aria-hidden />, host)}
         description={
@@ -134,6 +139,7 @@ export function DevicesSection() {
         }
         control={null}
       />
+      )}
       <PairDeviceOffer />
       {view.kind === "unsupported" ? null : (
         <>
@@ -190,4 +196,9 @@ export function DevicesSection() {
       />
     </>
   );
+}
+
+export function DevicesSection() {
+  const mesh = useBrowserMembership();
+  return mesh.phase !== "empty" && desktopBridge() === null ? <MembershipDeviceSection /> : <PairedDevicesSection />;
 }

@@ -10,6 +10,9 @@
   "include": ["src", "e2e", "soak", "bench", "vite.config.ts", "playwright.config.ts"],
   "references": [
     {
+      "path": "../../packages/mesh"
+    },
+    {
       "path": "../../packages/protocol"
     },
     {

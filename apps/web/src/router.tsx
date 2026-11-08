@@ -111,6 +111,7 @@ const root = createRootRoute({ component: Root });
 const routes = [
   createRoute({ getParentRoute: () => root, path: "/", component: () => null }),
   createRoute({ getParentRoute: () => root, path: "/pair", component: PairRoute }),
+  createRoute({ getParentRoute: () => root, path: "/join", component: PairRoute }),
   createRoute({ getParentRoute: () => root, path: "/settings", component: SettingsRoute }),
 ];
 

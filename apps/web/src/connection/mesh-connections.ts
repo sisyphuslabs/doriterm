@@ -30,6 +30,7 @@ export type StoreFactory = (settings: ConnectionSettings, save: Saver) => Member
 export interface MemberEntry {
   readonly target: MemberTarget;
   readonly state: ConnectionState;
+  readonly lastSeen?: number | undefined;
 }
 
 /** The one object `state` answers with when there is no connection to show: a fresh one per read would loop any rendering store. */
@@ -42,6 +43,7 @@ const sameTarget = (held: ConnectionSettings, want: ConnectionSettings): boolean
   held.hostId === want.hostId &&
   held.hostName === want.hostName &&
   held.hostKey === want.hostKey &&
+  held.viewMember === want.viewMember &&
   held.directUrl === want.directUrl &&
   held.loopbackUrl === want.loopbackUrl &&
   held.token === want.token;
@@ -60,9 +62,13 @@ const sameTarget = (held: ConnectionSettings, want: ConnectionSettings): boolean
  */
 export class MeshConnections {
   #settings: ConnectionSettings;
+  #view: readonly MemberTarget[] = [];
+  #selection: string | undefined;
+  #visibleSettings: ConnectionSettings | undefined;
   readonly #make: StoreFactory;
   readonly #stores = new Map<string, MemberConnection>();
   readonly #targets = new Map<string, MemberTarget>();
+  readonly #lastSeen = new Map<string, number>();
   readonly #listeners = new Set<() => void>();
   readonly #unsubscribes = new Map<string, () => void>();
   /**
@@ -95,12 +101,12 @@ export class MeshConnections {
   }
 
   get settings(): ConnectionSettings {
-    return this.#settings;
+    return this.#visibleSettings ?? this.#settings;
   }
 
   /** The selected member's connection, which is the one the workspace shows: the saved selection, or the first member. */
   get selected(): MemberConnection | undefined {
-    const chosen = this.#stores.get(this.#settings.hostId);
+    const chosen = this.#stores.get(this.#selection ?? this.#settings.hostId);
     if (chosen !== undefined) return chosen;
     // A saved selection the roster does not hold cannot be dialled, and reporting it as unset would make every screen read "not
     // connected" while members are up. The first member answers for it until the person picks another.
@@ -119,6 +125,15 @@ export class MeshConnections {
   /** Every member and its own connection state, for a list that marks one machine offline instead of the whole app. */
   entries(): readonly MemberEntry[] {
     return this.#snapshot;
+  }
+
+  /** Verified view targets are ephemeral: only the bundle persists them, never the pairing settings. */
+  setViewMembers(members: readonly MemberTarget[]): void {
+    this.#view = members.map((member) => ({ ...member, directUrl: "" }));
+    this.#sync();
+    if (this.#selection !== undefined && !this.#targets.has(this.#selection)) this.#selection = undefined;
+    if (this.#running) this.#startAll();
+    this.#notify();
   }
 
   /** Takes new settings and keeps the roster: an edit to how this app dials, not a choice of what it dials. */
@@ -157,6 +172,7 @@ export class MeshConnections {
 
   /** `opened` is a session to the selected member that pairing already proved: its store runs on it instead of dialing. */
   #apply(settings: ConnectionSettings, opened?: OpenConnection): void {
+    this.#selection = undefined;
     this.#settings = normalizeSettings(settings);
     saveSettings(this.#settings);
     // A settings change is the app asking to dial with them, which is how the boot path replaces a stale saved port. Members that
@@ -170,9 +186,15 @@ export class MeshConnections {
 
   /** Shows another member's connection without touching any connection: the others stay open while this app looks elsewhere. */
   select(hostId: string): void {
-    if (hostId === this.#settings.hostId || !this.#targets.has(hostId)) return;
+    if (hostId === this.settings.hostId || !this.#targets.has(hostId)) return;
     const target = this.#targets.get(hostId);
     if (target === undefined) return;
+    if (!this.#settings.members.some((member) => member.hostId === hostId)) {
+      this.#selection = hostId;
+      this.#notify();
+      return;
+    }
+    this.#selection = undefined;
     this.#settings = {
       ...this.#settings,
       hostId: target.hostId,
@@ -247,6 +269,11 @@ export class MeshConnections {
 
   /** The members this app dials: the roster, plus the selected host when the two disagree so it is never left unreachable. */
   #roster(): readonly MemberTarget[] {
+    const paired = this.#pairedRoster();
+    return [...paired, ...this.#view.filter((view) => !paired.some((member) => member.hostId === view.hostId))];
+  }
+
+  #pairedRoster(): readonly MemberTarget[] {
     const { members, hostId, hostName, hostKey, directUrl } = this.#settings;
     const selected: MemberTarget = { hostId, hostName, hostKey, directUrl };
     if (members.length > 0) {
@@ -267,6 +294,7 @@ export class MeshConnections {
       this.#unsubscribes.delete(hostId);
       this.#stores.get(hostId)?.stop();
       this.#stores.delete(hostId);
+      this.#started.delete(hostId);
       this.#targets.delete(hostId);
     }
     // The store the proved session goes to, adopted once every store is listened to: its first open must reach #onMember.
@@ -295,8 +323,10 @@ export class MeshConnections {
 
   /** One member's settings: the shared ones, with that member's own address and a roster of just itself. */
   #scoped(member: MemberTarget): ConnectionSettings {
+    const learned = !this.#pairedRoster().some((paired) => paired.hostId === member.hostId);
     return {
       ...this.#settings,
+      ...(learned ? { mode: "relay", viewMember: true } : {}),
       hostId: member.hostId,
       hostName: member.hostName,
       hostKey: member.hostKey,
@@ -335,6 +365,7 @@ export class MeshConnections {
    * #994).
    */
   #onMember(hostId: string, store: MemberConnection): void {
+    if (store.state.phase === "open") this.#lastSeen.set(hostId, Date.now());
     this.#adoptName(hostId, store);
     this.#failOver();
     // One notification for both: a reader must see the new selection, not the dead machine the name update was about.
@@ -350,15 +381,8 @@ export class MeshConnections {
     if (live === undefined) return;
     const [hostId] = live;
     const target = this.#targets.get(hostId);
-    if (target === undefined || hostId === this.#settings.hostId) return;
-    this.#settings = {
-      ...this.#settings,
-      hostId: target.hostId,
-      hostName: target.hostName,
-      hostKey: target.hostKey,
-      directUrl: target.directUrl,
-    };
-    saveSettings(this.#settings);
+    if (target === undefined || hostId === this.settings.hostId) return;
+    this.select(hostId);
   }
 
   #adoptName(hostId: string, store: MemberConnection): void {
@@ -367,6 +391,7 @@ export class MeshConnections {
     // Loopback is one gateway for every member, so the hello that answers says nothing about which member replied: adopting it
     // would rename every machine after the one local host.
     if (store.settings.mode === "loopback") return;
+    if (store.settings.viewMember === true) return;
     if (target === undefined || name === "" || name === target.hostName) return;
     const renamed: MemberTarget = { ...target, hostName: name };
     this.#targets.set(hostId, renamed);
@@ -377,9 +402,15 @@ export class MeshConnections {
   }
 
   #refresh(): void {
+    const selected = this.#targets.get(this.#selection ?? this.#settings.hostId) ?? this.#targets.values().next().value;
+    const learned = selected !== undefined && !this.#pairedRoster().some((paired) => paired.hostId === selected.hostId);
+    this.#visibleSettings = selected === undefined ? this.#settings : {
+      ...this.#settings, ...selected, ...(learned ? { mode: "relay", viewMember: true } : {}),
+    };
     this.#snapshot = [...this.#targets.values()].map((target) => ({
       target,
       state: this.#stores.get(target.hostId)?.state ?? UNSET,
+      ...(this.#lastSeen.has(target.hostId) ? { lastSeen: this.#lastSeen.get(target.hostId) } : {}),
     }));
   }
 

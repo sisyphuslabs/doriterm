@@ -35,6 +35,8 @@ import { guardedSessionStorage } from "./storage/guarded.ts";
 import { reloadIntoWaitingWorker, resumeUpdate } from "./update/reload-into-waiting.ts";
 import { updateStore } from "./update/update-store.ts";
 import { stepTerminalFont } from "./workspace/use-app-actions.ts";
+import { restoreMembership } from "./mesh/browser-membership.ts";
+import { followRoster } from "./mesh/roster-refresh.ts";
 
 // First: a browser below the baseline is told to update before the app starts or connects (#556).
 checkBaseline();
@@ -89,6 +91,7 @@ const desktop = desktopBridge();
 if (desktop !== null)
   connectionStore.restartsLocalHost({ start: () => desktop.startLocalHost(), failure: startFailure });
 void bootConnection(desktop, connectionStore);
+void restoreMembership().then(() => followRoster());
 /** Hands the page background to the iOS or Android shell, which paints the system bars around the page with it. */
 function paintBars(): void {
   paintAppBars(getComputedStyle(document.documentElement).getPropertyValue("--background").trim());

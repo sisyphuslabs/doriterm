@@ -10,6 +10,8 @@ import { FirstRun } from "../pair/first-run.tsx";
 import { HostStartNotice } from "../pair/host-start-notice.tsx";
 import { useOnline } from "../pwa/use-online.ts";
 import { lazy, Suspense, useState } from "react";
+import { useBrowserMembership } from "../mesh/browser-membership.ts";
+import { RemovedMembership } from "../settings/membership-device.tsx";
 
 const Workspace = lazy(() => import("../workspace/workspace.tsx").then((module) => ({ default: module.Workspace })));
 
@@ -36,6 +38,8 @@ function HostStartFailed({ failure }: { readonly failure: HostStartFailure }) {
 export function WorkspaceRoute() {
   const state = useConnection();
   const online = useOnline();
+  const mesh = useBrowserMembership();
+  if (mesh.phase === "removed" && state.phase !== "open") return <RemovedMembership />;
   // A link to this computer needs no network, so a lost network is never its cause (as in reconnect-status.tsx).
   const offline = !online && !staysOnThisComputer(connectionStore.settings);
   const shown =
