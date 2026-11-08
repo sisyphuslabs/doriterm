@@ -33,6 +33,11 @@ export default defineConfig({
   // Each run its own results, so two runs in one checkout do not clear each other's.
   outputDir: process.env["E2E_OUTPUT_DIR"] ?? "test-results",
   timeout: 60_000,
+  // Assertions poll, and Playwright's own default for that is 5 s - far shorter than the 60 s a test is given and
+  // shorter than a gesture takes to reach the program and come back on a loaded runner. That mismatch is what made
+  // phone-browse-mode fail on heads that do not touch browse mode (#1491): the spec waited 15 s for the buffer and
+  // then asserted against it with 5 s of patience. Give assertions the same patience the test has.
+  expect: { timeout: 15_000 },
   // Each worker runs its own e2e host and core (e2e/worker-host.ts), so workers share no terminals. Each worker is also a
   // browser, a host and a core at once: in CI no more workers than the runner has cores, or every spec that measures
   // layout or waits on focus loses a race now and then (8 workers on a 4-core runner failed a different spec each run,
