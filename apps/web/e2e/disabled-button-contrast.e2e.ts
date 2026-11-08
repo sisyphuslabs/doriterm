@@ -1,7 +1,8 @@
 // A disabled Button is dimmed, yet its label stays legible against the fill it is painted on, in both themes and on
-// every surface it sits on (#1031): 4.5:1 for a filled Button, 3:1 for a ghost one, measured as the browser composites
-// it, opacity included. A working (loading) Button is busy, not unavailable, so it keeps its own colours.
+// every surface it sits on (#1031): 4.5:1 for every label, filled or ghost (#1496), and 3:1 for a ghost icon, measured
+// as the browser composites it, opacity included. A working (loading) Button is busy, not unavailable, so it keeps its own colours.
 import { PAIR_CODE, PAIRING_SETTINGS } from "./capture-relay.ts";
+import { SHOTS } from "./capture-shots.ts";
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import { newOn, OFFLINE_BOUND_MS, OFFLINE_TEST_TIMEOUT_MS, reconnect, switchTo } from "./machine-switch.ts";
@@ -83,6 +84,18 @@ for (const theme of ["day", "night"] as const) {
       );
     });
     test.afterEach(() => reconnect());
+
+    test("Keybindings' disabled Reset all keeps a 4.5:1 label on every surface", async ({ page }) => {
+      const shot = SHOTS.find((entry) => entry.name === "settings-keybindings");
+      if (shot === undefined) throw new Error("capture settings-keybindings is missing");
+      await shot.run(page, "1440");
+      const reset = page.getByRole("button", { name: "Reset all" });
+      await expect(reset).toBeDisabled();
+      const everywhere = await Promise.all(
+        [undefined, ...SURFACES].map((surface) => measure(page, reset, surface === undefined ? {} : { surface })),
+      );
+      for (const measured of everywhere) expect(measured.ratio, measured.label).toBeGreaterThanOrEqual(4.5);
+    });
 
     test("an offline machine's New space icon is dimmed a visible step from the enabled one, still 3:1 on the sidebar", async ({
       page,
