@@ -41,8 +41,8 @@ for (const theme of ["day", "night"] as const) {
     await expect.poll(async () => (await field(page).boundingBox())?.height).toBe(44);
     const idle = await measure(page);
     // 0.5rem: what the phone chrome leaves between two pressable controls (the round buttons' 3.5rem slot is a 3rem
-    // button and this gap). Asserted against the number, so a tighter row or a shrunk button fails here.
-    expect(idle.gap).toBeGreaterThanOrEqual(8);
+    // button and this gap). Asserted as that exact number, so a tighter or a looser row, or a shrunk button, fails here.
+    expect(idle.gap).toBe(8);
     expect(idle.send).toEqual({ width: 44, height: 44 });
     const shot = async (state: string): Promise<void> => {
       if (process.env["CAPTURE"] !== "1") return;
@@ -60,7 +60,7 @@ for (const theme of ["day", "night"] as const) {
       .poll(async () => (await field(page).boundingBox())?.height ?? 0)
       .toBeGreaterThan(44);
     const grown = await measure(page);
-    expect(grown.gap).toBeGreaterThanOrEqual(8);
+    expect(grown.gap).toBe(8);
     expect(grown.send).toEqual({ width: 44, height: 44 });
     await shot("grown");
     info.annotations.push({
