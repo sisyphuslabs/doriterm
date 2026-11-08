@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { createMemoryLinkPair, HcConnection } from "@doriface/client";
 import { encodeFrame, FrameDecoder, FrameKind, LineDecoder, RPC_CHANNEL } from "@doriface/protocol";
 import { startTerminal } from "../workspace/start-on.ts";
-import { openingCallsOf, runWithAttach, viewAttach } from "./opening-attach.ts";
+import { docCalls } from "../workspace/use-layout-docs.ts";
+import { attachAhead, openingCallsOf, runWithAttach, viewAttach } from "./opening-attach.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -200,6 +201,29 @@ describe("a new terminal's attach goes with its run (#1351)", () => {
     const { address } = await started;
     const viewing = viewAttach(connection, address, true, { cols: 90, rows: 20, display: DISPLAY }, attachedAgain);
     await expect(viewing).rejects.toMatchObject({ kind: "unknown_method" });
+    connection.close();
+  });
+});
+
+describe("a terminal opened from the list asks for its screen before its tab is written (#1351)", () => {
+  test("the layout write waits until that attach is answered, so the attach never queues behind the core's disk write", async () => {
+    const { connection, core } = await opened();
+    attachAhead(connection, openingCallsOf(connection), "t4", DISPLAY);
+    attachAhead(connection, openingCallsOf(connection), "t4", DISPLAY);
+    const written = docCalls(connection, () => []).set(null, {}, 1);
+    // A later call: requests arrive in order, so a layout write already sent would be on the wire ahead of it.
+    const listed = connection.call("machine.list");
+    const probe = await core.request("machine.list");
+    expect(core.requests.map((request) => request.method)).toEqual(["terminal.attach", "machine.list"]);
+    const attach = await core.request("terminal.attach");
+    core.reply(attach.id, { result: { channel: 6, terminal: { ...TERMINAL, address: "t4" } } });
+    const set = await core.request("doc.set");
+    core.reply(set.id, { result: { version: 2 } });
+    expect(await written).toEqual({ version: 2 });
+    core.reply(probe.id, { result: { machines: [] } });
+    await listed;
+    const viewed = await viewAttach(connection, "t4", true, { cols: 100, rows: 30, display: DISPLAY }, attachedAgain);
+    expect(viewed.stream.channel).toBe(6);
     connection.close();
   });
 });
