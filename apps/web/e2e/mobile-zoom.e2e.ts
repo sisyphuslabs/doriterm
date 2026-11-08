@@ -1,36 +1,158 @@
-import { devices } from "@playwright/test";
+import { devices, type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
-
-const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
-test.use({ ...phone, serviceWorkers: "block" });
-
-/** The terminal's own text size at the default setting, which its keyboard sink inherits through `font: inherit`. */
-const TERMINAL_TEXT_PX = 13;
+import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 /**
- * iOS zooms the page when a field it focuses has a font-size under 16 px, and the terminal's keyboard sink is exactly
- * such a field: `@wterm/dom`'s `InputHandler` creates it with `font: "inherit"`, so it takes the terminal's own size,
- * which is 13 px at the default text size (#1379). The sink sits at the cursor and is visible on a phone (`opacity: 1`
- * when the pointer is coarse), so every tap that gives the terminal the keyboard can zoom the page.
- *
- * The sink is built here the way the package builds it, inside the real document, so the assertion is about the app's
- * own stylesheet and fails if the rule that overrides it is removed.
+ * A phone zooms this page two ways (#1380). iOS zooms whenever a field it focuses has a font-size under 16 px, and keeps
+ * the zoom; and with no `touch-action` a quick second tap is taken as a double-tap zoom instead of a second tap. Neither
+ * engine Playwright drives zooms on its own, so these specs pin what makes a phone zoom: each field's computed size on a
+ * coarse pointer, the computed `touch-action` of what a finger taps, and a viewport that still lets a person pinch.
  */
-test("the terminal's keyboard sink stays at or above 16px on a phone, so a tap does not zoom", async ({ page }) => {
-  await page.goto("/");
-  await page.evaluate((textPx: number) => {
-    const host = document.createElement("div");
-    host.setAttribute("data-terminal", "");
-    host.style.fontSize = `${textPx}px`;
-    const sink = document.createElement("textarea");
-    sink.id = "sink-under-test";
-    sink.style.font = "inherit";
-    host.appendChild(sink);
-    document.body.appendChild(host);
-  }, TERMINAL_TEXT_PX);
 
-  const sink = page.locator("#sink-under-test");
-  await expect(sink).toHaveCount(1);
-  const size = await sink.evaluate((element) => getComputedStyle(element).fontSize);
-  expect(parseFloat(size)).toBeGreaterThanOrEqual(16);
-});
+const { defaultBrowserType: _pixelBrowser, ...pixel } = devices["Pixel 7"];
+const PHONES = [
+  ["iPhone 14", PHONE],
+  ["Pixel 7", pixel],
+] as const;
+
+const TEXT_FIELDS = [
+  'input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="button"],',
+  '[type="submit"], [type="reset"], [type="image"], [type="hidden"])',
+  ", textarea, select",
+].join(" ");
+
+const zoomingFields = (page: Page): Promise<string[]> =>
+  page.locator(TEXT_FIELDS).evaluateAll((fields) =>
+    fields
+      .map((field) => ({
+        name: field.getAttribute("aria-label") ?? field.getAttribute("name") ?? field.id ?? field.tagName,
+        px: parseFloat(getComputedStyle(field).fontSize),
+      }))
+      .filter(({ px }) => px < 16)
+      .map(({ name, px }) => `${name} ${px}px`),
+  );
+
+const fontPx = (field: Locator): Promise<number> =>
+  field.evaluate((element) => parseFloat(getComputedStyle(element).fontSize));
+
+async function expectNoZoomOnFocus(field: Locator): Promise<void> {
+  await field.focus();
+  await expect(field).toBeFocused();
+  expect(await fontPx(field)).toBeGreaterThanOrEqual(16);
+}
+
+const openPalette = async (page: Page): Promise<Locator> => {
+  await page.getByRole("button", { name: "Command palette" }).click();
+  const command = page.getByRole("combobox", { name: "Command" });
+  await expect(command).toBeFocused();
+  return command;
+};
+
+const smallerText = async (page: Page): Promise<void> => {
+  await (await openPalette(page)).fill("Smaller terminal text");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog", { name: "Command palette" })).toBeHidden();
+};
+
+const FIND = process.platform === "darwin" ? "Meta+f" : "Control+Shift+F";
+
+for (const [name, device] of PHONES) {
+  test.describe(name, () => {
+    test.use({ ...device, serviceWorkers: "block" });
+
+    test("the terminal's keyboard field stays at 16px at a small text size, and is on screen when first focused", async ({
+      page,
+    }) => {
+      // The package parks its field at left: -9999px until it first places it at the cursor; a field focused off
+      // screen can make a phone scroll or zoom to it. Seen as the focus arrives, before any handler of the field runs.
+      await page.addInitScript(() => {
+        document.addEventListener(
+          "focusin",
+          (event) => {
+            const field = event.target;
+            if (!(field instanceof HTMLTextAreaElement) || field.closest("[data-terminal]") === null) return;
+            if (Reflect.has(window, "firstSinkFocus")) return;
+            const box = field.getBoundingClientRect();
+            Reflect.set(window, "firstSinkFocus", { left: box.left, right: box.right });
+          },
+          true,
+        );
+      });
+      await page.goto("/");
+      await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+      // The phone's default 13pt is 17.3px; at 10pt the field takes 13.3px through the package's `font: inherit`.
+      await smallerText(page);
+      await smallerText(page);
+      await smallerText(page);
+      await page.getByRole("banner").getByRole("button", { name: "New tab" }).click();
+      const terminal = page.locator("[data-terminal]");
+      await expect(terminal).toContainText("$", { timeout: 15_000 });
+      expect(await fontPx(terminal)).toBeLessThan(16);
+
+      await expectNoZoomOnFocus(terminal.locator("textarea"));
+      const first = await page.evaluate(() => Reflect.get(window, "firstSinkFocus") as { left: number; right: number });
+      expect(first.left).toBeGreaterThanOrEqual(0);
+      expect(first.right).toBeLessThanOrEqual(page.viewportSize()?.width ?? 0);
+    });
+
+    test("the keys bar's Type field and the command palette do not zoom when focused", async ({ page }) => {
+      await openPhoneTerminal(page);
+      await expectNoZoomOnFocus(page.getByLabel("Type into the terminal"));
+      expect(await zoomingFields(page)).toEqual([]);
+
+      await page.getByRole("button", { name: "Back to agents" }).click();
+      await expectNoZoomOnFocus(await openPalette(page));
+      expect(await zoomingFields(page)).toEqual([]);
+    });
+
+    test("find and rename do not zoom when focused", async ({ page }) => {
+      const terminal = await openPhoneTerminal(page);
+      await terminal.locator("textarea").focus();
+      await page.keyboard.press(FIND);
+      await expectNoZoomOnFocus(page.getByRole("searchbox", { name: "Find in terminal" }));
+      expect(await zoomingFields(page)).toEqual([]);
+      await page.keyboard.press("Escape");
+
+      await page
+        .getByRole("banner")
+        .getByRole("button", { name: /^Session actions for / })
+        .click();
+      await page.getByRole("menuitem", { name: "Rename…" }).click();
+      const rename = page.getByRole("dialog", { name: /^Rename / }).getByRole("textbox", { name: "Name" });
+      await expectNoZoomOnFocus(rename);
+      expect(await zoomingFields(page)).toEqual([]);
+    });
+
+    test("no field in Settings zooms when focused", async ({ page }) => {
+      await page.goto("/");
+      await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+      await (await openPalette(page)).fill("Open settings");
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(/\/settings$/);
+      await expect(page.locator(TEXT_FIELDS).first()).toBeAttached();
+      expect(await zoomingFields(page)).toEqual([]);
+    });
+
+    test("a double tap is two taps, not a zoom, and a pinch still zooms", async ({ page }) => {
+      const terminal = await openPhoneTerminal(page);
+      const surfaces: [string, Locator][] = [
+        ["html", page.locator("html")],
+        ["body", page.locator("body")],
+        ["terminal", terminal],
+        ["keys bar", keysBar(page)],
+        ["a key", key(page, "Arrow keys")],
+        ["a header button", page.getByRole("button", { name: "Back to agents" })],
+      ];
+      const actions = await Promise.all(
+        surfaces.map(
+          async ([label, target]) => `${label}: ${await target.evaluate((el) => getComputedStyle(el).touchAction)}`,
+        ),
+      );
+      expect(actions).toEqual(surfaces.map(([label]) => `${label}: manipulation`));
+
+      // `manipulation` keeps pinch-zoom; the viewport must not take it away either.
+      const viewport = await page.locator('meta[name="viewport"]').getAttribute("content");
+      expect(viewport).not.toMatch(/user-scalable\s*=\s*(no|0)|maximum-scale/);
+    });
+  });
+}
