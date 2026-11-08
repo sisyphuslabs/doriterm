@@ -152,6 +152,20 @@ test.describe("on a phone", () => {
     expect(await settingsSheet(page).boundingBox()).toEqual({ x: 0, y: 0, width: 390, height: 844 });
     await expect(workspace(page)).toBeHidden();
   });
+
+  test("opening Settings moves focus into the sheet, onto no action button (#1495)", async ({ page }) => {
+    await page.goto("/settings");
+    await expect(page.getByRole("heading", { name: "This device", level: 2 }).first()).toBeVisible({ timeout: 15_000 });
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const active = document.activeElement;
+          return active !== null && active !== document.body && active.closest("[data-settings-sheet]") !== null;
+        }),
+      )
+      .toBe(true);
+    expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe("BUTTON");
+  });
 });
 
 test.describe("Settings across the md breakpoint, and its zoom keys (#859)", () => {

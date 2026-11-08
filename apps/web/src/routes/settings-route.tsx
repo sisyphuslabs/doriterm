@@ -1,6 +1,6 @@
 import { Button, IconButton, Input, ScrollArea, Tab, TabList, Tabs, cn } from "@doriface/ui";
 import { ArrowLeft } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { currentPlatform, triggerKeys } from "../keys/trigger.ts";
 import { AppearanceSection } from "../settings/appearance-section.tsx";
 import { ConnectionSection } from "../settings/connection-section.tsx";
@@ -69,6 +69,11 @@ export function SettingsRoute() {
   // In the dialog its header is not the window's titlebar: it neither moves the window nor makes room for its controls.
   const dialog = useSettingsInDialog();
   const titlebar = dialog ? {} : { "data-titlebar": "" };
+  // The full-screen sheet takes focus as it opens, as the dialog does, unless something in it already has it (#1495).
+  const view = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!dialog && !view.current?.contains(document.activeElement)) view.current?.focus({ preventScroll: true });
+  }, [dialog]);
   const back = (
     <IconButton
       label="Close settings"
@@ -79,8 +84,10 @@ export function SettingsRoute() {
   );
   return (
     <div
+      ref={view}
+      tabIndex={-1}
       className={cn(
-        "flex h-full min-h-0 flex-col bg-background md:flex-row",
+        "flex h-full min-h-0 flex-col bg-background outline-none md:flex-row",
         !dialog && "pt-(--safe-top) pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left)",
       )}
     >
