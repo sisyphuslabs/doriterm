@@ -27,7 +27,8 @@ function Row(props: {
       variant="ghost"
       onClick={props.onClick}
       className={cn(
-        "h-11 justify-start gap-3 px-2 text-base text-foreground",
+        // A long label (the next agent, with its count) wraps rather than running past a 320 px sheet.
+        "h-auto min-h-11 justify-start gap-3 px-2 py-2 text-left text-base whitespace-normal text-foreground",
         props.destructive === true && "text-destructive hover:text-destructive",
       )}
     >
