@@ -141,10 +141,16 @@ export function PhoneTabSwitcher(props: {
           <Button
             variant="ghost"
             aria-label={`Switch tab, ${space === undefined ? "" : `${space}, `}${title}, tab ${at + 1} of ${tabs.length}`}
-            className="h-12 min-w-0 flex-1 text-foreground [&>span]:min-w-0"
+            className="@container h-12 min-w-0 flex-1 text-foreground [&>span]:min-w-0"
           >
+            {/*
+              The space goes first when the bar is narrow (both round buttons beside it): the header already names it, and
+              the tab's own name is what the stepper is for. The accessible name keeps it.
+            */}
             {space === undefined ? null : (
-              <span title={space} className="min-w-0 shrink-[2] truncate font-semibold">{`${space} ·`}</span>
+              <span title={space} className="min-w-0 shrink-[2] truncate font-semibold @max-[13rem]:hidden">
+                {`${space} ·`}
+              </span>
             )}
             <span title={title} className="min-w-0 truncate font-normal">
               {title}
