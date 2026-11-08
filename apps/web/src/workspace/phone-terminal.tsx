@@ -119,7 +119,8 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
       />
       <ConnectionLine />
       <PaneSwitcher panes={panes} open={terminal.address} onOpen={onOpen} />
-      <div
+      {/* The page's one main landmark: the terminal, under its header (#1378). */}
+      <main
         className="relative flex min-h-0 flex-1 flex-col"
         style={
           keysOpen
@@ -158,7 +159,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
             />
           )}
         </RegionBoundary>
-      </div>
+      </main>
       {tabsBar ? (
         <PhoneTabSwitcher
           terminals={terminals}
