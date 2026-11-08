@@ -135,7 +135,8 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
       aria-label="Terminal keys"
       style={props.style}
       className={cn(
-        "px-1.5 py-1 transition-[bottom] duration-(--duration-standard) ease-out motion-reduce:transition-none motion-reduce:duration-0",
+        // A second tap on a key is a second key, not a zoom (#1380); pan and pinch still work.
+        "px-1.5 py-1 [touch-action:manipulation] transition-[bottom] duration-(--duration-standard) ease-out motion-reduce:transition-none motion-reduce:duration-0",
         props.className,
       )}
     >

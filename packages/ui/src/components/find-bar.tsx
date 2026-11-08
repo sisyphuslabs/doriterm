@@ -71,7 +71,7 @@ export function FindBar({
         value={query}
         onChange={(event) => onQueryChange(event.currentTarget.value)}
         onKeyDown={onKeyDown}
-        className="h-(--control-sm) w-40 min-w-0 flex-1 bg-transparent px-1 text-sm text-foreground outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
+        className="h-(--control-sm) w-40 min-w-0 flex-1 bg-transparent px-1 text-sm text-foreground outline-none placeholder:text-muted-foreground coarse:text-base [&::-webkit-search-cancel-button]:hidden"
       />
       <span
         role="status"

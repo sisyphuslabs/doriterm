@@ -227,7 +227,12 @@ export function TerminalView(props: TerminalViewProps) {
         data-slot="terminal-viewport"
         data-terminal={address}
         data-ready={wt !== null}
-        className={cn("min-h-0 flex-1 bg-term-bg", options.hollowCursor && "cursor-hollow", className)}
+        className={cn(
+          // manipulation keeps pan and pinch and drops the double tap's zoom, so a tap is a tap (#1380).
+          "min-h-0 flex-1 bg-term-bg [touch-action:manipulation]",
+          options.hollowCursor && "cursor-hollow",
+          className,
+        )}
         onReady={(ready) => {
           // The renderer no longer focuses itself as it starts (patches/@wterm%2Fdom@0.5.9.patch); the view decides.
           focusWhenFree(ready);
