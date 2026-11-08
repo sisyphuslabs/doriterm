@@ -114,6 +114,9 @@ for (const device of ["desktop", "phone"] as const) {
         release();
         await expect(terminal.locator(".term-prediction-cell")).toHaveCount(0);
         await expect.poll(() => realCell(page, at.row, at.col)).toBe(GA);
+        // The core's cell holds the echo before the renderer paints it (one frame later, or later on a loaded runner):
+        // the box is read once the echoed glyph is on screen.
+        await expect.poll(async () => (await terminal.evaluate(painted)).committedWide).not.toBeNull();
         const committed = (await terminal.evaluate(painted)).committedWide;
         expectSameBox(shown.cells[0], committed, "predicted wide cell vs the echoed glyph");
         expect(shown.cells[0]?.fontSize).toBe(committed?.fontSize);
