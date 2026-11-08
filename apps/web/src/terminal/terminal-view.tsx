@@ -16,6 +16,7 @@ import { useBehaviors, type PendingPaste } from "./use-behaviors.ts";
 import { useFocusAfterSelect } from "./use-focus-after-select.ts";
 import { useLongPressSelect } from "./use-long-press-select.ts";
 import { useSelectionCells } from "./use-selection-cells.ts";
+import { useShiftDragSelect } from "./use-shift-drag-select.ts";
 import { Ended } from "./ended.tsx";
 import { useTerminalPort } from "./terminal-port.ts";
 import type { TerminalViewProps } from "./terminal-view-props.ts";
@@ -126,6 +127,7 @@ export function TerminalView(props: TerminalViewProps) {
   const shown = usePaneVisibility(wt, pacer);
   useFocusAfterSelect(wt, options.trimCopy);
   useLongPressSelect(wt, setSelectAt);
+  useShiftDragSelect(wt);
   useSelectionCells(wt);
   const closeSelectionMenu = useCallback((): void => {
     setSelectAt(null);
