@@ -32,6 +32,8 @@ test("settings lists this computer's paired devices and asks before revoking one
   await section.getByRole("button", { name: "Revoke" }).first().click();
   const dialog = page.getByRole("alertdialog");
   await expect(dialog.getByText("Revoke phone?")).toBeVisible();
+  // A question with a destructive answer has no default: focus is on the question, so Enter revokes nothing (#1495).
+  await expect(dialog).toBeFocused();
   await info.attach("revoke-confirm.png", { body: await page.screenshot(), contentType: "image/png" });
   await dialog.getByRole("button", { name: "Revoke" }).click();
 
