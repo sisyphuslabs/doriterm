@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## v0.1.11 - 2026-11-08
+
+### Machine mesh
+
+- Pairing a machine adds it to your machines instead of replacing the one paired before: a phone reaches every computer it paired, each with its own connection, and the machine just paired is the one shown. (#942)
+
+### Phone
+
+- Back in the installed app walks out of a terminal to your agents list and only leaves the app from the list, so a
+  terminal is no longer one Back gesture from closing Doriterm. (#975)
+- An agent row's pin says what it pins: Pin <agent> to the top, on the button and as its tooltip. (#879)
+- Tapping a notification while a terminal is open on a phone switches to its terminal in place, so one Back reaches the list instead of an extra list entry. (#999)
+
+### Web app
+
+- An iPhone keeps its paired identity across a reload. WebKit hands a stored X25519 `CryptoKey` back as null, so the app minted a new key on every load and the host refused the next session as an unknown device, adding a device on every re-pair; the key is now kept as bytes on a browser that cannot hold a `CryptoKey`, and a browser that can is unchanged. (#1333)
+
 ## v0.1.10 - 2026-11-08
 
 ### Terminal
