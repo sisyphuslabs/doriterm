@@ -4,10 +4,10 @@ import { useActionHandler } from "../keys/dispatcher.ts";
 
 /**
  * Whatever owns the keyboard while it is open: dialogs, menus, lists and a shortcut being recorded. Settings' own dialog
- * (the desktop layout) is not one of them: it is what Escape closes.
+ * (the desktop layout) and its sheet (a phone's) are not among them: they are what Escape closes.
  */
 const LAYERS =
-  '[role="dialog"]:not([data-settings-dialog]), [role="alertdialog"], [role="menu"], [role="listbox"], [data-captures-keys]';
+  '[role="dialog"]:not([data-settings-dialog], [data-settings-sheet]), [role="alertdialog"], [role="menu"], [role="listbox"], [data-captures-keys]';
 const TEXT_INPUTS: ReadonlySet<string> = new Set(["text", "search", "url", "email", "number", "password", "tel"]);
 
 const layerOpen = (): boolean => document.querySelector(LAYERS) !== null;
