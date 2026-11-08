@@ -5,18 +5,18 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RelayProofs } from "@doriface/relay-client";
+import { MeshStore } from "../state/mesh.ts";
 import { HostSync } from "./host-sync.ts";
 import { FakeClock, seededRandom } from "./testing/fake-clock.ts";
-import { meshOf, peer, storeOf } from "./testing/mesh-peers.ts";
+import { meshOf, type Peer, peer, storeOf } from "./testing/mesh-peers.ts";
 
-/** b's running mesh with a, where every dial is recorded and fails: what matters is whom the host chose to dial. */
-function hostSyncAtB(proofs?: RelayProofs) {
-  const [a, b] = [peer("a"), peer("b")];
+/** A host's own sync over `store`, where every dial is recorded and fails: what matters is what it reads of the mesh. */
+function hostSyncOver(owner: Peer, store: MeshStore, proofs?: RelayProofs) {
   const clock = new FakeClock();
   const dialed: string[] = [];
   const sync = new HostSync({
-    identity: b.machine.identity,
-    mesh: storeOf(b, meshOf([a, b]).records),
+    identity: owner.machine.identity,
+    mesh: store,
     relay: {
       url: "ws://relay.invalid",
       createSocket: (url) => {
@@ -34,7 +34,13 @@ function hostSyncAtB(proofs?: RelayProofs) {
     clock,
     random: seededRandom(31),
   });
-  return { a, clock, dialed, sync };
+  return { clock, dialed, sync };
+}
+
+/** b's running mesh with a, and the host that syncs over it. */
+function hostSyncAtB(proofs?: RelayProofs) {
+  const [a, b] = [peer("a"), peer("b")];
+  return { a, ...hostSyncOver(b, storeOf(b, meshOf([a, b]).records), proofs) };
 }
 
 /** The session a join ran on, as HostMesh hands it over: the inviter's side received the joiner's name. */
@@ -172,5 +178,24 @@ describe("a new relay pass (contract v1.6)", () => {
     await clock.advance(2_001);
     expect(dialed.slice(before).some((url) => url.includes(a.hostId))).toBe(true);
     await sync.stop();
+  });
+});
+
+describe("the format a client's admission needs, asked before sync runs (#1415)", () => {
+  test("a host with no mesh is ready: the join founds a roster of one, and nobody is in it to hold it back", () => {
+    const empty = new MeshStore(mkdtempSync(join(tmpdir(), "dh-no-mesh-")), { log: () => undefined, durable: false });
+    const { sync } = hostSyncOver(peer("b"), empty);
+    expect(sync.formatReady()).toBe(true);
+    sync.stop();
+  });
+
+  test("a one-machine mesh is ready, and a machine that has not answered still blocks it", () => {
+    const b = peer("b");
+    const alone = hostSyncOver(b, storeOf(b, meshOf([b]).records));
+    expect(alone.sync.formatReady()).toBe(true);
+    const both = hostSyncOver(b, storeOf(b, meshOf([peer("a"), peer("b")]).records));
+    expect(both.sync.formatReady()).toBe(false);
+    alone.sync.stop();
+    both.sync.stop();
   });
 });

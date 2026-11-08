@@ -1,5 +1,27 @@
 import { describe, expect, test } from "bun:test";
-import { entersFromList, phoneOpenKey, rememberOpenKey } from "./phone-route.ts";
+import { PHONE_LIST, phoneHref, phoneOpenKey, phoneParent, phoneRoute, rememberOpenKey } from "./phone-route.ts";
+
+describe("the phone's place, read from and written to the list's address", () => {
+  test("a space screen and a terminal opened from it round-trip through the address", () => {
+    const route = { space: "space:local/spc web", terminal: "local/tb-1" };
+    const href = phoneHref(route);
+    expect(href).toBe("/?s=space%3Alocal%2Fspc%20web&t=local%2Ftb-1");
+    const search = Object.fromEntries(new URL(href, "http://phone").searchParams);
+    expect(phoneRoute(search)).toEqual(route);
+  });
+
+  test("the bare list is /, and a param that is empty or not text names nothing", () => {
+    expect(phoneHref(PHONE_LIST)).toBe("/");
+    expect(phoneRoute({ s: "", t: 7 })).toEqual(PHONE_LIST);
+    expect(phoneRoute({})).toEqual(PHONE_LIST);
+  });
+
+  test("Back closes a terminal to the screen it came from, and a space to the list", () => {
+    expect(phoneParent({ space: "s1", terminal: "t1" })).toEqual({ space: "s1", terminal: null });
+    expect(phoneParent({ space: null, terminal: "t1" })).toEqual(PHONE_LIST);
+    expect(phoneParent({ space: "s1", terminal: null })).toEqual(PHONE_LIST);
+  });
+});
 
 describe("the phone's open terminal, read from the route", () => {
   test("the list shows what ?t= names, and nothing when it names nothing", () => {
@@ -27,12 +49,5 @@ describe("the phone's open terminal, read from the route", () => {
     expect(rememberOpenKey("/", null, "machine-c")).toBeNull();
     expect(rememberOpenKey("/settings", null, "machine-c")).toBe("machine-c");
     expect(rememberOpenKey("/settings", "machine-e", "machine-c")).toBe("machine-e");
-  });
-});
-
-describe("what counts as entering a terminal", () => {
-  test("the list adds an entry, a switch does not", () => {
-    expect(entersFromList(null)).toBe(true);
-    expect(entersFromList("machine-a")).toBe(false);
   });
 });

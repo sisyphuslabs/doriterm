@@ -1,14 +1,19 @@
 import type { HcConnection, TerminalStream } from "@doriface/client";
 import { useToastManager } from "@doriface/ui";
 import type { TerminalHandle, WTerm } from "@wterm/react";
-import { type RefObject, useCallback, useEffect, useRef } from "react";
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { unprovenLinks } from "../connection/wake.ts";
+import { HeldInput } from "./held-input.ts";
 import { pasteInto } from "./terminal-port.ts";
 import { putFiles, quotePaths } from "./paste-files.ts";
 import { scrollTerminal } from "./terminal-scroll.tsx";
 import type { TerminalInput } from "./terminal-view.tsx";
 
 export interface TerminalInputPath {
-  /** Input typed while no stream is open (attaching, or the connection dropped), sent to the next stream in order. */
+  /**
+   * Input not written yet: typed while no stream was open (attaching, or the connection dropped), sent to the next stream
+   * in order, or while a wake proved the link, sent to the same stream once it answers (#1370).
+   */
   readonly pending: RefObject<TerminalInput[]>;
   /** Input typed into the renderer, rewritten as the host asks (latched phone modifiers). */
   readonly typedInto: (data: string) => void;
@@ -32,14 +37,20 @@ interface InputSources {
 export function useTerminalInput(sources: InputSources): TerminalInputPath {
   const { wt, handle, stream, connection, address, transformInput, typesComposition } = sources;
   const toasts = useToastManager();
-  // Every human-input write goes through send, so keys pressed during a reconnect replay in the order pressed.
-  const pending = useRef<TerminalInput[]>([]);
-  const send = useCallback(
-    (data: TerminalInput): void => {
-      if (stream.current?.write(data) !== true) pending.current.push(data);
-    },
-    [stream],
+  const latestConnection = useRef(connection);
+  latestConnection.current = connection;
+  // Every human-input write goes through send, so keys pressed during a reconnect or a wake replay in the order pressed.
+  const [held] = useState(
+    () =>
+      new HeldInput(
+        unprovenLinks,
+        () => latestConnection.current,
+        () => stream.current,
+      ),
   );
+  useEffect(() => held.watch(), [held]);
+  const pending = useRef(held.pending);
+  const send = useCallback((data: TerminalInput): void => held.send(data), [held]);
   const typedInto = (data: string): void => {
     const input = transformInput?.(data) ?? data;
     if (input !== "") send(input);
@@ -60,8 +71,6 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
   );
   // herdr-app's send_image: files go to the terminal's machine (`terminal.put`), and where they landed is pasted there,
   // bracketed when the program asked, so an agent on any machine reads the image by its path (#701).
-  const latestConnection = useRef(connection);
-  latestConnection.current = connection;
   const pasteFiles = useCallback(
     (files: readonly File[]): void => {
       void putFiles(latestConnection.current, address, files).then(({ paths, refused }) => {
