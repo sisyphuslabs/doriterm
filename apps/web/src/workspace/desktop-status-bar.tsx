@@ -69,22 +69,20 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
             </span>
           ) : null}
           <ReconnectStatus />
+          <ConnectedStatus />
           <ConnectionPathItem />
         </>
       }
       end={
-        <>
-          <ConnectedStatus />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onPalette}
-            className="h-5 gap-1.5 px-1 text-xs text-muted-foreground"
-          >
-            {paletteKeys === undefined ? null : <Kbd keys={paletteKeys} />}
-            Commands
-          </Button>
-        </>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onPalette}
+          className="h-5 gap-1.5 px-1 text-xs text-muted-foreground"
+        >
+          {paletteKeys === undefined ? null : <Kbd keys={paletteKeys} />}
+          Commands
+        </Button>
       }
     />
   );

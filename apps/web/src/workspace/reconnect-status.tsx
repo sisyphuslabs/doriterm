@@ -75,10 +75,14 @@ export function ReconnectStatus({ compact = false }: { readonly compact?: boolea
  * The bar's quiet baseline while the session is open and nothing is wrong (#1456): a change to Reconnecting or Offline
  * then reads against it. Exactly one connection item shows at a time, since this one gives way to ReconnectStatus.
  */
+/** Connected is the open session's baseline only while no notice (Reconnecting, Offline) applies. */
+export const showsConnected = (phase: string, notice: ConnectionNotice | null): boolean =>
+  phase === "open" && notice === null;
+
 export function ConnectedStatus() {
   const state = useConnection();
   const notice = useConnectionNotice();
-  if (state.phase !== "open" || notice !== null) return null;
+  if (!showsConnected(state.phase, notice)) return null;
   return (
     <span data-connected className="flex shrink-0">
       <StatusBarItem icon={<span aria-hidden className="size-1.5 shrink-0 rounded-full bg-online" />}>
