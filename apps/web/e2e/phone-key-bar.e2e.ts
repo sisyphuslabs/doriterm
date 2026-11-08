@@ -92,8 +92,8 @@ test("a browser that shrinks the layout viewport for the keyboard shows the bar 
   await expect(page.locator("[data-terminal] textarea")).toBeFocused();
   await expect(bar).toHaveCount(0);
 
-  // A tap in the terminal opens the keyboard: the page itself is 336 px shorter, and the visual viewport is all of it.
-  await page.locator("[data-terminal]").click();
+  // The keyboard button raises it: the page itself is 336 px shorter, and the visual viewport is all of it (#1375).
+  await key(page, "Show keyboard").click();
   await page.setViewportSize({ width: 390, height: 844 - 336 });
   await expect(bar).toBeVisible();
   const box = await bar.boundingBox();

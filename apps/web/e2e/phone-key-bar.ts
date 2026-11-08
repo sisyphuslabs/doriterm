@@ -8,7 +8,9 @@ export const PHONE = { ...iphone, viewport: { width: 390, height: 844 } };
  * Call before page.goto: replaces visualViewport with one that a 336 px soft keyboard shrinks while a text field has
  * the focus, as a phone's does; `showKeyboard(page, px)` moves it on its own (0: closed by its own key). Headless
  * Chromium has no soft keyboard. With `raiseOnFocus: false` a focus alone raises nothing (a keyboard only
- * `showKeyboard` brings up), as on a screen whose keyboard the person opens themselves.
+ * `showKeyboard` brings up), as on a screen whose keyboard the person opens themselves. A field whose `inputmode` is
+ * `"none"` raises nothing either, as iOS and Chrome treat it: a phone's terminal keeps its field that way until its keys
+ * ask for the keyboard (#1375).
  */
 export async function fakeSoftKeyboard(page: Page, { raiseOnFocus = true } = {}): Promise<void> {
   await page.addInitScript((raise: boolean) => {
@@ -28,17 +30,18 @@ export async function fakeSoftKeyboard(page: Page, { raiseOnFocus = true } = {})
       viewport.dispatchEvent(new Event("resize"));
     };
     document.addEventListener("focusin", () => {
-      if (raise && document.activeElement instanceof HTMLTextAreaElement && keyboard === 0) softKeyboard(336);
+      const active = document.activeElement;
+      if (!raise || keyboard !== 0) return;
+      // `inputmode="none"` is a focus that asks for no soft keyboard, as iOS and Chrome treat it (#1375).
+      if (active instanceof HTMLTextAreaElement && active.inputMode !== "none") softKeyboard(336);
     });
     document.addEventListener("focusout", (event) => {
       const next = event.relatedTarget;
       queueMicrotask(() => {
-        if (
-          !(next instanceof HTMLTextAreaElement) &&
-          !(document.activeElement instanceof HTMLTextAreaElement) &&
-          keyboard > 0
-        )
-          softKeyboard(0);
+        const active = document.activeElement;
+        const wasTyping = next instanceof HTMLTextAreaElement && next.inputMode !== "none";
+        const isTyping = active instanceof HTMLTextAreaElement && active.inputMode !== "none";
+        if (!wasTyping && !isTyping && keyboard > 0) softKeyboard(0);
       });
     });
     Object.assign(window, { softKeyboard });

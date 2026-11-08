@@ -18,7 +18,7 @@ import { useLongPressSelect } from "./use-long-press-select.ts";
 import { useSelectionCells } from "./use-selection-cells.ts";
 import type { TerminalEnd } from "./terminal-end.ts";
 import { Ended } from "./ended.tsx";
-import { type TerminalPort, useTerminalPort } from "./terminal-port.ts";
+import { type TerminalPort, askingForKeyboard, quietKeyboard, useTerminalPort } from "./terminal-port.ts";
 import { Unopened } from "./unopened.tsx";
 import { JumpToBottom, TerminalScrollbar, useTerminalScroll } from "./terminal-scroll.tsx";
 import { QuietBusy } from "./quiet-busy.tsx";
@@ -158,7 +158,12 @@ export function TerminalView(props: TerminalViewProps) {
   const scroll = useTerminalScroll(wt);
   const outputShown = useRef(scroll.changed);
   outputShown.current = scroll.changed;
-  useTerminalPort(handle, typed, onPort, pasteFiles);
+  useTerminalPort(handle, typed, onPort, pasteFiles, softKeyboard);
+  // A touch surface's field asks for no soft keyboard on its own: a press in the terminal leaves it down, and only the
+  // keys that ask for one raise it (#1375).
+  useEffect(() => {
+    if (wt !== null && softKeyboard) quietKeyboard(wt.element);
+  }, [wt, softKeyboard]);
   useBehaviors(wt, stream, options, onUnsafePaste, pasteFiles);
   useTerminalFont(wt, config);
   usePreedit(wt);
@@ -273,6 +278,7 @@ export function TerminalView(props: TerminalViewProps) {
               opened={finding}
               onClose={() => {
                 setFinding(null);
+                askingForKeyboard(handle, softKeyboard);
                 wt.focus();
               }}
             />
@@ -290,7 +296,8 @@ export function TerminalView(props: TerminalViewProps) {
         onPaste={(text) => {
           typed(text);
           setPaste(null);
-          // The confirmed paste is the line now being typed: the terminal takes the keyboard back, as a tap in it does.
+          // The confirmed paste is the line now being typed: the terminal takes the keyboard back, as its keys do.
+          askingForKeyboard(handle, softKeyboard);
           handle.current?.focus();
         }}
       />

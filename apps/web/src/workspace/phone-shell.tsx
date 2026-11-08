@@ -2,7 +2,7 @@ import type { HcConnection } from "@doriface/client";
 import { IconButton, ScrollArea, StatusBar, StatusBarItem } from "@doriface/ui";
 import { Link } from "@tanstack/react-router";
 import { Monitor, Plus, Search, Settings } from "lucide-react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { connectionStore } from "../connection/store.ts";
 import { NEW_TAB } from "../keys/actions.ts";
 import { AgentLists } from "./agent-lists.tsx";
@@ -44,6 +44,9 @@ export function PhoneShell(props: PhoneShellProps) {
   const machines = useMachinesContext();
   const update = usePendingUpdate();
   const terminal = terminals.find((entry) => entry.address === open);
+  // A session picked from the keys bar is the person asking for its keyboard: its view takes the keyboard as it opens,
+  // and going back to the list (or opening another session) ends the ask (#1375).
+  const [picked, setPicked] = useState<string | null>(null);
   // An unanswered list is not an empty one: the empty state waits for the core's first answer (#797).
   const live = machines.terminalsLoaded
     ? terminals.filter((entry) => entry.state === "live").map((entry) => entry.address)
@@ -123,8 +126,16 @@ export function PhoneShell(props: PhoneShellProps) {
       panes={panes}
       tabTitle={tabTitle}
       onOpen={onOpen}
-      onBack={onBack}
+      onBack={() => {
+        setPicked(null);
+        onBack();
+      }}
       dictate={dictate}
+      claimed={picked === terminal.address}
+      onPick={(address) => {
+        setPicked(address);
+        onOpen(address);
+      }}
     />
   );
 }

@@ -37,6 +37,11 @@ test("opening a terminal raises no keyboard on its own: it stays down until the 
   await expect(input).not.toBeFocused();
   await expectDown(page);
 
+  // A press in the terminal is not a request for the keyboard: the field takes the focus, the keyboard stays down.
+  await page.locator("[data-terminal]").click();
+  await expect(input).toBeFocused();
+  await expectDown(page);
+
   await key(page, "Show keyboard").click();
   await expect(input).toBeFocused();
   await expectUp(page);
@@ -72,9 +77,11 @@ test("a browser that shrinks the page for the keyboard: Show keyboard while it i
   await expect(input).not.toBeFocused();
   await expectDown(page);
 
-  // A tap in the terminal raises the keyboard, which shrinks the page.
+  // A press in the terminal leaves the keyboard down (#1375); the button raises it, and this browser shrinks the page for it.
   await page.locator("[data-terminal]").click();
   await expect(input).toBeFocused();
+  await expectDown(page);
+  await key(page, "Show keyboard").click();
   await page.setViewportSize({ width: 390, height: 844 - 336 });
   await expectUp(page);
 
