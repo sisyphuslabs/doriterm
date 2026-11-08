@@ -102,8 +102,8 @@ async function exited(pid: number, stoppedFile: string, withinMs: number): Promi
       watcher = undefined;
     }
     bound = setTimeout(() => finish(!alive(pid)), withinMs);
-    // The exit ends the wait; this only notices a host that died without either signal (a SIGKILL), so that costs a
-    // second rather than the whole bound.
+    // Not the wait's decision, and not a wall clock: a once-a-second liveness sample, so a host that died without
+    // either signal (a SIGKILL) costs a second rather than the whole bound. Every ordinary stop ends on the exit above.
     heartbeat = setInterval(check, 1_000);
     check();
   });
