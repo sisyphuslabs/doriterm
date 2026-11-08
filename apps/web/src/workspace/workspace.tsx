@@ -403,6 +403,8 @@ export function Workspace({ connection }: WorkspaceProps) {
                           const found = findTerminal(layout.tabs, address);
                           if (found !== null) closeTab(found.tab.key);
                         }}
+                        sheet={phone.sheet}
+                        onSheet={phone.showSheet}
                         onPalette={onPalette}
                         onSession={onSession}
                       />
