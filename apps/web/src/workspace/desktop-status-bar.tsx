@@ -45,24 +45,23 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
             </span>
           )}
           {loaded ? (
-            <span className="flex shrink-0">
-              <StatusBarItem>
-                {live.length} {live.length === 1 ? "terminal" : "terminals"}
-                {next === null ? null : (
-                  <>
-                    {" · "}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      title="Open the next terminal that needs you"
-                      onClick={() => onOpen(next)}
-                      className="h-5 px-1 text-xs text-status-blocked-text hover:text-status-blocked-text"
-                    >
-                      {blocked} needs you
-                    </Button>
-                  </>
-                )}
-              </StatusBarItem>
+            <span className="flex shrink-0 items-center gap-1">
+              <StatusBarItem>{`${live.length} ${live.length === 1 ? "terminal" : "terminals"}`}</StatusBarItem>
+              {/* Beside the words, not inside their ellipsis box: the button's hit area would widen it (#1448). */}
+              {next === null ? null : (
+                <>
+                  <span aria-hidden>·</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    title="Open the next terminal that needs you"
+                    onClick={() => onOpen(next)}
+                    className="h-5 px-1 text-xs text-status-blocked-text hover:text-status-blocked-text"
+                  >
+                    {blocked} needs you
+                  </Button>
+                </>
+              )}
             </span>
           ) : null}
           <ReconnectStatus />
