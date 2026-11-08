@@ -26,6 +26,11 @@ export function statusCounts(commands: readonly Command[]): readonly StatusCount
   return counts.length < 2 ? [] : counts.slice(0, MOST);
 }
 
+/** How many agent rows there are: All's count, which a segment cap or an offline machine must not shrink. */
+export function agentCount(commands: readonly Command[]): number {
+  return commands.filter((command) => command.status !== undefined).length;
+}
+
 export function withStatus(commands: readonly Command[], status: AgentStatus | null): readonly Command[] {
   return status === null ? commands : commands.filter((command) => command.status === status);
 }

@@ -4,7 +4,7 @@ import { cn } from "../lib/cn.ts";
 import { Button } from "./button.tsx";
 import { Kbd } from "./kbd.tsx";
 import { overlaySurface } from "./overlay.ts";
-import { shownStatus, statusCounts, withStatus } from "./palette-status.ts";
+import { agentCount, shownStatus, statusCounts, withStatus } from "./palette-status.ts";
 import { SegmentedControl } from "./segmented-control.tsx";
 import { STATUS_LABEL, StatusIndicator, type AgentStatus } from "./status.tsx";
 
@@ -118,7 +118,7 @@ export function CommandPalette({
               setActive(0);
             }}
             options={[
-              { value: ALL, label: `All ${counts.reduce((sum, { count }) => sum + count, 0)}` },
+              { value: ALL, label: `All ${agentCount(commands)}` },
               ...counts.map(({ status: each, count }) => ({ value: each, label: `${STATUS_LABEL[each]} ${count}` })),
             ]}
           />
