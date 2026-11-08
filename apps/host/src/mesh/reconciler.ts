@@ -66,7 +66,7 @@ export class Reconciler {
   readonly status = new Map<string, LineStatus>();
   readonly #options: ReconcilerOptions;
   readonly #stuck = new Map<string, Stuck>();
-  /** Unreachable, hc_missing, incompatible; a line refused for the dial budget is re-added by the policy's due. */
+  /** Every retryable refusal shares a deadline; another view or budget event cannot bypass it. */
   readonly #retries: ProbeBackoff;
   /** Newly admitted members whose add waits for the 0-5 s jitter (section 8.2). */
   readonly #held = new Set<string>();
@@ -120,6 +120,12 @@ export class Reconciler {
 
   releaseAdd(hostId: string): Promise<void> {
     this.#held.delete(hostId);
+    return this.#latest === undefined ? this.#running : this.reconcile(this.#latest);
+  }
+
+  /** A policy budget wake may release an add, but cannot shorten its failed-attempt deadline. */
+  budgetAvailable(hostId: string): Promise<void> {
+    this.#retries.budgetAvailable(hostId);
     return this.#latest === undefined ? this.#running : this.reconcile(this.#latest);
   }
 
@@ -233,6 +239,7 @@ export class Reconciler {
   }
 
   async #add(member: MemberEntry, list: readonly MachineView[], key: string): Promise<void> {
+    if (!this.#retries.ready(member.hostId)) return;
     const stuck = this.#stuck.get(member.hostId);
     if (stuck !== undefined && stuck.key === key && this.#options.clock.now() < stuck.until) return;
     this.#stuck.delete(member.hostId);
@@ -242,6 +249,7 @@ export class Reconciler {
     } catch (error) {
       return this.#stick(member, key, `invalid_host: ${messageOf(error)}`);
     }
+    this.#retries.begin(member.hostId);
     await this.#addAs(member, { list, key, via }, [member.name, ...fallbacks(member.name, member.hostId)]);
   }
 
@@ -269,7 +277,7 @@ export class Reconciler {
       if (kind === "already_added") return this.#migrate(member, attempt, name);
       this.status.set(member.hostId, { state: "retrying", reason: `${kind}: ${messageOf(error)}` });
       this.#options.log(`mesh: adding machine ${name} failed (${kind}): ${messageOf(error)}; retrying`);
-      if (!messageOf(error).includes(BUDGET_REFUSAL)) this.#retries.later(member.hostId);
+      this.#retries.later(member.hostId, !messageOf(error).includes(BUDGET_REFUSAL));
     }
   }
 
@@ -303,7 +311,7 @@ export class Reconciler {
     }
     this.status.set(member.hostId, { state: "retrying", reason: done.reason });
     log(`mesh: replacing machine ${old.name} with ${tried}'s mesh line is retried: ${done.reason}`);
-    if (!done.reason.includes(BUDGET_REFUSAL)) this.#retries.later(member.hostId);
+    this.#retries.later(member.hostId, !done.reason.includes(BUDGET_REFUSAL));
   }
 
   /** `machine.add` once both of its upgrades are reserved; a refused reservation throws as herdr's refusal would. */
@@ -325,6 +333,7 @@ export class Reconciler {
   }
 
   #stick(member: MemberEntry, key: string, reason: string): void {
+    this.#retries.clear(member.hostId);
     this.#stuck.set(member.hostId, { key, until: this.#options.clock.now() + STUCK_RETRY_MS });
     this.status.set(member.hostId, { state: "stuck", reason });
     this.#options.log(`mesh: STUCK ${member.name}: ${reason}`);

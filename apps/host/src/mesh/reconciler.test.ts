@@ -46,24 +46,35 @@ describe("a member that could not be added (section 8.1, H-54-1)", () => {
     expect(reconcile.status.get(b.hostId)?.state).toBe("ok");
   });
 
-  test("an add refused for the dial budget arms no clock: only the budget's own due re-adds it (M-E2)", async () => {
+  test("a budget refusal observes the same backoff even when another due event arrives (#1433)", async () => {
     const { clock, machines, reconcile } = reconciler();
     machines.failAdds.set("b", [budget(), budget()]);
     await reconcile.reconcile(viewOf(b));
     await reconcile.reconcile(viewOf(b));
-    await clock.advance(30 * 60_000);
+    await clock.advance(29_999);
     await reconcile.idle();
-    expect(machines.calls).toEqual(["0 add b", "0 add b"]);
-    expect(reconcile.status.get(b.hostId)?.state).toBe("retrying");
+    expect(machines.calls).toEqual(["0 add b"]);
+    await reconcile.budgetAvailable(b.hostId);
+    await clock.advance(1);
+    await reconcile.idle();
+    expect(machines.calls).toEqual(["0 add b", "30000 add b"]);
+    await clock.advance(60_000);
+    await reconcile.budgetAvailable(b.hostId);
+    await reconcile.idle();
+    expect(machines.calls).toEqual(["0 add b", "30000 add b", "90000 add b"]);
+    expect(reconcile.status.get(b.hostId)?.state).toBe("ok");
   });
 
-  test("presence of a member with no machine entry adds it at once", async () => {
-    const { machines, reconcile } = reconciler();
+  test("presence of a member with no entry does not bypass a failed add's backoff (#1433)", async () => {
+    const { clock, machines, reconcile } = reconciler();
     machines.failAdds.set("b", [hcError("unreachable")]);
     await reconcile.reconcile(viewOf(b));
     await reconcile.presence(b);
     await reconcile.idle();
-    expect(machines.calls).toEqual(["0 add b", "0 add b"]);
+    expect(machines.calls).toEqual(["0 add b"]);
+    await clock.advance(30_000);
+    await reconcile.idle();
+    expect(machines.calls).toEqual(["0 add b", "30000 add b"]);
     expect((await machines.list()).map((machine) => machine.name)).toEqual(["b"]);
   });
 
@@ -75,6 +86,44 @@ describe("a member that could not be added (section 8.1, H-54-1)", () => {
     await clock.advance(10 * 60_000);
     await reconcile.idle();
     expect(machines.calls).toEqual(["0 add b"]);
+  });
+
+  test("another member's retry never releases a budget-refused member (#1433)", async () => {
+    const { clock, machines, reconcile } = reconciler();
+    machines.failAdds.set("b", [budget(), budget()]);
+    machines.failAdds.set("c", [hcError("unreachable"), hcError("unreachable")]);
+    await reconcile.reconcile(viewOf(b, c));
+    await clock.advance(90_000);
+    await reconcile.idle();
+    expect(machines.calls.filter((call) => call.endsWith("add b"))).toEqual(["0 add b"]);
+    expect(machines.calls.filter((call) => call.endsWith("add c"))).toEqual(["0 add c", "30000 add c", "90000 add c"]);
+    await reconcile.budgetAvailable(b.hostId);
+    await clock.advance(600_000);
+    await reconcile.idle();
+    expect(machines.calls.filter((call) => call.endsWith("add b"))).toEqual(["0 add b", "90000 add b"]);
+    await reconcile.budgetAvailable(b.hostId);
+    expect(machines.calls.filter((call) => call.endsWith("add b"))).toEqual(["0 add b", "90000 add b", "690000 add b"]);
+  });
+
+  test("a budget wake arriving before the refused add settles is retained until its deadline (#1433)", async () => {
+    const { clock, machines, reconcile } = reconciler();
+    machines.failAdds.set("b", [budget()]);
+    const add = machines.add.bind(machines);
+    let notified = false;
+    machines.add = (name, via) => {
+      if (!notified) {
+        notified = true;
+        void reconcile.budgetAvailable(b.hostId);
+      }
+      return add(name, via);
+    };
+    await reconcile.reconcile(viewOf(b));
+    await reconcile.idle();
+    await clock.advance(29_999);
+    expect(machines.calls).toEqual(["0 add b"]);
+    await clock.advance(1);
+    await reconcile.idle();
+    expect(machines.calls).toEqual(["0 add b", "30000 add b"]);
   });
 });
 

@@ -67,16 +67,25 @@ describe("replacing an earlier entry for a member's core never leaves the machin
     expect(reconciler.status.get(b.hostId)).toEqual({ state: "ok", replaced: { name: "b", kind: "ssh" } });
   });
 
-  test("a dial budget with no room for the line removes nothing, and the policy's budget due retries it", async () => {
-    const { clock, pairs, reconciler, calls, listed } = setup(3);
+  test("a dial budget with no room removes nothing, and another due event respects the retry deadline (#1433)", async () => {
+    const { clock, machines, pairs, reconciler, calls, listed } = setup(3);
     await reconciler.reconcile(view);
     expect(pairs.log).toEqual(["reserved", "dropped", "reserved", "dropped", "refused"]);
     expect(calls()).toEqual(["add b", `add ${fallback}`]);
     expect(await listed()).toEqual([["b", "me@box", false, "work"]]);
     expect(reconciler.status.get(b.hostId)).toEqual({ state: "retrying", reason: BUDGET_REFUSAL });
-    await clock.advance(DIAL_LIMITS.probeMaxMs);
+    await reconciler.reconcile(view);
+    await reconciler.budgetAvailable(b.hostId);
+    await clock.advance(DIAL_LIMITS.probeFirstMs - 1);
     await reconciler.idle();
     expect(calls()).toEqual(["add b", `add ${fallback}`]);
+    expect(await listed()).toEqual([["b", "me@box", false, "work"]]);
+    machines.failAdds.set("b", [hcError("name_taken")]);
+    machines.failAdds.set(fallback, [hcError("already_added")]);
+    await clock.advance(1);
+    await reconciler.idle();
+    expect(calls().slice(2)).toEqual(["add b", `add ${fallback}`, "rm b", "add b"]);
+    expect((await listed()).map(([name]) => name)).toEqual(["b"]);
   });
 
   test("a line that fails to add after the removal puts the earlier entry back as it was, and is retried", async () => {
