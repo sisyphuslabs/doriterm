@@ -11,6 +11,25 @@ const browse = (page: Page) => key(page, "Read-only");
 const painted = (page: Page) => page.locator(".term-selection-cells > div");
 const input = (page: Page) => page.locator("[data-terminal] textarea");
 
+/**
+ * The view's scrollTop once it has held still across two frames. A swipe that lets go flings on: until it stops, a
+ * jump is overtaken by it, and the browser spends the next tap on stopping it rather than handing it to the page (#1491).
+ */
+async function settledScrollTop(viewport: Locator): Promise<number> {
+  let settled: number | null = null;
+  await expect
+    .poll(async () => {
+      settled = await viewport.evaluate(async (el) => {
+        const first = el.scrollTop;
+        await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+        return el.scrollTop === first ? first : null;
+      });
+      return settled;
+    })
+    .not.toBeNull();
+  return settled ?? 0;
+}
+
 /** The program hears a tap on `row` (the browser turns a tap into the mouse events the renderer reports). */
 async function tapReaches(touch: Touch, terminal: Locator, row: string): Promise<void> {
   const before = (await reportedRows(terminal)).length;
@@ -111,10 +130,14 @@ test("browsing read-only, a swipe scrolls the scrollback and the program hears n
   await touch.up({ x: at.x, y: at.y + 200 });
   await expect.poll(() => viewport.evaluate((el) => el.scrollTop)).toBeLessThan(before);
   await expect(painted(page)).toHaveCount(0);
-  const scrolled = await viewport.evaluate((el) => el.scrollTop);
+  const scrolled = await settledScrollTop(viewport);
 
-  await page.getByRole("button", { name: /^Jump to bottom/ }).click();
+  const jump = page.getByRole("button", { name: /^Jump to bottom/ });
+  await jump.click();
   await expect.poll(() => viewport.evaluate((el) => el.scrollTop)).toBeGreaterThan(scrolled);
+  // At the bottom, and still there: the button goes once the view is back at the live end.
+  await expect(jump).toHaveCount(0);
+  await settledScrollTop(viewport);
   await browse(page).click();
   // The swipe began on the "delta" row and moved down over the rows below it; the barrier tap lands above them.
   await tapReaches(touch, terminal, "alpha beta gamma");
