@@ -13,11 +13,14 @@ import { withPassRetry } from "../relay/pass-retry.ts";
 import type { MeshStore } from "../state/mesh.ts";
 import type { MemberEntry } from "./authorize-index.ts";
 import { type Clock, monotonicClock, type Random } from "./clock.ts";
+import { CLIENT_ADMISSION_FORMAT, formatReadiness } from "./format-readiness.ts";
 import type { Gossip } from "./gossip.ts";
 import type { HcTarget } from "./hc-machines.ts";
 import { type HostRuntime, startHostRuntime } from "./host-runtime.ts";
+import { machinesOf } from "./mesh-view.ts";
 import { NoUplinkError } from "./no-uplink.ts";
 import type { MeshRuntime } from "./runtime.ts";
+import { StoredMesh } from "./stored-mesh.ts";
 import { liveFactsOf, NOT_RUNNING, type SyncFacts } from "./live-facts.ts";
 
 /** The relay must open a member dial's socket within 10 s, as the Noise handshake after it must finish (L-E1). */
@@ -82,6 +85,21 @@ export class HostSync {
   /** The running mesh (sync, reconciler, lines) once this host has a mesh.json. */
   get runtime(): MeshRuntime | undefined {
     return this.#running?.runtime;
+  }
+
+  /**
+   * Whether every machine in this host's mesh, itself aside, has answered that it reads the format a client admission
+   * is written in (design of #942). The roster decides it, not whether gossip happens to run: a host that founds its
+   * mesh to admit its first member has a roster of one, and no member is in it to be held back (#1415).
+   */
+  formatReady(): boolean {
+    const gossip = this.gossip;
+    const view = gossip?.view ?? new StoredMesh(this.#options.mesh).view();
+    const self = base64urlEncode(this.#options.identity.sign.publicKey);
+    const members = machinesOf(view)
+      .map((member) => member.signPub)
+      .filter((signPub) => signPub !== self);
+    return formatReadiness(members, gossip?.formatAnswers() ?? [], CLIENT_ADMISSION_FORMAT).kind === "ready";
   }
 
   /** mesh.json may have changed outside sync (a join, an admit, a CLI write): start, or push what is new. */
