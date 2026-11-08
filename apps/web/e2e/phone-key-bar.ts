@@ -16,11 +16,12 @@ export const PHONE = { ...iphone, viewport: { width: 390, height: 844 } };
  */
 export async function fakeSoftKeyboard(
   page: Page,
-  { raiseOnFocus = true, innerHeightFollows = false, pan = 0 } = {},
+  { raiseOnFocus = true, innerHeightFollows = false, pan: keyboardPan = 0 } = {},
 ): Promise<void> {
   await page.addInitScript(
     ({ raise, follows, panned }) => {
       let keyboard = 0;
+      let pan = 0;
       const layout = (): number => (follows ? document.documentElement.clientHeight : window.innerHeight);
       if (follows) {
         Object.defineProperty(window, "innerHeight", { configurable: true, get: () => layout() - keyboard });
@@ -28,7 +29,7 @@ export async function fakeSoftKeyboard(
       const viewport = Object.defineProperties(new EventTarget(), {
         height: { get: (): number => layout() - keyboard },
         width: { get: (): number => window.innerWidth },
-        offsetTop: { get: (): number => (keyboard > 0 ? panned : 0) },
+        offsetTop: { get: (): number => pan + (keyboard > 0 ? panned : 0) },
         offsetLeft: { get: (): number => 0 },
         pageTop: { get: (): number => window.scrollY },
         pageLeft: { get: (): number => window.scrollX },
@@ -53,10 +54,19 @@ export async function fakeSoftKeyboard(
             softKeyboard(0);
         });
       });
-      Object.assign(window, { softKeyboard });
+      // iOS pans the visual viewport (offsetTop) to keep a focused field in view; it fires scroll, not resize.
+      const panTo = (px: number): void => {
+        pan = px;
+        viewport.dispatchEvent(new Event("scroll"));
+      };
+      Object.assign(window, { softKeyboard, panViewport: panTo });
     },
-    { raise: raiseOnFocus, follows: innerHeightFollows, panned: pan },
+    { raise: raiseOnFocus, follows: innerHeightFollows, panned: keyboardPan },
   );
+}
+
+export async function panViewport(page: Page, px: number): Promise<void> {
+  await page.evaluate((offset) => (Reflect.get(window, "panViewport") as (px: number) => void)(offset), px);
 }
 
 export async function showKeyboard(page: Page, px: number): Promise<void> {

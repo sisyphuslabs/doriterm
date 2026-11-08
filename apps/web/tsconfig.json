@@ -19,6 +19,9 @@
       "path": "../../packages/crypto"
     },
     {
+      "path": "../../packages/mesh"
+    },
+    {
       "path": "../../packages/relay-client"
     },
     {
