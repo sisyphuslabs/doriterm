@@ -349,36 +349,39 @@ export function DesktopShell(props: DesktopShellProps) {
             onCancel={() => setRenaming(null)}
           />
         )}
-        {layout.tabs.length > 0 ? null : nothingOpen ? (
-          <NoTerminal onNew={onNew} />
-        ) : (
-          <QuietBusy label="Restoring your tabs" text="Restoring your tabs…" className="flex-1" />
-        )}
-        <SplitPanes
-          connection={connection}
-          terminals={terminals}
-          layout={layout}
-          titles={new Map(tabList.map((tab) => [tab.id, tab.title]))}
-          onEnd={onEnd}
-          onSplit={onSplit}
-          onClose={onClosePane}
-          onEnded={onEnded}
-          sends={sends}
-          dock={
-            focusedTerminal === undefined || nothingToType ? null : (
-              <VoiceDock
-                voice={voice}
-                target={terminalTitle(focusedTerminal)}
-                onType={(text) => {
-                  sends.type(focusedTerminal.address, text);
-                  document.querySelector<HTMLElement>(FOCUSED_TERMINAL_INPUT)?.focus();
-                }}
-                onClose={() => mic.current?.focus()}
-                className="pb-2"
-              />
-            )
-          }
-        />
+        {/* The page's one main landmark: the panes, between the tab strip and the status bar (#1378). */}
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {layout.tabs.length > 0 ? null : nothingOpen ? (
+            <NoTerminal onNew={onNew} />
+          ) : (
+            <QuietBusy label="Restoring your tabs" text="Restoring your tabs…" className="flex-1" />
+          )}
+          <SplitPanes
+            connection={connection}
+            terminals={terminals}
+            layout={layout}
+            titles={new Map(tabList.map((tab) => [tab.id, tab.title]))}
+            onEnd={onEnd}
+            onSplit={onSplit}
+            onClose={onClosePane}
+            onEnded={onEnded}
+            sends={sends}
+            dock={
+              focusedTerminal === undefined || nothingToType ? null : (
+                <VoiceDock
+                  voice={voice}
+                  target={terminalTitle(focusedTerminal)}
+                  onType={(text) => {
+                    sends.type(focusedTerminal.address, text);
+                    document.querySelector<HTMLElement>(FOCUSED_TERMINAL_INPUT)?.focus();
+                  }}
+                  onClose={() => mic.current?.focus()}
+                  className="pb-2"
+                />
+              )
+            }
+          />
+        </main>
         <StatusBar
           start={
             <>
