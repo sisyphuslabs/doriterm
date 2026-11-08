@@ -4,6 +4,7 @@ import {
   attentionMark,
   marksInView,
   nextNeedingYou,
+  someoneElseNeedsYou,
   panesInView,
   type Session,
   withAttention,
@@ -175,6 +176,18 @@ describe("nextNeedingYou", () => {
     expect(nextNeedingYou([session({ address: "a", ...blocked, offline: true })], null)).toBeNull();
     expect(nextNeedingYou([session({ address: "a", ...blocked, state: "finished" })], null)).toBeNull();
     expect(nextNeedingYou([], "a")).toBeNull();
+  });
+});
+
+describe("someoneElseNeedsYou", () => {
+  const blocked = { status: { state: "blocked" } } as const;
+
+  test("only the terminal in view needs you: nobody else to open, so the palette lists no row (#1448)", () => {
+    const one = [session({ address: "a" }), session({ address: "b", ...blocked })];
+    expect(someoneElseNeedsYou(one, "b")).toBe(false);
+    expect(someoneElseNeedsYou(one, "a")).toBe(true);
+    expect(someoneElseNeedsYou(one, null)).toBe(true);
+    expect(someoneElseNeedsYou([session({ address: "a" })], null)).toBe(false);
   });
 });
 
