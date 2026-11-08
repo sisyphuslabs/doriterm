@@ -1,12 +1,14 @@
 import { Button, EmptyState, Notice } from "@doriface/ui";
 import { Link } from "@tanstack/react-router";
-import { Monitor, Server, Smartphone } from "lucide-react";
+import { Monitor, Smartphone } from "lucide-react";
 import { useState } from "react";
 import { connectionStore } from "../connection/store.ts";
 import { desktopBridge, type DesktopBridge, type HostStartFailure } from "../desktop/bridge.ts";
 import { startFailure, startThisComputer } from "../desktop/local-host.ts";
 import { isIos, runsInstalled } from "../device/install.ts";
 import { HostStartNotice } from "./host-start-notice.tsx";
+import { JoinLanding } from "./join-landing.tsx";
+import { PAIR_PATH } from "./link-capture.ts";
 import { Steps } from "./steps.tsx";
 
 const HOST_GUIDE = "https://github.com/sisyphuslabs/doriterm#readme";
@@ -130,27 +132,9 @@ function LocalFirstRun({ bridge, offline }: { readonly bridge: DesktopBridge; re
 export function FirstRun({ offline = false }: { readonly offline?: boolean }) {
   const bridge = desktopBridge();
   if (bridge !== null) return <LocalFirstRun bridge={bridge} offline={offline} />;
-  if (runsInstalled()) return <InstalledFirstRun ios={isIos()} offline={offline} />;
-  return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-6 px-6 py-10">
-      {offline ? <OfflineNotice /> : null}
-      <Steps current={0} />
-      <EmptyState
-        icon={<Server />}
-        size="screen"
-        title="Connect to a host"
-        description="Doriterm shows the terminals and agents of a mesh. Open the invite link a member sent you, or start a host on a computer you control and pair the code it prints."
-        actions={
-          <>
-            <PairAHost offline={offline} primary />
-            <Button variant="ghost" size="lg" render={<a href={HOST_GUIDE} target="_blank" rel="noreferrer" />}>
-              How to start a host
-            </Button>
-          </>
-        }
-      >
-        <code className="rounded-md bg-raised px-3 py-2 text-sm text-foreground">doriface-host pair</code>
-      </EmptyState>
-    </main>
-  );
+  // An invite arrives as /pair#…, and JoinLanding is what reads it. An installed app that has one is joining, not
+  // pairing for the first time, so the invitation has to reach JoinLanding instead of this screen.
+  if (runsInstalled() && window.location.pathname !== PAIR_PATH)
+    return <InstalledFirstRun ios={isIos()} offline={offline} />;
+  return <JoinLanding />;
 }
