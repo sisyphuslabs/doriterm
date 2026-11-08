@@ -15,10 +15,12 @@ interface SelectionMenuProps {
   readonly trimCopy: boolean;
   readonly pasteFiles: (files: readonly File[]) => void;
   readonly onClose: () => void;
+  /** The terminal is browsed read-only (browse-mode.ts): Copy alone, since a paste would write to it. */
+  readonly readOnly?: boolean;
 }
 
 /** The menu of Copy and Paste a held touch opens over the terminal's selection. */
-export function SelectionMenu({ at, handle, trimCopy, pasteFiles, onClose }: SelectionMenuProps) {
+export function SelectionMenu({ at, handle, trimCopy, pasteFiles, onClose, readOnly = false }: SelectionMenuProps) {
   const toasts = useToastManager();
   const copySelection = (): void => {
     const instance = handle.current?.instance;
@@ -50,15 +52,17 @@ export function SelectionMenu({ at, handle, trimCopy, pasteFiles, onClose }: Sel
       >
         Copy
       </MenuItem>
-      <MenuItem
-        icon={<ClipboardPaste aria-hidden />}
-        onClick={() => {
-          pasteClipboard();
-          onClose();
-        }}
-      >
-        Paste
-      </MenuItem>
+      {readOnly ? null : (
+        <MenuItem
+          icon={<ClipboardPaste aria-hidden />}
+          onClick={() => {
+            pasteClipboard();
+            onClose();
+          }}
+        >
+          Paste
+        </MenuItem>
+      )}
     </PointMenu>
   );
 }

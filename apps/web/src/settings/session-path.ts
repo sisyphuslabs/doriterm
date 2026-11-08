@@ -1,5 +1,6 @@
 import type { ConnectionPath } from "../connection/connect.ts";
 import type { DirectReason } from "../connection/direct-attempt.ts";
+import { canForwardPlainWs } from "../connection/direct-forward.ts";
 
 /** Each reason a direct attempt can fail, in the words that say what happened; every variant is named so none falls back. */
 const REASONS: Readonly<Record<DirectReason, string>> = {
@@ -13,8 +14,16 @@ const REASONS: Readonly<Record<DirectReason, string>> = {
 /**
  * The session as it is actually carried, not the route as configured: the connection line says what is set up, and only
  * this says what happened (#768).
+ *
+ * Only the desktop shell can have run a direct attempt (#1381 §8), so only it names a direct path or a reason direct did
+ * not carry the session; a browser's session is the relay's, whatever an older settings file holds.
  */
-export function sessionPathLabel(path: ConnectionPath, directReason?: DirectReason): string {
+export function sessionPathLabel(
+  path: ConnectionPath,
+  directReason?: DirectReason,
+  desktopShell: boolean = canForwardPlainWs(),
+): string {
+  if (!desktopShell) return path === "loopback" ? "On this computer" : "Through the relay";
   switch (path) {
     case "direct":
       return "Direct to this host on this network";

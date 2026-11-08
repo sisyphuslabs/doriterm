@@ -2,8 +2,45 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { RUN_DIR, RUN_MARK, runProcesses, stopRunProcesses } from "./run-cores.ts";
 
 const ROOT = join(import.meta.dir, "..", "..", "..", "..");
+
+test("bare bun test reaps a child and grandchild under a custom TMPDIR (#1433)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "dt-tree-"));
+  const run = { dir, mark: crypto.randomUUID() };
+  const env: Record<string, string | undefined> = { ...process.env, TMPDIR: dir, [RUN_MARK]: run.mark };
+  delete env[RUN_DIR];
+  const suite = Bun.spawn(
+    [process.execPath, "test", "--timeout", "10000", "./apps/host/src/testing/leak-tree.fixture.ts"],
+    { cwd: ROOT, env, stdout: "pipe", stderr: "pipe" },
+  );
+  try {
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(suite.stdout).text(),
+      new Response(suite.stderr).text(),
+      suite.exited,
+    ]);
+    const output = stdout + stderr;
+    const line = /^LEFT_TREE (\[.*\])$/m.exec(output)?.[1];
+    expect(line, output).toBeDefined();
+    const pids: unknown = JSON.parse(line ?? "null");
+    if (!Array.isArray(pids) || !pids.every((pid): pid is number => typeof pid === "number"))
+      throw new Error(`no child pids: ${output}`);
+    // Capture before the finally reaps a regressed fixture, so cleanup cannot manufacture the assertion.
+    const left = pids.filter(alive);
+    console.log(`TREE_COUNTS spawned=${pids.length} remaining=${left.length}`);
+    expect(left).toEqual([]);
+    expect(code, output).toBe(1);
+    expect(output).toContain("processes outlived the test run (now stopped)");
+    expect(await runProcesses(run)).toEqual([]);
+  } finally {
+    suite.kill();
+    await suite.exited;
+    await stopRunProcesses(run);
+    rmSync(dir, { recursive: true, force: true });
+  }
+}, 60_000);
 
 async function refused(socket: string): Promise<boolean> {
   try {

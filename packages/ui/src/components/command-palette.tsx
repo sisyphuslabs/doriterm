@@ -55,6 +55,7 @@ export function CommandPalette({
   const [active, setActive] = useState(0);
   const [chosen, setChosen] = useState<AgentStatus | null>(null);
   const listId = useId();
+  const inputId = useId();
   const counts = useMemo(() => statusCounts(commands), [commands]);
   const status = shownStatus(counts, chosen);
   // A chosen state that emptied has fallen back to All: forget it, so a later agent in that state does not bring it back.
@@ -82,13 +83,17 @@ export function CommandPalette({
   return (
     <div className={cn(overlaySurface, "flex w-[min(40rem,100%)] flex-col overflow-hidden", className)}>
       <div className="flex items-center gap-2.5 border-b border-border px-3">
+        <label id={`${inputId}-label`} htmlFor={inputId} className="sr-only">
+          Command
+        </label>
         <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         <input
+          id={inputId}
           role="combobox"
           aria-expanded
           aria-controls={listId}
           aria-activedescendant={current === undefined ? undefined : `${listId}-${current.id}`}
-          aria-label="Command"
+          aria-labelledby={`${inputId}-label`}
           value={query}
           placeholder={placeholder}
           onChange={(event) => {
