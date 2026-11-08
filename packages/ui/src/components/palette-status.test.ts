@@ -17,6 +17,18 @@ describe("the palette's state filter (#1454)", () => {
     ]);
   });
 
+  test("at most the three most urgent states, and never an offline machine's, so the row stays within 2-4 segments", () => {
+    const every = [
+      agent("a", "idle"),
+      agent("b", "done"),
+      agent("c", "working"),
+      agent("d", "blocked"),
+      agent("e", "unknown"),
+    ];
+    expect(statusCounts(every).map(({ status }) => status)).toEqual(["blocked", "working", "done"]);
+    expect(statusCounts([agent("a", "idle"), agent("e", "unknown")])).toEqual([]);
+  });
+
   test("one state, or no agents, filters nothing: no counts at all", () => {
     expect(statusCounts([agent("a", "idle"), agent("b", "idle"), action("x")])).toEqual([]);
     expect(statusCounts([action("x")])).toEqual([]);

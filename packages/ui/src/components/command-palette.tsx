@@ -57,6 +57,8 @@ export function CommandPalette({
   const listId = useId();
   const counts = useMemo(() => statusCounts(commands), [commands]);
   const status = shownStatus(counts, chosen);
+  // A chosen state that emptied has fallen back to All: forget it, so a later agent in that state does not bring it back.
+  if (chosen !== null && status === null) setChosen(null);
   const visible = useMemo(
     () => withStatus(commands, status).filter((command) => matches(command, query)),
     [commands, query, status],
@@ -104,8 +106,7 @@ export function CommandPalette({
         )}
       </div>
       {counts.length === 0 ? null : (
-        // A phone is narrower than every state at once: the row scrolls sideways rather than spilling past the dialog.
-        <div className="overflow-x-auto border-b border-border px-3 py-2">
+        <div className="border-b border-border px-3 py-2">
           <SegmentedControl<AgentStatus | typeof ALL>
             label="Show agents"
             value={status ?? ALL}

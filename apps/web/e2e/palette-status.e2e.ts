@@ -51,6 +51,8 @@ test("the palette filters its agents by state, and draws no filter while they sh
   await openPalette(page);
   await expect(option(page, "pal-asks")).toBeVisible();
   await expect(states(page)).toHaveCount(0);
+  await page.keyboard.press("Tab");
+  await expect(dialog(page).getByRole("combobox", { name: "Command" })).toBeFocused();
   await page.keyboard.press("Escape");
 
   report(asks, "blocked");
@@ -58,6 +60,8 @@ test("the palette filters its agents by state, and draws no filter while they sh
   await openPalette(page);
   const needsYou = states(page).getByRole("button", { name: /^Needs you \d+$/ });
   await expect(needsYou).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(states(page).getByRole("button").first()).toBeFocused();
   await needsYou.click();
   await expect(option(page, "pal-asks")).toBeVisible();
   await expect(option(page, "pal-calm")).toHaveCount(0);
@@ -68,6 +72,23 @@ test("the palette filters its agents by state, and draws no filter while they sh
     .click();
   await expect(option(page, "pal-calm")).toBeVisible();
   await expect(dialog(page).getByRole("group", { name: "Actions" })).toBeVisible();
+
+  // A phone holds the whole row: every segment sits inside the dialog, none scrolled away.
+  await page.setViewportSize({ width: 390, height: 844 });
+  const frame = await dialog(page).boundingBox();
+  const segments = await states(page)
+    .getByRole("button")
+    .evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const box = button.getBoundingClientRect();
+        return { left: box.left, right: box.right };
+      }),
+    );
+  expect(frame).not.toBeNull();
+  for (const box of segments) {
+    expect(box.left).toBeGreaterThanOrEqual(frame?.x ?? 0);
+    expect(box.right).toBeLessThanOrEqual((frame?.x ?? 0) + (frame?.width ?? 0));
+  }
   await page.keyboard.press("Escape");
   report(asks, "working");
 });
