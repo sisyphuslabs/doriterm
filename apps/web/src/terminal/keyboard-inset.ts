@@ -17,6 +17,16 @@ export function keyboardInset(layoutHeight: number, viewport: ViewportBox): numb
 }
 
 /**
+ * How tall the soft keyboard is, in CSS px: the visual viewport's shortfall from the layout viewport. Unlike the inset,
+ * a pan (iOS scrolling the visual viewport to keep a focused field in view) leaves it unchanged, so it decides whether
+ * the keyboard is up.
+ */
+export function keyboardHeight(layoutHeight: number, viewport: ViewportBox): number {
+  if (Math.abs(viewport.scale - 1) > 0.01) return 0;
+  return Math.max(0, Math.round(layoutHeight - viewport.height));
+}
+
+/**
  * A layout viewport this much shorter than its tallest at the same width may have a keyboard in it (a browser that
  * resizes the page for the keyboard instead of overlaying it): more than a toolbar collapsing, less than any keyboard.
  */
@@ -112,7 +122,8 @@ export function useSoftKeyboard(scope: HTMLElement | null): { readonly up: boole
     let wasOpen = false;
     const measure = (): void => {
       const inset = viewport === null ? 0 : keyboardInset(window.innerHeight, viewport);
-      const open = layoutKeyboard.measure(window.innerWidth, window.innerHeight, performance.now()) || inset > 0;
+      const overlaid = viewport === null ? 0 : keyboardHeight(window.innerHeight, viewport);
+      const open = layoutKeyboard.measure(window.innerWidth, window.innerHeight, performance.now()) || overlaid > 0;
       if (wasOpen && !open && typingIn(scope) && document.activeElement instanceof HTMLElement) {
         document.activeElement.blur();
       }

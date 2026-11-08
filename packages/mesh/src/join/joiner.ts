@@ -4,10 +4,13 @@ import { cardOf, hashOf, meshIdOf, parseRecord, signCard, verifyCard } from "../
 import { MAX_RECORDS, type MemberKind, type Signed } from "../records/types.ts";
 import { viewOf } from "../view/engine.ts";
 import { cardBodyFor, type MemberIdentity, type OwnCard } from "./card.ts";
+import { inviteKindOf, type MeshInvite } from "./invite.ts";
 import type { MeshLine, MeshLines } from "./lines.ts";
 import { byDeadline, JoinRefused } from "./refused.ts";
 
 export interface JoinerContext {
+  /** The target's proof of being a mesh invite ({@link meshInviteOf}): a device link or a hostId never gets this far. */
+  readonly invite: MeshInvite;
   readonly identity: MemberIdentity;
   readonly own: OwnCard;
   /** What the card says this member is; absent writes a version 1 card, which is a machine. */
@@ -147,6 +150,6 @@ async function join(lines: MeshLines, ctx: JoinerContext): Promise<string> {
   checkWelcome(records, offer, ctx);
   if (!(await ctx.adopt(records))) throw new JoinRefused("a mesh appeared on this member meanwhile");
   lines.detach();
-  ctx.log(`mesh: joined mesh ${offer.mesh} via ${ctx.dialed.hostId}`);
+  ctx.log(`mesh: joined mesh ${offer.mesh} via ${ctx.dialed.hostId} on a mesh ${inviteKindOf(ctx.invite)}`);
   return offer.mesh;
 }

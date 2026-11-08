@@ -1,4 +1,13 @@
 export { type CardPlacement, cardBodyFor, type MemberIdentity, type OwnCard } from "./card.ts";
+export {
+  DEVICE_LINK_REFUSAL,
+  HOST_TARGET_REFUSAL,
+  type InviteKind,
+  inviteKindOf,
+  type JoinTarget,
+  type MeshInvite,
+  meshInviteOf,
+} from "./invite.ts";
 export { parseLine } from "./line-parse.ts";
 export {
   INVITER_EXPECTS,
