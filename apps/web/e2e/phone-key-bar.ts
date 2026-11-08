@@ -13,10 +13,11 @@ export const PHONE = { ...iphone, viewport: { width: 390, height: 844 } };
 export async function fakeSoftKeyboard(page: Page, { raiseOnFocus = true } = {}): Promise<void> {
   await page.addInitScript((raise: boolean) => {
     let keyboard = 0;
+    let pan = 0;
     const viewport = Object.defineProperties(new EventTarget(), {
       height: { get: (): number => window.innerHeight - keyboard },
       width: { get: (): number => window.innerWidth },
-      offsetTop: { get: (): number => 0 },
+      offsetTop: { get: (): number => pan },
       offsetLeft: { get: (): number => 0 },
       pageTop: { get: (): number => window.scrollY },
       pageLeft: { get: (): number => window.scrollX },
@@ -41,8 +42,17 @@ export async function fakeSoftKeyboard(page: Page, { raiseOnFocus = true } = {})
           softKeyboard(0);
       });
     });
-    Object.assign(window, { softKeyboard });
+    // iOS pans the visual viewport (offsetTop) to keep a focused field in view; it fires scroll, not resize.
+    const panTo = (px: number): void => {
+      pan = px;
+      viewport.dispatchEvent(new Event("scroll"));
+    };
+    Object.assign(window, { softKeyboard, panViewport: panTo });
   }, raiseOnFocus);
+}
+
+export async function panViewport(page: Page, px: number): Promise<void> {
+  await page.evaluate((offset) => (Reflect.get(window, "panViewport") as (px: number) => void)(offset), px);
 }
 
 export async function showKeyboard(page: Page, px: number): Promise<void> {
