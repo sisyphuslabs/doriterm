@@ -112,6 +112,8 @@ async function dialInviter(offer: PairingOffer, name: string, deps: JoinDeps): P
     relayUrl: offer.relayUrl,
     hostId: offer.hostId,
     ...(secret.mode === "code" ? { pairSlot: slotOf(secret.code) } : {}),
+    // One socket: the join's session closes once the welcome is stored (#1418).
+    bestOf: 1,
   }).catch((error: unknown) => {
     throw refusalOf(secret.mode, error) ?? new JoinRefused(UNREACHABLE, { cause: error });
   });

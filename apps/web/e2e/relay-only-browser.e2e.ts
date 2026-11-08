@@ -121,7 +121,8 @@ async function connectsOverTheRelayAlone(page: Page, phone: boolean): Promise<vo
     await expect(machines.filter({ hasText: "studio" })).toContainText("Online · Relay", { timeout: 20_000 });
     await expect(machines.filter({ hasText: "joiner" })).toHaveCount(1, { timeout: 20_000 });
 
-    // Each machine's session line says the relay alone, though the file still holds a direct address.
+    // Every row is a relay row though the file still holds a direct address; the proof that nothing past the relay was
+    // dialled is the refused-socket check below.
     await expect(machines.filter({ hasText: "joiner" })).toContainText("Relay");
     await expect(page.getByText(/Direct to this host|or direct to/)).toHaveCount(0);
 

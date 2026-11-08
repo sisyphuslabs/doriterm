@@ -124,6 +124,8 @@ export async function joinMesh(options: JoinOptions): Promise<Joined> {
       ...(options.createSocket === undefined ? {} : { createSocket: options.createSocket }),
       ...(options.proofs === undefined ? {} : { proofs: options.proofs }),
       ...(inviter.pairSlot === undefined ? {} : { pairSlot: inviter.pairSlot }),
+      // One socket: the join ceremony closes once the welcome is stored (#1418).
+      bestOf: 1,
     });
     return secureLink(link, {
       role: "initiator",

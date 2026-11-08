@@ -4,8 +4,9 @@ import { devices, type Page } from "@playwright/test";
 import { join } from "node:path";
 import { expect, test } from "./fixtures.ts";
 
-const PRODUCTION = /^wss:\/\/relay-doriface\.omo\.dev\//;
-const CUSTOM = /^wss:\/\/relay\.custom\.invalid\//;
+// Any port: a session's second and third sockets dial the relay's other HTTPS ports (#1418).
+const PRODUCTION = /^wss:\/\/relay-doriface\.omo\.dev(:\d+)?\//;
+const CUSTOM = /^wss:\/\/relay\.custom\.invalid(:\d+)?\//;
 
 /** A paired host saved with a custom relay address, over the fixture's loopback link. */
 async function saveCustomRelay(page: Page): Promise<void> {

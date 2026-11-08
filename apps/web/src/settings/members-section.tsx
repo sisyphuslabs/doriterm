@@ -1,4 +1,4 @@
-import { Notice, SettingRow, cn } from "@doriface/ui";
+import { Button, Notice, SettingRow, cn } from "@doriface/ui";
 import { Monitor, Server } from "lucide-react";
 import type { ReactNode } from "react";
 import type { MemberEntry } from "../connection/mesh-connections.ts";
@@ -32,6 +32,16 @@ export function summarizeMembers(entries: readonly MemberEntry[]): MembersSummar
     total: entries.length,
     open: entries.filter((entry) => entry.state.phase === "open").length,
   };
+}
+
+/**
+ * What a member's row offers (#1296): a machine in trouble offers Retry, which is what brings it back; any other machine
+ * than the one this app is attached to offers Switch to this machine; the attached one offers nothing. Decided away from
+ * React so the rule the row renders is the rule the tests pin.
+ */
+export function rowAction(entry: MemberEntry, selectedHostId: string): "retry" | "switch" | null {
+  if (PROBLEMS.has(entry.state.phase)) return "retry";
+  return entry.target.hostId === selectedHostId ? null : "switch";
 }
 
 function title(icon: ReactNode, name: string) {
@@ -72,29 +82,42 @@ export function MembersSection() {
   return (
     <div className="flex flex-col gap-3">
       <ul className="flex flex-col divide-y divide-border">
-        {members.map((entry) => (
-          <li key={entry.target.hostId}>
-            <SettingRow
-              className="border-b-0"
-              inline
-              title={title(
-                entry.target.hostId === selectedHostId ? <Monitor aria-hidden /> : <Server aria-hidden />,
-                entry.target.hostName === "" ? entry.target.hostId : entry.target.hostName,
-              )}
-              description={stateLine(entry)}
-              control={
-                PROBLEMS.has(entry.state.phase) ? (
-                  <RetryButton
-                    size="sm"
-                    onRetry={async () => {
-                      connectionStore.retry(entry.target.hostId);
-                    }}
-                  />
-                ) : null
-              }
-            />
-          </li>
-        ))}
+        {members.map((entry) => {
+          const action = rowAction(entry, selectedHostId);
+          return (
+            <li key={entry.target.hostId}>
+              <SettingRow
+                className="border-b-0"
+                inline
+                title={title(
+                  entry.target.hostId === selectedHostId ? <Monitor aria-hidden /> : <Server aria-hidden />,
+                  entry.target.hostName === "" ? entry.target.hostId : entry.target.hostName,
+                )}
+                description={stateLine(entry)}
+                control={
+                  action === "retry" ? (
+                    <RetryButton
+                      size="sm"
+                      onRetry={async () => {
+                        connectionStore.retry(entry.target.hostId);
+                      }}
+                    />
+                  ) : action === null ? null : (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        connectionStore.select(entry.target.hostId);
+                      }}
+                    >
+                      Switch to this machine
+                    </Button>
+                  )
+                }
+              />
+            </li>
+          );
+        })}
       </ul>
       {summary.open === summary.total ? null : (
         <Notice tone="info" title="One machine down is one machine down">

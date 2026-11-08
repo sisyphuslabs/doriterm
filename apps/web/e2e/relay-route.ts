@@ -61,7 +61,8 @@ export async function routeRelaySockets(
     });
   });
   const relayPattern = addresses.map((address) => address.replaceAll(".", "\\.")).join("|");
-  await page.routeWebSocket(new RegExp(`^(?:${relayPattern})/v1/client/`), (socket) => {
+  // Any port: a session's second and third sockets dial the relay's other HTTPS ports (#1418).
+  await page.routeWebSocket(new RegExp(`^(?:${relayPattern})(:\\d+)?/v1/client/`), (socket) => {
     const target = new URL(socket.url());
     const relay = new WebSocket(`${base}${target.pathname}${target.search}`);
     relay.binaryType = "arraybuffer";
