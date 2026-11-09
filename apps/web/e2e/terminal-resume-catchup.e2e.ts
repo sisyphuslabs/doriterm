@@ -1,11 +1,9 @@
-import type { Locator, Page } from "@playwright/test";
-import { execFileSync } from "node:child_process";
+import type { Locator, Page, WebSocketRoute } from "@playwright/test";
 import { endAgent } from "./agents.ts";
-import { E2E_HOST_ENV } from "./config.ts";
+import { E2E_HOST_PORT } from "./config.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
-import { type HcSocket, routeHcSocket } from "./hc-socket.ts";
+import { routeHcSocket } from "./hc-socket.ts";
 import { openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
-import { readSavedEnv } from "./saved-env.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
@@ -16,21 +14,77 @@ test.afterEach(() => {
 });
 
 const LAST = 4000;
-/** Far more output than one frame's 16 KiB, so a paced replay shows up as frames that climb. */
-const FLOOD = `for i in $(seq 1 ${LAST}); do echo line-$i; done`;
+/** The window title the shell sets once it has printed the last line. */
+const FLOOD_END = "catchup-flood-end";
+/**
+ * Far more output than one frame's 16 KiB, so a paced replay shows up as frames that climb. Then the title: the core
+ * sends it as an event behind the output on the same stream, and the page shows it without painting the terminal, so
+ * the title in the pane's name means every line has reached the page, held or not.
+ */
+const FLOOD = `for i in $(seq 1 ${LAST}); do echo line-$i; done; printf '\\033]2;${FLOOD_END}\\007'`;
+/** hc's wire frame header: channel (u32), kind (u8), payload length (u32), little-endian; channel 0 carries the RPC. */
+const HC_HEADER_BYTES = 9;
 
-/** What the terminal's screen holds on the core itself, so nothing on the page can stand in for it. */
-function screenOnCore(address: string): string {
-  const { hc, env } = readSavedEnv(E2E_HOST_ENV);
-  return execFileSync(hc, ["read", address], { env: { ...process.env, ...env }, encoding: "utf8" });
+/**
+ * Call before page.goto: routes the page's hc socket so the spec can drop it, as a relay blip does. Once the page asks to
+ * re-attach after a reconnect, the host's messages wait at the route until the attach answer and the replay after it,
+ * up to the first `whole` on the attached stream, have come in, and then reach the page together: the replay is handed over in
+ * one go, so how the page paints it does not hang on the spacing the route's own hops put between its frames under load.
+ * Later messages pass as they come.
+ */
+async function routeReplayInOneGo(page: Page, whole: string): Promise<{ opened: () => number; drop: () => void }> {
+  const live = new Set<WebSocketRoute>();
+  let connections = 0;
+  await page.routeWebSocket(`ws://127.0.0.1:${E2E_HOST_PORT}/v1/hc`, (socket) => {
+    const host = socket.connectToServer();
+    let waiting: (string | Buffer)[] | null = null;
+    let replayed = false;
+    socket.onMessage((message) => {
+      const text = typeof message === "string" ? message : message.toString("latin1");
+      if (!replayed && text.includes('"resumed":true')) {
+        replayed = true;
+        waiting = [];
+      }
+      host.send(message);
+    });
+    connections += 1;
+    let rest = Buffer.alloc(0);
+    let channel: number | null = null;
+    let replay = "";
+    host.onMessage((message) => {
+      if (waiting === null) return socket.send(message);
+      waiting.push(message);
+      if (typeof message === "string") return;
+      rest = Buffer.concat([rest, message]);
+      while (rest.byteLength >= HC_HEADER_BYTES && rest.byteLength >= HC_HEADER_BYTES + rest.readUInt32LE(5)) {
+        const end = HC_HEADER_BYTES + rest.readUInt32LE(5);
+        const payload = rest.subarray(HC_HEADER_BYTES, end).toString("latin1");
+        const on = rest.readUInt32LE(0);
+        rest = rest.subarray(end);
+        const answer = /"channel":(\d+),"resize_notifications"/.exec(payload);
+        if (on === 0 && answer !== null) channel = Number(answer[1]);
+        else if (on === channel) replay += payload;
+      }
+      if (!replay.includes(whole)) return;
+      for (const held of waiting) socket.send(held);
+      waiting = null;
+    });
+    live.add(socket);
+    socket.onClose(() => live.delete(socket));
+  });
+  return {
+    opened: () => connections,
+    drop: () => {
+      for (const socket of live) void socket.close({ code: 1011, reason: "relay blip" });
+      live.clear();
+    },
+  };
 }
 
 /**
  * Call before page.goto. A hidden document gets no animation frames in a browser, but headless Chromium keeps running
  * them for a page whose visibilityState a spec redefines: frames asked for while it reads "hidden" wait here until it
- * reads "visible" again, as they would. Also counts the messages the routed hc sockets deliver, so a spec knows when
- * every frame the route sent has reached the page: Playwright's socket stand-in hands each one to the app with
- * `dispatchEvent`, which a native socket never calls.
+ * reads "visible" again, as they would.
  */
 async function hiddenDocumentFrames(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -68,23 +122,7 @@ async function hiddenDocumentFrames(page: Page): Promise<void> {
         book(id, run);
       }
     });
-
-    let messages = 0;
-    const dispatch = EventTarget.prototype.dispatchEvent;
-    EventTarget.prototype.dispatchEvent = function (this: EventTarget, event: Event): boolean {
-      if (event instanceof MessageEvent && String(Reflect.get(this, "url") ?? "").includes("/v1/hc")) messages += 1;
-      return dispatch.call(this, event);
-    };
-    Reflect.set(window, "__hcMessages", () => messages);
   });
-}
-
-/** Resolves once the page has handled every frame the route has delivered so far. */
-async function delivered(page: Page, link: HcSocket): Promise<void> {
-  const sent = link.received().length;
-  await expect
-    .poll(() => page.evaluate(() => (Reflect.get(window, "__hcMessages") as () => number)()))
-    .toBeGreaterThanOrEqual(sent);
 }
 
 /**
@@ -164,16 +202,16 @@ for (const device of ["desktop", "phone"] as const) {
     }) => {
       await hiddenDocumentFrames(page);
       const link = await routeHcSocket(page);
-      const { terminal, address } = await terminalFor(page);
+      const { terminal } = await terminalFor(page);
 
-      // Everything the program prints arrives while the app is in the background.
+      // Everything the program prints arrives while the app is in the background, and all of it has reached the page
+      // before the app shows: the title comes behind the last line.
       const release = link.holdFromHost("");
       await page.keyboard.type(FLOOD);
       await page.keyboard.press("Enter");
       await hide(page);
-      await expect.poll(() => screenOnCore(address), { timeout: 20_000 }).toContain(`line-${LAST}`);
       release();
-      await delivered(page, link);
+      await expect(terminal).toHaveAttribute("aria-label", `${FLOOD_END} output`, { timeout: 20_000 });
 
       await startLastLineSampler(terminal, "show");
       await expect(terminal).toContainText(`line-${LAST}`, { timeout: 15_000 });
@@ -190,16 +228,16 @@ for (const device of ["desktop", "phone"] as const) {
       await page.addInitScript(() => {
         Reflect.set(window, "__dorifaceAttachLog", []);
       });
-      const link = await routeHcSocket(page);
+      const link = await routeReplayInOneGo(page, `line-${LAST}`);
       const { terminal } = await terminalFor(page);
       await page.keyboard.type(FLOOD);
       await page.keyboard.press("Enter");
+      await expect(terminal).toHaveAttribute("aria-label", `${FLOOD_END} output`, { timeout: 20_000 });
       await expect(terminal).toContainText(`line-${LAST}`, { timeout: 20_000 });
 
       await startLastLineSampler(terminal, "nothing");
       const before = link.opened();
-      await link.drop(true);
-      link.restore();
+      link.drop();
       await expect.poll(link.opened, { timeout: 15_000 }).toBeGreaterThan(before);
       await expect
         .poll(() => page.evaluate(() => (Reflect.get(window, "__dorifaceAttachLog") as unknown[]).length))
