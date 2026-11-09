@@ -5,15 +5,25 @@
  * production host, the production worker, or a production resource would reach production from the staging job, past
  * the manual production gate. This runs before wrangler and compares the section that `wrangler deploy --env <env>`
  * reads (the top level for "") with the worker name and the exact route patterns given, with workers.dev and preview
- * URLs off, and, for a non-production env, its bindings with the production section's worker and resources.
+ * URLs off. For a non-production env it also compares the bindings listed in SCRIPT_BINDINGS and RESOURCE_BINDINGS:
+ * none may name the production worker, which the job passes as PRODUCTION_WORKER so a renamed top level cannot move
+ * it, and none may name a resource the same file's top level (production) binds. A pull request that drops a binding
+ * from the top level in the same edit is not caught by the resource comparison: the job holds no other copy of
+ * production's bindings. Binding kinds outside those two lists are not compared.
  *
- * Usage: bun .github/scripts/deploy-target.ts <wrangler.jsonc> <env or ""> <worker name> <host>...
+ * Usage: [PRODUCTION_WORKER=<name>] bun .github/scripts/deploy-target.ts <wrangler.jsonc> <env or ""> <worker> <host>...
+ * PRODUCTION_WORKER is required for any env but "".
  */
 import { readFileSync } from "node:fs";
 
 const [file, env, worker, ...hosts] = Bun.argv.slice(2);
 if (file === undefined || env === undefined || worker === undefined || hosts.length === 0) {
   console.error('usage: deploy-target.ts <wrangler.jsonc> <env or ""> <worker name> <host>...');
+  process.exit(2);
+}
+const productionWorker = process.env["PRODUCTION_WORKER"];
+if (env !== "" && (productionWorker === undefined || productionWorker === "")) {
+  console.error(`deploy-target.ts: PRODUCTION_WORKER must name the production worker for env ${env}`);
   process.exit(2);
 }
 
@@ -42,6 +52,8 @@ const identifiers = (
 const SCRIPT_BINDINGS: readonly (readonly [readonly string[], readonly string[]])[] = [
   [["services"], ["service"]],
   [["durable_objects", "bindings"], ["script_name"]],
+  [["workflows"], ["script_name"]],
+  [["tail_consumers"], ["service"]],
 ];
 
 /** Bindings that name a resource in the account, and so must not name one the production section already binds. */
@@ -51,6 +63,8 @@ const RESOURCE_BINDINGS: readonly (readonly [readonly string[], readonly string[
   [["d1_databases"], ["database_id", "database_name"]],
   [["queues", "producers"], ["queue"]],
   [["queues", "consumers"], ["queue"]],
+  [["hyperdrive"], ["id"]],
+  [["vectorize"], ["index_name"]],
 ];
 
 const config = record(Bun.JSONC.parse(readFileSync(file, "utf8")));
@@ -63,9 +77,12 @@ const productionProblems =
   env === ""
     ? []
     : [
+        ...(config["name"] === productionWorker
+          ? []
+          : [`the top level's worker is ${JSON.stringify(config["name"])}, not ${productionWorker ?? ""}`]),
         ...SCRIPT_BINDINGS.flatMap(([path, fields]) =>
           identifiers(section, path, fields)
-            .filter(({ value }) => value === config["name"])
+            .filter(({ value }) => value === productionWorker)
             .map(
               ({ field, value }) => `${path.join(".")}[].${field} ${JSON.stringify(value)} is the production worker`,
             ),
