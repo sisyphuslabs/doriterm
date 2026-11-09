@@ -142,9 +142,10 @@ async function sampleWhile(page: Page, address: string, change: () => Promise<vo
 
 /**
  * Every sampled frame showed the transcript's end, and none scrolled back through it: the lines in view are all within
- * two views of the end, a view being the screen's rows or the rows the visible box holds, whichever is more. `atBottom` also requires each frame at the scroll element's very bottom; a layout change that
- * React commits in its own task can be read after it lands and before the frame's ResizeObserver fits the grid to it, a
- * state the browser never paints, so that is checked only where no such change happens.
+ * two views of the end, a view being the screen's rows or the rows the visible box holds, whichever is more. `atBottom`
+ * also requires each frame at the scroll element's very bottom; a layout change that React commits in its own task can
+ * be read after it lands and before the frame's ResizeObserver fits the grid to it, a state the browser never paints,
+ * so that is checked only where no such change happens.
  */
 function expectFollowed(samples: readonly Sample[], { atBottom = true } = {}): void {
   const off = samples.filter(
