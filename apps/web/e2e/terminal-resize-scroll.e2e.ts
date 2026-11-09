@@ -87,8 +87,8 @@ interface Sample {
 /**
  * Samples the view after every paint until `change` is done: how far it is from the bottom, and the newest line its
  * screen shows. Each sample is what the user saw: read after the frame's ResizeObserver callbacks and paint, not in its
- * animation-frame callback, before a layout change has been fitted. The terminal is found by its address on each frame, as a layout
- * change can mount it anew; a frame without it records nothing.
+ * animation-frame callback, before a layout change has been fitted. The terminal is found by its address on each frame,
+ * as a layout change can mount it anew; a frame without it records nothing.
  */
 async function sampleWhile(page: Page, address: string, change: () => Promise<void>): Promise<Sample[]> {
   const samples = page.evaluate(
@@ -142,9 +142,10 @@ async function sampleWhile(page: Page, address: string, change: () => Promise<vo
 
 /**
  * Every sampled frame showed the transcript's end, and none scrolled back through it: the lines in view are all within
- * two views of the end, a view being the screen's rows or the rows the visible box holds, whichever is more. `atBottom` also requires each frame at the scroll element's very bottom; a layout change that
- * React commits in its own task can be read after it lands and before the frame's ResizeObserver fits the grid to it, a
- * state the browser never paints, so that is checked only where no such change happens.
+ * two views of the end, a view being the screen's rows or the rows the visible box holds, whichever is more. `atBottom`
+ * also requires each frame at the scroll element's very bottom; a layout change that React commits in its own task can
+ * be read after it lands and before the frame's ResizeObserver fits the grid to it, a state the browser never paints,
+ * so that is checked only where no such change happens.
  */
 function expectFollowed(samples: readonly Sample[], { atBottom = true } = {}): void {
   const off = samples.filter(
