@@ -14,6 +14,8 @@ const NO_IMAGE_PASTE =
   "Ctrl+V is left to the terminal's own key handling; a pasted image already reaches the terminal's machine through the paste itself (#742), and Paste image can be bound in Settings > Keybindings";
 const NO_MODS = "Doriterm has no mods, so there is no picker mod to open";
 const NO_LAYOUTS = "Doriterm has no layout files to switch between";
+const PROGRAM_KEYS =
+  "#1302: the program's keys — an agent reads Alt+arrows for its answers and a shell for its word moves";
 
 /**
  * Every herdr-app default (herdr-app/keys*.json) that doriface binds differently. `herdr-app-parity.test.ts` holds this
@@ -29,6 +31,11 @@ export const HERDR_APP_DIFFERENCES: Readonly<Record<Platform, readonly HerdrDiff
     { chord: "ctrl-v", doriface: null, reason: NO_IMAGE_PASTE },
   ],
   other: [
+    // #1302: Alt+arrows belong to the program below (answers, word moves, Meta keys), so doriterm binds none of them.
+    { chord: "alt-left", doriface: null, reason: PROGRAM_KEYS },
+    { chord: "alt-right", doriface: null, reason: PROGRAM_KEYS },
+    { chord: "alt-up", doriface: null, reason: PROGRAM_KEYS },
+    { chord: "alt-down", doriface: null, reason: PROGRAM_KEYS },
     { chord: "ctrl-shift-k", doriface: null, reason: NO_MODS },
     { chord: "ctrl-shift-l", doriface: null, reason: NO_LAYOUTS },
     { chord: "ctrl-v", doriface: null, reason: NO_IMAGE_PASTE },

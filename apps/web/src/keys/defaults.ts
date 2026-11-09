@@ -81,8 +81,9 @@ const MAC: readonly [string, string][] = [
 ];
 
 /**
- * herdr-app's keys.json merged with Ghostty's Linux and Windows defaults. Focus moves with herdr-app's Alt+arrows and
- * Alt+H/J/K/L and Ghostty's Ctrl+Alt+arrows; with no pane that way the key reaches the terminal program.
+ * herdr-app's keys.json merged with Ghostty's Linux and Windows defaults. Panes move with Ctrl+Alt+arrows and the
+ * herdr-app vim keys, never with Alt+arrows: a Windows or Linux terminal is where a program reads those for its own
+ * answers and word moves (#1302). With no pane that way the key reaches the program.
  */
 const OTHER: readonly [string, string][] = [
   ["ctrl+shift+t", "tab.new"],
