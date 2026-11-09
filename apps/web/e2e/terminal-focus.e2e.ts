@@ -1,7 +1,14 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
-import { pressShortcut } from "./platform-keys.ts";
+import { commandModifier, pressShortcut } from "./platform-keys.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
+
+/**
+ * The copy key a person presses on a held selection: Cmd+C on a Mac, and plain Ctrl+C elsewhere, which copies the held
+ * selection instead of sending ^C to the program (use-focus-after-select.ts). Not terminal.copy's Ctrl+Shift+C.
+ */
+const pressCopyOnSelection = async (page: Page): Promise<void> =>
+  page.keyboard.press((await commandModifier(page)) === "super" ? "Meta+KeyC" : "Control+KeyC");
 
 endOwnTerminals();
 
@@ -149,7 +156,7 @@ test.describe("with clipboard access", () => {
     await page.mouse.up();
     await expectHeldSelection(page, terminal);
 
-    await pressShortcut(page, "terminal.copy");
+    await pressCopyOnSelection(page);
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("copysrc-42");
     await expect.poll(() => focusedAddress(page)).toBe(address);
     await page.keyboard.type("echo after-$((2+3))");
@@ -189,7 +196,7 @@ test.describe("with clipboard access", () => {
       await expectHeldSelection(page, terminal);
 
       await expect.poll(() => focusedAddress(page)).toBe(address);
-      await pressShortcut(page, "terminal.copy");
+      await pressCopyOnSelection(page);
       await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("clicksrc");
       await page.keyboard.type("echo after-$((2+3))");
       await page.keyboard.press("Enter");

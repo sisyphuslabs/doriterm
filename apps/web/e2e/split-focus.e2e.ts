@@ -1,15 +1,15 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
-import { chordFor } from "./platform-keys.ts";
+import { chordFor, focusChord } from "./platform-keys.ts";
 
 test.use({ serviceWorkers: "block" });
 
 type Platform = "mac" | "other";
 type Move = "right" | "down" | "left" | "up";
 
-/** The split and focus keys `platform` binds (herdr-app's and Ghostty's), as the app's keymap has them. */
+/** The split keys `platform` binds (herdr-app's), and Ghostty's focus keys (⌘⌥arrows on macOS, Ctrl+Alt+arrows elsewhere). */
 const splitKey = (platform: Platform, side: "right" | "down"): string => chordFor(platform, `pane.split:${side}`);
-const goKey = (platform: Platform, move: Move): string => chordFor(platform, `pane.go:${move}`);
+const goKey = (platform: Platform, move: Move): string => focusChord(platform, move);
 
 interface Box {
   readonly x: number;

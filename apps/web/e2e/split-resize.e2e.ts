@@ -4,7 +4,7 @@ import { expect, test, terminalCount } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { fractionOf, paneOf, renameTab, savedTab, seedLayout, type Fraction, type SeedTab } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
-import { chordFor } from "./platform-keys.ts";
+import { chordFor, focusChord } from "./platform-keys.ts";
 
 test.use({ serviceWorkers: "block" });
 
@@ -20,7 +20,9 @@ const ACTIONS: Readonly<Record<Key, string>> = {
   up: "pane.go:up",
   splitDown: "pane.split:down",
 };
-const keyOn = (platform: Platform, key: Key): string => chordFor(platform, ACTIONS[key]);
+// Focus up is Ghostty's chord (⌘⌥↑, Ctrl+Alt+↑), not herdr-app's Alt+K bound to it first.
+const keyOn = (platform: Platform, key: Key): string =>
+  key === "up" ? focusChord(platform, "up") : chordFor(platform, ACTIONS[key]);
 
 /** Counts the Web Animations a pane frame (a tab panel's own child) plays, in the root element's data-pane-motion. */
 const COUNT_PANE_MOTION = `{

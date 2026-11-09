@@ -36,8 +36,10 @@ export const test = base.extend<
     { auto: true },
   ],
   loopbackUrl: [`ws://127.0.0.1:${E2E_HOST_PORT}/v1/hc`, { option: true }],
-  // E2E_PAGE_PLATFORM=mac runs every page as a Mac on any runner (#1309): navigator.platform reads MacIntel, so the app
-  // binds its macOS keymap and a spec's shortcut() presses the macOS chord. A spec that sets the platform itself still can.
+  // E2E_PAGE_PLATFORM=mac runs every page of a spec that uses this fixture as a Mac on any runner (#1309):
+  // navigator.platform reads MacIntel, so the app binds its macOS keymap and a spec's shortcut() presses the macOS chord.
+  // A spec that sets the platform itself still can. A spec that imports `test` straight from @playwright/test is not
+  // switched.
   macPage: [process.env["E2E_PAGE_PLATFORM"] === "mac", { option: true }],
   context: async ({ context, macPage }, use) => {
     if (macPage) {

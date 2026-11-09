@@ -78,6 +78,23 @@ export function chordFor(platform: Platform, action: string): string {
   return chordOf(triggersFor(platform, action)[0] ?? "");
 }
 
+/** The chord bound to `action` on `platform` whose trigger `pick` selects: for a spec about one binding among several. */
+export function chordWhere(platform: Platform, action: string, pick: (trigger: string) => boolean): string {
+  const trigger = triggersFor(platform, action).find(pick);
+  if (trigger === undefined) throw new Error(`no binding of ${action} on ${platform} matches`);
+  return chordOf(trigger);
+}
+
+/**
+ * Ghostty's focus chord for `move`: Cmd+Alt+arrow on macOS, Ctrl+Alt+arrow elsewhere. Off macOS herdr-app's Alt+arrow
+ * and Alt+H/J/K/L are bound to the same actions first, so the first chord would not press Ghostty's (#1309).
+ */
+export function focusChord(platform: Platform, move: "left" | "right" | "up" | "down"): string {
+  // The keymap names modifiers in its own order (alt+super+up), so the trigger is matched by its set of parts.
+  const want = [platform === "mac" ? "super" : "ctrl", "alt", move].toSorted().join("+");
+  return chordWhere(platform, `pane.go:${move}`, (trigger) => trigger.split("+").toSorted().join("+") === want);
+}
+
 /** The first chord the app binds to `action` on the page's platform, in Playwright's syntax. */
 export async function shortcut(page: Page, action: string): Promise<string> {
   return chordFor(await pagePlatform(page), action);

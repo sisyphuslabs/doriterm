@@ -1,6 +1,6 @@
 import { startShell } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
-import { pressShortcut } from "./platform-keys.ts";
+import { focusChord } from "./platform-keys.ts";
 import { clearLayout, fractionOf, paneOf, seedLayout, type Fraction } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 
@@ -125,9 +125,9 @@ test("a fresh device focuses a split tab's first pane, and Ctrl+Alt+arrows move 
     [t1, t2, t3].map((address) => expect(paneOf(page, address)).toContainText("$", { timeout: 20_000 })),
   );
   await focusIs(t1);
-  await pressShortcut(page, "pane.go:right");
+  await page.keyboard.press(focusChord("other", "right"));
   await focusIs(t2);
-  await pressShortcut(page, "pane.go:left");
+  await page.keyboard.press(focusChord("other", "left"));
   await focusIs(t1);
 });
 
