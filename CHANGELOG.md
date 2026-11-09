@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Keys
+
+- Alt+arrows reach the program on Windows and Linux again: they are the keys an agent reads for its answers and a shell
+  for its word moves, so agent navigation moved to Ctrl+Shift+] and Ctrl+Shift+[. (#1302)
+
 ## v0.1.14 - 2026-11-09
 
 ### Workspace
