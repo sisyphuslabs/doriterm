@@ -41,7 +41,7 @@ describe("the spinner has one size", () => {
     // selector itself, wherever a container sizes its icons - not only in EmptyState.
     const offenders = sourceFiles().flatMap(({ path, text }) => {
       const hits: string[] = [];
-      for (const match of text.matchAll(/\[&_svg(:[^\]]*)?\]:size-[^\s"']+/g)) {
+      for (const match of text.matchAll(/\[&[^\]]*svg[^\]]*\]:(?:size|w|h)-[^\s"']+/g)) {
         if (!match[0].includes(":not([data-slot=spinner])")) hits.push(`${path}: ${match[0]}`);
       }
       return hits;

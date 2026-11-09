@@ -159,7 +159,7 @@ export function CommandPalette({
                         if (command.disabled !== true) onRun?.(command.id);
                       }}
                       className={cn(
-                        "flex h-(--row) cursor-default items-center gap-2.5 rounded-md px-2 text-base text-foreground [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-muted-foreground",
+                        "flex h-(--row) cursor-default items-center gap-2.5 rounded-md px-2 text-base text-foreground [&>svg:not([data-slot=spinner])]:size-4 [&>svg]:shrink-0 [&>svg]:text-muted-foreground",
                         selected && "bg-selected",
                         command.disabled === true && "text-muted-foreground",
                       )}
