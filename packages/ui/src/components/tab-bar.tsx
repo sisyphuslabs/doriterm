@@ -210,7 +210,9 @@ export function TabBar({
                 aria-controls={tab.controls}
                 onClick={() => onSelect?.(tab.id)}
                 onDoubleClick={() => onRename?.(tab.id)}
-                className="flex min-w-0 items-center gap-[7px] rounded-xs outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+                // The hit area spans the whole tab and half the 3 px gap to the next, past the wrapper's 1 px border:
+                // no dead column beside its Close button or between two tabs. Close comes later, so it stays on top.
+                className="flex min-w-0 items-center gap-[7px] rounded-xs outline-none after:absolute after:inset-y-0 after:-inset-x-[2.5px] focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
               >
                 {tab.icon}
                 <TabLabel text={tab.title} />
