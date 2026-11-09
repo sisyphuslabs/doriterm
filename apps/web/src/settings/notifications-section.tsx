@@ -6,8 +6,8 @@ import { useConnection } from "../connection/store.ts";
 import { type DesktopNotices, desktopNotices } from "../push/desktop-notices.ts";
 import { pushSettings, type PushView } from "../push/push-settings.ts";
 import { idOfMachine } from "../workspace/model.ts";
-import { noticeControls } from "./notice-controls.ts";
 import { useMachines } from "../workspace/use-machines.ts";
+import { noticeControls } from "./notice-controls.ts";
 
 const NO_TERMINALS: readonly Terminal[] = [];
 
