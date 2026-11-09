@@ -258,7 +258,7 @@ export const SHOTS: readonly Shot[] = [
     },
   })),
   {
-    // The space keys (#619): the number chords and the cycle pair, with the note that a terminal keeps the number chord.
+    // The space keys (#619): the number chords and the cycle pair.
     name: "settings-keybindings-spaces",
     start: "connected",
     run: async (page) => {
