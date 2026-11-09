@@ -1,6 +1,6 @@
-import { Badge, Button, Dialog, Input, Notice } from "@doriface/ui";
+import { Badge, Button, Dialog, Input, Notice, cn, fieldLabelClass } from "@doriface/ui";
 import { asSentence } from "../storage/sentence.ts";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { ACTIONS, actionFor, SCOPE_LABEL, type ActionDef } from "../keys/actions.ts";
 import { keymapStore, NewerKeymapError, useKeymapError, useOverrides } from "../keys/keymap-store.ts";
 import {
@@ -83,6 +83,7 @@ export function KeybindingsSection() {
   const storageError = useKeymapError();
   const keymap = useMemo(() => resolveKeymap(platform, overrides), [platform, overrides]);
   const [query, setQuery] = useState("");
+  const searchId = useId();
   const [parsed, setParsed] = useState<ParsedKeybinds | null>(null);
   const sends = [...new Set(keymap.values())].filter((id) => id.startsWith("send:")).map(actionFor);
   const actions = [...ACTIONS, ...sends.filter((action): action is ActionDef => action !== null)];
@@ -110,14 +111,20 @@ export function KeybindingsSection() {
         </Notice>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <Input
-          aria-label="Search keybindings"
-          type="search"
-          placeholder="Search actions, e.g. tab"
-          value={query}
-          className="sm:w-64"
-          onValueChange={(next: string) => setQuery(next)}
-        />
+        {/* The label beside the field, so the row keeps the field's height and the rows below do not move. */}
+        <div className="flex w-full items-center gap-2 sm:w-72">
+          <label htmlFor={searchId} className={cn("shrink-0", fieldLabelClass)}>
+            Search<span className="sr-only"> keybindings</span>
+          </label>
+          <Input
+            id={searchId}
+            type="search"
+            className="min-w-0 flex-1"
+            placeholder="Search actions, e.g. tab"
+            value={query}
+            onValueChange={(next: string) => setQuery(next)}
+          />
+        </div>
         <Button size="sm" onClick={pick} disabled={storageError !== null}>
           Import keybinds…
         </Button>
