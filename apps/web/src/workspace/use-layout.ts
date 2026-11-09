@@ -16,6 +16,7 @@ import {
   buildTabs,
   findTerminal,
   keepTransient,
+  landingPane,
   layoutIds,
   localOf,
   looseKey,
@@ -225,8 +226,12 @@ export function useLayout(
 
   // Panes focused per tab, oldest first, as herdr-app's `before`: moving focus prefers the pane left last.
   const history = useRef(new Map<string, string[]>());
+  const picked = useRef({ tabs, focused: view.focused });
+  picked.current = { tabs, focused: view.focused };
   const show = useCallback((key: string, pane: string | null, select = true): void => {
-    if (pane !== null && !placingQuietly) setClaimed(pane);
+    // Picking a tab claims the pane it focuses, so that terminal takes the keyboard from the tab left behind (#1704).
+    const landing = pane ?? landingPane(picked.current.tabs, picked.current.focused, key);
+    if (landing !== null && !placingQuietly) setClaimed(landing);
     if (pane !== null) {
       const visited = (history.current.get(key) ?? []).filter((id) => id !== pane);
       history.current.set(key, [...visited, pane].slice(-HISTORY));

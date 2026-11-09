@@ -30,6 +30,9 @@ test("a split that starts after the person picked another tab leaves that tab se
   await expect.poll(() => runs(link.sent()), { timeout: 15_000 }).toBe(before + 1);
   await page.keyboard.press(await tabNumberChord(page, picked + 1));
   await expect(tabs(page).nth(picked)).toHaveAttribute("aria-selected", "true");
+  const pickedControls = (await tabs(page).nth(picked).getAttribute("aria-controls")) ?? "";
+  const pickedTerminal = page.locator(`[id="${pickedControls}"] [data-terminal]`).first();
+  await expect(pickedTerminal.getByRole("textbox")).toBeFocused();
 
   release();
   const controls = (await tabs(page).nth(splitAt).getAttribute("aria-controls")) ?? "";
@@ -37,4 +40,6 @@ test("a split that starts after the person picked another tab leaves that tab se
   await expect(page.locator(`[id="${controls}"] [data-terminal]`)).toHaveCount(2, { timeout: 15_000 });
   await expect(tabs(page).nth(picked)).toHaveAttribute("aria-selected", "true");
   await expect(tabs(page).nth(splitAt)).toHaveAttribute("aria-selected", "false");
+  // The terminal in view keeps the keyboard as well (#1704's claim does not reach a tab out of view).
+  await expect(pickedTerminal.getByRole("textbox")).toBeFocused();
 });
