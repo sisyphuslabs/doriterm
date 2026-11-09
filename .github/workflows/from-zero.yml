@@ -10,7 +10,9 @@ name: From zero
 #
 # user-guide checks docs/getting-started.md the same way: a packed desktop app pairs a fresh browser through the
 # production relay and the hosted web app, as the release smoke does with the AppImage it publishes. It tests dev's app
-# against the deployed web app, so a protocol change merged to dev before the web deploy shows here first.
+# against the deployed web app, so a protocol change merged to dev before the web deploy shows here first. Like the
+# release smoke, it depends on relay-doriface.omo.dev and doriface.omo.dev being up and has no retries, so an outage of
+# either fails this job until it is re-run.
 on:
   push:
     branches: [dev]
