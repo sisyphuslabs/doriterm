@@ -503,6 +503,19 @@ describe("OutputPacer holding an attach replay (D5)", () => {
     expect(holds).toEqual([true, false]);
   });
 
+  test("an update that opens and closes in one push still stands the replay down (#812)", () => {
+    const { frames, timers, written, holds, pacer } = replaying(100);
+    expect(holds).toEqual([true]);
+    // The whole bracketed first paint arrives as one chunk: the update has already closed when the batch is written.
+    pacer.push(new Uint8Array([...text(OPEN), ...bytes(100 * KIB), ...text(CLOSE)]));
+    while (frames.frames.length > 0) frames.nextFrame();
+    expect(written.reduce((sum, size) => sum + size, 0)).toBe(OPEN.length + 100 * KIB + CLOSE.length);
+    expect(holds).toEqual([true, false]);
+    expect(pacer.busy).toBe(false);
+    timers.advance(10_000);
+    expect(holds).toEqual([true, false]);
+  });
+
   test("drop ends a replay in flight and lets the paint go", () => {
     const { timers, holds, pacer } = replaying(300);
     pacer.push(bytes(KIB));
