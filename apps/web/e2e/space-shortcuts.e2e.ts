@@ -1,5 +1,5 @@
-// The space keys: Cmd+Alt+1-9 on a Mac (Ctrl+1-9 select tabs there, #1922) and herdr-app's Alt+1-9 elsewhere show a
-// space, and the bracket pair cycles them. A focused terminal program reads Alt+digit, so the app keeps its hands off it there.
+// herdr-app's space keys: Ctrl+1-9 on a Mac and Alt+1-9 elsewhere show a space, and the bracket pair cycles them
+// (defaults/keys.macos.json, keys.json). From a focused terminal too: space-keys-terminal.e2e.ts.
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,7 +23,7 @@ const spaceRow = (page: Page, name: string) =>
     .getByRole("button", { name: new RegExp(`^${name}\\b`) });
 const mac = async (page: Page): Promise<boolean> => (await pagePlatform(page)) === "mac";
 
-/** The number chord that shows a space by its place, as the platform binds it: Cmd+Alt+N on a Mac, Alt+N elsewhere. */
+/** The number chord that shows a space by its place, as the platform binds it: Ctrl+N on a Mac, Alt+N elsewhere (#702). */
 const spaceNumberChord = (page: Page, place: number): Promise<string> => shortcut(page, `space.select:${place}`);
 
 /** The cycle chord as the platform binds it: Cmd+Alt+[ / ] on a Mac, Ctrl+Shift+PageUp / PageDown elsewhere (#702). */
@@ -57,7 +57,7 @@ function threeSpaces(): Record<"alpha" | "beta" | "gamma", string> {
   return shells;
 }
 
-/** A number chord is the app's only while the keyboard is outside a terminal: the sidebar row keeps it there. */
+/** A number chord pressed with the keyboard outside a terminal, on the sidebar row. */
 async function pressOutsideTerminal(page: Page, chord: string): Promise<void> {
   await spaceRow(page, "alpha").focus();
   await page.keyboard.press(chord);
@@ -105,71 +105,7 @@ test("2: the cycle keys step through the spaces in order and wrap at either end,
   await expect(tabBar(page)).toHaveText([/gamma-one/]);
 });
 
-test("3: a focused terminal program keeps the space number chord: the key reaches the terminal and the space stays", async ({
-  page,
-}) => {
-  const root = mkdtempSync(join(tmpdir(), "space-keys-kept-"));
-  const [alpha, beta] = [mkdtempSync(join(root, "alpha-")), mkdtempSync(join(root, "beta-"))];
-  const shells = {
-    a1: shellIn(alpha, "kept-a1"),
-    b1: shellIn(beta, "kept-b1"),
-    b2: shellIn(beta, "kept-b2"),
-  };
-  seedSpaces([
-    {
-      id: "spc-kept-alpha",
-      name: "alpha",
-      folder: alpha,
-      tabs: [{ id: "tb-kept-a", name: "a-one", terminal: shells.a1 }],
-    },
-    {
-      id: "spc-kept-beta",
-      name: "beta",
-      folder: beta,
-      tabs: [
-        { id: "tb-kept-b1", name: "b-one", terminal: shells.b1 },
-        { id: "tb-kept-b2", name: "b-two", terminal: shells.b2 },
-      ],
-    },
-  ]);
-  await page.goto("/");
-  await spaceRow(page, "beta").click();
-  await tabBar(page).filter({ hasText: "b-two" }).click();
-  await paneOf(page, shells.b2).getByRole("textbox").focus();
-
-  // The terminal's own listener sees the key after the page's capture listener has had it: `prevented` is whether the
-  // app took it, and a key taken that way never reaches this listener at all.
-  await page.evaluate(() => {
-    const field = document.querySelector('[data-focused="true"] [data-terminal] textarea');
-    Reflect.set(window, "spaceKeySeen", null);
-    field?.addEventListener("keydown", (event: Event) => {
-      const press = event as KeyboardEvent;
-      Reflect.set(window, "spaceKeySeen", {
-        ctrl: press.ctrlKey,
-        alt: press.altKey,
-        key: press.key,
-        prevented: press.defaultPrevented,
-      });
-    });
-  });
-  // A Mac's space chord carries Cmd, a modifier the app owns, so there the app takes it from a terminal too.
-  test.skip(await mac(page), "a Mac's space number chord is Cmd+Alt+digit, which no terminal program keeps");
-  await page.keyboard.press(await spaceNumberChord(page, 1));
-  // Reaching this listener at all means the app left the key alone: a key it takes stops there. The terminal's own input
-  // cancels Alt+1 itself, as it sends it to the program as a Meta digit.
-  expect(await page.evaluate(() => Reflect.get(window, "spaceKeySeen"))).toEqual({
-    ctrl: false,
-    alt: true,
-    key: "1",
-    prevented: true,
-  });
-  await expect(selected(page)).toHaveText(/b-two/);
-  await expect(tabBar(page)).toHaveText([/b-one/, /b-two/]);
-});
-
-test("4: Settings lists the space keys with the keys that run them, and says a terminal keeps the number chord", async ({
-  page,
-}) => {
+test("4: Settings lists the space keys with the keys that run them", async ({ page }) => {
   await page.goto("/settings");
   await page
     .getByRole("tab", { name: "Keybindings" })
@@ -179,7 +115,7 @@ test("4: Settings lists the space keys with the keys that run them, and says a t
   const row = (action: string) => page.locator(`[id="keybinding-${action}"]`).locator("xpath=../..");
   const chips = (await mac(page))
     ? // A Mac lists modifiers in its own order, Control, Option, Shift, Command (⌃⌥⇧⌘), whatever order they are typed in.
-      { select: "⌥⌘2", next: "⌥⌘]", previous: "⌥⌘[", ninth: "⌥⌘9" }
+      { select: "⌃2", next: "⌥⌘]", previous: "⌥⌘[", ninth: "⌃9" }
     : { select: "Alt2", next: "CtrlShiftPgDn", previous: "CtrlShiftPgUp", ninth: "Alt9" };
 
   await expect(row("space.select:2")).toContainText("Go to space 2");
@@ -190,6 +126,4 @@ test("4: Settings lists the space keys with the keys that run them, and says a t
   await expect(row("space.next")).toContainText(chips.next);
   await expect(row("space.prev")).toContainText("Previous space");
   await expect(row("space.prev")).toContainText(chips.previous);
-  if (!(await mac(page)))
-    await expect(row("space.select:1")).toContainText("A focused terminal program keeps this key");
 });

@@ -60,7 +60,7 @@ export const ACTIONS: readonly ActionDef[] = [
   app("session.end", "End session…"),
   app("space.rename", "Rename space…"),
   // herdr-app's space chords: a number chord selects a space and the bracket pair cycles through them. A focused terminal
-  // program keeps the number chord where it is Alt and a digit, a Meta digit it reads (terminal-keeps.ts).
+  // program keeps the number chords (terminal-keeps.ts), which are Ctrl and a digit, its own control keys.
   ...Array.from({ length: 9 }, (_, index) => app(`space.select:${index + 1}`, `Go to space ${index + 1}`)),
   app("space.next", "Next space"),
   app("space.prev", "Previous space"),

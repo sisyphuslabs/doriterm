@@ -3,7 +3,7 @@ import { Plus, RotateCcw, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { actionFor, displayActionId, type ActionDef } from "../keys/actions.ts";
 import type { Keymap } from "../keys/defaults.ts";
-import { terminalKeeps } from "../keys/terminal-keeps.ts";
+import { TERMINAL_KEEPS } from "../keys/terminal-keeps.ts";
 import { triggerFromEvent, triggerKeys, type Platform } from "../keys/trigger.ts";
 
 export interface KeybindingRowProps {
@@ -124,7 +124,7 @@ export function KeybindingRow({
         pending === null ? (
           <>
             <span className="block font-mono text-xs">{displayActionId(action.id)}</span>
-            {triggers.some((trigger) => terminalKeeps(action.id, trigger)) ? (
+            {TERMINAL_KEEPS.has(action.id) ? (
               <span className="block">A focused terminal program keeps this key.</span>
             ) : null}
           </>

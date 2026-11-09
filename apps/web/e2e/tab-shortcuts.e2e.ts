@@ -33,25 +33,3 @@ test("each number chord selects the tab at that place, split or not, and no tab 
   await page.getByRole("button", { name: "Split right" }).click();
   await pressEach(page);
 });
-
-// Ctrl+1-9 select a tab from a focused terminal on every platform, a Mac included: there the app takes the key before
-// the terminal program sees it, beside Cmd+1-9.
-for (const platform of ["MacIntel", "Linux x86_64"]) {
-  test(`Ctrl+1-4 select the tab at that place while a terminal has focus (${platform})`, async ({ page }) => {
-    await page.addInitScript((value) => {
-      Object.defineProperty(Navigator.prototype, "platform", { get: () => value });
-    }, platform);
-    await page.goto("/");
-    await openNewTerminal(page);
-    await openNewTerminal(page);
-    await openNewTerminal(page);
-    await openNewTerminal(page);
-    expect(await tabs(page).count()).toBeGreaterThanOrEqual(4);
-    await [2, 1, 4, 3].reduce<Promise<void>>(async (previous, place) => {
-      await previous;
-      await page.locator('[data-focused="true"] [data-terminal]').getByRole("textbox").focus();
-      await page.keyboard.press(`Control+Digit${place}`);
-      await expect(tabs(page).nth(place - 1)).toHaveAttribute("aria-selected", "true");
-    }, Promise.resolve());
-  });
-}
