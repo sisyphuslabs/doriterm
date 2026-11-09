@@ -83,7 +83,8 @@ export function PhoneShell(props: PhoneShellProps) {
   // A screen pushed after the first loaded paint arrives with motion (DESIGN.md 6); the first screen does not.
   useArrivalReady(machines.terminalsLoaded);
   // The list is unmounted while a terminal is open; Back brings it back where it was, not at the top (#1553).
-  const listViewport = useKeptScroll("agents", machines.terminalsLoaded && terminal === undefined && space === null);
+  // Agents and Spaces scroll in the same frame: each keeps its own place, by its section (#1553).
+  const listViewport = useKeptScroll(section, machines.terminalsLoaded && terminal === undefined && space === null);
   // A space's rows are its live terminals: until the terminals are listed (or when that failed) the screen says so,
   // never "Nothing is running".
   if (terminal === undefined && (space === "loading" || (space !== null && !machines.terminalsLoaded)))
