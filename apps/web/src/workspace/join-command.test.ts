@@ -1,5 +1,68 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { INSTALL_SCRIPT_URL, joinCommand, offerFor } from "./join-command.ts";
+
+const INSTALL_SH = join(import.meta.dir, "../../../host/install/install.sh");
+
+const stub = (dir: string, name: string, body: string): void => {
+  writeFileSync(join(dir, name), `#!/bin/sh\n${body}\n`);
+  chmodSync(join(dir, name), 0o755);
+};
+
+const dirs: string[] = [];
+afterEach(() => {
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+/**
+ * Runs the line the dialog hands out the way a person's shell would, against this repository's install.sh, a file://
+ * release holding a fake doriface-host, and stubs for curl, sh, uname and systemctl that log every call with its arguments.
+ */
+function runJoinLine(link: string): readonly string[] {
+  const root = mkdtempSync(join(tmpdir(), "df-join-line-"));
+  dirs.push(root);
+  const home = join(root, "home");
+  const release = join(root, "release");
+  const stubs = join(root, "stubs");
+  for (const dir of [home, release, stubs]) mkdirSync(dir, { recursive: true });
+  const log = join(root, "calls.log");
+  writeFileSync(log, "");
+  // curl hands the install.sh URL this repository's script, and fetches everything else (the file:// release) for real.
+  stub(
+    stubs,
+    "curl",
+    `echo "curl $*" >> "${log}"; for a in "$@"; do [ "$a" = "${INSTALL_SCRIPT_URL}" ] && exec cat "${INSTALL_SH}"; done; exec /usr/bin/curl "$@"`,
+  );
+  // The shell the line pipes the installer into, as the person's PATH finds it: its arguments are a command line too.
+  stub(stubs, "sh", `echo "sh $*" >> "${log}"; exec /bin/sh "$@"`);
+  stub(stubs, "uname", `[ "$1" = -s ] && echo Linux || echo x86_64`);
+  stub(stubs, "systemctl", `echo "systemctl $*" >> "${log}"`);
+  const host = [
+    "#!/bin/sh",
+    `echo "doriface-host $*" >> "${log}"`,
+    `if [ "$1" = --install-hc ]; then mkdir -p "$HOME/.local/bin"; printf '#!/bin/sh\\necho 0.1.17\\n' > "$HOME/.local/bin/hc"; chmod 755 "$HOME/.local/bin/hc"; fi`,
+    `prev=""; for a in "$@"; do [ "$prev" = --from-file ] && echo "from-file $(cat "$a")" >> "${log}"; prev="$a"; done`,
+    "",
+  ].join("\n");
+  writeFileSync(join(release, "doriface-host-linux-x64"), host);
+  const sum = new Bun.CryptoHasher("sha256").update(host).digest("hex");
+  writeFileSync(join(release, "SHA256SUMS.txt"), `${sum}  doriface-host-linux-x64\n`);
+  const run = Bun.spawnSync(["/bin/sh", "-c", joinCommand(link)], {
+    env: {
+      HOME: home,
+      PATH: [stubs, "/usr/bin", "/bin"].join(":"),
+      TMPDIR: root,
+      DORIFACE_RELEASE_BASE: `file://${release}`,
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  expect(run.stderr.toString()).toBe("");
+  expect(run.exitCode).toBe(0);
+  return readFileSync(log, "utf8").trim().split("\n");
+}
 
 describe("join command", () => {
   test("is one line: the installer, handed the link in its environment, quoted for sh", () => {
@@ -10,10 +73,18 @@ describe("join command", () => {
     expect(joinCommand("x'y")).toBe(`curl -fsSL ${INSTALL_SCRIPT_URL} | DORIFACE_JOIN='x'\\''y' sh`);
   });
 
-  test("keeps the link off every command line: no process is given it as an argument", () => {
-    const command = joinCommand("doriface://pair#h=a&k=b&m=1");
-    expect(command).not.toContain("--join");
-    expect(command.split("|")[1]?.trim().endsWith(" sh")).toBe(true);
+  test("run as handed out, it joins through install.sh, and no process it starts is given the link (#1626)", () => {
+    const link = "doriface://pair#h=a&k=b&m=1";
+    const calls = runJoinLine(link);
+    // install.sh read the link from DORIFACE_JOIN and handed mesh join a file holding it, instead of printing a pairing.
+    expect(calls.some((call) => call.startsWith("doriface-host mesh join ") && call.includes(" --from-file "))).toBe(
+      true,
+    );
+    expect(calls).toContain(`from-file ${link}`);
+    expect(calls.some((call) => call.startsWith("doriface-host pair"))).toBe(false);
+    // Every process the line started was given its arguments without the link: curl, sh, the host binary, systemctl.
+    expect(calls.some((call) => call.startsWith("sh"))).toBe(true);
+    expect(calls.filter((call) => !call.startsWith("from-file ") && call.includes(link))).toEqual([]);
   });
 
   test("reads only the answer to this request", () => {

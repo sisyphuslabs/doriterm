@@ -133,8 +133,8 @@ herdr-core when `hc` is missing, runs the host as a user service at the highest 
 code to pair your first device. `sh -s -- --help` lists the options; `--uninstall` removes the service and the binary and
 keeps the host's keys and paired devices. To add a computer to a host you already use, open **Add a machine** in the
 app: it shows this same line with the link in `DORIFACE_JOIN='<link>'` before `sh`, which installs the host there and
-joins it to this host's mesh, so its terminals show in the app. The link stays off every command line. On Windows, the desktop app carries the host. The installer ships from the first release
-after v0.1.2.
+joins it to this host's mesh, so its terminals show in the app. The link stays off every command line. On Windows, the
+desktop app carries the host. The installer ships from the first release after v0.1.2.
 
 From this repository, with [Bun](https://bun.sh) installed:
 
