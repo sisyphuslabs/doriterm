@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 import { agentRow, endAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { hcOn } from "./machine-switch.ts";
-import { expectTouchTargets, PHONE } from "./phone-key-bar.ts";
+import { expectTouchTargets, fakeSoftKeyboard, key, keysBar, PHONE } from "./phone-key-bar.ts";
 
 // An agent waiting on a person with nothing this client can draw a card for gets Enter, Esc and the arrows over its
 // terminal, one tap each; the strip goes once the agent stops waiting (#1527).
@@ -74,6 +74,28 @@ test.describe("phone", () => {
       await expect(page.locator(`[data-terminal="${address}"]`)).toContainText("got:", { timeout: 10_000 });
       await expect(page.locator("[data-terminal] textarea")).not.toBeFocused();
       await expect(strip(page)).toHaveCount(0, { timeout: 10_000 });
+    } finally {
+      endAgent("host", address);
+    }
+  });
+
+  test("a tap with the keyboard up keeps the keyboard up and the terminal focused (#1549 review)", async ({ page }) => {
+    const address = startWaiting("asker-up", "demo-agent");
+    try {
+      await fakeSoftKeyboard(page);
+      await page.goto("/");
+      await agentRow(page, "asker-up", false).click({ timeout: 20_000 });
+      await expect(strip(page)).toBeVisible({ timeout: 15_000 });
+      await key(page, "Show keyboard").click();
+      const input = page.locator("[data-terminal] textarea");
+      await expect(keysBar(page)).toBeVisible();
+      await expect(input).toBeFocused();
+      await strip(page).getByRole("button", { name: "Escape" }).tap();
+      await strip(page).getByRole("button", { name: "Enter" }).tap();
+      await expect(page.locator(`[data-terminal="${address}"]`)).toContainText("got:^[", { timeout: 10_000 });
+      await expect(input).toBeFocused();
+      await expect(keysBar(page)).toBeVisible();
+      await expect(key(page, "Hide keyboard")).toBeVisible();
     } finally {
       endAgent("host", address);
     }
