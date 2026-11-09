@@ -125,6 +125,50 @@ test("a pinned tab keeps its size selected or not (#1621 review)", async ({ page
   expect(selected?.height).toBe(rest?.height);
 });
 
+test("pinned tabs stay in view in a group of their own while the other tabs scroll (#1621 review)", async ({
+  page,
+}) => {
+  const folder = mkdtempSync(join(tmpdir(), "tab-pins-"));
+  const names = Array.from({ length: 12 }, (_unused, at) => `ordinary tab ${String(at + 1).padStart(2, "0")} long`);
+  seedSpaces([
+    {
+      id: "spc-pins",
+      name: "pins",
+      folder,
+      tabs: names.map((name, at) => ({ id: `tb-${at}`, name, terminal: shellIn(folder) })),
+    },
+  ]);
+  await page.goto("/");
+  await expect(tabBar(page)).toHaveCount(12, { timeout: 20_000 });
+  await fromMenu(page, "tab 01", "Pin tab");
+  await expect(tabBar(page).first()).toHaveAttribute("data-pinned", "", { timeout: 15_000 });
+  const pinned = page.locator("[data-tab-id]").first();
+  const before = await pinned.boundingBox();
+  // Selecting the last tab scrolls the ordinary tabs to it.
+  await tabBar(page).last().click();
+  await expect(tabBar(page).last()).toHaveAttribute("aria-selected", "true");
+  const geometry = await page.evaluate(() => {
+    const items = [...document.querySelectorAll<HTMLElement>('[role="tablist"][aria-label="Tabs"] [data-tab-id]')];
+    const scrollerOf = (item: HTMLElement | undefined): HTMLElement | null => {
+      for (let node = item?.parentElement ?? null; node !== null; node = node.parentElement) {
+        const { overflowX } = getComputedStyle(node);
+        if (overflowX === "auto" || overflowX === "scroll") return node;
+      }
+      return null;
+    };
+    const [first] = items;
+    const box = first?.getBoundingClientRect();
+    const hit = box === undefined ? null : document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return {
+      pinnedScrolls: scrollerOf(first) !== null,
+      othersScrolled: (scrollerOf(items.at(-1))?.scrollLeft ?? 0) > 0,
+      pinnedOnTop: hit !== null && first?.contains(hit) === true,
+    };
+  });
+  expect(geometry).toEqual({ pinnedScrolls: false, othersScrolled: true, pinnedOnTop: true });
+  expect(await pinned.boundingBox()).toEqual(before);
+});
+
 test("a move keeps a tab on its side of the pinned ones", async ({ page }) => {
   fourTabs();
   await page.goto("/");
