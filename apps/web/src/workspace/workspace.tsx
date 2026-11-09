@@ -165,6 +165,7 @@ export function Workspace({ connection }: WorkspaceProps) {
     [openInLayout, showOnPhone],
   );
   const [closingTab, setClosingTab] = useState<string | null>(null);
+  const [closingSet, setClosingSet] = useState<readonly string[]>([]);
   const notSent = useCallback(
     (reason: DropReason) =>
       toasts.add({
@@ -246,6 +247,14 @@ export function Workspace({ connection }: WorkspaceProps) {
     else if (shown.length > 1) setClosingTab(key);
     else layout.closeTab(key);
   };
+  // "Close tabs to the right" and "Close other tabs" (#1561): at once when nothing runs in them, else one question for
+  // all of them, as closing one tab of several panes asks once.
+  const closeTabs = (keys: readonly string[]): void => {
+    const closing = layout.tabs.filter((tab) => keys.includes(tab.key));
+    const running = closing.some((tab) => tab.panes.some((pane) => pane.address !== null));
+    if (running) setClosingSet(closing.map((tab) => tab.key));
+    else for (const tab of closing) layout.closeTab(tab.key);
+  };
   const onEnd = (address: string, end: TerminalEnd): void => {
     // An End of this session drops its pane only once it has removed the terminal (see afterEnd).
     if (closesTab(end)) afterEnd(address, () => dropEnded(address));
@@ -257,6 +266,11 @@ export function Workspace({ connection }: WorkspaceProps) {
     else setAsk({ kind: "close", address });
   };
   const closing = layout.tabs.find((tab) => tab.key === closingTab);
+  // The tabs a close-to-the-right or close-others takes, as one tab of all their panes for the one question it asks.
+  const closingTabs = layout.tabs.filter((tab) => closingSet.includes(tab.key));
+  const [firstClosing] = closingTabs;
+  const closingSetTab =
+    firstClosing === undefined ? undefined : { ...firstClosing, panes: closingTabs.flatMap((tab) => tab.panes) };
   const phoneTab = phoneOpen === null ? null : findTerminal(layout.tabs, phoneOpen);
   const phonePanes = phoneTab?.tab.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? [];
   const phoneTitle = phoneTab === null ? null : phoneTabTitle(phoneTab.tab.name);
@@ -410,6 +424,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                         onNewSpace={() => runs.start({}, inNewSpace)}
                         onSplit={split}
                         onCloseTab={closeTab}
+                        onCloseTabs={closeTabs}
                         onClosePane={closePane}
                         onEnd={onEnd}
                         onPalette={onPalette}
@@ -460,6 +475,21 @@ export function Workspace({ connection }: WorkspaceProps) {
                   layout.closeTab(closing.key);
                 }}
                 onDone={() => setClosingTab(null)}
+                onKept={kept}
+              />
+            )}
+            {closingTabs.length === 0 || closingSetTab === undefined ? null : (
+              <CloseTabDialog
+                key={closingSet.join(" ")}
+                connection={connection}
+                terminals={terminals}
+                tab={closingSetTab}
+                tabs={closingTabs.length}
+                onClosed={() => {
+                  closingSessions(closingSetTab.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])));
+                  for (const tab of closingTabs) layout.closeTab(tab.key);
+                }}
+                onDone={() => setClosingSet([])}
                 onKept={kept}
               />
             )}

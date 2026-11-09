@@ -8,6 +8,8 @@ import {
   freshId,
   type Node,
   renameTab as renameDocTab,
+  closeSet,
+  setPinned,
   splitPane,
   terminalBlock,
 } from "@doriface/protocol/layout";
@@ -80,6 +82,10 @@ export interface Layout extends PaneMoves {
    * it; rejects with why when the tab is not in a document that takes edits, or the write fails.
    */
   readonly renameTab: (key: string, name: string) => Promise<void>;
+  /** Pins a tab in front of its space's others, or unpins it (#1561); every device reads it from the document. */
+  readonly pinTab: (key: string, pinned: boolean) => Promise<void>;
+  /** The keys "Close tabs to the right" or "Close other tabs" closes from a tab: never a pinned one (#1561). */
+  readonly closeSetOf: (key: string, which: "right" | "others") => readonly string[];
   /** The last tab moved, counted so the strip can say where it went each time, even to the same place twice. */
   readonly lastMove: TabMove | null;
   /**
@@ -394,6 +400,26 @@ export function useLayout(
     },
     [layouts, tabs],
   );
+  const pinTab = useCallback(
+    async (key: string, pinned: boolean): Promise<void> => {
+      const tab = tabs.find((each) => each.key === key);
+      const layout = tab === undefined ? undefined : layouts.find((each) => each.machine === tab.machine);
+      if (tab === undefined || tab.transient || layout === undefined) throw new Error("This tab is not saved yet.");
+      if (layout.readOnly !== null) throw new Error(layout.readOnly);
+      await layout.edit((doc) => (doc === null ? null : setPinned(doc, tab.id, pinned)));
+    },
+    [layouts, tabs],
+  );
+  const closeSetOf = useCallback(
+    (key: string, which: "right" | "others"): readonly string[] => {
+      const tab = tabs.find((each) => each.key === key);
+      const doc = tab === undefined ? null : (layouts.find((each) => each.machine === tab.machine)?.doc ?? null);
+      if (tab === undefined || doc === null) return [];
+      const closing = new Set(closeSet(doc, tab.id, which));
+      return tabs.filter((each) => each.spaceKey === tab.spaceKey && closing.has(each.id)).map((each) => each.key);
+    },
+    [layouts, tabs],
+  );
 
   return {
     tabs,
@@ -415,6 +441,8 @@ export function useLayout(
     ...moves,
     moveTab,
     renameTab,
+    pinTab,
+    closeSetOf,
     lastMove,
     restored: machinesListed && layouts.every((layout) => layout.loaded || layout.readOnly !== LAYOUT_LOADING),
   };

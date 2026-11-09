@@ -192,6 +192,8 @@ export type ListedSpace = Space & {
   readonly tabPanes: readonly (readonly string[])[];
   /** Each tab's own name, as saved (empty when unnamed), in the order of `tabPanes`. */
   readonly tabNames: readonly string[];
+  /** Whether each tab is pinned (#1561), in the order of `tabPanes`. */
+  readonly tabPins: readonly boolean[];
   readonly dir: string;
 };
 
@@ -219,6 +221,7 @@ export function layoutSpaces(
     return docSpaces(doc).map((space) => {
       const own = tabs.filter((tab) => tab.space === space.id);
       const tabNames = own.map((tab) => tab.name);
+      const tabPins = own.map((tab) => tab.pinned);
       const tabPanes = own.map((tab) =>
         panesOf(tab.root).flatMap((pane) =>
           pane.terminal === null
@@ -243,6 +246,7 @@ export function layoutSpaces(
         addresses,
         tabPanes,
         tabNames,
+        tabPins,
         statuses: new Set(live.map(agentStatus)),
       };
     });
@@ -259,6 +263,7 @@ export function layoutSpaces(
       addresses: entry.addresses,
       tabPanes: entry.tabPanes,
       tabNames: entry.tabNames,
+      tabPins: entry.tabPins,
       dir: entry.dir,
     };
     if (entry.machine !== undefined) Object.assign(space, { machine: entry.machine });

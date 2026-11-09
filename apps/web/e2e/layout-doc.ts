@@ -65,6 +65,8 @@ export interface SeedSpace {
     readonly terminal: string;
     /** More terminals split beside the first, in one row. */
     readonly beside?: readonly string[];
+    /** Pinned in front of the space's other tabs (#1561). */
+    readonly pinned?: boolean;
   }[];
 }
 
@@ -80,6 +82,7 @@ export function seedSpaces(spaces: readonly SeedSpace[], on?: string): void {
         tabs: space.tabs.map((tab) => ({
           id: tab.id,
           name: tab.name,
+          ...(tab.pinned === true ? { pinned: true } : {}),
           root: {
             children: [tab.terminal, ...(tab.beside ?? [])].map((terminal, at) =>
               treeNode({ pane: at === 0 ? `p-${tab.id}` : `p-${tab.id}-${at}`, terminal }),

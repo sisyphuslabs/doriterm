@@ -1,5 +1,6 @@
 import { isJsonObject, type JsonObject, type JsonValue } from "../json.ts";
 import { problemIn, type Node } from "./node.ts";
+import { isPinned, moveBounds } from "./pins.ts";
 
 /** The core document herdr-app keeps its spaces, tabs and split trees in, one per machine (`doc.get` `on`). */
 export const LAYOUT_DOC = "herdr-app";
@@ -14,6 +15,8 @@ export interface DocTab {
   readonly name: string;
   readonly space: string;
   readonly root: Node;
+  /** Pinned in front of its space's other tabs (#1561). */
+  readonly pinned: boolean;
 }
 
 const unreadable = (reason: string): ReadDocument => ({ kind: "unreadable", reason });
@@ -63,6 +66,7 @@ export function tabsOf(doc: JsonObject): readonly DocTab[] {
       name: text(tab["name"]),
       space: text(space["id"]),
       root: isJsonObject(tab["root"]) ? tab["root"] : EMPTY_ROOT,
+      pinned: isPinned(tab),
     })),
   );
 }
@@ -171,8 +175,8 @@ export function moveSpace(doc: JsonObject, spaceId: string, to: number): JsonObj
 }
 
 /**
- * The document with a tab moved to index `to` among its own space's tabs (clamped), the others keeping their order; null
- * when the tab is gone or already there, so nothing is written.
+ * The document with a tab moved to index `to` among its own space's tabs (clamped, and kept on its side of the pinned
+ * tabs, #1561), the others keeping their order; null when the tab is gone or already there, so nothing is written.
  */
 export function moveTab(doc: JsonObject, tabId: string, to: number): JsonObject | null {
   const spaces = spacesOf(doc);
@@ -181,9 +185,11 @@ export function moveTab(doc: JsonObject, tabId: string, to: number): JsonObject 
   if (space === undefined) return null;
   const tabs = tabsIn(space);
   const from = tabs.findIndex((tab) => text(tab["id"]) === tabId);
-  const target = Math.max(0, Math.min(tabs.length - 1, to));
   const moving = tabs[from];
-  if (moving === undefined || target === from) return null;
+  if (moving === undefined) return null;
+  const [first, last] = moveBounds(tabs, moving);
+  const target = Math.max(first, Math.min(last, to));
+  if (target === from) return null;
   const placed = tabs.toSpliced(from, 1).toSpliced(target, 0, moving);
   return { ...doc, spaces: spaces.with(at, { ...space, tabs: placed }) };
 }

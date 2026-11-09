@@ -13,6 +13,7 @@ export {
   tabsOf,
 } from "./document.ts";
 export type { DocSpace, DocTab, NewSpace, ReadDocument } from "./document.ts";
+export { closeSet, isPinned, setPinned } from "./pins.ts";
 export {
   childrenOf,
   freshId,

@@ -1,8 +1,8 @@
-import { ArrowLeft, ArrowRight, Pencil, Plus, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowRightToLine, CopyX, Pencil, Pin, PinOff, Plus, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/cn.ts";
 import { IconButton } from "./icon-button.tsx";
-import { ContextMenu, Menu, MenuItem, skipMenuHandler } from "./menu.tsx";
+import { ContextMenu, Menu, MenuItem, MenuSeparator, skipMenuHandler } from "./menu.tsx";
 import { StatusIndicator, type AgentStatus } from "./status.tsx";
 import { useTabDrag } from "./tab-drag.ts";
 import { DropCaret, DropIndicator, placement } from "./tab-drop.tsx";
@@ -14,6 +14,8 @@ export interface WorkspaceTab {
   readonly status?: AgentStatus;
   /** The id of the tab panel it shows (WAI-ARIA tabs: `aria-controls`). */
   readonly controls?: string;
+  /** Pinned in front of the others (#1561): drawn as its icon alone, with no close button. */
+  readonly pinned?: boolean;
 }
 
 /** A tab that moved, by any path (drag, its menu, a key); counted so moving it to the same place again is news. */
@@ -27,6 +29,10 @@ export interface TabBarProps {
   readonly activeId: string;
   readonly onSelect?: (id: string) => void;
   readonly onClose?: (id: string) => void;
+  /** Pins or unpins a tab from its menu (#1561). */
+  readonly onPin?: (id: string, pinned: boolean) => void;
+  /** "Close tabs to the right" and "Close other tabs" from a tab's menu; neither closes a pinned tab (#1561). */
+  readonly onCloseSet?: (id: string, which: "right" | "others") => void;
   readonly onNew?: () => void;
   /** herdr-app's new menu: given, the strip's New tab button opens it (#466 item 7); else the button is `onNew`. */
   readonly newMenu?: ReactNode;
@@ -55,6 +61,8 @@ export function TabBar({
   activeId,
   onSelect,
   onClose,
+  onPin,
+  onCloseSet,
   onNew,
   newMenu,
   onRename,
@@ -149,6 +157,11 @@ export function TabBar({
         {drag === null ? null : <DropCaret drag={drag} />}
         {tabs.map((tab, index) => {
           const active = tab.id === activeId;
+          const pinned = tab.pinned === true;
+          // Pinned tabs lead and keep to their own side of the strip: a move never crosses the last pinned tab (#1561).
+          const pins = tabs.filter((each) => each.pinned === true).length;
+          const leftmost = pinned ? 0 : pins;
+          const rightmost = pinned ? pins - 1 : tabs.length - 1;
           const place = placement(tab.id, index, drag, settle);
           const item = (
             <div
@@ -185,16 +198,21 @@ export function TabBar({
                 aria-controls={tab.controls}
                 onClick={() => onSelect?.(tab.id)}
                 onDoubleClick={() => onRename?.(tab.id)}
+                {...(pinned ? { title: tab.title, "data-pinned": "" } : {})}
                 className="flex min-w-0 items-center gap-[7px] rounded-xs outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
               >
-                {tab.icon}
-                <span className="max-w-[170px] truncate">{tab.title}</span>
+                {pinned && tab.icon === undefined ? <Pin aria-hidden className="size-3.5 shrink-0" /> : tab.icon}
+                {pinned ? (
+                  <span className="sr-only">{tab.title}</span>
+                ) : (
+                  <span className="max-w-[170px] truncate">{tab.title}</span>
+                )}
                 {/* herdr-app draws nothing for an idle tab: a spinner while working, a dot when blocked or done. */}
                 {tab.status === undefined || tab.status === "idle" || tab.status === "unknown" ? null : (
                   <StatusIndicator status={tab.status} className="size-3" />
                 )}
               </button>
-              {active ? (
+              {active && !pinned ? (
                 <IconButton
                   label={`Close ${tab.title}`}
                   icon={<X />}
@@ -232,7 +250,7 @@ export function TabBar({
             >
               <MenuItem
                 icon={<ArrowLeft />}
-                disabled={index === 0}
+                disabled={index <= leftmost}
                 {...(moveKeys?.left === undefined ? {} : { keys: moveKeys.left })}
                 onClick={() => onMove(tab.id, index - 1)}
               >
@@ -240,7 +258,7 @@ export function TabBar({
               </MenuItem>
               <MenuItem
                 icon={<ArrowRight />}
-                disabled={index === tabs.length - 1}
+                disabled={index >= rightmost}
                 {...(moveKeys?.right === undefined ? {} : { keys: moveKeys.right })}
                 onClick={() => onMove(tab.id, index + 1)}
               >
@@ -268,10 +286,34 @@ export function TabBar({
                   New tab
                 </MenuItem>
               )}
-              {onClose === undefined ? null : (
+              {onPin === undefined ? null : (
+                <MenuItem icon={pinned ? <PinOff /> : <Pin />} onClick={() => onPin(tab.id, !pinned)}>
+                  {pinned ? "Unpin tab" : "Pin tab"}
+                </MenuItem>
+              )}
+              {onClose === undefined || pinned ? null : (
                 <MenuItem icon={<X />} onClick={() => onClose(tab.id)}>
                   Close tab
                 </MenuItem>
+              )}
+              {onCloseSet === undefined ? null : (
+                <>
+                  <MenuSeparator />
+                  <MenuItem
+                    icon={<ArrowRightToLine />}
+                    disabled={!tabs.slice(index + 1).some((each) => each.pinned !== true)}
+                    onClick={() => onCloseSet(tab.id, "right")}
+                  >
+                    Close tabs to the right
+                  </MenuItem>
+                  <MenuItem
+                    icon={<CopyX />}
+                    disabled={!tabs.some((each, at) => at !== index && each.pinned !== true)}
+                    onClick={() => onCloseSet(tab.id, "others")}
+                  >
+                    Close other tabs
+                  </MenuItem>
+                </>
               )}
             </ContextMenu>
           );
