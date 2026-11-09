@@ -31,8 +31,10 @@ function seed(): string[] {
 
 interface Place {
   readonly top: number;
-  /** The first row whose box reaches below the list's top edge. */
+  /** The name of the first row whose box reaches below the list's top edge. */
   readonly first: string;
+  /** The rows `first` was picked from, so the place is read again the same way. */
+  readonly row: RegExp;
 }
 
 /** An agent row: its name leads. A space row leads with its avatar's initial, so it is matched by name anywhere. */
@@ -40,23 +42,27 @@ const AGENT_ROW = /^\s*keep\d\d/;
 const SPACE_ROW = /keep\d\d/;
 
 /** Where the list is: its offset and the first seeded row in view, an agent's or a space's (headers are not counted). */
-const place = (list: Locator): Promise<Place> =>
-  list.evaluate((el) => {
+const place = async (list: Locator, row: RegExp = AGENT_ROW): Promise<Place> => {
+  const at = await list.evaluate((el, source) => {
+    const pattern = new RegExp(source);
     const edge = el.getBoundingClientRect().top;
     const first = [...el.querySelectorAll("button")].find(
-      (row) => /^\s*keep\d\d/.test(row.textContent ?? "") && row.getBoundingClientRect().bottom > edge + 1,
+      (button) => pattern.test(button.textContent ?? "") && button.getBoundingClientRect().bottom > edge + 1,
     );
-    return { top: el.scrollTop, first: first?.textContent ?? "" };
-  });
+    // The row's name, not its whole text: the text ends with the agent's age, which moves on while the test runs.
+    return { top: el.scrollTop, first: /keep\d\d/.exec(first?.textContent ?? "")?.[0] ?? "" };
+  }, row.source);
+  return { ...at, row };
+};
 
 /** Scrolls the list to half its overflow and waits for that offset to be the one it holds. */
-async function scrollHalfway(list: Locator): Promise<Place> {
+async function scrollHalfway(list: Locator, row: RegExp = AGENT_ROW): Promise<Place> {
   const room = await list.evaluate((el) => el.scrollHeight - el.clientHeight);
   expect(room, "the list overflows the screen by more than a few rows").toBeGreaterThan(300);
   const target = Math.round(room / 2);
   await list.evaluate((el, top) => el.scrollTo({ top, behavior: "instant" }), target);
   await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBe(target);
-  return place(list);
+  return place(list, row);
 }
 
 /** A row fully in view below the first one, so the tap is on what the reader sees. */
@@ -75,8 +81,10 @@ async function rowInView(list: Locator, row: RegExp = AGENT_ROW): Promise<Locato
 }
 
 async function expectSamePlace(list: Locator, before: Place): Promise<void> {
+  // A row pattern that matches nothing would pass below as '' === ''.
+  expect(before.first, "a first row was found").not.toBe("");
   await expect.poll(() => list.evaluate((el) => el.scrollTop), "the same offset").toBe(before.top);
-  expect((await place(list)).first, "the same first row in view").toBe(before.first);
+  expect((await place(list, before.row)).first, "the same first row in view").toBe(before.first);
 }
 
 /** COUNT agents, each the one tab of its own space named like it, so the Agents list and the Spaces list are both long. */
@@ -186,7 +194,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await expect.poll(() => list.evaluate((el) => el.scrollTop), "Spaces opens at its top").toBe(0);
 
         // A space opened from Spaces, and Back: Spaces is where it was left, not where the agents were.
-        const spaces = await scrollHalfway(list);
+        const spaces = await scrollHalfway(list, SPACE_ROW);
         expect(spaces.top, "the two lists are left at different offsets").not.toBe(agents.top);
         await (await rowInView(list, SPACE_ROW)).click();
         await expect(page.getByRole("button", { name: "Back to Spaces" })).toBeVisible({ timeout: 20_000 });
