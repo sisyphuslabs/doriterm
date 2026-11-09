@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { dirname, join } from "node:path";
 import { FRAME_BYTES, type FrameTimer, OutputPacer, SYNCHRONIZED_UNPACED_MS } from "./output-pacer.ts";
+import { type ReplayEndReason, type ReplayTimer, replayQuietMs } from "./replay-mode.ts";
 
 /** Animation frames that run only when the test says so. */
 function manualFrames() {
@@ -188,6 +189,140 @@ describe("OutputPacer in a synchronized update (#757)", () => {
     expect(written).toHaveLength(2);
     clock.nextFrame();
     expect(written.slice(2)).toEqual([FRAME_BYTES]);
+  });
+});
+
+/** Frames, a clock and timers a test runs by hand: nothing here happens until the test says so. */
+function manualTime() {
+  let now = 0;
+  let next = 1;
+  const frames: (() => void)[] = [];
+  const timers = new Map<number, { readonly at: number; readonly run: () => void }>();
+  const frame: FrameTimer = (run) => {
+    frames.push(run);
+    return () => {
+      frames.splice(frames.indexOf(run), 1);
+    };
+  };
+  const timer: ReplayTimer = (run, ms) => {
+    const id = next;
+    next += 1;
+    timers.set(id, { at: now + ms, run });
+    return () => {
+      timers.delete(id);
+    };
+  };
+  const advance = (ms: number): void => {
+    const target = now + ms;
+    for (;;) {
+      const due = [...timers.entries()]
+        .filter(([, each]) => each.at <= target)
+        .toSorted(([, a], [, b]) => a.at - b.at)[0];
+      if (due === undefined) break;
+      timers.delete(due[0]);
+      now = Math.max(now, due[1].at);
+      due[1].run();
+    }
+    now = target;
+  };
+  return {
+    frame,
+    timer,
+    advance,
+    now: () => now,
+    frames,
+    nextFrame: (): void => frames.shift()?.(),
+  };
+}
+
+describe("OutputPacer in a replay (#812)", () => {
+  test("a replay writes its first paint as it arrives, uncapped, and holds until its quiet window ends", () => {
+    const time = manualTime();
+    const written: number[] = [];
+    let credited = 0;
+    const pacer = new OutputPacer((batch) => written.push(batch.byteLength), time.frame, time.now, time.timer);
+    const changes: boolean[] = [];
+    pacer.onReplayChange(() => changes.push(pacer.replaying));
+    expect(pacer.replaying).toBe(false);
+    pacer.beginReplay({ srtt: 100 });
+    expect(pacer.replaying).toBe(true);
+    pacer.push(bytes(FRAME_BYTES * 3), (count) => (credited += count));
+    pacer.push(bytes(FRAME_BYTES * 2), (count) => (credited += count));
+    expect(written).toEqual([FRAME_BYTES * 3, FRAME_BYTES * 2]);
+    expect(credited).toBe(FRAME_BYTES * 5);
+    expect(time.frames).toHaveLength(0);
+    time.advance(replayQuietMs(100));
+    expect(pacer.replaying).toBe(false);
+    expect(changes).toEqual([true, false]);
+    // Once the replay ends, output is paced again: a frame's bytes a frame.
+    pacer.push(bytes(FRAME_BYTES + 1));
+    expect(written).toHaveLength(2);
+    time.nextFrame();
+    expect(written.slice(2)).toEqual([FRAME_BYTES]);
+  });
+
+  test("a replay's paint is released before its end is reported, so the end-hold runs on the shown replay", () => {
+    const time = manualTime();
+    const order: string[] = [];
+    const pacer = new OutputPacer(() => undefined, time.frame, time.now, time.timer);
+    pacer.onReplayChange(() => order.push(`replaying:${pacer.replaying}`));
+    pacer.beginReplay({ srtt: 100, onEnd: () => order.push(`ended:${pacer.replaying}`) });
+    time.advance(replayQuietMs(100));
+    expect(order).toEqual(["replaying:true", "replaying:false", "ended:false"]);
+  });
+
+  test("a synchronized bracket stands the replay down: the update's own hold paints it, not a second one", () => {
+    const time = manualTime();
+    const written: number[] = [];
+    const reasons: ReplayEndReason[] = [];
+    const pacer = new OutputPacer((batch) => written.push(batch.byteLength), time.frame, time.now, time.timer);
+    const changes: boolean[] = [];
+    pacer.onReplayChange(() => changes.push(pacer.replaying));
+    pacer.beginReplay({ srtt: 100, onEnd: (reason) => void reasons.push(reason) });
+    pacer.push(new Uint8Array([...text(OPEN), ...bytes(100)]));
+    expect(pacer.replaying).toBe(false);
+    expect(reasons).toEqual(["synchronized"]);
+    expect(changes).toEqual([true, false]);
+    expect(written).toEqual([OPEN.length + 100]);
+    // The open update keeps writing unpaced, as the pacer already did for one.
+    pacer.push(bytes(FRAME_BYTES * 2));
+    expect(written).toEqual([OPEN.length + 100, FRAME_BYTES * 2]);
+    time.advance(10_000);
+    expect(reasons).toEqual(["synchronized"]);
+  });
+
+  test("the cap ends a replay while output keeps arriving", () => {
+    const time = manualTime();
+    const written: number[] = [];
+    const reasons: ReplayEndReason[] = [];
+    const pacer = new OutputPacer((batch) => written.push(batch.byteLength), time.frame, time.now, time.timer);
+    pacer.beginReplay({ srtt: 500, onEnd: (reason) => void reasons.push(reason) });
+    for (let at = 0; at < 1_500; at += 100) {
+      pacer.push(bytes(16));
+      time.advance(100);
+    }
+    expect(pacer.replaying).toBe(false);
+    expect(reasons).toEqual(["cap"]);
+    pacer.push(bytes(FRAME_BYTES + 1));
+    expect(written).toHaveLength(15);
+    time.nextFrame();
+    expect(written.at(-1)).toBe(FRAME_BYTES);
+  });
+
+  test("drop forgets a replay without ending it", () => {
+    const time = manualTime();
+    const written: number[] = [];
+    const reasons: ReplayEndReason[] = [];
+    const pacer = new OutputPacer((batch) => written.push(batch.byteLength), time.frame, time.now, time.timer);
+    pacer.beginReplay({ srtt: 100, onEnd: (reason) => void reasons.push(reason) });
+    pacer.push(bytes(40));
+    pacer.drop();
+    expect(pacer.replaying).toBe(false);
+    expect(reasons).toEqual([]);
+    pacer.push(bytes(FRAME_BYTES * 2));
+    expect(written).toEqual([40]);
+    time.nextFrame();
+    expect(written).toEqual([40, FRAME_BYTES]);
   });
 });
 

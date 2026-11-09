@@ -185,6 +185,18 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         if (attachedBefore.current) {
           pacer.drop();
           output.reset();
+        }
+        // Every attach's first paint is a replay (#812, design D5): written unpaced while the view holds its paint, so the
+        // person keeps the old screen until the whole replay is there instead of watching its history scroll past.
+        pacer.beginReplay({
+          srtt: connection.rtt?.srtt,
+          onEnd: (reason) => {
+            // Rendering is released as the mode ends; the end-hold then runs once (a reader who was at the end only).
+            // A synchronized update of the output brought its own hold, so there is nothing to hold here.
+            if (reason !== "synchronized") holdAtEnd(ready.element, () => false);
+          },
+        });
+        if (attachedBefore.current) {
           handle.current?.write(FULL_RESET);
           // The reset leaves the scroller at the top, where the replay's rows climb past the reader (#1040).
           endHold.current?.stop();
