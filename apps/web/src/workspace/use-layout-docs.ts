@@ -58,7 +58,7 @@ const NOT_CONNECTED = "the machine is not connected";
  */
 export function noEditsWhy(id: string | null, shown: readonly MachineView[]): string {
   const view = shown.find((machine) => machine.id === id);
-  return view?.state === "connected" ? "the machine is reconnecting" : NOT_CONNECTED;
+  return view?.state === "connected" || view?.state === "reconnecting" ? "the machine is reconnecting" : NOT_CONNECTED;
 }
 
 /** A machine's edits: through its live document, or refused with `why` when it has none. */
