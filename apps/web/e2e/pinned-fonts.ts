@@ -8,8 +8,9 @@ import type { Page } from "@playwright/test";
  * the stylesheet is a :root:root rule so the app's own tokens.css cannot win by arriving later.
  *
  * Fonts shipped with the app stay first for the terminal's own symbols; the platform's Hangul names stay after the pin
- * so terminal-hangul.e2e.ts still reads the product stack it asserts on. These are test-only families and test-only
- * tokens: nothing here ships in the app, and no product font changes.
+ * so a syllable the subset lacks still falls back to a Hangul face. terminal-hangul.e2e.ts opts out (pinnedFonts: false)
+ * because it asserts on the product stack in tokens.css. These are test-only families and test-only tokens: nothing
+ * here ships in the app, and no product font changes.
  */
 const UI = readFileSync(new URL("./fonts/pinned-ui.woff2", import.meta.url)).toString("base64");
 const HANGUL = readFileSync(new URL("./fonts/pinned-hangul.woff2", import.meta.url)).toString("base64");
@@ -23,11 +24,11 @@ const TERM_FALLBACK =
 const CSS = [
   '@font-face { font-family: "E2E UI"; font-style: normal; font-weight: 400; font-display: block;',
   `  src: url(data:font/woff2;base64,${UI}) format("woff2"); }`,
-  '@font-face { font-family: "E2E Hangul"; font-style: normal; font-weight: 400; font-display: block;',
+  '@font-face { font-family: "E2E Pinned Hangul"; font-style: normal; font-weight: 400; font-display: block;',
   `  src: url(data:font/woff2;base64,${HANGUL}) format("woff2"); }`,
   ":root:root {",
-  `  --font-ui: "E2E UI", "E2E Hangul", ${UI_FALLBACK};`,
-  `  --font-term: "JetBrains Mono Variable", "JetBrains Mono", "Symbols Nerd Font Mono", "Doriterm Noto Symbols 2", "Doriterm Noto Symbols", "Doriterm Noto Math", "E2E Hangul", ${TERM_FALLBACK};`,
+  `  --font-ui: "E2E UI", "E2E Pinned Hangul", ${UI_FALLBACK};`,
+  `  --font-term: "JetBrains Mono Variable", "JetBrains Mono", "Symbols Nerd Font Mono", "Doriterm Noto Symbols 2", "Doriterm Noto Symbols", "Doriterm Noto Math", "E2E Pinned Hangul", ${TERM_FALLBACK};`,
   "}",
 ].join("\n");
 

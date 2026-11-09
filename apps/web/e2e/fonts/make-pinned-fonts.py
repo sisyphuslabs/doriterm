@@ -33,7 +33,7 @@ SOURCES = {
         "4989b125924991b90d05b2d16e0e388c48f7d5bb8b30539bbf9c755278d0ccaf",
     ),
     "NotoSansKR-Regular.otf": (
-        "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/SubsetOTF/KR/NotoSansKR-Regular.otf",
+        "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/SubsetOTF/KR/NotoSansKR-Regular.otf",
         "69975a0ac8472717870aefeab0a4d52739308d90856b9955313b2ad5e0148d68",
     ),
 }
@@ -147,8 +147,8 @@ def main() -> None:
         download("NotoSansKR-Regular.otf"),
         HERE / "pinned-hangul.woff2",
         hangul_syllables() + HANGUL_EXTRA,
-        "E2E Hangul",
-        "E2EHangul-Regular",
+        "E2E Pinned Hangul",
+        "E2EPinnedHangul-Regular",
     )
 
 

@@ -4,10 +4,10 @@
 a developer's Mac (#862). `e2e/pinned-fonts.ts` injects them, as test-only families, before the app's scripts. They are
 not product fonts and are not shipped.
 
-| file                  | family       |  bytes | sha256                                                             |
-| --------------------- | ------------ | -----: | ------------------------------------------------------------------ |
-| `pinned-ui.woff2`     | `E2E UI`     | 79,416 | `6858bef5170c5243988caa0dbd1d0ef66e8a0a73d797adcfa7d74488054c52a2` |
-| `pinned-hangul.woff2` | `E2E Hangul` | 33,636 | `5782072a1042909b6ea0cc5e3f6db9c9dc8e21b1960ee416cd6a4a72d839c3f7` |
+| file                  | family              |  bytes | sha256                                                             |
+| --------------------- | ------------------- | -----: | ------------------------------------------------------------------ |
+| `pinned-ui.woff2`     | `E2E UI`            | 79,416 | `6858bef5170c5243988caa0dbd1d0ef66e8a0a73d797adcfa7d74488054c52a2` |
+| `pinned-hangul.woff2` | `E2E Pinned Hangul` | 33,664 | `69b7e2ca1e1b24cb67dac5802541ecaf5fa49ac91f39e1f12a809333259d47c5` |
 
 ## Rebuilding
 
@@ -34,7 +34,7 @@ License 1.1; the licence and copyright notices are in `OFL.txt`.
   in a test is included by rebuilding. Conjoining jamo (`U+1100-11FF`) are deliberately left out: they enter only as IME
   input, whose composition box is counted in cells, so no test measures their ink, and they cost 222 kB.
 
-Both faces keep their internal names (`E2E UI`, `E2E Hangul`), so a modified version does not use the upstream reserved
-names. Syllables a spec generates rather than writes (`terminal-wide-measure.e2e.ts` draws U+AC00 onwards) are not in
-the subset and fall back to the platform; that spec counts canvas measurements, not glyph ink. `e2e-hangul.otf` in the
-parent directory is a separate, older five-syllable fixture used by `terminal-selection-cells.e2e.ts`; it is unchanged.
+Both faces keep their internal names (`E2E UI`, `E2E Pinned Hangul`), so a modified version does not use the upstream
+reserved names. Syllables a spec generates rather than writes (`terminal-wide-measure.e2e.ts` draws U+AC00 onwards) are
+not in the subset and fall back to the platform; that spec counts canvas measurements, not glyph ink. `e2e-hangul.otf`
+in this directory is a separate, older five-syllable fixture used by `terminal-selection-cells.e2e.ts`; it is unchanged.

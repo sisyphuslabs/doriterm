@@ -1,7 +1,7 @@
 import { devices, type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
-import { visibleCharacters } from "./sidebar-measure.ts";
+import { settle, visibleCharacters } from "./sidebar-measure.ts";
 import { LONG_MACHINE, machineConnected, renameMachine } from "./sidebar-seed.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -38,10 +38,13 @@ async function expectNameFirst(page: Page, name: string, state: string): Promise
 /**
  * Narrows the Spaces sidebar so a header row has to give: at 1440 with the pinned UI face both "build-box" and
  * "connected" fit whole, so the priority this spec asserts would not be exercised at all (#862). The row keeps its
- * layout rules; only the room it has to work with is set.
+ * layout rules; only the room it has to work with is set. A new --sidebar-width eases like a drag (sidebar.tsx), so the
+ * aside is allowed to stop moving before the row is measured.
  */
-const narrowSpaces = (page: Page) =>
-  page.evaluate(() => document.documentElement.style.setProperty("--sidebar-width", "15.5rem"));
+const narrowSpaces = async (page: Page): Promise<void> => {
+  await page.evaluate(() => document.documentElement.style.setProperty("--sidebar-width", "15.5rem"));
+  await settle(page);
+};
 
 test.describe("at 1440", () => {
   test.use({ viewport: { width: 1440, height: 900 } });

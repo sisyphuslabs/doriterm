@@ -2,7 +2,9 @@ import type { Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
-test.use({ serviceWorkers: "block" });
+// The pinned faces replace the product stack this spec asserts on (#959) and draw the ink it measures, so it runs on the
+// platform's own stack, as terminal-hangul-fallback.e2e.ts does.
+test.use({ serviceWorkers: "block", pinnedFonts: false });
 
 const HANGUL_FAMILIES = [
   "Noto Sans Mono CJK KR",

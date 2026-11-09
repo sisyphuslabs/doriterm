@@ -5,7 +5,7 @@ pinned-ui.woff2: Inter 4.1, instantiated at opsz 14 / wght 400 and subset to the
 renamed "E2E UI". Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter).
 
 pinned-hangul.woff2: Noto Sans KR Regular, subset to every Hangul syllable the suite draws plus the compatibility
-jamo, renamed "E2E Hangul". Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.
+jamo, renamed "E2E Pinned Hangul". Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.
 
 All three are test fixtures only; they are not shipped.
 
