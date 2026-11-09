@@ -51,6 +51,13 @@ jobs:
     name: Staging
     # Its secrets come from the staging environment: a token scoped to the staging hosts, once the settings hold one (#816).
     environment: staging
+    # Every run's staging deploy and its probes take turns: the probe wants this build's index.html byte for byte, so a
+    # second deploy before it ends fails it or passes it on the other run's build (#929, #1143). queue: max keeps up to
+    # 100 waiting deploys in order, so unlike the single pending slot above no run cancels another's (#868).
+    concurrency:
+      group: deploy-web-staging
+      queue: max
+      cancel-in-progress: false
     if: >-
       github.event_name != 'pull_request' ||
       (contains(github.event.pull_request.labels.*.name, 'deploy-staging') &&
