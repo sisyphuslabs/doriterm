@@ -5,6 +5,7 @@ import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import { LAYOUT_DOC } from "./layout-doc.ts";
 import {
+  hcOn,
   machineRow,
   newOn,
   reconnect,
@@ -25,9 +26,17 @@ const savedPane = (terminal: string, on?: string) =>
       spaces: [{ tabs: [{ root: { children: [{ content: { terminal } }] } }] }],
     });
 
+/**
+ * The program is started through hc, not typed: a wait-for line names this test's output path, and typed key by key on a
+ * loaded runner it alone took most of a 60 s budget before the test reached what it checks (#1739). The test's budget is
+ * the sum of the bounds it waits on, each of which is a product bound, so no single wait has to share the default.
+ */
+const ENDED_TEST_TIMEOUT_MS = 120_000;
+
 test("a terminal whose program ends while the page is closed shows as ended after a reload, and closes from there", async ({
   page,
 }) => {
+  test.setTimeout(ENDED_TEST_TIMEOUT_MS);
   const go = test.info().outputPath("go");
   await page.goto("/");
   const terminal = await openNewTerminal(page);
@@ -35,9 +44,7 @@ test("a terminal whose program ends while the page is closed shows as ended afte
   try {
     const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
     const tabsBefore = await tabs.count();
-    await terminal.getByRole("textbox").focus();
-    await page.keyboard.type(waitFor(go));
-    await page.keyboard.press("Enter");
+    hcOn("host", ["send", address, waitFor(go)]);
     await expect(terminal).toContainText("armed-9", { timeout: 15_000 });
     await savedPane(address);
 
@@ -78,9 +85,7 @@ test("a terminal on an added machine whose program ends while the machine is off
     await expect(terminal).toContainText("$", { timeout: 15_000 });
     const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
     const tabsBefore = await tabs.count();
-    await terminal.click();
-    await page.keyboard.type(waitFor(go));
-    await page.keyboard.press("Enter");
+    hcOn("machine", ["send", local, waitFor(go)]);
     await expect(terminal).toContainText("armed-9", { timeout: 15_000 });
     await savedPane(local, MACHINE_NAME);
 
@@ -96,7 +101,8 @@ test("a terminal on an added machine whose program ends while the machine is off
     await expect(page.getByText("This terminal didn't open")).toHaveCount(0);
     await expect(tabs).toHaveCount(tabsBefore);
     await page.getByRole("button", { name: "Close tab" }).click();
-    await expect(tabs).toHaveCount(tabsBefore - 1, { timeout: 15_000 });
+    // The close is a layout write to a machine that has just come back: it settles within the bound for its state.
+    await expect(tabs).toHaveCount(tabsBefore - 1, { timeout: STATE_BOUND_MS });
   } finally {
     reconnect();
     removeTerminal("machine", local, go);
