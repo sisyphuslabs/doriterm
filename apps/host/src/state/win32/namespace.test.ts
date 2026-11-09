@@ -4,6 +4,7 @@ import { parseSddl } from "./sddl.ts";
 
 const USER = "S-1-5-21-1000-2000-3000-1001";
 const OTHER = "S-1-5-21-1000-2000-3000-1002";
+const lookupGroup = () => ({ status: "resolved" as const, name: "State editors", domain: "PC", use: 4 });
 const folder = (path: string, sddl: string, reparsePoint = false): ChainFolder => ({
   path,
   descriptor: parseSddl(sddl),
@@ -71,5 +72,91 @@ describe("checkNamespace (#406 design revision 3.2)", () => {
   test("read and create-subfolder rights for others are not namespace rights", () => {
     const chain = [folder("D:\\x", `O:${USER}D:P(A;;FA;;;${USER})(A;;0x1200a9;;;BU)(A;;0x4;;;AU)`)];
     expect(checkNamespace(chain, USER)).toEqual({ verdict: "trusted" });
+  });
+});
+
+describe("actionable namespace refusal (#1299)", () => {
+  const inherited = folder("D:\\shared\\state", `O:${USER}D:(A;CIID;GW;;;${OTHER})`);
+  const explicit = folder("D:\\shared", `O:${USER}D:(A;CI;GW;;;${OTHER})`);
+
+  test("reports the explicit ancestor, not the leaf carrying an inherited copy", () => {
+    expect(checkNamespace([inherited, explicit], USER)).toMatchObject({
+      verdict: "untrusted",
+      path: explicit.path,
+    });
+  });
+
+  test("traces multiple inherited copies but leaves an explicit leaf grant on the leaf", () => {
+    const leaf = folder("D:\\shared\\middle\\state", `O:${USER}D:(A;CIID;GW;;;${OTHER})`);
+    const middle = folder("D:\\shared\\middle", `O:${USER}D:(A;CIID;GW;;;${OTHER})`);
+    expect(checkNamespace([leaf, middle, explicit], USER)).toMatchObject({ path: explicit.path });
+    const ownGrant = folder(leaf.path, `O:${USER}D:(A;CI;GW;;;${OTHER})`);
+    expect(checkNamespace([ownGrant, middle, explicit], USER)).toMatchObject({ path: leaf.path });
+  });
+
+  test("does not follow stale inherited flags through a protected DACL", () => {
+    const protectedLeaf = folder(inherited.path, `O:${USER}D:P(A;CIID;GW;;;${OTHER})`);
+    expect(checkNamespace([protectedLeaf, explicit], USER)).toMatchObject({ path: protectedLeaf.path });
+  });
+
+  test("finds the source of a one-generation no-propagate grant", () => {
+    const child = folder(inherited.path, `O:${USER}D:(A;ID;GW;;;${OTHER})`);
+    const parent = folder(explicit.path, `O:${USER}D:(A;CINP;GW;;;${OTHER})`);
+    expect(checkNamespace([child, parent], USER)).toMatchObject({ path: parent.path });
+  });
+
+  test("trusted ACLs never need an account-name lookup", () => {
+    expect(
+      checkNamespace(PROFILE_CHAIN, USER, () => {
+        throw new Error("display lookup must not run for a trusted namespace");
+      }),
+    ).toEqual({ verdict: "trusted" });
+  });
+
+  test("does not attribute an inherited grant to an unrelated ACE above an inheritance boundary", () => {
+    const boundary = folder("D:\\shared\\middle", `O:${USER}D:P(A;;FA;;;${USER})`);
+    expect(checkNamespace([inherited, boundary, explicit], USER)).toMatchObject({
+      verdict: "untrusted",
+      path: inherited.path,
+    });
+  });
+
+  test("names a resolved local group and describes both remedies and the parent check", () => {
+    const verdict = checkNamespace([inherited, explicit], USER, lookupGroup);
+    if (verdict.verdict !== "untrusted") throw new Error("expected refusal");
+    expect(verdict.message).toContain("parent folders");
+    expect(verdict.message).toContain(`Remove the ACE granting those rights on "${explicit.path}"`);
+    expect(verdict.message).toContain("only you and SYSTEM/Administrators can modify");
+    expect(verdict).toMatchObject({
+      verdict: "untrusted",
+      path: explicit.path,
+      reason: expect.stringContaining("a local group named PC\\State editors"),
+      message: expect.stringContaining("DORIFACE_HOST_STATE_DIR"),
+    });
+  });
+
+  test("explains an unmapped SID instead of printing only its number", () => {
+    expect(checkNamespace([explicit], USER, () => ({ status: "unmapped" }))).toMatchObject({
+      verdict: "untrusted",
+      reason: expect.stringContaining(`an account that no longer exists (SID ${OTHER})`),
+    });
+  });
+
+  test("does not call a failed lookup a deleted account, and still refuses", () => {
+    expect(checkNamespace([explicit], USER, () => ({ status: "unavailable", code: 1722 }))).toMatchObject({
+      verdict: "untrusted",
+      reason: expect.stringContaining(`an account Windows could not resolve (SID ${OTHER}; error 1722)`),
+    });
+  });
+
+  test("names an untrusted owner without changing that refusal", () => {
+    const owned = folder("D:\\theirs", `O:${OTHER}D:P(A;;FA;;;${USER})`);
+    expect(
+      checkNamespace([owned], USER, () => ({ status: "resolved", name: "Other", domain: "PC", use: 1 })),
+    ).toMatchObject({
+      verdict: "untrusted",
+      path: owned.path,
+      reason: "it is owned by a user account named PC\\Other",
+    });
   });
 });
