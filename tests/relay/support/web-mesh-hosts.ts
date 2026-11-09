@@ -2,14 +2,21 @@
 // browser spec that reaches a terminal on another machine THROUGH THE MESH (mesh-attach.e2e.ts). `mesh pair` on a and
 // `mesh join` on b make the mesh, so b reaches a's core as a machine only through the mesh's own `connect --mesh` line;
 // MESH_JOIN=skip leaves them strangers, which the spec must fail on. A shell named `on-b` runs on b's own core.
-// Prints `READY {"relayUrl": ...}` (a's relay), answers each stdin line `PAIR` with `LINK <fragment>`, a fresh device
-// pairing link to a, and stops every process it started on SIGTERM or SIGINT. `STOP` stops b's host process and answers
-// `STOPPED` once a's core lists b as not connected; `START` starts it again on the same state (its shell lives on in
-// b's core), dials it from a at once instead of at hc's next redial, and answers `STARTED` once a lists it connected.
+// Prints `READY {"relayUrl": ..., "machine": ..., "bHostId": ...}` (a's relay, b's machine name on a's core, b's own
+// hostId), answers each stdin line with one line: `PAIR` with `LINK <fragment>`, a fresh device pairing link to a; `MESH`
+// with `LINK <fragment>`, a fresh mesh invite from a that asks for a code (mesh-join-browser.e2e.ts joins with it);
+// `APPROVE <code>` with `APPROVED yes` once a approved the pending join showing that code (else `APPROVED no`, the
+// reason on stderr), the inviting person's half of the comparison; `STATUS` with
+// `MEMBERS {"meshId": ..., "a": [...], "b": [...]}`, the members each machine's `mesh status --json` lists. `STOP`
+// stops b's host process and answers `STOPPED` once a's core lists b as not connected; `START` starts it again on the
+// same state (its shell lives on in b's core), dials it from a at once instead of at hc's next redial, and answers
+// `STARTED` once a lists it connected. It stops every process it started on SIGTERM or SIGINT.
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { approveOnInviter, browserInviteUrl } from "./compared-browser.ts";
 import { startMesh } from "./mesh/mesh.ts";
+import { type Member, meshIdOf, statusOf } from "./mesh/status.ts";
 
 const OFFER = /^https:\/\/web\.example\/pair#\S+$/m;
 const home = mkdtempSync(join(tmpdir(), "on-b-"));
@@ -57,21 +64,44 @@ const shell = Bun.spawn([b.session.hc, "run", "--bg", "--name", "on-b", "--cwd",
 if ((await shell.exited) !== 0) throw new Error(`hc run on b failed: ${await new Response(shell.stderr).text()}`);
 
 const relayUrl = a.tap?.url ?? "";
-process.stdout.write(`READY ${JSON.stringify({ relayUrl, machine })}\n`);
+process.stdout.write(`READY ${JSON.stringify({ relayUrl, machine, bHostId: b.hostId })}\n`);
 
-let pending = Promise.resolve();
-const pairingFragment = async (): Promise<string> => {
-  const offer = await a.cli("pair", "--no-qr", "--web-origin", "https://web.example", "--relay", relayUrl);
-  const url = OFFER.exec(offer.stdout)?.[0];
-  if (offer.exit !== 0 || url === undefined) throw new Error(`pair on a failed: ${offer.stderr}${offer.stdout}`);
+/** A fresh offer's `#` fragment, from the line the CLI printed for it. */
+const fragmentOf = (run: { readonly exit: number; readonly stdout: string; readonly stderr: string }, what: string) => {
+  const url = OFFER.exec(run.stdout)?.[0];
+  if (run.exit !== 0 || url === undefined) throw new Error(`${what} on a failed: ${run.stderr}${run.stdout}`);
   return new URL(url).hash;
 };
-const stopB = async (): Promise<void> => {
+
+const pairingFragment = async (): Promise<string> =>
+  fragmentOf(await a.cli("pair", "--no-qr", "--web-origin", "https://web.example", "--relay", relayUrl), "pair");
+
+/** A mesh invite that asks for a code: a browser may join only on one (an --auto invite is for machines). */
+const meshFragment = async (): Promise<string> => new URL(await browserInviteUrl(a, relayUrl)).hash;
+
+const approve = async (code: string): Promise<string> => {
+  try {
+    await approveOnInviter(a, code);
+    return "APPROVED yes";
+  } catch (error) {
+    process.stderr.write(`mesh-hosts: not approved: ${String(error)}\n`);
+    return "APPROVED no";
+  }
+};
+
+/** The members each machine holds, so a spec can prove an admission from the machines' side and not the browser's word. */
+const membersOfBoth = async (): Promise<{
+  readonly meshId: string;
+  readonly a: readonly Member[];
+  readonly b: readonly Member[];
+}> => ({ meshId: meshIdOf(a), a: (await statusOf(a)).members, b: (await statusOf(b)).members });
+
+const stopB = async (): Promise<string> => {
   await b.stop();
   await mesh.until("b not connected on a's core", async () => (await stateOfB()) !== "connected", 60_000);
-  process.stdout.write("STOPPED\n");
+  return "STOPPED";
 };
-const startB = async (): Promise<void> => {
+const startB = async (): Promise<string> => {
   await b.start();
   const aCore = await mesh.core("a");
   await mesh.until(
@@ -84,16 +114,32 @@ const startB = async (): Promise<void> => {
     },
     60_000,
   );
-  process.stdout.write("STARTED\n");
+  return "STARTED";
 };
-const ASKS: Readonly<Record<string, () => Promise<void>>> = {
-  PAIR: async () => void process.stdout.write(`LINK ${await pairingFragment()}\n`),
+
+/** Each ask's one answer line, given what follows the ask's first word. */
+const answers: Readonly<Record<string, (arg: string) => Promise<string>>> = {
+  PAIR: async () => `LINK ${await pairingFragment()}`,
+  MESH: async () => `LINK ${await meshFragment()}`,
+  APPROVE: approve,
+  STATUS: async () => `MEMBERS ${JSON.stringify(await membersOfBoth())}`,
   STOP: stopB,
   START: startB,
 };
+
+async function answer(ask: string): Promise<void> {
+  const [verb = "", ...rest] = ask.split(" ");
+  const reply = answers[verb];
+  if (reply === undefined) throw new Error(`web-mesh-hosts: unknown line ${ask}`);
+  process.stdout.write(`${await reply(rest.join(" "))}\n`);
+}
+
+let pending = Promise.resolve();
 process.stdin.on("data", (chunk: Buffer) => {
-  for (const line of chunk.toString().split("\n")) {
-    const ask = ASKS[line.trim()];
-    if (ask !== undefined) pending = pending.then(ask);
-  }
+  const asks = chunk
+    .toString()
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+  pending = asks.reduce((chain, ask) => chain.then(() => answer(ask)), pending);
 });

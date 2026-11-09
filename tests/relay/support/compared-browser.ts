@@ -11,10 +11,11 @@ import type { KeyValueStore } from "../../../apps/web/src/storage/idb.ts";
 import { identityOf } from "./mesh/identity.ts";
 import type { MeshHost } from "./mesh/mesh-host.ts";
 
-export async function browserInvite(inviter: MeshHost, relayUrl: string): Promise<PairingOffer> {
+/** A mesh invite that asks for a code, as `mesh pair` without --auto mints it: the only kind a browser may join on. */
+export async function browserInviteUrl(inviter: MeshHost, relayUrl: string): Promise<string> {
   const pending = pendingFromWire(await requestControl(inviter.stateDir, { op: "mesh-pair", auto: false }));
   const identity = identityOf(inviter);
-  const url = buildPairingUrl({
+  return buildPairingUrl({
     hostId: identity.hostId,
     noiseStaticPub: identity.noise.publicKey,
     signPub: identity.sign.publicKey,
@@ -23,7 +24,10 @@ export async function browserInvite(inviter: MeshHost, relayUrl: string): Promis
     mesh: true,
     webOrigin: "https://web.example",
   });
-  const parsed = parsePairingFragment(new URL(url).hash);
+}
+
+export async function browserInvite(inviter: MeshHost, relayUrl: string): Promise<PairingOffer> {
+  const parsed = parsePairingFragment(new URL(await browserInviteUrl(inviter, relayUrl)).hash);
   if (!parsed.ok) throw new Error(parsed.reason);
   return parsed.offer;
 }
@@ -45,25 +49,30 @@ export function joinComparedBrowser(
     loadSignKey: async () => browser.sign,
     membership: browser.membership,
     storage: browser.storage,
-    confirm: async (code) => {
-      const anchor = await loadJoinAnchor(browser.storage);
-      const pending = await requestControl(inviter.stateDir, { op: "mesh-pending" });
-      if (
-        !isJsonObject(pending) ||
-        pending["code"] !== code ||
-        pending["nonce"] !== anchor?.offer.nonce ||
-        typeof pending["nonce"] !== "string"
-      ) {
-        throw new Error("the two sides did not display the same join code");
-      }
-      const reply = await requestControl(inviter.stateDir, {
-        op: "mesh-approve",
-        nonce: pending["nonce"],
-        approve: true,
-        code,
-      });
-      if (!isJsonObject(reply) || reply["decided"] !== true) throw new Error("the inviting person did not approve");
-      return true;
-    },
+    confirm: async (code) => approveOnInviter(inviter, code, (await loadJoinAnchor(browser.storage))?.offer.nonce),
   });
+}
+
+/**
+ * The inviting person's half of the comparison: approves the pending join on `inviter` when it shows `code` (and, given
+ * one, is the join for `nonce`); throws when the two sides did not display the same code.
+ */
+export async function approveOnInviter(inviter: MeshHost, code: string, nonce?: string): Promise<true> {
+  const pending = await requestControl(inviter.stateDir, { op: "mesh-pending" });
+  if (
+    !isJsonObject(pending) ||
+    pending["code"] !== code ||
+    typeof pending["nonce"] !== "string" ||
+    (nonce !== undefined && pending["nonce"] !== nonce)
+  ) {
+    throw new Error("the two sides did not display the same join code");
+  }
+  const reply = await requestControl(inviter.stateDir, {
+    op: "mesh-approve",
+    nonce: pending["nonce"],
+    approve: true,
+    code,
+  });
+  if (!isJsonObject(reply) || reply["decided"] !== true) throw new Error("the inviting person did not approve");
+  return true;
 }

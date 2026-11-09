@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { ProcessLink } from "@doriface/client/process-link";
 import { createHcSession, type HcSession } from "../../../../apps/host/src/testing/hc-session.ts";
+import { ownMeshSession } from "../../../../apps/host/src/testing/mesh-session.ts";
 import { Matches } from "../watch.ts";
 import type { Owned } from "./processes.ts";
 import type { Tap } from "./relay-front.ts";
@@ -74,15 +75,16 @@ export async function startMeshHost(options: MeshHostOptions): Promise<MeshHost>
   const scratch = mkdtempSync(join(tmpdir(), `mh-${name}-`));
   const stateDir = join(scratch, "state");
   mkdirSync(stateDir, { recursive: true, mode: 0o700 });
-  const session = createHcSession(`doriface-mesh-${name}`);
+  const scratchSession = createHcSession(`doriface-mesh-${name}`);
   if (coreName !== undefined) {
-    const coreDir = join(session.env["XDG_STATE_HOME"] ?? "", "herdr-core", session.name);
+    const coreDir = join(scratchSession.env["XDG_STATE_HOME"] ?? "", "herdr-core", scratchSession.name);
     mkdirSync(coreDir, { recursive: true });
     writeFileSync(
       join(coreDir, "core.json"),
       JSON.stringify({ id: crypto.randomUUID().replaceAll("-", ""), name: coreName }),
     );
   }
+  const session = await ownMeshSession(scratchSession);
   const sessionDir = dirname(session.env["HC_SOCKET"] ?? "");
   const logs: string[] = [];
   const lines = new Matches<string>();
@@ -138,8 +140,11 @@ export async function startMeshHost(options: MeshHostOptions): Promise<MeshHost>
     stateWrites.close();
     await stop();
     await Promise.all(children.map((child) => reap(child)));
-    await session.dispose();
-    rmSync(scratch, { recursive: true, force: true });
+    try {
+      await session.dispose();
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
   };
   const spawnOwned = (kind: Owned["kind"], argv: readonly string[]): Bun.Subprocess<"pipe", "pipe", "pipe"> => {
     const child = Bun.spawn([...argv], {

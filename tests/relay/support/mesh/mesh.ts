@@ -1,4 +1,6 @@
 import type { HcConnection } from "@doriface/client";
+import { tmpdir } from "node:os";
+import { RUN_MARK, runProcesses } from "../../../../apps/host/src/testing/run-cores.ts";
 import { within } from "../watch.ts";
 import { onInterrupt } from "../process-group.ts";
 import { type MeshHost, startMeshHost } from "./mesh-host.ts";
@@ -157,13 +159,24 @@ export async function startMesh(options: MeshOptions = {}): Promise<Mesh> {
     unhook();
     const owns = await owned();
     for (const close of closers.splice(0)) close();
-    await Promise.all(hosts.map((host) => host.dispose()));
+    // Every host and the relay stop even when one host's stop fails, and that failure is the dispose's.
+    const stops = await Promise.allSettled(hosts.map((host) => host.dispose()));
     await relay?.stop();
+    const stopFailed = stops.find((stop) => stop.status === "rejected");
+    if (stopFailed !== undefined) throw stopFailed.reason;
     const ports = hosts.flatMap((host) => (host.tap === undefined ? [] : [host.tap.port]));
     const listening = (await Promise.all(ports.map(async (port) => ((await portListens(port)) ? [port] : [])))).flat();
-    return { owned: owns, alive: await outliving(owns), listening };
+    const alive = new Map((await outliving(owns)).map((process) => [process.pid, process]));
+    // The run detector also finds bridges born after the pre-teardown ancestry snapshot.
+    const found = await runProcesses({ mark: process.env[RUN_MARK] ?? "", dir: tmpdir() });
+    for (const child of found) {
+      if (hosts.some((host) => child.command.includes(host.stateDir) || child.where.includes(host.sessionDir))) {
+        alive.set(child.pid, { kind: "hc-core", pid: child.pid });
+      }
+    }
+    return { owned: owns, alive: [...alive.values()], listening };
   };
-  // An interrupt of the runner (SIGTERM, SIGINT) tears the mesh down first: the hc cores are daemons in no group.
+  // Tear the mesh down before the interrupt hook stops any remaining owned groups.
   const unhook = onInterrupt(async () => void (await dispose()));
   const starts = await Promise.allSettled(
     names.map(async (name) => {
@@ -179,7 +192,7 @@ export async function startMesh(options: MeshOptions = {}): Promise<Mesh> {
   const failed = starts.find((start) => start.status === "rejected");
   if (failed !== undefined) {
     unhook();
-    await Promise.all(hosts.map((each) => each.dispose()));
+    await Promise.allSettled(hosts.map((each) => each.dispose()));
     await relay?.stop();
     throw failed.reason;
   }

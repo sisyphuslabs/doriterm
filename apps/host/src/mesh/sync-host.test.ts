@@ -12,6 +12,8 @@ import { MeshStore } from "../state/mesh.ts";
 import { pendingFromWire } from "../state/pairing.ts";
 import { FakeRelay } from "../testing/fake-relay.ts";
 import { createHcSession, type HcSession } from "../testing/hc-session.ts";
+import { ownMeshSession } from "../testing/mesh-session.ts";
+import { RUN_MARK, runProcesses } from "../testing/run-cores.ts";
 import { RelayClientBridge } from "../testing/relay-client-bridge.ts";
 import { DIAL_LIMITS } from "./dial-policy.ts";
 import { openHcControl } from "./hc-machines.ts";
@@ -39,7 +41,11 @@ afterAll(async () => {
   await Promise.all(running.map(({ bridge }) => bridge.stop()));
   await Promise.all(running.map(({ host }) => host.stop()));
   await Promise.all(running.flatMap(({ relay, session }) => [relay.stop(), session.dispose()]));
+  const found = await runProcesses({ mark: process.env[RUN_MARK] ?? "", dir: tmpdir() });
+  const left = found.filter((child) => running.some(({ dir }) => child.command.includes(dir)));
+  console.log(`MESH_SYNC_LEFTOVERS=${left.length} pids=${left.map((child) => child.pid).join(",")}`);
   for (const { dir } of running.splice(0)) rmSync(dir, { recursive: true, force: true });
+  expect(left.map((child) => child.pid)).toEqual([]);
 });
 
 /** The one relay all hosts share in production: here, each client dial reaches its target host's own fake relay. */
@@ -54,7 +60,7 @@ function routeClients(url: string): WebSocket {
 
 async function start(name: string): Promise<Running> {
   const dir = mkdtempSync(join(tmpdir(), `dh-sync-host-${name}-`));
-  const session = createHcSession(`sync-${name}`);
+  const session = await ownMeshSession(createHcSession(`sync-${name}`));
   const relay = new FakeRelay();
   const bridge = new RelayClientBridge(relay);
   const waiters = new Set<() => void>();

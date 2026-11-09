@@ -227,9 +227,12 @@ jobs:
             echo "::error::tests/relay/e2e.test.ts did not run."
             exit 1
           fi
-      # mesh-attach.e2e.ts is a browser spec that needs this job's relay checkout: the web app paired with one mesh
-      # member attaches to a terminal on another, through the mesh (G009 C004). mesh-input-hold.e2e.ts types into that
-      # terminal while the other member's line is down (#1489). Web e2e has no relay, so it skips both.
+      # mesh-attach.e2e.ts, mesh-input-hold.e2e.ts and mesh-join-browser.e2e.ts are browser specs that need this job's relay
+      # checkout: the web app paired with one mesh member attaches to a terminal on another, through the mesh (G009 C004);
+      # mesh-input-hold.e2e.ts types into that terminal while the other member's line is down (#1489); and a browser joins
+      # a two-machine mesh as its own member with its own WebCrypto and IndexedDB (#1413). Web e2e has no relay, so it
+      # skips all three. They run one worker after the other: each starts two hosts, the relay and Chromium, and two of
+      # those at once do not fit one runner's cores.
       - name: Playwright version
         if: env.RELAY_TOKEN_SET == 'true'
         id: playwright
@@ -279,7 +282,7 @@ jobs:
           key: ${{ steps.playwright-apt.outputs.cache-primary-key }}
       - name: Browser spec through the mesh
         if: env.RELAY_TOKEN_SET == 'true'
-        run: bun run test:e2e e2e/mesh-attach.e2e.ts e2e/mesh-input-hold.e2e.ts
+        run: bun run test:e2e e2e/mesh-attach.e2e.ts e2e/mesh-input-hold.e2e.ts e2e/mesh-join-browser.e2e.ts --workers=1
         working-directory: apps/web
         env:
           CI: "1"
