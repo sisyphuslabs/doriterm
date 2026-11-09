@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { coreSize, gridSize } from "./core-size.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { hcOn } from "./machine-switch.ts";
 import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
@@ -189,7 +190,7 @@ test("at 1440 the scrollbar overlays the padding without reflow, matches the vie
   await expect(jump(terminal)).toHaveCount(0);
 
   // The scroll-to-top key: the thumb goes to the top, and the jump button shows, with no new output yet.
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+Home" : "Shift+Home");
+  await pressShortcut(page, "terminal.scroll:top");
   await expect.poll(async () => (await measure(terminal)).scrollTop).toBe(0);
   m = await settled(terminal);
   await expect(jump(terminal)).toBeVisible();

@@ -4,31 +4,23 @@ import { expect, test, terminalCount } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { fractionOf, paneOf, renameTab, savedTab, seedLayout, type Fraction, type SeedTab } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
+import { chordFor } from "./platform-keys.ts";
 
 test.use({ serviceWorkers: "block" });
 
 type Platform = "mac" | "other";
 
-/** Ghostty's resize and equalize keys (⌘⌃ on macOS; Ctrl+Alt+Shift off it, since Super is the OS's), zoom as both. */
+/** The pane keys these tests press, by what they do: the platform's chord for each comes from the app's keymap. */
 type Key = "grow" | "equalize" | "zoom" | "close" | "up" | "splitDown";
-const KEYS: Readonly<Record<Platform, Readonly<Record<Key, string>>>> = {
-  mac: {
-    grow: "Meta+Control+ArrowDown",
-    equalize: "Meta+Control+Equal",
-    zoom: "Meta+Shift+Enter",
-    close: "Meta+Shift+w",
-    up: "Meta+Alt+ArrowUp",
-    splitDown: "Meta+Shift+d",
-  },
-  other: {
-    grow: "Control+Alt+Shift+ArrowDown",
-    equalize: "Control+Alt+Equal",
-    zoom: "Control+Shift+Enter",
-    close: "Control+Shift+X",
-    up: "Control+Alt+ArrowUp",
-    splitDown: "Control+Shift+E",
-  },
+const ACTIONS: Readonly<Record<Key, string>> = {
+  grow: "pane.resize:down",
+  equalize: "pane.equalize",
+  zoom: "pane.zoom",
+  close: "pane.close",
+  up: "pane.go:up",
+  splitDown: "pane.split:down",
 };
+const keyOn = (platform: Platform, key: Key): string => chordFor(platform, ACTIONS[key]);
 
 /** Counts the Web Animations a pane frame (a tab panel's own child) plays, in the root element's data-pane-motion. */
 const COUNT_PANE_MOTION = `{
@@ -196,17 +188,17 @@ for (const platform of ["mac", "other"] as const) {
 
     await paneOf(page, four).getByRole("textbox").focus();
     const stepped = (await fractionOf(page, four)).h;
-    await page.keyboard.press(KEYS[platform].grow);
+    await page.keyboard.press(keyOn(platform, "grow"));
     await expectStep(page, four, stepped, 1);
 
-    await page.keyboard.press(KEYS[platform].equalize);
+    await page.keyboard.press(keyOn(platform, "equalize"));
     await expectAt(page, four, { y: 0.5, h: 0.25 });
     await expectAt(page, five, { y: 0.75, h: 0.25 });
 
-    await page.keyboard.press(KEYS[platform].zoom);
+    await page.keyboard.press(keyOn(platform, "zoom"));
     await expectAt(page, four, { x: 0, y: 0, w: 1, h: 1 });
     await expect(paneOf(page, five)).toBeHidden();
-    await page.keyboard.press(KEYS[platform].zoom);
+    await page.keyboard.press(keyOn(platform, "zoom"));
     await expectAt(page, five, { y: 0.75, h: 0.25 });
   });
 }
@@ -240,7 +232,7 @@ test("closing a pane in the middle gives its space to its neighbour and focus to
   await [two, four, five, one].reduce<Promise<void>>(async (previous, address) => {
     await previous;
     await paneOf(page, address).getByRole("textbox").focus();
-    await page.keyboard.press(KEYS.other.close);
+    await page.keyboard.press(keyOn("other", "close"));
     await expect(paneOf(page, address)).toHaveCount(0);
   }, Promise.resolve());
   await expect(tabs).toHaveCount(1);
@@ -453,21 +445,21 @@ test("zoomed, moving focus or splitting shows every pane again, so a close acts 
   const focused = page.locator('[data-focused="true"] [data-terminal]');
 
   await paneOf(page, four).getByRole("textbox").focus();
-  await page.keyboard.press(KEYS.other.zoom);
+  await page.keyboard.press(keyOn("other", "zoom"));
   await expect(paneOf(page, five)).toBeHidden();
-  await page.keyboard.press(KEYS.other.up);
+  await page.keyboard.press(keyOn("other", "up"));
   await expect(focused).toHaveAttribute("data-terminal", two);
   await expect(paneOf(page, two)).toBeVisible();
   await expect(paneOf(page, five)).toBeVisible();
   await expect.poll(() => keyboardAddress(page), { timeout: 5_000 }).toBe(two);
-  await page.keyboard.press(KEYS.other.close);
+  await page.keyboard.press(keyOn("other", "close"));
   await expect(paneOf(page, two)).toHaveCount(0);
   await expect(paneOf(page, four)).toBeVisible();
 
   await paneOf(page, four).getByRole("textbox").focus();
-  await page.keyboard.press(KEYS.other.zoom);
+  await page.keyboard.press(keyOn("other", "zoom"));
   await expect(paneOf(page, five)).toBeHidden();
-  await page.keyboard.press(KEYS.other.splitDown);
+  await page.keyboard.press(keyOn("other", "splitDown"));
   await expect(focused).not.toHaveAttribute("data-terminal", four, { timeout: 15_000 });
   const made = (await focused.getAttribute("data-terminal")) ?? "";
   if (made !== "") shells.push(made);
@@ -485,7 +477,7 @@ test("in a left/right split made with Cmd+D, a dialog's button over the pane div
   await page.goto("/");
   await expect(paneOf(page, first)).toContainText("$", { timeout: 15_000 });
   await paneOf(page, first).getByRole("textbox").focus();
-  await page.keyboard.press("Meta+d");
+  await page.keyboard.press(chordFor("mac", "pane.split:right"));
   const panes = page.locator("[data-terminal]");
   await expect(panes).toHaveCount(2, { timeout: 15_000 });
   const second =

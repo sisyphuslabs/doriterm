@@ -1,32 +1,15 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { chordFor } from "./platform-keys.ts";
 
 test.use({ serviceWorkers: "block" });
 
 type Platform = "mac" | "other";
 type Move = "right" | "down" | "left" | "up";
 
-/** Ghostty's and herdr-app's keys: ⌘D ⌘⇧D and ⌘⌥arrows on macOS; Ctrl+Shift+O / E and Ctrl+Alt+arrows elsewhere. */
-const KEYS: Readonly<Record<Platform, { split: Record<"right" | "down", string>; go: Record<Move, string> }>> = {
-  mac: {
-    split: { right: "Meta+d", down: "Meta+Shift+d" },
-    go: {
-      left: "Meta+Alt+ArrowLeft",
-      right: "Meta+Alt+ArrowRight",
-      up: "Meta+Alt+ArrowUp",
-      down: "Meta+Alt+ArrowDown",
-    },
-  },
-  other: {
-    split: { right: "Control+Shift+O", down: "Control+Shift+E" },
-    go: {
-      left: "Control+Alt+ArrowLeft",
-      right: "Control+Alt+ArrowRight",
-      up: "Control+Alt+ArrowUp",
-      down: "Control+Alt+ArrowDown",
-    },
-  },
-};
+/** The split and focus keys `platform` binds (herdr-app's and Ghostty's), as the app's keymap has them. */
+const splitKey = (platform: Platform, side: "right" | "down"): string => chordFor(platform, `pane.split:${side}`);
+const goKey = (platform: Platform, move: Move): string => chordFor(platform, `pane.go:${move}`);
 
 interface Box {
   readonly x: number;
@@ -135,7 +118,7 @@ async function split(page: Page, platform: Platform, side: "right" | "down", fro
   await expect.poll(() => selectedTabWritten(page), { timeout: 15_000 }).toBe(true);
   const strip = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
   const tabCount = await strip.count();
-  await page.keyboard.press(KEYS[platform].split[side]);
+  await page.keyboard.press(splitKey(platform, side));
   await expect.poll(() => focusedAddress(page), { timeout: 15_000 }).not.toBe(from);
   const created = await focusedAddress(page);
   if (created === null) throw new Error("no pane is focused after the split");
@@ -191,7 +174,7 @@ for (const platform of ["mac", "other"] as const) {
     ];
     await steps.reduce<Promise<void>>(async (previous, [move, lands]) => {
       await previous;
-      await page.keyboard.press(KEYS[platform].go[move]);
+      await page.keyboard.press(goKey(platform, move));
       await expect.poll(() => focusedAddress(page), { timeout: 5_000 }).toBe(lands);
       await expect.poll(() => keyboardAddress(page), { timeout: 5_000 }).toBe(lands);
       await expect.poll(() => selectedTabHolds(page, lands), { timeout: 5_000 }).toBe(true);
@@ -212,8 +195,8 @@ test("two split keys pressed back to back split the pane the first one makes, as
   const before = await boxOf(page, two);
 
   // No wait between the keys: the second lands while the first one's terminal is still starting.
-  await page.keyboard.press(KEYS.other.split.right);
-  await page.keyboard.press(KEYS.other.split.down);
+  await page.keyboard.press(splitKey("other", "right"));
+  await page.keyboard.press(splitKey("other", "down"));
   const shown = page.locator('[role="tabpanel"]:not([hidden]) [data-terminal]');
   await expect(shown).toHaveCount(4, { timeout: 15_000 });
   const addresses = await shown.evaluateAll((each) => each.map((node) => node.getAttribute("data-terminal") ?? ""));

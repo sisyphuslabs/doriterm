@@ -3,6 +3,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { agentRow, endAgent, startAgent } from "./agents.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { commandModifier, pressShortcut, pressWithCommand } from "./platform-keys.ts";
 import { hcOn } from "./machine-switch.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -45,7 +46,7 @@ test("right-clicking an agent row opens its menu, and a name typed at once into 
   const dialog = page.getByRole("dialog", { name: /^Rename / });
   await expect(dialog).toBeVisible();
   // Typed before the menu's close finishes: the dialog keeps the keyboard, as the tab's menu leaves it (#590).
-  await page.keyboard.press("ControlOrMeta+a");
+  await pressWithCommand(page, `${await commandModifier(page)}+a`, "selectAll");
   await page.keyboard.type(`${name}-renamed`);
   await page.keyboard.press("Enter");
   await expect(dialog).toBeHidden();
@@ -147,7 +148,7 @@ async function inSplit(page: Page, body: (header: Locator) => Promise<void>): Pr
   await body(panes.first().locator("header"));
   // The split's shells are this test's own: close the tab so the worker's core keeps no terminal it opened (#226).
   await first.getByRole("textbox").focus();
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+Alt+KeyW" : "Control+Shift+KeyW");
+  await pressShortcut(page, "tab.close");
   await expect(page.locator("[data-terminal]")).toHaveCount(before - 1, { timeout: 15_000 });
 }
 

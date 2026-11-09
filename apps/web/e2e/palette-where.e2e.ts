@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
@@ -31,7 +32,7 @@ test("the palette says where the highlighted agent lives, and nothing for an act
   ]);
   await page.goto("/");
   await expect(page.getByRole("tablist", { name: "Tabs" })).toBeVisible({ timeout: 20_000 });
-  await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+  await pressShortcut(page, "app.palette");
   await page.getByRole("combobox", { name: "Command" }).fill(twin);
   await expect(dialog(page).getByRole("option")).toHaveCount(2);
 

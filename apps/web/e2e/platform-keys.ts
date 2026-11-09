@@ -67,16 +67,28 @@ function parts(trigger: string): { readonly mods: readonly string[]; readonly ke
   return { mods: split.slice(0, split.at(-1) === "" ? -2 : -1), key };
 }
 
-/** A trigger ("super+alt+]") in Playwright's syntax ("Meta+Alt+BracketRight"). */
+/** A trigger ("super+alt+]") in Playwright's syntax, its modifiers by Playwright's names and its key by code (BracketRight). */
 export function chordOf(trigger: string): string {
   const { mods, key } = parts(trigger);
   return [...mods.map((mod) => MODIFIERS[mod]?.key ?? mod), codeOf(key)].join("+");
 }
 
+/** The first chord the app binds to `action` on `platform`, in Playwright's syntax: for a spec that sets the platform. */
+export function chordFor(platform: Platform, action: string): string {
+  return chordOf(triggersFor(platform, action)[0] ?? "");
+}
+
 /** The first chord the app binds to `action` on the page's platform, in Playwright's syntax. */
 export async function shortcut(page: Page, action: string): Promise<string> {
-  return chordOf(triggersFor(await pagePlatform(page), action)[0] ?? "");
+  return chordFor(await pagePlatform(page), action);
 }
+
+/**
+ * The modifier a person holds on the page's platform for a key the app binds to no action (select all in a field, a
+ * paste, Cmd/Ctrl+Enter in the voice strip), as a trigger's: super (Cmd) on a Mac, ctrl elsewhere.
+ */
+export const commandModifier = async (page: Page): Promise<"super" | "ctrl"> =>
+  (await pagePlatform(page)) === "mac" ? "super" : "ctrl";
 
 /** Presses the chord that runs `action` on the page's platform. */
 export async function pressShortcut(page: Page, action: string): Promise<void> {

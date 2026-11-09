@@ -1,4 +1,5 @@
 import { expect, openNewTerminal, terminalCount, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
@@ -78,7 +79,7 @@ for (const theme of ["day", "night"] as const) {
       await page.goto("/");
       const opener = (await openNewTerminal(page)).getByRole("textbox");
       await opener.focus();
-      await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+      await pressShortcut(page, "app.palette");
       const combobox = page.getByRole("combobox", { name: "Command" });
       await expect(combobox).toBeFocused();
       const style = await combobox.evaluate((input) => {

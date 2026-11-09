@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
 
 endOwnTerminals();
@@ -103,7 +104,7 @@ test("dismissing the palette over the paste dialog leaves focus in that dialog, 
   await expect(paste).toBeVisible();
   // The dialog moves focus into itself just after it opens; the palette is opened from there.
   await expect.poll(() => paste.evaluate((dialog) => dialog.contains(document.activeElement))).toBe(true);
-  await page.keyboard.press("ControlOrMeta+Shift+P");
+  await pressShortcut(page, "app.palette");
   // The paste dialog marks everything outside it aria-hidden, the palette included.
   const palette = page.getByRole("combobox", { name: "Command", includeHidden: true });
   await expect(palette).toBeFocused();
@@ -148,7 +149,7 @@ test.describe("with clipboard access", () => {
     await page.mouse.up();
     await expectHeldSelection(page, terminal);
 
-    await page.keyboard.press("ControlOrMeta+C");
+    await pressShortcut(page, "terminal.copy");
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("copysrc-42");
     await expect.poll(() => focusedAddress(page)).toBe(address);
     await page.keyboard.type("echo after-$((2+3))");
@@ -188,7 +189,7 @@ test.describe("with clipboard access", () => {
       await expectHeldSelection(page, terminal);
 
       await expect.poll(() => focusedAddress(page)).toBe(address);
-      await page.keyboard.press("ControlOrMeta+C");
+      await pressShortcut(page, "terminal.copy");
       await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("clicksrc");
       await page.keyboard.type("echo after-$((2+3))");
       await page.keyboard.press("Enter");
@@ -261,13 +262,13 @@ test("closing the palette with its shortcut or by running an action gives focus 
   const palette = page.getByRole("combobox", { name: "Command" });
 
   await opened.getByRole("textbox").focus();
-  await page.keyboard.press("ControlOrMeta+Shift+P");
+  await pressShortcut(page, "app.palette");
   await expect(palette).toBeFocused();
-  await page.keyboard.press("ControlOrMeta+Shift+P");
+  await pressShortcut(page, "app.palette");
   await expect(palette).toBeHidden();
   await expect.poll(() => focusedAddress(page)).toBe(address);
 
-  await page.keyboard.press("ControlOrMeta+Shift+P");
+  await pressShortcut(page, "app.palette");
   await page.getByRole("option", { name: /^Larger terminal text/ }).click();
   await expect(palette).toBeHidden();
   await expect.poll(() => focusedAddress(page)).toBe(address);
