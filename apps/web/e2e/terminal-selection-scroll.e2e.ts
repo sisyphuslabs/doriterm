@@ -17,7 +17,8 @@ async function history(page: Page): Promise<Locator> {
   hcOn("host", [
     "send",
     address,
-    "printf '\\033[?1004h'; for i in $(seq 1 300); do printf 'history-%03d-copy\\n' $i; done",
+    "stty -echo; printf '\\033[?1004h'; for i in $(seq 1 300); do printf 'history-%03d-copy\\n' $i; done; " +
+      "while IFS= read -r request; do case \"$request\" in *request-output*) printf 'new-output-%s\\n' arrived;; esac; done",
   ]);
   await expect(terminal).toContainText("history-300-copy", { timeout: 15_000 });
   await terminal.evaluate((element) => {
@@ -109,7 +110,7 @@ test("output after selecting history keeps the viewport and offers jump to lates
   await selectHistory(page, terminal);
   const address = await terminal.getAttribute("data-terminal");
   if (address === null) throw new Error("terminal has no address");
-  hcOn("host", ["send", address, "printf 'new-output-%s\\n' arrived"]);
+  hcOn("host", ["send", address, "request-output"]);
   await expect(terminal).toContainText("new-output-arrived");
   await expect.poll(() => position(terminal)).toBe(before);
   const jump = page.getByRole("button", { name: "Jump to bottom" });
@@ -150,8 +151,8 @@ test("new output alone leaves a reader in history until they jump to the end", a
   const before = await position(terminal);
   const address = await terminal.getAttribute("data-terminal");
   if (address === null) throw new Error("terminal has no address");
-  hcOn("host", ["send", address, "printf 'unselected-output-%s\\n' arrived"]);
-  await expect(terminal).toContainText("unselected-output-arrived");
+  hcOn("host", ["send", address, "request-output"]);
+  await expect(terminal).toContainText("new-output-arrived");
   await expect.poll(() => position(terminal)).toBe(before);
   await expect(page.getByRole("button", { name: "Jump to bottom, new output below" })).toBeVisible();
 });

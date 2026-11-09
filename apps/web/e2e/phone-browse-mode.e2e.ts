@@ -156,7 +156,7 @@ test("entering browse mode in history keeps its position and a held touch select
     hcOn("host", [
       "send",
       address,
-      "printf '\\033[?1004h'; for i in $(seq 1 300); do printf 'history-%03d-copy\\n' $i; done",
+      "stty -echo; printf '\\033[?1004h'; for i in $(seq 1 300); do printf 'history-%03d-copy\\n' $i; done; cat >/dev/null",
     ]);
     await expect(terminal).toContainText("history-300-copy", { timeout: 15_000 });
     await terminal.evaluate((element) => {
