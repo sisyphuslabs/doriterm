@@ -5,6 +5,7 @@ import { join } from "node:path";
 const ROOT = join(import.meta.dir, "../../../..");
 const SOURCES = ["apps/web/src", "packages/ui/src"];
 const SIZE_UTILITY = /\b(?:size|w|h)-\d/;
+const box = (classes: string | undefined): string | undefined => classes?.match(/\bsize-\S+/)?.[0];
 
 const sourceFiles = (): { path: string; text: string }[] => {
   const files: { path: string; text: string }[] = [];
@@ -35,14 +36,24 @@ describe("the spinner has one size", () => {
     expect(offenders).toEqual([]);
   });
 
-  test("a container that sizes its icons leaves the spinner at the one size", () => {
-    // The slot's descendant selector outranks the spinner's own size class, so the exclusion has to be in the
-    // selector itself, on every utility it applies, not just the size.
-    const emptyState = readFileSync(join(ROOT, "packages/ui/src/components/empty-state.tsx"), "utf8");
-    const slot = emptyState.split("\n").find((line) => line.includes("[&_svg"));
-    expect(slot).toBeDefined();
-    const markers = (slot ?? "").split("[&_svg").slice(1);
-    expect(markers.length).toBeGreaterThan(0);
-    for (const marker of markers) expect(marker.startsWith(":not([data-slot=spinner])")).toBe(true);
+  test("no container rule resizes a descendant svg without excluding the spinner", () => {
+    // A container's descendant selector outranks the spinner's own size class, so the exclusion has to be in the
+    // selector itself, wherever a container sizes its icons - not only in EmptyState.
+    const offenders = sourceFiles().flatMap(({ path, text }) => {
+      const hits: string[] = [];
+      for (const match of text.matchAll(/\[&_svg(:[^\]]*)?\]:size-[^\s"']+/g)) {
+        if (!match[0].includes(":not([data-slot=spinner])")) hits.push(`${path}: ${match[0]}`);
+      }
+      return hits;
+    });
+    expect(offenders).toEqual([]);
+  });
+
+  test("the voice strip gives the spinner the same box as the mic it replaces", () => {
+    const strip = readFileSync(join(ROOT, "packages/ui/src/components/voice-strip.tsx"), "utf8");
+    const mic = strip.match(/<span className="([^"]*)">\s*<Mic/);
+    const spinner = strip.match(/<span className="([^"]*)">\s*<Spinner \/>/);
+    expect(box(mic?.[1])).toBeDefined();
+    expect(box(spinner?.[1])).toBe(box(mic?.[1]));
   });
 });
