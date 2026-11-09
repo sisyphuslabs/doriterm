@@ -1,8 +1,8 @@
 /**
- * Korean typed next to a space, RECORDED from a real input method (#1508): real USB keystrokes from a JetKVM into a Mac mini's
- * console session, the macOS 2-Set Korean input source composing them, into a page running this repo's terminal input code
- * (2026-11-08). Each step is an event the browser fired, in order; an "edit" is the text change between that step's beforeinput
- * and input, at the selection the beforeinput reported (a composition's text replaces the composition so far).
+ * Korean typed next to a space, RECORDED from a real input method (#1508): a keyboard typing into a page that runs this
+ * repo's terminal input code, with the macOS 2-Set Korean input source composing the keys (2026-11-08). Each step is an
+ * event the browser fired, in order; an "edit" is the text change between that step's beforeinput and input, at the
+ * selection the beforeinput reported (a composition's text replaces the composition so far).
  *
  * - Chromium (Electron 45): the space joins the composition (the preedit becomes "글 "), the composition ends carrying it,
  *   and the space's keydown reads keyCode 229.
