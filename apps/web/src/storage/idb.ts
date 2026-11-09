@@ -59,6 +59,11 @@ export const deviceStore: KeyValueStore = {
   },
 };
 
+/** Whether a failed write failed because this store cannot structured-clone the value at all. */
+export function refusesToClone(cause: unknown): boolean {
+  return cause instanceof DOMException && cause.name === "DataCloneError";
+}
+
 export function memoryStore(): KeyValueStore {
   const values = new Map<string, unknown>();
   return {

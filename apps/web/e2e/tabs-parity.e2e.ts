@@ -272,6 +272,48 @@ test("4 (A): a tab reads its name, else its number, with its program's icon; it 
   await expect(tabBar(page)).toHaveText(["named", "2"], { timeout: 15_000 });
 });
 
+test("4 (#1541): an unnamed tab that runs an agent reads the agent's title; a shell's keeps its number; a name wins", async ({
+  page,
+}) => {
+  const folder = mkdtempSync(join(tmpdir(), "tabs-parity-agent-"));
+  const report = "printf '\\033]7501;state=blocked\\033\\\\'; exec sleep 600";
+  const started: unknown = JSON.parse(
+    hcOn("host", ["run", "--bg", "--name", "reviewer", "--cwd", folder, "--", "sh", "-c", report]),
+  );
+  if (typeof started !== "object" || started === null || !("address" in started)) throw new Error("no agent address");
+  const agent = String(started.address);
+  const shell = shellIn(folder);
+  seedSpaces([
+    {
+      id: "spc-agent-title",
+      name: "agents",
+      folder,
+      tabs: [
+        { id: "tb-a1", name: "", terminal: agent },
+        { id: "tb-a2", name: "", terminal: shell },
+      ],
+    },
+  ]);
+  await page.goto("/");
+  await expect(tabBar(page)).toHaveText([/^reviewer/, "2"], { timeout: 20_000 });
+  await expect(tabBar(page).first().locator("svg.lucide-bot")).toHaveCount(1);
+
+  await tabBar(page).first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Rename tab…" }).click();
+  const rename = page.getByRole("dialog", { name: "Rename reviewer" });
+  await rename.getByRole("textbox", { name: "Name" }).fill("triage");
+  await rename.getByRole("button", { name: "Rename" }).click();
+  await expect(tabBar(page)).toHaveText([/^triage/, "2"], { timeout: 15_000 });
+
+  // An empty name gives the tab its agent's title back, not a number.
+  await tabBar(page).first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Rename tab…" }).click();
+  const clear = page.getByRole("dialog", { name: "Rename triage" });
+  await clear.getByRole("textbox", { name: "Name" }).fill("");
+  await clear.getByRole("button", { name: "Rename" }).click();
+  await expect(tabBar(page)).toHaveText([/^reviewer/, "2"], { timeout: 15_000 });
+});
+
 test("5: a tab moved in the strip keeps its place in the document, and another device shows the new order", async ({
   page,
   browser,

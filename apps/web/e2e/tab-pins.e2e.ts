@@ -149,19 +149,18 @@ test("pinned tabs stay in view in a group of their own while the other tabs scro
   await expect(tabBar(page).last()).toHaveAttribute("aria-selected", "true");
   const geometry = await page.evaluate(() => {
     const items = [...document.querySelectorAll<HTMLElement>('[role="tablist"][aria-label="Tabs"] [data-tab-id]')];
-    const scrollerOf = (item: HTMLElement | undefined): HTMLElement | null => {
-      for (let node = item?.parentElement ?? null; node !== null; node = node.parentElement) {
-        const { overflowX } = getComputedStyle(node);
-        if (overflowX === "auto" || overflowX === "scroll") return node;
-      }
-      return null;
-    };
     const [first] = items;
+    // The element each of the first and last tabs scrolls in, if any.
+    const [pinnedScroller, lastScroller] = [first, items.at(-1)].map((item) => {
+      let node = item?.parentElement ?? null;
+      while (node !== null && !/^(auto|scroll)$/.test(getComputedStyle(node).overflowX)) node = node.parentElement;
+      return node;
+    });
     const box = first?.getBoundingClientRect();
     const hit = box === undefined ? null : document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
     return {
-      pinnedScrolls: scrollerOf(first) !== null,
-      othersScrolled: (scrollerOf(items.at(-1))?.scrollLeft ?? 0) > 0,
+      pinnedScrolls: pinnedScroller !== null,
+      othersScrolled: (lastScroller?.scrollLeft ?? 0) > 0,
       pinnedOnTop: hit !== null && first?.contains(hit) === true,
     };
   });

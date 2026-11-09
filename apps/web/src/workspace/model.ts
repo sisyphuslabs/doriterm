@@ -74,11 +74,13 @@ export function terminalTitle(terminal: Terminal): string {
 }
 
 /**
- * A tab's title as herdr-app's strip reads it (#466 ruling A): its own name, else its place in its space counted from 1.
- * It does not follow the pane in focus; the desktop strip reads it (the phone reads {@link phoneTabTitle}).
+ * A tab's title on the desktop strip: its own name, else the title of the agent it runs (#1541), else its place in its
+ * space counted from 1 (#466). A shell or another program keeps the number, so a prompt's or a program's changing
+ * window title never renames the tab. It does not follow the pane in focus (the phone reads {@link phoneTabTitle}).
  */
-export function tabTitle(name: string, position: number): string {
-  return name !== "" ? name : String(position + 1);
+export function tabTitle(name: string, position: number, agent?: Terminal): string {
+  if (name !== "") return name;
+  return agent === undefined ? String(position + 1) : terminalTitle(agent);
 }
 
 /**

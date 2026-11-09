@@ -7,6 +7,16 @@ export interface Rhythm {
   readonly groups: readonly { readonly name: string; readonly inter: number; readonly intra: readonly number[] }[];
 }
 
+/** A sidebar section's title against the label column of the first row it heads (#1496). */
+export interface SectionTitleAlignment {
+  /** The section's title, as it reads. */
+  readonly name: string;
+  /** The title text's left edge, in CSS pixels. */
+  readonly title: number;
+  /** The first row's label text left edge, or null when the section holds no labelled row. */
+  readonly row: number | null;
+}
+
 export function sectionRhythm(): Rhythm {
   // oxlint-disable-next-line unicorn/consistent-function-scoping -- page.evaluate sends this function as source, so its helpers live inside it
   const visible = (el: Element): boolean => {
@@ -86,4 +96,33 @@ export function sectionRhythm(): Rhythm {
     return [{ name: nameOf(el), inter, intra: intra.filter((gap) => Math.round(gap * 1000) > 0) }];
   });
   return { headings, groups };
+}
+
+/**
+ * The sidebar's section titles and the label column of the first row each heads (#1496), from the text edges a reader
+ * sees. Runs in the page through `page.evaluate`, so its helpers live inside it.
+ */
+export function sectionTitleAlignments(): readonly SectionTitleAlignment[] {
+  // oxlint-disable-next-line unicorn/consistent-function-scoping -- page.evaluate sends this function as source, so its helpers live inside it
+  const textLeft = (el: Element): number => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return range.getBoundingClientRect().left;
+  };
+  // oxlint-disable-next-line unicorn/consistent-function-scoping -- as above
+  const shown = (el: Element): boolean => {
+    const box = el.getBoundingClientRect();
+    return box.width >= 2 && box.height >= 2 && getComputedStyle(el).visibility === "visible";
+  };
+  const sidebar = document.querySelector("aside[aria-label=Workspace]");
+  if (sidebar === null) return [];
+  return [...sidebar.querySelectorAll("h2")].filter(shown).map((title) => {
+    const section = title.closest("section");
+    const row = section === null ? undefined : [...section.querySelectorAll("[data-floor=name]")].find(shown);
+    return {
+      name: (title.textContent ?? "").trim(),
+      title: textLeft(title),
+      row: row === undefined ? null : textLeft(row),
+    };
+  });
 }
