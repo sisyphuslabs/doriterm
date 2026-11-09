@@ -58,10 +58,11 @@ export function useBehaviors(
     });
     if (copyOnSelect) {
       // A shift-drag's selection is the view's own (use-shift-drag-select.ts), not wterm's.
-      on("mouseup", () => {
+      on("mouseup", (event) => {
+        if (event.button !== 0) return;
         const text = wt.getSelectionText() ?? heldSelection(element)?.text ?? null;
         if (text !== null && text !== "") {
-          void navigator.clipboard?.writeText(copiedText(text, trimCopy)).catch(() => undefined);
+          void navigator.clipboard?.writeText(text).catch(() => undefined);
         }
       });
     }
