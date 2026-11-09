@@ -175,10 +175,10 @@ export class Predictor {
     else this.#cull(this.#sources.now());
     // Undrawn predictions off the cursor row, above or below, were made from a cursor that Enter, a clear (Ctrl-L) or
     // another unmodelled key has since moved; dropping them hides nothing and lets the next key start from the real
-    // cursor. The exception is the predictor's own wrap: predictions it put on the next row wait for the host to get there.
+    // cursor. The exception is the predictor's own wrap: predictions it carried onto the rows below wait for the host to get there.
     const row = screen.cursor().row;
     const stale = this.#predictions.find(
-      (each) => each.epoch > this.#confirmedEpoch && each.row !== row && !(each.wrapped && each.row === row + 1),
+      (each) => each.epoch > this.#confirmedEpoch && each.row !== row && !(each.wrapped && each.row > row),
     );
     if (stale !== undefined) this.#drop(this.#confirmedEpoch + 1, "row-left");
     if (this.#predictions.length === 0) this.#cursor = null;
