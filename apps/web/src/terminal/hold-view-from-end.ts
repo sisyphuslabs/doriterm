@@ -40,11 +40,35 @@ export const fromEndOf = (scroller: Scroller): number => {
   return within(scroller.scrollTop, max) ? 0 : max - scroller.scrollTop;
 };
 
+/** The reader's own input on the terminal: the only thing that ends a hold before the replay does. */
+export interface ReaderInput {
+  /** Runs `listener` when the reader scrolls, touches, clicks or types; returns how to stop. */
+  onInput(listener: () => void): () => void;
+}
+
+/** Every way a reader moves the view themselves: the wheel, a touch, a pointer (the scrollbar's drag) and the keys. */
+const READER_EVENTS = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
+
+/** The reader's input anywhere in `target`: the terminal and what overlays it, its scrollbar included. */
+export const readerInputOn = (target: EventTarget): ReaderInput => ({
+  onInput: (listener) => {
+    const options = { capture: true, passive: true };
+    for (const type of READER_EVENTS) target.addEventListener(type, listener, options);
+    return () => {
+      for (const type of READER_EVENTS) target.removeEventListener(type, listener, options);
+    };
+  },
+});
+
 /**
  * Puts a scroller's reader `fromEnd` pixels above its end after the reset the caller just wrote paints, and again after
  * each batch of the reattach replay paints: at the end for a reader who was following (#1040), where they were in history
  * for one who was not (#1393). It ends once a batch has been written and the last one has painted with nothing left to
- * write, and sooner if the reader scrolls away from where it put them.
+ * write, and sooner when the reader scrolls, touches, clicks or types.
+ *
+ * Only the reader's input ends it early, never a position: the terminal moves the scroller itself during a reattach (its
+ * reset's render scrolls to the top, and that render can land after the hold has placed the reader), and reading that
+ * move as the reader's own left them at the top of the history (#1394).
  *
  * Each write paints on the next animation frame (@wterm/dom books its render inside write()), so a frame booked right
  * after the write runs after that paint's layout: the position is set on the geometry the write produced. A hold that
@@ -56,33 +80,24 @@ export function holdFromEnd(
   scroller: Scroller,
   replay: ReplayWriter,
   fromEnd: number,
+  reader: ReaderInput,
   frame: FrameTimer = nextFrame,
 ): EndHolder {
   let cancelFrame: (() => void) | null = null;
   let unlisten: (() => void) | null = null;
+  let unlistenReader: (() => void) | null = null;
   let written = false;
-  // Where the hold last left the scroller; null until it has moved it. The reset renders before any batch and may
-  // collapse the scroller, so a position the hold never wrote is not a reader scrolling away.
-  let wrote: number | null = null;
   const stop = (): void => {
     cancelFrame?.();
     cancelFrame = null;
     unlisten?.();
     unlisten = null;
+    unlistenReader?.();
+    unlistenReader = null;
   };
   const place = (): void => {
     cancelFrame = null;
-    const max = maxScrollTop(scroller);
-    const target = Math.max(0, max - fromEnd);
-    // With no history there is nowhere to have scrolled away to: the reset's collapse reads as this, and the hold goes
-    // on from it. Only a position the hold wrote, and the reader then moved while history is above, lets go; wterm's
-    // own follow lands at the target, which is not a reader moving.
-    const canScrollAway = !within(max, 0);
-    const moved = wrote !== null && !within(scroller.scrollTop, wrote) && !within(scroller.scrollTop, target);
-    if (canScrollAway && moved) return stop();
-    scroller.scrollTop = target;
-    // What the element accepted, not what was written: a real scroller clamps to its content.
-    wrote = scroller.scrollTop;
+    scroller.scrollTop = Math.max(0, maxScrollTop(scroller) - fromEnd);
     if (written && !replay.busy) stop();
   };
   const book = (): void => {
@@ -93,6 +108,7 @@ export function holdFromEnd(
     written = true;
     book();
   });
+  unlistenReader = reader.onInput(stop);
   book();
   return { stop };
 }

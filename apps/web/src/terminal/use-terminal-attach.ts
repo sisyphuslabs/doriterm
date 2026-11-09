@@ -6,7 +6,7 @@ import { terminalConfigStore } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
 import { CursorResets } from "./cursor-reset.ts";
 import { readDisplay } from "./display.ts";
-import { type EndHolder, fromEndOf, holdFromEnd } from "./hold-view-from-end.ts";
+import { type EndHolder, fromEndOf, holdFromEnd, readerInputOn } from "./hold-view-from-end.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
 import { openFailure } from "./open-failure.ts";
 import { HISTORY_LINES, noteViewSize, viewAttach } from "./opening-attach.ts";
@@ -194,7 +194,9 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           handle.current?.write(FULL_RESET);
           // The reset leaves the scroller at the top, where the replay's rows climb past a reader who was at the end.
           endHold.current?.stop();
-          endHold.current = holdFromEnd(ready.element, pacer, fromEnd);
+          // Only the reader's own input lets go early: on the terminal or what overlays it, its scrollbar included.
+          const reader = readerInputOn(ready.element.parentElement ?? ready.element);
+          endHold.current = holdFromEnd(ready.element, pacer, fromEnd, reader);
         }
         attachedBefore.current = true;
         const resets = new CursorResets();

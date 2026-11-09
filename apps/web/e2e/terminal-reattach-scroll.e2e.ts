@@ -107,3 +107,59 @@ test("a reader up in the history is not pulled to the bottom by a reattach (#139
   );
   expect(Math.abs(awayAfter - awayBefore)).toBeLessThan(row.height);
 });
+
+/**
+ * The terminal moves the scroller itself during a reattach: its reset's render scrolls to the top, and when that render
+ * lands after the hold has placed the reader, the view sits at the top with no reader having touched it. The hold read
+ * any move away from where it put them as the reader's own and let go, leaving them at the top of the history (#1394).
+ * Only the reader's input ends the hold; this moves the view the way the terminal does, with no input.
+ */
+test("a scroll the reader did not make during a reattach does not end the hold (#1394)", async ({ page }) => {
+  let answered: (() => void) | null = null;
+  const socket = await routeHcSocket(page, {
+    received: (frame) => {
+      if (frame.includes('"resize_notifications"')) answered?.();
+    },
+  });
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await page.keyboard.type("seq 1 400; echo tail-$((20+2))");
+  await page.keyboard.press("Enter");
+  await expect(terminal).toContainText("tail-22", { timeout: 15_000 });
+
+  const row = await laidOutBox(terminal.locator(".term-row:not(.term-scrollback-row)").first());
+  expect(row.height).toBeGreaterThan(0);
+  const awayBefore = await terminal.evaluate((element) => {
+    element.scrollTop = Math.round((element.scrollHeight - element.clientHeight) / 2);
+    return element.scrollHeight - element.clientHeight - element.scrollTop;
+  });
+  expect(awayBefore).toBeGreaterThan(row.height * 2);
+
+  // The replay waits until the stray scroll has happened, so the hold is in the middle of its work when it comes.
+  const reattached = new Promise<void>((resolve) => {
+    answered = resolve;
+  });
+  await socket.drop(true);
+  const releaseReplay = socket.holdFromHost("tail-22");
+  socket.restore();
+  await reattached;
+  // Two frames: the reset written on the answer paints, and the hold places the reader after it.
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  );
+  await terminal.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  releaseReplay();
+
+  await expect
+    .poll(() => terminal.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop), {
+      timeout: 15_000,
+    })
+    .toBeLessThan(awayBefore + row.height);
+  const awayAfter = await terminal.evaluate(
+    (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+  );
+  expect(Math.abs(awayAfter - awayBefore)).toBeLessThan(row.height);
+});
