@@ -100,6 +100,24 @@ test("a card under another signing key on a removed browser's key reads nothing"
   expect(end.t).toBe("refused");
 });
 
+test("a removed key holds one roster session at a time, and its slot frees when that session ends", async () => {
+  const f = await removedBrowser();
+  const first = await open(f, "roster", f.c);
+  const host = required(first.host);
+  const ended = new Promise<void>((resolve) => host.onClose(() => resolve()));
+  const lines = new MeshLines(required(first.joined), ["offer", "records", "done", "refused"]);
+  f.host.roster(host);
+  const offer = await lines.next();
+  if (offer.t !== "offer") throw new Error("no roster offer");
+  const extra = await Promise.all(Array.from({ length: 4 }, () => open(f, "roster", f.c)));
+  for (const dial of extra) if (dial.host !== undefined) f.host.roster(dial.host);
+  expect(extra.map((dial) => dial.host === undefined)).toEqual([true, true, true, true]);
+  lines.send(ownCard(f.c)(offer));
+  await ended;
+  const again = await open(f, "roster", f.c);
+  expect(again.host).toBeDefined();
+});
+
 test("a removed browser cannot resume a join", async () => {
   const f = await removedBrowser();
   const { records, end } = await rosterReply(f, f.c, (): Line => ({ t: "resume", nonce: "AAAAAAAAAAAAAAAAAAAAAA" }));
