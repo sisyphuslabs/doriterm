@@ -482,7 +482,7 @@ describe("OutputPacer holding an attach replay (D5)", () => {
     expect(events).toEqual(["hold", "release", "write"]);
   });
 
-  test("a synchronized update stands the replay down: the update's own bracket paints it, not a second hold (#812)", () => {
+  test("a synchronized update stands the replay down: its own bracket paints it, not a second hold (#812)", () => {
     const { frames, timers, written, holds, pacer } = replaying(100);
     expect(holds).toEqual([true]);
     // The core brackets its first paint: the update already holds the paint, so the replay ends as the bracket opens.

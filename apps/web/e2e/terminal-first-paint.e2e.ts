@@ -16,7 +16,8 @@ const LINES = 5_000;
 /**
  * An agent's transcript as a program prints one: 5,000 lines once, then it waits. No synchronized update, so the core
  * sends the attach replay as plain output — the shape #812 measures before herdr-core brackets its first paint. Each
- * line is 37 cells, so it fits the phone's width without wrapping and the line number stays on the row the view ends on.
+ * line is 37 cells, so it fits the phone's width without wrapping and the line number stays on the row the view ends
+ * on.
  */
 const AGENT = String.raw`
 awk -v n=${LINES} 'BEGIN {

@@ -48,11 +48,11 @@ interface AttachSources {
 }
 
 /**
- * Every attach's first paint holds its replay: written as it arrives with the paint held, then drawn once it has settled
- * (D5, #812). hc marks no end of the replay (the stream is its first paint, then live bytes), so the hold ends on a quiet
- * gap, bounded by the replay caps. A view mounted anew (a phone crossing the layout breakpoint, a pane opened on a
- * terminal already running) has no screen to keep, but its replay covers the last 2,000 history lines, and paced into
- * view it walks them past the person at the bottom; held, it lands whole.
+ * Every attach's first paint holds its replay: written as it arrives with the paint held, then drawn once it has
+ * settled (D5, #812). hc marks no end of the replay (the stream is its first paint, then live bytes), so the hold ends
+ * on a quiet gap, bounded by the replay caps. A view mounted anew (a phone crossing the layout breakpoint, a pane
+ * opened on a terminal already running) has no screen to keep, but its replay covers the last 2,000 history lines,
+ * and paced into view it walks them past the person at the bottom; held, it lands whole.
  */
 export function replayOnAttach(pacer: OutputPacer, options: ReplayOptions): void {
   pacer.replay(options);
