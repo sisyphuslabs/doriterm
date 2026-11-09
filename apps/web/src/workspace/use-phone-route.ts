@@ -1,7 +1,7 @@
 import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef } from "react";
 import { guideStore } from "../pair/first-run-guide.ts";
-import { hasPendingNotice, useLaunchTapPending } from "../push/notice-open.ts";
+import { hasLaunchNotice, hasPendingNotice, useLaunchTapPending } from "../push/notice-open.ts";
 import { keepsPlace, loadPhonePlace, placeStart, savePhonePlace } from "./phone-place.ts";
 import {
   PHONE_LIST,
@@ -188,7 +188,7 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
       const start = placeStart({
         atBareList: place === "/",
         landedHere: landed === index,
-        noticePending: hasPendingNotice(),
+        noticePending: hasPendingNotice() || hasLaunchNotice(),
         launchPending,
         remembered: phoneHref(remembered),
       });

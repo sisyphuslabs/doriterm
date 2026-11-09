@@ -35,6 +35,13 @@ export const hasPendingNotice = (): boolean => pending !== null;
 
 /** An app is asking for the tap that launched it: until it answers, a start cannot tell whether a notice decides it. */
 let launchPending = false;
+
+/**
+ * A notice launched this app. Unlike the pending notice, which its pane takes as soon as a render runs, this stays, so
+ * the start decided after the launch tap answers still sees that a notice decides it.
+ */
+let launchNotice = false;
+export const hasLaunchNotice = (): boolean => launchNotice;
 const setLaunchPending = (next: boolean): void => {
   launchPending = next;
   for (const listener of listeners) listener();
@@ -71,24 +78,28 @@ export function noticeOf(url: URL): PendingNotice | null {
  * A tapped notification's address (`/?notice=...`), handed over by an app or by the service worker: the notice waits for
  * the workspace, which the page goes to.
  */
-function openTapped(url: string, toWorkspace: () => void): void {
-  if (!URL.canParse(url, location.origin)) return;
+function openTapped(url: string, toWorkspace: () => void): boolean {
+  if (!URL.canParse(url, location.origin)) return false;
   const notice = noticeOf(new URL(url, location.origin));
-  if (notice === null) return;
+  if (notice === null) return false;
   set(notice);
   toWorkspace();
+  return true;
 }
 
 /** The iOS and Android apps hand a tapped notification to the page: the one that launched the app, then each later one. */
-export function listenForAppNotices(toWorkspace: () => void): void {
-  const plugin = nativePush();
+export function listenForAppNotices(toWorkspace: () => void, plugin = nativePush()): void {
   if (plugin === null) return;
   void plugin.addListener("noticeTap", (tap) => openTapped(tap.url, toWorkspace));
-  // The notice is set before the wait ends, so a start that waited sees it (#1494's "a tapped notice still wins").
+  // The launch notice is kept before the wait ends, so a start that waited sees it (#1494's "a tapped notice still
+  // wins") even when a render in between has already handed the pending notice to its pane.
   setLaunchPending(true);
   void plugin
     .takeLaunchTap()
-    .then(({ tap }) => (tap === null ? undefined : openTapped(tap.url, toWorkspace)))
+    .then(({ tap }) => {
+      launchNotice = tap !== null && openTapped(tap.url, toWorkspace);
+      return launchNotice;
+    })
     .finally(() => setLaunchPending(false));
 }
 
