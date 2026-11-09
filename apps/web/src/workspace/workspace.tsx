@@ -415,8 +415,14 @@ export function Workspace({ connection }: WorkspaceProps) {
                           const open = found.tab.panes.some((pane) => pane.address === phoneOpen) ? phoneOpen : null;
                           afterClose.current = null;
                           if (open !== null) {
+                            // By every pane of the closing tab, not just the one in view: a split tab whose shown pane
+                            // finished is still listed, under a live sibling's address.
+                            const closingPanes = found.tab.panes.flatMap((pane) =>
+                              pane.address === null ? [] : [pane.address],
+                            );
                             const space = spaces.find((each) => each.addresses.includes(open));
-                            const next = space === undefined ? null : nextAfterClosing(liveTabs(space, sessions), open);
+                            const next =
+                              space === undefined ? null : nextAfterClosing(liveTabs(space, sessions), closingPanes);
                             afterClose.current = { key: found.tab.key, leave: () => phone.leave(next) };
                           }
                           closeTab(found.tab.key);
