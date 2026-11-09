@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+## v0.1.14 - 2026-11-09
+
+### Workspace
+
+- The command palette says where the highlighted agent lives: its machine, space and working directory, in one line
+  under the results. (#1466)
+
+### Machine mesh
+
+- A browser or phone joins the mesh with its own identity and a code compared on both screens, keeps a verified list
+  of machines, and reconnects to each machine independently. Membership survives dropped connections, and admitted
+  clients can connect when the inviter is offline. Browser settings include membership, invitations, home-screen app
+  handoff, and leaving the mesh. (#1446)
+
+### Phone
+
+- Opening a terminal on a phone leaves the soft keyboard down, and the keyboard button is what raises it: a new tab does
+  not take the keyboard while it starts, and a terminal opened from the agents list does not take it as its view starts.
+  A desktop, or a window driven by a mouse, still takes the keyboard as it opens. (#1376)
+- The terminal header's ... opens one sheet for the session in view: where it lives, the next agent that needs you,
+  Find in terminal, Rename and End. (#1469)
+- Opening Settings on a phone moves focus into Settings, so a keyboard or switch user starts there instead of on the
+  page behind. (#1505)
+- The Type field and its Send button keep a clear gap between them, the same 0.5rem the phone leaves between its other
+  buttons, so a thumb at the end of the field no longer lands on Send. (#1512)
+
+### Interface
+
+- A question such as Close space? no longer opens with Cancel focused: focus starts on the question itself, so Enter
+  answers nothing and Tab reaches the buttons. A dialog that asks for text still opens in its field. (#1503)
+- Disabled text buttons such as Reset all in Keybindings are easier to read, at least 4.5:1 in light and dark themes,
+  and still look dimmer than when they can be used. (#1523)
+
 ## v0.1.13 - 2026-11-08
 
 ### New
