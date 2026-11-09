@@ -47,7 +47,11 @@ export function PhoneSessionSheet({ terminal, terminals, title, where, onOpen }:
   const ask = useAskSession();
   const { address } = terminal;
   const next = nextNeedingYou(terminals, address);
+  const nextAgent = next === null || next === address ? null : next;
   const waiting = waitingBesides(terminals, address);
+  // An offline machine draws MachineOffline in place of the terminal (phone-terminal.tsx), so nothing takes
+  // terminal.search: Find in terminal would only close this sheet, and the row waits for the machine to come back.
+  const offline = terminal.offline === true;
   const act = (run: () => void) => () => {
     setOpen(false);
     run();
@@ -64,16 +68,20 @@ export function PhoneSessionSheet({ terminal, terminals, title, where, onOpen }:
         <p className="text-sm text-muted-foreground">{where}</p>
         <p className="font-mono text-xs break-all text-muted-foreground">{terminal.foreground?.cwd ?? terminal.cwd}</p>
       </div>
-      <div className="flex flex-col border-t border-border pt-1">
-        {next === null || next === address ? null : (
-          <Row icon={<CircleAlert aria-hidden />} onClick={act(() => onOpen(next))}>
-            Open the next agent that needs you ({waiting})
-          </Row>
-        )}
-        <Row icon={<Search aria-hidden />} onClick={act(() => runAction("terminal.search"))}>
-          Find in terminal
-        </Row>
-      </div>
+      {nextAgent === null && offline ? null : (
+        <div className="flex flex-col border-t border-border pt-1">
+          {nextAgent === null ? null : (
+            <Row icon={<CircleAlert aria-hidden />} onClick={act(() => onOpen(nextAgent))}>
+              Open the next agent that needs you ({waiting})
+            </Row>
+          )}
+          {offline ? null : (
+            <Row icon={<Search aria-hidden />} onClick={act(() => runAction("terminal.search"))}>
+              Find in terminal
+            </Row>
+          )}
+        </div>
+      )}
       <div className="flex flex-col border-t border-border pt-1">
         <Row icon={<Pencil aria-hidden />} onClick={act(() => ask({ kind: "rename", address }))}>
           Rename…
