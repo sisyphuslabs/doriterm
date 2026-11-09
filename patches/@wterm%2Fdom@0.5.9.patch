@@ -23,7 +23,7 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907422af1d7 100644
+index 78a86ffd96eec03222777f40e9db6a0561684c3f..b40c575c27b4ed6e01634a392ee6c05c82f52599 100644
 --- a/dist/input.js
 +++ b/dist/input.js
 @@ -70,6 +70,32 @@ const COMPOSITION_INPUT_DEDUP_MS = 250;
@@ -76,7 +76,12 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
          // The first native deletion mirrors the Backspace already sent on keydown.
          this.suppressNextTouchDeleteInput = false;
          this.mouseButtons = 0;
-@@ -157,6 +193,7 @@ export class InputHandler {
+@@ -153,10 +189,11 @@ export class InputHandler {
+             this.positionTextarea();
+             this.element.classList.add("focused");
+             if (this.getBridge()?.focusEvents?.())
+-                this.onData("\x1b[I");
++                this.onData("\x1b[I", true);
          };
          this._onBlur = () => {
              this.tabExitArmed = false;
@@ -84,6 +89,15 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
              this.focused = false;
              this.composing = false;
              this.recentCompositionCommit = null;
+@@ -169,7 +206,7 @@ export class InputHandler {
+             this.pressedModifiers.clear();
+             this.deliveredKeys.clear();
+             if (this.getBridge()?.focusEvents?.())
+-                this.onData("\x1b[O");
++                this.onData("\x1b[O", true);
+         };
+         this._onMouseDown = (event) => {
+             this.tabExitArmed = false;
 @@ -224,10 +261,12 @@ export class InputHandler {
          this.textarea.focus({ preventScroll: true });
      }
