@@ -135,10 +135,14 @@ describe("the Windows setup's architecture guard (#1298)", () => {
   test.each([
     ["arm64 setup", "x64", ARM64_ONLY],
     ["arm64 setup", "x86", ARM64_ONLY],
-    ["x64 setup", "x86", X64_ONLY],
     ["combined setup", "x86", BOTH],
   ] as const)("%s refuses %s Windows with 1633 under /S, without a dialog", (_name, machine, payloads) => {
     expect(run(payloads, machine, true)).toEqual({ exitCode: 1633, removed: ["<install dir>"] });
+  });
+
+  // On real x86 Windows electron-builder's own 64-bit check (common.nsh) shows its dialog and quits before this guard runs.
+  test("the guard macro alone refuses an x64 setup on x86 Windows with 1633 under /S", () => {
+    expect(run(X64_ONLY, "x86", true)).toEqual({ exitCode: 1633, removed: ["<install dir>"] });
   });
 
   test("an interactive refusal names the setup's and the machine's architecture", () => {
