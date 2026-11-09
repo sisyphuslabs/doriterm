@@ -18,8 +18,8 @@ async function openRawReader(page: Page, terminal: Locator): Promise<CDPSession>
   return page.context().newCDPSession(page);
 }
 
-async function expectRead(terminal: Locator): Promise<void> {
-  await expect(terminal.locator(".term-row").filter({ hasText: /^\s*ed 95 9c\s*$/ })).toHaveCount(1);
+async function expectRead(terminal: Locator, hex = "ed 95 9c"): Promise<void> {
+  await expect(terminal.locator(".term-row").filter({ hasText: new RegExp(`^\\s*${hex}\\s*$`) })).toHaveCount(1);
 }
 
 test("a syllable committed with no composition events reaches the program at once (#1104)", async ({ page }) => {
@@ -40,6 +40,32 @@ test("a syllable composed and then committed reaches the program at once (#1104)
     // oxlint-disable-next-line no-await-in-loop -- each jamo changes the preedit the one before it left
     await cdp.send("Input.imeSetComposition", { text, selectionStart: 1, selectionEnd: 1 });
   }
+  await cdp.send("Input.insertText", { text: HAN });
+  await expectRead(terminal);
+});
+
+test("a lone jamo committed with no composition and no Korean key reaches the program at once (#1244)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  const cdp = await openRawReader(page, terminal);
+  // An input method that inserts a jamo as plain text: no composition, and no key naming it before the edit.
+  await cdp.send("Input.insertText", { text: "\u{314B}" });
+  await expectRead(terminal, "e3 85 8b");
+});
+
+test("a Korean key whose keyup a blur took does not hold the next committed syllable (#1246)", async ({ page }) => {
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  const cdp = await openRawReader(page, terminal);
+  const field = terminal.getByRole("textbox");
+  // A phone Korean keyboard's keydown names its jamo; focus leaves before the keyup arrives.
+  await field.evaluate((element) => {
+    element.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "\u{314E}" }));
+    if (element instanceof HTMLElement) element.blur();
+  });
+  await field.focus();
   await cdp.send("Input.insertText", { text: HAN });
   await expectRead(terminal);
 });
