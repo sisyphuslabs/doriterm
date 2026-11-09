@@ -1,3 +1,4 @@
+import { matchSettings } from "./setting-rows.ts";
 import type { SectionId } from "./settings-sections.tsx";
 
 /**
@@ -31,15 +32,21 @@ const SECTION_WORDS: Readonly<Record<SectionId, readonly string[]>> = {
   voice: ["dictation", "dictate", "speech recognition", "microphone", "language"],
 };
 
-/** The sections whose name or contents hold the query, case-insensitive, in list order; an empty query keeps them all. */
+/**
+ * The sections whose name, words or settings (setting-rows.ts, #1528) hold the query, case-insensitive, in list order;
+ * an empty query keeps them all.
+ */
 export function matchSections<T extends { readonly id: SectionId; readonly label: string }>(
   sections: readonly T[],
   query: string,
 ): readonly T[] {
   const wanted = query.trim().toLowerCase();
   if (wanted === "") return sections;
+  const holding = new Set(matchSettings(wanted).map((hit) => hit.section));
   return sections.filter(
     (section) =>
-      section.label.toLowerCase().includes(wanted) || SECTION_WORDS[section.id].some((word) => word.includes(wanted)),
+      section.label.toLowerCase().includes(wanted) ||
+      SECTION_WORDS[section.id].some((word) => word.includes(wanted)) ||
+      holding.has(section.id),
   );
 }

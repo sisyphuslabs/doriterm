@@ -14,6 +14,7 @@ export { isMeshName, meshRevokeCommand } from "./mesh-name.ts";
 export { parseMeshStatus } from "./mesh-status-parse.ts";
 export { isTerminal } from "./event-guards.ts";
 export {
+  hasPromptReader,
   readScreenPrompt,
   type ApprovalAnswer,
   type PromptKind,

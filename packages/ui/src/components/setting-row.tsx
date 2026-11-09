@@ -39,8 +39,10 @@ export function SettingRow(props: SettingRowProps) {
   const reasonId = useId();
   return (
     <div
+      data-setting-row=""
       className={cn(
         "flex items-center gap-x-6 gap-y-2 border-b border-border py-3.5 last:border-b-0",
+        "data-setting-landed:rounded-md data-setting-landed:bg-selected",
         inline ? "flex-nowrap" : "flex-wrap",
         className,
       )}

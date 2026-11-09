@@ -10,6 +10,9 @@ const READERS: Readonly<Record<string, PromptReader>> = {
   codex: readCodexPrompt,
 };
 
+/** Whether an agent that names itself `app` has a reader here, so its prompts get a card (#192) rather than bare keys (#1527). */
+export const hasPromptReader = (app: string): boolean => Object.hasOwn(READERS, app);
+
 /** The prompt on a `terminal.read` screen, read by the parser of the agent that reported `app`. */
 export function readScreenPrompt(app: string, screen: string): ScreenPrompt | undefined {
   const reader = Object.hasOwn(READERS, app) ? READERS[app] : undefined;

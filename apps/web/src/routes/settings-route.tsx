@@ -1,6 +1,6 @@
 import { Button, IconButton, Input, ScrollArea, Tab, TabList, Tabs, cn } from "@doriface/ui";
 import { ArrowLeft } from "lucide-react";
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { currentPlatform, triggerKeys } from "../keys/trigger.ts";
 import { AppearanceSection } from "../settings/appearance-section.tsx";
 import { ConnectionSection } from "../settings/connection-section.tsx";
@@ -26,6 +26,8 @@ import { desktopBridge } from "../desktop/bridge.ts";
 import { BrowserInvite } from "../settings/browser-invite.tsx";
 import { SECTIONS, type SectionId } from "../settings/settings-sections.tsx";
 import { matchSections } from "../settings/settings-search.ts";
+import { matchSettings, type SettingHit } from "../settings/setting-rows.ts";
+import { SettingHits, useLandOn } from "../settings/settings-hits.tsx";
 
 /** The section a link asked for (a hash, so it survives a reload), else the one Settings always opens on. */
 function firstSection(): SectionId {
@@ -52,16 +54,38 @@ export function SettingsRoute() {
   const [section, setSection] = useState<SectionId>(firstSection);
   const [query, setQuery] = useState("");
   const shown = matchSections(SECTIONS, query);
+  const hits = matchSettings(query);
+  const [landing, setLanding] = useState<SettingHit | null>(null);
+  const body = useRef<HTMLDivElement>(null);
+  useLandOn(
+    landing,
+    useCallback(() => body.current, []),
+  );
+  const field = useRef<HTMLInputElement>(null);
+  const open = (hit: SettingHit) => {
+    setQuery("");
+    setSection(hit.section);
+    setLanding({ ...hit });
+  };
   const search = (
     <Input
+      ref={field}
       aria-label="Search settings"
       type="search"
       placeholder="Search settings"
       value={query}
-      onValueChange={(next: string) => setQuery(next)}
+      onValueChange={(next: string) => {
+        setQuery(next);
+        setLanding(null);
+      }}
       onKeyDown={(event) => {
+        const [hit] = hits;
         const first = shown[0];
-        if (event.key === "Enter" && first !== undefined) setSection(first.id);
+        if (event.key === "ArrowDown" && hit !== undefined) {
+          event.preventDefault();
+          body.current?.querySelector<HTMLElement>("[data-setting-hits] button")?.focus();
+        } else if (event.key === "Enter" && hit !== undefined) open(hit);
+        else if (event.key === "Enter" && first !== undefined) setSection(first.id);
       }}
     />
   );
@@ -146,7 +170,8 @@ export function SettingsRoute() {
         ))}
       </nav>
       <ScrollArea slot="settings-body" className="flex-1">
-        <div className="flex max-w-2xl flex-col gap-8 px-4 py-6 md:px-8">
+        <div ref={body} className="flex max-w-2xl flex-col gap-8 px-4 py-6 md:px-8">
+          {hits.length === 0 ? null : <SettingHits hits={hits} onOpen={open} onLeave={() => field.current?.focus()} />}
           {/* The Update row fails alone: a throw there must not take every section with it. */}
           {update === null ? null : (
             <RegionBoundary
