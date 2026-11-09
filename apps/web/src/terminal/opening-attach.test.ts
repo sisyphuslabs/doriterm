@@ -3,7 +3,7 @@ import { createMemoryLinkPair, HcConnection } from "@doriface/client";
 import { encodeFrame, FrameDecoder, FrameKind, LineDecoder, RPC_CHANNEL } from "@doriface/protocol";
 import { startTerminal } from "../workspace/start-on.ts";
 import { docCalls } from "../workspace/use-layout-docs.ts";
-import { attachAhead, openingCallsOf, runWithAttach, viewAttach } from "./opening-attach.ts";
+import { attachAhead, openingCallsOf, openingTerminal, runWithAttach, viewAttach } from "./opening-attach.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -128,6 +128,25 @@ const attachedAgain = (): never => {
 };
 
 const notFound = { code: -32000, message: "no terminal", data: { kind: "not_found" } };
+
+describe("openingTerminal", () => {
+  test("names a run on this machine in the page's prefix, and an added machine's under it", () => {
+    const here = openingTerminal({});
+    const there = openingTerminal({ on: "build-box" });
+    if (here === null || there === null) throw new Error("a run the page names has an opening");
+    expect(here.name).toMatch(/^opened-[0-9a-f]{12}$/);
+    expect(here.address).toBe(here.name);
+    expect(here.machine).toBeNull();
+    expect(there.name).toMatch(/^opened-[0-9a-f]{12}$/);
+    expect(there.address).toBe(`build-box/${there.name}`);
+    expect(there.machine).toBe("build-box");
+    expect(there.name).not.toBe(here.name);
+  });
+
+  test("a run the caller named has no opening: its address is only its answer's", () => {
+    expect(openingTerminal({ argv: ["claude"], name: "claude" })).toBeNull();
+  });
+});
 
 describe("a new terminal's attach goes with its run (#1351)", () => {
   test("the attach naming the new terminal is on the wire before the run has answered: one round trip, not two", async () => {
