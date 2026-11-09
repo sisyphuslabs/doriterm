@@ -77,7 +77,8 @@ describe("gridOf", () => {
 
 test("workloadBytes counts what every pane's program writes in one phase", () => {
   // chunk printed with a newline per tick, then the phase's end line.
-  expect(workloadBytes({ chunk: "abc", ticks: 4 }, 7, 3)).toBe(4 * 4 + "bench-end-3-7\n".length);
+  // A two-digit phase, so its end line is longer than phase 1's.
+  expect(workloadBytes({ chunk: "abc", ticks: 4 }, 7, 12)).toBe(4 * 4 + "bench-end-12-7\n".length);
 });
 
 test("median of an even count is the mean of the middle two", () => {
