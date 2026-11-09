@@ -11,7 +11,7 @@ import {
 import { clientsClaim } from "workbox-core";
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from "workbox-precaching";
 import { NavigationRoute, registerRoute } from "workbox-routing";
-import { ICON_FONT_CACHE, isIconFont, pruneIconFonts, splitIconFonts } from "./pwa/icon-font-cache.ts";
+import { ICON_FONT_CACHE, isIconFont, keepsIconFont, pruneIconFonts, splitIconFonts } from "./pwa/icon-font-cache.ts";
 import { planClick } from "./push/notice-click.ts";
 import { DEFAULT_MAX_ACTIONS, noticeDisplay } from "./push/notice-display.ts";
 import { deadlineAfter, exchangeWithin, type PushExchange } from "./push/over-push.ts";
@@ -35,18 +35,27 @@ registerRoute(new NavigationRoute(createHandlerBoundToURL("index.html")));
 
 registerRoute(
   ({ url }) => url.origin === self.location.origin && isIconFont(url),
-  async ({ request }) => {
+  async ({ request, url }) => {
     const cache = await caches.open(ICON_FONT_CACHE);
     const kept = await cache.match(request);
     if (kept !== undefined) return kept;
     const fetched = await fetch(request);
-    if (fetched.ok) await cache.put(request, fetched.clone());
+    // A page left open on an earlier build may still ask for its font: that answer comes from the network, and only a
+    // name this build's precache list carries is kept (#1166).
+    if (fetched.ok && keepsIconFont(url, iconFonts)) await cache.put(request, fetched.clone());
     return fetched;
   },
 );
 clientsClaim();
 self.addEventListener("activate", (event) => {
-  event.waitUntil(caches.open(ICON_FONT_CACHE).then((cache) => pruneIconFonts(cache, iconFonts)));
+  event.waitUntil(
+    (async () => {
+      const cache = await caches.open(ICON_FONT_CACHE);
+      // A build whose precache list names no icon font keeps the copies that are there; say it once per activation.
+      if ((await pruneIconFonts(cache, iconFonts)) === null)
+        console.warn("this build's precache list names no icon font: the kept copy is not pruned");
+    })(),
+  );
 });
 
 self.addEventListener("message", (event) => {

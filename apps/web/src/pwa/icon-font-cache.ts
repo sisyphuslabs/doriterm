@@ -26,10 +26,25 @@ export function splitIconFonts(
   return { precache, iconFonts };
 }
 
+/**
+ * Whether the icon font at `url` is this build's own copy, the only kind the worker stores. An earlier release's name,
+ * still asked for by a page left open on the old build, is answered from the network and not kept (#1166).
+ */
+export function keepsIconFont(url: URL, iconFonts: ReadonlySet<string>): boolean {
+  return iconFonts.has(url.pathname);
+}
+
+/**
+ * Deletes the copies the build does not use and keeps its own. A build that names no icon font may have lost it from
+ * its precache list (a size limit or a glob change), not decided to keep none, so it deletes nothing: the copy that is
+ * there survives the release instead of being downloaded again. `null` reports that skip, so the worker can say so
+ * (#1167).
+ */
 export async function pruneIconFonts(
   cache: Pick<Cache, "keys" | "delete">,
   iconFonts: ReadonlySet<string>,
-): Promise<number> {
+): Promise<number | null> {
+  if (iconFonts.size === 0) return null;
   const stale = (await cache.keys()).filter((request) => !iconFonts.has(new URL(request.url).pathname));
   await Promise.all(stale.map((request) => cache.delete(request)));
   return stale.length;
