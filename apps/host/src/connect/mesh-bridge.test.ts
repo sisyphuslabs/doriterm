@@ -1,7 +1,7 @@
 import type { ByteLink } from "@doriface/crypto";
 import { afterEach, describe, expect, test } from "bun:test";
 import type { Subprocess } from "bun";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LineGrant } from "../mesh/line-grants.ts";
@@ -57,14 +57,18 @@ function spawnBridge(dir: string): Subprocess<"pipe", "pipe", "pipe"> {
  * Spawns the bridge under a shell that stays its parent (as a herdr core is) and writes the bridge's pid to
  * `bridge.pid`, so a test can kill the caller and follow that exact process.
  */
-function spawnUnderShell(dir: string): Subprocess<"pipe", "pipe", "pipe"> {
+function spawnUnderShell(dir: string, { input = "" } = {}): Subprocess<"pipe", "pipe", "pipe"> {
   const via = meshVia(meshProgram(dir), dir, HOST_ID);
   const pidFile = shellQuote(join(dir, "bridge.pid"));
-  return Bun.spawn(["sh", "-c", `${via} "$1" & child=$!; printf '%s' "$child" > ${pidFile}; wait`, "sh", HC_LINE], {
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  const from = input === "" ? "" : ` < ${shellQuote(input)}`;
+  return Bun.spawn(
+    ["sh", "-c", `${via} "$1"${from} & child=$!; printf '%s' "$child" > ${pidFile}; wait`, "sh", HC_LINE],
+    {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
 }
 
 interface Fixture {
@@ -72,6 +76,7 @@ interface Fixture {
   readonly socket: LineSocket;
   readonly children: Subprocess<"pipe", "pipe", "pipe">[];
   readonly pids: number[];
+  readonly cleanup: (() => void)[];
 }
 
 let fixture: Fixture | undefined;
@@ -85,6 +90,7 @@ afterEach(async () => {
       await child.exited.catch(() => undefined);
     }),
   );
+  for (const close of fixture.cleanup) close();
   fixture.socket.stop();
   rmSync(fixture.dir, { recursive: true, force: true });
   fixture = undefined;
@@ -93,7 +99,13 @@ afterEach(async () => {
 async function served(grant: (hostId: string) => Promise<LineGrant>): Promise<Fixture> {
   const dir = mkdtempSync(join(tmpdir(), "mesh-bridge-"));
   const socket = await listenLineSocket({ path: join(dir, LINE_SOCKET_NAME), grant, log: () => {} });
-  const made = { dir, socket, children: [] as Subprocess<"pipe", "pipe", "pipe">[], pids: [] as number[] };
+  const made = {
+    dir,
+    socket,
+    children: [] as Subprocess<"pipe", "pipe", "pipe">[],
+    pids: [] as number[],
+    cleanup: [] as (() => void)[],
+  };
   fixture = made;
   return made;
 }
@@ -119,6 +131,41 @@ describe("connect --mesh: a bridge lives exactly as long as its caller's line", 
     await shell.exited;
 
     await within(gone(pid), 3_000, "the orphaned bridge exiting");
+    expect(alive(pid)).toBe(false);
+  });
+
+  test("a bridge whose caller is gone while its line is open ends instead of holding the line", async () => {
+    const opened = Promise.withResolvers<void>();
+    const link: ByteLink = {
+      send: () => {},
+      onData: () => {
+        opened.resolve();
+        return () => {};
+      },
+      // The member's end never closes: the line stays open for as long as the bridge holds it.
+      onClose: () => () => {},
+      close: () => {},
+    };
+    const line = await served(() => Promise.resolve({ ok: true, link }));
+    // The bridge reads a FIFO this test holds open (read-write, so neither open blocks): the caller's death closes no
+    // input of the bridge's, so no EOF can end it and only noticing the orphaning can.
+    const fifo = join(line.dir, "input");
+    Bun.spawnSync(["mkfifo", fifo]);
+    const held = openSync(fifo, "r+");
+    const shell = spawnUnderShell(line.dir, { input: fifo });
+    line.children.push(shell);
+    line.cleanup.push(() => closeSync(held));
+    await within(opened.promise, 5_000, "the bridge taking up the granted line");
+    const pid = Number(readFileSync(join(line.dir, "bridge.pid"), "utf8"));
+    expect(pid).toBeGreaterThan(0);
+    line.pids.push(pid);
+    expect(alive(pid)).toBe(true);
+
+    // The caller dies with the line open; this test still holds the bridge's input, so no EOF can end it.
+    shell.kill("SIGKILL");
+    await shell.exited;
+
+    await within(gone(pid), 3_000, "the orphaned bridge with an open line exiting");
     expect(alive(pid)).toBe(false);
   });
 
