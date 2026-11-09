@@ -2,19 +2,19 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
-import { day, night, resolveTheme } from "../../packages/ui/src/theme/index.ts";
+import { night, resolveTheme } from "../../packages/ui/src/theme/index.ts";
 
-const dayTheme = resolveTheme(day);
 const nightTheme = resolveTheme(night);
 
-/** The browser's title/status bar colour per system scheme; the app re-points both to the theme in view at start. */
+/**
+ * The browser's title/status bar colour at first launch. A fresh install opens in the dark Night theme, so the meta the
+ * page starts with is Night's too; applyAppearance() re-points it to whatever theme is in view once the app runs (#1403).
+ */
 const themeColor = {
   name: "doriface-theme-color",
-  transformIndexHtml: () =>
-    [
-      { media: "(prefers-color-scheme: light)", content: dayTheme.roles.chrome },
-      { media: "(prefers-color-scheme: dark)", content: nightTheme.roles.chrome },
-    ].map((attrs) => ({ tag: "meta", attrs: { name: "theme-color", ...attrs }, injectTo: "head" as const })),
+  transformIndexHtml: () => [
+    { tag: "meta", attrs: { name: "theme-color", content: nightTheme.roles.chrome }, injectTo: "head" as const },
+  ],
 };
 
 export default defineConfig({
@@ -40,9 +40,10 @@ export default defineConfig({
         display: "standalone",
         start_url: "/",
         scope: "/",
-        // One theme for both, matching the light metas a first launch starts with.
-        background_color: dayTheme.roles.background,
-        theme_color: dayTheme.roles.chrome,
+        // The dark default (DEFAULT_APPEARANCE in src/appearance/stored.ts), matching the Night meta a first launch
+        // starts with; a person who picks Light keeps it once the app loads (#1403).
+        background_color: nightTheme.roles.background,
+        theme_color: nightTheme.roles.chrome,
         icons: [
           { src: "icon-192.png", sizes: "192x192", type: "image/png" },
           { src: "icon-512.png", sizes: "512x512", type: "image/png" },
