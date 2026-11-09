@@ -94,7 +94,9 @@ test("a pane out of view whose stream the core ends waits to re-attach until it 
   // The view asks the core what is left of its program; it still runs, so the view is to attach to it again.
   await expect.poll(() => answerTo(socket, "terminal.get", hidden)).toBeDefined();
   // A command's output in the pane on screen comes over the same socket after that answer, and a socket delivers in
-  // order: once the output is on screen, the page has handled the answer. The pane is out of view, so nothing attached.
+  // order, so its message handler ran first. The re-attach itself is decided in a React effect after the re-render that
+  // handler starts; a round trip to the shell takes far longer than that render, which is what this wait relies on, not
+  // ordering alone. The pane is out of view, so nothing attached.
   const onScreen = page.locator(`[data-terminal="${shown}"]`);
   await onScreen.click();
   await page.keyboard.type("echo handled-$((40+2))\n");
