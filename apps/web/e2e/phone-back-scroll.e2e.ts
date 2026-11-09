@@ -39,10 +39,10 @@ interface Place {
 const place = (list: Locator): Promise<Place> =>
   list.evaluate((el) => {
     const edge = el.getBoundingClientRect().top;
-    const rows = [...el.querySelectorAll("button")].filter(
+    const first = [...el.querySelectorAll("button")].find(
       (row) => /keep\d\d/.test(row.textContent ?? "") && row.getBoundingClientRect().bottom > edge + 1,
     );
-    return { top: el.scrollTop, first: rows[0]?.textContent ?? "" };
+    return { top: el.scrollTop, first: first?.textContent ?? "" };
   });
 
 /** Scrolls the list to half its overflow and waits for that offset to be the one it holds. */
