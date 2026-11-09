@@ -15,6 +15,8 @@ import { desktopBridge } from "../desktop/bridge.ts";
 import { useConnectionSettings } from "../connection/store.ts";
 import { useBrowserMembership } from "../mesh/membership-state.ts";
 import { MembershipMachines } from "./membership-device.tsx";
+import { PATH_WORD } from "./member-route.ts";
+import type { ConnectionPath } from "../connection/connect.ts";
 
 const NO_TERMINALS: readonly Terminal[] = [];
 
@@ -70,7 +72,7 @@ function AddedMachine(props: { view: MachineView; now: number; onRetry: () => Pr
   );
 }
 
-function MachineRows({ connection }: { readonly connection: HcConnection }) {
+function MachineRows({ connection, path }: { readonly connection: HcConnection; readonly path: ConnectionPath }) {
   const settings = useConnectionSettings();
   const ownComputer = desktopBridge() !== null && settings.mode === "loopback";
   const { views, retry, listError, entries } = useMachines(connection, NO_TERMINALS);
@@ -83,7 +85,7 @@ function MachineRows({ connection }: { readonly connection: HcConnection }) {
           <SettingRow
             className="border-b-0"
             title={title(<Monitor aria-hidden />, connection.hello.core.name)}
-            description={ownComputer ? "This machine" : "Online · Relay"}
+            description={ownComputer ? "This machine" : `Online · ${PATH_WORD[path]}`}
             control={null}
           />
         </li>
@@ -115,5 +117,5 @@ export function MachinesSection() {
       </Notice>
     );
   }
-  return <MachineRows connection={state.connection} />;
+  return <MachineRows connection={state.connection} path={state.path} />;
 }

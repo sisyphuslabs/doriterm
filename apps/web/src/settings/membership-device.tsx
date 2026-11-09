@@ -2,7 +2,7 @@ import { base64urlDecode } from "@doriface/crypto";
 import type { HcConnection } from "@doriface/client";
 import { Button, Dialog, Notice } from "@doriface/ui";
 import { useState } from "react";
-import { connectionStore, useMeshMembers } from "../connection/store.ts";
+import { connectionStore, useConnectionSettings, useMeshMembers } from "../connection/store.ts";
 import { runsInstalled } from "../device/install.ts";
 import { forgetMembership, useBrowserMembership } from "../mesh/membership-state.ts";
 import { leaveMembership } from "../mesh/roster-refresh.ts";
@@ -112,6 +112,7 @@ export function MembershipDeviceSection() {
 export function MembershipMachines() {
   const mesh = useBrowserMembership();
   const entries = useMeshMembers();
+  const settings = useConnectionSettings();
   const navigate = useNavigate();
   const observer = sortedMachines(entries).find((entry) => entry.state.phase === "open");
   return (
@@ -119,6 +120,7 @@ export function MembershipMachines() {
       <MeshMachineList
         entries={entries}
         ownComputer={undefined}
+        addresses={settings}
         retry={(hostId) => connectionStore.retry(hostId)}
         openMember={(hostId) => {
           connectionStore.select(hostId);

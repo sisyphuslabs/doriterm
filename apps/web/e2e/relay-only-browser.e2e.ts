@@ -121,10 +121,11 @@ async function connectsOverTheRelayAlone(page: Page, phone: boolean): Promise<vo
     await expect(machines.filter({ hasText: "studio" })).toContainText("Online · Relay", { timeout: 20_000 });
     await expect(machines.filter({ hasText: "joiner" })).toHaveCount(1, { timeout: 20_000 });
 
-    // Every row is a relay row though the file still holds a direct address; the proof that nothing past the relay was
-    // dialled is the refused-socket check below.
-    await expect(machines.filter({ hasText: "joiner" })).toContainText("Relay");
-    await expect(page.getByText(/Direct to this host|or direct to/)).toHaveCount(0);
+    // No row claims a direct route though the file still holds a direct address: an open row names the relay its session
+    // took, and a row without a session names no route at all (#1550). The proof that nothing past the relay was dialled
+    // is the refused-socket check below.
+    await expect(machines.filter({ hasText: "studio" })).toContainText("Through the relay");
+    await expect(page.getByText(/Online · Direct|Direct to |or direct to/)).toHaveCount(0);
 
     // Nothing but the relay was ever dialled: a direct attempt would be refused here, and it never happened. The only
     // refusals allowed are the loopback probes for a host on this computer.
