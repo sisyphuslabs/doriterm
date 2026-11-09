@@ -695,9 +695,10 @@ function setupFleet() {
     }
     if (animate && targets.revoke) {
       const gone = machines.get(targets.revoke);
-      // A restart finds the machine already revoked (load 0): it works again, at the work scene's load, until the record lands.
+      // A restart finds the machine already revoked (load 0): it works again, at the work scene's load, until the record
+      // lands. The rise eases too, so a scene clicked straight from another does not pop its load bar (#1177).
       gone.cut.jump(0);
-      gone.load.jump(WORK_SCENE[targets.revoke][1]);
+      gone.load.set(WORK_SCENE[targets.revoke][1], now, 300, EASE_STATE);
       gone.status = "working";
       records.push({ kind: "revoke", to: targets.revoke, start: now + 500, dur: 1700 });
       later(2200, () => {

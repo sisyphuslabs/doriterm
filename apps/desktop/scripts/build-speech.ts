@@ -37,6 +37,8 @@ export async function buildSpeech(root: string): Promise<boolean> {
       "AVFoundation",
       "-framework",
       "Speech",
+      "-framework",
+      "UserNotifications",
       join(root, "native", "speech", "speech.mm"),
       "-o",
       join(outdir, "speech.node"),
