@@ -126,10 +126,15 @@ export function checkNamespace(chain: readonly ChainFolder[], user: string, look
     const { owner, dacl } = folder.descriptor;
     if (!trustedOwners.has(owner)) return refuse(folder.path, `it is owned by ${principal(owner, lookup)}`);
     if (dacl === undefined) return refuse(folder.path, "it has no access control list");
+    // Every grant is examined: a trusted principal's ACE earlier in the list must not hide a later unsafe one (#1630).
     const grant = dacl.find(
-      (ace) => ace.type === "A" && !ace.flags.includes("IO") && ace.sid !== user && (ace.mask & NAMESPACE_RIGHTS) !== 0,
+      (ace) =>
+        ace.type === "A" &&
+        !ace.flags.includes("IO") &&
+        !trustedOwners.has(ace.sid) &&
+        (ace.mask & NAMESPACE_RIGHTS) !== 0,
     );
-    if (grant !== undefined && !trustedOwners.has(grant.sid)) {
+    if (grant !== undefined) {
       const source = grantSource(chain, index, folder, grant);
       return refuse(
         source.path,
