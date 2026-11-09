@@ -44,6 +44,9 @@ test("a move to a different host that goes through clears the last move's failur
   await pushSettings.retarget(loopback("not an address", "b"));
   expect(pushSettings.view.error).toStartWith("Could not move notifications to the new host.");
   expect(await loadPushRoute()).toEqual(hostA);
+  // The failure stays in view through a later operation until a move goes through (#unmoved).
+  await pushSettings.setPrefs(DEFAULT_PUSH_PREFS);
+  expect(pushSettings.view.error).toStartWith("Could not move notifications to the new host.");
 
   await pushSettings.retarget(loopback("ws://host-b.invalid/v1/hc", "b"));
   const hostB = { mode: "loopback", pushUrl: "ws://host-b.invalid/v1/push", token: "b" } as const;
