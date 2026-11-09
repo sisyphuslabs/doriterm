@@ -4,11 +4,16 @@ import { SynchronizedUpdate } from "./synchronized-update.ts";
 export const FRAME_BYTES = 16 * 1024;
 /** Catching up, a queue deeper than this at the start of a frame is a backlog: it is caught up in that frame (D5). */
 export const CATCHUP_THRESHOLD = 2 * FRAME_BYTES;
+/** What the core sends on a stream before it waits for credit back: over the relay, at most this a round trip (D5). */
+export const CREDIT_WINDOW_BYTES = 256 * 1024;
 /** The most a catch-up frame writes, as one batch: one credit window of the stream (D5). */
-export const CATCHUP_FRAME_BYTES = 256 * 1024;
+export const CATCHUP_FRAME_BYTES = CREDIT_WINDOW_BYTES;
 /** How often output is written while the app is hidden, when no animation frame runs (D5). */
 export const HIDDEN_DRAIN_MS = 50;
-/** An attach replay's paint is held at most this long from when it began (D5). */
+/**
+ * An attach replay's paint is held past each span this long only if the span wrote at least one credit window: a replay
+ * still coming does, at a window a round trip, while output that trickles (a prompt, a spinner) never goes quiet (D5).
+ */
 export const REPLAY_CAP_MS = 1500;
 /** An attach replay's paint is held for at most this much written output (D5). */
 export const REPLAY_MAX_BYTES = 2 * 1024 * 1024;
@@ -57,8 +62,10 @@ export interface ReplayOptions {
 interface Replay {
   readonly options: ReplayOptions;
   written: number;
+  /** What had been written when the current {@link REPLAY_CAP_MS} span began. */
+  spanFrom: number;
   quiet: () => void;
-  readonly cap: () => void;
+  cap: () => void;
 }
 
 /** Coming back to the app or reattaching: how much its catch-up frames may write, and have written. */
@@ -170,17 +177,21 @@ export class OutputPacer {
   /**
    * An attach replay begins: its output is written as it arrives, uncapped, while `hold` holds the terminal's paint, so
    * the replay is drawn once, whole, and the screen before it stays until then. The hold ends at the first of: no
-   * output for max({@link REPLAY_QUIET_FLOOR_MS}, 1.5 x SRTT + 50) ms, {@link REPLAY_CAP_MS} since it began, or
-   * {@link REPLAY_MAX_BYTES} written.
+   * output for max({@link REPLAY_QUIET_FLOOR_MS}, 1.5 x SRTT + 50) ms, a {@link REPLAY_CAP_MS} span that wrote less than
+   * {@link CREDIT_WINDOW_BYTES}, or {@link REPLAY_MAX_BYTES} written.
+   *
+   * hc marks no end of the replay: the core sends its first paint as one write, cut into frames under the stream's
+   * credit window, and waits for credit after each window; credit goes back as each batch is written, and a replay is
+   * written as it arrives. So a replay still coming arrives at least a window a round trip, however slow the link: its
+   * gaps are at most a round trip, under the quiet window, whose SRTT is sampled on this connection (the attach answer
+   * itself is one sample), and every span of {@link REPLAY_CAP_MS} (a round trip or more) writes a window or more. A fixed
+   * deadline could not hold it: over a 300 ms relay, or on a page slow to write it, a replay of a few hundred KiB to 2
+   * MiB takes longer than any one span.
    */
   replay(options: ReplayOptions): void {
     if (this.#replay !== null) this.#endReplay();
-    const replay: Replay = {
-      options,
-      written: 0,
-      quiet: () => undefined,
-      cap: this.#timer(() => this.#endReplay(), REPLAY_CAP_MS),
-    };
+    const replay: Replay = { options, written: 0, spanFrom: 0, quiet: () => undefined, cap: () => undefined };
+    this.#spanFrom(replay);
     this.#replay = replay;
     this.#startCatchUp();
     options.hold(true);
@@ -220,6 +231,15 @@ export class OutputPacer {
     replay.quiet();
     const quiet = Math.max(REPLAY_QUIET_FLOOR_MS, 1.5 * (replay.options.srtt() ?? 0) + 50);
     replay.quiet = this.#timer(() => this.#endReplay(), quiet);
+  }
+
+  /** Starts a {@link REPLAY_CAP_MS} span; at its end the replay is let go unless the span wrote a credit window. */
+  #spanFrom(replay: Replay): void {
+    replay.spanFrom = replay.written;
+    replay.cap = this.#timer(() => {
+      if (replay.written - replay.spanFrom < CREDIT_WINDOW_BYTES) this.#endReplay();
+      else this.#spanFrom(replay);
+    }, REPLAY_CAP_MS);
   }
 
   #endReplay(): void {
