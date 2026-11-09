@@ -33,10 +33,10 @@ export const MESH_JOIN_USAGE = `usage: doriface-host mesh pair [--auto] [--no-qr
   --hc <path>        mesh join without a running host: the herdr-core binary (default hc)
   --session <name>   mesh join without a running host: the hc session this host serves
   --wait-host <secs> mesh join: wait up to <secs> for the running host (a service still starting), and fail if none answers
-  --from-file <file> mesh join: read the link or code from <file>, so it is never on the command line where other
-                     local users can read it`;
+  --from-file <file> mesh join: read the link or code from the first non-blank line of <file>, so it is never on the
+                     command line where other local users can read it`;
 
-/** The link or code to join: the argument, or the first line of `--from-file`, never both (#821). */
+/** The link or code to join: the argument, or the first non-blank line of `--from-file`, never both (#821, #1200). */
 export function joinTargetOf(positional: string | undefined, fromFile: string | undefined): string {
   if (positional !== undefined && fromFile !== undefined) {
     throw new Error("mesh join takes a link or code, or --from-file, not both");
@@ -45,7 +45,10 @@ export function joinTargetOf(positional: string | undefined, fromFile: string | 
     if (positional === undefined) throw new Error("mesh join needs a mesh pairing link or code");
     return positional;
   }
-  const given = (readFileSync(fromFile, "utf8").split("\n", 1)[0] ?? "").trim();
+  const given = readFileSync(fromFile, "utf8")
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line !== "") ?? "";
   if (given === "") throw new Error(`${fromFile} holds no mesh pairing link or code`);
   return given;
 }
