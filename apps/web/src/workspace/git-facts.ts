@@ -1,10 +1,14 @@
 import type { HcConnection } from "@doriface/client";
-import { GIT_FACTS_DOC, type GitFacts, type GitFactsDoc, type MachineView, parseGitFacts } from "@doriface/protocol";
+import {
+  GIT_FACTS_DOC,
+  GIT_FACTS_READ_MS,
+  type GitFacts,
+  type GitFactsDoc,
+  type MachineView,
+  parseGitFacts,
+} from "@doriface/protocol";
 import type { SpaceGit } from "@doriface/ui";
 import { createContext, use, useCallback, useEffect, useState } from "react";
-
-/** How often the page reads the facts again; the host writes them on its own cadence. */
-const READ_MS = 5_000;
 
 /** A directory's git facts on a machine (undefined for this one), when its host wrote them. */
 export type GitFactsOf = (machine: string | undefined, dir: string) => GitFacts | undefined;
@@ -74,7 +78,7 @@ export function useGitFacts(connection: HcConnection, machines: readonly Machine
       });
     };
     void read();
-    const timer = setInterval(() => void read(), READ_MS);
+    const timer = setInterval(() => void read(), GIT_FACTS_READ_MS);
     return () => {
       live = false;
       clearInterval(timer);

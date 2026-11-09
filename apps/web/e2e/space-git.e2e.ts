@@ -1,5 +1,6 @@
 // #218: a space row says its git state only when it is unusual, from the facts the machine's doriface-host writes on
 // its core for the directories its terminals sit in.
+import { GIT_FACTS_READ_MS, GIT_FACTS_TIMEOUT_MS, GIT_FACTS_WRITE_MS } from "@doriface/protocol";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -11,6 +12,13 @@ import { readSavedEnv } from "./saved-env.ts";
 import { rows } from "./sidebar-measure.ts";
 
 test.use({ serviceWorkers: "block" });
+
+/**
+ * The host writes the facts every GIT_FACTS_WRITE_MS and the page reads them every GIT_FACTS_READ_MS, and a tick whose
+ * `git status` runs to its timeout is GIT_FACTS_TIMEOUT_MS long: a directory whose terminal started after a tick can
+ * take a round or two to show.
+ */
+const FACTS_WAIT_MS = 3 * (GIT_FACTS_WRITE_MS + GIT_FACTS_TIMEOUT_MS + GIT_FACTS_READ_MS);
 
 const git = (cwd: string, ...args: string[]): void => {
   execFileSync("git", ["-c", "user.name=e2e", "-c", "user.email=e2e@example.invalid", ...args], {
@@ -77,13 +85,13 @@ test("a space row shows its branch, ahead and uncommitted changes, or detached, 
     await page.goto("/");
     const spaces = page.getByRole("region", { name: "Spaces" });
     const row = (space: string) => rows(spaces).filter({ hasText: space });
-    // The host writes the facts on a cadence and the page reads them on one, so the first read can take a while.
-    await expect(row("git-feature").locator("[data-git]")).toHaveText("feat/rows* ↑1", { timeout: 45_000 });
+    await expect(row("git-feature").locator("[data-git]")).toHaveText("feat/rows* ↑1", { timeout: FACTS_WAIT_MS });
     await expect(row("git-feature").locator("[data-git]")).toHaveAttribute(
       "title",
       "On feat/rows, 1 commit ahead, uncommitted changes",
+      { timeout: FACTS_WAIT_MS },
     );
-    await expect(row("git-detached").locator("[data-git]")).toHaveText("detached");
+    await expect(row("git-detached").locator("[data-git]")).toHaveText("detached", { timeout: FACTS_WAIT_MS });
     await expect(row("git-clean")).toBeVisible();
     await expect(row("git-clean").locator("[data-git]")).toHaveCount(0);
   } finally {
