@@ -104,10 +104,8 @@ test.describe("renaming a machine with two tabs open", () => {
     await expect(tabs(page)).toHaveCount(2);
     expect(await stripNames(page)).toEqual(["build", "logs"]);
     expect(await domOrder(page)).toEqual(order);
-    await tabs(page).nth(0).click();
-    await expect(selectedPane(page, `${RENAMED}/${held[0]}`)).toBeVisible({ timeout: 15_000 });
-    await tabs(page).nth(1).click();
-    await expect(selectedPane(page, `${RENAMED}/${held[1]}`)).toBeVisible({ timeout: 15_000 });
+    await answerAt(page, 0, `${RENAMED}/${held[0]}`, "first");
+    await answerAt(page, 1, `${RENAMED}/${held[1]}`, "second");
     await expect(tabs(page)).toHaveCount(2);
   });
 
@@ -136,9 +134,7 @@ test.describe("renaming a machine with two tabs open", () => {
     layout.release();
     await expect(tabs(page)).toHaveCount(2, { timeout: STATE_BOUND_MS });
     expect(await stripNames(page)).toEqual(["one", "two"]);
-    await tabs(page).nth(0).click();
-    await expect(selectedPane(page, `${RENAMED}/${remote}`)).toBeVisible({ timeout: 15_000 });
-    await tabs(page).nth(1).click();
-    await expect(selectedPane(page, `${RENAMED}/${second}`)).toBeVisible({ timeout: 15_000 });
+    await answerAt(page, 0, `${RENAMED}/${remote}`, "first");
+    await answerAt(page, 1, `${RENAMED}/${second}`, "second");
   });
 });
