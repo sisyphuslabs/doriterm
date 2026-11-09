@@ -3,7 +3,7 @@ import type { HcConnection } from "@doriface/client";
 import { Button, Dialog, Notice } from "@doriface/ui";
 import { useState } from "react";
 import { connectionStore, useMeshMembers } from "../connection/store.ts";
-import { standalone } from "../device/install.ts";
+import { runsInstalled } from "../device/install.ts";
 import { forgetMembership, useBrowserMembership } from "../mesh/membership-state.ts";
 import { leaveMembership } from "../mesh/roster-refresh.ts";
 import { useMesh } from "../mesh/use-mesh.ts";
@@ -100,7 +100,7 @@ export function MembershipDeviceSection() {
         name={mesh.self.name}
         mesh={mesh.mesh}
         fingerprint={fingerprintOf(base64urlDecode(mesh.self.signPub))}
-        installed={standalone()}
+        installed={runsInstalled()}
         online={entries.filter((entry) => entry.state.phase === "open").length}
         onLeave={() => setLeaving(true)}
       />

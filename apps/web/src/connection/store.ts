@@ -453,7 +453,11 @@ export const connectionStore = new MeshConnections(
 resumeOnWake(connectionStore);
 
 export function useConnection(store: Pick<MeshConnections, "subscribe" | "state"> = connectionStore): ConnectionState {
-  return useSyncExternalStore(store.subscribe, () => store.state);
+  return useSyncExternalStore(
+    store.subscribe,
+    () => store.state,
+    () => store.state,
+  );
 }
 
 /** The saved connection settings, drawn again whenever they change: a view that reads them subscribes here (#813). */

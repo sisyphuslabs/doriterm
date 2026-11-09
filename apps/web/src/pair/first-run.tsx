@@ -11,17 +11,25 @@ import { JoinLanding } from "./join-landing.tsx";
 /** Pairing reaches the relay, so offline it is shown, disabled, with why; nothing else here needs a network. */
 const PAIR_NEEDS_NETWORK = "Pairing a host needs a network.";
 
-function PairAHost({ offline, primary }: { readonly offline: boolean; readonly primary: boolean }) {
+function PairAHost({
+  offline,
+  primary,
+  label = "Pair a host",
+}: {
+  readonly offline: boolean;
+  readonly primary: boolean;
+  readonly label?: string;
+}) {
   if (offline) {
     return (
       <Button size="lg" disabled aria-describedby="pair-offline">
-        Pair a host
+        {label}
       </Button>
     );
   }
   return (
     <Button variant={primary ? "primary" : undefined} size="lg" render={<Link to="/pair" />}>
-      Pair a host
+      {label}
     </Button>
   );
 }
@@ -69,5 +77,7 @@ function LocalFirstRun({ bridge, offline }: { readonly bridge: DesktopBridge; re
 export function FirstRun({ offline = false }: { readonly offline?: boolean }) {
   const bridge = desktopBridge();
   if (bridge !== null) return <LocalFirstRun bridge={bridge} offline={offline} />;
+  // An installed app has nothing special to do here: JoinEntry already serves both a fresh tab and an empty
+  // home-screen partition, and it says why the app is unpaired. Intercepting this route is what disagreed with it.
   return <JoinLanding />;
 }

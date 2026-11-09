@@ -2,7 +2,7 @@ import { base64urlEncode } from "@doriface/crypto";
 import { checkName } from "@doriface/mesh";
 import { Button, Field, Input, Notice } from "@doriface/ui";
 import { useState } from "react";
-import { isIos, standalone } from "../device/install.ts";
+import { isIos, runsInstalled } from "../device/install.ts";
 import { deviceName } from "./device-name.ts";
 import type { PairingOffer } from "./fragment.ts";
 import { carryInvite } from "./invite-handoff.ts";
@@ -13,7 +13,7 @@ import { meshNameOf } from "../mesh/member-name.ts";
 /** A browser joins with its own card, and only its person's answer confirms the shared join ceremony. */
 export function MeshInvite({ offer }: { readonly offer?: PairingOffer }) {
   const flow = useBrowserJoin();
-  const installed = standalone();
+  const installed = runsInstalled();
   const [name, setName] = useState(() => meshNameOf(`${deviceName()}${installed ? "-app" : ""}`));
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string>();

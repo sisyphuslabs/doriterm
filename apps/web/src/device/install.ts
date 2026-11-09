@@ -32,9 +32,12 @@ function isPrompt(event: Event): event is Event & InstallPrompt {
   return typeof Reflect.get(event, "prompt") === "function";
 }
 
-export const standalone = (): boolean =>
-  matchMedia("(display-mode: standalone)").matches || Reflect.get(navigator, "standalone") === true;
+/** Running as an installed app right now: display-mode standalone, or iOS's Home Screen web app. */
+export const runsInstalled = (): boolean =>
+  (typeof matchMedia === "function" && matchMedia("(display-mode: standalone)").matches) ||
+  Reflect.get(navigator, "standalone") === true;
 
+/** iPhone or iPad; iPadOS reports a Mac user agent, so touch points tell it apart. */
 export const isIos = (): boolean =>
   /iPad|iPhone|iPod/.test(navigator.userAgent) ||
   (navigator.userAgent.includes("Macintosh") && navigator.maxTouchPoints > 1);
@@ -46,7 +49,7 @@ let offer: InstallOffer = null;
 
 function refresh(): void {
   offer = installOffer({
-    installed: installed || standalone(),
+    installed: installed || runsInstalled(),
     desktop: desktopBridge() !== null,
     ios: isIos(),
     prompt: deferred,
