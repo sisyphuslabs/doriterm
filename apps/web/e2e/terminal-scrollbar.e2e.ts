@@ -202,6 +202,15 @@ test("at 1440 the scrollbar overlays the padding without reflow, matches the vie
   expect((await measure(terminal)).scrollTop).toBe(0);
 
   // Dragging the thumb 120 px down lands on the row that thumb top stands for.
+  // The mapping below reads the scrollback length, so no output may land between this measure and the drag: the echo
+  // above is still followed by its prompt, and one late row moves the landing line by more than a row (#1334). Once the
+  // prompt after the echo's output is drawn, the shell has nothing left to print.
+  await expect(
+    terminal
+      .locator(".term-row")
+      .filter({ hasText: /^fresh-output\s*$/ })
+      .locator("xpath=following-sibling::*[1]"),
+  ).toHaveText(/^\$\s*$/);
   m = await settled(terminal);
   const grabX = (m.thumb.left + m.thumb.right) / 2;
   const grabY = m.thumb.top + m.thumb.height / 2;
