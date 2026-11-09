@@ -59,8 +59,9 @@ export const ACTIONS: readonly ActionDef[] = [
   app("session.rename", "Rename session…"),
   app("session.end", "End session…"),
   app("space.rename", "Rename space…"),
-  // herdr-app's space chords: a number chord selects a space and the bracket pair cycles through them. A focused terminal
-  // program keeps the number chords (terminal-keeps.ts), which are Ctrl and a digit, its own control keys.
+  // herdr-app's space chords: a number chord selects a space and the bracket pair cycles through them. herdr-app binds
+  // them as commands rather than leaving the key to the program, so they act even while a terminal has the keyboard -
+  // doriface follows that, which does mean a shell or TUI no longer receives Ctrl and a digit.
   ...Array.from({ length: 9 }, (_, index) => app(`space.select:${index + 1}`, `Go to space ${index + 1}`)),
   app("space.next", "Next space"),
   app("space.prev", "Previous space"),

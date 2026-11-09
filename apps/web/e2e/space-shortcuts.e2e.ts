@@ -152,21 +152,17 @@ test("3: a focused terminal program keeps the space number chord: the key reache
       });
     });
   });
-  const onMac = await mac(page);
   await page.keyboard.press(await spaceNumberChord(page, 1));
-  // Reaching this listener at all means the app left the key alone: a key it takes stops there. The terminal's own input
-  // cancels Alt+1 itself, as it sends it to the program as a Meta digit, so only Ctrl+1 arrives uncancelled.
-  expect(await page.evaluate(() => Reflect.get(window, "spaceKeySeen"))).toEqual({
-    ctrl: onMac,
-    alt: !onMac,
-    key: "1",
-    prevented: !onMac,
-  });
-  await expect(selected(page)).toHaveText(/b-two/);
-  await expect(tabBar(page)).toHaveText([/b-one/, /b-two/]);
+  // herdr-app binds the number chord as a command, so the app takes it on both platforms and the terminal's own
+  // listener never sees it. That is the behaviour change: a shell or TUI no longer receives Ctrl and a digit.
+  const seen = (await page.evaluate(() => Reflect.get(window, "spaceKeySeen"))) as { key?: string } | null;
+  expect(seen?.key ?? "none").not.toBe("1");
+  // The chord now acts from inside the terminal: the space in view is space 1 and the strip shows its tab.
+  await expect(selected(page)).toHaveText(/a-one/);
+  await expect(tabBar(page)).toHaveText([/a-one/]);
 });
 
-test("4: Settings lists the space keys with the keys that run them, and says a terminal keeps the number chord", async ({
+test("4: Settings lists the space keys with the keys that run them, and does not claim a terminal keeps the chord", async ({
   page,
 }) => {
   await page.goto("/settings");
@@ -189,5 +185,7 @@ test("4: Settings lists the space keys with the keys that run them, and says a t
   await expect(row("space.next")).toContainText(chips.next);
   await expect(row("space.prev")).toContainText("Previous space");
   await expect(row("space.prev")).toContainText(chips.previous);
-  await expect(row("space.select:1")).toContainText("A focused terminal program keeps this key");
+  // herdr-app binds the number chords as commands, so they act while a terminal has the keyboard and Settings says
+  // nothing about the program keeping them. Q asked doriface to match herdr-app here.
+  await expect(row("space.select:1")).not.toContainText("keeps this key");
 });
