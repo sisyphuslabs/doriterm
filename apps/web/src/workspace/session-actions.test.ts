@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { HcRpcError } from "@doriface/protocol";
-import { afterEnd, endSession, renameSession, type SessionCalls } from "./session-actions.ts";
+import { afterEnd, endSession, killWentThrough, renameSession, type SessionCalls } from "./session-actions.ts";
 
 type Call = { readonly method: string; readonly params: unknown };
 
@@ -139,5 +139,15 @@ describe("session actions", () => {
     await expect(ending).rejects.toThrow("no such terminal");
     afterEnd("t6", () => left.push("later"));
     expect(left).toEqual(["after-failure", "later"]);
+  });
+
+  test("an End that rejects after its kill went through says so; one whose kill was refused does not (#1342)", async () => {
+    await expect(endSession(refusing("rm", "busy"), "k/t1")).rejects.toThrow("rm: busy");
+    expect(killWentThrough("k/t1")).toBe(true);
+    await expect(endSession(refusing("kill", "busy"), "k/t2")).rejects.toThrow("kill: busy");
+    expect(killWentThrough("k/t2")).toBe(false);
+    // A later End of the same address starts over: a refused kill there is not taken for the earlier one.
+    await expect(endSession(refusing("kill", "busy"), "k/t1")).rejects.toThrow("kill: busy");
+    expect(killWentThrough("k/t1")).toBe(false);
   });
 });

@@ -1,0 +1,4 @@
+### Workspace
+
+- A closed session whose cleanup fails after the program was ended keeps its pane closed, even before the list hears the
+  end, instead of dropping it a second time with a second notice. (#1342)
