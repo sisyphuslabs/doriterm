@@ -52,8 +52,8 @@ test("working spinners mounted at different moments turn in step and draw at one
   }
 });
 
-// Turning reduced motion on while a spinner turns makes CSS swap its turn for a pulse, with no React render; the new
-// pulse still starts on the shared clock rather than at the moment of the switch (#1555).
+// Turning reduced motion on or off while a spinner turns makes CSS swap its animation, with no React render; the new
+// pulse or turn still starts on the shared clock rather than at the moment of the switch (#1555).
 test("a spinner whose animation CSS recreates is put back in step", async ({ page }) => {
   const started: string[] = [];
   try {
@@ -74,6 +74,12 @@ test("a spinner whose animation CSS recreates is put back in step", async ({ pag
     await expect.poll(startTimes).toContainEqual(expect.stringMatching(/^progress-opacity@/));
     await expect.poll(startTimes).toEqual(expect.arrayContaining(["progress-opacity@0"]));
     for (const each of await startTimes()) expect(each).toBe("progress-opacity@0");
+
+    // Turning reduced motion back off swaps the pulse for a new turn, which starts on the shared clock too.
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await expect.poll(startTimes).toContainEqual(expect.stringMatching(/^spin@/));
+    await expect.poll(startTimes).toEqual(expect.arrayContaining(["spin@0"]));
+    for (const each of await startTimes()) expect(each).toBe("spin@0");
   } finally {
     for (const address of started) endAgent("host", address);
   }
