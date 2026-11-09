@@ -327,6 +327,20 @@ describe("one connection per member", () => {
     expect(mesh.settings.hostId).not.toBe(opened.hostId);
   });
 
+  it("a whole-copy commit after another machine was picked restores the pick, which edit() keeps (#1168)", () => {
+    const { mesh } = running(settingsWith([member("a"), member("b")], "a"));
+    // A form read the settings when it opened; the shown machine moved on after that.
+    const opened = mesh.settings;
+    mesh.select("b");
+    // The old component committed that copy, which put the selection back where the form found it (#1006).
+    mesh.update({ ...opened, token: "fresh" });
+    expect(mesh.settings.hostId).toBe("a");
+    // edit() saves one field onto the settings as they are now, so the machine picked while the form was open stays.
+    mesh.select("b");
+    mesh.edit({ token: "fresh" });
+    expect(mesh.settings.hostId).toBe("b");
+  });
+
   it("dials only the members the roster added, and stops one that left it", () => {
     const { mesh, made } = running(settingsWith([member("a"), member("b")]));
     made[0]?.fail();
