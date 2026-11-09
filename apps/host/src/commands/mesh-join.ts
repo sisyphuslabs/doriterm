@@ -45,10 +45,11 @@ export function joinTargetOf(positional: string | undefined, fromFile: string | 
     if (positional === undefined) throw new Error("mesh join needs a mesh pairing link or code");
     return positional;
   }
-  const given = readFileSync(fromFile, "utf8")
-    .split("\n")
-    .map((line) => line.trim())
-    .find((line) => line !== "") ?? "";
+  const given =
+    readFileSync(fromFile, "utf8")
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line !== "") ?? "";
   if (given === "") throw new Error(`${fromFile} holds no mesh pairing link or code`);
   return given;
 }
