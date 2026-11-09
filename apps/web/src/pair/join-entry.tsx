@@ -1,7 +1,7 @@
 import { Button, Field, Input, Notice } from "@doriface/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { connectionStore } from "../connection/store.ts";
+import { connectionStore, useConnection } from "../connection/store.ts";
 import { normalizeCode } from "./code.ts";
 import { parsePairingFragment, type PairingOffer } from "./fragment.ts";
 import { pasteInvite } from "./invite-handoff.ts";
@@ -18,6 +18,7 @@ export function JoinEntry({ onOffer }: { readonly onOffer: (offer: PairingOffer)
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [lookups] = useState(() => new SlotLookups(connectionStore.settings.relayUrl));
+  const connection = useConnection();
   const online = useOnline();
   const navigate = useNavigate();
   const showOffer = (candidate: string, offer: PairingOffer): void => {
@@ -50,7 +51,7 @@ export function JoinEntry({ onOffer }: { readonly onOffer: (offer: PairingOffer)
       <p className="text-base text-muted-foreground">
         Open an invite from a machine you can see, or ask a member for one by a call or in person.
       </p>
-      {runsInstalled() ? (
+      {runsInstalled() && connection.phase === "unconfigured" ? (
         <p className="text-sm text-muted-foreground">
           This app has its own storage, so it starts as a device of its own and is not paired with anything yet.
           {isIos()

@@ -34,7 +34,8 @@ function isPrompt(event: Event): event is Event & InstallPrompt {
 
 /** Running as an installed app right now: display-mode standalone, or iOS's Home Screen web app. */
 export const runsInstalled = (): boolean =>
-  matchMedia("(display-mode: standalone)").matches || Reflect.get(navigator, "standalone") === true;
+  (typeof matchMedia === "function" && matchMedia("(display-mode: standalone)").matches) ||
+  Reflect.get(navigator, "standalone") === true;
 
 /** iPhone or iPad; iPadOS reports a Mac user agent, so touch points tell it apart. */
 export const isIos = (): boolean =>
