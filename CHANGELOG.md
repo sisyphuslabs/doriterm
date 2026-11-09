@@ -14,7 +14,8 @@
 - A browser or phone joins the mesh with its own identity and a code compared on both screens, keeps a verified list
   of machines, and reconnects to each machine independently. Membership survives dropped connections, and admitted
   clients can connect when the inviter is offline. Browser settings include membership, invitations, home-screen app
-  handoff, and leaving the mesh. (#1446)
+  handoff, and leaving the mesh. Each machine remembers a recent admitted client session across restarts; if saving
+  that hint fails, the session remains usable. (#1446)
 
 ### Pairing from a phone
 
