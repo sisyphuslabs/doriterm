@@ -28,9 +28,15 @@ const isNeutral = (name: string): boolean => NEUTRAL_NAMES.has(name.toLowerCase(
 
 /** Registry-style suffixes an `@` in prose takes; they name a package, not an account on a computer. */
 const PACKAGE_SUFFIX = /^(?:latest|next|beta|alpha|canary|stable)$/i;
-/** The domains reserved for examples (RFC 2606, RFC 6761), subdomains included: a placeholder uses them, a real capture never shows one. */
+/**
+ * The domains reserved for examples (RFC 2606, RFC 6761), subdomains included: a placeholder uses them, a real capture
+ * never shows one.
+ */
 const RESERVED_EXAMPLE = /^(?:[a-z0-9-]+\.)*(?:example|example\.(?:com|org|net))$/i;
-/** `git@<host>` where the host is a known git host: every one's SSH user is `git`, which names no one, and the `:owner/repo` tail is never checked. */
+/**
+ * `git@<host>` where the host is a known git host: every one's SSH user is `git`, which names no one, and the
+ * `:owner/repo` tail is never checked.
+ */
 const CLONE_URL = /^git@(?:github\.com|gitlab\.com|bitbucket\.org|codeberg\.org)$/i;
 
 const ACCOUNT_AT_HOST = /\b([a-z][a-z0-9._-]*)@([a-z][a-z0-9.-]*[a-z0-9])/gi;
