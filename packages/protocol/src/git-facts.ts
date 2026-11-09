@@ -5,7 +5,7 @@ export const GIT_FACTS_DOC = "doriface-git";
 
 /** How often the host writes the facts again; the page reads them on its own cadence. */
 export const GIT_FACTS_WRITE_MS = 5_000;
-/** The longest a `git status` may run; a directory whose read runs this long keeps the facts it last had. */
+/** The longest a `git status` may run before the host kills it. */
 export const GIT_FACTS_TIMEOUT_MS = 5_000;
 /** How often the page reads the facts again; the host writes them on its own cadence. */
 export const GIT_FACTS_READ_MS = 5_000;

@@ -85,16 +85,8 @@ export function dirsOf(terminals: readonly Terminal[]): string[] {
   return [...dirs].slice(0, MAX_DIRS);
 }
 
-/**
- * The facts of every directory that is in a repository. A directory whose read failed (a `git status` that ran to its
- * timeout, a repository that would not answer) keeps the facts in `before`, so a slow read does not make its row lose
- * what it showed; a directory no longer in `dirs` is dropped (#1209).
- */
-export async function collectGitFacts(
-  dirs: readonly string[],
-  run: RunGit = runGit,
-  before: Readonly<Record<string, GitFacts>> = {},
-): Promise<GitFactsDoc> {
+/** The facts of every directory that is in a repository. */
+export async function collectGitFacts(dirs: readonly string[], run: RunGit = runGit): Promise<GitFactsDoc> {
   const found: Record<string, GitFacts> = {};
   const queue = [...dirs];
   const worker = async (): Promise<void> => {
@@ -105,12 +97,8 @@ export async function collectGitFacts(
     }
   };
   await Promise.all(Array.from({ length: PARALLEL }, worker));
-  const dirsInOrder: Record<string, GitFacts> = {};
-  for (const dir of dirs) {
-    const facts = found[dir] ?? before[dir];
-    if (facts !== undefined) dirsInOrder[dir] = facts;
-  }
-  return { v: 1, dirs: dirsInOrder };
+  const dirsInOrder = Object.fromEntries(dirs.filter((dir) => dir in found).map((dir) => [dir, found[dir]]));
+  return { v: 1, dirs: dirsInOrder as Record<string, GitFacts> };
 }
 
 const isConflict = (error: unknown): boolean => error instanceof HcRpcError && error.kind === "conflict";
@@ -167,7 +155,6 @@ export function publishGitFacts(
   let exited: Promise<void> = Promise.resolve();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let lastError: string | undefined;
-  let lastFacts: GitFactsDoc["dirs"] = {};
   const tick = async (): Promise<void> => {
     if (stopped) return;
     try {
@@ -185,9 +172,7 @@ export function publishGitFacts(
         const connection = await HcConnection.open(current, handshakeOf(core));
         try {
           const listed = await connection.call("terminal.list", {});
-          const doc = await collectGitFacts(dirsOf(listed.terminals), run, lastFacts);
-          lastFacts = doc.dirs;
-          await writeGitFacts(connection, doc);
+          await writeGitFacts(connection, await collectGitFacts(dirsOf(listed.terminals), run));
           lastError = undefined;
         } finally {
           connection.close();
