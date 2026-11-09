@@ -3,6 +3,8 @@
 import type { Browser, Page } from "@playwright/test";
 import { endAgent } from "./agents.ts";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
+import { getCoreDoc } from "./core-doc.ts";
+import { LAYOUT_DOC } from "./layout-doc.ts";
 import { expect, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { hcOn } from "./machine-switch.ts";
@@ -125,6 +127,43 @@ test("double-click edits a space's name in place: Esc puts it back, Enter commit
   await Promise.all([other, page].map((device) => expect(spaceRow(device, after)).toBeVisible({ timeout: 15_000 })));
   await Promise.all([other, page].map((device) => expect(spaceRow(device, before)).toHaveCount(0)));
   expect(shells.map(spaceInHc)).toEqual([after, after]);
+  await other.context().close();
+});
+
+test("a device whose adoption of new terminals loses to another device's lists only the host's space, and edits its name in place (#1572)", async ({
+  page,
+  browser,
+}) => {
+  const before = `rn1572-${test.info().repeatEachIndex}`;
+  const shells = [startIn(before, "rn1572-one"), startIn(before, "rn1572-two")];
+  const other = await secondDevice(browser);
+  const adoption = Promise.withResolvers<void>();
+  const socket = await routeHcSocket(other, {
+    sent: (frame) => {
+      if (frame.includes('"method":"doc.set"') && frame.includes(`"name":"${before}"`)) adoption.resolve();
+    },
+  });
+  // This device's write adopting the new terminals is held, as a slow link holds it, while the other device adopts them.
+  const release = socket.hold("doc.set");
+  await other.goto("/");
+  await adoption.promise;
+  await page.goto("/");
+  await expect(spaceRow(page, before)).toBeVisible({ timeout: 20_000 });
+  await expect.poll(() => JSON.stringify(getCoreDoc(LAYOUT_DOC)), { timeout: 15_000 }).toContain(`"name":"${before}"`);
+
+  // Its own adoption is not saved, so it lists no space under ids the host does not hold; the host's comes once it settles.
+  await expect(spaceRow(other, before)).toHaveCount(0);
+  release();
+  await expect(spaceRow(other, before)).toBeVisible({ timeout: 15_000 });
+
+  const input = sidebar(other).getByRole("textbox", { name: `Rename space ${before}` });
+  await spaceRow(other, before).dblclick();
+  await expect(input).toBeFocused();
+  await input.fill("never-written");
+  await input.press("Escape");
+  await expect(input).toHaveCount(0);
+  await expect(spaceRow(other, before)).toBeVisible();
+  expect(shells.map(spaceInHc)).toEqual([before, before]);
   await other.context().close();
 });
 
