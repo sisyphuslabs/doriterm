@@ -142,6 +142,17 @@ describe("dirsOf and collectGitFacts", () => {
       dirs: { "/repo": { branch: "main", detached: false, onDefault: true, ahead: 0, behind: 0, dirty: false } },
     });
   });
+
+  test("a directory whose read failed keeps the facts it had last time (#1209)", async () => {
+    const before = await collectGitFacts(["/plain", "/repo"], statusOnlyIn("/repo"));
+    const failed = await collectGitFacts(["/plain", "/repo"], async () => undefined, before.dirs);
+    expect(failed).toEqual(before);
+  });
+
+  test("a directory no longer listed loses its last facts even when its read failed (#1209)", async () => {
+    const before = await collectGitFacts(["/repo"], statusOnlyIn("/repo"));
+    expect(await collectGitFacts([], async () => undefined, before.dirs)).toEqual({ v: 1, dirs: {} });
+  });
 });
 
 const doc = {

@@ -1,6 +1,8 @@
 import { HcConnection } from "@doriface/client";
 import {
   GIT_FACTS_DOC,
+  GIT_FACTS_TIMEOUT_MS,
+  GIT_FACTS_WRITE_MS,
   type GitFacts,
   type GitFactsDoc,
   HcRpcError,
@@ -10,8 +12,6 @@ import {
 } from "@doriface/protocol";
 import { handshakeOf, type HcTarget, type KillableLink, spawnHcLink } from "./mesh/hc-machines.ts";
 
-const TICK_MS = 5_000;
-const GIT_TIMEOUT_MS = 5_000;
 /** At most this many directories are read per tick, and this many at once. */
 const MAX_DIRS = 64;
 const PARALLEL = 4;
@@ -30,7 +30,7 @@ export const runGit: RunGit = async (dir, args) => {
     stderr: "ignore",
     env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", GIT_TERMINAL_PROMPT: "0" },
   });
-  const timer = setTimeout(() => child.kill(), GIT_TIMEOUT_MS);
+  const timer = setTimeout(() => child.kill(), GIT_FACTS_TIMEOUT_MS);
   try {
     const [out, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
     return code === 0 ? out : undefined;
@@ -85,8 +85,16 @@ export function dirsOf(terminals: readonly Terminal[]): string[] {
   return [...dirs].slice(0, MAX_DIRS);
 }
 
-/** The facts of every directory that is in a repository. */
-export async function collectGitFacts(dirs: readonly string[], run: RunGit = runGit): Promise<GitFactsDoc> {
+/**
+ * The facts of every directory that is in a repository. A directory whose read failed (a `git status` that ran to its
+ * timeout, a repository that would not answer) keeps the facts in `before`, so a slow read does not make its row lose
+ * what it showed; a directory no longer in `dirs` is dropped (#1209).
+ */
+export async function collectGitFacts(
+  dirs: readonly string[],
+  run: RunGit = runGit,
+  before: Readonly<Record<string, GitFacts>> = {},
+): Promise<GitFactsDoc> {
   const found: Record<string, GitFacts> = {};
   const queue = [...dirs];
   const worker = async (): Promise<void> => {
@@ -97,8 +105,12 @@ export async function collectGitFacts(dirs: readonly string[], run: RunGit = run
     }
   };
   await Promise.all(Array.from({ length: PARALLEL }, worker));
-  const dirsInOrder = Object.fromEntries(dirs.filter((dir) => dir in found).map((dir) => [dir, found[dir]]));
-  return { v: 1, dirs: dirsInOrder as Record<string, GitFacts> };
+  const dirsInOrder: Record<string, GitFacts> = {};
+  for (const dir of dirs) {
+    const facts = found[dir] ?? before[dir];
+    if (facts !== undefined) dirsInOrder[dir] = facts;
+  }
+  return { v: 1, dirs: dirsInOrder };
 }
 
 const isConflict = (error: unknown): boolean => error instanceof HcRpcError && error.kind === "conflict";
@@ -155,6 +167,7 @@ export function publishGitFacts(
   let exited: Promise<void> = Promise.resolve();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let lastError: string | undefined;
+  let lastFacts: GitFactsDoc["dirs"] = {};
   const tick = async (): Promise<void> => {
     if (stopped) return;
     try {
@@ -172,7 +185,9 @@ export function publishGitFacts(
         const connection = await HcConnection.open(current, handshakeOf(core));
         try {
           const listed = await connection.call("terminal.list", {});
-          await writeGitFacts(connection, await collectGitFacts(dirsOf(listed.terminals), run));
+          const doc = await collectGitFacts(dirsOf(listed.terminals), run, lastFacts);
+          lastFacts = doc.dirs;
+          await writeGitFacts(connection, doc);
           lastError = undefined;
         } finally {
           connection.close();
@@ -186,7 +201,7 @@ export function publishGitFacts(
       if (!stopped && line !== lastError) log(line);
       lastError = line;
     }
-    if (!stopped) timer = setTimeout(start, TICK_MS);
+    if (!stopped) timer = setTimeout(start, GIT_FACTS_WRITE_MS);
   };
   let running: Promise<void> = Promise.resolve();
   function start(): void {
