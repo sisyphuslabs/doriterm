@@ -28,8 +28,8 @@ import { pairAndOpenTerminal, type RelayHost, startRelayHost } from "./relay-ter
 test.skip(process.env["DORIFACE_RELAY_DIR"] === undefined, PRIVATE_RELAY_SKIP);
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
-test.describe.configure({ mode: "serial" });
-// Pairing over the relay, then 102 Korean and 115 ASCII keys at 150 ms each over a 300 ms round trip.
+// Not serial: each row has its own host, so one failed row must not skip the others.
+// A host's start, pairing over the relay, then 102 Korean and 115 ASCII keys at 150 ms each over a 300 ms round trip.
 test.setTimeout(300_000);
 
 /** The typing cadence, in ms: a brisk typist, slower than any round trip so each key's latency is its own. */
@@ -39,13 +39,15 @@ const ASCII = "echo latency probe line";
 
 let host: RelayHost | undefined;
 
-test.beforeAll(async () => {
-  test.setTimeout(180_000);
+// A fresh host per row: a host keeps every terminal a row opened, and with them on it a later row's page opens into one of
+// those (a phone straight into its view, with no New tab) or reads a terminal that is not the one it just opened.
+test.beforeEach(async () => {
   host = await startRelayHost();
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await host?.stop();
+  host = undefined;
 });
 
 const relayHost = (): RelayHost => {
@@ -128,15 +130,19 @@ for (const device of ["desktop", "phone"] as const) {
         test(`over the relay at rtt ${rtt} ms, predictions ${mode}: keystroke-to-glyph and to-echo latency`, async ({
           page,
         }) => {
-          // The prediction preference's own key; a build that does not read it measures predictions off.
+          // The prediction preference's own key (apps/web/src/terminal/prediction-mode.ts); a build without the predictor
+          // draws no predictions in either mode.
           await page.addInitScript((chosen) => {
-            localStorage.setItem("doriface.prediction", JSON.stringify({ mode: chosen }));
+            localStorage.setItem("doriface.terminal.predict-typing", chosen);
           }, mode);
           const terminal = await pairAndOpenTerminal(page, relayHost(), { phone: device === "phone", rttMs: rtt });
           // A short fixed prompt, so both lines fit one row at phone width whatever the runner's shell prompt is.
           await terminal.getByRole("textbox").focus();
-          await page.keyboard.type("PS1='$ '; echo warm");
+          await page.keyboard.type("PS1='$ '; echo wa''rm");
           await page.keyboard.press("Enter");
+          // `warm` is only ever the command's output (its line reads `wa''rm`): until it shows, the cursor may still sit
+          // after the shell's first `$ ` with the typed line's echo a round trip away, and a later read lands mid-echo.
+          await expect(terminal).toContainText("warm", { timeout: 30_000 });
           await atPrompt(terminal);
 
           const out = join(test.info().project.outputDir, "keystroke-latency");

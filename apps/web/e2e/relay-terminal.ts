@@ -60,12 +60,28 @@ export async function delayRelaySockets(
   { rttMs, jitterMs = 0 }: { readonly rttMs: number; readonly jitterMs?: number },
 ): Promise<void> {
   const base = host.relayUrl.replace(/\/+$/, "");
-  /** One direction's queue: each delivery is due a half round trip after it was sent, and not before the last one. */
+  /**
+   * One direction's queue: each delivery is due a half round trip after it was sent, and not before the last one. One
+   * timer drains it in order: a timer per frame does not keep that order, since Node arms each against the loop's cached
+   * clock, so a frame scheduled later in the same tick with a delay a millisecond shorter fires first, and the end-to-end
+   * encrypted link refuses a reordered record.
+   */
   const oneWay = (): ((deliver: () => void) => void) => {
+    const queue: { readonly due: number; readonly deliver: () => void }[] = [];
     let lastDue = 0;
+    let armed = false;
+    const drain = (): void => {
+      while (queue[0] !== undefined && queue[0].due <= Date.now()) queue.shift()?.deliver();
+      armed = queue[0] !== undefined;
+      if (queue[0] !== undefined) setTimeout(drain, Math.max(0, queue[0].due - Date.now()));
+    };
     return (deliver) => {
       lastDue = Math.max(Date.now() + rttMs / 2 + Math.random() * jitterMs, lastDue);
-      setTimeout(deliver, Math.max(0, lastDue - Date.now()));
+      queue.push({ due: lastDue, deliver });
+      if (!armed) {
+        armed = true;
+        setTimeout(drain, Math.max(0, lastDue - Date.now()));
+      }
     };
   };
   // Any port: a session's second and third sockets dial the relay's other HTTPS ports (#1418).
@@ -124,7 +140,8 @@ export async function pairAndOpenTerminal(
   // "+" opens the new-item menu since #548; pressNewTab picks its Terminal item (the phone header's starts one at once).
   await pressNewTab(newTab, { timeout: 60_000 });
   const terminal = page.locator("[data-terminal]").last();
-  await expect(terminal).toContainText("$", { timeout: 30_000 });
+  // Any shell's prompt: `$`, or `#` when the host runs as root (as in a container).
+  await expect(terminal).toContainText(/[$#]/, { timeout: 30_000 });
   // A phone raises its keyboard only when the keys ask for it (#1375).
   if (phone) await key(page, "Show keyboard").click();
   return terminal;
