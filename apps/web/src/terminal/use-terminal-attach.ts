@@ -10,7 +10,7 @@ import { type EndHolder, holdAtEnd } from "./hold-view-at-end.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
 import { openFailure } from "./open-failure.ts";
 import { HISTORY_LINES, noteViewSize, viewAttach } from "./opening-attach.ts";
-import type { OutputPacer } from "./output-pacer.ts";
+import type { OutputPacer, ReplayOptions } from "./output-pacer.ts";
 import { type TerminalEnd, terminalEnd } from "./terminal-end.ts";
 import { type CoreAnswer, type Settled, settled, type Unsent, unsentReason } from "./terminal-settle.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
@@ -38,6 +38,11 @@ interface AttachSources {
   readonly focusWhenFree: (ready: WTerm) => void;
   readonly onEnd: ((address: string, end: TerminalEnd) => void) | undefined;
   readonly onEnded: (() => void) | undefined;
+}
+
+/** An attach's replay: written as it arrives with the paint held, then drawn once it has settled (D5). */
+export function replayOnAttach(pacer: OutputPacer, _reattach: boolean, options: ReplayOptions): void {
+  pacer.replay(options);
 }
 
 export interface Attachment {
@@ -190,10 +195,14 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           endHold.current?.stop();
           endHold.current = holdAtEnd(ready.element, () => pacer.busy);
         }
+        const reattach = attachedBefore.current;
         attachedBefore.current = true;
         // Every attach's first paint is its replay: written as it arrives with the paint held, then drawn once it has
         // settled, so the screen before it stays until then instead of climbing a frame's bytes at a time (D5).
-        pacer.replay({ srtt: () => connection.rtt?.srtt, hold: (held) => ready.setRenderingPaused(held) });
+        replayOnAttach(pacer, reattach, {
+          srtt: () => connection.rtt?.srtt,
+          hold: (held) => ready.setRenderingPaused(held),
+        });
         const resets = new CursorResets();
         const credit = (count: number): void => {
           if (stream.current === attached) attached.consumed(count);

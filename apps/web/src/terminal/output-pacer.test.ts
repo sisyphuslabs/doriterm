@@ -282,25 +282,67 @@ describe("OutputPacer while the app is hidden (D5)", () => {
 });
 
 describe("OutputPacer catching up a backlog (D5)", () => {
-  test("a backlog over two frames' bytes is written in one frame, up to one credit window, in order", () => {
+  test("back in the app, a backlog over two frames' bytes is written in one frame, up to one credit window, in order", () => {
     const frames = manualFrames();
+    const timers = manualTimers();
     const written: Uint8Array[] = [];
-    const pacer = new OutputPacer(
-      (batch) => written.push(batch),
-      frames.frame,
-      () => 0,
-    );
-    pacer.push(bytes(100 * KIB));
-    frames.nextFrame();
-    expect(written.map((batch) => batch.byteLength)).toEqual([100 * KIB]);
-
+    const pacer = new OutputPacer((batch) => written.push(batch), frames.frame, timers.now, timers.timer);
+    pacer.setHidden(true);
+    pacer.setHidden(false);
     const pushed = [bytes(100 * KIB, 0x61), bytes(100 * KIB, 0x62), bytes(100 * KIB, 0x63)];
     for (const piece of pushed) pacer.push(piece);
     frames.nextFrame();
-    expect(written.slice(1).map((batch) => batch.byteLength)).toEqual([256 * KIB]);
+    expect(written.map((batch) => batch.byteLength)).toEqual([256 * KIB]);
+    while (frames.frames.length > 0) frames.nextFrame();
+    expect(Buffer.concat(written).equals(Buffer.concat(pushed))).toBe(true);
+  });
+
+  test("a steady flood while the app is in view is written at most FRAME_BYTES a frame, however deep its queue (#560)", () => {
+    const frames = manualFrames();
+    const written: number[] = [];
+    const pacer = new OutputPacer(
+      (batch) => written.push(batch.byteLength),
+      frames.frame,
+      () => 0,
+    );
+    // The program keeps more than two frames' bytes queued: each frame, as much arrives as a frame writes, and more.
+    pacer.push(bytes(64 * KIB));
+    for (let frame = 0; frame < 20; frame += 1) {
+      frames.nextFrame();
+      pacer.push(bytes(20 * KIB));
+    }
+    expect(written).toHaveLength(20);
+    expect(written.filter((size) => size > FRAME_BYTES)).toEqual([]);
+  });
+
+  test("coming back, what waited lands at once and the window in flight in a catch-up frame; then a flood is paced", () => {
+    const frames = manualFrames();
+    const timers = manualTimers();
+    const written: number[] = [];
+    const pacer = new OutputPacer((batch) => written.push(batch.byteLength), frames.frame, timers.now, timers.timer);
+    pacer.setHidden(true);
+    pacer.push(bytes(300 * KIB));
+    pacer.setHidden(false);
+    expect(written).toEqual([300 * KIB]);
+    // The credit just returned lets the core send what the program wrote meanwhile.
+    pacer.push(bytes(300 * KIB));
     frames.nextFrame();
-    expect(written.slice(1).map((batch) => batch.byteLength)).toEqual([256 * KIB, 44 * KIB]);
-    expect(Buffer.concat(written.slice(1)).equals(Buffer.concat(pushed))).toBe(true);
+    expect(written.slice(1)).toEqual([256 * KIB]);
+    // The backlog is caught up: the flood that goes on is paced again.
+    for (let frame = 0; frame < 10; frame += 1) {
+      frames.nextFrame();
+      pacer.push(bytes(20 * KIB));
+    }
+    expect(written.slice(2).filter((size) => size > FRAME_BYTES)).toEqual([]);
+  });
+
+  test("after a reattach replay, a backlog is caught up in one frame", () => {
+    const { frames, timers, written, holds, pacer } = replaying(300);
+    timers.advance(500);
+    expect(holds).toEqual([true, false]);
+    pacer.push(bytes(100 * KIB));
+    frames.nextFrame();
+    expect(written).toEqual([100 * KIB]);
   });
 
   test("a queue at or under two frames' bytes is still paced a frame's bytes at a time", () => {
