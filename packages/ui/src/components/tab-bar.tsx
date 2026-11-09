@@ -64,7 +64,8 @@ function TabLabel({ text }: { readonly text: string }) {
     return () => observer.disconnect();
   }, [text]);
   return (
-    <span ref={label} title={clipped ? text : undefined} className="max-w-[170px] truncate">
+    // Positioned above the tab button's hit layer (its ::after), so a pointer over the label reaches this title (#1530).
+    <span ref={label} title={clipped ? text : undefined} className="relative z-[1] max-w-[170px] truncate">
       {text}
     </span>
   );
