@@ -1,63 +1,91 @@
-import { afterEach, describe, expect, jest, mock, test } from "bun:test";
+import { afterEach, describe, expect, jest, test } from "bun:test";
 import type { WTerm } from "@wterm/react";
+import * as React from "react";
 import { LONG_PRESS_MS } from "./long-press.ts";
 import { type LongPressTerminal, longPressTerminal } from "./long-press-harness.test-support.ts";
+import { useLongPressSelect } from "./use-long-press-select.ts";
 
-// The hook only uses an effect and a ref, and bun has no renderer: these run the effect once and hand back a ref, so
-// the test drives the listeners the effect wired instead of a React tree.
-const cleanups: (() => void)[] = [];
-mock.module("react", () => ({
-  useEffect: (effect: () => (() => void) | undefined): void => {
-    const cleanup = effect();
-    if (cleanup !== undefined) cleanups.push(cleanup);
-  },
-  useRef: <T>(value: T): { current: T } => ({ current: value }),
-}));
-const { useLongPressSelect } = await import("./use-long-press-select.ts");
-
-let mounted: LongPressTerminal | undefined;
+const mounted: LongPressTerminal[] = [];
+const unmounts: (() => void)[] = [];
 afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) cleanup();
-  mounted?.restore();
-  mounted = undefined;
+  for (const unmount of unmounts.splice(0)) unmount();
+  for (const terminal of mounted.splice(0)) terminal.restore();
   jest.useRealTimers();
 });
 
-function press(): { readonly terminal: LongPressTerminal; readonly menus: () => number } {
+/**
+ * React's client internals object, which holds the dispatcher a hook finds its component in; its development name is the
+ * long one.
+ */
+const exposed = (React as unknown as Record<string, { H: unknown } | undefined>)[
+  "__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE"
+];
+if (exposed === undefined) throw new Error("React exposes no client internals");
+const clientInternals: { H: unknown } = exposed;
+
+/**
+ * Renders a terminal with the hook, the way the terminal view does. Bun has no renderer and no DOM, so this is React's
+ * commit without the render: the hook is called once with React's dispatcher on its fiber, which records the effect, and
+ * the effect then runs as the commit would run it, with what it returns kept for the unmount. React, the hook and the
+ * DOM are the real ones; only the commit's call into them is made here.
+ */
+function terminalRenderingHook(): LongPressTerminal {
   jest.useFakeTimers();
-  const harness = longPressTerminal();
-  mounted = harness;
-  let opened = 0;
-  useLongPressSelect(harness.wt as unknown as WTerm, () => {
-    opened += 1;
-  });
-  return { terminal: harness, menus: () => opened };
+  const terminal = longPressTerminal();
+  mounted.push(terminal);
+  const effects: { readonly create: () => (() => void) | undefined }[] = [];
+  const saved = clientInternals.H;
+  clientInternals.H = {
+    useRef: (initial: unknown) => ({ current: initial }),
+    useEffect: (create: () => (() => void) | undefined) => {
+      effects.push({ create });
+    },
+  };
+  try {
+    function TerminalView(): void {
+      useLongPressSelect(terminal.wt as unknown as WTerm, () => undefined);
+    }
+    TerminalView();
+  } finally {
+    clientInternals.H = saved;
+  }
+  for (const effect of effects) {
+    const cleanup = effect.create();
+    if (typeof cleanup === "function") unmounts.push(cleanup);
+  }
+  // The effect is what wires the terminal: a press now reaches its pointerdown listener, which nothing else adds.
+  terminal.down();
+  if (!terminal.handled("pointerdown")) throw new Error("the hook's effect did not mount");
+  return terminal;
 }
 
 describe("the held-press mark lives for one touch (#854)", () => {
   test("a picked press cancels its own lift's tap", () => {
-    const { terminal, menus } = press();
+    const terminal = terminalRenderingHook();
     terminal.down();
     jest.advanceTimersByTime(LONG_PRESS_MS);
-    expect(terminal.up()).toBe(true);
-    expect(menus()).toBe(1);
+    terminal.up();
+    expect(terminal.tapCancelled).toBe(true);
   });
 
   test("a press after that gesture makes the next touch a tap again", () => {
-    const { terminal } = press();
+    const terminal = terminalRenderingHook();
     terminal.down();
     jest.advanceTimersByTime(LONG_PRESS_MS);
-    expect(terminal.up()).toBe(true);
+    terminal.up();
+    expect(terminal.tapCancelled).toBe(true);
 
     terminal.down(2);
-    expect(terminal.up(2)).toBe(false);
+    terminal.up(2);
+    expect(terminal.tapCancelled).toBe(false);
   });
 
   test("a second finger beside the first leaves that first lift cancelled", () => {
-    const { terminal } = press();
+    const terminal = terminalRenderingHook();
     terminal.down(1);
     jest.advanceTimersByTime(LONG_PRESS_MS);
     terminal.down(2, false);
-    expect(terminal.up(1)).toBe(true);
+    terminal.up(1);
+    expect(terminal.tapCancelled).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
 /**
  * The DOM the long-press hook reads, built by hand because bun has none: one row of text, boxes measured from character
- * offsets, and targets whose events the test dispatches. Only `element` and `focus` are what the hook's WTerm needs.
+ * offsets, and a window and element whose events the test dispatches. Only `element` and `focus` are what the hook's
+ * WTerm needs.
  */
 
 const CHAR_W = 10;
@@ -56,20 +57,24 @@ class FakeRange {
 }
 
 class FakeTarget {
-  readonly #listeners = new Map<string, Set<(event: unknown) => void>>();
+  readonly #listeners = new Map<string, Set<(event: never) => void>>();
 
-  addEventListener(type: string, listener: (event: unknown) => void): void {
+  addEventListener(type: string, listener: (event: never) => void): void {
     const listeners = this.#listeners.get(type) ?? new Set();
     listeners.add(listener);
     this.#listeners.set(type, listeners);
   }
 
-  removeEventListener(type: string, listener: (event: unknown) => void): void {
+  removeEventListener(type: string, listener: (event: never) => void): void {
     this.#listeners.get(type)?.delete(listener);
   }
 
   dispatch(type: string, event: unknown): void {
-    for (const listener of this.#listeners.get(type) ?? []) listener(event);
+    for (const listener of this.#listeners.get(type) ?? []) listener(event as never);
+  }
+
+  listens(type: string): boolean {
+    return (this.#listeners.get(type)?.size ?? 0) > 0;
   }
 }
 
@@ -143,14 +148,22 @@ class FakeTouch {
 export interface LongPressTerminal {
   /** What the hook takes from WTerm. */
   readonly wt: { readonly element: Element; readonly focus: () => void };
-  /** A finger lands on the terminal: the document's capture listener runs before the element's, as a browser's does. */
+  /** A finger lands: the document's capture listener runs before the element's, as a browser's does. */
   down(pointerId?: number, primary?: boolean): void;
-  /** The finger lifts: pointerup on the window, then the touch's own end; answers whether the tap was cancelled. */
-  up(pointerId?: number): boolean;
+  /** The finger lifts as pointerup on the window, then that touch's own end; `primary` is false for a second finger. */
+  up(pointerId?: number, primary?: boolean): void;
+  /** Whether an element listener answers `type` that this pointer dispatched, once the hook's effect is mounted. */
+  readonly handled: (type: string) => boolean;
+  /** Whether the last `up` was cancelled, so the tap's own mouse events never arrive. */
+  readonly tapCancelled: boolean;
   restore(): void;
 }
 
-/** One terminal with the word "hello" under the point the harness presses. */
+/**
+ * One terminal with the word "hello" under the point the harness presses, and a count of the element events its
+ * listeners handled: a fresh terminal has no listeners, and the hook's own effect is what gives it the pointerdown and
+ * touchend ones.
+ */
 export function longPressTerminal(): LongPressTerminal {
   const document = new FakeDocument();
   const row = new FakeRow(document, "hello world");
@@ -160,6 +173,16 @@ export function longPressTerminal(): LongPressTerminal {
   const previousText = globalThis.Text;
   const previousNodeFilter = globalThis.NodeFilter;
   Object.assign(globalThis, { window, Text: FakeText, NodeFilter: { SHOW_TEXT: 4 } });
+  const handled = new Map<string, number>();
+  let cancelled = false;
+  const count = (type: string): void => {
+    handled.set(type, (handled.get(type) ?? 0) + 1);
+  };
+  element.dispatch = (type: string, event: unknown): void => {
+    if (!element.listens(type)) return;
+    count(type);
+    FakeTarget.prototype.dispatch.call(element, type, event);
+  };
   return {
     wt: { element: element as unknown as Element, focus: () => undefined },
     down(pointerId = 1, primary = true): void {
@@ -167,11 +190,15 @@ export function longPressTerminal(): LongPressTerminal {
       document.dispatch("pointerdown", event);
       element.dispatch("pointerdown", event);
     },
-    up(pointerId = 1): boolean {
-      window.dispatch("pointerup", new FakePointer(pointerId, true, 25, 10));
+    up(pointerId = 1, primary = true): void {
+      window.dispatch("pointerup", new FakePointer(pointerId, primary, 25, 10));
       const touch = new FakeTouch();
       element.dispatch("touchend", touch);
-      return touch.defaultPrevented;
+      cancelled = touch.defaultPrevented;
+    },
+    handled: (type) => (handled.get(type) ?? 0) > 0,
+    get tapCancelled(): boolean {
+      return cancelled;
     },
     restore(): void {
       if (previousWindow === undefined) Reflect.deleteProperty(globalThis, "window");
