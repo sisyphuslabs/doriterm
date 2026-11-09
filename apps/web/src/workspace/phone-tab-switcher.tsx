@@ -1,7 +1,7 @@
 import { AgentRow, Button, IconButton, Sheet, SidebarSection } from "@doriface/ui";
 import { ChevronLeft, ChevronRight, ChevronUp, Plus, X } from "lucide-react";
 import { type ReactElement, useState } from "react";
-import { liveTabs, type Session, toAgent } from "./model.ts";
+import { liveTabs, type Session, spaceOfAddress, toAgent } from "./model.ts";
 import { rowDetail, tabLabel } from "./phone-space-rows.ts";
 import { useSpaceSelection } from "./space-selection.ts";
 import { useNow } from "./use-now.ts";
@@ -91,7 +91,7 @@ export function SpaceSheet(props: {
 /** The live tabs of the space whose tabs show `address`, each as its panes; empty when it is in no space's tab. */
 export function useSpaceTabs(terminals: readonly Session[], address: string): readonly (readonly string[])[] {
   const { spaces } = useSpaceSelection();
-  const space = spaces.find((each) => each.addresses.includes(address));
+  const space = spaceOfAddress(spaces, address);
   return space === undefined ? [] : liveTabs(space, terminals);
 }
 
@@ -115,7 +115,7 @@ export function PhoneTabSwitcher(props: {
 }) {
   const { terminals, tabs, active, title, onOpen, onCloseTab, onNewInSpace, clearance } = props;
   const { spaces } = useSpaceSelection();
-  const space = spaces.find((each) => each.addresses.includes(active))?.name;
+  const space = spaceOfAddress(spaces, active)?.name;
   const at = tabs.findIndex((panes) => panes.includes(active));
   if (at === -1) return null;
   const step = (by: 1 | -1): void => {

@@ -37,7 +37,7 @@ import { useDropOnce } from "./use-drop-once.ts";
 import { useLayoutDocs } from "./use-layout-docs.ts";
 import { GitFactsContext, useGitFacts } from "./git-facts.ts";
 import { TodoProgressContext, useTodoProgress } from "./todo-progress.ts";
-import { layoutSpaces, phoneTabTitle } from "./model.ts";
+import { layoutSpaces, phoneTabTitle, spaceOfAddress } from "./model.ts";
 import { SpaceSelectionContext } from "./space-selection.ts";
 import { useSpaceMove } from "./space-order.ts";
 import { useAdoptLoose } from "./use-adopt-loose.ts";
@@ -267,7 +267,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   const spaces = useMemo(() => layoutSpaces(layouts, sessions, gitOf), [layouts, sessions, gitOf]);
   const onPalette = (): void => setPalette(true);
   const onSession: SessionVerb = (verb) => {
-    const space = spaces.find((each) => inView !== null && each.addresses.includes(inView));
+    const space = inView === null ? undefined : spaceOfAddress(spaces, inView);
     if (inView === null || (verb === "rename-space" && space === undefined)) return false;
     if (verb === "rename-space") setSpaceAsk(space?.id ?? null);
     else setAsk({ kind: verb, address: inView });
