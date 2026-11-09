@@ -102,7 +102,7 @@ function downloads(assets: readonly string[]): string {
 const SIGNING = `## Code signing
 
 - **macOS:** signed with a Developer ID certificate and notarized by Apple, and the dmg is stapled, so it opens without a Gatekeeper warning.
-- **Windows:** not code signed yet, so SmartScreen warns about an unknown publisher. Choose **More info**, then **Run anyway**.
+- **Windows:** check **Settings > System > About > System type**: choose \`x64-setup.exe\` for Intel or AMD (x64), or \`arm64-setup.exe\` for Windows on ARM (arm64). The arm64 setup requires ARM64 Windows; the x64 setup also works on Windows on ARM through x64 emulation, but prefer the native arm64 setup there. Not code signed yet, so SmartScreen warns about an unknown publisher. Choose **More info**, then **Run anyway**.
 - **Linux:** make the AppImage executable (\`chmod +x\`) and run it, or install the deb with \`sudo apt install ./<file>.deb\`.`;
 
 const USAGE =

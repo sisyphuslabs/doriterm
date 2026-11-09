@@ -40,7 +40,7 @@
     "icon": "build/icon.ico",
     "target": [{ "target": "nsis", "arch": ["x64", "arm64"] }]
   },
-  "nsis": { "artifactName": "${productName}-${version}-${arch}-setup.${ext}" },
+  "nsis": { "artifactName": "${productName}-${version}-${arch}-setup.${ext}", "include": "build/installer.nsh" },
   "linux": {
     "category": "Development",
     "icon": "build/icon.png",
