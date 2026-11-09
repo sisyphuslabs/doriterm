@@ -18,7 +18,7 @@ const EXEMPT_LABEL = "no-changelog";
 
 const NOT_USER_FACING = [
   /(^|\/)(e2e|tests?|testing|fixtures|__tests__|showcase)\//,
-  /\.(test|spec|e2e)\.[cm]?[jt]sx?$/,
+  /\.(test|spec|e2e|test-support)\.[cm]?[jt]sx?$/,
   // Test configuration, not behaviour: a Playwright config decides which engines a spec runs in, and every PR that
   // touches one would otherwise owe a user-facing changelog line.
   /(^|\/)playwright\.config\.[cm]?[jt]s$/,
