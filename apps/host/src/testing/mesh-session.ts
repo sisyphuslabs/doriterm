@@ -119,11 +119,14 @@ export async function ownMeshSession(session: HcSession): Promise<HcSession> {
   const started: Startup = { spawned: performance.now() };
   adoptProcessGroup(core, dir);
   let settled = false;
-  const report = (message: string): Error =>
-    new Error(`${message}\n${describe(started, performance.now(), tailOf(outPath), tailOf(errPath))}`);
+  const report = (message: string, cause?: unknown): Error =>
+    new Error(
+      `${message}\n${describe(started, performance.now(), tailOf(outPath), tailOf(errPath))}`,
+      cause === undefined ? undefined : { cause },
+    );
   void probe(socket, started, () => settled).then(
     () => ready.resolve(),
-    (error: unknown) => ready.reject(error),
+    (error: unknown) => ready.reject(report(`mesh core readiness probe failed: ${String(error)}`, error)),
   );
   const onExit = (code: number): void => {
     started.exited = { at: performance.now(), code, signal: core.signalCode };
@@ -131,7 +134,14 @@ export async function ownMeshSession(session: HcSession): Promise<HcSession> {
   };
   void core.exited.then(onExit);
   const deadline = setTimeout(
-    () => ready.reject(report(`mesh core did not create its socket within ${READY_MS} ms`)),
+    () =>
+      ready.reject(
+        report(
+          started.socketSeen === undefined
+            ? `mesh core did not create its socket within ${READY_MS} ms`
+            : `mesh core created its socket but accepted no connection within ${READY_MS} ms`,
+        ),
+      ),
     READY_MS,
   );
   let stopping: Promise<void> | undefined;
