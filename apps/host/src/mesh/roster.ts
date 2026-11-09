@@ -17,7 +17,7 @@ export interface RosterDeps {
   readonly mesh: MeshStore;
   readonly devices: DeviceStore;
   readonly policy: PlanPolicy;
-  readonly formatReady: () => boolean;
+  readonly formatReady: (records?: readonly Signed[]) => boolean;
   readonly floor: () => CounterFloor | undefined;
   readonly log: (line: string) => void;
   readonly changed?: (() => void) | undefined;
@@ -32,7 +32,7 @@ function admitRoster(deps: RosterDeps, card: CardBody, signed: Signed): void {
     (tx) => {
       const index = deps.mesh.authorizeIndex();
       if (index?.client(card.noisePub)?.signPub === card.signPub) return tx.records;
-      const refusal = admissionRefusal("client", deps.formatReady());
+      const refusal = admissionRefusal("client", deps.formatReady(tx.records));
       if (refusal !== undefined) throw new JoinRefused(refusal);
       if (isRejoin(index, card, tx.records)) return tx.records;
       const paired = deps.devices.list();

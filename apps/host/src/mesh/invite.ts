@@ -30,7 +30,8 @@ export interface InviteDeps {
   /** The plan this host runs under: its `machines` limit narrows what the protocol admits, and never widens it. */
   readonly policy: PlanPolicy;
   /** Whether every machine left in the mesh has shown it reads the format a client admission needs (design of #942). */
-  readonly formatReady?: (() => boolean) | undefined;
+  /** `records`: the mesh.json records an admission is written over, so the roster is the one on disk (#1436). */
+  readonly formatReady?: ((records?: readonly Signed[]) => boolean) | undefined;
   /** Announces a committed client admission even if its original transport has disconnected. */
   readonly changed?: (() => void) | undefined;
   readonly log: (line: string) => void;
@@ -87,6 +88,8 @@ function admit(deps: InviteDeps, meshId: string, inviter: string, card: CardBody
     if (Date.now() >= deps.expiresAt) throw new JoinRefused("the offer expired before the admit was signed");
     const index = deps.mesh.authorizeIndex();
     if (isRejoin(index, card, tx.records)) return tx.records;
+    const inTx = admissionRefusal(card.kind, deps.formatReady?.(tx.records) === true);
+    if (inTx !== undefined) throw new JoinRefused(inTx);
     const client = card.kind === "client";
     const joining = client
       ? clientDeviceCount(index, deps.devices, inviter) -

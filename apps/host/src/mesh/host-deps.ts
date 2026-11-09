@@ -62,7 +62,7 @@ export function meshDeps(options: MeshDepsOptions) {
     sync: (s) => sync.adopt(s),
     changed: () => sync.changed(),
     floor: () => hooks.floor(),
-    formatReady: () => hooks.formatReady(),
+    formatReady: (records) => hooks.formatReady(records),
     log,
   });
   const pending = (): readonly PendingJoinFact[] =>
