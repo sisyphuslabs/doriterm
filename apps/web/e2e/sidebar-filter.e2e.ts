@@ -150,4 +150,16 @@ test("while the filter holds a query a machine header offers no fold toggle, and
   await page.keyboard.press("Escape");
   await expect(field).toBeHidden();
   await expect(fold).toHaveAccessibleName("Collapse studio");
+
+  // A machine saved folded comes back folded: the filter opened it only while it held a query.
+  await fold.click();
+  await expect(fold).toHaveAccessibleName("Expand studio");
+  await pressShortcut(page, "layout.filter:sidebar");
+  await expect(field).toBeFocused();
+  await page.keyboard.type("studio");
+  await expect(fold).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await expect(field).toBeHidden();
+  await expect(fold).toHaveAccessibleName("Expand studio");
 });
