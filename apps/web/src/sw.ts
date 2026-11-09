@@ -41,7 +41,8 @@ registerRoute(
     if (kept !== undefined) return kept;
     const fetched = await fetch(request);
     // A page left open on an earlier build may still ask for its font: that answer comes from the network, and only a
-    // name this build's precache list carries is kept (#1166).
+    // name this build's precache list carries is kept (#1166). A build whose list names no icon font keeps what it
+    // fetches instead, since it has lost the font from its list rather than chosen none (#1167).
     if (fetched.ok && keepsIconFont(url, iconFonts)) await cache.put(request, fetched.clone());
     return fetched;
   },
