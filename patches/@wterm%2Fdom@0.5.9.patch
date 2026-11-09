@@ -596,10 +596,10 @@ index a6746f499859ba9da2d7884dfd71694205c6d819..7ef2bfcb6c94d74a4e6ff9aec76a6e41
      /**
       * Hands the core the theme colors the page's CSS resolves to, unless the
 diff --git a/dist/wterm.js b/dist/wterm.js
-index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa8b176239 100644
+index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..a1c6e18ca690515626c58a86673020035a85c9b2 100644
 --- a/dist/wterm.js
 +++ b/dist/wterm.js
-@@ -131,6 +131,11 @@ export class WTerm {
+@@ -131,9 +131,16 @@ export class WTerm {
          };
          this._shouldScrollToBottom = false;
          this._pinnedToBottom = true;
@@ -611,7 +611,12 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
          this._scrollbackDiscardedCount = 0;
          this._programmaticScrollTop = null;
          this._pendingResizeScrollTop = null;
-@@ -227,6 +232,7 @@ export class WTerm {
++        /** The element's height when a scroll or a fit last read it. */
++        this._scrollClientHeight = null;
+         this._rowHeight = 0;
+         this._charWidth = 0;
+         this._windowSizeQueryState = 0;
+@@ -227,6 +234,7 @@ export class WTerm {
                  const match = this._search.matches[this.getSearchState().activeIndex];
                  if (match) {
                      this._shouldScrollToBottom = false;
@@ -619,7 +624,24 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
                      this._pendingResizeScrollTop = null;
                      this._setScrollTop((match.start.row + 0.5) * this._rowHeight -
                          this.element.clientHeight / 2);
-@@ -349,6 +355,7 @@ export class WTerm {
+@@ -336,6 +344,16 @@ export class WTerm {
+         this._onScroll = () => {
+             if (this._pendingResizeScrollTop !== null)
+                 return;
++            // A scroll the browser makes because the element changed height (a soft keyboard going away grows it, and
++            // the browser moves scrollTop before the resize is fitted) is not the reader leaving the end: a view that was
++            // following stays on its bottom (#1372).
++            const height = this.element.clientHeight;
++            const resized = this._scrollClientHeight !== null && height !== this._scrollClientHeight;
++            this._scrollClientHeight = height;
++            if (resized && !this._scrolledAway) {
++                this._scrollToBottom();
++                return;
++            }
+             const atBottom = this._isScrolledToBottom();
+             if (this._shouldScrollToBottom && atBottom) {
+                 this._programmaticScrollTop = null;
+@@ -349,6 +367,7 @@ export class WTerm {
              }
              this._programmaticScrollTop = null;
              this._shouldScrollToBottom = false;
@@ -627,7 +649,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
              this._scheduleRender();
          };
          this.element.addEventListener("scroll", this._onScroll, { passive: true });
-@@ -418,6 +425,7 @@ export class WTerm {
+@@ -418,6 +437,7 @@ export class WTerm {
                  maxImageHeight: this.maxImageHeight,
                  renderer: this._rendererOption,
              });
@@ -635,7 +657,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
              this.renderer.setup(this.cols, this.rows);
              this.input = new InputHandler(this.element, (data, preserveScroll = false) => this._deliverInput(data, preserveScroll), () => this.bridge, () => this._charWidth > 0 && this._rowHeight > 0
                  ? { charWidth: this._charWidth, rowHeight: this._rowHeight }
-@@ -453,7 +461,6 @@ export class WTerm {
+@@ -453,7 +473,6 @@ export class WTerm {
              if (!this.autoResize) {
                  this._lockHeight();
              }
@@ -643,7 +665,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
              this._initialRender();
              this._registerWebMCP();
              if (this.cols !== initialCols || this.rows !== initialRows)
-@@ -471,6 +478,7 @@ export class WTerm {
+@@ -471,6 +490,7 @@ export class WTerm {
          return this._pinnedToBottom;
      }
      _scrollToBottom() {
@@ -651,7 +673,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
          this._setScrollTop(this.element.scrollHeight);
      }
      _setScrollTop(value, frame) {
-@@ -508,6 +516,29 @@ export class WTerm {
+@@ -508,6 +528,29 @@ export class WTerm {
              throw new Error("This terminal core cannot change its scrollback");
          this.bridge.setScrollbackLines(this._scrollbackLines);
      }
@@ -681,7 +703,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
      /**
       * Apply host colors without writing terminal input or restarting the session.
       * Pass `null` to drop them and answer color queries from the page's CSS again.
-@@ -553,7 +584,7 @@ export class WTerm {
+@@ -553,7 +596,7 @@ export class WTerm {
          this.renderer?.beforeMutation(this.bridge);
          if (this.debug)
              this.debug.traceWrite(data);
@@ -690,7 +712,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
          // Answer theme color queries with the colors the page shows right now.
          if (mayQueryThemeColors(data))
              this._syncCssThemeColors();
-@@ -732,9 +763,21 @@ export class WTerm {
+@@ -732,9 +775,21 @@ export class WTerm {
          this._rectangleDrag.cancel();
          this._historySelection.invalidate();
          this.renderer?.beforeMutation(this.bridge);
@@ -713,7 +735,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
          this._outputAnnouncements.invalidate();
          this.cols = this.bridge.getCols();
          this.rows = this.bridge.getRows();
-@@ -798,6 +841,7 @@ export class WTerm {
+@@ -798,6 +853,7 @@ export class WTerm {
              return false;
          const before = this.element.scrollTop;
          this._shouldScrollToBottom = false;
@@ -721,7 +743,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
          this._searchReveal = false;
          this._pendingResizeScrollTop = target * this._rowHeight;
          this._doRender();
-@@ -1127,14 +1171,20 @@ export class WTerm {
+@@ -1127,14 +1183,20 @@ export class WTerm {
              this._synchronizedOutputState = "idle";
              return false;
          }
@@ -744,7 +766,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
          }
          if (this._synchronizedOutputState !== "idle") {
              return this._synchronizedOutputState === "held";
-@@ -1144,9 +1194,10 @@ export class WTerm {
+@@ -1144,9 +1206,10 @@ export class WTerm {
          this._armSynchronizedOutputFallback(generation);
          return true;
      }
@@ -756,7 +778,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
          this._synchronizedOutputTimer = setTimeout(() => {
              if (this._synchronizedOutputState !== "held" ||
                  this._synchronizedOutputGeneration !== generation) {
-@@ -1157,7 +1208,7 @@ export class WTerm {
+@@ -1157,7 +1220,7 @@ export class WTerm {
              this._setupRendererIfNeeded();
              this._cancelScheduledRender();
              this._doRender();
@@ -765,12 +787,13 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
      }
      _cancelSynchronizedOutputFallback() {
          if (this._synchronizedOutputTimer == null)
-@@ -1576,14 +1627,15 @@ export class WTerm {
+@@ -1576,14 +1639,16 @@ export class WTerm {
          const height = this._visibleContentHeight(contentHeight);
          const newCols = Math.max(1, Math.floor(containerRect.width / charWidth));
          const newRows = Math.max(1, Math.floor(height / rowHeight));
 -        const atBottom = this._isScrolledToBottom();
 +        const following = this._isScrolledToBottom() || !this._scrolledAway;
++        this._scrollClientHeight = this.element.clientHeight;
          this._setKeyboardInset(contentHeight - height);
          if (newCols !== this.cols || newRows !== this.rows) {
              this.resize(newCols, newRows);

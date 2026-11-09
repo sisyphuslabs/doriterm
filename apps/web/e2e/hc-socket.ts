@@ -121,8 +121,6 @@ export async function routeHcSocket(
   let refused = 0;
   let delay = 0;
   let lastDue = 0;
-  /** Delayed frames whose timer has not fired yet: a frame due now must queue behind them to keep the host's order. */
-  let lagging = 0;
   let hostMessages = 0;
   let held: readonly string[] = [];
   let stale = false;
@@ -154,6 +152,27 @@ export async function routeHcSocket(
           host.send(fail ? Buffer.from(text.replace(`"method":"${method}"`, broken), "latin1") : frame);
         });
     });
+    // Delayed frames leave in the order they came: one queue per connection, drained by one timer at a time. A timer per
+    // frame does not keep that order when the delay changes between frames, since timers due at the same moment can fire
+    // in either order (#1640 review: an echo arrived as "remotet yping").
+    const queued: { readonly at: number; readonly deliver: () => void }[] = [];
+    let draining = false;
+    const drain = (): void => {
+      const next = queued[0];
+      if (next === undefined) {
+        draining = false;
+        return;
+      }
+      draining = true;
+      setTimeout(
+        () => {
+          queued.shift();
+          next.deliver();
+          drain();
+        },
+        Math.max(0, next.at - Date.now()),
+      );
+    };
     host.onMessage((message) => {
       hostMessages += 1;
       // One message can carry several hc frames (an event and an RPC answer together): each is held or passed alone,
@@ -182,15 +201,12 @@ export async function routeHcSocket(
         }
         lastDue = Math.max(Date.now() + delay, lastDue);
         const wait = Math.max(0, lastDue - Date.now());
-        if (wait > 0 || lagging > 0 || typeof frame === "string") {
-          // A lagged frame keeps its place on its own timer, and so does any frame behind one that has not fired yet
-          // (a delay just lowered to 0): timers of equal or later due time fire in order. Text is never joined to binary.
+        if (wait > 0 || draining || typeof frame === "string") {
+          // A lagged frame goes on the ordered queue, and so does any frame behind one still queued (a delay just
+          // lowered to 0), so nothing overtakes it. Text is never joined to binary.
           pass();
-          lagging += 1;
-          setTimeout(() => {
-            lagging -= 1;
-            deliverOne(frame, text);
-          }, wait);
+          queued.push({ at: lastDue, deliver: () => deliverOne(frame, text) });
+          if (!draining) drain();
           continue;
         }
         due.push(frame);
