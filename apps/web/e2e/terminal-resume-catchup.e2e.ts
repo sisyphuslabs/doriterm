@@ -24,6 +24,36 @@ const FLOOD_END = "catchup-flood-end";
 const FLOOD = `for i in $(seq 1 ${LAST}); do echo line-$i; done; printf '\\033]2;${FLOOD_END}\\007'`;
 /** hc's wire frame header: channel (u32), kind (u8), payload length (u32), little-endian; channel 0 carries the RPC. */
 const HC_HEADER_BYTES = 9;
+/**
+ * The flood again, each line in two dozen colors: a replay of its history is several hundred KiB (the core repaints every
+ * color) in under 40 columns, so it fits a phone's row unwrapped and takes the relay many slices to hand over.
+ */
+const COLORED_FLOOD = `c=$(for k in $(seq 1 24); do printf '\\033[38;5;%d;48;5;%dmx' $((k*9)) $((255-k*9)); done); for i in $(seq 1 ${LAST}); do echo "line-$i $c"; done; printf '\\033[0m\\033]2;${FLOOD_END}\\007'`;
+
+/**
+ * Watches the frames a routed hc socket delivers on the stream channels: how many bytes came after `since()` turned on
+ * and in how many windows, a window being a run of frames with less than half a round trip between them.
+ */
+function streamArrivals(rttMs: number) {
+  let on = false;
+  let bytes = 0;
+  let windows = 0;
+  let last = -Infinity;
+  return {
+    received: (frame: string): void => {
+      if (!on || frame.length < HC_HEADER_BYTES || Buffer.from(frame.slice(0, 4), "latin1").readUInt32LE(0) === 0)
+        return;
+      const now = Date.now();
+      if (now - last > rttMs / 2) windows += 1;
+      last = now;
+      bytes += frame.length - HC_HEADER_BYTES;
+    },
+    since: (): void => {
+      on = true;
+    },
+    report: (): string => `${windows} windows, ${bytes} bytes`,
+  };
+}
 
 /**
  * Call before page.goto: routes the page's hc socket so the spec can drop it, as a relay blip does. Once the page asks to
@@ -254,5 +284,46 @@ for (const device of ["desktop", "phone"] as const) {
       expect(transitions(frames)).toBeLessThanOrEqual(1);
       expect(frames.filter((last) => last !== LAST)).toEqual([]);
     });
+
+    for (const rttMs of [150, 300])
+      test(`over a ${rttMs} ms relay, a reconnect's replay that comes a slice a round trip is painted once it has settled: the screen never climbs back (D5, #1040)`, async ({
+        page,
+      }) => {
+        await page.addInitScript(() => {
+          Reflect.set(window, "__dorifaceAttachLog", []);
+        });
+        // Every frame from the host comes a round trip late, so the page measures that SRTT, and the core, which sends
+        // one 256 KiB credit window and waits for its credit, hands the replay over a window a round trip, as the relay does.
+        const arrivals = streamArrivals(rttMs);
+        const link = await routeHcSocket(page, { received: arrivals.received });
+        link.delay(rttMs);
+        const { terminal } = await terminalFor(page);
+        await page.keyboard.type(COLORED_FLOOD);
+        await page.keyboard.press("Enter");
+        await expect(terminal).toHaveAttribute("aria-label", `${FLOOD_END} output`, { timeout: 30_000 });
+        await expect(terminal).toContainText(`line-${LAST}`, { timeout: 20_000 });
+
+        await startLastLineSampler(terminal, "nothing");
+        const before = link.opened();
+        arrivals.since();
+        await link.drop(true);
+        link.restore();
+        await expect.poll(link.opened, { timeout: 15_000 }).toBeGreaterThan(before);
+        await expect
+          .poll(() => page.evaluate(() => (Reflect.get(window, "__dorifaceAttachLog") as unknown[]).length))
+          .toBeGreaterThanOrEqual(2);
+        // Output after the replay marks the replay as delivered and painted: it comes behind the replay's last slice.
+        await page.keyboard.type("echo done-$((1+1))");
+        await page.keyboard.press("Enter");
+        await expect(terminal).toContainText("done-2", { timeout: 30_000 });
+        const frames = await sampledFrames(page);
+        console.log(`spaced ${device} ${rttMs}: the replay came in ${arrivals.report()}`);
+
+        expect(frames.length).toBeGreaterThan(0);
+        expect(frames.at(-1)).toBe(LAST);
+        // The old screen stays until the replay is drawn whole: at most one change, never an empty or climbing screen.
+        expect(transitions(frames)).toBeLessThanOrEqual(1);
+        expect(frames.filter((last) => last !== LAST)).toEqual([]);
+      });
   });
 }

@@ -414,6 +414,38 @@ describe("OutputPacer holding an attach replay (D5)", () => {
     expect(written).toHaveLength(15);
   });
 
+  test("a replay that comes one credit window a round trip over a 300 ms relay is held until its last window, past 1500 ms", () => {
+    const { timers, holds, written, pacer } = replaying(300);
+    // The core hands a replay over 256 KiB a round trip (its credit window): 7 windows are 1.75 MiB over 1800 ms.
+    for (let window = 0; window < 7; window += 1) {
+      pacer.push(bytes(256 * KIB));
+      timers.advance(window === 6 ? 0 : 300);
+    }
+    expect(holds).toEqual([true]);
+    timers.advance(499);
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
+    expect(written).toHaveLength(7);
+  });
+
+  test("a replay that wrote a credit window in each 1500 ms span is let go at the first span that writes less", () => {
+    const { timers, holds, pacer } = replaying(300);
+    for (let at = 0; at < 3000; at += 250) {
+      pacer.push(bytes(64 * KIB));
+      timers.advance(250);
+    }
+    // 1.5 MiB came over 3 s, a window and more each span; then a prompt trickles in under the quiet window.
+    expect(holds).toEqual([true]);
+    for (let at = 3000; at < 4500; at += 400) {
+      pacer.push(bytes(KIB));
+      timers.advance(at + 400 > 4500 ? 4499 - at : 400);
+    }
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
+  });
+
   test("a replay is let go once 2 MiB have been written", () => {
     const { holds, pacer, written } = replaying(300);
     pacer.push(bytes(1024 * KIB));
