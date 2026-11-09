@@ -2,6 +2,8 @@ import { Button, IconButton, Input, ScrollArea, Tab, TabList, Tabs, cn } from "@
 import { ArrowLeft } from "lucide-react";
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { currentPlatform, triggerKeys } from "../keys/trigger.ts";
+import { useActionHandler } from "../keys/dispatcher.ts";
+import { stepTerminalFont } from "../workspace/use-app-actions.ts";
 import { AppearanceSection } from "../settings/appearance-section.tsx";
 import { ConnectionSection } from "../settings/connection-section.tsx";
 import { DeviceSection } from "../settings/device-section.tsx";
@@ -51,6 +53,11 @@ function Lead({ children }: { readonly children: ReactNode }) {
 
 /** Section navigation beside the form; changes apply as they are made. */
 export function SettingsRoute() {
+  // Settings shows the terminals' text size under Appearance and hints at its keys, so the text-size keys step it here
+  // rather than the browser's zoom, in a browser too (#859, #1162).
+  useActionHandler("app", (action) =>
+    ["app.zoom_in", "app.zoom_out", "app.zoom_reset"].includes(action) ? stepTerminalFont(action) : false,
+  );
   const [section, setSection] = useState<SectionId>(firstSection);
   const [query, setQuery] = useState("");
   const shown = matchSections(SECTIONS, query);

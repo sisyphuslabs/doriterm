@@ -2,18 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { neighbour, shouldSelect, takesTextSizeKey } from "./use-app-actions.ts";
 
 describe("takesTextSizeKey", () => {
-  test("a browser keeps the text-size keys on screens with no terminal text and no Appearance hint", () => {
-    expect(takesTextSizeKey("/pair", false)).toBe(false);
-    expect(takesTextSizeKey("/join", false)).toBe(false);
+  test("a browser keeps the text-size keys for its own zoom; the workspace and Settings take them in their handler", () => {
+    expect(takesTextSizeKey(false)).toBe(false);
   });
 
-  test("the workspace and Settings step the terminal text in a browser, as Appearance hints (#859)", () => {
-    expect(takesTextSizeKey("/", false)).toBe(true);
-    expect(takesTextSizeKey("/settings", false)).toBe(true);
-  });
-
-  test("the desktop window never zooms, so it steps the text on every screen (#388)", () => {
-    expect(takesTextSizeKey("/pair", true)).toBe(true);
+  test("the desktop window never zooms, so its fallback steps the text on every screen (#388)", () => {
+    expect(takesTextSizeKey(true)).toBe(true);
   });
 });
 
