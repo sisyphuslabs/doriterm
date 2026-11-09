@@ -190,8 +190,9 @@ test("a syllable composed as conjoining jamo spans its two cells: the vowel and 
   await expectComposingCells(page, await hangulTerminal(page), "\u1112\u1161\u11ab", 2);
 });
 
-// Neutral-width characters inside blocks the width table once took whole (Yijing hexagrams in the CJK range, emoji
-// with text presentation), and an emoji with emoji presentation outside the ranges it named.
+// Characters at the edges of the width table's ranges: a Yijing hexagram (which the grid draws over two cells, as
+// Unicode 16 made them wide), a CJK ideograph, emoji with text presentation (one cell) and emoji with emoji presentation
+// (two cells). The test reads each one's width from the grid and checks the composing box spans the same.
 const WIDTH_PROBES = ["\u{4DC0}", "\u{4E00}", "\u{1F300}", "\u{1F321}", "\u{1F32C}", "\u{1F680}"];
 
 test("the composing box spans the cells the grid gives each character, wide or not (#1285)", async ({ page }) => {

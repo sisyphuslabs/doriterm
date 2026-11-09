@@ -55,6 +55,20 @@ test("a lone jamo committed with no composition and no Korean key reaches the pr
   await expectRead(terminal, "e3 85 8b");
 });
 
+test("each lone jamo an input method commits with no Korean key reaches the program, not only the first (#1244)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  const cdp = await openRawReader(page, terminal);
+  const read = terminal.locator(".term-row").filter({ hasText: /^\s*e3 85 8b\s*$/ });
+  // The first jamo is sent and stays in the field as sent text; the second is inserted after it, still with no key.
+  await cdp.send("Input.insertText", { text: "\u{314B}" });
+  await expect(read).toHaveCount(1);
+  await cdp.send("Input.insertText", { text: "\u{314B}" });
+  await expect(read).toHaveCount(2);
+});
+
 test("a Korean key whose keyup a blur took does not hold the next committed syllable (#1246)", async ({ page }) => {
   await page.goto("/");
   const terminal = await openNewTerminal(page);

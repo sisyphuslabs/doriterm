@@ -23,7 +23,7 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 78a86ffd96eec03222777f40e9db6a0561684c3f..2b643f404249339ff58398f891ea0be61bbb052d 100644
+index 78a86ffd96eec03222777f40e9db6a0561684c3f..11b7b7d0ab0344686c696a14752d9997597efc8b 100644
 --- a/dist/input.js
 +++ b/dist/input.js
 @@ -67,9 +67,41 @@ const FIXED_KEYS = {
@@ -401,7 +401,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..2b643f404249339ff58398f891ea0be6
          if (this.composing) {
              this.sizeComposition();
              return;
-@@ -565,6 +772,35 @@ export class InputHandler {
+@@ -565,6 +772,36 @@ export class InputHandler {
          const value = this.touchPrimary && rawValue.startsWith(TOUCH_INPUT_PLACEHOLDER)
              ? rawValue.slice(TOUCH_INPUT_PLACEHOLDER.length)
              : rawValue;
@@ -414,11 +414,12 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..2b643f404249339ff58398f891ea0be6
 +                (!repeatsCommit &&
 +                    inputType !== "deleteContentBackward" &&
 +                    (HANGUL_LETTER.test(value) || (this.koreanKeyEdit && HANGUL.test(value)))))) {
-+            const unkeyed = !this.koreanKeyEdit && this.localSent === "" && this.localPreedit === "";
 +            this.recentCompositionCommit = null;
 +            this.suppressNextTouchDeleteInput = false;
 +            this.editLocalRun(value);
-+            if (unkeyed && this.localPreedit !== "")
++            // Any edit no Korean key came with that leaves a lone letter waits for its key, not only a run's first:
++            // an input method's second lone letter goes too, and Safari's keydown after each edit still stops it.
++            if (!this.koreanKeyEdit && HANGUL_LETTER.test(this.localPreedit))
 +                this.unkeyedLetterTimer = setTimeout(() => this.sendUnkeyedLetter(), UNKEYED_LETTER_MS);
 +            return;
 +        }
@@ -437,7 +438,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..2b643f404249339ff58398f891ea0be6
          this.resetInputValue();
          const recent = this.recentCompositionCommit;
          this.recentCompositionCommit = null;
-@@ -821,7 +1057,7 @@ export class InputHandler {
+@@ -821,7 +1058,7 @@ export class InputHandler {
                  return other;
          }
          if (e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -446,7 +447,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..2b643f404249339ff58398f891ea0be6
              if (control !== null)
                  return control;
              if (e.key === "Backspace")
-@@ -855,6 +1091,24 @@ export class InputHandler {
+@@ -855,6 +1092,24 @@ export class InputHandler {
          return null;
      }
  }
