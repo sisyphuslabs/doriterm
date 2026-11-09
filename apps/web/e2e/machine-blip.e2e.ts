@@ -90,8 +90,8 @@ test.describe("a machine whose line blips (#904)", () => {
     await recordFlips(page, terminal);
 
     // A line that hc redials at once: the drop alone, over a dial as slow as a loaded runner's. The next blip must find
-    // hc's redial landed: one still dialing then gets past the refusal and lands anyway. hc's state is no sign of it: it
-    // reads connected all through a drop it redials (#1518).
+    // hc's redial landed and no dial still on its way: one still dialing then gets past the refusal and lands anyway.
+    // hc's state is no sign of it: it reads connected all through a drop it redials (#1518).
     slowDials();
     const dialed = linesDialed();
     await blip(0);
