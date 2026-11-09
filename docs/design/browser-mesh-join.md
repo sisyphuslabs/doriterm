@@ -7,9 +7,9 @@ built; its §0 maps each section to the pull request that built it) as far as th
 ## 1. What a browser may join
 
 Only a **mesh invite**: a link from `doriface-host mesh pair` (`&m=1`) or a typed code for such an offer. #1377
-revision 4, §4, names the mechanism: "the existing mesh join on a mesh offer, with a `kind: "client"` card signed by the
-browser's own Ed25519 key and bound to its X25519 device key". Revision 4 is the latest revision at this writing;
-nothing in it widens what a link admits, and nothing here does either.
+§4 names the mechanism: the existing mesh join on a mesh offer, with a `kind: "client"` card signed by the browser's
+own Ed25519 key and bound to its X25519 device key. The design as built keeps that mechanism (its §3 table); nothing in
+it widens what a link admits, and nothing here does either.
 
 The split is decided in one place, `packages/mesh/src/join/invite.ts`, not in each caller. `meshInviteOf(target)`
 refuses a device pairing link ("this link pairs a device: run doriface-host mesh pair on the member") and a bare hostId
