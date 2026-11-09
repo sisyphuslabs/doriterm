@@ -1,3 +1,0 @@
-### Settings
-
-- Each online machine in a browser's mesh shows its measured round trip. The value disappears when its connection closes or is replaced. (#787)
