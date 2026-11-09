@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
 import { bandOutside, ephemeralRange, IANA_DYNAMIC, parsePortRange } from "./ephemeral-range.ts";
 import { HOST_BLOCK } from "./port-block.ts";
-import { ensureRunPorts } from "./run-ports.ts";
-import { parseTried, portsToProbe } from "./run-ports.ts";
+import { ensureRunPorts, parseTried, portsToProbe } from "./run-ports.ts";
 
 const NAMES = ["E2E_HOST_PORT", "E2E_WEB_PORT", "E2E_LAYOUT_PORT"] as const;
 
@@ -16,7 +15,7 @@ test("the run's ports are none the OS hands out by itself", () => {
     const [host, web, layout] = NAMES.map((name) => Number(process.env[name]));
     const ports = [...Array.from({ length: HOST_BLOCK }, (_, slot) => (host ?? 0) + slot), web, layout];
     const { first, last } = ephemeralRange();
-    expect(ports.filter((value) => value === undefined || (value >= first && value <= last))).toEqual([]);
+    expect(ports.filter((value) => value === undefined || !Number.isInteger(value) || (value >= first && value <= last))).toEqual([]);
     expect(new Set(ports).size).toBe(HOST_BLOCK + 2);
   } finally {
     NAMES.forEach((name, index) => {
