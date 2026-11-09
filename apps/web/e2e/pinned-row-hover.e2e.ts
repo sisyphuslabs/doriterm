@@ -51,3 +51,33 @@ for (const scheme of ["light", "dark"] as const) {
     }
   });
 }
+
+// The row's two actions draw at one size: the pin's 14 px is for Unpin, which stands in for the resting pin, and an
+// unpinned row's Pin to top sits beside More at the actions' own size, at rest (hidden) and on hover (#1555).
+test("an unpinned row's Pin to top is drawn the size of its More", async ({ page }) => {
+  const name = "pin-pair";
+  const address = startAgent("host", name, "idle", `sp-${name}`);
+  try {
+    await page.goto("/");
+    const row = agentRow(agents(page), name, false);
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    const pin = agents(page).getByRole("button", { name: `Pin ${name} to the top`, includeHidden: true });
+    const more = agents(page).getByRole("button", { name: `More for ${name}`, includeHidden: true });
+    const size = (button: typeof pin) =>
+      button.locator("svg").evaluate((svg) => {
+        const box = svg.getBoundingClientRect();
+        return [box.width, box.height];
+      });
+    await page.mouse.move(1, 1);
+    const atRest = { pin: await size(pin), more: await size(more) };
+    await row.hover();
+    await expect(pin).toBeVisible();
+    const onHover = { pin: await size(pin), more: await size(more) };
+    expect({ atRest, onHover }).toEqual({
+      atRest: { pin: atRest.more, more: atRest.more },
+      onHover: { pin: onHover.more, more: onHover.more },
+    });
+  } finally {
+    endAgent("host", address);
+  }
+});
