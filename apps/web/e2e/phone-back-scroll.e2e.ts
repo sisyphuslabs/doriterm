@@ -35,7 +35,11 @@ interface Place {
   readonly first: string;
 }
 
-/** Where the list is: its offset and the first agent row in view (headers and space rows are not counted). */
+/** An agent row: its name leads. A space row leads with its avatar's initial, so it is matched by name anywhere. */
+const AGENT_ROW = /^\s*keep\d\d/;
+const SPACE_ROW = /keep\d\d/;
+
+/** Where the list is: its offset and the first seeded row in view, an agent's or a space's (headers are not counted). */
 const place = (list: Locator): Promise<Place> =>
   list.evaluate((el) => {
     const edge = el.getBoundingClientRect().top;
@@ -56,20 +60,18 @@ async function scrollHalfway(list: Locator): Promise<Place> {
 }
 
 /** A row fully in view below the first one, so the tap is on what the reader sees. */
-async function rowInView(list: Locator): Promise<Locator> {
-  const index = await list.evaluate((el) => {
+async function rowInView(list: Locator, row: RegExp = AGENT_ROW): Promise<Locator> {
+  const index = await list.evaluate((el, source) => {
+    const pattern = new RegExp(source);
     const box = el.getBoundingClientRect();
-    const rows = [...el.querySelectorAll("button")].filter((row) => /^\s*keep\d\d/.test(row.textContent ?? ""));
-    return rows.findIndex((row) => {
-      const r = row.getBoundingClientRect();
+    const rows = [...el.querySelectorAll("button")].filter((button) => pattern.test(button.textContent ?? ""));
+    return rows.findIndex((button) => {
+      const r = button.getBoundingClientRect();
       return r.top > box.top + 40 && r.bottom < box.bottom - 40;
     });
-  });
+  }, row.source);
   expect(index).toBeGreaterThanOrEqual(0);
-  return list
-    .locator("button")
-    .filter({ hasText: /^\s*keep\d\d/ })
-    .nth(index);
+  return list.locator("button").filter({ hasText: row }).nth(index);
 }
 
 async function expectSamePlace(list: Locator, before: Place): Promise<void> {
@@ -77,7 +79,24 @@ async function expectSamePlace(list: Locator, before: Place): Promise<void> {
   expect((await place(list)).first, "the same first row in view").toBe(before.first);
 }
 
+/** COUNT agents, each the one tab of its own space named like it, so the Agents list and the Spaces list are both long. */
+function seedSpacesEach(): string[] {
+  const root = mkdtempSync(join(tmpdir(), "phone-back-scroll-spaces-"));
+  const names = Array.from({ length: COUNT }, (_, at) => `keep${String(at + 1).padStart(2, "0")}`);
+  const addresses = names.map((name) => startAgent("host", name, "idle", name));
+  seedSpaces(
+    names.map((name, at) => ({
+      id: `spc-${name}`,
+      name,
+      folder: mkdtempSync(join(root, `${name}-`)),
+      tabs: [{ id: `tb-${name}`, name: "", terminal: addresses[at] ?? "" }],
+    })),
+  );
+  return addresses;
+}
+
 const agentsList = (page: Page) => page.locator('[data-slot="agents-list"]');
+const sections = (page: Page) => page.getByRole("navigation", { name: "Sections" });
 const spaceTabs = (page: Page) => page.locator('[data-slot="space-tabs"]');
 const agentsHeading = (page: Page) => page.getByRole("heading", { name: "Agents", exact: true });
 
@@ -123,7 +142,8 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
     }) => {
       const addresses = seed();
       try {
-        await page.goto("/");
+        // The spaces are a list of their own, under the Spaces tab (#1484).
+        await page.goto("/?v=spaces");
         const spaceRow = page.getByRole("button", { name: new RegExp(`^${SPACE}\\b`) }).first();
         await expect(spaceRow).toBeVisible({ timeout: 20_000 });
         await spaceRow.click();
@@ -144,6 +164,42 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await page.goBack();
         await expect(page.getByRole("heading", { level: 1, name: SPACE })).toBeVisible();
         await expectSamePlace(spaceTabs(page), again);
+      } finally {
+        addresses.forEach((address) => endAgent("host", address));
+      }
+    });
+
+    test("Agents and Spaces share the list's frame but each keeps its own place, across the tabs and Back", async ({
+      page,
+    }) => {
+      const addresses = seedSpacesEach();
+      try {
+        await page.goto("/");
+        const list = agentsList(page);
+        await expect(list.getByRole("button", { name: /keep24/ }).first()).toBeVisible({ timeout: 20_000 });
+        const agents = await scrollHalfway(list);
+
+        // The Spaces tab starts at its own top, not at the offset the agents were left at.
+        await sections(page).getByRole("button", { name: "Spaces", exact: true }).click();
+        await expect(page.getByRole("heading", { level: 1, name: "Spaces", exact: true })).toBeVisible();
+        await expect(list.getByRole("button", { name: /^keep24\b/ })).toBeAttached();
+        await expect.poll(() => list.evaluate((el) => el.scrollTop), "Spaces opens at its top").toBe(0);
+
+        // A space opened from Spaces, and Back: Spaces is where it was left, not where the agents were.
+        const spaces = await scrollHalfway(list);
+        expect(spaces.top, "the two lists are left at different offsets").not.toBe(agents.top);
+        await (await rowInView(list, SPACE_ROW)).click();
+        await expect(page.getByRole("button", { name: "Back to Spaces" })).toBeVisible({ timeout: 20_000 });
+        await page.getByRole("button", { name: "Back to Spaces" }).click();
+        await expect(page.getByRole("heading", { level: 1, name: "Spaces", exact: true })).toBeVisible();
+        await expectSamePlace(agentsList(page), spaces);
+
+        // The Agents tab is the agents where they were left.
+        await sections(page)
+          .getByRole("button", { name: /^Agents\b/ })
+          .click();
+        await expect(agentsHeading(page)).toBeVisible();
+        await expectSamePlace(agentsList(page), agents);
       } finally {
         addresses.forEach((address) => endAgent("host", address));
       }
