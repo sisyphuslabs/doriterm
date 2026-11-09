@@ -10,7 +10,7 @@ import {
 import { type ConnectionState, connectionStore } from "../connection/store.ts";
 import { type NoticeBridge, noticeBridge, permissionOf } from "./notice-bridge.ts";
 import { NoticeTrigger, type Trigger, wanted } from "./notice-trigger.ts";
-import type { PushView } from "./push-settings.ts";
+import type { NoticeStep, PushView } from "./push-settings.ts";
 import { guardedLocalStorage } from "../storage/guarded.ts";
 
 export const DESKTOP_NOTICES_KEY = "doriface.desktop-notices";
@@ -87,7 +87,7 @@ export class DesktopNotices {
     this.#view = {
       support: "supported",
       permission: null,
-      busy: false,
+      busy: null,
       error: null,
       tested: false,
       retry: null,
@@ -109,7 +109,7 @@ export class DesktopNotices {
 
   /** Reads what this system can show and whether it allows this app to; never asks, the OS does at the first notice. */
   async load(): Promise<void> {
-    await this.#run("read the notification settings", async () => {
+    await this.#run("check-again", "read the notification settings", async () => {
       const [supported, authorization] = await Promise.all([
         this.#options.bridge.supported(),
         this.#options.bridge.permission(),
@@ -131,9 +131,9 @@ export class DesktopNotices {
     this.#count();
   }
 
-  /** Shows a test notice only past the gates an agent's notice on this machine passes, so a pass means one would show. */
+  /** Shows a test notice only past the gates an agent's notice passes, so a pass means one would show. */
   async test(): Promise<void> {
-    await this.#run("send a test notification", async () => {
+    await this.#run("test", "send a test notification", async () => {
       await this.#opening;
       const refusal = this.#testRefusal();
       if (refusal !== undefined) throw new Error(refusal);
@@ -153,8 +153,19 @@ export class DesktopNotices {
     }
     if (!NOTICE_EVENTS.some((kind) => prefs.events[kind]))
       return "Every event is turned off, so no agent would notify.";
-    if (prefs.muted.includes(noticeMachineId(undefined))) return "Notifications from this machine are turned off.";
-    return undefined;
+    // `local` is the connected host's core, not the computer this app runs on (#1121): it is heard beside every added
+    // machine the feed reports, and only every one of them muted leaves no agent notice that would show (#1120).
+    const machines = new Set<string | undefined>([undefined, ...this.#trigger.machines()]);
+    if (![...machines].every((machine) => prefs.muted.includes(noticeMachineId(machine)))) return undefined;
+    return machines.size === 1
+      ? `Notifications from ${this.#hostName()} are turned off.`
+      : "Notifications from every machine this app hears from are turned off.";
+  }
+
+  /** The connected host's core as its hello names it: the machine `local` stands for. */
+  #hostName(): string {
+    const state = this.#options.connection.state;
+    return state.phase === "open" ? state.connection.hello.core.name : "the host";
   }
 
   /** The pane this window shows focused and visible, or null: no notification comes about it. */
@@ -264,13 +275,13 @@ export class DesktopNotices {
     this.#follow();
   }
 
-  async #run(what: string, step: () => Promise<void>): Promise<void> {
-    this.#set({ busy: true, error: null });
+  async #run(busy: NoticeStep, what: string, step: () => Promise<void>): Promise<void> {
+    this.#set({ busy, error: null });
     try {
       await step();
-      this.#set({ busy: false });
+      this.#set({ busy: null });
     } catch (error) {
-      this.#set({ busy: false, error: `Could not ${what}. ${message(error)}` });
+      this.#set({ busy: null, error: `Could not ${what}. ${message(error)}` });
     }
   }
 
