@@ -15,7 +15,9 @@ test("the run's ports are none the OS hands out by itself", () => {
     const [host, web, layout] = NAMES.map((name) => Number(process.env[name]));
     const ports = [...Array.from({ length: HOST_BLOCK }, (_, slot) => (host ?? 0) + slot), web, layout];
     const { first, last } = ephemeralRange();
-    expect(ports.filter((value) => value === undefined || !Number.isInteger(value) || (value >= first && value <= last))).toEqual([]);
+    expect(
+      ports.filter((value) => value === undefined || !Number.isInteger(value) || (value >= first && value <= last)),
+    ).toEqual([]);
     expect(new Set(ports).size).toBe(HOST_BLOCK + 2);
   } finally {
     NAMES.forEach((name, index) => {
