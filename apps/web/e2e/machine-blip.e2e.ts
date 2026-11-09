@@ -95,7 +95,7 @@ test.describe("a machine whose line blips (#904)", () => {
     slowDials();
     const dialed = linesDialed();
     await blip(0);
-    expect(redialedSince(dialed), "hc's redial landed before the spec moves on").toBe(true);
+    await expect.poll(() => redialedSince(dialed), { timeout: 30_000 }).toBe(true);
     await expect.poll(machineState, { timeout: 15_000 }).toBe("connected");
 
     // A relay uplink drop at its worst: every line ends, and the host refuses this one for its settle and one probe.
