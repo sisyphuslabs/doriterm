@@ -193,7 +193,7 @@ export function NotificationsSection() {
             view.tested
               ? "Sent. It should appear in a moment."
               : desktop
-                ? "Runs the checks an agent's notification from this computer passes, then shows one."
+                ? "Runs the checks an agent's notification passes, whichever machine it runs on, then shows one."
                 : "Checks that this device gets them."
           }
           control={
