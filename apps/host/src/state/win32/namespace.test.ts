@@ -105,6 +105,37 @@ describe("actionable namespace refusal (#1299)", () => {
     expect(checkNamespace([child, parent], USER)).toMatchObject({ path: parent.path });
   });
 
+  test("traces a drive root's inherit-only generic grant to its mapped copy on the child", () => {
+    // The default ACL of a non-system drive root and the two ACEs Windows writes on a new folder below it. The AU
+    // ACEs come first so that this test covers only the tracing: the grant search stops at the first namespace grant.
+    const root = folder("D:\\", "O:BAD:(A;OICIIO;SDGXGWGR;;;AU)(A;;0x4;;;AU)(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)");
+    const app = folder(
+      "D:\\app",
+      `O:${USER}D:(A;ID;0x1301bf;;;AU)(A;OICIIOID;SDGXGWGR;;;AU)(A;OICIID;FA;;;BA)(A;OICIID;FA;;;SY)`,
+    );
+    const verdict = checkNamespace([app, root], USER);
+    expect(verdict).toMatchObject({ verdict: "untrusted", path: root.path });
+    expect(verdict).toMatchObject({
+      message: expect.stringContaining('Remove the ACE granting those rights on "D:\\"'),
+    });
+  });
+
+  test("traces a parent's GENERIC_ALL grant to the FILE_ALL_ACCESS copy on the child", () => {
+    const child = folder(inherited.path, `O:${USER}D:(A;ID;FA;;;${OTHER})(A;OICIIOID;GA;;;${OTHER})`);
+    const parent = folder(explicit.path, `O:${USER}D:(A;OICI;GA;;;${OTHER})`);
+    expect(checkNamespace([child, parent], USER)).toMatchObject({ verdict: "untrusted", path: parent.path });
+  });
+
+  test("an inherited grant whose source is not found is reported as inherited, not as removable there", () => {
+    const boundary = folder("D:\\shared\\middle", `O:${USER}D:P(A;;FA;;;${USER})`);
+    const verdict = checkNamespace([inherited, boundary], USER);
+    if (verdict.verdict !== "untrusted") throw new Error("expected refusal");
+    expect(verdict.path).toBe(inherited.path);
+    expect(verdict.message).not.toContain("Remove the ACE");
+    expect(verdict.message).toContain(`inherited`);
+    expect(verdict.message).toContain(`disable inheritance on "${inherited.path}"`);
+  });
+
   test("trusted ACLs never need an account-name lookup", () => {
     expect(
       checkNamespace(PROFILE_CHAIN, USER, () => {

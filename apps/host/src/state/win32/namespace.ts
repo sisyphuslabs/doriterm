@@ -51,10 +51,14 @@ export type NamespaceVerdict =
   | { readonly verdict: "trusted" }
   | { readonly verdict: "untrusted"; readonly path: string; readonly reason: string; readonly message: string };
 
-function refuse(path: string, reason: string, grant = false): NamespaceVerdict {
-  const repair = grant
-    ? `Remove the ACE granting those rights on "${path}"`
-    : `Correct the ownership or permissions (or link/junction) on "${path}"`;
+function refuse(path: string, reason: string, grant?: "explicit" | "inherited"): NamespaceVerdict {
+  const repair =
+    grant === "explicit"
+      ? `Remove the ACE granting those rights on "${path}"`
+      : grant === "inherited"
+        ? `Those rights are inherited from a parent folder, so they cannot be removed on "${path}" itself: ` +
+          `disable inheritance on "${path}" and remove them there, or remove the grant on the parent folder`
+        : `Correct the ownership or permissions (or link/junction) on "${path}"`;
   return {
     verdict: "untrusted",
     path,
@@ -67,8 +71,30 @@ function refuse(path: string, reason: string, grant = false): NamespaceVerdict {
   };
 }
 
+const FILE_ALL_ACCESS = 0x001f_01ff;
+const FILE_GENERIC_READ = 0x0012_0089;
+const FILE_GENERIC_WRITE = 0x0012_0116;
+const FILE_GENERIC_EXECUTE = 0x0012_00a0;
+const GENERIC_READ = 0x8000_0000;
+const GENERIC_EXECUTE = 0x2000_0000;
+
+/** The file generic mapping Windows applies when a generic right is inherited as an effective ACE. */
+function mapGeneric(mask: number): number {
+  let mapped = mask & ~(GENERIC_READ | GENERIC_WRITE | GENERIC_EXECUTE | GENERIC_ALL);
+  if ((mask & GENERIC_ALL) !== 0) mapped |= FILE_ALL_ACCESS;
+  if ((mask & GENERIC_READ) !== 0) mapped |= FILE_GENERIC_READ;
+  if ((mask & GENERIC_WRITE) !== 0) mapped |= FILE_GENERIC_WRITE;
+  if ((mask & GENERIC_EXECUTE) !== 0) mapped |= FILE_GENERIC_EXECUTE;
+  return mapped >>> 0;
+}
+
 /** Follow only a continuous, matching container-inheritance chain; never guess across a missing ACE or boundary. */
-function grantSource(chain: readonly ChainFolder[], index: number, folder: ChainFolder, grant: Ace): string {
+function grantSource(
+  chain: readonly ChainFolder[],
+  index: number,
+  folder: ChainFolder,
+  grant: Ace,
+): { readonly path: string; readonly inherited: boolean } {
   let source = folder;
   let ace = grant;
   while (ace.flags.includes("ID") && !source.descriptor.protected) {
@@ -77,7 +103,7 @@ function grantSource(chain: readonly ChainFolder[], index: number, folder: Chain
       (candidate) =>
         candidate.type === ace.type &&
         candidate.sid === ace.sid &&
-        candidate.mask === ace.mask &&
+        (candidate.mask === ace.mask || mapGeneric(candidate.mask) === ace.mask) &&
         candidate.flags.includes("CI") &&
         (!candidate.flags.includes("NP") || (!ace.flags.includes("CI") && !ace.flags.includes("OI"))),
     );
@@ -86,7 +112,7 @@ function grantSource(chain: readonly ChainFolder[], index: number, folder: Chain
     ace = inheritedFrom;
     index += 1;
   }
-  return source.path;
+  return { path: source.path, inherited: ace.flags.includes("ID") && !source.descriptor.protected };
 }
 
 /**
@@ -104,10 +130,11 @@ export function checkNamespace(chain: readonly ChainFolder[], user: string, look
       (ace) => ace.type === "A" && !ace.flags.includes("IO") && ace.sid !== user && (ace.mask & NAMESPACE_RIGHTS) !== 0,
     );
     if (grant !== undefined && !trustedOwners.has(grant.sid)) {
+      const source = grantSource(chain, index, folder, grant);
       return refuse(
-        grantSource(chain, index, folder, grant),
+        source.path,
         `${principal(grant.sid, lookup)} may rename, remove or re-permission it`,
-        true,
+        source.inherited ? "inherited" : "explicit",
       );
     }
   }
