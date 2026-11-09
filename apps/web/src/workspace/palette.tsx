@@ -6,8 +6,8 @@ import { resolveKeymap } from "../keys/keymap.ts";
 import { useOverrides } from "../keys/keymap-store.ts";
 import { runAction } from "../keys/dispatcher.ts";
 import { currentPlatform } from "../keys/trigger.ts";
-import { choiceOf, paletteCommands } from "./palette-commands.ts";
-import { type ListedSpace, spaceOfAddress } from "./model.ts";
+import { choiceOf, paletteCommands, spaceNameOf } from "./palette-commands.ts";
+import type { ListedSpace } from "./model.ts";
 import type { ShellAction } from "./shell-actions.ts";
 import { useOverlayFocus } from "./use-overlay-focus.ts";
 
@@ -35,7 +35,7 @@ export function Palette({ terminals, host, route, actions, spaces, onOpenTermina
       actions,
       platform,
       keymap: resolveKeymap(platform, overrides),
-      spaceOf: (address) => spaceOfAddress(spaces, address)?.name,
+      spaceOf: spaceNameOf(spaces),
     });
   }, [terminals, host, route, actions, spaces, overrides]);
   const frame = useRef<HTMLDivElement>(null);
