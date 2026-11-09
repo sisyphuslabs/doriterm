@@ -5,8 +5,8 @@
 ## v0.1.15 - 2026-11-09
 
 Highlights: a terminal no longer jumps when it reconnects (#1394), and typing on a slow link shows at once, Korean
-included (#1640). Pinned tab rows and spinners no longer change size or drift out of step (#1564, #1567), and Safari can
-pair again (#1639).
+included (#1640). Pinned agent rows and spinners no longer change size or drift out of step (#1564, #1567), and Safari can
+pair again. (#1639)
 
 ### Terminal
 
@@ -16,8 +16,8 @@ pair again (#1639).
 - A terminal whose program ends while its machine is offline shows "This session ended" once the machine is back,
   instead of closing its tab. (#1593)
 - On a slow link, what you type is drawn at once and replaced by the host's own text when it arrives, underlined while
-  the link is slow; Korean syllables are drawn too. Settings, Device, "Show typing before the host echoes it" chooses on
-  slow links (the default), always, or off (#1640).
+  the link is slow; Korean syllables are drawn too. Settings, Device, "Show typing before the host echoes it" chooses
+  on slow links (the default), always, or off. (#1640)
 
 ### Workspace
 
@@ -32,7 +32,8 @@ pair again (#1639).
 ### Machine mesh
 
 - A Windows computer in a mesh names the other members with a command Windows can start, with no `sh`, instead of a
-  POSIX shell line it could never run. Reaching them also needs a herdr-core that runs such commands on Windows. (#1581)
+  POSIX shell line it could never run. Reaching them also needs a herdr-core that runs such commands on Windows.
+  (#1581)
 
 ### Joining a mesh
 
@@ -41,18 +42,19 @@ pair again (#1639).
 
 ### Phone
 
-- On a phone with a notch, the command palette now opens below it, so its search field and Cancel button are no longer hidden under the status bar. (#1511)
-- With the soft keyboard down, a row of your keys sits under the terminal: Esc, an arrow or ^C answers a program in one
-  tap without raising the keyboard. It is the same set Settings > Keyboard picks, and Read-only hides it. (#1546)
+- On a phone with a notch, the command palette now opens below it, so its search field and Cancel button are no longer
+  hidden under the status bar. (#1511)
+- With the soft keyboard down, a row of your keys sits under the terminal: Esc, an arrow or ^C answers a program in
+  one tap without raising the keyboard. It is the same set Settings > Keyboard picks, and Read-only hides it. (#1554)
 - With the keyboard up, the keys bar is two rows: the Type field across the width with Send at its end, then the keys,
   so Esc, ^C and the arrows show without a swipe. Enter joins the default keys, in the bar and in the row under the
   terminal. (#1554)
-- Back from a terminal returns the Agents list, and a space's screen of tabs, to where you had scrolled them, instead of
-  to the top (#1557).
+- Back from a terminal returns the Agents list, and a space's screen of tabs, to where you had scrolled them, instead
+  of to the top. (#1557)
 - A terminal at the bottom stays at the bottom when the soft keyboard is dismissed in a browser that resizes the page
-  for it, instead of stopping a few pixels above its last line and no longer following the output (#1573).
+  for it, instead of stopping a few pixels above its last line and no longer following the output. (#1573)
 - A space's screen of tabs keeps each scroll under the space it shows, so Back to a space returns to that space's own
-  place (#1585).
+  place. (#1585)
 
 ### Desktop window
 
@@ -64,15 +66,19 @@ pair again (#1639).
 
 ### Settings
 
-- Searching Settings lists the matching settings themselves, each with its section; picking one (or Enter on the first)
-  opens that section scrolled to the row, with its control focused. "keybinds" now finds the keybinding import. (#1545)
-- Successfully turning notifications on or off clears an earlier failure to move notifications to another host. (#1610)
+- Searching Settings lists the matching settings themselves, each with its section; picking one (or Enter on the
+  first) opens that section scrolled to the row, with its control focused. "keybinds" now finds the keybinding import.
+  (#1545)
+- Successfully turning notifications on or off clears an earlier failure to move notifications to another host.
+  (#1610)
+- On macOS, Notifications reads the app's system authorization through the native addon instead of always saying the
+  computer decides. A denied permission can now show the existing remedy and Check again controls. (#1628)
 
 ### Host install
 
-- install.sh hands the mesh link to `mesh join` in a file only you can read, never on its command line where
-  other local users can read it, and `DORIFACE_JOIN=<link>` joins like `--join` with the link off the installer's
-  own command line. (#1625)
+- install.sh hands the mesh link to `mesh join` in a file only you can read, never on its command line where other
+  local users can read it, and `DORIFACE_JOIN=<link>` joins like `--join` with the link off the installer's own
+  command line. (#1625)
 - The setup skill's `uninstall` removes the service even when the only herdr-core on the machine is older than the
   floor, since removing it never runs herdr-core. (#1629)
 
@@ -83,7 +89,8 @@ pair again (#1639).
 
 ### Interface
 
-- The explanation under an error notice, such as a refused pairing or unreadable storage, now uses a softened text colour that belongs to the red card instead of a flat gray. (#1524)
+- The explanation under an error notice, such as a refused pairing or unreadable storage, now uses a softened text
+  colour that belongs to the red card instead of a flat gray. (#1524)
 
 ## v0.1.14 - 2026-11-09
 
