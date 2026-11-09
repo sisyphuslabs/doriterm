@@ -8,9 +8,11 @@ import { expectTouchTargets, PHONE } from "./phone-key-bar.ts";
 // terminal, one tap each; the strip goes once the agent stops waiting (#1527).
 test.use({ serviceWorkers: "block" });
 
+/** An OSC 7501 status report, as an agent writes it. */
+const osc = (fields: string) => `printf '\\033]7501;${fields}\\033\\\\'`;
+
 /** Asks "Continue?" as a blocked agent, then prints the line it read (cat -v) as working. */
 function startWaiting(name: string, app: string): string {
-  const osc = (fields: string) => `printf '\\033]7501;${fields}\\033\\\\'`;
   const script = [
     osc(`state=blocked:kind=permission:app=${app}`),
     "printf 'Continue? [Y/n] '",
