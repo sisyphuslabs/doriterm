@@ -4,7 +4,18 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { collectGitFacts, dirsOf, parseStatus, publishGitFacts, readGitFacts, writeGitFacts } from "./git-facts.ts";
+import {
+  collectGitFacts,
+  dirsOf,
+  GIT_TIMED_OUT,
+  type GitFactsMemory,
+  KEEP_TIMED_OUT_TICKS,
+  parseStatus,
+  publishGitFacts,
+  readGitFacts,
+  type RunGit,
+  writeGitFacts,
+} from "./git-facts.ts";
 
 const root = mkdtempSync(join(tmpdir(), "git-facts-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -141,6 +152,75 @@ describe("dirsOf and collectGitFacts", () => {
       v: 1,
       dirs: { "/repo": { branch: "main", detached: false, onDefault: true, ahead: 0, behind: 0, dirty: false } },
     });
+  });
+});
+
+describe("collectGitFacts across ticks (#1606)", () => {
+  const mainFacts = { branch: "main", detached: false, onDefault: true, ahead: 0, behind: 0, dirty: false };
+  /** A git whose `status` in /repo answers, times out, or says "not a repository", as `answer` says this tick. */
+  function scripted(): { run: RunGit; answer: { now: "facts" | "timeout" | "no repo" } } {
+    const answer = { now: "facts" as "facts" | "timeout" | "no repo" };
+    const run: RunGit = async (dir, args) => {
+      if (dir !== "/repo" || answer.now === "no repo") return undefined;
+      if (answer.now === "timeout") return GIT_TIMED_OUT;
+      return args[0] === "status" ? "# branch.head main\n" : undefined;
+    };
+    return { run, answer };
+  }
+
+  test("a timed-out read keeps the directory's last facts for a bounded number of ticks, then drops them", async () => {
+    const { run, answer } = scripted();
+    const memory: GitFactsMemory = new Map();
+    expect((await collectGitFacts(["/repo"], run, memory)).dirs).toEqual({ "/repo": mainFacts });
+    answer.now = "timeout";
+    for (let tick = 1; tick <= KEEP_TIMED_OUT_TICKS; tick += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- ticks run one after another
+      expect((await collectGitFacts(["/repo"], run, memory)).dirs).toEqual({ "/repo": mainFacts });
+    }
+    expect((await collectGitFacts(["/repo"], run, memory)).dirs).toEqual({});
+  });
+
+  test("an answered read resets the bound", async () => {
+    const { run, answer } = scripted();
+    const memory: GitFactsMemory = new Map();
+    await collectGitFacts(["/repo"], run, memory);
+    answer.now = "timeout";
+    await collectGitFacts(["/repo"], run, memory);
+    answer.now = "facts";
+    await collectGitFacts(["/repo"], run, memory);
+    answer.now = "timeout";
+    for (let tick = 1; tick <= KEEP_TIMED_OUT_TICKS; tick += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- ticks run one after another
+      expect((await collectGitFacts(["/repo"], run, memory)).dirs).toEqual({ "/repo": mainFacts });
+    }
+  });
+
+  test("a directory that stops being a repository drops at once, and a later timeout has nothing to keep", async () => {
+    const { run, answer } = scripted();
+    const memory: GitFactsMemory = new Map();
+    await collectGitFacts(["/repo"], run, memory);
+    answer.now = "no repo";
+    expect((await collectGitFacts(["/repo"], run, memory)).dirs).toEqual({});
+    answer.now = "timeout";
+    expect((await collectGitFacts(["/repo"], run, memory)).dirs).toEqual({});
+  });
+
+  test("a directory no terminal sits in any more is forgotten", async () => {
+    const { run, answer } = scripted();
+    const memory: GitFactsMemory = new Map();
+    await collectGitFacts(["/repo"], run, memory);
+    await collectGitFacts([], run, memory);
+    answer.now = "timeout";
+    expect((await collectGitFacts(["/repo"], run, memory)).dirs).toEqual({});
+  });
+
+  test("a timed-out read of origin's HEAD keeps the last facts rather than guessing the default branch", async () => {
+    const memory: GitFactsMemory = new Map();
+    const trunk: RunGit = async (_dir, args) =>
+      args[0] === "status" ? "# branch.head trunk\n" : "origin/trunk\n";
+    await collectGitFacts(["/repo"], trunk, memory);
+    const slowOrigin: RunGit = async (_dir, args) => (args[0] === "status" ? "# branch.head trunk\n" : GIT_TIMED_OUT);
+    expect((await collectGitFacts(["/repo"], slowOrigin, memory)).dirs["/repo"]?.onDefault).toBe(true);
   });
 });
 
