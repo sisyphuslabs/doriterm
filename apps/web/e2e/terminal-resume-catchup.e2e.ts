@@ -63,7 +63,7 @@ async function hiddenDocumentFrames(page: Page): Promise<void> {
     };
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") return;
-      for (const [id, run] of [...parked]) {
+      for (const [id, run] of parked) {
         parked.delete(id);
         book(id, run);
       }

@@ -27,7 +27,7 @@ function manualTimers() {
   const advance = (ms: number): void => {
     const until = now + ms;
     for (;;) {
-      const next = due.filter((entry) => entry.at <= until).sort((a, b) => a.at - b.at)[0];
+      const next = due.filter((entry) => entry.at <= until).toSorted((a, b) => a.at - b.at)[0];
       if (next === undefined) break;
       due.splice(due.indexOf(next), 1);
       now = next.at;
@@ -310,17 +310,18 @@ describe("OutputPacer catching up a backlog (D5)", () => {
   });
 });
 
-describe("OutputPacer holding an attach replay (D5)", () => {
-  function replaying(srtt: number | undefined) {
-    const frames = manualFrames();
-    const timers = manualTimers();
-    const written: number[] = [];
-    const holds: boolean[] = [];
-    const pacer = new OutputPacer((batch) => written.push(batch.byteLength), frames.frame, timers.now, timers.timer);
-    pacer.replay({ srtt: () => srtt, hold: (held) => holds.push(held) });
-    return { frames, timers, written, holds, pacer };
-  }
+/** A pacer in an attach replay, on manual frames and timers, recording what it writes and each hold. */
+function replaying(srtt: number | undefined) {
+  const frames = manualFrames();
+  const timers = manualTimers();
+  const written: number[] = [];
+  const holds: boolean[] = [];
+  const pacer = new OutputPacer((batch) => written.push(batch.byteLength), frames.frame, timers.now, timers.timer);
+  pacer.replay({ srtt: () => srtt, hold: (held) => holds.push(held) });
+  return { frames, timers, written, holds, pacer };
+}
 
+describe("OutputPacer holding an attach replay (D5)", () => {
   test("the replay is written as it arrives, uncapped, held until it is quiet for 1.5 x SRTT + 50 ms", () => {
     const { frames, timers, written, holds, pacer } = replaying(300);
     expect(holds).toEqual([true]);
