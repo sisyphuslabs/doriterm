@@ -43,6 +43,18 @@ const ROWS: readonly SettingHit[] = [
   row("keybindings", "Import keybinds…", "From a Ghostty config", ["keybinds", "keybindings", "import", "ghostty"]),
   row("voice", "Language", "The language dictation listens for", ["dictation", "speech"]),
   row("voice", "Speech recognition", "Where dictation runs", ["dictation", "dictate", "microphone"]),
+  // Doriterm's own, not a Ghostty key: drawn above the keys by terminal-section.tsx.
+  {
+    ...row("terminal", "Predict typing", "Draws a typed key before the host echoes it", [
+      "prediction",
+      "predictive",
+      "local echo",
+      "mosh",
+      "typing",
+      "latency",
+    ]),
+    anchor: "terminal-predict-typing",
+  },
 ];
 
 const TERMINAL_ROWS: readonly SettingHit[] = KEYS.map((def) => ({

@@ -1,4 +1,14 @@
-import { Badge, Button, IconButton, Input, Notice, SettingRow, TerminalPreview, type TerminalLine } from "@doriface/ui";
+import {
+  Badge,
+  Button,
+  IconButton,
+  Input,
+  Notice,
+  SegmentedControl,
+  SettingRow,
+  TerminalPreview,
+  type TerminalLine,
+} from "@doriface/ui";
 import { asSentence } from "../storage/sentence.ts";
 import { RotateCcw } from "lucide-react";
 import { useState } from "react";
@@ -8,6 +18,7 @@ import { KEYS } from "../ghostty/keys.ts";
 import { GROUP_LABEL, type Group, type KeyDef } from "../ghostty/schema.ts";
 import { KeyControl } from "./terminal-control.tsx";
 import { ImportExport } from "./terminal-import.tsx";
+import { usePredictionMode, type PredictionMode } from "../terminal/prediction-prefs.ts";
 
 const GROUPS: readonly Group[] = ["font", "cursor", "colors", "spacing", "behavior"];
 
@@ -100,6 +111,27 @@ function KeyRow({
   );
 }
 
+const PREDICTION_MODES: readonly { readonly value: PredictionMode; readonly label: string }[] = [
+  { value: "adaptive", label: "When slow" },
+  { value: "always", label: "Always" },
+  { value: "never", label: "Never" },
+];
+
+/** Doriterm's own preference (#1439): not a Ghostty key, never written into a Ghostty config. */
+function PredictTypingRow() {
+  const [mode, setMode] = usePredictionMode();
+  return (
+    <SettingRow
+      id="terminal-predict-typing"
+      title="Predict typing"
+      description="Draws a typed key before the host echoes it, over a slow link"
+      control={
+        <SegmentedControl label="Predict typing" options={PREDICTION_MODES} value={mode} onValueChange={setMode} />
+      }
+    />
+  );
+}
+
 /** Every Ghostty key the renderer knows, grouped, searchable, with a live preview above. */
 export function TerminalSection() {
   const config = useTerminalConfig();
@@ -122,6 +154,7 @@ export function TerminalSection() {
           className="font-(family-name:--term-font-family) text-(length:--term-font-pixels) leading-(--term-row-height)"
         />
       </div>
+      <PredictTypingRow />
       <div className="flex flex-wrap items-center gap-2">
         <Input
           aria-label="Search terminal settings"

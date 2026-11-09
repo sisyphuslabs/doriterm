@@ -77,17 +77,22 @@ function fakeCore(measured: number[]): GhosttyCore {
 }
 
 /** An idle scheduler stepped by hand: each step runs one queued slice to its end. */
-function manualIdle(): { schedule: (work: () => Promise<void>) => void; step: () => Promise<boolean> } {
+function manualIdle(): {
+  schedule: (work: () => Promise<void>) => void;
+  step: () => Promise<boolean>;
+  drain: () => Promise<void>;
+} {
   const queue: (() => Promise<void>)[] = [];
-  return {
-    schedule: (work) => void queue.push(work),
-    step: async () => {
-      const next = queue.shift();
-      if (next === undefined) return false;
-      await next();
-      return true;
-    },
+  const step = async (): Promise<boolean> => {
+    const next = queue.shift();
+    if (next === undefined) return false;
+    await next();
+    return true;
   };
+  const drain = async (): Promise<void> => {
+    if (await step()) await drain();
+  };
+  return { schedule: (work) => void queue.push(work), step, drain };
 }
 
 describe("CodepointWidths.known and warm, for a synchronous widthOf (P7)", () => {
@@ -109,9 +114,7 @@ describe("CodepointWidths.known and warm, for a synchronous widthOf (P7)", () =>
       [0xac00, 0xac01],
     ]);
     expect(widths.known(0x41)).toBeUndefined();
-    while (await idle.step()) {
-      // Each step is one slice.
-    }
+    await idle.drain();
     expect([0x41, 0x42, 0x43].map((each) => widths.known(each))).toEqual([false, false, false]);
     expect([0xac00, 0xac01].map((each) => widths.known(each))).toEqual([true, true]);
     expect(measured).toEqual([0x41, 0x42, 0x43, 0xac00, 0xac01]);
@@ -127,9 +130,7 @@ describe("CodepointWidths.known and warm, for a synchronous widthOf (P7)", () =>
     expect(widths.known(0xac00 + 511)).toBe(true);
     expect(widths.known(0xac00 + 512)).toBeUndefined();
     cancel();
-    while (await idle.step()) {
-      // A slice queued before the cancel finds it cancelled.
-    }
+    await idle.drain();
     expect(measured).toHaveLength(512);
     expect(widths.known(0xac00 + 512)).toBeUndefined();
   });
@@ -140,9 +141,7 @@ describe("CodepointWidths.known and warm, for a synchronous widthOf (P7)", () =>
     const widths = new CodepointWidths(() => Promise.resolve(fakeCore(measured)), idle.schedule);
     await widths.of("b");
     widths.warm([[0x61, 0x63]]);
-    while (await idle.step()) {
-      // Each step is one slice.
-    }
+    await idle.drain();
     expect(measured).toEqual([0x62, 0x61, 0x63]);
   });
 });
