@@ -94,7 +94,8 @@ type Budget = "arrived" | number;
  * Catching up, after the app comes back or a reattach replay starts, a backlog deeper than {@link CATCHUP_THRESHOLD} at a
  * frame is written in that frame, up to {@link CATCHUP_FRAME_BYTES}, until the queue is under it or one credit window
  * (or the backlog at its start, if larger) is written; a flood otherwise stays paced at {@link FRAME_BYTES}. An attach
- * replay is written as it arrives while the view holds its paint, until the replay goes quiet.
+ * replay is written as it arrives while the view holds its paint, until the replay goes quiet; a synchronized update
+ * met inside it stands the replay down, since the update holds the paint itself (#812).
  */
 export class OutputPacer {
   readonly #write: (bytes: Uint8Array) => void;
@@ -297,6 +298,8 @@ export class OutputPacer {
     const credits: [(bytes: number) => void, number][] = [];
     const limit = budget === "arrived" ? 0 : budget;
     let size = 0;
+    // Whether this batch opens, continues or ends inside a synchronized update: the update holds the paint for it.
+    let synchronized = this.#update.open;
     while (this.#queue.length > 0) {
       const unpaced = this.#unpaced();
       if (!unpaced && size >= limit) break;
@@ -306,7 +309,10 @@ export class OutputPacer {
       // Read up to where an open update ends: what follows it is paced again.
       const take = this.#update.advance(head.bytes.subarray(0, room));
       if (!this.#update.open) this.#openedAt = null;
-      else if (this.#openedAt === null) this.#openedAt = this.#clock();
+      else {
+        synchronized = true;
+        if (this.#openedAt === null) this.#openedAt = this.#clock();
+      }
       parts.push(take === head.bytes.byteLength ? head.bytes : head.bytes.subarray(0, take));
       credits.push([head.credit, take]);
       size += take;
@@ -321,7 +327,9 @@ export class OutputPacer {
     const replay = this.#replay;
     if (replay === null) return size;
     replay.written += size;
-    if (replay.written >= REPLAY_MAX_BYTES) this.#endReplay();
+    // A synchronized update holds the paint for what it brackets itself, so a replay that met one stands down instead
+    // of holding a second time: the update's bracket draws the replay (#812).
+    if (synchronized || replay.written >= REPLAY_MAX_BYTES) this.#endReplay();
     return size;
   }
 }
