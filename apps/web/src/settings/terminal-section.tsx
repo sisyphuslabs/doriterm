@@ -66,6 +66,7 @@ function KeyRow({
     <SettingRow
       id={`terminal-${def.key}`}
       className="items-start"
+      {...(def.label === undefined ? {} : { configKey: def.key })}
       title={
         <span className="flex flex-wrap items-center gap-2 font-mono text-sm">
           {def.label ?? def.key}

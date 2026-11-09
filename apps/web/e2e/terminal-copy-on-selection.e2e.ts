@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
-import { disableCopyTrim, enableCopyOnSelection } from "./terminal-settings.ts";
+import { disableCopyTrim, enableCopyOnSelection, openTerminalSettings } from "./terminal-settings.ts";
 
 endOwnTerminals();
 test.use({ serviceWorkers: "block" });
@@ -67,6 +67,14 @@ async function startSelection(page: Page, terminal: Locator): Promise<void> {
   await page.mouse.move(box.right, box.y, { steps: 8 });
   await expect.poll(() => page.evaluate(() => getSelection()?.toString() ?? "")).toBe(SELECTED);
 }
+
+test("Terminal settings shows Copy on selection's plain label and its Ghostty key", async ({ page }) => {
+  await page.goto("/");
+  await openTerminalSettings(page);
+  const row = page.locator("[data-setting-row]").filter({ hasText: "Copy on selection" });
+  await expect(row).toContainText("Copy on selection");
+  await expect(row).toContainText("copy-on-select");
+});
 
 test("Copy on selection is off by default: a drag leaves the seeded clipboard untouched", async ({ page }) => {
   const terminal = await terminalWithText(page);
