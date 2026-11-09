@@ -7,7 +7,7 @@ import { defaultKeymap } from "./defaults.ts";
  * but an app action on one of these takes the key away, which is what #1302 reported.
  */
 const ALT_ARROW = /^alt\+(up|down|left|right)$/;
-const ALT_LETTER = /^alt\+[a-z]$/;
+const ALT_LETTER = /^alt\+(shift\+)?[a-z]$/;
 
 /**
  * The one family that keeps Alt+letters on purpose: Ghostty's vim-style pane keys, carried by herdr-app. A Linux or
