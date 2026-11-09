@@ -112,12 +112,13 @@
   --font-ui:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   /* Bundled faces first (terminal-fonts.css), so symbols and icons draw the same everywhere; then the platform's mono,
-     Hangul and emoji faces by name, so a phone never falls back to a face that has no Hangul (#949). */
+     Hangul and emoji faces by name, so a phone never falls back to a face that has no Hangul (#949). The Powerline
+     subset sits after JetBrains Mono, which draws Latin and seven of the eight separators itself (#1403). */
   --font-term:
-    "JetBrains Mono Variable", "JetBrains Mono", "Symbols Nerd Font Mono", "Doriterm Noto Symbols 2",
-    "Doriterm Noto Symbols", "Doriterm Noto Math", ui-monospace, "SF Mono", Menlo, Consolas, "Apple SD Gothic Neo",
-    "Noto Sans Mono CJK KR", "Noto Sans CJK KR", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji",
-    "Noto Color Emoji", "Segoe UI Emoji", monospace;
+    "JetBrains Mono Variable", "JetBrains Mono", "Doriterm Powerline", "Symbols Nerd Font Mono",
+    "Doriterm Noto Symbols 2", "Doriterm Noto Symbols", "Doriterm Noto Math", ui-monospace, "SF Mono", Menlo, Consolas,
+    "Apple SD Gothic Neo", "Noto Sans Mono CJK KR", "Noto Sans CJK KR", "Noto Sans KR", "Malgun Gothic",
+    "Apple Color Emoji", "Noto Color Emoji", "Segoe UI Emoji", monospace;
 
   /* Pointer-precise sizes (desktop). Coarse pointers override below. */
   --type-2xs: 0.6875rem;
