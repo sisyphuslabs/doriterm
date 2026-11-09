@@ -56,14 +56,14 @@ test("a connected machine whose line is redialing reads reconnecting until the g
 });
 
 test("the slowest return measured on a real relay blip, 62 s after the drop, never reads offline", () => {
-  const connected = [machine("jobdori", "connected")];
-  const dropped = [machine("jobdori", "unreachable", 2_000)];
+  const connected = [machine("workstation", "connected")];
+  const dropped = [machine("workstation", "unreachable", 2_000)];
   let held = stepHeld(NONE, { views: connected, at: 0 }, dropped, 4_000);
   let before = { views: dropped, at: 4_000 as number | undefined };
   for (let now = 14_000; now <= 64_000; now += 10_000) {
     held = stepHeld(held, before, dropped, now);
     before = { views: dropped, at: now };
-    expect(shown(dropped, held, now)).toEqual([["jobdori", "reconnecting"]]);
+    expect(shown(dropped, held, now)).toEqual([["workstation", "reconnecting"]]);
   }
   expect(stepHeld(held, before, connected, 64_100).size).toBe(0);
 });
