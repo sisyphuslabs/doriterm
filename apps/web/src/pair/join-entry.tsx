@@ -10,6 +10,7 @@ import { useOnline } from "../pwa/use-online.ts";
 import { ScanButton } from "./scan-button.tsx";
 import { offerFromScan } from "./scan.ts";
 import { pairingLink } from "./link-capture.ts";
+import { isIos, runsInstalled } from "../device/install.ts";
 
 /** The same entry point for a fresh tab and a separate, empty iOS home-screen storage partition. */
 export function JoinEntry({ onOffer }: { readonly onOffer: (offer: PairingOffer) => void }) {
@@ -49,6 +50,15 @@ export function JoinEntry({ onOffer }: { readonly onOffer: (offer: PairingOffer)
       <p className="text-base text-muted-foreground">
         Open an invite from a machine you can see, or ask a member for one by a call or in person.
       </p>
+      {runsInstalled() ? (
+        <p className="text-sm text-muted-foreground">
+          This app has its own storage, so it starts as a device of its own and is not paired with anything yet.
+          {isIos()
+            ? " An app added to the Home Screen keeps separate storage from the Safari tab you installed it from, which is why it asks again."
+            : " An installed app keeps separate storage from the tab you installed it from, which is why it asks again."}{" "}
+          Opening or pasting an invite below pairs it in place.
+        </p>
+      ) : null}
       {!online ? (
         <Notice title="You are offline" tone="warning">
           <span id="join-needs-network">Joining a mesh needs a network. Reconnect, then open or paste an invite.</span>
