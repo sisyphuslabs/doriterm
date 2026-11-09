@@ -1,8 +1,8 @@
 # A browser joins a mesh as its own member
 
-Status: stage 2 of #1386, 2026-11-08. Implements §4 of `docs/design/device-mesh-membership.md` (the #1377 design,
-revision 4) as far as the join itself; the roster-as-the-unit (stage 3) and the join code that replaces the fingerprint
-screen (stage 4, #1377 §9) are not in this change.
+Status: stage 2 of #1386, 2026-11-08. Implements §4 of `docs/design/device-mesh-membership.md` (the #1377 design, as
+built; its §0 maps each section to the pull request that built it) as far as the join itself; the roster-as-the-unit
+(stage 3) and the join code that replaces the fingerprint screen (stage 4, #1377 §9) are not in this change.
 
 ## 1. What a browser may join
 
