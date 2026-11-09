@@ -1,5 +1,4 @@
-import { HcRpcError, type MachineView, type TerminalRunParams } from "@doriface/protocol";
-import { machineCause } from "./machine-cause.ts";
+import { HcRpcError, type TerminalRunParams } from "@doriface/protocol";
 
 export interface RunFailure {
   readonly machine: string;
@@ -24,13 +23,8 @@ export async function startTerminal(
   run: (params: TerminalRunParams) => Promise<{ readonly address: string }>,
   params: TerminalRunParams,
   localName: string,
-  target?: MachineView,
 ): Promise<Started> {
   const machine = params.on ?? localName;
-  const cause = target === undefined ? undefined : machineCause(target);
-  if (cause !== undefined) {
-    return { ok: false, failure: { machine, kind: "unavailable", message: cause.detail } };
-  }
   try {
     return { ok: true, address: (await run(params)).address };
   } catch (error) {

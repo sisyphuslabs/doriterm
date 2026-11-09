@@ -5,8 +5,6 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { readDisplay } from "../terminal/display.ts";
 import { openingCallsOf, runWithAttach } from "../terminal/opening-attach.ts";
 import { failureNotice, startTerminal } from "./start-on.ts";
-import { machineCause } from "./machine-cause.ts";
-import { machineSnapshots } from "./machine-snapshot.ts";
 import { withoutClaim } from "./use-layout.ts";
 import type { TypeAhead } from "./use-type-ahead.ts";
 
@@ -43,15 +41,12 @@ export function useMachineRuns(
   const start = useCallback(
     (params: TerminalRunParams, place: (address: string) => void = opened, failed?: () => void): void => {
       const core = connection.hello.core.name;
-      const machines = machineSnapshots(connection);
-      const target = () => machines.getSnapshot().views.find((machine) => machine.name === params.on);
       const hold = typeAhead.hold();
       const display = readDisplay(document.documentElement);
       void startTerminal(
         (run) => runWithAttach(connection, openingCallsOf(connection), run, display),
         params,
         core,
-        target(),
       ).then((started) => {
         if (!mounted.current) return undefined;
         if (started.ok) {
@@ -61,15 +56,7 @@ export function useMachineRuns(
           return typeAhead.deliver(hold, started.address);
         }
         typeAhead.release(hold);
-        // The refusal is live evidence: all readers see the drop before the next periodic list arrives.
-        if (started.failure.kind === "unavailable") machines.unavailable(started.failure.machine);
-        const view = target();
-        const cause = view === undefined ? undefined : machineCause(view);
-        const failure =
-          started.failure.kind === "unavailable" && cause !== undefined
-            ? { ...started.failure, message: cause.detail }
-            : started.failure;
-        toasts.add({ type: "error", ...failureNotice(failure, connection.closed, core) });
+        toasts.add({ type: "error", ...failureNotice(started.failure, connection.closed, core) });
         failed?.();
         return refresh();
       });

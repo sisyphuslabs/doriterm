@@ -11,7 +11,7 @@ import {
 } from "./machine-switch.ts";
 
 test.describe("machines added with hc machine add", () => {
-  test("a redial reads reconnecting in Spaces and Machines, blocks create, then creates on recovery", async ({
+  test("an unreachable host stops advertising connected and creates again after recovery", async ({
     page,
   }, testInfo) => {
     const errors: string[] = [];
@@ -22,6 +22,7 @@ test.describe("machines added with hc machine add", () => {
       switchTo("drop");
       await expect(machineRow(page)).toContainText("reconnecting", { timeout: STATE_BOUND_MS });
       await expect(newOn(page)).toBeDisabled();
+      await expect(page.getByText(`Reconnecting to ${MACHINE_NAME}`, { exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath("spaces-reconnecting.png") });
       await page.getByRole("link", { name: "Settings", exact: true }).click();
       await page.getByRole("button", { name: "Machines", exact: true }).click();
@@ -30,6 +31,10 @@ test.describe("machines added with hc machine add", () => {
       });
       await expect(row).toContainText("Reconnecting");
       await page.screenshot({ path: testInfo.outputPath("machines-reconnecting.png") });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await row.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath("phone-reconnecting.png") });
+      await page.setViewportSize({ width: 1280, height: 720 });
       reconnect();
       await expect(row).toContainText("Connected", { timeout: STATE_BOUND_MS });
       await page.getByRole("button", { name: "Close settings", exact: true }).click();

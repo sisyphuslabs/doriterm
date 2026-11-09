@@ -1,7 +1,9 @@
-import type { MachineView } from "@doriface/protocol";
+import { HcRpcError, type MachineView } from "@doriface/protocol";
 import { expect, test } from "bun:test";
 import { graceEnds, graceViews, OFFLINE_GRACE_MS, stepHeld, type Held } from "./machine-grace.ts";
+import { machineEntries } from "./machines.ts";
 import { withReach } from "./reach.ts";
+import { startTerminal } from "./start-on.ts";
 
 const machine = (name: string, state: string, since_ms: number | null = null): MachineView => ({
   name,
@@ -20,13 +22,24 @@ const FIRST = { views: [], at: undefined };
 const shown = (list: readonly MachineView[], held: Held, now: number) =>
   graceViews(list, held, now).map((view) => [view.name, view.state]);
 
-test("a redial hold preserves terminals without advertising a disconnected machine as ready to create", () => {
+test("an unreachable host is not labelled connected while creation correctly reports not connected", async () => {
   const dropped = [machine("rack", "unreachable", 1_000)];
   const held = stepHeld(NONE, { views: [machine("rack", "connected")], at: 0 }, dropped, 1_050);
 
   const visible = graceViews(dropped, held, 1_050);
+  const entries = machineEntries({ id: "local", name: "local" }, visible, []);
+  const created = await startTerminal(
+    () =>
+      Promise.reject(new HcRpcError({ code: -32000, message: "rack is unreachable", data: { kind: "unavailable" } })),
+    { on: "rack" },
+    "local",
+  );
 
-  expect(visible[0]?.state).toBe("reconnecting");
+  expect(created).toEqual({
+    ok: false,
+    failure: { machine: "rack", kind: "unavailable", message: "rack is not connected" },
+  });
+  expect(entries.find((entry) => entry.name === "rack")?.state).toBe("reconnecting");
 });
 
 test("a connected machine whose line is redialing reads reconnecting until the grace ends, then offline", () => {
