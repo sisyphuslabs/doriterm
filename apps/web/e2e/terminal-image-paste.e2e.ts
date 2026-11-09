@@ -141,6 +141,41 @@ test("an image past 8 MB is refused with a notice and nothing reaches the termin
   await expect(terminal).toContainText("before-after", { timeout: 15_000 });
 });
 
+// herdr-app binds Ctrl+V to terminal.paste_image on every platform (#1922): an image on the clipboard is pasted as a file
+// on the terminal's machine, and without one the program gets ^V, as from the key itself.
+for (const platform of ["MacIntel", "Linux x86_64"]) {
+  test(`Ctrl+V pastes the clipboard's image by its path, as herdr-app does (${platform})`, async ({ page }) => {
+    await page.addInitScript((value) => {
+      Object.defineProperty(Navigator.prototype, "platform", { get: () => value });
+    }, platform);
+    await page.goto("/");
+    const terminal = await openNewTerminal(page);
+    await terminal.getByRole("textbox").focus();
+    await copyImage(page, await makePng(page, 9, 60));
+    await page.keyboard.type("echo ");
+    await page.keyboard.press("Control+KeyV");
+    await expect(terminal).toContainText("doriface-paste-", { timeout: 30_000 });
+  });
+
+  test(`Ctrl+V with no image on the clipboard sends ^V to the program (${platform})`, async ({ page }) => {
+    await page.addInitScript((value) => {
+      Object.defineProperty(Navigator.prototype, "platform", { get: () => value });
+    }, platform);
+    await page.goto("/");
+    const terminal = await openNewTerminal(page);
+    await terminal.getByRole("textbox").focus();
+    await page.evaluate(() => navigator.clipboard.writeText("only-text"));
+    // Raw mode, so the tty hands ^V to dd rather than reading it as its literal-next key; RAW-ON is printed once it is.
+    await page.keyboard.type(
+      "stty raw -echo; printf 'RAW%s\\r\\n' -ON; dd bs=1 count=1 2>/dev/null | od -An -tx1 | sed 's/^ */HEX:/'; stty sane\r",
+    );
+    await expect(terminal).toContainText("RAW-ON", { timeout: 15_000 });
+    await page.keyboard.press("Control+KeyV");
+    await expect(terminal).toContainText("HEX:16", { timeout: 15_000 });
+    await expect(terminal).not.toContainText("only-text");
+  });
+}
+
 test("several lines of text still ask before they run, as clipboard-paste-protection does", async ({ page }) => {
   await page.goto("/");
   const terminal = await openNewTerminal(page);
