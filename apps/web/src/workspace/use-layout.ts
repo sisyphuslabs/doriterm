@@ -3,6 +3,7 @@ import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState 
 import {
   addTab as addDocTab,
   type Axis,
+  docSpaces,
   type DocEdit,
   editTab,
   freshId,
@@ -11,7 +12,7 @@ import {
   splitPane,
   terminalBlock,
 } from "@doriface/protocol/layout";
-import { loadView, rememberSeen, saveView, tabKey, type Seen, type View } from "../layout/view.ts";
+import { loadView, rememberSeen, saveView, spaceKey, tabKey, type Seen, type View } from "../layout/view.ts";
 import {
   buildTabs,
   findTerminal,
@@ -51,9 +52,10 @@ export interface Layout extends PaneMoves {
   readonly focusPane: (tab: string, pane: string) => void;
   /**
    * Focuses the pane that shows the terminal, or opens it in a new tab: in the selected space, after its tab in view,
-   * when the terminal is on that space's machine; else, or with `newSpace`, as the first tab of a new space.
+   * when the terminal is on that space's machine; else, or with `newSpace`, as the first tab of a new space. With `space`
+   * (a `spaceKey` of the terminal's machine) the new tab goes into that space, also one with no tab to select.
    */
-  readonly openTerminal: (address: string, newSpace?: boolean) => void;
+  readonly openTerminal: (address: string, newSpace?: boolean, space?: string) => void;
   /** Puts a terminal started for a pane (the focused one unless `target` names another) beside it, and focuses it. */
   readonly split: (axis: Axis, address: string, target?: PaneTarget, pane?: string) => void;
   /** Takes the terminal's pane out of its tab, and the tab when it was the last pane; the terminal is untouched. */
@@ -266,7 +268,7 @@ export function useLayout(
   );
 
   const addTab = useCallback(
-    (address: string, newSpace = false): void => {
+    (address: string, newSpace = false, into?: string): void => {
       const machine = machineOf(address) ?? null;
       const layout = layoutOf(machine);
       const writable = layout !== undefined && layout.readOnly === null;
@@ -279,8 +281,21 @@ export function useLayout(
       const kept = fate === "with-new" && active !== null ? written(active) : null;
       // herdr-app's add_tab: right after the selected tab of the selected space; a terminal of another machine, or one
       // asked for as a new space, starts a space of its own, never the first space of the document.
-      const near = !newSpace && active !== null && !active.transient && active.machine === machine ? active : null;
-      const space = { id: near?.space ?? freshId("spc"), folder: "" };
+      // A named space of this machine takes it, after its selected tab when that is the one in view, else last.
+      const docSpace =
+        into === undefined || layout.doc === null
+          ? undefined
+          : docSpaces(layout.doc).find((each) => spaceKey(layout.machineId, each.id) === into);
+      const named = docSpace?.id ?? null;
+      const near =
+        !newSpace &&
+        active !== null &&
+        !active.transient &&
+        active.machine === machine &&
+        (named === null || active.spaceKey === into)
+          ? active
+          : null;
+      const space = { id: named ?? near?.space ?? freshId("spc"), folder: "" };
       void layout.edit((doc) => {
         const first = kept === null ? doc : addDocTab(doc, space, { id: kept.id, name: "", root: kept.root });
         return addDocTab(first, space, tab, kept?.id ?? near?.id);
@@ -291,9 +306,9 @@ export function useLayout(
   );
 
   const openTerminal = useCallback(
-    (address: string, newSpace = false): void => {
+    (address: string, newSpace = false, space?: string): void => {
       const found = findTerminal(tabs, address);
-      if (found === null) addTab(address, newSpace);
+      if (found === null) addTab(address, newSpace, space);
       else show(found.tab.key, found.pane.id);
     },
     [addTab, show, tabs],

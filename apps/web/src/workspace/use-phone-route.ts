@@ -35,7 +35,10 @@ export interface PhoneNavigation {
   readonly backFromSpace: () => void;
   /** Forgets a space that is no longer listed (closed here or elsewhere), in place: the list shows, no entry is added. */
   readonly dropSpace: () => void;
-  /** Whether the last move between entries went forward (a push): only then does a pushed screen slide in. */
+  /**
+   * Whether the space screen in view was reached by a push: only then does it slide in. One shown again under an open
+   * terminal's entry (the terminal went away) was not pushed, whichever way the last move went.
+   */
   readonly pushed: boolean;
   /** Whether the switch sheet is open over the open terminal (`&sheet=switch`). */
   readonly sheet: boolean;
@@ -174,9 +177,13 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     [go, index, listed, router],
   );
   const backFromSpace = useCallback(() => {
-    if (listed.terminal === null) back();
+    if (listed.terminal === null) return back();
+    // Shown under a terminal that went away: the terminal's entry (and its sheet's) sit over the space's, which this page
+    // pushed over the list when it is above the landing entry, so Back pops all of them; else the list replaces it.
+    const over = listed.sheet ? 3 : 2;
+    if (landed !== null && index - over >= landed) router.history.go(-over);
     else go({ ...listed, space: null, terminal: null, sheet: false }, true);
-  }, [back, go, listed]);
+  }, [back, go, index, listed, router]);
   // A cold start on the bare list (the home screen's icon) picks up where the phone was; an address that names a place, a
   // tapped notice, or a page that has already moved, wins. From then on every place the list route reaches is kept.
   const place = phoneHref({ ...listed, sheet: false });
@@ -221,7 +228,7 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     back,
     backFromSpace,
     dropSpace,
-    pushed: forward.current,
+    pushed: forward.current && listed.terminal === null,
     sheet: sheetOn,
     showSheet,
   };
