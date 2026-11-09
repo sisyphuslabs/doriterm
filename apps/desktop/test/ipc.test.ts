@@ -278,6 +278,18 @@ describe("IPC sender gate", () => {
     expect(await handlers.showNotice(app, { kind: "done", terminal: "box/t7", body: "rm -rf" })).toEqual({
       accepted: true,
     });
+    // What the notice is about crosses the gate field by field, scrubbed; a test notice takes none (#1908).
+    expect(
+      await handlers.showNotice(app, {
+        kind: "input",
+        terminal: "t8",
+        context: { title: "roster sync", asks: "edit /Users/me/notes.md", machine: 7, body: "rm -rf" },
+      }),
+    ).toEqual({ accepted: true });
+    expect(await handlers.showNotice(app, { kind: "test", terminal: null, context: { title: "x" } })).toEqual({
+      accepted: false,
+      reason: "muted",
+    });
     expect(await handlers.showNotice(app, { kind: "test", terminal: null })).toEqual({
       accepted: false,
       reason: "muted",
@@ -288,6 +300,7 @@ describe("IPC sender gate", () => {
       { kind: "done", terminal: "" },
       { kind: "done", terminal: "t".repeat(161) },
       { kind: "done", terminal: 7 },
+      { kind: "done", terminal: "t1", context: "roster sync" },
       "done",
       null,
     ];
@@ -296,6 +309,8 @@ describe("IPC sender gate", () => {
     }
     expect(notices).toEqual([
       { kind: "done", terminal: "box/t7" },
+      { kind: "input", terminal: "t8", context: { title: "roster sync", asks: "edit ~/notes.md" } },
+      { kind: "test", terminal: null },
       { kind: "test", terminal: null },
     ]);
   });

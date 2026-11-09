@@ -3,6 +3,7 @@
  * the host that sends pushes, the app that subscribes, and the service worker that shows them.
  */
 import { isJsonObject, type JsonObject } from "./json.ts";
+import { type NoticeContext, parseNoticeContext } from "./notice-context.ts";
 
 export const NOTICE_KINDS = ["input", "permission", "done", "error", "test"] as const;
 /** What a notice says happened: an agent asks for input or for a permission, finished its turn, or failed. */
@@ -117,6 +118,8 @@ export type PushHostLine =
       readonly kind: NoticeKind | null;
       /** A host that knows the prompt and can answer its rows says so; an older host never does. */
       readonly prompt?: NoticePrompt;
+      /** What the notice is about, for the notification's own text (#1908); an older host sends none. */
+      readonly context?: NoticeContext;
     }
   | { readonly t: "answered"; readonly terminal: string }
   | { readonly t: "stale"; readonly terminal: string | null }
@@ -274,11 +277,13 @@ export function parsePushHostLine(line: string): PushHostLine {
     case "notice": {
       const kind = value["kind"];
       const prompt = promptOf(value["prompt"]);
+      const context = parseNoticeContext(value["context"]);
       return {
         t: "notice",
         terminal: terminalOf(value["terminal"]),
         kind: isKind(kind) ? kind : null,
         ...(prompt === undefined ? {} : { prompt }),
+        ...(context === undefined ? {} : { context }),
       };
     }
     case "answered":

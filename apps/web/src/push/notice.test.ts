@@ -24,21 +24,22 @@ describe("what a notice shows", () => {
   });
 
   test("a prompt whose rows the host named offers them, in the agent's words", () => {
-    expect(noticeDisplay(notice("input"), rows("Postgres", "SQLite")).actions).toEqual([
+    expect(noticeDisplay(notice("input"), { prompt: rows("Postgres", "SQLite") }).actions).toEqual([
       { action: "option:1", title: "Postgres" },
       { action: "option:2", title: "SQLite" },
     ]);
   });
 
   test("more rows than the platform shows: the first rows that do not decline, and the agent's No row last", () => {
-    expect(noticeDisplay(notice("permission"), rows("Yes", "Yes, and don't ask again", "No"), 2).actions).toEqual([
+    expect(
+      noticeDisplay(notice("permission"), { prompt: rows("Yes", "Yes, and don't ask again", "No") }, 2).actions,
+    ).toEqual([
       { action: "option:1", title: "Yes" },
       { action: "option:3:declines", title: "No" },
     ]);
-    expect(noticeDisplay(notice("input"), rows("A", "B", "C"), 2).actions.map((action) => action.title)).toEqual([
-      "A",
-      "B",
-    ]);
+    expect(
+      noticeDisplay(notice("input"), { prompt: rows("A", "B", "C") }, 2).actions.map((action) => action.title),
+    ).toEqual(["A", "B"]);
   });
 
   test("a question with no rows to offer (several steps, boxes, typed text) offers none: a tap opens the card", () => {
@@ -46,10 +47,33 @@ describe("what a notice shows", () => {
     expect(noticeDisplay(notice("input")).requireInteraction).toBe(true);
   });
 
-  test("one notification per notice id, with nothing but a fixed text", () => {
+  test("one notification per notice id; with nothing from the host it reads the plain sentence", () => {
     const shown = noticeDisplay(notice("input"));
     expect(shown.tag).toBe("AAAAAAAAAAAAAAAAAAAAAA");
+    expect(shown.title).toBe("Doriterm");
     expect(shown.body).toBe("An agent is waiting for your input.");
+  });
+
+  test("what the host said the notice is about names the terminal and the ask (#1908), beside the rows it offers", () => {
+    const about = {
+      prompt: rows("Postgres", "SQLite"),
+      context: { title: "roster sync", space: "api-server", machine: "box", asks: "Which database?" },
+    };
+    const shown = noticeDisplay(notice("input"), about);
+    expect(shown.title).toBe("roster sync \u00b7 api-server \u00b7 box");
+    expect(shown.body).toBe("Needs your input: Which database?");
+    expect(shown.actions.map((action) => action.title)).toEqual(["Postgres", "SQLite"]);
+    expect(noticeDisplay(notice("done"), { context: { title: "roster sync" } })).toMatchObject({
+      title: "roster sync",
+      body: "Finished",
+    });
+  });
+
+  test("a test notice keeps its own words whatever the host said", () => {
+    expect(noticeDisplay(notice("test"), { context: { title: "x" } })).toMatchObject({
+      title: "Doriterm",
+      body: "Notifications from this host work.",
+    });
   });
 });
 

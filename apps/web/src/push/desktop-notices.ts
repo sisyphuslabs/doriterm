@@ -3,12 +3,14 @@ import {
   DEFAULT_PUSH_PREFS,
   type HcEvent,
   NOTICE_EVENTS,
+  noticeContextOf,
   noticeMachineId,
   parsePushClientLine,
   type PushPrefs,
 } from "@doriface/protocol";
 import { type ConnectionState, connectionStore } from "../connection/store.ts";
 import { type NoticeBridge, noticeBridge, permissionOf } from "./notice-bridge.ts";
+import { lookUpNotice, type NoticeLook } from "./notice-look.ts";
 import { NoticeTrigger, type Trigger, wanted } from "./notice-trigger.ts";
 import type { PushView } from "./push-settings.ts";
 import { guardedLocalStorage } from "../storage/guarded.ts";
@@ -47,6 +49,8 @@ export interface DesktopNoticesOptions {
   readonly connection: Pick<typeof connectionStore, "state" | "subscribe">;
   readonly now?: () => number;
   readonly schedule?: Schedule;
+  /** Reads what a notice is about off the core (notice-look.ts); a test's stand-in answers without one. */
+  readonly look?: NoticeLook;
 }
 
 /** A failed subscribe is tried again after 1 s, then twice as long each time, never later than this. */
@@ -175,7 +179,12 @@ export class DesktopNotices {
 
   async #show(hit: Trigger): Promise<void> {
     try {
-      const answer = await this.#options.bridge.show({ kind: hit.kind, terminal: hit.terminal });
+      const connection = this.#connection;
+      const context =
+        connection === null
+          ? noticeContextOf({ status: hit.status, machine: hit.machine })
+          : await (this.#options.look ?? lookUpNotice)(connection, hit);
+      const answer = await this.#options.bridge.show({ kind: hit.kind, terminal: hit.terminal, context });
       if (!answer.accepted) this.#refused(answer.reason);
     } catch (error) {
       this.#refused(message(error));

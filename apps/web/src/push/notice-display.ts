@@ -1,12 +1,6 @@
-import type { NoticeKind, NoticePrompt, PushNotice } from "@doriface/protocol";
+import { type NoticePrompt, noticeText, type PushHostLine, type PushNotice } from "@doriface/protocol";
 
-const BODY: Readonly<Record<NoticeKind, string>> = {
-  input: "An agent is waiting for your input.",
-  permission: "An agent is asking for permission.",
-  done: "An agent finished its turn.",
-  error: "An agent stopped with an error.",
-  test: "Notifications from this host work.",
-};
+const TEST_BODY = "Notifications from this host work.";
 
 /** The two answers a permission notice offers where the platform shows notification actions and the host names no rows. */
 export const ANSWER_ACTIONS = [
@@ -35,6 +29,9 @@ export interface NoticeDisplay {
   readonly requireInteraction: boolean;
 }
 
+/** What the host said about a notice over the push stream: its prompt's rows and what it is about; nothing when not asked. */
+export type NoticeAbout = Pick<Extract<PushHostLine, { readonly t: "notice" }>, "prompt" | "context">;
+
 /**
  * The rows a notification offers, at most `max`: all of them when they fit; otherwise the first rows that do not
  * decline and the agent's No row last, so declining stays one tap. A tap on the notice itself opens every row.
@@ -52,24 +49,24 @@ function rowActions(prompt: NoticePrompt, max: number) {
 }
 
 /**
- * What the service worker shows: a fixed text per kind; the payload holds nothing more, by design. A permission or a
- * question whose prompt the host named over the push stream offers its own rows; a permission from a host that names
- * none offers Allow and Deny; anything else (several steps, boxes, typed text) offers none and a tap opens the card.
+ * What the service worker shows. The payload names nothing, by design; the title and body come from what the host
+ * said about the notice over the push stream (#1908), and read the plain sentence when it said nothing or was not
+ * reached. A permission or a question whose prompt the host named offers its own rows; a permission from a host that
+ * names none offers Allow and Deny; anything else (several steps, boxes, typed text) offers none and a tap opens the card.
  */
 export function noticeDisplay(
   notice: PushNotice,
-  prompt?: NoticePrompt,
+  about: NoticeAbout = {},
   max: number = DEFAULT_MAX_ACTIONS,
 ): NoticeDisplay {
   const asks = notice.k === "permission" || notice.k === "input";
   const actions =
-    asks && prompt !== undefined ? rowActions(prompt, max) : notice.k === "permission" ? ANSWER_ACTIONS : [];
-  return {
-    title: "Doriterm",
-    body: BODY[notice.k],
-    tag: notice.n,
-    data: notice,
-    actions,
-    requireInteraction: asks,
-  };
+    asks && about.prompt !== undefined
+      ? rowActions(about.prompt, max)
+      : notice.k === "permission"
+        ? ANSWER_ACTIONS
+        : [];
+  const { title, body } =
+    notice.k === "test" ? { title: "Doriterm", body: TEST_BODY } : noticeText(notice.k, about.context);
+  return { title, body, tag: notice.n, data: notice, actions, requireInteraction: asks };
 }

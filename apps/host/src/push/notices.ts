@@ -1,11 +1,13 @@
 import { base64urlEncode } from "@doriface/crypto";
-import type { ApprovalMark, NoticeKind } from "@doriface/protocol";
+import type { ApprovalMark, NoticeContext, NoticeKind } from "@doriface/protocol";
 
 export interface NoticeEntry {
   /** Null for a test notice. */
   readonly terminal: string | null;
   readonly kind: NoticeKind;
   readonly at: number;
+  /** What the notice was about as it was made (#1908), for the notification's text; none for a test notice. */
+  readonly context: NoticeContext | undefined;
   /** A permission or question notice's prompt as it stood when the notice was made; an answer is checked against it. */
   readonly mark: ApprovalMark | undefined;
 }

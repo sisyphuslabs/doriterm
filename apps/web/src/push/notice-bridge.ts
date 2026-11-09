@@ -1,3 +1,4 @@
+import type { NoticeContext } from "@doriface/protocol";
 import type { Trigger } from "./notice-trigger.ts";
 
 /** The OS's standing answer about the desktop app's notifications, as apps/desktop/src/shared/bridge.ts names it. */
@@ -10,7 +11,12 @@ export type NoticeAnswer = { readonly accepted: true } | { readonly accepted: fa
 export interface NoticeBridge {
   supported(): Promise<boolean>;
   permission(): Promise<NoticeAuthorization>;
-  show(notice: { readonly kind: Trigger["kind"] | "test"; readonly terminal: string | null }): Promise<NoticeAnswer>;
+  show(notice: {
+    readonly kind: Trigger["kind"] | "test";
+    readonly terminal: string | null;
+    /** What it is about (#1908), for the notification's text; none for a test. */
+    readonly context?: NoticeContext;
+  }): Promise<NoticeAnswer>;
   onClick(listener: (terminal: string | null) => void): void;
 }
 

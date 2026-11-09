@@ -1,7 +1,8 @@
 import type { EventFeed, HcConnection } from "@doriface/client";
-import type { HcEvent, Status, Terminal } from "@doriface/protocol";
+import type { HcEvent, NoticeContext, Status, Terminal } from "@doriface/protocol";
 import type { ConnectionState } from "../connection/store.ts";
 import type { NoticeAnswer, NoticeAuthorization } from "./notice-bridge.ts";
+import type { NoticeLook } from "./notice-look.ts";
 
 // store.ts builds the app's store from localStorage as it loads; bun has none, so an empty one stands in for that load only.
 Object.assign(globalThis, { localStorage: { getItem: () => null, setItem: () => undefined } });
@@ -78,6 +79,7 @@ export function rig({
   authorization = "unknown" as NoticeAuthorization,
   terminals = [] as Terminal[],
   failing = 0,
+  look = undefined as NoticeLook | undefined,
 } = {}) {
   const feeds: FakeFeed[] = [];
   let subscribes = 0;
@@ -103,17 +105,25 @@ export function rig({
   };
   const stored = new Map<string, string>(saved === null ? [] : [[DESKTOP_NOTICES_KEY, saved]]);
   const shown: { kind: string; terminal: string | null }[] = [];
+  const contexts: (NoticeContext | undefined)[] = [];
   let now = 0;
   const notices = new DesktopNotices({
     bridge: {
       supported: async () => supported,
       permission: async () => authorization,
-      show: async (notice) => (answer.accepted && shown.push(notice), answer),
+      show: async (notice) => {
+        if (answer.accepted) {
+          shown.push({ kind: notice.kind, terminal: notice.terminal });
+          contexts.push(notice.context);
+        }
+        return answer;
+      },
       onClick: () => undefined,
     },
     storage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => void stored.set(key, value) },
     connection,
     now: () => now,
+    ...(look === undefined ? {} : { look }),
     schedule: (step, ms) => {
       const timer = { ms, step, cancelled: false, fired: false };
       timers.push(timer);
@@ -146,6 +156,7 @@ export function rig({
     timers,
     pending,
     shown,
+    contexts,
     stored,
     connection,
     reopen,

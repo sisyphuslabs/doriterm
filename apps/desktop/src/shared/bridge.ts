@@ -1,3 +1,5 @@
+import type { NoticeContext } from "@doriface/protocol";
+
 /** IPC channels between the preload and the main process. */
 export const Channel = {
   openExternal: "doriface:open-external",
@@ -127,6 +129,11 @@ export interface DesktopNotice {
   readonly kind: NoticeKind;
   /** The terminal it is about (`t7`, `machine/t7`), opened when it is clicked; null for a test. */
   readonly terminal: string | null;
+  /**
+   * What it is about (#1908), for the notification's text: the main process parses, scrubs and caps every field
+   * (`parseNoticeContext`) before a word of it reaches the OS. Absent for a test, or when the page knows nothing.
+   */
+  readonly context?: NoticeContext;
 }
 
 const MAX_TERMINAL = 160;
@@ -154,9 +161,11 @@ export function isDesktopNotice(value: unknown): value is DesktopNotice {
   if (typeof value !== "object" || value === null) return false;
   const kind: unknown = Reflect.get(value, "kind");
   const terminal: unknown = Reflect.get(value, "terminal");
+  const context: unknown = Reflect.get(value, "context");
   return (
     NOTICE_KINDS.some((known) => known === kind) &&
-    (terminal === null || (typeof terminal === "string" && terminal !== "" && terminal.length <= MAX_TERMINAL))
+    (terminal === null || (typeof terminal === "string" && terminal !== "" && terminal.length <= MAX_TERMINAL)) &&
+    (context === undefined || (typeof context === "object" && context !== null))
   );
 }
 

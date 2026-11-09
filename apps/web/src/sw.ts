@@ -2,7 +2,6 @@
 import { base64urlDecode } from "@doriface/crypto";
 import {
   DEFAULT_PUSH_PREFS,
-  type NoticePrompt,
   parsePushNotice,
   type PushClientLine,
   type PushHostLine,
@@ -13,7 +12,7 @@ import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from
 import { NavigationRoute, registerRoute } from "workbox-routing";
 import { ICON_FONT_CACHE, isIconFont, pruneIconFonts, splitIconFonts } from "./pwa/icon-font-cache.ts";
 import { planClick } from "./push/notice-click.ts";
-import { DEFAULT_MAX_ACTIONS, noticeDisplay } from "./push/notice-display.ts";
+import { DEFAULT_MAX_ACTIONS, type NoticeAbout, noticeDisplay } from "./push/notice-display.ts";
 import { deadlineAfter, exchangeWithin, type PushExchange } from "./push/over-push.ts";
 import { loadPushPrefs, loadPushRoute, openPushLink } from "./push/push-route.ts";
 import { carryOver } from "./push/reconcile.ts";
@@ -57,8 +56,8 @@ self.addEventListener("message", (event) => {
 
 /** How long an Allow or Deny waits for the host before it opens the pane instead. */
 const ANSWER_TIMEOUT_MS = 15_000;
-/** How long a push waits for the host to name its prompt's rows before it shows the notice without them. */
-const PROMPT_TIMEOUT_MS = 4_000;
+/** How long a push waits for the host to say what it is about before it shows the plain notice. */
+const ABOUT_TIMEOUT_MS = 4_000;
 
 function readPayload(event: PushEvent): unknown {
   try {
@@ -79,18 +78,18 @@ self.addEventListener("push", (event) => {
 });
 
 /**
- * A permission or a question asks the host over the E2EE push stream which rows its prompt has, so the notification
- * can offer them; the payload itself names nothing. A host that does not answer in time, or names none, gets the
- * notice without rows (a permission keeps Allow and Deny).
+ * Every agent's notice asks the host over the E2EE push stream what it is about (#1908): the terminal, its space and
+ * machine, what it asks, and for a permission or a question the rows of its prompt, so the notification can name and
+ * offer them; the payload itself names nothing. A host that does not answer in time gets the plain notice (a
+ * permission keeps Allow and Deny), which is the honest text when the host cannot be reached.
  */
 async function showNotice(notice: PushNotice): Promise<void> {
-  const prompt =
-    notice.k === "permission" || notice.k === "input" ? await promptOf(notice).catch(() => undefined) : undefined;
+  const about = notice.k === "test" ? {} : await aboutOf(notice).catch((): NoticeAbout => ({}));
   // `Notification.maxActions` is not in TypeScript's DOM types; Chromium reports it.
   const max: unknown = Reflect.get(Notification, "maxActions");
   const { title, ...shown } = noticeDisplay(
     notice,
-    prompt,
+    about,
     typeof max === "number" && max > 0 ? max : DEFAULT_MAX_ACTIONS,
   );
   // TypeScript's NotificationOptions lacks `actions`, which Chromium and Firefox show.
@@ -98,9 +97,13 @@ async function showNotice(notice: PushNotice): Promise<void> {
   await self.registration.showNotification(title, options);
 }
 
-async function promptOf(notice: PushNotice): Promise<NoticePrompt | undefined> {
-  const reply = await overPush({ t: "notice", id: notice.n }, PROMPT_TIMEOUT_MS);
-  return reply.t === "notice" ? reply.prompt : undefined;
+async function aboutOf(notice: PushNotice): Promise<NoticeAbout> {
+  const reply = await overPush({ t: "notice", id: notice.n }, ABOUT_TIMEOUT_MS);
+  if (reply.t !== "notice") return {};
+  return {
+    ...(reply.prompt === undefined ? {} : { prompt: reply.prompt }),
+    ...(reply.context === undefined ? {} : { context: reply.context }),
+  };
 }
 
 async function openSession(): Promise<PushExchange> {

@@ -45,11 +45,13 @@ async function reply(
     case "notice": {
       const entry = service.resolve(line.id);
       const prompt = service.prompt(entry);
+      const context = service.context(entry);
       return {
         t: "notice",
         terminal: entry?.terminal ?? null,
         kind: entry?.kind ?? null,
         ...(prompt === undefined ? {} : { prompt }),
+        ...(context === undefined ? {} : { context }),
       };
     }
     case "answer":

@@ -3,6 +3,7 @@ import { terminalLinkTarget } from "../config/terminal-link.ts";
 import { isHexColour } from "../config/window.ts";
 import { isSameOrigin } from "../config/origin.ts";
 import { HcInstallError, type HcInstalled } from "@doriface/host/hc-install";
+import { parseNoticeContext } from "@doriface/protocol";
 import {
   Channel,
   type DesktopNotice,
@@ -112,7 +113,10 @@ export interface IpcHandlers {
   noticesSupported(event: IpcSender): Promise<boolean>;
   /** The OS's standing answer about this app's notifications. */
   noticePermission(event: IpcSender): Promise<NoticeAuthorization>;
-  /** Shows a native notification; only a known kind and a terminal address are taken, never text. */
+  /**
+   * Shows a native notification: a known kind, a terminal address, and what it is about parsed, scrubbed and capped
+   * field by field (#1908), so the page cannot put arbitrary words in it.
+   */
   showNotice(event: IpcSender, candidate: unknown): Promise<NoticeAnswer>;
   /** Keeps the page's saved Direct address as the only forward target, checked by the shell itself (#449). */
   setDirectTarget(event: IpcSender, candidate: unknown): Promise<boolean>;
@@ -263,7 +267,12 @@ export function ipcHandlers(deps: IpcDeps): IpcHandlers {
     async showNotice(event, candidate) {
       assertAppFrame(event, deps.origin);
       if (!isDesktopNotice(candidate)) return { accepted: false, reason: "the notice was refused" };
-      return deps.showNotice({ kind: candidate.kind, terminal: candidate.terminal });
+      const context = candidate.kind === "test" ? undefined : parseNoticeContext(candidate.context);
+      return deps.showNotice({
+        kind: candidate.kind,
+        terminal: candidate.terminal,
+        ...(context === undefined ? {} : { context }),
+      });
     },
     async setDirectTarget(event, candidate) {
       assertAppFrame(event, deps.origin);

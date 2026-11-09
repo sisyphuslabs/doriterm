@@ -6,6 +6,7 @@ import {
   parseSavedNotices,
   REPEAT_MS,
   rig,
+  settled,
   status,
   terminal,
 } from "./desktop-notices-rig.ts";
@@ -27,12 +28,48 @@ describe("the desktop app's native notifications", () => {
     events.emit(status("t3", { state: "blocked", kind: "permission" }));
     events.emit(status("t4", { state: "error" }, "box"));
     events.emit(status("t5", { state: "working" }));
+    await settled();
     expect(shown).toEqual([
       { kind: "done", terminal: "t2" },
       { kind: "permission", terminal: "t3" },
       { kind: "error", terminal: "box/t4" },
     ]);
     expect(parseSavedNotices(stored.get(DESKTOP_NOTICES_KEY) ?? null).on).toBe(true);
+  });
+
+  test("a notice carries what the core says it is about; a core that cannot be read leaves the event's own words (#1908)", async () => {
+    const asked: string[] = [];
+    const { notices, feed, shown, contexts } = rig({
+      look: async (_connection, hit) => {
+        asked.push(`${hit.kind} ${hit.terminal}`);
+        return hit.terminal === "t2"
+          ? { title: "roster sync", space: "api-server", asks: "Which database should the migration target?" }
+          : {};
+      },
+    });
+    await notices.turnOn();
+    const events = await feed();
+    events.emit(status("t2", { state: "blocked", kind: "question" }));
+    events.emit(status("t3", done, "box"));
+    await settled();
+    expect(asked).toEqual(["input t2", "done box/t3"]);
+    expect(shown).toEqual([
+      { kind: "input", terminal: "t2" },
+      { kind: "done", terminal: "box/t3" },
+    ]);
+    expect(contexts).toEqual([
+      { title: "roster sync", space: "api-server", asks: "Which database should the migration target?" },
+      {},
+    ]);
+  });
+
+  test("without a stand-in, a connection that cannot be called still shows the notice with the status's own words", async () => {
+    const { notices, feed, contexts } = rig();
+    await notices.turnOn();
+    const events = await feed();
+    events.emit(status("t1", { state: "error", msg: "exit 1" }, "box"));
+    await settled();
+    expect(contexts).toEqual([{ machine: "box", asks: "exit 1" }]);
   });
 
   test("an agent flapping back into the same state within 30 s is one notice", async () => {
@@ -45,6 +82,7 @@ describe("the desktop app's native notifications", () => {
     tick(REPEAT_MS);
     events.emit(status("t1", { state: "working" }));
     events.emit(status("t1", done));
+    await settled();
     expect(shown).toEqual([
       { kind: "done", terminal: "t1" },
       { kind: "done", terminal: "t1" },
@@ -61,6 +99,7 @@ describe("the desktop app's native notifications", () => {
     events.emit(status("t2", { state: "error" }, "box"));
     events.emit(status("t3", { state: "error" }));
     events.emit(status("t4", { state: "error" }));
+    await settled();
     expect(shown).toEqual([{ kind: "error", terminal: "t4" }]);
   });
 

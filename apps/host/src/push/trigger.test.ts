@@ -25,12 +25,13 @@ describe("which status changes are notices", () => {
     expect(trigger.event(statusEvent("t1", blocked), 0)).toBeUndefined();
   });
 
-  test("an added machine's terminal is addressed machine/t and names its machine", () => {
+  test("an added machine's terminal is addressed machine/t and names its machine, with the status that raised it", () => {
     const trigger = new NoticeTrigger();
-    expect(trigger.event(statusEvent("t4", { state: "done" }, "box"), 0)).toEqual({
+    expect(trigger.event(statusEvent("t4", { state: "done", msg: "Migration written" }, "box"), 0)).toEqual({
       terminal: "box/t4",
       machine: "box",
       kind: "done",
+      status: { state: "done", msg: "Migration written" },
     });
   });
 

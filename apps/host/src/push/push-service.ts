@@ -5,8 +5,11 @@ import {
   type ApprovalMark,
   type HcEvent,
   type HeldSubscription,
+  markApproval,
   MAX_NOTICE_LABEL,
   MAX_NOTICE_OPTIONS,
+  type NoticeContext,
+  noticeContextOf,
   noticeMachineId,
   type NoticeKind,
   type NoticePrompt,
@@ -16,7 +19,6 @@ import {
   type PushNotice,
   type PushPrefs,
   type PushSubscriptionKeys,
-  readApproval,
   type Terminal,
 } from "@doriface/protocol";
 import { deliverPush, type PushFetch, pushEndpointAllowed } from "./deliver.ts";
@@ -122,13 +124,25 @@ export class PushService {
   async test(owner: string, endpoint: string): Promise<boolean> {
     const subscription = this.#options.subscriptions.ofOwner(owner).find((entry) => entry.endpoint === endpoint);
     if (subscription === undefined) return false;
-    const id = this.#notices.add({ terminal: null, kind: "test", at: this.#now(), mark: undefined });
+    const id = this.#notices.add({
+      terminal: null,
+      kind: "test",
+      at: this.#now(),
+      context: undefined,
+      mark: undefined,
+    });
     await this.#send(subscription, this.#notice(id, "test"));
     return true;
   }
 
   resolve(id: string): NoticeEntry | undefined {
     return this.#notices.get(id, this.#now());
+  }
+
+  /** What a notice was about, with how long ago it was made on this host's clock, for the notification's text (#1908). */
+  context(entry: NoticeEntry | undefined): NoticeContext | undefined {
+    if (entry?.context === undefined) return undefined;
+    return { ...entry.context, ageMs: Math.max(0, this.#now() - entry.at) };
   }
 
   /**
@@ -216,20 +230,30 @@ export class PushService {
           pushEndpointAllowed(entry.endpoint, this.#options.extraOrigins),
       );
     if (recipients.length === 0) return;
-    // A permission or a question (an `input` notice) is marked as it stands now, so its answer is checked against it.
-    const mark = hit.kind === "permission" || hit.kind === "input" ? await this.#mark(hit.terminal) : undefined;
-    const id = this.#notices.add({ terminal: hit.terminal, kind: hit.kind, at: this.#now(), mark });
+    const { terminal, mark } = await this.#look(hit);
+    const context = noticeContextOf({ terminal, status: hit.status, machine: hit.machine, prompt: mark?.prompt });
+    const id = this.#notices.add({ terminal: hit.terminal, kind: hit.kind, at: this.#now(), context, mark });
     await Promise.all(recipients.map((entry) => this.#send(entry, this.#notice(id, hit.kind))));
   }
 
-  async #mark(terminal: string): Promise<ApprovalMark | undefined> {
+  /**
+   * The terminal as it stands now, for the notice's text, and for a permission or a question (an `input` notice) its
+   * prompt marked off the live screen, so an answer is checked against it. A core that cannot be read leaves both out:
+   * the notice still goes, with the event's own status for context.
+   */
+  async #look(hit: Trigger): Promise<{ terminal: Terminal | undefined; mark: ApprovalMark | undefined }> {
     const core = this.#core;
-    if (core === undefined) return undefined;
+    if (core === undefined) return { terminal: undefined, mark: undefined };
+    const asks = hit.kind === "permission" || hit.kind === "input";
     try {
-      return await readApproval(core, terminal);
+      const [terminal, screen] = await Promise.all([
+        core.terminal(hit.terminal),
+        asks ? core.screen(hit.terminal) : undefined,
+      ]);
+      return { terminal, mark: screen === undefined ? undefined : markApproval(terminal, screen) };
     } catch (error) {
-      this.#options.log(`push: could not read the prompt of ${terminal}: ${String(error)}`);
-      return undefined;
+      this.#options.log(`push: could not read ${hit.terminal} for its notice: ${String(error)}`);
+      return { terminal: undefined, mark: undefined };
     }
   }
 

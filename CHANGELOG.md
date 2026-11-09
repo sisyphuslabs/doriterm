@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Notifications
+
+- A notification says which agent it is about and what it asks: the terminal's name, its space and its machine on the
+  title line, and the state with the question or the command the agent wants to run on the body ("roster sync ·
+  api-server · build-box" / "Needs permission: Claude Code wants to run touch probe-a.txt"), with how long ago it was
+  raised when that is a minute or more. Long names and questions are cut in the middle, home paths and token-shaped
+  text never reach the OS, and the push payload is unchanged: the words come over the encrypted push stream from the
+  host, or from the desktop app's own connection, and a device that cannot reach its host still reads the plain
+  sentence it did before. (#1908)
+
 ## v0.1.14 - 2026-11-09
 
 ### Workspace

@@ -1,5 +1,11 @@
 import { CloseCode } from "@doriface/crypto";
-import { DEFAULT_PUSH_PREFS, encodePushLine, parsePushHostLine, type PushHostLine } from "@doriface/protocol";
+import {
+  DEFAULT_PUSH_PREFS,
+  encodePushLine,
+  parsePushHostLine,
+  type PushHostLine,
+  type Status,
+} from "@doriface/protocol";
 import { afterEach, describe, expect, test } from "bun:test";
 import { servePushStream } from "./push-stream.ts";
 import { CLAUDE_QUESTION_SCREEN } from "../../../../packages/protocol/src/testing/prompt-screens.ts";
@@ -134,5 +140,71 @@ describe("a notice's rows on the push stream (#669)", () => {
     });
     expect(await s.say(encodePushLine({ t: "choose", id, option: "2" }))).toEqual({ t: "answered", terminal: "t3" });
     expect(r.core.sent).toEqual([{ terminal: "t3", keys: ["2"] }]);
+  });
+});
+
+/** Subscribes device-a, raises one status event and returns the id of the notice it sent. */
+async function noticedOn(r: Rig, address: string, status: Status, machine?: string): Promise<string> {
+  await r.service.subscribe(
+    "device-a",
+    { endpoint: ENDPOINT, p256dh: r.keys.p256dh, auth: r.keys.auth },
+    DEFAULT_PUSH_PREFS,
+  );
+  await r.service.event(statusEvent(address, status, machine));
+  const notice = (await r.notices()).at(-1);
+  return typeof notice === "object" && notice !== null ? String(Reflect.get(notice, "n")) : "";
+}
+
+describe("what a notice is about, on the push stream (#1908)", () => {
+  const QUESTION: Status = { state: "blocked", kind: "question", app: "claude-code" };
+
+  test("the notice line names the terminal, its space, its machine and the question, with how long ago it was raised", async () => {
+    const r = await opened();
+    r.core.terminals.set(
+      "box/t3",
+      terminal("box/t3", QUESTION, { labels: { "herdr.name": "roster sync" }, cwd: "/Users/me/work/api-server" }),
+    );
+    r.core.screens.set("box/t3", CLAUDE_QUESTION_SCREEN);
+    const id = await noticedOn(r, "t3", QUESTION, "box");
+    const reply = await stream(r).say(encodePushLine({ t: "notice", id }));
+    expect(reply).toMatchObject({
+      t: "notice",
+      terminal: "box/t3",
+      kind: "input",
+      context: {
+        title: "roster sync",
+        space: "api-server",
+        machine: "box",
+        asks: "Which database should the migration target?",
+      },
+    });
+    const age = reply.t === "notice" ? reply.context?.ageMs : undefined;
+    expect(age).toBeGreaterThanOrEqual(0);
+    expect(age).toBeLessThan(60_000);
+  });
+
+  test("a terminal the core cannot read still notices, with the event's own status for context", async () => {
+    const r = await opened();
+    const id = await noticedOn(r, "t9", { ...QUESTION, msg: "Pick a database" });
+    const reply = await stream(r).say(encodePushLine({ t: "notice", id }));
+    expect(reply).toMatchObject({ t: "notice", terminal: "t9", kind: "input", context: { asks: "Pick a database" } });
+    expect(reply.t === "notice" ? Object.keys(reply.context ?? {}).toSorted() : []).toEqual(["ageMs", "asks"]);
+    expect(r.logs.some((line) => line.includes("could not read t9"))).toBe(true);
+  });
+
+  test("a test notice and an unknown id carry no context", async () => {
+    const r = await opened();
+    const subscription = { endpoint: ENDPOINT, p256dh: r.keys.p256dh, auth: r.keys.auth };
+    await r.service.subscribe("device-a", subscription, DEFAULT_PUSH_PREFS);
+    await r.service.test("device-a", ENDPOINT);
+    const [notice] = await r.notices();
+    const id = typeof notice === "object" && notice !== null ? String(Reflect.get(notice, "n")) : "";
+    const s = stream(r);
+    expect(await s.say(encodePushLine({ t: "notice", id }))).toEqual({ t: "notice", terminal: null, kind: "test" });
+    expect(await s.say(encodePushLine({ t: "notice", id: "BBBBBBBBBBBBBBBBBBBBBB" }))).toEqual({
+      t: "notice",
+      terminal: null,
+      kind: null,
+    });
   });
 });

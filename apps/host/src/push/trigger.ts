@@ -27,6 +27,8 @@ export interface Trigger {
   /** The added machine it runs on; undefined on this host's core. */
   readonly machine: string | undefined;
   readonly kind: NoticeEvent;
+  /** The status record that raised it: what the agent said, even when its terminal cannot be read afterwards. */
+  readonly status: Status;
 }
 
 /** One terminal notices one kind at most this often, so an agent flapping between states is one notice. */
@@ -56,13 +58,14 @@ export class NoticeTrigger {
       return undefined;
     }
     if (event.type !== "status") return undefined;
-    const kind = noticeKindOf(event.data.status);
+    const status = event.data.status;
+    const kind = noticeKindOf(status);
     const before = this.#kinds.get(terminal);
     this.#kinds.set(terminal, kind);
-    if (kind === undefined || kind === before) return undefined;
+    if (kind === undefined || status == null || kind === before) return undefined;
     const last = this.#last.get(terminal);
     if (last !== undefined && last.kind === kind && now - last.at < REPEAT_MS) return undefined;
     this.#last.set(terminal, { kind, at: now });
-    return { terminal, machine: event.machine, kind };
+    return { terminal, machine: event.machine, kind, status };
   }
 }

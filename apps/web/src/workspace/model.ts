@@ -1,4 +1,4 @@
-import type { JsonObject, Terminal } from "@doriface/protocol";
+import { type JsonObject, SPACE_LABEL, type Terminal } from "@doriface/protocol";
 import { docSpaces, panesOf, tabsOf } from "@doriface/protocol/layout";
 import type { Agent, AgentStatus, Space } from "@doriface/ui";
 import { spaceKey } from "../layout/view.ts";
@@ -108,7 +108,7 @@ function basename(path: string): string {
  * The hc label that names a terminal's space. A loose terminal carrying it is adopted into the space of that name, and a
  * rename writes it on the space's live terminals too, so hc and the layout document agree (#395, #404).
  */
-export const SPACE_LABEL = "space";
+export { SPACE_LABEL };
 
 /** A space is the `space` label, else the working directory's last segment. */
 export function spaceName(terminal: Terminal): string {

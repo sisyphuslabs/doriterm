@@ -6,6 +6,7 @@ import {
   type TerminalKillParams,
   type TerminalLabelParams,
   type TerminalRmParams,
+  TITLE_LABEL,
 } from "@doriface/protocol";
 
 /**
@@ -13,7 +14,7 @@ import {
  * label rules (docs/labels.md, "Adding more") put state clients share in a herdr.-prefixed label, so every herdr
  * client can read it and a bare key cannot collide with a user's or an agent's own labels (D22).
  */
-export const TITLE_LABEL = "herdr.name";
+export { TITLE_LABEL };
 
 /** The hc calls a session action makes. */
 export interface SessionCalls {
