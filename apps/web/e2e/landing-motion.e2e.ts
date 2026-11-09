@@ -47,26 +47,52 @@ test.afterAll(async () => {
 });
 
 /**
- * The play state of every animation in both hero mockups, once each has drawn. The desktop window's working agents draw
- * spinners; the phone's terminal has none today, but anything that starts animating there is held to the same toggle.
+ * Every animation in a mockup frame that is not where `state` wants it, read from the Web Animations API (a computed
+ * animation-play-state can say "paused" while the animation still turns). Paused means playState "paused" and a
+ * currentTime that holds still while 200 ms of the frame's own timeline pass; running means every unfinished animation
+ * plays and moves on in that time.
+ */
+const astray = (root: Locator, state: "paused" | "running") =>
+  root.evaluate(async (element, wanted) => {
+    const view = element.ownerDocument;
+    const read = () => new Map(view.getAnimations().map((animation) => [animation, Number(animation.currentTime)]));
+    const before = read();
+    const from = Number(view.timeline.currentTime);
+    // Waits on the frame's own clock, the thing whose passing a paused animation must ignore.
+    await new Promise<void>((resolve) => {
+      const tick = () =>
+        Number(view.timeline.currentTime) - from >= 200 ? resolve() : view.defaultView?.requestAnimationFrame(tick);
+      tick();
+    });
+    const after = read();
+    return [...after].flatMap(([animation, time]) => {
+      const name = animation instanceof CSSAnimation ? animation.animationName : animation.id;
+      const was = before.get(animation);
+      if (wanted === "paused") {
+        return animation.playState === "paused" && was === time
+          ? []
+          : [`${name} ${animation.playState} ${was}->${time}`];
+      }
+      if (animation.playState === "finished") return [];
+      return animation.playState === "running" && was !== undefined && time > was
+        ? []
+        : [`${name} ${animation.playState} ${was}->${time}`];
+    });
+  }, state);
+
+/**
+ * Holds both hero mockups to `state`, once each has drawn. The desktop window's working agents draw spinners; the phone's
+ * terminal has none today, but anything that starts animating there is held to the same toggle.
  */
 async function expectPlayState(page: Page, state: "paused" | "running"): Promise<void> {
   const desktop = page.frameLocator(".app-desktop iframe");
-  const spinners = desktop.locator('[data-slot="spinner"]');
-  await expect(spinners.first()).toBeAttached({ timeout: 30_000 });
-  await Promise.all((await spinners.all()).map((spinner) => expect(spinner).toHaveCSS("animation-play-state", state)));
+  await expect(desktop.locator('[data-slot="spinner"]').first()).toBeAttached({ timeout: 30_000 });
   const phone = page.frameLocator(".app-phone iframe").locator("#root > *");
   await expect(phone).toBeAttached({ timeout: 30_000 });
-  const others = (root: Locator) => () =>
-    root.evaluate(
-      (element, wanted) =>
-        [...element.ownerDocument.querySelectorAll("*")]
-          .map((node) => getComputedStyle(node))
-          .filter((style) => style.animationName !== "none" && style.animationPlayState !== wanted)
-          .map((style) => `${style.animationName} ${style.animationPlayState}`),
-      state,
-    );
-  await Promise.all([desktop.locator("body"), phone].map((root) => expect.poll(others(root)).toEqual([])));
+  const body = desktop.locator("body");
+  // The spinners are animations the check below actually reads.
+  await expect.poll(() => body.evaluate((element) => element.ownerDocument.getAnimations().length)).toBeGreaterThan(0);
+  await Promise.all([body, phone].map((root) => expect.poll(() => astray(root, state)).toEqual([])));
 }
 
 test("pausing motion pauses the spinners in the hero's live mockups, and a reload keeps them paused", async ({
