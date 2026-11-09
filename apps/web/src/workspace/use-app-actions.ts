@@ -186,10 +186,10 @@ export function desktopActions(
     const activeSpace = layout.active?.spaceKey ?? null;
     const focused = layout.focused?.address ?? null;
     const [verb, argument = ""] = action.split(":");
-    // A space key shows a space the sidebar lists; no space there, or the one in view, leaves the key to the terminal.
+    // A space chord is spent whatever it finds, as herdr-app's (#1925): a place with no space, or the space already in
+    // view, changes nothing, and the key never reaches the program as a control code (Ctrl+4 would be ^\, SIGQUIT).
     const selectSpace = (key: string | null): boolean => {
-      if (key === null || key === activeSpace) return false;
-      onSelectSpace(key);
+      if (key !== null && key !== activeSpace) onSelectSpace(key);
       return true;
     };
     switch (verb) {
@@ -203,7 +203,10 @@ export function desktopActions(
       case "tab.prev":
         return selectTab(layout, neighbour(keys, active, -1));
       case "tab.select":
-        return selectTab(layout, keys[Number(argument) - 1] ?? null);
+        // A tab number chord is spent too, as herdr-app's `tab.select` ("no such tab" past the strip): on Linux and
+        // Windows it is Ctrl and a digit, which a shell would read as a control code.
+        selectTab(layout, keys[Number(argument) - 1] ?? null);
+        return true;
       case "tab.last":
         return selectTab(layout, keys.at(-1) ?? null);
       case "tab.rename":

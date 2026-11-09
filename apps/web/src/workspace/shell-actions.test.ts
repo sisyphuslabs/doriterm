@@ -229,12 +229,13 @@ const spaceHandler = (spaceKeys: readonly string[], active: string | null, calls
 describe("space keys, as herdr-app binds them", () => {
   const three = ["space:s1", "space:s2", "space:s3"];
 
-  test("a number chord shows that place in the sidebar, and one with no space there leaves the key alone", () => {
+  test("a number chord shows that place in the sidebar; one with no space there, or the space in view, is spent (#1925)", () => {
     const calls: string[] = [];
     const run = (action: string, active: string | null = "space:s1") => spaceHandler(three, active, calls)(action);
     expect(run("space.select:2")).toBe(true);
-    expect(run("space.select:9")).toBe(false);
-    expect(run("space.select:1")).toBe(false);
+    // herdr-app's space.select past the list fails and the key is spent: it never reaches a program as a control code.
+    expect(run("space.select:9")).toBe(true);
+    expect(run("space.select:1")).toBe(true);
     expect(calls).toEqual(["space:s2"]);
   });
 
@@ -248,11 +249,11 @@ describe("space keys, as herdr-app binds them", () => {
     expect(calls).toEqual(["space:s1", "space:s3", "space:s3", "space:s1"]);
   });
 
-  test("with no space at all they are left to the terminal", () => {
+  test("with no space at all they change nothing and are still spent", () => {
     const calls: string[] = [];
-    expect(spaceHandler([], null, calls)("space.select:1")).toBe(false);
-    expect(spaceHandler([], null, calls)("space.next")).toBe(false);
-    expect(spaceHandler([], null, calls)("space.prev")).toBe(false);
+    expect(spaceHandler([], null, calls)("space.select:1")).toBe(true);
+    expect(spaceHandler([], null, calls)("space.next")).toBe(true);
+    expect(spaceHandler([], null, calls)("space.prev")).toBe(true);
     expect(calls).toEqual([]);
   });
 });
