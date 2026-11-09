@@ -93,7 +93,7 @@ export function AddMachineDialog({ open, onClose, connection, machines }: AddMac
               <Button variant="secondary" onClick={() => copy(offer.command)}>
                 {copied ? "Copied" : "Copy"}
               </Button>
-              <span className="text-sm text-muted-foreground">It works once, for 10 minutes.</span>
+              <span className="text-prose text-muted-foreground">It works once, for 10 minutes.</span>
             </div>
             <p role="status" className="flex items-center gap-2 text-prose text-muted-foreground">
               <Spinner /> Waiting for the machine to join…

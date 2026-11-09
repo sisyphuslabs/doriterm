@@ -62,7 +62,7 @@ function ImportPreview({ parsed, onClose }: { readonly parsed: ParsedKeybinds; r
               {line.status === "applies" ? "Applies" : line.status === "invalid" ? "Invalid" : "Unknown"}
             </Badge>
             {line.reason === undefined ? null : (
-              <span className="basis-full pl-9 font-sans text-sm text-muted-foreground">{line.reason}</span>
+              <span className="basis-full pl-9 font-sans text-prose text-muted-foreground">{line.reason}</span>
             )}
           </li>
         ))}
