@@ -73,7 +73,7 @@ describe("join command", () => {
     expect(joinCommand("x'y")).toBe(`curl -fsSL ${INSTALL_SCRIPT_URL} | DORIFACE_JOIN='x'\\''y' sh`);
   });
 
-  test("run as handed out, it joins through install.sh, and no process it starts is given the link (#1626)", () => {
+  test("run as handed out, it joins through install.sh, and no process it starts has the link on its command line (#1626)", () => {
     const link = "doriface://pair#h=a&k=b&m=1";
     const calls = runJoinLine(link);
     // install.sh read the link from DORIFACE_JOIN and handed mesh join a file holding it, instead of printing a pairing.
@@ -82,7 +82,8 @@ describe("join command", () => {
     );
     expect(calls).toContain(`from-file ${link}`);
     expect(calls.some((call) => call.startsWith("doriface-host pair"))).toBe(false);
-    // Every process the line started was given its arguments without the link: curl, sh, the host binary, systemctl.
+    // No process the line started has the link on its command line: curl, sh, the host binary, systemctl. (They do
+    // inherit DORIFACE_JOIN in their environment, which only the same user can read.)
     expect(calls.some((call) => call.startsWith("sh"))).toBe(true);
     expect(calls.filter((call) => !call.startsWith("from-file ") && call.includes(link))).toEqual([]);
   });
