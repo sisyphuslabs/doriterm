@@ -97,7 +97,7 @@ The theme input is a herdr-app terminal palette (background, foreground, selecti
 | 2xs   | 11 px                  | 12 px          | 600     | chips, badges, kbd                                   |
 
 - UI: system stack (`-apple-system`, SF Pro on Apple per HIG; Segoe UI Variable; system-ui). Terminal and code: JetBrains Mono Variable, self-hosted via @fontsource-variable, ligatures off (herdr-app default).
-- Body is 17 px on coarse pointers (HIG: 17 pt body on iPhone, secondary not below 15 pt). Desktop body and reading prose (`text-prose`) are both 14 px, so no reading text on desktop falls under 14 px; secondary prose steps down by colour, not size. Dense rows and tabs keep herdr-app's 13 px `sm` so long names keep their share. Only code ids, key caps and captions use xs/2xs.
+- Body is 17 px on coarse pointers (HIG: 17 pt body on iPhone, secondary not below 15 pt). Desktop body and reading prose (`text-prose`) are both 14 px, so the reading sentences of Settings, pairing, the mesh join screens, notices, connection status and empty results are 14 px on desktop; secondary prose steps down by colour, not size. Dense rows and tabs keep herdr-app's 13 px `sm` so long names keep their share. Only code ids, key caps and captions use xs/2xs.
 - Numerals that change (counts, ages) are tabular.
 
 ## 4. Spacing & Layout

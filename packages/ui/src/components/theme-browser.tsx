@@ -75,7 +75,7 @@ export function ThemeBrowser({ options, dark, light, defaultKind, onPick, classN
       {shown.length === 0 ? (
         <p
           role="status"
-          className="rounded-lg border border-border px-3 py-6 text-center text-sm text-muted-foreground"
+          className="rounded-lg border border-border px-3 py-6 text-center text-prose text-muted-foreground"
         >
           No {kind} theme matches “{search.trim()}”.
           {elsewhere > 0 ? ` ${elsewhere} ${other} ${elsewhere === 1 ? "theme does" : "themes do"}.` : ""}
