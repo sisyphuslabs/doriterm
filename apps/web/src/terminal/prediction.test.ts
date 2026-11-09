@@ -168,6 +168,23 @@ describe("the cursor leaving the row of undrawn predictions", () => {
     expect([texts(h), judgements(h)]).toEqual([["c", "d"], []]);
   });
 
+  test("after a clear moves the cursor above a wrap, the predictions the wrap carried below are dropped too, and the next key predicts from the real cursor", () => {
+    const h = harness();
+    h.screen.at = { row: 10, col: 76 };
+    confirmed(h, "x");
+    h.predictor.typed("a", "key");
+    h.predictor.typed("b", "key");
+    h.predictor.typed("c", "key");
+    expect(h.predictor.typed("d", "key")).toMatchObject({ kind: "predicted", cell: { row: 11, col: 0 } });
+    // The host echoes the keys on the wrapping row: only the wrap's own prediction on row 11 is left undrawn.
+    h.hostEchoes("abc");
+    expect(h.predictor.typed("\f", "key")).toEqual({ kind: "refused", rule: "P1" });
+    h.screen.at = { row: 0, col: 1 };
+    h.predictor.wrote();
+    expect(judgements(h)).toEqual(["killEpoch:row-left"]);
+    expect(h.predictor.typed("e", "key")).toMatchObject({ kind: "predicted", cell: { row: 0, col: 1 } });
+  });
+
   test("predictions the wrap carried two rows ahead of the cursor also wait for the host to get there", () => {
     const h = harness();
     h.screen.at = { row: 3, col: 78 };
