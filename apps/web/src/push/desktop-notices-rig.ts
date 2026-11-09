@@ -81,8 +81,10 @@ export function rig({
 } = {}) {
   const feeds: FakeFeed[] = [];
   let subscribes = 0;
-  const live: Pick<HcConnection, "subscribe" | "closed"> = {
+  const live: Pick<HcConnection, "subscribe" | "closed" | "hello"> = {
     closed: false,
+    // The core `local` stands for, named in a refusal as its hello names it (#1121).
+    hello: { core: { id: "core-test", name: "dev-box" } } as unknown as HcConnection["hello"],
     subscribe: async () => {
       subscribes += 1;
       if (subscribes <= failing) throw new Error("the core is busy");
