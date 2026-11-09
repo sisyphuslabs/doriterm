@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   type BenchRun,
   type Thresholds,
@@ -49,6 +51,10 @@ const LIMITS: Thresholds = {
   showCatchUpMs: { ratio: 1.5, floor: 200 },
   closePromptMs: { ratio: 1.5, floor: 50, max: 200 },
 };
+
+/** The limits the release gate runs with, as bench/run.ts reads them. */
+const SHIPPED = (JSON.parse(readFileSync(join(import.meta.dir, "thresholds.json"), "utf8")) as { limits: Thresholds })
+  .limits;
 
 describe("frameStats", () => {
   test("turns frame timestamps into nearest-rank interval percentiles, leaving the first frame out", () => {
@@ -119,13 +125,13 @@ describe("compareRuns", () => {
     expect(verdict.regressions.map((row) => row.metric)).toEqual(["drawnBytesPerSec"]);
   });
 
-  test("fails long-task time past both the ratio and the floor, where main busy is already saturated", () => {
+  test("fails long-task time past the shipped ratio and floor, where main busy is already saturated", () => {
     // #842's 50-pane regression: 756 -> 1,695 ms of long tasks with the main thread busy in both builds.
     const saturated = { busyShare: 0.97, longTaskMs: 756 };
-    const verdict = compareRuns([run(50, saturated)], [run(50, { busyShare: 0.98, longTaskMs: 1_695 })], LIMITS);
+    const verdict = compareRuns([run(50, saturated)], [run(50, { busyShare: 0.98, longTaskMs: 1_695 })], SHIPPED);
     expect(verdict.regressions.map((row) => row.metric)).toEqual(["longTaskMs"]);
     // 0 -> 400 ms is past any ratio but under the floor: noise.
-    expect(compareRuns([run(1, { longTaskMs: 0 })], [run(1, { longTaskMs: 400 })], LIMITS).regressions).toEqual([]);
+    expect(compareRuns([run(1, { longTaskMs: 0 })], [run(1, { longTaskMs: 400 })], SHIPPED).regressions).toEqual([]);
   });
 
   test("reports main busy ungated where its limit is past the share's ceiling, and gates it below", () => {
