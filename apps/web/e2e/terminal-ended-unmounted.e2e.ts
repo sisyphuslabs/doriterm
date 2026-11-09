@@ -28,8 +28,9 @@ const savedPane = (terminal: string, on?: string) =>
 
 /**
  * The program is started through hc, not typed: a wait-for line names this test's output path, and typed key by key on a
- * loaded runner it alone took most of a 60 s budget before the test reached what it checks (#1739). The test's budget is
- * the sum of the bounds it waits on, each of which is a product bound, so no single wait has to share the default.
+ * loaded runner it alone took most of a 60 s budget before the test reached what it checks (#1739). Each wait below has
+ * its own bound; if every one ran to its limit they would add up to about 155 s, so 120 s is not their sum. It is a test
+ * budget with room for a slow runner in a passing run, while a hang still fails here rather than at the default.
  */
 const ENDED_TEST_TIMEOUT_MS = 120_000;
 
