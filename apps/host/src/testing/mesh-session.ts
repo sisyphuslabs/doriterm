@@ -1,4 +1,4 @@
-import { lstatSync, readFileSync, realpathSync, type Stats, unwatchFile, watchFile } from "node:fs";
+import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { stopLeftoverCores, type HcSession } from "./hc-session.ts";
 import { adoptProcessGroup, stopProcessGroup } from "./process-group.ts";
@@ -38,21 +38,13 @@ function tailOf(path: string): string {
   }
 }
 
-/**
- * What happened to a core between its spawn and the fixture's readiness verdict, on the monotonic clock in ms after the
- * spawn (#1547). `probe` is the fixture's own check, independent of the watchFile callback that decides readiness: it
- * lstats the socket path and connects to it every PROBE_MS, so a socket the callback missed still shows here.
- */
+/** What happened to a core between its spawn and the fixture's readiness verdict, on the monotonic clock (#1547). */
 interface Startup {
   readonly spawned: number;
-  /** When the independent probe first saw a socket at the path. */
+  /** When the probe first saw a socket at the path. */
   socketSeen?: number;
-  /** When the independent probe first connected. */
+  /** When the probe first connected: readiness. */
   connected?: number;
-  /** When the watchFile callback saw the socket: readiness. */
-  watched?: number;
-  /** How many times the watchFile callback ran, socket or not. */
-  watchCalls: number;
   exited?: { readonly at: number; readonly code: number | null; readonly signal: string | number | null };
 }
 
@@ -65,16 +57,19 @@ function describe(startup: Startup, now: number, out: string, err: string): stri
       : `${at(startup.exited.at)} (code ${startup.exited.code}, signal ${startup.exited.signal})`;
   return [
     `  verdict at ${at(now)}; times are monotonic, after the core's spawn`,
-    `  socket first seen by the independent probe: ${at(startup.socketSeen)}`,
-    `  first connection by the independent probe: ${at(startup.connected)}`,
-    `  watchFile callback saw the socket: ${at(startup.watched)} (${startup.watchCalls} callbacks in all)`,
+    `  socket first seen: ${at(startup.socketSeen)}`,
+    `  first connection: ${at(startup.connected)}`,
     `  core exited: ${exited}`,
     `  core stdout tail: ${out}`,
     `  core stderr tail: ${err}`,
   ].join("\n");
 }
 
-/** Records the first lstat that shows a socket at `socket` and the first connect to it, until `done` is set. */
+/**
+ * Records the first lstat that shows a socket at `socket` and the first connect to it, until `done` is set. A core is
+ * ready once it accepts a connection. Not watchFile: Bun's stat scheduler can leave a watcher added while its pass is
+ * in flight never polled again, which under load left cores serving within a second unseen for the whole budget.
+ */
 async function probe(socket: string, startup: Startup, done: () => boolean): Promise<void> {
   if (!done() && startup.connected === undefined) {
     if (startup.socketSeen === undefined) {
@@ -113,16 +108,6 @@ export async function ownMeshSession(session: HcSession): Promise<HcSession> {
   // Files, not pipes: a pipe would need draining for the core's whole life, and the holders it starts inherit it.
   const outPath = join(dir, "core.out");
   const errPath = join(dir, "core.err");
-  let startup: Startup | undefined;
-  // Directory fs.watch does not reliably report Unix socket creation on macOS.
-  const onSocket = (stat: Stats): void => {
-    if (startup !== undefined) {
-      startup.watchCalls += 1;
-      if (stat.isSocket()) startup.watched ??= performance.now();
-    }
-    if (stat.isSocket()) ready.resolve();
-  };
-  watchFile(socket, { interval: 50 }, onSocket);
   const core = Bun.spawn([session.hc, "serve"], {
     // hc 0.1.17 scopes its direct-start opt-in to the immediate parent's pid.
     env: { ...session.env, HC_LAUNCHD_DIRECT: String(process.pid) },
@@ -131,13 +116,15 @@ export async function ownMeshSession(session: HcSession): Promise<HcSession> {
     stdout: Bun.file(outPath),
     stderr: Bun.file(errPath),
   });
-  const started: Startup = { spawned: performance.now(), watchCalls: 0 };
-  startup = started;
+  const started: Startup = { spawned: performance.now() };
   adoptProcessGroup(core, dir);
   let settled = false;
   const report = (message: string): Error =>
     new Error(`${message}\n${describe(started, performance.now(), tailOf(outPath), tailOf(errPath))}`);
-  void probe(socket, started, () => settled).catch((error: unknown) => ready.reject(error));
+  void probe(socket, started, () => settled).then(
+    () => ready.resolve(),
+    (error: unknown) => ready.reject(error),
+  );
   const onExit = (code: number): void => {
     started.exited = { at: performance.now(), code, signal: core.signalCode };
     if (!settled) ready.reject(report(`mesh core exited before readiness: ${code}`));
@@ -176,7 +163,6 @@ export async function ownMeshSession(session: HcSession): Promise<HcSession> {
   } finally {
     settled = true;
     clearTimeout(deadline);
-    unwatchFile(socket, onSocket);
   }
   return { ...session, dispose: () => (stopping ??= stop(true)) };
 }
