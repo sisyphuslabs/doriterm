@@ -45,7 +45,7 @@ export function joinTargetOf(positional: string | undefined, fromFile: string | 
     if (positional === undefined) throw new Error("mesh join needs a mesh pairing link or code");
     return positional;
   }
-  const given = readFileSync(fromFile, "utf8").trim();
+  const given = (readFileSync(fromFile, "utf8").split("\n", 1)[0] ?? "").trim();
   if (given === "") throw new Error(`${fromFile} holds no mesh pairing link or code`);
   return given;
 }
