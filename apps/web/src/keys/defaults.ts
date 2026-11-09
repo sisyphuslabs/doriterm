@@ -21,8 +21,10 @@ const MAC: readonly [string, string][] = [
   ["super+shift+left", "tab.move:left"],
   ["super+shift+right", "tab.move:right"],
   ...digits("super+", "tab.select"),
-  // herdr-app's space keys: Ctrl+1-9 select a space (Cmd+1-9 are its tabs), and Cmd+Alt+[ / ] cycle them.
-  ...digits("ctrl+", "space.select"),
+  // Ctrl+1-9 select a tab too, from a focused terminal as well, as they do on Linux and Windows (#1922); herdr-app gives
+  // them to its spaces here. A space's number chord is Cmd+Alt+1-9 instead, beside its Cmd+Alt+[ / ] cycle chords.
+  ...digits("ctrl+", "tab.select"),
+  ...digits("super+alt+", "space.select"),
   ["super+alt+[", "space.prev"],
   ["super+alt+]", "space.next"],
   ["super+n", "space.new"],

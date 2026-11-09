@@ -14,6 +14,8 @@ const NO_IMAGE_PASTE =
   "Ctrl+V is left to the terminal's own key handling; a pasted image already reaches the terminal's machine through the paste itself (#742), and Paste image can be bound in Settings > Keybindings";
 const NO_MODS = "Doriterm has no mods, so there is no picker mod to open";
 const NO_LAYOUTS = "Doriterm has no layout files to switch between";
+const CTRL_DIGIT_TABS =
+  "Ctrl+1-9 select a tab, from a focused terminal too, as on Linux and Windows (#1922); a space's number chord is Cmd+Alt+1-9";
 
 /**
  * Every herdr-app default (herdr-app/keys*.json) that doriface binds differently. `herdr-app-parity.test.ts` holds this
@@ -27,6 +29,11 @@ export const HERDR_APP_DIFFERENCES: Readonly<Record<Platform, readonly HerdrDiff
     { chord: "cmd-shift-l", doriface: null, reason: NO_LAYOUTS },
     { chord: "cmd-p", doriface: null, reason: NO_MODS },
     { chord: "ctrl-v", doriface: null, reason: NO_IMAGE_PASTE },
+    ...Array.from({ length: 9 }, (_, index) => ({
+      chord: `ctrl-${index + 1}`,
+      doriface: `tab.select:${index + 1}`,
+      reason: CTRL_DIGIT_TABS,
+    })),
   ],
   other: [
     { chord: "ctrl-shift-k", doriface: null, reason: NO_MODS },

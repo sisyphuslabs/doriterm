@@ -59,15 +59,15 @@ every chord. Keys a person rebinds in Settings > Keybindings stay theirs.
 | `cmd-7` | `tab.select:7` | same | click the tab |  |
 | `cmd-8` | `tab.select:8` | same | click the tab |  |
 | `cmd-9` | `tab.select:9` | same | click the tab |  |
-| `ctrl-1` | `space.select:1` | same | same |  |
-| `ctrl-2` | `space.select:2` | same | same |  |
-| `ctrl-3` | `space.select:3` | same | same |  |
-| `ctrl-4` | `space.select:4` | same | same |  |
-| `ctrl-5` | `space.select:5` | same | same |  |
-| `ctrl-6` | `space.select:6` | same | same |  |
-| `ctrl-7` | `space.select:7` | same | same |  |
-| `ctrl-8` | `space.select:8` | same | same |  |
-| `ctrl-9` | `space.select:9` | same | same |  |
+| `ctrl-1` | `space.select:1` | `tab.select:1` | same | Ctrl+1-9 select a tab, from a focused terminal too, as on Linux and Windows (#1922); a space's number chord is Cmd+Alt+1-9 |
+| `ctrl-2` | `space.select:2` | `tab.select:2` | same | Ctrl+1-9 select a tab, from a focused terminal too, as on Linux and Windows (#1922); a space's number chord is Cmd+Alt+1-9 |
+| `ctrl-3` | `space.select:3` | `tab.select:3` | same | Ctrl+1-9 select a tab, from a focused terminal too, as on Linux and Windows (#1922); a space's number chord is Cmd+Alt+1-9 |
+| `ctrl-4` | `space.select:4` | `tab.select:4` | same | Ctrl+1-9 select a tab, from a focused terminal too, as on Linux and Windows (#1922); a space's number chord is Cmd+Alt+1-9 |
+| `ctrl-5` | `space.select:5` | `tab.select:5` | same | Ctrl+1-9 select a tab, from a focused terminal too, as on Linux and Windows (#1922); a space's number chord is Cmd+Alt+1-9 |
+| `ctrl-6` | `space.select:6` | `tab.select:6` | same | Ctrl+1-9 select a tab, from a focused terminal too, as on Linux and Windows (#1922); a space's number chord is Cmd+Alt+1-9 |
+| `ctrl-7` | `space.select:7` | `tab.select:7` | same | Ctrl+1-9 select a tab, from a focused terminal too, as on Linux and Windows (#1922); a space's number chord is Cmd+Alt+1-9 |
+| `ctrl-8` | `space.select:8` | `tab.select:8` | same | Ctrl+1-9 select a tab, from a focused terminal too, as on Linux and Windows (#1922); a space's number chord is Cmd+Alt+1-9 |
+| `ctrl-9` | `space.select:9` | `tab.select:9` | same | Ctrl+1-9 select a tab, from a focused terminal too, as on Linux and Windows (#1922); a space's number chord is Cmd+Alt+1-9 |
 | `cmd-f` | `terminal.search` | same | same |  |
 | `cmd-c` | `terminal.copy` | same | same |  |
 | `cmd-v` | `terminal.paste` | same | same |  |

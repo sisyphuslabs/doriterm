@@ -47,10 +47,11 @@ for (const platform of ["MacIntel", "Linux x86_64"]) {
     await openNewTerminal(page);
     await openNewTerminal(page);
     expect(await tabs(page).count()).toBeGreaterThanOrEqual(4);
-    for (const place of [2, 1, 4, 3]) {
+    await [2, 1, 4, 3].reduce<Promise<void>>(async (previous, place) => {
+      await previous;
       await page.locator('[data-focused="true"] [data-terminal]').getByRole("textbox").focus();
       await page.keyboard.press(`Control+Digit${place}`);
       await expect(tabs(page).nth(place - 1)).toHaveAttribute("aria-selected", "true");
-    }
+    }, Promise.resolve());
   });
 }

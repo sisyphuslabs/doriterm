@@ -1,16 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { defaultKeymap } from "./defaults.ts";
 import { triggersFor } from "./keymap.ts";
+import { terminalKeeps } from "./terminal-keeps.ts";
 
 const spaces = (platform: "mac" | "other"): string[][] =>
   Array.from({ length: 9 }, (_, index) => triggersFor(defaultKeymap(platform), `space.select:${index + 1}`));
 
 describe("the space keys, as herdr-app binds them", () => {
-  test("on a Mac Ctrl+1-9 select a space, Cmd+1-9 stay its tabs, and Cmd+Alt+[ / ] cycle the spaces", () => {
+  test("on a Mac Cmd+1-9 and Ctrl+1-9 select a tab (#1922), Cmd+Alt+1-9 a space, and Cmd+Alt+[ / ] cycle the spaces", () => {
     const keymap = defaultKeymap("mac");
-    expect(spaces("mac")).toEqual(Array.from({ length: 9 }, (_, index) => [`ctrl+${index + 1}`]));
-    expect(triggersFor(keymap, "tab.select:1")).toEqual(["super+1"]);
-    expect(triggersFor(keymap, "tab.select:9")).toEqual(["super+9"]);
+    expect(spaces("mac")).toEqual(Array.from({ length: 9 }, (_, index) => [`alt+super+${index + 1}`]));
+    expect(triggersFor(keymap, "tab.select:1")).toEqual(["super+1", "ctrl+1"]);
+    expect(triggersFor(keymap, "tab.select:9")).toEqual(["super+9", "ctrl+9"]);
     expect(triggersFor(keymap, "space.prev")).toEqual(["alt+super+["]);
     expect(triggersFor(keymap, "space.next")).toEqual(["alt+super+]"]);
   });
@@ -27,6 +28,15 @@ describe("the space keys, as herdr-app binds them", () => {
   test("Cmd+Shift+R on a Mac and Ctrl+Shift+R elsewhere rename the tab, beside herdr-app's F2", () => {
     expect(triggersFor(defaultKeymap("mac"), "tab.rename")).toEqual(["f2", "shift+super+r"]);
     expect(triggersFor(defaultKeymap("other"), "tab.rename")).toEqual(["f2", "ctrl+shift+r"]);
+  });
+
+  test("a focused terminal keeps the space number chord only where it has no Cmd, and never a tab's Ctrl+digit", () => {
+    for (const platform of ["mac", "other"] as const) {
+      const kept = [...defaultKeymap(platform)].filter(([trigger, action]) => terminalKeeps(action, trigger));
+      expect(kept.map(([trigger]) => trigger)).toEqual(
+        platform === "mac" ? [] : Array.from({ length: 9 }, (_, index) => `alt+${index + 1}`),
+      );
+    }
   });
 
   test("no platform binds a number chord to both a tab and a space", () => {
