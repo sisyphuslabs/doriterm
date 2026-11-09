@@ -29,3 +29,10 @@ body,
   height: 100%;
   overflow: hidden;
 }
+
+/* The landing's motion toggle (frame-message.ts): every animation in the mockup holds its frame, the spinners included. */
+[data-motion="paused"] *,
+[data-motion="paused"] *::before,
+[data-motion="paused"] *::after {
+  animation-play-state: paused !important;
+}
