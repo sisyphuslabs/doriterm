@@ -1,6 +1,6 @@
-import { Pin } from "lucide-react";
 import { useRef, type ComponentProps, type ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
+import { PinSymbol } from "./pin-symbol.tsx";
 import { useRowFloors } from "./row-floors.ts";
 import { STATUS_LABEL, StatusChip, StatusIndicator, type AgentStatus } from "./status.tsx";
 
@@ -32,6 +32,8 @@ export interface AgentRowProps extends Omit<ComponentProps<"button">, "onSelect"
   readonly onSelect?: (id: string) => void;
   /** The sidebar is an icon rail: the status glyph alone, the name and state as its label and tooltip. */
   readonly rail?: boolean;
+  /** A persistent action draws the pin on fine pointers; keep its space reserved, and the mark on touch. */
+  readonly pinInActions?: boolean;
   readonly className?: string;
 }
 
@@ -47,6 +49,7 @@ export function AgentRow({
   compactBlocked = false,
   onSelect,
   rail = false,
+  pinInActions = false,
   className,
   ref,
   ...props
@@ -156,7 +159,12 @@ export function AgentRow({
       )}
       {agent.status === "blocked" && !compactBlocked ? <StatusChip status="blocked" glyph={false} /> : null}
       {agent.pinned === true ? (
-        <Pin role="img" aria-label="Pinned" data-row-meta className="size-3 shrink-0 text-muted-foreground" />
+        <span
+          data-row-meta
+          className={cn("shrink-0 text-muted-foreground", pinInActions && "invisible coarse:visible")}
+        >
+          <PinSymbol pinned label="Pinned" />
+        </span>
       ) : null}
       {agent.age === undefined ? null : (
         <time data-numeric data-row-meta className="min-w-7 shrink-0 text-right text-xs text-muted-foreground">

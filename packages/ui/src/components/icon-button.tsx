@@ -37,7 +37,13 @@ export function IconButton({
         variant={variant}
         aria-label={label}
         aria-pressed={pressed}
-        className={cn(SIZE[size], HIT, pressed === true && "bg-selected text-foreground", className)}
+        className={cn(
+          SIZE[size],
+          HIT,
+          "active:scale-100",
+          pressed === true && "bg-selected text-foreground",
+          className,
+        )}
       >
         {icon}
       </Button>

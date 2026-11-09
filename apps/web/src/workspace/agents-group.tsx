@@ -7,11 +7,12 @@ import {
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,
+  PinSymbol,
   RowWithActions,
   SidebarSection,
   type Agent,
 } from "@doriface/ui";
-import { Clock, Ellipsis, Layers, Pencil, Pin, PinOff, Power } from "lucide-react";
+import { Clock, Ellipsis, Layers, Pencil, Power } from "lucide-react";
 import { useMemo } from "react";
 import { useAskSession } from "./session-context.ts";
 import { filterAgentGroups } from "./sidebar-filter.ts";
@@ -76,7 +77,7 @@ function AgentMenuItems({ agent }: { readonly agent: Agent }) {
   const pinned = agent.pinned === true;
   return (
     <>
-      <MenuItem icon={pinned ? <PinOff /> : <Pin />} onClick={() => pin(agent.id, !pinned)}>
+      <MenuItem icon={<PinSymbol pinned={pinned} />} onClick={() => pin(agent.id, !pinned)}>
         {pinned ? "Unpin" : "Pin to top"}
       </MenuItem>
       <MenuItem icon={<Pencil />} onClick={() => ask({ kind: "rename", address: agent.id })}>
@@ -101,8 +102,9 @@ function AgentActions({ agent }: { readonly agent: Agent }) {
     <>
       <IconButton
         label={pinned ? `Unpin ${agent.name}` : `Pin ${agent.name} to the top`}
-        icon={pinned ? <PinOff /> : <Pin />}
-        className="size-6 coarse:hidden"
+        icon={<PinSymbol pinned={pinned} />}
+        pressed={pinned}
+        className={pinned ? "visible size-6 coarse:hidden" : "size-6 coarse:hidden"}
         onClick={() => pin(agent.id, !pinned)}
       />
       <Menu
@@ -154,6 +156,7 @@ export function AgentsGroup({ terminals, active, onOpen, rail = false, heading =
                 compactBlocked={group.compactBlocked}
                 onSelect={onOpen}
                 rail={rail}
+                pinInActions
               />
             );
             // The rail has no room for the hover actions, but its right-click opens the same menu (#699).
@@ -166,6 +169,7 @@ export function AgentsGroup({ terminals, active, onOpen, rail = false, heading =
                 actions={<AgentActions agent={agent} />}
                 menu={<AgentMenuItems agent={agent} />}
                 coarseActions
+                className="[&>span]:right-2"
               />
             );
           })}
