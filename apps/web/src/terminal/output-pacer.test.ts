@@ -12,6 +12,34 @@ function manualFrames() {
   return { frame, frames, nextFrame: (): void => frames.shift()?.() };
 }
 
+/** Timers on a clock that moves only when the test advances it; due timers run in order of when they are due. */
+function manualTimers() {
+  let now = 0;
+  const due: { at: number; run: () => void }[] = [];
+  const timer = (run: () => void, ms: number): (() => void) => {
+    const entry = { at: now + ms, run };
+    due.push(entry);
+    return () => {
+      const at = due.indexOf(entry);
+      if (at !== -1) due.splice(at, 1);
+    };
+  };
+  const advance = (ms: number): void => {
+    const until = now + ms;
+    for (;;) {
+      const next = due.filter((entry) => entry.at <= until).sort((a, b) => a.at - b.at)[0];
+      if (next === undefined) break;
+      due.splice(due.indexOf(next), 1);
+      now = next.at;
+      next.run();
+    }
+    now = until;
+  };
+  return { timer, advance, now: () => now };
+}
+
+const KIB = 1024;
+
 const bytes = (length: number, fill = 0x61) => new Uint8Array(length).fill(fill);
 
 describe("OutputPacer.busy", () => {
@@ -138,11 +166,12 @@ describe("OutputPacer in a synchronized update (#757)", () => {
       clock.frame,
       () => 0,
     );
-    pacer.push(new Uint8Array([...text(OPEN), ...bytes(FRAME_BYTES * 4)]));
+    // The update is larger than a catch-up frame's bytes, so the frame has no room left for what follows it.
+    pacer.push(new Uint8Array([...text(OPEN), ...bytes(FRAME_BYTES * 20)]));
     pacer.push(text(CLOSE));
     pacer.push(bytes(FRAME_BYTES + 1));
     clock.nextFrame();
-    expect(written).toEqual([OPEN.length + FRAME_BYTES * 4 + CLOSE.length]);
+    expect(written).toEqual([OPEN.length + FRAME_BYTES * 20 + CLOSE.length]);
     clock.nextFrame();
     expect(written.slice(1)).toEqual([FRAME_BYTES]);
   });
@@ -188,6 +217,169 @@ describe("OutputPacer in a synchronized update (#757)", () => {
     expect(written).toHaveLength(2);
     clock.nextFrame();
     expect(written.slice(2)).toEqual([FRAME_BYTES]);
+  });
+});
+
+describe("OutputPacer while the app is hidden (D5)", () => {
+  test("a drain every 50 ms writes the whole queue at once, credited, with no frame booked", () => {
+    const frames = manualFrames();
+    const timers = manualTimers();
+    const written: number[] = [];
+    let credited = 0;
+    const credit = (count: number): void => void (credited += count);
+    const pacer = new OutputPacer((batch) => written.push(batch.byteLength), frames.frame, timers.now, timers.timer);
+    pacer.setHidden(true);
+    for (let at = 0; at < 3; at += 1) pacer.push(bytes(20 * KIB), credit);
+    expect(frames.frames).toHaveLength(0);
+    timers.advance(49);
+    expect(written).toEqual([]);
+    timers.advance(1);
+    expect(written).toEqual([60 * KIB]);
+    expect(credited).toBe(60 * KIB);
+    expect(frames.frames).toHaveLength(0);
+    // The drain goes on while the app stays hidden.
+    pacer.push(bytes(KIB), credit);
+    timers.advance(50);
+    expect(written).toEqual([60 * KIB, KIB]);
+    expect(frames.frames).toHaveLength(0);
+  });
+
+  test("shown again, what waited is written at once, and later output is paced again", () => {
+    const frames = manualFrames();
+    const timers = manualTimers();
+    const written: number[] = [];
+    let credited = 0;
+    const pacer = new OutputPacer((batch) => written.push(batch.byteLength), frames.frame, timers.now, timers.timer);
+    pacer.setHidden(true);
+    pacer.push(bytes(5 * KIB), (count) => (credited += count));
+    pacer.setHidden(false);
+    expect(written).toEqual([5 * KIB]);
+    expect(credited).toBe(5 * KIB);
+    expect(pacer.busy).toBe(false);
+    timers.advance(50);
+    expect(written).toEqual([5 * KIB]);
+    pacer.push(bytes(20 * KIB));
+    expect(written).toEqual([5 * KIB]);
+    frames.nextFrame();
+    expect(written).toEqual([5 * KIB, FRAME_BYTES]);
+  });
+
+  test("a pane out of view takes nothing while the app is hidden either", () => {
+    const frames = manualFrames();
+    const timers = manualTimers();
+    const written: number[] = [];
+    const pacer = new OutputPacer((batch) => written.push(batch.byteLength), frames.frame, timers.now, timers.timer);
+    pacer.setVisible(false);
+    pacer.setHidden(true);
+    pacer.push(bytes(KIB));
+    timers.advance(100);
+    pacer.setHidden(false);
+    expect(written).toEqual([]);
+    pacer.setVisible(true);
+    frames.nextFrame();
+    expect(written).toEqual([KIB]);
+  });
+});
+
+describe("OutputPacer catching up a backlog (D5)", () => {
+  test("a backlog over two frames' bytes is written in one frame, up to one credit window, in order", () => {
+    const frames = manualFrames();
+    const written: Uint8Array[] = [];
+    const pacer = new OutputPacer((batch) => written.push(batch), frames.frame, () => 0);
+    pacer.push(bytes(100 * KIB));
+    frames.nextFrame();
+    expect(written.map((batch) => batch.byteLength)).toEqual([100 * KIB]);
+
+    const pushed = [bytes(100 * KIB, 0x61), bytes(100 * KIB, 0x62), bytes(100 * KIB, 0x63)];
+    for (const piece of pushed) pacer.push(piece);
+    frames.nextFrame();
+    expect(written.slice(1).map((batch) => batch.byteLength)).toEqual([256 * KIB]);
+    frames.nextFrame();
+    expect(written.slice(1).map((batch) => batch.byteLength)).toEqual([256 * KIB, 44 * KIB]);
+    expect(Buffer.concat(written.slice(1)).equals(Buffer.concat(pushed))).toBe(true);
+  });
+
+  test("a queue at or under two frames' bytes is still paced a frame's bytes at a time", () => {
+    const frames = manualFrames();
+    const written: number[] = [];
+    const pacer = new OutputPacer((batch) => written.push(batch.byteLength), frames.frame, () => 0);
+    pacer.push(bytes(20 * KIB));
+    frames.nextFrame();
+    frames.nextFrame();
+    expect(written).toEqual([FRAME_BYTES, 4 * KIB]);
+  });
+});
+
+describe("OutputPacer holding an attach replay (D5)", () => {
+  function replaying(srtt: number | undefined) {
+    const frames = manualFrames();
+    const timers = manualTimers();
+    const written: number[] = [];
+    const holds: boolean[] = [];
+    const pacer = new OutputPacer((batch) => written.push(batch.byteLength), frames.frame, timers.now, timers.timer);
+    pacer.replay({ srtt: () => srtt, hold: (held) => holds.push(held) });
+    return { frames, timers, written, holds, pacer };
+  }
+
+  test("the replay is written as it arrives, uncapped, held until it is quiet for 1.5 x SRTT + 50 ms", () => {
+    const { frames, timers, written, holds, pacer } = replaying(300);
+    expect(holds).toEqual([true]);
+    expect(pacer.busy).toBe(true);
+    pacer.push(bytes(100 * KIB));
+    pacer.push(bytes(200 * KIB));
+    expect(written).toEqual([100 * KIB, 200 * KIB]);
+    expect(frames.frames).toHaveLength(0);
+    timers.advance(499);
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
+    expect(pacer.busy).toBe(false);
+    // Once it ends, output is paced again.
+    pacer.push(bytes(20 * KIB));
+    expect(written).toHaveLength(2);
+    frames.nextFrame();
+    expect(written.slice(2)).toEqual([FRAME_BYTES]);
+  });
+
+  test("each push starts the quiet window again; with no SRTT the window is 100 ms", () => {
+    const { timers, holds, pacer } = replaying(undefined);
+    timers.advance(90);
+    pacer.push(bytes(KIB));
+    timers.advance(99);
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
+  });
+
+  test("a replay that never goes quiet is let go 1500 ms after it began", () => {
+    const { timers, holds, written, pacer } = replaying(300);
+    for (let at = 0; at < 1500; at += 100) {
+      pacer.push(bytes(KIB));
+      timers.advance(at === 1400 ? 99 : 100);
+    }
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
+    expect(written).toHaveLength(15);
+  });
+
+  test("a replay is let go once 2 MiB have been written", () => {
+    const { holds, pacer, written } = replaying(300);
+    pacer.push(bytes(1024 * KIB));
+    expect(holds).toEqual([true]);
+    pacer.push(bytes(1024 * KIB));
+    expect(holds).toEqual([true, false]);
+    expect(written).toEqual([1024 * KIB, 1024 * KIB]);
+  });
+
+  test("drop ends a replay in flight and lets the paint go", () => {
+    const { timers, holds, pacer } = replaying(300);
+    pacer.push(bytes(KIB));
+    pacer.drop();
+    expect(holds).toEqual([true, false]);
+    expect(pacer.busy).toBe(false);
+    timers.advance(2000);
+    expect(holds).toEqual([true, false]);
   });
 });
 
