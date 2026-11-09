@@ -72,8 +72,12 @@ export type MeshLineStuck =
   | { readonly kind: "copied_core" }
   | { readonly kind: "line_idle" };
 
-/** A STUCK reason of the whole mesh on this host, or of one member's line (`member` is its hostId). */
+/**
+ * A STUCK reason of the whole mesh on this host, or of one member's line (`member` is its hostId). `unknown` is what a
+ * reader puts in place of a reason of a kind a newer host added (#1139); a host never writes it.
+ */
 export type MeshStuckReason =
+  | { readonly kind: "unknown" }
   | (MeshLineStuck & { readonly member: string })
   | { readonly kind: "possibly_revoked" }
   /** This host was revoked (design section 6.4): by whom (hostIds), when (display only), and the grace period's end. */
@@ -92,12 +96,17 @@ export type MeshGate = { readonly kind: "offline"; readonly refusals: number; re
 export type MeshReplacedKind = "ssh" | "connect" | "command";
 
 /** The kind only: an ssh target or via command can carry a user, an address or a key path, so neither is copied. */
-export type MeshReplacedMachine = { readonly name: string; readonly kind: MeshReplacedKind };
+export type MeshReplacedMachine = {
+  readonly name: string;
+  /** `unknown` when a reader does not know the kind a newer host wrote (#1139); a host never writes it. */
+  readonly kind: MeshReplacedKind | "unknown";
+};
 
-const REPLACED_KIND_TEXT: { readonly [K in MeshReplacedKind]: string } = {
+const REPLACED_KIND_TEXT: { readonly [K in MeshReplacedMachine["kind"]]: string } = {
   ssh: "added over ssh",
   connect: "doriface-host connect",
   command: "added with a --via command",
+  unknown: "added another way",
 };
 
 /** `replaced machine "old" (added over ssh) with the mesh line`, as status and the reconciler's log say it. */
@@ -122,7 +131,8 @@ export type MeshMemberStatus = {
    * past its 12th member (not dialed, cannot sign), and readers still parse it.
    */
   readonly overCap: boolean;
-  readonly line: MeshLineState;
+  /** `unknown` when a reader does not know the state a newer host wrote (#1139); a host never writes it. */
+  readonly line: MeshLineState | "unknown";
   /** herdr's reason, for the states in MESH_LINE_STATES_WITH_REASON only. */
   readonly lineReason: string | null;
   /** The core id of the latest line hello from it; the card's `hcId` check uses it (design section 7.6). */
@@ -157,7 +167,8 @@ export type MeshRevokedStatus = {
   readonly localName: string;
   readonly fingerprint: string;
   readonly revokedBy: readonly string[];
-  readonly reason: "revoke" | "compromised" | "leave";
+  /** `unknown` when a reader does not know the reason a newer host wrote (#1139); a host never writes it. */
+  readonly reason: "revoke" | "compromised" | "leave" | "unknown";
   readonly at: string | null;
 };
 

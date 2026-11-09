@@ -26,6 +26,8 @@ function stuckLine(reason: MeshStuckReason, nameOf: (hostId: string) => string):
       return `mesh log full (${reason.records})`;
     case "counter_behind":
       return `counter behind its records (file ${reason.file}, mesh ${reason.mesh}): syncing before signing`;
+    case "unknown":
+      return "a reason this doriface-host does not know: update it to see the reason";
   }
 }
 
