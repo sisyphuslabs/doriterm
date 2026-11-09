@@ -57,6 +57,28 @@ test("a new slot typed from scratch is asked for, and the earlier slot's answer 
   expect(asked).toEqual(["AB3", "XY7"]);
 });
 
+test("a link typed by hand asks for no slot, though its first letters read as code characters (#1281)", () => {
+  for (const link of ["https://web.example/pair#x", "http://web.example/pair#x", "HTTPS://WEB.EXAMPLE/PAIR#X"]) {
+    const { asked, lookups } = relay();
+    // The pair step stops reporting the text once it holds a `#`.
+    typeEach(lookups, link.slice(0, link.indexOf("#")));
+    expect(asked).toEqual([]);
+  }
+});
+
+test("a code that starts like a link is asked for once it can no longer be one", () => {
+  for (const [code, slot] of [
+    ["HTT4 9XQZ", "HTT"],
+    ["HTTPX9QZ", "HTT"],
+    ["HTTPS9QZ", "HTT"],
+    ["H7TP 9XQZ", "H7T"],
+  ] as const) {
+    const { asked, lookups } = relay();
+    typeEach(lookups, code);
+    expect(asked).toEqual([slot]);
+  }
+});
+
 test("a refused lookup is asked again by Pair, as a second Pair always asked", async () => {
   const { asked, answers, lookups } = relay();
   typeEach(lookups, "AB3K9XQZ");
