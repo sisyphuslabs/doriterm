@@ -77,8 +77,8 @@ class PushSettings {
   /** Moves run one at a time (see `retarget`). */
   readonly #moves = new MoveQueue();
   /**
-   * Why the last move failed, shown until another move settles. Opening Notifications reads the settings again, and that
-   * read must not hide that notifications stayed with the old host (#890).
+   * Why the last move failed, shown until another move settles or Turn on/off succeeds. Opening Notifications reads the
+   * settings again, and that read must not hide that notifications stayed with the old host (#890).
    */
   #unmoved: string | null = null;
 
@@ -131,6 +131,7 @@ class PushSettings {
     if (permission !== "granted") return;
     await this.#run("turn-on", "turn notifications on", async () => {
       await this.#register(routeOf(connectionStore.settings), this.#view.prefs);
+      this.#settled(null);
       this.#set({ on: true });
     });
   }
@@ -145,6 +146,7 @@ class PushSettings {
         await registrar.unsubscribe();
       }
       await savePushRoute(null);
+      this.#settled(null);
       this.#set({ on: false, tested: false });
     });
   }
@@ -242,7 +244,7 @@ class PushSettings {
     }
   }
 
-  /** A move settled: its failure is shown until the next one, and a move that went through clears the last failure. */
+  /** A move or an explicit on/off action settled; successful actions clear the last move failure. */
   #settled(unmoved: string | null): void {
     const shown = this.#view.error === this.#unmoved;
     this.#unmoved = unmoved;
