@@ -76,19 +76,30 @@ export function TerminalView(props: TerminalViewProps) {
   const [finding, setFinding] = useState<number | null>(null);
   const openFind = useCallback(() => setFinding((count) => (count ?? 0) + 1), []);
   const handle = useRef<TerminalHandle | null>(null);
-  /** Counts the writes reaching the renderer, so a find reads the cells again only after new output. */
+  /**
+   * Counts the changes to the core's cells: each write that reaches it (output held behind a Kitty PNG decode counts when
+   * it is written, not when it arrived) and each resize, which reflows the scrollback. A find reads the cells again only
+   * when it moves (#1207).
+   */
   const written = useRef(0);
   const stream = useRef<TerminalStream | null>(null);
   // The program's output reaches the core through this: Kitty images sent as PNG are decoded to RGBA on the way.
-  const output = useMemo(() => new KittyPngTranscoder((bytes) => handle.current?.write(bytes)), []);
+  const output = useMemo(
+    () =>
+      new KittyPngTranscoder((bytes) => {
+        handle.current?.write(bytes);
+        written.current += 1;
+        // Output held behind a decode is written after its frame: the overlays read the grid again for it.
+        outputShown.current();
+      }),
+    [],
+  );
   // Output is written once a frame and credited only then, so a flood cannot starve clicks and keys (#560).
   const pacer = useMemo(
     () =>
       new OutputPacer((bytes) => {
         output.push(bytes);
-        written.current += 1;
         warmup.current?.note(bytes);
-        outputShown.current();
       }),
     [output],
   );
@@ -219,7 +230,11 @@ export function TerminalView(props: TerminalViewProps) {
           attachment.attach(ready);
         }}
         onData={typedInto}
-        onResize={(cols, rows) => stream.current?.resize(cols, rows)}
+        onResize={(cols, rows) => {
+          // The core reflows its rows to the new width, with no output: the cells a find read have moved.
+          written.current += 1;
+          stream.current?.resize(cols, rows);
+        }}
         onFocus={(event) => {
           // wterm focuses the terminal as it starts, and the patch drops that start call; a focus event can still
           // arrive for a pane the view did not choose. Only the focused pane's keeps it; any other hands it back to
