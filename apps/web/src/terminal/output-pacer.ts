@@ -231,7 +231,9 @@ export class OutputPacer {
     replay.options.hold(false);
     // Every write of the replay landed while the paint was held, so a listener placing the view (hold-view-from-end)
     // placed it on the layout before the replay; the release draws the replay, so the listeners are told once more.
-    for (const listener of this.#written) listener();
+    // A replay that went quiet before any of it arrived drew nothing: telling them then would end a hold that has not
+    // placed the view on the replay yet, and leave it wherever the terminal's reset scrolled it (#1394).
+    if (replay.written > 0) for (const listener of this.#written) listener();
     this.#schedule();
   }
 
