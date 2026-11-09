@@ -6,6 +6,8 @@ import { LAYOUT_MACHINE_SPEC } from "./layout-seed.ts";
 import { MACHINE_NAME } from "./machine.ts";
 
 export const LAYOUT_DOC = "herdr-app";
+/** doriface's own document of pinned tab ids beside the layout (#1561); herdr-app drops unknown tab fields. */
+export const PINS_DOC = "doriface-pins";
 
 export type Tree =
   | { readonly pane: string; readonly terminal: string; readonly weight?: number }
@@ -70,7 +72,10 @@ export interface SeedSpace {
   }[];
 }
 
-/** Saves these spaces, each tab one pane, as the core's layout or (`on`) as its added machine's (#404). */
+/**
+ * Saves these spaces, each tab one pane, as the core's layout or (`on`) as its added machine's (#404), and their pinned
+ * tabs as its pins document (none left from an earlier seed).
+ */
 export function seedSpaces(spaces: readonly SeedSpace[], on?: string): void {
   setCoreDoc(
     LAYOUT_DOC,
@@ -82,7 +87,6 @@ export function seedSpaces(spaces: readonly SeedSpace[], on?: string): void {
         tabs: space.tabs.map((tab) => ({
           id: tab.id,
           name: tab.name,
-          ...(tab.pinned === true ? { pinned: true } : {}),
           root: {
             children: [tab.terminal, ...(tab.beside ?? [])].map((terminal, at) =>
               treeNode({ pane: at === 0 ? `p-${tab.id}` : `p-${tab.id}-${at}`, terminal }),
@@ -95,6 +99,8 @@ export function seedSpaces(spaces: readonly SeedSpace[], on?: string): void {
     },
     on,
   );
+  const pinned = spaces.flatMap((space) => space.tabs.flatMap((tab) => (tab.pinned === true ? [tab.id] : [])));
+  setCoreDoc(PINS_DOC, pinned.length === 0 ? null : { pinned_tabs: pinned }, on);
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

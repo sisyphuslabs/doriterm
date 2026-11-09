@@ -184,6 +184,8 @@ export interface SpacesSource {
   readonly machine: string | null;
   readonly machineId: string | null;
   readonly doc: JsonObject | null;
+  /** The ids of the machine's pinned tabs (#1561), from its pins document. */
+  readonly pins?: ReadonlySet<string>;
 }
 
 /** A space of a layout document, with the terminals its tabs show (live or not), in tab order. */
@@ -219,7 +221,7 @@ export function layoutSpaces(
   const entries = ordered.flatMap((source) => {
     const { doc } = source;
     if (doc === null) return [];
-    const tabs = tabsOf(doc);
+    const tabs = tabsOf(doc, source.pins);
     return docSpaces(doc).map((space) => {
       const own = tabs.filter((tab) => tab.space === space.id);
       const tabNames = own.map((tab) => tab.name);

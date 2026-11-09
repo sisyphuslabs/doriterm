@@ -108,7 +108,7 @@ export function localOf(address: string): string {
 
 function docTabs(layout: MachineLayout): LayoutTab[] {
   if (layout.doc === null) return [];
-  return tabsOf(layout.doc).map((tab) => ({
+  return tabsOf(layout.doc, layout.pins).map((tab) => ({
     key: tabKey(layout.machineId, tab.id),
     id: tab.id,
     space: tab.space,

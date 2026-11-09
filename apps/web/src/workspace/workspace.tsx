@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { connectionStore } from "../connection/store.ts";
 import { useActionHandler } from "../keys/dispatcher.ts";
 import { ShortcutsHelp } from "../keys/shortcuts-dialog.tsx";
-import { type Axis, LAYOUT_DOC, ORDER_DOC } from "@doriface/protocol/layout";
+import { type Axis, LAYOUT_DOC, ORDER_DOC, PINS_DOC } from "@doriface/protocol/layout";
 import { closesTab, type TerminalEnd } from "../terminal/terminal-end.ts";
 import { CloseTabDialog } from "./close-tab-dialog.tsx";
 import { stillClosing } from "./close-set.ts";
@@ -61,9 +61,11 @@ export function Workspace({ connection }: WorkspaceProps) {
   // The feed comes before the machine list the layout documents need, so its doc events reach them through a ref.
   const heardLayout = useRef<(machine: string | null, version: number) => void>(() => undefined);
   const heardOrder = useRef<(version: number) => void>(() => undefined);
+  const heardPins = useRef<(machine: string | null, version: number) => void>(() => undefined);
   const onDoc = useCallback<DocHeard>((machine, name, version) => {
     if (name === LAYOUT_DOC) heardLayout.current(machine, version);
     if (name === ORDER_DOC && machine === null) heardOrder.current(version);
+    if (name === PINS_DOC) heardPins.current(machine, version);
   }, []);
   const fed = useTerminals(connection, onDoc);
   useResumeEnds(connection);
@@ -78,10 +80,11 @@ export function Workspace({ connection }: WorkspaceProps) {
     listed: machineReads,
   } = useMachines(connection, fed.terminals);
   // Opened and re-read on what hc said: a document read while its line was down is read again once the line is back.
-  const { layouts, heard } = useLayoutDocs(connection, heardMachines, views);
+  const { layouts, heard, heardPins: heardPinsDoc } = useLayoutDocs(connection, heardMachines, views);
   const gitOf = useGitFacts(connection, views);
   const todoOf = useTodoProgress(connection, fed.terminals);
   heardLayout.current = heard;
+  heardPins.current = heardPinsDoc;
   const order = useMachineOrder(connection, listed);
   heardOrder.current = order.heard;
   const entries = order.entries;

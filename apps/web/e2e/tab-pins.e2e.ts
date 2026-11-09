@@ -1,14 +1,15 @@
 // Pinned tabs and the close sets (#1561): a pinned tab leads its space as its icon alone with no close button, keeps to
-// the pinned side when moved, and every device reads the pin from the layout document; "Close tabs to the right" and
+// the pinned side when moved, and every device reads the pin from the machine's pins document, which survives herdr-app
+// rewriting its layout document; "Close tabs to the right" and
 // "Close other tabs" close exactly those tabs and never a pinned one.
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Browser, Locator, Page } from "@playwright/test";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
-import { getCoreDoc } from "./core-doc.ts";
+import { getCoreDoc, updateCoreDoc } from "./core-doc.ts";
 import { expect, test } from "./fixtures.ts";
-import { LAYOUT_DOC, seedSpaces } from "./layout-doc.ts";
+import { LAYOUT_DOC, PINS_DOC, seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
 import { PHONE } from "./phone-key-bar.ts";
@@ -66,12 +67,28 @@ function fourTabs(): void {
   ]);
 }
 
-/** The pinned space's tabs as the layout document holds them: name, and a star for a pinned one. */
+type Saved = { spaces?: { tabs?: Record<string, unknown>[] }[] } | null;
+
+/** The pinned space's tabs in the layout document's order: name, and a star for one the pins document names. */
 const saved = (): string[] => {
-  const doc = getCoreDoc(LAYOUT_DOC) as { spaces?: { tabs?: { name?: string; pinned?: boolean }[] }[] } | null;
+  const doc = getCoreDoc(LAYOUT_DOC) as Saved;
+  const pins = (getCoreDoc(PINS_DOC) as { pinned_tabs?: string[] } | null)?.pinned_tabs ?? [];
   const tabs = doc?.spaces?.[0]?.tabs ?? [];
-  return tabs.map((tab) => `${tab.name ?? ""}${tab.pinned === true ? "*" : ""}`);
+  return tabs.map((tab) => `${String(tab["name"] ?? "")}${pins.includes(String(tab["id"])) ? "*" : ""}`);
 };
+
+/** herdr-app saving its layout (`src/mirror.rs`): every tab rebuilt with only `id`, `name` and `root`. */
+const herdrResave = (): void =>
+  updateCoreDoc(LAYOUT_DOC, (current) => {
+    const doc = current as Saved;
+    return {
+      spaces: (doc?.spaces ?? []).map((space) =>
+        Object.assign({}, space, {
+          tabs: (space.tabs ?? []).map((tab) => ({ id: tab["id"], name: tab["name"], root: tab["root"] })),
+        }),
+      ),
+    };
+  });
 
 async function fromMenu(page: Page, tab: string, item: string): Promise<void> {
   await tabBar(page).filter({ hasText: tab }).click({ button: "right" });
@@ -93,6 +110,10 @@ test("a pinned tab leads as its icon alone, with no close button, and another pa
   await expect(pinned).toHaveAttribute("title", "three");
   await pinned.click();
   await expect(page.getByRole("button", { name: "Close three" })).toHaveCount(0);
+  // The layout document never holds the pin, so herdr-app saving it leaves the tab pinned (#1621 review).
+  expect(JSON.stringify(getCoreDoc(LAYOUT_DOC))).not.toContain("pinned");
+  herdrResave();
+  expect(saved()).toEqual(["three*", "one", "two", "four"]);
 
   const other = await secondDevice(browser);
   try {
