@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { agentRow, endAgent, startShell } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { expectTouchTargets, fakeSoftKeyboard, key, keysBar, PHONE } from "./phone-key-bar.ts";
 
@@ -56,6 +57,70 @@ for (const width of [390, 320]) {
     if (screen === null || keys === null) return;
     expect(screen.y + screen.height).toBeLessThanOrEqual(keys.y + 1);
     expect(keys.y + keys.height).toBeLessThanOrEqual(844);
+  });
+}
+
+type Box = { x: number; y: number; width: number; height: number };
+const overlaps = (a: Box, b: Box): boolean =>
+  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+const LOOSE = [
+  { width: 390, bottom: 0, right: 0 },
+  { width: 320, bottom: 0, right: 0 },
+  { width: 390, bottom: 34, right: 0 },
+  { width: 390, bottom: 21, right: 47 },
+] as const;
+
+for (const { width, bottom, right } of LOOSE) {
+  test(`at ${width} with a ${bottom}px bottom and ${right}px right inset and no tabs bar, no key the row shows sits under the round buttons (#1546 review)`, async ({
+    page,
+  }) => {
+    // A shell started after the page loaded is in no tab (loose terminals are adopted on load), so its screen has no
+    // tabs bar and the row is level with the round buttons.
+    const name = `row-loose-${width}-${bottom}-${right}`;
+    await fakeSoftKeyboard(page);
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+    const shell = startShell("host", name);
+    try {
+      await page.addStyleTag({ content: `:root:root { --safe-bottom: ${bottom}px; --safe-right: ${right}px; }` });
+      await agentRow(page, name, false).click({ timeout: 20_000 });
+      await expect(row(page)).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByLabel("Tabs in this space")).toHaveCount(0);
+      const rounds = await Promise.all(
+        ["Read-only", "Show keyboard"].map(async (name) => {
+          const box = await key(page, name).boundingBox();
+          expect(box, name).not.toBeNull();
+          return box as Box;
+        }),
+      );
+      // What a key shows is its box cut to the row's own scrolling box.
+      const shown = await row(page).evaluate((bar) => {
+        const edge = bar.getBoundingClientRect();
+        return [...bar.querySelectorAll("button")].flatMap((button) => {
+          const box = button.getBoundingClientRect();
+          const x = Math.max(box.left, edge.left);
+          const right = Math.min(box.right, edge.right);
+          return right - x > 0.5
+            ? [{ name: button.getAttribute("aria-label") ?? "", x, y: box.top, width: right - x, height: box.height }]
+            : [];
+        });
+      });
+      expect(shown.length).toBeGreaterThan(0);
+      expect(shown.filter((each) => rounds.some((round) => overlaps(each, round))).map((each) => each.name)).toEqual(
+        [],
+      );
+      // The round buttons reach no higher than the row: the terminal above keeps its last line clear.
+      const [bar, screen] = await Promise.all([row(page).boundingBox(), page.locator("[data-terminal]").boundingBox()]);
+      expect(bar).not.toBeNull();
+      expect(screen).not.toBeNull();
+      if (bar === null || screen === null) return;
+      for (const round of rounds) expect(round.y).toBeGreaterThanOrEqual(bar.y - 1);
+      expect(screen.y + screen.height).toBeLessThanOrEqual(bar.y + 1);
+    } finally {
+      endAgent("host", shell);
+    }
   });
 }
 

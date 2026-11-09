@@ -231,8 +231,9 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
           {...(tabsBar
             ? {}
             : {
+                // Level with the round buttons (3rem at the corner's inset) and clear of them on the right.
                 style: { paddingRight: roundButtonsClearance(2) },
-                className: "pb-[max(0.5rem,var(--safe-bottom))]",
+                className: "pt-0 pb-[max(1rem,calc(var(--safe-bottom)+0.5rem))]",
               })}
         />
       ) : null}
