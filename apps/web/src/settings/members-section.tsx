@@ -76,7 +76,8 @@ export function MemberConnections({
   readonly selectedHostId: string;
 }) {
   return (
-    <ul className="flex flex-col divide-y divide-border">
+    // Named so a screen reader can tell this list from the Machines list under it (#1170).
+    <ul aria-label="Connections" className="flex flex-col divide-y divide-border">
       {members.map((entry) => {
         const action = rowAction(entry, selectedHostId);
         return (
