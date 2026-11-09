@@ -103,7 +103,10 @@ export function addTab(doc: JsonObject | null, space: NewSpace, tab: JsonObject,
   }
   const tabs = tabsIn(existing);
   const before = after === undefined ? -1 : tabs.findIndex((each) => text(each["id"]) === after);
-  const placed = before === -1 ? [...tabs, tab] : tabs.toSpliced(before + 1, 0, tab);
+  // A new tab opened from a pinned one lands after the last pinned tab, never between pinned tabs (#1561).
+  const pinnedEnd = isPinned(tab) ? 0 : tabs.filter(isPinned).length;
+  const slot = before === -1 ? tabs.length : Math.max(before + 1, pinnedEnd);
+  const placed = tabs.toSpliced(slot, 0, tab);
   return { ...doc, spaces: spaces.with(at, { ...existing, tabs: placed }) };
 }
 

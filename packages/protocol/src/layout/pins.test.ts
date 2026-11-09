@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { JsonObject } from "../json.ts";
-import { moveTab, tabsOf } from "./document.ts";
+import { addTab, moveTab, tabsOf } from "./document.ts";
 import { closeSet, setPinned } from "./pins.ts";
 
 const tab = (id: string, pinned = false): JsonObject => ({ id, name: id, ...(pinned ? { pinned: true } : {}) });
@@ -51,6 +51,23 @@ describe("a move keeps pinned tabs in front (#1561)", () => {
   test("an unpinned tab moves only among the unpinned ones", () => {
     expect(order(moveTab(four, "u2", 0))).toEqual(["p1*", "p2*", "u2", "u1"]);
     expect(moveTab(four, "u1", 1)).toBeNull();
+  });
+});
+
+describe("a new tab never lands between pinned tabs (#1561 review)", () => {
+  const space = { id: "s1", folder: "/a" };
+  test("opened from a pinned tab, it lands after the last pinned tab", () => {
+    expect(order(addTab(doc(tab("a", true), tab("b", true), tab("c")), space, tab("n"), "a"))).toEqual([
+      "a*",
+      "b*",
+      "n",
+      "c",
+    ]);
+  });
+
+  test("opened from an unpinned tab, or with no tab named, it lands where it did", () => {
+    expect(order(addTab(doc(tab("a", true), tab("b"), tab("c")), space, tab("n"), "b"))).toEqual(["a*", "b", "n", "c"]);
+    expect(order(addTab(doc(tab("a", true), tab("b")), space, tab("n")))).toEqual(["a*", "b", "n"]);
   });
 });
 
