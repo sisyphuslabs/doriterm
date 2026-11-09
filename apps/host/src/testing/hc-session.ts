@@ -28,7 +28,10 @@ export interface HcSession {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** Spawns `hc connect --session <name>` directly, with its stdout fed to `reader`. */
   connect(): DirectConnection;
-  /** Stops this session's core and removes its dir; `stopLeftoverCores` still checks it for a core started again. */
+  /**
+   * Stops this session's core, if one serves, and removes its dir; `stopLeftoverCores` still checks it for a core started
+   * again.
+   */
   dispose(): Promise<void>;
 }
 
@@ -187,7 +190,9 @@ export function createHcSession(prefix: string, extra: Readonly<Record<string, s
     },
     dispose: async () => {
       scratch.disposed = true;
-      await stopCore(session);
+      // A core that never started has nothing to stop. Stopping it anyway would spawn hc connect, which starts a core
+      // just to stop it, or fails a second time when hc itself is what kept it from starting (#1538).
+      if (await serving(socket)) await stopCore(session);
       // A core started again after this one (a dialer reconnecting) makes the dir anew; the session stays registered,
       // so `stopLeftoverCores` still finds that core, stops it and removes the dir again.
       rmSync(dir, { recursive: true, force: true });
