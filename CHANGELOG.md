@@ -2,6 +2,89 @@
 
 ## Unreleased
 
+## v0.1.15 - 2026-11-09
+
+Highlights: a terminal no longer jumps when it reconnects (#1394), and typing on a slow link shows at once, Korean
+included (#1640). Pinned tab rows and spinners no longer change size or drift out of step (#1564, #1567), and Safari can
+pair again (#1639).
+
+### Terminal
+
+- A terminal no longer jumps when it reconnects: if you had scrolled up into its history, you stay at the same place
+  while the screen is redrawn, and if you were following the newest output, you keep following it. Scrolling, a touch,
+  a click or typing ends the hold at once. (#1394)
+- A terminal whose program ends while its machine is offline shows "This session ended" once the machine is back,
+  instead of closing its tab. (#1593)
+- On a slow link, what you type is drawn at once and replaced by the host's own text when it arrives, underlined while
+  the link is slow; Korean syllables are drawn too. Settings, Device, "Show typing before the host echoes it" chooses on
+  slow links (the default), always, or off (#1640).
+
+### Workspace
+
+- An agent waiting for input that Doriterm draws no card for (a plain "continue?", a menu, an agent it cannot read)
+  shows Enter, Esc and the arrows over its terminal, on the desktop and the phone; each tap presses only that key, and
+  the strip goes once the agent moves on. Claude Code and Codex keep their prompt card. (#1549)
+- A pinned agent's pin no longer changes size when the pointer reaches its row: the resting pin and the Unpin action
+  draw the same 14 px pin shape, filled on hover, and the row does not move. (#1564)
+- Every working spinner turns in step with the others: the agents list, the space counts, tabs and buttons share one
+  clock, so they stand at the same angle at the same moment, however late each appeared. (#1567)
+
+### Machine mesh
+
+- A Windows computer in a mesh names the other members with a command Windows can start, with no `sh`, instead of a
+  POSIX shell line it could never run. Reaching them also needs a herdr-core that runs such commands on Windows. (#1581)
+
+### Joining a mesh
+
+- A browser that refuses to save its pairing key (Safari on some Macs) now keeps the key as raw bytes instead, so
+  joining a mesh no longer fails with "The object can not be cloned." (#1639)
+
+### Phone
+
+- On a phone with a notch, the command palette now opens below it, so its search field and Cancel button are no longer hidden under the status bar. (#1511)
+- With the soft keyboard down, a row of your keys sits under the terminal: Esc, an arrow or ^C answers a program in one
+  tap without raising the keyboard. It is the same set Settings > Keyboard picks, and Read-only hides it. (#1546)
+- With the keyboard up, the keys bar is two rows: the Type field across the width with Send at its end, then the keys,
+  so Esc, ^C and the arrows show without a swipe. Enter joins the default keys, in the bar and in the row under the
+  terminal. (#1554)
+- Back from a terminal returns the Agents list, and a space's screen of tabs, to where you had scrolled them, instead of
+  to the top (#1557).
+- A terminal at the bottom stays at the bottom when the soft keyboard is dismissed in a browser that resizes the page
+  for it, instead of stopping a few pixels above its last line and no longer following the output (#1573).
+- A space's screen of tabs keeps each scroll under the space it shows, so Back to a space returns to that space's own
+  place (#1585).
+
+### Desktop window
+
+- A tab you have not named reads the title of the agent it runs instead of its number; a shell's tab keeps its number,
+  and a name you give a tab still wins. (#1544)
+- Settings > This device has Keep running in the background: closing the window leaves Doriterm and this computer's
+  host running, so your phone stays connected. On a Mac it also leaves the Dock and the menu bar; open Doriterm again
+  to bring the window back. (#1558)
+
+### Settings
+
+- Searching Settings lists the matching settings themselves, each with its section; picking one (or Enter on the first)
+  opens that section scrolled to the row, with its control focused. "keybinds" now finds the keybinding import. (#1545)
+- Successfully turning notifications on or off clears an earlier failure to move notifications to another host. (#1610)
+
+### Host install
+
+- install.sh hands the mesh link to `mesh join` in a file only you can read, never on its command line where
+  other local users can read it, and `DORIFACE_JOIN=<link>` joins like `--join` with the link off the installer's
+  own command line. (#1625)
+- The setup skill's `uninstall` removes the service even when the only herdr-core on the machine is older than the
+  floor, since removing it never runs herdr-core. (#1629)
+
+### Windows
+
+- The host refuses a state folder that another account may rename, remove or re-permission even when that account's
+  grant is listed after SYSTEM's or Administrators'. (#1636)
+
+### Interface
+
+- The explanation under an error notice, such as a refused pairing or unreadable storage, now uses a softened text colour that belongs to the red card instead of a flat gray. (#1524)
+
 ## v0.1.14 - 2026-11-09
 
 ### Workspace
