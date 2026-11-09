@@ -423,6 +423,19 @@ describe("OutputPacer holding an attach replay (D5)", () => {
     expect(written).toEqual([1024 * KIB, 1024 * KIB]);
   });
 
+  test("when the replay is let go, the write listeners hear of it after the paint is released, so a view held from the end is placed on the drawn replay", () => {
+    const frames = manualFrames();
+    const timers = manualTimers();
+    const pacer = new OutputPacer(() => {}, frames.frame, timers.now, timers.timer);
+    const events: string[] = [];
+    pacer.onWrite(() => events.push("write"));
+    pacer.replay({ srtt: () => 300, hold: (held) => events.push(held ? "hold" : "release") });
+    pacer.push(bytes(KIB));
+    expect(events).toEqual(["hold", "write"]);
+    timers.advance(500);
+    expect(events).toEqual(["hold", "write", "release", "write"]);
+  });
+
   test("drop ends a replay in flight and lets the paint go", () => {
     const { timers, holds, pacer } = replaying(300);
     pacer.push(bytes(KIB));
