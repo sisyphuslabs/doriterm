@@ -31,6 +31,9 @@ import { useTerminalFont } from "./use-terminal-font.ts";
 import { usePreedit } from "./use-preedit.ts";
 import { usePredictionOverlay } from "./use-prediction-overlay.ts";
 import { predictionSeam } from "./prediction-seam.ts";
+import { usePredictionMode } from "./prediction-mode.ts";
+import { PredictorView } from "./prediction-view.ts";
+import type { TerminalInput } from "./terminal-view-props.ts";
 import { wideGlyphScaler } from "./face-scales.ts";
 import { GlyphWarmup } from "./glyph-warmup.ts";
 import { SelectionMenu } from "./selection-menu.tsx";
@@ -115,8 +118,21 @@ export function TerminalView(props: TerminalViewProps) {
   }, [wt, config, dark]);
 
   const onUnsafePaste = useCallback((pending: PendingPaste) => setPaste(pending), []);
-  const input = useTerminalInput({ wt, handle, stream, connection, address, transformInput, typesComposition });
-  const { pending, typedInto, typed, pasteFiles } = input;
+  const predict = useRef<((data: TerminalInput) => void) | null>(null);
+  // Each stream, first or after a reconnect, starts the predictor over: what it predicted for the last one says nothing
+  // about this one (Predictor.reset).
+  const streamStarted = useRef<(() => void) | null>(null);
+  const input = useTerminalInput({
+    wt,
+    handle,
+    stream,
+    connection,
+    address,
+    transformInput,
+    typesComposition,
+    predict,
+  });
+  const { pending, typedInto, typed, pasteFiles, linkReady } = input;
   const scroll = useTerminalScroll(wt);
   const outputShown = useRef(scroll.changed);
   outputShown.current = scroll.changed;
@@ -128,8 +144,27 @@ export function TerminalView(props: TerminalViewProps) {
   }, [wt, softKeyboard]);
   useBehaviors(wt, stream, options, onUnsafePaste, pasteFiles);
   useTerminalFont(wt, config);
-  const prediction = useMemo(() => predictionSeam(wt), [wt]);
-  const predictedCursor = usePredictionOverlay(wt, prediction);
+  // The real predictor reads every input and write of this view (#1595); a spec's stand-in replaces it when installed.
+  const seam = useMemo(() => predictionSeam(wt), [wt]);
+  const predictMode = usePredictionMode();
+  const predictModeNow = useRef(predictMode);
+  predictModeNow.current = predictMode;
+  const [predictor, setPredictor] = useState<PredictorView | null>(null);
+  useEffect(() => {
+    if (wt === null || seam !== null) return undefined;
+    const made = new PredictorView(wt, { linkReady, mode: () => predictModeNow.current });
+    predict.current = (data) => made.typed(data);
+    streamStarted.current = () => made.reset();
+    setPredictor(made);
+    return () => {
+      predict.current = null;
+      streamStarted.current = null;
+      made.dispose();
+      setPredictor(null);
+    };
+  }, [wt, seam, linkReady]);
+  useEffect(() => predictor?.refresh(), [predictor, predictMode]);
+  const predictedCursor = usePredictionOverlay(wt, seam ?? predictor);
   usePreedit(wt, predictedCursor);
   // Wide characters in the output are laid out in idle time, so scrolling back to them is not the first time (#286).
   const warmup = useRef<GlyphWarmup | null>(null);
@@ -154,6 +189,8 @@ export function TerminalView(props: TerminalViewProps) {
     setSelectAt(null);
     if (!browsing) handle.current?.focus();
   }, [browsing]);
+  // A reattach replay holds the paint until it has settled (D5); the prop carries the hold through the view's renders.
+  const [replayHeld, setReplayHeld] = useState(false);
   const attachment = useTerminalAttach({
     connection,
     address,
@@ -171,6 +208,8 @@ export function TerminalView(props: TerminalViewProps) {
     focusWhenFree,
     onEnd,
     onEnded,
+    onStream: streamStarted,
+    holdPaint: setReplayHeld,
   });
 
   if (error !== null) return <p className="p-4 text-sm text-destructive">{error}</p>;
@@ -207,6 +246,7 @@ export function TerminalView(props: TerminalViewProps) {
         ref={handle}
         core={core}
         autoResize
+        renderingPaused={replayHeld}
         {...(options.cursorBlink === undefined ? {} : { cursorBlink: options.cursorBlink })}
         aria-label={label}
         data-slot="terminal-viewport"
