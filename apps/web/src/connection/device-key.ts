@@ -1,5 +1,5 @@
 import { x25519 } from "@noble/curves/ed25519.js";
-import { deviceStore, type KeyValueStore } from "../storage/idb.ts";
+import { deviceStore, refusesToClone, type KeyValueStore } from "../storage/idb.ts";
 
 /** The device's X25519 static key: its public half plus the DH the Noise handshake needs. */
 export interface DeviceKey {
@@ -78,18 +78,23 @@ const keepsKeys = new WeakMap<KeyValueStore, Promise<boolean>>();
 
 /**
  * Whether this store gives a stored CryptoKey back. WebKit's IndexedDB hands an X25519 CryptoKey back as null
- * (bugs.webkit.org 312279), so the key must be kept as bytes there or the device is new on every load (#1329).
+ * (bugs.webkit.org 312279), and some WebKit builds refuse to clone it at write time with a DataCloneError (#1634);
+ * either way the key must be kept as bytes there or the device is new on every load (#1329).
  *
- * Only a null read-back is that browser's behaviour. A store that throws (busy, quota, abort) says nothing about whether it
- * can keep a CryptoKey, so it is raised rather than read as "this browser cannot": answering false there would quietly drop
- * a working browser to raw bytes.
+ * Any other failure (busy, quota, abort) says nothing about whether it can keep a CryptoKey, so it is raised rather
+ * than read as "this browser cannot": answering false there would quietly drop a working browser to raw bytes.
  */
 async function keepsStoredKeys(storage: KeyValueStore, subtle: SubtleCrypto): Promise<boolean> {
   const held = keepsKeys.get(storage);
   if (held !== undefined) return held;
   const probe = (async (): Promise<boolean> => {
     const pair = await generateWebCrypto(subtle);
-    await storage.put(PROBE, pair);
+    try {
+      await storage.put(PROBE, pair);
+    } catch (cause) {
+      if (refusesToClone(cause)) return false;
+      throw cause;
+    }
     const back = await storage.get(PROBE);
     return isStored(back) && back.kind === "webcrypto";
   })();
