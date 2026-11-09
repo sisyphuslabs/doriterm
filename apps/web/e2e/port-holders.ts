@@ -73,7 +73,9 @@ const TOOLS: readonly PortTool[] = [
     : []),
   {
     name: "lsof",
-    args: (port: number) => ["-nP", `-iTCP:${String(port)}`, "-sTCP:LISTEN", "-F", "pcn"],
+    // -w: a non-root user with fuse, gvfs or overlay mounts gets "can't stat()" warnings on stderr and exit 1 even when
+    // nothing listens, which would read as a failed lookup.
+    args: (port: number) => ["-w", "-nP", `-iTCP:${String(port)}`, "-sTCP:LISTEN", "-F", "pcn"],
     parse: lsofFields,
     // lsof exits 1 with no output when nothing matches; anything else is its failure (another status, or a message).
     noMatch: (status: number | null, stdout: string, stderr: string) =>

@@ -23,6 +23,8 @@ const writeTool = (dir: string, name: string, script: string): void => {
 const lsofPath = Bun.which("lsof");
 if (lsofPath === null) console.warn("port-holders: skipping the lsof-only tests: lsof not installed");
 const withLsof = test.skipIf(lsofPath === null);
+// Only Linux asks `ss` first, so only there can a failing `ss` fall through to `lsof`.
+const withSsThenLsof = test.skipIf(process.platform !== "linux" || lsofPath === null);
 
 withTool(
   "a port holder is named by its pid and its command",
@@ -122,8 +124,8 @@ withLsof(
 );
 
 // #1134: a tool can start and still fail (ss without netlink permission); lsof must be asked instead.
-withScratchTools(
-  "a tool that starts but exits non-zero falls through to the next one",
+withSsThenLsof(
+  "on Linux, an ss that starts but exits non-zero falls through to lsof",
   async () => {
     if (lsofPath === null) throw new Error("lsof is missing");
     const server = createServer();
