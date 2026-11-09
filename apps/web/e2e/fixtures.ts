@@ -12,7 +12,10 @@ import { startWorkerHost } from "./worker-host.ts";
  * settings pointing at it, or at `loopbackUrl` when a spec routes another address there. Every test, and every worker
  * as its host stops, is checked for terminals left on that host's core (terminal-guard.ts).
  */
-export const test = base.extend<{ loopbackUrl: string; ownTerminals: undefined }, { e2eHost: undefined }>({
+export const test = base.extend<
+  { loopbackUrl: string; ownTerminals: undefined; macPage: boolean },
+  { e2eHost: undefined }
+>({
   e2eHost: [
     // oxlint-disable-next-line no-empty-pattern -- Playwright reads a fixture's dependencies from this pattern; it has none
     async ({}, use) => {
@@ -33,6 +36,17 @@ export const test = base.extend<{ loopbackUrl: string; ownTerminals: undefined }
     { auto: true },
   ],
   loopbackUrl: [`ws://127.0.0.1:${E2E_HOST_PORT}/v1/hc`, { option: true }],
+  // E2E_PAGE_PLATFORM=mac runs every page as a Mac on any runner (#1309): navigator.platform reads MacIntel, so the app
+  // binds its macOS keymap and a spec's shortcut() presses the macOS chord. A spec that sets the platform itself still can.
+  macPage: [process.env["E2E_PAGE_PLATFORM"] === "mac", { option: true }],
+  context: async ({ context, macPage }, use) => {
+    if (macPage) {
+      await context.addInitScript(() =>
+        Object.defineProperty(Navigator.prototype, "platform", { get: () => "MacIntel", configurable: true }),
+      );
+    }
+    await use(context);
+  },
   page: async ({ page, loopbackUrl }, use) => {
     const settings = {
       mode: "loopback",
