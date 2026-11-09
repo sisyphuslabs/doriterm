@@ -12,7 +12,7 @@ export interface SpinnerProps {
  * Starts every spinner's turn (or reduced-motion pulse) at the document timeline's zero, so all the spinners on a page
  * stand at the same angle at the same moment however late each one mounted (#1565).
  */
-function inStep(element: SVGSVGElement | null): void {
+export function inStep(element: SVGSVGElement | null): void {
   if (element === null || typeof element.getAnimations !== "function") return;
   for (const animation of element.getAnimations()) animation.startTime = 0;
 }

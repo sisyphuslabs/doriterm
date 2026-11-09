@@ -51,3 +51,30 @@ test("working spinners mounted at different moments turn in step and draw at one
     for (const address of started) endAgent("host", address);
   }
 });
+
+// Turning reduced motion on while a spinner turns makes CSS swap its turn for a pulse, with no React render; the new
+// pulse still starts on the shared clock rather than at the moment of the switch (#1555).
+test("a spinner whose animation CSS recreates is put back in step", async ({ page }) => {
+  const started: string[] = [];
+  try {
+    started.push(startAgent("host", "spin-motion", "working", "sp-spin-motion"));
+    await page.goto("/");
+    await expect(agentRow(agents(page), "spin-motion", false)).toBeVisible({ timeout: 20_000 });
+    await expect.poll(async () => (await spinners(page)).length).toBeGreaterThanOrEqual(1);
+    // The clock has moved well past zero, so a pulse begun at the switch is plainly out of step with it.
+    await page.waitForFunction(() => Number(document.timeline.currentTime) > 2_000);
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const startTimes = () =>
+      page
+        .locator('[data-slot="spinner"]:visible')
+        .evaluateAll((els) =>
+          els.flatMap((el) => el.getAnimations().map((a) => `${(a as CSSAnimation).animationName}@${a.startTime}`)),
+        );
+    await expect.poll(startTimes).toContainEqual(expect.stringMatching(/^progress-opacity@/));
+    await expect.poll(startTimes).toEqual(expect.arrayContaining(["progress-opacity@0"]));
+    for (const each of await startTimes()) expect(each).toBe("progress-opacity@0");
+  } finally {
+    for (const address of started) endAgent("host", address);
+  }
+});
