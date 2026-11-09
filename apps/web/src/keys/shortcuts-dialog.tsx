@@ -5,10 +5,13 @@ import { useOverrides } from "./keymap-store.ts";
 import { shortcutGroups } from "./shortcut-groups.ts";
 import { closeShortcuts, useShortcutsShown } from "./shortcuts-store.ts";
 import { currentPlatform } from "./trigger.ts";
+import { useOverlayActive } from "./use-overlay-active.ts";
 
 /** The shortcuts dialog while app.help has it shown; each shell's action handler toggles it. */
 export function ShortcutsHelp() {
-  return useShortcutsShown() ? <ShortcutsDialog onClose={closeShortcuts} /> : null;
+  const shown = useShortcutsShown();
+  const active = useOverlayActive(closeShortcuts);
+  return shown && active ? <ShortcutsDialog onClose={closeShortcuts} /> : null;
 }
 
 export interface ShortcutsDialogProps {
