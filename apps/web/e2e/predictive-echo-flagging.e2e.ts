@@ -2,11 +2,14 @@ import type { Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { type HcSocket, routeHcSocket } from "./hc-socket.ts";
 import { PHONE, openPhoneTerminal } from "./phone-key-bar.ts";
-import { untilShellReads } from "./prediction-probe.ts";
+import { predict, untilShellReads } from "./prediction-probe.ts";
+import { installPredictor } from "./prediction-stand-in.ts";
 
-// The real predictor underlines a drawn cell only while it is flagging, as mosh does: its echo SRTT above 160 ms
-// (cleared at 100 ms or less), or a glitch. On a link whose echo comes back in about 120 ms a prediction is drawn plain;
-// at a relay's 300 ms it is underlined (#1439 HIGH 2).
+// A drawn prediction is underlined only while its predictor is flagging, as mosh does (#1439 HIGH 2). The real
+// predictor flags while its echo SRTT is above 160 ms (cleared at 100 ms or less) or on a glitch; those thresholds are
+// unit-tested (prediction-display.test.ts). Here the overlay and stylesheet are checked both ways with a stand-in whose
+// flagging the spec switches, so the plain half does not depend on how fast a loaded runner echoes; and the real
+// predictor at a relay's 300 ms, which only load can raise, draws its cells underlined.
 
 const prompt = (terminal: Locator) =>
   terminal.locator(".term-row:not(.term-scrollback-row)").filter({ hasText: /^\$ / });
@@ -61,20 +64,6 @@ async function settle(page: Page, terminal: Locator, link: HcSocket, line: strin
   return typed;
 }
 
-/** Echoes keys with no delay until the predictor's own samples have cleared its flagging. Returns the line typed. */
-async function unflagged(page: Page, terminal: Locator, link: HcSocket): Promise<string> {
-  link.delay(0);
-  let line = "";
-  for (const key of `${KEYS}${KEYS}`) {
-    line += key;
-    // oxlint-disable-next-line no-await-in-loop -- each key's echo is a sample the next one builds on
-    await echoed(page, terminal, line);
-    // oxlint-disable-next-line no-await-in-loop -- as above
-    if (!measured(await roundTrips(page)).flagging) return line;
-  }
-  throw new Error(`unheld echoes never cleared flagging: ${await described(page)}`);
-}
-
 /** The computed text-decoration-line of a key's predicted cell, read while the host's echo of it is held. */
 async function drawnDecoration(page: Page, terminal: Locator, link: HcSocket, line: string): Promise<string> {
   const release = link.holdFromHost("");
@@ -88,19 +77,24 @@ async function drawnDecoration(page: Page, terminal: Locator, link: HcSocket, li
   return decoration;
 }
 
-async function cleared(page: Page, terminal: Locator): Promise<void> {
-  await page.keyboard.press("Control+U");
-  await expect(prompt(terminal).filter({ hasText: /^\$ *$/ })).toHaveCount(1, { timeout: 15_000 });
-}
+/** Switches the stand-in predictor's flagging; the overlay repaints from its announcement. */
+const flag = (page: Page, on: boolean) =>
+  page.evaluate((value) => (Reflect.get(window, "__predictor") as { flagging(on: boolean): void }).flagging(value), on);
+
+const decorationOf = (cell: Locator) => cell.evaluate((element) => getComputedStyle(element).textDecorationLine);
 
 for (const device of ["desktop", "phone"] as const) {
   test.describe(device, () => {
     test.use(device === "phone" ? { ...PHONE, serviceWorkers: "block" } : { serviceWorkers: "block" });
 
-    /** A terminal at its prompt, predictions always drawn, its host frames routed through the spec. */
-    async function open(page: Page): Promise<{ readonly terminal: Locator; readonly link: HcSocket }> {
+    /**
+     * A terminal at its prompt, predictions always drawn (by the stand-in when `standIn`), its host frames routed
+     * through the spec.
+     */
+    async function open(page: Page, standIn = false): Promise<{ readonly terminal: Locator; readonly link: HcSocket }> {
       const link = await routeHcSocket(page);
-      await page.addInitScript(() => localStorage.setItem("doriface.terminal.predict-typing", "always"));
+      if (standIn) await installPredictor(page);
+      else await page.addInitScript(() => localStorage.setItem("doriface.terminal.predict-typing", "always"));
       let terminal: Locator;
       if (device === "phone") terminal = await openPhoneTerminal(page);
       else {
@@ -112,29 +106,23 @@ for (const device of ["desktop", "phone"] as const) {
       return { terminal, link };
     }
 
-    test("at a 120 ms round trip a predicted cell is drawn with no underline", async ({ page }) => {
-      test.setTimeout(120_000);
-      const { terminal, link } = await open(page);
-      // The routed socket and a loaded runner add 30-200 ms of their own to an echo, so the injected delay is steered
-      // until the predictor measures 100-160 ms without flagging, the state under test: shorter when its SRTT went past
-      // 160 ms (flagging, as it should), longer when it stayed at 100 ms or less.
-      let line = "";
-      let delay = 60;
-      for (let attempt = 0; attempt < 8; attempt += 1) {
-        // oxlint-disable-next-line no-await-in-loop -- each attempt starts from the last one's line and delay
-        if (line !== "") await cleared(page, terminal);
-        // oxlint-disable-next-line no-await-in-loop -- as above
-        line = await settle(page, terminal, link, await unflagged(page, terminal, link), delay);
-        // oxlint-disable-next-line no-await-in-loop -- as above
-        const { srtt, flagging } = measured(await roundTrips(page));
-        if (!flagging && srtt > 100) break;
-        delay = Math.max(0, delay + (flagging ? -30 : 30));
-      }
-      const state = await described(page);
-      const { srtt, flagging } = measured(await roundTrips(page));
-      expect(flagging, state).toBe(false);
-      expect(srtt, state).toBeGreaterThan(100);
-      expect(await drawnDecoration(page, terminal, link, line), state).toBe("none");
+    test("a predicted cell is drawn with no underline while its predictor is not flagging, and underlined while it is", async ({
+      page,
+    }) => {
+      const { terminal, link } = await open(page, true);
+      const release = link.holdFromHost("");
+      await flag(page, false);
+      expect((await predict(page, "z")).frames).toBeGreaterThan(0);
+      const cell = terminal.locator(".term-prediction-cell");
+      await expect(cell).toHaveText(["z"]);
+      expect(await decorationOf(cell)).toBe("none");
+      // The same drawn cell follows each switch: underlined once its predictor flags, plain again once it stops.
+      await flag(page, true);
+      await expect.poll(() => decorationOf(cell)).toBe("underline");
+      await flag(page, false);
+      await expect.poll(() => decorationOf(cell)).toBe("none");
+      await expect(cell).toHaveText(["z"]);
+      release();
     });
 
     test("at a 300 ms round trip a predicted cell is underlined", async ({ page }) => {

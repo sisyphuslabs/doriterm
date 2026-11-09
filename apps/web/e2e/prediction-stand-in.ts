@@ -8,7 +8,8 @@ import type { Page } from "@playwright/test";
  *   (mosh's Correct, terminaloverlay.cc:546-549), and the overlay decides when that removal is painted;
  * - every change is announced synchronously.
  * Cells come from `__predictor.add`, or, once `__predictor.typing(true)`, from each printable key and each committed
- * composition, as the view's input path will feed it. `__afterHostMessage(data)`, when set, runs right after the app's
+ * composition, as the view's input path will feed it. It flags its cells (underlined) until `__predictor.flagging(false)`,
+ * and announces each switch. `__afterHostMessage(data)`, when set, runs right after the app's
  * own handler for each host message, inside that message's task.
  */
 export async function installPredictor(page: Page): Promise<void> {
@@ -29,6 +30,8 @@ export async function installPredictor(page: Page): Promise<void> {
       const cells: Cell[] = [];
       const listeners = new Set<() => void>();
       let typing = false;
+      // The specs using it inject a relay's round trip, over which mosh flags its predictions.
+      let flagging = true;
       const changed = (): void => {
         for (const listener of listeners) listener();
       };
@@ -74,12 +77,15 @@ export async function installPredictor(page: Page): Promise<void> {
       Reflect.set(window, "__predictor", {
         add,
         typing: (on: boolean) => void (typing = on),
+        flagging: (on: boolean) => {
+          flagging = on;
+          changed();
+        },
         cell: (row: number, col: number): string => screen.cell(row, col),
       });
       return {
         visible: () => cells,
-        // The specs using it inject a relay's round trip, over which mosh flags its predictions.
-        underlined: () => true,
+        underlined: () => flagging,
         subscribe: (listener: () => void) => {
           listeners.add(listener);
           return () => listeners.delete(listener);
