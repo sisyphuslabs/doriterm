@@ -15,6 +15,7 @@ import { MachineOffline } from "./machine-offline.tsx";
 import { machineOf, type Session, terminalTitle } from "./model.ts";
 import { PackSheet } from "./pack-sheet.tsx";
 import { PhoneHeader } from "./phone-header.tsx";
+import { PhoneKeyRow } from "./phone-key-row.tsx";
 import { PaneSwitcher } from "./phone-pane-switcher.tsx";
 import { PhoneTabSwitcher, useSpaceTabs } from "./phone-tab-switcher.tsx";
 import {
@@ -135,6 +136,8 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   // The tabs bar takes the bottom while nothing rides there: the keys bar, with the soft keyboard, and dictation do.
   const tabs = useSpaceTabs(terminals, terminal.address);
   const tabsBar = !keysOpen && !dictating && tabs.some((tab) => tab.includes(terminal.address));
+  // A touch phone's keys while its keyboard is down (#1526); a mouse-only window opens its keys bar by hand instead.
+  const keyRow = !keysOpen && !mouseOnly && !dictating && !browsing && !offline && !ended;
   // The terminal's jump button stays clear of what floats over its bottom right: the keyboard button, or the arrow pad.
   // Over the tabs bar the keyboard button floats beside the bar, not over the terminal.
   const keysControls =
@@ -220,6 +223,20 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
           </p>
         ) : null}
       </main>
+      {keyRow ? (
+        // Under the terminal, so the terminal fits above it; level with the round buttons it keeps clear of them.
+        <PhoneKeyRow
+          host={host}
+          sticky={sticky}
+          {...(tabsBar
+            ? {}
+            : {
+                // Level with the round buttons (3rem at the corner's inset) and clear of them on the right.
+                style: { paddingRight: roundButtonsClearance(2) },
+                className: "pt-0 pb-[max(1rem,calc(var(--safe-bottom)+0.5rem))]",
+              })}
+        />
+      ) : null}
       {tabsBar ? (
         <PhoneTabSwitcher
           terminals={terminals}
