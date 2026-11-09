@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, Pencil, Plus, X } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "../lib/cn.ts";
 import { IconButton } from "./icon-button.tsx";
 import { ContextMenu, Menu, MenuItem, skipMenuHandler } from "./menu.tsx";
@@ -47,8 +47,33 @@ export interface TabBarProps {
 }
 
 /**
+ * A tab's title, cut at 170 px with an ellipsis; only a title cut short carries a tooltip with the whole of it (an agent's
+ * long name, #1541), so a title that fits has none (#478).
+ */
+function TabLabel({ text }: { readonly text: string }) {
+  const [clipped, setClipped] = useState(false);
+  const label = useRef<HTMLSpanElement>(null);
+  // Measured again for a new title, whose box can keep its width while the text inside it grows past it.
+  useLayoutEffect(() => {
+    const element = label.current;
+    if (element === null) return undefined;
+    const check = (): void => setClipped(element.scrollWidth > element.clientWidth + 1);
+    const observer = new ResizeObserver(check);
+    observer.observe(element);
+    check();
+    return () => observer.disconnect();
+  }, [text]);
+  return (
+    <span ref={label} title={clipped ? text : undefined} className="max-w-[170px] truncate">
+      {text}
+    </span>
+  );
+}
+
+/**
  * herdr-app's tab strip: raised pill for the active tab, which alone shows its close button; status glyph instead of
- * colour bars, no tooltip; tabs reorder by drag, the wheel steps through them, and a tab's menu renames, adds or closes.
+ * colour bars, and a tooltip only on a title cut short; tabs reorder by drag, the wheel steps through them, and a tab's
+ * menu renames, adds or closes.
  */
 export function TabBar({
   tabs,
@@ -188,7 +213,7 @@ export function TabBar({
                 className="flex min-w-0 items-center gap-[7px] rounded-xs outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
               >
                 {tab.icon}
-                <span className="max-w-[170px] truncate">{tab.title}</span>
+                <TabLabel text={tab.title} />
                 {/* herdr-app draws nothing for an idle tab: a spinner while working, a dot when blocked or done. */}
                 {tab.status === undefined || tab.status === "idle" || tab.status === "unknown" ? null : (
                   <StatusIndicator status={tab.status} className="size-3" />
