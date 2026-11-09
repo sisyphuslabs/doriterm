@@ -1,0 +1,4 @@
+### Terminal
+
+- A phone turned to landscape and back no longer scrolls the terminal's history past the bottom of the view: the
+  transcript's end is shown at once. (#812)
