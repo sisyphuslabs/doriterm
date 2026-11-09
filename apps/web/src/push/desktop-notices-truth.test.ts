@@ -15,7 +15,7 @@ describe("what the Notifications tab can tell the truth about (#769)", () => {
       cases.map(async ([authorization, permission]) => {
         const { notices } = rig({ authorization });
         await notices.load();
-        expect(notices.view).toMatchObject({ permission, support: "supported", busy: false, error: null });
+        expect(notices.view).toMatchObject({ permission, support: "supported", busy: null, error: null });
       }),
     );
   });

@@ -155,18 +155,28 @@ export function NotificationsSection() {
             <div className="flex gap-2">
               {controls.actions.map((action) =>
                 action === "check-again" ? (
-                  <Button key={action} loading={view.busy} disabled={view.busy} onClick={() => void settings.load()}>
+                  <Button
+                    key={action}
+                    loading={controls.running === action}
+                    disabled={view.busy !== null}
+                    onClick={() => void settings.load()}
+                  >
                     Check again
                   </Button>
                 ) : action === "turn-off" ? (
-                  <Button key={action} loading={view.busy} disabled={view.busy} onClick={() => void settings.turnOff()}>
+                  <Button
+                    key={action}
+                    loading={controls.running === action}
+                    disabled={view.busy !== null}
+                    onClick={() => void settings.turnOff()}
+                  >
                     Turn off
                   </Button>
                 ) : (
                   <Button
                     key={action}
                     variant="primary"
-                    loading={view.busy}
+                    loading={controls.running === action}
                     disabled={controls.turnOnDisabled}
                     onClick={() => void settings.turnOn()}
                   >
