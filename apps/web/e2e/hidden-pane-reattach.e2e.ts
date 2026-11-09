@@ -93,7 +93,12 @@ test("a pane out of view whose stream the core ends waits to re-attach until it 
 
   // The view asks the core what is left of its program; it still runs, so the view is to attach to it again.
   await expect.poll(() => answerTo(socket, "terminal.get", hidden)).toBeDefined();
-  // Read after the page has handled that answer: the pane is out of view, so nothing attached.
+  // A command's output in the pane on screen comes over the same socket after that answer, and a socket delivers in
+  // order: once the output is on screen, the page has handled the answer. The pane is out of view, so nothing attached.
+  const onScreen = page.locator(`[data-terminal="${shown}"]`);
+  await onScreen.click();
+  await page.keyboard.type("echo handled-$((40+2))\n");
+  await expect(onScreen).toContainText("handled-42");
   expect(await attachLog(page)).toEqual([hidden, shown]);
 
   await page.getByRole("tab").first().click();
