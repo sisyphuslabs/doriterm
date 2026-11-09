@@ -97,7 +97,8 @@ test("a port whose listener no tool could name is reported as unknown, not as fr
   }
 });
 
-// #1133: on Linux without iproute2 (#1027) `ss` is missing while `lsof` is present; the fallback must name the listener.
+// #1133: on Linux without iproute2 (#1027) `ss` is missing while `lsof` is present; the fallback must name the
+// listener.
 withLsof(
   "a listener is named when only lsof is on PATH",
   async () => {

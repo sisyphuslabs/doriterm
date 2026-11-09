@@ -83,7 +83,10 @@ const TOOLS: readonly PortTool[] = [
 
 export interface PortHolders {
   readonly holders: readonly PortHolder[];
-  /** Why no listener could be named at all (no tool could run and report): the ports' holders are then unknown, not none. */
+  /**
+   * Why no listener could be named at all (no tool could run and report): the ports' holders are then unknown, not
+   * none.
+   */
   readonly unnamed?: string;
 }
 
