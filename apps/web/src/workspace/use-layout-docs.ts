@@ -1,7 +1,7 @@
 import type { HcConnection } from "@doriface/client";
 import { HcRpcError, type JsonObject, type MachineView } from "@doriface/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type DocCalls, type DocEdit, LAYOUT_DOC, LayoutDoc } from "@doriface/protocol/layout";
+import { type DocCalls, type DocEdit, type EditShown, LAYOUT_DOC, LayoutDoc } from "@doriface/protocol/layout";
 import { openingAttachesAnswered } from "../terminal/opening-attach.ts";
 
 /** One machine's layout as this screen can show it: `doc` is the last one read, and `readOnly` says why it is frozen. */
@@ -14,7 +14,7 @@ export interface MachineLayout {
   readonly loaded: boolean;
   /** Why edits are refused now, or null when they are taken. */
   readonly readOnly: string | null;
-  readonly edit: (change: DocEdit) => Promise<boolean>;
+  readonly edit: (change: DocEdit, shown?: EditShown) => Promise<boolean>;
 }
 
 /** Documents use permanent ids; only the RPC address uses a name, which may change before the feed tells this page. */
@@ -65,9 +65,9 @@ export function noEditsWhy(id: string | null, shown: readonly MachineView[]): st
 export function docEdit(
   live: Pick<LayoutDoc, "edit"> | undefined,
   why: string = NOT_CONNECTED,
-): (change: DocEdit) => Promise<boolean> {
+): (change: DocEdit, shown?: EditShown) => Promise<boolean> {
   if (live === undefined) return () => Promise.reject(new Error(`The layout cannot take changes now: ${why}`));
-  return (change) => live.edit(change);
+  return (change, shown) => live.edit(change, shown);
 }
 
 /** The last document read per core and machine id, so a machine that drops keeps its tabs on screen (read-only). */
