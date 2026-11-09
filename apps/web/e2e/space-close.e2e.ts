@@ -138,6 +138,9 @@ test("a close still writing keeps its question: Cancel waits, Escape does nothin
   const question = ask(page);
   await expect(question).toContainText(`${name} \u2014 1 tab, 1 terminal`);
 
+  // The page first imports the terminal into its layout. That write is not the close being held below.
+  await expect.poll(() => JSON.stringify(getCoreDoc("herdr-app"))).toContain(`"name":${JSON.stringify(name)}`);
+  const beforeClose = socket.sent().length;
   // The layout write is held, as a slow host would hold it: the close is in flight, not finished.
   const release = socket.hold("doc.set");
   socket.staleWrites(true);
@@ -145,7 +148,14 @@ test("a close still writing keeps its question: Cancel waits, Escape does nothin
   await expect(question.getByRole("button", { name: "Close" })).toHaveAttribute("aria-busy", "true");
   // The held write comes after the close ended its program: nothing is left for the cleanup to stop.
   await expect
-    .poll(() => socket.sent().filter((frame) => frame.includes('"method":"doc.set"')).length, { timeout: 15_000 })
+    .poll(
+      () =>
+        socket
+          .sent()
+          .slice(beforeClose)
+          .filter((frame) => frame.includes('"method":"doc.set"')).length,
+      { timeout: 15_000 },
+    )
     .toBe(1);
   started.splice(0);
   await expect(question.getByRole("button", { name: "Cancel" })).toBeDisabled();
