@@ -46,7 +46,7 @@ export function findMatches(core: CellSource, query: string): FindMatch[] {
       const first = runs[0];
       if (first !== undefined) matches.push({ row: first.row, runs });
     }
-    row = Math.max(row + 1, (line.cells.at(-1)?.row ?? row) + 1);
+    row = line.nextRow;
   }
   return matches;
 }
