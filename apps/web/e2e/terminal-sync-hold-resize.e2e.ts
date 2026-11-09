@@ -11,10 +11,12 @@ test("an update a program left open paints a second after it opened, however oft
 }) => {
   await page.goto("/");
   const terminal = await openNewTerminal(page);
-  await terminal.getByRole("textbox").focus();
+  // Every key goes through the terminal's own textbox, which each call focuses first, so a drag that moves focus cannot
+  // send a key elsewhere.
+  const input = terminal.getByRole("textbox");
   // The program opens an update, draws into it and never ends it, as one killed mid-frame does.
-  await page.keyboard.type("clear; printf '\\033[?2026hopen-%s\\n' 853");
-  await page.keyboard.press("Enter");
+  await input.pressSequentially("clear; printf '\\033[?2026hopen-%s\\n' 853");
+  await input.press("Enter");
   const opened = Date.now();
 
   // A divider dragged for four seconds: a resize every 200 ms.
@@ -34,9 +36,9 @@ test("an update a program left open paints a second after it opened, however oft
     });
     // Released once, it stays released: what the program writes after that shows at once, not a second after the next
     // resize (review of #1097).
-    await terminal.getByRole("textbox").press("Enter");
-    await page.keyboard.type("printf 'later-%s\\n' 853");
-    await page.keyboard.press("Enter");
+    await input.press("Enter");
+    await input.pressSequentially("printf 'later-%s\\n' 853");
+    await input.press("Enter");
     await expect(terminal.locator(".term-row").filter({ hasText: /^later-853\s*$/ })).toBeVisible({ timeout: 600 });
   } finally {
     drag.on = false;
