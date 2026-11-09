@@ -127,8 +127,10 @@ test("resizing after selecting history keeps the same top row (#1368)", async ({
   const firstRow = () =>
     terminal.evaluate((element) => {
       const top = element.getBoundingClientRect().top + element.clientTop;
-      return [...element.querySelectorAll(".term-row")].find((row) => row.getBoundingClientRect().bottom > top + 1)
-        ?.textContent;
+      // Trimmed: a row's text is padded to the terminal's width, which the resize changes.
+      return [...element.querySelectorAll(".term-row")]
+        .find((row) => row.getBoundingClientRect().bottom > top + 1)
+        ?.textContent?.trim();
     });
   const anchor = await firstRow();
   await selectHistory(page, terminal);

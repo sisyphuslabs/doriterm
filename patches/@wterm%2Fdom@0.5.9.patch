@@ -23,7 +23,7 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 78a86ffd96eec03222777f40e9db6a0561684c3f..b40c575c27b4ed6e01634a392ee6c05c82f52599 100644
+index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dcefa91176 100644
 --- a/dist/input.js
 +++ b/dist/input.js
 @@ -70,6 +70,32 @@ const COMPOSITION_INPUT_DEDUP_MS = 250;
@@ -610,7 +610,7 @@ index a6746f499859ba9da2d7884dfd71694205c6d819..7ef2bfcb6c94d74a4e6ff9aec76a6e41
      /**
       * Hands the core the theme colors the page's CSS resolves to, unless the
 diff --git a/dist/wterm.js b/dist/wterm.js
-index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa8b176239 100644
+index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..46c1b001d08de1ef1deff508b836b2dbe0f6e35b 100644
 --- a/dist/wterm.js
 +++ b/dist/wterm.js
 @@ -131,6 +131,11 @@ export class WTerm {
@@ -704,7 +704,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
          // Answer theme color queries with the colors the page shows right now.
          if (mayQueryThemeColors(data))
              this._syncCssThemeColors();
-@@ -732,9 +763,21 @@ export class WTerm {
+@@ -732,9 +763,31 @@ export class WTerm {
          this._rectangleDrag.cancel();
          this._historySelection.invalidate();
          this.renderer?.beforeMutation(this.bridge);
@@ -716,8 +716,18 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
 +        // writing the update it opened: reopened, the screen keeps showing the
 +        // last finished frame until the program ends it (or the hold times out),
 +        // instead of the frame half drawn.
++        // A reader in history keeps the row at the top of the view, not its pixel offset: a width change reflows
++        // wrapped lines above it into more or fewer rows, and the same scrollTop would then show another line. The
++        // core's tracked position follows that row through the reflow (#1568).
++        const anchor = this._shouldScrollToBottom ? null : this._trackTopRow();
 +        const synchronizedBefore = this.bridge.synchronizedOutput?.() ?? false;
          this.bridge.resize(cols, rows);
++        if (anchor) {
++            const moved = anchor.pin.resolve();
++            anchor.pin.dispose();
++            if (moved)
++                this._pendingResizeScrollTop = anchor.padTop + moved.row * anchor.rowHeight + anchor.within;
++        }
 +        const reopened = synchronizedBefore && !(this.bridge.synchronizedOutput?.() ?? false);
 +        if (reopened)
 +            this.bridge.writeString("\x1b[?2026h");
@@ -727,7 +737,27 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
          this._outputAnnouncements.invalidate();
          this.cols = this.bridge.getCols();
          this.rows = this.bridge.getRows();
-@@ -798,6 +841,7 @@ export class WTerm {
+@@ -751,6 +804,19 @@ export class WTerm {
+         if (this.onResize)
+             this.onResize(this.cols, this.rows);
+     }
++    /** The row at the top of the view as a tracked core position, with the view's offset inside that row. */
++    _trackTopRow() {
++        const rowHeight = this._rowHeight;
++        if (!rowHeight || !this.bridge?.trackPosition)
++            return null;
++        const padTop = parseFloat(getComputedStyle(this.element).paddingTop) || 0;
++        const scrollTop = this._pendingResizeScrollTop ?? this.element.scrollTop;
++        const row = Math.max(0, Math.floor((scrollTop - padTop) / rowHeight));
++        const pin = this.bridge.trackPosition({ row, col: 0 });
++        if (!pin)
++            return null;
++        return { pin, padTop, rowHeight, within: scrollTop - padTop - row * rowHeight };
++    }
+     /** Search retained history and the active screen, using plain text. */
+     search(query, options = {}) {
+         if (this._destroyed)
+@@ -798,6 +864,7 @@ export class WTerm {
              return false;
          const before = this.element.scrollTop;
          this._shouldScrollToBottom = false;
@@ -735,7 +765,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
          this._searchReveal = false;
          this._pendingResizeScrollTop = target * this._rowHeight;
          this._doRender();
-@@ -1127,14 +1171,20 @@ export class WTerm {
+@@ -1127,14 +1194,20 @@ export class WTerm {
              this._synchronizedOutputState = "idle";
              return false;
          }
@@ -758,7 +788,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
          }
          if (this._synchronizedOutputState !== "idle") {
              return this._synchronizedOutputState === "held";
-@@ -1144,9 +1194,10 @@ export class WTerm {
+@@ -1144,9 +1217,10 @@ export class WTerm {
          this._armSynchronizedOutputFallback(generation);
          return true;
      }
@@ -770,7 +800,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
          this._synchronizedOutputTimer = setTimeout(() => {
              if (this._synchronizedOutputState !== "held" ||
                  this._synchronizedOutputGeneration !== generation) {
-@@ -1157,7 +1208,7 @@ export class WTerm {
+@@ -1157,7 +1231,7 @@ export class WTerm {
              this._setupRendererIfNeeded();
              this._cancelScheduledRender();
              this._doRender();
@@ -779,7 +809,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6bc99f758b618cdd2ce2176944aea0fa
      }
      _cancelSynchronizedOutputFallback() {
          if (this._synchronizedOutputTimer == null)
-@@ -1576,14 +1627,15 @@ export class WTerm {
+@@ -1576,14 +1650,15 @@ export class WTerm {
          const height = this._visibleContentHeight(contentHeight);
          const newCols = Math.max(1, Math.floor(containerRect.width / charWidth));
          const newRows = Math.max(1, Math.floor(height / rowHeight));
