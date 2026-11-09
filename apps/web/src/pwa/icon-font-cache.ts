@@ -1,7 +1,8 @@
 /**
  * The Nerd Font icon face (1.2 MB) is left out of the precache: the service worker fetches it the first time a page
  * draws an icon and keeps it in its own cache. Its name carries its contents' hash, so a release that changes it adds a
- * new name; the worker of each build drops the copies its build does not use (#967).
+ * new name; the worker of each build drops the copies its build does not use (#967), unless its list names no icon
+ * font at all, when it keeps what is there (#1167).
  */
 export const ICON_FONT_CACHE = "doriterm-fonts-v1";
 
