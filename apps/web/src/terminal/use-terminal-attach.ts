@@ -1,4 +1,6 @@
 import type { HcConnection, TerminalStream } from "@doriface/client";
+import { HcConnectionClosedError } from "@doriface/client";
+import { HcRpcError } from "@doriface/protocol";
 import { useToastManager } from "@doriface/ui";
 import type { TerminalHandle, WTerm } from "@wterm/react";
 import { type RefObject, useEffect, useRef, useState } from "react";
@@ -8,13 +10,13 @@ import { CursorResets } from "./cursor-reset.ts";
 import { readDisplay } from "./display.ts";
 import { type EndHolder, holdAtEnd } from "./hold-view-at-end.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
-import { openFailure } from "./open-failure.ts";
 import { HISTORY_LINES, noteViewSize, viewAttach } from "./opening-attach.ts";
 import type { OutputPacer } from "./output-pacer.ts";
 import { type TerminalEnd, terminalEnd } from "./terminal-end.ts";
 import { type CoreAnswer, type Settled, settled, type Unsent, unsentReason } from "./terminal-settle.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
-import { useReopenWhenMoved } from "./use-reopen-when-moved.ts";
+import { TerminalStreamLostError } from "./attach-recovery.ts";
+import { useAttachRecovery } from "./use-attach-recovery.ts";
 
 /** RIS: clears the screen and scrollback before an attach replay draws them again. */
 const FULL_RESET = "\u001bc";
@@ -49,6 +51,8 @@ export interface Attachment {
   /** Why attaching failed, in plain words; null once Try again clears it. */
   readonly unopened: string | null;
   readonly clearUnopened: () => void;
+  readonly reconnecting: boolean;
+  readonly interact: () => void;
   /** The view's onEnd as it is now: an end acts on the tabs as they are by then. */
   readonly onEndNow: RefObject<((address: string, end: TerminalEnd) => void) | undefined>;
 }
@@ -60,16 +64,20 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
   const toasts = useToastManager();
   const [restarting, setRestarting] = useState(false);
   const [ended, setEnded] = useState(false);
-  /** Counts the streams the core ended with the program still running; each is re-attached by the effect below. */
-  const [lostStreams, setLostStreams] = useState(0);
-  const reattachedFor = useRef(0);
   const endHold = useRef<EndHolder | null>(null);
-  const [unopened, setUnopened] = useState<string | null>(null);
-  const unopenedAt = useReopenWhenMoved(address, unopened, () => {
-    setWt(null);
-    setUnopened(null);
-  });
+  const retryAttach = useRef<() => void>(() => undefined);
+  const recoveryView = useAttachRecovery({ connection, address, shown, retry: () => retryAttach.current() });
+  const { recovery, unopened, reconnecting, interact } = recoveryView;
+  const request = useRef<AbortController | null>(null);
+  const current = useRef({ connection, address });
+  current.current = { connection, address };
   const [opening, setOpening] = useState(false);
+  useEffect(
+    () => () => {
+      request.current?.abort();
+    },
+    [connection, address, recovery],
+  );
 
   const unmounted = useRef(false);
   const unsent = useRef<() => void>(() => undefined);
@@ -91,7 +99,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
   };
   /** The core's answer about this terminal over `over`, as a CoreAnswer. */
   const askCore = (over: HcConnection): Promise<CoreAnswer> =>
-    over.call("terminal.get", { terminal: address }).then(
+    over.call("terminal.get", { terminal: address }, { timeoutMs: 2_000 }).then(
       (terminal) => ({ terminal }),
       (cause: unknown) => ({ error: cause }),
     );
@@ -113,10 +121,24 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
   }, [onEnd]);
 
   /** The core ended the stream, or refused an attach, with the program not known to be over: ask it what is left. */
+  const fail = (cause: unknown): void => {
+    setOpening(false);
+    recoveryView.failed(cause);
+  };
   const settle = (refusal: { readonly cause: unknown } | null): void => {
+    const asked = request.current;
+    if (refusal === null) setOpening(true);
     void askCore(connection).then((answer) => {
       // The line dropped again: the next connection attaches anew.
-      if (connection.closed || unmounted.current) return undefined;
+      if (
+        connection.closed ||
+        unmounted.current ||
+        request.current !== asked ||
+        current.current.connection !== connection ||
+        current.current.address !== address
+      )
+        return undefined;
+      setOpening(false);
       const then: Record<Settled, () => void> = {
         finished: () => onEndNow.current?.(address, "finished"),
         ended: () => {
@@ -124,11 +146,10 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           onEnded?.();
         },
         restarting: () => setRestarting(true),
-        reattach: () => setLostStreams((count) => count + 1),
+        reattach: () => fail(new TerminalStreamLostError("The terminal stream ended before the program did.")),
         replaced: () => undefined,
         error: () => {
-          unopenedAt(address);
-          setUnopened(openFailure(address, "error" in answer ? answer.error : refusal?.cause));
+          fail(refusal?.cause ?? ("error" in answer ? answer.error : undefined));
         },
       };
       return then[settled(answer, program.current, !attachedBefore.current, refusal !== null)]();
@@ -140,6 +161,14 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
   }, [restarting, live, address]);
 
   const attach = (ready: WTerm): void => {
+    if (!recovery.begin()) return;
+    const abort = new AbortController();
+    request.current = abort;
+    const owns = (): boolean =>
+      !abort.signal.aborted &&
+      !unmounted.current &&
+      current.current.connection === connection &&
+      current.current.address === address;
     setWt(ready);
     attachedTo.current = connection;
     // A test hook, as crash-probe is: a spec sets window.__dorifaceAttachLog and reads which terminal re-attached when
@@ -161,11 +190,15 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     const attachOwn = () =>
       connection.attach(
         { terminal: address, cols, rows, history: HISTORY_LINES, display, ...resumed },
-        { autoCredit: false },
+        {
+          autoCredit: false,
+          signal: abort.signal,
+          ...(recovery.state.phase === "idle" ? {} : { timeoutMs: 2_000 }),
+        },
       );
     viewAttach(connection, address, !attachedBefore.current, { cols, rows, display }, attachOwn).then(
       ({ stream: attached, cols: askedCols, rows: askedRows }) => {
-        if (unmounted.current) return void attached.close();
+        if (!owns()) return void attached.close();
         setOpening(false);
         // The program restarted while the line was down: what was typed for it must not reach the new one.
         if (attachedBefore.current && attached.terminal.pid !== program.current) {
@@ -173,6 +206,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           if (pending.current.splice(0).length > 0) reportUnsent("restarted");
           return undefined;
         }
+        recovery.succeeded();
         stream.current = attached;
         // The view in use (the focused pane, in a focused window) was the active viewer before the drop; a FOCUS frame
         // makes it active again, so the core applies its size now. Other views send no FOCUS, which would report
@@ -202,10 +236,12 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
             pacer.push(encoder.encode(rendererOptions(terminalConfigStore.config).cursorSequence));
         });
         attached.onClose((close) => {
+          if (!owns() || stream.current !== attached) return;
           if (stream.current === attached) stream.current = null;
           const end = terminalEnd(close);
           onEndNow.current?.(address, end);
           if (end === "lost") settle(null);
+          if (end === "dropped") fail(close.error ?? new HcConnectionClosedError("The connection dropped."));
         });
         for (const data of pending.current.splice(0)) attached.write(data);
         focusWhenFree(ready);
@@ -213,19 +249,44 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
       },
       (cause: unknown) => {
         // The connection dropped mid-attach: the next one attaches again (below).
-        if (connection.closed || unmounted.current) return;
+        if (!owns()) return;
         setOpening(false);
-        settle({ cause });
+        // Only not_found needs the lifecycle read (the terminal may have ended while this view was away).
+        // An auth/protocol refusal is already decisive; a transient failure needs another attach, not another read.
+        if (cause instanceof HcRpcError && cause.kind === "finished") return settle({ cause });
+        fail(cause);
+        if (cause instanceof HcRpcError && cause.kind === "not_found") settle({ cause });
       },
     );
+  };
+  retryAttach.current = () => {
+    if (unmounted.current || !shown) return;
+    if (connection.closed) {
+      // The connection store owns socket backoff. Only human interaction may advance it; an attach timer must not
+      // repeatedly restart its in-flight dial or skip the countdown the workspace is showing.
+      recovery.failed(new HcConnectionClosedError("The connection is still unavailable."));
+      return;
+    }
+    if (wt !== null) attach(wt);
   };
 
   useEffect(() => {
     if (wt === null || !shown) return;
-    if (attachedTo.current === connection && reattachedFor.current === lostStreams) return;
-    reattachedFor.current = lostStreams;
+    if (recovery.state.phase === "failed" && !recovery.state.transient) return;
+    if (attachedTo.current === connection) return;
     attach(wt);
-  }, [wt, connection, shown, lostStreams]);
+  }, [wt, connection, shown]);
 
-  return { attach, opening, restarting, ended, unopened, clearUnopened: () => setUnopened(null), onEndNow };
+  return {
+    attach,
+    opening,
+    restarting,
+    ended,
+    unopened,
+    // A closed socket already has the workspace's reconnect notice; this status owns only the viewer's attach.
+    reconnecting: !connection.closed && (reconnecting || (opening && attachedBefore.current)),
+    clearUnopened: () => recovery.manual(),
+    interact,
+    onEndNow,
+  };
 }

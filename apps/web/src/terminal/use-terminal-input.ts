@@ -33,6 +33,7 @@ interface InputSources {
   readonly address: string;
   readonly transformInput: ((data: string) => string) | undefined;
   readonly typesComposition: boolean;
+  readonly onInteract: () => void;
 }
 
 /** Why input that waited for a machine's line was not sent, as the person is told. */
@@ -52,6 +53,8 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
   latestAddress.current = address;
   const latestToasts = useRef(toasts);
   latestToasts.current = toasts;
+  const interact = useRef(sources.onInteract);
+  interact.current = sources.onInteract;
   // Every human-input write goes through send, so keys pressed during a reconnect or a wake replay in the order pressed.
   const [held] = useState(
     () =>
@@ -68,7 +71,13 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
   );
   useEffect(() => held.watch(), [held]);
   const pending = useRef(held.pending);
-  const send = useCallback((data: TerminalInput): void => held.send(data), [held]);
+  const send = useCallback(
+    (data: TerminalInput): void => {
+      interact.current();
+      held.send(data);
+    },
+    [held],
+  );
   const typedInto = (data: string): void => {
     const input = transformInput?.(data) ?? data;
     if (input !== "") send(input);

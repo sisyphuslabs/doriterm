@@ -18,12 +18,10 @@ import { useFocusAfterSelect } from "./use-focus-after-select.ts";
 import { useLongPressSelect } from "./use-long-press-select.ts";
 import { useSelectionCells } from "./use-selection-cells.ts";
 import { useShiftDragSelect } from "./use-shift-drag-select.ts";
-import { Ended } from "./ended.tsx";
 import { askingForKeyboard, quietKeyboard, useTerminalPort } from "./terminal-port.ts";
 import type { TerminalViewProps } from "./terminal-view-props.ts";
-import { Unopened } from "./unopened.tsx";
+import { RecoveryFrame } from "./recovery-frame.tsx";
 import { JumpToBottom, TerminalScrollbar, useTerminalScroll } from "./terminal-scroll.tsx";
-import { QuietBusy } from "./quiet-busy.tsx";
 import { TerminalFind } from "./terminal-find.tsx";
 import { TerminalLinks } from "./terminal-links.tsx";
 import { useTerminalActions } from "./use-terminal-actions.ts";
@@ -69,6 +67,7 @@ export function TerminalView(props: TerminalViewProps) {
   const dark = useDarkScheme();
   useScreenAwake();
   const [wt, setWt] = useState<WTerm | null>(null);
+  const recover = useRef<() => void>(() => undefined);
   const [paste, setPaste] = useState<PendingPaste | null>(null);
   /** Where a held touch lifted, while its menu of Copy and Paste is open. */
   const [selectAt, setSelectAt] = useState<Point | null>(null);
@@ -115,7 +114,16 @@ export function TerminalView(props: TerminalViewProps) {
   }, [wt, config, dark]);
 
   const onUnsafePaste = useCallback((pending: PendingPaste) => setPaste(pending), []);
-  const input = useTerminalInput({ wt, handle, stream, connection, address, transformInput, typesComposition });
+  const input = useTerminalInput({
+    wt,
+    handle,
+    stream,
+    connection,
+    address,
+    transformInput,
+    typesComposition,
+    onInteract: () => recover.current(),
+  });
   const { pending, typedInto, typed, pasteFiles } = input;
   const scroll = useTerminalScroll(wt);
   const outputShown = useRef(scroll.changed);
@@ -172,66 +180,47 @@ export function TerminalView(props: TerminalViewProps) {
     onEnd,
     onEnded,
   });
+  recover.current = attachment.interact;
 
-  if (error !== null) return <p className="p-4 text-sm text-destructive">{error}</p>;
-  if (attachment.restarting) {
-    return (
-      <p role="status" className="p-4 text-sm text-muted-foreground">
-        The program in this terminal is restarting…
-      </p>
-    );
-  }
-  if (attachment.ended) {
-    return (
-      <Ended
-        closeLabel={closeLabel}
-        className={className}
-        onClose={() => attachment.onEndNow.current?.(address, "finished")}
-      />
-    );
-  }
-  if (attachment.unopened !== null) {
-    // Try again mounts a new terminal: until it attaches it is starting, so in a pane that is not focused its start-time
-    // focus goes back where it was, as on the first start (#163).
-    const retry = (): void => {
-      setWt(null);
-      attachment.clearUnopened();
-    };
-    return <Unopened why={attachment.unopened} className={className} onRetry={retry} />;
-  }
-  if (core === null) return <div className={cn("min-h-0 flex-1 bg-term-bg", className)} aria-busy="true" />;
+  if (core === null && error === null)
+    return <div className={cn("min-h-0 flex-1 bg-term-bg", className)} aria-busy="true" />;
   return (
     // The scrollbar and the jump button overlay the terminal: neither takes room from the grid.
-    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col" aria-busy={attachment.opening}>
-      <Terminal
-        ref={handle}
-        core={core}
-        autoResize
-        {...(options.cursorBlink === undefined ? {} : { cursorBlink: options.cursorBlink })}
-        aria-label={label}
-        data-slot="terminal-viewport"
-        data-terminal={address}
-        data-ready={wt !== null}
-        className={cn("min-h-0 flex-1 bg-term-bg", options.hollowCursor && "cursor-hollow", className)}
-        onReady={(ready) => {
-          // The renderer no longer focuses itself as it starts (patches/@wterm%2Fdom@0.5.9.patch); the view decides.
-          focusWhenFree(ready);
-          attachment.attach(ready);
-        }}
-        onData={typedInto}
-        onResize={(cols, rows) => stream.current?.resize(cols, rows)}
-        onFocus={(event) => {
-          // wterm focuses the terminal as it starts, and the patch drops that start call; a focus event can still
-          // arrive for a pane the view did not choose. Only the focused pane's keeps it; any other hands it back to
-          // where it was, so a pane another device adds never takes the keyboard.
-          if (wt === null && !isFocused.current) return handBack(event);
-          stream.current?.focus(true);
-        }}
-        onBlur={() => stream.current?.focus(false)}
-      />
-      {attachment.opening ? (
-        <QuietBusy label="Opening terminal" text="Opening…" className="absolute inset-0 z-10 bg-term-bg" />
-      ) : null}
+    <RecoveryFrame
+      attachment={attachment}
+      error={error}
+      closeLabel={closeLabel}
+      className={className}
+      onClose={() => attachment.onEndNow.current?.(address, "finished")}
+    >
+      {core === null ? null : (
+        <Terminal
+          ref={handle}
+          core={core}
+          autoResize
+          {...(options.cursorBlink === undefined ? {} : { cursorBlink: options.cursorBlink })}
+          aria-label={label}
+          data-slot="terminal-viewport"
+          data-terminal={address}
+          data-ready={wt !== null}
+          className={cn("min-h-0 flex-1 bg-term-bg", options.hollowCursor && "cursor-hollow", className)}
+          onReady={(ready) => {
+            // The renderer no longer focuses itself as it starts (patches/@wterm%2Fdom@0.5.9.patch); the view decides.
+            focusWhenFree(ready);
+            attachment.attach(ready);
+          }}
+          onData={typedInto}
+          onResize={(cols, rows) => stream.current?.resize(cols, rows)}
+          onFocus={(event) => {
+            // wterm focuses the terminal as it starts, and the patch drops that start call; a focus event can still
+            // arrive for a pane the view did not choose. Only the focused pane's keeps it; any other hands it back to
+            // where it was, so a pane another device adds never takes the keyboard.
+            if (wt === null && !isFocused.current) return handBack(event);
+            stream.current?.focus(true);
+          }}
+          onBlur={() => stream.current?.focus(false)}
+        />
+      )}
       {away === null ? null : (
         // Keys typed now wait for the machine (HeldInput, #1489); the line overlays the top row and takes no room.
         <p
@@ -286,6 +275,6 @@ export function TerminalView(props: TerminalViewProps) {
         onClose={closeSelectionMenu}
         readOnly={browsing}
       />
-    </div>
+    </RecoveryFrame>
   );
 }
