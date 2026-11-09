@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CLIENT, dial, gatewayOn, peerHello, PROBE } from "../testing/gateway-harness.ts";
 import { MeshStore } from "../state/mesh.ts";
+import { loadDeviceKey } from "../state/known-hosts.ts";
 import { type Machine, machine } from "../testing/mesh-history.ts";
 import { hcLineOf } from "./hc-line.ts";
 
@@ -27,10 +28,48 @@ afterEach(() => {
 function on(founder: Machine, member: Machine) {
   const dir = mkdtempSync(join(tmpdir(), "dh-first-line-"));
   dirs.push(dir);
-  return gatewayOn(founder, member, { dir });
+  return { ...gatewayOn(founder, member, { dir }), dir };
 }
 
 describe("H-6: the gateway gates the hc hello", () => {
+  test.each(["\n", "\r\n"])(
+    "#1420: a plain connect device claiming a member core is attributable; the member key keeps the hello intact (%j)",
+    async (newline) => {
+      const [founder, member] = [machine("founder"), machine("member")];
+      const bad = on(founder, member);
+      // The shim's plain `connect` loads this separate key, unlike `connect --mesh`.
+      const device = loadDeviceKey(bad.dir);
+      bad.devices.add(device.publicKey, "paired-machine");
+      const hello = peerHello(member.hcId).replace("\n", newline);
+      const run = await dial(bad, device, founder);
+      run.send(hello);
+      await run.closed;
+      expect(run.hostEnd.closeCode).toBe(CloseCode.UnknownDevice);
+      expect(bad.pipe.piped).toEqual([]);
+      expect(bad.logs).toContain(
+        "e2ee: close code=4401 source=hc-hello peer=device stream=hc: a device announced a mesh member's core id",
+      );
+
+      const withoutCore = on(founder, member);
+      withoutCore.devices.add(device.publicKey, "paired-machine");
+      const client = await dial(withoutCore, device, founder);
+      const stripped = hello.replace(`"core":{"id":"${member.hcId}","name":"mac"},`, "");
+      client.send(stripped);
+      await withoutCore.pipe.reached;
+      expect(withoutCore.pipe.text()).toBe(stripped);
+      expect(client.hostEnd.closeCode).toBeUndefined();
+      client.client.close();
+
+      const mesh = on(founder, member);
+      const legitimate = await dial(mesh, member.identity.noise, founder);
+      legitimate.send(hello);
+      await mesh.pipe.reached;
+      expect(mesh.pipe.text()).toBe(hello);
+      expect(legitimate.hostEnd.closeCode).toBeUndefined();
+      legitimate.client.close();
+    },
+  );
+
   test("a member's line announcing its own core id reaches hc whole; announcing another closes 4401 with nothing piped", async () => {
     const [founder, member] = [machine("founder"), machine("member")];
     const ok = on(founder, member);
