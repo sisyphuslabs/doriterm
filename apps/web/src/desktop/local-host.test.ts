@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { DEFAULT_SETTINGS, type ConnectionSettings } from "../connection/settings.ts";
 import {
   closeDesktopWindow,
+  desktopBackgroundSetting,
   desktopBridge,
   desktopHcChooser,
   desktopHcInstaller,
@@ -183,5 +184,30 @@ describe("desktop local host", () => {
     expect(closeDesktopWindow({})).toBe(false);
     expect(closeDesktopWindow({ doriface: { version: "0.1.0" } })).toBe(false);
     expect(closes).toBe(1);
+  });
+
+  test("Keep running in the background is offered only by a shell that can read and set it (#1500)", async () => {
+    const saved: unknown[] = [];
+    const shell = (platform: string, answer: unknown) => ({
+      doriface: {
+        platform,
+        runInBackground: async () => answer,
+        setRunInBackground: async (enabled: unknown) => {
+          saved.push(enabled);
+          return answer;
+        },
+      },
+    });
+    const mac = desktopBackgroundSetting(shell("darwin", true));
+    expect(mac?.mac).toBe(true);
+    expect(await mac?.read()).toBe(true);
+    expect(await mac?.set(false)).toBe(true);
+    const odd = desktopBackgroundSetting(shell("linux", "yes"));
+    expect(odd?.mac).toBe(false);
+    expect(await odd?.read()).toBe(false);
+    expect(await odd?.set(true)).toBe(false);
+    expect(saved).toEqual([false, true]);
+    expect(desktopBackgroundSetting({})).toBeNull();
+    expect(desktopBackgroundSetting({ doriface: { version: "0.1.0", runInBackground: async () => true } })).toBeNull();
   });
 });

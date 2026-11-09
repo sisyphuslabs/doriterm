@@ -37,7 +37,12 @@ const setup = (
   const menus: ReadonlyMap<string, string>[] = [];
   const notices: DesktopNotice[] = [];
   const targets: string[] = [];
+  const background: boolean[] = [];
   const handlers = ipcHandlers({
+    runInBackground: () => background.at(-1) ?? false,
+    setRunInBackground: (enabled) => {
+      background.push(enabled);
+    },
     noticesSupported: () => true,
     noticePermission: () => "not-determined",
     showNotice: async (notice) => {
@@ -101,6 +106,7 @@ const setup = (
     pairs,
     revokes,
     targets,
+    background,
     starts: () => starts,
     closes: () => closes,
     chooses: () => chooses,
@@ -119,7 +125,9 @@ afterEach(() => void takePairingLink());
 
 describe("IPC sender gate", () => {
   test("refuses foreign and detached frames before touching the shell or the host", async () => {
-    const { handlers, opened, notices, starts, installs } = setup(undefined, undefined, { version: "0.2.0" });
+    const { handlers, opened, notices, starts, installs, background } = setup(undefined, undefined, {
+      version: "0.2.0",
+    });
     openPairingLink("#p=waiting");
     await Promise.all(
       foreign.flatMap((event) => [
@@ -131,6 +139,8 @@ describe("IPC sender gate", () => {
         expect(handlers.revokeDevice(event, "3FA94C0E")).rejects.toThrow("refused IPC"),
         expect(handlers.setWindowBackground(event, "#131518")).rejects.toThrow("refused IPC"),
         expect(handlers.closeWindow(event)).rejects.toThrow("refused IPC"),
+        expect(handlers.runInBackground(event)).rejects.toThrow("refused IPC"),
+        expect(handlers.setRunInBackground(event, true)).rejects.toThrow("refused IPC"),
         expect(handlers.setMenuKeys(event, { "tab.new": "super+t" })).rejects.toThrow("refused IPC"),
         expect(handlers.chooseHc(event)).rejects.toThrow("refused IPC"),
         expect(handlers.installUpdate(event)).rejects.toThrow("refused IPC"),
@@ -143,6 +153,7 @@ describe("IPC sender gate", () => {
       ]),
     );
     expect(notices).toEqual([]);
+    expect(background).toEqual([]);
     for (const event of foreign) expect(() => handlers.takePairingLink(event)).toThrow("refused IPC");
     for (const event of foreign) expect(() => handlers.takeUpdate(event)).toThrow("refused IPC");
     expect(installs()).toBe(0);
@@ -286,6 +297,19 @@ describe("IPC sender gate", () => {
       { kind: "done", terminal: "box/t7" },
       { kind: "test", terminal: null },
     ]);
+  });
+
+  test("the app origin reads and sets Keep running in the background with a boolean and nothing else", async () => {
+    const { handlers, background } = setup();
+    expect(await handlers.runInBackground(app)).toBe(false);
+    expect(await handlers.setRunInBackground(app, true)).toBe(true);
+    expect(await handlers.runInBackground(app)).toBe(true);
+    const refused = await Promise.all(
+      ["true", 1, null, undefined, { enabled: true }].map((candidate) => handlers.setRunInBackground(app, candidate)),
+    );
+    expect(refused).toEqual([false, false, false, false, false]);
+    expect(await handlers.setRunInBackground(app, false)).toBe(true);
+    expect(background).toEqual([true, false]);
   });
 
   test("the app origin can ask its window to close", async () => {

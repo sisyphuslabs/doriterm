@@ -179,8 +179,17 @@ describe("phoneTabTitle", () => {
 });
 
 describe("tabTitle", () => {
-  test("a tab reads its name, else its place counted from 1", () => {
+  test("a named tab reads its name, even over what it runs", () => {
+    expect(tabTitle("fix login", 3, terminal({ name: "claude" }))).toBe("fix login");
     expect(tabTitle("fix login", 3)).toBe("fix login");
+  });
+
+  test("an unnamed tab that runs an agent reads the agent's title (#1541)", () => {
+    expect(tabTitle("", 0, terminal({ name: "claude" }))).toBe("claude");
+    expect(tabTitle("", 2, terminal({ name: "worker", labels: { "herdr.name": "deploy" } }))).toBe("deploy");
+  });
+
+  test("an unnamed tab with no agent (a shell, another program, panes not known yet) reads its place counted from 1", () => {
     expect(tabTitle("", 0)).toBe("1");
     expect(tabTitle("", 8)).toBe("9");
   });

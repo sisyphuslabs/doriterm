@@ -111,7 +111,6 @@ export function PhoneKeys(props: PhoneKeysProps) {
     browsing = false,
     onBrowse,
   } = props;
-  const [typing, setTyping] = useState(false);
   const [barHeight, setBarHeight] = useState(0);
   const reportHeight = useCallback(
     (px: number) => {
@@ -169,7 +168,8 @@ export function PhoneKeys(props: PhoneKeysProps) {
       ) : null}
       <ExtraKeysBar
         ref={barRef}
-        inputActive={typing}
+        // Two rows, typing or not (#1551): the Type field and Send across the top, the keys under them.
+        inputActive
         className="absolute inset-x-0 z-10"
         style={{ bottom }}
         keys={own.map(toExtra)}
@@ -181,12 +181,7 @@ export function PhoneKeys(props: PhoneKeysProps) {
         onPad={() => onPad(!pad)}
         onPaste={sticky.paste}
         inputField={
-          <InputBox
-            className={typing ? "w-full p-0" : "w-[clamp(8rem,40vw,12rem)] shrink-0 p-0"}
-            draftKey={current}
-            onActive={setTyping}
-            onSend={(text) => port.current?.send(`${text}\r`)}
-          />
+          <InputBox className="w-full p-0" draftKey={current} onSend={(text) => port.current?.send(`${text}\r`)} />
         }
         {...(onKeys === undefined
           ? { onHideKeyboard: hideKeyboard }
