@@ -89,7 +89,9 @@ test.describe("on a 390 px phone", () => {
           range.setStart(node, at);
           range.setEnd(node, at + segment.length);
           const ink = range.getBoundingClientRect();
-          const clip = node.parentElement?.getBoundingClientRect() ?? element.getBoundingClientRect();
+          // The text sits in a <bdi> inside the dir="rtl" span that clips it; that span is the box it must stay inside.
+          const clip =
+            node.parentElement?.closest('[dir="rtl"]')?.getBoundingClientRect() ?? element.getBoundingClientRect();
           const box = element.getBoundingClientRect();
           return {
             clipped:
