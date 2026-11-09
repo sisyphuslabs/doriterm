@@ -10,7 +10,7 @@ test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 
 const TITLE = "remote-build-pipeline-watcher";
 
-test("the active tab of a machine's agent reads the agent's title with its icon: no machine label or tooltip", async ({
+test("the active tab of a machine's agent reads the agent's title with its icon, no machine label, and its long title as a tooltip", async ({
   page,
 }) => {
   const address = startAgent("machine", TITLE, "idle");
@@ -22,10 +22,25 @@ test("the active tab of a machine's agent reads the agent's title with its icon:
     await expect(tab).toHaveText(TITLE);
     await expect(tab).not.toContainText(MACHINE_NAME);
     await expect(tab).not.toHaveAttribute("title");
-    // A title cut short carries the whole of it as its tooltip; nothing else on the tab does (#478).
-    const titled = await tab.locator("[title]").evaluateAll((els) => els.map((el) => el.getAttribute("title")));
-    expect(titled.every((each) => each === TITLE)).toBe(true);
+    // This title is wider than a tab's 170 px label, so the label carries the whole of it as its tooltip; nothing else
+    // on the tab has one (#478).
+    await expect(tab.locator("[title]")).toHaveCount(1);
+    await expect(tab.locator("[title]")).toHaveAttribute("title", TITLE);
     await expect(tab.locator("svg.lucide-bot")).toHaveCount(1);
+  } finally {
+    endAgent("machine", address);
+  }
+});
+
+test("an agent's title that fits its tab has no tooltip (#478)", async ({ page }) => {
+  const address = startAgent("machine", "rev", "idle");
+  try {
+    await page.goto("/");
+    await agentRow(page, "rev", true).click({ timeout: 20_000 });
+    const tab = await tabOf(page, `${MACHINE_NAME}/${address}`);
+    await expect(tab).toHaveAttribute("aria-selected", "true", { timeout: 15_000 });
+    await expect(tab).toHaveText("rev");
+    await expect(tab.locator("[title]")).toHaveCount(0);
   } finally {
     endAgent("machine", address);
   }

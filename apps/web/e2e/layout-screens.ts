@@ -120,8 +120,8 @@ export const SCREENS: readonly Screen[] = [
       // Every seeded terminal open as a tab, written to the layout documents before the page loads, the way another
       // device would have left them: opening each by a click mounts a terminal and writes the document on a page that
       // can be starved for seconds. The layout host starts its terminals in order on a fresh core (runSeeds), so they
-      // are t1, t2, ... there and on its added machine. An unnamed tab reads its number, not its terminal's name (#466
-      // ruling A), and has no tooltip, so the long names are left to the sidebar.
+      // are t1, t2, ... there and on its added machine. An unnamed tab reads its agent's title, else its number
+      // (#1541), and a title cut short carries the whole of it as a tooltip.
       const local = LAYOUT_TERMINALS.map((_, index) => layoutTab(`tb-${index + 1}`, `t${index + 1}`));
       setCoreDoc(LAYOUT_DOC, layoutDoc(local), undefined, "layout");
       setCoreDoc(LAYOUT_DOC, layoutDoc([layoutTab("tb-remote", "t1")]), LAYOUT_MACHINE, "layout");

@@ -47,10 +47,6 @@ export interface TabBarProps {
 }
 
 /**
- * herdr-app's tab strip: raised pill for the active tab, which alone shows its close button; status glyph instead of
- * colour bars, no tooltip; tabs reorder by drag, the wheel steps through them, and a tab's menu renames, adds or closes.
- */
-/**
  * A tab's title, cut at 170 px with an ellipsis; only a title cut short carries a tooltip with the whole of it (an agent's
  * long name, #1541), so a title that fits has none (#478).
  */
@@ -74,6 +70,11 @@ function TabLabel({ text }: { readonly text: string }) {
   );
 }
 
+/**
+ * herdr-app's tab strip: raised pill for the active tab, which alone shows its close button; status glyph instead of
+ * colour bars, and a tooltip only on a title cut short; tabs reorder by drag, the wheel steps through them, and a tab's
+ * menu renames, adds or closes.
+ */
 export function TabBar({
   tabs,
   activeId,
