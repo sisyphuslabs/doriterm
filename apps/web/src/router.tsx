@@ -8,6 +8,7 @@ import { ActionsPaused } from "./keys/dispatcher.ts";
 import { keyboardIsIdle, mayTakeFocus } from "./terminal/may-take-focus.ts";
 import { capturePairingLink } from "./pair/link-capture.ts";
 import { PairRoute } from "./routes/pair-route.tsx";
+import { JoinLanding } from "./pair/join-landing.tsx";
 import { SettingsRoute } from "./routes/settings-route.tsx";
 import { SettingsDialog, SettingsInDialog, useSettingsSheet } from "./settings/settings-dialog.tsx";
 import { WorkspaceRoute } from "./routes/workspace-route.tsx";
@@ -65,8 +66,16 @@ function Root() {
     <>
       {sheet ? (
         // No z-index: a menu or dialog Settings portals to the body paints in DOM order, and a layer above it would
-        // cover the menu (the workspace behind is invisible, so this layer only has to paint over nothing).
-        <div className="fixed inset-0 bg-background">
+        // cover the menu (the workspace behind is invisible, so this layer only has to paint over nothing). It is a modal
+        // dialog named Settings, as the wide screen's is: the workspace under it is hidden from assistive tech, so the
+        // sheet is the page's one landmark (#1378).
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Settings"
+          data-settings-sheet
+          className="fixed inset-0 bg-background"
+        >
           <SettingsSlot frame={frame} refocus={refocus} />
         </div>
       ) : null}
@@ -111,6 +120,7 @@ const root = createRootRoute({ component: Root });
 const routes = [
   createRoute({ getParentRoute: () => root, path: "/", component: () => null }),
   createRoute({ getParentRoute: () => root, path: "/pair", component: PairRoute }),
+  createRoute({ getParentRoute: () => root, path: "/join", component: JoinLanding }),
   createRoute({ getParentRoute: () => root, path: "/settings", component: SettingsRoute }),
 ];
 

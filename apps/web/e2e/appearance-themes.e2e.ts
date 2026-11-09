@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { endAgent } from "./agents.ts";
-import { expect, openNewTerminal as openTerminal, test } from "./fixtures.ts";
+import { followSystemAppearance, expect, openNewTerminal as openTerminal, test } from "./fixtures.ts";
 
 test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 
@@ -89,6 +89,7 @@ test("a picked theme re-themes the app and its terminals, and the pick survives 
 test("following the system shows the dark pick when dark and the light pick when light, terminal included", async ({
   page,
 }) => {
+  await followSystemAppearance(page);
   await page.emulateMedia({ colorScheme: "light" });
   await openAppearance(page);
   await expect(page.getByLabel("Appearance", { exact: true }).getByRole("button", { name: "System" })).toHaveAttribute(

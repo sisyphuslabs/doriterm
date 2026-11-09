@@ -1,14 +1,22 @@
 import { Button, SettingRow, Switch } from "@doriface/ui";
 import { Link } from "@tanstack/react-router";
+import { useState } from "react";
+import { desktopBackgroundSetting } from "../desktop/bridge.ts";
 import { guideStore } from "../pair/first-run-guide.ts";
 import { install, useInstallOffer } from "../device/install.ts";
 import { keepAwakeStore, screenWakeLock, useKeepAwake } from "../device/keep-awake.ts";
+import { useBrowserMembership } from "../mesh/membership-state.ts";
+import { BackgroundRow } from "./background-row.tsx";
+import { BrowserInvite } from "./browser-invite.tsx";
 
 /** Settings that belong to this browser or device rather than to an account: the screen, and installing the app. */
 export function DeviceSection() {
   const keepAwake = useKeepAwake();
   const offer = useInstallOffer();
+  const mesh = useBrowserMembership();
+  const [background] = useState(() => desktopBackgroundSetting());
   const rows = [
+    background === null ? null : <BackgroundRow key="background" setting={background} />,
     screenWakeLock() === null ? null : (
       <SettingRow
         key="keep-awake"
@@ -36,11 +44,13 @@ export function DeviceSection() {
           </Button>
         }
       />
+    ) : offer?.kind === "ios" && mesh.phase === "joined" ? (
+      <BrowserInvite key="install" install />
     ) : offer?.kind === "ios" ? (
       <SettingRow
         key="install"
         title="Add to Home Screen"
-        description="In Safari, tap Share, then Add to Home Screen. Doriterm then opens in its own window."
+        description="In Safari, tap Share, then Add to Home Screen. Doriterm then opens in its own window and pairs once as a device of its own: iOS keeps a Home Screen app's storage apart from Safari's."
         control={null}
       />
     ) : null,

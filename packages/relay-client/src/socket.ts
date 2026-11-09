@@ -1,4 +1,4 @@
-import { sendableCloseCode } from "./wire/index.ts";
+import { PING, PONG, sendableCloseCode } from "./wire/index.ts";
 
 /** Creates the WebSocket for a relay URL; injectable so tests and other runtimes can supply their own. */
 export type CreateSocket = (url: string) => WebSocket;
@@ -28,4 +28,30 @@ export function relaySocketUrl(relayUrl: string, path: string): string {
   if (url.protocol !== "wss:" && url.protocol !== "ws:")
     throw new Error(`relay URL must be http(s) or ws(s): ${relayUrl}`);
   return url.toString();
+}
+
+/**
+ * Times one `ping` -> `pong` on an open relay socket, in ms. The relay answers `ping` itself (contract: Relay text
+ * messages), so this is the client's way to the host's Room and back. `Infinity` when the socket closed or no `pong`
+ * came within `timeoutMs`.
+ */
+export function roomRoundTrip(ws: WebSocket, timeoutMs: number): Promise<number> {
+  return new Promise((resolve) => {
+    const start = performance.now();
+    const done = (ms: number): void => {
+      clearTimeout(timer);
+      ws.removeEventListener("message", onMessage);
+      ws.removeEventListener("close", onClose);
+      resolve(ms);
+    };
+    const onMessage = (event: MessageEvent<unknown>): void => {
+      if (event.data === PONG) done(performance.now() - start);
+    };
+    const onClose = (): void => done(Number.POSITIVE_INFINITY);
+    const timer = setTimeout(onClose, timeoutMs);
+    ws.addEventListener("message", onMessage);
+    ws.addEventListener("close", onClose);
+    if (isOpen(ws)) ws.send(PING);
+    else onClose();
+  });
 }

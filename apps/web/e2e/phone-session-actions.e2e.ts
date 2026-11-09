@@ -21,7 +21,7 @@ const sessionActions = (page: Page) => header(page).getByRole("button", { name: 
 
 async function sessionAction(page: Page, item: string): Promise<void> {
   await sessionActions(page).click();
-  await page.getByRole("menuitem", { name: item }).click();
+  await page.getByRole("dialog").getByRole("button", { name: item, exact: true }).click();
 }
 
 test("on a phone the open terminal's header renames its session", async ({ page }) => {

@@ -31,9 +31,9 @@ test("entering split screen with the terminal focused is no keyboard: no key bar
   await expect(key(page, "Show keyboard")).toBeVisible();
   await expect(input).toBeFocused();
 
-  // A tap in the terminal in split screen raises a keyboard, measured from the half screen.
+  // The keyboard button raises the keyboard in split screen, measured from the half screen (#1375).
   await page.setViewportSize({ width: PORTRAIT.width, height: 420 });
-  await page.locator("[data-terminal]").click();
+  await key(page, "Show keyboard").click();
   await page.setViewportSize({ width: PORTRAIT.width, height: 420 - 200 });
   await expect(keysBar(page)).toBeVisible();
 });
@@ -41,7 +41,8 @@ test("entering split screen with the terminal focused is no keyboard: no key bar
 test("rotating with the keyboard up keeps the key bar up, until the keyboard closes", async ({ page }) => {
   await openPhoneTerminal(page, PORTRAIT.width, "resize");
   const input = page.locator("[data-terminal] textarea");
-  await page.locator("[data-terminal]").click();
+  // The keyboard button asks for the keyboard; this browser shrinks the page for it (#1375).
+  await key(page, "Show keyboard").click();
   await page.setViewportSize({ width: PORTRAIT.width, height: PORTRAIT.height - KEYBOARD });
   const bar = keysBar(page);
   await expect(bar).toBeVisible();

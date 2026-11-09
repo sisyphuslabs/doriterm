@@ -51,6 +51,9 @@ export interface IpcDeps {
   readonly openExternal: (url: string) => Promise<void>;
   readonly setWindowBackground: (color: string) => void;
   readonly closeWindow: () => void;
+  /** Keep running in the background (#1500): whether it is on, and keeping a new choice for later launches. */
+  readonly runInBackground: () => boolean;
+  readonly setRunInBackground: (enabled: boolean) => void;
   readonly takePairingLink: () => string | undefined;
   readonly setMenuKeys: (keys: ReadonlyMap<string, string>) => void;
   /** Shows the file dialog for hc and keeps the choice; undefined when it was cancelled. */
@@ -92,6 +95,9 @@ export interface IpcHandlers {
   setWindowBackground(event: IpcSender, candidate: unknown): Promise<boolean>;
   /** Closes the window the way its Close Window item does, so the close events (and the saved placement) run. */
   closeWindow(event: IpcSender): Promise<void>;
+  runInBackground(event: IpcSender): Promise<boolean>;
+  /** Only a boolean is taken; anything else is refused (false) and changes nothing. */
+  setRunInBackground(event: IpcSender, candidate: unknown): Promise<boolean>;
   takePairingLink(event: IpcSender): string | null;
   /** Shows the page's shortcuts in the Shell menu; only its own action ids and short trigger text are taken. */
   setMenuKeys(event: IpcSender, candidate: unknown): Promise<boolean>;
@@ -202,6 +208,16 @@ export function ipcHandlers(deps: IpcDeps): IpcHandlers {
     async closeWindow(event) {
       assertAppFrame(event, deps.origin);
       deps.closeWindow();
+    },
+    async runInBackground(event) {
+      assertAppFrame(event, deps.origin);
+      return deps.runInBackground();
+    },
+    async setRunInBackground(event, candidate) {
+      assertAppFrame(event, deps.origin);
+      if (typeof candidate !== "boolean") return false;
+      deps.setRunInBackground(candidate);
+      return true;
     },
     takePairingLink(event) {
       assertAppFrame(event, deps.origin);

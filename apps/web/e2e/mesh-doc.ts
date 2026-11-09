@@ -18,7 +18,10 @@ export function meshDocValue(now: Date): unknown {
     name: "old-runner",
     expiresAt: new Date(now.getTime() - 60_000).toISOString(),
   };
-  return { ...status, pending: [...status.pending, expired] };
+  return {
+    ...status,
+    pending: [...status.pending.map((join) => Object.assign({}, join, { code: "123 456" })), expired],
+  };
 }
 
 export async function seedMeshDoc(

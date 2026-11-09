@@ -98,7 +98,10 @@ async function appConnect(settings: ConnectionSettings, op: string): Promise<HcC
 /** The same connect in its three stages, to see where the time goes. */
 async function stagedConnect(settings: ConnectionSettings): Promise<void> {
   const started = now();
-  const link = await timed("connect.socket", () => connectRelayClient({ relayUrl, hostId: settings.hostId }));
+  // One socket: this connect is timed in stages and closed, and nothing on it gains from a nearer ingress (#1418).
+  const link = await timed("connect.socket", () =>
+    connectRelayClient({ relayUrl, hostId: settings.hostId, bestOf: 1 }),
+  );
   try {
     const secure = await timed("connect.noise", () =>
       secureLink(link, {

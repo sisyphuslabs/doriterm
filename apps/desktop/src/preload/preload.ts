@@ -97,6 +97,14 @@ const bridge: DorifaceBridge = {
   async closeWindow() {
     await ipcRenderer.invoke(Channel.closeWindow);
   },
+  async runInBackground() {
+    const enabled: unknown = await ipcRenderer.invoke(Channel.runInBackground);
+    return enabled === true;
+  },
+  async setRunInBackground(enabled) {
+    const kept: unknown = await ipcRenderer.invoke(Channel.setRunInBackground, enabled);
+    return kept === true;
+  },
   onPairingLink(listener) {
     const take = async (): Promise<void> => {
       const fragment: unknown = await ipcRenderer.invoke(Channel.takePairingLink);

@@ -17,6 +17,16 @@ export function keyboardInset(layoutHeight: number, viewport: ViewportBox): numb
 }
 
 /**
+ * How tall the soft keyboard is, in CSS px: the visual viewport's shortfall from the layout viewport. Unlike the inset,
+ * a pan (iOS scrolling the visual viewport to keep a focused field in view) leaves it unchanged, so it decides whether
+ * the keyboard is up.
+ */
+export function keyboardHeight(layoutHeight: number, viewport: ViewportBox): number {
+  if (Math.abs(viewport.scale - 1) > 0.01) return 0;
+  return Math.max(0, Math.round(layoutHeight - viewport.height));
+}
+
+/**
  * A layout viewport this much shorter than its tallest at the same width may have a keyboard in it (a browser that
  * resizes the page for the keyboard instead of overlaying it): more than a toolbar collapsing, less than any keyboard.
  */
@@ -95,13 +105,20 @@ export function useSoftKeyboard(scope: HTMLElement | null): { readonly up: boole
     const follow = (event: FocusEvent): void =>
       setTyping(typingIn(scope, event.type === "focusout" ? event.relatedTarget : event.target));
     // A tap in the terminal, or its input taking the focus from one, asks for the keyboard; a focus without a tap does
-    // not, as no browser raises a keyboard for it.
-    const ask = (): void => layoutKeyboard.ask(performance.now());
+    // not, as no browser raises a keyboard for it. A field that carries `inputmode="none"` asks for none, as on a phone
+    // whose keys raise the keyboard (#1375): the shrink a split screen makes must not read as one.
+    const asksForKeyboard = (): boolean => {
+      const active = document.activeElement;
+      return active instanceof HTMLElement && active.inputMode !== "none" && typingIn(scope);
+    };
+    const ask = (): void => {
+      if (asksForKeyboard()) layoutKeyboard.ask(performance.now());
+    };
     scope?.addEventListener("pointerdown", ask, { signal: abort.signal });
     document.addEventListener(
       "focusin",
       () => {
-        if (typingIn(scope) && navigator.userActivation?.isActive !== false) ask();
+        if (navigator.userActivation?.isActive !== false) ask();
       },
       { signal: abort.signal },
     );
@@ -111,8 +128,12 @@ export function useSoftKeyboard(scope: HTMLElement | null): { readonly up: boole
     const viewport = window.visualViewport;
     let wasOpen = false;
     const measure = (): void => {
-      const inset = viewport === null ? 0 : keyboardInset(window.innerHeight, viewport);
-      const open = layoutKeyboard.measure(window.innerWidth, window.innerHeight, performance.now()) || inset > 0;
+      // The layout viewport, which the keys are placed in: WebKit on iOS shrinks window.innerHeight with the visual
+      // viewport over the keyboard, so measured from it the keyboard would take no room and hide the keys (#1409).
+      const layoutHeight = document.documentElement.clientHeight;
+      const inset = viewport === null ? 0 : keyboardInset(layoutHeight, viewport);
+      const overlaid = viewport === null ? 0 : keyboardHeight(layoutHeight, viewport);
+      const open = layoutKeyboard.measure(window.innerWidth, layoutHeight, performance.now()) || overlaid > 0;
       if (wasOpen && !open && typingIn(scope) && document.activeElement instanceof HTMLElement) {
         document.activeElement.blur();
       }

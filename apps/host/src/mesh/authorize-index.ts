@@ -23,6 +23,11 @@ export interface MemberEntry {
    * have been one. A client connects to machines and never dials one (design of #942).
    */
   readonly kind?: MemberKind | undefined;
+  /** The governing admission, retained for device limits, removal previews and the roster marker. */
+  readonly admitter?: string | undefined;
+  readonly admitId?: string | undefined;
+  /** This machine's last recorded admitted client session, in epoch milliseconds; never signed or gossiped. */
+  readonly lastSessionAt?: number | undefined;
 }
 
 /** A member the view removed, with every Noise and device key any of its cards ever named. */
@@ -97,7 +102,25 @@ export function indexOf(records: readonly Signed[], view: View, generation: numb
     const governing = byHash.get(view.governing.get(signPub) ?? "");
     const card = governing === undefined ? undefined : cardOfRecord(governing);
     if (card === undefined) return [];
-    return [entryOf(card, view.noise.get(signPub) ?? card.noisePub, view.name.get(signPub) ?? card.name)];
+    const admitter = view.admitter.get(signPub);
+    if (card.kind === "client") {
+      const author = byHash.get(view.governing.get(admitter ?? "") ?? "");
+      const authorCard = author === undefined ? undefined : cardOfRecord(author);
+      if (
+        admitter === undefined ||
+        !view.members.has(admitter) ||
+        authorCard === undefined ||
+        authorCard.kind === "client"
+      )
+        return [];
+    }
+    return [
+      {
+        ...entryOf(card, view.noise.get(signPub) ?? card.noisePub, view.name.get(signPub) ?? card.name),
+        admitter,
+        admitId: view.governing.get(signPub),
+      },
+    ];
   };
   const revoked = [...view.revoked].flatMap((signPub): RevokedEntry[] => {
     const cards = everything.get(signPub) ?? [];
@@ -127,6 +150,8 @@ export class AuthorizeIndex {
   readonly generation: number;
   readonly #byNoise = new Map<string, MemberEntry>();
   readonly #revoked = new Set<string>();
+  /** The removed members whose cards named each revoked key. */
+  readonly #removedBy = new Map<string, Set<string>>();
   readonly #memberDevices = new Set<string>();
   /** A client member's session key, by member. It never enters the Noise map: a client must not dial (design of #942). */
   readonly #clientDevices = new Map<string, MemberEntry>();
@@ -155,7 +180,10 @@ export class AuthorizeIndex {
       if (member.kind !== "client") this.#hostIds.add(member.hostId);
     }
     for (const entry of data.revoked) {
-      for (const key of entry.keys) this.#revoked.add(key);
+      for (const key of entry.keys) {
+        this.#revoked.add(key);
+        this.#removedBy.set(key, (this.#removedBy.get(key) ?? new Set<string>()).add(entry.signPub));
+      }
       this.#hostIds.add(entry.hostId);
     }
     const name = (key: string | undefined, signPub: string): void => {
@@ -205,6 +233,15 @@ export class AuthorizeIndex {
     return undefined;
   }
 
+  /**
+   * Whether `key` is a removed member's (one of `signPub`'s, when given). Such a key opens no session but the roster's,
+   * where it reads only the records up to its own removal (design 10.3), so a removed browser can learn it was removed.
+   */
+  removed(key: string, signPub?: string): boolean {
+    const by = this.#removedBy.get(key);
+    return by !== undefined && (signPub === undefined || by.has(signPub));
+  }
+
   /** Whether the key is any member's or revoked member's Noise or device key (no device may hold it). */
   claimsKey(key: string): boolean {
     return this.#byNoise.has(key) || this.deviceRefusal(key) !== undefined;
@@ -213,6 +250,15 @@ export class AuthorizeIndex {
   /** Members in the view: what a plan's `machines` limit counts. */
   get memberCount(): number {
     return this.#signPubs.size;
+  }
+
+  /** A plan's machines limit counts only machines, never browsers or phones. */
+  get machineCount(): number {
+    return this.#byNoise.size;
+  }
+
+  clients(): readonly MemberEntry[] {
+    return [...this.#clientDevices.values()].filter((entry) => this.client(entry.devicePub ?? "") !== undefined);
   }
 
   isMember(signPub: string): boolean {

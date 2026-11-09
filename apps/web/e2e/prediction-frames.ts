@@ -1,0 +1,76 @@
+import type { Locator, Page } from "@playwright/test";
+
+/**
+ * Records what each frame paints on one row from `col`, `length` cells: an overlay cell where the prediction layer draws
+ * one, else the grid row's own text, plus where each overlay cell sits. Sampled in a ResizeObserver callback, which runs after every animation-frame
+ * callback of the frame (the pacer's write, the renderer, the overlay) and before the paint, so a sample is the frame as
+ * painted, not a midpoint of it. Narrow text only: the grid row's text is read one character per cell.
+ */
+export async function startRowSampler(terminal: Locator, row: number, col: number, length: number): Promise<void> {
+  await terminal.evaluate(
+    (element, [r, c, n]) => {
+      const probe = document.createElement("div");
+      probe.style.cssText = "position:fixed;left:-10px;top:-10px;height:1px;pointer-events:none";
+      document.body.appendChild(probe);
+      const samples: { row: string; grid: string; core: string; at: number; cells: { text: string; col: number }[] }[] =
+        [];
+      const predictor = Reflect.get(window, "__predictor") as { cell(row: number, col: number): string } | undefined;
+      let frame = 0;
+      let on = true;
+      const sample = (): void => {
+        const cell = Number.parseFloat(getComputedStyle(element).getPropertyValue("--term-cell-width"));
+        const first = element.querySelector(".term-grid .term-row:not(.term-scrollback-row)")?.getBoundingClientRect();
+        const rows = element.querySelectorAll(".term-grid .term-row:not(.term-scrollback-row)");
+        const chars = [...(rows[r]?.textContent ?? "").padEnd(c + n)].slice(c, c + n);
+        const cells: { text: string; col: number }[] = [];
+        for (const span of element.querySelectorAll(".term-prediction-cell")) {
+          const box = span.getBoundingClientRect();
+          if (first === undefined || Math.round((box.top - first.top) / first.height) !== r) continue;
+          const at = Math.round((box.left - first.left) / cell) - c;
+          cells.push({ text: span.textContent ?? "", col: at });
+          if (at >= 0 && at < n) chars[at] = span.textContent ?? "";
+        }
+        const grid = [...(rows[r]?.textContent ?? "").padEnd(c + n)].slice(c, c + n).join("");
+        const core = Array.from({ length: n }, (_, at) => predictor?.cell(r, c + at) || " ").join("");
+        samples.push({ row: chars.join(""), grid, core, at: performance.now(), cells });
+      };
+      new ResizeObserver(() => {
+        if (on) sample();
+      }).observe(probe);
+      const tick = (): void => {
+        frame += 1;
+        probe.style.width = `${1 + (frame % 2)}px`;
+        if (on) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+      Reflect.set(window, "__rowSamples", () => {
+        on = false;
+        probe.remove();
+        return samples;
+      });
+    },
+    [row, col, length] as const,
+  );
+}
+
+/** One frame as painted: the row's text with the overlay over it, and the overlay's cells by column from `col`. */
+export interface RowSample {
+  readonly row: string;
+  /** The grid row's own text, without the overlay. */
+  readonly grid: string;
+  /** The same cells as the terminal's core holds them, written or not yet painted. */
+  readonly core: string;
+  readonly at: number;
+  readonly cells: readonly { readonly text: string; readonly col: number }[];
+}
+
+/** Stops the sampler and returns every frame, in order. */
+export const stopRowSampler = (page: Page) =>
+  page.evaluate(() => (Reflect.get(window, "__rowSamples") as () => RowSample[])());
+
+/** How many leading characters of `typed` a painted row shows. */
+export const shownPrefix = (painted: string, typed: string): number => {
+  let shown = 0;
+  while (shown < typed.length && painted[shown] === typed[shown]) shown += 1;
+  return shown;
+};

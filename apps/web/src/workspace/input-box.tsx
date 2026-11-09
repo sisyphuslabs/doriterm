@@ -73,8 +73,10 @@ export function InputBox({ onSend, draftKey, onActive, className, style }: Input
     event.preventDefault();
     send();
   };
+  // The field and Send keep the 0.5rem the phone chrome leaves between two pressable controls (the round buttons'
+  // slot), so a thumb at the field's end does not land on Send (#1506).
   return (
-    <div className={cn("flex items-end gap-1 px-1.5 py-1", className)} style={style}>
+    <div className={cn("flex items-end gap-2 px-1.5 py-1", className)} style={style}>
       <textarea
         ref={field}
         rows={1}

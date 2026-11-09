@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { KEYBOARD_REQUEST_MS, keyboardInset, LayoutKeyboard } from "./keyboard-inset.ts";
+import { KEYBOARD_REQUEST_MS, keyboardHeight, keyboardInset, LayoutKeyboard } from "./keyboard-inset.ts";
 
 test.each([
   ["no keyboard", { height: 844, offsetTop: 0, scale: 1 }, 0],
@@ -47,4 +47,11 @@ describe("a browser that resizes the page for the keyboard (#244)", () => {
     expect(keyboard.measure(390, 508, 8000)).toBe(true);
     expect(keyboard.measure(390, 844, 9000)).toBe(false);
   });
+});
+
+test("a pan by the keyboard's height zeroes the inset but not the keyboard's height", () => {
+  const panned = { height: 508, offsetTop: 336, scale: 1 };
+  expect(keyboardInset(844, panned)).toBe(0);
+  expect(keyboardHeight(844, panned)).toBe(336);
+  expect(keyboardHeight(844, { height: 844, offsetTop: 0, scale: 1 })).toBe(0);
 });

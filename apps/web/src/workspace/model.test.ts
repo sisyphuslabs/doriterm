@@ -1,15 +1,13 @@
 import type { JsonObject, Terminal } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
 import {
-  agentCounts,
   asksBeforeClosing,
-  groupAgents,
   liveTabs,
   runsProgram,
   tabPosition,
   tabTitle,
+  phoneTabTitle,
   terminalTitle,
-  titledTabs,
   layoutSpaces,
   type SpacesSource,
 } from "./model.ts";
@@ -166,19 +164,6 @@ describe("tabPosition", () => {
     expect(first === undefined ? [] : liveTabs(first, many)).toEqual([["t1"], ["t2", "t3", "t4"], ["t5"]]);
   });
 
-  test("titledTabs names each live tab as the strip does: its name, else its place among all its space's tabs", () => {
-    const many = ["t1", "t2", "t4", "t5"].map((address) => terminal({ address }));
-    const doc = docOf([{ id: "s", folder: "/w", tabs: [["t1"], ["t3"], ["t4", "t2"], ["t5"]] }]);
-    const tabs = (doc["spaces"] as { tabs: { name: string }[] }[])[0]?.tabs ?? [];
-    if (tabs[2] !== undefined) tabs[2].name = "logs";
-    const [space] = layoutSpaces([here(doc)], many);
-    expect(space === undefined ? [] : titledTabs(space, many)).toEqual([
-      { title: "1", panes: ["t1"] },
-      { title: "logs", panes: ["t4", "t2"] },
-      { title: "4", panes: ["t5"] },
-    ]);
-  });
-
   test("a finished terminal, one in no tab and an unknown one have no position", () => {
     expect(tabPosition(spaces, terminals, "t3")).toBeUndefined();
     expect(tabPosition(spaces, terminals, "t2")).toBeUndefined();
@@ -186,30 +171,25 @@ describe("tabPosition", () => {
   });
 });
 
-describe("agentCounts", () => {
-  test("agrees with the agent sections for done, working and idle, leaving out offline and finished terminals", () => {
-    const terminals = [
-      terminal({ address: "t1" }),
-      terminal({ address: "t2", status: { state: "working" } }),
-      terminal({ address: "t3", status: { state: "done" } }),
-      terminal({ address: "t4", status: { state: "working" } }),
-      terminal({ address: "t5", status: { state: "blocked" } }),
-      terminal({ address: "t6", state: "finished" }),
-      { ...terminal({ address: "box/t1", status: { state: "working" } }), offline: true as const },
-    ];
-    const groups = groupAgents(terminals, 0);
-    expect(agentCounts(terminals)).toEqual({
-      done: groups.done.length,
-      working: groups.working.length,
-      idle: groups.idle.length,
-    });
-    expect(agentCounts(terminals)).toEqual({ done: 1, working: 2, idle: 1 });
+describe("phoneTabTitle", () => {
+  test("a phone titles a tab by its own name, else by nothing so its terminal's title shows, never by a place", () => {
+    expect(phoneTabTitle("fix login")).toBe("fix login");
+    expect(phoneTabTitle("")).toBeNull();
   });
 });
 
 describe("tabTitle", () => {
-  test("a tab reads its name, else its place counted from 1", () => {
+  test("a named tab reads its name, even over what it runs", () => {
+    expect(tabTitle("fix login", 3, terminal({ name: "claude" }))).toBe("fix login");
     expect(tabTitle("fix login", 3)).toBe("fix login");
+  });
+
+  test("an unnamed tab that runs an agent reads the agent's title (#1541)", () => {
+    expect(tabTitle("", 0, terminal({ name: "claude" }))).toBe("claude");
+    expect(tabTitle("", 2, terminal({ name: "worker", labels: { "herdr.name": "deploy" } }))).toBe("deploy");
+  });
+
+  test("an unnamed tab with no agent (a shell, another program, panes not known yet) reads its place counted from 1", () => {
     expect(tabTitle("", 0)).toBe("1");
     expect(tabTitle("", 8)).toBe("9");
   });

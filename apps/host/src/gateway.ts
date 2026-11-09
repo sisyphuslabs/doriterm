@@ -36,6 +36,7 @@ export interface GatewayOptions {
     | (E2eeDeps & {
         readonly sessions: LiveSessions;
         readonly meshStream?: MeshStreamHandler;
+        readonly rosterStream?: MeshStreamHandler;
         /** Every authenticated session, so a member's hc line counts as its presence (section 8.2). */
         readonly meshPresence?: MeshStreamHandler;
       })
@@ -189,13 +190,19 @@ export function createGateway(options: GatewayOptions): Gateway {
     if (secure === undefined) return;
     e2ee.meshPresence?.(secure);
     if (secure.stream === "mesh") return serveMesh(secure);
+    if (secure.stream === "roster") {
+      if (e2ee.rosterStream === undefined) secure.close(1000, "this host serves no roster stream");
+      else e2ee.rosterStream(secure);
+      return;
+    }
     if (secure.stream === "push") return servePush(secure);
     // A pairing session is not gated by authorize's session limit, yet the new device keeps it as its workspace.
     const room =
       secure.kind === SessionKind.Session ? undefined : requireWithin(e2ee.policy, "sessions", e2ee.sessions.count());
-    if (!admitHc(secure)) return;
+    if (!e2ee.sessions.admitHc(secure, e2ee.policy)) return;
     const gate = hcGate(secure);
     if (gate === undefined) return;
+    e2ee.mesh?.recordClientSession(base64urlEncode(secure.remoteStatic));
     const link = gate(plaintextLink(secure, wire));
     const answered = options.speculative?.settle(secure) === "answered";
     const hc = answered ? withoutFirstLine(link) : link;
@@ -206,24 +213,6 @@ export function createGateway(options: GatewayOptions): Gateway {
       helloOnly(hc, () => close(CloseCode.RateLimited, room.message)),
       close,
     );
-  };
-
-  /**
-   * Admission, the barrier before any byte of a proven session reaches hc: in one synchronous step it re-checks the plan's
-   * session room against the sessions admitted now (message 1's check can be raced by another handshake) and registers
-   * the session, which re-checks revocation. Nothing is piped for a session that fails either (#1271).
-   */
-  const admitHc = (secure: SecureLink): boolean => {
-    if (e2ee === undefined) return false;
-    if (secure.kind === SessionKind.Session) {
-      const room = requireWithin(e2ee.policy, "sessions", e2ee.sessions.count());
-      if (!room.allowed) {
-        log(`plan: refused a session at admission: ${room.message}`);
-        secure.close(CloseCode.RateLimited, room.message);
-        return false;
-      }
-    }
-    return e2ee.sessions.add(secure);
   };
 
   /** A join is no member's session yet, so only a member's sync session is registered for revocation. */
@@ -238,7 +227,11 @@ export function createGateway(options: GatewayOptions): Gateway {
   const servePush = (secure: SecureLink): void => {
     if (e2ee === undefined || !e2ee.sessions.add(secure)) return;
     if (options.push === undefined) secure.close(1011, "this host sends no push notices");
-    else options.push(secure, base64urlEncode(secure.remoteStatic));
+    else {
+      const key = base64urlEncode(secure.remoteStatic);
+      e2ee.mesh?.recordClientSession(key);
+      options.push(secure, key);
+    }
   };
 
   /**

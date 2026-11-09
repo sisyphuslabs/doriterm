@@ -74,12 +74,20 @@ export function terminalTitle(terminal: Terminal): string {
 }
 
 /**
- * A tab's title as herdr-app's strip reads it (#466 ruling A): its own name, else its place in its space counted from 1.
- * It does not follow the pane in focus; the desktop strip and the phone's header both read it.
+ * A tab's title on the desktop strip: its own name, else the title of the agent it runs (#1541), else its place in its
+ * space counted from 1 (#466). A shell or another program keeps the number, so a prompt's or a program's changing
+ * window title never renames the tab. It does not follow the pane in focus (the phone reads {@link phoneTabTitle}).
  */
-export function tabTitle(name: string, position: number): string {
-  return name !== "" ? name : String(position + 1);
+export function tabTitle(name: string, position: number, agent?: Terminal): string {
+  if (name !== "") return name;
+  return agent === undefined ? String(position + 1) : terminalTitle(agent);
 }
+
+/**
+ * A tab's title on a phone's header: its own name, else null so the header reads its terminal's title. Never its place
+ * among the space's tabs: a bare "2" names nothing on a screen of its own.
+ */
+export const phoneTabTitle = (name: string): string | null => (name === "" ? null : name);
 
 export function machineOf(address: string): string | undefined {
   const slash = address.indexOf("/");
@@ -281,21 +289,6 @@ export function liveTabs(space: ListedSpace, terminals: readonly Terminal[]): re
     .filter((panes) => panes.length > 0);
 }
 
-/** A tab of a space that shows a live terminal: its title as the strip reads it, and its live panes in order. */
-export interface LiveTab {
-  readonly title: string;
-  readonly panes: readonly string[];
-}
-
-/** The tabs of a space that show a live terminal, in tab order, each titled as the strip titles it (tabTitle). */
-export function titledTabs(space: ListedSpace, terminals: readonly Terminal[]): readonly LiveTab[] {
-  const liveAt = new Set(terminals.filter((t) => t.state === "live").map((t) => t.address));
-  return space.tabPanes.flatMap((panes, at) => {
-    const live = panes.filter((address) => liveAt.has(address));
-    return live.length === 0 ? [] : [{ title: tabTitle(space.tabNames[at] ?? "", at), panes: live }];
-  });
-}
-
 /** Where a terminal sits in the listed space whose tabs show it; none when it is finished or in no space's tab. */
 export function tabPosition(
   spaces: readonly ListedSpace[],
@@ -307,21 +300,4 @@ export function tabPosition(
   const live = liveTabs(space, terminals);
   const index = live.findIndex((panes) => panes.includes(address));
   return index === -1 ? undefined : { index: index + 1, count: live.length };
-}
-
-export interface AgentCounts {
-  readonly done: number;
-  readonly working: number;
-  readonly idle: number;
-}
-
-/** How many live agents are done, working and idle, as the agent sections count them; offline ones are unknown. */
-export function agentCounts(terminals: readonly Session[]): AgentCounts {
-  const counts = { done: 0, working: 0, idle: 0 };
-  for (const terminal of terminals) {
-    if (terminal.state !== "live") continue;
-    const status = agentStatus(terminal);
-    if (status === "done" || status === "working" || status === "idle") counts[status] += 1;
-  }
-  return counts;
 }

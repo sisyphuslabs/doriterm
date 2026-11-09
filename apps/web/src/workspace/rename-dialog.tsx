@@ -27,7 +27,8 @@ export function RenameDialog({
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open) onCancel();
+        // A rename that is writing cannot be taken back: its question stays until the write settles (#1498).
+        if (!open && !busy) onCancel();
       }}
       title={`Rename ${title}`}
       description={description}
@@ -35,6 +36,7 @@ export function RenameDialog({
       <form
         onSubmit={(event) => {
           event.preventDefault();
+          if (busy) return;
           onRename(name);
         }}
         className="flex flex-col gap-5"
@@ -43,7 +45,7 @@ export function RenameDialog({
           <Input id={id} value={name} maxLength={80} autoFocus onValueChange={(next: string) => setName(next)} />
         </Field>
         <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="ghost" onClick={onCancel}>
+          <Button variant="ghost" onClick={onCancel} disabled={busy}>
             Cancel
           </Button>
           <Button variant="primary" type="submit" loading={busy}>

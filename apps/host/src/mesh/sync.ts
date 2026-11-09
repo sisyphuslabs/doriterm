@@ -202,6 +202,11 @@ export class SyncSession {
         return this.close(1000, `the peer refused: ${line.reason}`);
       case "offer":
       case "card":
+      case "reveal":
+      case "confirm":
+      case "abort":
+      case "resume":
+      case "leave":
         return this.close(CloseCode.CryptoFailure, `a ${line.t} line on a sync session`);
       default: {
         const unknown: never = line;

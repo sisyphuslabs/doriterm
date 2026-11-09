@@ -13,6 +13,7 @@ export interface RevokeReply {
   readonly written: boolean;
   readonly target: MemberRef;
   readonly subjects: readonly MemberRef[];
+  readonly clients: readonly MemberRef[];
   readonly reason: "revoke" | "compromised";
   /** The section 6.1 preview: the subtree, and the witness-pool warnings. */
   readonly lines: readonly string[];
@@ -61,10 +62,19 @@ export function parseRevokeReply(value: unknown): RevokeReply {
   const { written, reason, lines, needsYes } = value;
   const target = memberRef(value["target"]);
   const subjects = memberRefs(value["subjects"]);
+  const clients = value["clients"] === undefined ? [] : memberRefs(value["clients"]);
   if (!isBoolean(written) || !isBoolean(needsYes) || target === undefined || subjects === undefined) unreadable();
   if (reason !== "revoke" && reason !== "compromised") return unreadable();
   if (!Array.isArray(lines) || !lines.every(isString)) return unreadable();
-  return { written, target, subjects, reason, lines, needsYes };
+  if (clients === undefined) return unreadable();
+  return { written, target, subjects, clients, reason, lines, needsYes };
+}
+
+export function parseLeavePreview(value: unknown): { readonly clients: readonly MemberRef[] } {
+  if (!isRecord(value)) return unreadable();
+  const clients = memberRefs(value["clients"]);
+  if (clients === undefined) return unreadable();
+  return { clients };
 }
 
 export function parseRenameReply(value: unknown): RenameReply {

@@ -8,6 +8,14 @@ const NOW = new Date("2026-11-03T12:00:00.000Z");
 const fixture = meshFixture(NOW);
 const { ids } = fixture;
 const status = meshStatus(fixture.sources, NOW);
+
+test("pending status publishes the same code and confirmation state as the host holds", () => {
+  const sources = {
+    ...fixture.sources,
+    pending: fixture.sources.pending.map((join) => ({ ...join, code: "123 456", joinerConfirmed: true })),
+  };
+  expect(meshStatus(sources, NOW).pending[0]).toMatchObject({ code: "123 456", joinerConfirmed: true });
+});
 const memberNamed = (name: string) => status.members.find((member) => member.name === name);
 const withLocal = (local: Partial<LocalFacts>): MeshSources => ({
   ...fixture.sources,

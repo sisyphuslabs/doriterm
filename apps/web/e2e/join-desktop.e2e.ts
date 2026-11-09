@@ -4,7 +4,6 @@ import { type FakeRelayHost, startFakeRelayHost } from "./relay-route.ts";
 
 test.use({ serviceWorkers: "block" });
 
-const INVITE = /invite link a member sent you/;
 const PAIRED = "This device now reaches the host through the relay";
 const FINGERPRINT = { hasText: "Host key (SHA-256)" };
 
@@ -15,12 +14,9 @@ async function desktopPage(context: BrowserContext, host: FakeRelayHost) {
   return page;
 }
 
-async function pairScreen(page: Awaited<ReturnType<typeof desktopPage>>): Promise<void> {
-  await expect(page.getByText(INVITE)).toBeVisible({ timeout: 30_000 });
-  await page
-    .getByRole("link", { name: "Pair a host" })
-    .or(page.getByRole("button", { name: "Pair a host" }))
-    .click();
+async function inviteScreen(page: Awaited<ReturnType<typeof desktopPage>>): Promise<void> {
+  await expect(page.getByRole("heading", { name: "Join a mesh", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Invite link or code")).toBeVisible();
 }
 
 async function confirmAndPair(page: Awaited<ReturnType<typeof desktopPage>>): Promise<void> {
@@ -34,7 +30,9 @@ async function confirmAndPair(page: Awaited<ReturnType<typeof desktopPage>>): Pr
   await expect(page.getByRole("region", { name: "Getting started" })).toBeVisible({ timeout: 60_000 });
 }
 
-test("a desktop browser joins by clicking the invite link", async ({ browser }) => {
+test("a desktop browser keeps legacy fingerprint verification when opening a device invite link", async ({
+  browser,
+}) => {
   test.setTimeout(180_000);
   const host = await startFakeRelayHost({ machine: true });
   const context = await browser.newContext({ serviceWorkers: "block" });
@@ -49,7 +47,9 @@ test("a desktop browser joins by clicking the invite link", async ({ browser }) 
   }
 });
 
-test("a desktop browser joins by pasting the invite link", async ({ browser }) => {
+test("a desktop browser keeps legacy fingerprint verification when pasting a device invite link", async ({
+  browser,
+}) => {
   test.setTimeout(180_000);
   const host = await startFakeRelayHost({ machine: true });
   const context = await browser.newContext({ serviceWorkers: "block" });
@@ -57,9 +57,13 @@ test("a desktop browser joins by pasting the invite link", async ({ browser }) =
     const { link } = await host.pairingOffer();
     const page = await desktopPage(context, host);
     await page.goto("/");
-    await pairScreen(page);
-    await page.getByRole("textbox").first().fill(link);
-    await page.getByRole("button", { name: "Pair", exact: true }).click();
+    await inviteScreen(page);
+    await page.getByLabel("Invite link or code").fill(link);
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(page).toHaveURL(/\/pair$/);
+    const secret = new URLSearchParams(new URL(link).hash.slice(1)).get("p");
+    if (secret === null) throw new Error("the device invite has no link secret");
+    expect(await page.evaluate(() => JSON.stringify(history.state ?? null))).not.toContain(secret);
     await confirmAndPair(page);
   } finally {
     await context.close();
@@ -67,27 +71,47 @@ test("a desktop browser joins by pasting the invite link", async ({ browser }) =
   }
 });
 
-test("typing the code looks its host up from the third character on, and Pair asks the relay nothing more (#1271)", async ({
-  browser,
-}) => {
+test("a desktop browser still pairs by typing the code doriface-host pair shows", async ({ browser }) => {
   test.setTimeout(180_000);
   const host = await startFakeRelayHost({ machine: true });
   const context = await browser.newContext({ serviceWorkers: "block" });
   try {
     const { code } = await host.pairingOffer();
     const page = await desktopPage(context, host);
+    await page.goto("/pair");
+    await inviteScreen(page);
+    await page.getByLabel("Invite link or code").fill(`${code.slice(0, 4)} ${code.slice(4)}`);
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Join", exact: true }).click();
+    await confirmAndPair(page);
+  } finally {
+    await context.close();
+    await host.stop();
+  }
+});
+
+test("typing a mesh code looks its host up from the third character on, and Continue asks nothing more (#1271)", async ({
+  browser,
+}) => {
+  test.setTimeout(180_000);
+  const host = await startFakeRelayHost({ machine: true });
+  const context = await browser.newContext({ serviceWorkers: "block" });
+  try {
+    const { code } = await host.meshOffer();
+    const page = await desktopPage(context, host);
     const lookups: string[] = [];
     page.on("request", (request) => {
       if (request.url().includes("/v1/pair/")) lookups.push(request.url());
     });
     await page.goto("/");
-    await pairScreen(page);
-    const field = page.getByRole("textbox").first();
+    await inviteScreen(page);
+    const field = page.getByLabel("Invite link or code");
     await field.pressSequentially(code.slice(0, 3));
     await expect.poll(() => lookups.length).toBe(1);
     await field.pressSequentially(code.slice(3));
-    await page.getByRole("button", { name: "Pair", exact: true }).click();
-    await expect(page.getByRole("figure").filter(FINGERPRINT)).toBeVisible({ timeout: 60_000 });
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Join", exact: true }).click();
+    await expect(page.getByLabel("Join code")).toBeVisible();
     expect(lookups).toHaveLength(1);
   } finally {
     await context.close();
@@ -95,21 +119,28 @@ test("typing the code looks its host up from the third character on, and Pair as
   }
 });
 
-test("a desktop browser joins by typing the code the host shows", async ({ browser }) => {
+test("the pair route joins a mesh with a typed code and both confirmations", async ({ browser }, info) => {
   test.setTimeout(180_000);
   const host = await startFakeRelayHost({ machine: true });
   const context = await browser.newContext({ serviceWorkers: "block" });
   try {
-    const { code } = await host.pairingOffer();
+    const { code } = await host.meshOffer();
     const page = await desktopPage(context, host);
-    await page.goto("/");
-    await pairScreen(page);
-    await page
-      .getByRole("textbox")
-      .first()
-      .fill(`${code.slice(0, 4)} ${code.slice(4)}`);
-    await page.getByRole("button", { name: "Pair", exact: true }).click();
-    await confirmAndPair(page);
+    await page.goto("/pair");
+    await inviteScreen(page);
+    await page.getByLabel("Invite link or code").fill(`${code.slice(0, 4)} ${code.slice(4)}`);
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Join", exact: true }).click();
+    await expect(page.getByLabel("Join code")).toBeVisible();
+    const pending = await host.pendingJoin();
+    await expect(page.getByLabel("Join code")).toHaveText(pending.code);
+    await host.answerJoin(pending.nonce, pending.code, true);
+    await page.getByRole("button", { name: "The codes match", exact: true }).click();
+    await expect(page).toHaveURL(/\/settings#machines$/);
+    await page.getByRole("button", { name: "Open", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Getting started" })).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText("this machine", { exact: true })).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath("typed-membership-workspace.png"), fullPage: true });
   } finally {
     await context.close();
     await host.stop();

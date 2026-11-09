@@ -46,7 +46,13 @@ function namesIn(status: MeshStatus): (hostId: string) => string {
   return (hostId) => names.get(hostId) ?? hostId;
 }
 
-function MeshBody({ connection }: { readonly connection: HcConnection }) {
+export function MeshBody({
+  connection,
+  attentionOnly,
+}: {
+  readonly connection: HcConnection;
+  readonly attentionOnly: boolean;
+}) {
   const { read, answer } = useMesh(connection);
   const now = useNow();
   const host = connection.hello.core.name;
@@ -88,9 +94,11 @@ function MeshBody({ connection }: { readonly connection: HcConnection }) {
         nameOf={nameOf}
         disagreement={disagreement(status, machines, settings.mode === "relay" ? settings.hostId : undefined)}
       />
-      <p className="text-sm text-muted-foreground">
-        {`${self} reaches the other machines through its own relay only, and nowhere without one; it opens no direct link to them. A machine row says whether a session to it is open now.`}
-      </p>
+      {!attentionOnly ? (
+        <p className="text-sm text-muted-foreground">
+          {`${self} reaches the other machines through its own relay only, and nowhere without one; it opens no direct link to them. A machine row says whether a session to it is open now.`}
+        </p>
+      ) : null}
       <MeshGroup id="pending" title="Waiting for approval" count={groups.pending.length} urgent>
         {groups.pending.map((join) => (
           <PendingRow
@@ -99,7 +107,7 @@ function MeshBody({ connection }: { readonly connection: HcConnection }) {
             self={self}
             now={now}
             answered={answered?.nonce === join.nonce ? answered.verdict : undefined}
-            onAnswer={(verdict) => answer(join.nonce, verdict)}
+            onAnswer={(verdict) => answer(join.nonce, verdict, join.code)}
           />
         ))}
       </MeshGroup>
@@ -114,16 +122,20 @@ function MeshBody({ connection }: { readonly connection: HcConnection }) {
           <RemovedRows removal={removal} />
         </MeshGroup>
       ))}
-      <MeshGroup id="online" title="Online" count={groups.online.length}>
-        {groups.online.map((member) => (
-          <MemberRow key={member.hostId} member={member} nameOf={nameOf} now={now} />
-        ))}
-      </MeshGroup>
-      <MeshGroup id="offline" title="Offline" count={groups.offline.length}>
-        {groups.offline.map((member) => (
-          <MemberRow key={member.hostId} member={member} nameOf={nameOf} now={now} />
-        ))}
-      </MeshGroup>
+      {!attentionOnly ? (
+        <>
+          <MeshGroup id="online" title="Online" count={groups.online.length}>
+            {groups.online.map((member) => (
+              <MemberRow key={member.hostId} member={member} nameOf={nameOf} now={now} />
+            ))}
+          </MeshGroup>
+          <MeshGroup id="offline" title="Offline" count={groups.offline.length}>
+            {groups.offline.map((member) => (
+              <MemberRow key={member.hostId} member={member} nameOf={nameOf} now={now} />
+            ))}
+          </MeshGroup>
+        </>
+      ) : null}
       <MeshGroup id="revoked" title="Revoked" count={groups.revoked.length}>
         {groups.revoked.map((entry) => (
           <RevokedRow key={entry.hostId} entry={entry} nameOf={nameOf} />
@@ -139,9 +151,10 @@ function MeshBody({ connection }: { readonly connection: HcConnection }) {
 }
 
 /** Every machine in this host's mesh, with the joins that need the owner, from the host's advisory status document. */
-export function MeshSection() {
+export function MeshSection({ attentionOnly = false }: { readonly attentionOnly?: boolean }) {
   const state = useConnection();
   if (state.phase !== "open") {
+    if (attentionOnly) return null;
     return (
       <SettingRow
         title="Not connected"
@@ -150,5 +163,5 @@ export function MeshSection() {
       />
     );
   }
-  return <MeshBody connection={state.connection} />;
+  return <MeshBody connection={state.connection} attentionOnly={attentionOnly} />;
 }

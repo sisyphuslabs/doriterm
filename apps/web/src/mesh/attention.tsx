@@ -61,15 +61,27 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
   if (state === "expired") return <ExpiredJoinRow join={join} self={self} now={now} />;
   return (
     <SettingRow
-      title={`${join.name} asks to join`}
+      title={`Approve "${join.name}" (${join.kind === "client" ? "browser" : "machine"})?`}
       description={
         <>
           <span className="block">{`through ${self}, offer open for ${formatAge(0, left)} more`}</span>
-          <Fingerprint
-            className="mt-2"
-            label={`${join.name}'s key: compare it with what mesh join shows there`}
-            value={join.fingerprint.replaceAll(" ", "")}
-          />
+          {join.code === undefined ? (
+            <span className="block">Update the inviting machine to compare a join code.</span>
+          ) : (
+            <>
+              <span aria-label="Join code" className="my-3 block text-3xl font-semibold tracking-widest tabular-nums">
+                {join.code}
+              </span>
+              <span className="block">
+                Approve only if the joining screen shows the same code. Look at it, or ask by a call or in person, not
+                in the chat that carried the link.
+              </span>
+            </>
+          )}
+          <details className="mt-2">
+            <summary>Details</summary>
+            <Fingerprint label={`${join.name}'s key`} value={join.fingerprint.replaceAll(" ", "")} />
+          </details>
           {failure === undefined ? null : <span className="mt-1 block text-status-blocked-text">{failure}</span>}
           {consequence === undefined ? null : <span className="mt-1 block">{consequence}</span>}
         </>
@@ -84,14 +96,14 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
               disabled={busy !== undefined}
               onClick={() => send("deny")}
             >
-              Deny
+              The codes differ
             </Button>
             <Button
               size="sm"
               variant="primary"
               data-mesh-verdict="approve"
               loading={busy === "approve"}
-              disabled={busy !== undefined}
+              disabled={busy !== undefined || join.code === undefined}
               onClick={() => send("approve")}
             >
               Approve
@@ -103,7 +115,9 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
             className="inline-flex min-h-(--control-sm) items-center text-sm text-muted-foreground"
             data-mesh-answer={state}
           >
-            {state === "approve" ? `Approved; ${self} admits it next` : "Denied"}
+            {state === "approve"
+              ? `Waiting for ${join.name} to confirm the code`
+              : "Denied: the codes differed. Open a new invite."}
           </span>
         )
       }

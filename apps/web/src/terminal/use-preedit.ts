@@ -2,6 +2,7 @@ import type { WTerm } from "@wterm/react";
 import { useEffect } from "react";
 import { wideGlyphScaler } from "./face-scales.ts";
 import { CodepointWidths, type PreeditCodepoint, preeditRange } from "./preedit.ts";
+import type { PredictedCursor } from "./use-prediction-overlay.ts";
 
 /** The cells a preedit is drawn in, built as the renderer builds a row's cells so a wide one gets its fitted size. */
 function preeditCells(element: HTMLElement, codepoints: readonly PreeditCodepoint[]): HTMLElement[] {
@@ -23,9 +24,11 @@ function preeditCells(element: HTMLElement, codepoints: readonly PreeditCodepoin
  * codepoint over two cells at the size its committed glyph will have, underlined, shifted left at the row's end, over the
  * cells it covers, and with no cursor drawn meanwhile. The input element keeps the composition; it only stops painting it
  * (#674). Like Ghostty's per-frame preedit, it is placed again whenever the grid changes or resizes while composing, so
- * output that moves the cursor (the echo of a key typed just before) takes the preedit with it.
+ * output that moves the cursor (the echo of a key typed just before) takes the preedit with it. While predicted keys are
+ * drawn it starts at the predicted cursor, after them, not at the real cursor, which lags it by every unconfirmed cell
+ * (design review HIGH 3(b), #1439), and it moves when that cursor does.
  */
-export function usePreedit(wt: WTerm | null): void {
+export function usePreedit(wt: WTerm | null, predicted: PredictedCursor | null = null): void {
   useEffect(() => {
     if (wt === null) return undefined;
     const element = wt.element;
@@ -47,6 +50,7 @@ export function usePreedit(wt: WTerm | null): void {
     // The preedit is appended outside the grid, so drawing it does not wake these.
     const changed = new MutationObserver(replace);
     const resized = new ResizeObserver(replace);
+    const unpredict = predicted?.subscribe(replace);
     const clear = (): void => {
       generation += 1;
       composing = "";
@@ -67,7 +71,7 @@ export function usePreedit(wt: WTerm | null): void {
       const cell = Number.parseFloat(getComputedStyle(element).getPropertyValue("--term-cell-width"));
       if (!(cell > 0)) return;
       const cols = bridge.getCols();
-      const cursor = bridge.getCursor();
+      const cursor = predicted?.cursor() ?? bridge.getCursor();
       const range = preeditRange(codepoints, Math.min(cursor.col, cols - 1), cols - 1);
       const drawn = codepoints.slice(range.offset);
       const host = element.getBoundingClientRect();
@@ -107,8 +111,9 @@ export function usePreedit(wt: WTerm | null): void {
       input.removeEventListener("compositionupdate", onUpdate);
       input.removeEventListener("compositionend", clear);
       input.removeEventListener("blur", clear);
+      unpredict?.();
       clear();
       widths.dispose();
     };
-  }, [wt]);
+  }, [wt, predicted]);
 }

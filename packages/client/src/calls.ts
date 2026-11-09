@@ -13,12 +13,17 @@ export class PendingCalls {
   /**
    * `adopt` runs synchronously while the reply frame is dispatched, so a call that opens a stream
    * can claim its channel before the next frame, which may already belong to that stream, is read.
+   * `answered` runs first, on a reply of either kind, so its caller can measure the round trip that produced it.
    */
-  start<T>(adopt: (result: JsonValue) => T): { readonly id: number; readonly promise: Promise<T> } {
+  start<T>(
+    adopt: (result: JsonValue) => T,
+    answered: () => void = () => {},
+  ): { readonly id: number; readonly promise: Promise<T> } {
     const id = this.#nextId++;
     const { promise, resolve, reject } = Promise.withResolvers<T>();
     this.#pending.set(id, {
       settle: (response) => {
+        answered();
         if (response.kind === "failure") {
           reject(new HcRpcError(response.error));
           return true;

@@ -11,15 +11,21 @@ const REASONS: readonly DirectReason[] = [
 ];
 
 describe("sessionPathLabel", () => {
-  test("names the path the session actually took", () => {
-    expect(sessionPathLabel("direct")).toBe("Direct to this host on this network");
-    expect(sessionPathLabel("loopback")).toBe("On this computer");
-    expect(sessionPathLabel("relay")).toBe("Through the relay");
+  test("the desktop shell names the path the session actually took", () => {
+    expect(sessionPathLabel("direct", undefined, true)).toBe("Direct to this host on this network");
+    expect(sessionPathLabel("loopback", undefined, true)).toBe("On this computer");
+    expect(sessionPathLabel("relay", undefined, true)).toBe("Through the relay");
   });
 
-  test("gives each reason its own words, so none is a silent fallback", () => {
-    const labels = new Set(REASONS.map((reason) => sessionPathLabel("relay", reason)));
+  test("a browser only ever says the relay: it has no direct path and no direct reason (#1381 §8)", () => {
+    expect(sessionPathLabel("direct")).toBe("Through the relay");
+    expect(sessionPathLabel("relay", "no-answer")).toBe("Through the relay");
+    expect(sessionPathLabel("loopback")).toBe("On this computer");
+  });
+
+  test("the shell gives each reason its own words, so none is a silent fallback", () => {
+    const labels = new Set(REASONS.map((reason) => sessionPathLabel("relay", reason, true)));
     expect(labels.size).toBe(REASONS.length);
-    expect(labels.has(sessionPathLabel("relay"))).toBe(false);
+    expect(labels.has(sessionPathLabel("relay", undefined, true))).toBe(false);
   });
 });

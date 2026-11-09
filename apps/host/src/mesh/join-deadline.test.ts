@@ -24,7 +24,7 @@ describe("a join dies with its offer (section 10.1)", () => {
     const [, joinerEnd] = memoryLinkPair();
     const ctx = { ...joinerContext(b, a), deadline: Date.now() + 30 };
     const joined = failure(runJoiner(new MeshLines(joinerEnd, JOINER_EXPECTS), ctx));
-    expect(await joined).toBe("the inviting member did not welcome this host in time");
+    expect(await joined).toBe("Ask for a new invite");
     expect(joinerEnd.closeCode).toBe(CloseCode.UnknownDevice);
     expect(b.mesh.read()).toBeUndefined();
   });

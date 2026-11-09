@@ -68,7 +68,7 @@ describe("the plan gate on mesh size", () => {
     );
     const asked = await pending.next();
     admitMembers(alpha, ["beta"]); // the plan's second machine, admitted while the join waits
-    pending.decide(asked.nonce, true);
+    pending.decide(asked.nonce, true, asked.code);
     expect(await failure(run.invited)).toBe(
       "This mesh has 2 machines, and the free plan allows 2. Remove a machine from the mesh to make room.",
     );

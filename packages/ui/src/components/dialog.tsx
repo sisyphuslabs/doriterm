@@ -22,6 +22,8 @@ export interface DialogProps {
 
 /** Inside the viewport both ways: a 1rem margin each side, and a long question scrolls inside instead of off screen. */
 const popupClass = "w-[min(28rem,calc(100%-2rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto p-5";
+/** What a dialog opens in when it has one: the field it asks for, never a button. */
+const fieldSelector = "input:not([type=hidden]):not(:disabled), textarea:not(:disabled), select:not(:disabled)";
 const titleClass = "text-lg font-semibold text-foreground";
 const descriptionClass = "mt-1.5 text-base text-pretty text-muted-foreground";
 
@@ -49,11 +51,17 @@ export function Dialog({
 }: DialogProps) {
   const state = { ...(open === undefined ? {} : { open }), ...(onOpenChange === undefined ? {} : { onOpenChange }) };
   const panel = useRef<HTMLDivElement>(null);
-  // A question taller than the screen opens at its title: focus goes to the dialog itself, since focusing a button
-  // below the fold would scroll the title out of view. A question that fits keeps Base UI's first focusable.
+  // No answer is the default (#1495): a question opens on the dialog itself, named by its title, so Enter neither
+  // confirms nor cancels and Tab reaches the buttons in order. A dialog that asks for text opens in its field. A
+  // question taller than the screen opens at its title too, since focusing a field below the fold would scroll it away.
+  // A statement to acknowledge (an alert with one button, OK) has no choice to default to, so OK keeps focus; an alert
+  // that asks (Cancel and an action) opens on itself like any question.
   const initialFocus = () => {
     const element = panel.current;
-    return element !== null && element.scrollHeight > element.clientHeight ? element : true;
+    if (element === null) return true;
+    if (element.scrollHeight > element.clientHeight) return element;
+    if (alert && element.querySelectorAll("button").length === 1) return true;
+    return element.querySelector<HTMLElement>(fieldSelector) ?? element;
   };
   const popup = (
     <BaseDialog.Portal>

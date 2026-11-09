@@ -1,9 +1,10 @@
 import type { ByteLink } from "@doriface/client";
 import { base64urlDecode, secureLink } from "@doriface/crypto";
 import { connectRelayClient } from "@doriface/relay-client";
-import { loadDeviceKey } from "../connection/device-key.ts";
 import { directDial, pageAccess, parseDirectAddress } from "../connection/direct-address.ts";
 import { attemptDirect } from "../connection/direct-attempt.ts";
+import { canForwardPlainWs } from "../connection/direct-forward.ts";
+import { BROWSER_DEPS, type RelayDeps } from "../connection/relay-deps.ts";
 import type { ConnectionSettings } from "../connection/settings.ts";
 import { loopbackOnly } from "../connection/loopback-address.ts";
 import { openWebSocketLink } from "../connection/ws-link.ts";
@@ -13,7 +14,7 @@ import { parsePushClientLine, type PushPrefs } from "@doriface/protocol";
 /**
  * How to reach the host's push stream. The service worker cannot read localStorage, where the connection settings
  * live, so turning notifications on copies this much of them into the IndexedDB store that holds the device key.
- * A relay route keeps the direct address too: push follows the same direct-first rule as the page (#446 §3).
+ * A relay route carries the direct address only in the desktop shell: a browser's push is the relay's (#1381 §8).
  */
 export type PushRoute =
   | {
@@ -28,14 +29,14 @@ export type PushRoute =
 const KEY = "push-route";
 
 /** The loopback client's push stream sits beside its hc stream: `/v1/hc` -> `/v1/push`. */
-export function routeOf(settings: ConnectionSettings): PushRoute {
+export function routeOf(settings: ConnectionSettings, desktopShell: boolean = canForwardPlainWs()): PushRoute {
   if (settings.mode === "relay") {
     return {
       mode: "relay",
       relayUrl: settings.relayUrl,
       hostId: settings.hostId,
       hostKey: settings.hostKey,
-      directUrl: settings.directUrl,
+      ...(desktopShell ? { directUrl: settings.directUrl } : {}),
     };
   }
   const url = new URL(settings.loopbackUrl);
@@ -67,8 +68,17 @@ export async function loadPushRoute(store: KeyValueStore = deviceStore): Promise
   return parseRoute(await store.get(KEY));
 }
 
-export const savePushRoute = (route: PushRoute | null, store: KeyValueStore = deviceStore): Promise<void> =>
-  store.put(KEY, route);
+/** The route with no direct address: a browser never dials one, so a browser's stored route never names one. */
+const relayOnly = (route: PushRoute): PushRoute =>
+  route.mode === "relay" && route.directUrl !== undefined
+    ? { mode: "relay", relayUrl: route.relayUrl, hostId: route.hostId, hostKey: route.hostKey }
+    : route;
+
+export const savePushRoute = (
+  route: PushRoute | null,
+  store: KeyValueStore = deviceStore,
+  desktopShell: boolean = canForwardPlainWs(),
+): Promise<void> => store.put(KEY, route === null || desktopShell ? route : relayOnly(route));
 
 const PREFS_KEY = "push-prefs";
 
@@ -94,24 +104,30 @@ const TOKEN_PREFIX = "doriface.token.";
 
 export interface PushLinkOptions {
   readonly budgetMs?: number | undefined;
+  /** For tests: where the device key comes from; the browser's stored key otherwise (as `connect` takes it). */
+  readonly deps?: RelayDeps | undefined;
 }
 
 /**
- * Opens the push stream: the same E2EE session (`stream:"push"`) the main connection uses, so it runs the same
- * direct-first race and only falls back to the relay when the direct address does not answer (#446 §3).
+ * Opens the push stream: the same E2EE session (`stream:"push"`) the main connection uses. The desktop shell runs the
+ * same direct-first race as the page (#446 §3); a browser goes straight to the relay (#1381 §8), and a service worker,
+ * which has no shell bridge, always does.
  */
 export async function openPushLink(route: PushRoute, options: PushLinkOptions = {}): Promise<ByteLink> {
   if (route.mode === "loopback") {
     return openWebSocketLink(loopbackOnly(route.pushUrl, "push"), [SUBPROTOCOL, TOKEN_PREFIX + route.token]);
   }
-  const direct = await openDirectPush(route, options);
+  const deps = options.deps ?? BROWSER_DEPS;
+  const direct = await openDirectPush(route, options, deps);
   if (direct !== undefined) return direct;
-  const link = await connectRelayClient({ relayUrl: route.relayUrl, hostId: route.hostId });
+  // One socket: a push session carries a request or two and closes, so a second and third socket would only add a Room
+  // round trip to every notice and answer (#1418).
+  const link = await connectRelayClient({ relayUrl: route.relayUrl, hostId: route.hostId, bestOf: 1 });
   try {
     return await secureLink(link, {
       role: "initiator",
       hostId: route.hostId,
-      staticKey: await loadDeviceKey(),
+      staticKey: await deps.loadDeviceKey(),
       remoteStatic: base64urlDecode(route.hostKey),
       stream: "push",
     });
@@ -121,11 +137,18 @@ export async function openPushLink(route: PushRoute, options: PushLinkOptions = 
   }
 }
 
-/** The direct push session, or undefined when the address is unset, unusable, blocked, or does not answer in budget. */
+/**
+ * The direct push session, or undefined when this is not the desktop shell, the address is unset, unusable, blocked, or
+ * does not answer in budget.
+ */
 async function openDirectPush(
   route: Extract<PushRoute, { readonly mode: "relay" }>,
   options: PushLinkOptions,
+  deps: RelayDeps,
 ): Promise<ByteLink | undefined> {
+  // #1381 §8: a browser's push goes over the relay too. A service worker has no forwarder, so its push always relays;
+  // only the desktop shell may dial the address its settings hold.
+  if (!canForwardPlainWs()) return undefined;
   const address = parseDirectAddress(route.directUrl ?? "");
   if (!address.usable) return undefined;
   const dial = directDial(address, pageAccess());
@@ -138,7 +161,7 @@ async function openDirectPush(
         await secureLink(link, {
           role: "initiator",
           hostId: route.hostId,
-          staticKey: await loadDeviceKey(),
+          staticKey: await deps.loadDeviceKey(),
           remoteStatic: base64urlDecode(route.hostKey),
           stream: "push",
         }),

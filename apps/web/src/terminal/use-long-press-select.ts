@@ -43,7 +43,7 @@ export function useLongPressSelect(wt: WTerm | null, onMenu: (at: Point | null) 
       press = null;
     };
     const pick = (): void => {
-      const picked = press === null ? null : wordRangeAt(doc, press.from);
+      const picked = press === null ? null : wordRangeAt(element, press.from);
       if (picked === null || press === null) return;
       press.picked = true;
       press.word = picked.word;
@@ -68,7 +68,7 @@ export function useLongPressSelect(wt: WTerm | null, onMenu: (at: Point | null) 
         if (moved > LONG_PRESS_SLOP) stop();
         return;
       }
-      const caret = caretAt(doc, { x: event.clientX, y: event.clientY });
+      const caret = caretAt(element, { x: event.clientX, y: event.clientY });
       if (caret === null || press.word === null) return;
       const range = extendSelection(doc, press.word, caret);
       if (range !== null) holdSelection(element, range);

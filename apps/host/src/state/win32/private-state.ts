@@ -57,6 +57,7 @@ export const PRIVATE_STATE_FILES = [
   "push-subscriptions.json",
   "relay-passes.json",
   "mesh.json",
+  "roster-admits.json",
 ] as const;
 
 /** The temporary files this host's writers leave only when a crash interrupts them. */

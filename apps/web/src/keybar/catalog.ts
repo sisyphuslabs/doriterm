@@ -40,7 +40,7 @@ export const SPECIAL_KEYS: readonly SpecialKey[] = [
   key("tab", "tab", "Tab"),
   key("esc", "esc", "Escape"),
   key("interrupt", "^C", "Control C"),
-  key("enter", "⏎", "Return"),
+  key("enter", "⏎", "Enter"),
   key("backspace", "⌫", "Backspace"),
   key("clear", "clear", "Clear screen"),
   key("left", "←", "Arrow left", "left"),
@@ -70,7 +70,7 @@ export function specialKeysOn(host: HostPlatform): readonly SpecialKey[] {
 }
 
 /**
- * The keys the bar carries before the person changes anything: today's row, from the modifiers through ^C, the four
+ * The keys the bar carries before the person changes anything: the modifiers through ^C and Return (#1551), the four
  * arrows, then the characters that used to sit behind a swipe (#195, #667).
  */
 export const DEFAULT_KEY_IDS: readonly string[] = [
@@ -81,6 +81,7 @@ export const DEFAULT_KEY_IDS: readonly string[] = [
   "alt",
   "esc",
   "interrupt",
+  "enter",
   "left",
   "up",
   "down",

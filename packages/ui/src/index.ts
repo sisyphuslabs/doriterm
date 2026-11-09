@@ -1,4 +1,5 @@
 export { cn } from "./lib/cn.ts";
+export { SPINNER_DELAY_MS, useDelayedTrue } from "./lib/spinner-delay.ts";
 export { AgentRow, type Agent, type AgentRowProps } from "./components/agent-row.tsx";
 export {
   ApprovalBanner,
@@ -87,7 +88,7 @@ export { AVATAR_COLORS, SpaceAvatar, type AvatarColor, type SpaceAvatarProps } f
 export { RowWithActions, type RowWithActionsProps } from "./components/row-actions.tsx";
 export { MachineHeader, type MachineHeaderProps } from "./components/machine-header.tsx";
 export { SidebarFooter, SidebarFooterItem, type SidebarFooterItemProps } from "./components/sidebar-footer.tsx";
-export { Spinner, type SpinnerProps } from "./components/spinner.tsx";
+export { Spinner, DelayedSpinner, type SpinnerProps } from "./components/spinner.tsx";
 export {
   STATUS_LABEL,
   StatusChip,

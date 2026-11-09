@@ -21,6 +21,7 @@ import type { MeshLiveFacts, MeshHooks } from "./host-hooks.ts";
 import type { LocalFacts, MeshSources, RevocationFact } from "./status-sources.ts";
 import { hostIdOfKey, meshStatus } from "./status.ts";
 import { witnessFacts } from "./witness.ts";
+import { indexOf } from "./authorize-index.ts";
 
 // `mesh status` on the running host (design 8.6): the stored part of PR 7's MeshSources read from mesh.json and its
 // view, the live part from the mesh hooks.
@@ -132,9 +133,17 @@ export function meshSourcesOf(
   const foundHash = parsed.find(({ body }) => body.type === "found")?.hash;
   /** A host its own view no longer holds lists the view's members only, and says it is possibly revoked. */
   const inView = view.members.has(self);
+  const index = file.index?.generation === file.generation ? file.index : indexOf(file.records, view, file.generation);
   return {
+    clientLastSessionAt: new Map(
+      index.members.flatMap((member) =>
+        member.kind === "client" && member.lastSessionAt !== undefined
+          ? [[member.signPub, member.lastSessionAt] as const]
+          : [],
+      ),
+    ),
     view: {
-      members: view.members,
+      members: new Set(index.members.map((member) => member.signPub)),
       revoked: view.revoked,
       noise: view.noise,
       admitter: new Map([...view.admitter].filter(([key]) => view.governing.get(key) !== foundHash)),

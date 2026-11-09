@@ -1,4 +1,5 @@
-import { base64urlEncode, type SecureLink } from "@doriface/crypto";
+import { base64urlEncode, CloseCode, type SecureLink, SessionKind } from "@doriface/crypto";
+import { type PlanPolicy, requireWithin } from "@doriface/policy";
 import type { AuthorizeIndex } from "../mesh/authorize-index.ts";
 import type { DeviceStore } from "../state/devices.ts";
 import type { MeshStore } from "../state/mesh.ts";
@@ -27,6 +28,19 @@ export class LiveSessions {
     let total = 0;
     for (const sessions of this.#byKey.values()) total += sessions.size;
     return total;
+  }
+
+  /** Re-checks session room and revocation before hc admission. */
+  admitHc(session: SecureLink, policy: PlanPolicy): boolean {
+    if (session.kind === SessionKind.Session) {
+      const room = requireWithin(policy, "sessions", this.count());
+      if (!room.allowed) {
+        this.#log(`plan: refused a session at admission: ${room.message}`);
+        session.close(CloseCode.RateLimited, room.message);
+        return false;
+      }
+    }
+    return this.add(session);
   }
 
   /**

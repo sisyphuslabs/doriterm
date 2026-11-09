@@ -1,12 +1,15 @@
 // The layout spec's screens: each opens one state of the app with the layout host's long names on the page.
 import type { Page } from "@playwright/test";
 import { pickFile } from "./file-input";
-import { BAD_LINK, fakeRelay, PAIR_CODE, PAIR_LINK, PAIRING_SETTINGS } from "./capture-relay.ts";
+import { BAD_LINK, fakeRelay, PAIR_LINK, PAIRING_SETTINGS } from "./capture-relay.ts";
 import { E2E_LAYOUT_PORT, E2E_TOKEN } from "./config.ts";
 import { expect } from "./fixtures.ts";
 import { setCoreDoc } from "./core-doc.ts";
 import { LAYOUT_DOC, treeNode } from "./layout-doc.ts";
 import { LAYOUT_MACHINE, LAYOUT_TERMINALS, UNBROKEN } from "./layout-seed.ts";
+
+/** A title as a regular expression that matches it literally. */
+const literal = (text: string): string => text.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export const STARTS = {
   layout: {
@@ -78,9 +81,9 @@ export const SCREENS: readonly Screen[] = [
     start: "pairing",
     open: async (page) => {
       await page.goto("/pair");
-      await page.getByLabel("Pairing code").fill(LONG_VALUE);
-      await page.getByRole("button", { name: "Pair" }).click();
-      await expect(page.getByText("Enter the 8 characters")).toBeVisible();
+      await page.getByLabel("Invite link or code").fill(LONG_VALUE);
+      await page.getByRole("button", { name: "Continue", exact: true }).click();
+      await expect(page.getByText("Paste an invite link or enter its 8-character code.")).toBeVisible();
     },
   },
   { name: "pair-verify", start: "pairing", open: (page) => page.goto(PAIR_LINK) },
@@ -90,9 +93,7 @@ export const SCREENS: readonly Screen[] = [
     start: "pairing",
     open: async (page) => {
       await fakeRelay(page, 4429);
-      await page.goto("/pair");
-      await page.getByLabel("Pairing code").fill(PAIR_CODE);
-      await page.getByRole("button", { name: "Pair" }).click();
+      await page.goto(PAIR_LINK);
       await page.getByRole("button", { name: "They match" }).click();
       await expect(page.getByText("Pairing did not finish")).toBeVisible({ timeout: 15_000 });
     },
@@ -119,8 +120,8 @@ export const SCREENS: readonly Screen[] = [
       // Every seeded terminal open as a tab, written to the layout documents before the page loads, the way another
       // device would have left them: opening each by a click mounts a terminal and writes the document on a page that
       // can be starved for seconds. The layout host starts its terminals in order on a fresh core (runSeeds), so they
-      // are t1, t2, ... there and on its added machine. An unnamed tab reads its number, not its terminal's name (#466
-      // ruling A), and has no tooltip, so the long names are left to the sidebar.
+      // are t1, t2, ... there and on its added machine. An unnamed tab reads its agent's title, else its number
+      // (#1541), and a title cut short carries the whole of it as a tooltip.
       const local = LAYOUT_TERMINALS.map((_, index) => layoutTab(`tb-${index + 1}`, `t${index + 1}`));
       setCoreDoc(LAYOUT_DOC, layoutDoc(local), undefined, "layout");
       setCoreDoc(LAYOUT_DOC, layoutDoc([layoutTab("tb-remote", "t1")]), LAYOUT_MACHINE, "layout");
@@ -129,7 +130,14 @@ export const SCREENS: readonly Screen[] = [
       // in a space of its own.
       const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
       await expect(tabs).toHaveCount(LAYOUT_TERMINALS.length, { timeout: 20_000 });
-      await expect(tabs).toHaveText(LAYOUT_TERMINALS.map((_, index) => new RegExp(`^${index + 1}(?!\\d)`)));
+      // An unnamed tab reads its agent's title, else its place (#1541): an agent is a terminal that reports OSC 7501.
+      await expect(tabs).toHaveText(
+        LAYOUT_TERMINALS.map((each, index) =>
+          each.seed.argv.join(" ").includes("7501")
+            ? new RegExp(`^${literal(each.title)}`)
+            : new RegExp(`^${index + 1}(?!\\d)`),
+        ),
+      );
       await tabs.last().click();
       await page.getByRole("button", { name: "Split right" }).click();
       await expect(page.locator("[data-terminal]:visible")).toHaveCount(2);
