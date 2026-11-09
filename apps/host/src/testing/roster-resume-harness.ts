@@ -57,6 +57,7 @@ export function fixture(options: { readonly changed?: () => void } = {}) {
     lanUrls: [],
     log,
     resumeKey: (key: string) => host.resumeKey(key),
+    removedRosterHeld: (key: string) => host.removedRosterHeld(key),
   };
   return { a, c, devices, pairing, host, deps };
 }
