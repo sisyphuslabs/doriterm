@@ -46,7 +46,14 @@ for (const theme of ["day", "night"] as const) {
           if (paint === null) throw new Error("no 2d canvas");
           const srgb = (css: string): number[] => {
             paint.clearRect(0, 0, 1, 1);
-            paint.fillStyle = css;
+            // A canvas that cannot parse a colour silently keeps its previous fill, so each assignment starts from a
+            // sentinel and fails loudly if the sentinel survives. A second sentinel covers a colour that is the first.
+            const accepted = ["#010203", "#040506"].some((sentinel) => {
+              paint.fillStyle = sentinel;
+              paint.fillStyle = css;
+              return paint.fillStyle !== sentinel;
+            });
+            if (!accepted) throw new Error(`the canvas rejected the colour "${css}"`);
             paint.fillRect(0, 0, 1, 1);
             return [...paint.getImageData(0, 0, 1, 1).data];
           };
