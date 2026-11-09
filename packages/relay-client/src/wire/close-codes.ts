@@ -14,6 +14,11 @@ export const CloseCode = {
   IdleTimeout: 4408,
   /** A pairing session named a slot that is not registered to this host (expired or never opened). */
   PairSlotUnknown: 4410,
+  /**
+   * The host refused a typed-code mesh join on its own terms: the invite was used, expired or replaced, none is
+   * pending, or the plan refuses it. A join on a device pairing offer is 4401 instead (contract v1.10.1).
+   */
+  MeshCodeRefused: 4411,
   /** The relay accepted a newer authenticated uplink for the same hostId. */
   UplinkReplaced: 4409,
   /** The relay refused an upgrade's pass proof (contract v1.6); dial again without one. Never final. */

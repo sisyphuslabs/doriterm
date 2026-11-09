@@ -71,10 +71,16 @@ export interface PairingClaim {
 
 export type ClaimRefusal = { readonly refused: number; readonly reason: string };
 
+/**
+ * Why a join on a device offer is refused: the one refusal of a typed-code join that keeps 4401, so the joiner pairs as a
+ * device with the same code instead (#1492, `accept.ts`).
+ */
+export const JOIN_ON_DEVICE_OFFER = "a machine join on a device pairing offer";
+
 /** A device pairing on a mesh offer, or a join on a device offer: refused before any answer, and not counted. */
 const kindRefusal = (mesh: boolean): ClaimRefusal => ({
   refused: CloseCode.UnknownDevice,
-  reason: mesh ? "a machine join on a device pairing offer" : "a device pairing on a mesh offer",
+  reason: mesh ? JOIN_ON_DEVICE_OFFER : "a device pairing on a mesh offer",
 });
 
 /**
