@@ -20,18 +20,18 @@ import { WorkspaceRoute } from "./routes/workspace-route.tsx";
  * is a dialog over the workspace, which stays in view and keeps drawing; on a phone, or a screen too short for the dialog,
  * it is a full-screen sheet and the workspace under it is hidden.
  */
-/**
- * Where Settings shows: the sheet or the dialog. Settings renders into one frame of its own, which moves here, so a
- * resize across the breakpoint moves it instead of mounting it again: the open section, a key recording and anything
- * else under way survive the switch (#859). Focus inside it is put back after the move, and so is the settings body's
- * scroll offset (#1161).
- */
 /** Where the settings body was scrolled to when its frame was taken out of the page, and which element scrolled. */
 interface KeptScroll {
   readonly viewport: HTMLElement;
   readonly top: number;
 }
 
+/**
+ * Where Settings shows: the sheet or the dialog. Settings renders into one frame of its own, which moves here, so a
+ * resize across the breakpoint moves it instead of mounting it again: the open section, a key recording and anything
+ * else under way survive the switch (#859). Focus inside it is put back after the move, and so is the settings body's
+ * scroll offset (#1161).
+ */
 function SettingsSlot({
   frame,
   refocus,

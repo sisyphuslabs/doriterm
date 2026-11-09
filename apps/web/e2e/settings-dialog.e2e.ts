@@ -241,7 +241,8 @@ test.describe("Settings across the md breakpoint, and its zoom keys (#859)", () 
 
     await page.setViewportSize({ width: 700, height: 800 });
     await expect(settingsSheet(page)).toBeVisible();
-    // Focus comes back to the field, and the draft stays in it: the blur the move caused is not the reader leaving.
+    // Focus comes back to the field, and the draft stays in it: the move saves nothing the reader is still typing. These
+    // two cases guard #1160; neither engine delivers a blur to the field's handler while its frame is out of the page.
     await expect(gateway).toBeFocused();
     await expect(gateway).toHaveValue("ws://127.0.0.1:1/half-typed");
     await expect.poll(saved).toBe(before);

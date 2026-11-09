@@ -78,15 +78,7 @@ function TextValue({
         {...(autoFocus === undefined ? {} : { autoFocus })}
         className={cn(swatch === null ? "" : "pl-8")}
         onValueChange={(next: string) => setDraft(next)}
-        onBlur={(event) => {
-          const field = event.currentTarget;
-          // Settings moving between its dialog and its sheet blurs this field and hands focus straight back (#1160):
-          // that blur is the move's, not the reader leaving, so it must not commit a draft they are still typing. A
-          // real blur has focus elsewhere by the first microtask, as the key recorder's own check finds (#859).
-          queueMicrotask(() => {
-            if (document.activeElement !== field) commit();
-          });
-        }}
+        onBlur={commit}
         onKeyDown={(event) => {
           if (event.key !== "Enter") return;
           // Consumed: a commit can move focus to a button, which would take this same Enter as a click.
