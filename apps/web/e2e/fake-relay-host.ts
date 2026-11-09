@@ -86,10 +86,11 @@ async function joinWith(link: string): Promise<string> {
     session: session.name,
     env: { ...session.env, ...shellEnv(dir) },
     stateDir: dir,
-    // No uplink: the fake relay keeps one host's uplink at a time, and a second one would take the inviting host's.
+    relay: { url: relay.url },
     log: () => {},
   });
   joiner = { host: joinerHost, hc: session, dir };
+  await relay.answers.next();
   // The command the installer runs, against this running host. The link names the production relay the page dials;
   // this joiner reaches the inviting host through the bridge instead.
   const args = ["mesh", "join", "--wait-host", "30", "--yes", "--name", "joiner", "--relay", bridge.url];
