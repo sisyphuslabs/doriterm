@@ -68,6 +68,16 @@ test("mesh join refuses a link and --from-file together, and an empty file, befo
   expect(none.asked).toEqual([]);
 });
 
+test("mesh join --from-file skips blank lines before the link, as the trimmed whole file did (#1726 review)", async () => {
+  const file = join(mkdtempSync(join(tmpdir(), "dh-join-link-")), "link");
+  dirs.push(join(file, ".."));
+  writeFileSync(file, `\n  \n${LINK}\n`, { mode: 0o600 });
+  const asked = await joinWith(["--from-file", file, "--yes"]);
+  expect(
+    asked.filter((request) => request.op === "mesh-join").map((request) => Reflect.get(request, "target")),
+  ).toEqual([LINK]);
+});
+
 test("mesh join --from-file joins with the file's first line, whatever follows it (#1200)", async () => {
   const file = join(mkdtempSync(join(tmpdir(), "dh-join-link-")), "link");
   dirs.push(join(file, ".."));
