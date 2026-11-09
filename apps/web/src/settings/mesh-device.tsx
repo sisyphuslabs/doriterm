@@ -2,6 +2,7 @@ import { Button, SettingRow } from "@doriface/ui";
 import { Monitor, Server } from "lucide-react";
 import type { MemberEntry } from "../connection/mesh-connections.ts";
 import { formatAge } from "../workspace/model.ts";
+import { useHostRoundTrip } from "./use-host-round-trip.ts";
 
 export function MeshDevice({
   name,
@@ -60,6 +61,21 @@ function stateOf(entry: MemberEntry): string {
   }
 }
 
+function MachineDescription({ entry, local }: { readonly entry: MemberEntry; readonly local: boolean }) {
+  const roundTrip = useHostRoundTrip(entry.state.phase === "open" ? entry.state.connection : null);
+  return (
+    <>
+      {local ? <span className="block">This machine</span> : null}
+      <span>{`${stateOf(entry)} · Relay`}</span>
+      {roundTrip === undefined ? null : <span className="block tabular-nums">{roundTrip} ms round trip</span>}
+      {entry.state.phase !== "open" && entry.lastSeen !== undefined ? (
+        <span className="block">{`Last seen ${formatAge(entry.lastSeen, Date.now())} ago`}</span>
+      ) : null}
+      {entry.state.phase === "host-failed" ? <span className="block">{entry.state.failure.message}</span> : null}
+    </>
+  );
+}
+
 /** Every machine has one row; the local marker is supplied only by the shell's own-computer identity. */
 export function MeshMachineList({
   entries,
@@ -85,18 +101,7 @@ export function MeshMachineList({
                 <span className="min-w-0 [overflow-wrap:anywhere]">{entry.target.hostName || entry.target.hostId}</span>
               </span>
             }
-            description={
-              <>
-                {ownComputer === entry.target.hostId ? <span className="block">This machine</span> : null}
-                <span>{`${stateOf(entry)} · Relay`}</span>
-                {entry.state.phase !== "open" && entry.lastSeen !== undefined ? (
-                  <span className="block">{`Last seen ${formatAge(entry.lastSeen, Date.now())} ago`}</span>
-                ) : null}
-                {entry.state.phase === "host-failed" ? (
-                  <span className="block">{entry.state.failure.message}</span>
-                ) : null}
-              </>
-            }
+            description={<MachineDescription entry={entry} local={ownComputer === entry.target.hostId} />}
             control={
               entry.state.phase === "open" && openMember !== undefined ? (
                 <Button size="sm" onClick={() => openMember(entry.target.hostId)}>

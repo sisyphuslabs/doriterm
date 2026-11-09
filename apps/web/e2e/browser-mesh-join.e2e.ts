@@ -56,13 +56,26 @@ for (const phone of [false, true]) {
       await expect(page.getByText("Last session on studio: just now", { exact: true })).toBeVisible({
         timeout: 25_000,
       });
+      await expect(page.getByRole("list", { name: "Machines", exact: true })).toContainText(/\d+ ms round trip/);
       await page.screenshot({ path: info.outputPath("joined-machines.png"), fullPage: true });
+      await page.evaluate(() => localStorage.setItem("doriface.appearance", JSON.stringify({ mode: "light" })));
+      await page.reload();
+      await expect(page.locator("html")).toHaveCSS("color-scheme", "light");
+      await expect(page.getByRole("list", { name: "Machines", exact: true })).toContainText(/\d+ ms round trip/);
+      await page.screenshot({ path: info.outputPath("joined-machines-light.png"), fullPage: true });
       await page.goto("/");
       await expect(page.getByText("existing", { exact: true }).first()).toBeVisible({ timeout: 20_000 });
       await expect(page.getByText("this machine", { exact: true })).toHaveCount(0);
       await page.reload();
       await expect(page.getByText("existing", { exact: true }).first()).toBeVisible({ timeout: 20_000 });
       await expect(page.getByText("this machine", { exact: true })).toHaveCount(0);
+      await page.goto("/settings#machines");
+      const machines = page.getByRole("list", { name: "Machines", exact: true });
+      await expect(machines).toContainText(/\d+ ms round trip/);
+      await host.stop();
+      await expect(machines).not.toContainText("round trip");
+      await expect(machines).toContainText("studio");
+      await page.screenshot({ path: info.outputPath("offline-machines.png"), fullPage: true });
     } finally {
       await context.close();
       await host.stop();
