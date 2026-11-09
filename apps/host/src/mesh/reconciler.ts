@@ -82,6 +82,8 @@ export class Reconciler {
   /** Reads of the list in the order they started: a slower, older read never replaces a newer one's answer. */
   #reads = 0;
   #listedRead = 0;
+  /** The last failed refresh's log line: a herdr that keeps failing the same way is logged once, not every read (#1240). */
+  #refreshFailure: string | undefined;
   /** An earlier entry a migration removed, kept for its member until the line is added, by whichever attempt (#728). */
   readonly #replaced = new Map<string, MeshReplacedMachine>();
 
@@ -185,8 +187,11 @@ export class Reconciler {
     const cancel = this.#options.clock.after(LIVE_LINES_MS, () => deadline.resolve(undefined));
     try {
       await Promise.race([this.#readListed(), deadline.promise]);
+      this.#refreshFailure = undefined;
     } catch (error) {
-      this.#options.log(`mesh: status kept the last machine list: herdr did not answer: ${messageOf(error)}`);
+      const line = `mesh: status kept the last machine list: herdr did not answer: ${messageOf(error)}`;
+      if (line !== this.#refreshFailure) this.#options.log(line);
+      this.#refreshFailure = line;
     } finally {
       cancel();
     }
