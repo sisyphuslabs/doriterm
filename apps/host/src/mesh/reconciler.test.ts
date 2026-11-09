@@ -288,7 +288,9 @@ describe("the line state status reads (#754)", () => {
     let failure: string | undefined = "connection is closed";
     machines.list = () => (failure === undefined ? list() : Promise.reject(hcError("unreachable", failure)));
     const kept = () => logs.filter((line) => line.startsWith("mesh: status kept the last machine list"));
-    for (let i = 0; i < 3; i += 1) await reconcile.refreshLines();
+    await reconcile.refreshLines();
+    await reconcile.refreshLines();
+    await reconcile.refreshLines();
     expect(kept()).toEqual(["mesh: status kept the last machine list: herdr did not answer: connection is closed"]);
     failure = "core busy";
     await reconcile.refreshLines();
