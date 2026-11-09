@@ -16,6 +16,12 @@
   clients can connect when the inviter is offline. Browser settings include membership, invitations, home-screen app
   handoff, and leaving the mesh. (#1446)
 
+### Pairing from a phone
+
+- An installed app with no pairing explains that its storage is separate from the browser tab it was installed
+  from, so it needs to pair once as its own device. Opening or pasting an invite pairs it on that same screen; an
+  already paired app does not show the notice. (#1411)
+
 ### Phone
 
 - Opening a terminal on a phone leaves the soft keyboard down, and the keyboard button is what raises it: a new tab does
