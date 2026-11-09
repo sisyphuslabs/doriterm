@@ -117,9 +117,10 @@ test("a resize that reflows the scrollback with no new output moves the marks wi
     .poll(async () => (await markAndText(terminal, "needle-r"))?.mark)
     .toEqual((await markAndText(terminal, "needle-r"))?.text);
 
-  // Narrower than the line: the core reflows it, and the needle moves to the next row, nearer the left edge.
+  // Narrower than the line, yet wide enough to keep the desktop layout (the phone layout starts below 768 px): the core
+  // reflows the line, and the needle moves to the next row, nearer the left edge.
   const before = await markAndText(terminal, "needle-r");
-  await page.setViewportSize({ width: 700, height: 900 });
+  await page.setViewportSize({ width: 860, height: 900 });
   await expect.poll(async () => (await markAndText(terminal, "needle-r"))?.text).not.toEqual(before?.text);
   await expect
     .poll(async () => {
