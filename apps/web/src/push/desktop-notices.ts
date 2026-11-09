@@ -3,9 +3,12 @@ import {
   DEFAULT_PUSH_PREFS,
   type HcEvent,
   NOTICE_EVENTS,
+  type NoticeContext,
+  noticeContextOf,
   noticeMachineId,
   parsePushClientLine,
   type PushPrefs,
+  readScreenPrompt,
 } from "@doriface/protocol";
 import { type ConnectionState, connectionStore } from "../connection/store.ts";
 import { type NoticeBridge, noticeBridge, permissionOf } from "./notice-bridge.ts";
@@ -45,6 +48,8 @@ export interface DesktopNoticesOptions {
   readonly bridge: NoticeBridge;
   readonly storage: NoticeStorage;
   readonly connection: Pick<typeof connectionStore, "state" | "subscribe">;
+  /** The connected host as people name it, for a notice about one of its own terminals; empty when it has none. */
+  readonly hostName?: () => string;
   readonly now?: () => number;
   readonly schedule?: Schedule;
 }
@@ -64,6 +69,30 @@ const timers: Schedule = (step, ms) => {
 
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
+/** How long a notification waits to be told what its terminal is before it shows without it. */
+export const DESCRIBE_TIMEOUT_MS = 2_000;
+
+/**
+ * What a notification can say about its terminal (#1908), read off this app's own connection: the terminal record,
+ * and for a question or a permission the dialog on its screen now.
+ */
+export async function describeHit(
+  connection: Pick<HcConnection, "call">,
+  hit: Trigger,
+  hostName: string,
+): Promise<NoticeContext> {
+  const options = { timeoutMs: DESCRIBE_TIMEOUT_MS };
+  const asks = hit.kind === "input" || hit.kind === "permission";
+  const [terminal, screen] = await Promise.all([
+    connection.call("terminal.get", { terminal: hit.terminal }, options),
+    asks
+      ? connection.call("terminal.read", { terminal: hit.terminal, lines: 0 }, options).then((read) => read.text)
+      : undefined,
+  ]);
+  const prompt = screen === undefined ? undefined : readScreenPrompt(terminal.status?.app ?? "", screen);
+  return noticeContextOf(terminal, hit.machine ?? hostName, prompt);
+}
+
 /**
  * Settings > Notifications in the desktop app: native notifications from this app's own event feed, on the same
  * triggers, kinds and machine mutes as web push. They come while the app runs, its window in the background or hidden.
@@ -80,6 +109,8 @@ export class DesktopNotices {
   #attempts = 0;
   #pendingRetry: (() => void) | null = null;
   #refusalReportedAt: number | null = null;
+  /** Notices show in the order the feed told them, each after the one before, whatever their lookups take. */
+  #shows: Promise<void> = Promise.resolve();
 
   constructor(options: DesktopNoticesOptions) {
     this.#options = options;
@@ -181,12 +212,22 @@ export class DesktopNotices {
     const hit = this.#trigger.event(event, this.#now());
     this.#count();
     if (hit === undefined || !this.#view.on || !wanted(hit, this.#view.prefs, this.#shown)) return;
-    void this.#show(hit);
+    const connection = this.#connection;
+    const described =
+      connection === null
+        ? Promise.resolve(undefined)
+        : describeHit(connection, hit, this.#options.hostName?.() ?? "").catch(() => undefined);
+    this.#shows = this.#shows.then(async () => this.#show(hit, await described));
   }
 
-  async #show(hit: Trigger): Promise<void> {
+  /** A notice whose terminal could not be read in time shows all the same, with the fixed text. */
+  async #show(hit: Trigger, context: NoticeContext | undefined): Promise<void> {
     try {
-      const answer = await this.#options.bridge.show({ kind: hit.kind, terminal: hit.terminal });
+      const answer = await this.#options.bridge.show({
+        kind: hit.kind,
+        terminal: hit.terminal,
+        ...(context === undefined ? {} : { context }),
+      });
       if (!answer.accepted) this.#refused(answer.reason);
     } catch (error) {
       this.#refused(message(error));
@@ -295,4 +336,11 @@ const bridge = noticeBridge();
 
 /** The desktop app's notifications; null in a browser, where web push does this. */
 export const desktopNotices: DesktopNotices | null =
-  bridge === null ? null : new DesktopNotices({ bridge, storage: guardedLocalStorage(), connection: connectionStore });
+  bridge === null
+    ? null
+    : new DesktopNotices({
+        bridge,
+        storage: guardedLocalStorage(),
+        connection: connectionStore,
+        hostName: () => connectionStore.settings.hostName,
+      });

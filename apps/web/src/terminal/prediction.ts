@@ -69,6 +69,8 @@ interface Prediction extends PredictedCell {
    * same text before the key (mosh `CorrectNoCredit`, terminaloverlay.cc:91-109), since either matches with no echo.
    */
   readonly credit: boolean;
+  /** On the row the predictor's own wrap moved the predicted cursor to, ahead of the host's cursor. */
+  readonly wrapped: boolean;
 }
 
 export type Verdict =
@@ -171,11 +173,13 @@ export class Predictor {
     this.#altScreen = altScreen;
     if (entered) this.#drop(0, "alt-screen");
     else this.#cull(this.#sources.now());
-    // Undrawn predictions on a row above the cursor were made from a cursor that Enter (or another unmodelled key) has
-    // since moved down; dropping them hides nothing and lets the next key start from the real cursor. Predictions below
-    // the cursor are the ones a wrap put on the next row, waiting for the host to get there.
+    // Undrawn predictions off the cursor row, above or below, were made from a cursor that Enter, a clear (Ctrl-L) or
+    // another unmodelled key has since moved; dropping them hides nothing and lets the next key start from the real
+    // cursor. The exception is the predictor's own wrap: predictions it put on the next row wait for the host to get there.
     const row = screen.cursor().row;
-    const stale = this.#predictions.find((each) => each.epoch > this.#confirmedEpoch && each.row < row);
+    const stale = this.#predictions.find(
+      (each) => each.epoch > this.#confirmedEpoch && each.row !== row && !(each.wrapped && each.row === row + 1),
+    );
     if (stale !== undefined) this.#drop(this.#confirmedEpoch + 1, "row-left");
     if (this.#predictions.length === 0) this.#cursor = null;
   }
@@ -234,6 +238,11 @@ export class Predictor {
     const wraps = at.col + width === screen.cols();
     if (wraps) this.#epoch += 1;
     const before = screen.cell(at.row, at.col);
+    const last = this.#predictions.at(-1);
+    const wrapped =
+      last !== undefined &&
+      ((last.wrapped && last.row === at.row) ||
+        (at.col === 0 && at.row === last.row + 1 && last.col + last.width === screen.cols()));
     const cell: Prediction = {
       row: at.row,
       col: at.col,
@@ -243,6 +252,7 @@ export class Predictor {
       seq: (this.#seq += 1),
       sentAt: this.#sources.now(),
       credit: text.trim() !== "" && !shows(before, text, width),
+      wrapped,
     };
     this.#predictions = [...this.#predictions, cell];
     this.#cursor = { row: at.row, col: at.col + width };
