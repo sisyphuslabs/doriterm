@@ -44,7 +44,7 @@ const PROGRAM_ICON = {
 };
 
 /**
- * A tab as herdr-app's strip draws it: its name, else its place in its space (1, 2, ...), with the icon of its agent,
+ * A tab as the strip draws it: its name, else its agent's title (#1541), else its place in its space (1, 2, ...), with the icon of its agent,
  * else of its first pane's program, and the state that most needs the person among its panes. No machine label: the bar
  * shows one space's tabs, and a space is one machine's (#404, #478).
  */
@@ -55,11 +55,12 @@ function tabEntry(tab: LayoutTab, position: number, byAddress: ReadonlyMap<strin
   });
   const kinds = shown.map(programKind);
   const kind = kinds.includes("agent") ? "agent" : kinds[0];
+  const agent = shown[kinds.indexOf("agent")];
   const statuses = new Set(shown.map(agentStatus));
   const status = URGENCY.find((each) => statuses.has(each));
   return {
     id: tab.key,
-    title: tabTitle(tab.name, position),
+    title: tabTitle(tab.name, position, agent),
     controls: panelId(tab.key),
     ...(kind === undefined ? {} : { icon: PROGRAM_ICON[kind] }),
     ...(status === undefined ? {} : { status }),
@@ -182,10 +183,14 @@ export function DesktopShell(props: DesktopShellProps) {
   const byAddress = new Map(terminals.map((terminal) => [terminal.address, terminal]));
   const tabList: WorkspaceTab[] = layout.shown.map((tab, position) => tabEntry(tab, position, byAddress));
   const renamed = renaming === null ? undefined : layout.tabs.find((tab) => tab.key === renaming.key);
+  const shownTitle = renamed === undefined ? "" : (tabList.find((tab) => tab.id === renamed.key)?.title ?? "");
+  // A number alone names nothing, so it reads "tab 2"; an agent's title (#1541) or a name reads as itself.
   const renamedTitle =
     renamed === undefined || renamed.name !== ""
       ? (renamed?.name ?? "tab")
-      : `tab ${tabList.find((tab) => tab.id === renamed.key)?.title ?? ""}`.trim();
+      : /^\d*$/.test(shownTitle)
+        ? `tab ${shownTitle}`.trim()
+        : shownTitle;
   const focusedMachine =
     (focusedAddress === null ? undefined : machineOf(focusedAddress)) ?? connection.hello.core.name;
   const focusedTerminal = focusedAddress === null ? undefined : byAddress.get(focusedAddress);
@@ -328,7 +333,7 @@ export function DesktopShell(props: DesktopShellProps) {
             value={renamed.name}
             busy={renaming.busy}
             error={renaming.error}
-            description="Every device shows the new name. Leave it empty to call the tab by its number again."
+            description="Every device shows the new name. Leave it empty to call the tab by its agent, or by its number, again."
             onRename={(name) => submitRename(renaming.key, name)}
             onCancel={() => setRenaming(null)}
           />
