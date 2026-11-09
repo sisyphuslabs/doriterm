@@ -33,6 +33,7 @@ import { usePredictionOverlay } from "./use-prediction-overlay.ts";
 import { predictionSeam } from "./prediction-seam.ts";
 import { effectivePredictionMode, usePredictionMode } from "./prediction-mode.ts";
 import { useMeshMembers } from "../connection/store.ts";
+import type { ConnectionPath } from "../connection/connect.ts";
 import { desktopBridge } from "../desktop/bridge.ts";
 import { PredictorView } from "./prediction-view.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
@@ -150,8 +151,11 @@ export function TerminalView(props: TerminalViewProps) {
   const seam = useMemo(() => predictionSeam(wt), [wt]);
   const chosenMode = usePredictionMode();
   const link = useMeshMembers().find(({ state }) => state.phase === "open" && state.connection === connection)?.state;
-  const path = link?.phase === "open" ? link.path : undefined;
-  const predictMode = effectivePredictionMode(chosenMode, path, desktopBridge() !== null);
+  // While the link reconnects it is not open; the path it last had stands until it opens again, so the mode does not flip.
+  const lastPath = useRef<ConnectionPath | undefined>(undefined);
+  const path = link?.phase === "open" ? link.path : lastPath.current;
+  lastPath.current = path;
+  const predictMode = effectivePredictionMode(chosenMode, path, desktopBridge() !== null, address);
   const predictModeNow = useRef(predictMode);
   predictModeNow.current = predictMode;
   const [predictor, setPredictor] = useState<PredictorView | null>(null);

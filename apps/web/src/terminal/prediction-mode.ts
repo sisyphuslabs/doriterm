@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { ConnectionPath } from "../connection/connect.ts";
 import { guardedLocalStorage } from "../storage/guarded.ts";
+import { machineOf } from "../workspace/model.ts";
 import type { DisplayMode } from "./prediction-display.ts";
 
 const KEY = "doriface.terminal.predict-typing";
@@ -36,14 +37,18 @@ export const predictionModeStore = new PredictionModeStore();
 
 /**
  * The mode a view predicts in: the desktop app's own host over loopback answers in a frame, so nothing is predicted there
- * unless this device chose `always`; relay and direct links keep the chosen mode (#1439).
+ * unless this device chose `always`; relay and direct links keep the chosen mode (#1439). A terminal on another mesh
+ * machine (`machine/...`) shares that loopback session but is reached over the host's mesh line, so it keeps the
+ * chosen mode too.
  */
 export function effectivePredictionMode(
   chosen: DisplayMode,
   path: ConnectionPath | undefined,
   desktop: boolean,
+  address?: string,
 ): DisplayMode {
-  return desktop && path === "loopback" && chosen !== "always" ? "never" : chosen;
+  const ownHost = address === undefined || machineOf(address) === undefined;
+  return desktop && ownHost && path === "loopback" && chosen !== "always" ? "never" : chosen;
 }
 
 export function usePredictionMode(): DisplayMode {
