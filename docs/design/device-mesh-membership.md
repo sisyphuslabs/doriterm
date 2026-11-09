@@ -2,8 +2,8 @@
 
 Status: **as built**, 2026-11-09. Revision 7 was security-reviewed CLEAR at `6f5094caac` (2026-11-08) and is the
 design the merged implementation follows; §0 maps each section to the pull request that built it and lists what is still
-open. The sections after §0 are revision 7 unchanged, so they still say "after PR 3" and similar where they were written
-before the work landed.
+open. The sections after §0 are revision 7 unchanged, except the §8 push row, which now states the push route as built
+(#1435). So they still say "after PR 3" and similar where they were written before the work landed.
 
 Design-gate history: revision 7 folds the review of revision 6
 (§15): a client is refused on an offer without a commitment, so every pending join has a code; the running host's
@@ -374,7 +374,8 @@ the relay only when direct misses its 300 ms budget (`apps/web/src/connection/co
 | any client, a member learned from the view (§6)   | relay only **by construction**: a learned `MemberTarget` carries no `directUrl` (§6), so the direct race is never entered. This holds on the desktop shell too                                                                                                                                                     |
 | the desktop shell, a host it paired with directly | keeps `direct` then `relay` (#446), and `loopback` to the host on the same computer. The shell is not the web surface #1381 orders onto the relay; a paired host on the same LAN is a different trust position from a learned member reached across the internet                                                   |
 | every mesh read                                   | the mesh document and the machine list ride the ordinary session (`apps/web/src/mesh/mesh-reader.ts`: `doc.get`, `doc.set`, `machine.list`), so they follow the rows above. There is no separate mesh transport                                                                                                    |
-| the join (§4), the roster stream (§5), push       | over the relay, from every client                                                                                                                                                                                                                                                                                  |
+| the join (§4), the roster stream (§5)             | over the relay, from every client                                                                                                                                                                                                                                                                                  |
+| push                                              | follows the session route above: relay only from a browser and from its service worker; the desktop shell keeps its direct push race to a host it paired with directly (#446 §3, `apps/web/src/push/push-route.ts`). As built in #1422; this row was corrected for #1435                                           |
 | a member's relay session drops                    | that member's own store reconnects on its own retry ladder (`MeshConnections`: one connection and one ladder per member, #994). Other members' sessions are untouched                                                                                                                                              |
 | a client with N members                           | one relay session per member, each counted against **that member's** limits (`MAX_ACTIVE_SESSIONS` 32 and `MAX_PENDING_SESSIONS` 8 per host, `packages/relay-client/src/wire/limits.ts`). The relay has no per-client limit, so N members cost N sessions over N hosts, and cold start dials them in parallel (§6) |
 | a member's uplink is down                         | the relay closes that dial with 4404 (host offline). Only that member's store backs off (`backoffDelay`, at most 30 s) and shows the member offline                                                                                                                                                                |
