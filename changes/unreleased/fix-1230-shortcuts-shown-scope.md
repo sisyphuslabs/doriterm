@@ -1,3 +1,0 @@
-### Workspace
-
-- Keyboard shortcuts stay closed when you leave the workspace and return.
