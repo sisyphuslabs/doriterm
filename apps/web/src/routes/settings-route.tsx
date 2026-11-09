@@ -74,7 +74,10 @@ export function SettingsRoute() {
       type="search"
       placeholder="Search settings"
       value={query}
-      onValueChange={(next: string) => setQuery(next)}
+      onValueChange={(next: string) => {
+        setQuery(next);
+        setLanding(null);
+      }}
       onKeyDown={(event) => {
         const [hit] = hits;
         const first = shown[0];

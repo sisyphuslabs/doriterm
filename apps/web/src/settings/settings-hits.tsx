@@ -49,16 +49,19 @@ export function SettingHits(props: {
   );
 }
 
+/** Outside the list of matches, whose own buttons read the same titles. */
+const drawn = (element: Element): boolean => element.closest("[data-setting-hits]") === null;
+
 /** The drawn row a hit names: by its title's id, else the setting row (or the one control) whose title reads it. */
 function findRow(body: Element, hit: SettingHit): HTMLElement | undefined {
   if (hit.anchor !== undefined) {
     const title = body.querySelector(`[id="${CSS.escape(hit.anchor)}"]`);
     if (title instanceof HTMLElement) return title.closest<HTMLElement>("[data-setting-row]") ?? title;
   }
-  const rows = [...body.querySelectorAll<HTMLElement>("[data-setting-row]")];
+  const rows = [...body.querySelectorAll<HTMLElement>("[data-setting-row]")].filter(drawn);
   const row = rows.find((each) => each.querySelector("p")?.textContent?.trim() === hit.title);
   if (row !== undefined) return row;
-  const controls = [...body.querySelectorAll<HTMLElement>("button, a")];
+  const controls = [...body.querySelectorAll<HTMLElement>("button, a")].filter(drawn);
   return controls.find((each) => each.textContent?.trim().startsWith(hit.title));
 }
 
@@ -71,13 +74,15 @@ function land(row: HTMLElement): void {
 
 /**
  * Lands on `hit`'s row once its section has drawn it: at once if it is there, else on the first change to the body
- * that brings it (a section can draw its rows after it mounts). Stops when the hit changes or Settings closes.
+ * that brings it (a section can draw its rows after it mounts). Stops when the hit changes, a new search starts (null)
+ * or Settings closes; a row this device does not draw is never found, and the next search ends the wait.
  */
 export function useLandOn(hit: SettingHit | null, body: () => Element | null): void {
   useEffect(() => {
     const root = body();
-    if (hit === null || root === null) return undefined;
+    if (root === null) return undefined;
     for (const old of root.querySelectorAll("[data-setting-landed]")) old.removeAttribute("data-setting-landed");
+    if (hit === null) return undefined;
     const now = findRow(root, hit);
     if (now !== undefined) {
       land(now);

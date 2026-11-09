@@ -65,6 +65,23 @@ test.describe("desktop: matching settings (#1528)", () => {
   });
 });
 
+test.describe("desktop: a match that lands nowhere (#1545 review)", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test("the next search keeps the field: a pending landing never takes the focus from it", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: "Settings" }).click();
+    await field(page).fill("connect through");
+    const hits = settings(page).getByRole("region", { name: "Matching settings" });
+    await hits.getByRole("button", { name: /^Connect through/ }).click();
+    await field(page).click();
+    await field(page).pressSequentially("connect");
+    await expect(field(page)).toHaveValue("connect");
+    await expect(field(page)).toBeFocused();
+    await expect(hits.locator("[data-setting-landed]")).toHaveCount(0);
+  });
+});
+
 test.describe("phone", () => {
   const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
   test.use(phone);
