@@ -28,7 +28,7 @@ export interface Bump {
 export interface PaneMoves {
   /**
    * Focuses the nearest pane that way in the tab in view. With no pane that way in a split tab it nudges the focused
-   * pane (`bumped`) instead and still takes the key; a lone pane leaves the key to its program (false), as Ghostty does.
+   * pane (`bumped`) and leaves the key to its program too, as a lone pane does.
    */
   readonly go: (direction: Direction) => boolean;
   readonly bumped: Bump | null;
@@ -72,8 +72,12 @@ export function usePaneMoves({ active, focused, layoutOf, show, setView, history
       const { panes } = arrange(active.root, MEASURE, 8, null);
       const move = paneMove(focused.id, direction, panes, history.get(active.key) ?? []);
       if (move.kind === "pass") return false;
-      if (move.kind === "bump") setBumped((prev) => ({ pane: focused.id, direction, seq: (prev?.seq ?? 0) + 1 }));
-      else show(active.key, move.to);
+      if (move.kind === "bump") {
+        setBumped((prev) => ({ pane: focused.id, direction, seq: (prev?.seq ?? 0) + 1 }));
+        // The nudge says there is no pane that way; it does not take the key from the program (#1302, #1172).
+        return false;
+      }
+      show(active.key, move.to);
       return true;
     },
     [active, focused, show],
@@ -135,14 +139,15 @@ export function usePaneMoves({ active, focused, layoutOf, show, setView, history
     [active, editSizes, show],
   );
 
-  // herdr-app's swap goes by geometry only: the nearest pane that way, not the one last visited.
+  // herdr-app's swap goes by geometry only: the nearest pane that way, not the one last visited. With none there it
+  // leaves the key to the program, as moving focus does.
   const swap = useCallback(
     (direction: Direction): boolean => {
       if (active === null || focused === null) return false;
       const { panes } = arrange(active.root, MEASURE, 8, null);
       const next = paneMove(focused.id, direction, panes, []);
-      if (next.kind === "pass") return false;
-      if (next.kind === "go") editSizes((root) => swapPanes(root, focused.id, next.to));
+      if (next.kind !== "go") return false;
+      editSizes((root) => swapPanes(root, focused.id, next.to));
       return true;
     },
     [active, editSizes, focused],

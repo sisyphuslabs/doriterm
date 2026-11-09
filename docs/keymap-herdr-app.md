@@ -123,8 +123,8 @@ every chord. Keys a person rebinds in Settings > Keybindings stay theirs.
 | `alt-[` | `tab.prev` | same | same |  |
 | `ctrl-shift-pagedown` | `space.next` | same | same |  |
 | `ctrl-shift-pageup` | `space.prev` | same | same |  |
-| `alt-down` | `agent.next` | same | same |  |
-| `alt-up` | `agent.prev` | same | same |  |
+| `alt-down` | `agent.next` | unbound | same | unbound so a focused terminal's program reads it: an agent answer key and an editor word move (#1302) |
+| `alt-up` | `agent.prev` | unbound | same | unbound so a focused terminal's program reads it: an agent answer key and an editor word move (#1302) |
 | `ctrl-?` | `app.help` | same | same |  |
 | `ctrl-shift-/` | `app.help` | same | same |  |
 | `ctrl-shift-?` | `app.help` | same | same |  |

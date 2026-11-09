@@ -81,8 +81,10 @@ const MAC: readonly [string, string][] = [
 ];
 
 /**
- * herdr-app's keys.json merged with Ghostty's Linux and Windows defaults. Focus moves with herdr-app's Alt+arrows and
- * Alt+H/J/K/L and Ghostty's Ctrl+Alt+arrows; with no pane that way the key reaches the terminal program.
+ * herdr-app's keys.json merged with Ghostty's Linux and Windows defaults. Focus moves with herdr-app's Alt+Left/Right and
+ * Alt+H/J/K/L and Ghostty's Ctrl+Alt+arrows; with no pane that way the key reaches the terminal program. Alt+Up and
+ * Alt+Down stay unbound: an agent's question UI and many editors read them, so no default takes them from the program
+ * (#1302).
  */
 const OTHER: readonly [string, string][] = [
   ["ctrl+shift+t", "tab.new"],
@@ -128,8 +130,6 @@ const OTHER: readonly [string, string][] = [
   ["ctrl+alt+=", "pane.equalize"],
   ["ctrl+shift+enter", "pane.zoom"],
   ["ctrl+shift+z", "pane.zoom"],
-  ["alt+down", "agent.next"],
-  ["alt+up", "agent.prev"],
   ["ctrl+shift+b", "layout.toggle:sidebar"],
   ["ctrl+shift+.", "layout.focus:sidebar"],
   // Ghostty takes Ctrl+Shift+F for its own search here, so the filter takes Ctrl+Alt+F.
