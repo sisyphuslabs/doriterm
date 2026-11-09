@@ -168,12 +168,8 @@ const bridge: DorifaceBridge = {
       if (terminal === null || typeof terminal === "string") listener(terminal);
     });
   },
-  async setDirectTarget(directUrl) {
-    const kept: unknown = await ipcRenderer.invoke(Channel.setDirectTarget, directUrl);
-    return kept === true;
-  },
-  async forwardDirect() {
-    const answer: unknown = await ipcRenderer.invoke(Channel.directForward);
+  async forwardDirect(directUrl) {
+    const answer: unknown = await ipcRenderer.invoke(Channel.directForward, directUrl);
     if (isDirectForward(answer)) return { url: answer.url };
     if (isDirectForwardRefused(answer)) return { refused: answer.refused };
     return { refused: "the shell returned no forward" };

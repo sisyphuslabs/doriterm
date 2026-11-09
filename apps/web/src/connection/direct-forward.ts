@@ -8,14 +8,13 @@ export function canForwardPlainWs(scope: object = globalThis): boolean {
 }
 
 /**
- * Opens the host's direct address through the desktop shell's byte forwarder. The shell copies ciphertext bytes to the
- * address it holds itself, so this page never opens a socket to another machine and the shell never sees plaintext.
+ * Opens the host's direct address through the desktop shell's byte forwarder. The shell checks the address itself and
+ * copies ciphertext bytes to it, so this page never opens a socket to another machine and the shell never sees plaintext.
  */
 export async function openForwardedLink(target: string, signal: AbortSignal | undefined): Promise<ByteLink> {
   const bridge = directForwardBridge();
   if (bridge === null) throw new DirectFailure("blocked", "this page can't open ws:// to another machine; use wss://");
-  await bridge.setTarget(target);
-  const answer = await bridge.forward();
+  const answer = await bridge.forward(target);
   if ("refused" in answer) throw new DirectFailure("blocked", answer.refused);
   try {
     return await openDirectLink(answer.url, signal);

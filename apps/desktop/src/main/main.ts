@@ -259,8 +259,8 @@ function ready(): void {
     noticePermission: () => readNoticeAuthorization(systemPreferences),
     // A click brings the window back (or makes it, on macOS with none left) and opens the pane in it.
     showNotice: (notice) => showNotice(notice, (terminal) => sendToPage(Channel.noticeClicked, terminal)),
-    setDirectTarget: (directUrl) => forwarder?.setTarget(directUrl) ?? false,
-    forwardDirect: async (windowId) => (await forwarder?.issue(windowId)) ?? { refused: "no forwarder" },
+    forwardDirect: async (windowId, directUrl) =>
+      (await forwarder?.issue(windowId, directUrl)) ?? { refused: "no forwarder" },
     cancelDirectForward: (url) => forwarder?.cancel(url) ?? false,
     dictation,
   });

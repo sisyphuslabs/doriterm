@@ -70,24 +70,23 @@ export interface DesktopBridge {
 export type ForwardedSocket = { readonly url: string } | { readonly refused: string };
 
 export interface DirectForwardBridge {
-  /** The Direct address the shell may forward to; it checks the value itself and drops every forward when it changes. */
-  setTarget(directUrl: string): Promise<boolean>;
-  /** One capability: one socket to the frozen target, for this window, used once. */
-  forward(): Promise<ForwardedSocket>;
+  /**
+   * One capability: one socket to `directUrl`, which the shell checks itself, for this window, used once. The address
+   * travels with the request, so each mesh member's race reaches its own host (#1499).
+   */
+  forward(directUrl: string): Promise<ForwardedSocket>;
   /** Gives a capability up, so its late upgrade is refused instead of opening a socket. */
   cancel(url: string): Promise<boolean>;
 }
 
 /** The shell's byte forwarder, or null outside the desktop app or in a build without it. */
 export function directForwardBridge(scope: object = globalThis): DirectForwardBridge | null {
-  const setTarget = bridgeMethod("setDirectTarget", scope);
   const forward = bridgeMethod("forwardDirect", scope);
   const cancel = bridgeMethod("cancelDirectForward", scope);
-  if (setTarget === null || forward === null || cancel === null) return null;
+  if (forward === null || cancel === null) return null;
   return {
-    setTarget: async (directUrl) => (await setTarget(directUrl)) === true,
-    forward: async () => {
-      const answer: unknown = await forward();
+    forward: async (directUrl) => {
+      const answer: unknown = await forward(directUrl);
       const field = (key: string): unknown =>
         typeof answer === "object" && answer !== null ? Reflect.get(answer, key) : undefined;
       const url = field("url");

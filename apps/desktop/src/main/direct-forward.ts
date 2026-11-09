@@ -48,27 +48,22 @@ export class DirectForwarder {
   readonly #deps: DirectForwarderDeps;
   readonly #capabilities = new Map<string, Capability>();
   readonly #live = new Map<number, Set<() => void>>();
-  #target: string | undefined;
   #server: Server | undefined;
+  /** The listener being bound, shared by every request that arrives meanwhile so they all get the one port. */
+  #listening: Promise<number> | undefined;
   #port = 0;
 
   constructor(deps: DirectForwarderDeps) {
     this.#deps = deps;
   }
 
-  /** The address the page saved, checked here; a change drops every forward and every capability. */
-  setTarget(value: string): boolean {
+  /**
+   * Issues one capability to `windowId` for the Direct address `value`, checked here: the URL the page dials, or why it
+   * may not forward. Each capability carries its own target, so every mesh member's race reaches its own address and a
+   * forward to one member never closes or redirects another's (#1499).
+   */
+  async issue(windowId: number, value: string): Promise<DirectForwardAnswer> {
     const target = forwardedTarget(value);
-    if (target !== this.#target) {
-      this.#target = target;
-      this.dropAll();
-    }
-    return target !== undefined;
-  }
-
-  /** Issues one capability to `windowId`: the URL the page dials, or why it may not forward. */
-  async issue(windowId: number): Promise<DirectForwardAnswer> {
-    const target = this.#target;
     if (target === undefined) return { refused: "no direct address to forward to" };
     const port = await this.#listen();
     const capability = (this.#deps.capability ?? capabilityOf)();
@@ -90,7 +85,7 @@ export class DirectForwarder {
     this.#live.delete(windowId);
   }
 
-  /** Every window's forward, on a settings change or on quit. */
+  /** Every window's forward, on quit. */
   dropAll(): void {
     this.#capabilities.clear();
     for (const closes of this.#live.values()) for (const close of closes) close();
@@ -101,13 +96,25 @@ export class DirectForwarder {
     this.dropAll();
     const server = this.#server;
     this.#server = undefined;
+    this.#listening = undefined;
     this.#port = 0;
     if (server === undefined) return;
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 
-  async #listen(): Promise<number> {
-    if (this.#server !== undefined) return this.#port;
+  /**
+   * One listener for every capability. Members ask at once (#1499): a second request arriving while the first was still
+   * binding made a second server, whose port replaced the first's and so refused the first member's Host header.
+   */
+  #listen(): Promise<number> {
+    this.#listening ??= this.#bind().catch((error: unknown) => {
+      this.#listening = undefined;
+      throw error;
+    });
+    return this.#listening;
+  }
+
+  async #bind(): Promise<number> {
     const server = createServer((_request: IncomingMessage, response) => {
       response.writeHead(404, { "content-type": "text/plain" }).end("not a forwarder route");
     });

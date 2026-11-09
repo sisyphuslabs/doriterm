@@ -54,6 +54,15 @@ export async function pairWithHost(
   name: string,
   deps: RelayDeps = BROWSER_DEPS,
 ): Promise<HcConnection> {
+  return (await pairOnRelay(offer, name, deps)).connection;
+}
+
+/** The pairing session, and the LAN addresses the host named in its handshake reply (message 2). */
+async function pairOnRelay(
+  offer: PairingOffer,
+  name: string,
+  deps: RelayDeps,
+): Promise<{ readonly connection: HcConnection; readonly lanUrls: readonly string[] }> {
   const { secret } = offer;
   const pairing = pairingOption(secret, name);
   const link = await connectRelayClient({
@@ -73,7 +82,7 @@ export async function pairWithHost(
       remoteStatic: offer.noiseStaticPub,
       pairing,
     });
-    return await HcConnection.open(secure);
+    return { connection: await HcConnection.open(secure), lanUrls: secure.lanUrls };
   } catch (error) {
     const reason = pairingFailureReason(secret.mode, error instanceof Error ? closeCodeOf(error) : undefined);
     throw reason === undefined ? error : new PairingFailedError(reason, { cause: error });
@@ -113,6 +122,9 @@ export interface PairedConnections {
 /**
  * Pairs, then binds the app to the host on the session the pairing proved, so the workspace opens on it instead of
  * dialing the relay again (#1271); a failed pairing binds nothing.
+ *
+ * The host's Direct address is the first LAN address its handshake named, never the one the previously selected host
+ * had: the settings being spread belong to that host, and its address would send the new host's race to it (#1499).
  */
 export async function pairAndOpen(
   offer: PairingOffer,
@@ -120,6 +132,9 @@ export async function pairAndOpen(
   connections: PairedConnections,
   deps: RelayDeps = BROWSER_DEPS,
 ): Promise<void> {
-  const connection = await pairWithHost(offer, name, deps);
-  connections.pair({ ...connections.settings, mode: "relay", ...rememberedOf(offer) }, { connection, path: "relay" });
+  const { connection, lanUrls } = await pairOnRelay(offer, name, deps);
+  connections.pair(
+    { ...connections.settings, mode: "relay", ...rememberedOf(offer), directUrl: lanUrls[0] ?? "" },
+    { connection, path: "relay" },
+  );
 }

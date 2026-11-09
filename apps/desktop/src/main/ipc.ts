@@ -27,8 +27,7 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle(Channel.noticesSupported, (event) => handlers.noticesSupported(event));
   ipcMain.handle(Channel.noticePermission, (event) => handlers.noticePermission(event));
   ipcMain.handle(Channel.showNotice, (event, candidate: unknown) => handlers.showNotice(event, candidate));
-  ipcMain.handle(Channel.setDirectTarget, (event, candidate: unknown) => handlers.setDirectTarget(event, candidate));
-  ipcMain.handle(Channel.directForward, (event) => handlers.forwardDirect(event));
+  ipcMain.handle(Channel.directForward, (event, candidate: unknown) => handlers.forwardDirect(event, candidate));
   ipcMain.handle(Channel.cancelDirectForward, (event, candidate: unknown) =>
     handlers.cancelDirectForward(event, candidate),
   );

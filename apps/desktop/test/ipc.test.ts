@@ -89,11 +89,10 @@ const setup = (
       hcInstalls += 1;
       return install(onPhase);
     },
-    setDirectTarget: (directUrl) => {
+    forwardDirect: async (windowId, directUrl) => {
       targets.push(directUrl);
-      return directUrl !== "";
+      return { url: `ws://127.0.0.1:1/${windowId}` };
     },
-    forwardDirect: async (windowId) => ({ url: `ws://127.0.0.1:1/${windowId}` }),
     cancelDirectForward: () => true,
     dictation,
   });
@@ -147,8 +146,7 @@ describe("IPC sender gate", () => {
         expect(handlers.noticesSupported(event)).rejects.toThrow("refused IPC"),
         expect(handlers.noticePermission(event)).rejects.toThrow("refused IPC"),
         expect(handlers.showNotice(event, { kind: "done", terminal: "t1" })).rejects.toThrow("refused IPC"),
-        expect(handlers.setDirectTarget(event, "127.0.0.1:7767")).rejects.toThrow("refused IPC"),
-        expect(handlers.forwardDirect(event)).rejects.toThrow("refused IPC"),
+        expect(handlers.forwardDirect(event, "127.0.0.1:7767")).rejects.toThrow("refused IPC"),
         expect(handlers.cancelDirectForward(event, "ws://127.0.0.1:1/cap")).rejects.toThrow("refused IPC"),
       ]),
     );
@@ -375,6 +373,16 @@ const speechAddon = () => {
     abort: () => undefined,
   };
 };
+
+describe("direct forward over IPC (#449)", () => {
+  test("each request names its own address, and anything but a string is refused before the shell (#1499)", async () => {
+    const { handlers, targets } = setup();
+    expect(await handlers.forwardDirect(app, "ws://192.0.2.1:7767/v1/e2ee")).toEqual({ url: "ws://127.0.0.1:1/7" });
+    expect(await handlers.forwardDirect(app, "ws://192.0.2.2:7767/v1/e2ee")).toEqual({ url: "ws://127.0.0.1:1/7" });
+    expect(await handlers.forwardDirect(app, 7)).toEqual({ refused: "no direct address to forward to" });
+    expect(targets).toEqual(["ws://192.0.2.1:7767/v1/e2ee", "ws://192.0.2.2:7767/v1/e2ee"]);
+  });
+});
 
 describe("dictation over IPC (#726)", () => {
   const page = { ...app, sender: { id: 7, isDestroyed: () => false, send: () => undefined } };

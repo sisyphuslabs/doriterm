@@ -46,9 +46,7 @@ export const Channel = {
   pairedDevices: "doriface:paired-devices",
   /** Renderer to main: revoke one paired device by its short id. */
   revokeDevice: "doriface:revoke-device",
-  /** Renderer to main: the Direct address the page saved, checked by the shell before it forwards anything (chosen). */
-  setDirectTarget: "doriface:set-direct-target",
-  /** Renderer to main: one capability to forward bytes to the saved Direct address, or why not (#449). */
+  /** Renderer to main: one capability to forward bytes to the Direct address named with it, or why not (#449, #1499). */
   directForward: "doriface:direct-forward",
   /** Renderer to main: the page gave up on a capability, so its late upgrade is refused. */
   cancelDirectForward: "doriface:cancel-direct-forward",
@@ -383,10 +381,11 @@ export interface DorifaceBridge {
   showNotice(notice: DesktopNotice): Promise<NoticeAnswer>;
   /** Calls `listener` with the terminal of each clicked notification (null for a test one). */
   onNoticeClick(listener: (terminal: string | null) => void): void;
-  /** Tells the shell the Direct address the page saved; the shell checks it and forwards nothing else (#449). */
-  setDirectTarget(directUrl: string): Promise<boolean>;
-  /** Asks for one forward capability, or why the shell will not forward. */
-  forwardDirect(): Promise<DirectForwardAnswer>;
+  /**
+   * Asks for one forward capability to `directUrl`, which the shell checks itself (#449), or why it will not forward.
+   * Every mesh member names its own address, so one member's race never redirects or closes another's (#1499).
+   */
+  forwardDirect(directUrl: string): Promise<DirectForwardAnswer>;
   /** Tells the shell the page gave up on a capability, so no socket is opened for it later. */
   cancelDirectForward(url: string): Promise<boolean>;
   /** Dictation through the system recognizer: present only on a Mac build where it loaded (#726). */

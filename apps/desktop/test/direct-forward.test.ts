@@ -75,6 +75,13 @@ const refused = (socket: WebSocket): Promise<number> =>
 
 const closed = (socket: WebSocket): Promise<void> => new Promise((resolve) => socket.once("close", () => resolve()));
 
+/** Sends `bytes` on the page's socket and resolves with what came back. */
+async function echo(socket: WebSocket, bytes: number[]): Promise<number[]> {
+  const reply = answered(socket);
+  socket.send(new Uint8Array(bytes));
+  return Array.from(await reply);
+}
+
 const live: DirectForwarder[] = [];
 afterEach(async () => {
   const stopping = live.splice(0).map((forwarder) => forwarder.stop());
@@ -90,9 +97,10 @@ function forwarderFor(origin = APP): DirectForwarder {
 test("a capability carries bytes both ways to the configured address, and the page never dials it", async () => {
   const peer = await echoingPeer();
   const forwarder = forwarderFor();
-  expect(forwarder.setTarget("ws://192.0.2.10:7767/v1/hc")).toBe(false);
-  expect(forwarder.setTarget(peer.url)).toBe(true);
-  const answer = await forwarder.issue(7);
+  expect(await forwarder.issue(7, "ws://192.0.2.10:7767/v1/hc")).toEqual({
+    refused: "no direct address to forward to",
+  });
+  const answer = await forwarder.issue(7, peer.url);
   if (!("url" in answer)) throw new Error(`expected a forward, got ${answer.refused}`);
   const socket = pageSocket(answer.url);
   await opened(socket);
@@ -107,8 +115,7 @@ test("a capability carries bytes both ways to the configured address, and the pa
 test("a capability is bound to the app origin and to one use", async () => {
   const peer = await echoingPeer();
   const forwarder = forwarderFor();
-  forwarder.setTarget(peer.url);
-  const answer = await forwarder.issue(7);
+  const answer = await forwarder.issue(7, peer.url);
   if (!("url" in answer)) throw new Error("no forward");
   const foreign = pageSocket(answer.url, "app://other");
   expect(await refused(foreign)).toBe(403);
@@ -125,8 +132,7 @@ test("a capability is bound to the app origin and to one use", async () => {
 test("a window that went away keeps no capability, and its forward is closed", async () => {
   const peer = await echoingPeer();
   const forwarder = forwarderFor();
-  forwarder.setTarget(peer.url);
-  const answer = await forwarder.issue(7);
+  const answer = await forwarder.issue(7, peer.url);
   if (!("url" in answer)) throw new Error("no forward");
   const socket = pageSocket(answer.url);
   await opened(socket);
@@ -140,8 +146,7 @@ test("a window that went away keeps no capability, and its forward is closed", a
 test("a cancelled capability opens nothing", async () => {
   const peer = await echoingPeer();
   const forwarder = forwarderFor();
-  forwarder.setTarget(peer.url);
-  const answer = await forwarder.issue(7);
+  const answer = await forwarder.issue(7, peer.url);
   if (!("url" in answer)) throw new Error("no forward");
   expect(forwarder.cancel(answer.url)).toBe(true);
   expect(await refused(pageSocket(answer.url))).toBe(403);
@@ -152,8 +157,7 @@ test("a cancelled capability opens nothing", async () => {
 test("a redirect is refused: the forward never follows it", async () => {
   const peer = await redirectingPeer();
   const forwarder = forwarderFor();
-  forwarder.setTarget(peer.url);
-  const answer = await forwarder.issue(7);
+  const answer = await forwarder.issue(7, peer.url);
   if (!("url" in answer)) throw new Error("no forward");
   const socket = pageSocket(answer.url);
   await opened(socket);
@@ -165,8 +169,7 @@ test("a redirect is refused: the forward never follows it", async () => {
 test("the keepalive crosses the forward: the page's ping reaches the host, its pong comes back, and bytes still flow (#1040)", async () => {
   const peer = await echoingPeer();
   const forwarder = forwarderFor();
-  forwarder.setTarget(peer.url);
-  const answer = await forwarder.issue(7);
+  const answer = await forwarder.issue(7, peer.url);
   if (!("url" in answer)) throw new Error("no forward");
   const socket = pageSocket(answer.url);
   await opened(socket);
@@ -186,8 +189,7 @@ test("the keepalive crosses the forward: the page's ping reaches the host, its p
 test("any other text frame closes the forward", async () => {
   const peer = await echoingPeer();
   const forwarder = forwarderFor();
-  forwarder.setTarget(peer.url);
-  const answer = await forwarder.issue(7);
+  const answer = await forwarder.issue(7, peer.url);
   if (!("url" in answer)) throw new Error("no forward");
   const socket = pageSocket(answer.url);
   await opened(socket);
@@ -208,11 +210,10 @@ test("every member is forwarded to its own address at once, and one member's for
   await opened(a);
   const b = pageSocket(two.url);
   await opened(b);
+  // Each forward answers from its own peer: the second member's session is carried, and the first one's still is.
+  expect(await echo(b, [1, 2, 3])).toEqual([1, 2, 3]);
+  expect(await echo(a, [4, 5, 6])).toEqual([4, 5, 6]);
   expect([first.connections(), second.connections()]).toEqual([1, 1]);
-  // The first member's session is still carried after the second member's forward opened.
-  const reply = answered(a);
-  a.send(new Uint8Array([4, 5, 6]));
-  expect(Array.from(await reply)).toEqual([4, 5, 6]);
   a.close();
   b.close();
   await first.stop();
@@ -221,6 +222,8 @@ test("every member is forwarded to its own address at once, and one member's for
 
 test("with no usable address set, a capability is refused with its reason and no socket opens", async () => {
   const forwarder = forwarderFor();
-  expect(forwarder.setTarget("ws://192.0.2.10:7767/v1/hc")).toBe(false);
-  expect(await forwarder.issue(7)).toEqual({ refused: "no direct address to forward to" });
+  expect(await forwarder.issue(7, "ws://192.0.2.10:7767/v1/hc")).toEqual({
+    refused: "no direct address to forward to",
+  });
+  expect(await forwarder.issue(7, "")).toEqual({ refused: "no direct address to forward to" });
 });

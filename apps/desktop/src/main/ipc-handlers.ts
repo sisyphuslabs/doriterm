@@ -68,10 +68,8 @@ export interface IpcDeps {
   readonly noticePermission: () => NoticeAuthorization;
   /** Shows one notification and answers whether the OS took it. */
   readonly showNotice: (notice: DesktopNotice) => Promise<NoticeAnswer>;
-  /** Keeps the page's saved Direct address, checked by the shell; a change drops every forward. */
-  readonly setDirectTarget: (directUrl: string) => boolean;
-  /** One capability for `windowId`, or why the shell will not forward. */
-  readonly forwardDirect: (windowId: number) => Promise<DirectForwardAnswer>;
+  /** One capability for `windowId` to the Direct address `directUrl`, checked by the shell, or why it will not forward. */
+  readonly forwardDirect: (windowId: number, directUrl: string) => Promise<DirectForwardAnswer>;
   /** Forgets a capability the page gave up on. */
   readonly cancelDirectForward: (url: string) => boolean;
   /** The system recognizer's sessions; absent where this build has none (Windows, Linux, a Mac without the addon). */
@@ -114,10 +112,11 @@ export interface IpcHandlers {
   noticePermission(event: IpcSender): Promise<NoticeAuthorization>;
   /** Shows a native notification; only a known kind and a terminal address are taken, never text. */
   showNotice(event: IpcSender, candidate: unknown): Promise<NoticeAnswer>;
-  /** Keeps the page's saved Direct address as the only forward target, checked by the shell itself (#449). */
-  setDirectTarget(event: IpcSender, candidate: unknown): Promise<boolean>;
-  /** One forward capability for the window that asked, or why the shell will not forward. */
-  forwardDirect(event: IpcSender): Promise<DirectForwardAnswer>;
+  /**
+   * One forward capability for the window that asked, to the Direct address it names (checked by the shell itself,
+   * #449), or why the shell will not forward. The address travels with the request, so members never share one (#1499).
+   */
+  forwardDirect(event: IpcSender, candidate: unknown): Promise<DirectForwardAnswer>;
   /** Forgets a capability this window gave up on. */
   cancelDirectForward(event: IpcSender, candidate: unknown): Promise<boolean>;
   /** Whether this Mac recognizes the language on the device; false for anything that is not a language tag. */
@@ -265,16 +264,12 @@ export function ipcHandlers(deps: IpcDeps): IpcHandlers {
       if (!isDesktopNotice(candidate)) return { accepted: false, reason: "the notice was refused" };
       return deps.showNotice({ kind: candidate.kind, terminal: candidate.terminal });
     },
-    async setDirectTarget(event, candidate) {
-      assertAppFrame(event, deps.origin);
-      if (typeof candidate !== "string") return false;
-      return deps.setDirectTarget(candidate);
-    },
-    async forwardDirect(event) {
+    async forwardDirect(event, candidate) {
       assertAppFrame(event, deps.origin);
       const windowId = event.sender?.id;
       if (windowId === undefined) return { refused: "no window to forward for" };
-      return deps.forwardDirect(windowId);
+      if (typeof candidate !== "string") return { refused: "no direct address to forward to" };
+      return deps.forwardDirect(windowId, candidate);
     },
     async cancelDirectForward(event, candidate) {
       assertAppFrame(event, deps.origin);

@@ -12,7 +12,6 @@ import { connectionStore } from "./connection/store.ts";
 import {
   closeDesktopWindow,
   desktopBridge,
-  directForwardBridge,
   installDesktopUpdate,
   onDesktopNavigate,
   onDesktopUpdateReady,
@@ -124,13 +123,6 @@ if (desktopBridge() !== null) {
   // A clicked notification opens its pane in the workspace, from Settings too.
   listenForDesktopNotices(toWorkspace);
   reportMenuKeys();
-  // The shell may forward bytes to this page's saved Direct address and nothing else (#449).
-  const forwarder = directForwardBridge();
-  if (forwarder !== null) {
-    const reportTarget = (): void => void forwarder.setTarget(connectionStore.settings.directUrl);
-    reportTarget();
-    connectionStore.subscribe(reportTarget);
-  }
   paintWindow();
   appearanceStore.subscribe(paintWindow);
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paintWindow);
