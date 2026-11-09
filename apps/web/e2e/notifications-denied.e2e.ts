@@ -40,6 +40,7 @@ test("a refused desktop notification shows Check again and Turn off together and
   // Turn off reaches turnOff(): off and still refused, Check again is all that is left.
   await pushButton(page, "Turn off").click();
   await expect(pushButton(page, "Turn off")).toHaveCount(0);
+  await expect(pushButton(page, "Turn on")).toHaveCount(0);
   await expect(pushButton(page, "Check again")).toBeEnabled();
   await expect(pushButton(page, "Send test")).toBeDisabled();
 });
