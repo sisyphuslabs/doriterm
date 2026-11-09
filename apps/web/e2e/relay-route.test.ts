@@ -44,13 +44,15 @@ test("a start that dies fails at once with its exit, not with a timeout (#502)",
   expect(Date.now() - started).toBeLessThan(8_000);
 }, 10_000);
 test("a host whose hc is missing says so once and stops without spawning it again (#1538)", async () => {
+  const missing = join(here, "no-such-hc");
   const proc = Bun.spawn(
     [process.execPath, join(here, "fake-relay-host.ts"), "http://127.0.0.1:1", "wss://relay.invalid", "--machine"],
-    { env: { ...process.env, HC_BIN: join(here, "no-such-hc") }, stdin: "ignore", stdout: "ignore", stderr: "pipe" },
+    { env: { ...process.env, HC_BIN: missing }, stdin: "ignore", stdout: "ignore", stderr: "pipe" },
   );
   const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
   expect(code, stderr).toBe(1);
-  expect(stderr).toContain("herdr-core was not found at");
+  // Counted, not just found: a second spawn of the missing hc would print the same reason again.
+  expect(stderr.split(`herdr-core was not found at ${missing}`).length - 1, stderr).toBe(1);
   expect(stderr).not.toContain("could not stop everything");
 }, 10_000);
 
