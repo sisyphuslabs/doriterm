@@ -12,6 +12,7 @@ import { storageDirToPin } from "../config/storage.ts";
 import { restorePlacement } from "../config/window-state.ts";
 import { launchBackground, secureWebPreferences, windowOptions } from "../config/window.ts";
 import { Channel, parsePlatform } from "../shared/bridge.ts";
+import { lastWindowClosed, saveRunInBackground, savedRunInBackground } from "./background.ts";
 import { openDeepLink, routeDeepLinksTo, takePairingLink } from "./deep-link.ts";
 import { DictationHost } from "./dictation.ts";
 import { DirectForwarder } from "./direct-forward.ts";
@@ -74,12 +75,17 @@ let forwarder: DirectForwarder | undefined;
 /** Dictation sessions, where this build has a system recognizer (#726). */
 let dictation: DictationHost | undefined;
 const savedFile = (name: string): string => join(app.getPath("userData"), name);
+const backgroundFile = (): string => savedFile("run-in-background.json");
 
 const liveWindow = (): BrowserWindow | undefined =>
   mainWindow !== undefined && !mainWindow.isDestroyed() ? mainWindow : undefined;
 
 /** The app has one window: brings it back when it exists and creates it, at `path`, only when it does not. */
 function showWindow(path = "/"): BrowserWindow {
+  // Keep running in the background took the Dock icon away when the last window closed; the window brings it back.
+  if (platform === "darwin" && app.dock?.isVisible() === false) {
+    app.dock.show().catch((error: unknown) => console.error(`dock show failed: ${String(error)}`));
+  }
   const window = liveWindow();
   if (window === undefined) return createWindow(path);
   if (window.isMinimized()) window.restore();
@@ -228,6 +234,8 @@ function ready(): void {
     openExternal: (url) => shell.openExternal(url),
     setWindowBackground,
     closeWindow: () => liveWindow()?.close(),
+    runInBackground: () => savedRunInBackground(backgroundFile()),
+    setRunInBackground: (enabled) => saveRunInBackground(backgroundFile(), enabled),
     takePairingLink,
     setMenuKeys: showMenu,
     chooseHc: async () => {
@@ -284,8 +292,11 @@ if (!app.requestSingleInstanceLock()) {
     if (link !== undefined) openDeepLink(link);
     if (app.isReady()) showWindow();
   });
+  // The host lives as long as the app, so an app kept running in the background keeps serving the phone (#1500).
   app.on("window-all-closed", () => {
-    if (platform !== "darwin") app.quit();
+    const next = lastWindowClosed(platform, savedRunInBackground(backgroundFile()));
+    if (next === "quit") app.quit();
+    else if (next === "hide") app.dock?.hide();
   });
   app
     .whenReady()
