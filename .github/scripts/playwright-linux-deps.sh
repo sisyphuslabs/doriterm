@@ -2,7 +2,8 @@
 # The system packages Playwright's Chromium needs on an Ubuntu runner, installed from a cache of their .deb files when
 # that cache provably covers them, and from the apt mirror otherwise.
 # Usage: playwright-linux-deps.sh <deb cache dir>, from apps/web (where bunx finds this repository's Playwright), with the
-# directory restored by actions/cache. Writes save-debs=true to $GITHUB_OUTPUT when it filled an empty cache.
+# directory restored by actions/cache. Writes save-debs=true to $GITHUB_OUTPUT when it put a new cache set in the deb cache
+# directory: an empty cache it filled, or a stale or partial one it completed from the mirror.
 #
 # doriterm#1012: on the ubuntu-24.04 image Chromium is missing nine font packages, 21.1 MB, and the Azure mirror has
 # served them at about 38 kB/s - nothing stalls, so neither retries nor an http timeout help, and the download outlasts
