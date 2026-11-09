@@ -24,5 +24,17 @@ export function usePaneVisibility(wt: WTerm | null, pacer: OutputPacer): boolean
       wt.setRenderingPaused(false);
     };
   }, [wt, pacer]);
+  // The app in the background runs no animation frame: the pacer drains on a timer then, and writes what is left at once
+  // when it comes back, so returning shows the screen as it is now in one paint (D5).
+  useEffect(() => {
+    const follow = (): void => pacer.setHidden(document.visibilityState === "hidden");
+    follow();
+    document.addEventListener("visibilitychange", follow);
+    addEventListener("pageshow", follow);
+    return () => {
+      document.removeEventListener("visibilitychange", follow);
+      removeEventListener("pageshow", follow);
+    };
+  }, [pacer]);
   return shown;
 }

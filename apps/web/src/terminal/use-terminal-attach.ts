@@ -191,6 +191,9 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           endHold.current = holdAtEnd(ready.element, () => pacer.busy);
         }
         attachedBefore.current = true;
+        // Every attach's first paint is its replay: written as it arrives with the paint held, then drawn once it has
+        // settled, so the screen before it stays until then instead of climbing a frame's bytes at a time (D5).
+        pacer.replay({ srtt: () => connection.rtt?.srtt, hold: (held) => ready.setRenderingPaused(held) });
         const resets = new CursorResets();
         const credit = (count: number): void => {
           if (stream.current === attached) attached.consumed(count);
