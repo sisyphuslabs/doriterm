@@ -15,6 +15,15 @@ type Logged = { readonly kind: string; readonly cause?: string };
 const predictionMode = (page: Page, mode: "adaptive" | "always" | "never") =>
   page.addInitScript((value) => localStorage.setItem("doriface.terminal.predict-typing", value), mode);
 
+/**
+ * Resets other than expiry: a judgement of a prediction as wrong. Time may only confirm a prediction or expire it once
+ * its echo is a second late (#1439 HIGH 1), and on an order-preserving link nothing answered out of order, so none may
+ * occur. An expiry is the designed bound on a key the host has not echoed for that long, which a loaded runner can
+ * reach; it is not the judgement under test.
+ */
+const judgedWrong = async (page: Page) =>
+  (await events(page)).filter((event) => event.kind === "reset" && event.cause !== "expired");
+
 const events = (page: Page) =>
   page.evaluate(() => [...((Reflect.get(window, "__dorifacePredictLog") as Logged[] | undefined) ?? [])]);
 
@@ -53,10 +62,10 @@ test("HIGH 3(a): a Hangul syllable composed with predictions on is predicted, th
   release();
   await expect(prompt(terminal).filter({ hasText: `$ eab${GA}` })).toHaveCount(1, { timeout: 15_000 });
   await expect(terminal.locator(".term-prediction-cell")).toHaveCount(0);
-  expect((await events(page)).filter((event) => event.kind === "reset")).toEqual([]);
+  expect(await judgedWrong(page)).toEqual([]);
 });
 
-test("HIGH 1: 200 keys over a jittered, order-preserving link draw predictions and reset none (#1439)", async ({
+test("HIGH 1: 200 keys over a jittered, order-preserving link draw predictions and judge none wrong (#1439)", async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -86,6 +95,7 @@ test("HIGH 1: 200 keys over a jittered, order-preserving link draw predictions a
   for (const key of text) {
     link.delay(jitter());
     // The typing cadence is the behaviour under test: 70 ms between keys, as #1439 measured.
+    // oxlint-disable-next-line no-await-in-loop -- one key after another, each with the link delay set before it
     await page.keyboard.type(key, { delay: 70 });
   }
   link.delay(0);
@@ -105,6 +115,6 @@ test("HIGH 1: 200 keys over a jittered, order-preserving link draw predictions a
   const logged = await events(page);
   expect(await page.evaluate(() => Reflect.get(window, "__drewPrediction"))).toBe(true);
   expect(logged.filter((event) => event.kind === "confirmed")).not.toHaveLength(0);
-  expect(logged.filter((event) => event.kind === "reset")).toEqual([]);
+  expect(await judgedWrong(page)).toEqual([]);
   await page.keyboard.press("Control+U");
 });
