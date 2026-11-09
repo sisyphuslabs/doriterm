@@ -121,3 +121,30 @@ test("leaving the pane cancels its queued retry", () => {
   jest.advanceTimersByTime(60_000);
   expect(calls).toBe(0);
 });
+
+test("a continuous interaction burst cannot renew an exhausted retry budget", () => {
+  jest.useFakeTimers();
+  let calls = 0;
+  const recovery = new AttachRecovery(
+    () => {
+      if (!recovery.begin()) return;
+      calls += 1;
+      recovery.failed(rpc("unavailable"));
+    },
+    () => {},
+  );
+  recovery.begin();
+  recovery.failed(rpc("unavailable"));
+  const admitted: boolean[] = [];
+  for (let event = 0; event < 20; event += 1) {
+    admitted.push(recovery.interact());
+    jest.advanceTimersByTime(50);
+  }
+  expect(calls).toBe(3);
+  expect(admitted.filter(Boolean)).toHaveLength(3);
+  expect(recovery.state.phase).toBe("failed");
+  jest.advanceTimersByTime(1_001);
+  recovery.interact();
+  expect(calls).toBe(4);
+  recovery.stop();
+});

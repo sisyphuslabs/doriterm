@@ -80,6 +80,24 @@ for (const event of ["focusin", "keydown", "paste"]) {
   });
 }
 
+test("bursty interaction stays single flight and exhausted recovery stops announcing Reconnecting", async ({
+  page,
+}) => {
+  const socket = await routeHcSocket(page);
+  socket.refuseAttaches("unavailable", Infinity);
+  await page.goto("/");
+  const retry = page.getByRole("button", { name: "Try again" });
+  await expect(retry).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("status", { name: "Reconnecting terminal" })).toHaveCount(0);
+  const frame = page.locator(`[data-terminal="${shell}"]`).locator("..");
+  await frame.evaluate((element) => {
+    for (let i = 0; i < 20; i += 1) element.dispatchEvent(new WheelEvent("wheel", { bubbles: true }));
+  });
+  await expect(retry).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("status", { name: "Reconnecting terminal" })).toHaveCount(0);
+  expect(socket.sent().filter((message) => message.includes('"method":"terminal.attach"'))).toHaveLength(7);
+});
+
 for (const width of [1280, 390]) {
   test(`a manual recovery at ${width}px records its immediate success and preserves the screen`, async ({
     page,

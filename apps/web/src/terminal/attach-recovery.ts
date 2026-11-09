@@ -42,6 +42,7 @@ export type RecoveryState =
 
 const DELAYS = [250, 500, 1_000] as const;
 const STABLE_MS = 10_000;
+const INTERACTION_QUIET_MS = 1_000;
 
 /** One pane's retry budget. The callback opens a viewer only; this object never receives a command or input. */
 export class AttachRecovery {
@@ -54,6 +55,7 @@ export class AttachRecovery {
   #source: "automatic" | "interaction" | "manual" = "automatic";
   #manualAt: number | undefined;
   #manualFirst = false;
+  #lastInteraction: number | undefined;
   readonly #retry: () => void;
   readonly #changed: (state: RecoveryState) => void;
 
@@ -108,11 +110,18 @@ export class AttachRecovery {
   }
 
   /** User input advances a pending tick; after exhaustion it starts a new bounded episode, only for transient errors. */
-  interact(): void {
-    if (this.#busy || this.#state.phase === "idle" || !this.#state.transient) return;
-    if (this.#state.phase === "failed") this.#retries = 0;
+  interact(): boolean {
+    const now = Date.now();
+    const newBurst = this.#lastInteraction === undefined || now - this.#lastInteraction >= INTERACTION_QUIET_MS;
+    this.#lastInteraction = now;
+    if (this.#busy || this.#state.phase === "idle" || !this.#state.transient) return false;
+    if (this.#state.phase === "failed") {
+      if (!newBurst) return false;
+      this.#retries = 0;
+    }
     this.#source = "interaction";
     this.#next();
+    return true;
   }
 
   /** An explicit retry may retry even a terminal error, after the person has corrected it. */
@@ -134,6 +143,7 @@ export class AttachRecovery {
     this.#openedAt = undefined;
     this.#source = "automatic";
     this.#manualFirst = false;
+    this.#lastInteraction = undefined;
     this.#set({ phase: "idle" });
   }
 

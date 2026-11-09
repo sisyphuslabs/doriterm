@@ -1,7 +1,7 @@
 import type { HcConnection } from "@doriface/client";
 import { useEffect, useRef, useState } from "react";
 import { connectionStore } from "../connection/store.ts";
-import { AttachRecovery, type RecoveryState, transientAttachFailure } from "./attach-recovery.ts";
+import { AttachRecovery, type RecoveryState } from "./attach-recovery.ts";
 import { openFailure } from "./open-failure.ts";
 import { recordRecovery } from "./recovery-metrics.ts";
 import { useReopenWhenMoved } from "./use-reopen-when-moved.ts";
@@ -45,14 +45,14 @@ export function useAttachRecovery({ connection, address, shown, retry }: Recover
       recovery.failed(cause);
     },
     interact: (): void => {
-      if (connection.closed && (state.phase === "idle" || transientAttachFailure(state.cause))) {
+      const advanced = recovery.interact();
+      if (connection.closed && advanced) {
         const member = connectionStore
           .entries()
           .find(({ state: line }) => line.phase === "failed" && line.stale === connection && line.retryInMs !== null);
         // Advance only this pane's waiting socket. Typing must not abort an in-flight dial or probe other members.
         if (member !== undefined) connectionStore.retry(member.target.hostId);
       }
-      recovery.interact();
     },
   };
 }
