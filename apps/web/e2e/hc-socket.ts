@@ -121,6 +121,8 @@ export async function routeHcSocket(
   let refused = 0;
   let delay = 0;
   let lastDue = 0;
+  /** Delayed frames whose timer has not fired yet: a frame due now must queue behind them to keep the host's order. */
+  let lagging = 0;
   let hostMessages = 0;
   let held: readonly string[] = [];
   let stale = false;
@@ -180,10 +182,15 @@ export async function routeHcSocket(
         }
         lastDue = Math.max(Date.now() + delay, lastDue);
         const wait = Math.max(0, lastDue - Date.now());
-        if (wait > 0 || typeof frame === "string") {
-          // A lagged frame keeps its place on its own timer; text messages are never joined with binary ones.
+        if (wait > 0 || lagging > 0 || typeof frame === "string") {
+          // A lagged frame keeps its place on its own timer, and so does any frame behind one that has not fired yet
+          // (a delay just lowered to 0): timers of equal or later due time fire in order. Text is never joined to binary.
           pass();
-          setTimeout(() => deliverOne(frame, text), wait);
+          lagging += 1;
+          setTimeout(() => {
+            lagging -= 1;
+            deliverOne(frame, text);
+          }, wait);
           continue;
         }
         due.push(frame);
