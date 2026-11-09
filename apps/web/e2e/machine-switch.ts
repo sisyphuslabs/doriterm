@@ -50,19 +50,43 @@ export async function blip(refuseMs: number): Promise<void> {
   switchOn();
 }
 
-function stopMachineLines(): void {
-  // Every dial appends its pid; hc may hold more than one line, so each one still running hc's `connect` ends. macOS
-  // sh execs the line itself; Linux dash keeps a `sh -c` around it, so its children go too. Dead or reused pids are skipped.
-  const pids = readFileSync(MACHINE_LINE_PID, "utf8")
+/** The pid of every line dialed to the machine so far, in dial order: every dial that gets past the switch appends one. */
+function dialedLines(): number[] {
+  return readFileSync(MACHINE_LINE_PID, "utf8")
     .split("\n")
     .map(Number)
     .filter((pid) => Number.isInteger(pid) && pid > 1);
+}
+
+/** Whether `pid` is one of this run's lines and still up: still running hc's `connect` under the second core's session. */
+function isLine(pid: number): boolean {
   // Only this run's lines: the dial runs them under the second core's HC_SESSION (`exec env ...`), which `ps e` shows.
   const session = `HC_SESSION=${readSavedEnv(MACHINE_ENV).env["HC_SESSION"] ?? "?"}`;
-  stopLines(pids, (pid) => {
-    const seen = spawnSync("ps", ["eww", "-o", "command=", "-p", String(pid)], { encoding: "utf8" }).stdout;
-    return /\bconnect\b/.test(seen) && seen.includes(session);
-  });
+  const seen = spawnSync("ps", ["eww", "-o", "command=", "-p", String(pid)], { encoding: "utf8" }).stdout;
+  return /\bconnect\b/.test(seen) && seen.includes(session);
+}
+
+/** How many lines have been dialed to the machine so far; read before a drop, it marks where hc's redial will land. */
+export const linesDialed = (): number => dialedLines().length;
+
+/**
+ * Whether hc has redialed the machine since `dialed` lines (from {@link linesDialed}): a line dialed after that is up.
+ * hc reads the machine connected all through a drop it redials at once, so its state alone never says the redial landed.
+ */
+export const redialedSince = (dialed: number): boolean => dialedLines().slice(dialed).some(isLine);
+
+function stopMachineLines(): void {
+  // hc may hold more than one line, so each one still running hc's `connect` ends. macOS sh execs the line itself; Linux
+  // dash keeps a `sh -c` around it, so its children go too. Dead or reused pids are skipped.
+  stopLines(dialedLines(), isLine);
+}
+
+/**
+ * Makes the machine's next dials answer late, as a dial on a loaded runner does: each one gets past the switch at once,
+ * then takes 10 s before its line starts. `blip` with a refusal and `switchOn` replace it.
+ */
+export function slowDials(): void {
+  writeFileSync(MACHINE_SWITCH, "slow");
 }
 
 /** Lets the machine answer again; hc redials on its own. */

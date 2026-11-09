@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { E2E_MACHINE_DIR } from "./config.ts";
 
 export const MACHINE_NAME = "build-box";
-/** Holds `off` or `login`; absent means the machine answers. */
+/** Holds `off` or `login`, or `slow` for a dial that answers late; absent means the machine answers. */
 export const MACHINE_SWITCH = join(E2E_MACHINE_DIR, "switch");
 /** The second core's environment, so a spec can stop that core. */
 export const MACHINE_ENV = join(E2E_MACHINE_DIR, "env.json");
@@ -44,7 +44,10 @@ export const DEMO_MACHINE: MachineSpec = {
   ],
 };
 
-/** The `--via` command: refuses as the switch says, else runs hc's line against the second core. */
+/**
+ * The `--via` command: refuses as the switch says, else runs hc's line against the second core. `slow` holds a dial past
+ * the switch for a moment before its line starts, as a dial on a loaded runner is.
+ */
 export function viaCommand(own: Readonly<Record<string, string>>, spec: MachineSpec): string {
   const env = Object.entries(own)
     .map(([key, value]) => `${key}="${value}"`)
@@ -53,6 +56,7 @@ export function viaCommand(own: Readonly<Record<string, string>>, spec: MachineS
     `m=$(cat "${join(spec.dir, "switch")}" 2>/dev/null)`,
     `[ "$m" = off ] && { echo "${spec.name} is switched off" >&2; exit 1; }`,
     `[ "$m" = login ] && { echo "Permission denied (publickey,password)." >&2; exit 255; }`,
+    `[ "$m" = slow ] && sleep 10`,
   ];
   return `sh -c '${refusals.join("; ")}; echo $$ >> "${MACHINE_LINE_PID}"; exec env ${env} sh -c "$1"' sh`;
 }

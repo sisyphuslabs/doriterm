@@ -9,8 +9,11 @@ import {
   blip,
   hcOn,
   machineRow,
+  linesDialed,
   OFFLINE_BOUND_MS,
   reconnect,
+  redialedSince,
+  slowDials,
   switchTo,
   OFFLINE_TEST_TIMEOUT_MS,
 } from "./machine-switch.ts";
@@ -86,8 +89,13 @@ test.describe("a machine whose line blips (#904)", () => {
     await expect(page.locator(`[data-terminal="${terminal}"]`)).toBeVisible({ timeout: 15_000 });
     await recordFlips(page, terminal);
 
-    // A line that hc redials at once: the drop alone.
+    // A line that hc redials at once: the drop alone, over a dial as slow as a loaded runner's. The next blip must find
+    // hc's redial landed: one still dialing then gets past the refusal and lands anyway. hc's state is no sign of it: it
+    // reads connected all through a drop it redials (#1518).
+    slowDials();
+    const dialed = linesDialed();
     await blip(0);
+    expect(redialedSince(dialed), "hc's redial landed before the spec moves on").toBe(true);
     await expect.poll(machineState, { timeout: 15_000 }).toBe("connected");
 
     // A relay uplink drop at its worst: every line ends, and the host refuses this one for its settle and one probe.
