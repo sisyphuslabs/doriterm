@@ -19,7 +19,13 @@ import { useLongPressSelect } from "./use-long-press-select.ts";
 import { useSelectionCells } from "./use-selection-cells.ts";
 import { useShiftDragSelect } from "./use-shift-drag-select.ts";
 import { Ended } from "./ended.tsx";
-import { askingForKeyboard, quietKeyboard, useTerminalPort } from "./terminal-port.ts";
+import {
+  askingForKeyboard,
+  isRegainingReport,
+  quietKeyboard,
+  regainingFocus,
+  useTerminalPort,
+} from "./terminal-port.ts";
 import type { TerminalViewProps } from "./terminal-view-props.ts";
 import { Unopened } from "./unopened.tsx";
 import { JumpToBottom, TerminalScrollbar, useTerminalScroll } from "./terminal-scroll.tsx";
@@ -218,16 +224,22 @@ export function TerminalView(props: TerminalViewProps) {
           focusWhenFree(ready);
           attachment.attach(ready);
         }}
-        onData={typedInto}
+        onData={(data) => {
+          if (!isRegainingReport(handle, data)) typedInto(data);
+        }}
         onResize={(cols, rows) => stream.current?.resize(cols, rows)}
         onFocus={(event) => {
+          // The field taken again for the soft keyboard never left the terminal, as far as the program knows (#1519).
+          if (regainingFocus(event.target)) return;
           // wterm focuses the terminal as it starts, and the patch drops that start call; a focus event can still
           // arrive for a pane the view did not choose. Only the focused pane's keeps it; any other hands it back to
           // where it was, so a pane another device adds never takes the keyboard.
           if (wt === null && !isFocused.current) return handBack(event);
           stream.current?.focus(true);
         }}
-        onBlur={() => stream.current?.focus(false)}
+        onBlur={(event) => {
+          if (!regainingFocus(event.target)) stream.current?.focus(false);
+        }}
       />
       {attachment.opening ? (
         <QuietBusy label="Opening terminal" text="Opening…" className="absolute inset-0 z-10 bg-term-bg" />
