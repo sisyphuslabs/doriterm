@@ -130,7 +130,7 @@ test.each(["unavailable", "conflict", "machine_unknown"])(
 
 const listed = (id: string, state: string): MachineView => ({ ...machine(id, id), state });
 
-test("a machine held as connected through a redial says its edits wait for it, as its row reads connected (#918)", async () => {
+test("a machine held as connected through a redial refuses its edits as reconnecting, as its row reads connected (#918)", async () => {
   expect(noEditsWhy("m1", [listed("m1", "connected")])).toBe("the machine is reconnecting");
   await expect(docEdit(undefined, "the machine is reconnecting")(noChange)).rejects.toThrow(
     "The layout cannot take changes now: the machine is reconnecting",
