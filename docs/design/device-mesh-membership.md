@@ -1,6 +1,11 @@
 # Devices and browsers are mesh members: membership, the web's join, relay-only transport
 
-Status: revision 7 for the design gate, 2026-11-08. Issues #942 and #1381. Revision 7 folds the review of revision 6
+Status: **as built**, 2026-11-09. Revision 7 was security-reviewed CLEAR at `6f5094caac` (2026-11-08) and is the
+design the merged implementation follows; §0 maps each section to the pull request that built it and lists what is still
+open. The sections after §0 are revision 7 unchanged, so they still say "after PR 3" and similar where they were written
+before the work landed.
+
+Design-gate history: revision 7 folds the review of revision 6
 (§15): a client is refused on an offer without a commitment, so every pending join has a code; the running host's
 two-line join reply and its `ask` field; the join anchor is kept from before the card. Revision 6 folded the two FIX_FIRST reviews
 of revision 5 (§15): the joining side decides whether a code is required, approving needs the code, a dropped join
@@ -23,6 +28,40 @@ This builds on [client-mesh-member.md](client-mesh-member.md) (revision 4, appro
 `client` card kind, `AuthorizeIndex.client`, the per-stream matrix and the format-readiness gate already exist. This
 design adds one session stream (`"roster"`), one derived value (the join code, §9) and no new trust root, record type or
 card field.
+
+## 0. As built
+
+The three pull requests §14 planned landed as smaller slices. The host half (§14 item 1, #1427) could not merge green on
+its own: its join-code contract needed the web joiner, so it landed inside #1446, which carried that branch verbatim.
+No merged slice records a security-protocol deviation from revision 7.
+
+| Design section                                                                                                                                                                                    | Built by               | Merge commit           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | ---------------------- |
+| §3, §4.1-§4.3: the web joins a mesh by invite as its own `client` member; one shared joiner and invite guard                                                                                      | #1413                  | `dba0cc16`             |
+| §4.3: a host with no mesh yet admits a browser as its first member                                                                                                                                | #1426                  | `28c54f6e`             |
+| §5 (`"roster"` stream, §5.1-§5.4), §9 host side (committed join code, both confirmations, resume), §10.1, §10.2, §10.5, §10.6, §11 (a paired device is admitted on the roster stream), §14 item 1 | #1427, landed in #1446 | `e14b4cc4`             |
+| §4.4, §4.5, §6, §7, §7.1, §9 joiner side, §10.3, §10.4, §11, §14 item 2                                                                                                                           | #1446                  | `e14b4cc4`             |
+| §4.5: the machine list keeps a row per member, and a stopped member is one offline row                                                                                                            | #1397, #1416           | `20c7dc47`, `19ce7b57` |
+| §7.1: an installed app says why it is unpaired, and joins in place                                                                                                                                | #1411                  | `2e43de10`             |
+| §8, §14 item 3: a browser reaches every host through the relay; the shell keeps direct-then-relay to a paired host                                                                                | #1422                  | `890811f3`             |
+| §14 e2e: the page's own WebCrypto and IndexedDB join a mesh over a real relay at phone width                                                                                                      | #1423                  | `124638e6`             |
+
+Where the tests run, measured on `dev`:
+
+- The "A stopped" acceptance runs in CI, on real hosts against the private relay rather than the fake relay:
+  `tests/relay/browser-join.test.ts` ("a browser admitted by a cold-starts, refreshes and opens a terminal on b after a
+  stops, over the relay"; "a browser removed on another machine learns it from its next roster refresh") and
+  `tests/relay/browser-first-member.test.ts`, in the Relay e2e job.
+- The WebKit iPhone-profile cases of §14 (separate tab and app contexts, suspended-page resume, a substituted invite)
+  ran in #1446's cross-engine run. No physical-iPhone acceptance has been recorded.
+
+Still open:
+
+- #1381 tracks what remains of the web's relay-only transport (§8).
+- #942 still needs the closing measurement on two real machines with a merged `dev` build (§14, "Acceptance on two real
+  machines").
+- #1297: the Playwright fake relay holds one host uplink, so the web specs cannot dial a joiner.
+- Review follow-ups: #1419 (this design's four implementation nits), #1473, #1483, #1492, #1493, #1435 and #1436.
 
 ## 1. The gap, measured
 
