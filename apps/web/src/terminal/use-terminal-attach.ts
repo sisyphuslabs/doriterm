@@ -40,6 +40,11 @@ interface AttachSources {
   readonly onEnded: (() => void) | undefined;
   /** Called as each stream (first attach or reattach) starts, before what was typed meanwhile is written to it. */
   readonly onStream?: RefObject<(() => void) | null>;
+  /**
+   * Keeps the view's `renderingPaused` prop in step with a replay's hold: @wterm/react applies that prop on every render,
+   * so a hold set on the terminal alone is let go by the next render of the view, mid-replay.
+   */
+  readonly holdPaint: (held: boolean) => void;
 }
 
 /**
@@ -67,7 +72,7 @@ export interface Attachment {
 /** What a pane does when a connection arrives: attach, replay, settle what the core says is left, and report unsent input. */
 export function useTerminalAttach(sources: AttachSources): Attachment {
   const { connection, address, pid, live, shown, wt, setWt, handle, stream, pending, pacer, output } = sources;
-  const { isFocused, focusWhenFree, onEnd, onEnded, onStream } = sources;
+  const { isFocused, focusWhenFree, onEnd, onEnded, onStream, holdPaint } = sources;
   const toasts = useToastManager();
   const [restarting, setRestarting] = useState(false);
   const [ended, setEnded] = useState(false);
@@ -215,7 +220,10 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         // a frame's bytes at a time (D5).
         replayOnAttach(pacer, reattach, {
           srtt: () => connection.rtt?.srtt,
-          hold: (held) => ready.setRenderingPaused(held),
+          hold: (held) => {
+            holdPaint(held);
+            ready.setRenderingPaused(held);
+          },
         });
         onStream?.current?.();
         const resets = new CursorResets();

@@ -189,6 +189,8 @@ export function TerminalView(props: TerminalViewProps) {
     setSelectAt(null);
     if (!browsing) handle.current?.focus();
   }, [browsing]);
+  // A reattach replay holds the paint until it has settled (D5); the prop carries the hold through the view's renders.
+  const [replayHeld, setReplayHeld] = useState(false);
   const attachment = useTerminalAttach({
     connection,
     address,
@@ -207,6 +209,7 @@ export function TerminalView(props: TerminalViewProps) {
     onEnd,
     onEnded,
     onStream: streamStarted,
+    holdPaint: setReplayHeld,
   });
 
   if (error !== null) return <p className="p-4 text-sm text-destructive">{error}</p>;
@@ -243,6 +246,7 @@ export function TerminalView(props: TerminalViewProps) {
         ref={handle}
         core={core}
         autoResize
+        renderingPaused={replayHeld}
         {...(options.cursorBlink === undefined ? {} : { cursorBlink: options.cursorBlink })}
         aria-label={label}
         data-slot="terminal-viewport"
