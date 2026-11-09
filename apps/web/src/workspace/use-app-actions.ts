@@ -79,6 +79,16 @@ export function stepTerminalFont(action: string): boolean {
   return true;
 }
 
+/**
+ * Whether a text-size key steps the saved terminal font size here, instead of being left to the browser's own zoom. The
+ * workspace shows the terminals and Settings hints at the keys under Appearance (#859); the pairing and join screens
+ * show neither, so there a browser's zoom takes the key (#1162). The desktop window is never zoomed, so it steps the
+ * text on every screen (#388).
+ */
+export function takesTextSizeKey(path: string, desktop: boolean): boolean {
+  return desktop || path === "/" || path === "/settings";
+}
+
 /** Whether selecting the address does anything: a null target or the active tab leaves the key unhandled. */
 export function shouldSelect(address: string | null, active: string | null): boolean {
   return address !== null && address !== active;
