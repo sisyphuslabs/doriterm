@@ -30,6 +30,11 @@ export interface PhoneNavigation {
   readonly dropSpace: () => void;
   /** Whether the last move between entries went forward (a push): only then does a pushed screen slide in. */
   readonly pushed: boolean;
+  /**
+   * Leaves the open terminal, whose tab has closed: to `next` in its place (a switch, replacing its entry), else up to
+   * the screen it was opened from (#1478).
+   */
+  readonly leave: (next: string | null) => void;
 }
 
 /**
@@ -121,5 +126,13 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
   const dropSpace = useCallback(() => {
     if (path === "/" && listed.space !== null) go({ space: null, terminal: listed.terminal }, true);
   }, [go, listed.space, listed.terminal, path]);
-  return { open, space, show, showSpace, back, backFromSpace, dropSpace, pushed: forward.current };
+  const leave = useCallback(
+    (next: string | null) => {
+      if (!narrow) return;
+      if (next === null) back();
+      else show(next);
+    },
+    [back, narrow, show],
+  );
+  return { open, space, show, showSpace, back, backFromSpace, dropSpace, pushed: forward.current, leave };
 }

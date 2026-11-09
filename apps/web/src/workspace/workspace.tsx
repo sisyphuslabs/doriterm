@@ -37,7 +37,8 @@ import { useDropOnce } from "./use-drop-once.ts";
 import { useLayoutDocs } from "./use-layout-docs.ts";
 import { GitFactsContext, useGitFacts } from "./git-facts.ts";
 import { TodoProgressContext, useTodoProgress } from "./todo-progress.ts";
-import { layoutSpaces, phoneTabTitle } from "./model.ts";
+import { layoutSpaces, liveTabs, phoneTabTitle } from "./model.ts";
+import { nextAfterClosing } from "./phone-space-rows.ts";
 import { SpaceSelectionContext } from "./space-selection.ts";
 import { useSpaceMove } from "./space-order.ts";
 import { useAdoptLoose } from "./use-adopt-loose.ts";
@@ -238,6 +239,15 @@ export function Workspace({ connection }: WorkspaceProps) {
   // A space's last tab takes the space with it, as herdr-app's tab.close: that always asks first (CloseTabDialog).
   const lastOfSpace = (tab: LayoutTab | undefined): boolean =>
     tab !== undefined && !tab.transient && layout.tabs.filter((each) => each.spaceKey === tab.spaceKey).length === 1;
+  // What a close of this tab does once it is confirmed, not while it asks and not when it is cancelled: the phone
+  // leaving the tab it is showing (#1478).
+  const afterClose = useRef<{ readonly key: string; readonly leave: () => void } | null>(null);
+  const closed = (key: string): void => {
+    const after = afterClose.current;
+    if (after?.key !== key) return;
+    afterClose.current = null;
+    after.leave();
+  };
   const closeTab = (key: string): void => {
     const tab = layout.tabs.find((each) => each.key === key);
     if (lastOfSpace(tab)) return setClosingTab(key);
@@ -245,7 +255,10 @@ export function Workspace({ connection }: WorkspaceProps) {
     const [only] = shown;
     if (shown.length === 1 && only !== undefined) setAsk({ kind: "close", address: only });
     else if (shown.length > 1) setClosingTab(key);
-    else layout.closeTab(key);
+    else {
+      closed(key);
+      layout.closeTab(key);
+    }
   };
   const onEnd = (address: string, end: TerminalEnd): void => {
     // An End of this session drops its pane only once it has removed the terminal (see afterEnd).
@@ -274,7 +287,11 @@ export function Workspace({ connection }: WorkspaceProps) {
     else setAsk({ kind: verb, address: inView });
     return true;
   };
-  const done = useCallback(() => setAsk(null), []);
+  const done = useCallback(() => {
+    // The question is gone, answered or cancelled; a close that went ahead has already taken its move (closed).
+    afterClose.current = null;
+    setAsk(null);
+  }, []);
   const pin = useCallback<PinTerminal>(
     (address, pinned) => {
       const labels = { [PIN_LABEL]: pinned ? "1" : "" };
@@ -393,7 +410,23 @@ export function Workspace({ connection }: WorkspaceProps) {
                         onNewInSpace={newTabIn}
                         onCloseTab={(address) => {
                           const found = findTerminal(layout.tabs, address);
-                          if (found !== null) closeTab(found.tab.key);
+                          if (found === null) return;
+                          // Closing the tab the phone shows moves the phone on once the close goes ahead: to the tab
+                          // that takes its place in the space, else up to the screen it came from (#1478).
+                          const open = found.tab.panes.some((pane) => pane.address === phoneOpen) ? phoneOpen : null;
+                          afterClose.current = null;
+                          if (open !== null) {
+                            // By every pane of the closing tab, not just the one in view: a split tab whose shown pane
+                            // finished is still listed, under a live sibling's address.
+                            const closingPanes = found.tab.panes.flatMap((pane) =>
+                              pane.address === null ? [] : [pane.address],
+                            );
+                            const space = spaces.find((each) => each.addresses.includes(open));
+                            const next =
+                              space === undefined ? null : nextAfterClosing(liveTabs(space, sessions), closingPanes);
+                            afterClose.current = { key: found.tab.key, leave: () => phone.leave(next) };
+                          }
+                          closeTab(found.tab.key);
                         }}
                         onPalette={onPalette}
                         onSession={onSession}
@@ -444,7 +477,12 @@ export function Workspace({ connection }: WorkspaceProps) {
               terminals={terminals}
               ask={ask}
               onDone={done}
-              onDrop={dropEnded}
+              onDrop={(address) => {
+                // A tab's only pane closes as its tab (closeTab), so its drop is that tab's close going ahead.
+                const found = findTerminal(layout.tabs, address);
+                if (found !== null && found.tab.panes.length === 1) closed(found.tab.key);
+                dropEnded(address);
+              }}
               onKept={kept}
             />
             {closing === undefined ? null : (
@@ -457,10 +495,14 @@ export function Workspace({ connection }: WorkspaceProps) {
                   ? { space: { name: spaces.find((space) => space.id === closing.spaceKey)?.name ?? "Space" } }
                   : {})}
                 onClosed={() => {
+                  closed(closing.key);
                   closingSessions(closing.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])));
                   layout.closeTab(closing.key);
                 }}
-                onDone={() => setClosingTab(null)}
+                onDone={() => {
+                  afterClose.current = null;
+                  setClosingTab(null);
+                }}
                 onKept={kept}
               />
             )}

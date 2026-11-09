@@ -67,6 +67,9 @@ export function PhoneShell(props: PhoneShellProps) {
   // The ask is answered once that keyboard is up, and it ends when the session is left by any route (the app's Back, the
   // system Back, the tabs bar, the list), so a later reopen or re-attach of that session raises nothing (#1375).
   const [picked, setPicked] = useState<string | null>(null);
+  // The terminal the phone shows now, for callbacks that settle after the render that made them (onEnded).
+  const openNow = useRef(open);
+  openNow.current = open;
   const shown = terminal?.address ?? null;
   const lastShown = useRef(shown);
   useEffect(() => {
@@ -178,6 +181,13 @@ export function PhoneShell(props: PhoneShellProps) {
       backTo={backTo}
       onOpen={onOpen}
       onBack={() => {
+        setPicked(null);
+        onBack();
+      }}
+      onEnded={(address) => {
+        // Read at the moment the End settles, not at the render that registered it: by then a close from the sheet may
+        // have moved the phone to the tab that took its place, and that move stands (#1478).
+        if (openNow.current !== address) return;
         setPicked(null);
         onBack();
       }}
