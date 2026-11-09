@@ -21,9 +21,7 @@ test("an arm64e slice is not the arm64 slice a universal build needs (#1117)", (
 
 // The CLI's own path through lipo, with lipo's answer stood in for: a real lipo is only on macOS (#1228).
 test("a lipo that failed stops the build, naming the file and lipo's exit code (#1228)", () => {
-  expect(() => checkUniversal(addon, () => ({ exitCode: 1, stdout: "" }))).toThrow(
-    `lipo -archs ${addon} exited 1`,
-  );
+  expect(() => checkUniversal(addon, () => ({ exitCode: 1, stdout: "" }))).toThrow(`lipo -archs ${addon} exited 1`);
 });
 
 test("an addon that lacks a slice stops the build, naming the slice (#1228)", () => {
