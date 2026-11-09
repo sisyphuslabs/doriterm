@@ -16,15 +16,18 @@
 set -euo pipefail
 
 debs="${1:?usage: playwright-linux-deps.sh <deb cache dir>}"
+here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # apt's own paths; tests point them at a scratch directory.
 archives="${PLAYWRIGHT_APT_ARCHIVES:-/var/cache/apt/archives}"
 conf="${PLAYWRIGHT_APT_CONF:-/etc/apt/apt.conf.d/99-playwright-ci}"
 save=false
 
 # A configuration file rather than -o options, so the limits reach the apt-get calls install-deps makes itself. The
-# archive is emptied first and kept afterwards, so what is in it is exactly the cached files plus what this run downloaded.
-printf '%s\n' 'Acquire::Retries "3";' 'Acquire::http::Timeout "15";' 'Acquire::https::Timeout "15";' \
-  'APT::Keep-Downloaded-Packages "true";' | sudo tee "$conf" >/dev/null
+# Acquire limits are apt-bounds.conf's, which apt-bounds.sh also writes, so the two cannot drift apart; keeping the
+# archive afterwards means what is in it is exactly the cached files plus what this run downloaded. The archive is
+# emptied first.
+{ cat "$here/apt-bounds.conf"; printf '%s\n' 'APT::Keep-Downloaded-Packages "true";'; } |
+  sudo tee "$conf" >/dev/null
 sudo apt-get clean
 
 if compgen -G "$debs/*.deb" >/dev/null; then
