@@ -8,7 +8,10 @@ import { type Page, errors } from "@playwright/test";
  * and the driver's round trip does not. Null when the question has not come within `timeout` ms of the click. The
  * question stays open.
  */
-export async function clickToDialog(page: Page, timeout = 10_000): Promise<number | null> {
+export async function clickToDialog(
+  page: Page,
+  { via = "mouse", timeout = 10_000 }: { via?: "mouse" | "locator"; timeout?: number } = {},
+): Promise<number | null> {
   await page.evaluate(() => {
     const probe = { pressed: 0, asked: 0 };
     Object.assign(window, { closeProbe: probe });
@@ -23,15 +26,22 @@ export async function clickToDialog(page: Page, timeout = 10_000): Promise<numbe
     });
     seen.observe(document.body, { childList: true, subtree: true });
   });
-  const box = await page
+  const close = page
     .locator("[data-tab-id]")
     .filter({ has: page.getByRole("tab", { selected: true }) })
-    .locator("[data-tab-close]")
-    .boundingBox();
-  if (box === null) throw new Error("no close button");
-  // The mouse at the button's centre, not a locator click: that one first checks the hit target in the page, which waits
-  // behind the very main thread this measures.
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    .locator("[data-tab-close]");
+  if (via === "locator") {
+    // The render bench's Close prompt metric was measured, and its 200 ms cap set, with a locator click (#986): that click
+    // first checks the hit target in the page, so it lands once the page has caught up. Kept so the metric stays the one
+    // its cap describes.
+    await close.click();
+  } else {
+    const box = await close.boundingBox();
+    if (box === null) throw new Error("no close button");
+    // The mouse at the button's centre, not a locator click: that one first checks the hit target in the page, which
+    // waits behind the very main thread this measures (#560).
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  }
   const probe = page.waitForFunction(
     () => {
       const { pressed, asked } = Reflect.get(window, "closeProbe") as { pressed: number; asked: number };

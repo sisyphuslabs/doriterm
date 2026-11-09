@@ -8,9 +8,12 @@ import { expect } from "../e2e/fixtures.ts";
 /** Clicks on the bench tab's Close per run; their median is the metric. */
 export const CLOSE_CLICKS = 5;
 
-/** One click's time to the Close question (e2e/close-probe.ts, the probe flood-input.e2e.ts uses), then Cancel. */
+/**
+ * One click's time to the Close question (e2e/close-probe.ts, the probe flood-input.e2e.ts uses), then Cancel. A locator
+ * click, as when the 200 ms cap in thresholds.json was set.
+ */
 export async function closePrompt(page: Page): Promise<number> {
-  const ms = await clickToDialog(page);
+  const ms = await clickToDialog(page, { via: "locator" });
   if (ms === null) throw new Error("the Close click or its question was not seen by the page");
   const dialog = page.getByRole("dialog", { name: /^Close/ });
   await dialog.getByRole("button", { name: "Cancel" }).click();
