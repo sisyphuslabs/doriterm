@@ -82,5 +82,28 @@ for (const platform of ["MacIntel", "Linux x86_64"]) {
       expect(await page.evaluate(() => Reflect.get(window, "letterSeen"))).toEqual({ ctrl: true, key: "l" });
       await expect(tabBar(page)).toHaveText([/nine-1$/]);
     });
+
+    await test.step("the program reads no byte of a space chord the app took", async () => {
+      const output = paneOf(page, shells[0] ?? "").locator("[data-terminal]");
+      await focusTerminal(1, "focus");
+      // cat -v prints every byte it reads, control and Meta bytes as ^X / M-x, once a line ends.
+      // Enter first: the Ctrl+L above is still on sh's input line, which does not clear the screen on it.
+      await page.keyboard.type("\rprintf 'CAT%s\\n' READY; cat -v\r");
+      await expect(output).toContainText("CATREADY", { timeout: 15_000 });
+      await page.keyboard.press(await shortcut(page, "space.select:2"));
+      await expect(tabBar(page)).toHaveText([/nine-2$/]);
+      await focusTerminal(2, "focus");
+      await page.keyboard.press(await shortcut(page, "space.select:1"));
+      await expect(tabBar(page)).toHaveText([/nine-1$/]);
+      await focusTerminal(1, "focus");
+      await page.keyboard.type("END\r");
+      await expect
+        .poll(async () => {
+          const text = (await output.textContent()) ?? "";
+          return text.slice(text.lastIndexOf("CATREADY") + "CATREADY".length).replace(/\s+/g, "");
+        })
+        // The typed line, then cat's copy of it: a byte of either chord would come before one of them (^[2, M-1, 2).
+        .toMatch(/^ENDEND/);
+    });
   });
 }
