@@ -83,7 +83,7 @@ export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBac
       <PhoneSessionSheet
         terminal={terminal}
         terminals={terminals}
-        title={terminalTitle(terminal)}
+        title={title}
         where={where}
         onOpen={onOpen}
       />
