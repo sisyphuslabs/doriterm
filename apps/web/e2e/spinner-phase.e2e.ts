@@ -16,7 +16,9 @@ const spinners = (page: Page) =>
       const [animation] = el.getAnimations();
       const box = el.getBoundingClientRect();
       const time = Number(animation?.currentTime ?? Number.NaN);
-      return { phase: time % 900, width: Math.round(box.width), height: Math.round(box.height) };
+      // Where the shared clock stands: every spinner should be at the document timeline's own point in the turn.
+      const clock = Number(document.timeline.currentTime) % 900;
+      return { phase: time % 900, clock, width: Math.round(box.width), height: Math.round(box.height) };
     }),
   );
 
@@ -42,6 +44,7 @@ test("working spinners mounted at different moments turn in step and draw at one
     if (first === undefined) throw new Error("no spinner");
     for (const each of read) {
       expect(apart(each.phase, first.phase)).toBeLessThan(20);
+      expect(apart(each.phase, each.clock)).toBeLessThan(20);
       expect([each.width, each.height]).toEqual([first.width, first.height]);
     }
   } finally {
