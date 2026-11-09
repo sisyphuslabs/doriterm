@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { agentRow, endAgent, startShell } from "./agents.ts";
+import { seedSpaces } from "./layout-doc.ts";
 import { expect, test } from "./fixtures.ts";
 import { expectTouchTargets, fakeSoftKeyboard, key, keysBar, PHONE } from "./phone-key-bar.ts";
 
@@ -87,11 +88,13 @@ for (const { width, bottom, right } of LOOSE) {
       await page.addStyleTag({ content: `:root:root { --safe-bottom: ${bottom}px; --safe-right: ${right}px; }` });
       await agentRow(page, name, false).click({ timeout: 20_000 });
       await expect(row(page)).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByLabel("Tabs in this space")).toHaveCount(0);
+      // An empty layout leaves the open terminal in no tab, whatever adopted it on load.
+      seedSpaces([]);
+      await expect(page.getByLabel("Tabs in this space")).toHaveCount(0, { timeout: 10_000 });
       const rounds = await Promise.all(
-        ["Read-only", "Show keyboard"].map(async (name) => {
-          const box = await key(page, name).boundingBox();
-          expect(box, name).not.toBeNull();
+        ["Read-only", "Show keyboard"].map(async (label) => {
+          const box = await key(page, label).boundingBox();
+          expect(box, label).not.toBeNull();
           return box as Box;
         }),
       );
@@ -101,14 +104,14 @@ for (const { width, bottom, right } of LOOSE) {
         return [...bar.querySelectorAll("button")].flatMap((button) => {
           const box = button.getBoundingClientRect();
           const x = Math.max(box.left, edge.left);
-          const right = Math.min(box.right, edge.right);
-          return right - x > 0.5
-            ? [{ name: button.getAttribute("aria-label") ?? "", x, y: box.top, width: right - x, height: box.height }]
+          const end = Math.min(box.right, edge.right);
+          return end - x > 0.5
+            ? [{ label: button.getAttribute("aria-label") ?? "", x, y: box.top, width: end - x, height: box.height }]
             : [];
         });
       });
       expect(shown.length).toBeGreaterThan(0);
-      expect(shown.filter((each) => rounds.some((round) => overlaps(each, round))).map((each) => each.name)).toEqual(
+      expect(shown.filter((each) => rounds.some((round) => overlaps(each, round))).map((each) => each.label)).toEqual(
         [],
       );
       // The round buttons reach no higher than the row: the terminal above keeps its last line clear.
