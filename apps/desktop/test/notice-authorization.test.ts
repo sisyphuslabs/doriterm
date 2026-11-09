@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { readNoticeAuthorization } from "../src/main/notice-authorization.ts";
 
 const preferences = (settings: () => unknown): object => ({ getNotificationSettings: settings });
@@ -54,12 +54,21 @@ describe("the OS's notification authorization, read from systemPreferences", () 
         throw new Error("native read unavailable");
       },
     };
-    expect(await readNoticeAuthorization({}, addon)).toBe("unknown");
-    expect(
-      await readNoticeAuthorization(
-        preferences(() => ({ authorizationStatus: "denied" })),
-        addon,
-      ),
-    ).toBe("denied");
+    const log = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      expect(await readNoticeAuthorization({}, addon)).toBe("unknown");
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(
+        await readNoticeAuthorization(
+          preferences(() => {
+            expect(log).toHaveBeenCalledTimes(2);
+            return { authorizationStatus: "denied" };
+          }),
+          addon,
+        ),
+      ).toBe("denied");
+    } finally {
+      log.mockRestore();
+    }
   });
 });

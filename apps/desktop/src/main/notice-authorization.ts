@@ -29,7 +29,8 @@ export async function readNoticeAuthorization(
   if (addon !== undefined) {
     try {
       return authorizationOf(await addon.noticeAuthorization());
-    } catch {
+    } catch (error) {
+      console.log(`notification authorization unavailable: ${error instanceof Error ? error.message : String(error)}`);
       // A native read that is unavailable must not break Settings; try the shell's reader below.
     }
   }
