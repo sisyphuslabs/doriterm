@@ -68,6 +68,28 @@ describe("checkNamespace (#406 design revision 3.2)", () => {
     expect(checkNamespace(chain, USER)).toMatchObject({ verdict: "untrusted", path: "C:\\Users\\q\\.local" });
   });
 
+  for (const [order, dacl] of [
+    ["after SYSTEM", `(A;;FA;;;SY)(A;;GW;;;${OTHER})`],
+    ["after Administrators", `(A;;FA;;;BA)(A;;GW;;;${OTHER})`],
+    ["before SYSTEM", `(A;;GW;;;${OTHER})(A;;FA;;;SY)`],
+  ] as const) {
+    test(`a namespace grant to another account ${order} is untrusted (#1630)`, () => {
+      const chain = [folder("D:\\example", `O:${USER}D:${dacl}`)];
+      expect(checkNamespace(chain, USER)).toEqual({
+        verdict: "untrusted",
+        path: "D:\\example",
+        reason: `${OTHER} may rename, remove or re-permission it`,
+      });
+    });
+  }
+
+  test("namespace grants to trusted principals only are trusted (#1630)", () => {
+    const chain = [
+      folder("D:\\example", `O:${USER}D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;${TRUSTED_INSTALLER_SID})(A;;FA;;;${USER})`),
+    ];
+    expect(checkNamespace(chain, USER)).toEqual({ verdict: "trusted" });
+  });
+
   test("read and create-subfolder rights for others are not namespace rights", () => {
     const chain = [folder("D:\\x", `O:${USER}D:P(A;;FA;;;${USER})(A;;0x1200a9;;;BU)(A;;0x4;;;AU)`)];
     expect(checkNamespace(chain, USER)).toEqual({ verdict: "trusted" });
