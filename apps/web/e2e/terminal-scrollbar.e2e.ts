@@ -2,7 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 import { coreSize, gridSize } from "./core-size.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { hcOn } from "./machine-switch.ts";
-import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
+import { key, keysBar, openPhoneTerminal, PHONE, settledGrid } from "./phone-key-bar.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
@@ -295,6 +295,10 @@ test.describe("on a phone", () => {
 
   test("at 390 the bar and the jump button work, and the button sits above the key bar", async ({ page }) => {
     const terminal = await openPhoneTerminal(page);
+    // The keys raise the keyboard on one animation frame and the terminal draws its new row count on the next: read
+    // right after openPhoneTerminal, the grid is still the one from before the keyboard. Measure the settled view.
+    await expect(keysBar(page)).toBeVisible();
+    await settledGrid(page, terminal);
     const address = (await terminal.getAttribute("data-terminal")) ?? "";
     const before = { pty: coreSize(address), grid: await gridSize(terminal) };
     await fill(page, terminal);
@@ -333,6 +337,9 @@ test.describe("on a phone", () => {
     // With the soft keyboard down only the round keyboard button floats there, and the jump button stays clear of it.
     await key(page, "Hide keyboard").click();
     await expect(keysBar(page)).toBeHidden();
+    // Growing the pane back fits the grid again, and that fit scrolls a view at the bottom back to the bottom on its
+    // own frame: scroll after it, or it takes the scroll back and the jump button never shows.
+    await settledGrid(page, terminal);
     await scrollTo(terminal, 0);
     await expect(jump(terminal)).toBeVisible();
     await expectApart(jump(terminal), key(page, "Show keyboard"));
