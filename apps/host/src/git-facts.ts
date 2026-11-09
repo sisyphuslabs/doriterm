@@ -34,29 +34,34 @@ export const GIT_TIMED_OUT: unique symbol = Symbol("git timed out");
 export type RunGit = (dir: string, args: readonly string[]) => Promise<string | undefined | typeof GIT_TIMED_OUT>;
 
 /**
- * Reads only: no optional locks (status would otherwise refresh the index and take its lock under the user's feet),
- * and no fsmonitor, which a repository's own config can point at a program of its choosing.
+ * A `RunGit` that kills `git` after `timeoutMs`. Reads only: no optional locks (status would otherwise refresh the
+ * index and take its lock under the user's feet), and no fsmonitor, which a repository's own config can point at a
+ * program of its choosing.
  */
-export const runGit: RunGit = async (dir, args) => {
-  const child = Bun.spawn(["git", "-C", dir, "--no-optional-locks", "-c", "core.fsmonitor=false", ...args], {
-    stdin: "ignore",
-    stdout: "pipe",
-    stderr: "ignore",
-    env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", GIT_TERMINAL_PROMPT: "0" },
-  });
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    child.kill();
-  }, GIT_TIMEOUT_MS);
-  try {
-    const [out, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
-    if (timedOut) return GIT_TIMED_OUT;
-    return code === 0 ? out : undefined;
-  } finally {
-    clearTimeout(timer);
-  }
-};
+export const gitRunner =
+  (timeoutMs: number = GIT_TIMEOUT_MS): RunGit =>
+  async (dir, args) => {
+    const child = Bun.spawn(["git", "-C", dir, "--no-optional-locks", "-c", "core.fsmonitor=false", ...args], {
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "ignore",
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", GIT_TERMINAL_PROMPT: "0" },
+    });
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, timeoutMs);
+    try {
+      const [out, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+      if (timedOut) return GIT_TIMED_OUT;
+      return code === 0 ? out : undefined;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+export const runGit: RunGit = gitRunner();
 
 /** What `git status --porcelain=v2 --branch` says about the branch and the work tree. */
 export function parseStatus(text: string): Omit<GitFacts, "onDefault"> {

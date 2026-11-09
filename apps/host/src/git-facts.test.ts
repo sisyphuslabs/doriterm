@@ -9,6 +9,7 @@ import {
   dirsOf,
   GIT_TIMED_OUT,
   type GitFactsMemory,
+  gitRunner,
   KEEP_TIMED_OUT_TICKS,
   parseStatus,
   publishGitFacts,
@@ -288,5 +289,23 @@ describe("publishGitFacts", () => {
     expect(logged).toHaveLength(1);
     expect(logged[0]).toContain("cannot write the git facts on its core");
     expect(publisher.kill()).toEqual([]);
+  });
+});
+
+describe("gitRunner", () => {
+  // Real git, no fake runner: a shell alias stands in for a git that hangs or fails. Git passes the kill on to the
+  // alias's `exec`ed command, so the hang ends at the timeout rather than when the sleep would.
+  test("a git still running at the timeout is killed and reads as GIT_TIMED_OUT", async () => {
+    const started = performance.now();
+    expect(await gitRunner(100)(root, ["-c", "alias.hang=!exec sleep 30", "hang"])).toBe(GIT_TIMED_OUT);
+    expect(performance.now() - started).toBeLessThan(10_000);
+  });
+
+  test("a git that exits non-zero reads as undefined, not as a timeout", async () => {
+    expect(await gitRunner(10_000)(root, ["-c", "alias.fail=!exit 3", "fail"])).toBeUndefined();
+  });
+
+  test("a git that exits zero returns what it printed", async () => {
+    expect(await gitRunner(10_000)(repo("runner"), ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("main\n");
   });
 });
