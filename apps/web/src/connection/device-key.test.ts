@@ -30,6 +30,23 @@ describe("loadDeviceKey", () => {
     expect(again.publicKey).toEqual(key.publicKey);
   });
 
+  test("a store that refuses to clone a CryptoKey keeps raw bytes instead (#1634)", async () => {
+    const backing = memoryStore();
+    const refusing = (): KeyValueStore => ({
+      get: (key) => backing.get(key),
+      put: (key, value) => {
+        const privateKey: unknown = Reflect.get(Object(value), "privateKey");
+        if (privateKey instanceof CryptoKey) throw new DOMException("The object can not be cloned.", "DataCloneError");
+        return backing.put(key, value);
+      },
+    });
+    const first = await loadDeviceKey(refusing(), globalThis.crypto.subtle);
+    expect(first.kind).toBe("raw");
+    expect(await backing.get("device-key")).toMatchObject({ kind: "raw" });
+    const afterReload = await loadDeviceKey(refusing(), globalThis.crypto.subtle);
+    expect(afterReload.publicKey).toEqual(first.publicKey);
+  });
+
   test("a store that throws on write is not read as a browser that cannot keep keys (#1329 review)", async () => {
     const backing = memoryStore();
     const storage: KeyValueStore = {

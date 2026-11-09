@@ -58,6 +58,8 @@ function rig(system: "Linux" | "Darwin", machine = "x86_64"): Rig {
     `echo "doriface-host $*" >> "${log}"`,
     `if [ "$1" = --install-hc ]; then mkdir -p "$HOME/.local/bin"; printf '#!/bin/sh\\necho 0.1.17\\n' > "$HOME/.local/bin/hc"; chmod 755 "$HOME/.local/bin/hc"; fi`,
     `if [ "$1" = pair ]; then echo "doriface://pair#h=fake"; fi`,
+    // What mesh join read from --from-file, and the file's mode, as the host saw them while it ran.
+    `prev=""; for a in "$@"; do if [ "$prev" = --from-file ]; then echo "from-file $(cat "$a") $(stat -c %a "$a" 2>/dev/null || stat -f %Lp "$a")" >> "${log}"; fi; prev="$a"; done`,
     "",
   ].join("\n");
   const asset = `doriface-host-${os}-${arch}`;
@@ -93,6 +95,21 @@ function install(
   };
 }
 
+const LINK = "doriface://pair#h=a&m=1";
+
+/**
+ * The installer ran `mesh join` with the link in a file this user alone can read, and never with the link on any
+ * command line, where other local users can read it (#1201); the spent file is gone once the installer exits.
+ */
+function expectJoinedFromFile(calls: readonly string[], command: string): void {
+  const joinCall = calls.find((call) => call.startsWith(command));
+  expect(joinCall).toBeDefined();
+  const file = (joinCall ?? "").slice(command.length);
+  expect(calls).toContain(`from-file ${LINK} 600`);
+  expect(calls.filter((call) => call.startsWith("doriface-host") && call.includes(LINK))).toEqual([]);
+  expect(existsSync(file)).toBe(false);
+}
+
 describe("install.sh on Linux", () => {
   test("installs the checked binary and herdr-core, registers the user service, then waits for it and pairs", () => {
     const r = rig("Linux");
@@ -124,13 +141,31 @@ describe("install.sh on Linux", () => {
 
   test("--join joins the mesh of the host that made the link once the service answers, instead of printing a pairing", () => {
     const r = rig("Linux");
-    const run = install(r, ["--join", "doriface://pair#h=a&m=1"]);
+    const run = install(r, ["--join", LINK]);
     expect(run.err).toBe("");
     expect(run.code).toBe(0);
-    expect(run.calls.at(-1)).toBe(
-      `doriface-host mesh join --wait-host 60 --yes --state-dir ${join(r.home, ".local", "state", "doriface-host")} doriface://pair#h=a&m=1`,
-    );
+    const state = join(r.home, ".local", "state", "doriface-host");
+    expectJoinedFromFile(run.calls, `doriface-host mesh join --wait-host 60 --yes --state-dir ${state} --from-file `);
     expect(run.calls.some((call) => call.startsWith("doriface-host pair"))).toBe(false);
+  });
+
+  test("--no-service --join hands mesh join the link in a file too, never on its command line (#1201)", () => {
+    const r = rig("Linux");
+    const run = install(r, ["--no-service", "--join", LINK]);
+    expect(run.err).toBe("");
+    expect(run.code).toBe(0);
+    const state = join(r.home, ".local", "state", "doriface-host");
+    const hc = join(r.home, ".local", "bin", "hc");
+    expectJoinedFromFile(run.calls, `doriface-host mesh join --yes --hc ${hc} --state-dir ${state} --from-file `);
+  });
+
+  test("DORIFACE_JOIN joins like --join, so the link can stay off the installer's own command line too (#1201)", () => {
+    const r = rig("Linux");
+    const run = install(r, [], [], { DORIFACE_JOIN: LINK });
+    expect(run.err).toBe("");
+    expect(run.code).toBe(0);
+    const state = join(r.home, ".local", "state", "doriface-host");
+    expectJoinedFromFile(run.calls, `doriface-host mesh join --wait-host 60 --yes --state-dir ${state} --from-file `);
   });
 
   test("the service and the pairing use one state dir, the one this shell names, even with XDG_STATE_HOME set", () => {
