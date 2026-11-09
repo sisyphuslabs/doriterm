@@ -10,7 +10,7 @@ const field = (page: Page) => settings(page).getByRole("searchbox", { name: "Sea
 test.describe("desktop", () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
-  test("one field searches every section: it narrows the list, Enter opens the first, Escape clears it (#1460)", async ({
+  test("one field searches every section: it narrows the list, Enter opens the first match, Escape clears it (#1460)", async ({
     page,
   }) => {
     await page.goto("/");
@@ -18,7 +18,7 @@ test.describe("desktop", () => {
     const nav = settings(page).getByRole("navigation", { name: "Settings" });
     await field(page).fill("theme");
     await expect(nav.getByRole("button", { name: "Appearance" })).toBeVisible();
-    await expect(nav.getByRole("button", { name: "Terminal" })).toHaveCount(0);
+    await expect(nav.getByRole("button", { name: "Keybindings" })).toHaveCount(0);
     await field(page).press("Enter");
     await expect(nav.getByRole("button", { name: "Appearance" })).toHaveAttribute("aria-current", "page");
     await expect(settings(page).getByRole("heading", { name: "Appearance", level: 2 })).toBeVisible();
@@ -32,6 +32,39 @@ test.describe("desktop", () => {
   });
 });
 
+test.describe("desktop: matching settings (#1528)", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test("a query lists the matching settings; Enter lands on the first, focused, in its section", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: "Settings" }).click();
+    await field(page).fill("cursor");
+    const hits = settings(page).getByRole("region", { name: "Matching settings" });
+    const style = hits.getByRole("button", { name: /^cursor-style Terminal/ });
+    await expect(style).toBeVisible();
+    await field(page).press("ArrowDown");
+    await expect(hits.getByRole("button").first()).toBeFocused();
+    await style.focus();
+    await page.keyboard.press("Enter");
+    await expect(hits).toHaveCount(0);
+    const nav = settings(page).getByRole("navigation", { name: "Settings" });
+    await expect(nav.getByRole("button", { name: "Terminal" })).toHaveAttribute("aria-current", "page");
+    const landed = settings(page).locator("[data-setting-landed]");
+    await expect(landed).toHaveCount(1);
+    await expect(landed.locator("#terminal-cursor-style")).toHaveCount(1);
+    await expect.poll(() => landed.evaluate((row) => row.contains(document.activeElement))).toBe(true);
+  });
+
+  test("keybinds finds the keybinding import, and picking it focuses that button (#1472)", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: "Settings" }).click();
+    await field(page).fill("keybinds");
+    const hits = settings(page).getByRole("region", { name: "Matching settings" });
+    await hits.getByRole("button", { name: /^Import keybinds…/ }).click();
+    await expect(settings(page).getByRole("button", { name: "Import keybinds…" })).toBeFocused();
+  });
+});
+
 test.describe("phone", () => {
   const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
   test.use(phone);
@@ -42,5 +75,15 @@ test.describe("phone", () => {
     const tabs = settings(page).getByRole("tablist");
     await expect(tabs.getByRole("tab", { name: "This device" })).toBeVisible();
     await expect(tabs.getByRole("tab")).toHaveCount(1);
+  });
+
+  test("a tapped match opens its section with that row in view (#1528)", async ({ page }) => {
+    await page.goto("/settings");
+    await field(page).fill("awake");
+    const hits = settings(page).getByRole("region", { name: "Matching settings" });
+    await hits.getByRole("button", { name: /^Keep the screen awake/ }).tap();
+    const landed = settings(page).locator("[data-setting-landed]");
+    await expect(landed).toContainText("Keep the screen awake");
+    await expect(landed).toBeInViewport();
   });
 });
