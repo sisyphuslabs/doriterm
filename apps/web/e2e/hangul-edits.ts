@@ -67,28 +67,18 @@ export async function hangulKey(
           if (edit[0] === "delete") {
             const end = box.selectionEnd;
             const start = box.selectionStart === end ? Math.max(0, end - 1) : box.selectionStart;
-            box.dispatchEvent(
-              new InputEvent("beforeinput", { bubbles: true, inputType: "deleteContentBackward" }),
-            );
+            box.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "deleteContentBackward" }));
             box.setRangeText("", start, end, "end");
-            box.dispatchEvent(
-              new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }),
-            );
+            box.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
           } else {
             const data = edit[1];
-            box.dispatchEvent(
-              new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data }),
-            );
+            box.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data }));
             box.setRangeText(data, box.selectionStart, box.selectionEnd, "end");
-            box.dispatchEvent(
-              new InputEvent("input", { bubbles: true, inputType: "insertText", data }),
-            );
+            box.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data }));
           }
         }
       }
-      box.dispatchEvent(
-        new KeyboardEvent("keyup", { bubbles: true, key: key.jamo, keyCode: key.keyCode }),
-      );
+      box.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: key.jamo, keyCode: key.keyCode }));
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     },
     { jamo, keyCode, edits },
@@ -107,9 +97,7 @@ export async function typeHangul(
     // new text in its place.
     const kept = shown.slice(0, -1);
     const edits: Edit[] =
-      after === shown + jamo
-        ? [["insert", jamo]]
-        : [["delete"], ["insert", after.slice(kept.length)]];
+      after === shown + jamo ? [["insert", jamo]] : [["delete"], ["insert", after.slice(kept.length)]];
     // oxlint-disable-next-line no-await-in-loop -- each key edits the field the previous one left
     await hangulKey(field, keyboard, jamo, edits);
     shown = after;
@@ -136,9 +124,7 @@ export async function safariReplace(field: Locator, syllables: readonly string[]
           keyCode: 229,
         }),
       );
-      box.dispatchEvent(
-        new KeyboardEvent("keyup", { bubbles: true, key: "Unidentified", keyCode: 229 }),
-      );
+      box.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: "Unidentified", keyCode: 229 }));
       // oxlint-disable-next-line no-await-in-loop -- one edit a frame, as a person types
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     }
@@ -172,13 +158,9 @@ export async function spaceThenJamo(
       new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: " ", keyCode: 32 }),
     );
     if (down) {
-      element.dispatchEvent(
-        new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data: " " }),
-      );
+      element.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data: " " }));
       element.setRangeText(" ", element.selectionStart, element.selectionEnd, "end");
-      element.dispatchEvent(
-        new InputEvent("input", { bubbles: true, inputType: "insertText", data: " " }),
-      );
+      element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: " " }));
     }
     element.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: " ", keyCode: 32 }));
     return down;

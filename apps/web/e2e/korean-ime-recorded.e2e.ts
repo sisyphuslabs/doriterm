@@ -1,10 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
-import {
-  KOREAN_SPACE_RECORDINGS,
-  KOREAN_SPACE_WEBKIT_ORDERS,
-  type RecordedStep,
-} from "./korean-ime-recorded.ts";
+import { KOREAN_SPACE_RECORDINGS, KOREAN_SPACE_WEBKIT_ORDERS, type RecordedStep } from "./korean-ime-recorded.ts";
 
 test.use({ serviceWorkers: "block" });
 
@@ -50,13 +46,9 @@ async function replay(field: Locator, steps: readonly RecordedStep[]): Promise<v
           Array.from(key).length === 1 &&
           next?.kind !== "edit"
         ) {
-          box.dispatchEvent(
-            new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data: key }),
-          );
+          box.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data: key }));
           box.setRangeText(key, box.selectionStart, box.selectionEnd, "end");
-          box.dispatchEvent(
-            new InputEvent("input", { bubbles: true, inputType: "insertText", data: key }),
-          );
+          box.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: key }));
         }
       } else if (step.kind === "compositionstart") {
         compositionStart = box.selectionStart;
@@ -66,9 +58,7 @@ async function replay(field: Locator, steps: readonly RecordedStep[]): Promise<v
         box.dispatchEvent(new CompositionEvent(step.kind, { bubbles: true, data: step.data }));
       } else if (step.kind === "edit") {
         const { inputType, data, composing } = step;
-        box.dispatchEvent(
-          new InputEvent("beforeinput", { bubbles: true, inputType, data, isComposing: composing }),
-        );
+        box.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType, data, isComposing: composing }));
         if (inputType === "insertCompositionText") {
           box.setRangeText(data, compositionStart, compositionStart + compositionLength, "end");
           compositionLength = data.length;
@@ -76,18 +66,14 @@ async function replay(field: Locator, steps: readonly RecordedStep[]): Promise<v
           const end = Math.min(step.to, box.value.length);
           box.setRangeText(data, Math.min(step.from, end), end, "end");
         }
-        box.dispatchEvent(
-          new InputEvent("input", { bubbles: true, inputType, data, isComposing: composing }),
-        );
+        box.dispatchEvent(new InputEvent("input", { bubbles: true, inputType, data, isComposing: composing }));
       }
     }
   }, steps);
 }
 
 for (const recording of [...KOREAN_SPACE_RECORDINGS, ...KOREAN_SPACE_WEBKIT_ORDERS]) {
-  test(`${recording.platform}: ${recording.name} reaches the program as typed (#1508)`, async ({
-    page,
-  }) => {
+  test(`${recording.platform}: ${recording.name} reaches the program as typed (#1508)`, async ({ page }) => {
     const terminal = await openReader(page);
     await replay(terminal.getByRole("textbox"), recording.steps);
     const hex = recording.bytes.replaceAll(" ", "").replace(/0d$/, "");
