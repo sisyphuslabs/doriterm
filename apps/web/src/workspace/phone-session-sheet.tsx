@@ -40,7 +40,8 @@ function Row(props: {
 
 /**
  * The phone header's "..." for the session in view (#1467): one bottom sheet that says where it lives, then the next
- * agent that needs you and Find in terminal, then Rename and End. Each row closes the sheet before it acts.
+ * agent that needs you and, while its machine is online, Find in terminal, then Rename and End. Each row closes the
+ * sheet before it acts.
  */
 export function PhoneSessionSheet({ terminal, terminals, title, where, onOpen }: PhoneSessionSheetProps) {
   const [open, setOpen] = useState(false);

@@ -114,6 +114,15 @@ test("the session sheet offers Find in terminal only while its machine is online
     await expect(find).toHaveCount(0);
     // The rest of the sheet still reaches the core, so it does not lose its rows with the terminal.
     await expect(sheet.getByRole("button", { name: "Rename…", exact: true })).toBeVisible();
+    await sheet.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(sheet).toBeHidden();
+
+    // Back online, the terminal is drawn again and the row returns with it.
+    reconnect();
+    await expect(terminal).toContainText("$", { timeout: OFFLINE_BOUND_MS });
+    await actions.click();
+    await opened(sheet);
+    await expect(find).toBeVisible();
   } finally {
     reconnect();
     removeTerminal("machine", local, go);
