@@ -84,6 +84,26 @@ async function splitRight(page: Page): Promise<{ terminal: Locator; address: str
 }
 
 /**
+ * The page's answer to the next keydown with `key`: each `defaultPrevented`, read by a window listener installed
+ * after the app's own. The app stops propagation once it takes a key; listeners on the same target still run after it.
+ */
+async function defaultPrevented(page: Page, key: string, press: () => Promise<void>): Promise<boolean[]> {
+  await page.evaluate((held) => {
+    const seen: boolean[] = [];
+    Reflect.set(window, "__defaultPrevented", seen);
+    window.addEventListener(
+      "keydown",
+      (event) => {
+        if (event.key === held) seen.push(event.defaultPrevented);
+      },
+      { capture: true },
+    );
+  }, key);
+  await press();
+  return page.evaluate<boolean[]>(() => Reflect.get(window, "__defaultPrevented"));
+}
+
+/**
  * Puts the program in raw mode reading `count` bytes and prints them as hex, as korean-ime-ctrl-chord.e2e.ts does:
  * `raw-<n>-5` is printed once the shell is raw, so a key after it is read by `head`, not by the shell's line editor.
  */
@@ -133,9 +153,23 @@ for (const keymap of ["mac", "other"] as const) {
   });
 }
 
+test("mac: a Cmd+Alt arrow with no pane that way stays cancelled, so the browser's shortcut cannot act", async ({
+  page,
+}) => {
+  // A terminal program never receives a Cmd chord: @wterm/dom stops at every Meta chord without sending bytes or
+  // cancelling it. At the top of a row split the pane still nudges, but the key stays the app's, as it did before #1302.
+  await onKeymap(page, "mac");
+  await terminalInFocus(page);
+  const second = await splitRight(page);
+  expect(await defaultPrevented(page, "ArrowUp", () => page.keyboard.press("Meta+Alt+ArrowUp"))).toEqual([true]);
+  // Swapping with no pane that way keeps its key too, and neither chord moves focus.
+  expect(await defaultPrevented(page, "ArrowUp", () => page.keyboard.press("Meta+Alt+Shift+ArrowUp"))).toEqual([true]);
+  await expect.poll(() => keyboardAddress(page)).toBe(second.address);
+});
+
 test("other: a pane chord with no pane that way reaches the program, not the app", async ({ page }) => {
-  // The top of a row split has no pane above it. Ctrl+Alt+ArrowUp is bound to pane.go:up, and with no pane that way it
-  // must stop nudging and swallowing the key (#1302, #1172).
+  // The top of a row split has no pane above it. Ctrl+Alt+ArrowUp is bound to pane.go:up, and with no pane that way the
+  // pane must still nudge but must not swallow the key (#1302, #1172).
   await onKeymap(page, "other");
   await terminalInFocus(page);
   const second = await splitRight(page);

@@ -178,7 +178,7 @@ export function desktopActions(
   }: AppActionTargets,
   openSettings: () => void,
 ): ActionHandler {
-  return (action) => {
+  return (action, programReceives = true) => {
     const live = terminals.filter((terminal) => terminal.state === "live").map((terminal) => terminal.address);
     // The tab bar's tabs: the selected space's (#404).
     const keys = layout.shown.map((tab) => tab.key);
@@ -227,9 +227,9 @@ export function desktopActions(
         onSplit(argument === "right" ? "row" : "column");
         return true;
       case "pane.go":
-        return isDirection(argument) && layout.go(argument);
+        return isDirection(argument) && layout.go(argument, programReceives);
       case "pane.swap":
-        return isDirection(argument) && layout.swap(argument);
+        return isDirection(argument) && layout.swap(argument, programReceives);
       case "pane.resize":
         return isDirection(argument) && layout.resizeFocused(argument);
       case "pane.equalize":

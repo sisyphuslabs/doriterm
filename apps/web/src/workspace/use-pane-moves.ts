@@ -28,9 +28,11 @@ export interface Bump {
 export interface PaneMoves {
   /**
    * Focuses the nearest pane that way in the tab in view. With no pane that way in a split tab it nudges the focused
-   * pane (`bumped`) and leaves the key to its program too, as a lone pane does.
+   * pane (`bumped`) and leaves a key the terminal can encode (no Cmd) to its program; a Cmd chord, which a program never
+   * receives, is swallowed so the browser's own shortcut does not act (#1302, #1172). A lone pane leaves the key to the
+   * page.
    */
-  readonly go: (direction: Direction) => boolean;
+  readonly go: (direction: Direction, programReceives?: boolean) => boolean;
   readonly bumped: Bump | null;
   /**
    * Moves the line between children `index` and `index + 1` of a row or column of the tab in view by `delta`; true once
@@ -46,8 +48,11 @@ export interface PaneMoves {
    * pane drag, and focuses it; true once the write landed, false when nothing was written.
    */
   readonly move: (source: string, target: string, edge: Edge | "swap") => Promise<boolean>;
-  /** Swaps the focused pane with its nearest neighbour that way, as herdr-app's `pane.swap`; focus stays with it. */
-  readonly swap: (direction: Direction) => boolean;
+  /**
+   * Swaps the focused pane with its nearest neighbour that way, as herdr-app's `pane.swap`; focus stays with it. With none
+   * there it leaves a key the terminal can encode to its program, and a Cmd chord stays swallowed, as moving focus does.
+   */
+  readonly swap: (direction: Direction, programReceives?: boolean) => boolean;
 }
 
 export interface PaneMovesContext {
@@ -67,15 +72,16 @@ export const RESIZE_STEP = 0.05;
 export function usePaneMoves({ active, focused, layoutOf, show, setView, history }: PaneMovesContext): PaneMoves {
   const [bumped, setBumped] = useState<Bump | null>(null);
   const go = useCallback(
-    (direction: Direction): boolean => {
+    (direction: Direction, programReceives = true): boolean => {
       if (active === null || focused === null) return false;
       const { panes } = arrange(active.root, MEASURE, 8, null);
       const move = paneMove(focused.id, direction, panes, history.get(active.key) ?? []);
       if (move.kind === "pass") return false;
       if (move.kind === "bump") {
         setBumped((prev) => ({ pane: focused.id, direction, seq: (prev?.seq ?? 0) + 1 }));
-        // The nudge says there is no pane that way; it does not take the key from the program (#1302, #1172).
-        return false;
+        // The nudge says there is no pane that way. A key the terminal can encode reaches the program; a Cmd chord, which
+        // a program never receives, stays taken so the browser's own shortcut does not act (#1302, #1172).
+        return !programReceives;
       }
       show(active.key, move.to);
       return true;
@@ -140,13 +146,14 @@ export function usePaneMoves({ active, focused, layoutOf, show, setView, history
   );
 
   // herdr-app's swap goes by geometry only: the nearest pane that way, not the one last visited. With none there it
-  // leaves the key to the program, as moving focus does.
+  // leaves a key the terminal can encode to the program, as moving focus does; a Cmd chord stays taken.
   const swap = useCallback(
-    (direction: Direction): boolean => {
+    (direction: Direction, programReceives = true): boolean => {
       if (active === null || focused === null) return false;
       const { panes } = arrange(active.root, MEASURE, 8, null);
       const next = paneMove(focused.id, direction, panes, []);
-      if (next.kind !== "go") return false;
+      if (next.kind === "pass") return false;
+      if (next.kind !== "go") return !programReceives;
       editSizes((root) => swapPanes(root, focused.id, next.to));
       return true;
     },
