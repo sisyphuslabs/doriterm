@@ -63,9 +63,9 @@ test("a typed pairing code is looked up through the relay, not refused by the ap
   if (launched === undefined) throw new Error("the app did not launch");
   const page = await launched.firstWindow();
   const lookups: string[] = [];
-  // The relay's answer is held until Pair is pressed. Typing the code starts its slot's lookup (#1277), and Pair takes
-  // the answer of that lookup while it is still in flight, so exactly one request leaves. Answered first, a refused
-  // slot is asked again on Pair by design, and the count would depend on which came first.
+  // The relay's answer is held until Continue is pressed. Typing the code starts its slot's lookup (#1277), and Continue
+  // takes the answer of that lookup while it is still in flight, so exactly one request leaves. Answered first, a
+  // refused slot is asked again on Continue by design, and the count would depend on which came first.
   const { promise: pressed, resolve: answer } = Promise.withResolvers<void>();
   await page.route(LOOKUP, async (route) => {
     lookups.push(route.request().url());
@@ -77,10 +77,12 @@ test("a typed pairing code is looked up through the relay, not refused by the ap
     .or(page.getByRole("button", { name: "Pair a host" }))
     .first()
     .click();
-  await page.getByLabel("Pairing code").fill("K7QM 4XPD");
+  // The entry a fresh app shows since the mesh join (#1446, #1552): one field takes an invite link or a typed code.
+  await expect(page.getByRole("heading", { name: "Join a mesh", exact: true })).toBeVisible();
+  await page.getByLabel("Invite link or code").fill("K7QM 4XPD");
   // Typing alone asks the relay for the code's slot, its first three characters.
   await expect.poll(() => lookups).toEqual(["https://relay-doriface.omo.dev/v1/pair/K7Q"]);
-  await page.getByRole("button", { name: "Pair", exact: true }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   answer();
   // The relay's own answer reaches the page: the code is unknown, not the relay unreachable.
   await expect(page.getByText("No host is pairing with this code. It may have expired.")).toBeVisible({
