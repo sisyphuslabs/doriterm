@@ -58,3 +58,91 @@ describe("CodepointWidths", () => {
     }
   });
 });
+
+/** A one-row core that calls a code point wide from U+1100 up, and counts what it was asked to measure. */
+function fakeCore(measured: number[]): GhosttyCore {
+  let last = 0;
+  const core = {
+    init: () => undefined,
+    writeString: (text: string, done: () => void) => {
+      last = [...text].at(-1)?.codePointAt(0) ?? 0;
+      measured.push(last);
+      done();
+    },
+    getCell: () => ({ char: last, width: last >= 0x1100 ? 2 : 1 }),
+    dispose: () => undefined,
+  };
+  // Only the members CodepointWidths calls are faked.
+  return core as unknown as GhosttyCore;
+}
+
+/** An idle scheduler stepped by hand: each step runs one queued slice to its end. */
+function manualIdle(): { schedule: (work: () => Promise<void>) => void; step: () => Promise<boolean> } {
+  const queue: (() => Promise<void>)[] = [];
+  return {
+    schedule: (work) => void queue.push(work),
+    step: async () => {
+      const next = queue.shift();
+      if (next === undefined) return false;
+      await next();
+      return true;
+    },
+  };
+}
+
+describe("CodepointWidths.known and warm, for a synchronous widthOf (P7)", () => {
+  test("known is undefined before a code point is measured and its wide flag after", async () => {
+    const widths = new CodepointWidths(() => Promise.resolve(fakeCore([])));
+    expect(widths.known(0xac00)).toBeUndefined();
+    expect(widths.known(0x61)).toBeUndefined();
+    await widths.of("\u{AC00}a");
+    expect(widths.known(0xac00)).toBe(true);
+    expect(widths.known(0x61)).toBe(false);
+  });
+
+  test("warm measures each range in idle slices until every code point is known", async () => {
+    const measured: number[] = [];
+    const idle = manualIdle();
+    const widths = new CodepointWidths(() => Promise.resolve(fakeCore(measured)), idle.schedule);
+    widths.warm([
+      [0x41, 0x43],
+      [0xac00, 0xac01],
+    ]);
+    expect(widths.known(0x41)).toBeUndefined();
+    while (await idle.step()) {
+      // Each step is one slice.
+    }
+    expect([0x41, 0x42, 0x43].map((each) => widths.known(each))).toEqual([false, false, false]);
+    expect([0xac00, 0xac01].map((each) => widths.known(each))).toEqual([true, true]);
+    expect(measured).toEqual([0x41, 0x42, 0x43, 0xac00, 0xac01]);
+  });
+
+  test("a slice is 512 code points, and a cancelled warm measures no further slice", async () => {
+    const measured: number[] = [];
+    const idle = manualIdle();
+    const widths = new CodepointWidths(() => Promise.resolve(fakeCore(measured)), idle.schedule);
+    const cancel = widths.warm([[0xac00, 0xac00 + 1199]]);
+    expect(await idle.step()).toBe(true);
+    expect(measured).toHaveLength(512);
+    expect(widths.known(0xac00 + 511)).toBe(true);
+    expect(widths.known(0xac00 + 512)).toBeUndefined();
+    cancel();
+    while (await idle.step()) {
+      // A slice queued before the cancel finds it cancelled.
+    }
+    expect(measured).toHaveLength(512);
+    expect(widths.known(0xac00 + 512)).toBeUndefined();
+  });
+
+  test("warm skips code points already known", async () => {
+    const measured: number[] = [];
+    const idle = manualIdle();
+    const widths = new CodepointWidths(() => Promise.resolve(fakeCore(measured)), idle.schedule);
+    await widths.of("b");
+    widths.warm([[0x61, 0x63]]);
+    while (await idle.step()) {
+      // Each step is one slice.
+    }
+    expect(measured).toEqual([0x62, 0x61, 0x63]);
+  });
+});

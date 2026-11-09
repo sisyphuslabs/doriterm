@@ -1,4 +1,6 @@
+import type { Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { PHONE } from "./phone-key-bar.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
@@ -37,4 +39,36 @@ test("font-size and cursor-style apply to an open terminal", async ({ page }) =>
     .poll(() => focused.evaluate((el) => getComputedStyle(el).getPropertyValue("--term-font-size").trim()))
     .toBe("14.5pt");
   await expect(focused.locator("[data-cursor-shape]")).toHaveAttribute("data-cursor-shape", "bar", { timeout: 10_000 });
+});
+
+/** Settings search finds Predict typing, lands focused on its row, and Never is saved as Doriterm's own preference. */
+async function choosePredictTypingNever(page: Page): Promise<void> {
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  await settings.getByRole("searchbox", { name: "Search settings" }).fill("predict");
+  const hits = settings.getByRole("region", { name: "Matching settings" });
+  await hits.getByRole("button", { name: /^Predict typing/ }).click();
+  const landed = settings.locator("[data-setting-landed]");
+  await expect(landed.locator("#terminal-predict-typing")).toHaveCount(1);
+  await expect.poll(() => landed.evaluate((row) => row.contains(document.activeElement))).toBe(true);
+  await expect(landed.getByRole("button", { name: "When slow" })).toHaveAttribute("aria-pressed", "true");
+  await landed.getByRole("button", { name: "Never" }).click();
+  await expect(landed.getByRole("button", { name: "Never" })).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("doriface.prediction"))).toBe('{"mode":"never"}');
+}
+
+test.describe("desktop: Predict typing", () => {
+  test("settings search lands on Predict typing, and Never is saved", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: "Settings" }).first().click();
+    await choosePredictTypingNever(page);
+  });
+});
+
+test.describe("phone: Predict typing", () => {
+  test.use(PHONE);
+
+  test("settings search lands on Predict typing, and Never is saved", async ({ page }) => {
+    await page.goto("/settings");
+    await choosePredictTypingNever(page);
+  });
 });
