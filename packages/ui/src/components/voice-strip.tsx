@@ -201,7 +201,7 @@ export function VoiceStrip(props: VoiceStripProps) {
               />
             </span>
           ) : (
-            <Spinner className="size-4" />
+            <Spinner />
           )}
           <span
             className={cn("line-clamp-2 min-w-0 flex-1 text-base break-words", !listening && "text-muted-foreground")}
