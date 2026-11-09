@@ -151,6 +151,55 @@ test.describe("a finger on a phone", () => {
       await field.evaluate((el) => el.closest("[data-terminal]") === null && el.getAttribute("inputmode") !== "none"),
     ).toBe(true);
   });
+
+  test("after a tap in the terminal, Show keyboard lets the field go on its pointerdown and takes it on its click, a tap apart (#1940)", async ({
+    page,
+  }) => {
+    // A field a tap focused (in `none` mode, so no keyboard came up) has an input session open on iOS. Let go and taken
+    // back in ONE task (a blur and a focus inside the click, whichever of the button's mousedown or the port's own
+    // blur let it go), WebKit keeps the pair in the web process and the keyboard never rises; the press has to let the
+    // field go on its pointerdown, which the finger's landing delivers, a task before the click its lifting delivers.
+    // So the trace reads which of the tap's events the field's focus moved in.
+    await fakeSoftKeyboard(page);
+    await page.addInitScript(() => {
+      const trace: { on: string; mode: string }[] = [];
+      let last = "";
+      for (const type of ["pointerdown", "touchstart", "touchend", "mousedown", "click"]) {
+        document.addEventListener(
+          type,
+          () => {
+            last = type;
+          },
+          true,
+        );
+      }
+      const moved = (event: FocusEvent, way: string): void => {
+        if (!(event.target instanceof HTMLTextAreaElement) || event.target.closest("[data-terminal]") === null) return;
+        trace.push({ on: `${way}:${last}`, mode: event.target.inputMode });
+      };
+      document.addEventListener("focusout", (event) => moved(event, "out"), true);
+      document.addEventListener("focusin", (event) => moved(event, "in"), true);
+      Object.assign(window, { fieldFocusTrace: trace });
+    });
+    const { input } = await openTerminal(page);
+    const box = await page.locator("[data-terminal]").boundingBox();
+    if (box === null) throw new Error("the terminal is not laid out");
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(input).toBeFocused();
+    await expect(input).toHaveAttribute("inputmode", "none");
+    await expectDown(page);
+
+    const trace = () => page.evaluate(() => Reflect.get(window, "fieldFocusTrace") as { on: string; mode: string }[]);
+    await page.evaluate(() => (Reflect.get(window, "fieldFocusTrace") as unknown[]).splice(0));
+    await key(page, "Show keyboard").tap();
+    await expect(input).toBeFocused();
+    await expect(input).toHaveAttribute("inputmode", "text");
+    await expectUp(page);
+    expect(await trace()).toEqual([
+      { on: "out:pointerdown", mode: "none" },
+      { on: "in:click", mode: "text" },
+    ]);
+  });
 });
 
 test("with the terminal focused and no keyboard up, the toggle reads Show keyboard; it reads Hide keyboard only while one covers the page", async ({

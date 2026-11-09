@@ -216,6 +216,8 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
 
 export interface KeyboardButtonProps {
   readonly onPress?: () => void;
+  /** The press as it lands (pointerdown), a task before `onPress`: what has to be let go before the click runs. */
+  readonly onPressStart?: () => void;
   readonly className?: string;
   /** Show keyboard by default; Show keys where the button opens the keys bar itself (no soft keyboard to raise). */
   readonly label?: string;
@@ -225,12 +227,20 @@ export interface KeyboardButtonProps {
   readonly pressed?: boolean;
 }
 
-export function KeyboardButton({ onPress, className, label = "Show keyboard", icon, pressed }: KeyboardButtonProps) {
+export function KeyboardButton({
+  onPress,
+  onPressStart,
+  className,
+  label = "Show keyboard",
+  icon,
+  pressed,
+}: KeyboardButtonProps) {
   return (
     <button
       type="button"
       aria-label={label}
       aria-pressed={pressed}
+      onPointerDown={onPressStart}
       onClick={onPress}
       className={cn(
         "flex size-12 items-center justify-center rounded-full border border-border shadow-lg backdrop-blur-md outline-none [&_svg]:size-5",

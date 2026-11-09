@@ -15,6 +15,12 @@ export interface TerminalPort {
    */
   readonly commitComposition: () => void;
   readonly focus: () => void;
+  /**
+   * Lets the field go ahead of a press that will ask for the keyboard, so that the press's own focus is a fresh one:
+   * on iOS a field a tap focused, let go and focused again inside one click, raises nothing (#1940). A surface with no
+   * soft keyboard keeps its field, and so does a field that has no focus to let go of.
+   */
+  readonly letGo: () => void;
   /** Puts the soft keyboard down: the field asks for none again until the keys ask for one (#1375). */
   readonly quiet: () => void;
 }
@@ -36,8 +42,9 @@ const fieldOf = (handle: RefObject<TerminalHandle | null>): HTMLTextAreaElement 
  * Lets the field under this terminal raise the soft keyboard, before the focus that reads it. On a surface that has one
  * the field carries `inputmode="none"`, so a press in the terminal raises nothing and only the keys ask for the keyboard
  * (#1375); a field that already has the focus is let go first, since a browser raises no keyboard for a focus it already
- * has. A surface with no soft keyboard to raise is left alone, and so is a hardware keyboard: `inputmode` is the soft
- * keyboard's own.
+ * has. That is enough for a field focused outside a tap; one a tap focused has to be let go a task earlier, which the
+ * keys' press does (`letGo`, #1940). A surface with no soft keyboard to raise is left alone, and so is a hardware
+ * keyboard: `inputmode` is the soft keyboard's own.
  */
 export function askingForKeyboard(handle: RefObject<TerminalHandle | null>, softKeyboard: boolean): void {
   if (!softKeyboard) return;
@@ -85,6 +92,11 @@ export function portOf(
     focus: () => {
       askingForKeyboard(handle, softKeyboard);
       handle.current?.focus();
+    },
+    letGo: () => {
+      if (!softKeyboard) return;
+      const field = fieldOf(handle);
+      if (field !== null && field.ownerDocument.activeElement === field) field.blur();
     },
     quiet: () => {
       // A surface with no soft keyboard of its own (a mouse-only window) keeps its field as it is, for an OS on-screen
