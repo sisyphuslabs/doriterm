@@ -229,6 +229,9 @@ export class OutputPacer {
     replay.quiet();
     replay.cap();
     replay.options.hold(false);
+    // Every write of the replay landed while the paint was held, so a listener placing the view (hold-view-from-end)
+    // placed it on the layout before the replay; the release draws the replay, so the listeners are told once more.
+    for (const listener of this.#written) listener();
     this.#schedule();
   }
 
