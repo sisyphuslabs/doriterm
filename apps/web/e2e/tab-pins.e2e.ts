@@ -108,6 +108,23 @@ test("a pinned tab leads as its icon alone, with no close button, and another pa
   await expect.poll(saved, { timeout: 15_000 }).toEqual(["three", "one", "two", "four"]);
 });
 
+test("a pinned tab keeps its size selected or not (#1621 review)", async ({ page }) => {
+  fourTabs();
+  await page.goto("/");
+  await expect(tabBar(page)).toHaveCount(4, { timeout: 20_000 });
+  await fromMenu(page, "two", "Pin tab");
+  await expect.poll(saved, { timeout: 15_000 }).toEqual(["two*", "one", "three", "four"]);
+  const item = page.locator("[data-tab-id]").first();
+  await tabBar(page).nth(1).click();
+  await expect(tabBar(page).first()).toHaveAttribute("aria-selected", "false");
+  const rest = await item.boundingBox();
+  await tabBar(page).first().click();
+  await expect(tabBar(page).first()).toHaveAttribute("aria-selected", "true");
+  const selected = await item.boundingBox();
+  expect(selected?.width).toBe(rest?.width);
+  expect(selected?.height).toBe(rest?.height);
+});
+
 test("a move keeps a tab on its side of the pinned ones", async ({ page }) => {
   fourTabs();
   await page.goto("/");

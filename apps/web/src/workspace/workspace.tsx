@@ -8,6 +8,7 @@ import { ShortcutsHelp } from "../keys/shortcuts-dialog.tsx";
 import { type Axis, LAYOUT_DOC, ORDER_DOC } from "@doriface/protocol/layout";
 import { closesTab, type TerminalEnd } from "../terminal/terminal-end.ts";
 import { CloseTabDialog } from "./close-tab-dialog.tsx";
+import { stillClosing } from "./close-set.ts";
 import { AddMachineDialog } from "./add-machine-dialog.tsx";
 import { guideStore } from "../pair/first-run-guide.ts";
 import { usePhoneRoute } from "./use-phone-route.ts";
@@ -267,7 +268,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   };
   const closing = layout.tabs.find((tab) => tab.key === closingTab);
   // The tabs a close-to-the-right or close-others takes, as one tab of all their panes for the one question it asks.
-  const closingTabs = layout.tabs.filter((tab) => closingSet.includes(tab.key));
+  const closingTabs = stillClosing(layout.tabs, closingSet);
   const [firstClosing] = closingTabs;
   const closingSetTab =
     firstClosing === undefined ? undefined : { ...firstClosing, panes: closingTabs.flatMap((tab) => tab.panes) };

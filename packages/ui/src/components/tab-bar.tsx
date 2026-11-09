@@ -180,8 +180,9 @@ export function TabBar({
               style={place.offset === 0 ? undefined : { translate: `${place.offset}px 0` }}
               className={cn(
                 "group relative motion-arrive flex h-[29px] shrink-0 items-center gap-[7px] rounded-[7px] border pl-2.5 text-[0.8rem] select-none [--arrive-duration:var(--duration-micro)]",
+                // A pinned tab has no close button, so it keeps one padding selected or not: selecting it never resizes it.
                 active
-                  ? "border-border bg-raised pr-1 text-foreground"
+                  ? cn("border-border bg-raised text-foreground", pinned ? "pr-2.5" : "pr-1")
                   : "border-transparent pr-2.5 text-muted-foreground hover:bg-hover",
                 lifted === tab.id && "border-border bg-raised shadow-overlay hover:bg-raised",
                 place.className,
