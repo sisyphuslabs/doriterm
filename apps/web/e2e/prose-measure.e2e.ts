@@ -21,9 +21,7 @@ const STORED: Readonly<Record<Start, string | null>> = {
 
 /** The reading paragraphs of each screen, by a phrase each one contains. */
 const DESKTOP: Readonly<Record<string, readonly string[]>> = {
-  "first-run": ["Doriterm shows the terminals and agents of a mesh."],
-  "mesh-invite": ["It is not an invite for a browser."],
-  pair: ["Open the invite link a member sent you", "The code reaches your host through the relay"],
+  "first-run": ["Open an invite from a machine you can see"],
   settings: ["This app talks to one host"],
   "settings-mesh": [
     "These are the computers this host reaches",
@@ -31,6 +29,13 @@ const DESKTOP: Readonly<Record<string, readonly string[]>> = {
     "reaches the other machines through its own relay only",
   ],
 };
+
+/**
+ * The fewest full lines each screen wraps to at the measure. The join entry's one sentence fills a line and a bit at both
+ * widths, so it has one. (The mesh invite's one sentence fits a single desktop line at the measure, so it has nothing to
+ * measure there.)
+ */
+const LINES: Readonly<Record<string, number>> = { "first-run": 1 };
 
 /** Characters on each rendered line but the last, read from DOM ranges the way the page draws them. */
 const fullLines = (paragraph: Locator) =>
@@ -54,7 +59,12 @@ const fullLines = (paragraph: Locator) =>
 
 for (const [width, screens] of [
   [1440, DESKTOP],
-  [390, { "first-run": ["Doriterm shows the terminals and agents of a mesh."] }],
+  [
+    390,
+    {
+      "first-run": ["Open an invite from a machine you can see"],
+    },
+  ],
 ] as const) {
   for (const [name, phrases] of Object.entries(screens)) {
     test(`${name} at ${width} sets reading prose to a comfortable measure`, async ({ browser }) => {
@@ -89,14 +99,14 @@ for (const [width, screens] of [
           }),
         );
         // fullLines drops each paragraph's last line, so one-line paragraphs measure nothing and a screen that renders
-        // all of them as one line passes every floor below vacuously. The fewest full lines any screen here wraps to is
-        // 2 (pair, one per paragraph); a Linux runner without the named faces draws a wider fallback, which wraps more
-        // lines, not fewer, so this floor holds there too.
+        // all of them as one line passes every floor below vacuously. Every screen must wrap to at least its LINES (2
+        // where unlisted); a Linux runner without the named faces draws a wider fallback, which wraps more lines, not
+        // fewer, so this floor holds there too.
         const screenLines = measured.reduce((total, [, lines]) => total + lines.length, 0);
         expect(
           screenLines,
           `${name} at ${width}: ${measured.map(([phrase, lines]) => `${lines.length} full lines in "${phrase}"`).join(", ")}`,
-        ).toBeGreaterThanOrEqual(2);
+        ).toBeGreaterThanOrEqual(LINES[name] ?? 2);
         for (const [phrase, counts] of measured) {
           for (const count of counts) {
             expect.soft(count, `${phrase}: ${counts.join(",")}`).toBeGreaterThanOrEqual(floor);
