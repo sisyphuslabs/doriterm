@@ -77,7 +77,10 @@ test("interaction advances a waiting tick once, never overlaps the in-flight att
   recovery.begin();
   recovery.failed(rpc("unavailable"));
   recovery.interact();
-  recovery.interact();
+  for (let event = 0; event < 60; event += 1) {
+    recovery.interact();
+    jest.advanceTimersByTime(16);
+  }
   jest.advanceTimersByTime(60_000);
   expect(calls).toBe(1);
   recovery.succeeded();
@@ -122,7 +125,41 @@ test("leaving the pane cancels its queued retry", () => {
   expect(calls).toBe(0);
 });
 
-test("a continuous interaction burst cannot renew an exhausted retry budget", () => {
+test("60 interactions at 16 ms keep the budget and rate limit between fast failures", () => {
+  jest.useFakeTimers();
+  let calls = 0;
+  const times: number[] = [];
+  const recovery = new AttachRecovery(
+    () => {
+      if (!recovery.begin()) return;
+      calls += 1;
+      times.push(Date.now());
+      recovery.failed(rpc("unavailable"));
+    },
+    () => {},
+  );
+  recovery.begin();
+  recovery.failed(rpc("unavailable"));
+  const admitted: boolean[] = [];
+  for (let event = 0; event < 60; event += 1) {
+    admitted.push(recovery.interact());
+    jest.advanceTimersByTime(16);
+  }
+  expect(calls).toBe(3);
+  expect(admitted.filter(Boolean)).toHaveLength(3);
+  let previous: number | undefined;
+  for (const time of times) {
+    if (previous !== undefined) expect(time - previous).toBeGreaterThanOrEqual(250);
+    previous = time;
+  }
+  expect(recovery.state.phase).toBe("failed");
+  jest.advanceTimersByTime(1_001);
+  recovery.interact();
+  expect(calls).toBe(4);
+  recovery.stop();
+});
+
+test("an exhausted episode permits only one fresh interaction cycle after quiet", () => {
   jest.useFakeTimers();
   let calls = 0;
   const recovery = new AttachRecovery(
@@ -135,16 +172,15 @@ test("a continuous interaction burst cannot renew an exhausted retry budget", ()
   );
   recovery.begin();
   recovery.failed(rpc("unavailable"));
-  const admitted: boolean[] = [];
-  for (let event = 0; event < 20; event += 1) {
-    admitted.push(recovery.interact());
-    jest.advanceTimersByTime(50);
-  }
+  jest.advanceTimersByTime(2_101);
   expect(calls).toBe(3);
-  expect(admitted.filter(Boolean)).toHaveLength(3);
-  expect(recovery.state.phase).toBe("failed");
-  jest.advanceTimersByTime(1_001);
-  recovery.interact();
-  expect(calls).toBe(4);
+  expect(recovery.interact()).toBe(true);
+  jest.advanceTimersByTime(2_101);
+  expect(calls).toBe(6);
+  expect(recovery.interact()).toBe(false);
+  jest.advanceTimersByTime(10_000);
+  expect(calls).toBe(6);
+  recovery.manual();
+  expect(calls).toBe(7);
   recovery.stop();
 });

@@ -16,8 +16,10 @@ authentication and invalid-frame codes are terminal. A relay's 4404 means its ho
 a stable fact that the machine does not exist.
 
 Focus, keys, paste, scrolling inside the pane and a pane becoming visible advance its pending retry. The phone
-input row uses the same recovery path. After exhaustion a new interaction burst can start another bounded recovery,
-after at least one second without an interaction. Continuous scrolling or typing cannot renew the exhausted budget.
+input row uses the same recovery path. A leading interaction may advance a pending attempt at most once per 250 ms;
+it never resets the attempt count. After exhaustion, exactly one fresh bounded cycle is allowed after at least one
+second without an interaction. Further input cannot reopen that outage's budget, even after another quiet interval.
+An explicit manual retry, a changed target or a connection that stayed healthy for ten seconds starts a new budget.
 Terminal failures require the explicit Try again button. Requests already in flight are not duplicated.
 Only terminal.attach is retried. No terminal.run, message, file upload or previously sent input is replayed.
 

@@ -43,6 +43,7 @@ export type RecoveryState =
 const DELAYS = [250, 500, 1_000] as const;
 const STABLE_MS = 10_000;
 const INTERACTION_QUIET_MS = 1_000;
+const INTERACTION_COOLDOWN_MS = 250;
 
 /** One pane's retry budget. The callback opens a viewer only; this object never receives a command or input. */
 export class AttachRecovery {
@@ -56,6 +57,8 @@ export class AttachRecovery {
   #manualAt: number | undefined;
   #manualFirst = false;
   #lastInteraction: number | undefined;
+  #lastAcceleratedAt: number | undefined;
+  #interactionCycleUsed = false;
   readonly #retry: () => void;
   readonly #changed: (state: RecoveryState) => void;
 
@@ -97,7 +100,7 @@ export class AttachRecovery {
   failed(cause: unknown): void {
     this.#busy = false;
     this.#manualFirst = false;
-    if (this.#openedAt !== undefined && Date.now() - this.#openedAt >= STABLE_MS) this.#retries = 0;
+    if (this.#openedAt !== undefined && Date.now() - this.#openedAt >= STABLE_MS) this.#resetBudget();
     this.#openedAt = undefined;
     const transient = transientAttachFailure(cause);
     const delay = DELAYS[this.#retries];
@@ -109,16 +112,22 @@ export class AttachRecovery {
     this.#timer = setTimeout(() => this.#next(), delay * (0.8 + Math.random() * 0.4));
   }
 
-  /** User input advances a pending tick; after exhaustion it starts a new bounded episode, only for transient errors. */
+  /**
+   * Input advances a pending attempt at most once per 250 ms. After exhaustion, one fresh bounded cycle is permitted
+   * after 1 s of quiet; further input cannot renew this outage's budget. Manual retry remains available.
+   */
   interact(): boolean {
     const now = Date.now();
     const newBurst = this.#lastInteraction === undefined || now - this.#lastInteraction >= INTERACTION_QUIET_MS;
     this.#lastInteraction = now;
     if (this.#busy || this.#state.phase === "idle" || !this.#state.transient) return false;
+    if (this.#lastAcceleratedAt !== undefined && now - this.#lastAcceleratedAt < INTERACTION_COOLDOWN_MS) return false;
     if (this.#state.phase === "failed") {
-      if (!newBurst) return false;
+      if (!newBurst || this.#interactionCycleUsed) return false;
+      this.#interactionCycleUsed = true;
       this.#retries = 0;
     }
+    this.#lastAcceleratedAt = now;
     this.#source = "interaction";
     this.#next();
     return true;
@@ -131,7 +140,7 @@ export class AttachRecovery {
     this.#manualAt = Date.now();
     this.#manualFirst = true;
     this.#source = "manual";
-    this.#retries = 0;
+    this.#resetBudget();
     this.#next(false);
   }
 
@@ -139,7 +148,7 @@ export class AttachRecovery {
   reset(): void {
     this.#cancelTimer();
     this.#busy = false;
-    this.#retries = 0;
+    this.#resetBudget();
     this.#openedAt = undefined;
     this.#source = "automatic";
     this.#manualFirst = false;
@@ -150,6 +159,12 @@ export class AttachRecovery {
   stop(): void {
     this.#cancelTimer();
     this.#busy = false;
+  }
+
+  #resetBudget(): void {
+    this.#retries = 0;
+    this.#lastAcceleratedAt = undefined;
+    this.#interactionCycleUsed = false;
   }
 
   #next(automatic = true): void {
