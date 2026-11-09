@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { WAITING_ANNOUNCEMENT } from "../src/approval/waiting-keys.ts";
 import { agentRow, endAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { hcOn } from "./machine-switch.ts";
@@ -37,6 +38,8 @@ test("desktop: Esc, an arrow and Enter reach the waiting agent, and the strip go
     await page.goto("/");
     await agentRow(page, "asker-desk", false).click({ timeout: 20_000 });
     await expect(strip(page)).toBeVisible({ timeout: 15_000 });
+    // Its appearance is announced through the pane's polite region (#1555).
+    await expect(page.locator(`[data-approval-live="${address}"]`)).toHaveText(WAITING_ANNOUNCEMENT);
     await strip(page).getByRole("button", { name: "Escape" }).click();
     await strip(page).getByRole("button", { name: "Arrow up" }).click();
     await strip(page).getByRole("button", { name: "Enter" }).click();
@@ -47,14 +50,18 @@ test("desktop: Esc, an arrow and Enter reach the waiting agent, and the strip go
   }
 });
 
-test("an agent whose prompts get a card has no strip", async ({ page }) => {
+test("a Claude Code agent whose screen draws no card gets the strip (#1555)", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const address = startWaiting("asker-card", "claude-code");
   try {
     await page.goto("/");
     await agentRow(page, "asker-card", false).click({ timeout: 20_000 });
     await expect(page.locator(`[data-terminal="${address}"]`)).toContainText("Continue?", { timeout: 15_000 });
-    await expect(strip(page)).toHaveCount(0);
+    await expect(strip(page)).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(`[data-approval="${address}"]`)).toHaveCount(0);
+    await strip(page).getByRole("button", { name: "Enter" }).click();
+    await expect(page.locator(`[data-terminal="${address}"]`)).toContainText("got:", { timeout: 10_000 });
+    await expect(strip(page)).toHaveCount(0, { timeout: 10_000 });
   } finally {
     endAgent("host", address);
   }
