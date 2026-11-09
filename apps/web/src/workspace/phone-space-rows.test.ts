@@ -1,7 +1,7 @@
 import type { Terminal } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
 import type { ListedSpace } from "./model.ts";
-import { spaceSummary, spaceTabRows } from "./phone-space-rows.ts";
+import { spaceSummary, spaceTabRows, switchTabRows } from "./phone-space-rows.ts";
 
 const terminal = (address: string, fields: Partial<Terminal> = {}): Terminal => ({
   address,
@@ -25,6 +25,43 @@ const space = (tabPanes: readonly (readonly string[])[], tabNames: readonly stri
   tabPanes,
   tabNames,
   dir: "/work/website",
+});
+
+const shown = (rows: ReturnType<typeof switchTabRows>) => rows.map((row) => [row.shown.address, row.name, row.closes]);
+
+describe("the switch sheet's rows", () => {
+  test("twins are found by the pane each row shows, so a split tab showing a second claude says which tab", () => {
+    // Tab 1 shows claude; unnamed tab 2 is split into codex and claude and is showing its claude pane.
+    const sheet = space([["a"], ["b1", "b2"]], ["", ""]);
+    const panes = [
+      terminal("a", { name: "claude" }),
+      terminal("b1", { name: "codex" }),
+      terminal("b2", { name: "claude" }),
+    ];
+    expect(shown(switchTabRows(sheet, panes, "b2", false))).toEqual([
+      ["a", "claude", "claude, tab 1"],
+      ["b2", "claude", "claude, tab 2"],
+    ]);
+    // Showing its codex pane instead, tab 2 no longer reads like tab 1: each Close says only its name.
+    expect(shown(switchTabRows(sheet, panes, "a", false))).toEqual([
+      ["a", "claude", "claude"],
+      ["b1", "codex", "codex"],
+    ]);
+  });
+
+  test("with Needs you, a row is the pane that waits on the person, and twins are counted among the rows shown", () => {
+    const sheet = space([["a"], ["b1", "b2"], ["c"]], ["", "", ""]);
+    const panes = [
+      terminal("a", { name: "claude", status: said("blocked", "Allow?") }),
+      terminal("b1", { name: "codex" }),
+      terminal("b2", { name: "claude", status: said("blocked", "Allow?") }),
+      terminal("c", { name: "claude" }),
+    ];
+    expect(shown(switchTabRows(sheet, panes, "c", true))).toEqual([
+      ["a", "claude", "claude, tab 1"],
+      ["b2", "claude", "claude, tab 2"],
+    ]);
+  });
 });
 
 describe("a space screen's rows", () => {
