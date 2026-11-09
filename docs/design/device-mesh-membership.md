@@ -42,7 +42,7 @@ No merged slice records a security-protocol deviation from revision 7.
 | §5 (`"roster"` stream, §5.1-§5.4), §9 host side (committed join code, both confirmations, resume), §10.1, §10.2, §10.5, §10.6, §11 (a paired device is admitted on the roster stream), §14 item 1 | #1427, landed in #1446 | `e14b4cc4`             |
 | §4.4, §4.5, §6, §7, §7.1, §9 joiner side, §10.3, §10.4, §11, §14 item 2                                                                                                                           | #1446                  | `e14b4cc4`             |
 | §4.5: the machine list keeps a row per member, and a stopped member is one offline row                                                                                                            | #1397, #1416           | `20c7dc47`, `19ce7b57` |
-| §7.1: an installed app says why it is unpaired, and joins in place                                                                                                                                | #1411                  | `2e43de10`             |
+| §7.1 precursor: an installed app says why it is unpaired, and pairs in place; the §7.1 invite join over the pasteboard is #1446                                                                   | #1411                  | `2e43de10`             |
 | §8, §14 item 3: a browser reaches every host through the relay; the shell keeps direct-then-relay to a paired host                                                                                | #1422                  | `890811f3`             |
 | §14 e2e: the page's own WebCrypto and IndexedDB join a mesh over a real relay at phone width                                                                                                      | #1423                  | `124638e6`             |
 
@@ -61,7 +61,7 @@ Still open:
 - #942 still needs the closing measurement on two real machines with a merged `dev` build (§14, "Acceptance on two real
   machines").
 - #1297: the Playwright fake relay holds one host uplink, so the web specs cannot dial a joiner.
-- Review follow-ups: #1419 (this design's four implementation nits), #1473, #1483, #1492, #1493, #1435 and #1436.
+- Review follow-ups: #1419 (this design's four implementation nits), #1473, #1483, #1492, #1493, #1435 item 1 (the shell's rendered Direct-label test) and #1436.
 
 ## 1. The gap, measured
 
