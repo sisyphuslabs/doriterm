@@ -65,6 +65,44 @@ test("HIGH 3(a): a Hangul syllable composed with predictions on is predicted, th
   expect(await judgedWrong(page)).toEqual([]);
 });
 
+test("a reattach after a dropped link starts the predictor over: the next key waits for its echo (#1640 review)", async ({
+  page,
+}) => {
+  const link = await routeHcSocket(page);
+  await predictionMode(page, "always");
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await untilShellReads(page, terminal);
+  await echoed(page, terminal, "e");
+  // Before the drop the epoch is confirmed: a key the host has not echoed yet is drawn at once.
+  let release = link.holdFromHost("");
+  await page.keyboard.type("a");
+  await expect(terminal.locator(".term-prediction-cell")).toHaveText(["a"]);
+  release();
+  await expect(prompt(terminal).filter({ hasText: "$ ea" })).toHaveCount(1, { timeout: 15_000 });
+
+  await page.evaluate(() => Reflect.set(window, "__dorifaceAttachLog", []));
+  await link.drop(true);
+  link.restore();
+  await expect
+    .poll(() => page.evaluate(() => (Reflect.get(window, "__dorifaceAttachLog") as string[]).length), {
+      timeout: 15_000,
+    })
+    .toBeGreaterThan(0);
+  await expect(prompt(terminal).filter({ hasText: "$ ea" })).toHaveCount(1, { timeout: 15_000 });
+
+  // A new stream is a new epoch (Predictor.reset): what the old one confirmed says nothing about this one, so the next
+  // key is drawn only once one of its keys is echoed.
+  release = link.holdFromHost("");
+  await page.keyboard.type("b");
+  // One read after the frame that would draw it, not a retrying wait: a drawn cell expires on its own a second later.
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  expect(await terminal.locator(".term-prediction-cell").count()).toBe(0);
+  release();
+  await expect(prompt(terminal).filter({ hasText: "$ eab" })).toHaveCount(1, { timeout: 15_000 });
+});
+
 test("HIGH 1: 200 keys over a jittered, order-preserving link draw predictions and judge none wrong (#1439)", async ({
   page,
 }) => {

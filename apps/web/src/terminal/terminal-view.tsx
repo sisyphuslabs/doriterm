@@ -119,6 +119,9 @@ export function TerminalView(props: TerminalViewProps) {
 
   const onUnsafePaste = useCallback((pending: PendingPaste) => setPaste(pending), []);
   const predict = useRef<((data: TerminalInput) => void) | null>(null);
+  // Each stream, first or after a reconnect, starts the predictor over: what it predicted for the last one says nothing
+  // about this one (Predictor.reset).
+  const streamStarted = useRef<(() => void) | null>(null);
   const input = useTerminalInput({
     wt,
     handle,
@@ -151,9 +154,11 @@ export function TerminalView(props: TerminalViewProps) {
     if (wt === null || seam !== null) return undefined;
     const made = new PredictorView(wt, { linkReady, mode: () => predictModeNow.current });
     predict.current = (data) => made.typed(data);
+    streamStarted.current = () => made.reset();
     setPredictor(made);
     return () => {
       predict.current = null;
+      streamStarted.current = null;
       made.dispose();
       setPredictor(null);
     };
@@ -201,11 +206,8 @@ export function TerminalView(props: TerminalViewProps) {
     focusWhenFree,
     onEnd,
     onEnded,
+    onStream: streamStarted,
   });
-  // Each attach starts the predictor over: what it predicted for the last stream says nothing about this one.
-  useEffect(() => {
-    if (!attachment.opening) predictor?.reset();
-  }, [predictor, attachment.opening]);
 
   if (error !== null) return <p className="p-4 text-sm text-destructive">{error}</p>;
   if (attachment.restarting) {
