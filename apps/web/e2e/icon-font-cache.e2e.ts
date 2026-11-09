@@ -70,8 +70,18 @@ test("the worker stores the icon font its build names, and not an earlier build'
   expect((await request.get(earlier)).ok()).toBe(true);
 
   await page.goto("/settings");
+  // `activated` is reached only after the activate handler's prune has settled, so the cache filled below is not
+  // pruned under the test; the controller is what routes the page's fetches through the worker.
   await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
+    const registration = await navigator.serviceWorker.ready;
+    const worker = registration.active;
+    if (worker !== null && worker.state !== "activated") {
+      await new Promise<void>((resolve) => {
+        worker.addEventListener("statechange", () => {
+          if (worker.state === "activated") resolve();
+        });
+      });
+    }
     if (navigator.serviceWorker.controller !== null) return;
     await new Promise<void>((resolve) => {
       navigator.serviceWorker.addEventListener("controllerchange", () => resolve(), { once: true });
@@ -83,7 +93,7 @@ test("the worker stores the icon font its build names, and not an earlier build'
       const cache = await caches.open(name);
       await Promise.all((await cache.keys()).map((entry) => cache.delete(entry)));
       // Both go through the worker's icon font route, as a page's @font-face load does.
-      for (const url of urls) await (await fetch(url, { cache: "no-store" })).arrayBuffer();
+      await Promise.all(urls.map(async (url) => (await fetch(url, { cache: "no-store" })).arrayBuffer()));
       return (await cache.keys()).map((entry) => new URL(entry.url).pathname);
     },
     { name: FONT_CACHE, urls: [current, earlier] },
