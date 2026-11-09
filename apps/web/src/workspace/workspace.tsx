@@ -199,7 +199,7 @@ export function Workspace({ connection }: WorkspaceProps) {
       },
       // The first run's agent step completes once the terminal really started, not when it was asked for (#668).
       (address) => {
-        guideStore.opened(address);
+        guideStore.opened(address, ids);
         opened(address);
       },
     );
@@ -212,7 +212,7 @@ export function Workspace({ connection }: WorkspaceProps) {
     const near = terminals.find((terminal) => terminal.state === "live" && space?.addresses.includes(terminal.address));
     layout.selectSpace(key);
     runs.start(runParamsFor(near, space), (address) => {
-      guideStore.opened(address);
+      guideStore.opened(address, ids);
       openedNow.current(address);
     });
   };
@@ -378,6 +378,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                       <PhoneShell
                         connection={connection}
                         terminals={sessions}
+                        ids={ids}
                         open={phoneOpen}
                         space={phoneSpace}
                         panes={phonePanes}
@@ -401,6 +402,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                       <DesktopShell
                         connection={connection}
                         terminals={sessions}
+                        ids={ids}
                         loaded={fed.loaded}
                         layout={layout}
                         spaceKeys={spaceKeys}
