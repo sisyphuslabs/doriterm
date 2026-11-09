@@ -35,6 +35,7 @@ The theme input is a herdr-app terminal palette (background, foreground, selecti
 | `--selected`                                                    | selected                                      | selected row, pressed toggle                 |
 | `--foreground`                                                  | foreground                                    | primary text                                 |
 | `--muted-foreground`                                            | muted (AA-guarded)                            | secondary text, every caption                |
+| `--disabled-glyph`                                              | muted dimmed 1.7x toward raised (3:1 floor)   | a NumberStepper button at its bound          |
 | `--dim`                                                         | dim                                           | decoration only, never text                  |
 | `--primary` / `--primary-foreground`                            | solid / solid_foreground                      | the one primary button                       |
 | `--brand` / `--brand-foreground`                                | accent / accent_foreground                    | switch on, links                             |

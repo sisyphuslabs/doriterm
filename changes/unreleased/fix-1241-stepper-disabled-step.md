@@ -1,0 +1,4 @@
+### Settings
+
+- A number stepper's button at its limit now looks clearly unavailable beside the other one in every theme, while its
+  sign stays readable. (#PR)
