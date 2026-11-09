@@ -28,10 +28,12 @@ export function splitIconFonts(
 
 /**
  * Whether the icon font at `url` is this build's own copy, the only kind the worker stores. An earlier release's name,
- * still asked for by a page left open on the old build, is answered from the network and not kept (#1166).
+ * still asked for by a page left open on the old build, is answered from the network and not kept (#1166). A build that
+ * names no icon font has lost it from its list (see `pruneIconFonts`), so it keeps what it fetches rather than fetching
+ * the font again for every page.
  */
 export function keepsIconFont(url: URL, iconFonts: ReadonlySet<string>): boolean {
-  return iconFonts.has(url.pathname);
+  return iconFonts.size === 0 || iconFonts.has(url.pathname);
 }
 
 /**

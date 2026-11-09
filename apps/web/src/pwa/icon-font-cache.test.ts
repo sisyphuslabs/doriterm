@@ -65,4 +65,8 @@ describe("keepsIconFont", () => {
   test("refuses an earlier release's copy that a page open on the old build may still ask for", () => {
     expect(keepsIconFont(new URL("/assets/symbols-nerd-font-mono-0ld0ld0l.woff2", BASE), iconFonts)).toBe(false);
   });
+
+  test("keeps what it fetches when the build names no icon font, as pruning keeps what is there", () => {
+    expect(keepsIconFont(new URL("/assets/symbols-nerd-font-mono-Dk1.woff2", BASE), new Set())).toBe(true);
+  });
 });
