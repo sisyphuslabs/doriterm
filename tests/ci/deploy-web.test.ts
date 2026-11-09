@@ -48,7 +48,8 @@ test("only what deploys dev to production shares dev's concurrency group, and de
 // #929, #1143: probe-web.ts wants this build's index.html byte for byte, so a second staging deploy before the probe
 // ends fails it, or passes it on the other run's build. queue: max keeps every waiting deploy, where a group's single
 // pending slot would let a newer run cancel a pending dev deploy (#868, #884).
-test("every run deploys and probes staging in one queue, and no run cancels another's staging deploy", () => {
+// A newer push to one pull request still cancels that pull request's own older run (the run-level group, tested above).
+test("every run deploys and probes staging in one queue, and no other pull request's or dev's run cancels it", () => {
   const { staging } = workflow.jobs;
   if (staging?.concurrency === undefined) throw new Error("deploy-web.yml's staging job has no concurrency group");
   const { concurrency } = staging;

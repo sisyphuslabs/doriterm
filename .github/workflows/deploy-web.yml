@@ -53,7 +53,8 @@ jobs:
     environment: staging
     # Every run's staging deploy and its probes take turns: the probe wants this build's index.html byte for byte, so a
     # second deploy before it ends fails it or passes it on the other run's build (#929, #1143). queue: max keeps up to
-    # 100 waiting deploys in order, so unlike the single pending slot above no run cancels another's (#868).
+    # 100 waiting deploys in order, so unlike the single pending slot above no run cancels another run's deploy (#868);
+    # only a newer push to the same pull request still cancels that pull request's own older run, as the group above says.
     concurrency:
       group: deploy-web-staging
       queue: max
