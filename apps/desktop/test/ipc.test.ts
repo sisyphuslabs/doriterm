@@ -6,6 +6,7 @@ import { Channel } from "../src/shared/bridge.ts";
 import { ipcHandlers, type IpcReplySender, type IpcSender } from "../src/main/ipc-handlers.ts";
 import { DictationHost } from "../src/main/dictation.ts";
 import { LocalHostStartError } from "../src/main/local-host.ts";
+import { readNoticeAuthorization } from "../src/main/notice-authorization.ts";
 import type { DesktopNotice } from "../src/shared/bridge.ts";
 
 const endpoint = { url: "ws://127.0.0.1:1/v1/hc", token: "t".repeat(43) };
@@ -44,7 +45,7 @@ const setup = (
       background.push(enabled);
     },
     noticesSupported: () => true,
-    noticePermission: () => "not-determined",
+    noticePermission: () => readNoticeAuthorization({}, { noticeAuthorization: async () => "not-determined" }),
     showNotice: async (notice) => {
       notices.push(notice);
       return notice.kind === "test" ? { accepted: false, reason: "muted" } : { accepted: true };

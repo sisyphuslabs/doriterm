@@ -36,7 +36,7 @@ export type FrameTimer = (run: () => void) => () => void;
 /** Runs a callback once `ms` from now; returns how to cancel it. */
 export type Timer = (run: () => void, ms: number) => () => void;
 
-const nextFrame: FrameTimer = (run) => {
+export const nextFrame: FrameTimer = (run) => {
   const id = requestAnimationFrame(run);
   return () => cancelAnimationFrame(id);
 };
@@ -104,6 +104,7 @@ export class OutputPacer {
   #openedAt: number | null = null;
   #replay: Replay | null = null;
   #catchUp: CatchUp | null = null;
+  readonly #written = new Set<() => void>();
 
   constructor(
     write: (bytes: Uint8Array) => void,
@@ -132,6 +133,14 @@ export class OutputPacer {
   /** Whether output is still waiting to be written: queued bytes, a frame or drain booked, or a replay held. */
   get busy(): boolean {
     return this.#queue.length > 0 || this.#cancel !== null || this.#replay !== null;
+  }
+
+  /** Runs `listener` after each batch is written to the terminal; returns how to stop. */
+  onWrite(listener: () => void): () => void {
+    this.#written.add(listener);
+    return () => {
+      this.#written.delete(listener);
+    };
   }
 
   /** Out of view: nothing is written. Back in view: what waited is written from the next frame. */
@@ -283,6 +292,7 @@ export class OutputPacer {
     const batch = parts.length === 1 ? (parts[0] ?? new Uint8Array()) : concat(parts, size);
     this.#write(batch);
     for (const [credit, bytes] of credits) credit(bytes);
+    for (const listener of this.#written) listener();
     const replay = this.#replay;
     if (replay === null) return size;
     replay.written += size;
