@@ -115,10 +115,32 @@ export function painted(button: Element, ask: Ask): Painted {
   }
 }
 
-/** Measures once the button's colour transitions have settled, with the pointer off it. */
+/**
+ * Measures once every transition that paints the button has settled, with the pointer off it: its own, and its
+ * ancestors', such as a menu popup's enter fade (#1362). Base UI starts that fade a frame after the popup mounts, so each
+ * pass waits two frames before it looks; a finite animation on the button or an ancestor sends it round again.
+ */
 export async function measure(page: Page, button: Locator, ask: Ask = {}): Promise<Painted> {
   await page.mouse.move(0, 0);
-  await button.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)));
+  await button.evaluate(async (element) => {
+    // oxlint-disable-next-line unicorn/consistent-function-scoping -- page.evaluate sends this function as source, so its helpers live inside it
+    const frame = (): Promise<number> => new Promise((resolve) => requestAnimationFrame(resolve));
+    for (;;) {
+      // oxlint-disable-next-line no-await-in-loop -- each pass looks only after the frames that start a pending fade
+      await frame();
+      // oxlint-disable-next-line no-await-in-loop -- as above
+      await frame();
+      const settling = document.getAnimations().filter((animation) => {
+        const effect = animation.effect;
+        if (!(effect instanceof KeyframeEffect) || effect.target === null) return false;
+        return effect.target.contains(element) && effect.getComputedTiming().endTime !== Infinity;
+      });
+      if (settling.length === 0) return;
+      // A cancelled transition rejects `finished`; the next pass looks again either way.
+      // oxlint-disable-next-line no-await-in-loop -- as above
+      await Promise.allSettled(settling.map((animation) => animation.finished));
+    }
+  });
   return button.evaluate(painted, ask);
 }
 
