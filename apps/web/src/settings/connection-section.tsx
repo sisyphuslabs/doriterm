@@ -43,8 +43,15 @@ export function ConnectionSection() {
           value={draft[id]}
           className="w-full sm:w-64"
           onValueChange={(value: string) => setDraft((prev) => ({ ...prev, [id]: value }))}
-          onBlur={() => {
-            if (draft[id] !== connectionStore.settings[id]) commit({ [id]: draft[id] });
+          onBlur={(event) => {
+            const field = event.currentTarget;
+            // Settings moving between its dialog and its sheet blurs this field and hands focus straight back (#1160):
+            // that blur is the move's, not the reader leaving, so it must not save a draft they are still typing. A
+            // real blur has focus elsewhere by the first microtask, as the key recorder's own check finds (#859).
+            queueMicrotask(() => {
+              if (document.activeElement !== field && draft[id] !== connectionStore.settings[id])
+                commit({ [id]: draft[id] });
+            });
           }}
           onKeyDown={(event) => {
             if (event.key === "Enter") commit({ [id]: draft[id] });
