@@ -10,8 +10,6 @@ export interface HerdrDifference {
 }
 
 const APP_MENU = "the desktop app's macOS app menu carries it (a standard menu role); a browser keeps it for itself";
-const NO_IMAGE_PASTE =
-  "Ctrl+V is left to the terminal's own key handling; a pasted image already reaches the terminal's machine through the paste itself (#742), and Paste image can be bound in Settings > Keybindings";
 const NO_MODS = "Doriterm has no mods, so there is no picker mod to open";
 const NO_LAYOUTS = "Doriterm has no layout files to switch between";
 
@@ -26,12 +24,10 @@ export const HERDR_APP_DIFFERENCES: Readonly<Record<Platform, readonly HerdrDiff
     { chord: "cmd-alt-h", doriface: null, reason: APP_MENU },
     { chord: "cmd-shift-l", doriface: null, reason: NO_LAYOUTS },
     { chord: "cmd-p", doriface: null, reason: NO_MODS },
-    { chord: "ctrl-v", doriface: null, reason: NO_IMAGE_PASTE },
   ],
   other: [
     { chord: "ctrl-shift-k", doriface: null, reason: NO_MODS },
     { chord: "ctrl-shift-l", doriface: null, reason: NO_LAYOUTS },
-    { chord: "ctrl-v", doriface: null, reason: NO_IMAGE_PASTE },
   ],
 };
 

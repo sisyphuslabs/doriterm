@@ -63,6 +63,8 @@ const MAC: readonly [string, string][] = [
   ["super+0", "app.zoom_reset"],
   ["super+c", "terminal.copy"],
   ["super+v", "terminal.paste"],
+  // herdr-app's Ctrl+V: the clipboard's image as a file on the terminal's machine, else ^V to the program.
+  ["ctrl+v", "terminal.paste_image"],
   ["super+a", "terminal.select_all"],
   ["super+k", "terminal.clear"],
   ["super+f", "terminal.search"],
@@ -150,6 +152,7 @@ const OTHER: readonly [string, string][] = [
   ["ctrl+insert", "terminal.copy"],
   ["ctrl+shift+v", "terminal.paste"],
   ["shift+insert", "terminal.paste"],
+  ["ctrl+v", "terminal.paste_image"],
   ["ctrl+shift+a", "terminal.select_all"],
   ["ctrl+shift+f", "terminal.search"],
   ["shift+home", "terminal.scroll:top"],

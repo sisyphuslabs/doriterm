@@ -47,10 +47,12 @@ for (const width of [390, 1440] as const) {
               .soft(page.getByText("Types at the cursor. Return in the terminal sends it."))
               .toHaveCSS("font-size", secondarySize);
           } else {
-            const explanations = page.getByText("A focused terminal program keeps this key.", { exact: true });
-            await expect(explanations.first()).toBeVisible();
-            const sentences = await explanations.all();
-            await Promise.all(sentences.map((sentence) => expect.soft(sentence).toHaveCSS("font-size", secondarySize)));
+            // A row's description, under its title: the action's id here.
+            const description = page
+              .locator('[id="keybinding-space.select:1"]')
+              .locator("xpath=following-sibling::p[1]");
+            await expect(description).toBeVisible();
+            await expect.soft(description).toHaveCSS("font-size", secondarySize);
           }
         });
       }
