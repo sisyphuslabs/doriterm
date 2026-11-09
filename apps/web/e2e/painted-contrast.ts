@@ -133,6 +133,8 @@ export async function measure(page: Page, button: Locator, ask: Ask = {}): Promi
       const settling = document.getAnimations().filter((animation) => {
         const effect = animation.effect;
         if (!(effect instanceof KeyframeEffect) || effect.target === null) return false;
+        // A finished animation that holds its last frame (`forwards` fill) is settled: waiting on it would never end.
+        if (animation.playState === "finished") return false;
         return effect.target.contains(element) && effect.getComputedTiming().endTime !== Infinity;
       });
       if (settling.length === 0) return;

@@ -19,3 +19,20 @@ test("a reading taken while the item's popup fades in waits for the fade to fini
   const reading = await measure(page, page.getByRole("menuitem"));
   expect(reading.label).toBe("#e0e0e0 on #242321");
 });
+
+test("a fade that has finished but holds its last frame does not keep the reading waiting", async ({ page }) => {
+  test.setTimeout(15_000);
+  await page.setContent(`
+    <style>body { margin: 0; background: #242321; } #popup { background: #242321; color: #e0e0e0; }</style>
+    <div id="popup"><div role="menuitem">Terminal</div></div>
+  `);
+  // A `forwards` fill keeps a finished animation in document.getAnimations(), still in effect, with `finished` resolved.
+  await page.evaluate(async () => {
+    const fade = document
+      .querySelector("#popup")
+      ?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 50, fill: "forwards" });
+    await fade?.finished;
+  });
+  const reading = await measure(page, page.getByRole("menuitem"));
+  expect(reading.label).toBe("#e0e0e0 on #242321");
+});
