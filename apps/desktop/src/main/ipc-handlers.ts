@@ -65,7 +65,7 @@ export interface IpcDeps {
   readonly installHc: (onPhase: (phase: string) => void) => Promise<HcInstalled>;
   readonly noticesSupported: () => boolean;
   /** The OS's standing answer about this app's notifications; `unknown` where this shell cannot read one. */
-  readonly noticePermission: () => NoticeAuthorization;
+  readonly noticePermission: () => NoticeAuthorization | Promise<NoticeAuthorization>;
   /** Shows one notification and answers whether the OS took it. */
   readonly showNotice: (notice: DesktopNotice) => Promise<NoticeAnswer>;
   /** Keeps the page's saved Direct address, checked by the shell; a change drops every forward. */
