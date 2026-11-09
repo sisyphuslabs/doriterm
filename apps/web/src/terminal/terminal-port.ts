@@ -36,15 +36,17 @@ const fieldOf = (handle: RefObject<TerminalHandle | null>): HTMLTextAreaElement 
  * Lets the field under this terminal raise the soft keyboard, before the focus that reads it. On a surface that has one
  * the field carries `inputmode="none"`, so a press in the terminal raises nothing and only the keys ask for the keyboard
  * (#1375); a field that already has the focus is let go first, since a browser raises no keyboard for a focus it already
- * has. A surface with no soft keyboard to raise is left alone, and so is a hardware keyboard: `inputmode` is the soft
- * keyboard's own.
+ * has. The mode changes before that: iOS reads an `inputmode` change only on the focused field, and a field let go and
+ * focused again in one press keeps the input session it had, so a field a tap in the terminal focused at `none` would
+ * come back at `none` and raise nothing (#1941). A surface with no soft keyboard to raise is left alone, and so is a
+ * hardware keyboard: `inputmode` is the soft keyboard's own.
  */
 export function askingForKeyboard(handle: RefObject<TerminalHandle | null>, softKeyboard: boolean): void {
   if (!softKeyboard) return;
   const field = fieldOf(handle);
   if (field === null) return;
-  if (field.ownerDocument.activeElement === field) field.blur();
   field.inputMode = "text";
+  if (field.ownerDocument.activeElement === field) field.blur();
 }
 
 /**

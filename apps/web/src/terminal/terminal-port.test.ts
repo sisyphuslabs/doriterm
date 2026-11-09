@@ -46,8 +46,15 @@ describe("the soft keyboard a focus may raise (#1375)", () => {
   test("a field that already has the focus is let go first: a browser raises no keyboard for a focus it has", () => {
     const { handle, field, order } = withField(true);
     askingForKeyboard(handle, true);
-    expect(order).toEqual(["blur:"]);
+    expect(order).toEqual(["blur:text"]);
     expect(field.inputMode).toBe("text");
+  });
+
+  test("a focused field asks for the keyboard before it is let go: iOS reads no mode set on a field it lost (#1941)", () => {
+    const { handle, field, order } = withField(true);
+    field.inputMode = "none";
+    askingForKeyboard(handle, true);
+    expect(order).toEqual(["blur:text"]);
   });
 
   test("a surface with no soft keyboard to raise, and a terminal whose field is not there yet, are left alone", () => {
