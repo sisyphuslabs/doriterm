@@ -1,6 +1,7 @@
 import { devices, type Page } from "@playwright/test";
 import { endAgent, startShell } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
+import { hcOn } from "./machine-switch.ts";
 import { fakeSoftKeyboard, key, keysBar, showKeyboard } from "./phone-key-bar.ts";
 
 // A touch phone: the keyboard toggle has to follow the keyboard itself, not the terminal's focus (#274), and opening a
@@ -87,6 +88,67 @@ test("a session picked from Switch session takes the keyboard once: left by the 
     await expect(picked).toContainText("$", { timeout: 15_000 });
     await expect(picked.locator("textarea")).not.toBeFocused();
     await expectDown(page);
+  } finally {
+    endAgent("host", first);
+    endAgent("host", second);
+  }
+});
+
+test("Show keyboard on a session picked from the keys bar still asks for the keyboard, and the program hears no focus-out (#1519)", async ({
+  page,
+}) => {
+  const first = startShell("host", "keysone");
+  // A program that asks for focus reports (mode 1004) and shows what it is sent: `cat -v` writes a focus-out as ^[[O.
+  const report = "printf 'reporting\\n\\033[?1004h'; exec cat -v";
+  const out = hcOn("host", ["run", "--bg", "--name", "keysfocus", "--label", "space=api", "--", "sh", "-c", report]);
+  const second = String((JSON.parse(out) as { address: string }).address);
+  try {
+    // A keyboard that no focus raises by itself, as iOS treats a focus outside a tap: the picked view focuses its
+    // field for typing as it attaches, after the tap, and no keyboard comes up.
+    await fakeSoftKeyboard(page, { raiseOnFocus: false });
+    await page.addInitScript(() => {
+      const seen: string[] = [];
+      Object.assign(window, { fieldFocus: seen });
+      document.addEventListener("focusout", (event) => {
+        if (event.target instanceof HTMLTextAreaElement && event.target.closest("[data-terminal]")) seen.push("out");
+      });
+    });
+    await page.goto("/");
+    const one = page.getByRole("button", { name: /keysone/ }).first();
+    await expect(one).toBeVisible({ timeout: 20_000 });
+    await one.click();
+    await expect(page.locator(`[data-terminal="${first}"]`)).toContainText("$", { timeout: 15_000 });
+    await key(page, "Show keyboard").click();
+    await showKeyboard(page, 336);
+    await expectUp(page);
+
+    await key(page, "Switch session").click();
+    await page
+      .getByRole("menu")
+      .getByRole("menuitem", { name: /keysfocus/ })
+      .click();
+    const picked = page.locator(`[data-terminal="${second}"]`);
+    const field = picked.locator("textarea");
+    await expect(picked).toContainText("reporting", { timeout: 15_000 });
+    await expect(field).toBeFocused();
+    await expect(field).toHaveAttribute("inputmode", "text");
+    await expectDown(page);
+    // What the program was told so far ends in a line of its own, so the press's reports, if any, come after it.
+    await page.keyboard.type("before\r");
+    await expect(picked).toContainText("before");
+    const outs = async (): Promise<number> => ((await picked.textContent()) ?? "").split("^[[O").length - 1;
+    const outsBefore = await outs();
+
+    // The press lets the field go and takes it again inside the tap, which is what raises a keyboard on iOS; the
+    // program is not told the terminal lost the focus.
+    await page.evaluate(() => (Reflect.get(window, "fieldFocus") as string[]).splice(0));
+    await key(page, "Show keyboard").click();
+    await expect(field).toBeFocused();
+    await expect(field).toHaveAttribute("inputmode", "text");
+    expect(await page.evaluate(() => Reflect.get(window, "fieldFocus") as string[])).toEqual(["out"]);
+    await page.keyboard.type("done\r");
+    await expect(picked).toContainText("done");
+    expect(await outs()).toBe(outsBefore);
   } finally {
     endAgent("host", first);
     endAgent("host", second);
