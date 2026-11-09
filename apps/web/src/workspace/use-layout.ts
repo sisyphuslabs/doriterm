@@ -281,13 +281,20 @@ export function useLayout(
       // asked for as a new space, starts a space of its own, never the first space of the document.
       const near = !newSpace && active !== null && !active.transient && active.machine === machine ? active : null;
       const space = { id: near?.space ?? freshId("spc"), folder: "" };
-      void layout.edit((doc) => {
-        const first = kept === null ? doc : addDocTab(doc, space, { id: kept.id, name: "", root: kept.root });
-        return addDocTab(first, space, tab, kept?.id ?? near?.id);
-      });
+      void layout
+        .edit((doc) => {
+          const first = kept === null ? doc : addDocTab(doc, space, { id: kept.id, name: "", root: kept.root });
+          return addDocTab(first, space, tab, kept?.id ?? near?.id);
+        })
+        .then((saved) => {
+          // A write the machine refused (its line down) is told by `failed`; the terminal stays on this screen as a loose
+          // tab, kept mounted when the document read back without it (keepMounts), instead of going with that read.
+          if (!saved) setLoose((prev) => (prev.includes(address) ? prev : [...prev, address]));
+          return saved;
+        });
       show(tabKey(layout.machineId, id), pane);
     },
-    [active, keepApart, keepHere, layoutOf, show],
+    [active, keepApart, keepHere, layoutOf, setLoose, show],
   );
 
   const openTerminal = useCallback(

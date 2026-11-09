@@ -152,6 +152,23 @@ describe("keepMounts: a document tab that takes over a terminal shown alone keep
     expect(pick(tabs, { ...view, active: "gone" }).active?.key).toBe("core/tb0");
   });
 
+  test("a loose tab that outlives the document tab that showed its terminal keeps that tab's keys and its selection", () => {
+    const ids = layoutIds([here]);
+    const key = looseKey("box/t2", ids);
+    const mounts = newMounts();
+    keepMounts([docTab("core/tb0", "p0", "t1"), docTab("box/tb1", "p1", "box/t2")], mounts);
+    // The document read back without box/tb1 (its write was never saved); the terminal stays here as a loose tab.
+    const tabs = keepMounts([docTab("core/tb0", "p0", "t1"), { ...shownAlone("box/t2"), key, id: key }], mounts);
+    expect(tabs[1]?.mount).toBe("box/tb1");
+    expect(tabs[1]?.panes[0]?.mount).toBe("p1");
+    const view = { active: "box/tb1", focused: { "box/tb1": "p1" }, zoomed: {}, spaces: {}, seen: {} };
+    expect(pick(tabs, view).active?.key).toBe(key);
+    // Written again later (a retry that saved), the document tab takes the same keys back: the view never moves.
+    const [, written] = keepMounts([docTab("core/tb0", "p0", "t1"), docTab("box/tb7", "p7", "box/t2")], mounts);
+    expect(written?.mount).toBe("box/tb1");
+    expect(written?.panes[0]?.mount).toBe("p1");
+  });
+
   test("two document tabs never share the lone tab's mount", () => {
     const mounts = newMounts();
     keepMounts([shownAlone("box/t2")], mounts);
