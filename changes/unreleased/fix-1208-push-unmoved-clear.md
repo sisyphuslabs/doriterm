@@ -1,0 +1,3 @@
+### Settings
+
+- Successfully turning notifications on or off clears an earlier failure to move notifications to another host.
