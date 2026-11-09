@@ -11,6 +11,7 @@ import { onlyThisMachine } from "./machines.ts";
 import type { ListedSpace, Session } from "./model.ts";
 import { PhoneSpace, PhoneSpaceLoading } from "./phone-space.tsx";
 import { useArrivalReady } from "./use-arrival-ready.ts";
+import { useKeptScroll } from "./kept-scroll.ts";
 import { ConnectionLine, ConnectionPathItem, ReconnectStatus } from "./reconnect-status.tsx";
 import { usePendingUpdate } from "../update/update-store.ts";
 import { FirstRunGuideCard } from "../pair/first-run-guide-card.tsx";
@@ -79,6 +80,8 @@ export function PhoneShell(props: PhoneShellProps) {
   const empty = machines.terminalsLoaded && live.length === 0;
   // A screen pushed after the first loaded paint arrives with motion (DESIGN.md 6); the first screen does not.
   useArrivalReady(machines.terminalsLoaded);
+  // The list is unmounted while a terminal is open; Back brings it back where it was, not at the top (#1553).
+  const listViewport = useKeptScroll("agents", machines.terminalsLoaded && terminal === undefined && space === null);
   // A space's rows are its live terminals: until the terminals are listed (or when that failed) the screen says so,
   // never "Nothing is running".
   if (terminal === undefined && (space === "loading" || (space !== null && !machines.terminalsLoaded)))
@@ -130,7 +133,7 @@ export function PhoneShell(props: PhoneShellProps) {
         <ConnectionLine />
         {/* The page's one main landmark: the list, under the header (#1378). */}
         <main className="flex min-h-0 flex-1 flex-col">
-          <ScrollArea slot="agents-list" className="flex-1">
+          <ScrollArea slot="agents-list" className="flex-1" viewportRef={listViewport}>
             <FirstRunGuideCard listVisible live={live} onNew={onNew} />
             {machines.terminalsLoaded ? (
               <>

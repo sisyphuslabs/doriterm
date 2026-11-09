@@ -22,17 +22,17 @@ test.describe("two terminals named alike on two machines", () => {
     const status = page.getByRole("contentinfo");
 
     // The tab bar shows the selected space's tabs, and a space is one machine's: a tab no longer names its machine (#404).
-    // An unnamed tab reads its number; the terminal's name is on its session actions (#466 ruling A).
+    // An unnamed tab that runs an agent reads the agent's title (#1541); the same name is on its session actions.
     const actions = page.getByRole("button", { name: "Session actions for review" });
     await agentRow(page, "review", true).click();
     await expect(bar).toHaveCount(1, { timeout: 15_000 });
-    await expect(bar).toHaveText(["1"]);
+    await expect(bar).toHaveText(["review"]);
     await expect(actions).toBeVisible();
     await expect(status).toContainText(MACHINE_NAME);
 
     await agentRow(page, "review", false).click();
     await expect(bar).toHaveCount(1);
-    await expect(bar).toHaveText(["1"]);
+    await expect(bar).toHaveText(["review"]);
     await expect(actions).toBeVisible();
     await expect(status).toContainText(HOST_NAME);
     await expect(status).not.toContainText(MACHINE_NAME);

@@ -36,10 +36,15 @@ export function checkNamespace(chain: readonly ChainFolder[], user: string): Nam
     if (!trustedOwners.has(owner))
       return { verdict: "untrusted", path: folder.path, reason: `it is owned by ${owner}` };
     if (dacl === undefined) return { verdict: "untrusted", path: folder.path, reason: "it has no access control list" };
+    // Every grant is examined: a trusted principal's ACE earlier in the list must not hide a later unsafe one (#1630).
     const grant = dacl.find(
-      (ace) => ace.type === "A" && !ace.flags.includes("IO") && ace.sid !== user && (ace.mask & NAMESPACE_RIGHTS) !== 0,
+      (ace) =>
+        ace.type === "A" &&
+        !ace.flags.includes("IO") &&
+        !trustedOwners.has(ace.sid) &&
+        (ace.mask & NAMESPACE_RIGHTS) !== 0,
     );
-    if (grant !== undefined && !trustedOwners.has(grant.sid)) {
+    if (grant !== undefined) {
       return { verdict: "untrusted", path: folder.path, reason: `${grant.sid} may rename, remove or re-permission it` };
     }
   }
