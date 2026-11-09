@@ -92,6 +92,20 @@ function scrollTopForThumbTop(m: Measure, top: number): number {
   return row >= m.scrollback ? m.max : row * m.rowHeight;
 }
 
+/** A terminal at `points` through Settings, wider than the terminal's default so a cell is wider than the lane's 8 px floor. */
+async function setFontSize(page: Page, points: number): Promise<void> {
+  await page.getByRole("link", { name: "Settings" }).first().click();
+  await page
+    .getByRole("tab", { name: "Terminal", exact: true })
+    .or(page.getByRole("button", { name: "Terminal", exact: true }))
+    .first()
+    .click();
+  await page.getByRole("textbox", { name: "font-size", exact: true }).fill(String(points));
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Close settings" }).first().click();
+  await expect(page.locator('[data-focused="true"] [data-terminal]')).toContainText("$");
+}
+
 async function fill(page: Page, terminal: Locator): Promise<void> {
   await terminal.getByRole("textbox").focus();
   await page.keyboard.type(`seq 1 ${LINES}`);
@@ -137,12 +151,19 @@ test("the bar's lane runs from the end of the text to the edge, as herdr-app's d
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
-  const terminal = await openNewTerminal(page);
+  await openNewTerminal(page);
+  // The lane's floor is 8 px: a cell narrower than that leaves no width where the text ends more than 8 px from the
+  // edge, so the floor branch would be the only one sampled. 16 pt gives a wider cell on both platforms (#862).
+  await setFontSize(page, 16);
+  const terminal = page.locator('[data-focused="true"] [data-terminal]');
   const address = (await terminal.getAttribute("data-terminal")) ?? "";
   await fill(page, terminal);
   await expect(bar(terminal)).toBeVisible();
+  const cell = await terminal.evaluate((element) =>
+    parseFloat(getComputedStyle(element).getPropertyValue("--term-cell-width")),
+  );
   // Widths a cell apart cover every way the columns can fall short of the pane; some leave more than 8 px past the text.
-  const widths = Array.from({ length: 12 }, (_unused, index) => 1440 + index);
+  const widths = Array.from({ length: Math.ceil(cell) + 2 }, (_unused, index) => 1440 + index);
   const widest = await widths.reduce<Promise<number>>(async (previous, width) => {
     const room = await previous;
     await page.setViewportSize({ width, height: 900 });

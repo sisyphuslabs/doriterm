@@ -35,6 +35,14 @@ async function expectNameFirst(page: Page, name: string, state: string): Promise
   );
 }
 
+/**
+ * Narrows the Spaces sidebar so a header row has to give: at 1440 with the pinned UI face both "build-box" and
+ * "connected" fit whole, so the priority this spec asserts would not be exercised at all (#862). The row keeps its
+ * layout rules; only the room it has to work with is set.
+ */
+const narrowSpaces = (page: Page) =>
+  page.evaluate(() => document.documentElement.style.setProperty("--sidebar-width", "15.5rem"));
+
 test.describe("at 1440", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -43,12 +51,14 @@ test.describe("at 1440", () => {
   }) => {
     await machineConnected(MACHINE_NAME);
     await page.goto("/");
+    await narrowSpaces(page);
     await expectNameFirst(page, MACHINE_NAME, "connected");
 
     const restore = renameMachine();
     try {
       await machineConnected(LONG_MACHINE);
       await page.reload();
+      await narrowSpaces(page);
       await expectNameFirst(page, LONG_MACHINE, "connected");
     } finally {
       restore();

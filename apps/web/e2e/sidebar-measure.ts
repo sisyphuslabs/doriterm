@@ -41,6 +41,8 @@ export const visibleCharacters = (part: Locator, title: string) =>
     const lead = all.indexOf(wanted);
     if (lead === -1) return { visible: 0, total: [...segmenter.segment(wanted)].length };
     const before = [...segmenter.segment(all.slice(0, lead))].length;
-    const drawn = rights.filter((right) => right <= end).length;
+    // Both edges are fractional: half a pixel either way is subpixel positioning, not a character cut off (a name the
+    // row's flex shrank by a hundredth of a pixel still draws its last glyph).
+    const drawn = rights.filter((right) => right <= end + 0.5).length;
     return { visible: Math.max(0, drawn - before), total: [...segmenter.segment(wanted)].length };
   }, title);
