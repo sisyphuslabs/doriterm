@@ -285,7 +285,11 @@ describe("OutputPacer catching up a backlog (D5)", () => {
   test("a backlog over two frames' bytes is written in one frame, up to one credit window, in order", () => {
     const frames = manualFrames();
     const written: Uint8Array[] = [];
-    const pacer = new OutputPacer((batch) => written.push(batch), frames.frame, () => 0);
+    const pacer = new OutputPacer(
+      (batch) => written.push(batch),
+      frames.frame,
+      () => 0,
+    );
     pacer.push(bytes(100 * KIB));
     frames.nextFrame();
     expect(written.map((batch) => batch.byteLength)).toEqual([100 * KIB]);
@@ -302,7 +306,11 @@ describe("OutputPacer catching up a backlog (D5)", () => {
   test("a queue at or under two frames' bytes is still paced a frame's bytes at a time", () => {
     const frames = manualFrames();
     const written: number[] = [];
-    const pacer = new OutputPacer((batch) => written.push(batch.byteLength), frames.frame, () => 0);
+    const pacer = new OutputPacer(
+      (batch) => written.push(batch.byteLength),
+      frames.frame,
+      () => 0,
+    );
     pacer.push(bytes(20 * KIB));
     frames.nextFrame();
     frames.nextFrame();
