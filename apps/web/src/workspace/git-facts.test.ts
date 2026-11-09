@@ -47,6 +47,18 @@ describe("nextDocs: a round of reads", () => {
     expect(nextDocs(before, [["", undefined]])).toEqual(new Map());
     expect([...nextDocs(before, [["", doc("dev")]]).keys()]).toEqual([""]);
   });
+
+  test("a failure that persists while the machine reads connected keeps its document only so long (#1165)", () => {
+    // This page reads every 5 s and holds a redialing line as connected for 75 s (#904): a longer run is no blip, and
+    // its branch and diff facts must not stay on screen after their source stopped answering.
+    let docs: ReadonlyMap<string, GitFactsDoc> = before;
+    for (let round = 0; round < 16; round += 1)
+      docs = nextDocs(docs, [
+        ["", doc("main")],
+        ["laptop", "failed"],
+      ]);
+    expect(docs.has("laptop")).toBe(false);
+  });
 });
 
 const terminal = (address: string, space: string, cwd: string, foreground?: string): Terminal =>
