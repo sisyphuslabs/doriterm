@@ -85,7 +85,9 @@ export function openWebSocketLink(
     };
 
     socket.addEventListener("open", () => {
-      stop();
+      // Only the attempt's deadline ends here: a cancellation still closes a socket that opened, so its abort listener
+      // stays until the socket closes (#446 §2).
+      clearTimeout(timer);
       opened = true;
       if (signal?.aborted === true) {
         socket.close();
