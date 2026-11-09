@@ -52,7 +52,7 @@ export function JoinEntry({ onOffer }: { readonly onOffer: (offer: PairingOffer)
         Open an invite from a machine you can see, or ask a member for one by a call or in person.
       </p>
       {runsInstalled() && connection.phase === "unconfigured" ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-prose text-muted-foreground">
           This app has its own storage, so it starts as a device of its own and is not paired with anything yet.
           {isIos()
             ? " An app added to the Home Screen keeps separate storage from the Safari tab you installed it from, which is why it asks again."

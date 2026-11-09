@@ -104,7 +104,8 @@ export const SHOTS: readonly Shot[] = [
     start: "none",
     run: async (page) => {
       await page.goto("/");
-      await expect(page.getByRole("heading", { name: "Connect to a host" })).toBeVisible();
+      // An unpaired browser lands on the mesh join entry (#1446), on / and on /pair alike.
+      await expect(page.getByRole("heading", { name: "Join a mesh" })).toBeVisible();
     },
   },
   {
@@ -112,7 +113,7 @@ export const SHOTS: readonly Shot[] = [
     start: "pairing",
     run: async (page) => {
       await page.goto("/pair");
-      await expect(page.getByRole("heading", { name: "Pair this device" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Join a mesh" })).toBeVisible();
     },
   },
   { name: "pair-code", start: "pairing", run: typeCode },
