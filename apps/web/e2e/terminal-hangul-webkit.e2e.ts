@@ -1,6 +1,12 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
-import { HANGEUL, type Keyboard, safariReplace, typeHangul } from "./hangul-edits.ts";
+import {
+  HANGEUL,
+  type Keyboard,
+  safariReplace,
+  spaceThenJamo,
+  typeHangul,
+} from "./hangul-edits.ts";
 import { key, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE });
@@ -9,7 +15,9 @@ test.use({ serviceWorkers: "block", ...PHONE });
 // twice or out of order shows.
 const READ_LINE = "IFS= read -r l; printf '%s' \"$l\" | od -An -tx1 | tr -d ' \\n'; echo :end\r";
 
-async function openReader(page: Page): Promise<{ readonly terminal: Locator; readonly field: Locator }> {
+async function openReader(
+  page: Page,
+): Promise<{ readonly terminal: Locator; readonly field: Locator }> {
   const terminal = await openPhoneTerminal(page);
   await page.keyboard.type(READ_LINE);
   return { terminal, field: terminal.getByRole("textbox") };
@@ -18,7 +26,9 @@ async function openReader(page: Page): Promise<{ readonly terminal: Locator; rea
 /** Ends the line with the keyboard's Return and waits for the bytes the shell read. */
 async function expectRead(page: Page, terminal: Locator, hex: string): Promise<void> {
   await page.keyboard.press("Enter");
-  await expect(terminal).toContainText(new RegExp(`(^|\\s)${hex.replaceAll(" ", "")}:end`), { timeout: 10_000 });
+  await expect(terminal).toContainText(new RegExp(`(^|\\s)${hex.replaceAll(" ", "")}:end`), {
+    timeout: 10_000,
+  });
 }
 
 for (const keyboard of ["iphone", "ipad"] satisfies Keyboard[]) {
@@ -30,7 +40,9 @@ for (const keyboard of ["iphone", "ipad"] satisfies Keyboard[]) {
     await expectRead(page, terminal, "ed 95 9c ea b8 80");
   });
 
-  test(`${keyboard}: English, then Korean, then a space arrive once each and in order`, async ({ page }) => {
+  test(`${keyboard}: English, then Korean, then a space arrive once each and in order`, async ({
+    page,
+  }) => {
     const { terminal, field } = await openReader(page);
     await page.keyboard.type("abc");
     await typeHangul(field, keyboard, HANGEUL);
@@ -62,19 +74,46 @@ for (const keyboard of ["iphone", "ipad"] satisfies Keyboard[]) {
     await field.evaluate((element) => {
       if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
       const down = element.dispatchEvent(
-        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Backspace", keyCode: 8 }),
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "Backspace",
+          keyCode: 8,
+        }),
       );
       if (!down) return;
       const end = element.selectionEnd;
       element.setRangeText("", end - 1, end, "end");
-      element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
+      element.dispatchEvent(
+        new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }),
+      );
       element.setRangeText("하", end - 1, end - 1, "end");
-      element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "하" }));
+      element.dispatchEvent(
+        new InputEvent("input", { bubbles: true, inputType: "insertText", data: "하" }),
+      );
     });
     await expectRead(page, terminal, "78 ed 95 98");
   });
 
-  test(`${keyboard}: a key-bar key sends the syllable still being typed first`, async ({ page }) => {
+  test(`${keyboard}: a space after a syllable reaches the field, so the next jamo starts a new syllable (#1508)`, async ({
+    page,
+  }) => {
+    const { terminal, field } = await openReader(page);
+    await typeHangul(field, keyboard, [
+      ["ㄱ", "ㄱ"],
+      ["ㅏ", "가"],
+    ]);
+    // A keyboard that never saw its space would join ㄱ to 가 and put 각 in its place: 가, a deleted space, then 각.
+    expect(
+      await spaceThenJamo(field, keyboard, { jamo: "ㄱ", alone: "ㄱ", withPrevious: "각" }),
+    ).toBe(true);
+    await typeHangul(field, keyboard, [["ㅏ", "가"]]);
+    await expectRead(page, terminal, "ea b0 80 20 ea b0 80");
+  });
+
+  test(`${keyboard}: a key-bar key sends the syllable still being typed first`, async ({
+    page,
+  }) => {
     const { terminal, field } = await openReader(page);
     await typeHangul(field, keyboard, HANGEUL.slice(0, 3));
     await key(page, "Tab").click();
@@ -90,10 +129,16 @@ test("a paste the browser delivers only as input, while a syllable is still bein
   // A browser that leaves clipboardData empty inserts the paste into the field itself.
   await field.evaluate((element) => {
     if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
-    const paste = new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: new DataTransfer() });
+    const paste = new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: new DataTransfer(),
+    });
     if (!element.dispatchEvent(paste)) return;
     element.setRangeText("xyz", element.selectionStart, element.selectionEnd, "end");
-    element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertFromPaste", data: "xyz" }));
+    element.dispatchEvent(
+      new InputEvent("input", { bubbles: true, inputType: "insertFromPaste", data: "xyz" }),
+    );
   });
   await expectRead(page, terminal, "ed 95 9c e3 84 b1 78 79 7a");
 });
@@ -107,7 +152,9 @@ test("a paste inserted with no paste event, while a syllable is still being type
   await field.evaluate((element) => {
     if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
     element.setRangeText("xyz", element.selectionStart, element.selectionEnd, "end");
-    element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertFromPaste", data: "xyz" }));
+    element.dispatchEvent(
+      new InputEvent("input", { bubbles: true, inputType: "insertFromPaste", data: "xyz" }),
+    );
   });
   // The run ended with the paste: the next syllable starts afresh, with no stray erase of what was sent.
   await typeHangul(field, "iphone", HANGEUL.slice(0, 3));
@@ -122,7 +169,13 @@ test("iPad: Cmd+Backspace with a syllable still being typed kills the line with 
   await typeHangul(field, "ipad", HANGEUL.slice(0, 3));
   await field.evaluate((element) => {
     element.dispatchEvent(
-      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Backspace", keyCode: 8, metaKey: true }),
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: "Backspace",
+        keyCode: 8,
+        metaKey: true,
+      }),
     );
   });
   // The kill took x and the syllable: nothing of either reaches the program after it.
@@ -130,7 +183,9 @@ test("iPad: Cmd+Backspace with a syllable still being typed kills the line with 
   await expectRead(page, terminal, "7a");
 });
 
-test("Safari on a Mac: replacement edits without composition events reach the program as 한글", async ({ page }) => {
+test("Safari on a Mac: replacement edits without composition events reach the program as 한글", async ({
+  page,
+}) => {
   const { terminal, field } = await openReader(page);
   await safariReplace(field, ["ㅎ", "하", "한"]);
   await safariReplace(field, ["ㄱ", "그", "글"]);
