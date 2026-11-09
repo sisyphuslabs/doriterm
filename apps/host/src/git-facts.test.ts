@@ -92,9 +92,9 @@ describe("readGitFacts on real repositories", () => {
     const upstream = repo("upstream", "trunk");
     const clone = join(root, "clone");
     git(root, "clone", "-q", upstream, clone);
-    expect((await readGitFacts(clone))?.onDefault).toBe(true);
+    expect(await readGitFacts(clone)).toMatchObject({ onDefault: true });
     git(clone, "checkout", "-q", "-b", "main");
-    expect((await readGitFacts(clone))?.onDefault).toBe(false);
+    expect(await readGitFacts(clone)).toMatchObject({ onDefault: false });
   });
 
   test("a detached HEAD", async () => {
@@ -114,7 +114,7 @@ describe("readGitFacts on real repositories", () => {
     const ran = join(root, "fsmonitor-ran");
     git(dir, "config", "core.fsmonitor", `touch ${ran}; false`);
     writeFileSync(join(dir, "README"), "changed\n");
-    expect((await readGitFacts(dir))?.dirty).toBe(true);
+    expect(await readGitFacts(dir)).toMatchObject({ dirty: true });
     expect(existsSync(ran)).toBe(false);
     expect(existsSync(join(dir, ".git", "index.lock"))).toBe(false);
   });
@@ -155,18 +155,23 @@ describe("dirsOf and collectGitFacts", () => {
   });
 });
 
+/** A git whose `status` in /repo answers, times out, or says "not a repository", as `answer` says this tick. */
+function scripted(): { run: RunGit; answer: { now: "facts" | "timeout" | "no repo" } } {
+  const answer = { now: "facts" as "facts" | "timeout" | "no repo" };
+  const run: RunGit = async (dir, args) => {
+    if (dir !== "/repo" || answer.now === "no repo") return undefined;
+    if (answer.now === "timeout") return GIT_TIMED_OUT;
+    return args[0] === "status" ? "# branch.head main\n" : undefined;
+  };
+  return { run, answer };
+}
+
+/** A `trunk` checkout whose origin names trunk as its default branch; `slowOrigin` times out reading origin's HEAD. */
+const trunk: RunGit = async (_dir, args) => (args[0] === "status" ? "# branch.head trunk\n" : "origin/trunk\n");
+const slowOrigin: RunGit = async (_dir, args) => (args[0] === "status" ? "# branch.head trunk\n" : GIT_TIMED_OUT);
+
 describe("collectGitFacts across ticks (#1606)", () => {
   const mainFacts = { branch: "main", detached: false, onDefault: true, ahead: 0, behind: 0, dirty: false };
-  /** A git whose `status` in /repo answers, times out, or says "not a repository", as `answer` says this tick. */
-  function scripted(): { run: RunGit; answer: { now: "facts" | "timeout" | "no repo" } } {
-    const answer = { now: "facts" as "facts" | "timeout" | "no repo" };
-    const run: RunGit = async (dir, args) => {
-      if (dir !== "/repo" || answer.now === "no repo") return undefined;
-      if (answer.now === "timeout") return GIT_TIMED_OUT;
-      return args[0] === "status" ? "# branch.head main\n" : undefined;
-    };
-    return { run, answer };
-  }
 
   test("a timed-out read keeps the directory's last facts for a bounded number of ticks, then drops them", async () => {
     const { run, answer } = scripted();
@@ -216,10 +221,7 @@ describe("collectGitFacts across ticks (#1606)", () => {
 
   test("a timed-out read of origin's HEAD keeps the last facts rather than guessing the default branch", async () => {
     const memory: GitFactsMemory = new Map();
-    const trunk: RunGit = async (_dir, args) =>
-      args[0] === "status" ? "# branch.head trunk\n" : "origin/trunk\n";
     await collectGitFacts(["/repo"], trunk, memory);
-    const slowOrigin: RunGit = async (_dir, args) => (args[0] === "status" ? "# branch.head trunk\n" : GIT_TIMED_OUT);
     expect((await collectGitFacts(["/repo"], slowOrigin, memory)).dirs["/repo"]?.onDefault).toBe(true);
   });
 });
