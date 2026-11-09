@@ -91,7 +91,7 @@ describe("OutputPacer (#560)", () => {
     expect(clock.frames).toHaveLength(0);
   });
 
-  test("out of view nothing is written or credited; once it shows, what waited is written from the next frame", () => {
+  test("out of view nothing is written or credited; once it shows, what waited is written at once, with its credit", () => {
     const clock = manualFrames();
     const written: number[] = [];
     let credited = 0;
@@ -103,9 +103,28 @@ describe("OutputPacer (#560)", () => {
     expect(written).toEqual([]);
     expect(credited).toBe(0);
     pacer.setVisible(true);
-    clock.nextFrame();
     expect(written).toEqual([12]);
     expect(credited).toBe(12);
+    expect(clock.frames).toHaveLength(0);
+  });
+
+  test("a tab shown again writes all that waited in one batch, however many frames' bytes, then paces what follows (#1588)", () => {
+    const clock = manualFrames();
+    const written: Uint8Array[] = [];
+    let credited = 0;
+    const pacer = new OutputPacer((batch) => written.push(batch), clock.frame);
+    pacer.setVisible(false);
+    pacer.push(bytes(FRAME_BYTES * 10, 0x61), (count) => (credited += count));
+    pacer.push(bytes(7, 0x62), (count) => (credited += count));
+    pacer.setVisible(true);
+    expect(written.map((batch) => batch.byteLength)).toEqual([FRAME_BYTES * 10 + 7]);
+    expect([...(written[0] ?? new Uint8Array()).subarray(FRAME_BYTES * 10)]).toEqual([...bytes(7, 0x62)]);
+    expect(credited).toBe(FRAME_BYTES * 10 + 7);
+    // Output after it is a live flood again: a frame's bytes a frame (#560).
+    pacer.push(bytes(FRAME_BYTES * 2));
+    expect(written).toHaveLength(1);
+    clock.nextFrame();
+    expect(written.slice(1).map((batch) => batch.byteLength)).toEqual([FRAME_BYTES]);
   });
 
   test("drop forgets queued output without crediting it", () => {
@@ -210,7 +229,6 @@ describe("OutputPacer in a synchronized update (#757)", () => {
     pacer.push(bytes(10));
     expect(written).toEqual([OPEN.length]);
     pacer.setVisible(true);
-    clock.nextFrame();
     expect(written.slice(1)).toEqual([10]);
     pacer.drop();
     pacer.push(bytes(FRAME_BYTES * 2));
