@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
+import { disableCopyTrim, enableCopyOnSelection } from "./terminal-settings.ts";
 
 endOwnTerminals();
 test.use({ serviceWorkers: "block" });
@@ -8,6 +9,8 @@ test.use({ serviceWorkers: "block" });
 const BEFORE = "clipboard-before-selection";
 const SELECTED = "copy-42-selected ";
 const ROW = `${SELECTED}end`;
+/** The selection as Copy leaves it with clipboard-trim-trailing-spaces on (the default): no space after the last glyph. */
+const TRIMMED = "copy-42-selected";
 const clipboard = (page: Page) => page.evaluate(() => navigator.clipboard.readText());
 
 test.beforeEach(async ({ page }) => {
@@ -34,16 +37,6 @@ async function terminalWithText(page: Page): Promise<Locator> {
   await page.keyboard.press("Enter");
   await expect(terminal).toContainText(new RegExp(`${ROW}[\\s\\S]*\\$`), { timeout: 15_000 });
   return terminal;
-}
-
-async function enableCopyOnSelection(page: Page): Promise<void> {
-  await page.getByRole("link", { name: "Settings" }).click();
-  await page.getByRole("button", { name: "Terminal", exact: true }).click();
-  const toggle = page.getByRole("switch", { name: "Copy on selection", exact: true });
-  await expect(toggle).not.toBeChecked();
-  await toggle.check();
-  await expect(toggle).toBeChecked();
-  await page.getByRole("button", { name: "Close settings" }).first().click();
 }
 
 async function textBounds(terminal: Locator) {
@@ -83,7 +76,9 @@ test("Copy on selection is off by default: a drag leaves the seeded clipboard un
   expect(await clipboard(page)).toBe(BEFORE);
 });
 
-test("Copy on selection persists in Terminal settings and copies exactly the mouseup selection", async ({ page }) => {
+test("Copy on selection persists in Terminal settings and copies the mouseup selection trimmed as Copy does", async ({
+  page,
+}) => {
   await terminalWithText(page);
   await enableCopyOnSelection(page);
   await page.getByRole("link", { name: "Settings" }).click();
@@ -93,6 +88,16 @@ test("Copy on selection persists in Terminal settings and copies exactly the mou
   await page.getByRole("button", { name: "Close settings" }).first().click();
   const terminal = page.locator("[data-terminal]");
   await expect(terminal).toContainText(ROW, { timeout: 15_000 });
+  await startSelection(page, terminal);
+  expect(await clipboard(page)).toBe(BEFORE);
+  await page.mouse.up();
+  await expect.poll(() => clipboard(page)).toBe(TRIMMED);
+});
+
+test("with trim off, Copy on selection keeps the selection's trailing spaces", async ({ page }) => {
+  const terminal = await terminalWithText(page);
+  await enableCopyOnSelection(page);
+  await disableCopyTrim(page);
   await startSelection(page, terminal);
   expect(await clipboard(page)).toBe(BEFORE);
   await page.mouse.up();
