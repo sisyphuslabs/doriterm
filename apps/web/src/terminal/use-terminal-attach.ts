@@ -40,9 +40,13 @@ interface AttachSources {
   readonly onEnded: (() => void) | undefined;
 }
 
-/** An attach's replay: written as it arrives with the paint held, then drawn once it has settled (D5). */
-export function replayOnAttach(pacer: OutputPacer, _reattach: boolean, options: ReplayOptions): void {
-  pacer.replay(options);
+/**
+ * A reattach after a dropped connection holds its replay: written as it arrives with the paint held, then drawn once it
+ * has settled (D5). hc marks no end of the replay (the stream is its first paint, then live bytes), so the hold ends on
+ * a quiet gap, bounded by the replay caps. The first open of a terminal has no screen to keep and is not held.
+ */
+export function replayOnAttach(pacer: OutputPacer, reattach: boolean, options: ReplayOptions): void {
+  if (reattach) pacer.replay(options);
 }
 
 export interface Attachment {
@@ -197,8 +201,8 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         }
         const reattach = attachedBefore.current;
         attachedBefore.current = true;
-        // Every attach's first paint is its replay: written as it arrives with the paint held, then drawn once it has
-        // settled, so the screen before it stays until then instead of climbing a frame's bytes at a time (D5).
+        // A reattach's replay is drawn once it has settled, so the screen before it stays until then instead of climbing
+        // a frame's bytes at a time (D5).
         replayOnAttach(pacer, reattach, {
           srtt: () => connection.rtt?.srtt,
           hold: (held) => ready.setRenderingPaused(held),

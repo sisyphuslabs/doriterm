@@ -2,7 +2,7 @@ import { SynchronizedUpdate } from "./synchronized-update.ts";
 
 /** At most this much output is written to a terminal per paint: a flood costs each frame a bounded slice (#560). */
 export const FRAME_BYTES = 16 * 1024;
-/** A queue deeper than this at the start of a frame is a backlog: it is caught up in that frame (D5). */
+/** Catching up, a queue deeper than this at the start of a frame is a backlog: it is caught up in that frame (D5). */
 export const CATCHUP_THRESHOLD = 2 * FRAME_BYTES;
 /** The most a catch-up frame writes, as one batch: one credit window of the stream (D5). */
 export const CATCHUP_FRAME_BYTES = 256 * 1024;
@@ -61,6 +61,12 @@ interface Replay {
   readonly cap: () => void;
 }
 
+/** Coming back to the app or reattaching: how much its catch-up frames may write, and have written. */
+interface CatchUp {
+  readonly budget: number;
+  written: number;
+}
+
 /** How much a batch may take: a frame's bytes, a catch-up frame's, or the whole queue. */
 type Budget = "arrived" | number;
 
@@ -77,9 +83,11 @@ type Budget = "arrived" | number;
  * arrive, uncapped, until it ends or has been open {@link SYNCHRONIZED_UNPACED_MS}.
  *
  * Coming back to the app is drawn in one paint, not replayed (D5): while the app is hidden no frame runs, so the queue
- * is written whole every {@link HIDDEN_DRAIN_MS} and credited, and what is left when it shows is written at once; a
- * backlog deeper than {@link CATCHUP_THRESHOLD} at a frame is written in that frame, up to {@link CATCHUP_FRAME_BYTES};
- * and an attach replay is written as it arrives while the view holds its paint, until the replay goes quiet.
+ * is written whole every {@link HIDDEN_DRAIN_MS} and credited, and what is left when it shows is written at once.
+ * Catching up, after the app comes back or a reattach replay starts, a backlog deeper than {@link CATCHUP_THRESHOLD} at a
+ * frame is written in that frame, up to {@link CATCHUP_FRAME_BYTES}, until the queue is under it or one credit window
+ * (or the backlog at its start, if larger) is written; a flood otherwise stays paced at {@link FRAME_BYTES}. An attach
+ * replay is written as it arrives while the view holds its paint, until the replay goes quiet.
  */
 export class OutputPacer {
   readonly #write: (bytes: Uint8Array) => void;
@@ -95,6 +103,7 @@ export class OutputPacer {
   /** When the update open in the written output opened, by {@link Clock}; null when none is open. */
   #openedAt: number | null = null;
   #replay: Replay | null = null;
+  #catchUp: CatchUp | null = null;
 
   constructor(
     write: (bytes: Uint8Array) => void,
@@ -145,6 +154,7 @@ export class OutputPacer {
     this.#cancel?.();
     this.#cancel = null;
     if (!hidden && this.#visible) this.#flush(Infinity);
+    if (!hidden) this.#startCatchUp();
     this.#schedule();
   }
 
@@ -163,6 +173,7 @@ export class OutputPacer {
       cap: this.#timer(() => this.#endReplay(), REPLAY_CAP_MS),
     };
     this.#replay = replay;
+    this.#startCatchUp();
     options.hold(true);
     this.#quietFrom(replay);
     if (this.#visible && this.#queue.length > 0) {
@@ -179,7 +190,21 @@ export class OutputPacer {
     this.#queue = [];
     this.#update = new SynchronizedUpdate();
     this.#openedAt = null;
+    this.#catchUp = null;
     this.#endReplay();
+  }
+
+  #startCatchUp(): void {
+    this.#catchUp = { budget: Math.max(this.#queued(), CATCHUP_FRAME_BYTES), written: 0 };
+  }
+
+  /** A frame's budget: a catch-up frame's while catching up a backlog, else a frame's bytes. */
+  #frameBudget(): number {
+    const catchUp = this.#catchUp;
+    if (catchUp === null) return FRAME_BYTES;
+    if (catchUp.written < catchUp.budget && this.#queued() > CATCHUP_THRESHOLD) return CATCHUP_FRAME_BYTES;
+    this.#catchUp = null;
+    return FRAME_BYTES;
   }
 
   #quietFrom(replay: Replay): void {
@@ -216,7 +241,9 @@ export class OutputPacer {
     }
     this.#cancel = this.#frame(() => {
       this.#cancel = null;
-      this.#flush(this.#queued() > CATCHUP_THRESHOLD ? CATCHUP_FRAME_BYTES : FRAME_BYTES);
+      const budget = this.#frameBudget();
+      const written = this.#flush(budget);
+      if (budget === CATCHUP_FRAME_BYTES && this.#catchUp !== null) this.#catchUp.written += written;
       this.#schedule();
     });
   }
@@ -229,9 +256,9 @@ export class OutputPacer {
 
   /**
    * Writes one batch of at most `budget` bytes, or the whole queue. `"arrived"`: written as output arrives, it stops
-   * where the update or replay ends, for the frame to go on.
+   * where the update or replay ends, for the frame to go on. Returns how much it wrote.
    */
-  #flush(budget: Budget): void {
+  #flush(budget: Budget): number {
     const parts: Uint8Array[] = [];
     const credits: [(bytes: number) => void, number][] = [];
     const limit = budget === "arrived" ? 0 : budget;
@@ -252,14 +279,15 @@ export class OutputPacer {
       if (take === head.bytes.byteLength) this.#queue.shift();
       else this.#queue[0] = { bytes: head.bytes.subarray(take), credit: head.credit };
     }
-    if (size === 0) return;
+    if (size === 0) return 0;
     const batch = parts.length === 1 ? (parts[0] ?? new Uint8Array()) : concat(parts, size);
     this.#write(batch);
     for (const [credit, bytes] of credits) credit(bytes);
     const replay = this.#replay;
-    if (replay === null) return;
+    if (replay === null) return size;
     replay.written += size;
     if (replay.written >= REPLAY_MAX_BYTES) this.#endReplay();
+    return size;
   }
 }
 
