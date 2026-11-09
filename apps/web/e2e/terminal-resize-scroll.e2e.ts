@@ -87,8 +87,8 @@ interface Sample {
 /**
  * Samples the view after every paint until `change` is done: how far it is from the bottom, and the newest line its
  * screen shows. Each sample is what the user saw: read after the frame's ResizeObserver callbacks and paint, not in its
- * animation-frame callback, before a layout change has been fitted. The terminal is found by its address on each frame, as a layout
- * change can mount it anew; a frame without it records nothing.
+ * animation-frame callback, before a layout change has been fitted. The terminal is found by its address on each frame,
+ * as a layout change can mount it anew; a frame without it records nothing.
  */
 async function sampleWhile(page: Page, address: string, change: () => Promise<void>): Promise<Sample[]> {
   const samples = page.evaluate(

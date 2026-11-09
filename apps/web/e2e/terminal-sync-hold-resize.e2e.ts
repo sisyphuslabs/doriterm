@@ -11,8 +11,8 @@ test("an update a program left open paints a second after it opened, however oft
 }) => {
   await page.goto("/");
   const terminal = await openNewTerminal(page);
-  // Every key goes through the terminal's own textbox, which each call focuses first, so a drag that moves focus cannot
-  // send a key elsewhere.
+  // Every key goes through the terminal's own textbox, and each call focuses it before it types, so focus a drag moved
+  // away before a call is taken back; keys within one call go where that call put focus.
   const input = terminal.getByRole("textbox");
   // The program opens an update, draws into it and never ends it, as one killed mid-frame does.
   await input.pressSequentially("clear; printf '\\033[?2026hopen-%s\\n' 853");
