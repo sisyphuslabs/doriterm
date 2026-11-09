@@ -90,7 +90,7 @@ for (const [width, screens] of [
         // runner has none of them and its browser draws a wider fallback face, which sets the same measure about a tenth
         // shorter. The browser runs on this machine, so its platform is the runner's.
         const platformFace = process.platform !== "linux";
-        const floor = Math.round((phone ? 42 : 65) * (platformFace ? 1 : 0.9));
+        const floor = Math.round(65 * (platformFace ? 1 : 0.9));
         const measured = await Promise.all(
           phrases.map(async (phrase) => {
             const paragraph = page.locator("p").filter({ hasText: phrase }).first();
@@ -107,10 +107,37 @@ for (const [width, screens] of [
           screenLines,
           `${name} at ${width}: ${measured.map(([phrase, lines]) => `${lines.length} full lines in "${phrase}"`).join(", ")}`,
         ).toBeGreaterThanOrEqual(LINES[name] ?? 2);
-        for (const [phrase, counts] of measured) {
-          for (const count of counts) {
-            expect.soft(count, `${phrase}: ${counts.join(",")}`).toBeGreaterThanOrEqual(floor);
-            if (!phone) expect.soft(count, `${phrase}: ${counts.join(",")}`).toBeLessThanOrEqual(75);
+        if (phone) {
+          // A phone line is too short for a character floor to be fair: where one word breaks moves a full line by a
+          // whole word (37 or 41 characters on a Linux fallback face for the same column). What the phone needs is the
+          // whole column: the prose spans its page's content box, and that box leaves only the 16 px edges of a 390 px
+          // screen (dev drew it in a 294 px, then 342 px, column).
+          const boxes = await Promise.all(
+            measured.map(([phrase]) =>
+              page
+                .locator("p")
+                .filter({ hasText: phrase })
+                .first()
+                .evaluate((el, said) => {
+                  const sheet = el.closest("main") ?? document.body;
+                  const style = getComputedStyle(sheet);
+                  const column = sheet.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+                  return { phrase: said, prose: el.getBoundingClientRect().width, column, screen: window.innerWidth };
+                }, phrase),
+            ),
+          );
+          for (const box of boxes) {
+            expect.soft(box.prose, `${box.phrase}: prose width in its column`).toBeGreaterThanOrEqual(box.column - 1);
+            expect
+              .soft(box.column, `${box.phrase}: column on a ${box.screen} px screen`)
+              .toBeGreaterThanOrEqual(box.screen - 32);
+          }
+        } else {
+          for (const [phrase, counts] of measured) {
+            for (const count of counts) {
+              expect.soft(count, `${phrase}: ${counts.join(",")}`).toBeGreaterThanOrEqual(floor);
+              expect.soft(count, `${phrase}: ${counts.join(",")}`).toBeLessThanOrEqual(75);
+            }
           }
         }
       } finally {
