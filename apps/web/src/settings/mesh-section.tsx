@@ -2,7 +2,7 @@ import type { HcConnection } from "@doriface/client";
 import type { MeshStatus } from "@doriface/protocol";
 import { Notice, SettingRow, Skeleton, cn } from "@doriface/ui";
 import type { ReactNode } from "react";
-import { connectionStore, useConnection } from "../connection/store.ts";
+import { useConnection, useConnectionSettings } from "../connection/store.ts";
 import { ExpiredJoinRow, MeshBanners, PendingRow, RemovedRows } from "../mesh/attention.tsx";
 import { disagreement, meshGroups } from "../mesh/groups.ts";
 import { MemberRow, RevokedRow } from "../mesh/mesh-rows.tsx";
@@ -53,6 +53,8 @@ export function MeshBody({
   readonly connection: HcConnection;
   readonly attentionOnly: boolean;
 }) {
+  // Subscribed, and above the early returns, so a mode or shown machine change reaches the banners below (#1132).
+  const settings = useConnectionSettings();
   const { read, answer } = useMesh(connection);
   const now = useNow();
   const host = connection.hello.core.name;
@@ -83,7 +85,6 @@ export function MeshBody({
       break;
   }
   const { status, machines, answered } = read;
-  const settings = connectionStore.settings;
   const nameOf = namesIn(status);
   const groups = meshGroups(status, now);
   const self = nameOf(status.self);
