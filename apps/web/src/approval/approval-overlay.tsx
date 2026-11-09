@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import type { Session } from "../workspace/model.ts";
 import { canOpenFile, FileView } from "./file-view.tsx";
 import { useApproval } from "./use-approval.ts";
+import { waitsOnKeys } from "./waiting-keys.ts";
+import { WaitingKeysStrip } from "./waiting-keys-strip.tsx";
 
 /**
  * The card pinned over a terminal while its agent waits on a person; the terminal below stays usable. Its polite live
@@ -21,6 +23,11 @@ export function ApprovalOverlay({ connection, terminal }: { connection: HcConnec
       <p data-approval-live={terminal.address} aria-live="polite" aria-atomic="true" className="sr-only">
         {announced}
       </p>
+      {approval === undefined && waitsOnKeys(terminal) ? (
+        <div className="pointer-events-none absolute inset-x-2 top-2 z-10 flex flex-col items-center">
+          <WaitingKeysStrip connection={connection} address={terminal.address} />
+        </div>
+      ) : null}
       {approval === undefined ? null : (
         <div
           data-approval={terminal.address}
