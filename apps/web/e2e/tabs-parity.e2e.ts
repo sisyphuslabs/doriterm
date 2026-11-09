@@ -23,7 +23,8 @@ import { hcOn } from "./machine-switch.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
 
 /** A tab's row in the Spaces sheet, not its Close control or the space's New tab (#1463). */
-const TAB_ROW = /^(?!Close |New tab$)/;
+const tabRows = (page: Page, region: Locator) =>
+  region.getByRole("button").filter({ has: page.locator('[data-floor="name"]') });
 
 test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 
@@ -591,7 +592,7 @@ test.describe("10: on a phone at 390", () => {
     );
     for (const height of heights) expect(height).toBeGreaterThanOrEqual(44);
     const beta = sheet.getByRole("region", { name: "beta" });
-    await expect(beta.getByRole("button", { name: TAB_ROW })).toHaveCount(2);
+    await expect(tabRows(page, beta)).toHaveCount(2);
     await expect(tabRow(beta, "b-one")).toContainText("parity-b1");
     await expect(tabRow(beta, "b-two")).toContainText("parity-b2");
     await expect(tabRow(beta, "parity-b1")).toHaveCount(0);
@@ -685,7 +686,7 @@ test.describe("10: on a phone at 390", () => {
     await opened(page.getByRole("dialog", { name: "Spaces" }));
     const web = page.getByRole("dialog", { name: "Spaces" }).getByRole("region", { name: "web" });
     // One row per tab, each unnamed one read by the terminal it opens; the split tab's row opens the pane in view.
-    await expect(web.getByRole("button", { name: TAB_ROW })).toHaveCount(3);
+    await expect(tabRows(page, web)).toHaveCount(3);
     await expect(tabRow(web, "split-w1")).toHaveCount(1);
     await expect(tabRow(web, "split-w3")).toHaveCount(1);
     await expect(tabRow(web, "split-w2b")).toHaveAttribute("aria-current", "true");

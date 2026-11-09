@@ -1,7 +1,7 @@
 import type { Terminal } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
 import type { ListedSpace } from "./model.ts";
-import { spaceSummary, spaceTabRows } from "./phone-space-rows.ts";
+import { nextAfterClosing, spaceSummary, spaceTabRows } from "./phone-space-rows.ts";
 
 const terminal = (address: string, fields: Partial<Terminal> = {}): Terminal => ({
   address,
@@ -25,6 +25,29 @@ const space = (tabPanes: readonly (readonly string[])[], tabNames: readonly stri
   tabPanes,
   tabNames,
   dir: "/work/website",
+});
+
+describe("where a phone goes when its open tab closes (#1478)", () => {
+  const tabs = [["t1"], ["t2", "t3"], ["t4"]];
+
+  test("the tab that slides into its place, at its first pane", () => {
+    expect(nextAfterClosing(tabs, ["t1"])).toBe("t2");
+    expect(nextAfterClosing(tabs, ["t2", "t3"])).toBe("t4");
+  });
+
+  test("the space's last tab when the closed one was last", () => {
+    expect(nextAfterClosing(tabs, ["t4"])).toBe("t2");
+  });
+
+  test("a split tab whose shown pane has finished is still found by a live sibling", () => {
+    // The phone showed t2, which ended; the tab is listed under t3, and closing it still moves on to t4.
+    expect(nextAfterClosing([["t1"], ["t3"], ["t4"]], ["t2", "t3"])).toBe("t4");
+  });
+
+  test("nowhere when it was the only tab, or in none of them", () => {
+    expect(nextAfterClosing([["t1"]], ["t1"])).toBeNull();
+    expect(nextAfterClosing(tabs, ["t9"])).toBeNull();
+  });
 });
 
 describe("a space screen's rows", () => {
