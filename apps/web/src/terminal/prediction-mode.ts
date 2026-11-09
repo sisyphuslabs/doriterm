@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import type { ConnectionPath } from "../connection/connect.ts";
 import { guardedLocalStorage } from "../storage/guarded.ts";
 import type { DisplayMode } from "./prediction-display.ts";
 
@@ -32,6 +33,18 @@ class PredictionModeStore {
 }
 
 export const predictionModeStore = new PredictionModeStore();
+
+/**
+ * The mode a view predicts in: the desktop app's own host over loopback answers in a frame, so nothing is predicted there
+ * unless this device chose `always`; relay and direct links keep the chosen mode (#1439).
+ */
+export function effectivePredictionMode(
+  chosen: DisplayMode,
+  path: ConnectionPath | undefined,
+  desktop: boolean,
+): DisplayMode {
+  return desktop && path === "loopback" && chosen !== "always" ? "never" : chosen;
+}
 
 export function usePredictionMode(): DisplayMode {
   return useSyncExternalStore(predictionModeStore.subscribe, () => predictionModeStore.value);

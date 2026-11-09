@@ -78,6 +78,8 @@ export async function installPredictor(page: Page): Promise<void> {
       });
       return {
         visible: () => cells,
+        // The specs using it inject a relay's round trip, over which mosh flags its predictions.
+        underlined: () => true,
         subscribe: (listener: () => void) => {
           listeners.add(listener);
           return () => listeners.delete(listener);

@@ -31,7 +31,9 @@ import { useTerminalFont } from "./use-terminal-font.ts";
 import { usePreedit } from "./use-preedit.ts";
 import { usePredictionOverlay } from "./use-prediction-overlay.ts";
 import { predictionSeam } from "./prediction-seam.ts";
-import { usePredictionMode } from "./prediction-mode.ts";
+import { effectivePredictionMode, usePredictionMode } from "./prediction-mode.ts";
+import { useMeshMembers } from "../connection/store.ts";
+import { desktopBridge } from "../desktop/bridge.ts";
 import { PredictorView } from "./prediction-view.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
 import { wideGlyphScaler } from "./face-scales.ts";
@@ -146,7 +148,10 @@ export function TerminalView(props: TerminalViewProps) {
   useTerminalFont(wt, config);
   // The real predictor reads every input and write of this view (#1595); a spec's stand-in replaces it when installed.
   const seam = useMemo(() => predictionSeam(wt), [wt]);
-  const predictMode = usePredictionMode();
+  const chosenMode = usePredictionMode();
+  const link = useMeshMembers().find(({ state }) => state.phase === "open" && state.connection === connection)?.state;
+  const path = link?.phase === "open" ? link.path : undefined;
+  const predictMode = effectivePredictionMode(chosenMode, path, desktopBridge() !== null);
   const predictModeNow = useRef(predictMode);
   predictModeNow.current = predictMode;
   const [predictor, setPredictor] = useState<PredictorView | null>(null);
