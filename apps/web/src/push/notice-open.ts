@@ -33,6 +33,25 @@ const set = (next: PendingNotice | ClickedTerminal | null): void => {
 /** Whether a tapped notice is waiting to open its pane: it, not the phone's remembered place, decides what a start shows. */
 export const hasPendingNotice = (): boolean => pending !== null;
 
+/** An app is asking for the tap that launched it: until it answers, a start cannot tell whether a notice decides it. */
+let launchPending = false;
+const setLaunchPending = (next: boolean): void => {
+  launchPending = next;
+  for (const listener of listeners) listener();
+};
+
+/** Whether the tap that launched an app is still unknown; a browser and the desktop app never wait for one. */
+export function useLaunchTapPending(): boolean {
+  return useSyncExternalStore(
+    (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    () => launchPending,
+    () => false,
+  );
+}
+
 /** The answer a tapped action left in the address: `allow`, or `option:<id>` for one of the prompt's rows. */
 function answerOf(value: string | null): PageAnswer | undefined {
   if (value === "allow") return { kind: "allow" };
@@ -65,7 +84,12 @@ export function listenForAppNotices(toWorkspace: () => void): void {
   const plugin = nativePush();
   if (plugin === null) return;
   void plugin.addListener("noticeTap", (tap) => openTapped(tap.url, toWorkspace));
-  void plugin.takeLaunchTap().then(({ tap }) => (tap === null ? undefined : openTapped(tap.url, toWorkspace)));
+  // The notice is set before the wait ends, so a start that waited sees it (#1494's "a tapped notice still wins").
+  setLaunchPending(true);
+  void plugin
+    .takeLaunchTap()
+    .then(({ tap }) => (tap === null ? undefined : openTapped(tap.url, toWorkspace)))
+    .finally(() => setLaunchPending(false));
 }
 
 /** Reads a tapped notice from the address once and takes it out of the address bar and history. */

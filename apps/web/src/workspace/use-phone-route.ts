@@ -1,8 +1,8 @@
 import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef } from "react";
 import { guideStore } from "../pair/first-run-guide.ts";
-import { hasPendingNotice } from "../push/notice-open.ts";
-import { loadPhonePlace, savePhonePlace } from "./phone-place.ts";
+import { hasPendingNotice, useLaunchTapPending } from "../push/notice-open.ts";
+import { keepsPlace, loadPhonePlace, placeStart, savePhonePlace } from "./phone-place.ts";
 import {
   PHONE_LIST,
   type PhoneRoute,
@@ -180,25 +180,33 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
   // A cold start on the bare list (the home screen's icon) picks up where the phone was; an address that names a place, a
   // tapped notice, or a page that has already moved, wins. From then on every place the list route reaches is kept.
   const place = phoneHref({ ...listed, sheet: false });
+  const launchPending = useLaunchTapPending();
   useEffect(() => {
     if (!narrow || path !== "/") return;
     if (!placeDecided) {
-      placeDecided = true;
       const remembered = loadPhonePlace();
-      if (place === "/" && landed === index && !hasPendingNotice() && phoneHref(remembered) !== "/") {
+      const start = placeStart({
+        atBareList: place === "/",
+        landedHere: landed === index,
+        noticePending: hasPendingNotice(),
+        launchPending,
+        remembered: phoneHref(remembered),
+      });
+      // Nothing is decided, or kept, until an app knows whether a notice launched it.
+      if (start === "wait") return;
+      placeDecided = true;
+      if (start === "restore") {
         restoring = phoneHref(remembered);
         go(remembered, true);
         return;
       }
     }
-    if (restoring !== null) {
-      if (place !== restoring) return;
-      restoring = null;
-    }
+    if (!keepsPlace(place, restoring !== null)) return;
+    restoring = null;
     if (place === saved) return;
     saved = place;
     savePhonePlace(listed);
-  }, [go, index, listed, narrow, path, place]);
+  }, [go, index, launchPending, listed, narrow, path, place]);
   const dropSpace = useCallback(() => {
     if (path === "/" && listed.space !== null) go({ ...listed, space: null }, true);
   }, [go, listed, path]);
