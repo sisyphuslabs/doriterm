@@ -42,6 +42,11 @@ export interface PhoneTerminalProps {
   readonly backTo: string | null;
   readonly onOpen: (address: string) => void;
   readonly onBack: () => void;
+  /**
+   * This session ended and took its tab with it. It leaves the screen only when the phone is still on it: a close from
+   * the Spaces sheet has already moved the phone to the tab in its place, and a late End must not drag it back up (#1478).
+   */
+  readonly onEnded: (address: string) => void;
   /** The Spaces sheet's tab controls: close the tab that shows an address, start a tab in a space (#1463). */
   readonly onCloseTab: (address: string) => void;
   readonly onNewInSpace: (space: string) => void;
@@ -69,6 +74,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
     backTo,
     onOpen,
     onBack,
+    onEnded,
     onCloseTab,
     onNewInSpace,
     dictate,
@@ -206,7 +212,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
               browsing={browsing}
               onPort={onPort}
               // An End of this session leaves the screen only once it has removed the terminal (see afterEnd).
-              onEnd={(address, end) => (closesTab(end) ? afterEnd(address, onBack) : undefined)}
+              onEnd={(address, end) => (closesTab(end) ? afterEnd(address, () => onEnded(address)) : undefined)}
               // The header already has Back; this one closes the ended session.
               closeLabel="Close"
               {...(keysControls === null ? {} : { jumpClearance: keysControls })}
