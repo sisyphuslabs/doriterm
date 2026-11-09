@@ -11,7 +11,7 @@ import {
   type View,
   viewOf,
 } from "@doriface/mesh";
-import { cardBodyFor, type OwnCard } from "@doriface/mesh/join";
+import { cardBodyFor, JoinRefused, type OwnCard } from "@doriface/mesh/join";
 import { statSync } from "node:fs";
 import { join } from "node:path";
 import { AuthorizeIndex, indexOf } from "../mesh/authorize-index.ts";
@@ -39,6 +39,11 @@ export interface MeshStoreOptions {
 
 export type { OwnCard };
 
+export interface MeshCandidate {
+  readonly file: MeshFile;
+  readonly committed: boolean;
+}
+
 const CLIENT_SESSION_WRITE_INTERVAL_MS = 5 * 60_000;
 
 /**
@@ -51,6 +56,7 @@ export class MeshStore {
   readonly #path: string;
   readonly #options: MeshStoreOptions;
   #cache: { readonly stamp: string; readonly index: AuthorizeIndex } | undefined;
+  #candidate: { file: MeshFile; users: number; committed: boolean } | undefined;
 
   constructor(stateDir: string, options: MeshStoreOptions) {
     this.#dir = ensureStateDir(stateDir);
@@ -60,7 +66,9 @@ export class MeshStore {
 
   read(): MeshFile | undefined {
     const value = readJson(this.#path);
-    return value === undefined ? undefined : parseMeshFile(value);
+    const file = value === undefined ? undefined : parseMeshFile(value);
+    if (file !== undefined && this.#candidate?.file.meshId === file.meshId) this.#candidate.committed = true;
+    return file;
   }
 
   /** Best-effort local observation, at most once per client per five minutes; never waits for a busy state lock. */
@@ -127,6 +135,37 @@ export class MeshStore {
     return this.#locked(() => this.#create(meshIdOf(record), [record], 1));
   }
 
+  /** Shares a founding candidate while the first admission decisions are outstanding, without persisting it. */
+  prepareFound(identity: HostIdentity, card: OwnCard): { candidate: MeshCandidate; release: () => void } {
+    let candidate = this.#candidate;
+    if (candidate === undefined || candidate.committed) {
+      const body = cardBody(identity, card, "-", "-");
+      const record = signRecord(foundBody(identity, signCard(body, identity.sign.secretKey)), identity.sign.secretKey);
+      candidate = {
+        file: this.#indexed(newMeshFile(meshIdOf(record), [record], 1)),
+        users: 0,
+        committed: false,
+      };
+      this.#candidate = candidate;
+    }
+    candidate.users++;
+    let released = false;
+    return {
+      candidate,
+      release: () => {
+        if (released) return;
+        released = true;
+        candidate.users--;
+        if (candidate.users === 0 && this.#candidate === candidate) this.#candidate = undefined;
+      },
+    };
+  }
+
+  /** Only the advisory approval document may read this; authorization and sync use the persisted file. */
+  pendingFoundForStatus(): MeshFile | undefined {
+    return this.#candidate?.committed === false ? this.#candidate.file : undefined;
+  }
+
   /** Stores a verified welcome as this host's new mesh.json; false when one appeared meanwhile (section 4.4). */
   adopt(records: readonly Signed[], identity: HostIdentity): boolean {
     const found = records.find((record) => parseRecord(record)?.type === "found");
@@ -141,17 +180,28 @@ export class MeshStore {
    * cleaned, in the same hold. Nothing `fn` merged after its last signature is written if it throws; a counter it persisted stays, with
    * the records and held pool it was derived from.
    */
-  transact<T>(fn: (tx: MeshTx) => T, rollback?: () => void): T {
+  transact<T>(fn: (tx: MeshTx) => T, rollback?: () => void, initial?: MeshCandidate): T {
     return this.#locked(() => {
-      const tx = new Transaction(this.#require(), {
+      const stored = this.read();
+      if (initial !== undefined && (stored === undefined ? initial.committed : stored.meshId !== initial.file.meshId)) {
+        throw new JoinRefused("the mesh changed while the join was pending");
+      }
+      const founding = stored === undefined && initial !== undefined;
+      const tx = new Transaction(stored ?? initial?.file ?? this.#require(), {
         evaluate: this.#evaluate,
-        persistCounter: (file, selfN, view) => this.#persistCounter(file, selfN, view),
+        // A candidate emits no signature before atomic creation; existing meshes reserve counters on disk.
+        persistCounter: (file, selfN, view) =>
+          founding ? { ...file, selfN } : this.#persistCounter(file, selfN, view),
         log: this.#options.log,
       });
       try {
         const value = fn(tx);
         const next = tx.commit();
-        if (next !== undefined) this.#write(next.file, next.view);
+        if (founding) {
+          if (next === undefined) throw new JoinRefused("a first join must admit a member before founding its mesh");
+          if (!this.#create(next.file.meshId, next.file.records, next.file.selfN))
+            throw new JoinRefused("the mesh changed while the join was pending");
+        } else if (next !== undefined) this.#write(next.file, next.view);
         return value;
       } catch (error) {
         rollback?.();
@@ -191,6 +241,7 @@ export class MeshStore {
     const file: MeshFile = newMeshFile(meshId, records, selfN);
     const indexed = this.#indexed(file);
     if (!createPrivateJson(this.#path, meshFileJson(indexed), this.#options.durable ?? true)) return false;
+    if (this.#candidate?.file.meshId === meshId) this.#candidate.committed = true;
     this.#cleanup(indexed);
     return true;
   }

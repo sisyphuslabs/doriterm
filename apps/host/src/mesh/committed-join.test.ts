@@ -50,7 +50,7 @@ test("an auto offer refuses a client before creating any pending join", async ()
   expect(run.offer.commit).toBeUndefined();
   expect(await run.served).toContain("this invite is for a machine");
   expect(run.pending.list()).toEqual([]);
-  expect(run.a.mesh.read()?.records).toHaveLength(1);
+  expect(run.a.mesh.read()).toBeUndefined();
 });
 
 test("an asking offer reveals its commitment and both ends derive the pending code", async () => {
@@ -73,7 +73,7 @@ test.each(["approve-first", "confirm-first"] as const)(
     const asked = await run.pending.next();
     if (order === "approve-first") run.pending.decide(asked.nonce, true, asked.code);
     else run.client.send({ t: "confirm" });
-    expect(run.a.mesh.read()?.records).toHaveLength(1);
+    expect(run.a.mesh.read()).toBeUndefined();
     if (order === "approve-first") run.client.send({ t: "confirm" });
     else run.pending.decide(asked.nonce, true, asked.code);
     expect(await run.served).toBe("resolved");
@@ -88,14 +88,14 @@ test("abort withdraws the pending join and signs nothing", async () => {
   run.client.send({ t: "abort" });
   expect(await run.served).toContain("not joined");
   expect(run.pending.list()).toEqual([]);
-  expect(run.a.mesh.read()?.records).toHaveLength(1);
+  expect(run.a.mesh.read()).toBeUndefined();
 });
 
 test("an older card without sas spends the offer and gets the update sentence", async () => {
   const run = await begin(false, "machine", false);
   expect(await run.served).toContain("too old to join on an invite that asks");
   expect(run.pending.list()).toEqual([]);
-  expect(run.a.mesh.read()?.records).toHaveLength(1);
+  expect(run.a.mesh.read()).toBeUndefined();
 });
 
 test("dropping after the card keeps the pending join and its original reveal for resume", async () => {
@@ -149,7 +149,7 @@ test("an approved join that reaches its transaction after expiry signs nothing",
   const clock = spyOn(Date, "now").mockReturnValue(asked.expiresAt);
   try {
     expect(await run.served).toContain("expired");
-    expect(run.a.mesh.read()?.records).toHaveLength(1);
+    expect(run.a.mesh.read()).toBeUndefined();
   } finally {
     clock.mockRestore();
     run.resumes.clear();
