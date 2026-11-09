@@ -230,7 +230,7 @@ export function TabBar({
                     if (event.detail > 1) onRename?.(tab.id);
                     else onClose?.(tab.id);
                   }}
-                  className="size-5 [&_svg]:size-3"
+                  className="size-5 [&_svg:not([data-slot=spinner])]:size-3"
                 />
               ) : null}
             </div>
