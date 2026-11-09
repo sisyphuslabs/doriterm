@@ -89,6 +89,14 @@ describe("the pane the mounted hook reports as shown (#1211)", () => {
       dispatchEvent(new Event("focus"));
     });
     await act(async () => {
+      page.focused = false;
+      dispatchEvent(new Event("blur"));
+    });
+    await act(async () => {
+      page.focused = true;
+      dispatchEvent(new Event("focus"));
+    });
+    await act(async () => {
       page.visibilityState = "hidden";
       page.dispatchEvent(new Event("visibilitychange"));
     });
@@ -96,8 +104,8 @@ describe("the pane the mounted hook reports as shown (#1211)", () => {
       page.visibilityState = "visible";
       page.dispatchEvent(new Event("visibilitychange"));
     });
-    expect(push.told).toEqual([null, "t1", null, "t1"]);
-    expect(desktop.told).toEqual([null, "t1", null, "t1"]);
+    expect(push.told).toEqual([null, "t1", null, "t1", null, "t1"]);
+    expect(desktop.told).toEqual([null, "t1", null, "t1", null, "t1"]);
   });
 
   test("by default the push stream is told, and told no pane once the workspace goes", async () => {

@@ -27,6 +27,9 @@ const SINKS: readonly (PresenceSink | null)[] = [pushChannel, desktopNotices];
  * desktop app's own notifications hold back the same way. Under Settings no pane counts as shown: the workspace stays
  * mounted there, as a full-screen sheet's hidden layer or behind the dialog, where it still draws but is inert, and a
  * pane the workspace still calls focused is not one anyone is watching (#993).
+ *
+ * `sinks` is an effect dependency: pass a stable array (a module constant, or memoized), since a new array each render
+ * re-runs the effect and sends a no-pane report and the pane again every render.
  */
 export function usePushPresence(terminal: string | null, sinks: readonly (PresenceSink | null)[] = SINKS): void {
   const underSettings = useContext(ActionsPaused);
