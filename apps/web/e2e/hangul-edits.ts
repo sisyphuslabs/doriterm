@@ -99,26 +99,35 @@ export async function typeHangul(
   }
 }
 
-/** Safari on macOS: the first jamo inserted, each change replacing the syllable it changes, keydown 229 after it. */
-export async function safariReplace(field: Locator, syllables: readonly string[]): Promise<void> {
-  await field.evaluate(async (element, replacements) => {
-    if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
-    const box = element;
-    const at = box.selectionEnd;
-    for (const [index, data] of replacements.entries()) {
-      const inputType = index === 0 ? "insertText" : "insertReplacementText";
-      const end = index === 0 ? at : Math.min(box.value.length, at + 1);
-      box.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType, data }));
-      box.setRangeText(data, Math.min(at, box.value.length), end, "end");
-      box.dispatchEvent(new InputEvent("input", { bubbles: true, inputType, data }));
-      box.dispatchEvent(
-        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Unidentified", keyCode: 229 }),
-      );
-      box.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: "Unidentified", keyCode: 229 }));
-      // oxlint-disable-next-line no-await-in-loop -- one edit a frame, as a person types
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    }
-  }, syllables);
+/**
+ * Safari on macOS: the first jamo inserted, each change replacing the syllable it changes, keydown 229 after it. One
+ * edit a frame, or `pauseMs` apart, as a slower typist leaves them.
+ */
+export async function safariReplace(field: Locator, syllables: readonly string[], pauseMs?: number): Promise<void> {
+  await field.evaluate(
+    async (element, { replacements, pause }) => {
+      if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
+      const box = element;
+      const at = box.selectionEnd;
+      for (const [index, data] of replacements.entries()) {
+        const inputType = index === 0 ? "insertText" : "insertReplacementText";
+        const end = index === 0 ? at : Math.min(box.value.length, at + 1);
+        box.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType, data }));
+        box.setRangeText(data, Math.min(at, box.value.length), end, "end");
+        box.dispatchEvent(new InputEvent("input", { bubbles: true, inputType, data }));
+        box.dispatchEvent(
+          new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Unidentified", keyCode: 229 }),
+        );
+        box.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: "Unidentified", keyCode: 229 }));
+        // oxlint-disable-next-line no-await-in-loop -- one edit after another, as a person types
+        await new Promise<void>((resolve) => {
+          if (pause === undefined) requestAnimationFrame(() => resolve());
+          else setTimeout(resolve, pause);
+        });
+      }
+    },
+    { replacements: syllables, pause: pauseMs },
+  );
 }
 
 /** The steps of 한글 on a 2-set keyboard. */

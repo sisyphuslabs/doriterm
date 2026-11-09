@@ -23,7 +23,7 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 78a86ffd96eec03222777f40e9db6a0561684c3f..11b7b7d0ab0344686c696a14752d9997597efc8b 100644
+index 78a86ffd96eec03222777f40e9db6a0561684c3f..62b3682683c72a44f38c91d06b836b3741fb1c69 100644
 --- a/dist/input.js
 +++ b/dist/input.js
 @@ -67,9 +67,41 @@ const FIXED_KEYS = {
@@ -37,8 +37,6 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..11b7b7d0ab0344686c696a14752d9997
  const SCROLLBACK_BOTTOM_TOLERANCE = 5;
  // iOS needs a deletable value to keep emitting input events for held Backspace.
  const TOUCH_INPUT_PLACEHOLDER = "\u200b";
-+// A Hangul letter or syllable: WebKit's Korean keyboards compose these in the field as plain text edits, with no
-+// composition events, so the field has to keep them until the syllable is finished.
 +// A character the grid draws over two cells, as Ghostty's width table gives it: the East Asian wide blocks, and an emoji
 +// only when it is drawn as one by default (an emoji with text presentation, such as U+1F321, takes one cell).
 +const WIDE_CHAR = /^[\u1100-\u115f\u2e80-\u303e\u3041-\ua4cf\ua960-\ua97f\uac00-\ud7a3\uf900-\ufaff\ufe10-\ufe19\ufe30-\ufe6f\uff00-\uff60\uffe0-\uffe6\p{Emoji_Presentation}\u{20000}-\u{2fffd}\u{30000}-\u{3fffd}]$/u;
@@ -59,6 +57,8 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..11b7b7d0ab0344686c696a14752d9997
 +    }
 +    return cells;
 +}
++// A Hangul letter or syllable: WebKit's Korean keyboards compose these in the field as plain text edits, with no
++// composition events, so the field has to keep them until the syllable is finished.
 +const HANGUL = /[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\uac00-\ud7a3\ud7b0-\ud7ff]$/u;
 +// A Hangul letter alone: the first jamo of a syllable such a keyboard starts in the field.
 +const HANGUL_LETTER = /[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\ud7b0-\ud7ff]$/u;
