@@ -153,6 +153,29 @@ export function openTerminalLink(href: string, scope: object = globalThis): void
   if (typeof view === "function") Reflect.apply(view, scope, [href, "_blank", "noopener,noreferrer"]);
 }
 
+/** Keep running in the background (#1500): the desktop shell's saved choice, and keeping a new one. */
+export interface BackgroundSetting {
+  /** The shell's platform, which decides what the app leaves on screen once its window closes. */
+  readonly mac: boolean;
+  read(): Promise<boolean>;
+  /** Resolves false when the shell did not keep it. */
+  set(enabled: boolean): Promise<boolean>;
+}
+
+/** The shell's Keep running in the background, or null outside the desktop app or in a build without it. */
+export function desktopBackgroundSetting(scope: object = globalThis): BackgroundSetting | null {
+  const read = bridgeMethod("runInBackground", scope);
+  const set = bridgeMethod("setRunInBackground", scope);
+  if (read === null || set === null) return null;
+  const bridge: unknown = Reflect.get(scope, "doriface");
+  const platform: unknown = typeof bridge === "object" && bridge !== null ? Reflect.get(bridge, "platform") : undefined;
+  return {
+    mac: platform === "darwin",
+    read: async () => (await read()) === true,
+    set: async (enabled) => (await set(enabled)) === true,
+  };
+}
+
 /** Hands the page background to the desktop shell, which paints the window with it now and at the next launch. */
 export function setDesktopBackground(color: string, scope: object = globalThis): void {
   const painted = bridgeMethod("setWindowBackground", scope)?.(color);

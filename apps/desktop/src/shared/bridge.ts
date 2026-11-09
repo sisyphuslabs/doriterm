@@ -6,6 +6,10 @@ export const Channel = {
   startLocalHost: "doriface:start-local-host",
   setWindowBackground: "doriface:set-window-background",
   closeWindow: "doriface:close-window",
+  /** Renderer to main: whether Keep running in the background is on (#1500). */
+  runInBackground: "doriface:run-in-background",
+  /** Renderer to main: turn Keep running in the background on or off; kept across launches. */
+  setRunInBackground: "doriface:set-run-in-background",
   /** Main to renderer: show an app path in the one window (the app menu, a new-window click). */
   navigate: "doriface:navigate",
   /** Main to renderer: a pairing link is waiting; it carries no data. */
@@ -350,6 +354,13 @@ export interface DorifaceBridge {
   setWindowBackground(color: string): Promise<boolean>;
   /** Closes the window as File > Close Window does; the page's own window.close() would skip the close events. */
   closeWindow(): Promise<void>;
+  /**
+   * Whether closing the window keeps Doriterm and its host running out of sight (no Dock icon or menu bar on a Mac, no
+   * window on Windows and Linux), so the phone stays connected; opening the app again brings the window back (#1500).
+   */
+  runInBackground(): Promise<boolean>;
+  /** Turns Keep running in the background on or off for this and every later launch; resolves false when refused. */
+  setRunInBackground(enabled: boolean): Promise<boolean>;
   /** Calls `listener` with each pairing link fragment the app is opened with (a doriface: link or an in-app click). */
   onPairingLink(listener: (fragment: string) => void): void;
   /** Calls `listener` with each action id a Shell menu item asks the page to run. */
