@@ -38,6 +38,8 @@ interface AttachSources {
   readonly focusWhenFree: (ready: WTerm) => void;
   readonly onEnd: ((address: string, end: TerminalEnd) => void) | undefined;
   readonly onEnded: (() => void) | undefined;
+  /** Called as each stream (first attach or reattach) starts, before what was typed meanwhile is written to it. */
+  readonly onStream?: RefObject<(() => void) | null>;
 }
 
 export interface Attachment {
@@ -56,7 +58,7 @@ export interface Attachment {
 /** What a pane does when a connection arrives: attach, replay, settle what the core says is left, and report unsent input. */
 export function useTerminalAttach(sources: AttachSources): Attachment {
   const { connection, address, pid, live, shown, wt, setWt, handle, stream, pending, pacer, output } = sources;
-  const { isFocused, focusWhenFree, onEnd, onEnded } = sources;
+  const { isFocused, focusWhenFree, onEnd, onEnded, onStream } = sources;
   const toasts = useToastManager();
   const [restarting, setRestarting] = useState(false);
   const [ended, setEnded] = useState(false);
@@ -191,6 +193,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           endHold.current = holdAtEnd(ready.element, () => pacer.busy);
         }
         attachedBefore.current = true;
+        onStream?.current?.();
         const resets = new CursorResets();
         const credit = (count: number): void => {
           if (stream.current === attached) attached.consumed(count);
