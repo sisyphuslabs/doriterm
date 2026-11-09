@@ -446,6 +446,30 @@ describe("OutputPacer holding an attach replay (D5)", () => {
     expect(holds).toEqual([true, false]);
   });
 
+  test("a quiet window whose timer ran late because the page stalled is not taken for the replay's end", () => {
+    const frames = manualFrames();
+    const timers = manualTimers();
+    let stalled = 0;
+    const holds: boolean[] = [];
+    const pacer = new OutputPacer(
+      () => {},
+      frames.frame,
+      () => timers.now() + stalled,
+      timers.timer,
+    );
+    pacer.replay({ srtt: () => 300, hold: (held) => holds.push(held) });
+    pacer.push(bytes(256 * KIB));
+    // The page ran nothing for 2 s: the quiet window's timer runs that late, with the next window queued behind it.
+    stalled = 2000;
+    timers.advance(500);
+    expect(holds).toEqual([true]);
+    pacer.push(bytes(256 * KIB));
+    timers.advance(499);
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
+  });
+
   test("a replay is let go once 2 MiB have been written", () => {
     const { holds, pacer, written } = replaying(300);
     pacer.push(bytes(1024 * KIB));
