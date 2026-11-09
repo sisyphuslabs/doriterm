@@ -35,9 +35,9 @@ export const visibleCharacters = (part: Locator, title: string) =>
     if (pen !== null) pen.font = style.font;
     const range = document.createRange();
     range.selectNodeContents(element);
-    // Overflow is fractional, and measured by width rather than by right edges: sub-pixel positioning can start the text
-    // one layout unit before the content edge, so an exact fit can end one unit past it. A line is cut when its layout
-    // width runs more than one unit (1/64 px) past the content width, which scrollWidth and clientWidth both round away.
+    // Text layout is quantized to 1/64 px, and only an overflow past one layout unit is a cut: a line whose layout width
+    // runs exactly one unit past the content width is still drawn whole. Widths are compared because that is what the
+    // layout reports; scrollWidth and clientWidth round the same overflow away entirely.
     const rect = element.getBoundingClientRect();
     const contentWidth =
       rect.width -
