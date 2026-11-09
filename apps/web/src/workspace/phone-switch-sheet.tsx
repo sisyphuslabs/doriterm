@@ -1,9 +1,8 @@
 import { AgentRow, Button, IconButton, SegmentedControl, Sheet, SidebarSection } from "@doriface/ui";
 import { Plus, X } from "lucide-react";
 import { type ReactElement, type ReactNode, useState } from "react";
-import { agentStatus } from "./attention.ts";
 import { type ListedSpace, type Session, toAgent } from "./model.ts";
-import { rowDetail, tabLabel } from "./phone-space-rows.ts";
+import { rowDetail, switchTabRows } from "./phone-space-rows.ts";
 import { needsYouCount } from "./phone-tab-bar.tsx";
 import { useSpaceSelection } from "./space-selection.ts";
 import { useNow } from "./use-now.ts";
@@ -26,24 +25,11 @@ function tabRows(
   onClose: (address: string) => void,
 ): readonly ReactElement[] {
   // Two tabs can show terminals with one title (two agents both "claude"): their Close buttons then say which tab.
-  const names = space.tabPanes.map((panes, at) => {
-    const first = terminals.find((entry) => panes.includes(entry.address) && entry.state === "live");
-    return first === undefined ? "" : tabLabel(space.tabNames[at] ?? "", first);
-  });
-  return space.tabPanes.flatMap((panes, at) => {
-    const live = panes.flatMap((address) =>
-      terminals.filter((entry) => entry.address === address && entry.state === "live"),
-    );
-    const shown = needs
-      ? live.find((entry) => agentStatus(entry) === "blocked")
-      : (live.find((entry) => entry.address === active) ?? live[0]);
-    if (shown === undefined) return [];
+  return switchTabRows(space, terminals, active, needs).map(({ at, shown, name, closes }) => {
     const { detail: _where, ...agent } = toAgent(shown, nowMs);
     const said = rowDetail(space.tabNames[at] ?? "", shown);
-    const name = tabLabel(space.tabNames[at] ?? "", shown);
-    const closes = names.filter((each) => each === name).length > 1 ? `${name}, tab ${at + 1}` : name;
     // Each row closes its tab as the desktop strip's close does, questions included (#1463).
-    return [
+    return (
       <div key={shown.address} className="flex min-w-0 items-center gap-1">
         <div className="min-w-0 flex-1">
           <AgentRow
@@ -53,8 +39,8 @@ function tabRows(
           />
         </div>
         <IconButton label={`Close ${closes}`} icon={<X />} size="md" onClick={() => onClose(shown.address)} />
-      </div>,
-    ];
+      </div>
+    );
   });
 }
 

@@ -40,6 +40,44 @@ export function spaceTabRows(space: ListedSpace, terminals: readonly Session[], 
   });
 }
 
+export interface SwitchTabRow {
+  /** The tab's place in its space, from 0. */
+  readonly at: number;
+  /** The pane the row opens: the open one when it is this tab's, else the tab's first live pane; with Needs you, its pane that waits on the person. */
+  readonly shown: Session;
+  readonly name: string;
+  /** What its Close button names: the row's name, with "tab N" added when another row reads the same name. */
+  readonly closes: string;
+}
+
+/**
+ * The switch sheet's rows for a space, one per tab that has a pane to show. Twins are counted among the rows as shown, by
+ * the pane each row shows: two tabs whose rows both read "claude" get Closes that say which tab.
+ */
+export function switchTabRows(
+  space: ListedSpace,
+  terminals: readonly Session[],
+  active: string,
+  needs: boolean,
+): readonly SwitchTabRow[] {
+  const rows = space.tabPanes.flatMap((panes, at) => {
+    const live = panes.flatMap((address) =>
+      terminals.filter((entry) => entry.address === address && entry.state === "live"),
+    );
+    const shown = needs
+      ? live.find((entry) => agentStatus(entry) === "blocked")
+      : (live.find((entry) => entry.address === active) ?? live[0]);
+    return shown === undefined ? [] : [{ at, shown, name: tabLabel(space.tabNames[at] ?? "", shown) }];
+  });
+  const twins = (name: string): boolean => rows.filter((each) => each.name === name).length > 1;
+  return rows.map(({ at, shown, name }) => ({
+    at,
+    shown,
+    name,
+    closes: twins(name) ? `${name}, tab ${at + 1}` : name,
+  }));
+}
+
 /** The space screen's subtitle: where it runs, how many tabs run, and how many of them need the person. */
 export function spaceSummary(place: string, rows: readonly Agent[]): string {
   const tabs = rows.length === 0 ? "no running tabs" : `${rows.length} ${rows.length === 1 ? "tab" : "tabs"}`;
