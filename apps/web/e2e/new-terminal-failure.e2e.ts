@@ -65,11 +65,11 @@ test("a New tab whose answer the link lost still opened, so only the press while
   await expect(page.locator('[data-focused="true"] [data-terminal]')).toHaveAttribute("data-terminal", /./, {
     timeout: 15_000,
   });
-  const machines = page.getByRole("region", { name: "Spaces" });
-  const newOn = machines.getByRole("button", { name: /^New space on build-box/ });
-  await expect(newOn).toBeEnabled({ timeout: 30_000 });
-  await newOn.click();
+  // The second press is made once the page says the link is down, so it cannot reach the core. Pressed while the link
+  // was still up, its run could reach the core and the feed before the drop, and then it rightly opened a tab too.
   await socket.drop(true);
+  await expect(page.getByRole("status").filter({ hasText: "Reconnecting" })).toBeVisible();
+  await pressNewTab(page.getByRole("button", { name: "New tab", exact: true }));
   await expect(page.getByRole("heading", { name: "Could not open a new tab" })).toHaveCount(1);
   await expect(page.getByText(/try again once it is back/)).toBeVisible();
   answer?.();
