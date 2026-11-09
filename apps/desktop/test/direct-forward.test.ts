@@ -197,6 +197,28 @@ test("any other text frame closes the forward", async () => {
   await peer.stop();
 });
 
+test("every member is forwarded to its own address at once, and one member's forward leaves another's open (#1499)", async () => {
+  const first = await echoingPeer();
+  const second = await echoingPeer();
+  const forwarder = forwarderFor();
+  // Both members ask before either dials: each capability is bound to the address named with it.
+  const [one, two] = await Promise.all([forwarder.issue(7, first.url), forwarder.issue(7, second.url)]);
+  if (!("url" in one) || !("url" in two)) throw new Error("expected a forward for each member");
+  const a = pageSocket(one.url);
+  await opened(a);
+  const b = pageSocket(two.url);
+  await opened(b);
+  expect([first.connections(), second.connections()]).toEqual([1, 1]);
+  // The first member's session is still carried after the second member's forward opened.
+  const reply = answered(a);
+  a.send(new Uint8Array([4, 5, 6]));
+  expect(Array.from(await reply)).toEqual([4, 5, 6]);
+  a.close();
+  b.close();
+  await first.stop();
+  await second.stop();
+});
+
 test("with no usable address set, a capability is refused with its reason and no socket opens", async () => {
   const forwarder = forwarderFor();
   expect(forwarder.setTarget("ws://192.0.2.10:7767/v1/hc")).toBe(false);

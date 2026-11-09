@@ -6,10 +6,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type PairingOffer, parsePairingFragment } from "../pair/fragment.ts";
-import { pairAndRemember, type RememberedHost } from "../pair/handshake.ts";
+import { pairAndOpen, pairAndRemember, type RememberedHost } from "../pair/handshake.ts";
 import { connect, type OpenConnection } from "./connect.ts";
+import { openForwardedLink } from "./direct-forward.ts";
 import { installShellForwarder, type ShellForwarder } from "./direct-forward.test-support.ts";
-import { DEFAULT_SETTINGS } from "./settings.ts";
+import { type ConnectionSettings, DEFAULT_SETTINGS } from "./settings.ts";
 
 const CLI = join(import.meta.dir, "..", "..", "..", "host", "src", "cli.ts");
 const stateDir = mkdtempSync(join(tmpdir(), "dw-direct-path-"));
@@ -177,6 +178,28 @@ describe("the desktop shell uses a saved direct address with the relay as its fa
     expect(opened.path).toBe("relay");
     expect(relayDials()).toBe(before + 1);
     opened.connection.close();
+  }, 30_000);
+
+  test("two members forwarding at once each name their own address to the shell (#1499)", async () => {
+    const before = shell?.targets.length ?? 0;
+    const links = await Promise.all([openForwardedLink(lanUrl, undefined), openForwardedLink(otherLanUrl, undefined)]);
+    // Each request carried its member's address, so neither race can be handed the address the other one asked for.
+    expect(shell?.targets.slice(before)).toEqual([lanUrl, otherLanUrl]);
+    for (const link of links) link.close();
+  }, 30_000);
+
+  test("pairing saves the host's own LAN address from the handshake, not the one held before (#1499)", async () => {
+    const { link } = await newOffer();
+    const paired: ConnectionSettings[] = [];
+    const connections = {
+      settings: { ...DEFAULT_SETTINGS, relayUrl: bridge.url, directUrl: otherLanUrl },
+      pair: (settings: ConnectionSettings, opened?: OpenConnection) => {
+        paired.push(settings);
+        opened?.connection.close();
+      },
+    };
+    await pairAndOpen(link, "laptop", connections, deps);
+    expect(paired.map((settings) => settings.directUrl)).toEqual([lanUrl]);
   }, 30_000);
 
   test("no direct address set dials the relay, as before", async () => {

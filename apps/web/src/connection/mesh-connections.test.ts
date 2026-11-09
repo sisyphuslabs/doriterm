@@ -410,6 +410,18 @@ describe("one connection per member", () => {
     expect(made.find((connection) => connection.settings.hostId === "a")?.stopped).toBe(0);
   });
 
+  it("each member dials its own direct address, and pairing another keeps the selected one's (#1499)", () => {
+    const a = { ...member("a"), directUrl: "ws://192.0.2.1:7767/v1/e2ee" };
+    const b = { ...member("b"), directUrl: "ws://192.0.2.2:7767/v1/e2ee" };
+    const { mesh, made } = running({ ...settingsWith([a, b]), directUrl: a.directUrl });
+    const direct = (hostId: string): string | undefined =>
+      made.find((connection) => connection.settings.hostId === hostId)?.settings.directUrl;
+    expect([direct("a"), direct("b")]).toEqual([a.directUrl, b.directUrl]);
+    mesh.pair({ ...mesh.settings, hostId: "c", hostKey: "k-c", directUrl: "ws://192.0.2.3:7767/v1/e2ee" });
+    expect([direct("a"), direct("b"), direct("c")]).toEqual([a.directUrl, b.directUrl, "ws://192.0.2.3:7767/v1/e2ee"]);
+    expect(made.find((connection) => connection.settings.hostId === "a")?.stopped).toBe(0);
+  });
+
   it("an ordinary edit keeps the roster rather than replacing it", () => {
     const initial = settingsWith([member("a"), member("b")]);
     const { mesh } = running(initial);
