@@ -2,6 +2,7 @@ import type { HcConnection } from "@doriface/client";
 import {
   answerApproval,
   approvalKey,
+  hasPromptReader,
   CLAIM_TTL_MS,
   type ApprovalCore,
   type ApprovalMark,
@@ -16,6 +17,7 @@ import type { Session } from "../workspace/model.ts";
 import { approvalCore } from "./approval-core.ts";
 import { showsPrompt, stateAfterAnswer, stateAfterPrompt } from "./approval-view.ts";
 import { thisAnswerer } from "./answerer.ts";
+import type { CardState } from "./waiting-keys.ts";
 
 export interface ApprovalView {
   readonly mark: ApprovalMark;
@@ -81,13 +83,21 @@ async function readNextStep(
 /**
  * The prompt a terminal's agent waits on (a permission, a question, a plan), as a card: found from the agent's status (`blocked`,
  * `kind: permission`) plus its live screen, answered once across every client, and resolved when the agent moves on.
+ * `card` says whether one is up, still being read for, or not coming, so the keys strip can stand in where none is.
  */
-export function useApproval(connection: HcConnection, terminal: Session): Approval | undefined {
+export function useApproval(
+  connection: HcConnection,
+  terminal: Session,
+): { readonly approval: Approval | undefined; readonly card: CardState } {
   const core = useMemo(() => approvalCore(connection), [connection]);
   const [view, setView] = useState<ApprovalView | undefined>(undefined);
   const current = useRef(view);
   current.current = view;
   const waiting = waitsOnApproval(terminal);
+  // The screen read for this wait (its address and turn) that has finished, found a dialog or not.
+  const readKey = `${terminal.address}\n${terminal.turn ?? 0}`;
+  const [read, setRead] = useState<string | undefined>(undefined);
+  const reading = waiting && hasPromptReader(terminal.status?.app ?? "") && read !== readKey;
 
   useEffect(() => {
     const shown = current.current;
@@ -100,10 +110,11 @@ export function useApproval(connection: HcConnection, terminal: Session): Approv
       } catch {
         // The read failed (a dropped connection): no banner; the pane keeps "Needs you" and the terminal stays answerable.
       }
+      if (!abort.signal.aborted) setRead(readKey);
     };
     void show();
     return () => abort.abort();
-  }, [core, terminal.address, waiting, terminal.turn]);
+  }, [core, terminal.address, waiting, terminal.turn, readKey]);
 
   useEffect(() => {
     const shown = current.current;
@@ -139,8 +150,8 @@ export function useApproval(connection: HcConnection, terminal: Session): Approv
     return () => clearTimeout(timer);
   }, [view]);
 
-  if (view === undefined) return undefined;
-  return {
+  if (view === undefined) return { approval: undefined, card: reading ? "reading" : "none" };
+  const approval: Approval = {
     ...view,
     answer: (choice) => {
       if (view.state.kind !== "waiting" && view.state.kind !== "failed") return;
@@ -176,4 +187,5 @@ export function useApproval(connection: HcConnection, terminal: Session): Approv
     },
     dismiss: () => setView(undefined),
   };
+  return { approval, card: "shown" };
 }
