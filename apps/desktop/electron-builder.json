@@ -38,6 +38,7 @@
   "dmg": { "artifactName": "${productName}-${version}-${arch}.${ext}", "sign": true },
   "win": {
     "icon": "build/icon.ico",
+    "extraResources": [{ "from": "dist/native", "to": "native", "filter": ["speech.node"] }],
     "target": [{ "target": "nsis", "arch": ["x64", "arm64"] }]
   },
   "nsis": { "artifactName": "${productName}-${version}-${arch}-setup.${ext}" },

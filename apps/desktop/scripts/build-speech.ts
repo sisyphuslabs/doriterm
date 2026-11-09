@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
+import { buildWindowsSpeech } from "./build-speech-win.ts";
 
 /**
  * Builds the dictation addon (native/speech/speech.mm, #726) from source with clang: macOS only, universal (arm64 and
@@ -8,6 +9,7 @@ import { dirname, join } from "node:path";
  * with the app. Elsewhere there is nothing to build: the app has no system recognizer there.
  */
 export async function buildSpeech(root: string): Promise<boolean> {
+  if (process.platform === "win32") return buildWindowsSpeech(root);
   if (process.platform !== "darwin") return true;
   const headers = join(dirname(createRequire(import.meta.url).resolve("node-api-headers/package.json")), "include");
   const outdir = join(root, "dist", "native");
