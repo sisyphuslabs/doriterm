@@ -2,12 +2,18 @@ import { describe, expect, test } from "bun:test";
 import { INSTALL_SCRIPT_URL, joinCommand, offerFor } from "./join-command.ts";
 
 describe("join command", () => {
-  test("is one line: the installer, told to join with the link, quoted for sh", () => {
+  test("is one line: the installer, handed the link in its environment, quoted for sh", () => {
     expect(joinCommand("doriface://pair#h=a&k=b&m=1")).toBe(
-      `curl -fsSL ${INSTALL_SCRIPT_URL} | sh -s -- --join 'doriface://pair#h=a&k=b&m=1'`,
+      `curl -fsSL ${INSTALL_SCRIPT_URL} | DORIFACE_JOIN='doriface://pair#h=a&k=b&m=1' sh`,
     );
-    // A quote in a link cannot end the argument early.
-    expect(joinCommand("x'y")).toBe(`curl -fsSL ${INSTALL_SCRIPT_URL} | sh -s -- --join 'x'\\''y'`);
+    // A quote in a link cannot end the value early.
+    expect(joinCommand("x'y")).toBe(`curl -fsSL ${INSTALL_SCRIPT_URL} | DORIFACE_JOIN='x'\\''y' sh`);
+  });
+
+  test("keeps the link off every command line: no process is given it as an argument", () => {
+    const command = joinCommand("doriface://pair#h=a&k=b&m=1");
+    expect(command).not.toContain("--join");
+    expect(command.split("|")[1]?.trim().endsWith(" sh")).toBe(true);
   });
 
   test("reads only the answer to this request", () => {
