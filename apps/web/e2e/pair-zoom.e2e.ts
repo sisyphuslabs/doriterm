@@ -28,3 +28,18 @@ test("the pairing screen leaves the text-size key to the browser's own zoom (#11
   // Cancelled, the app would step a saved terminal font size nobody can see here and the page would not zoom.
   await expect(page.locator("html")).toHaveAttribute("data-key-cancelled", "false");
 });
+
+// The same symptom on the workspace route: a browser that has never paired sees the first-run Join a mesh screen there,
+// so no terminal text is on screen to size either.
+test("a browser's first-run screen on / leaves the text-size key to the browser's own zoom (#1162)", async ({
+  page,
+}) => {
+  // The seeded page knows a host and opens its workspace; a fresh context carries no saved connection, as a new browser.
+  await page.context().clearCookies();
+  await page.addInitScript(() => localStorage.removeItem("doriface.connection"));
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Join a mesh" })).toBeVisible({ timeout: 15_000 });
+  await cancellation(page);
+  await page.keyboard.press("ControlOrMeta+Equal");
+  await expect(page.locator("html")).toHaveAttribute("data-key-cancelled", "false");
+});
