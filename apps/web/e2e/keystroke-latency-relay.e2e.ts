@@ -82,9 +82,9 @@ async function measure(
   source: "keydown" | "insertText",
 ): Promise<LatencySample[]> {
   const graphemes = graphemesOf(line);
-  const samples: LatencySample[] = [];
   const cdp = source === "insertText" ? await page.context().newCDPSession(page) : undefined;
-  for (let repetition = 0; repetition < repetitions; repetition += 1) {
+  /** One repetition, each typed after the last one's line is answered: they share one prompt. */
+  const once = async (): Promise<LatencySample[]> => {
     await typeAndWaitForEcho(page, terminal, "e");
     const start = await cursorOf(terminal);
     await startProbe(terminal, start, source);
@@ -94,19 +94,25 @@ async function measure(
       // The cadence is the workload being measured, not a wait for state: one syllable every CADENCE_MS, as committed
       // by an IME, each sent at its own instant from the first.
       const first = Date.now();
-      for (const [index, grapheme] of graphemes.entries()) {
+      await graphemes.reduce<Promise<void>>(async (previous, grapheme, index) => {
+        await previous;
         const due = first + index * CADENCE_MS;
         if (due > Date.now()) await new Promise((resolve) => setTimeout(resolve, due - Date.now()));
         await cdp.send("Input.insertText", { text: grapheme });
-      }
+      }, Promise.resolve());
     }
     await expect
       .poll(async () => (await cursorOf(terminal)).col, { timeout: 30_000, message: "the host echoed the whole line" })
       .toBe(start.col + widthOf(line));
-    samples.push(...latencies(await stopProbe(terminal), graphemes));
+    const samples = latencies(await stopProbe(terminal), graphemes);
     await page.keyboard.press("Enter");
     await atPrompt(terminal);
-  }
+    return samples;
+  };
+  const samples = await Array.from({ length: repetitions }).reduce<Promise<LatencySample[]>>(
+    async (previous) => [...(await previous), ...(await once())],
+    Promise.resolve([]),
+  );
   await cdp?.detach();
   return samples;
 }
