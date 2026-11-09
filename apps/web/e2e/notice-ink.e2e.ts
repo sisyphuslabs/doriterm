@@ -7,8 +7,6 @@ import { measure } from "./painted-contrast.ts";
 
 const BROKEN_STORAGE = `IDBFactory.prototype.open = () => { throw new DOMException("IndexedDB is not available here", "InvalidStateError"); };`;
 
-const channels = (css: string) => (css.match(/[\d.]+/g) ?? []).map(Number);
-
 test.use({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
 
 for (const theme of ["day", "night"] as const) {
@@ -33,26 +31,43 @@ for (const theme of ["day", "night"] as const) {
         const notice = page.getByRole("alert").first();
         const body = notice.locator("p + div");
         await expect(body).toBeVisible();
+        // The contrast first, as a soft check, so a run that fails on the colour below still shows what the ink scored.
+        const painted = await measure(page, notice, { part: { selector: "p + div", paint: "color" } });
+        const contrast = `${painted.label} at ${painted.ratio.toFixed(2)}:1`;
+        test.info().annotations.push({ type: "contrast", description: contrast });
+        expect.soft(painted.ratio, contrast).toBeGreaterThanOrEqual(4.5);
+        // Both colours painted onto a clear canvas and read back as sRGB bytes, so they compare in one space whatever
+        // syntax the stylesheet serialises them in.
         const [ink, foreground] = await body.evaluate((element) => {
+          const canvas = document.createElement("canvas");
+          canvas.width = 1;
+          canvas.height = 1;
+          const paint = canvas.getContext("2d", { willReadFrequently: true });
+          if (paint === null) throw new Error("no 2d canvas");
+          const srgb = (css: string): number[] => {
+            paint.clearRect(0, 0, 1, 1);
+            paint.fillStyle = css;
+            paint.fillRect(0, 0, 1, 1);
+            return [...paint.getImageData(0, 0, 1, 1).data];
+          };
           const probe = document.createElement("span");
-          // The same colour space a Tailwind alpha modifier computes to, so the two compare channel by channel.
-          probe.style.color = "color-mix(in oklab, var(--foreground), transparent 0%)";
+          probe.style.color = "var(--foreground)";
           element.append(probe);
-          const colours = [getComputedStyle(element).color, getComputedStyle(probe).color];
+          const colours = [srgb(getComputedStyle(element).color), srgb(getComputedStyle(probe).color)];
           probe.remove();
           return colours;
         });
-        const [l = 0, a = 0, b = 0, alpha = 1] = channels(ink ?? "");
-        const [fl = 1, fa = 1, fb = 1] = channels(foreground ?? "");
+        const [r = 0, g = 0, b = 0, alpha = 255] = ink ?? [];
+        const [fr = 255, fg = 255, fb = 255] = foreground ?? [];
+        const named = `rgba(${ink?.join(", ")}) is the foreground rgb(${foreground?.slice(0, 3).join(", ")}); ${contrast}`;
+        // Unpremultiplying 8-bit bytes at a partial alpha rounds each channel by a step or two.
         for (const [mine, theirs] of [
-          [l, fl],
-          [a, fa],
+          [r, fr],
+          [g, fg],
           [b, fb],
         ] as const)
-          expect(mine, `${ink} is the foreground ${foreground}`).toBeCloseTo(theirs, 3);
-        expect(alpha, `${ink} is translucent, so it takes on the wash`).toBeLessThan(1);
-        const painted = await measure(page, notice, { part: { selector: "p + div", paint: "color" } });
-        expect(painted.ratio, painted.label).toBeGreaterThanOrEqual(4.5);
+          expect(Math.abs(mine - theirs), named).toBeLessThanOrEqual(2);
+        expect(alpha, `${named}; it is translucent, so it takes on the wash`).toBeLessThan(255);
       });
     }
   });
