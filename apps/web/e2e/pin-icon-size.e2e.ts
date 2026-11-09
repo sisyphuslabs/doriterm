@@ -1,7 +1,8 @@
 import type { Locator, Page } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
-import { endAgent, startAgent } from "./agents.ts";
+import { endAgent, startShell } from "./agents.ts";
 import { expect, followSystemAppearance, test } from "./fixtures.ts";
+import { hcOn } from "./machine-switch.ts";
 
 const shape = (icon: Locator) =>
   icon.evaluate((element) => {
@@ -81,8 +82,9 @@ for (const colorScheme of ["light", "dark"] as const) {
   test(`a pinned agent's icon keeps its size and position through interaction (${colorScheme})`, async ({ page }) => {
     await followSystemAppearance(page);
     await page.emulateMedia({ colorScheme });
-    const address = startAgent("host", "pin-size-proof", "idle");
+    const address = startShell("host", "pin-size-proof");
     try {
+      hcOn("host", ["send", address, "printf '\\033[2J\\033[H\\033]7501;state=idle\\033\\\\Pin controls ready\\n'"]);
       await page.goto("/");
       const row = page.getByRole("button", { name: /pin-size-proof/ }).first();
       await expect(row).toBeVisible();
@@ -141,6 +143,8 @@ for (const colorScheme of ["light", "dark"] as const) {
         element.disabled = false;
         element.removeAttribute("data-disabled");
       });
+      await expect(page.locator("[data-terminal]")).toHaveAttribute("data-ready", "true");
+      await expect(page.getByRole("status", { name: "Opening terminal" })).toHaveCount(0);
       await page.screenshot({ path: test.info().outputPath(`pin-states-${colorScheme}.png`) });
       await control.click();
       await row.hover();
