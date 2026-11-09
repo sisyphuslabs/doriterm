@@ -35,9 +35,11 @@ function memberLine(member: MeshMemberStatus, nameOf: (hostId: string) => string
   const parts = [
     member.line === "self"
       ? "this host"
-      : member.lineReason === null
-        ? member.line
-        : `${member.line}: ${member.lineReason}`,
+      : member.line === "unknown"
+        ? `a line state this doriface-host does not know${member.lineReason === null ? "" : `: ${member.lineReason}`}`
+        : member.lineReason === null
+          ? member.line
+          : `${member.line}: ${member.lineReason}`,
   ];
   if (member.admittedBy !== null) parts.push(`admitted by ${nameOf(member.admittedBy)}`);
   else if (!member.overCap) parts.push("founder");
@@ -83,7 +85,8 @@ export function formatMeshStatus(status: MeshStatus): string {
   }
   for (const revoked of status.revoked) {
     const by = revoked.revokedBy.map(nameOf).join(", ");
-    out.push(`revoked: ${revoked.name} ${revoked.hostId} by ${by} (${revoked.reason})`);
+    const reason = revoked.reason === "unknown" ? "a reason this doriface-host does not know" : revoked.reason;
+    out.push(`revoked: ${revoked.name} ${revoked.hostId} by ${by} (${reason})`);
   }
   for (const removed of status.removed) {
     const who = removed.members.map((entry) => entry.name).join(", ");
