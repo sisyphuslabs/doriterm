@@ -56,12 +56,13 @@ export async function takeBackEnd(calls: SessionCalls, address: string): Promise
   }
 }
 
-/** Addresses whose latest End killed the program, whatever happened after (terminal.rm, the END label). */
+/** Addresses whose latest End left no program running (killed, or already gone), whatever failed after it. */
 const killed = new Set<string>();
 
 /**
- * True when the latest End of the session at `address` killed its program, even if that End then rejected because
- * terminal.rm or the END label call failed: the session has ended, though End reported an error (#1342).
+ * True when the latest End of the session at `address` left no program running (it killed it, or found it already
+ * gone), even if that End then rejected because terminal.rm or the END label call failed: the session has ended,
+ * though End reported an error (#1342).
  */
 export function killWentThrough(address: string): boolean {
   return killed.has(address);
@@ -78,6 +79,8 @@ async function killAndRemove(calls: SessionCalls, address: string): Promise<void
       ended = await calls.kill({ terminal: address });
     } catch (cause) {
       notKilled = !isGone(cause);
+      // A terminal already gone has no program left: End has done what it is for, whatever else then fails.
+      if (!notKilled) killed.add(address);
       throw cause;
     }
     killed.add(address);

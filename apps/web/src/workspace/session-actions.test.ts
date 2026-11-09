@@ -32,6 +32,10 @@ function refusing(method: "kill" | "rm", kind: string): SessionCalls {
   };
 }
 
+/** A call refused with an hc error of this kind. */
+const refusedWith = (kind: string) => (): Promise<never> =>
+  Promise.reject(new HcRpcError({ code: -32000, message: kind, data: { kind } }));
+
 describe("session actions", () => {
   test("a rename is the herdr.name label, and an empty name removes it (herdr-app label rules)", async () => {
     const { calls, connection } = recorder();
@@ -149,5 +153,15 @@ describe("session actions", () => {
     // A later End of the same address starts over: a refused kill there is not taken for the earlier one.
     await expect(endSession(refusing("kill", "busy"), "k/t1")).rejects.toThrow("kill: busy");
     expect(killWentThrough("k/t1")).toBe(false);
+  });
+
+  test("a kill that finds the session already gone counts as ended when End then rejects (#1342)", async () => {
+    const calls: SessionCalls = {
+      label: refusedWith("busy"),
+      kill: refusedWith("not_found"),
+      rm: () => Promise.resolve({}),
+    };
+    await expect(endSession(calls, "k/t3")).rejects.toThrow("busy");
+    expect(killWentThrough("k/t3")).toBe(true);
   });
 });
