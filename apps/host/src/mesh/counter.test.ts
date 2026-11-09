@@ -21,16 +21,27 @@ const ownNs = (store: MeshStore): readonly number[] =>
     return body?.by === b.signPub ? [body.n] : [];
   });
 
-/** b restored from a backup older than its own ack n = 1, which a peer still holds. */
-function restored() {
+/**
+ * The state b's backup was taken from: the mesh records, and the ack n = 1 a peer still holds that the backup lacks.
+ * Signed once for the file, since which records those are is not what the cases below assert (#780).
+ */
+const BACKUP = (() => {
   const { records, meshId } = meshOf([a, b]);
-  const founder = new Signer(a, records);
   const live = storeOf(b, records);
   const deps = (store: MeshStore) => ({ store, identity: b.machine.identity, meshId });
-  const ownAck = mergeBatch(deps(live), [founder.admit(peer("c"), headsOfRecords(records))]).ack;
+  const ownAck = mergeBatch(deps(live), [new Signer(a, records).admit(peer("c"), headsOfRecords(records))]).ack;
   if (ownAck === undefined) throw new Error("b wrote no ack before its backup was restored");
+  return { records, meshId, peerHolds: live.read()?.records ?? [] };
+})();
+/** a's admit of c, signed once: the hello case sends it, and its content is not what that case asserts (#780). */
+const ADMIT_C = new Signer(a, BACKUP.records).admit(peer("c"), headsOfRecords(BACKUP.records));
+
+/** b restored from a backup older than its own ack n = 1, which a peer still holds. */
+function restored() {
+  const { records, meshId, peerHolds } = BACKUP;
   const store = storeOf(b, records);
-  return { records, founder, store, deps: deps(store), peerHolds: live.read()?.records ?? [] };
+  const deps = (s: MeshStore) => ({ store: s, identity: b.machine.identity, meshId });
+  return { records, founder: new Signer(a, records), store, deps: deps(store), peerHolds };
 }
 
 describe("a host restored from an older backup (section 10.1)", () => {
@@ -56,14 +67,14 @@ describe("a host restored from an older backup (section 10.1)", () => {
   test("a peer's hello claiming n = 2^53 for this host does not silence it: the admit is acked once the claim lapses", async () => {
     const clock = new FakeClock();
     const net = new MeshNet(clock, seededRandom(29));
-    const { records } = meshOf([a, b]);
+    const { records } = BACKUP;
     const host = net.add(b, records);
     const [ours, theirs] = memoryLinkPair(true);
     host.gossip.attach(a.signPub, a.signPub, ours);
     const send = (line: MeshLine): void => theirs.send(new TextEncoder().encode(`${JSON.stringify(line)}\n`));
     const claim = { [b.signPub]: Number.MAX_SAFE_INTEGER };
     send({ t: "hello", v: 2, mesh: host.gossip.meshId, heads: headsOfRecords(records), n: claim });
-    send({ t: "records", records: [new Signer(a, records).admit(peer("c"), headsOfRecords(records))] });
+    send({ t: "records", records: [ADMIT_C] });
     send({ t: "done", mesh: host.gossip.meshId });
     await settle();
     expect(acksBy(host.store, b.signPub)).toBe(0);
@@ -72,7 +83,7 @@ describe("a host restored from an older backup (section 10.1)", () => {
   });
 
   test("between a peer's hello and its records, an own record waits for the counter the hello claims (section 10.1)", async () => {
-    const { records, peerHolds } = restored();
+    const { records, peerHolds } = BACKUP;
     const clock = new FakeClock();
     const net = new MeshNet(clock, seededRandom(43));
     const host = net.add(b, records);
