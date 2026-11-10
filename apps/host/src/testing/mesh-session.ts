@@ -1,5 +1,5 @@
-import { lstatSync, readFileSync, realpathSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { lstatSync, realpathSync } from "node:fs";
+import { dirname } from "node:path";
 import { stopLeftoverCores, type HcSession } from "./hc-session.ts";
 import { adoptProcessGroup, stopProcessGroup } from "./process-group.ts";
 import { stopRunProcesses } from "./run-cores.ts";
@@ -19,23 +19,40 @@ async function stopEscaped(dir: string): Promise<void> {
   );
 }
 
-const READY_MS = 15_000;
+/**
+ * Copies a stream to this process's stderr as it arrives and keeps its last `keep` characters; `drained` settles once the
+ * stream has ended and every chunk is in the tail.
+ */
+function teeTail(
+  stream: ReadableStream<Uint8Array>,
+  keep = 4096,
+): { readonly tail: () => string; readonly drained: Promise<void> } {
+  let tail = "";
+  const decoder = new TextDecoder();
+  const drained = (async () => {
+    for await (const chunk of stream) {
+      process.stderr.write(chunk);
+      tail = (tail + decoder.decode(chunk, { stream: true })).slice(-keep);
+    }
+  })().catch(() => undefined);
+  return { tail: () => tail.trim(), drained };
+}
+
+/** What is at the socket path when the deadline passes. */
+function socketPathState(socket: string): string {
+  try {
+    return lstatSync(socket).isSocket()
+      ? "socket created only as the deadline passed"
+      : "socket path exists but is not a socket";
+  } catch {
+    return "socket path absent";
+  }
+}
+
 const PROBE_MS = 50;
-const TAIL_BYTES = 2_048;
 
 function isErrno(error: unknown, code: string): boolean {
   return error instanceof Error && "code" in error && error.code === code;
-}
-
-/** The last TAIL_BYTES of a core's output file, or why it could not be read. */
-function tailOf(path: string): string {
-  try {
-    const text = readFileSync(path, "utf8");
-    if (text === "") return "(empty)";
-    return text.length > TAIL_BYTES ? `...${text.slice(-TAIL_BYTES)}` : text;
-  } catch (error) {
-    return `(unreadable: ${String(error)})`;
-  }
 }
 
 /** What happened to a core between its spawn and the fixture's readiness verdict, on the monotonic clock (#1547). */
@@ -48,7 +65,7 @@ interface Startup {
   exited?: { readonly at: number; readonly code: number | null; readonly signal: string | number | null };
 }
 
-function describe(startup: Startup, now: number, out: string, err: string): string {
+function describe(startup: Startup, now: number, stderrTail: string): string {
   const at = (time: number | undefined): string =>
     time === undefined ? "never" : `+${(time - startup.spawned).toFixed(0)} ms`;
   const exited =
@@ -60,8 +77,7 @@ function describe(startup: Startup, now: number, out: string, err: string): stri
     `  socket first seen: ${at(startup.socketSeen)}`,
     `  first connection: ${at(startup.connected)}`,
     `  core exited: ${exited}`,
-    `  core stdout tail: ${out}`,
-    `  core stderr tail: ${err}`,
+    `  core stderr tail: ${stderrTail}`,
   ].join("\n");
 }
 
@@ -99,51 +115,60 @@ async function probe(socket: string, startup: Startup, done: () => boolean): Pro
  * Run the fixture's core directly: hc connect would auto-start it through launchd on macOS, outside the fixture's
  * process tree and filesystem access. Its machine bridges share this owned group, including their descendants.
  */
-export async function ownMeshSession(session: HcSession): Promise<HcSession> {
+export async function ownMeshSession(
+  session: HcSession,
+  { readyWithinMs = 15_000 }: { readonly readyWithinMs?: number } = {},
+): Promise<HcSession> {
   const socket = session.env["HC_SOCKET"];
   if (socket === undefined) throw new Error("mesh session has no socket");
   // Resolved, since a process is seen holding resolved paths (macOS: /var is a link into /private).
   const dir = realpathSync(dirname(socket));
   const ready = Promise.withResolvers<void>();
-  // Files, not pipes: a pipe would need draining for the core's whole life, and the holders it starts inherit it.
-  const outPath = join(dir, "core.out");
-  const errPath = join(dir, "core.err");
   const core = Bun.spawn([session.hc, "serve"], {
     // hc 0.1.17 scopes its direct-start opt-in to the immediate parent's pid.
     env: { ...session.env, HC_LAUNCHD_DIRECT: String(process.pid) },
     detached: true,
     stdin: "ignore",
-    stdout: Bun.file(outPath),
-    stderr: Bun.file(errPath),
+    stdout: "ignore",
+    stderr: "pipe",
   });
   const started: Startup = { spawned: performance.now() };
   adoptProcessGroup(core, dir);
+  // The core's stderr still reaches the run's log as it comes, and its tail is kept for a failure to quote (#1768).
+  const stderr = teeTail(core.stderr);
   let settled = false;
   const report = (message: string, cause?: unknown): Error =>
     new Error(
-      `${message}\n${describe(started, performance.now(), tailOf(outPath), tailOf(errPath))}`,
+      `${message}\n${describe(started, performance.now(), stderr.tail() || "(none)")}`,
       cause === undefined ? undefined : { cause },
     );
   void probe(socket, started, () => settled).then(
     () => ready.resolve(),
     (error: unknown) => ready.reject(report(`mesh core readiness probe failed: ${String(error)}`, error)),
   );
-  const onExit = (code: number): void => {
-    started.exited = { at: performance.now(), code, signal: core.signalCode };
-    if (!settled) ready.reject(report(`mesh core exited before readiness: ${code}`));
-  };
-  void core.exited.then(onExit);
-  const deadline = setTimeout(
-    () =>
-      ready.reject(
-        report(
-          started.socketSeen === undefined
-            ? `mesh core did not create its socket within ${READY_MS} ms`
-            : `mesh core created its socket but accepted no connection within ${READY_MS} ms`,
-        ),
-      ),
-    READY_MS,
+  void core.exited.then((code) => (started.exited = { at: performance.now(), code, signal: core.signalCode }));
+  // The exit is reported once the core's stderr has been read to its end, so its last words are in the message. A
+  // descendant that keeps the pipe open holds this back; the deadline below then names the exit instead.
+  void Promise.all([core.exited, stderr.drained]).then(([code]) =>
+    settled
+      ? undefined
+      : ready.reject(report(`mesh core exited before readiness: ${code}; stderr: ${stderr.tail() || "(none)"}`)),
   );
+  const deadline = setTimeout(() => {
+    const state =
+      core.exitCode === null && core.signalCode === null
+        ? "was still running"
+        : `had exited (${core.exitCode ?? core.signalCode})`;
+    const headline =
+      started.socketSeen === undefined
+        ? "mesh core did not create its socket"
+        : "mesh core created its socket but accepted no connection";
+    ready.reject(
+      report(
+        `${headline} within ${readyWithinMs} ms: hc serve (pid ${core.pid}) ${state}; ${socketPathState(socket)}; stderr: ${stderr.tail() || "(none)"}`,
+      ),
+    );
+  }, readyWithinMs);
   let stopping: Promise<void> | undefined;
   const stop = async (shutdown: boolean): Promise<void> => {
     try {
@@ -165,7 +190,7 @@ export async function ownMeshSession(session: HcSession): Promise<HcSession> {
   try {
     await ready.promise;
     if (process.env["MESH_STARTUP_TRACE"] === "1") {
-      console.error(`mesh core ready (${session.name})\n${describe(started, performance.now(), "-", "-")}`);
+      console.error(`mesh core ready (${session.name})\n${describe(started, performance.now(), "-")}`);
     }
   } catch (error) {
     await stop(false);

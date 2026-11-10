@@ -1,5 +1,5 @@
 import { base64urlEncode } from "@doriface/crypto";
-import type { ApprovalMark, NoticeKind } from "@doriface/protocol";
+import type { ApprovalMark, NoticeContext, NoticeKind } from "@doriface/protocol";
 
 export interface NoticeEntry {
   /** Null for a test notice. */
@@ -8,6 +8,8 @@ export interface NoticeEntry {
   readonly at: number;
   /** A permission or question notice's prompt as it stood when the notice was made; an answer is checked against it. */
   readonly mark: ApprovalMark | undefined;
+  /** Which agent, machine, space and terminal it is about, as they stood when the notice was made (#1908). */
+  readonly context?: NoticeContext | undefined;
 }
 
 export const NOTICE_LIFETIME_MS = 24 * 60 * 60 * 1000;
