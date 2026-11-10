@@ -23,6 +23,12 @@ const row = (section: SectionId, title: string, detail: string, words: readonly 
 /** The rows each section draws, in its words. Keep a row here next to the row itself when its title changes. */
 const ROWS: readonly SettingHit[] = [
   row("device", "Keep the screen awake", "While a terminal is open", ["screen", "sleep", "wake lock"]),
+  row("device", "Show typing before the host echoes it", "Predictive typing on slow links", [
+    "predict",
+    "local echo",
+    "latency",
+    "typing",
+  ]),
   row("device", "Install Doriterm", "As an app on this device", ["install", "app"]),
   row("device", "Add to Home Screen", "As an app on this phone", ["install", "home screen", "app"]),
   row("device", "Getting started", "The first-run guide", ["guide", "tour"]),

@@ -10,6 +10,13 @@ export interface PrimaryMetrics {
 const rounded = (scale: number): number => Math.floor(scale * 10_000) / 10_000;
 
 /**
+ * The smallest factor a measurement is believed for. A CJK face's ideograph is about one em and the ideograph width is
+ * about the ASCII ink height, so a real fit lands near 1; a factor under one half says the measurement does not describe
+ * the face that draws, and following it paints the glyph as a speck or as nothing (#959).
+ */
+const MIN_SCALE = 0.5;
+
+/**
  * The font-size factor that gives a fallback face's wide glyphs the width Ghostty gives them;
  * `advanceAt(scale)` is the advance of a full-width sample glyph of that face at `scale` times the terminal's size.
  *
@@ -23,6 +30,10 @@ const rounded = (scale: number): number => Math.floor(scale * 10_000) / 10_000;
  *
  * A browser that rounds advances to whole pixels (Chromium on Linux) can draw the scaled glyph wider than the target,
  * past its cells, so the factor shrinks until the advance it actually draws fits.
+ *
+ * A measure that never fits at any factor, or fits only below MIN_SCALE, did not follow the font size: the glyph keeps
+ * its size and draws a little past its cells, never at no size. An Android tablet drew every Hangul cell blank that way,
+ * each at `font-size:0em` (#959).
  */
 export function wideGlyphScale(advanceAt: (scale: number) => number, primary: PrimaryMetrics): number {
   const advance = advanceAt(1);
@@ -32,6 +43,7 @@ export function wideGlyphScale(advanceAt: (scale: number) => number, primary: Pr
   const target = primary.inkHeight > 0 ? Math.min(primary.inkHeight, cells) : cells;
   if (!(advance > primary.cell) || (advance <= target && target - advance < 0.5)) return 1;
   const scale = rounded(target / advance);
+  if (scale < MIN_SCALE) return 1;
   if (advanceAt(scale) <= target) return scale;
   // Proportional corrections can remain on the same rounded-up pixel for many iterations. Search the monotonic
   // advance instead; 16 steps resolve better than the four decimal places retained in the CSS factor.
@@ -42,7 +54,8 @@ export function wideGlyphScale(advanceAt: (scale: number) => number, primary: Pr
     if (advanceAt(middle) <= target) low = middle;
     else high = middle;
   }
-  return rounded(low);
+  const fitted = rounded(low);
+  return fitted >= MIN_SCALE && advanceAt(fitted) <= target ? fitted : 1;
 }
 
 type GlyphInk = Pick<TextMetrics, "width" | "actualBoundingBoxAscent" | "actualBoundingBoxDescent">;
