@@ -1,8 +1,11 @@
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
-import { newOn, switchTo } from "./machine-switch.ts";
+import { newOn, reconnect, switchTo } from "./machine-switch.ts";
 
 test.use({ serviceWorkers: "block" });
+
+// The test leaves the machine asking for a login; the next spec in this worker expects it connected.
+test.afterEach(() => reconnect());
 
 test("a machine added while this page is open appears without an interaction, and how long it takes", async ({
   page,
