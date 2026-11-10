@@ -300,6 +300,19 @@ describe("IPC sender gate", () => {
     ]);
   });
 
+  test("a native notification carries what the page knows about its terminal only as bounded, named fields (#1908)", async () => {
+    const { handlers, notices } = setup();
+    const context = { machine: "box", agent: "claude\u0007", ask: "q".repeat(500), title: "Your password expired" };
+    expect(await handlers.showNotice(app, { kind: "input", terminal: "box/t7", context })).toEqual({ accepted: true });
+    expect(await handlers.showNotice(app, { kind: "done", terminal: "t1", context: "rm -rf" })).toEqual({
+      accepted: true,
+    });
+    expect(notices).toEqual([
+      { kind: "input", terminal: "box/t7", context: { machine: "box", agent: "claude", ask: `${"q".repeat(159)}…` } },
+      { kind: "done", terminal: "t1" },
+    ]);
+  });
+
   test("the app origin reads and sets Keep running in the background with a boolean and nothing else", async () => {
     const { handlers, background } = setup();
     expect(await handlers.runInBackground(app)).toBe(false);

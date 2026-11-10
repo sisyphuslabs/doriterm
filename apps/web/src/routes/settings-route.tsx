@@ -46,7 +46,7 @@ function Group({ title, children }: { readonly title: string; readonly children:
 
 /** One sentence under the title, in the words the navigation uses: what this screen is about and nothing else. */
 function Lead({ children }: { readonly children: ReactNode }) {
-  return <p className="text-prose text-pretty text-muted-foreground">{children}</p>;
+  return <p className="max-w-measure text-prose text-pretty text-muted-foreground">{children}</p>;
 }
 
 /** Section navigation beside the form; changes apply as they are made. */
@@ -231,7 +231,7 @@ export function SettingsRoute() {
                   <MachinesSection />
                   {/* What a row's state means sits under the rows, where a reader meets it: on a phone the list leads (#1007). */}
                   {!joinedBrowser ? (
-                    <p className="pt-3 text-prose text-pretty text-muted-foreground">
+                    <p className="max-w-measure pt-3 text-prose text-pretty text-muted-foreground">
                       Adding one by hand reaches it without the mesh; connecting one joins it first. A machine that
                       answers reads Connected, one still being dialled reads Connecting, and one that needs a login says
                       so; when a machine is offline the row says when it was last seen and, where the host knows a

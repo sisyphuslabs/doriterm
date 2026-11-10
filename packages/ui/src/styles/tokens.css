@@ -97,6 +97,9 @@
   --text-2xl: var(--type-2xl);
   --text-2xl--line-height: 2.25rem;
 
+  /* Reading prose (max-w-measure): 65-75 characters a line, in em so it follows the paragraph's own size. */
+  --container-measure: 34.5em;
+
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
