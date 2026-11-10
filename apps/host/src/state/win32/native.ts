@@ -6,6 +6,7 @@
  */
 import { dlopen, ptr, read, toArrayBuffer } from "bun:ffi";
 import { ntPath, ntRequest, type OpenOptions, openRetrying, Win32Error } from "./nt-open.ts";
+import type { AccountLookup } from "./namespace.ts";
 
 export { type OpenOptions, Win32Error } from "./nt-open.ts";
 
@@ -64,6 +65,7 @@ function load() {
     GetTokenInformation: { args: [u64, u32, pointer, u32, pointer], returns: i32 },
     ConvertSidToStringSidW: { args: [u64, pointer], returns: i32 },
     ConvertStringSidToSidW: { args: [pointer, pointer], returns: i32 },
+    LookupAccountSidW: { args: [pointer, u64, pointer, pointer, pointer, pointer, pointer], returns: i32 },
     GetSecurityInfo: { args: [u64, u32, u32, pointer, pointer, pointer, pointer, pointer], returns: u32 },
     SetSecurityInfo: { args: [u64, u32, u32, u64, u64, u64, u64], returns: u32 },
     ConvertSecurityDescriptorToStringSecurityDescriptorW: { args: [u64, u32, u32, pointer, pointer], returns: i32 },
@@ -154,6 +156,38 @@ export function resolveSidAlias(alias: string): string | undefined {
     } finally {
       localFree(valueOf(out));
     }
+  } finally {
+    localFree(valueOf(sid));
+  }
+}
+
+/** Resolve a principal for diagnostics only. Failed lookups must not replace the original safety refusal. */
+export function lookupAccountSid(sidText: string): AccountLookup {
+  const { a, k } = api();
+  const text = wide(sidText);
+  const sid = outPointer();
+  const failure = (): AccountLookup => {
+    const code = k.GetLastError();
+    return code === 1332 ? { status: "unmapped" } : { status: "unavailable", code };
+  };
+  if (a.ConvertStringSidToSidW(ptr(text), ptr(sid)) === 0) return failure();
+  try {
+    const nameSize = new Uint32Array(1);
+    const domainSize = new Uint32Array(1);
+    const use = new Uint32Array(1);
+    a.LookupAccountSidW(null, valueOf(sid), null, ptr(nameSize), null, ptr(domainSize), ptr(use));
+    // ERROR_INSUFFICIENT_BUFFER is the expected sizing result; sizes are UTF-16 code units, including NUL.
+    if (k.GetLastError() !== 122) return failure();
+    const name = Buffer.alloc((nameSize[0] ?? 0) * 2);
+    const domain = Buffer.alloc(Math.max(domainSize[0] ?? 0, 1) * 2);
+    if (a.LookupAccountSidW(null, valueOf(sid), ptr(name), ptr(nameSize), ptr(domain), ptr(domainSize), ptr(use)) === 0)
+      return failure();
+    return {
+      status: "resolved",
+      name: name.toString("utf16le").replace(/\0.*$/s, ""),
+      domain: domain.toString("utf16le").replace(/\0.*$/s, ""),
+      use: use[0] ?? 0,
+    };
   } finally {
     localFree(valueOf(sid));
   }

@@ -39,6 +39,7 @@ import {
   writeAll,
   writeOwnerAndProtectedDacl,
   currentUserSid,
+  lookupAccountSid,
   resolveSidAlias,
 } from "./native.ts";
 import { pidIsLive } from "../lock.ts";
@@ -149,12 +150,9 @@ export function openPrivateStateDir(requested: string): string {
   } finally {
     freeDescriptor(descriptor);
   }
-  const namespace = checkNamespace(chainOf(dir), user());
+  const namespace = checkNamespace(chainOf(dir), user(), lookupAccountSid);
   if (namespace.verdict === "untrusted") {
-    throw new PrivateStateRefused(
-      `${namespace.path} is not safe for doriface-host's keys: ${namespace.reason}. Use a state folder under your ` +
-        `user profile (--state-dir or DORIFACE_HOST_STATE_DIR), or remove those rights`,
-    );
+    throw new PrivateStateRefused(namespace.message);
   }
   const folder = openFile(dir, {
     access: READ_CONTROL | WRITE_DAC | WRITE_OWNER,
