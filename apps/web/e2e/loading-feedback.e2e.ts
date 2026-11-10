@@ -4,6 +4,9 @@ import { expect, test } from "./fixtures.ts";
 
 test.use({ serviceWorkers: "block" });
 
+/** The instant both clock calls name, so the virtual clock never moves backwards (#1971). */
+const PAIR_CLOCK = new Date("2026-01-01T00:00:00.000Z");
+
 async function pendingPair(page: Page) {
   const { promise: held, resolve: finish } = Promise.withResolvers<void>();
   await page.route("https://relay-doriface.omo.dev/v1/pair/*", async (route) => {
@@ -12,8 +15,11 @@ async function pendingPair(page: Page) {
   });
   await page.goto("/pair");
   await page.getByLabel("Invite link or code").fill(PAIR_CODE);
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  // Both calls name the same instant. `pauseAt(new Date())` against a clock installed a moment earlier moves the
+  // clock backwards whenever a timer fires in between, which is what "Cannot fast-forward to the past" reports on a
+  // loaded runner (#1971). A fixed instant cannot race.
+  await page.clock.install({ time: PAIR_CLOCK });
+  await page.clock.pauseAt(PAIR_CLOCK);
   const button = page.getByRole("button", { name: "Continue", exact: true });
   await button.click();
   await expect(button).toHaveAttribute("aria-busy", "true");
