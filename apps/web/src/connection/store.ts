@@ -41,7 +41,7 @@ export type ConnectionState =
       /** A wake is asking this link to prove itself (#1370): input typed meanwhile waits rather than going into it. */
       readonly proving?: boolean | undefined;
       /**
-       * The session's socket dropped and the session is being carried on over a new one (contract v1.10): the workspace
+       * The session's socket dropped and the session is being carried on over a new one (contract v1.11): the workspace
        * stays as it is, and input typed meanwhile waits for the new socket.
        */
       readonly resuming?: boolean | undefined;
@@ -101,7 +101,7 @@ export class ConnectionStore {
   readonly #save: Saver;
   /** A wake's check on the open link: a socket the page slept on can be half-open (#653), and input must not go into it. */
   readonly #wake: WakeProbe;
-  /** The open connection's session resume, when its path has a session to carry on (contract v1.10). */
+  /** The open connection's session resume, when its path has a session to carry on (contract v1.11). */
   #resume: ResumeWiring | null = null;
   readonly #links: typeof unprovenLinks;
 

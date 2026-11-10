@@ -33,7 +33,7 @@ export interface OpenConnection {
   readonly directReason?: DirectReason | undefined;
   /**
    * The encrypted session under the connection and how to dial its path again, so a dropped socket is carried on
-   * instead of the session being opened anew (contract v1.10). Absent on the loopback path, which has no session.
+   * instead of the session being opened anew (contract v1.11). Absent on the loopback path, which has no session.
    */
   readonly session?: ResumableSession | undefined;
 }

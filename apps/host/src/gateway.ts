@@ -191,7 +191,7 @@ export function createGateway(options: GatewayOptions): Gateway {
 
   const serveE2ee = async (raw: E2eeWire, transport: E2eeTransport): Promise<void> => {
     if (e2ee === undefined) throw new Error("end-to-end encryption needs a state dir");
-    // The first message says which this is: a client coming back to a session it still holds (contract v1.10), or a
+    // The first message says which this is: a client coming back to a session it still holds (contract v1.11), or a
     // handshake for a new one. A resume is answered from the session it names; anything else runs the handshake.
     const wire = new PeekedWire(raw);
     let first: Uint8Array;
@@ -315,6 +315,8 @@ export function createGateway(options: GatewayOptions): Gateway {
 
   const closeAll = async (): Promise<void> => {
     for (const link of sockets) link.close(1001, "host shutting down");
+    // A session kept for a resume has no socket to close; its hc connect would otherwise outlive the host by the window.
+    resumes.closeDetached(1001, "host shutting down");
     await Promise.all(children);
   };
 

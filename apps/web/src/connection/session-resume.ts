@@ -1,7 +1,7 @@
 import type { ByteLink } from "@doriface/client";
 import { CloseCode, type SecureSession, SecureLinkError } from "@doriface/crypto";
 
-/** A session the store can carry on over a new socket (contract v1.10): the session, and how to dial that socket. */
+/** A session the store can carry on over a new socket (contract v1.11): the session, and how to dial that socket. */
 export interface ResumableSession {
   readonly secure: SecureSession;
   /** A fresh socket to the same host on the same path: the relay session's dial, or the direct address's. */

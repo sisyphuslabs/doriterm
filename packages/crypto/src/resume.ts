@@ -4,7 +4,7 @@ import { bytesEqual, concatBytes, utf8 } from "./encoding.ts";
 import { noiseHkdf } from "./noise/symmetric-state.ts";
 
 /**
- * The first byte of a session resume (contract v1.10 "Session resume"): a client whose socket dropped dials again and,
+ * The first byte of a session resume (contract v1.11 "Session resume"): a client whose socket dropped dials again and,
  * instead of a Noise handshake, names the session it still holds and where it is in it. Never a handshake kind: a
  * handshake that starts with it is refused as an unknown session kind, as before.
  */

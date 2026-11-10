@@ -2,14 +2,14 @@ import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { type FakeRelayHost, type RelayObserver, startFakeRelayHost } from "./relay-route.ts";
 
-// A relay blip no longer replays the terminal (#1995, contract v1.10 "Session resume"): the session is carried on over a
+// A relay blip no longer replays the terminal (#1995, contract v1.11 "Session resume"): the session is carried on over a
 // new socket, so a reconnect with nothing new exchanges one request and one answer, attaches nothing, and leaves the
 // rows, the scroll position and the frames as they were. Output the host produced while the socket was down arrives as
 // the records the page missed, appended where they belong, once.
 test.use({ serviceWorkers: "block" });
 
 const SETTINGS_KEY = "doriface.connection";
-/** The resume request and its answer, in bytes (contract v1.10): the only two messages an idle reconnect needs. */
+/** The resume request and its answer, in bytes (contract v1.11): the only two messages an idle reconnect needs. */
 const REQUEST_BYTES = 57;
 const ANSWER_BYTES = 41;
 /** The smallest attach replay is one screen (13 KB measured in #639); a heartbeat record is well under this. */

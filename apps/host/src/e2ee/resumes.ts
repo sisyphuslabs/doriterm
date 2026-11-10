@@ -3,7 +3,7 @@ import type { E2eeWire } from "./links.ts";
 
 /**
  * How long a detached session keeps its `hc connect` and its place after its link dropped, for the client to come back
- * (contract v1.10). Past it the session ends as a dropped one did before, and the client attaches anew. Long enough for
+ * (contract v1.11). Past it the session ends as a dropped one did before, and the client attaches anew. Long enough for
  * a phone that slept through the relay's own 90 s silence reaper and woke a minute later; short enough that a client
  * that is gone for good does not hold a session slot for long.
  */
@@ -56,6 +56,11 @@ export class ResumableSessions {
       stop();
       if (this.#sessions.get(id) === session) this.#sessions.delete(id);
     });
+  }
+
+  /** The host is stopping: a session waiting for its client has no client to wait for, so it ends now. */
+  closeDetached(code: number, reason: string): void {
+    for (const session of [...this.#sessions.values()]) if (session.detached) session.close(code, reason);
   }
 
   /** Answers a resume request (the first message on `wire`) from the session it names; false when it cannot. */

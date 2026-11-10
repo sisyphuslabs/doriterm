@@ -27,7 +27,7 @@ export interface SessionInfo {
 export interface SecureLink extends ByteLink, SessionInfo {}
 
 /**
- * The session `secureLink` establishes, which outlives the link it runs on (contract v1.10 "Session resume"): once
+ * The session `secureLink` establishes, which outlives the link it runs on (contract v1.11 "Session resume"): once
  * `allowResume` was called, a link that drops detaches the session instead of closing it, and `resume` (the initiator)
  * or `accept` (the responder) carries it on over a new link.
  */

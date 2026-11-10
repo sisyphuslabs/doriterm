@@ -6,7 +6,7 @@ import { useConnection } from "../connection/store.ts";
 import { HISTORY_LINES } from "../terminal/opening-attach.ts";
 
 /**
- * A reconnect that could not carry the session on (contract v1.10) opens a new one, and every terminal is then redrawn
+ * A reconnect that could not carry the session on (contract v1.11) opens a new one, and every terminal is then redrawn
  * from its host rather than continued: the screen and its last {@link HISTORY_LINES} lines. That is said once, when the
  * new connection arrives, so the redraw is never a silent gap in what the reader was looking at.
  */

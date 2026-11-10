@@ -19,7 +19,7 @@ export interface ResumeWiring {
 }
 
 /**
- * Lets a connection's session outlive its socket (contract v1.10): the session is allowed to detach, and each detach
+ * Lets a connection's session outlive its socket (contract v1.11): the session is allowed to detach, and each detach
  * starts the resumer. Null for a connection with no session (the loopback path).
  */
 export function wireResume(opened: OpenConnection, hooks: ResumeWiringHooks): ResumeWiring | null {

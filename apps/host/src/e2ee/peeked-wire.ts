@@ -4,7 +4,7 @@ import type { E2eeWire } from "./links.ts";
 const IDLE_CLOSE = 4408;
 
 /**
- * A session's wire with its first message read ahead, so the host can tell a resume (contract v1.10) from a handshake
+ * A session's wire with its first message read ahead, so the host can tell a resume (contract v1.11) from a handshake
  * before it runs either. Everything that arrives is kept in order until a data listener takes it: the handshake path
  * gets the first message back with the rest, and a resume takes what followed its request with `drain`.
  *

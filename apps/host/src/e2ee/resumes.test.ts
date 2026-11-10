@@ -197,6 +197,19 @@ describe("an hc session whose relay link drops", () => {
   });
 });
 
+describe("a host that stops", () => {
+  test("ends a session waiting for its client at once, hc connect with it", async () => {
+    const h = host();
+    const { clientEnd, hostEnd } = await h.connect();
+    clientEnd.end(dropped());
+    hostEnd.end(dropped());
+    await flush();
+    expect(h.children[0]?.state.closed).toBe(false);
+    await h.gateway.closeAll();
+    expect(h.children[0]?.state.closed).toBe(true);
+  });
+});
+
 describe("a resume request the host cannot honour", () => {
   test("for a session it does not hold is refused with 4408, and starts no hc connect", async () => {
     const h = host();

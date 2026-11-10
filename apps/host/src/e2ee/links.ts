@@ -80,7 +80,7 @@ const isWire = (link: ByteLink | undefined): link is ByteLink & Wire =>
 /**
  * The decrypted session as the host's Link, so `bridge` pipes it to `hc connect` exactly like `/v1/hc`. While
  * `hc connect` is still taking an earlier chunk, the socket stops reading, so decrypted data cannot pile up. The
- * session may change wires (a resume, contract v1.10): each new one gets the same read gate, and a write made while the
+ * session may change wires (a resume, contract v1.11): each new one gets the same read gate, and a write made while the
  * session has no wire waits for the next one, so `hc connect`'s output stops at the session's ring instead of piling up.
  */
 export function plaintextLink(secure: PlaintextSession, wire: Wire): Link {
