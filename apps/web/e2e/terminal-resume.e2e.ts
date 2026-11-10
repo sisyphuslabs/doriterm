@@ -170,6 +170,13 @@ test("a relay blip with nothing new is one request and one answer: no attach, th
     await page.keyboard.type("sleep 1.5; seq -f 'late-%g' 1 20");
     await page.keyboard.press("Enter");
     await expect(terminal).toContainText("seq -f 'late-%g' 1 20");
+    // Typing follows the output to the end; the reader then goes back up, and must be left there by what arrives.
+    await terminal.evaluate((element) => {
+      element.scrollTop = Math.round((element.scrollHeight - element.clientHeight) / 2);
+    });
+    await expect
+      .poll(() => terminal.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop))
+      .toBeGreaterThan(100);
     const idle = await snapshot(terminal);
     const sentIdle = sockets.traffic.toRelay.length;
     const receivedIdle = sockets.traffic.fromRelay.length;
@@ -194,6 +201,7 @@ test("a relay blip with nothing new is one request and one answer: no attach, th
     expect(text.match(/late-20/g)).toHaveLength(1);
     expect(text.match(/late-1\b/g)).toHaveLength(1);
     expect(text.match(/line-400/g)).toHaveLength(1);
+    // The rows that arrived went below a reader who was up in history, who did not move.
     expect(caughtUp.scrollTop).toBe(idle.scrollTop);
     expect(caughtUp.scrollHeight).toBeGreaterThan(idle.scrollHeight);
     expect(missed.sent.filter((bytes) => bytes === REQUEST_BYTES).length).toBeGreaterThanOrEqual(1);
