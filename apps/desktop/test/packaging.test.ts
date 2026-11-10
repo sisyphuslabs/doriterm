@@ -13,7 +13,12 @@ import { speechAddonPath } from "../src/main/speech.ts";
 const builder = JSON.parse(readFileSync(join(import.meta.dir, "..", "electron-builder.json"), "utf8")) as {
   readonly toolsets?: { readonly appimage?: string };
   readonly appImage?: { readonly executableArgs?: readonly string[] };
+  readonly nsis?: { readonly include?: string };
 };
+
+test("Windows installers load the architecture guard before installing (#1298)", () => {
+  expect(builder.nsis?.include).toBe("build/installer.nsh");
+});
 
 describe("packaging the AppImage", () => {
   test("the AppImage is built with the static runtime, so it needs no libfuse.so.2", () => {
