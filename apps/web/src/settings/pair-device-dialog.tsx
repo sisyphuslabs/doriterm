@@ -96,7 +96,7 @@ export function PairDeviceDialog({ open, onClose, pair }: PairDeviceDialogProps)
       actions={actionsFor(view.kind, { onClose, again, busy })}
     >
       {view.kind === "asking" ? (
-        <p className="text-sm text-muted-foreground">Asking this computer's host for a code…</p>
+        <p className="text-prose text-muted-foreground">Asking this computer's host for a code…</p>
       ) : view.kind === "offer" ? (
         <div className="flex flex-col gap-4">
           {modules === null ? null : (
@@ -126,14 +126,14 @@ export function PairDeviceDialog({ open, onClose, pair }: PairDeviceDialogProps)
           </Field>
           <div className="rounded-lg bg-raised p-4">
             <Fingerprint label="This computer's key (SHA-256)" value={view.offer.fingerprint.replaceAll(" ", "")} />
-            <p className="mt-2 text-sm text-pretty text-muted-foreground">
+            <p className="mt-2 text-prose text-pretty text-muted-foreground">
               The other device shows the same groups before it pairs.
             </p>
           </div>
           {slotNote(view.offer) === undefined ? null : (
-            <p className="text-sm text-pretty text-muted-foreground">{slotNote(view.offer)}</p>
+            <p className="text-prose text-pretty text-muted-foreground">{slotNote(view.offer)}</p>
           )}
-          <p className="text-sm text-muted-foreground">{expiryLine(view.offer, now)}</p>
+          <p className="text-prose text-muted-foreground">{expiryLine(view.offer, now)}</p>
         </div>
       ) : view.kind === "paired" ? (
         view.device === null ? (
