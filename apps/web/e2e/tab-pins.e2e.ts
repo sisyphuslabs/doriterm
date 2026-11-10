@@ -272,6 +272,8 @@ test.describe("phone", () => {
     ]);
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+    // The phone lists spaces on their own Spaces tab (#1398).
+    await page.getByRole("navigation", { name: "Sections" }).getByRole("button", { name: "Spaces", exact: true }).click();
     await page
       .getByRole("button", { name: /^pins\b/ })
       .first()
