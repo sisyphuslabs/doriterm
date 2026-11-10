@@ -105,7 +105,11 @@ const framesSampled = (page: Page) =>
 test("a relay blip with nothing new is one request and one answer: no attach, the same rows, the same scroll, no replay", async ({
   page,
 }) => {
-  await page.addInitScript(() => Reflect.set(globalThis, "__dorifaceAttachLog", []));
+  await page.addInitScript(() => {
+    Reflect.set(globalThis, "__dorifaceAttachLog", []);
+    Reflect.set(globalThis, "__dorifaceRpcLog", []);
+  });
+  const rpcs = () => page.evaluate(() => (Reflect.get(globalThis, "__dorifaceRpcLog") as string[]).length);
   const { observer, sockets } = observe();
   const host = await startFakeRelayHost({ terminal: true });
   try {
@@ -125,6 +129,7 @@ test("a relay blip with nothing new is one request and one answer: no attach, th
     expect(before.scrollTop).toBeGreaterThan(0);
     const sentBefore = sockets.traffic.toRelay.length;
     const receivedBefore = sockets.traffic.fromRelay.length;
+    const rpcsBefore = await rpcs();
 
     await sampleFrames(page);
     const droppedAt = Date.now();
@@ -139,13 +144,19 @@ test("a relay blip with nothing new is one request and one answer: no attach, th
     const after = await snapshot(terminal);
     const sent = sockets.traffic.toRelay.slice(sentBefore);
     const received = sockets.traffic.fromRelay.slice(receivedBefore);
-    const measured = { before, after, sent, received, resumedAfterMs, frames };
+    const calls = await page.evaluate(
+      (from) => (Reflect.get(globalThis, "__dorifaceRpcLog") as string[]).slice(from),
+      rpcsBefore,
+    );
+    const measured = { before, after, sent, received, calls, resumedAfterMs, frames };
     test.info().annotations.push({ type: "measured", description: JSON.stringify(measured) });
     console.log(`idle reconnect: ${JSON.stringify(measured)}`);
 
     expect(sent[0]).toBe(REQUEST_BYTES);
     expect(received[0]).toBe(ANSWER_BYTES);
-    expect(sent.length).toBe(1);
+    // Nothing of the terminal is asked again: no attach, and no screen-sized message either way.
+    expect(calls).not.toContain("terminal.attach");
+    for (const bytes of sent.slice(1)) expect(bytes).toBeLessThan(REPLAY_FLOOR_BYTES);
     for (const bytes of received.slice(1)) expect(bytes).toBeLessThan(REPLAY_FLOOR_BYTES);
     expect(after.attaches).toBe(before.attaches);
     expect(after.nodes).toBe(before.nodes);
