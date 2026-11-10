@@ -23,6 +23,7 @@ import { LocalHost } from "./local-host.ts";
 import { menuTemplate } from "./menu.ts";
 import { noticesSupported, showNotice } from "./notice.ts";
 import { readNoticeAuthorization } from "./notice-authorization.ts";
+import { loadNoticeAuthorization } from "./notice-addon.ts";
 import { requestPairOffer } from "./pair-offer.ts";
 import { requestPairedDevices, revokePairedDevice } from "./devices.ts";
 import { loadSpeech, speechAddonPath } from "./speech.ts";
@@ -43,6 +44,10 @@ const csp = contentSecurityPolicy({ devServer: devUrl });
 const speech =
   platform === "darwin" || platform === "win32"
     ? loadSpeech(speechAddonPath(app.isPackaged, process.resourcesPath, app.getAppPath()))
+    : undefined;
+const noticeAuthorization =
+  platform === "darwin"
+    ? loadNoticeAuthorization(speechAddonPath(app.isPackaged, process.resourcesPath, app.getAppPath()))
     : undefined;
 const webPreferences = secureWebPreferences(
   join(import.meta.dirname, "preload.cjs"),
@@ -260,7 +265,7 @@ function ready(): void {
       return installed;
     },
     noticesSupported,
-    noticePermission: () => readNoticeAuthorization(systemPreferences),
+    noticePermission: () => readNoticeAuthorization(systemPreferences, noticeAuthorization),
     // A click brings the window back (or makes it, on macOS with none left) and opens the pane in it.
     showNotice: (notice) => showNotice(notice, (terminal) => sendToPage(Channel.noticeClicked, terminal)),
     setDirectTarget: (directUrl) => forwarder?.setTarget(directUrl) ?? false,

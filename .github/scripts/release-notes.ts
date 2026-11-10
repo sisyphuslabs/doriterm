@@ -3,7 +3,8 @@
  * Writes the release notes for a version to stdout: the CHANGELOG.md section for that version, then the downloads in
  * the assets directory and which builds are code signed. A release with no section, or a section with no lines, is
  * refused (exit 1), so a tag cannot publish without notes. A prerelease (1.2.0-rc.1) takes the 1.2.0 section, or the
- * Unreleased section and the changes/unreleased/ fragments while 1.2.0 has none (changelog-fragments.ts).
+ * Unreleased section and the changes/unreleased/ fragments while 1.2.0 has none (changelog-fragments.ts). Only those
+ * notes read the fragments, so a malformed fragment cannot break the notes of a version with a section of its own.
  *
  * Usage: bun .github/scripts/release-notes.ts <version> <assets dir>
  *        bun .github/scripts/release-notes.ts --check <version>   (only the refusal, before any build)
@@ -65,17 +66,17 @@ function releaseSection(version: string): { notes: string } | { refusal: string 
   if (!existsSync(CHANGELOG)) return { refusal: "CHANGELOG.md is missing" };
   const text = readFileSync(CHANGELOG, "utf8");
   const lines = text.split(/\r?\n/);
-  const fragments = readFragments(join(ROOT, FRAGMENT_DIR));
   const base = version.split("-")[0] ?? version;
-  const pending = pendingNotes(text, fragments);
-  if (!pending.ok) return { refusal: pending.problems.join("; ") };
   const names = version === base ? [version] : [version, base, "Unreleased"];
-  const found = names.flatMap((name) => {
-    const section = name === "Unreleased" ? pending.notes : changelogSection(lines, name);
-    return section === undefined ? [] : [{ name, section }];
-  });
-  const first = found.find(({ section }) => hasEntries(section));
-  if (first !== undefined) return { notes: first.section };
+  const found: string[] = [];
+  for (const name of names) {
+    const pending = name === "Unreleased" ? pendingNotes(text, readFragments(join(ROOT, FRAGMENT_DIR))) : undefined;
+    if (pending?.ok === false) return { refusal: pending.problems.join("; ") };
+    const section = pending?.ok === true ? pending.notes : changelogSection(lines, name);
+    if (section === undefined) continue;
+    if (hasEntries(section)) return { notes: section };
+    found.push(section);
+  }
   const wanted = names.map((name) => (name === "Unreleased" ? "## Unreleased" : `## v${name}`)).join(" or ");
   return found.length === 0
     ? { refusal: `CHANGELOG.md has no ${wanted} section for v${version}` }
