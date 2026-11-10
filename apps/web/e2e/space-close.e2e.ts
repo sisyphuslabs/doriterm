@@ -253,6 +253,11 @@ test("a close still writing keeps its question: Cancel waits, Escape does nothin
   await expect(question.getByRole("button", { name: "Cancel" })).toBeDisabled();
   await page.keyboard.press("Escape");
   await expect(question).toBeVisible();
+  // So does a click beside the question: the dialog is centred, so the left of its box is the backdrop.
+  const box = await question.boundingBox();
+  if (box === null) throw new Error("the Close question has no box");
+  await page.mouse.click(Math.max(4, box.x / 2), box.y + box.height / 2);
+  await expect(question).toBeVisible();
 
   // The write is refused on every retry: the question stays up and says why.
   release();
