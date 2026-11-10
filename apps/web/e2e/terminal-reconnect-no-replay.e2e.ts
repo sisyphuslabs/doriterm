@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { endAgent } from "./agents.ts";
 import { expect, laidOutBox, openNewTerminal, test } from "./fixtures.ts";
-import { routeHcSocket } from "./hc-socket.ts";
+import { type HcSocket, routeHcSocket } from "./hc-socket.ts";
 
 test.use({ serviceWorkers: "block" });
 
@@ -85,6 +85,33 @@ async function oldestLine(terminal: Locator): Promise<number> {
   return oldest;
 }
 
+const attachCount = (page: Page): Promise<number> =>
+  page.evaluate(() => (Reflect.get(window, "__dorifaceAttachLog") as unknown[]).length);
+
+/** Drops the link and lets the page connect again: the view has asked to attach a second time once this returns. */
+async function dropAndReconnect(page: Page, link: HcSocket): Promise<void> {
+  const before = link.opened();
+  await link.drop(true);
+  link.restore();
+  await expect.poll(link.opened, { timeout: 15_000 }).toBeGreaterThan(before);
+  await expect.poll(() => attachCount(page)).toBeGreaterThanOrEqual(2);
+}
+
+/** Opens a terminal whose shell has printed `lines` lines, with the attach log on. */
+async function openWithHistory(page: Page, lines: number, setup = ""): Promise<Locator> {
+  await page.addInitScript(() => {
+    Reflect.set(window, "__dorifaceAttachLog", []);
+  });
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  opened.push((await terminal.getAttribute("data-terminal")) ?? "");
+  await terminal.getByRole("textbox").focus();
+  await page.keyboard.type(`${setup}for i in $(seq 1 ${lines}); do echo line-$i; done`);
+  await page.keyboard.press("Enter");
+  await expect(terminal).toContainText(`line-${lines}`, { timeout: 30_000 });
+  return terminal;
+}
+
 /**
  * A reconnect redraws the screen and keeps the history the view already holds (#1997). It used to ask for 2,000 lines of
  * history and wipe its own first, so the history played again: over a slow link the replay outlasted the paint hold
@@ -119,13 +146,7 @@ test("a reconnect over a slow link redraws the screen without playing the histor
   link.delay(150);
   link.throttle(SLOW_LINK_BYTES_PER_SECOND);
   counting = true;
-  const before = link.opened();
-  await link.drop(true);
-  link.restore();
-  await expect.poll(link.opened, { timeout: 15_000 }).toBeGreaterThan(before);
-  await expect
-    .poll(() => page.evaluate(() => (Reflect.get(window, "__dorifaceAttachLog") as unknown[]).length))
-    .toBeGreaterThanOrEqual(2);
+  await dropAndReconnect(page, link);
   // Output after the reattach comes behind its paint on the same stream: once it shows, the paint has been drawn.
   await page.keyboard.type("echo done-$((1+1))");
   await page.keyboard.press("Enter");
@@ -144,4 +165,52 @@ test("a reconnect over a slow link redraws the screen without playing the histor
   expect(await oldestLine(terminal)).toBe(oldestBefore);
   // The reattach sent the screen, not the history: far less than one credit window, where the replay was over a MiB.
   expect(reattachBytes).toBeLessThan(CREDIT_WINDOW_BYTES);
+});
+
+/**
+ * A shell that marks its prompt (OSC 133, as fish 4 and the shell-integration scripts do) has Ghostty scroll the screen
+ * into history on an ESC[2J over it, and the core's repaint starts with one: unless the view clears its screen first,
+ * every reconnect keeps the old screen in the history a second time.
+ */
+test("a reconnect under a marked prompt does not add the old screen to the history (#1997)", async ({ page }) => {
+  const link = await routeHcSocket(page);
+  const terminal = await openWithHistory(page, 200, `PS1="$(printf '\\033]133;A\\007')marked$ "; `);
+  await expect(terminal).toContainText("marked$");
+  const row = await laidOutBox(terminal.locator(".term-row:not(.term-scrollback-row)").first());
+  const historyBefore = await historyRows(terminal, row.height);
+
+  await dropAndReconnect(page, link);
+  await page.keyboard.type("echo done-$((1+1))");
+  await page.keyboard.press("Enter");
+  await expect(terminal).toContainText("done-2", { timeout: 30_000 });
+
+  // The command and its prompt push up two rows; the old screen kept again would be a screen's rows more.
+  const grown = (await historyRows(terminal, row.height)) - historyBefore;
+  expect(grown).toBeGreaterThanOrEqual(0);
+  expect(grown).toBeLessThan(6);
+});
+
+/**
+ * Try again after a refused reattach mounts a new, empty view: it has no history to keep, so it asks for the history as
+ * a first attach does instead of the screen alone.
+ */
+test("Try again after a refused reattach brings the history back into its new view (#1997)", async ({ page }) => {
+  const link = await routeHcSocket(page);
+  const terminal = await openWithHistory(page, 300);
+  const row = await laidOutBox(terminal.locator(".term-row:not(.term-scrollback-row)").first());
+  const oldestBefore = await oldestLine(terminal);
+  const historyBefore = await historyRows(terminal, row.height);
+  expect(historyBefore).toBeGreaterThan(200);
+
+  const release = link.hold("terminal.attach");
+  await dropAndReconnect(page, link);
+  // The core refuses the reattach while the program still runs: the pane says the terminal did not open.
+  release(true);
+  await expect(page.getByRole("heading", { name: "This terminal didn't open" })).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: "Try again" }).click();
+
+  await expect(terminal).toHaveAttribute("data-ready", "true", { timeout: 15_000 });
+  await expect(terminal).toContainText("line-300", { timeout: 15_000 });
+  await expect.poll(() => historyRows(terminal, row.height), { timeout: 15_000 }).toBeGreaterThan(historyBefore - 6);
+  expect(await oldestLine(terminal)).toBe(oldestBefore);
 });

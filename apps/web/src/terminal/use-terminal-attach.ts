@@ -17,6 +17,12 @@ import type { TerminalInput } from "./terminal-view-props.ts";
 import { useReopenWhenMoved } from "./use-reopen-when-moved.ts";
 
 const encoder = new TextEncoder();
+/**
+ * Cursor home, then erase to the end of the screen (ED 0): clears the screen and leaves the scrollback alone. The core's
+ * repaint starts with ESC[2J, which Ghostty answers over a prompt marked with OSC 133 (fish 4, shell integration) by
+ * scrolling the screen into history; over a screen already blank there is nothing to scroll.
+ */
+const CLEAR_SCREEN = "\u001b[H\u001b[J";
 
 interface AttachSources {
   readonly connection: HcConnection;
@@ -97,6 +103,8 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
 
   const attachedTo = useRef(connection);
   const attachedBefore = useRef(false);
+  /** The view the core last painted: a reattach to it keeps its history, a new one (Try again) has none to keep. */
+  const paintedView = useRef<WTerm | null>(null);
   const program = useRef(pid);
   const reportUnsent = (why: Unsent): void => {
     const title = why === null ? "Typed input was not sent" : `Typed input was not sent because the program ${why}`;
@@ -169,11 +177,13 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     const display = readDisplay(ready.element);
     // A reattach after a reconnect says so: the core applies its size only once this viewer is active again.
     const resumed = attachedBefore.current ? { resumed: true } : {};
-    // A reattach keeps the history the view already holds and asks for the screen alone, as hc does when it reattaches
-    // a viewer on another core: 2,000 lines again played the history back, over a MiB that a slow link hands over for
-    // longer than the replay's paint hold, so the view climbed through all of it (#1997). Lines that scrolled off the
-    // screen while the line was down are not added; the core has no cursor to resume from.
-    const history = attachedBefore.current ? 0 : HISTORY_LINES;
+    // A reattach to a view the core has painted keeps the history it holds and asks for the screen alone, as hc does
+    // when it reattaches a viewer on another core: 2,000 lines again played the history back, over a MiB that a slow
+    // link hands over for longer than the replay's paint hold, so the view climbed through all of it (#1997). Lines that
+    // scrolled off the screen while the line was down are not added; the core has no cursor to resume from. A new view
+    // (Try again after a refused reattach) holds no history, so it asks for it as a first attach does.
+    const keepsHistory = paintedView.current === ready;
+    const history = keepsHistory ? 0 : HISTORY_LINES;
     // A reattach after a reconnect keeps its screen and has the connection's own status; only a first attach says so.
     if (!attachedBefore.current) setOpening(true);
     const attachOwn = () =>
@@ -196,8 +206,8 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         if (attachedBefore.current && inUse) attached.focus(true);
         // A fit while the attach was in flight had no stream to resize.
         if (ready.cols !== askedCols || ready.rows !== askedRows) attached.resize(ready.cols, ready.rows);
-        // Reattached after a reconnect: the core repaints the screen (it clears the screen, not the scrollback), and the
-        // history above it stays as the view holds it (#1997).
+        // Reattached after a reconnect: the core repaints the screen, and the history above it stays as the view holds it
+        // (#1997). The view clears its screen first, so the repaint's ESC[2J has no marked prompt to scroll into history.
         if (attachedBefore.current) {
           // Read the reader's place before the repaint (#1393).
           const fromEnd = fromEndOf(ready.element);
@@ -206,6 +216,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           if (fromEnd > 0) ready.holdScrollAway();
           pacer.drop();
           output.reset();
+          if (keepsHistory) ready.write(CLEAR_SCREEN);
           // The repaint lands where the reader was: at the end for one who was following, in history for one who was not.
           endHold.current?.stop();
           // Only the reader's own input lets go early: on the terminal or what overlays it, its scrollbar included.
@@ -214,6 +225,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         }
         const reattach = attachedBefore.current;
         attachedBefore.current = true;
+        paintedView.current = ready;
         // A reattach's replay is drawn once it has settled, so the screen before it stays until then instead of climbing
         // a frame's bytes at a time (D5).
         replayOnAttach(pacer, reattach, {
