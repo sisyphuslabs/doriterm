@@ -1,11 +1,9 @@
 import type { Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
-
-const mac = process.platform === "darwin";
-const FIND = mac ? "Meta+f" : "Control+Shift+F";
 
 const findBar = (page: Page) => page.getByRole("search");
 const field = (page: Page) => page.getByRole("searchbox", { name: "Find in terminal" });
@@ -25,7 +23,7 @@ test("the find chord finds a line only in the scrollback, steps, and Escape give
   );
   expect(atBottom).toBeLessThan(5);
 
-  await page.keyboard.press(FIND);
+  await pressShortcut(page, "terminal.search");
   await expect(field(page)).toBeFocused();
   await page.keyboard.type("needle-");
   // The typed command line holds the query too: the matches are that line and the two printed lines, and a new
@@ -59,7 +57,7 @@ test("the find chord finds a line only in the scrollback, steps, and Escape give
   await expect(terminal).toContainText("42-done");
 
   // Reopened, the terminal's query is back and selected, so typing replaces it.
-  await page.keyboard.press(FIND);
+  await pressShortcut(page, "terminal.search");
   await expect(field(page)).toHaveValue("needle-7");
   const selected = await field(page).evaluate((input) =>
     input instanceof HTMLInputElement ? [input.selectionStart, input.selectionEnd] : null,
@@ -68,7 +66,7 @@ test("the find chord finds a line only in the scrollback, steps, and Escape give
 
   // Asked for again from the field itself, with the caret at the end, the query is selected again.
   await page.keyboard.press("End");
-  await page.keyboard.press(FIND);
+  await pressShortcut(page, "terminal.search");
   await expect
     .poll(() =>
       field(page).evaluate((input) =>
@@ -82,7 +80,7 @@ test("the palette's Find in terminal opens the bar over the terminal in view", a
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   await openNewTerminal(page);
-  await page.keyboard.press(mac ? "Meta+Shift+P" : "Control+Shift+P");
+  await pressShortcut(page, "app.palette");
   await page.keyboard.type("Find in terminal");
   await page.keyboard.press("Enter");
   await expect(field(page)).toBeFocused();
