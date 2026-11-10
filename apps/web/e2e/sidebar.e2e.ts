@@ -1,7 +1,7 @@
 import { expect, laidOutBox, test } from "./fixtures.ts";
 import { pressShortcut } from "./platform-keys.ts";
 import { devices, type Locator, type Page } from "@playwright/test";
-import { rowEdges, rows, visibleCharacters } from "./sidebar-measure.ts";
+import { rowEdges, rows, settle, visibleCharacters } from "./sidebar-measure.ts";
 import {
   clearMachineLayout,
   KOREAN_SPACE,
@@ -166,17 +166,6 @@ async function expectRowsKeepFloors(
     }),
   );
 }
-
-/**
- * Waits for the sidebar's width to finish easing (a new --sidebar-width eases like a drag does), then two frames, so a
- * ResizeObserver has reported and any refit has been laid out.
- */
-const settle = (page: Page) =>
-  page.evaluate(async () => {
-    const aside = document.querySelector("aside");
-    await Promise.all((aside?.getAnimations() ?? []).map((animation) => animation.finished));
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  });
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
 const VIEWPORTS = [
