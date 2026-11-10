@@ -86,7 +86,7 @@ export function ShortcutField({
       </div>
       {state === "conflict" ? (
         <div role="alert" className="flex flex-col items-end gap-2 text-right sm:max-w-80">
-          <p className="flex items-start gap-1.5 text-sm text-foreground">
+          <p className="flex items-start gap-1.5 text-prose text-foreground">
             <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0 text-destructive" />
             <span className="text-pretty">Already used by {conflictWith ?? "another action"}. Move it here?</span>
           </p>

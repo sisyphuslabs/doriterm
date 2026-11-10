@@ -113,6 +113,7 @@ test("no notice about the pane this device shows; the other panes still send the
     t: "notice",
     terminal: other,
     kind: "done",
+    context: { machine: expect.any(String), space: "push", terminal: "push-other", agent: "claude" },
   });
   expect(service.posted).toHaveLength(before + 1);
 });

@@ -139,6 +139,33 @@ describe("replacing an earlier entry for a member's core never leaves the machin
     await clock.advance(DIAL_LIMITS.probeFirstMs);
     await reconciler.idle();
     expect(calls().slice(3)).toEqual(["add b", `add ${fallback}`, "rm b", "add b"]);
+    expect((await listed()).map(([name]) => name)).toEqual(["b"]);
+    expect(reconciler.status.get(b.hostId)).toEqual({ state: "ok", replaced: { name: "b", kind: "ssh" } });
+    // The second round takes a pair for each add and one for the migration; only the line's own add keeps its pair.
+    expect(pairs.log.slice(6)).toEqual(["reserved", "dropped", "reserved", "dropped", "reserved"]);
+  });
+
+  test("a removal that fails with no answer from herdr, after herdr removed the entry, still names it once the line lands (#1235)", async () => {
+    const { clock, machines, reconciler, calls, listed } = setup();
+    machines.lateRms.push(new Error("machine.rm timed out"));
+    await reconciler.reconcile(view);
+    expect(calls()).toEqual(["add b", `add ${fallback}`, "rm b"]);
+    expect(await listed()).toEqual([]);
+    expect(reconciler.status.get(b.hostId)?.state).toBe("retrying");
+    await clock.advance(DIAL_LIMITS.probeFirstMs);
+    await reconciler.idle();
+    expect(calls().slice(3)).toEqual(["add b"]);
+    expect(reconciler.status.get(b.hostId)).toEqual({ state: "ok", replaced: { name: "b", kind: "ssh" } });
+  });
+
+  test("a removal herdr refuses names no replaced entry on a later add that lands without a migration", async () => {
+    const { clock, machines, reconciler } = setup();
+    machines.failRms.push(hcError("busy", "core busy"));
+    await reconciler.reconcile(view);
+    await machines.rm("b");
+    await clock.advance(DIAL_LIMITS.probeFirstMs);
+    await reconciler.idle();
+    expect(reconciler.status.get(b.hostId)).toEqual({ state: "ok" });
   });
 
   test("the entry a migration removed is still named once a retried add of the line lands (#728)", async () => {
