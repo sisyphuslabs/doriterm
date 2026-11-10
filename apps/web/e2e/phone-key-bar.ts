@@ -1,4 +1,5 @@
 import { devices, type Locator, type Page } from "@playwright/test";
+import { coreSize, gridSize } from "./core-size.ts";
 import { expect } from "./fixtures.ts";
 
 const { defaultBrowserType: _browser, ...iphone } = devices["iPhone 14"];
@@ -107,6 +108,30 @@ export async function openPhoneTerminal(
   await expect(terminal).toContainText("$", { timeout: 15_000 });
   await key(page, "Show keyboard").click();
   return terminal;
+}
+
+/**
+ * The terminal once a keyboard change has reached its grid. wterm fits the visual viewport on one animation frame and
+ * draws the new rows after that frame, so a read right after a keyboard key still sees the grid from before it; a spec
+ * that measures it there reads a view the page no longer has. Waits for the rendered grid to be the size the core
+ * holds, which is both the view the spec then works in and the point past the frame that scrolled it to the bottom.
+ */
+export async function settledGrid(page: Page, terminal: Locator): Promise<void> {
+  const address = (await terminal.getAttribute("data-terminal")) ?? "";
+  if (address === "") throw new Error("the phone's terminal has no address");
+  await page.evaluate(
+    () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
+  );
+  await expect
+    .poll(
+      async () => {
+        const shown = await gridSize(terminal);
+        const core = coreSize(address);
+        return shown === core ? null : `the grid shows ${shown}, the core holds ${core}`;
+      },
+      { timeout: 10_000 },
+    )
+    .toBeNull();
 }
 
 export const keysBar = (page: Page) => page.getByRole("toolbar", { name: "Terminal keys" });

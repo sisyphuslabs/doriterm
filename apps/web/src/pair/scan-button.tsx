@@ -82,7 +82,7 @@ export function ScanButton({ onText }: { readonly onText: (text: string) => void
         aria-label="Camera preview, looking for the host's QR code"
         className="aspect-square w-full rounded-xl bg-black object-cover"
       />
-      <p role="status" className="text-center text-sm text-muted-foreground">
+      <p role="status" className="text-center text-prose text-muted-foreground">
         Point the camera at the host&apos;s QR code.
       </p>
       <Button variant="ghost" onClick={stop}>

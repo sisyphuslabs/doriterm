@@ -34,6 +34,16 @@ test.describe("Settings, Machines", () => {
     await expect(added).toContainText("Connected", { timeout: STATE_BOUND_MS });
   });
 
+  test("connecting a machine is part of Machines, and an older link to it lands there", async ({ page }) => {
+    await page.goto("/settings#pair");
+    const nav = page.getByRole("navigation", { name: "Settings" });
+    await expect(nav.getByRole("button", { name: "Machines" })).toHaveAttribute("aria-current", "page");
+    await expect(nav.getByRole("button", { name: "Connect a machine" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Connect a machine", level: 2 })).toBeInViewport();
+    await expect(page.getByText("Open an invite on your host")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "In your mesh", level: 2 })).toBeVisible();
+  });
+
   test.describe("on a phone", () => {
     test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
@@ -61,6 +71,13 @@ test.describe("Settings, Machines", () => {
       expect(button, "button drawn").not.toBeNull();
       expect(glossary, "explanation drawn").not.toBeNull();
       expect(glossary?.y ?? Number.NEGATIVE_INFINITY).toBeGreaterThanOrEqual((button?.y ?? 0) + (button?.height ?? 0));
+    });
+
+    test("the join page's Connect a machine opens Machines on that group", async ({ page }) => {
+      await page.goto("/settings#connect");
+      await expect(page.getByRole("tab", { name: "Machines" })).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByRole("tab", { name: "Connect a machine" })).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: "Connect a machine", level: 2 })).toBeInViewport();
     });
   });
 });

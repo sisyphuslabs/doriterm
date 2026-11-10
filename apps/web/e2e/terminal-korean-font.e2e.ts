@@ -46,7 +46,7 @@ async function koreanTerminal(page: Page): Promise<Locator> {
   return terminal;
 }
 
-test("a configured Korean fallback fills at least 80% of its two cells, centred at 16 pt and 10% extra height (#410)", async ({
+test("a configured Korean fallback is drawn at the ideograph width #410 gives it, centred at 16 pt and 10% extra height", async ({
   page,
 }) => {
   const terminal = await koreanTerminal(page);
@@ -63,15 +63,37 @@ test("a configured Korean fallback fills at least 80% of its two cells, centred 
       range.selectNodeContents(node);
       const text = range.getBoundingClientRect();
       const cell = node.getBoundingClientRect();
+      const root = node.closest("[data-terminal]") ?? node;
+      const rootStyle = getComputedStyle(root);
+      context.font = `${rootStyle.fontSize} ${rootStyle.fontFamily}`;
+      let ascent = 0;
+      let descent = 0;
+      for (let code = 0x21; code < 0x7f; code++) {
+        const ascii = context.measureText(String.fromCharCode(code));
+        ascent = Math.max(ascent, ascii.actualBoundingBoxAscent);
+        descent = Math.max(descent, ascii.actualBoundingBoxDescent);
+      }
       return {
         coverage: (metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight) / cell.width,
         centre: (text.left - metrics.actualBoundingBoxLeft + text.left + metrics.actualBoundingBoxRight) / 2,
         cellCentre: (cell.left + cell.right) / 2,
+        advance: text.width,
+        box: cell.width,
+        // Ghostty sizes a fallback face to min(asciiHeight, two cells), not to the two cells (#410).
+        ideograph: Math.min(ascent + descent, cell.width),
       };
     }),
   );
   for (const measured of ink) {
-    expect.soft(measured.coverage).toBeGreaterThanOrEqual(0.8);
+    // #410 sizes the face to the ideograph width, so 80% of that width is the fill the rule promises. The old "80% of
+    // the two cells" held only where Linux rounds the ASCII ink box out to whole pixels, pushing the cap to ~83% of the
+    // cells; with exact ink metrics the cap here is 15.39 px against a 20 px box, so no face may draw 16 px (#862).
+    expect
+      .soft(Math.abs(measured.advance - measured.ideograph), "the fallback is drawn at its ideograph width")
+      .toBeLessThanOrEqual(1);
+    expect
+      .soft(measured.coverage, "the fallback's ink fills the width it is given")
+      .toBeGreaterThanOrEqual((0.8 * measured.ideograph) / measured.box);
     expect.soft(Math.abs(measured.centre - measured.cellCentre)).toBeLessThan(1);
   }
   const dir = process.env["FONT_SCREENSHOT_DIR"];

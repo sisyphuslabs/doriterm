@@ -50,6 +50,7 @@ async function reply(
         terminal: entry?.terminal ?? null,
         kind: entry?.kind ?? null,
         ...(prompt === undefined ? {} : { prompt }),
+        ...(entry?.context === undefined ? {} : { context: entry.context }),
       };
     }
     case "answer":
