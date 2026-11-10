@@ -1,9 +1,10 @@
 // The sidebar's sections and the phone palette's groups read as groups (#1496): a heading sits closer to what it names
-// than to what came before it, and the space between groups is at least twice the space between lines inside one.
+// than to what came before it, the space between groups is at least twice the space between lines inside one, and an
+// agent section's heading starts on the label column of its rows.
 import type { Page } from "@playwright/test";
 import { endAgent, startAgent, startShell } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
-import { sectionRhythm } from "./section-rhythm.ts";
+import { sectionRhythm, sectionTitleAlignments } from "./section-rhythm.ts";
 
 test.use({ serviceWorkers: "block" });
 
@@ -37,6 +38,24 @@ async function expectRhythm(page: Page) {
   }
 }
 
+/** Each agent section's title starts on the label column of the first row it heads (#1496). */
+async function expectTitlesAlignedWithRows(page: Page) {
+  await page.mouse.move(0, 0);
+  await page.evaluate(() => document.fonts.ready);
+  const sections = await page.evaluate(sectionTitleAlignments);
+  const names = sections.map((section) => section.name);
+  for (const title of ["Agents", "Needs you", "Working", "Idle", "Done"])
+    expect(names, `the sidebar has a "${title}" section`).toContain(title);
+  for (const section of sections) {
+    // A space's avatar is 18 px (size-4.5) where an agent row's status glyph is 16 px, so the spaces' labels sit 2 px
+    // right of the column every title's 34 px indent matches; this asserts the agent sections' titles.
+    if (section.name === "Spaces") continue;
+    const label = `section "${section.name}": title at ${section.title}, first row's label at ${section.row}`;
+    expect.soft(section.row, label).not.toBeNull();
+    if (section.row !== null) expect.soft(Math.abs(section.title - section.row), label).toBeLessThanOrEqual(1);
+  }
+}
+
 for (const theme of ["day", "night"] as const) {
   test.describe(theme, () => {
     test.use({ colorScheme: theme === "day" ? "light" : "dark" });
@@ -56,6 +75,7 @@ for (const theme of ["day", "night"] as const) {
           ),
         );
         await expectRhythm(page);
+        await expectTitlesAlignedWithRows(page);
       });
     });
 

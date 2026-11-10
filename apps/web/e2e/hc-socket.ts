@@ -158,6 +158,27 @@ export async function routeHcSocket(
           host.send(fail ? Buffer.from(text.replace(`"method":"${method}"`, broken), "latin1") : frame);
         });
     });
+    // Delayed frames leave in the order they came: one queue per connection, drained by one timer at a time. A timer per
+    // frame does not keep that order when the delay changes between frames, since timers due at the same moment can fire
+    // in either order (#1640 review: an echo arrived as "remotet yping").
+    const queued: { readonly at: number; readonly deliver: () => void }[] = [];
+    let draining = false;
+    const drain = (): void => {
+      const next = queued[0];
+      if (next === undefined) {
+        draining = false;
+        return;
+      }
+      draining = true;
+      setTimeout(
+        () => {
+          queued.shift();
+          next.deliver();
+          drain();
+        },
+        Math.max(0, next.at - Date.now()),
+      );
+    };
     host.onMessage((message) => {
       // One message can carry several hc frames (an event and an RPC answer together): each is held or passed alone.
       for (const frame of typeof message === "string" ? [message] : hcFrames(message)) {
@@ -173,7 +194,8 @@ export async function routeHcSocket(
           continue;
         }
         lastDue = Math.max(Date.now() + delay, lastDue);
-        setTimeout(deliver, Math.max(0, lastDue - Date.now()));
+        queued.push({ at: lastDue, deliver });
+        if (!draining) drain();
       }
     });
     live.add(socket);

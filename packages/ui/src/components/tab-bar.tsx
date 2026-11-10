@@ -64,7 +64,8 @@ function TabLabel({ text }: { readonly text: string }) {
     return () => observer.disconnect();
   }, [text]);
   return (
-    <span ref={label} title={clipped ? text : undefined} className="max-w-[170px] truncate">
+    // Positioned above the tab button's hit layer (its ::after), so a pointer over the label reaches this title (#1530).
+    <span ref={label} title={clipped ? text : undefined} className="relative z-[1] max-w-[170px] truncate">
       {text}
     </span>
   );
@@ -210,7 +211,9 @@ export function TabBar({
                 aria-controls={tab.controls}
                 onClick={() => onSelect?.(tab.id)}
                 onDoubleClick={() => onRename?.(tab.id)}
-                className="flex min-w-0 items-center gap-[7px] rounded-xs outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+                // The hit area spans the whole tab and half the 3 px gap to the next, past the wrapper's 1 px border:
+                // no dead column beside its Close button or between two tabs. Close comes later, so it stays on top.
+                className="flex min-w-0 items-center gap-[7px] rounded-xs outline-none after:absolute after:inset-y-0 after:-inset-x-[2.5px] focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
               >
                 {tab.icon}
                 <TabLabel text={tab.title} />
