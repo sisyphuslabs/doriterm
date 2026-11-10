@@ -2,7 +2,8 @@
  * Evaluates the subset of GitHub Actions expressions this repository's workflows use (`${{ ... }}`: context paths,
  * string, number and boolean literals, == != ! && || and parentheses, format(), and the status functions), so a test
  * can ask what a concurrency group or an `if:` comes to for one event instead of pinning the expression's text.
- * Semantics follow GitHub's: && and || return an operand, and strings compare without regard to case.
+ * Semantics follow GitHub's: == compares values of different types as numbers, && and || return an operand, and strings
+ * compare without regard to case.
  */
 export type Value = string | number | boolean | null | readonly Value[] | { readonly [key: string]: Value };
 
@@ -32,12 +33,51 @@ function tokenize(source: string): string[] {
 
 const truthy = (value: Value): boolean => value !== false && value !== 0 && value !== "" && value !== null;
 
-const equal = (left: Value, right: Value): boolean =>
-  typeof left === "string" && typeof right === "string" ? left.toLowerCase() === right.toLowerCase() : left === right;
+/**
+ * A value as `==` sees it: null is 0, a boolean is 1 or 0, a string is `Number(value)` (so '' is 0), and an array or
+ * object is NaN.
+ */
+const asNumber = (value: Value): number => {
+  if (value === null) return 0;
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (typeof value === "number") return value;
+  if (typeof value === "string") return Number(value);
+  return Number.NaN;
+};
 
-/** One step of a property path; `*` takes that key of every element (`labels.*.name`). */
+/**
+ * GitHub's loose equality: equal types compare directly (strings without regard to case, arrays and objects only by
+ * instance), while different types are both converted to a number, so NaN never equals anything.
+ * https://docs.github.com/en/actions/reference/workflows-and-actions/expressions#operators
+ */
+const equal = (left: Value, right: Value): boolean => {
+  if (typeof left === typeof right) {
+    return typeof left === "string" && typeof right === "string"
+      ? left.toLowerCase() === right.toLowerCase()
+      : left === right;
+  }
+  return asNumber(left) === asNumber(right);
+};
+
+/**
+ * The items `*` selected. A key after it maps over them (`labels.*.name`); a key on any other array is null, because
+ * only `*` filters an array in GitHub's expressions.
+ * https://docs.github.com/en/actions/reference/workflows-and-actions/expressions#object-filters
+ */
+class Selection extends Array<Value> {
+  static select(items: readonly Value[]): Selection {
+    const selection = new Selection();
+    selection.push(...items);
+    return selection;
+  }
+}
+
+/** One step of a property path; `*` selects the items a following key maps over (`labels.*.name`). */
 function property(value: Value, key: string): Value {
-  if (Array.isArray(value)) return key === "*" ? value : value.map((item) => property(item, key));
+  if (Array.isArray(value)) {
+    if (key === "*") return Selection.select(value);
+    return value instanceof Selection ? Selection.select(value.map((item) => property(item, key))) : null;
+  }
   if (typeof value !== "object" || value === null || key === "*") return null;
   return (value as { readonly [key: string]: Value })[key] ?? null;
 }

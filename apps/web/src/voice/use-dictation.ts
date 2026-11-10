@@ -43,7 +43,7 @@ function dictationOptions(): DictationOptions {
       language,
       engine: () => "device",
       remember: () => undefined,
-      unavailableReason: "device-mac",
+      unavailableReason: desktopDictation()?.unavailableReason ?? "device-mac",
     };
   }
   const support: Support = blocked === null ? findRecognizer(window) : { kind: "unavailable", why: blocked };

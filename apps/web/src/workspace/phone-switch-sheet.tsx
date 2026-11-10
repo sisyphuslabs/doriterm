@@ -33,7 +33,12 @@ function tabRows(
       <div key={shown.address} className="flex min-w-0 items-center gap-1">
         <div className="min-w-0 flex-1">
           <AgentRow
-            agent={{ ...agent, name, ...(said === "" ? {} : { detail: said }) }}
+            agent={{
+              ...agent,
+              name,
+              ...(said === "" ? {} : { detail: said }),
+              ...(space.tabPins[at] === true ? { pinned: true } : {}),
+            }}
             selected={shown.address === active}
             onSelect={onPick}
           />

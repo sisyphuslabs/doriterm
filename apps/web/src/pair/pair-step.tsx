@@ -38,7 +38,7 @@ export function PairStep({
     if (parsed.ok) onOffer(parsed.offer);
   };
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-5 px-6 py-10">
+    <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col justify-center gap-5 px-6 py-10">
       {offline ? (
         <Notice tone="warning" title="You are offline">
           Pairing needs a network: the code is looked up through the relay. Try again once it is back.
@@ -47,7 +47,7 @@ export function PairStep({
       <Steps current={1} />
       <div className="text-center">
         <h1 className="text-2xl font-semibold text-balance text-foreground">Pair this device</h1>
-        <p className="mt-1.5 text-base text-muted-foreground">
+        <p className="mx-auto mt-1.5 max-w-measure text-base text-muted-foreground">
           Open the invite link a member sent you, or type the code their computer shows.
         </p>
       </div>
@@ -82,7 +82,7 @@ export function PairStep({
             }}
           />
         </Field>
-        <p className="text-sm text-muted-foreground">
+        <p className="max-w-measure text-sm text-muted-foreground">
           The code reaches your host through the relay, which only sees encrypted traffic.
         </p>
         <Button type="submit" variant="primary" size="lg" loading={busy} disabled={text.trim() === ""}>
