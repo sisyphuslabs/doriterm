@@ -117,12 +117,14 @@ describe("doriface-host connect: stdin and stdout piped to the host's hc connect
     expect(await within(run.exited, "exit")).toBe(0);
   }, 30_000);
 
-  test("a paired host that is not on the relay (4404) fails within a few seconds, exit 1", async () => {
+  // 255 is ssh's "the connection itself failed": herdr keeps the one reason instead of dialing again with its Windows
+  // line (apps/host/src/connect/exit-code.ts, #2019). A refusal made here, before dialing, stays a usage error (1).
+  test("a paired host that is not on the relay (4404) fails within a few seconds, exit 255", async () => {
     const offline = join(scratch, "offline");
     const absent = generateHostIdentity();
     new KnownHosts(offline).add({ hostId: absent.hostId, hostKey: absent.noise.publicKey, relayUrl: host().relayUrl });
     const run = runConnect(offline, host().relayUrl, absent.hostId);
-    expect(await within(run.exited, "the refusal", REFUSAL_MS)).toBe(1);
+    expect(await within(run.exited, "the refusal", REFUSAL_MS)).toBe(255);
     expect((await run.stderr()).trim().split("\n").at(-1)).toMatch(/is not connected to the relay: .*\(4404\)$/);
   }, 30_000);
 
@@ -182,7 +184,7 @@ describe("doriface-host connect: stdin and stdout piped to the host's hc connect
     expect(new KnownHosts(replaced).get(host().hostId)?.hostKey).toEqual(host().hostKey);
   }, 30_000);
 
-  test("a pinned key that is not the live host's is refused with 4400 before any byte reaches hc", async () => {
+  test("a pinned key that is not the live host's is refused with 4400 before any byte reaches hc, exit 255", async () => {
     const wrongKey = join(scratch, "wrong-key");
     new KnownHosts(wrongKey).add({
       hostId: host().hostId,
@@ -191,7 +193,7 @@ describe("doriface-host connect: stdin and stdout piped to the host's hc connect
     });
     const run = runConnect(wrongKey, host().relayUrl, host().hostId);
     await run.write(HELLO);
-    expect(await within(run.exited, "the refusal", REFUSAL_MS)).toBe(1);
+    expect(await within(run.exited, "the refusal", REFUSAL_MS)).toBe(255);
     expect((await run.stderr()).trim().split("\n").at(-1)).toMatch(/its key may not match .*\(4400\)$/);
     const leftover = await run.reader.line().then(
       () => "a line",
@@ -227,14 +229,14 @@ describe("doriface-host connect: stdin and stdout piped to the host's hc connect
     expect(await within(plain.exited, "exit")).toBe(0);
   }, 60_000);
 
-  test("a device the host revoked or never stored is told to pair again", async () => {
+  test("a device the host revoked or never stored is told to pair again, exit 255", async () => {
     const stranger = join(scratch, "forgotten");
     const pair = runConnect(stranger, host().relayUrl, await host().pairingLink(), "--name", "forgotten");
     pair.end();
     expect(await within(pair.exited, "pairing")).toBe(0);
     await host().revokeAll();
     const run = runConnect(stranger, host().relayUrl, host().hostId);
-    expect(await within(run.exited, "the refusal", REFUSAL_MS)).toBe(1);
+    expect(await within(run.exited, "the refusal", REFUSAL_MS)).toBe(255);
     expect((await run.stderr()).trim().split("\n").at(-1)).toContain("pair it again (4401)");
   }, 60_000);
 });

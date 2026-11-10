@@ -1,7 +1,8 @@
 import { DEFAULT_RELAY_URL } from "@doriface/crypto";
 import { hostname } from "node:os";
 import { parseArgs } from "node:util";
-import { dial, type Dialed } from "../connect/dial.ts";
+import { dial, type Dialed, HostUnreachableError } from "../connect/dial.ts";
+import { CONNECTION_FAILED_EXIT, sessionExitCode } from "../connect/exit-code.ts";
 import { meshBridge } from "../connect/mesh-bridge.ts";
 import { type Output, pipe } from "../connect/pipe.ts";
 import { parseTarget } from "../connect/target.ts";
@@ -16,7 +17,9 @@ export const CONNECT_USAGE = `usage: doriface-host connect <hostId | pairing lin
     hc machine add --via 'doriface-host connect <hostId>' --name <name>
 
   The host serves its own hc session, so a shell line hc appends (\`--via\` passes one) is ignored. stdin EOF ends
-  the session.
+  the session. Exits like ssh: 255 when the host could not be reached or ended the session before it spoke, 1 when a
+  session that was up ended with an error or on a refusal made here (not paired, --fingerprint, --replace), 0 on a
+  normal end.
 
   --relay <url>      the relay (default: the one the host was paired through; for a code, ${DEFAULT_RELAY_URL})
   --state-dir <dir>  this machine's device key and paired hosts (default $DORIFACE_HOST_STATE_DIR, else $XDG_STATE_HOME/doriface-host)
@@ -30,9 +33,21 @@ export const CONNECT_USAGE = `usage: doriface-host connect <hostId | pairing lin
 /** hc gives a dial 20 s for the hello reply; failing earlier leaves it a clear reason on stderr. */
 export const DIAL_TIMEOUT_MS = 15_000;
 
-function stdoutOutput(): Output {
+class DialTimeoutError extends Error {
+  override readonly name = "DialTimeoutError";
+}
+
+/** stdout as the session's sink, remembering whether the host ever said a byte (the exit code depends on it). */
+function stdoutOutput(): Output & { readonly spoke: boolean } {
+  let spoke = false;
   return {
-    write: (bytes) => process.stdout.write(bytes),
+    get spoke() {
+      return spoke;
+    },
+    write: (bytes) => {
+      spoke = true;
+      return process.stdout.write(bytes);
+    },
     drained: () =>
       process.stdout.writableNeedDrain
         ? new Promise((resolve) => process.stdout.once("drain", () => resolve()))
@@ -42,7 +57,7 @@ function stdoutOutput(): Output {
 
 async function within<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
   const { promise: expired, reject } = Promise.withResolvers<never>();
-  const timer = setTimeout(() => reject(new Error(`${what} did not finish within ${ms / 1000} s`)), ms);
+  const timer = setTimeout(() => reject(new DialTimeoutError(`${what} did not finish within ${ms / 1000} s`)), ms);
   return Promise.race([promise, expired]).finally(() => clearTimeout(timer));
 }
 
@@ -85,15 +100,30 @@ export async function connectCommand(args: readonly string[], log: (line: string
     replace: values.replace === true,
     log,
   };
-  const dialed: Dialed = await within(dial(target, options), DIAL_TIMEOUT_MS, "reaching the host through the relay");
+  let dialed: Dialed;
+  try {
+    dialed = await within(dial(target, options), DIAL_TIMEOUT_MS, "reaching the host through the relay");
+  } catch (error) {
+    // A refusal made here (not paired, --fingerprint, --replace) is a usage error, and is thrown as one.
+    if (!(error instanceof HostUnreachableError || error instanceof DialTimeoutError)) throw error;
+    log(error.message);
+    return CONNECTION_FAILED_EXIT;
+  }
   const { secure, link, held } = dialed;
   const stop = (): void => secure.close();
   process.once("SIGTERM", stop);
   process.once("SIGINT", stop);
   process.once("SIGHUP", stop);
   process.stdout.once("error", stop);
-  const error = await pipe({ secure, held, link, input: Bun.stdin.stream(), output: stdoutOutput() });
-  if (error === undefined) return 0;
-  log(`the session ended: ${error.message}`);
-  return 1;
+  const output = stdoutOutput();
+  let endedByCaller = false;
+  const input = (async function* (): AsyncGenerator<Uint8Array> {
+    yield* Bun.stdin.stream();
+    endedByCaller = true;
+  })();
+  const error = await pipe({ secure, held, link, input, output });
+  const end = { spoke: output.spoke, endedByCaller, error };
+  if (error !== undefined) log(`the session ended: ${error.message}`);
+  else if (!end.spoke && !endedByCaller) log("the session closed before the host said anything");
+  return sessionExitCode(end);
 }
