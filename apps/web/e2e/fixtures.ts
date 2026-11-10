@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { E2E_HOST_ENV, E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
 import { clearLayouts } from "./layout-doc.ts";
 import { type HcSocket, routeHcSocket } from "./hc-socket.ts";
+import { pinFonts } from "./pinned-fonts.ts";
 import { readSavedEnv } from "./saved-env.ts";
 import { beginTest, endTest } from "./terminal-guard.ts";
 import { startWorkerHost } from "./worker-host.ts";
@@ -12,7 +13,12 @@ import { startWorkerHost } from "./worker-host.ts";
  * settings pointing at it, or at `loopbackUrl` when a spec routes another address there. Every test, and every worker
  * as its host stops, is checked for terminals left on that host's core (terminal-guard.ts).
  */
-export const test = base.extend<{ loopbackUrl: string; ownTerminals: undefined }, { e2eHost: undefined }>({
+export const test = base.extend<
+  { loopbackUrl: string; ownTerminals: undefined; pinnedFonts: boolean },
+  { e2eHost: undefined }
+>({
+  // Every page draws with the pinned faces unless a spec opts out to see the platform's own stack (#862).
+  pinnedFonts: [true, { option: true }],
   e2eHost: [
     // oxlint-disable-next-line no-empty-pattern -- Playwright reads a fixture's dependencies from this pattern; it has none
     async ({}, use) => {
@@ -33,7 +39,8 @@ export const test = base.extend<{ loopbackUrl: string; ownTerminals: undefined }
     { auto: true },
   ],
   loopbackUrl: [`ws://127.0.0.1:${E2E_HOST_PORT}/v1/hc`, { option: true }],
-  page: async ({ page, loopbackUrl }, use) => {
+  page: async ({ page, loopbackUrl, pinnedFonts }, use) => {
+    if (pinnedFonts) await pinFonts(page);
     const settings = {
       mode: "loopback",
       relayUrl: "wss://relay-doriface.omo.dev",

@@ -83,6 +83,8 @@ test("a fragment in a bad shape is refused, naming the file and the line", () =>
     [{ name: "5.md", text: "### Terminal\n\nSome prose. (#5)\n" }, "changes/unreleased/5.md line 3"],
     [{ name: "Bad Name.md", text: "### Terminal\n\n- A line. (#6)\n" }, "<pr-number>.md"],
     [{ name: "7.txt", text: "### Terminal\n\n- A line. (#7)\n" }, "<pr-number>.md"],
+    [{ name: "8.md", text: "###  \n- A line. (#8)\n" }, "changes/unreleased/8.md line 1"],
+    [{ name: "9.md", text: "###\n\n- A line. (#9)\n" }, "changes/unreleased/9.md line 1"],
   ];
   for (const [fragment, problem] of cases) {
     const parsed = parseFragment(fragment);
@@ -108,7 +110,6 @@ test("a prerelease's notes are Unreleased and the fragments, grouped the same wa
 test("a heading open pull requests wrote outside the list goes under its release section (#1324)", () => {
   const headings = [
     "Host setup",
-    "Host",
     "First run",
     "Connection",
     "From the phone",
@@ -118,7 +119,6 @@ test("a heading open pull requests wrote outside the list goes under its release
   ];
   expect(headings.map(canonicalHeading)).toEqual([
     "Host install",
-    "Host install",
     "Workspace",
     "Connection and offline wording",
     "Phone",
@@ -126,6 +126,25 @@ test("a heading open pull requests wrote outside the list goes under its release
     "Joining a mesh",
     "Keys",
   ]);
+});
+
+test("a bare Host heading is kept as written, not filed under Host install (#1326)", () => {
+  expect(canonicalHeading("Host")).toBe("Host");
+  expect(canonicalHeading("host")).toBe("host");
+});
+
+test("a section that already exists below a newer one gains the lines where it stands (#1273)", () => {
+  const changelog =
+    "# Changelog\n\n## Unreleased\n\n## v0.1.5 - 2026-11-07\n\n- Five. (#5)\n\n" +
+    "## v0.1.4 - 2026-11-06\n\n### Terminal\n\n- Four. (#4)\n\n## v0.1.3\n\n- Three. (#3)\n";
+  const late: Fragment = { name: "6.md", text: "### Terminal\n\n- Late. (#6)\n" };
+  const result = assembleRelease({ changelog, fragments: [late], version: "0.1.4", date: "2026-11-09" });
+  expect(result).toEqual({
+    ok: true,
+    changelog: changelog.replace("- Four. (#4)\n", "- Four. (#4)\n- Late. (#6)\n"),
+    changed: true,
+    lines: 1,
+  });
 });
 
 test("Keys comes right after Workspace in a release", () => {

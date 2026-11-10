@@ -55,7 +55,12 @@ export function SpaceSheet(props: {
                     <div key={entry.address} className="flex min-w-0 items-center gap-1">
                       <div className="min-w-0 flex-1">
                         <AgentRow
-                          agent={{ ...agent, name, ...(said === "" ? {} : { detail: said }) }}
+                          agent={{
+                            ...agent,
+                            name,
+                            ...(said === "" ? {} : { detail: said }),
+                            ...(space.tabPins[at] === true ? { pinned: true } : {}),
+                          }}
                           selected={entry.address === active}
                           onSelect={pick}
                         />

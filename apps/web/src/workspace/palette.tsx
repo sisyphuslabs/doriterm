@@ -61,7 +61,7 @@ export function Palette({ terminals, host, route, actions, spaces, onOpenTermina
           event.stopPropagation();
           onClose();
         }}
-        className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center px-3 pt-3 md:pt-[12vh] [&>*]:pointer-events-auto"
+        className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center px-3 pt-[calc(var(--safe-top)+0.75rem)] md:pt-[12vh] [&>*]:pointer-events-auto"
       >
         <CommandPalette commands={commands} onRun={run} onCancel={onClose} />
       </div>

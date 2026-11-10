@@ -28,6 +28,10 @@ describe("a push payload", () => {
 
   test.each([
     ["an extra member (a title)", { v: 1, n: ID, k: "done", h: HOST, title: "deploy" }],
+    [
+      "what the notice is about (#1908: that is asked over the push stream)",
+      { v: 1, n: ID, k: "input", h: HOST, context: { machine: "box" } },
+    ],
     ["a missing host", { v: 1, n: ID, k: "done" }],
     ["an unknown kind", { v: 1, n: ID, k: "other", h: HOST }],
     ["a short notice id", { v: 1, n: "abc", k: "done", h: HOST }],

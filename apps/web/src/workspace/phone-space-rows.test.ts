@@ -23,6 +23,7 @@ const space = (tabPanes: readonly (readonly string[])[], tabNames: readonly stri
   tabs: tabPanes.length,
   addresses: tabPanes.flat(),
   tabPanes,
+  tabPins: tabPanes.map(() => false),
   tabNames,
   dir: "/work/website",
 });
