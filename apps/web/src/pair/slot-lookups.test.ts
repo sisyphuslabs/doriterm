@@ -79,10 +79,12 @@ test("a code that starts like a link is asked for once it can no longer be one",
   }
 });
 
-test("a refused lookup is asked again by Pair, as a second Pair always asked", async () => {
+test("a slot the relay refused while typing is not asked again by the first Pair, and a second Pair asks", async () => {
   const { asked, answers, lookups } = relay();
   typeEach(lookups, "AB3K9XQZ");
   await Promise.all(answers);
+  expect(await lookups.offer("AB3K9XQZ")).toEqual(REFUSED);
+  expect(asked).toEqual(["AB3"]);
   expect(await lookups.offer("AB3K9XQZ")).toEqual(REFUSED);
   expect(asked).toEqual(["AB3", "AB3"]);
 });

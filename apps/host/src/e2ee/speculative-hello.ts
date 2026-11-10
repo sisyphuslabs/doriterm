@@ -68,6 +68,8 @@ export class SpeculativeHello {
       child = this.#spawn();
     } catch {
       // An early answer is optional: a child that cannot start (hc moved, no descriptors left) leaves the hello held.
+      // The attempt is still a start, so a host that cannot spawn does not retry once per replayed message (#1292).
+      this.#starts.push(this.#now());
       return;
     }
     if (child === undefined) return;
