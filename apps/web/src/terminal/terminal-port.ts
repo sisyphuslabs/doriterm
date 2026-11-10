@@ -38,19 +38,39 @@ const fieldOf = (handle: RefObject<TerminalHandle | null>): HTMLTextAreaElement 
   return element?.querySelector("textarea") ?? null;
 };
 
+/** Fields let go only to be focused again in the same press: the program is told neither half of that (#1519). */
+const regaining = new WeakSet<EventTarget>();
+
+/** Whether a focus change of this field is the port taking it again for the keyboard, which the program is not told. */
+export const regainingFocus = (target: EventTarget | null): boolean => target !== null && regaining.has(target);
+
+/**
+ * Whether input from the renderer is the focus report (mode 1004) its own field writes as the port lets it go and takes
+ * it again: the renderer reports its field's blur and focus to the program itself, besides the view's.
+ */
+export const isRegainingReport = (handle: RefObject<TerminalHandle | null>, data: string): boolean =>
+  (data === "\x1b[O" || data === "\x1b[I") && regainingFocus(fieldOf(handle));
+
 /**
  * Lets the field under this terminal raise the soft keyboard, before the focus that reads it. On a surface that has one
  * the field carries `inputmode="none"`, so a press in the terminal raises nothing and only the keys ask for the keyboard
  * (#1375); a field that already has the focus is let go first, since a browser raises no keyboard for a focus it already
- * has. That is enough for a field focused outside a tap; one a tap focused has to be let go a task earlier, which the
- * keys' press does (`letGo`, #1940). A surface with no soft keyboard to raise is left alone, and so is a hardware
- * keyboard: `inputmode` is the soft keyboard's own.
+ * has. That holds even for a field already at `text`: on iOS one focused outside a tap (a picked session's attach) has
+ * no keyboard up, and only a focus inside the tap raises it (#1519). One a tap focused has to be let go a task earlier,
+ * which the keys' press does (`letGo`, #1940). The terminal keeps the focus throughout, so the blur and the focus that
+ * follows it are marked as the port's own until this press is over. A surface with no soft keyboard to raise is left
+ * alone, and so is a hardware keyboard: `inputmode` is the soft keyboard's own.
  */
 export function askingForKeyboard(handle: RefObject<TerminalHandle | null>, softKeyboard: boolean): void {
   if (!softKeyboard) return;
   const field = fieldOf(handle);
   if (field === null) return;
-  if (field.ownerDocument.activeElement === field) field.blur();
+  if (field.ownerDocument.activeElement === field) {
+    regaining.add(field);
+    // The caller focuses the field again synchronously, and both focus events are dispatched as it does.
+    queueMicrotask(() => regaining.delete(field));
+    field.blur();
+  }
   field.inputMode = "text";
 }
 
@@ -63,6 +83,43 @@ export function quietKeyboard(element: HTMLElement): void {
   const field = element.querySelector("textarea");
   if (!(field instanceof HTMLTextAreaElement)) return;
   if (field.ownerDocument.activeElement !== field) field.inputMode = "none";
+}
+
+/** Fields let go on a press's pointerdown, each with the release that ends that press if its click never comes. */
+const pressing = new WeakMap<EventTarget, () => void>();
+
+/**
+ * Holds the field as the port's own from the press's pointerdown until the click takes it again, so the program hears
+ * neither the blur nor the focus (#1519, #1940). A press that ends with no click (the finger slid into a scroll, or the
+ * browser cancelled it) gives the field its focus back, still marked, so the terminal is never left without the focus
+ * the program was not told it lost.
+ */
+function holdForPress(field: HTMLTextAreaElement, refocus: () => void): void {
+  const view = field.ownerDocument.defaultView;
+  const release = (): void => {
+    view?.removeEventListener("pointercancel", release, true);
+    view?.removeEventListener("scroll", release, true);
+    if (pressing.get(field) !== release) return;
+    pressing.delete(field);
+    if (field.ownerDocument.activeElement !== field) refocus();
+    queueMicrotask(() => regaining.delete(field));
+  };
+  pressing.set(field, release);
+  regaining.add(field);
+  view?.addEventListener("pointercancel", release, true);
+  view?.addEventListener("scroll", release, true);
+}
+
+/** Ends a press's hold as its click takes the field: the focus that follows is the hold's last part (#1519). */
+function endHold(field: HTMLTextAreaElement | null): boolean {
+  if (field === null) return false;
+  const release = pressing.get(field);
+  if (release === undefined) return false;
+  const view = field.ownerDocument.defaultView;
+  view?.removeEventListener("pointercancel", release, true);
+  view?.removeEventListener("scroll", release, true);
+  pressing.delete(field);
+  return true;
 }
 
 /** The port over a terminal view: every paste sends a syllable still composing first, so it lands where it was typed. */
@@ -90,13 +147,21 @@ export function portOf(
     },
     commitComposition,
     focus: () => {
+      // A syllable still composing is sent first: letting the field go for the keyboard would drop it (#1519).
+      commitComposition();
+      const field = fieldOf(handle);
+      const held = endHold(field);
       askingForKeyboard(handle, softKeyboard);
       handle.current?.focus();
+      // The press let the field go on its pointerdown; this focus was the last part the program is not told about.
+      if (held && field !== null) queueMicrotask(() => regaining.delete(field));
     },
     letGo: () => {
       if (!softKeyboard) return;
       const field = fieldOf(handle);
-      if (field !== null && field.ownerDocument.activeElement === field) field.blur();
+      if (field === null || field.ownerDocument.activeElement !== field) return;
+      holdForPress(field, () => handle.current?.focus());
+      field.blur();
     },
     quiet: () => {
       // A surface with no soft keyboard of its own (a mouse-only window) keeps its field as it is, for an OS on-screen

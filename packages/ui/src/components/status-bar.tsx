@@ -12,7 +12,7 @@ export function StatusBar({ start, end, className }: StatusBarProps) {
   return (
     <footer
       className={cn(
-        "flex h-(--statusbar-height) shrink-0 items-center gap-4 border-t border-border bg-chrome px-3.5 text-xs text-muted-foreground [&_svg]:size-3.5",
+        "flex h-(--statusbar-height) shrink-0 items-center gap-4 border-t border-border bg-chrome px-3.5 text-xs text-muted-foreground [&_svg:not([data-slot=spinner])]:size-3.5",
         className,
       )}
     >
