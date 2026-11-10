@@ -141,40 +141,129 @@ test("an image past 8 MB is refused with a notice and nothing reaches the termin
   await expect(terminal).toContainText("before-after", { timeout: 15_000 });
 });
 
-// herdr-app binds Ctrl+V to terminal.paste_image on every platform (#1922): an image on the clipboard is pasted as a file
-// on the terminal's machine, and without one the program gets ^V, as from the key itself.
-for (const platform of ["MacIntel", "Linux x86_64"]) {
-  test(`Ctrl+V pastes the clipboard's image by its path, as herdr-app does (${platform})`, async ({ page }) => {
-    await page.addInitScript((value) => {
-      Object.defineProperty(Navigator.prototype, "platform", { get: () => value });
-    }, platform);
-    await page.goto("/");
-    const terminal = await openNewTerminal(page);
-    await terminal.getByRole("textbox").focus();
-    await copyImage(page, await makePng(page, 9, 60));
-    await page.keyboard.type("echo ");
-    await page.keyboard.press("Control+KeyV");
-    await expect(terminal).toContainText("doriface-paste-", { timeout: 30_000 });
-  });
+// herdr-app binds Ctrl+V to terminal.paste_image (#1922). On a Mac Ctrl+V is not the paste key, so the app reads the
+// clipboard for an image, and without one, or where the page may not read it (the desktop app), the program gets ^V,
+// with keys typed meanwhile behind it. On Linux and Windows Ctrl+V stays the browser's paste, as before: an image goes
+// in as a file through the paste itself (#742) and text as text, with no clipboard permission needed.
 
-  test(`Ctrl+V with no image on the clipboard sends ^V to the program (${platform})`, async ({ page }) => {
-    await page.addInitScript((value) => {
-      Object.defineProperty(Navigator.prototype, "platform", { get: () => value });
-    }, platform);
-    await page.goto("/");
-    const terminal = await openNewTerminal(page);
-    await terminal.getByRole("textbox").focus();
-    await page.evaluate(() => navigator.clipboard.writeText("only-text"));
-    // Raw mode, so the tty hands ^V to dd rather than reading it as its literal-next key; RAW-ON is printed once it is.
-    await page.keyboard.type(
-      "stty raw -echo; printf 'RAW%s\\r\\n' -ON; dd bs=1 count=1 2>/dev/null | od -An -tx1 | sed 's/^ */HEX:/'; stty sane\r",
+/** A Mac page in this Linux Chromium: the platform says MacIntel, and the paste Ctrl+V fires here, never on a Mac, is dropped. */
+async function asMac(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, "platform", { get: () => "MacIntel" });
+    window.addEventListener(
+      "paste",
+      (event) => {
+        if (!event.isTrusted) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      },
+      true,
     );
-    await expect(terminal).toContainText("RAW-ON", { timeout: 15_000 });
-    await page.keyboard.press("Control+KeyV");
-    await expect(terminal).toContainText("HEX:16", { timeout: 15_000 });
-    await expect(terminal).not.toContainText("only-text");
   });
 }
+
+async function asLinux(page: Page): Promise<void> {
+  await page.addInitScript(() => Object.defineProperty(Navigator.prototype, "platform", { get: () => "Linux x86_64" }));
+}
+
+/** The page may not read the clipboard, as in the desktop app or after a person says no. */
+async function readDenied(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    Clipboard.prototype.read = () => Promise.reject(new DOMException("Read permission denied.", "NotAllowedError"));
+  });
+}
+
+/** A shell reading `count` raw bytes, so the tty hands ^V to dd rather than reading it as literal-next; prints HEX:... */
+async function readRawBytes(page: Page, terminal: Locator, count: number): Promise<void> {
+  await page.keyboard.type(
+    `stty raw -echo; printf 'RAW%s\\r\\n' -ON; dd bs=1 count=${count} 2>/dev/null | od -An -tx1 | sed 's/^ */HEX:/'; stty sane\r`,
+  );
+  await expect(terminal).toContainText("RAW-ON", { timeout: 15_000 });
+}
+
+test("Ctrl+V pastes the clipboard's image by its path on a Mac, as herdr-app does", async ({ page }) => {
+  await asMac(page);
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await copyImage(page, await makePng(page, 9, 60));
+  await page.keyboard.type("echo ");
+  await page.keyboard.press("Control+KeyV");
+  await expect(terminal).toContainText("doriface-paste-", { timeout: 30_000 });
+});
+
+test("Ctrl+V with no image on the clipboard sends ^V to the program on a Mac", async ({ page }) => {
+  await asMac(page);
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await page.evaluate(() => navigator.clipboard.writeText("only-text"));
+  await readRawBytes(page, terminal, 1);
+  await page.keyboard.press("Control+KeyV");
+  await expect(terminal).toContainText("HEX:16", { timeout: 15_000 });
+  await expect(terminal).not.toContainText("only-text");
+});
+
+test("Ctrl+V sends ^V on a Mac when the page may not read the clipboard, an image on it or not", async ({ page }) => {
+  await asMac(page);
+  await readDenied(page);
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await copyImage(page, await makePng(page, 9, 70));
+  await readRawBytes(page, terminal, 1);
+  await page.keyboard.press("Control+KeyV");
+  await expect(terminal).toContainText("HEX:16", { timeout: 15_000 });
+});
+
+test("a key typed while Ctrl+V reads the clipboard reaches the program after its ^V, on a Mac", async ({ page }) => {
+  await asMac(page);
+  // The clipboard answers only when the test says, as when a browser asks the person first.
+  await page.addInitScript(() => {
+    const read = Clipboard.prototype.read;
+    Clipboard.prototype.read = function held(this: Clipboard) {
+      return new Promise<ClipboardItems>((resolve) => {
+        Object.assign(window, { answerClipboard: () => resolve(read.call(this)) });
+      });
+    };
+  });
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await page.evaluate(() => navigator.clipboard.writeText("only-text"));
+  await readRawBytes(page, terminal, 2);
+  await page.keyboard.press("Control+KeyV");
+  await page.keyboard.press("x");
+  await page.waitForFunction(() => "answerClipboard" in window);
+  await page.evaluate(() => Reflect.get(window, "answerClipboard")());
+  await expect(terminal).toContainText(/HEX:\S+ \S+/u, { timeout: 15_000 });
+  await expect(terminal).toContainText("HEX:16 78");
+});
+
+test("Ctrl+V pastes the clipboard's image by its path on Linux, though the page may not read the clipboard", async ({
+  page,
+}) => {
+  await asLinux(page);
+  await readDenied(page);
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await copyImage(page, await makePng(page, 9, 80));
+  await page.keyboard.type("echo ");
+  await page.keyboard.press("Control+KeyV");
+  await expect(terminal).toContainText("doriface-paste-", { timeout: 30_000 });
+});
+
+test("Ctrl+V pastes the clipboard's text on Linux, as before", async ({ page }) => {
+  await asLinux(page);
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await page.evaluate(() => navigator.clipboard.writeText("only-text"));
+  await readRawBytes(page, terminal, 1);
+  await page.keyboard.press("Control+KeyV");
+  await expect(terminal).toContainText("HEX:6f", { timeout: 15_000 });
+});
 
 test("several lines of text still ask before they run, as clipboard-paste-protection does", async ({ page }) => {
   await page.goto("/");
