@@ -12,6 +12,7 @@ const tab = (key: string, machine: string | null, addresses: readonly string[]):
   root: { children: [], id: key, type: "row" },
   panes: addresses.map((address, index) => ({ id: `${key}-p${index}`, address, mod: null })),
   readOnly: null,
+  pinned: false,
   transient: false,
 });
 

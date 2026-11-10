@@ -53,10 +53,10 @@ export function SettingRow(props: SettingRowProps) {
         </p>
         {configKey === undefined ? null : <p className="mt-0.5 font-mono text-xs text-muted-foreground">{configKey}</p>}
         {description === undefined ? null : (
-          <p className="mt-0.5 text-sm text-pretty text-muted-foreground">{description}</p>
+          <p className="mt-0.5 text-prose text-pretty text-muted-foreground">{description}</p>
         )}
         {disabled ? (
-          <p id={reasonId} className="mt-1 flex items-start gap-1.5 text-sm text-muted-foreground">
+          <p id={reasonId} className="mt-1 flex items-start gap-1.5 text-prose text-muted-foreground">
             <Ban aria-hidden className="mt-0.5 size-3.5 shrink-0" />
             <span className="text-pretty">{disabledReason}</span>
           </p>

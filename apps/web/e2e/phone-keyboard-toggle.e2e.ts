@@ -52,7 +52,7 @@ test("opening a terminal raises no keyboard on its own: it stays down until the 
   await expect(input).not.toBeFocused();
 });
 
-test("a session picked from Switch session takes the keyboard once: left by the system Back and opened again, it raises none (#1375)", async ({
+test("a session picked from Switch session raises no keyboard: only the keyboard button does, then and after the system Back", async ({
   page,
 }) => {
   const first = startShell("host", "pickone");
@@ -67,7 +67,7 @@ test("a session picked from Switch session takes the keyboard once: left by the 
     await key(page, "Show keyboard").click();
     await expectUp(page);
 
-    // Picking a session from the keys bar asks for its keyboard: the picked view takes it as it opens.
+    // Picking a session opens it with the keyboard down, per the product owner: the keyboard button is the only ask.
     await key(page, "Switch session").click();
     await page
       .getByRole("menu")
@@ -75,7 +75,8 @@ test("a session picked from Switch session takes the keyboard once: left by the 
       .click();
     const picked = page.locator(`[data-terminal="${second}"]`);
     await expect(picked).toContainText("$", { timeout: 15_000 });
-    await expectUp(page);
+    await expect(picked.locator("textarea")).not.toBeFocused();
+    await expectDown(page);
 
     // The system Back leaves it without the app's own Back button; opening it again from the list is no new ask.
     await page.goBack();

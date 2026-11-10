@@ -13,7 +13,7 @@ describe("searching across settings (#1460)", () => {
     ["shortcut", ["keyboard", "keybindings"]],
     ["push", ["notifications"]],
     ["dictation", ["voice"]],
-    ["invite", ["pair"]],
+    ["invite", ["machines"]],
     ["approval", ["machines"]],
     ["pair a device", ["device"]],
     ["revoke", ["device", "machines"]],
@@ -24,7 +24,7 @@ describe("searching across settings (#1460)", () => {
 
   test("a section's own name finds it, whatever the case and the spaces around it", () => {
     expect(found("  KEYBOARD ")).toEqual(["keyboard"]);
-    expect(found("connect a machine")).toEqual(["pair"]);
+    expect(found("connect a machine")).toEqual(["machines"]);
   });
 
   test("an empty query lists every section; one nothing holds lists none", () => {

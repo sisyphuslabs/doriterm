@@ -266,7 +266,7 @@ export function TerminalView(props: TerminalViewProps) {
         // Keys typed now wait for the machine (HeldInput, #1489); the line overlays the top row and takes no room.
         <p
           role="status"
-          className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-muted/95 px-3 py-1 text-center text-sm text-muted-foreground"
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-muted/95 px-3 py-1 text-center text-prose text-muted-foreground"
         >
           Reconnecting to {away}. Your typing will be sent.
         </p>
