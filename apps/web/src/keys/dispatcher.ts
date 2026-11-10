@@ -3,7 +3,6 @@ import { actionFor, type Scope } from "./actions.ts";
 import { resolveKeymap } from "./keymap.ts";
 import { useOverrides } from "./keymap-store.ts";
 import { TEXT_FIELD_KEEPS } from "./text-field-keys.ts";
-import { TERMINAL_KEEPS } from "./terminal-keeps.ts";
 import { currentPlatform, triggerFromEvent } from "./trigger.ts";
 
 /** Returns true when the action ran; false lets the key reach the page. */
@@ -121,8 +120,6 @@ export function useKeymapDispatcher(): void {
         !(id === "terminal.search" && inFindBar(event.target))
       )
         return;
-      // A focused terminal program keeps its own control keys: the key reaches it uncancelled, as it would from the shell.
-      if (TERMINAL_KEEPS.has(id) && inTerminal(event.target)) return;
       // The tab move keys stay with a text field (they select text) and with a reorderable row (they move the row).
       if (TEXT_FIELD_KEEPS.has(id) && (inTextField(event.target) || inReorderableRow(event.target))) return;
       if (dispatch(action.scope, id)) {
