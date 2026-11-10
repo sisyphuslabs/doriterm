@@ -17,6 +17,9 @@ function asking(name: string, scenario: "permission" | "question" | "steps" = "p
 
 const banner = (page: Page) => page.locator("[data-prompt-answer]");
 
+/** The agent and the e2e host's machine, as a notification's title names them (#1908). */
+const AGENT_AT_MACHINE = expect.stringMatching(/^claude-code@\S+$/);
+
 test("a permission notice is opaque; its Yes row opens the pane and the page answers once, with the agent's own key", async ({
   page,
   context,
@@ -40,8 +43,8 @@ test("a permission notice is opaque; its Yes row opens the pane and the page ans
     .poll(() => shownNotifications(worker), { timeout: 15_000 })
     .toEqual([
       {
-        title: "Doriterm",
-        body: "An agent is asking for permission.",
+        title: AGENT_AT_MACHINE,
+        body: "approval · push-ask-9d4 — Asking for permission\n“wants to run: touch probe-a.txt”",
         tag,
         actions: ["option:1", "option:4:declines"],
       },
@@ -96,7 +99,12 @@ test("a question's notice offers its own rows; a row opens the pane and the page
   await expect
     .poll(() => shownNotifications(worker), { timeout: 15_000 })
     .toEqual([
-      { title: "Doriterm", body: "An agent is waiting for your input.", tag, actions: ["option:1", "option:2"] },
+      {
+        title: AGENT_AT_MACHINE,
+        body: "approval · push-question-7c4 — Waiting for your input\n“Which database should the migration target?”",
+        tag,
+        actions: ["option:1", "option:2"],
+      },
     ]);
   await tapNotification(worker, tag, "option:2");
   await expect(page.locator(`[data-terminal="${agent.address}"]`)).toBeVisible({ timeout: 15_000 });
@@ -113,7 +121,32 @@ test("several questions in a row offer no rows: a tap opens the card (#669)", as
   await deliverPush(context, JSON.stringify(posted.notice));
   await expect
     .poll(() => shownNotifications(worker), { timeout: 15_000 })
-    .toEqual([{ title: "Doriterm", body: "An agent is waiting for your input.", tag, actions: [] }]);
+    .toEqual([
+      {
+        title: AGENT_AT_MACHINE,
+        body: expect.stringMatching(/^approval · push-steps-2e8 — Waiting for your input(\n“.+”)?$/),
+        tag,
+        actions: [],
+      },
+    ]);
+});
+
+test("a notice the host cannot name keeps the fixed text: the fallback is the honest one (#1908)", async ({
+  page,
+  context,
+}) => {
+  await turnOn(page);
+  asking("push-unnamed-5a1", "question");
+  const posted = await suite.service().next();
+  const worker = await serviceWorker(context);
+  // A notice id the host never made: it answers the push stream naming nothing, as a host that forgot it would.
+  const unknown = { ...posted.notice, n: "ZZZZZZZZZZZZZZZZZZZZZZ" };
+  await deliverPush(context, JSON.stringify(unknown));
+  await expect
+    .poll(() => shownNotifications(worker), { timeout: 15_000 })
+    .toEqual([
+      { title: "Doriterm", body: "An agent is waiting for your input.", tag: "ZZZZZZZZZZZZZZZZZZZZZZ", actions: [] },
+    ]);
 });
 
 test("the agent's No row answers from the notification with its own key, without opening the app", async ({

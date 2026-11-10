@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { reportedRows, reportRowOf, startMouseTracking, stopMouseTracking } from "./mouse-tracking.ts";
+import { enableCopyOnSelection } from "./terminal-settings.ts";
 
 test.use({ serviceWorkers: "block", permissions: ["clipboard-read", "clipboard-write"] });
 
@@ -33,6 +34,7 @@ test("with mouse tracking off, a plain drag and a Shift drag each select and cop
   await terminal.getByRole("textbox").focus();
   await page.keyboard.type("printf 'alpha %s gamma\\n' beta; printf 'delta %s zeta\\n' epsilon\r");
   await expect(terminal).toContainText("delta epsilon zeta", { timeout: 15_000 });
+  await enableCopyOnSelection(page);
 
   await page.evaluate(() => navigator.clipboard.writeText("nothing"));
   await drag(page, await dragSpan(terminal, "alpha beta gamma"));
@@ -67,6 +69,8 @@ test("under a program that tracks the mouse, Shift and a drag select the text an
   const terminal = await openNewTerminal(page);
   const input = terminal.getByRole("textbox");
   await input.focus();
+  await enableCopyOnSelection(page);
+  await input.focus();
   await startMouseTracking(page, terminal);
   await page.evaluate(() => navigator.clipboard.writeText("nothing"));
 
@@ -75,7 +79,7 @@ test("under a program that tracks the mouse, Shift and a drag select the text an
   await page.keyboard.up("Shift");
   await expect.poll(() => painted(page).count()).toBeGreaterThan(0);
   await expect(input).toBeFocused();
-  // Copy on select (on by default) takes the held range when the drag ends, with no chord.
+  // Copy on select, turned on in Settings, takes the held range when the drag ends, with no chord.
   await expect.poll(() => clipboard(page)).toContain("elta epsilon");
   await page.evaluate(() => navigator.clipboard.writeText("nothing"));
   // The held range copies as the Copy action does: Cmd/Ctrl+C with no document selection reads it.
