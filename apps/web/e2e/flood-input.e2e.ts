@@ -2,9 +2,10 @@
 // in hidden tabs) and a click on the active tab's Close must still bring its question up at once. confirm-close-surface
 // is `always`, so the question does not depend on what hc last reported running there.
 import { execFileSync } from "node:child_process";
-import type { Locator, Page } from "@playwright/test";
+import type { Locator } from "@playwright/test";
 import { E2E_HOST_ENV } from "./config.ts";
 import { setConfirmClose } from "./close-confirm.ts";
+import { clickToDialog } from "./close-probe.ts";
 import { type HcSocket, routeHcSocket } from "./hc-socket.ts";
 import { readSavedEnv } from "./saved-env.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
@@ -16,43 +17,6 @@ test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 
 // A shell loop, as in #560: each echo is its own write, so output arrives as a stream of small chunks.
 const FLOOD = "i=0; while :; do i=$((i+1)); echo flood-$i-$i-$i-$i; done";
-
-/**
- * From a real click on the active tab's close button to its question on screen: the pointerdown's timeStamp is when the
- * browser took the input, so time the click waited behind a busy main thread counts. 10 s when it never comes.
- */
-async function clickToDialog(page: Page): Promise<number> {
-  await page.evaluate(() => {
-    const probe = { pressed: 0, asked: 0 };
-    Object.assign(window, { probe });
-    document.addEventListener("pointerdown", (event) => (probe.pressed = event.timeStamp), {
-      capture: true,
-      once: true,
-    });
-    const seen = new MutationObserver(() => {
-      if (document.querySelector('[role="dialog"]') === null) return;
-      seen.disconnect();
-      probe.asked = performance.now();
-    });
-    seen.observe(document.body, { childList: true, subtree: true });
-  });
-  const box = await page
-    .locator("[data-tab-id]")
-    .filter({ has: page.getByRole("tab", { selected: true }) })
-    .locator("[data-tab-close]")
-    .boundingBox();
-  if (box === null) throw new Error("no close button");
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  const probe = page.waitForFunction(
-    () => {
-      const { pressed, asked } = Reflect.get(window, "probe") as { pressed: number; asked: number };
-      return asked > 0 && pressed > 0 ? asked - pressed : null;
-    },
-    undefined,
-    { timeout: 10_000 },
-  );
-  return probe.then((handle) => handle.jsonValue() as Promise<number>).catch(() => 10_000);
-}
 
 test("with three terminals flooding, Close still asks on every click (#560)", async ({ page }) => {
   test.setTimeout(180_000);
@@ -84,8 +48,8 @@ test("with three terminals flooding, Close still asks on every click (#560)", as
   const times: number[] = [];
   const askAndCancel = async (): Promise<void> => {
     const ms = await clickToDialog(page);
+    if (ms === null) throw new Error(`no Close question within 10 s of the click (so far: ${times.join(", ")} ms)`);
     times.push(ms);
-    if (ms >= 10_000) throw new Error(`no Close question within 10 s of the click (so far: ${times.join(", ")} ms)`);
     await page
       .getByRole("dialog", { name: /^Close/ })
       .getByRole("button", { name: "Cancel" })

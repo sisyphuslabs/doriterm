@@ -73,5 +73,7 @@ test("with classic scrollbars, the sidebar list and the tab strip draw none whil
   expect(probe).toBeGreaterThan(0);
 
   await expect.poll(() => overflowOf(page, '[data-slot="agents-list"]')).toEqual(fitsScrolling("y"));
-  await expect.poll(() => overflowOf(page, '[role="tablist"][aria-label="Tabs"]')).toEqual(fitsScrolling("x"));
+  await expect
+    .poll(() => overflowOf(page, '[role="tablist"][aria-label="Tabs"] [data-tab-scroll]'))
+    .toEqual(fitsScrolling("x"));
 });

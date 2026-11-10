@@ -23,14 +23,20 @@ const row = (section: SectionId, title: string, detail: string, words: readonly 
 /** The rows each section draws, in its words. Keep a row here next to the row itself when its title changes. */
 const ROWS: readonly SettingHit[] = [
   row("device", "Keep the screen awake", "While a terminal is open", ["screen", "sleep", "wake lock"]),
+  row("device", "Show typing before the host echoes it", "Predictive typing on slow links", [
+    "predict",
+    "local echo",
+    "latency",
+    "typing",
+  ]),
   row("device", "Install Doriterm", "As an app on this device", ["install", "app"]),
   row("device", "Add to Home Screen", "As an app on this phone", ["install", "home screen", "app"]),
   row("device", "Getting started", "The first-run guide", ["guide", "tour"]),
   row("device", "Relay", "The relay this app connects through", ["relay", "self-hosted"]),
   row("device", "Connect through", "Relay, direct or loopback", ["direct", "loopback", "route"]),
-  row("pair", "Open an invite on your host", "One command on the host", ["invite", "pair", "join"]),
-  row("pair", "Join from the other computer", "With the invite", ["join", "pair"]),
-  row("pair", "A phone that uses one host only", "Pair a phone", ["phone", "pair", "qr"]),
+  row("machines", "Open an invite on your host", "One command on the host", ["invite", "pair", "join"]),
+  row("machines", "Join from the other computer", "With the invite", ["join", "pair"]),
+  row("machines", "A phone that uses one host only", "Pair a phone", ["phone", "pair", "qr"]),
   row("keyboard", "Keys", "The keys on the phone's key bar", ["key bar", "keys bar", "extra keys", "phone keys"]),
   row("keyboard", "Packs", "Shortcut packs for the key bar", ["packs", "ctrl chords"]),
   row("keyboard", "Your keys", "Keys you made", ["custom keys", "your keys"]),
@@ -47,10 +53,10 @@ const ROWS: readonly SettingHit[] = [
 
 const TERMINAL_ROWS: readonly SettingHit[] = KEYS.map((def) => ({
   section: "terminal",
-  title: def.key,
+  title: def.label ?? def.key,
   detail: def.description,
   anchor: `terminal-${def.key}`,
-  words: [],
+  words: [def.key],
 }));
 
 const ALL: readonly SettingHit[] = [...ROWS, ...TERMINAL_ROWS];
