@@ -23,6 +23,8 @@ export interface TerminalInputPath {
   readonly typed: (data: TerminalInput) => void;
   /** Files sent to the terminal's machine, their paths pasted there. */
   readonly pasteFiles: (files: readonly File[]) => void;
+  /** Input sent now would be written at once (the predictor's P6). */
+  readonly linkReady: () => boolean;
 }
 
 interface InputSources {
@@ -33,6 +35,8 @@ interface InputSources {
   readonly address: string;
   readonly transformInput: ((data: string) => string) | undefined;
   readonly typesComposition: boolean;
+  /** Told of every input before it is sent or queued, in the order it reaches the program: the predictor (#1595). */
+  readonly predict?: RefObject<((data: TerminalInput) => void) | null>;
 }
 
 /** Why input that waited for a machine's line was not sent, as the person is told. */
@@ -44,7 +48,7 @@ export function notSent(why: Dropped, machine: string): string {
 
 /** What a pane does with what the person types: one ordered path to the program, queued while no stream is open. */
 export function useTerminalInput(sources: InputSources): TerminalInputPath {
-  const { wt, handle, stream, connection, address, transformInput, typesComposition } = sources;
+  const { wt, handle, stream, connection, address, transformInput, typesComposition, predict } = sources;
   const toasts = useToastManager();
   const latestConnection = useRef(connection);
   latestConnection.current = connection;
@@ -68,7 +72,14 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
   );
   useEffect(() => held.watch(), [held]);
   const pending = useRef(held.pending);
-  const send = useCallback((data: TerminalInput): void => held.send(data), [held]);
+  const send = useCallback(
+    (data: TerminalInput): void => {
+      predict?.current?.(data);
+      held.send(data);
+    },
+    [held, predict],
+  );
+  const linkReady = useCallback((): boolean => held.ready(), [held]);
   const typedInto = (data: string): void => {
     const input = transformInput?.(data) ?? data;
     if (input !== "") send(input);
@@ -113,5 +124,5 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
     wt.element.addEventListener("input", onInput);
     return () => wt.element.removeEventListener("input", onInput);
   }, [wt, typesComposition]);
-  return { pending, typedInto, typed, pasteFiles };
+  return { pending, typedInto, typed, pasteFiles, linkReady };
 }

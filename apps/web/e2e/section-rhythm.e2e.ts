@@ -1,9 +1,10 @@
 // The sidebar's sections and the phone palette's groups read as groups (#1496): a heading sits closer to what it names
-// than to what came before it, and the space between groups is at least twice the space between lines inside one.
+// than to what came before it, the space between groups is at least twice the space between lines inside one, and an
+// agent section's heading starts on the label column of its rows.
 import type { Page } from "@playwright/test";
 import { endAgent, startAgent, startShell } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
-import { sectionRhythm } from "./section-rhythm.ts";
+import { sectionRhythm, sectionTitleAlignments } from "./section-rhythm.ts";
 
 test.use({ serviceWorkers: "block" });
 
@@ -37,6 +38,22 @@ async function expectRhythm(page: Page) {
   }
 }
 
+/** Each sidebar section's title, Spaces included, starts on the label column of the first row it heads (#1496, #1612). */
+async function expectTitlesAlignedWithRows(page: Page) {
+  await page.mouse.move(0, 0);
+  await page.evaluate(() => document.fonts.ready);
+  const sections = await page.evaluate(sectionTitleAlignments);
+  const names = sections.map((section) => section.name);
+  for (const title of ["Agents", "Needs you", "Working", "Idle", "Done"])
+    expect(names, `the sidebar has a "${title}" section`).toContain(title);
+  expect(names, 'the sidebar has a "Spaces" section').toContain("Spaces");
+  for (const section of sections) {
+    const label = `section "${section.name}": title at ${section.title}, first row's label at ${section.row}`;
+    expect.soft(section.row, label).not.toBeNull();
+    if (section.row !== null) expect.soft(Math.abs(section.title - section.row), label).toBeLessThanOrEqual(1);
+  }
+}
+
 for (const theme of ["day", "night"] as const) {
   test.describe(theme, () => {
     test.use({ colorScheme: theme === "day" ? "light" : "dark" });
@@ -56,6 +73,7 @@ for (const theme of ["day", "night"] as const) {
           ),
         );
         await expectRhythm(page);
+        await expectTitlesAlignedWithRows(page);
       });
     });
 
