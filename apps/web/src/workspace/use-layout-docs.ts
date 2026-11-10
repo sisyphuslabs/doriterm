@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type DocCalls,
   type DocEdit,
+  type EditShown,
   LAYOUT_DOC,
   LayoutDoc,
   PINS_DOC,
@@ -22,7 +23,7 @@ export interface MachineLayout {
   readonly loaded: boolean;
   /** Why edits are refused now, or null when they are taken. */
   readonly readOnly: string | null;
-  readonly edit: (change: DocEdit) => Promise<boolean>;
+  readonly edit: (change: DocEdit, shown?: EditShown) => Promise<boolean>;
   /** The ids of its pinned tabs (#1561), from the machine's own pins document, never from herdr-app's. */
   readonly pins?: ReadonlySet<string>;
   /** Edits the machine's pins document (`pinEdit`). */
@@ -78,9 +79,9 @@ export function noEditsWhy(id: string | null, shown: readonly MachineView[]): st
 export function docEdit(
   live: Pick<LayoutDoc, "edit"> | undefined,
   why: string = NOT_CONNECTED,
-): (change: DocEdit) => Promise<boolean> {
+): (change: DocEdit, shown?: EditShown) => Promise<boolean> {
   if (live === undefined) return () => Promise.reject(new Error(`The layout cannot take changes now: ${why}`));
-  return (change) => live.edit(change);
+  return (change, shown) => live.edit(change, shown);
 }
 
 /** The last document read per core and machine id, so a machine that drops keeps its tabs on screen (read-only). */
