@@ -28,6 +28,10 @@
         "ws": "8.18.3",
       },
     },
+    "apps/get": {
+      "name": "@doriface/get",
+      "version": "0.1.0",
+    },
     "apps/host": {
       "name": "@doriface/host",
       "version": "0.1.0",
@@ -431,6 +435,8 @@
     "@doriface/crypto": ["@doriface/crypto@workspace:packages/crypto"],
 
     "@doriface/desktop": ["@doriface/desktop@workspace:apps/desktop"],
+
+    "@doriface/get": ["@doriface/get@workspace:apps/get"],
 
     "@doriface/ghostty-wasm": ["@doriface/ghostty-wasm@workspace:packages/ghostty-wasm"],
 
