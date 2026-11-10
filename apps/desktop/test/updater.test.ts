@@ -130,7 +130,7 @@ describe("UpdateWatch", () => {
     expect(w.statuses.at(-1)).toEqual({
       state: "failed",
       reason: "stalled",
-      message: "The download of 0.1.17 stopped making progress; the next check tries again.",
+      message: "The download of 0.1.17 has made no progress for ten minutes; it keeps waiting on the connection.",
     });
     w.emit("error", new Error("late"));
     expect(w.logged.at(-1)).toBe("update: late");

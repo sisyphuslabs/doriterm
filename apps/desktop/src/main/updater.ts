@@ -8,7 +8,10 @@ export const UPDATE_ORIGINS: readonly string[] = [UPDATE_ORIGIN, "https://stagin
 
 export const feedUrl = (origin: string, channel: UpdateChannel): string => `${origin}/desktop/${channel}`;
 
-/** A download that has not moved for this long gets its own line in Settings; the next check tries again. */
+/**
+ * A download that has not moved for this long gets its own line in Settings. electron-updater keeps the transfer it has
+ * (a later check rejoins it), so the line says it is waiting rather than promising a retry.
+ */
 export const STALL_MS = 10 * 60 * 1000;
 
 /** What electron-updater hands over for an available release; `minimumVersion` is the feed's self-update floor. */
@@ -105,7 +108,11 @@ export class UpdateWatch {
   #armStall(version: string): void {
     this.#cancelStall();
     this.#cancelStall = this.#timer(
-      () => this.#fail("stalled", `The download of ${version} stopped making progress; the next check tries again.`),
+      () =>
+        this.#fail(
+          "stalled",
+          `The download of ${version} has made no progress for ten minutes; it keeps waiting on the connection.`,
+        ),
       STALL_MS,
     );
   }

@@ -17,9 +17,9 @@ test("each updater state has its own line, and a failed check, a stall and a too
       {
         state: "failed",
         reason: "stalled",
-        message: "The download of 0.1.17 stopped making progress; the next check tries again.",
+        message: "The download of 0.1.17 has made no progress for ten minutes; it keeps waiting on the connection.",
       },
-      "The download of 0.1.17 stopped making progress; the next check tries again.",
+      "The download of 0.1.17 has made no progress for ten minutes; it keeps waiting on the connection.",
     ],
     [
       { state: "failed", reason: "below-floor", message: "Doriterm 0.1.9 is older than 0.1.10" },
