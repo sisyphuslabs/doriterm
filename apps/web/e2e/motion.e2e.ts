@@ -224,7 +224,8 @@ test("a new tab scales and fades in, and settles at rest", async ({ page }) => {
   await openNewTerminal(page);
   await expect.poll(() => page.locator(":root").getAttribute("data-ready")).toBe("");
   const count = await page.getByRole("tab").count();
-  const newest = `[role="tablist"] > div:nth-of-type(${count + 1})`;
+  // Unpinned tabs sit in the strip's scrolling group, pinned ones (#1561) in a group before it; this strip has no pins.
+  const newest = `[role="tablist"] [data-tab-scroll] > div:nth-of-type(${count + 1})`;
   const frames = sample(page, newest);
   await pressNewTab(page.getByRole("button", { name: "New tab", exact: true }));
   const seen = await frames;
@@ -243,7 +244,7 @@ test("under reduced motion a new tab only fades: no frame is transformed", async
   await openNewTerminal(page);
   await expect.poll(() => page.locator(":root").getAttribute("data-ready")).toBe("");
   const count = await page.getByRole("tab").count();
-  const frames = sample(page, `[role="tablist"] > div:nth-of-type(${count + 1})`);
+  const frames = sample(page, `[role="tablist"] [data-tab-scroll] > div:nth-of-type(${count + 1})`);
   await pressNewTab(page.getByRole("button", { name: "New tab", exact: true }));
   const seen = await frames;
   expect(Math.min(...seen.map((frame) => frame.opacity))).toBeLessThan(0.5);

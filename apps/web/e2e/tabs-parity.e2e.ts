@@ -342,16 +342,20 @@ test("6 (B, D): only the active tab has a close button; a middle-click closes no
   await expect(tabBar(page)).toHaveText([/b-one/, /b-two/]);
   expect(live(shells.b2)).toBe(true);
 
-  // Its menu closes any tab, as herdr-app's tab menu (Rename, New tab, Close).
+  // Its menu closes any tab, as herdr-app's tab menu (Rename, New tab, Close), then pins it or closes the tabs around it
+  // (#1561).
   await tabItem(page, "b-two").click({ button: "right" });
   await expect(page.getByRole("menuitem")).toHaveText([
     /^Move tab left/,
     /^Move tab right/,
     /^Rename tab…/,
     /^New tab/,
-    /^Close tab/,
+    /^Pin tab/,
+    /^Close tab$/,
+    /^Close tabs to the right/,
+    /^Close other tabs/,
   ]);
-  await page.getByRole("menuitem", { name: "Close tab" }).click();
+  await page.getByRole("menuitem", { name: "Close tab", exact: true }).click();
   await expect(tabBar(page)).toHaveText([/b-one/], { timeout: 15_000 });
   await expect.poll(() => live(shells.b2), { timeout: 15_000 }).toBe(false);
 

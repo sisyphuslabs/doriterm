@@ -100,7 +100,10 @@ for (const [name, device] of PHONES) {
       expect(await zoomingFields(page)).toEqual([]);
 
       await page.getByRole("button", { name: "Back to agents" }).click();
-      await expectNoZoomOnFocus(await openPalette(page));
+      const command = await openPalette(page);
+      await expectNoZoomOnFocus(command);
+      // The palette's field is `text-lg`: 18px on a phone, above the 16px floor, so the floor must leave it alone (#1401).
+      expect(await fontPx(command)).toBe(18);
       expect(await zoomingFields(page)).toEqual([]);
     });
 
