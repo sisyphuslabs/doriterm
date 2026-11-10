@@ -115,7 +115,9 @@ async function main(argv: readonly string[]): Promise<number> {
       return child.exited;
     }
     case "uninstall":
-      await uninstall(context, resolvePaths(context, await ensureHcQuiet(context)));
+      // Uninstall stops and removes the service and never runs herdr-core, so an hc below the floor, or none, must not
+      // stop it (#1204). The hc path only goes into a service text this command never writes.
+      await uninstall(context, resolvePaths(context, "hc"));
       return 0;
     default:
       process.stdout.write(`${USAGE}\n`);
