@@ -33,7 +33,7 @@ export function useAttachRecovery({ connection, address, shown, retry }: Recover
   useEffect(() => () => recovery.stop(), [connection, address, recovery]);
   const wasShown = useRef(shown);
   useEffect(() => {
-    if (shown && !wasShown.current) recovery.interact();
+    if (shown && !wasShown.current) recovery.shown();
     wasShown.current = shown;
   }, [shown, recovery]);
   return {

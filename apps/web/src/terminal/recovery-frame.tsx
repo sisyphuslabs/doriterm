@@ -4,7 +4,7 @@ import { QuietBusy } from "./quiet-busy.tsx";
 import { Unopened } from "./unopened.tsx";
 import { Ended } from "./ended.tsx";
 
-/** The renderer stays mounted through a failed attach, so focus and interaction can recover the same viewer. */
+/** The renderer stays mounted through a failed attach, so the person's interaction can recover the same viewer. */
 export function RecoveryFrame({
   attachment,
   children,
@@ -32,15 +32,18 @@ export function RecoveryFrame({
     // The explicit button owns its attempt and telemetry, including when reached by keyboard focus.
     if (!(event.target instanceof Element && event.target.closest("button"))) attachment.interact();
   };
+  // Only what a person does counts: focus and scroll events also come from the view itself (focusing the pane it shows,
+  // the renderer following its output), which would advance an automatic attempt and count it as an interaction.
+  // Pressing into the pane, a key, paste, the wheel and a touch scroll are the person's.
   return (
     <div
       className="relative isolate flex min-h-0 min-w-0 flex-1 flex-col"
       aria-busy={attachment.opening || attachment.reconnecting}
-      onFocusCapture={interact}
+      onPointerDownCapture={interact}
       onKeyDownCapture={interact}
       onPasteCapture={attachment.interact}
       onWheelCapture={attachment.interact}
-      onScrollCapture={attachment.interact}
+      onTouchMoveCapture={attachment.interact}
     >
       {children}
       {attachment.reconnecting ? (

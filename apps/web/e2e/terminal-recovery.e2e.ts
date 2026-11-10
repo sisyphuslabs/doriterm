@@ -67,7 +67,7 @@ test("interaction recovers an exhausted attach without replaying the command", a
   expect(socket.sent().filter((frame) => frame.includes('"method":"terminal.run"'))).toHaveLength(0);
 });
 
-for (const event of ["focusin", "keydown", "paste"]) {
+for (const event of ["pointerdown", "keydown", "paste"]) {
   test(`${event} starts recovery after automatic attempts were exhausted`, async ({ page }) => {
     const socket = await routeHcSocket(page);
     socket.refuseAttaches("unavailable", 4);

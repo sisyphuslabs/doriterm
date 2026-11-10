@@ -15,8 +15,9 @@ WebSocket/relay closure codes 1001, 1005, 1006, 1011, 1012, 1013, 4404, 4408, 44
 authentication and invalid-frame codes are terminal. A relay's 4404 means its host is currently offline, not
 a stable fact that the machine does not exist.
 
-Focus, keys, paste, scrolling inside the pane and a pane becoming visible advance its pending retry. The phone
-input row uses the same recovery path. A leading interaction may advance a pending attempt at most once per 250 ms;
+Pressing into the pane, keys, paste, wheel or touch scrolling inside it and a pane becoming visible advance its
+pending retry. Focus and scroll events alone do not: the view focuses and scrolls the pane itself. An attempt that
+came due while the pane was hidden runs as soon as it is shown. The phone input row uses the same recovery path. A leading interaction may advance a pending attempt at most once per 250 ms;
 it never resets the attempt count. After exhaustion, exactly one fresh bounded cycle is allowed after at least one
 second without an interaction. Further input cannot reopen that outage's budget, even after another quiet interval.
 An explicit manual retry, a changed target or a connection that stayed healthy for ten seconds starts a new budget.

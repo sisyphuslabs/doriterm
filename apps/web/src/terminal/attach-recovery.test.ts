@@ -87,6 +87,30 @@ test("interaction advances a waiting tick once, never overlaps the in-flight att
   expect(recovery.state.phase).toBe("idle");
 });
 
+test("an attempt that came due while the pane was hidden runs when it is shown, inside the interaction rate limit", () => {
+  jest.useFakeTimers();
+  let shown = false;
+  let attaches = 0;
+  const recovery = new AttachRecovery(
+    () => {
+      if (shown && recovery.begin()) attaches += 1;
+    },
+    () => {},
+  );
+  recovery.begin();
+  recovery.failed(new TerminalStreamLostError());
+  // Focus moving to the pane as its tab is chosen, before it is in view: the attempt finds nothing to attach.
+  recovery.interact();
+  expect(attaches).toBe(0);
+  jest.advanceTimersByTime(10);
+  shown = true;
+  recovery.shown();
+  expect(attaches).toBe(1);
+  expect(recovery.state.phase).toBe("reconnecting");
+  recovery.succeeded();
+  expect(recovery.state.phase).toBe("idle");
+});
+
 test("auth and stable missing targets do not retry on interaction, but allow an explicit retry", () => {
   jest.useFakeTimers();
   for (const kind of ["unauthorized", "not_found", "invalid_params"]) {
