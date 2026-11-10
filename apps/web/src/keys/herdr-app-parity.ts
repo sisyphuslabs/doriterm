@@ -10,14 +10,14 @@ export interface HerdrDifference {
 }
 
 const APP_MENU = "the desktop app's macOS app menu carries it (a standard menu role); a browser keeps it for itself";
-const NO_IMAGE_PASTE =
-  "Ctrl+V is left to the terminal's own key handling; a pasted image already reaches the terminal's machine through the paste itself (#742), and Paste image can be bound in Settings > Keybindings";
 const NO_MODS = "Doriterm has no mods, so there is no picker mod to open";
 const NO_LAYOUTS = "Doriterm has no layout files to switch between";
 // The chords an agent's question UI and editors read for themselves; a default that took them would answer the question
 // instead of the program (#1302).
 const ALT_UP_DOWN =
   "unbound so a focused terminal's program reads it: an agent answer key and an editor word move (#1302)";
+const CTRL_V_PASTES =
+  "Ctrl+V stays the browser's paste, as before: an image on the clipboard reaches the terminal's machine as a file through the paste itself (#742), which needs no clipboard permission (the desktop app grants none), and text is pasted as text where herdr-app sends ^V";
 
 /**
  * Every herdr-app default (herdr-app/keys*.json) that doriface binds differently. `herdr-app-parity.test.ts` holds this
@@ -30,14 +30,13 @@ export const HERDR_APP_DIFFERENCES: Readonly<Record<Platform, readonly HerdrDiff
     { chord: "cmd-alt-h", doriface: null, reason: APP_MENU },
     { chord: "cmd-shift-l", doriface: null, reason: NO_LAYOUTS },
     { chord: "cmd-p", doriface: null, reason: NO_MODS },
-    { chord: "ctrl-v", doriface: null, reason: NO_IMAGE_PASTE },
   ],
   other: [
     { chord: "alt-down", doriface: null, reason: ALT_UP_DOWN },
     { chord: "alt-up", doriface: null, reason: ALT_UP_DOWN },
     { chord: "ctrl-shift-k", doriface: null, reason: NO_MODS },
     { chord: "ctrl-shift-l", doriface: null, reason: NO_LAYOUTS },
-    { chord: "ctrl-v", doriface: null, reason: NO_IMAGE_PASTE },
+    { chord: "ctrl-v", doriface: null, reason: CTRL_V_PASTES },
   ],
 };
 
