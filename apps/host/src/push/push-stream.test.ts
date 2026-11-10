@@ -136,3 +136,72 @@ describe("a notice's rows on the push stream (#669)", () => {
     expect(r.core.sent).toEqual([{ terminal: "t3", keys: ["2"] }]);
   });
 });
+
+/** The id of the one notice a rig posted. */
+async function postedId(r: Rig): Promise<string> {
+  const [notice] = await r.notices();
+  return typeof notice === "object" && notice !== null ? String(Reflect.get(notice, "n")) : "";
+}
+
+describe("what a notice is about, on the push stream (#1908)", () => {
+  test("a question names its machine, space, terminal, agent and the question, while the payload names none", async () => {
+    const r = await opened();
+    await r.service.subscribe(
+      "device-a",
+      { endpoint: ENDPOINT, p256dh: r.keys.p256dh, auth: r.keys.auth },
+      DEFAULT_PUSH_PREFS,
+    );
+    const asking = { state: "blocked", kind: "question", app: "claude-code" };
+    r.core.terminals.set("t3", terminal("t3", asking, { labels: { "herdr.name": "migrations" } }));
+    r.core.screens.set("t3", CLAUDE_QUESTION_SCREEN);
+    await r.service.event(statusEvent("t3", asking));
+    const [payload] = await r.notices();
+    expect(Object.keys(payload ?? {}).toSorted()).toEqual(["h", "k", "n", "v"]);
+    expect(await stream(r).say(encodePushLine({ t: "notice", id: await postedId(r) }))).toMatchObject({
+      t: "notice",
+      terminal: "t3",
+      context: {
+        machine: "build-box",
+        space: "work",
+        terminal: "migrations",
+        agent: "claude-code",
+        ask: "Which database should the migration target?",
+      },
+    });
+  });
+
+  test("a terminal on an added machine is named by that machine", async () => {
+    const r = await opened();
+    await r.service.subscribe(
+      "device-a",
+      { endpoint: ENDPOINT, p256dh: r.keys.p256dh, auth: r.keys.auth },
+      DEFAULT_PUSH_PREFS,
+    );
+    const done = { state: "done", app: "codex", msg: "All tests pass" };
+    r.core.terminals.set("box/t7", terminal("box/t7", done, { cwd: "/srv/web" }));
+    await r.service.event(statusEvent("t7", done, "box"));
+    const reply = await stream(r).say(encodePushLine({ t: "notice", id: await postedId(r) }));
+    expect(reply).toMatchObject({
+      t: "notice",
+      terminal: "box/t7",
+      context: { machine: "box", space: "web", agent: "codex", ask: "All tests pass" },
+    });
+  });
+
+  test("a terminal the host cannot read still gets its notice, naming only its machine", async () => {
+    const r = await opened();
+    await r.service.subscribe(
+      "device-a",
+      { endpoint: ENDPOINT, p256dh: r.keys.p256dh, auth: r.keys.auth },
+      DEFAULT_PUSH_PREFS,
+    );
+    await r.service.event(statusEvent("t9", { state: "error" }));
+    expect(r.posted).toHaveLength(1);
+    expect(await stream(r).say(encodePushLine({ t: "notice", id: await postedId(r) }))).toEqual({
+      t: "notice",
+      terminal: "t9",
+      kind: "error",
+      context: { machine: "build-box" },
+    });
+  });
+});

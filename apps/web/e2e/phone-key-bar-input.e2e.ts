@@ -137,6 +137,9 @@ test("a latched modifier does not follow Switch session to another terminal", as
   await key(page, "Switch session").click();
   await page.getByRole("menuitem", { name: new RegExp(`latch-a-${address}`) }).click();
   const a = page.locator(`[data-terminal="${address}"]`);
+  await expect(a).toContainText("$", { timeout: 15_000 });
+  // The picked session opens with the keyboard down: only the keyboard button raises it.
+  await key(page, "Show keyboard").click();
   await expect(a.locator("textarea")).toBeFocused({ timeout: 15_000 });
   await expect(ctrl).toHaveAttribute("aria-pressed", "false");
   // cat -v prints xq as typed; a ctrl still latched from the other terminal would make it ^Xq.
@@ -165,5 +168,8 @@ test("Switch session lists the terminals and opens the one picked", async ({ pag
     page.getByRole("banner").getByRole("button", { name: `Session actions for keys-one-${firstAddress}` }),
   ).toBeVisible({ timeout: 15_000 });
   await expect(page.locator("[data-terminal]")).toHaveAttribute("data-terminal", firstAddress);
+  // The picked session opens with the keyboard down: only the keyboard button raises it.
+  await expect(keysBar(page)).toHaveCount(0);
+  await key(page, "Show keyboard").click();
   await expect(keysBar(page)).toBeVisible();
 });
