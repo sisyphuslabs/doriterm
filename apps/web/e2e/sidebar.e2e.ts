@@ -1,4 +1,5 @@
 import { expect, laidOutBox, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { devices, type Locator, type Page } from "@playwright/test";
 import { rowEdges, rows, settle, visibleCharacters } from "./sidebar-measure.ts";
 import {
@@ -270,9 +271,9 @@ test("a hidden sidebar comes back from a named button at the window's left edge,
   await page.keyboard.press("Enter");
   await expect(sidebar).toBeVisible();
 
-  await page.keyboard.press("Control+Shift+B");
+  await pressShortcut(page, "layout.toggle:sidebar");
   await expect(sidebar).toBeHidden();
-  await page.keyboard.press("Control+Shift+B");
+  await pressShortcut(page, "layout.toggle:sidebar");
   await expect(sidebar).toBeVisible();
 });
 

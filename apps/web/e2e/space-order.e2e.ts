@@ -8,6 +8,7 @@ import { endAgent } from "./agents.ts";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
 import { getCoreDoc, setCoreDoc } from "./core-doc.ts";
 import { expect, test } from "./fixtures.ts";
+import { shortcut } from "./platform-keys.ts";
 import { LAYOUT_DOC, seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 import { MACHINE_NAME } from "./machine.ts";
@@ -111,12 +112,9 @@ async function drag(page: Page, from: string, onto: string, release = true): Pro
   if (release) await page.mouse.up();
 }
 
-/** The chords that move a focused row on this browser's platform, as the Machines list's move keys test reads them. */
+/** The chords that move a focused row up and down on the page's platform: the tab move keys (#123). */
 async function moveKeys(page: Page): Promise<readonly [string, string]> {
-  const mac = await page.evaluate(() => /mac/i.test(navigator.platform));
-  return mac
-    ? ["Meta+Shift+ArrowUp", "Meta+Shift+ArrowDown"]
-    : ["Control+Alt+Shift+PageUp", "Control+Alt+Shift+PageDown"];
+  return [await shortcut(page, "tab.move:left"), await shortcut(page, "tab.move:right")];
 }
 
 test("a space dragged above another is written to its machine's layout, shown on a second device, and kept by a reload", async ({
