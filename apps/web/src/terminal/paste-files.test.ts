@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 import { HcRpcError } from "@doriface/protocol";
 import {
   base64Of,
@@ -8,6 +8,7 @@ import {
   quotePaths,
   readClipboard,
   readClipboardImage,
+  readClipboardImageWithin,
   sendable,
   type ToPng,
 } from "./paste-files.ts";
@@ -206,4 +207,18 @@ test("readClipboardImage is null, so the key itself is sent, when reading the cl
     getType: () => Promise.reject(new DOMException("gone", "NotFoundError")),
   } as never;
   expect(await readClipboardImage({ read: reads([broken]) })).toBeNull();
+});
+
+test("readClipboardImageWithin is null once the clipboard has not answered in time, and the image when it has (#1989)", async () => {
+  jest.useFakeTimers();
+  try {
+    const late = Promise.withResolvers<ClipboardItems>();
+    const reading = readClipboardImageWithin({ read: () => late.promise }, 1500);
+    jest.advanceTimersByTime(1500);
+    expect(await reading).toBeNull();
+    const answered = await readClipboardImageWithin({ read: reads([item({ "image/png": png() })]) }, 1500);
+    expect(answered?.type).toBe("image/png");
+  } finally {
+    jest.useRealTimers();
+  }
 });

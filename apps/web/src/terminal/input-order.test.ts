@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { inputOrder } from "./input-order.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
 
@@ -53,4 +53,44 @@ test("input that turns out to be none lets what waited behind it through, in ord
   first.resolve(null);
   await wrote(3);
   expect(written).toEqual(["a", "\u0016", "b"]);
+});
+
+test("a queued write that fails is reported, and the input behind it still goes out in order (#1988)", async () => {
+  const reported = spyOn(console, "error").mockImplementation(() => undefined);
+  try {
+    const written: TerminalInput[] = [];
+    const last = Promise.withResolvers<void>();
+    const order = inputOrder((data) => {
+      if (data === "boom") throw new Error("link closed");
+      written.push(data);
+      if (data === "b") last.resolve();
+    });
+    const vee = Promise.withResolvers<TerminalInput | null>();
+    order.later(vee.promise);
+    order.send("boom");
+    order.send("a");
+    order.send("b");
+    vee.resolve("\u0016");
+    await last.promise;
+    expect(written).toEqual(["\u0016", "a", "b"]);
+    expect(reported).toHaveBeenCalledWith("terminal input: Error: link closed");
+  } finally {
+    reported.mockRestore();
+  }
+});
+
+test("input that rejects is reported and lets what waited behind it through (#1988)", async () => {
+  const reported = spyOn(console, "error").mockImplementation(() => undefined);
+  try {
+    const { order, written, wrote } = recorded();
+    const broken = Promise.withResolvers<TerminalInput | null>();
+    order.later(broken.promise);
+    order.send("a");
+    broken.reject(new Error("no clipboard"));
+    await wrote(1);
+    expect(written).toEqual(["a"]);
+    expect(reported).toHaveBeenCalledWith("terminal input: Error: no clipboard");
+  } finally {
+    reported.mockRestore();
+  }
 });

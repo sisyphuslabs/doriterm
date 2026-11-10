@@ -5,7 +5,7 @@ import { sendBytes } from "../keys/actions.ts";
 import { copiedText } from "./copied-text.ts";
 import { useActionHandler } from "../keys/dispatcher.ts";
 import { heldSelection } from "./held-selection.ts";
-import { readClipboardImage } from "./paste-files.ts";
+import { readClipboardImageWithin } from "./paste-files.ts";
 import { scrollTerminal } from "./terminal-scroll.tsx";
 import type { TerminalInput } from "./terminal-view-props.ts";
 
@@ -49,9 +49,11 @@ export function useTerminalActions(
         return false;
       case "terminal.paste_image":
         // herdr-app's Ctrl+V: the clipboard's image as a file on the terminal's machine, else the key. Keys typed while
-        // the clipboard is read reach the program after it, as herdr-app reads the clipboard before the next key.
+        // the clipboard is read reach the program after its ^V, as herdr-app reads the clipboard before the next key; a
+        // clipboard that does not answer in time counts as no image, so they are never held for long (#1989). An image's
+        // path comes once its upload ends, after keys typed meanwhile.
         sendLater(
-          readClipboardImage(navigator.clipboard ?? {}).then((image) => {
+          readClipboardImageWithin(navigator.clipboard ?? {}).then((image) => {
             if (image === null) return "\u0016";
             pasteFiles([image]);
             return null;

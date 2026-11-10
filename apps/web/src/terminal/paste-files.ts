@@ -177,6 +177,23 @@ export async function readClipboardImage(clipboard: Partial<Pick<Clipboard, "rea
   }
 }
 
+/** How long Paste image waits for the clipboard before it counts as holding no image (#1989). */
+export const CLIPBOARD_IMAGE_WAIT_MS = 1500;
+
+/**
+ * The clipboard's image as `readClipboardImage` reads it, or null once `waitMs` pass with no answer (a browser still
+ * asking the person, a read that never settles), so keys held behind Paste image's ^V never wait longer (#1989). An
+ * image that comes later is dropped: the ^V has gone in its place.
+ */
+export function readClipboardImageWithin(
+  clipboard: Partial<Pick<Clipboard, "read">>,
+  waitMs: number = CLIPBOARD_IMAGE_WAIT_MS,
+): Promise<File | null> {
+  const { promise, resolve } = Promise.withResolvers<File | null>();
+  const timer = setTimeout(() => resolve(null), waitMs);
+  return Promise.race([readClipboardImage(clipboard), promise]).finally(() => clearTimeout(timer));
+}
+
 /**
  * The clipboard as the Paste key and menu read it: text first, then an image alone, as a paste event carries them.
  * Where the browser cannot read anything but text (no `clipboard.read`, or it refuses), the text as before.

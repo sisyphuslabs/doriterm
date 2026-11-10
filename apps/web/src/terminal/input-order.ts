@@ -5,7 +5,8 @@ export interface InputOrder {
   readonly send: (data: TerminalInput) => void;
   /**
    * Input known only once `data` settles (Paste image's ^V waits for the clipboard), null for none: what is sent
-   * meanwhile waits behind it, so a key typed after Ctrl+V reaches the program after its ^V. `data` must not reject.
+   * meanwhile waits behind it, so a key typed after Ctrl+V reaches the program after its ^V. A `data` that rejects is
+   * reported and counts as none.
    */
   readonly later: (data: Promise<TerminalInput | null>) => void;
 }
@@ -14,9 +15,13 @@ export interface InputOrder {
 export function inputOrder(write: (data: TerminalInput) => void): InputOrder {
   let behind: Promise<void> | null = null;
   const queue = (step: () => void | Promise<void>): void => {
-    const link: Promise<void> = (behind ?? Promise.resolve()).then(step).finally(() => {
-      if (behind === link) behind = null;
-    });
+    // A step that fails is reported, and the input queued behind it still goes out, in order (#1988).
+    const link: Promise<void> = (behind ?? Promise.resolve())
+      .then(step)
+      .catch((error: unknown) => console.error(`terminal input: ${String(error)}`))
+      .finally(() => {
+        if (behind === link) behind = null;
+      });
     behind = link;
   };
   return {

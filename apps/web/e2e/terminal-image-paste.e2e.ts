@@ -240,6 +240,24 @@ test("a key typed while Ctrl+V reads the clipboard reaches the program after its
   await expect(terminal).toContainText("HEX:16 78");
 });
 
+test("a clipboard that never answers holds keys typed after Ctrl+V only briefly: ^V, then the keys, on a Mac (#1989)", async ({
+  page,
+}) => {
+  await asMac(page);
+  // The read never settles, as when a browser's prompt is left unanswered; only Paste image's own bound lets keys out.
+  await page.addInitScript(() => {
+    Clipboard.prototype.read = () => new Promise<ClipboardItems>(() => undefined);
+  });
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await readRawBytes(page, terminal, 3);
+  await page.keyboard.press("Control+KeyV");
+  await page.keyboard.type("xy");
+  await expect(terminal).toContainText(/HEX:\S+ \S+ \S+/u, { timeout: 15_000 });
+  await expect(terminal).toContainText("HEX:16 78 79");
+});
+
 test("Ctrl+V pastes the clipboard's image by its path on Linux, though the page may not read the clipboard", async ({
   page,
 }) => {
