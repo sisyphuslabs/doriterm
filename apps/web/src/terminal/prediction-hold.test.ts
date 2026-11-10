@@ -30,6 +30,14 @@ describe("paintedCells: a confirmed cell leaves the layer only once the renderer
     expect(paintedCells([], [at(2, 4, "a")], screen({ "2,4": " " }), false)).toEqual([]);
   });
 
+  test("a confirmed space between a held cell and the wanted tail stays painted until the render (#1970)", () => {
+    const echoed = screen({ "2,3": "o", "2,4": " " });
+    const before = [at(2, 3, "o"), at(2, 4, " "), at(2, 5, "p")];
+    expect(paintedCells([at(2, 5, "p")], before, echoed, false)).toEqual(before);
+    expect(paintedCells([at(2, 5, "p")], before, screen({ "2,3": "o" }), false)).toEqual(before);
+    expect(paintedCells([at(2, 5, "p")], before, echoed, true)).toEqual([at(2, 5, "p")]);
+  });
+
   test("a held cell gives way to a wanted cell over any of its columns", () => {
     const echoed = screen({ "2,4": "x", "2,5": "x" });
     expect(paintedCells([at(2, 5, "c")], [at(2, 4, "\u{AC00}", 2)], echoed, false)).toEqual([at(2, 5, "c")]);
