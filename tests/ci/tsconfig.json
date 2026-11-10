@@ -14,5 +14,13 @@
     "../../.github/scripts/probe-get.ts",
     "../../.github/scripts/release-notes.ts"
   ],
-  "exclude": ["types"]
+  "exclude": ["types"],
+  "references": [
+    {
+      "path": "../../apps/get"
+    },
+    {
+      "path": "../../apps/web"
+    }
+  ]
 }

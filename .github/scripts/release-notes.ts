@@ -37,7 +37,7 @@ const DOWNLOADS: readonly Download[] = [
   { label: "Web client and PWA (static files)", matches: (name) => has(name, "-web-") && name.endsWith(".zip") },
   { label: "Render bench against the last release (#670)", matches: (name) => has(name, "-render-bench.") },
   {
-    label: "Host only, Linux and macOS (`curl -fsSL <this release>/install.sh | sh` installs it as a user service)",
+    label: "Host only, Linux and macOS (`curl -fsSL https://get.doriterm.com | sh` installs it as a user service)",
     matches: (name) => name === "install.sh" || name.startsWith("doriface-host-"),
   },
 ];
@@ -126,4 +126,8 @@ const assets = readdirSync(assetsDir)
   .filter((name) => name !== "SHA256SUMS.txt")
   .toSorted();
 const changes = resolved.notes;
-console.log([`# Doriterm v${version}`, changes, `## Downloads\n\n${downloads(assets)}`, SIGNING].join("\n\n"));
+// get.doriterm.com answers each platform's link with the current release of its channel (#1969).
+const STABLE_LINKS = "Every platform's current build, by one stable link each: https://get.doriterm.com";
+console.log(
+  [`# Doriterm v${version}`, changes, `## Downloads\n\n${STABLE_LINKS}\n\n${downloads(assets)}`, SIGNING].join("\n\n"),
+);
