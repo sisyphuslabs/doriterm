@@ -43,7 +43,7 @@ export interface SpacesGroupProps {
 
 const ALARM = new Set(["unreachable", "needs_login"]);
 
-/** A machine's problem in plain words with Try again, under its header; a redial in progress gets none. */
+/** A machine's problem under its header, including why creation is unavailable during its reconnect grace. */
 function MachineNotice({ name }: { readonly name: string }) {
   const { views, retry } = useMachinesContext();
   const view = views.find((one) => one.name === name);

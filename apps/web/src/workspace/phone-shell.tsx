@@ -1,7 +1,7 @@
 import type { HcConnection } from "@doriface/client";
 import { IconButton, ScrollArea, StatusBar, StatusBarItem } from "@doriface/ui";
 import { Monitor, Plus, Search } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import { connectionStore } from "../connection/store.ts";
 import { NEW_TAB } from "../keys/actions.ts";
 import { AgentLists, PhoneSpaceLists } from "./agent-lists.tsx";
@@ -65,16 +65,6 @@ export function PhoneShell(props: PhoneShellProps) {
   usePhoneActions(onNew, onSession, () => (dictate.current === null ? false : (dictate.current(), true)));
   const machines = useMachinesContext();
   const terminal = terminals.find((entry) => entry.address === open);
-  // A session picked from the keys bar is the person asking for its keyboard: its view takes the keyboard as it opens.
-  // The ask is answered once that keyboard is up, and it ends when the session is left by any route (the app's Back, the
-  // system Back, the tabs bar, the list), so a later reopen or re-attach of that session raises nothing (#1375).
-  const [picked, setPicked] = useState<string | null>(null);
-  const shown = terminal?.address ?? null;
-  const lastShown = useRef(shown);
-  useEffect(() => {
-    if (shown !== lastShown.current && shown !== picked) setPicked(null);
-    lastShown.current = shown;
-  }, [shown, picked]);
   // An unanswered list is not an empty one: the empty state waits for the core's first answer (#797).
   const live = machines.terminalsLoaded
     ? terminals.filter((entry) => entry.state === "live").map((entry) => entry.address)
@@ -181,19 +171,10 @@ export function PhoneShell(props: PhoneShellProps) {
       tabTitle={tabTitle}
       backTo={backTo}
       onOpen={onOpen}
-      onBack={() => {
-        setPicked(null);
-        onBack();
-      }}
+      onBack={onBack}
       onCloseTab={onCloseTab}
       onNewInSpace={onNewInSpace}
       dictate={dictate}
-      claimed={picked === terminal.address}
-      onClaimed={() => setPicked(null)}
-      onPick={(address) => {
-        setPicked(address);
-        onOpen(address);
-      }}
     />
   );
 }
