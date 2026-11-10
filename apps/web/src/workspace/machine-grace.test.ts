@@ -1,7 +1,9 @@
-import type { MachineView } from "@doriface/protocol";
+import { HcRpcError, type MachineView } from "@doriface/protocol";
 import { expect, test } from "bun:test";
 import { graceEnds, graceViews, OFFLINE_GRACE_MS, stepHeld, type Held } from "./machine-grace.ts";
+import { machineEntries } from "./machines.ts";
 import { withReach } from "./reach.ts";
+import { startTerminal } from "./start-on.ts";
 
 const machine = (name: string, state: string, since_ms: number | null = null): MachineView => ({
   name,
@@ -20,37 +22,57 @@ const FIRST = { views: [], at: undefined };
 const shown = (list: readonly MachineView[], held: Held, now: number) =>
   graceViews(list, held, now).map((view) => [view.name, view.state]);
 
-test("a connected machine whose line is redialing reads connected until the grace ends, then offline", () => {
+test("an unreachable host is not labelled connected while creation correctly reports not connected", async () => {
+  const dropped = [machine("rack", "unreachable", 1_000)];
+  const held = stepHeld(NONE, { views: [machine("rack", "connected")], at: 0 }, dropped, 1_050);
+
+  const visible = graceViews(dropped, held, 1_050);
+  const entries = machineEntries({ id: "local", name: "local" }, visible, []);
+  const created = await startTerminal(
+    () =>
+      Promise.reject(new HcRpcError({ code: -32000, message: "rack is unreachable", data: { kind: "unavailable" } })),
+    { on: "rack" },
+    "local",
+  );
+
+  expect(created).toEqual({
+    ok: false,
+    failure: { machine: "rack", kind: "unavailable", message: "rack is not connected" },
+  });
+  expect(entries.find((entry) => entry.name === "rack")?.state).toBe("reconnecting");
+});
+
+test("a connected machine whose line is redialing reads reconnecting until the grace ends, then offline", () => {
   const connected = [machine("rack", "connected")];
   const dropped = [machine("rack", "unreachable", 1_000)];
   const held = stepHeld(NONE, { views: connected, at: 0 }, dropped, 1_050);
-  expect(shown(dropped, held, 1_050)).toEqual([["rack", "connected"]]);
-  expect(graceViews(dropped, held, 1_050)[0]).toMatchObject({ why: null, since_ms: null });
+  expect(shown(dropped, held, 1_050)).toEqual([["rack", "reconnecting"]]);
+  expect(graceViews(dropped, held, 1_050)[0]).toMatchObject({ why: dropped[0]?.why, since_ms: 1_000 });
   const again = stepHeld(held, { views: dropped, at: 1_050 }, dropped, 1_050 + 30_000);
   expect(again.get("id-rack")).toBe(1_000);
-  expect(shown(dropped, again, 1_000 + OFFLINE_GRACE_MS - 1)).toEqual([["rack", "connected"]]);
+  expect(shown(dropped, again, 1_000 + OFFLINE_GRACE_MS - 1)).toEqual([["rack", "reconnecting"]]);
   expect(shown(dropped, again, 1_000 + OFFLINE_GRACE_MS)).toEqual([["rack", "unreachable"]]);
   expect(stepHeld(again, { views: dropped, at: 31_050 }, dropped, 1_000 + OFFLINE_GRACE_MS).size).toBe(0);
 });
 
 test("the slowest return measured on a real relay blip, 62 s after the drop, never reads offline", () => {
-  const connected = [machine("jobdori", "connected")];
-  const dropped = [machine("jobdori", "unreachable", 2_000)];
+  const connected = [machine("workstation", "connected")];
+  const dropped = [machine("workstation", "unreachable", 2_000)];
   let held = stepHeld(NONE, { views: connected, at: 0 }, dropped, 4_000);
   let before = { views: dropped, at: 4_000 as number | undefined };
   for (let now = 14_000; now <= 64_000; now += 10_000) {
     held = stepHeld(held, before, dropped, now);
     before = { views: dropped, at: now };
-    expect(shown(dropped, held, now)).toEqual([["jobdori", "connected"]]);
+    expect(shown(dropped, held, now)).toEqual([["workstation", "reconnecting"]]);
   }
   expect(stepHeld(held, before, connected, 64_100).size).toBe(0);
 });
 
-test("a line back inside the grace never showed anything but connected, and a second drop starts a fresh grace", () => {
+test("a line back inside the grace leaves reconnecting, and a second drop starts a fresh grace", () => {
   const connected = [machine("rack", "connected")];
   const dropped = [machine("rack", "connecting")];
   const held = stepHeld(NONE, { views: connected, at: 0 }, dropped, 5_000);
-  expect(shown(dropped, held, 10_000)).toEqual([["rack", "connected"]]);
+  expect(shown(dropped, held, 10_000)).toEqual([["rack", "reconnecting"]]);
   const back = stepHeld(held, { views: dropped, at: 5_000 }, connected, 16_000);
   expect(back.size).toBe(0);
   expect(stepHeld(back, { views: connected, at: 90_000 }, dropped, 100_000).get("id-rack")).toBe(100_000);
@@ -109,7 +131,7 @@ test("with the host's clock 25 s ahead, a grace that ended after a drop never ho
   for (let now = 105; now <= 305; now += 10) reads.push([now * 1_000, [machine("rack", "unreachable", 125_000)]]);
   const states = replay(reads).slice(10);
   const heldReads = Math.ceil(OFFLINE_GRACE_MS / 10_000);
-  expect(states).toEqual([...Array(heldReads).fill("connected"), ...Array(21 - heldReads).fill("unreachable")]);
+  expect(states).toEqual([...Array(heldReads).fill("reconnecting"), ...Array(21 - heldReads).fill("unreachable")]);
 });
 
 test("a page opened while a line redials holds that machine once hc names its drop, and only for what is left", () => {
@@ -119,7 +141,7 @@ test("a page opened while a line redials holds that machine once hc names its dr
   const named = [machine("air", "unreachable", 98_000)];
   const held = stepHeld(NONE, { views: opening, at: 100_000, first }, named, 110_000);
   expect(held.get("id-air")).toBe(98_000);
-  expect(shown(named, held, 110_000)).toEqual([["air", "connected"]]);
+  expect(shown(named, held, 110_000)).toEqual([["air", "reconnecting"]]);
   const later = { views: named, at: 98_000 + OFFLINE_GRACE_MS, first };
   expect(stepHeld(held, later, named, 98_000 + OFFLINE_GRACE_MS).size).toBe(0);
   expect(stepHeld(NONE, later, named, 98_000 + OFFLINE_GRACE_MS + 10_000).size).toBe(0);
@@ -134,7 +156,7 @@ test("a page opened while a line redials holds that machine once hc names its dr
 test("a page opened mid-blip holds a machine only for what is left of the grace after hc's own since", () => {
   const blip = [machine("rack", "unreachable", 10_000)];
   const held = stepHeld(NONE, FIRST, blip, 30_000);
-  expect(shown(blip, held, 30_000)).toEqual([["rack", "connected"]]);
+  expect(shown(blip, held, 30_000)).toEqual([["rack", "reconnecting"]]);
   expect(graceEnds(held, 30_000)).toBe(10_000 + OFFLINE_GRACE_MS);
   expect(shown(blip, held, 10_000 + OFFLINE_GRACE_MS)).toEqual([["rack", "unreachable"]]);
   expect(graceEnds(held, 10_000 + OFFLINE_GRACE_MS)).toBeUndefined();
@@ -152,7 +174,7 @@ test("with the host's clock ahead, a first read holds at most one grace and an e
     states.push(shown(ahead, held, now)[0]?.[1] ?? "none");
   }
   const held10 = Math.ceil(OFFLINE_GRACE_MS / 10_000) - 1;
-  expect(states).toEqual([...Array(held10).fill("connected"), ...Array(12 - held10).fill("unreachable")]);
+  expect(states).toEqual([...Array(held10).fill("reconnecting"), ...Array(12 - held10).fill("unreachable")]);
 });
 
 test("a held machine's live terminals stay live in its grace and read offline once it ends", () => {

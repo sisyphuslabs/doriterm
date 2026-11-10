@@ -49,6 +49,19 @@ describe("wideGlyphScale", () => {
     expect(wideGlyphScale(linear(advance), jetbrains)).toBe(1);
   });
 
+  // #959: an Android tablet drew every Hangul cell blank, column alignment intact. A factor of 0 is `font-size:0em`.
+  test.each([
+    ["one advance at every size, as a canvas that does not follow the font size", () => 16],
+    ["no number once scaled", (scale: number) => (scale === 1 ? 16 : Number.NaN)],
+    [
+      "an advance that stops shrinking above the cells, as a face drawn from fixed sizes",
+      (scale: number) => Math.max(16 * scale, 14),
+    ],
+    ["an advance far past any face's, so fitting it would shrink the glyph to a speck", linear(200)],
+  ])("a measure that gives %s keeps the glyph at its own size, never at nothing (#959)", (_why, advanceAt) => {
+    expect(wideGlyphScale(advanceAt, { cell: 8.4, inkHeight: 13 })).toBe(1);
+  });
+
   test.each([
     ["a pane in a background tab, with no box", 0],
     ["a cell that is not a number", Number.NaN],
