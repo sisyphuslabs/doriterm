@@ -9,7 +9,7 @@ import type { PhoneSection } from "./phone-route.ts";
 
 const ITEM = cn(
   "flex min-h-(--control) min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-md text-xs text-muted-foreground",
-  "outline-none hover:text-foreground active:bg-selected [&_svg]:size-5",
+  "outline-none hover:text-foreground active:bg-selected [&_svg:not([data-slot=spinner])]:size-5",
   "focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring",
   "aria-[current=page]:font-semibold aria-[current=page]:text-foreground",
 );
