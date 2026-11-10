@@ -30,7 +30,7 @@ const BLOCKED: Readonly<Record<VoiceBlocked, string>> = {
 export function VoiceSection() {
   const settings = useVoiceSettings();
   const blocked = voiceBlocked(window);
-  const onThisMac = blocked === null && desktopDictation() !== null;
+  const native = blocked === null ? desktopDictation() : null;
   const browser = navigator.language;
   const name = (tag: string) => (tag === "" ? `Browser language: ${languageName(browser)}` : languageName(tag));
   const listed = VOICE_LANGUAGES.includes(settings.language) || settings.language === "" ? [] : [settings.language];
@@ -76,9 +76,11 @@ export function VoiceSection() {
             description="Speech recognition takes one language at a time."
             control={language}
           />
-          {onThisMac ? (
+          {native !== null ? (
             <p data-voice-on-mac className="text-sm text-pretty text-muted-foreground">
-              macOS recognizes speech on this Mac; the audio never leaves it.
+              {native.unavailableReason === "device-windows"
+                ? "Windows SAPI recognizes speech on this computer; the audio never leaves it."
+                : "macOS recognizes speech on this Mac; the audio never leaves it."}
             </p>
           ) : (
             <SettingRow

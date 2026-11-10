@@ -59,6 +59,16 @@ export class HeldInput {
     this.#hold = hold;
   }
 
+  /** Input sent now would be written at once: a stream is open and proven, the machine is here, nothing waits. */
+  ready(): boolean {
+    return (
+      this.pending.length === 0 &&
+      this.#sink() !== null &&
+      !this.#links.has(this.#connection()) &&
+      this.#awayMachine() === undefined
+    );
+  }
+
   send(data: TerminalInput): void {
     const away = this.#awayMachine();
     if (away !== undefined) return this.#holdFor(away, data);
