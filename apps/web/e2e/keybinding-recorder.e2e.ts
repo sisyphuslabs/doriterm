@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
@@ -62,10 +63,9 @@ test("the conflict prompt takes focus on Keep, and Escape keeps the old binding"
   await openKeybindings(page);
   const close = row(page, "tab.close");
   const record = recordButton(page, "Close tab");
-  const mac = await page.evaluate(() => /mac/i.test(navigator.platform));
 
   await record.click();
-  await page.keyboard.press(mac ? "Meta+T" : "Control+Shift+T");
+  await pressShortcut(page, "tab.new");
   const keep = close.getByRole("button", { name: "Keep", exact: true });
   await expect(keep).toBeFocused();
   expect(await keep.evaluate((button) => button.matches(":focus-visible"))).toBe(true);
