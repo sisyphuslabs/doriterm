@@ -150,24 +150,20 @@ export async function ownMeshSession(
   // The exit is reported once the core's stderr has been read to its end, so its last words are in the message. A
   // descendant that keeps the pipe open holds this back; the deadline below then names the exit instead.
   void Promise.all([core.exited, stderr.drained]).then(([code]) =>
-    settled
-      ? undefined
-      : ready.reject(report(`mesh core exited before readiness: ${code}; stderr: ${stderr.tail() || "(none)"}`)),
+    settled ? undefined : ready.reject(report(`mesh core exited before readiness: ${code}`)),
   );
   const deadline = setTimeout(() => {
     const state =
       core.exitCode === null && core.signalCode === null
         ? "was still running"
         : `had exited (${core.exitCode ?? core.signalCode})`;
+    // The path's state only adds news while the probe never saw a socket: once it did, the timeline says when (#1724 review).
     const headline =
       started.socketSeen === undefined
-        ? "mesh core did not create its socket"
-        : "mesh core created its socket but accepted no connection";
-    ready.reject(
-      report(
-        `${headline} within ${readyWithinMs} ms: hc serve (pid ${core.pid}) ${state}; ${socketPathState(socket)}; stderr: ${stderr.tail() || "(none)"}`,
-      ),
-    );
+        ? `mesh core did not create its socket within ${readyWithinMs} ms: hc serve (pid ${core.pid}) ${state}; ${socketPathState(socket)}`
+        : `mesh core created its socket but accepted no connection within ${readyWithinMs} ms: hc serve (pid ${core.pid}) ${state}`;
+    // The stderr tail is in the timeline report() appends, once.
+    ready.reject(report(headline));
   }, readyWithinMs);
   let stopping: Promise<void> | undefined;
   const stop = async (shutdown: boolean): Promise<void> => {

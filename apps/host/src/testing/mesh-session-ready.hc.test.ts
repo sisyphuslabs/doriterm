@@ -73,6 +73,8 @@ test("the deadline says the core accepted no connection when its socket was seen
     expect(message).toStartWith("mesh core created its socket but accepted no connection within ");
     expect(message).toMatch(/socket first seen: \+\d+ ms/);
     expect(message).toContain("first connection: never");
+    // The timeline says when the socket was seen; the message must not also say it appeared only at the deadline.
+    expect(message).not.toContain("socket created only as the deadline passed");
   } finally {
     refused.mockRestore();
   }
