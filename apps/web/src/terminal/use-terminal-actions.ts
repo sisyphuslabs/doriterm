@@ -1,21 +1,16 @@
 import { useToastManager } from "@doriface/ui";
 import type { WTerm } from "@wterm/react";
+import { useEffect, useRef, useState } from "react";
 import { terminalConfigStore } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
 import { sendBytes } from "../keys/actions.ts";
 import { copiedText } from "./copied-text.ts";
 import { useActionHandler } from "../keys/dispatcher.ts";
+import { ClipboardWaits } from "./clipboard-waits.ts";
 import { heldSelection } from "./held-selection.ts";
 import { pasteClipboardImage } from "./paste-files.ts";
 import { scrollTerminal } from "./terminal-scroll.tsx";
-import type { TerminalInput } from "./terminal-view-props.ts";
-
-/** Shown while a Paste image's clipboard read outlasts its wait: a browser is asking the person to allow the paste. */
-const CLIPBOARD_WAITING = {
-  title: "Waiting for the clipboard",
-  description: "Allow the paste to insert the image; otherwise Ctrl+V goes to the program.",
-  timeout: 0,
-};
+import type { TerminalInputPath } from "./use-terminal-input.ts";
 
 /** Select alls still being made, per terminal; Copy waits for its terminal's. */
 const selectingAll = new WeakMap<WTerm, Promise<unknown>>();
@@ -29,16 +24,26 @@ function copySelection(wt: WTerm): boolean {
   return true;
 }
 
-/** `send` is the view's input path, so bound keys queue through a reconnect in order with typed input. */
+/**
+ * `input` is the view's input path, so bound keys queue through a reconnect in order with typed input. A view off the
+ * screen (`shown` false: its tab left) or gone lets go of its Paste image presses still waiting on the clipboard.
+ */
 export function useTerminalActions(
   wt: WTerm | null,
-  send: (data: TerminalInput) => void,
-  sendLater: (data: Promise<TerminalInput | null>) => void,
+  input: Pick<TerminalInputPath, "typed" | "typedLater" | "typedLate" | "pasteFiles">,
   focused: boolean,
-  pasteFiles: (files: readonly File[]) => void,
+  shown: boolean,
   openFind: () => void,
 ): void {
+  const { typed: send, typedLater, typedLate, pasteFiles } = input;
   const toasts = useToastManager();
+  const latestToasts = useRef(toasts);
+  latestToasts.current = toasts;
+  const [waits] = useState(() => new ClipboardWaits(() => latestToasts.current));
+  useEffect(() => {
+    if (!shown) waits.end();
+  }, [waits, shown]);
+  useEffect(() => () => waits.end(), [waits]);
   useActionHandler("terminal", (action) => {
     if (wt === null || !focused) return false;
     if (action.startsWith("send:")) return (send(sendBytes(action)), true);
@@ -60,17 +65,9 @@ export function useTerminalActions(
         // herdr-app's Ctrl+V: the clipboard's image as a file on the terminal's machine, else the key. Keys typed while
         // the clipboard is read reach the program after its ^V, as herdr-app reads the clipboard before the next key, but
         // only for a short while (#1989): past it they go at once, and the clipboard's answer, when the person allows the
-        // paste, is still pasted then. An image's path comes once its upload ends, after keys typed meanwhile.
-        let notice: string | undefined;
-        pasteClipboardImage(navigator.clipboard ?? {}, {
-          later: sendLater,
-          send,
-          pasteFiles,
-          waiting: (waiting) => {
-            if (waiting) notice = toasts.add(CLIPBOARD_WAITING);
-            else if (notice !== undefined) toasts.close(notice);
-          },
-        });
+        // paste, is still pasted then. An image's path comes once its upload ends, after keys typed meanwhile. A late ^V
+        // leaves a syllable the person is composing by then alone (typedLate).
+        pasteClipboardImage(navigator.clipboard ?? {}, waits.press({ later: typedLater, send: typedLate, pasteFiles }));
         return true;
       }
       case "terminal.select_all": {

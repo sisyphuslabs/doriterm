@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { createHash } from "node:crypto";
+import { asMac, copyImage, makePng, readRawBytes } from "./clipboard-image.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import { newOn, reconnect } from "./machine-switch.ts";
@@ -12,31 +13,7 @@ import { machineConnected } from "./sidebar-seed.ts";
 endOwnTerminals();
 test.use({ serviceWorkers: "block", permissions: ["clipboard-read", "clipboard-write"] });
 
-/** A PNG made in the page, as base64: `size` px square, a colour of its own so each test's bytes differ. */
-const makePng = (page: Page, size: number, hue: number): Promise<string> =>
-  page.evaluate(
-    async ([side, colour]) => {
-      const canvas = new OffscreenCanvas(side, side);
-      const context = canvas.getContext("2d");
-      if (context === null) throw new Error("no canvas");
-      context.fillStyle = `hsl(${colour} 80% 50%)`;
-      context.fillRect(0, 0, side, side);
-      const bytes = new Uint8Array(await (await canvas.convertToBlob({ type: "image/png" })).arrayBuffer());
-      let binary = "";
-      for (const byte of bytes) binary += String.fromCharCode(byte);
-      return btoa(binary);
-    },
-    [size, hue] as const,
-  );
-
 const sha256 = (base64: string): string => createHash("sha256").update(Buffer.from(base64, "base64")).digest("hex");
-
-/** Puts the PNG on the system clipboard, alone, as a screenshot leaves it. */
-const copyImage = (page: Page, png: string): Promise<void> =>
-  page.evaluate(async (data) => {
-    const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
-    await navigator.clipboard.write([new ClipboardItem({ "image/png": new Blob([bytes], { type: "image/png" }) })]);
-  }, png);
 
 /** The platform's paste chord as the browser delivers it: a keydown carrying its own `paste` command (#510, #862). */
 async function pressPaste(page: Page): Promise<void> {
@@ -146,22 +123,6 @@ test("an image past 8 MB is refused with a notice and nothing reaches the termin
 // with keys typed meanwhile behind it. On Linux and Windows Ctrl+V stays the browser's paste, as before: an image goes
 // in as a file through the paste itself (#742) and text as text, with no clipboard permission needed.
 
-/** A Mac page in this Linux Chromium: the platform says MacIntel, and the paste Ctrl+V fires here, never on a Mac, is dropped. */
-async function asMac(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    Object.defineProperty(Navigator.prototype, "platform", { get: () => "MacIntel" });
-    window.addEventListener(
-      "paste",
-      (event) => {
-        if (!event.isTrusted) return;
-        event.preventDefault();
-        event.stopImmediatePropagation();
-      },
-      true,
-    );
-  });
-}
-
 async function asLinux(page: Page): Promise<void> {
   await page.addInitScript(() => Object.defineProperty(Navigator.prototype, "platform", { get: () => "Linux x86_64" }));
 }
@@ -171,14 +132,6 @@ async function readDenied(page: Page): Promise<void> {
   await page.addInitScript(() => {
     Clipboard.prototype.read = () => Promise.reject(new DOMException("Read permission denied.", "NotAllowedError"));
   });
-}
-
-/** A shell reading `count` raw bytes, so the tty hands ^V to dd rather than reading it as literal-next; prints HEX:... */
-async function readRawBytes(page: Page, terminal: Locator, count: number): Promise<void> {
-  await page.keyboard.type(
-    `stty raw -echo; printf 'RAW%s\\r\\n' -ON; dd bs=1 count=${count} 2>/dev/null | od -An -tx1 | sed 's/^ */HEX:/'; stty sane\r`,
-  );
-  await expect(terminal).toContainText("RAW-ON", { timeout: 15_000 });
 }
 
 test("Ctrl+V pastes the clipboard's image by its path on a Mac, as herdr-app does", async ({ page }) => {

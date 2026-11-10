@@ -24,6 +24,11 @@ export interface TerminalInputPath {
   readonly typed: (data: TerminalInput) => void;
   /** Input from a bound key known only once `data` settles; what is typed meanwhile reaches the program after it. */
   readonly typedLater: (data: Promise<TerminalInput | null>) => void;
+  /**
+   * Input answering a bound key some time after it, as the person goes on typing (Paste image's late ^V): written in
+   * order, and a syllable still composing in the field is left alone, unlike `typed`, which would end it (#1938).
+   */
+  readonly typedLate: (data: TerminalInput) => void;
   /** Files sent to the terminal's machine, their paths pasted there. */
   readonly pasteFiles: (files: readonly File[]) => void;
   /** Input sent now would be written at once (the predictor's P6). */
@@ -105,6 +110,14 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
     },
     [typedFirst, send],
   );
+  const typedLate = useCallback(
+    (data: TerminalInput): void => {
+      const instance = handle.current?.instance;
+      if (instance !== null && instance !== undefined) scrollTerminal(instance, { to: "bottom" });
+      send(data);
+    },
+    [handle, send],
+  );
   const typedLater = useCallback(
     (data: Promise<TerminalInput | null>): void => {
       typedFirst();
@@ -138,5 +151,5 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
     wt.element.addEventListener("input", onInput);
     return () => wt.element.removeEventListener("input", onInput);
   }, [wt, typesComposition]);
-  return { pending, typedInto, typed, typedLater, pasteFiles, linkReady };
+  return { pending, typedInto, typed, typedLater, typedLate, pasteFiles, linkReady };
 }

@@ -185,7 +185,7 @@ export const CLIPBOARD_IMAGE_WAIT_MS = 1500;
 export interface PasteImageInput {
   /** Input known once `data` settles; what is sent meanwhile waits behind it. */
   readonly later: (data: Promise<TerminalInput | null>) => void;
-  /** Input written now, in order. */
+  /** The ^V sent past the wait, in order: the person may be composing a syllable by then, which it leaves alone. */
   readonly send: (data: TerminalInput) => void;
   /** Files sent to the terminal's machine, their paths pasted there. */
   readonly pasteFiles: (files: readonly File[]) => void;
