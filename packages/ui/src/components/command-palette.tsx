@@ -2,6 +2,7 @@ import { Search } from "lucide-react";
 import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
 import { Button } from "./button.tsx";
+import { fieldLabelClass } from "./input.tsx";
 import { Kbd } from "./kbd.tsx";
 import { overlaySurface } from "./overlay.ts";
 import { agentCount, shownStatus, statusCounts, withStatus } from "./palette-status.ts";
@@ -84,8 +85,8 @@ export function CommandPalette({
 
   return (
     <div className={cn(overlaySurface, "flex w-[min(40rem,100%)] flex-col overflow-hidden", className)}>
-      <div className="flex items-center gap-2.5 border-b border-border px-3">
-        <label id={`${inputId}-label`} htmlFor={inputId} className="sr-only">
+      <div className="flex flex-wrap items-center gap-x-2.5 border-b border-border px-3">
+        <label id={`${inputId}-label`} htmlFor={inputId} className={cn("basis-full pt-2", fieldLabelClass)}>
           Command
         </label>
         <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />
@@ -137,7 +138,7 @@ export function CommandPalette({
         className="max-h-[min(24rem,60dvh)] overflow-y-auto p-1.5"
       >
         {visible.length === 0 ? (
-          <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing matches "{query}".</p>
+          <p className="px-3 py-6 text-center text-prose text-muted-foreground">Nothing matches "{query}".</p>
         ) : (
           groups.map((group) => (
             <div key={group} role="group" aria-label={group} className="pb-4 coarse:pb-9">
