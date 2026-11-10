@@ -8,8 +8,8 @@
  *      object and refuses a different one)
  *   4. each object is read back and hashed again
  *   5. releases/v<version>/.complete records every file's hash and size
- *   6. the channel's host manifest is written and signed
- *   7. the pointer moves, only over the pointer read before (If-Match)
+ *   6. the pointer moves, only over the pointer read before (If-Match), never to a version older than it offers
+ *   7. the channel's host manifest is written and signed, so it never names a version the pointer does not offer
  */
 import { type Channel, compareVersions, completeKey, objectKey } from "../../apps/get/src/names.ts";
 import { releasePublicKey, signRelease } from "../../packages/crypto/src/release.ts";
@@ -155,13 +155,7 @@ export async function mirrorRelease(store: ObjectStore, plan: MirrorPlan, log: (
     ...(plan.minimum === undefined ? {} : { minimum: plan.minimum }),
   };
   await putComplete(store, record);
-  await writeHostManifest(
-    store,
-    plan.channel,
-    hostManifest(plan.origin, plan.channel, record, plan.rollout),
-    plan.secretKey,
-  );
-  log(`wrote .complete and the signed ${plan.channel} host manifest`);
+  log(`wrote .complete`);
 
   const current = await readCurrentPointer(store, plan.channel);
   const was = current.pointer;
@@ -180,4 +174,14 @@ export async function mirrorRelease(store: ObjectStore, plan: MirrorPlan, log: (
   });
   if (!moved) throw new Error(`channels/${plan.channel}.json moved while this run held it; re-run the mirror`);
   log(`${plan.channel} now offers ${plan.version} to ${plan.rollout}% (previous ${previous ?? "none"})`);
+  // Only after the pointer moved: a refused or raced run must leave the manifest naming the version still offered. A
+  // failure here leaves the Worker answering 503 for the manifest (it serves one only while it matches the pointer)
+  // until a re-run, which finds the pointer already moved and writes it.
+  await writeHostManifest(
+    store,
+    plan.channel,
+    hostManifest(plan.origin, plan.channel, record, plan.rollout),
+    plan.secretKey,
+  );
+  log(`wrote the signed ${plan.channel} host manifest`);
 }

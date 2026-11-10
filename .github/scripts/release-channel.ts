@@ -7,6 +7,7 @@
  *   yank <version>            marks the version yanked: no feed, manifest or /dl names it again; /v/ still serves it
  */
 import { type Channel, yankedKey } from "../../apps/get/src/names.ts";
+import { RELEASE_PUBLIC_KEYS, releasePublicKey } from "../../packages/crypto/src/release.ts";
 import type { ObjectStore } from "./r2-store.ts";
 import { hostManifest, readComplete, readCurrentPointer, writeHostManifest, writePointer } from "./release-records.ts";
 
@@ -22,6 +23,8 @@ export interface ChannelContext {
   readonly origin: string;
   readonly secretKey: Uint8Array;
   readonly now: string;
+  /** The keys shipped builds trust; a manifest signed by any other is refused before anything is written. */
+  readonly trustedKeys?: readonly string[];
 }
 
 async function resign(ctx: ChannelContext, version: string, rollout: number): Promise<void> {
@@ -35,6 +38,11 @@ async function resign(ctx: ChannelContext, version: string, rollout: number): Pr
 }
 
 export async function runOperation(ctx: ChannelContext, operation: Operation): Promise<string> {
+  if (operation.op !== "head" && !(ctx.trustedKeys ?? RELEASE_PUBLIC_KEYS).includes(releasePublicKey(ctx.secretKey))) {
+    throw new Error(
+      "the signing key is not one of RELEASE_PUBLIC_KEYS, so no shipped build would accept its manifests",
+    );
+  }
   const current = await readCurrentPointer(ctx.store, ctx.channel);
   const pointer = current.pointer;
   if (operation.op === "head") return JSON.stringify(pointer);

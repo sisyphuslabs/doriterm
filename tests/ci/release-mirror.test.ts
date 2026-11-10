@@ -50,6 +50,7 @@ test("a mirrored release is what get.doriterm.com serves: /dl, the signed checks
   const manifest: unknown = JSON.parse(manifestText);
   expect(manifest).toMatchObject({
     version: "0.1.17",
+    channel: "stable",
     rollout: 100,
     targets: { "mac-arm64": { url: "https://get.doriterm.com/host/stable/0.1.17/doriface-host-mac-arm64" } },
   });
@@ -66,7 +67,11 @@ test("a re-run accepts its own objects, and the next release records the one bef
     rollout: 20,
     publishedAt: "2026-11-12T03:10:00Z",
   });
+  // A refused backport leaves the signed manifest naming the version the channel still offers (#1977 review).
+  const manifest = bucket.text("channels/stable.host-manifest.json");
   await expect(mirrorRelease(bucket, plan("0.1.15"), quiet)).rejects.toThrow("newer than 0.1.15");
+  expect(bucket.text("channels/stable.host-manifest.json")).toBe(manifest);
+  expect((await bucket.worker("/host/stable/manifest.json")).status).toBe(200);
 });
 
 test("a file that does not match SHA256SUMS.txt or GitHub's digest stops the run before anything is uploaded", async () => {
@@ -120,6 +125,8 @@ test("an object already in the bucket with other bytes is never replaced, and a 
     if (name === "channels/stable.json") racing.objects.set(name, new TextEncoder().encode('{"moved":true}'));
     return item;
   };
+  const manifest = racing.text("channels/stable.host-manifest.json");
   await expect(mirrorRelease(racing, plan("0.1.17"), quiet)).rejects.toThrow("moved while this run held it");
   expect(racing.text("channels/stable.json")).toBe('{"moved":true}');
+  expect(racing.text("channels/stable.host-manifest.json")).toBe(manifest);
 });

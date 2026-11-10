@@ -65,6 +65,8 @@ export const HOST_TARGETS = ["linux-x64", "linux-arm64", "mac-x64", "mac-arm64"]
 
 export interface HostManifest {
   readonly version: string;
+  /** Signed, so a manifest for one channel served at another is refused by the host (beta follows a newer stable). */
+  readonly channel: Channel;
   readonly rollout: number;
   readonly minimum?: string;
   readonly targets: Readonly<Record<string, { readonly url: string; readonly sha256: string; readonly size: number }>>;
@@ -81,6 +83,7 @@ export function hostManifest(origin: string, channel: Channel, record: CompleteR
   }
   return {
     version: record.version,
+    channel,
     rollout,
     ...(record.minimum === undefined ? {} : { minimum: record.minimum }),
     targets,

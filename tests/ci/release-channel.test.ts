@@ -41,6 +41,7 @@ const ctx = (bucket: MemoryBucket) => ({
   origin: "https://get.doriterm.com",
   secretKey: key,
   now: "2026-11-12T04:00:00Z",
+  trustedKeys: trusted,
 });
 
 async function signedManifest(bucket: MemoryBucket): Promise<{ version: string; rollout: number }> {
@@ -86,4 +87,14 @@ test("yank stops every offer of a version, re-signs the manifest for the one bef
   expect(await signedManifest(bucket)).toMatchObject({ version: "0.1.16", rollout: 100 });
   expect((await bucket.worker("/v/0.1.17/doriface-host-linux-x64")).status).toBe(200);
   expect(JSON.parse(await runOperation(ctx(bucket), { op: "head" }))).toMatchObject({ version: "0.1.17" });
+});
+
+test("a key the shipped builds do not trust re-signs nothing and moves nothing", async () => {
+  const bucket = await twoReleases();
+  const before = new Map(bucket.objects);
+  await expect(
+    runOperation({ ...ctx(bucket), trustedKeys: [] }, { op: "rollback", version: "0.1.17" }),
+  ).rejects.toThrow("RELEASE_PUBLIC_KEYS");
+  expect(bucket.objects).toEqual(before);
+  expect(await runOperation({ ...ctx(bucket), trustedKeys: [] }, { op: "head" })).toContain('"version":"0.1.17"');
 });

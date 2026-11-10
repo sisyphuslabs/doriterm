@@ -16,9 +16,9 @@ then runs the `Mirror to get.doriterm.com` job:
    re-run accepts the identical object and refuses a different one.
 4. Read every object back and hash it again.
 5. Write `releases/v<version>/.complete`, the hash and size of every file.
-6. Write the channel's host manifest and its signature.
-7. Move `channels/<channel>.json` with `If-Match`, only over the pointer read before, then wait until
-   `/dl/host-linux-x64` names the new version.
+6. Move `channels/<channel>.json` with `If-Match`, only over the pointer read before and never to a version older than
+   the one it offers (a backport needs `release-channel.yml`).
+7. Write the channel's host manifest and its signature, then wait until `/dl/host-linux-x64` names the new version.
 
 A tag with a prerelease suffix (`v0.2.0-rc.1`) goes to the `beta` channel, any other to `stable`; beta also offers
 stable when stable is newer. The repository variable `RELEASE_ROLLOUT_PERCENT` sets the first rollout (default 100) and
@@ -28,7 +28,9 @@ A failure anywhere leaves the previous pointer in place: get.doriterm.com keeps 
 `/v/<new version>/` redirects to GitHub, and the GitHub release stays published. Re-run the job once the cause is fixed.
 
 A manual dispatch of `release.yml` builds a draft and mirrors it into the staging bucket behind
-`staging.get.doriterm.com`, so the whole path can be tried without publishing anything.
+`staging.get.doriterm.com`, so the whole path can be tried without publishing anything. Builds are not byte for byte
+reproducible and a mirrored file is never replaced, so a second dispatch of the same version fails against the staging
+bucket: try again with a new prerelease version, or empty that version's folder in the staging bucket first.
 
 ## Moving a channel
 
@@ -55,7 +57,9 @@ host compares it with the id in `<state dir>/updater-id`. Neither id ever leaves
 
 The `release-mirror` and `release-mirror-staging` environments hold `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`
 (an R2 token scoped to the one bucket), `CLOUDFLARE_ACCOUNT_ID` and `RELEASE_SIGNING_KEY` (base64 of the 32-byte
-Ed25519 seed). Rotating the release key: ship a release whose `RELEASE_PUBLIC_KEYS` lists the old and the new key, signed
+Ed25519 seed). Both environments hold the real signing key (the mirror refuses a key the builds do not trust), so both
+must allow deployments from `dev` and release tags only, in the environment's deployment branch rules. Rotating the
+release key: ship a release whose `RELEASE_PUBLIC_KEYS` lists the old and the new key, signed
 with the old one; sign the next release with the new key only.
 
 ## Download counts
