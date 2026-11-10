@@ -23,7 +23,7 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907422af1d7 100644
+index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dcefa91176 100644
 --- a/dist/input.js
 +++ b/dist/input.js
 @@ -70,6 +70,32 @@ const COMPOSITION_INPUT_DEDUP_MS = 250;
@@ -76,7 +76,12 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
          // The first native deletion mirrors the Backspace already sent on keydown.
          this.suppressNextTouchDeleteInput = false;
          this.mouseButtons = 0;
-@@ -157,6 +193,7 @@ export class InputHandler {
+@@ -153,10 +189,11 @@ export class InputHandler {
+             this.positionTextarea();
+             this.element.classList.add("focused");
+             if (this.getBridge()?.focusEvents?.())
+-                this.onData("\x1b[I");
++                this.onData("\x1b[I", true);
          };
          this._onBlur = () => {
              this.tabExitArmed = false;
@@ -84,6 +89,15 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
              this.focused = false;
              this.composing = false;
              this.recentCompositionCommit = null;
+@@ -169,7 +206,7 @@ export class InputHandler {
+             this.pressedModifiers.clear();
+             this.deliveredKeys.clear();
+             if (this.getBridge()?.focusEvents?.())
+-                this.onData("\x1b[O");
++                this.onData("\x1b[O", true);
+         };
+         this._onMouseDown = (event) => {
+             this.tabExitArmed = false;
 @@ -224,10 +261,12 @@ export class InputHandler {
          this.textarea.focus({ preventScroll: true });
      }
@@ -609,7 +623,7 @@ index a6746f499859ba9da2d7884dfd71694205c6d819..1a6cc13f68b3d84cc12d7c4a9b51f22f
      setOutputAnnouncements(enabled: boolean): void;
      /** Expose this terminal to in-page agents through WebMCP, or withdraw it. */
 diff --git a/dist/wterm.js b/dist/wterm.js
-index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af06624bdd861d 100644
+index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999241853c3 100644
 --- a/dist/wterm.js
 +++ b/dist/wterm.js
 @@ -131,9 +131,19 @@ export class WTerm {
@@ -755,7 +769,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
          // Answer theme color queries with the colors the page shows right now.
          if (mayQueryThemeColors(data))
              this._syncCssThemeColors();
-@@ -732,9 +799,20 @@ export class WTerm {
+@@ -732,9 +799,30 @@ export class WTerm {
          this._rectangleDrag.cancel();
          this._historySelection.invalidate();
          this.renderer?.beforeMutation(this.bridge);
@@ -767,8 +781,18 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
 +        // writing the update it opened: reopened, the screen keeps showing the
 +        // last finished frame until the program ends it (or the hold times out),
 +        // instead of the frame half drawn.
++        // A reader in history keeps the row at the top of the view, not its pixel offset: a width change reflows
++        // wrapped lines above it into more or fewer rows, and the same scrollTop would then show another line. The
++        // core's tracked position follows that row through the reflow (#1568).
++        const anchor = this._shouldScrollToBottom ? null : this._trackTopRow();
 +        const synchronizedBefore = this.bridge.synchronizedOutput?.() ?? false;
          this.bridge.resize(cols, rows);
++        if (anchor) {
++            const moved = anchor.pin.resolve();
++            anchor.pin.dispose();
++            if (moved)
++                this._pendingResizeScrollTop = anchor.padTop + moved.row * anchor.rowHeight + anchor.within;
++        }
 +        const reopened = synchronizedBefore && !(this.bridge.synchronizedOutput?.() ?? false);
 +        if (reopened)
 +            this.bridge.writeString("\x1b[?2026h");
@@ -778,7 +802,27 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
          this._outputAnnouncements.invalidate();
          this.cols = this.bridge.getCols();
          this.rows = this.bridge.getRows();
-@@ -798,6 +876,7 @@ export class WTerm {
+@@ -751,6 +839,19 @@ export class WTerm {
+         if (this.onResize)
+             this.onResize(this.cols, this.rows);
+     }
++    /** The row at the top of the view as a tracked core position, with the view's offset inside that row. */
++    _trackTopRow() {
++        const rowHeight = this._rowHeight;
++        if (!rowHeight || !this.bridge?.trackPosition)
++            return null;
++        const padTop = parseFloat(getComputedStyle(this.element).paddingTop) || 0;
++        const scrollTop = this._pendingResizeScrollTop ?? this.element.scrollTop;
++        const row = Math.max(0, Math.floor((scrollTop - padTop) / rowHeight));
++        const pin = this.bridge.trackPosition({ row, col: 0 });
++        if (!pin)
++            return null;
++        return { pin, padTop, rowHeight, within: scrollTop - padTop - row * rowHeight };
++    }
+     /** Search retained history and the active screen, using plain text. */
+     search(query, options = {}) {
+         if (this._destroyed)
+@@ -798,6 +899,7 @@ export class WTerm {
              return false;
          const before = this.element.scrollTop;
          this._shouldScrollToBottom = false;
@@ -786,7 +830,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
          this._searchReveal = false;
          this._pendingResizeScrollTop = target * this._rowHeight;
          this._doRender();
-@@ -1127,14 +1206,20 @@ export class WTerm {
+@@ -1127,14 +1229,20 @@ export class WTerm {
              this._synchronizedOutputState = "idle";
              return false;
          }
@@ -809,7 +853,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
          }
          if (this._synchronizedOutputState !== "idle") {
              return this._synchronizedOutputState === "held";
-@@ -1144,9 +1229,10 @@ export class WTerm {
+@@ -1144,9 +1252,10 @@ export class WTerm {
          this._armSynchronizedOutputFallback(generation);
          return true;
      }
@@ -821,7 +865,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
          this._synchronizedOutputTimer = setTimeout(() => {
              if (this._synchronizedOutputState !== "held" ||
                  this._synchronizedOutputGeneration !== generation) {
-@@ -1157,7 +1243,7 @@ export class WTerm {
+@@ -1157,7 +1266,7 @@ export class WTerm {
              this._setupRendererIfNeeded();
              this._cancelScheduledRender();
              this._doRender();
@@ -830,7 +874,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
      }
      _cancelSynchronizedOutputFallback() {
          if (this._synchronizedOutputTimer == null)
-@@ -1576,14 +1662,16 @@ export class WTerm {
+@@ -1576,14 +1685,16 @@ export class WTerm {
          const height = this._visibleContentHeight(contentHeight);
          const newCols = Math.max(1, Math.floor(containerRect.width / charWidth));
          const newRows = Math.max(1, Math.floor(height / rowHeight));
