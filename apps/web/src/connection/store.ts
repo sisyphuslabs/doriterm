@@ -7,6 +7,7 @@ import type { DirectReason } from "./direct-attempt.ts";
 import { helloName } from "./hello-name.ts";
 import { isFinal } from "./host-failure.ts";
 import { MeshConnections, type MemberEntry } from "./mesh-connections.ts";
+import { type ResumeWiring, wireResume } from "./resume-wiring.ts";
 import {
   type ConnectionSettings,
   isConfigured,
@@ -17,7 +18,7 @@ import {
   saveSettings,
   staysOnThisComputer,
 } from "./settings.ts";
-import { resumeOnWake } from "./wake.ts";
+import { resumeOnWake, unprovenLinks } from "./wake.ts";
 import { WakeProbe, type WakeProbing } from "./wake-probe.ts";
 
 /**
@@ -39,6 +40,11 @@ export type ConnectionState =
       readonly connectMs?: number | undefined;
       /** A wake is asking this link to prove itself (#1370): input typed meanwhile waits rather than going into it. */
       readonly proving?: boolean | undefined;
+      /**
+       * The session's socket dropped and the session is being carried on over a new one (contract v1.10): the workspace
+       * stays as it is, and input typed meanwhile waits for the new socket.
+       */
+      readonly resuming?: boolean | undefined;
     }
   /** This computer's host did not start: nothing is tried until a start succeeds. */
   | { readonly phase: "host-failed"; readonly failure: HostStartFailure }
@@ -95,6 +101,9 @@ export class ConnectionStore {
   readonly #save: Saver;
   /** A wake's check on the open link: a socket the page slept on can be half-open (#653), and input must not go into it. */
   readonly #wake: WakeProbe;
+  /** The open connection's session resume, when its path has a session to carry on (contract v1.10). */
+  #resume: ResumeWiring | null = null;
+  readonly #links: typeof unprovenLinks;
 
   /**
    * `save` is how this store records a change to its settings. A store that owns the saved settings writes them itself; one that
@@ -111,6 +120,7 @@ export class ConnectionStore {
     this.#connect = open;
     this.#save = save;
     this.#wake = new WakeProbe(probing);
+    this.#links = probing.links ?? unprovenLinks;
   }
 
   get settings(): ConnectionSettings {
@@ -175,6 +185,8 @@ export class ConnectionStore {
 
   stop(): void {
     this.#wake.stop();
+    this.#resume?.stop();
+    this.#resume = null;
     this.#closedFor = null;
     clearTimeout(this.#timer);
     clearTimeout(this.#stableTimer);
@@ -233,8 +245,17 @@ export class ConnectionStore {
   #opened(opened: OpenConnection, abort: AbortController, attempt: number, connectMs?: number): void {
     const { connection } = opened;
     this.#rememberName(connection);
+    this.#resume = wireResume(opened, {
+      resuming: (on) => {
+        const state = this.#state;
+        if (state.phase === "open" && state.connection === connection) this.#set({ ...state, resuming: on });
+      },
+      links: this.#links,
+    });
     connection.onClose((error) => {
       if (this.#abort !== abort) return;
+      this.#resume?.stop();
+      this.#resume = null;
       if (opened.path === "direct") this.#relayFirst = true;
       this.#stale = connection;
       const closedFor = this.#closedFor?.connection === connection ? this.#closedFor.reason : undefined;
@@ -395,6 +416,8 @@ export class ConnectionStore {
    */
   retryNow(): void {
     if (this.#state.phase === "connecting") return this.#restart();
+    // A session being carried on dials again now; one that is not is checked.
+    if (this.#state.phase === "open" && this.#resume?.resumer.active === true) return this.#resume.resumer.now();
     if (this.#state.phase === "open") return this.#probe(this.#state.connection);
     const attempt = this.#pending;
     if (attempt === null || this.#state.phase !== "failed") return;
@@ -432,6 +455,8 @@ export class ConnectionStore {
       },
       (reason) => {
         if (this.#state.phase !== "open" || this.#state.connection !== connection) return;
+        // A session that can be carried on takes the loss and dials again; any other link is closed and reconnected.
+        if (this.#resume?.lost(reason) === true) return;
         this.#closedFor = { connection, reason };
         connection.close();
       },

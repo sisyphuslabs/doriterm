@@ -46,6 +46,7 @@ import { orderNotSaved } from "./machine-order.ts";
 import { useMachineOrder } from "./use-machine-order.ts";
 import { useTerminals, type DocHeard } from "./use-terminals.ts";
 import { useResumeEnds } from "./resume-ends.ts";
+import { useRedrawNotice } from "./use-redraw-notice.ts";
 import { useNoticeOpen } from "../push/notice-open.ts";
 import { usePushPresence } from "../push/use-push-presence.ts";
 import { PromptAnswerBanner } from "../push/prompt-answer-banner.tsx";
@@ -66,6 +67,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   }, []);
   const fed = useTerminals(connection, onDoc);
   useResumeEnds(connection);
+  useRedrawNotice(connection);
   const {
     entries: listed,
     terminals,

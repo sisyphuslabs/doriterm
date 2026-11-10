@@ -1,4 +1,4 @@
-import { base64urlEncode, CloseCode, type SecureLink, SessionKind } from "@doriface/crypto";
+import { base64urlEncode, CloseCode, isResumeRequest, type SecureLink, SessionKind } from "@doriface/crypto";
 import { requireWithin } from "@doriface/policy";
 import type { WebSocketHandler } from "bun";
 import { type Context, Hono, type Next } from "hono";
@@ -13,6 +13,8 @@ import { meshPeer } from "./e2ee/authorize.ts";
 import { firstLineRefusal, gateHello } from "./e2ee/first-line.ts";
 import { type E2eeWire, plaintextLink, WsByteLink } from "./e2ee/links.ts";
 import { helloOnly } from "./e2ee/pairing-session.ts";
+import { PeekedWire } from "./e2ee/peeked-wire.ts";
+import { ResumableSessions } from "./e2ee/resumes.ts";
 import { type SpeculativeHello, withoutFirstLine } from "./e2ee/speculative-hello.ts";
 import type { LiveSessions } from "./e2ee/sessions.ts";
 import type { Link } from "./link.ts";
@@ -45,6 +47,8 @@ export interface GatewayOptions {
   readonly speculative?: Pick<SpeculativeHello, "answer" | "settle"> | undefined;
   /** For tests: the direct-path idle close (default {@link DIRECT_IDLE_MS}). */
   readonly directIdleMs?: number | undefined;
+  /** For tests: how long a detached hc session waits for its client's resume (default RESUME_GRACE_MS). */
+  readonly resumeGraceMs?: number | undefined;
   /** Serves a device's push stream (`stream:"push"`, and `/v1/push` on loopback); without it both are refused. */
   readonly push?: ((link: PushLink, owner: string) => void) | undefined;
   /**
@@ -100,6 +104,7 @@ export function createGateway(options: GatewayOptions): Gateway {
   const e2eeEvents = new WeakSet<WSEvents>();
   const pushEvents = new WeakSet<WSEvents>();
   const { log, e2ee } = options;
+  const resumes = new ResumableSessions(log, options.resumeGraceMs);
 
   const app = new Hono();
   const lanApp = new Hono();
@@ -184,8 +189,21 @@ export function createGateway(options: GatewayOptions): Gateway {
     void bridge(link, attachAfterRun(pipe), (error) => log(`connection closed: ${String(error)}`));
   };
 
-  const serveE2ee = async (wire: E2eeWire, transport: E2eeTransport): Promise<void> => {
+  const serveE2ee = async (raw: E2eeWire, transport: E2eeTransport): Promise<void> => {
     if (e2ee === undefined) throw new Error("end-to-end encryption needs a state dir");
+    // The first message says which this is: a client coming back to a session it still holds (contract v1.10), or a
+    // handshake for a new one. A resume is answered from the session it names; anything else runs the handshake.
+    const wire = new PeekedWire(raw);
+    let first: Uint8Array;
+    try {
+      first = await wire.first;
+    } catch {
+      return;
+    }
+    if (isResumeRequest(first)) {
+      if (!resumes.accept(wire, first, wire.drain())) wire.close(CloseCode.IdleTimeout, "cannot resume this session");
+      return;
+    }
     const secure = await acceptE2ee(wire, { ...e2ee, speculative: options.speculative }, transport);
     if (secure === undefined) return;
     e2ee.meshPresence?.(secure);
@@ -203,6 +221,8 @@ export function createGateway(options: GatewayOptions): Gateway {
     const gate = hcGate(secure);
     if (gate === undefined) return;
     e2ee.mesh?.recordClientSession(base64urlEncode(secure.remoteStatic));
+    // An hc session outlives its socket: a client whose link drops comes back to it instead of attaching anew.
+    resumes.register(secure);
     const link = gate(plaintextLink(secure, wire));
     const answered = options.speculative?.settle(secure) === "answered";
     const hc = answered ? withoutFirstLine(link) : link;
