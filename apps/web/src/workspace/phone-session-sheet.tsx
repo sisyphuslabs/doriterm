@@ -9,7 +9,7 @@ import { useAskSession } from "./session-context.ts";
 export interface PhoneSessionSheetProps {
   readonly terminal: Session;
   readonly terminals: readonly Session[];
-  /** The session's name, as the header reads it. */
+  /** The session's name, as the header's heading reads it: its tab's own name, else the terminal's title. */
   readonly title: string;
   /** Where it lives: machine and space, as the header's second line says it. */
   readonly where: string;
@@ -35,6 +35,16 @@ function Row(props: {
       {props.icon}
       {props.children}
     </Button>
+  );
+}
+
+/** Where the session lives: machine and space, then its directory; no directory line when the terminal reports none. */
+export function SessionPlace({ where, dir }: { readonly where: string; readonly dir: string | undefined }) {
+  return (
+    <div data-session-place className="flex flex-col gap-0.5 pb-2">
+      <p className="text-sm text-muted-foreground">{where}</p>
+      {dir ? <p className="font-mono text-xs break-all text-muted-foreground">{dir}</p> : null}
+    </div>
   );
 }
 
@@ -65,10 +75,7 @@ export function PhoneSessionSheet({ terminal, terminals, title, where, onOpen }:
       onOpenChange={setOpen}
       trigger={<IconButton label={`Session actions for ${title}`} icon={<Ellipsis />} size="md" />}
     >
-      <div data-session-place className="flex flex-col gap-0.5 pb-2">
-        <p className="text-sm text-muted-foreground">{where}</p>
-        <p className="font-mono text-xs break-all text-muted-foreground">{terminal.foreground?.cwd ?? terminal.cwd}</p>
-      </div>
+      <SessionPlace where={where} dir={terminal.foreground?.cwd ?? terminal.cwd} />
       {nextAgent === null && offline ? null : (
         <div className="flex flex-col border-t border-border pt-1">
           {nextAgent === null ? null : (

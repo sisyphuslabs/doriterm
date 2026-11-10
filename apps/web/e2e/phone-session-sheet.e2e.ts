@@ -128,3 +128,20 @@ test("the session sheet offers Find in terminal only while its machine is online
     removeTerminal("machine", local, go);
   }
 });
+
+test("a named tab's sheet and its trigger carry the name the header's heading reads (#1502)", async ({ page }) => {
+  const run = Date.now().toString(36);
+  const space = `pssn-${run}`;
+  const shell = `pssn-shell-${run}`;
+  const tab = `pssn-tab-${run}`;
+  const address = startShellIn(space, shell);
+  seedSpaces([{ id: "spc-pssn", name: space, folder: "", tabs: [{ id: "tb-pssn", name: tab, terminal: address }] }]);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+  await agentRow(page, shell, false).click();
+  await expect(header(page).getByRole("heading", { name: tab, exact: true })).toBeVisible({ timeout: 15_000 });
+  const actions = header(page).getByRole("button", { name: `Session actions for ${tab}`, exact: true });
+  await expect(actions).toBeVisible();
+  await actions.click();
+  await opened(page.getByRole("dialog", { name: tab, exact: true }));
+});
