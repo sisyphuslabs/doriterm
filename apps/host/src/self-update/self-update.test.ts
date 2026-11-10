@@ -3,7 +3,9 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { releasePublicKey, signRelease } from "@doriface/crypto";
+import { compareVersions } from "./manifest.ts";
 import { selfUpdate, SelfUpdateError, type SelfUpdateOptions } from "./self-update.ts";
+import { parseChannel } from "../commands/update.ts";
 
 const ORIGIN = "https://get.doriterm.com";
 // Any 32 bytes are an Ed25519 seed.
@@ -30,6 +32,7 @@ function rig(release: Release = {}) {
   writeFileSync(binary, "old binary", { mode: 0o755 });
   const manifest = {
     version: "0.1.17",
+    channel: "stable",
     rollout: 100,
     minimum: "0.1.10",
     targets: {
@@ -154,4 +157,36 @@ test("a build hosted elsewhere, a binary that answers another version, or a malf
   expect(wrong.untouched()).toBe(true);
   const malformed = rig({ manifest: { rollout: 150 } });
   expect(await refusal(selfUpdate(malformed.options))).toBe("manifest");
+});
+
+test("prerelease identifiers order by value, so beta.10 follows beta.9 and a beta.9 manifest never replaces beta.10", async () => {
+  const ordered = ["0.1.17", "0.1.18-beta.2", "0.1.18-beta.9", "0.1.18-beta.10", "0.1.18-rc.1", "0.1.18", "0.2.0"];
+  for (let i = 0; i < ordered.length - 1; i++) {
+    const [a = "", b = ""] = [ordered[i], ordered[i + 1]];
+    expect([a, b, compareVersions(a, b), compareVersions(b, a)]).toEqual([a, b, -1, 1]);
+  }
+  const r = rig({ manifest: { version: "0.1.18-beta.9", channel: "beta" } });
+  const fetcher = r.options.fetcher;
+  const fromBeta = async (url: string) =>
+    fetcher === undefined ? new Response(null, { status: 500 }) : fetcher(url.replace("/host/beta/", "/host/stable/"));
+  expect(
+    await selfUpdate({ ...r.options, channel: "beta", fetcher: fromBeta, currentVersion: "0.1.18-beta.10" }),
+  ).toEqual({
+    kind: "current",
+    version: "0.1.18-beta.10",
+  });
+  expect(r.downloaded()).toBe(false);
+});
+
+test("a signed manifest is taken only on its own channel, and beta also takes stable's", async () => {
+  const beta = rig({ manifest: { channel: "beta" } });
+  expect(await refusal(selfUpdate(beta.options))).toBe("manifest");
+  expect([beta.downloaded(), beta.untouched()]).toEqual([false, true]);
+  const stableOnBeta = rig();
+  const betaFiles = { ...stableOnBeta.options, channel: "beta" as const };
+  const fetcher = betaFiles.fetcher;
+  const remap = async (url: string) =>
+    fetcher === undefined ? new Response(null, { status: 500 }) : fetcher(url.replace("/host/beta/", "/host/stable/"));
+  expect(await selfUpdate({ ...betaFiles, fetcher: remap })).toEqual({ kind: "updated", version: "0.1.17" });
+  expect(() => parseChannel("nightly", "--auto-update")).toThrow('--auto-update wants stable or beta, got "nightly"');
 });

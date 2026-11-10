@@ -12,9 +12,9 @@ export const UPDATE_USAGE = `usage: doriface-host update [--channel stable|beta]
        doriface-host verify-release <SHA256SUMS.txt> <SHA256SUMS.txt.sig>`;
 
 /** The channel a command line names, or why it names none. */
-export function parseChannel(value: string): UpdateChannel {
+export function parseChannel(value: string, flag = "--channel"): UpdateChannel {
   if (value === "stable" || value === "beta") return value;
-  throw new Error(`--channel wants stable or beta, got ${JSON.stringify(value)}`);
+  throw new Error(`${flag} wants stable or beta, got ${JSON.stringify(value)}`);
 }
 
 /** The update origin: get.doriterm.com, or a self-hoster's own from DORIFACE_UPDATE_ORIGIN. */

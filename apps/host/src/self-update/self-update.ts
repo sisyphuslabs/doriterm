@@ -83,6 +83,10 @@ export async function selfUpdate(options: SelfUpdateOptions): Promise<UpdateOutc
   }
   const manifest: HostManifest | null = parseHostManifest(new TextDecoder().decode(body));
   if (manifest === null) throw new SelfUpdateError("manifest", "the signed manifest is malformed");
+  // A beta host may take stable's manifest (the Worker offers beta the newer of the two); stable never takes beta's.
+  if (manifest.channel !== options.channel && !(options.channel === "beta" && manifest.channel === "stable")) {
+    throw new SelfUpdateError("manifest", `the signed manifest is for ${manifest.channel}, not ${options.channel}`);
+  }
   const { version } = manifest;
   if (compareVersions(version, options.currentVersion) <= 0)
     return { kind: "current", version: options.currentVersion };

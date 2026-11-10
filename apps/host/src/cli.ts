@@ -164,7 +164,7 @@ async function serve(args: readonly string[]): Promise<void> {
   }
   if (values["install-hc"]) return installHerdrCore();
   if (!URL.canParse(values.relay)) throw new Error(`--relay wants a URL, got ${JSON.stringify(values.relay)}`);
-  const autoUpdate = values["auto-update"] === "off" ? undefined : parseChannel(values["auto-update"]);
+  const autoUpdate = values["auto-update"] === "off" ? undefined : parseChannel(values["auto-update"], "--auto-update");
   const origin = updateOrigin(process.env);
   const given = values.token ?? process.env["DORIFACE_HOST_TOKEN"] ?? "";
   const token = given === "" ? generateToken() : assertValidToken(given);

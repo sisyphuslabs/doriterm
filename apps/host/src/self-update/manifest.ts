@@ -10,6 +10,8 @@ export interface HostBuild {
 
 export interface HostManifest {
   readonly version: string;
+  /** The channel it was signed for; beta may be offered stable's manifest when stable is newer, never the reverse. */
+  readonly channel: "stable" | "beta";
   /** The percentage of hosts offered this version, 0 to 100. */
   readonly rollout: number;
   /** The lowest version that can update itself to this one; below it, install.sh is the way up. */
@@ -42,6 +44,8 @@ export function parseHostManifest(text: string): HostManifest | null {
   const version = field(value, "version");
   const rollout = field(value, "rollout");
   const minimum = field(value, "minimum");
+  const channel = field(value, "channel");
+  if (channel !== "stable" && channel !== "beta") return null;
   if (typeof version !== "string" || !VERSION.test(version)) return null;
   if (typeof rollout !== "number" || !Number.isInteger(rollout) || rollout < 0 || rollout > 100) return null;
   if (minimum !== undefined && (typeof minimum !== "string" || !VERSION.test(minimum))) return null;
@@ -58,18 +62,33 @@ export function parseHostManifest(text: string): HostManifest | null {
     if (typeof size !== "number" || !Number.isInteger(size) || size <= 0) return null;
     targets[target] = { url, sha256, size };
   }
-  return { version, rollout, targets, ...(minimum === undefined ? {} : { minimum }) };
+  return { version, channel, rollout, targets, ...(minimum === undefined ? {} : { minimum }) };
 }
 
-const core = (version: string): number[] => (version.split("-")[0] ?? "").split(".").map(Number);
+const identifiers = (pre: string): string[] => (pre === "" ? [] : pre.split("."));
 
-/** Semantic-version order on what a manifest can name: the numbers, then a release above its prereleases. */
+/**
+ * Semantic-version order on what a manifest can name: the numbers, then a release above its prereleases, then the
+ * prerelease identifiers one by one, numeric ones by value (beta.9 below beta.10) and below alphanumeric ones.
+ */
 export function compareVersions(a: string, b: string): number {
-  const [x, y] = [core(a), core(b)];
+  const [aCore = "", aPre = ""] = a.split(/-(.*)/s, 2);
+  const [bCore = "", bPre = ""] = b.split(/-(.*)/s, 2);
+  const [x, y] = [aCore.split(".").map(Number), bCore.split(".").map(Number)];
   for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return Math.sign((x[i] ?? 0) - (y[i] ?? 0));
-  const [aPre, bPre] = [a.split("-").slice(1).join("-"), b.split("-").slice(1).join("-")];
   if (aPre === bPre) return 0;
   if (aPre === "") return 1;
   if (bPre === "") return -1;
-  return aPre < bPre ? -1 : 1;
+  const [ai, bi] = [identifiers(aPre), identifiers(bPre)];
+  for (let i = 0; i < Math.max(ai.length, bi.length); i++) {
+    const [p, q] = [ai[i], bi[i]];
+    if (p === undefined) return -1;
+    if (q === undefined) return 1;
+    if (p === q) continue;
+    const [pNum, qNum] = [/^\d+$/.test(p), /^\d+$/.test(q)];
+    if (pNum && qNum) return Math.sign(Number(p) - Number(q));
+    if (pNum !== qNum) return pNum ? -1 : 1;
+    return p < q ? -1 : 1;
+  }
+  return 0;
 }
