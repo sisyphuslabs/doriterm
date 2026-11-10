@@ -140,6 +140,35 @@ describe("matches that prove no echo (mosh CorrectNoCredit)", () => {
   });
 });
 
+describe("the cursor leaving the row of undrawn predictions", () => {
+  test("after a clear moves the cursor up, undrawn predictions on the old row are dropped and the next key predicts from the real cursor (#1439 LOW)", () => {
+    const h = harness();
+    h.screen.at = { row: 10, col: 0 };
+    confirmed(h, "a");
+    expect(h.predictor.typed("\f", "key")).toEqual({ kind: "refused", rule: "P1" });
+    h.predictor.typed("b", "key");
+    h.predictor.typed("c", "key");
+    h.screen.at = { row: 0, col: 2 };
+    h.predictor.wrote();
+    expect([judgements(h), h.predictor.visible()]).toEqual([["killEpoch:row-left"], []]);
+    expect(h.predictor.typed("d", "key")).toMatchObject({ kind: "predicted", cell: { row: 0, col: 2 } });
+  });
+
+  test("a prediction the wrap placed on the next row survives wrote() while the cursor is still on the wrapping row", () => {
+    const h = harness();
+    h.screen.at = { row: 3, col: 78 };
+    confirmed(h);
+    h.predictor.typed("a", "key");
+    expect(h.predictor.typed("b", "key")).toMatchObject({ kind: "predicted", cell: { row: 4, col: 0 } });
+    h.predictor.typed("c", "key");
+    h.predictor.wrote();
+    expect([h.screen.cursor(), judgements(h)]).toEqual([{ row: 3, col: 79 }, []]);
+    expect(h.predictor.typed("d", "key")).toMatchObject({ kind: "predicted", cell: { row: 4, col: 2 } });
+    h.hostEchoes("ab");
+    expect([texts(h), judgements(h)]).toEqual([["c", "d"], []]);
+  });
+});
+
 describe("visible()", () => {
   test("returns the same array until the predictions change, so a renderer can skip an unchanged frame", () => {
     const h = harness();
