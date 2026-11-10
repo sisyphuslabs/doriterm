@@ -18,6 +18,8 @@ export async function watchSynchronizedUpdates(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const SYNC = "\u001b[?2026";
     const HEADER = 9;
+    /** packages/protocol FrameKind.Data. */
+    const DATA = 0;
     const events: { t: number; open: boolean }[] = [];
     (window as unknown as { e2eSyncEvents: typeof events }).e2eSyncEvents = events;
     const Native = window.WebSocket;
@@ -26,8 +28,9 @@ export async function watchSynchronizedUpdates(page: Page): Promise<void> {
         super(url, protocols);
         // The connection speaks JSON-RPC lines until the hello reply (the line whose result says `"framed":true`); every
         // byte after that reply's LF is hc's wire frames: channel (u32), kind (u8), payload length (u32), little-endian,
-        // then the payload, a frame possibly spanning messages. Only stream payloads (channel > 0) carry terminal output,
-        // each scanned on its own with what is left of a sequence its last payload ended inside.
+        // then the payload, a frame possibly spanning messages. Only Data frames (kind 0) on a stream (channel > 0) carry
+        // terminal output; each stream's are scanned on their own with what is left of a sequence its last one ended inside,
+        // so a Resize or Credit frame between two halves of a sequence does not lose it.
         let framed = false;
         let lines = "";
         let rest = new Uint8Array(0);
@@ -77,9 +80,10 @@ export async function watchSynchronizedUpdates(page: Page): Promise<void> {
             if (joined.length - at < HEADER) break;
             const header = new DataView(joined.buffer, at, HEADER);
             const channel = header.getUint32(0, true);
+            const kind = header.getUint8(4);
             const end = at + HEADER + header.getUint32(5, true);
             if (end > joined.length) break;
-            if (channel !== 0) scan(channel, joined.subarray(at + HEADER, end), t);
+            if (channel !== 0 && kind === DATA) scan(channel, joined.subarray(at + HEADER, end), t);
             at = end;
           }
           rest = joined.slice(at);
