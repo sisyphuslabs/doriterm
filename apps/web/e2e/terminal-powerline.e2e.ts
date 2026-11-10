@@ -1,7 +1,8 @@
 import type { Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 
-test.use({ serviceWorkers: "block", viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+// The shipped font stack is what is under test, so this spec opts out of the pinned test faces (#1615).
+test.use({ serviceWorkers: "block", viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1, pinnedFonts: false });
 
 /**
  * The Powerline range #1403 names: the two branch glyphs and the six separator and cap glyphs. A prompt that draws one
