@@ -53,7 +53,12 @@ const PREVIEW: readonly TerminalLine[] = [
 
 function matches(def: KeyDef, query: string): boolean {
   const needle = query.trim().toLowerCase();
-  return needle === "" || def.key.includes(needle) || def.description.toLowerCase().includes(needle);
+  return (
+    needle === "" ||
+    def.key.includes(needle) ||
+    def.label?.toLowerCase().includes(needle) === true ||
+    def.description.toLowerCase().includes(needle)
+  );
 }
 
 function KeyRow({
@@ -72,9 +77,10 @@ function KeyRow({
     <SettingRow
       id={`terminal-${def.key}`}
       className="items-start"
+      {...(def.label === undefined ? {} : { configKey: def.key })}
       title={
         <span className="flex flex-wrap items-center gap-2 font-mono text-sm">
-          {def.key}
+          {def.label ?? def.key}
           {unsupported ? <Badge>Not applied</Badge> : null}
           {def.support.level === "new-terminals" ? <Badge>New terminals</Badge> : null}
         </span>

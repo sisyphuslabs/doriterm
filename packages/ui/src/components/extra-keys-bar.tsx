@@ -231,9 +231,12 @@ export function KeyboardButton({ onPress, className, label = "Show keyboard", ic
       type="button"
       aria-label={label}
       aria-pressed={pressed}
+      // The keyboard button leaves the focus on the terminal it asks the keyboard for, as the keys do: a press that took
+      // the focus would tell the program the terminal lost it (#1519). Another round control is left as it was.
+      onMouseDown={icon === undefined ? keepFocus : undefined}
       onClick={onPress}
       className={cn(
-        "flex size-12 items-center justify-center rounded-full border border-border shadow-lg backdrop-blur-md outline-none [&_svg]:size-5",
+        "flex size-12 items-center justify-center rounded-full border border-border shadow-lg backdrop-blur-md outline-none [&_svg:not([data-slot=spinner])]:size-5",
         pressed === true
           ? "bg-primary text-primary-foreground active:opacity-80"
           : "bg-chrome/90 text-foreground active:bg-selected",

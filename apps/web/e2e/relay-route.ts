@@ -19,6 +19,11 @@ export interface FakeRelayHost {
   readonly join: (link: string) => Promise<string>;
   readonly meshOffer: (auto?: boolean) => Promise<{ readonly link: string; readonly code: string }>;
   readonly memberIds: () => Promise<readonly string[]>;
+  /**
+   * The devices this host has paired, as `doriface-host devices list` reads them: the static public key each one
+   * presented when it paired, and the name it gave. A reload that presents another key is another device.
+   */
+  readonly devices: () => Promise<readonly PairedDevice[]>;
   readonly pendingJoin: () => Promise<{ readonly nonce: string; readonly code: string; readonly name: string }>;
   readonly answerJoin: (nonce: string, code: string, approve: boolean) => Promise<void>;
   /** The host's LAN listener, the address a person sets as the Direct address (#446); empty unless `direct` was asked. */
@@ -124,6 +129,17 @@ interface Startup {
 }
 
 type Line = Record<string, unknown>;
+
+/** One entry of the host's paired-devices file, as much of it as a spec judges a reload by. */
+export interface PairedDevice {
+  /** base64url of the device's X25519 static public key: the key its Noise handshake presents. */
+  readonly clientStaticPub: string;
+  readonly name: string;
+}
+
+function isPairedDevice(value: unknown): value is PairedDevice {
+  return isLine(value) && typeof value["clientStaticPub"] === "string" && typeof value["name"] === "string";
+}
 
 interface Waiter {
   readonly resolve: (line: Line) => void;
@@ -306,6 +322,14 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
           throw new Error("the host did not report its member identities");
         }
         return members;
+      },
+      async devices() {
+        input.write("devices\n");
+        const { devices } = await protocol.next("the host's paired devices");
+        if (!Array.isArray(devices) || !devices.every(isPairedDevice)) {
+          throw new Error("the host did not report its paired devices");
+        }
+        return devices;
       },
       async pendingJoin() {
         input.write("pending\n");

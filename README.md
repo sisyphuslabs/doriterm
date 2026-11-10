@@ -203,6 +203,7 @@ agents under their names. Joining needs no ssh and no open port: it runs the sam
 ```sh
 doriface-host mesh pair                       # on a member: invite a machine (a link and a code)
 doriface-host mesh join '<link or code>'      # on the new machine: ask to join
+doriface-host mesh join --from-file <file>    # …the same, reading the link or code from a file, off the command line
 doriface-host mesh status                     # who is in the mesh (--json for scripts)
 doriface-host mesh revoke <member>            # remove a member on every machine
 doriface-host mesh revoke --compromised <member>   # …and everyone it admitted

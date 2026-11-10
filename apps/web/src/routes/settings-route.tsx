@@ -225,7 +225,7 @@ export function SettingsRoute() {
             aria-current={entry.id === section ? "page" : undefined}
             onClick={() => setSection(entry.id)}
             className={cn(
-              "justify-start gap-2.5 px-2 text-sm [&_svg]:size-3.5",
+              "justify-start gap-2.5 px-2 text-sm [&_svg:not([data-slot=spinner])]:size-3.5",
               entry.id === section && "bg-selected text-foreground",
             )}
           >

@@ -18,6 +18,7 @@ import { createInterface } from "node:readline";
 import { addMachine, DEMO_MACHINE } from "./machine.ts";
 import { shellEnv } from "./shell-env.ts";
 import { requestControl } from "../../host/src/control.ts";
+import { DeviceStore } from "../../host/src/state/devices.ts";
 import { pendingFromWire } from "../../host/src/state/pairing.ts";
 import { loadHostIdentity } from "../../host/src/state/host-keys.ts";
 import { pairingArtifact } from "../../host/src/pair-link.ts";
@@ -210,6 +211,8 @@ try {
         return member["hostId"];
       });
       say({ members });
+    } else if (line === "devices") {
+      say({ devices: new DeviceStore(stateDir).list() });
     } else if (line === "pending") {
       say({ pending: await requestControl(stateDir, { op: "mesh-pending" }) });
     } else if (line.startsWith("answer ")) {
