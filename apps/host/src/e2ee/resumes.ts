@@ -60,7 +60,9 @@ export class ResumableSessions {
 
   /** The host is stopping: a session waiting for its client has no client to wait for, so it ends now. */
   closeDetached(code: number, reason: string): void {
-    for (const session of [...this.#sessions.values()]) if (session.detached) session.close(code, reason);
+    // Closing removes the session from the map; the list is taken first so the walk is not over a changing map.
+    const kept = Array.from(this.#sessions.values());
+    for (const session of kept) if (session.detached) session.close(code, reason);
   }
 
   /** Answers a resume request (the first message on `wire`) from the session it names; false when it cannot. */
