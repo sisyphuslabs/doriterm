@@ -7,8 +7,6 @@ export interface InputBoxProps {
   readonly onSend: (text: string) => void;
   /** Whose draft the field shows: an unsent line is kept per terminal while the keyboard is down. */
   readonly draftKey: string;
-  /** The field is in use (it has the focus or holds a draft): the bar gives it a row of its own. */
-  readonly onActive?: (active: boolean) => void;
   readonly className?: string;
   readonly style?: CSSProperties;
 }
@@ -23,9 +21,10 @@ const MAX_HEIGHT_PX = 112;
  * The phone's line into the terminal (#666): a text field takes what is typed, so the phone's own keyboard does the
  * input method, autocorrect and Hangul composition in a real field, and Send writes the line and presses Return. The
  * field sends nothing before Send, which is the difference from typing in the terminal itself. It wraps and grows, so
- * the whole line is in view while it is written (#949).
+ * the whole line is in view while it is written (#949). On the phone it is the keys bar's top row, Send at its end, typing
+ * or not (#1551).
  */
-export function InputBox({ onSend, draftKey, onActive, className, style }: InputBoxProps) {
+export function InputBox({ onSend, draftKey, className, style }: InputBoxProps) {
   const [text, setTextState] = useState(() => drafts.get(draftKey) ?? "");
   const [focused, setFocused] = useState(false);
   const field = useRef<HTMLTextAreaElement | null>(null);
@@ -36,12 +35,6 @@ export function InputBox({ onSend, draftKey, onActive, className, style }: Input
     setTextState(next);
   };
   const active = focused || text !== "";
-  const onActiveNow = useRef(onActive);
-  onActiveNow.current = onActive;
-  useLayoutEffect(() => {
-    onActiveNow.current?.(active);
-  }, [active]);
-  useLayoutEffect(() => () => onActiveNow.current?.(false), []);
   // The field in use is as tall as its wrapped text, up to MAX_HEIGHT_PX; an idle field keeps its pill height (h-11).
   useLayoutEffect(() => {
     const element = field.current;

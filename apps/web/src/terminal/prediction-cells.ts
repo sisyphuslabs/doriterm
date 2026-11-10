@@ -14,9 +14,13 @@ export interface PredictedCell {
   readonly width: 1 | 2;
 }
 
-/** What the overlay draws from: the cells to show now, and a call whenever that may have changed. */
+/**
+ * What the overlay draws from: the cells to show now, whether to underline them (mosh's flagging: the link is slow or
+ * glitching, design D8), and a call whenever that may have changed.
+ */
 export interface OverlaySource {
   visible(): readonly PredictedCell[];
+  underlined?(): boolean;
   subscribe(changed: () => void): () => void;
 }
 

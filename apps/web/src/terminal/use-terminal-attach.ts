@@ -6,11 +6,11 @@ import { terminalConfigStore } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
 import { CursorResets } from "./cursor-reset.ts";
 import { readDisplay } from "./display.ts";
-import { type EndHolder, holdAtEnd } from "./hold-view-at-end.ts";
+import { type EndHolder, fromEndOf, holdFromEnd, readerInputOn } from "./hold-view-from-end.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
 import { openFailure } from "./open-failure.ts";
 import { HISTORY_LINES, noteViewSize, viewAttach } from "./opening-attach.ts";
-import type { OutputPacer } from "./output-pacer.ts";
+import type { OutputPacer, ReplayOptions } from "./output-pacer.ts";
 import { type TerminalEnd, terminalEnd } from "./terminal-end.ts";
 import { type CoreAnswer, type Settled, settled, type Unsent, unsentReason } from "./terminal-settle.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
@@ -38,6 +38,22 @@ interface AttachSources {
   readonly focusWhenFree: (ready: WTerm) => void;
   readonly onEnd: ((address: string, end: TerminalEnd) => void) | undefined;
   readonly onEnded: (() => void) | undefined;
+  /** Called as each stream (first attach or reattach) starts, before what was typed meanwhile is written to it. */
+  readonly onStream?: RefObject<(() => void) | null>;
+  /**
+   * Keeps the view's `renderingPaused` prop in step with a replay's hold: @wterm/react applies that prop on every render,
+   * so a hold set on the terminal alone is let go by the next render of the view, mid-replay.
+   */
+  readonly holdPaint: (held: boolean) => void;
+}
+
+/**
+ * A reattach after a dropped connection holds its replay: written as it arrives with the paint held, then drawn once it
+ * has settled (D5). hc marks no end of the replay (the stream is its first paint, then live bytes), so the hold ends on
+ * a quiet gap, bounded by the replay caps. The first open of a terminal has no screen to keep and is not held.
+ */
+export function replayOnAttach(pacer: OutputPacer, reattach: boolean, options: ReplayOptions): void {
+  if (reattach) pacer.replay(options);
 }
 
 export interface Attachment {
@@ -55,7 +71,7 @@ export interface Attachment {
 /** What a pane does when a connection arrives: attach, replay, settle what the core says is left, and report unsent input. */
 export function useTerminalAttach(sources: AttachSources): Attachment {
   const { connection, address, pid, live, shown, wt, setWt, handle, stream, pending, pacer, output } = sources;
-  const { isFocused, focusWhenFree, onEnd, onEnded } = sources;
+  const { isFocused, focusWhenFree, onEnd, onEnded, onStream, holdPaint } = sources;
   const toasts = useToastManager();
   const [restarting, setRestarting] = useState(false);
   const [ended, setEnded] = useState(false);
@@ -185,14 +201,33 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         if (ready.cols !== askedCols || ready.rows !== askedRows) attached.resize(ready.cols, ready.rows);
         // Reattached after a reconnect: the replay redraws everything, so the old screen and scrollback go first.
         if (attachedBefore.current) {
+          // Read the reader's place BEFORE the reset: afterwards the buffer is empty and every scroller reads as at the
+          // end, which pinned readers who were up in history to the bottom on every reconnect (#1393).
+          const fromEnd = fromEndOf(ready.element);
+          // wterm reads the emptied buffer the same way, and its first replay write would follow the output down: a
+          // reader who is away stays away until they scroll or type.
+          if (fromEnd > 0) ready.holdScrollAway();
           pacer.drop();
           output.reset();
           handle.current?.write(FULL_RESET);
-          // The reset leaves the scroller at the top, where the replay's rows climb past the reader (#1040).
+          // The reset leaves the scroller at the top, where the replay's rows climb past a reader who was at the end.
           endHold.current?.stop();
-          endHold.current = holdAtEnd(ready.element, () => pacer.busy);
+          // Only the reader's own input lets go early: on the terminal or what overlays it, its scrollbar included.
+          const reader = readerInputOn(ready.element.parentElement ?? ready.element);
+          endHold.current = holdFromEnd(ready.element, pacer, fromEnd, reader);
         }
+        const reattach = attachedBefore.current;
         attachedBefore.current = true;
+        // A reattach's replay is drawn once it has settled, so the screen before it stays until then instead of climbing
+        // a frame's bytes at a time (D5).
+        replayOnAttach(pacer, reattach, {
+          srtt: () => connection.rtt?.srtt,
+          hold: (held) => {
+            holdPaint(held);
+            ready.setRenderingPaused(held);
+          },
+        });
+        onStream?.current?.();
         const resets = new CursorResets();
         const credit = (count: number): void => {
           if (stream.current === attached) attached.consumed(count);
