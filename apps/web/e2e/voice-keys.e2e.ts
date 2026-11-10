@@ -1,6 +1,7 @@
 import { devices, type Page } from "@playwright/test";
 import { agentRow, endAgent, startShell } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
+import { chordOf, commandModifier } from "./platform-keys.ts";
 import { hcOn } from "./machine-switch.ts";
 import { type SpeechStub, stubSpeech } from "./speech-stub.ts";
 
@@ -96,7 +97,7 @@ test("Cmd/Ctrl+Enter in the transcript types it at the cursor, with no Return", 
   await page.goto("/");
   await openShell(page);
   await readyWith(page, speech, typed, true);
-  await page.keyboard.press("ControlOrMeta+Enter");
+  await page.keyboard.press(chordOf(`${await commandModifier(page)}+enter`));
   await expect(strip(page)).toHaveCount(0);
   await expect.poll(() => hcOn("host", ["read", address])).toContain(`$ ${typed}`);
   expect(hcOn("host", ["read", address])).not.toContain("keys-25");

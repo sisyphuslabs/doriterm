@@ -1,6 +1,7 @@
-// Screens read with `hc read --lines 0` from Claude Code 2.1.311 and Codex CLI 0.167.0 under hc 0.1.17 (#669), each
-// agent driven by a fixed-output stand-in for its model API (no model was called). The run directory reads ~/work and
-// runs of blank lines are shortened to three; everything else is as the agents drew it.
+// Except the renderer snapshots explicitly marked below, screens read with `hc read --lines 0` from Claude Code
+// 2.1.311 and Codex CLI 0.167.0 under hc 0.1.17 (#669), each agent driven by a fixed-output stand-in for its model API
+// (no model was called). The run directory reads ~/work and runs of blank lines are shortened to three; everything
+// else is as the agents drew it.
 
 /** Claude Code asking one question with three choices, a typed answer and "Chat about this" (AskUserQuestion). */
 export const CLAUDE_QUESTION_SCREEN = [
@@ -413,6 +414,48 @@ export const CODEX_PATCH_SCREEN = [
   "› 1. Yes, proceed (y)",
   "  2. Yes, and don't ask again for these files (a)",
   "  3. No, and tell Codex what to do differently (esc)",
+  "",
+  "  Press enter to confirm or esc to cancel",
+].join("\n");
+
+/**
+ * Codex's network approval: upstream openai/codex renderer snapshot, NOT a live hc recording (#895).
+ * Commit 8703d32bd0ea5cf26768859a3dd476df906ba053, under codex-rs/tui/src/bottom_pane/snapshots/:
+ * codex_tui__bottom_pane__approval_overlay__tests__network_exec_prompt.snap
+ * These are its Buffer.content rows with right padding removed. This overlay-only snapshot records no preceding cell.
+ */
+export const CODEX_NETWORK_SCREEN = [
+  "",
+  '  Do you want to approve network access to "example.com"?',
+  "",
+  "  Reason: network request blocked",
+  "",
+  "",
+  "",
+  "› 1. Yes, just this once (y)",
+  "  2. Yes, and allow this host for this conversation (a)",
+  "  3. Yes, and allow this host in the future (p)",
+  "  4. No, and tell Codex what to do differently (esc)",
+  "",
+  "  Press enter to confirm or esc to cancel",
+].join("\n");
+
+/**
+ * Codex's send-input approval: upstream openai/codex renderer snapshot, NOT a live hc recording (#895).
+ * Commit 8703d32bd0ea5cf26768859a3dd476df906ba053, under codex-rs/tui/src/chatwidget/tests/snapshots/:
+ * codex_tui__chatwidget__tests__approval_requests__write_stdin_approval_modal.snap
+ * These are its Buffer.content rows with right padding removed. The live cell above this overlay remains unrecorded.
+ */
+export const CODEX_SEND_INPUT_SCREEN = [
+  "",
+  "",
+  "  Would you like to send input to terminal 42?",
+  "",
+  '  Input: "confirm\\n"',
+  "",
+  "",
+  "› 1. Yes, proceed (y)",
+  "  2. No, and tell Codex what to do differently (esc)",
   "",
   "  Press enter to confirm or esc to cancel",
 ].join("\n");
