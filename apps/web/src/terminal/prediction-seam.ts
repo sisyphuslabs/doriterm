@@ -10,9 +10,9 @@ export interface SeamScreen {
 }
 
 /**
- * A test hook until the predictor is wired into the view (plan S6 replaces this call with the predictor and deletes the
- * file): e2e sets `window.__dorifacePredict` before the page loads to a function from a view's screen to the source its
- * prediction overlay draws. Nothing in the app sets it, so the app's views have no source and draw no predictions.
+ * A test hook: e2e sets `window.__dorifacePredict` before the page loads to a function from a view's screen to the source
+ * its prediction overlay draws, so an overlay spec controls exactly what is predicted. When it is set it replaces the real
+ * predictor (prediction-view.ts) for that view; nothing in the app sets it.
  */
 export function predictionSeam(wt: WTerm | null): OverlaySource | null {
   const seam: unknown = Reflect.get(globalThis, "__dorifacePredict");

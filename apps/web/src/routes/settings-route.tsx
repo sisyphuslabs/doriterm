@@ -24,21 +24,36 @@ import { VoiceSection } from "../settings/voice-section.tsx";
 import { useBrowserMembership } from "../mesh/membership-state.ts";
 import { desktopBridge } from "../desktop/bridge.ts";
 import { BrowserInvite } from "../settings/browser-invite.tsx";
-import { SECTIONS, type SectionId } from "../settings/settings-sections.tsx";
+import { CONNECT_GROUP, SECTIONS, sectionFromLink, type SectionId } from "../settings/settings-sections.tsx";
 import { matchSections } from "../settings/settings-search.ts";
 import { matchSettings, type SettingHit } from "../settings/setting-rows.ts";
 import { SettingHits, useLandOn } from "../settings/settings-hits.tsx";
 
-/** The section a link asked for (a hash, so it survives a reload), else the one Settings always opens on. */
-function firstSection(): SectionId {
-  const asked = window.location.hash.slice(1);
-  return SECTIONS.some((entry) => entry.id === asked) ? (asked as SectionId) : "device";
+/**
+ * What a link asked for (a hash, so it survives a reload): its section, and the group to land on when an older link named
+ * one that is now part of a section, as Connect a machine is part of Machines.
+ */
+function firstLanding(): { readonly section: SectionId; readonly landing: SettingHit | null } {
+  const { section, group } = sectionFromLink(window.location.hash);
+  const landing =
+    group === undefined ? null : { section, title: "Connect a machine", detail: "", anchor: group, words: [] };
+  return { section, landing };
 }
 
-function Group({ title, children }: { readonly title: string; readonly children: ReactNode }) {
+function Group({
+  title,
+  id,
+  children,
+}: {
+  readonly title: string;
+  readonly id?: string;
+  readonly children: ReactNode;
+}) {
   return (
     <section className="flex flex-col">
-      <h2 className="pb-1 text-lg font-semibold text-foreground md:text-xl">{title}</h2>
+      <h2 id={id} className="pb-1 text-lg font-semibold text-foreground md:text-xl">
+        {title}
+      </h2>
       {children}
     </section>
   );
@@ -46,16 +61,17 @@ function Group({ title, children }: { readonly title: string; readonly children:
 
 /** One sentence under the title, in the words the navigation uses: what this screen is about and nothing else. */
 function Lead({ children }: { readonly children: ReactNode }) {
-  return <p className="text-sm text-pretty text-muted-foreground">{children}</p>;
+  return <p className="max-w-measure text-sm text-pretty text-muted-foreground">{children}</p>;
 }
 
 /** Section navigation beside the form; changes apply as they are made. */
 export function SettingsRoute() {
-  const [section, setSection] = useState<SectionId>(firstSection);
+  const [opened] = useState(firstLanding);
+  const [section, setSection] = useState<SectionId>(opened.section);
   const [query, setQuery] = useState("");
   const shown = matchSections(SECTIONS, query);
   const hits = matchSettings(query);
-  const [landing, setLanding] = useState<SettingHit | null>(null);
+  const [landing, setLanding] = useState<SettingHit | null>(opened.landing);
   const body = useRef<HTMLDivElement>(null);
   useLandOn(
     landing,
@@ -220,8 +236,8 @@ export function SettingsRoute() {
                   <Lead>These are the machines in your mesh. Each row shows this browser's own connection.</Lead>
                 ) : (
                   <Lead>
-                    These are the computers this host reaches: the ones that joined your mesh, and any you added by
-                    hand.
+                    These are the computers in your mesh that this host reaches. Connecting a machine joins it to your
+                    mesh.
                   </Lead>
                 )}
                 <Group title="Machines">
@@ -229,28 +245,24 @@ export function SettingsRoute() {
                   <MachinesSection />
                   {/* What a row's state means sits under the rows, where a reader meets it: on a phone the list leads (#1007). */}
                   {!joinedBrowser ? (
-                    <p className="pt-3 text-sm text-pretty text-muted-foreground">
-                      Adding one by hand reaches it without the mesh; connecting one joins it first. A machine that
-                      answers reads Connected, one still being dialled reads Connecting, and one that needs a login says
-                      so; when a machine is offline the row says when it was last seen and, where the host knows a
-                      cause, what it is.
+                    <p className="max-w-measure pt-3 text-sm text-pretty text-muted-foreground">
+                      A machine that answers reads Connected, one still being dialled reads Connecting, and one that
+                      needs a login says so; when a machine is offline the row says when it was last seen and, where the
+                      host knows a cause, what it is.
                     </p>
                   ) : null}
+                </Group>
+                {/* Connecting a machine joins it to the mesh, so it is on this screen, under the rows it adds to. */}
+                <Group title="Connect a machine" id={CONNECT_GROUP}>
+                  <p className="pb-1 text-sm text-pretty text-muted-foreground">
+                    One command on this host opens an invite, and the other computer or phone joins with it. A join
+                    waits for your approval under In your mesh.
+                  </p>
+                  <PairSection />
                 </Group>
                 <Group title="In your mesh">
                   <BrowserInvite />
                   <MeshSection attentionOnly={joinedBrowser} />
-                </Group>
-              </>
-            ) : section === "pair" ? (
-              <>
-                <Lead>
-                  Connecting a machine joins it to your mesh: one command on this host opens an invite, and the other
-                  computer or phone joins with it. A join waits for your approval under Machines before that machine is
-                  reachable.
-                </Lead>
-                <Group title="Connect a machine">
-                  <PairSection />
                 </Group>
               </>
             ) : section === "terminal" ? (

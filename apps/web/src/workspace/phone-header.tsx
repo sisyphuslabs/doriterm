@@ -83,13 +83,7 @@ export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBac
       <span data-header-action className="contents">
         {action}
       </span>
-      <PhoneSessionSheet
-        terminal={terminal}
-        terminals={terminals}
-        title={terminalTitle(terminal)}
-        where={where}
-        onOpen={onOpen}
-      />
+      <PhoneSessionSheet terminal={terminal} terminals={terminals} title={title} where={where} onOpen={onOpen} />
     </header>
   );
 }
