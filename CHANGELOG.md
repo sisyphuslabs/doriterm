@@ -7,6 +7,26 @@
 - Alt+arrows reach the program on Windows and Linux again: they are the keys an agent reads for its answers and a shell
   for its word moves, so agent navigation moved to Ctrl+Shift+] and Ctrl+Shift+[. (#1302)
 
+### Corrections to earlier release notes
+
+- v0.1.7 also shipped this, missing from the v0.1.7 section of CHANGELOG.md: the command palette lists Filter the
+  sidebar with its key, and choosing it opens the filter with the keyboard in it. (#848)
+- v0.1.7 also shipped this, missing from the v0.1.7 section of CHANGELOG.md: while a machine is held as connected
+  through a redial, a tab opened, closed or moved on it says the machine is reconnecting, matching its row, instead of
+  calling it not connected. (#918)
+- v0.1.7 also shipped this, missing from the v0.1.7 section of CHANGELOG.md: on a phone, Settings > Machines opens on
+  the machines and Add a machine: the explanation of what each state means sits under the list instead of filling the
+  first screen. (#1007, #1008)
+- v0.1.7 also shipped this, missing from the v0.1.7 section of CHANGELOG.md: Settings, This device, shows how long this
+  device took to open its session with the host, beside the round trip it already measures, so a slow link can be told
+  from a slow host. Both numbers are measured on the live connection and are left out when there is none. (#637)
+- v0.1.7 also shipped this, missing from the v0.1.7 section of CHANGELOG.md: the setup tool's `--listen default` and
+  `--session default` put a host that was installed with its own listener or hc session back on the defaults; before, a
+  re-run could only replace them. (#821)
+- The v0.1.6 notes list Pairing and Settings twice each; each pair is one section. In them, "Settings is one place per
+  question" also comes from #1005, and the disabled field, stepper, switch and menu item line also covers the colour
+  swatch. (#772, #1005, #1034)
+
 ## v0.1.16 - 2026-11-09
 
 Highlights: coming back to the app, or reconnecting, no longer replays the old output line by line; the terminal shows

@@ -36,11 +36,11 @@ export function VerifyStep({ offer }: { readonly offer: PairingOffer }) {
     setOutcome({ kind: "paired" });
   };
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-5 px-6 py-10">
+    <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col justify-center gap-5 px-6 py-10">
       <Steps current={2} />
       <div className="text-center">
         <h1 className="text-2xl font-semibold text-balance text-foreground">Check the host's key</h1>
-        <p className="mt-1.5 text-base text-muted-foreground">
+        <p className="mx-auto mt-1.5 max-w-measure text-base text-muted-foreground">
           The host prints the same groups when you run{" "}
           <code className="text-foreground">doriface-host fingerprint</code>.
         </p>
