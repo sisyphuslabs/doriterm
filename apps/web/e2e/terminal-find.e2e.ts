@@ -107,7 +107,7 @@ for (const [shell, width, height] of [
       await page.keyboard.type("printf '\\n\\n\\347\\225\\214\\360\\237\\232\\200\\n'");
       await page.keyboard.press("Enter");
       await expect(terminal).toContainText("\u754c\u{1f680}");
-      await page.keyboard.press(FIND);
+      await pressShortcut(page, "terminal.search");
       await expect(field(page)).toBeFocused();
       const cell = await terminal.evaluate((element) =>
         parseFloat(getComputedStyle(element).getPropertyValue("--term-cell-width")),
