@@ -45,6 +45,11 @@ function setup() {
 
 /** The gateway's Bun websocket handler driven by hand: the loopback `/v1/hc` path, token already checked at upgrade. */
 function loopback(gateway: Gateway): ClientSession {
+  // Bun's handler type leaves every callback optional; this gateway serves both, and a test that found one missing
+  // would otherwise hang on a session nobody opened.
+  const { open, message } = gateway.websocket;
+  if (open === undefined || message === undefined)
+    throw new Error("the gateway's websocket handler has no open or message");
   let code: number | undefined;
   const closed = Promise.withResolvers<void>();
   const events = {};
@@ -61,11 +66,11 @@ function loopback(gateway: Gateway): ClientSession {
     resume() {},
   };
   // The handler takes Bun's ServerWebSocket; this stand-in has the members WsLink and the gateway use.
-  const socket = ws as unknown as Parameters<Gateway["websocket"]["open"]>[0];
-  gateway.websocket.open(socket);
+  const socket = ws as unknown as Parameters<typeof open>[0];
+  open(socket);
   return {
     send: async (text) => {
-      gateway.websocket.message(socket, encoder.encode(text));
+      message(socket, Buffer.from(text));
       await new Promise((resolve) => setTimeout(resolve, 20));
     },
     closeCode: () => code,
