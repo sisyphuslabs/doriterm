@@ -3,6 +3,8 @@
 import type { Browser, Page } from "@playwright/test";
 import { endAgent } from "./agents.ts";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
+import { getCoreDoc } from "./core-doc.ts";
+import { LAYOUT_DOC } from "./layout-doc.ts";
 import { expect, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { hcOn } from "./machine-switch.ts";
@@ -128,6 +130,43 @@ test("double-click edits a space's name in place: Esc puts it back, Enter commit
   await other.context().close();
 });
 
+test("a device whose adoption of new terminals loses to another device's lists only the host's space, and edits its name in place (#1572)", async ({
+  page,
+  browser,
+}) => {
+  const before = `rn1572-${test.info().repeatEachIndex}`;
+  const shells = [startIn(before, "rn1572-one"), startIn(before, "rn1572-two")];
+  const other = await secondDevice(browser);
+  const adoption = Promise.withResolvers<void>();
+  const socket = await routeHcSocket(other, {
+    sent: (frame) => {
+      if (frame.includes('"method":"doc.set"') && frame.includes(`"name":"${before}"`)) adoption.resolve();
+    },
+  });
+  // This device's write adopting the new terminals is held, as a slow link holds it, while the other device adopts them.
+  const release = socket.hold("doc.set");
+  await other.goto("/");
+  await adoption.promise;
+  await page.goto("/");
+  await expect(spaceRow(page, before)).toBeVisible({ timeout: 20_000 });
+  await expect.poll(() => JSON.stringify(getCoreDoc(LAYOUT_DOC)), { timeout: 15_000 }).toContain(`"name":"${before}"`);
+
+  // Its own adoption is not saved, so it lists no space under ids the host does not hold; the host's comes once it settles.
+  await expect(spaceRow(other, before)).toHaveCount(0);
+  release();
+  await expect(spaceRow(other, before)).toBeVisible({ timeout: 15_000 });
+
+  const input = sidebar(other).getByRole("textbox", { name: `Rename space ${before}` });
+  await spaceRow(other, before).dblclick();
+  await expect(input).toBeFocused();
+  await input.fill("never-written");
+  await input.press("Escape");
+  await expect(input).toHaveCount(0);
+  await expect(spaceRow(other, before)).toBeVisible();
+  expect(shells.map(spaceInHc)).toEqual([before, before]);
+  await other.context().close();
+});
+
 test("a rename still writing keeps its question: Cancel waits, Escape does nothing, and a refused write says why there (#1498)", async ({
   page,
 }) => {
@@ -152,6 +191,11 @@ test("a rename still writing keeps its question: Cancel waits, Escape does nothi
   await expect(question.getByRole("button", { name: "Cancel" })).toBeDisabled();
   await page.keyboard.press("Escape");
   await expect(question).toBeVisible();
+  // So does a click beside the question: the dialog is centred, so the left of its box is the backdrop.
+  const box = await question.boundingBox();
+  if (box === null) throw new Error("the Rename question has no box");
+  await page.mouse.click(Math.max(4, box.x / 2), box.y + box.height / 2);
+  await expect(question).toBeVisible();
 
   // The write is refused on every retry: the question stays up and says why.
   release();
@@ -159,4 +203,43 @@ test("a rename still writing keeps its question: Cancel waits, Escape does nothi
     question.getByText("The layout kept changing on another device, so this change was not saved"),
   ).toBeVisible({ timeout: 15_000 });
   await expect(question).toBeVisible();
+});
+
+test("Enter again while a rename is writing names the space once (#1498)", async ({ page }) => {
+  const before = `rn1498k-${test.info().repeatEachIndex}`;
+  const after = `${before}-b`;
+  startIn(before, "rn1498k-one");
+  const socket = await routeHcSocket(page);
+  await page.goto("/");
+  await expect(spaceRow(page, before)).toBeVisible({ timeout: 20_000 });
+  await spaceRow(page, before).hover();
+  await sidebar(page)
+    .getByRole("button", { name: `More for ${before}` })
+    .click();
+  await page.getByRole("menuitem", { name: "Rename space\u2026" }).click();
+  const question = page.getByRole("dialog", { name: `Rename ${before}` });
+  const field = question.getByRole("textbox", { name: "Name" });
+  await field.fill(after);
+  // A rename is one layout write naming the space, then one label per live terminal naming it.
+  const writes = (): number =>
+    socket.sent().filter((frame) => frame.includes('"method":"doc.set"') && frame.includes(after)).length;
+  const labels = (): number =>
+    socket.sent().filter((frame) => frame.includes('"method":"terminal.label"') && frame.includes(after)).length;
+
+  // The layout write is held, as a slow host would hold it: the rename is in flight, not finished.
+  const release = socket.hold("doc.set");
+  await field.press("Enter");
+  const rename = question.getByRole("button", { name: "Rename" });
+  await expect(rename).toHaveAttribute("aria-busy", "true");
+  await expect.poll(writes, { timeout: 15_000 }).toBe(1);
+  // Enter again while it is writing: the action is busy, so the same rename, not a second one.
+  await field.press("Enter");
+  await expect(rename).toHaveAttribute("aria-busy", "true");
+
+  release();
+  await expect(question).toBeHidden({ timeout: 15_000 });
+  // The second Enter neither wrote the layout nor labelled the terminal again: one rename, once.
+  expect(writes()).toBe(1);
+  expect(labels()).toBe(1);
+  await expect(spaceRow(page, after)).toBeVisible({ timeout: 15_000 });
 });

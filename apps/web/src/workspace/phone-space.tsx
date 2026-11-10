@@ -8,6 +8,7 @@ import { TerminalsLoadError } from "./terminals-load-error.tsx";
 import { ConnectionLine } from "./reconnect-status.tsx";
 import { useSpaceClosing } from "./space-close-context.ts";
 import { useNow } from "./use-now.ts";
+import { useKeptScroll } from "./kept-scroll.ts";
 
 export interface PhoneSpaceProps {
   readonly space: ListedSpace;
@@ -30,6 +31,8 @@ export function PhoneSpace({ space, terminals, host, arrive, onOpen, onBack, onN
   const now = useNow();
   const closing = useSpaceClosing();
   const rows = spaceTabRows(space, terminals, now);
+  // Back from a terminal opened here mounts this screen anew: its tabs come back where they were (#1553).
+  const tabsViewport = useKeptScroll(`space:${space.id}`, rows.length > 0);
   return (
     <SpaceFrame
       arrive={arrive}
@@ -62,7 +65,7 @@ export function PhoneSpace({ space, terminals, host, arrive, onOpen, onBack, onN
         />
       ) : (
         <>
-          <ScrollArea slot="space-tabs" className="flex-1">
+          <ScrollArea slot="space-tabs" className="flex-1" viewportRef={tabsViewport}>
             <div className="px-2 pt-2 pb-3">
               <SidebarSection title="Tabs" count={rows.length}>
                 {rows.map((agent) => (

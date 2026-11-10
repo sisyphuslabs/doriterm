@@ -80,12 +80,12 @@ export function AddMachineDialog({ open, onClose, connection, machines }: AddMac
     >
       <div className="flex flex-col gap-4">
         {offer.phase === "asking" ? (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <p className="flex items-center gap-2 text-prose text-muted-foreground">
             <Spinner /> Asking this host for a join command…
           </p>
         ) : offer.phase === "ready" ? (
           <div className="flex flex-col gap-2">
-            <p className="text-sm text-foreground">On the machine to add, run:</p>
+            <p className="text-prose text-foreground">On the machine to add, run:</p>
             <code aria-label="Join command" className={codeClass}>
               {offer.command}
             </code>
@@ -93,9 +93,9 @@ export function AddMachineDialog({ open, onClose, connection, machines }: AddMac
               <Button variant="secondary" onClick={() => copy(offer.command)}>
                 {copied ? "Copied" : "Copy"}
               </Button>
-              <span className="text-sm text-muted-foreground">It works once, for 10 minutes.</span>
+              <span className="text-prose text-muted-foreground">It works once, for 10 minutes.</span>
             </div>
-            <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+            <p role="status" className="flex items-center gap-2 text-prose text-muted-foreground">
               <Spinner /> Waiting for the machine to join…
             </p>
           </div>
@@ -121,7 +121,7 @@ export function AddMachineDialog({ open, onClose, connection, machines }: AddMac
           <ol className="mt-3 flex flex-col gap-4">
             {STEPS.map((step, index) => (
               <li key={step.command} className="flex flex-col gap-1.5">
-                <p className="text-sm text-foreground">
+                <p className="text-prose text-foreground">
                   <span data-numeric className="mr-1.5 text-muted-foreground">
                     {index + 1}.
                   </span>
