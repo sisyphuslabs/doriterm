@@ -240,7 +240,7 @@ test("a key typed while Ctrl+V reads the clipboard reaches the program after its
   await expect(terminal).toContainText("HEX:16 78");
 });
 
-test("a clipboard that never answers holds keys typed after Ctrl+V only briefly: ^V, then the keys, on a Mac (#1989)", async ({
+test("a clipboard that never answers holds keys typed after Ctrl+V only briefly, and sends no ^V while it may still answer, on a Mac (#1989)", async ({
   page,
 }) => {
   await asMac(page);
@@ -251,11 +251,47 @@ test("a clipboard that never answers holds keys typed after Ctrl+V only briefly:
   await page.goto("/");
   const terminal = await openNewTerminal(page);
   await terminal.getByRole("textbox").focus();
-  await readRawBytes(page, terminal, 3);
+  await readRawBytes(page, terminal, 2);
   await page.keyboard.press("Control+KeyV");
   await page.keyboard.type("xy");
-  await expect(terminal).toContainText(/HEX:\S+ \S+ \S+/u, { timeout: 15_000 });
-  await expect(terminal).toContainText("HEX:16 78 79");
+  await expect(terminal).toContainText(/HEX:\S+ \S+/u, { timeout: 15_000 });
+  await expect(terminal).toContainText("HEX:78 79");
+  await expect(page.getByText("Waiting for the clipboard")).toBeVisible();
+});
+
+test("an image the clipboard gives after Ctrl+V's wait is pasted by its path then, after the keys typed meanwhile, with no ^V, on a Mac (#1938)", async ({
+  page,
+}) => {
+  await asMac(page);
+  // The clipboard answers only when the test says, as when Safari's Paste button waits for the person's click.
+  await page.addInitScript(() => {
+    const read = Clipboard.prototype.read;
+    Clipboard.prototype.read = function held(this: Clipboard) {
+      return new Promise<ClipboardItems>((resolve) => {
+        Object.assign(window, { answerClipboard: () => resolve(read.call(this)) });
+      });
+    };
+  });
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await copyImage(page, await makePng(page, 9, 90));
+  // With lnext off the tty hands a ^V to `read` as it is, and `tr` shows it as @.
+  await page.keyboard.type(
+    "stty -iexten; IFS= read -r line; printf 'GOT:%s\\n' \"$(printf '%s' \"$line\" | tr '\\026' '@')\"\r",
+  );
+  await expect(terminal).toContainText("read -r line", { timeout: 15_000 });
+  await page.keyboard.press("Control+KeyV");
+  await page.keyboard.type("zebra");
+  // Past the wait the keys reach the program while the clipboard is still asking, and a notice says it is waiting.
+  await expect(terminal).toContainText("zebra", { timeout: 15_000 });
+  const notice = page.getByText("Waiting for the clipboard");
+  await expect(notice).toBeVisible();
+  await page.evaluate(() => Reflect.get(window, "answerClipboard")());
+  await expect(terminal).toContainText("doriface-paste-", { timeout: 30_000 });
+  await expect(notice).toBeHidden();
+  await page.keyboard.press("Enter");
+  await expect(terminal).toContainText(/GOT:zebra[^@]*doriface-paste-\d+\.png/u, { timeout: 30_000 });
 });
 
 test("Ctrl+V pastes the clipboard's image by its path on Linux, though the page may not read the clipboard", async ({
