@@ -16,6 +16,8 @@ import type { Session } from "../workspace/model.ts";
 import { approvalCore } from "./approval-core.ts";
 import { showsPrompt, stateAfterAnswer, stateAfterPrompt } from "./approval-view.ts";
 import { thisAnswerer } from "./answerer.ts";
+import { cardState, pause, readCard, readKeyOf } from "./card-read.ts";
+import type { CardState } from "./waiting-keys.ts";
 
 export interface ApprovalView {
   readonly mark: ApprovalMark;
@@ -31,31 +33,9 @@ export interface Approval extends ApprovalView {
   readonly dismiss: () => void;
 }
 
-/** The status event can land before the agent has drawn its dialog: read again a few times, backing off. */
-const DRAW_WAITS_MS = [0, 150, 300, 600, 1200];
 const ANSWERED_MS = 4000;
 /** How long the card watches for the next step of several after an answer; two reads in a row must agree on it. */
 const NEXT_STEP_WAITS_MS = [100, 150, 300, 600, 1200];
-
-const pause = (ms: number, signal: AbortSignal) =>
-  new Promise<void>((resolve) => {
-    if (ms === 0 || signal.aborted) return resolve();
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => (clearTimeout(timer), resolve()), { once: true });
-  });
-
-async function readWhenDrawn(
-  core: ApprovalCore,
-  address: string,
-  signal: AbortSignal,
-  waits: readonly number[] = DRAW_WAITS_MS,
-): Promise<ApprovalMark | undefined> {
-  const [wait, ...later] = waits;
-  if (wait === undefined) return undefined;
-  await pause(wait, signal);
-  if (signal.aborted) return undefined;
-  return (await readApproval(core, address)) ?? readWhenDrawn(core, address, signal, later);
-}
 
 /**
  * The step after one just answered, when the agent asks several questions in one turn: the same turn and status, a new
@@ -81,29 +61,31 @@ async function readNextStep(
 /**
  * The prompt a terminal's agent waits on (a permission, a question, a plan), as a card: found from the agent's status (`blocked`,
  * `kind: permission`) plus its live screen, answered once across every client, and resolved when the agent moves on.
+ * `card` says whether one is up, still being read for, or not coming, so the keys strip can stand in where none is.
  */
-export function useApproval(connection: HcConnection, terminal: Session): Approval | undefined {
+export function useApproval(
+  connection: HcConnection,
+  terminal: Session,
+): { readonly approval: Approval | undefined; readonly card: CardState } {
   const core = useMemo(() => approvalCore(connection), [connection]);
   const [view, setView] = useState<ApprovalView | undefined>(undefined);
   const current = useRef(view);
   current.current = view;
   const waiting = waitsOnApproval(terminal);
+  // The screen read for this wait (its address and turn) that has finished, found a dialog or not.
+  const readKey = readKeyOf(terminal);
+  const [read, setRead] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     const shown = current.current;
     if (!waiting || (shown !== undefined && showsPrompt(shown.mark, terminal))) return;
     const abort = new AbortController();
-    const show = async () => {
-      try {
-        const mark = await readWhenDrawn(core, terminal.address, abort.signal);
-        if (mark !== undefined && !abort.signal.aborted) setView({ mark, state: { kind: "waiting" } });
-      } catch {
-        // The read failed (a dropped connection): no banner; the pane keeps "Needs you" and the terminal stays answerable.
-      }
-    };
-    void show();
+    void readCard(core, terminal.address, abort.signal, {
+      drawn: (mark) => setView({ mark, state: { kind: "waiting" } }),
+      finished: () => setRead(readKey),
+    });
     return () => abort.abort();
-  }, [core, terminal.address, waiting, terminal.turn]);
+  }, [core, terminal.address, waiting, terminal.turn, readKey]);
 
   useEffect(() => {
     const shown = current.current;
@@ -139,8 +121,8 @@ export function useApproval(connection: HcConnection, terminal: Session): Approv
     return () => clearTimeout(timer);
   }, [view]);
 
-  if (view === undefined) return undefined;
-  return {
+  if (view === undefined) return { approval: undefined, card: cardState(terminal, false, read) };
+  const approval: Approval = {
     ...view,
     answer: (choice) => {
       if (view.state.kind !== "waiting" && view.state.kind !== "failed") return;
@@ -176,4 +158,5 @@ export function useApproval(connection: HcConnection, terminal: Session): Approv
     },
     dismiss: () => setView(undefined),
   };
+  return { approval, card: cardState(terminal, true, read) };
 }

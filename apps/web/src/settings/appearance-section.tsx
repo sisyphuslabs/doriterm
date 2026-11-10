@@ -124,7 +124,7 @@ export function AppearanceSection() {
         className={faint.length === 0 ? "border-b border-border" : ""}
       />
       {faint.length === 0 ? null : (
-        <p role="note" className="border-b border-border pb-3 text-sm text-pretty text-muted-foreground">
+        <p role="note" className="border-b border-border pb-3 text-prose text-pretty text-muted-foreground">
           {faint.join(" and ")} {faint.length === 1 ? "ships" : "ship"} some terminal colours below 3:1 on
           {faint.length === 1 ? " its" : " their"} background. Settings &gt; Terminal &gt; palette overrides any of them
           (3=#rrggbb); minimum-contrast, which would lift them all, is not available in the web terminal yet.

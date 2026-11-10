@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from "react";
 import { cn } from "../lib/cn.ts";
 import { useDelayedTrue } from "../lib/spinner-delay.ts";
 
@@ -7,10 +8,23 @@ export interface SpinnerProps {
   readonly label?: string;
 }
 
-/** herdr-app's working glyph: one turn per 900 ms, or a gentle opacity pulse under reduced motion. */
+/**
+ * Starts every spinner's turn (or reduced-motion pulse) at the document timeline's zero, so all the spinners on a page
+ * stand at the same angle at the same moment however late each one mounted (#1565). A paused turn is left as it stands:
+ * setting its start time would set it going again (the landing's motion toggle pauses the mockups' spinners, #1179).
+ */
+function inStep(element: SVGSVGElement | null): void {
+  if (element === null || typeof element.getAnimations !== "function") return;
+  for (const animation of element.getAnimations()) if (animation.playState !== "paused") animation.startTime = 0;
+}
+
+/** herdr-app's working glyph: one turn per 900 ms, or a gentle opacity pulse under reduced motion, in step with the others. */
 export function Spinner({ className, label }: SpinnerProps) {
+  const glyph = useRef<SVGSVGElement>(null);
+  useLayoutEffect(() => inStep(glyph.current));
   return (
     <svg
+      ref={glyph}
       data-slot="spinner"
       viewBox="0 0 16 16"
       fill="none"

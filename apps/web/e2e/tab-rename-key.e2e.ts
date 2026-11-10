@@ -7,6 +7,7 @@ import { expect, test } from "./fixtures.ts";
 import { paneOf, seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
+import { chordOf, triggersFor } from "./platform-keys.ts";
 
 test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 
@@ -22,9 +23,13 @@ function oneTab(name: string): string {
   return terminal;
 }
 
+/** doriface's own rename chord (#702), the one besides F2 that each platform binds to tab.rename. */
+const renameChord = (platform: "mac" | "other"): string =>
+  chordOf(triggersFor(platform, "tab.rename").find((trigger) => trigger !== "f2") ?? "");
+
 const PLATFORMS = [
-  { platform: "MacIntel", chord: "Meta+Shift+KeyR" },
-  { platform: "Linux x86_64", chord: "Control+Shift+KeyR" },
+  { platform: "MacIntel", chord: renameChord("mac") },
+  { platform: "Linux x86_64", chord: renameChord("other") },
 ] as const;
 
 for (const { platform, chord } of PLATFORMS) {
