@@ -1,5 +1,6 @@
 import { isJsonObject, type JsonObject, type JsonValue } from "../json.ts";
 import { problemIn, type Node } from "./node.ts";
+import { moveBounds } from "./pins.ts";
 
 /** The core document herdr-app keeps its spaces, tabs and split trees in, one per machine (`doc.get` `on`). */
 export const LAYOUT_DOC = "herdr-app";
@@ -14,6 +15,8 @@ export interface DocTab {
   readonly name: string;
   readonly space: string;
   readonly root: Node;
+  /** Pinned in front of its space's other tabs (#1561): named in the machine's pins document. */
+  readonly pinned: boolean;
 }
 
 const unreadable = (reason: string): ReadDocument => ({ kind: "unreadable", reason });
@@ -56,13 +59,17 @@ function tabsIn(space: JsonObject): readonly JsonObject[] {
   return Array.isArray(tabs) ? tabs.filter(isJsonObject) : [];
 }
 
-export function tabsOf(doc: JsonObject): readonly DocTab[] {
+const NO_PINS: ReadonlySet<string> = new Set();
+
+/** The document's tabs; `pins` are the ids the machine's pins document names (`storedPins`). */
+export function tabsOf(doc: JsonObject, pins: ReadonlySet<string> = NO_PINS): readonly DocTab[] {
   return spacesOf(doc).flatMap((space) =>
     tabsIn(space).map((tab) => ({
       id: text(tab["id"]),
       name: text(tab["name"]),
       space: text(space["id"]),
       root: isJsonObject(tab["root"]) ? tab["root"] : EMPTY_ROOT,
+      pinned: pins.has(text(tab["id"])),
     })),
   );
 }
@@ -90,7 +97,13 @@ export function editTab(doc: JsonObject, tabId: string, edit: (root: Node) => No
  * The document with a tab added to a space, or as the first tab of a new space when `space` names none in it. The tab
  * goes right after the tab `after` names, as herdr-app's `add_tab` puts it after the space's selected one, else last.
  */
-export function addTab(doc: JsonObject | null, space: NewSpace, tab: JsonObject, after?: string): JsonObject {
+export function addTab(
+  doc: JsonObject | null,
+  space: NewSpace,
+  tab: JsonObject,
+  after?: string,
+  pins: ReadonlySet<string> = NO_PINS,
+): JsonObject {
   const spaces = doc === null ? [] : spacesOf(doc);
   const at = spaces.findIndex((each) => text(each["id"]) === space.id);
   const existing = spaces[at];
@@ -99,7 +112,10 @@ export function addTab(doc: JsonObject | null, space: NewSpace, tab: JsonObject,
   }
   const tabs = tabsIn(existing);
   const before = after === undefined ? -1 : tabs.findIndex((each) => text(each["id"]) === after);
-  const placed = before === -1 ? [...tabs, tab] : tabs.toSpliced(before + 1, 0, tab);
+  // A new tab opened from a pinned one lands after the last pinned tab, never between pinned tabs (#1561).
+  const pinnedEnd = tabs.filter((each) => pins.has(text(each["id"]))).length;
+  const slot = before === -1 ? tabs.length : Math.max(before + 1, pinnedEnd);
+  const placed = tabs.toSpliced(slot, 0, tab);
   return { ...doc, spaces: spaces.with(at, { ...existing, tabs: placed }) };
 }
 
@@ -171,19 +187,26 @@ export function moveSpace(doc: JsonObject, spaceId: string, to: number): JsonObj
 }
 
 /**
- * The document with a tab moved to index `to` among its own space's tabs (clamped), the others keeping their order; null
- * when the tab is gone or already there, so nothing is written.
+ * The document with a tab moved to index `to` among its own space's tabs (clamped, and kept on its side of the pinned
+ * tabs, #1561), the others keeping their order; null when the tab is gone or already there, so nothing is written.
  */
-export function moveTab(doc: JsonObject, tabId: string, to: number): JsonObject | null {
+export function moveTab(
+  doc: JsonObject,
+  tabId: string,
+  to: number,
+  pins: ReadonlySet<string> = NO_PINS,
+): JsonObject | null {
   const spaces = spacesOf(doc);
   const at = spaces.findIndex((space) => tabsIn(space).some((tab) => text(tab["id"]) === tabId));
   const space = spaces[at];
   if (space === undefined) return null;
   const tabs = tabsIn(space);
   const from = tabs.findIndex((tab) => text(tab["id"]) === tabId);
-  const target = Math.max(0, Math.min(tabs.length - 1, to));
   const moving = tabs[from];
-  if (moving === undefined || target === from) return null;
+  if (moving === undefined) return null;
+  const [first, last] = moveBounds(tabs, moving, pins);
+  const target = Math.max(first, Math.min(last, to));
+  if (target === from) return null;
   const placed = tabs.toSpliced(from, 1).toSpliced(target, 0, moving);
   return { ...doc, spaces: spaces.with(at, { ...space, tabs: placed }) };
 }

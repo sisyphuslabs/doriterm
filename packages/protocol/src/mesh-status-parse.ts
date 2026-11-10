@@ -4,6 +4,7 @@ import {
   nullable,
   objectOf,
   oneOf,
+  oneOfOrUnknown,
   type Reader,
   readBoolean,
   readCount,
@@ -31,7 +32,7 @@ import {
   type MeshStuckReason,
 } from "./mesh-status.ts";
 
-type StuckKind = MeshStuckReason["kind"];
+type StuckKind = Exclude<MeshStuckReason["kind"], "unknown">;
 type StuckOf<K extends StuckKind> = Extract<MeshStuckReason, { readonly kind: K }>;
 
 /** One reader per STUCK kind; `satisfies` makes a kind added to MeshStuckReason without a reader a type error. */
@@ -64,13 +65,15 @@ const STUCK_REASONS = {
 const isStuckKind = (kind: unknown): kind is StuckKind =>
   typeof kind === "string" && Object.hasOwn(STUCK_REASONS, kind);
 
+/** A reason of a kind a newer host added reads as `unknown` and keeps no other key: this reader cannot check them. */
 function readStuckReason(value: unknown): MeshStuckReason | undefined {
   if (!isJsonObject(value)) return undefined;
   const kind = value["kind"];
-  return isStuckKind(kind) ? STUCK_REASONS[kind](value) : undefined;
+  if (typeof kind !== "string") return undefined;
+  return isStuckKind(kind) ? STUCK_REASONS[kind](value) : { kind: "unknown" };
 }
 
-const readLineState: Reader<MeshLineState> = oneOf(
+const readLineState: Reader<MeshLineState | "unknown"> = oneOfOrUnknown<MeshLineState>(
   "self",
   "connected",
   "connecting",
@@ -82,7 +85,15 @@ const readLineState: Reader<MeshLineState> = oneOf(
 );
 const readText = when((value): value is string => typeof value === "string" && value.length > 0);
 const readGate = objectOf<MeshGate>({ kind: oneOf("offline"), refusals: readCount, nextProbeAt: readTime });
-const readReplaced = objectOf<MeshReplacedMachine>({ name: readName, kind: oneOf("ssh", "connect", "command") });
+/** A gate of a kind a newer host added reads as none: a gate is display only, and this reader cannot show that one. */
+const readGateOrNone: Reader<MeshGate | null> = (value) =>
+  isJsonObject(value) && typeof value["kind"] === "string" && value["kind"] !== "offline"
+    ? null
+    : nullable(readGate)(value);
+const readReplaced = objectOf<MeshReplacedMachine>({
+  name: readName,
+  kind: oneOfOrUnknown("ssh", "connect", "command"),
+});
 const readMemberBase = objectOf<Omit<MeshMemberStatus, "lastSessionAt">>({
   hostId: readId,
   name: nullable(readName),
@@ -97,7 +108,7 @@ const readMemberBase = objectOf<Omit<MeshMemberStatus, "lastSessionAt">>({
   presence: readBoolean,
   lastSync: nullable(readTime),
   owed: readCount,
-  gate: nullable(readGate),
+  gate: readGateOrNone,
   witnessPool: listOf(readId),
   witnessAsk: nullable(readId),
   unreachableSince: nullable(readTime),
@@ -117,7 +128,7 @@ const readRevoked = objectOf<MeshRevokedStatus>({
   localName: readName,
   fingerprint: readFingerprint,
   revokedBy: listOf(readId),
-  reason: oneOf("revoke", "compromised", "leave"),
+  reason: oneOfOrUnknown("revoke", "compromised", "leave"),
   at: nullable(readTime),
 });
 const readEntry = objectOf<{ readonly hostId: string; readonly name: string }>({ hostId: readId, name: readName });
@@ -151,6 +162,20 @@ const readPending: Reader<MeshPendingJoin> = (value) => {
     ...(joinerConfirmed === undefined ? {} : { joinerConfirmed }),
   };
 };
+const PENDING_KINDS: readonly MeshPendingJoin["kind"][] = ["machine", "client"];
+/**
+ * Approving a join grants what its kind says, so a join of a kind a newer host added is left out: this reader could not
+ * say what approving it grants (#1139). Any other entry is read as it is.
+ */
+const readPendingList: Reader<readonly MeshPendingJoin[]> = (value) =>
+  Array.isArray(value)
+    ? listOf(readPending)(
+        value.filter((join: unknown) => {
+          const kind = isJsonObject(join) ? join["kind"] : undefined;
+          return typeof kind !== "string" || PENDING_KINDS.some((known) => known === kind);
+        }),
+      )
+    : undefined;
 const readBudget = objectOf<MeshBudget>({ waiting: readCount, halvedUntil: nullable(readTime) });
 
 const STATUS: Shape<MeshStatus> = {
@@ -164,16 +189,20 @@ const STATUS: Shape<MeshStatus> = {
   revoked: listOf(readRevoked),
   removed: listOf(readRemoved),
   notices: listOf(readNotice),
-  pending: listOf(readPending),
+  pending: readPendingList,
   budget: readBudget,
 };
 const readMeshStatus = objectOf(STATUS);
 
-/** The reasons a host is outside its own view (design 6.4, 3.7): then it has no self line, and says which. */
+/**
+ * The reasons a host is outside its own view (design 6.4, 3.7): then it has no self line, and says which. A reason of a
+ * kind a newer host added may be one too, so it is taken as one (#1139).
+ */
 const OUTSIDE_OWN_VIEW: ReadonlySet<MeshStuckReason["kind"]> = new Set([
   "possibly_revoked",
   "read_only",
   "removed_undecidable",
+  "unknown",
 ]);
 
 /** What the fields' forms cannot say: one fact in one place, and every member a reason names is in the list. */
@@ -189,7 +218,8 @@ function isConsistent(status: MeshStatus): boolean {
         !hostIds.has(status.self) &&
         status.stuck.some((reason) => OUTSIDE_OWN_VIEW.has(reason.kind))) &&
     status.members.every(
-      (member) => member.lineReason === null || MESH_LINE_STATES_WITH_REASON.includes(member.line),
+      (member) =>
+        member.lineReason === null || member.line === "unknown" || MESH_LINE_STATES_WITH_REASON.includes(member.line),
     ) &&
     status.members.every(
       (member) => member.overCap || (member.name !== null && member.localName !== null && member.fingerprint !== null),
@@ -204,7 +234,8 @@ function isConsistent(status: MeshStatus): boolean {
 /**
  * The status in a `doriface-mesh` document or a `mesh-status` reply, or undefined when it has another shape or
  * contradicts itself. A member a newer writer added to any object is dropped, so a reader keeps reading a host that ships
- * after it (#728); a field the reader knows in another form refuses the document.
+ * after it (#728), and a value it added to a closed set reads as `unknown` (a pending join of an unknown kind is left
+ * out, #1139); a field the reader knows in another form refuses the document.
  */
 export function parseMeshStatus(value: unknown): MeshStatus | undefined {
   const status = readMeshStatus(value);

@@ -301,10 +301,6 @@ export class Reconciler {
     const names = [member.name, ...fallbacks(member.name, member.hostId)];
     const parts = { machines, log, reserve: reserve === undefined ? undefined : () => reserve(member.hostId) };
     const done = await migrate(parts, old, names, attempt.via);
-    // Out of the list (added, or lost with its add-back): the line's later add is the replacement. Back in it: not yet.
-    if (done.kind === "added" || done.kind === "lost") this.#replaced.set(member.hostId, replacedOf(old));
-    else this.#replaced.delete(member.hostId);
-    if (done.kind === "copied") return this.#stick(member, attempt.key, copied);
     if (done.kind === "added") {
       this.#retries.clear(member.hostId);
       const replaced = replacedOf(old);
@@ -312,6 +308,12 @@ export class Reconciler {
       this.status.set(member.hostId, { state: "ok", replaced });
       return log(`mesh: added machine ${done.name}, ${replacedMachineText(replaced)}`);
     }
+    // Out of the list, or maybe out of it (a removal herdr did not answer): the line's later add is the replacement.
+    // Back in it: not yet.
+    const out = done.kind === "lost" || (done.kind === "unremoved" && !done.refused);
+    if (out) this.#replaced.set(member.hostId, replacedOf(old));
+    else this.#replaced.delete(member.hostId);
+    if (done.kind === "copied") return this.#stick(member, attempt.key, copied);
     this.status.set(member.hostId, { state: "retrying", reason: done.reason });
     log(`mesh: replacing machine ${old.name} with ${tried}'s mesh line is retried: ${done.reason}`);
     this.#retries.later(member.hostId, !done.reason.includes(BUDGET_REFUSAL));
