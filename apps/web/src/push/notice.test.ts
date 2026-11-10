@@ -46,10 +46,26 @@ describe("what a notice shows", () => {
     expect(noticeDisplay(notice("input")).requireInteraction).toBe(true);
   });
 
-  test("one notification per notice id, with nothing but a fixed text", () => {
+  test("one notification per notice id; a host that named nothing leaves today's fixed text", () => {
     const shown = noticeDisplay(notice("input"));
     expect(shown.tag).toBe("AAAAAAAAAAAAAAAAAAAAAA");
+    expect(shown.title).toBe("Doriterm");
     expect(shown.body).toBe("An agent is waiting for your input.");
+  });
+
+  test("what the host named about the notice: the agent and machine as its title, where and what in its body (#1908)", () => {
+    const context = {
+      machine: "build-box",
+      space: "api-server",
+      terminal: "migrations",
+      agent: "claude-code",
+      ask: "Postgres or SQLite?",
+    };
+    const shown = noticeDisplay(notice("input"), rows("Postgres", "SQLite"), 2, context);
+    expect(shown.title).toBe("claude-code@build-box");
+    expect(shown.body).toBe("api-server · migrations — Waiting for your input\n“Postgres or SQLite?”");
+    expect(shown.actions.map((action) => action.action)).toEqual(["option:1", "option:2"]);
+    expect(shown.data).toEqual(notice("input"));
   });
 });
 

@@ -1,4 +1,4 @@
-import { Button, SettingRow, Switch } from "@doriface/ui";
+import { Button, SegmentedControl, SettingRow, Switch } from "@doriface/ui";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { desktopBackgroundSetting } from "../desktop/bridge.ts";
@@ -7,11 +7,20 @@ import { install, useInstallOffer } from "../device/install.ts";
 import { keepAwakeStore, screenWakeLock, useKeepAwake } from "../device/keep-awake.ts";
 import { useBrowserMembership } from "../mesh/membership-state.ts";
 import { BackgroundRow } from "./background-row.tsx";
+import type { DisplayMode } from "../terminal/prediction-display.ts";
+import { predictionModeStore, usePredictionMode } from "../terminal/prediction-mode.ts";
+
+const PREDICT_MODES = [
+  { value: "adaptive", label: "On slow links" },
+  { value: "always", label: "Always" },
+  { value: "never", label: "Off" },
+] as const;
 import { BrowserInvite } from "./browser-invite.tsx";
 
 /** Settings that belong to this browser or device rather than to an account: the screen, and installing the app. */
 export function DeviceSection() {
   const keepAwake = useKeepAwake();
+  const predictMode = usePredictionMode();
   const offer = useInstallOffer();
   const mesh = useBrowserMembership();
   const [background] = useState(() => desktopBackgroundSetting());
@@ -32,6 +41,19 @@ export function DeviceSection() {
         }
       />
     ),
+    <SettingRow
+      key="predict-typing"
+      title="Show typing before the host echoes it"
+      description="Draws what you type at once, underlined while the link is slow, and replaces it with the host's own text when it arrives."
+      control={
+        <SegmentedControl<DisplayMode>
+          label="Show typing before the host echoes it"
+          options={PREDICT_MODES}
+          value={predictMode}
+          onValueChange={(mode) => predictionModeStore.set(mode)}
+        />
+      }
+    />,
     offer?.kind === "prompt" ? (
       <SettingRow
         key="install"

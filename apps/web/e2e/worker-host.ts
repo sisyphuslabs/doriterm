@@ -12,6 +12,21 @@ import { record } from "./terminal-ledger.ts";
 const HOST_SCRIPT = fileURLToPath(new URL("./host.ts", import.meta.url));
 /** Setup seeds the core and adds a machine (a second core) before /healthz answers. */
 const READY_WITHIN_MS = 120_000;
+/** How much of the host's stderr a failed setup quotes: enough for doriface-host's error and its startup-error line. */
+const STDERR_TAIL_LINES = 12;
+
+/** Passes the child's stderr through, and keeps its last lines for the error a failed setup throws (#1279). */
+function tailOf(child: ChildProcess): () => string {
+  let text = "";
+  child.stderr?.on("data", (chunk: Buffer) => {
+    process.stderr.write(chunk);
+    text = (text + chunk.toString())
+      .split("\n")
+      .slice(-STDERR_TAIL_LINES - 1)
+      .join("\n");
+  });
+  return () => text.trimEnd();
+}
 
 /** The web tsconfig types ChildProcess without its EventEmitter half, so the exit is read from exitCode/signalCode. */
 function exitOf(child: ChildProcess): Promise<number | null> {
@@ -29,6 +44,7 @@ async function healthy(
   envFile: string,
   child: ChildProcess,
   exited: Promise<number | null>,
+  stderr: () => string,
 ): Promise<void> {
   const deadline = Date.now() + READY_WITHIN_MS;
   while (child.exitCode === null && child.signalCode === null) {
@@ -48,7 +64,9 @@ async function healthy(
     // oxlint-disable-next-line no-await-in-loop -- as above
     await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 250))]);
   }
-  throw new Error(`the e2e host for ${url} exited during setup (exit ${String(await exited)})`);
+  const code = await exited;
+  const how = code === null ? `signal ${String(child.signalCode)}` : `exit ${code}`;
+  throw new Error(`the e2e host for ${url} exited during setup (${how}); its stderr ended with:\n${stderr()}`);
 }
 
 const alive = (pid: number): boolean => {
@@ -97,9 +115,10 @@ export async function startWorkerHost(): Promise<() => Promise<void>> {
   );
   if (taken)
     throw new Error(`port ${port} already answers before this worker's host starts: set E2E_HOST_PORT to a free range`);
-  const child = spawn("bun", [HOST_SCRIPT], { env, stdio: ["ignore", "inherit", "inherit"] });
+  const child = spawn("bun", [HOST_SCRIPT], { env, stdio: ["ignore", "inherit", "pipe"] });
+  const stderr = tailOf(child);
   const exited = exitOf(child);
-  await healthy(url, hostEnvOf(port), child, exited);
+  await healthy(url, hostEnvOf(port), child, exited, stderr);
   const dir = dirname(readSavedEnv(hostEnvOf(port)).env["XDG_STATE_HOME"] ?? "");
   // Before any hook runs: the first file's beforeAll terminals are then told apart from what the host started with.
   beginWorker();

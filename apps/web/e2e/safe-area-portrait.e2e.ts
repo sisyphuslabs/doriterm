@@ -66,5 +66,24 @@ for (const colorScheme of ["light", "dark"] as const) {
       await expect(page.getByRole("button", { name: "Back to agents" })).toBeVisible({ timeout: 20_000 });
       await expectClear(page.getByRole("button", { name: "Back to agents" }));
     });
+
+    test.describe("on a touch screen", () => {
+      // Touch layouts swap the esc hint for a Cancel button, which must clear the notch too.
+      test.use({ hasTouch: true, isMobile: true });
+
+      test("the command palette opens below the notch", async ({ page }) => {
+        await portraitWithInsets(page);
+        await page.goto("/");
+        const header = page.getByRole("banner");
+        await expect(header.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+        await header.getByRole("button", { name: "Command palette" }).click();
+        const palette = page.getByRole("dialog", { name: "Command palette" });
+        await expect(palette.getByRole("combobox", { name: "Command" })).toBeFocused();
+        await Promise.all([
+          expectClear(palette.getByRole("combobox", { name: "Command" })),
+          expectClear(palette.getByRole("button", { name: "Cancel" })),
+        ]);
+      });
+    });
   });
 }

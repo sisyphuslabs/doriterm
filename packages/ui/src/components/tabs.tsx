@@ -69,7 +69,9 @@ export function Tab({ className, ...props }: ClassNameless<ComponentProps<typeof
     <BaseTabs.Tab
       {...props}
       className={cn(
-        "inline-flex h-(--control) shrink-0 snap-start items-center gap-1.5 rounded-t-sm px-3 text-sm text-muted-foreground outline-none",
+        "relative inline-flex h-(--control) shrink-0 snap-start items-center gap-1.5 rounded-t-sm px-3 text-sm text-muted-foreground outline-none",
+        // Half the list's 4 px gap on each side, so a tap between two tabs reaches one of them.
+        "after:absolute after:inset-y-0 after:-inset-x-0.5",
         // The ring is drawn inside the tab: the scrolling list clips anything outside it.
         "hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring",
         "data-active:bg-raised data-active:font-medium data-active:text-foreground",
