@@ -137,7 +137,7 @@ test("while the filter holds a query a machine header offers no fold toggle, and
   const fold = spaces.getByRole("button", { name: /^(Collapse|Expand) studio$/ });
   await expect(fold).toHaveAccessibleName("Collapse studio", { timeout: 20_000 });
 
-  await page.keyboard.press("Control+Alt+F");
+  await pressShortcut(page, "layout.filter:sidebar");
   const field = sidebar.getByRole("searchbox", { name: "Filter sidebar" });
   await expect(field).toBeFocused();
   // The machine's own name: its group stays, with every space it holds.
