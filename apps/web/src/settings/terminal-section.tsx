@@ -1,7 +1,18 @@
-import { Badge, Button, IconButton, Input, Notice, SettingRow, TerminalPreview, type TerminalLine } from "@doriface/ui";
+import {
+  Badge,
+  Button,
+  IconButton,
+  Input,
+  Notice,
+  SettingRow,
+  TerminalPreview,
+  type TerminalLine,
+  cn,
+  fieldLabelClass,
+} from "@doriface/ui";
 import { asSentence } from "../storage/sentence.ts";
 import { RotateCcw } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { EMPTY_CONFIG, effective, isDefault, withValues, withoutKey, type TerminalConfig } from "../ghostty/config.ts";
 import { terminalConfigStore, useTerminalConfig, useTerminalConfigError } from "../ghostty/config-store.ts";
 import { KEYS } from "../ghostty/keys.ts";
@@ -105,6 +116,7 @@ export function TerminalSection() {
   const config = useTerminalConfig();
   const storageError = useTerminalConfigError();
   const [query, setQuery] = useState("");
+  const searchId = useId();
   const shown = KEYS.filter((def) => matches(def, query));
   return (
     <div className="flex flex-col gap-5">
@@ -123,14 +135,20 @@ export function TerminalSection() {
         />
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Input
-          aria-label="Search terminal settings"
-          type="search"
-          placeholder="Search keys, e.g. cursor"
-          value={query}
-          className="sm:w-64"
-          onValueChange={(next: string) => setQuery(next)}
-        />
+        {/* The label beside the field, so the row keeps the field's height and the rows below do not move. */}
+        <div className="flex w-full items-center gap-2 sm:w-72">
+          <label htmlFor={searchId} className={cn("shrink-0", fieldLabelClass)}>
+            Search<span className="sr-only"> terminal settings</span>
+          </label>
+          <Input
+            id={searchId}
+            type="search"
+            className="min-w-0 flex-1"
+            placeholder="Search keys, e.g. cursor"
+            value={query}
+            onValueChange={(next: string) => setQuery(next)}
+          />
+        </div>
         <ImportExport readOnly={storageError !== null} />
         <Button
           size="sm"
