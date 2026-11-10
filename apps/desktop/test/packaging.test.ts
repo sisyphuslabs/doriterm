@@ -29,20 +29,22 @@ describe("packaging the AppImage", () => {
   });
 });
 
-const mac = (
-  JSON.parse(readFileSync(join(import.meta.dir, "..", "electron-builder.json"), "utf8")) as {
-    readonly mac: {
-      readonly entitlements: string;
-      readonly entitlementsInherit: string;
-      readonly extraResources?: readonly {
-        readonly from: string;
-        readonly to: string;
-        readonly filter?: readonly string[];
-      }[];
-      readonly extendInfo?: Readonly<Record<string, string>>;
-    };
-  }
-).mac;
+interface NativeResources {
+  readonly extraResources?: readonly {
+    readonly from: string;
+    readonly to: string;
+    readonly filter?: readonly string[];
+  }[];
+}
+
+const { mac, win } = JSON.parse(readFileSync(join(import.meta.dir, "..", "electron-builder.json"), "utf8")) as {
+  readonly mac: NativeResources & {
+    readonly entitlements: string;
+    readonly entitlementsInherit: string;
+    readonly extendInfo?: Readonly<Record<string, string>>;
+  };
+  readonly win: NativeResources;
+};
 
 describe("packaging dictation for macOS (#726)", () => {
   test("the signed app may take audio input, and both of macOS's prompts have their usage string", () => {
@@ -61,5 +63,11 @@ describe("packaging dictation for macOS (#726)", () => {
     expect(speechAddonPath(true, "/App/Contents/Resources", "/ignored")).toBe(
       "/App/Contents/Resources/native/speech.node",
     );
+  });
+});
+
+describe("packaging dictation for Windows (#749)", () => {
+  test("the SAPI addon ships outside asar at the path the main process loads it from", () => {
+    expect(win.extraResources).toContainEqual({ from: "dist/native", to: "native", filter: ["speech.node"] });
   });
 });
