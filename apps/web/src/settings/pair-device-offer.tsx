@@ -22,7 +22,7 @@ export function PairDeviceOffer() {
     <>
       <SettingRow
         title={
-          <span className="flex items-start gap-2 [&_svg]:size-4 [&_svg]:text-muted-foreground">
+          <span className="flex items-start gap-2 [&_svg:not([data-slot=spinner])]:size-4 [&_svg]:text-muted-foreground">
             <span className="flex h-[1lh] shrink-0 items-center">
               <Smartphone aria-hidden />
             </span>

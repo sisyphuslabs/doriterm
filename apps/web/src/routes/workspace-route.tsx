@@ -88,11 +88,7 @@ export function WorkspaceRoute() {
           </Notice>
         ) : null}
         {state.phase === "connecting" ? (
-          <EmptyState
-            icon={<DelayedSpinner className="size-8" />}
-            title="Connecting to your host"
-            description="Opening the session."
-          />
+          <EmptyState icon={<DelayedSpinner />} title="Connecting to your host" description="Opening the session." />
         ) : state.phase === "failed" ? (
           <EmptyState
             icon={<PlugZap aria-hidden className="size-5" />}

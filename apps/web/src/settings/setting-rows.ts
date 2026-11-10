@@ -53,10 +53,10 @@ const ROWS: readonly SettingHit[] = [
 
 const TERMINAL_ROWS: readonly SettingHit[] = KEYS.map((def) => ({
   section: "terminal",
-  title: def.key,
+  title: def.label ?? def.key,
   detail: def.description,
   anchor: `terminal-${def.key}`,
-  words: [],
+  words: [def.key],
 }));
 
 const ALL: readonly SettingHit[] = [...ROWS, ...TERMINAL_ROWS];
