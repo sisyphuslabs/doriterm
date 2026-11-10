@@ -41,6 +41,15 @@ export function offerFor(value: unknown, request: string): JoinOffer | undefined
   return undefined;
 }
 
+/** Re-read the offer on its doc event or when missed events are replaced by a snapshot without documents. */
+export function followJoinOffer(feed: EventFeed, read: () => void): void {
+  // onEvent drains queued deliveries, including snapshots received before the listener was installed.
+  feed.onSnapshot(read);
+  feed.onEvent((event) => {
+    if (event.type === "doc" && event.machine === undefined && event.data.name === MESH_OFFER_DOC) read();
+  });
+}
+
 /**
  * While `open`, asks this host for a single-use mesh offer through the offer document and follows the document's events
  * on its own event feed until the host answers; a host that does not answer in {@link OFFER_ANSWER_MS} cannot make one.
@@ -76,11 +85,7 @@ export function useJoinOffer(connection: HcConnection, open: boolean, client = f
       const subscribed = await connection.subscribe();
       if (closed) return subscribed.close();
       feed = subscribed;
-      subscribed.onEvent((event) => {
-        if (event.type === "doc" && event.machine === undefined && event.data.name === MESH_OFFER_DOC) {
-          void read().catch(() => {});
-        }
-      });
+      followJoinOffer(subscribed, () => void read().catch(() => {}));
       const { version } = await calls.get();
       await calls.set({ request, ...(client ? { client: true } : {}) }, version);
       await read();
