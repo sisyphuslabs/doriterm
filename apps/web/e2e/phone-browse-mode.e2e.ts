@@ -49,6 +49,22 @@ async function scrollEnd(viewport: Locator): Promise<() => Promise<number>> {
   };
 }
 
+/** The view's scrollTop once it has held still across two frames (used where the scroll is set directly, not flung). */
+async function settledScrollTop(viewport: Locator): Promise<number> {
+  let settled: number | null = null;
+  await expect
+    .poll(async () => {
+      settled = await viewport.evaluate(async (el) => {
+        const first = el.scrollTop;
+        await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+        return el.scrollTop === first ? first : null;
+      });
+      return settled;
+    })
+    .not.toBeNull();
+  return settled ?? 0;
+}
+
 /** The program hears a tap on `row` (the browser turns a tap into the mouse events the renderer reports). */
 async function tapReaches(touch: Touch, terminal: Locator, row: string): Promise<void> {
   const before = (await reportedRows(terminal)).length;
