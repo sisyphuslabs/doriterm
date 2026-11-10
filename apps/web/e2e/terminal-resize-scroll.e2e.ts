@@ -5,10 +5,10 @@ import { join } from "node:path";
 import { startShell } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { seedLayout } from "./layout-doc.ts";
-import { synchronizedUpdates, watchSynchronizedUpdates } from "./synchronized-updates.ts";
-import { expectFollowed, sampleWhile } from "./transcript-follow.ts";
 import { hcOn } from "./machine-switch.ts";
 import { fakeSoftKeyboard, PHONE, showKeyboard } from "./phone-key-bar.ts";
+import { synchronizedUpdates, watchSynchronizedUpdates } from "./synchronized-updates.ts";
+import { expectFollowed, sampleWhile } from "./transcript-follow.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });

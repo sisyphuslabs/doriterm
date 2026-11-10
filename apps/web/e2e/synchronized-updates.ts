@@ -11,35 +11,78 @@ export interface SyncUpdate {
 
 /**
  * Call before page.goto: records, page-side, when each synchronized update the hc socket carries opens and closes
- * (`ESC [ ? 2026 h` / `l`, a sequence split across two messages included). The pacer writes an open update as it
+ * (`ESC [ ? 2026 h` / `l` in a stream's payloads, a sequence split across frames or messages included). The pacer writes an open update as it
  * arrives, so its arrival is when wterm's hold of it starts.
  */
 export async function watchSynchronizedUpdates(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const SYNC = "\u001b[?2026";
+    const HEADER = 9;
     const events: { t: number; open: boolean }[] = [];
     (window as unknown as { e2eSyncEvents: typeof events }).e2eSyncEvents = events;
     const Native = window.WebSocket;
     class Watched extends Native {
       constructor(url: string | URL, protocols?: string | string[]) {
         super(url, protocols);
-        let tail = "";
+        // The connection speaks JSON-RPC lines until the hello reply (the line whose result says `"framed":true`); every
+        // byte after that reply's LF is hc's wire frames: channel (u32), kind (u8), payload length (u32), little-endian,
+        // then the payload, a frame possibly spanning messages. Only stream payloads (channel > 0) carry terminal output,
+        // each scanned on its own with what is left of a sequence its last payload ended inside.
+        let framed = false;
+        let lines = "";
+        let rest = new Uint8Array(0);
+        const tails = new Map<number, string>();
+        const scan = (channel: number, payload: Uint8Array, t: number): void => {
+          let text = tails.get(channel) ?? "";
+          for (const byte of payload) text += String.fromCharCode(byte);
+          let found = text.indexOf(SYNC);
+          while (found !== -1 && found + SYNC.length < text.length) {
+            const mode = text.charAt(found + SYNC.length);
+            if (mode === "h" || mode === "l") events.push({ t, open: mode === "h" });
+            found = text.indexOf(SYNC, found + 1);
+          }
+          const cut = text.lastIndexOf("\u001b");
+          tails.set(
+            channel,
+            cut !== -1 && text.length - cut <= SYNC.length && SYNC.startsWith(text.slice(cut)) ? text.slice(cut) : "",
+          );
+        };
         this.addEventListener("message", (event: MessageEvent) => {
           if (!(event.data instanceof ArrayBuffer)) return;
           const t = performance.now();
-          const view = new Uint8Array(event.data);
-          let text = tail;
-          for (const byte of view) text += String.fromCharCode(byte);
-          let at = text.indexOf(SYNC);
-          while (at !== -1 && at + SYNC.length < text.length) {
-            const mode = text.charAt(at + SYNC.length);
-            if (mode === "h" || mode === "l") events.push({ t, open: mode === "h" });
-            at = text.indexOf(SYNC, at + 1);
+          let incoming = new Uint8Array(event.data);
+          if (!framed) {
+            for (const byte of incoming) lines += String.fromCharCode(byte);
+            let start = 0;
+            for (let end = lines.indexOf("\n"); end !== -1; end = lines.indexOf("\n", start)) {
+              const reply = lines.slice(start, end);
+              start = end + 1;
+              if (reply.indexOf('"framed":true') !== -1 && reply.indexOf('"result"') !== -1) {
+                framed = true;
+                break;
+              }
+            }
+            if (!framed) {
+              lines = lines.slice(start);
+              return;
+            }
+            incoming = incoming.subarray(incoming.length - (lines.length - start));
+            lines = "";
           }
-          // Keep what could be the start of a sequence the next message finishes.
-          const cut = text.lastIndexOf("\u001b");
-          tail =
-            cut !== -1 && text.length - cut <= SYNC.length && SYNC.startsWith(text.slice(cut)) ? text.slice(cut) : "";
+          const joined = new Uint8Array(rest.length + incoming.length);
+          joined.set(rest);
+          joined.set(incoming, rest.length);
+          let at = 0;
+          for (;;) {
+            if (joined.length - at < HEADER) break;
+            const header = new DataView(joined.buffer, at, HEADER);
+            const channel = header.getUint32(0, true);
+            const end = at + HEADER + header.getUint32(5, true);
+            if (end > joined.length) break;
+            if (channel !== 0) scan(channel, joined.subarray(at + HEADER, end), t);
+            at = end;
+          }
+          rest = joined.slice(at);
         });
       }
     }
