@@ -13,6 +13,9 @@ import { expect, openNewTerminal, test } from "./fixtures.ts";
 test.use({
   serviceWorkers: "block",
   launchOptions: { args: ["--disable-features=LocalNetworkAccessChecks"] },
+  // The pinned e2e faces (#862) arrive as an injected <style> with data: URLs, which this spec's policy does not allow:
+  // they would be a violation of the very CSP under test. The page's fonts are not this spec's subject.
+  pinnedFonts: false,
 });
 
 function hostedPolicy(): string {

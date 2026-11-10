@@ -5,8 +5,9 @@ export type CoreAnswer = { readonly terminal: Pick<Terminal, "state" | "pid"> } 
 
 /**
  * What a view does once the core ended its stream without the program finishing, or refused an attach:
- * - `finished`: the program is over, or the core no longer knows the terminal; the tab closes.
- * - `ended`: a first attach found the program already over; the view says it ended and offers to close the tab.
+ * - `finished`: a refused reattach found the program over, or the core no longer knows the terminal; the tab closes.
+ * - `ended`: the program was already over when this view asked (a refused first attach, or a lost line whose end came
+ *   while it was down); the view says it ended and offers to close the tab.
  * - `restarting`: lost, waiting for its new shell; the restarted program's pid gives the terminal a new view.
  * - `replaced`: another program runs there now; its own view attaches to it.
  * - `reattach`: the same program still runs; attach to it again.
@@ -17,10 +18,11 @@ export type Settled = "finished" | "ended" | "restarting" | "replaced" | "reatta
 export function settled(answer: CoreAnswer, program: number | null, first: boolean, refused: boolean): Settled {
   if ("error" in answer) return unknownToCore(answer.error) ? "finished" : "error";
   const { state, pid } = answer.terminal;
-  // A program that ended while this view's line was down sent it no CLOSE, so its tab closes as that CLOSE would have.
-  // A new view (a reload, or a machine that was offline) never saw the program run, so it shows it ended: the core's
-  // state says so, whether or not this page had the terminal open.
-  if (state !== "live") return refused && first ? "ended" : "finished";
+  // A terminal that ended while this view's line was down sent it no CLOSE: when the view asks after its lost stream,
+  // it shows the end it missed instead of closing its tab. A refused reattach is the CLOSE the page missed, so that one
+  // closes the tab (#164). A view that never attached (a reload, or a machine that was offline) shows ended too: the
+  // core's state says so, whether or not this page had the terminal open.
+  if (state !== "live") return refused && !first ? "finished" : "ended";
   if (pid === null || pid === undefined) return "restarting";
   if (pid !== program) return "replaced";
   return refused ? "error" : "reattach";

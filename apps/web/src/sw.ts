@@ -2,7 +2,6 @@
 import { base64urlDecode } from "@doriface/crypto";
 import {
   DEFAULT_PUSH_PREFS,
-  type NoticePrompt,
   parsePushNotice,
   type PushClientLine,
   type PushHostLine,
@@ -67,7 +66,7 @@ self.addEventListener("message", (event) => {
 
 /** How long an Allow or Deny waits for the host before it opens the pane instead. */
 const ANSWER_TIMEOUT_MS = 15_000;
-/** How long a push waits for the host to name its prompt's rows before it shows the notice without them. */
+/** How long a push waits for the host to name what it is about and its prompt's rows before it shows it without them. */
 const PROMPT_TIMEOUT_MS = 4_000;
 
 function readPayload(event: PushEvent): unknown {
@@ -89,28 +88,29 @@ self.addEventListener("push", (event) => {
 });
 
 /**
- * A permission or a question asks the host over the E2EE push stream which rows its prompt has, so the notification
- * can offer them; the payload itself names nothing. A host that does not answer in time, or names none, gets the
- * notice without rows (a permission keeps Allow and Deny).
+ * Every notice but a test asks the host over the E2EE push stream what it is about (agent, machine, space, terminal,
+ * what it asks: #1908) and which rows its prompt has; the payload itself names nothing. A host that does not answer in
+ * time, or names nothing, gets the fixed text per kind and no rows (a permission keeps Allow and Deny).
  */
 async function showNotice(notice: PushNotice): Promise<void> {
-  const prompt =
-    notice.k === "permission" || notice.k === "input" ? await promptOf(notice).catch(() => undefined) : undefined;
+  const reply = notice.k === "test" ? undefined : await noticeOf(notice).catch(() => undefined);
+  const asks = notice.k === "permission" || notice.k === "input";
   // `Notification.maxActions` is not in TypeScript's DOM types; Chromium reports it.
   const max: unknown = Reflect.get(Notification, "maxActions");
   const { title, ...shown } = noticeDisplay(
     notice,
-    prompt,
+    asks ? reply?.prompt : undefined,
     typeof max === "number" && max > 0 ? max : DEFAULT_MAX_ACTIONS,
+    reply?.context,
   );
   // TypeScript's NotificationOptions lacks `actions`, which Chromium and Firefox show.
   const options: NotificationOptions & Pick<typeof shown, "actions"> = { ...shown, icon: "/icon-192.png" };
   await self.registration.showNotification(title, options);
 }
 
-async function promptOf(notice: PushNotice): Promise<NoticePrompt | undefined> {
+async function noticeOf(notice: PushNotice): Promise<Extract<PushHostLine, { t: "notice" }> | undefined> {
   const reply = await overPush({ t: "notice", id: notice.n }, PROMPT_TIMEOUT_MS);
-  return reply.t === "notice" ? reply.prompt : undefined;
+  return reply.t === "notice" ? reply : undefined;
 }
 
 async function openSession(): Promise<PushExchange> {

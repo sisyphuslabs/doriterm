@@ -18,6 +18,7 @@ describe("settled", () => {
     ["its machine cannot answer (after a drop)", failed("unavailable"), false, true, "error"],
     ["it finished before a first attach", finished, true, true, "ended"],
     ["it finished while the line was down", finished, false, true, "finished"],
+    ["it finished after its stream was lost", finished, false, false, "ended"],
     ["it is lost, waiting for its new shell", live(null), false, false, "restarting"],
     ["another program runs there now", live(PROGRAM + 1), false, false, "replaced"],
     ["the same program refused the reattach", live(PROGRAM), false, true, "error"],
