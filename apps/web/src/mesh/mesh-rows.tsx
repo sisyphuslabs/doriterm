@@ -114,7 +114,7 @@ export function MemberRow({ member, nameOf, now }: MemberRowProps) {
     <SettingRow
       inline
       title={
-        <span className="flex items-center gap-2 [&_svg]:size-4 [&_svg]:text-muted-foreground">
+        <span className="flex items-center gap-2 [&_svg:not([data-slot=spinner])]:size-4 [&_svg]:text-muted-foreground">
           <Icon aria-hidden />
           {name}
         </span>

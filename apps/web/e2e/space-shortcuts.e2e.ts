@@ -1,5 +1,6 @@
 // herdr-app's space keys: Ctrl+1-9 on a Mac and Alt+1-9 elsewhere show a space, and the bracket pair cycles them
-// (defaults/keys.macos.json, keys.json). They are the app's from a focused terminal too, as every other app chord (#1922).
+// (defaults/keys.macos.json, keys.json). They are the app's from a focused terminal too, as every other app chord
+// (#1922): every number chord on both platforms, and no byte of one reaching the program, in space-keys-terminal.e2e.ts.
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -104,44 +105,6 @@ test("2: the cycle keys step through the spaces in order and wrap at either end,
   await page.keyboard.press(previous);
   await expect(tabBar(page)).toHaveText([/gamma-one/]);
 });
-
-// The page's platform is pinned, so one browser presses both chords: Ctrl+2 as on a Mac, Alt+2 as elsewhere.
-for (const platform of ["mac", "other"] as const) {
-  test(`3 ${platform}: from a focused terminal the space number chord shows that space, and no byte of it reaches the program (#1922)`, async ({
-    page,
-  }) => {
-    await page.addInitScript(
-      (value) => Object.defineProperty(Navigator.prototype, "platform", { get: () => value }),
-      platform === "mac" ? "MacIntel" : "Linux x86_64",
-    );
-    await runFromTerminal(page);
-  });
-}
-
-async function runFromTerminal(page: Page): Promise<void> {
-  const shells = threeSpaces();
-  await page.goto("/");
-  await expect(tabBar(page)).toHaveText([/alpha-one/], { timeout: 20_000 });
-  const alpha = paneOf(page, shells.alpha);
-  await alpha.getByRole("textbox").focus();
-  // cat -v prints every byte it reads, a control byte as ^X and ESC as ^[, once a line ends.
-  await page.keyboard.type("cat -v\r");
-  await expect(alpha).toContainText("cat -v");
-  await page.keyboard.type("<");
-
-  await page.keyboard.press(await spaceNumberChord(page, 2));
-  await expect(tabBar(page)).toHaveText([/beta-one/]);
-  await expect(selected(page)).toHaveText(/beta-one/);
-
-  await pressOutsideTerminal(page, await spaceNumberChord(page, 1));
-  await expect(tabBar(page)).toHaveText([/alpha-one/]);
-  await alpha.getByRole("textbox").focus();
-  await page.keyboard.type(">\r");
-  // The line holds exactly what was typed around the chord: the tty's echo and cat's copy both read <>, with no ^@, ^[2
-  // or other byte between them.
-  await expect(alpha).toContainText("<>");
-  await expect(alpha).not.toContainText(/<[^>]+>/);
-}
 
 test("4: Settings lists the space keys with the keys that run them", async ({ page }) => {
   await page.goto("/settings");

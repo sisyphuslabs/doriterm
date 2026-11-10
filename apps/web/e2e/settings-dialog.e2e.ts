@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, openNewTerminal, terminalCount, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { hcOn } from "./machine-switch.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -178,9 +179,9 @@ test.describe("Settings across the md breakpoint, and its zoom keys (#859)", () 
       .filter({ hasText: /\d+ pt$/ });
     await expect(size).toBeVisible({ timeout: 15_000 });
     const before = Number.parseFloat((await size.textContent()) ?? "");
-    await page.keyboard.press("ControlOrMeta+Equal");
+    await pressShortcut(page, "app.zoom_in");
     await expect.poll(async () => Number.parseFloat((await size.textContent()) ?? "")).toBeGreaterThan(before);
-    await page.keyboard.press("ControlOrMeta+Minus");
+    await pressShortcut(page, "app.zoom_out");
     await expect.poll(async () => Number.parseFloat((await size.textContent()) ?? "")).toBe(before);
   });
 
