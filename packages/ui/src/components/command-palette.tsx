@@ -138,7 +138,7 @@ export function CommandPalette({
         className="max-h-[min(24rem,60dvh)] overflow-y-auto p-1.5"
       >
         {visible.length === 0 ? (
-          <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing matches "{query}".</p>
+          <p className="px-3 py-6 text-center text-prose text-muted-foreground">Nothing matches "{query}".</p>
         ) : (
           groups.map((group) => (
             <div key={group} role="group" aria-label={group} className="pb-4 coarse:pb-9">

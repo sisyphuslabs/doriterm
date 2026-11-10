@@ -91,12 +91,13 @@ The theme input is a herdr-app terminal palette (background, foreground, selecti
 | xl    | 20 px                  | 22 px          | 600     | phone screen title, settings section title from `md` |
 | lg    | 16 px                  | 18 px          | 600     | dialog title, section title (phones)                 |
 | base  | 14 px                  | 17 px          | 400     | body, controls, palette rows                         |
-| sm    | 13 px                  | 15 px          | 400/500 | sidebar rows, secondary text, tabs                   |
+| prose | 14 px                  | 15 px          | 400/600 | explanations, hints, status lines, notices           |
+| sm    | 13 px                  | 15 px          | 400/500 | sidebar rows, tabs, dense labels                     |
 | xs    | 12 px                  | 13 px          | 500     | section labels, status bar, captions                 |
 | 2xs   | 11 px                  | 12 px          | 600     | chips, badges, kbd                                   |
 
 - UI: system stack (`-apple-system`, SF Pro on Apple per HIG; Segoe UI Variable; system-ui). Terminal and code: JetBrains Mono Variable, self-hosted via @fontsource-variable, ligatures off (herdr-app default).
-- Body is 17 px on coarse pointers (HIG: 17 pt body on iPhone, secondary not below 15 pt). Desktop body 14 px; 13 px rows follow herdr-app's density and stay secondary-level text.
+- Body is 17 px on coarse pointers (HIG: 17 pt body on iPhone, secondary not below 15 pt). Desktop body and reading prose (`text-prose`) are both 14 px, so the reading sentences of Settings, pairing, the mesh join screens, notices, connection status and empty results are 14 px on desktop; secondary prose steps down by colour, not size. Dense rows and tabs keep herdr-app's 13 px `sm` so long names keep their share. Only code ids, key caps and captions use xs/2xs.
 - Numerals that change (counts, ages) are tabular.
 
 ## 4. Spacing & Layout

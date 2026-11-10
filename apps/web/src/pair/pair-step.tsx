@@ -82,7 +82,7 @@ export function PairStep({
             }}
           />
         </Field>
-        <p className="max-w-measure text-sm text-muted-foreground">
+        <p className="max-w-measure text-prose text-muted-foreground">
           The code reaches your host through the relay, which only sees encrypted traffic.
         </p>
         <Button type="submit" variant="primary" size="lg" loading={busy} disabled={text.trim() === ""}>
