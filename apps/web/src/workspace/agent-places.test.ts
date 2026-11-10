@@ -50,6 +50,24 @@ describe("placeAgents", () => {
     expect(places.get("t1")).toEqual({ status: "idle" });
   });
 
+  test("an agent that starts working moves to Working at once, also one that never reported before", () => {
+    const fresh: Terminal = { ...agent("t1", "idle"), status: null, reported: false };
+    const places = placesAfter([
+      [0, [fresh]],
+      [1, [agent("t1", "working")]],
+    ]);
+    expect(statusOf(places, "t1")).toBe("working");
+  });
+
+  test("a finish the screen has already seen reads Idle and moves the row there at once", () => {
+    const seenDone = { ...agent("t1", "done"), seen: true };
+    const places = placesAfter([
+      [0, [agent("t1", "working")]],
+      [1, [seenDone]],
+    ]);
+    expect(places.get("t1")).toEqual({ status: "idle" });
+  });
+
   test("needing the person and finishing move the row at once", () => {
     for (const state of ["blocked", "done"] as const) {
       const places = placesAfter([

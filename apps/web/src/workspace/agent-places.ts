@@ -16,12 +16,17 @@ export interface AgentPlace {
 
 export type AgentPlaces = ReadonlyMap<string, AgentPlace>;
 
-/** Only a turn between these two waits; Needs you, Done and a machine that went away move the row at once. */
-const settles = (status: AgentStatus): boolean => status === "working" || status === "idle";
+/**
+ * Only a turn ending without a finish waits: Working to an Idle the agent reported. Starting work, Needs you, Done, a
+ * finish this screen has seen (it reads Idle) and a machine that went away move the row at once. A watch agent's idle
+ * gap between firings is then absorbed by the wait, which its next Working cancels.
+ */
+const waits = (before: AgentStatus, live: AgentStatus, terminal: Session): boolean =>
+  before === "working" && live === "idle" && terminal.state === "live" && terminal.status?.state !== "done";
 
 /**
- * Each live agent's place for the status groups, carried over from `previous`: a row moves at once when it needs the
- * person, finished or went offline, and between Working and Idle only once the new state has held `SETTLE_MS`. `due` is
+ * Each live agent's place for the status groups, carried over from `previous`: a row moves at once unless an agent's
+ * turn ends in Idle without a finish, which moves it only once Idle has held `SETTLE_MS`. `due` is
  * when the next pending move falls due, or null when none is waiting. Returns `previous` itself when nothing changed.
  */
 export function placeAgents(
@@ -36,7 +41,7 @@ export function placeAgents(
     if (terminal.state !== "live") continue;
     const live = agentStatus(terminal);
     const before = previous.get(terminal.address);
-    const next = place(before, live, nowMs);
+    const next = place(before, live, nowMs, before !== undefined && waits(before.status, live, terminal));
     if (next.pending !== undefined) {
       const at = next.pending.sinceMs + SETTLE_MS;
       due = due === null ? at : Math.min(due, at);
@@ -48,8 +53,8 @@ export function placeAgents(
   return { places: changed ? places : previous, due };
 }
 
-function place(before: AgentPlace | undefined, live: AgentStatus, nowMs: number): AgentPlace {
-  if (before === undefined || before.status === live || !settles(before.status) || !settles(live)) {
+function place(before: AgentPlace | undefined, live: AgentStatus, nowMs: number, wait: boolean): AgentPlace {
+  if (before === undefined || before.status === live || !wait) {
     return before !== undefined && before.status === live && before.pending === undefined ? before : { status: live };
   }
   const pending = before.pending?.status === live ? before.pending : { status: live, sinceMs: nowMs };
