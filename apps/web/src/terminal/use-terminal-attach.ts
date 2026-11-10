@@ -318,8 +318,9 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     restarting,
     ended,
     unopened,
-    // A closed socket already has the workspace's reconnect notice; this status owns only the viewer's attach.
-    reconnecting: !connection.closed && (reconnecting || (opening && attachedBefore.current)),
+    // A closed socket already has the workspace's reconnect notice; this status owns only the viewer's attach. A pane out
+    // of view attaches nothing until it is shown, so it says nothing either: shown, its owed attempt runs and says so.
+    reconnecting: shown && !connection.closed && (reconnecting || (opening && attachedBefore.current)),
     clearUnopened: () => recovery.manual(),
     interact,
     onEndNow,
