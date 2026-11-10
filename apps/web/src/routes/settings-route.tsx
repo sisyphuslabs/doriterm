@@ -70,7 +70,7 @@ function Group({
 
 /** One sentence under the title, in the words the navigation uses: what this screen is about and nothing else. */
 function Lead({ children }: { readonly children: ReactNode }) {
-  return <p className="max-w-measure text-sm text-pretty text-muted-foreground">{children}</p>;
+  return <p className="max-w-measure text-prose text-pretty text-muted-foreground">{children}</p>;
 }
 
 /**
@@ -149,7 +149,9 @@ export function SettingsRoute() {
     else if (event.key === "Enter" && first !== undefined) setSection(first.id);
   };
   const nothing =
-    shown.length === 0 ? <p className="px-2 py-1 text-sm text-muted-foreground">No setting matches "{query}"</p> : null;
+    shown.length === 0 ? (
+      <p className="px-2 py-1 text-prose text-muted-foreground">No setting matches "{query}"</p>
+    ) : null;
   const mesh = useBrowserMembership();
   const joinedBrowser = mesh.phase !== "empty" && desktopBridge() === null;
   const close = useCloseSettings();
@@ -292,7 +294,7 @@ export function SettingsRoute() {
                   <MachinesSection />
                   {/* What a row's state means sits under the rows, where a reader meets it: on a phone the list leads (#1007). */}
                   {!joinedBrowser ? (
-                    <p className="max-w-measure pt-3 text-sm text-pretty text-muted-foreground">
+                    <p className="max-w-measure pt-3 text-prose text-pretty text-muted-foreground">
                       A machine that answers reads Connected, one still being dialled reads Connecting, and one that
                       needs a login says so; when a machine is offline the row says when it was last seen and, where the
                       host knows a cause, what it is.
@@ -301,7 +303,7 @@ export function SettingsRoute() {
                 </Group>
                 {/* Connecting a machine joins it to the mesh, so it is on this screen, under the rows it adds to. */}
                 <Group title="Connect a machine" id={CONNECT_GROUP}>
-                  <p className="pb-1 text-sm text-pretty text-muted-foreground">
+                  <p className="pb-1 text-prose text-pretty text-muted-foreground">
                     One command on this host opens an invite, and the other computer or phone joins with it. A join
                     waits for your approval under In your mesh.
                   </p>

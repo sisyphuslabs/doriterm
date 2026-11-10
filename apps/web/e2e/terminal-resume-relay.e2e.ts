@@ -27,9 +27,12 @@ const FLOOD_END = "relay-flood-end";
 /**
  * Far more output than one frame's 16 KiB, so a paced write shows up as frames that climb. Then the title: the core
  * sends it as an event behind the output on the same stream, and the page shows it without painting the terminal, so
- * the title in the pane's name means every line has reached the page, held or not.
+ * the title in the pane's name means every line has reached the page, held or not. A New tab runs the host user's
+ * shell, and a stock Debian or Ubuntu bash prompt sets the title too (`\e]0;user@host: cwd\a` in PS1): the prompt that
+ * follows the flood would put that title back before the page could be asked for this one (#2016). So the command first
+ * sets a prompt that leaves the title alone.
  */
-const FLOOD = `for i in $(seq 1 ${LAST}); do echo relay-line-$i; done; printf '\\033]2;${FLOOD_END}\\007'`;
+const FLOOD = `PS1='$ ' PROMPT_COMMAND=; for i in $(seq 1 ${LAST}); do echo relay-line-$i; done; printf '\\033]2;${FLOOD_END}\\007'`;
 /** The page's relay client sockets, as delayRelaySockets routes them. */
 const CLIENT_SOCKET = "/v1/client/";
 
