@@ -20,6 +20,7 @@ const NO_TERMINALS: readonly Terminal[] = [];
 
 const STATE_WORDS: Readonly<Record<string, string>> = {
   connected: "Connected",
+  reconnecting: "Reconnecting",
   connecting: "Connecting",
   needs_login: "Needs a login",
   unreachable: "Offline",

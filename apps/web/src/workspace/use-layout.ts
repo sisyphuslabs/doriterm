@@ -194,6 +194,9 @@ export function useLayout(
     [layouts, terminals, loose],
   );
   const { active, focused, zoomed } = pick(tabs, view);
+  // Read when a start answers, which can be after the person picked another tab: the tab in view now, not then.
+  const activeNow = useRef(active);
+  activeNow.current = active;
   // A document tab that took over the selected loose tab's view is the selected tab from now on, also after a reload.
   const takenOver = active !== null && active.key !== view.active && active.mount === view.active ? active.key : null;
   useEffect(() => {
@@ -225,7 +228,7 @@ export function useLayout(
   const history = useRef(new Map<string, string[]>());
   const picked = useRef({ tabs, focused: view.focused });
   picked.current = { tabs, focused: view.focused };
-  const show = useCallback((key: string, pane: string | null): void => {
+  const show = useCallback((key: string, pane: string | null, select = true): void => {
     // Picking a tab claims the pane it focuses, so that terminal takes the keyboard from the tab left behind (#1704).
     const landing = pane ?? landingPane(picked.current.tabs, picked.current.focused, key);
     if (landing !== null && !placingQuietly) setClaimed(landing);
@@ -239,7 +242,7 @@ export function useLayout(
       const { [key]: inTab, ...others } = prev.zoomed;
       return {
         ...prev,
-        active: key,
+        active: select ? key : prev.active,
         focused: pane === null ? prev.focused : { ...prev.focused, [key]: pane },
         zoomed: pane === null || inTab === undefined || inTab === pane ? prev.zoomed : others,
       };
@@ -329,7 +332,9 @@ export function useLayout(
         const space = { id: freshId("spc"), folder: "" };
         void layout.edit((doc) => addDocTab(doc, space, { id: copy.id, name: "", root }));
         setFresh(pane);
-        return show(tabKey(layout.machineId, copy.id), pane);
+        // The terminal starts asynchronously: a start that answers after the person picked another tab still places
+        // its pane here, but their pick stays in view (#1539).
+        return show(tabKey(layout.machineId, copy.id), pane, tab.key === activeNow.current?.key);
       }
       const container = freshId("s");
       // Whether the edit last found the pane gone; a write that failed instead was already reported by `edit`.
@@ -351,7 +356,9 @@ export function useLayout(
           return placed;
         });
       setFresh(pane);
-      return show(tab.key, pane);
+      // The terminal starts asynchronously: a start that answers after the person picked another tab still places
+      // its pane in this tab, but their pick stays in view (#1539).
+      return show(tab.key, pane, tab.key === activeNow.current?.key);
     },
     [active, addTab, focused, keepHere, layoutOf, show, tabs, told],
   );

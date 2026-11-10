@@ -1,5 +1,6 @@
 // herdr-app's space keys: Ctrl+1-9 on a Mac and Alt+1-9 elsewhere show a space, and the bracket pair cycles them
-// (defaults/keys.macos.json, keys.json). From a focused terminal too: space-keys-terminal.e2e.ts.
+// (defaults/keys.macos.json, keys.json). They are the app's from a focused terminal too, as every other app chord
+// (#1922): every number chord on both platforms, and no byte of one reaching the program, in space-keys-terminal.e2e.ts.
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -57,7 +58,7 @@ function threeSpaces(): Record<"alpha" | "beta" | "gamma", string> {
   return shells;
 }
 
-/** A number chord pressed with the keyboard outside a terminal, on the sidebar row. */
+/** A number chord pressed with the keyboard outside a terminal, on a sidebar row. */
 async function pressOutsideTerminal(page: Page, chord: string): Promise<void> {
   await spaceRow(page, "alpha").focus();
   await page.keyboard.press(chord);
@@ -126,4 +127,5 @@ test("4: Settings lists the space keys with the keys that run them", async ({ pa
   await expect(row("space.next")).toContainText(chips.next);
   await expect(row("space.prev")).toContainText("Previous space");
   await expect(row("space.prev")).toContainText(chips.previous);
+  await expect(row("space.select:1")).not.toContainText("keeps this key");
 });

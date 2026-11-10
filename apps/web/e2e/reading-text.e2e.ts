@@ -22,7 +22,7 @@ for (const width of [390, 1440] as const) {
         deviceScaleFactor: width === 390 ? 3 : 1,
         colorScheme: theme === "day" ? "light" : "dark",
       });
-      for (const name of ["voice-listening", "voice-ready", "settings-keybindings-spaces"]) {
+      for (const name of ["voice-listening", "voice-ready"]) {
         test(`${name} reading text meets the design floor`, async ({ page }, testInfo) => {
           await page.addInitScript((chosen) => {
             localStorage.setItem("doriface.appearance", JSON.stringify({ theme: chosen, custom: [] }));
@@ -39,20 +39,13 @@ for (const width of [390, 1440] as const) {
             const strip = page.locator("[data-voice-strip]");
             await expect.soft(strip.getByText(/Then run the$/)).toHaveCSS("font-size", bodySize);
             await expect.soft(strip.getByRole("status")).toHaveCSS("font-size", secondarySize);
-          } else if (name === "voice-ready") {
+          } else {
             await expect
               .soft(page.getByRole("textbox", { name: "Transcript for shell" }))
               .toHaveCSS("font-size", bodySize);
             await expect
               .soft(page.getByText("Types at the cursor. Return in the terminal sends it."))
               .toHaveCSS("font-size", secondarySize);
-          } else {
-            // A row's description, under its title: the action's id here.
-            const description = page
-              .locator('[id="keybinding-space.select:1"]')
-              .locator("xpath=following-sibling::p[1]");
-            await expect(description).toBeVisible();
-            await expect.soft(description).toHaveCSS("font-size", secondarySize);
           }
         });
       }

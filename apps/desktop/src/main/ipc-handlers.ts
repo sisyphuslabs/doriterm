@@ -3,6 +3,7 @@ import { terminalLinkTarget } from "../config/terminal-link.ts";
 import { isHexColour } from "../config/window.ts";
 import { isSameOrigin } from "../config/origin.ts";
 import { HcInstallError, type HcInstalled } from "@doriface/host/hc-install";
+import { parseNoticeContext } from "@doriface/protocol";
 import {
   Channel,
   type DesktopNotice,
@@ -263,7 +264,12 @@ export function ipcHandlers(deps: IpcDeps): IpcHandlers {
     async showNotice(event, candidate) {
       assertAppFrame(event, deps.origin);
       if (!isDesktopNotice(candidate)) return { accepted: false, reason: "the notice was refused" };
-      return deps.showNotice({ kind: candidate.kind, terminal: candidate.terminal });
+      const context = parseNoticeContext(Reflect.get(candidate, "context"));
+      return deps.showNotice({
+        kind: candidate.kind,
+        terminal: candidate.terminal,
+        ...(context === undefined ? {} : { context }),
+      });
     },
     async setDirectTarget(event, candidate) {
       assertAppFrame(event, deps.origin);
