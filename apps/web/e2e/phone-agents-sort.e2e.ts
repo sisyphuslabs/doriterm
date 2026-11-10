@@ -28,6 +28,25 @@ test("with agents, the phone's sort control sits in the Agents header, not on a 
     expect(sortBox.y).toBeGreaterThanOrEqual(headerBox.y);
     expect(sortBox.y + sortBox.height).toBeLessThanOrEqual(headerBox.y + headerBox.height);
     await expect(page.getByRole("button", { name: "Sort agents" })).toHaveCount(1);
+
+    // Sort is the header control right beside Search (the palette): same row, Search first, one header gap apart (#992).
+    const search = header.getByRole("button", { name: "Command palette" });
+    const controls = header.locator("button, a");
+    const names = await controls.evaluateAll((all) => all.map((control) => control.getAttribute("aria-label")));
+    expect(names.slice(0, 2)).toEqual(["Command palette", "Sort agents"]);
+    const searchBox = await search.boundingBox();
+    if (searchBox === null) throw new Error("no box");
+    const gap = await header.evaluate((element) => Number.parseFloat(getComputedStyle(element).columnGap));
+    expect(Math.abs(sortBox.y - searchBox.y), "Sort and Search share the header's row").toBeLessThanOrEqual(0.5);
+    const beside = sortBox.x - (searchBox.x + searchBox.width);
+    expect(beside, "Sort follows Search").toBeGreaterThanOrEqual(0);
+    expect(beside, "with one header gap and no control between them").toBeLessThanOrEqual(gap + 0.5);
+
+    // The last header control ends inside the phone's 390 px: the trailing one is what would run past the edge (#992).
+    const width = page.viewportSize()?.width ?? 0;
+    expect(width).toBe(390);
+    const edges = await controls.evaluateAll((all) => all.map((control) => control.getBoundingClientRect().right));
+    expect(Math.max(...edges)).toBeLessThanOrEqual(width);
   } finally {
     endAgent("host", address);
   }

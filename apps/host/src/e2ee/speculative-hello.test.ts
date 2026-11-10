@@ -157,6 +157,23 @@ describe("the speculative hello (#1271)", () => {
     expect(hello.settle(s.link)).toBe("not-answered");
   });
 
+  test("a start whose child cannot be spawned is charged too: at most four spawn attempts in a window (#1292)", () => {
+    let attempts = 0;
+    let clock = 0;
+    const hello = new SpeculativeHello({
+      spawn: () => {
+        attempts += 1;
+        throw new Error("spawn hc EMFILE");
+      },
+      now: () => clock,
+    });
+    for (let i = 0; i < 6; i++) hello.answer(HELLO, session().link);
+    expect(attempts).toBe(4);
+    clock += 10_000;
+    hello.answer(HELLO, session().link);
+    expect(attempts).toBe(5);
+  });
+
   test("the admitted link drops exactly hc's first line, split or not, and passes everything after it", async () => {
     const sent: string[] = [];
     const link = withoutFirstLine({

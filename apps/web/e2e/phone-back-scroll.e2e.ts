@@ -40,7 +40,7 @@ const place = (list: Locator): Promise<Place> =>
   list.evaluate((el) => {
     const edge = el.getBoundingClientRect().top;
     const first = [...el.querySelectorAll("button")].find(
-      (row) => /keep\d\d/.test(row.textContent ?? "") && row.getBoundingClientRect().bottom > edge + 1,
+      (row) => /^\s*keep\d\d/.test(row.textContent ?? "") && row.getBoundingClientRect().bottom > edge + 1,
     );
     return { top: el.scrollTop, first: first?.textContent ?? "" };
   });

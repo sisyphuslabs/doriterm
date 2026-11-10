@@ -101,8 +101,10 @@ function AgentActions({ agent }: { readonly agent: Agent }) {
     <>
       <IconButton
         label={pinned ? `Unpin ${agent.name}` : `Pin ${agent.name} to the top`}
-        icon={pinned ? <PinOff /> : <Pin />}
-        className="size-6 coarse:hidden"
+        // One pin shape at the resting pin's 14 px: Unpin draws that same pin filled, since PinOff's slashed body is drawn
+        // smaller inside the same box and would shrink under the pointer (#1562).
+        icon={pinned ? <Pin className="fill-current" /> : <Pin />}
+        className="size-6 coarse:hidden [&_svg]:size-3.5"
         onClick={() => pin(agent.id, !pinned)}
       />
       <Menu

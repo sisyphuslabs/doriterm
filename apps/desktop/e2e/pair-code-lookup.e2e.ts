@@ -63,9 +63,9 @@ test("a typed pairing code is looked up through the relay, not refused by the ap
   if (launched === undefined) throw new Error("the app did not launch");
   const page = await launched.firstWindow();
   const lookups: string[] = [];
-  // The relay's answer is held until Continue is pressed. Typing the code starts its slot's lookup (#1277), and Continue
-  // takes the answer of that lookup while it is still in flight, so exactly one request leaves. Answered first, a
-  // refused slot is asked again on Continue by design, and the count would depend on which came first.
+  // The relay's answer is held until Continue is pressed. Typing the code starts its slot's lookup (#1277), and
+  // Continue takes the answer of that lookup, still in flight here, so exactly one request leaves; an answer that
+  // arrives first is reused the same way, refusal included (#1316).
   const { promise: pressed, resolve: answer } = Promise.withResolvers<void>();
   await page.route(LOOKUP, async (route) => {
     lookups.push(route.request().url());
