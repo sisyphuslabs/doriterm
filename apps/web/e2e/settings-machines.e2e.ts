@@ -58,12 +58,19 @@ test.describe("Settings, Machines", () => {
       // The list leads: its heading sits in the screen's top third, not under a screenful of explanation.
       const heading = await page.getByRole("heading", { name: "Machines", level: 2 }).boundingBox();
       expect(heading?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(viewport.height / 3);
-      for (const target of [list.getByRole("listitem").first(), page.getByRole("button", { name: "Add a machine" })]) {
+      const add = page.getByRole("button", { name: "Add a machine" });
+      for (const target of [list.getByRole("listitem").first(), add]) {
         // oxlint-disable-next-line no-await-in-loop -- each target is measured on the same settled screen
         const box = await target.boundingBox();
         expect(box, "drawn").not.toBeNull();
         expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(viewport.height);
       }
+      // The explanation of a row's state comes after them: its top edge is at or below the button's bottom edge.
+      const button = await add.boundingBox();
+      const glossary = await page.getByText("Adding one by hand reaches it without the mesh").boundingBox();
+      expect(button, "button drawn").not.toBeNull();
+      expect(glossary, "explanation drawn").not.toBeNull();
+      expect(glossary?.y ?? Number.NEGATIVE_INFINITY).toBeGreaterThanOrEqual((button?.y ?? 0) + (button?.height ?? 0));
     });
 
     test("the join page's Connect a machine opens Machines on that group", async ({ page }) => {
