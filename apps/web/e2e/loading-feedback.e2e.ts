@@ -12,8 +12,11 @@ async function pendingPair(page: Page) {
   });
   await page.goto("/pair");
   await page.getByLabel("Invite link or code").fill(PAIR_CODE);
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  // Install at a fixed instant and pause a second past it: the installed clock runs from `start` in the browser, so a
+  // target taken here as `new Date()` can already be behind it by the time the pause arrives on a busy host (#1971).
+  const start = Date.now();
+  await page.clock.install({ time: start });
+  await page.clock.pauseAt(start + 1000);
   const button = page.getByRole("button", { name: "Continue", exact: true });
   await button.click();
   await expect(button).toHaveAttribute("aria-busy", "true");

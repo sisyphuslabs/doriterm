@@ -3,6 +3,7 @@ import { terminalLinkTarget } from "../config/terminal-link.ts";
 import { isHexColour } from "../config/window.ts";
 import { isSameOrigin } from "../config/origin.ts";
 import { HcInstallError, type HcInstalled } from "@doriface/host/hc-install";
+import { parseNoticeContext } from "@doriface/protocol";
 import {
   Channel,
   type DesktopNotice,
@@ -65,7 +66,7 @@ export interface IpcDeps {
   readonly installHc: (onPhase: (phase: string) => void) => Promise<HcInstalled>;
   readonly noticesSupported: () => boolean;
   /** The OS's standing answer about this app's notifications; `unknown` where this shell cannot read one. */
-  readonly noticePermission: () => NoticeAuthorization;
+  readonly noticePermission: () => NoticeAuthorization | Promise<NoticeAuthorization>;
   /** Shows one notification and answers whether the OS took it. */
   readonly showNotice: (notice: DesktopNotice) => Promise<NoticeAnswer>;
   /** One capability for `windowId` to the Direct address `directUrl`, checked by the shell, or why it will not forward. */
@@ -262,7 +263,12 @@ export function ipcHandlers(deps: IpcDeps): IpcHandlers {
     async showNotice(event, candidate) {
       assertAppFrame(event, deps.origin);
       if (!isDesktopNotice(candidate)) return { accepted: false, reason: "the notice was refused" };
-      return deps.showNotice({ kind: candidate.kind, terminal: candidate.terminal });
+      const context = parseNoticeContext(Reflect.get(candidate, "context"));
+      return deps.showNotice({
+        kind: candidate.kind,
+        terminal: candidate.terminal,
+        ...(context === undefined ? {} : { context }),
+      });
     },
     async forwardDirect(event, candidate) {
       assertAppFrame(event, deps.origin);

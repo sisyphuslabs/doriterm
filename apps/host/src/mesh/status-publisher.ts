@@ -1,6 +1,5 @@
-import { HcConnection } from "@doriface/client";
 import type { MeshStatus } from "@doriface/protocol";
-import { type HcTarget, type KillableLink, spawnHcLink } from "./hc-machines.ts";
+import { type HcTarget, type KillableLink, openOnCore, spawnHcLink } from "./hc-machines.ts";
 import { docStoreOf, publishMeshStatus } from "./status-doc.ts";
 
 /**
@@ -58,7 +57,7 @@ export function publishMeshStatusOnCore(
         }),
       );
       try {
-        const connection = await HcConnection.open(opened);
+        const connection = await openOnCore(opened, core);
         try {
           await refresh();
           await publishMeshStatus(docStoreOf(connection), current, self);

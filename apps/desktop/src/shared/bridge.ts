@@ -1,3 +1,5 @@
+import type { NoticeContext } from "@doriface/protocol";
+
 /** IPC channels between the preload and the main process. */
 export const Channel = {
   openExternal: "doriface:open-external",
@@ -69,7 +71,15 @@ export const VERSION_ARG = "--doriface-app-version=";
 export const DICTATION_ARG = "--doriface-dictation";
 
 /** Why a dictation did not start: a system setting, no on-device model, another session or prompt, or anything else. */
-export const DICTATION_REFUSALS = ["mic-system", "speech-system", "device-mac", "busy", "service"] as const;
+export const DICTATION_REFUSALS = [
+  "mic-system",
+  "speech-system",
+  "device-mac",
+  "mic-windows",
+  "device-windows",
+  "busy",
+  "service",
+] as const;
 export type DictationRefusal = (typeof DICTATION_REFUSALS)[number];
 
 export type DictationStartAnswer = { readonly session: number } | { readonly refused: DictationRefusal };
@@ -120,11 +130,17 @@ export type DesktopPlatform = "darwin" | "linux" | "win32";
 export const NOTICE_KINDS = ["input", "permission", "done", "error", "test"] as const;
 export type NoticeKind = (typeof NOTICE_KINDS)[number];
 
-/** One native notification: the main process picks its text by `kind`, so the page cannot put words in it. */
+/**
+ * One native notification. The main process writes its text: what happened by `kind`, and what it is about only from
+ * `context`'s named fields, each cleaned of control characters and bounded (#1908), so the page cannot draw a
+ * notification of its own.
+ */
 export interface DesktopNotice {
   readonly kind: NoticeKind;
   /** The terminal it is about (`t7`, `machine/t7`), opened when it is clicked; null for a test. */
   readonly terminal: string | null;
+  /** Which agent, machine, space and terminal, and what it asks, as the page read them off its connection. */
+  readonly context?: NoticeContext;
 }
 
 const MAX_TERMINAL = 160;
