@@ -1,15 +1,15 @@
 # A browser joins a mesh as its own member
 
-Status: stage 2 of #1386, 2026-11-08. Implements §4 of `docs/design/device-mesh-membership.md` (the #1377 design,
-revision 4) as far as the join itself; the roster-as-the-unit (stage 3) and the join code that replaces the fingerprint
-screen (stage 4, #1377 §9) are not in this change.
+Status: stage 2 of #1386, 2026-11-08. Implements §4 of `docs/design/device-mesh-membership.md` (the #1377 design, as
+built; its §0 maps each section to the pull request that built it) as far as the join itself; the roster-as-the-unit
+(stage 3) and the join code that replaces the fingerprint screen (stage 4, #1377 §9) are not in this change.
 
 ## 1. What a browser may join
 
 Only a **mesh invite**: a link from `doriface-host mesh pair` (`&m=1`) or a typed code for such an offer. #1377
-revision 4, §4, names the mechanism: "the existing mesh join on a mesh offer, with a `kind: "client"` card signed by the
-browser's own Ed25519 key and bound to its X25519 device key". Revision 4 is the latest revision at this writing;
-nothing in it widens what a link admits, and nothing here does either.
+§4 names the mechanism: the existing mesh join on a mesh offer, with a `kind: "client"` card signed by the browser's
+own Ed25519 key and bound to its X25519 device key. The design as built keeps that mechanism (its §3 table); nothing in
+it widens what a link admits, and nothing here does either.
 
 The split is decided in one place, `packages/mesh/src/join/invite.ts`, not in each caller. `meshInviteOf(target)`
 refuses a device pairing link ("this link pairs a device: run doriface-host mesh pair on the member") and a bare hostId
