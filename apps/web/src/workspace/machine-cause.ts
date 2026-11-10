@@ -37,6 +37,9 @@ const CAUSES: readonly { readonly match: RegExp; readonly detail: (name: string)
 export function machineCause(view: Pick<MachineView, "name" | "state" | "why">): MachineCause | undefined {
   const { name, state } = view;
   if (state === "connected") return undefined;
+  if (state === "reconnecting") {
+    return { title: `Reconnecting to ${name}`, detail: `${name} is reconnecting; try again once it is back.` };
+  }
   if (state === "connecting") return { title: `Connecting to ${name}`, detail: `${name} is being reached now.` };
   if (state === "needs_login") {
     const detail = `It turned down this machine's login. Run hc machine login ${name} here, then try again.`;

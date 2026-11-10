@@ -5,6 +5,7 @@ import { isMeshName } from "./mesh-name.ts";
 // is checked for its exact form: hostIds, names, fingerprints and times, not only their JSON types. Objects are open
 // (#728): a key a newer writer added is dropped, at every level, so a reader built before a field keeps reading a
 // document that carries it. Changing the form of a field a reader knows is a new MESH_STATUS_VERSION, never an edit.
+// A closed set read with `oneOfOrUnknown` is open the same way (#1139): a value a newer writer added reads as `unknown`.
 
 /** The value in its form, without any key the reader does not know; undefined when it has another form. */
 export type Reader<T> = (value: unknown) => T | undefined;
@@ -55,6 +56,11 @@ export const listOf =
   };
 export const oneOf = <T extends string>(...values: readonly T[]): Reader<T> =>
   when((value): value is T => values.some((allowed) => allowed === value));
+/** One of the values, or `unknown` for any other string; a value that is not a string has another form. */
+export const oneOfOrUnknown =
+  <T extends string>(...values: readonly T[]): Reader<T | "unknown"> =>
+  (value) =>
+    typeof value !== "string" ? undefined : (oneOf(...values)(value) ?? "unknown");
 
 /** Every member the shape names, each own and each of its form; members it does not name are dropped. */
 export function objectOf<T>(shape: Shape<T>): Reader<T> {

@@ -17,6 +17,9 @@ export const inputClass = cn(
   "aria-invalid:border-destructive",
 );
 
+/** A compact label kept visible over a field where Field's full label would crowd the surface (a bar, a row, a strip). */
+export const fieldLabelClass = "text-xs font-medium text-muted-foreground";
+
 export function Input({ className, mono = false, invalid, ...props }: InputProps) {
   return (
     <BaseInput

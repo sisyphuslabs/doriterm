@@ -1,7 +1,7 @@
 import { Search } from "lucide-react";
-import { useDeferredValue, useState } from "react";
+import { useDeferredValue, useId, useState } from "react";
 import { cn } from "../lib/cn.ts";
-import { Input } from "./input.tsx";
+import { fieldLabelClass, Input } from "./input.tsx";
 import { SegmentedControl } from "./segmented-control.tsx";
 import { ThemePicker, type ThemeOption } from "./theme-picker.tsx";
 
@@ -31,6 +31,7 @@ const matches = (option: ThemeOption, query: string): boolean =>
 export function ThemeBrowser({ options, dark, light, defaultKind, onPick, className }: ThemeBrowserProps) {
   const [kind, setKind] = useState<ThemeKind>(defaultKind);
   const [search, setSearch] = useState("");
+  const searchId = useId();
   const query = useDeferredValue(search.trim().toLowerCase());
   const of = (wanted: ThemeKind) =>
     options.filter((option) => option.theme.light === (wanted === "light") && matches(option, query));
@@ -41,20 +42,25 @@ export function ThemeBrowser({ options, dark, light, defaultKind, onPick, classN
     options.find((option) => option.id === (wanted === "dark" ? dark : light))?.name ?? "None";
   return (
     <div className={cn("flex flex-col gap-3 py-3", className)}>
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[min(14rem,100%)] flex-1">
-          <Search
-            aria-hidden
-            className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            type="search"
-            aria-label="Search themes"
-            placeholder="Search themes"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className="pl-8"
-          />
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex min-w-[min(14rem,100%)] flex-1 flex-col gap-1">
+          <label htmlFor={searchId} className={cn("px-0.5", fieldLabelClass)}>
+            Search themes
+          </label>
+          <div className="relative">
+            <Search
+              aria-hidden
+              className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              id={searchId}
+              type="search"
+              placeholder="Name or source, e.g. nord"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              className="pl-8"
+            />
+          </div>
         </div>
         <SegmentedControl
           label="Theme list"

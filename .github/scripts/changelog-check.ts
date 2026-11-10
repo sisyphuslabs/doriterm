@@ -5,9 +5,12 @@
  * (changelog-fragments.ts), adds a line under `## Unreleased` in CHANGELOG.md (accepted while open pull requests
  * convert), is a release pull request, or carries the `no-changelog` label for an internal change. A fragment the release
  * cannot place fails whatever else the pull request does. A release pull request adds a `## vX.Y.Z` section with lines,
- * empties Unreleased into it, deletes every fragment (changelog-assemble.ts does both) and sets that version in
- * apps/desktop/package.json; a new heading that does less is refused, so an empty or hand-made section cannot stand in
- * for a changelog line.
+ * moves every Unreleased line into it, deletes every fragment (changelog-assemble.ts does both) and sets that version in
+ * apps/desktop/package.json. Every new section is held to that whatever else the pull request does, a fragment, an
+ * Unreleased line or the label included (#1270), so an empty or hand-made section cannot stand in for a release; a pull
+ * request therefore adds at most one release section, the version it sets (#1194). The one exception is a backfill, a
+ * section for a version older than the one apps/desktop/package.json declares at the base, written for a release that
+ * shipped without one (#815): it needs lines, but it is not a release and does not count as a changelog line.
  *
  * Usage: bun .github/scripts/changelog-check.ts <base sha>
  * Reads the pull request's label names as a JSON array from $PR_LABELS; compares the merge base with HEAD.
@@ -117,15 +120,6 @@ if (problems.length > 0) {
 }
 const addedFragments = written.filter(({ status }) => status === "A").map(({ path }) => path);
 
-if (userFacing.length === 0) {
-  console.log(`Changelog: no user-facing path changed (${changed.length} files), so no line is needed.`);
-  process.exit(0);
-}
-if (labels().includes(EXEMPT_LABEL)) {
-  console.log(`Changelog: the ${EXEMPT_LABEL} label marks this change as internal.`);
-  process.exit(0);
-}
-
 const before = await git("show", `${mergeBase}:CHANGELOG.md`);
 const after = await git("show", "HEAD:CHANGELOG.md");
 const beforeText = before.code === 0 ? before.out : "";
@@ -134,7 +128,57 @@ const afterText = after.code === 0 ? after.out : "";
 const known = unreleasedEntries(beforeText);
 const added = [...unreleasedEntries(afterText)].filter((entry) => !known.has(entry));
 const releasedBefore = releaseHeadings(beforeText);
-const newReleases = [...releaseHeadings(afterText)].filter((version) => !releasedBefore.has(version));
+const newSections = [...releaseHeadings(afterText)].filter((version) => !releasedBefore.has(version));
+
+let newReleases: string[] = [];
+if (newSections.length > 0) {
+  const [versionBefore, versionAfter] = await Promise.all([desktopVersion(mergeBase), desktopVersion("HEAD")]);
+  const isBackfill = (version: string): boolean =>
+    versionBefore !== undefined && Bun.semver.order(version, versionBefore) < 0;
+  newReleases = newSections.filter((version) => !isBackfill(version));
+  const leftFragments = (await mustGit("ls-tree", "-z", "--name-only", "HEAD", `${FRAGMENT_DIR}/`))
+    .split("\0")
+    .filter((path) => path !== "");
+  const stillUnreleased = unreleasedEntries(afterText);
+  const left = [...known].filter((entry) => stillUnreleased.has(entry));
+  const gaveUp = [...known].filter((entry) => !stillUnreleased.has(entry));
+  const refusals = newSections.flatMap((version): string[] => {
+    const entries = sectionEntries(afterText, (line) => RELEASE_HEADING.exec(line)?.[1] === version);
+    const reasons: string[] = [];
+    if (entries.length === 0) reasons.push("it has no lines");
+    if (!isBackfill(version)) {
+      if (versionAfter !== version || versionBefore === version)
+        reasons.push(`this pull request does not set version ${version} in apps/desktop/package.json`);
+      if (left.length > 0) reasons.push(`Unreleased still holds ${left.join(" ")}`);
+      // changelog-assemble.ts writes the lines as they were; rewording them is a later edit of the section (#1190).
+      const dropped = gaveUp.filter((entry) => !entries.includes(entry));
+      if (dropped.length > 0) reasons.push(`it does not hold ${dropped.join(" ")}, which Unreleased gave up`);
+      if (leftFragments.length > 0) {
+        reasons.push(
+          `${leftFragments.join(", ")} still wait to be written into it (bun .github/scripts/changelog-assemble.ts ${version})`,
+        );
+      }
+    }
+    return reasons.length === 0 ? [] : [`v${version}: ${reasons.join("; ")}`];
+  });
+  if (refusals.length > 0) {
+    fail(
+      `This pull request adds a release section that is not a release (${refusals.join(" | ")}). A release pull ` +
+        `request moves every Unreleased line and fragment into the new section and sets that version in ` +
+        `apps/desktop/package.json; any other change adds its own fragment in ${FRAGMENT_DIR}/ or carries the ` +
+        `${EXEMPT_LABEL} label.`,
+    );
+  }
+}
+
+if (userFacing.length === 0) {
+  console.log(`Changelog: no user-facing path changed (${changed.length} files), so no line is needed.`);
+  process.exit(0);
+}
+if (labels().includes(EXEMPT_LABEL)) {
+  console.log(`Changelog: the ${EXEMPT_LABEL} label marks this change as internal.`);
+  process.exit(0);
+}
 
 if (added.length > 0) {
   console.log(`Changelog: ${added.length} new line(s) under Unreleased:\n${added.join("\n")}`);
@@ -145,38 +189,8 @@ if (addedFragments.length > 0) {
   process.exit(0);
 }
 if (newReleases.length > 0) {
-  const [versionBefore, versionAfter] = await Promise.all([desktopVersion(mergeBase), desktopVersion("HEAD")]);
-  const leftFragments = (await mustGit("ls-tree", "-z", "--name-only", "HEAD", `${FRAGMENT_DIR}/`))
-    .split("\0")
-    .filter((path) => path !== "");
-  const stillUnreleased = unreleasedEntries(afterText);
-  const refusals = newReleases.flatMap((version): string[] => {
-    const entries = sectionEntries(afterText, (line) => RELEASE_HEADING.exec(line)?.[1] === version);
-    const reasons: string[] = [];
-    if (entries.length === 0) reasons.push("it has no lines");
-    if (versionAfter !== version || versionBefore === version)
-      reasons.push(`this pull request does not set version ${version} in apps/desktop/package.json`);
-    // The notes are often reworded on the way into the release section, so the lines need not match one for one; what
-    // a release always does is empty Unreleased.
-    const left = [...known].filter((entry) => stillUnreleased.has(entry));
-    if (left.length > 0) reasons.push(`Unreleased still holds ${left.join(" ")}`);
-    if (leftFragments.length > 0) {
-      reasons.push(
-        `${leftFragments.join(", ")} still wait to be written into it (bun .github/scripts/changelog-assemble.ts ${version})`,
-      );
-    }
-    return reasons.length === 0 ? [] : [`v${version}: ${reasons.join("; ")}`];
-  });
-  if (refusals.length === 0) {
-    console.log(`Changelog: release section(s) ${newReleases.map((version) => `v${version}`).join(", ")}.`);
-    process.exit(0);
-  }
-  fail(
-    `This pull request adds a release section that is not a release (${refusals.join(" | ")}). A release pull ` +
-      `request moves every Unreleased line and fragment into the new section and sets that version in ` +
-      `apps/desktop/package.json; any other change adds its own fragment in ${FRAGMENT_DIR}/ or carries the ` +
-      `${EXEMPT_LABEL} label.`,
-  );
+  console.log(`Changelog: release section(s) ${newReleases.map((version) => `v${version}`).join(", ")}.`);
+  process.exit(0);
 }
 
 const shown =

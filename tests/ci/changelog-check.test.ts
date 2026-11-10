@@ -285,6 +285,107 @@ test("a release pull request that leaves fragments behind is not a release", asy
   expect(result.out).toContain("changelog-assemble.ts");
 });
 
+const HAND_MADE = BASE_CHANGELOG.replace("## v1.0.0\n", "## v9.9.9\n\n- Hand-made. (#2)\n\n## v1.0.0\n");
+
+test("a hand-made release section is refused even when a fragment or the label covers the change (#1270)", async () => {
+  const { dir, base } = await repo({
+    "apps/web/src/app.ts": "export const a = 1;\n",
+    "changes/unreleased/2.md": FRAGMENT,
+    "CHANGELOG.md": HAND_MADE,
+  });
+  const results = await Promise.all([[], ["no-changelog"]].map((labels) => check(dir, base, labels)));
+  for (const result of results) {
+    expect(result.code).toBe(1);
+    expect(result.out).toContain("v9.9.9");
+  }
+});
+
+test("a release pull request that adds its own fragment leaves it behind, so it is not a release (#1270)", async () => {
+  const { dir, base } = await repo(
+    {
+      "apps/desktop/package.json": '{ "version": "1.1.0" }\n',
+      "CHANGELOG.md": RELEASED,
+      "changes/unreleased/4.md": FRAGMENT,
+    },
+    {
+      atBase: { "apps/desktop/package.json": '{ "version": "1.0.0" }\n', "changes/unreleased/3.md": FRAGMENT_3 },
+      remove: ["changes/unreleased/3.md"],
+    },
+  );
+  const result = await check(dir, base);
+  expect(result.code).toBe(1);
+  expect(result.out).toContain("changes/unreleased/4.md");
+});
+
+const BACKFILLED = (changelog: string): string => `${changelog}\n## v0.9.0\n\n- Backfilled. (#4)\n`;
+
+const AT_1_0_0 = { "apps/desktop/package.json": '{ "version": "1.0.0" }\n' };
+
+test("a section for a version older than the base's is a backfill, not a release, so it passes beside one (#1194)", async () => {
+  const [docsOnly, withRelease] = await Promise.all([
+    repo({ "CHANGELOG.md": BACKFILLED(BASE_CHANGELOG) }, { atBase: AT_1_0_0 }),
+    repo(
+      { "apps/desktop/package.json": '{ "version": "1.1.0" }\n', "CHANGELOG.md": BACKFILLED(RELEASED) },
+      { atBase: { ...AT_1_0_0, "changes/unreleased/3.md": FRAGMENT_3 }, remove: ["changes/unreleased/3.md"] },
+    ),
+  ]);
+  const results = await Promise.all([check(docsOnly.dir, docsOnly.base), check(withRelease.dir, withRelease.base)]);
+  expect(results.map(({ code }) => code)).toEqual([0, 0]);
+});
+
+test("a backfill is no changelog line for a user-facing change, and an empty one is refused (#1194)", async () => {
+  const [alone, empty] = await Promise.all([
+    repo(
+      { "apps/web/src/app.ts": "export const a = 1;\n", "CHANGELOG.md": BACKFILLED(BASE_CHANGELOG) },
+      { atBase: AT_1_0_0 },
+    ),
+    repo({ "CHANGELOG.md": `${BASE_CHANGELOG}\n## v0.9.0\n` }, { atBase: AT_1_0_0 }),
+  ]);
+  const [unlined, refused] = await Promise.all([
+    check(alone.dir, alone.base),
+    check(empty.dir, empty.base, ["no-changelog"]),
+  ]);
+  expect(unlined.code).toBe(1);
+  expect(refused.code).toBe(1);
+  expect(refused.out).toContain("v0.9.0: it has no lines");
+});
+
+test("a pull request that adds two release sections is refused for the one it does not set (#1194)", async () => {
+  const { dir, base } = await repo(
+    {
+      "apps/desktop/package.json": '{ "version": "1.2.0" }\n',
+      "CHANGELOG.md": RELEASED.replace(
+        "## v1.1.0 - 2026-11-08\n",
+        "## v1.2.0\n\n- Two. (#5)\n\n## v1.1.0 - 2026-11-08\n",
+      ),
+    },
+    {
+      atBase: { "apps/desktop/package.json": '{ "version": "1.0.0" }\n', "changes/unreleased/3.md": FRAGMENT_3 },
+      remove: ["changes/unreleased/3.md"],
+    },
+  );
+  const result = await check(dir, base, ["no-changelog"]);
+  expect(result.code).toBe(1);
+  expect(result.out).toContain("v1.1.0: this pull request does not set version 1.1.0");
+});
+
+test("a release section must hold every line Unreleased gave up, not just one of them (#1190)", async () => {
+  const twoLines = BASE_CHANGELOG.replace("- Already there. (#1)\n", "- Already there. (#1)\n- Also there. (#3)\n");
+  const { dir, base } = await repo(
+    {
+      "apps/desktop/package.json": '{ "version": "1.1.0" }\n',
+      "CHANGELOG.md": BASE_CHANGELOG.replace(
+        "## Unreleased\n\n### Terminals\n\n- Already there. (#1)\n",
+        "## Unreleased\n\n## v1.1.0 - 2026-11-06\n\n### Terminals\n\n- Already there. (#1)\n",
+      ),
+    },
+    { atBase: { "apps/desktop/package.json": '{ "version": "1.0.0" }\n', "CHANGELOG.md": twoLines } },
+  );
+  const result = await check(dir, base);
+  expect(result.code).toBe(1);
+  expect(result.out).toContain("Also there. (#3)");
+});
+
 test("the Changelog workflow runs the check on every pull request event a label can change", () => {
   const workflow = Bun.YAML.parse(
     readFileSync(join(ROOT, ".github", "workflows", "changelog.yml"), "utf8"),
