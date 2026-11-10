@@ -193,10 +193,12 @@ export function PhoneKeys(props: PhoneKeysProps) {
           <Menu
             trigger={trigger}
             align="end"
+            // The terminal takes the focus back itself, in the tap that closes the menu: a phone raises its keyboard only
+            // for a focus made inside the tap, so the menu hands the focus to nothing (not its trigger) as it closes.
+            finalFocus={false}
             onOpenChange={(shown) => {
+              if (!shown) port.current?.focus();
               onMenu(shown);
-              // Closing the menu puts focus back on its trigger; the terminal takes it after, so the keyboard stays.
-              if (!shown) requestAnimationFrame(() => port.current?.focus());
             }}
           >
             {terminals.map((entry) => (

@@ -46,7 +46,7 @@ function LocalFirstRun({ bridge, offline }: { readonly bridge: DesktopBridge; re
     });
   };
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-6 px-6 py-10">
+    <main className="flex min-h-dvh flex-col items-center justify-center gap-6 px-4 py-10 md:px-6">
       <EmptyState
         icon={<Monitor />}
         title="Use this computer or pair a host"
