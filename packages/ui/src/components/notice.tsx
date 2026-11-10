@@ -16,6 +16,13 @@ const TINT = {
   error: "bg-status-blocked/12",
 } as const;
 
+/** Secondary words on the red wash are the ink at reduced alpha, which takes on the wash; a neutral gray reads dirty. */
+const BODY = {
+  info: "text-muted-foreground",
+  warning: "text-muted-foreground",
+  error: "text-foreground/80",
+} as const;
+
 const ICON = { info: Info, warning: TriangleAlert, error: CircleAlert } as const;
 const ICON_TONE = {
   info: "text-muted-foreground",
@@ -37,7 +44,7 @@ export function Notice({ tone = "info", title, children, actions, className }: N
       <Icon aria-hidden className={cn("mt-0.5 size-4 shrink-0", ICON_TONE[tone])} />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-foreground">{title}</p>
-        {children === undefined ? null : <div className="mt-0.5 text-sm text-muted-foreground">{children}</div>}
+        {children === undefined ? null : <div className={cn("mt-0.5 text-sm", BODY[tone])}>{children}</div>}
       </div>
       {actions === undefined ? null : <div className="flex shrink-0 gap-2">{actions}</div>}
     </div>

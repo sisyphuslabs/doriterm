@@ -191,6 +191,11 @@ test("a rename still writing keeps its question: Cancel waits, Escape does nothi
   await expect(question.getByRole("button", { name: "Cancel" })).toBeDisabled();
   await page.keyboard.press("Escape");
   await expect(question).toBeVisible();
+  // So does a click beside the question: the dialog is centred, so the left of its box is the backdrop.
+  const box = await question.boundingBox();
+  if (box === null) throw new Error("the Rename question has no box");
+  await page.mouse.click(Math.max(4, box.x / 2), box.y + box.height / 2);
+  await expect(question).toBeVisible();
 
   // The write is refused on every retry: the question stays up and says why.
   release();
@@ -198,4 +203,43 @@ test("a rename still writing keeps its question: Cancel waits, Escape does nothi
     question.getByText("The layout kept changing on another device, so this change was not saved"),
   ).toBeVisible({ timeout: 15_000 });
   await expect(question).toBeVisible();
+});
+
+test("Enter again while a rename is writing names the space once (#1498)", async ({ page }) => {
+  const before = `rn1498k-${test.info().repeatEachIndex}`;
+  const after = `${before}-b`;
+  startIn(before, "rn1498k-one");
+  const socket = await routeHcSocket(page);
+  await page.goto("/");
+  await expect(spaceRow(page, before)).toBeVisible({ timeout: 20_000 });
+  await spaceRow(page, before).hover();
+  await sidebar(page)
+    .getByRole("button", { name: `More for ${before}` })
+    .click();
+  await page.getByRole("menuitem", { name: "Rename space\u2026" }).click();
+  const question = page.getByRole("dialog", { name: `Rename ${before}` });
+  const field = question.getByRole("textbox", { name: "Name" });
+  await field.fill(after);
+  // A rename is one layout write naming the space, then one label per live terminal naming it.
+  const writes = (): number =>
+    socket.sent().filter((frame) => frame.includes('"method":"doc.set"') && frame.includes(after)).length;
+  const labels = (): number =>
+    socket.sent().filter((frame) => frame.includes('"method":"terminal.label"') && frame.includes(after)).length;
+
+  // The layout write is held, as a slow host would hold it: the rename is in flight, not finished.
+  const release = socket.hold("doc.set");
+  await field.press("Enter");
+  const rename = question.getByRole("button", { name: "Rename" });
+  await expect(rename).toHaveAttribute("aria-busy", "true");
+  await expect.poll(writes, { timeout: 15_000 }).toBe(1);
+  // Enter again while it is writing: the action is busy, so the same rename, not a second one.
+  await field.press("Enter");
+  await expect(rename).toHaveAttribute("aria-busy", "true");
+
+  release();
+  await expect(question).toBeHidden({ timeout: 15_000 });
+  // The second Enter neither wrote the layout nor labelled the terminal again: one rename, once.
+  expect(writes()).toBe(1);
+  expect(labels()).toBe(1);
+  await expect(spaceRow(page, after)).toBeVisible({ timeout: 15_000 });
 });
