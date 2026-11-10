@@ -10,6 +10,7 @@ import { Dictation, type DictationState } from "./dictation.ts";
 import { errorFor } from "./recognizer.ts";
 
 class Shell implements DesktopDictation {
+  readonly unavailableReason = "device-mac";
   onDevice = true;
   answer: { readonly session: number } = { session: 1 };
   readonly starts: string[] = [];
@@ -104,7 +105,7 @@ describe("the macOS app's dictation through the system recognizer", () => {
     expect(shell.starts).toEqual([]);
   });
 
-  test.each(["mic-system", "speech-system", "device-mac"] as const)(
+  test.each(["mic-system", "speech-system", "device-mac", "mic-windows", "device-windows"] as const)(
     "a start refused with %s shows that reason, and Try again starts afresh",
     async (refused) => {
       const shell = new Shell();
@@ -179,6 +180,7 @@ describe("the bridge boundary", () => {
       onDictationEvent: () => undefined,
     };
     expect(desktopDictation({ doriface: full })).not.toBeNull();
+    expect(desktopDictation({ doriface: { ...full, platform: "win32" } })?.unavailableReason).toBe("device-windows");
     expect(desktopDictation({ doriface: { ...full, onDictationEvent: undefined } })).toBeNull();
     expect(desktopDictation({})).toBeNull();
   });
