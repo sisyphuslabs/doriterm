@@ -2,6 +2,7 @@
 // the tab (#1271). The kill is held at the page's socket, so the order is decided by the code, not by a clock.
 import type { Page } from "@playwright/test";
 import { expect, openNewTerminal, terminalCount, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { runSleep } from "./close-confirm.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { hcOn } from "./machine-switch.ts";
@@ -12,9 +13,6 @@ const kept: string[] = [];
 test.afterEach(() => {
   for (const address of kept.splice(0)) hcOn("host", ["kill", address]);
 });
-
-const CLOSE_PANE = process.platform === "darwin" ? "Meta+KeyW" : "Control+Shift+X";
-const CLOSE_TAB = process.platform === "darwin" ? "Meta+Alt+KeyW" : "Control+Shift+KeyW";
 
 const pane = (page: Page, address: string) => page.locator(`[data-terminal="${address}"]`);
 const running = (page: Page, count: number) =>
@@ -29,7 +27,7 @@ test("closing a pane takes it away while its kill is still on the way", async ({
   const { before } = await terminalCount(page);
   const release = link.hold("terminal.kill");
   await terminal.getByRole("textbox").focus();
-  await page.keyboard.press(CLOSE_PANE);
+  await pressShortcut(page, "pane.close");
   await expect(pane(page, address)).toHaveCount(0);
   await running(page, before);
   release();
@@ -47,7 +45,7 @@ test("a close the person confirmed leaves with its question, while its kill is s
   const { before } = await terminalCount(page);
   const release = link.hold("terminal.kill");
   await terminal.getByRole("textbox").focus();
-  await page.keyboard.press(CLOSE_PANE);
+  await pressShortcut(page, "pane.close");
   await page
     .getByRole("dialog", { name: /^Close .+\?$/ })
     .getByRole("button", { name: "Close" })
@@ -76,7 +74,7 @@ test("closing a tab of two panes takes the tab away while its kills are still on
   await expect(panes.last()).toContainText("$", { timeout: 15_000 });
   kept.push(...(await panes.evaluateAll((els) => els.map((el) => el.getAttribute("data-terminal") ?? ""))));
   const release = link.hold("terminal.kill");
-  await page.keyboard.press(CLOSE_TAB);
+  await pressShortcut(page, "tab.close");
   await expect(page.getByRole("tab")).toHaveCount(tabs - 1);
   await running(page, before + 1);
   release(true);

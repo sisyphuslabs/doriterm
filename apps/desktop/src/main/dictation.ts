@@ -6,7 +6,7 @@ import {
   isDictationLanguage,
 } from "../shared/bridge.ts";
 
-/** The native addon (native/speech/speech.mm): macOS's own recognizer, on the device only, in this process (#726). */
+/** The native addon: macOS Speech or Windows SAPI, on the device only, in this process. */
 export interface SpeechAddon {
   /** Whether this app's Info.plist carries both usage strings; without them macOS would end the app on a request. */
   ready(): boolean;
@@ -45,13 +45,15 @@ interface Current {
 export class DictationHost {
   readonly #addon: SpeechAddon;
   readonly #microphone: Microphone;
+  readonly #platform: "darwin" | "win32";
   #current: Current | null = null;
   /** The page waiting on the system's prompts; a reload, navigation or close while they are open cancels its start. */
   #pending: { readonly ownerId: number; dropped: boolean } | null = null;
 
-  constructor(addon: SpeechAddon, microphone: Microphone) {
+  constructor(addon: SpeechAddon, microphone: Microphone, platform: "darwin" | "win32" = "darwin") {
     this.#addon = addon;
     this.#microphone = microphone;
+    this.#platform = platform;
   }
 
   available(lang: unknown): boolean {
@@ -112,6 +114,13 @@ export class DictationHost {
 
   async #permitted(lang: string): Promise<DictationStartAnswer | null> {
     const microphone = this.#microphone.status();
+    if (this.#platform === "win32") {
+      // Windows has a global desktop-app microphone setting, not a per-app prompt or SAPI speech permission.
+      // Read it again on every start so Try again works after Settings changes without restarting the app.
+      if (microphone !== "granted") return { refused: "mic-windows" };
+      if (!this.#addon.supportsOnDevice(lang)) return { refused: "device-windows" };
+      return null;
+    }
     if (microphone === "not-determined") {
       if (!(await this.#microphone.ask())) return { refused: "mic-system" };
     } else if (microphone !== "granted") return { refused: "mic-system" };

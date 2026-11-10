@@ -1,8 +1,8 @@
 // docs/getting-started.md, end to end through the hosted relay (#672): the desktop app starts this computer's host,
-// Settings > Connect a machine > Pair a device shows its QR code, and a fresh browser opens what that QR code encodes, the
-// hosted web app's pair page, checks the key, pairs and types into a terminal on this computer. Nothing is stood in:
-// the host dials relay-doriface.omo.dev and the page is doriface.omo.dev, as for a user. The release smoke runs it
-// against the downloaded AppImage, and the From zero workflow against a packed build.
+// Settings > Machines > Connect a machine > Pair a device shows its QR code, and a fresh browser opens what that QR code
+// encodes, the hosted web app's pair page, checks the key, pairs and types into a terminal on this computer. Nothing is
+// stood in: the host dials relay-doriface.omo.dev and the page is doriface.omo.dev, as for a user. The release smoke
+// runs it against the downloaded AppImage, and the From zero workflow against a packed build.
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -58,8 +58,8 @@ test("a fresh browser pairs with the desktop app through the hosted relay and ty
   await page.goto(`${originOf(page)}/settings`);
   await page
     .getByRole("navigation", { name: "Settings", exact: true })
-    .getByRole("button", { name: "Connect a machine", exact: true })
-    .or(page.getByRole("tab", { name: "Connect a machine", exact: true }))
+    .getByRole("button", { name: "Machines", exact: true })
+    .or(page.getByRole("tab", { name: "Machines", exact: true }))
     .filter({ visible: true })
     .click();
   await page.getByRole("button", { name: "Pair a device", exact: true }).click();

@@ -202,10 +202,27 @@ test("a block split across two fallback faces keeps every wide glyph's ink insid
     expect.soft(glyph.ink.left, `${glyph.text}: ink starts inside`).toBeGreaterThanOrEqual(glyph.box.left - 0.5);
     expect.soft(glyph.ink.right, `${glyph.text}: ink ends inside`).toBeLessThanOrEqual(glyph.box.right + 0.5);
   }
-  // Hangul and kana still fill their two cells: their size does not change.
+  // Hangul and kana still reach the width Ghostty's fallback rule gives a wide glyph: min(ASCII ink height, two cells).
+  // `advance > box - 1` held only where Chromium rounds a glyph's ink box out to whole pixels (Linux), which inflates
+  // that cap to nearly the two cells; with exact ink metrics it is 13.66 px against a 16 px box (#862).
+  const ideograph = await terminal.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const context = document.createElement("canvas").getContext("2d");
+    if (context === null) throw new Error("no canvas");
+    context.font = `${style.fontSize} ${style.fontFamily}`;
+    let ascent = 0;
+    let descent = 0;
+    for (let code = 0x21; code < 0x7f; code++) {
+      const ink = context.measureText(String.fromCharCode(code));
+      ascent = Math.max(ascent, ink.actualBoundingBoxAscent);
+      descent = Math.max(descent, ink.actualBoundingBoxDescent);
+    }
+    return Math.min(ascent + descent, 2 * Number.parseFloat(style.getPropertyValue("--term-cell-width")));
+  });
   for (const glyph of glyphs.filter(({ text }) => /[\u{AC00}-\u{D7A3}\u{3040}-\u{30FF}]/u.test(text))) {
-    const box = glyph.box.right - glyph.box.left;
-    expect.soft(glyph.advance.right - glyph.advance.left, `${glyph.text}: fills its cells`).toBeGreaterThan(box - 1);
+    expect
+      .soft(glyph.advance.right - glyph.advance.left, `${glyph.text}: reaches its ideograph width`)
+      .toBeGreaterThanOrEqual(ideograph - 1);
   }
 });
 

@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { pickFile } from "./file-input";
 import { expect, terminalCount, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
@@ -9,10 +10,6 @@ const AIR_VIEWPORTS = [
   { width: 1470, height: 956 },
   { width: 1280, height: 800 },
 ] as const;
-
-/** The close shortcut that exits Settings: Close pane on macOS, Close tab elsewhere. */
-const CLOSE_TAB = process.platform === "darwin" ? "Meta+KeyW" : "Control+Shift+KeyW";
-const SETTINGS = "ControlOrMeta+Comma";
 
 /** Opens Settings from the workspace the way a person does, so there is a view to return to. */
 async function openSettings(page: Page, section?: string): Promise<void> {
@@ -49,25 +46,30 @@ for (const viewport of AIR_VIEWPORTS) {
 
     test("the settings shortcut toggles Settings closed", async ({ page }) => {
       await openSettings(page);
-      await page.keyboard.press(SETTINGS);
+      await pressShortcut(page, "app.settings");
       await expectWorkspace(page);
     });
 
     test("the close-tab shortcut closes Settings", async ({ page }) => {
       await openSettings(page);
-      await page.keyboard.press(CLOSE_TAB);
+      await pressShortcut(page, "tab.close");
       await expectWorkspace(page);
     });
 
-    for (const key of ["Escape", CLOSE_TAB, SETTINGS]) {
+    for (const [key, action] of [
+      ["Escape", null],
+      ["the close-tab key", "tab.close"],
+      ["the settings key", "app.settings"],
+    ] as const) {
       test(`${key} closes an open dialog's layer first and never Settings under it`, async ({ page }) => {
         await openSettings(page, "Keybindings");
         const dialog = await openImportDialog(page);
-        await page.keyboard.press(key);
+        if (action === null) await page.keyboard.press("Escape");
+        else await pressShortcut(page, action);
         await expect(page).toHaveURL(/\/settings$/);
-        if (key === "Escape") await expect(dialog).toBeHidden();
+        if (action === null) await expect(dialog).toBeHidden();
         else await expect(dialog).toBeVisible();
-        if (key !== "Escape") await page.keyboard.press("Escape");
+        if (action !== null) await page.keyboard.press("Escape");
         await expect(dialog).toBeHidden();
         await page.keyboard.press("Escape");
         await expectWorkspace(page);
@@ -86,15 +88,15 @@ for (const viewport of AIR_VIEWPORTS) {
       await expectWorkspace(page);
     });
 
-    for (const [key, owner] of [
-      [CLOSE_TAB, process.platform === "darwin" ? "Close pane" : "Close tab"],
-      [SETTINGS, "Open settings"],
+    for (const [action, owner] of [
+      ["tab.close", "Close tab"],
+      ["app.settings", "Open settings"],
     ] as const) {
-      test(`a recording takes ${key} as the new shortcut instead of leaving Settings`, async ({ page }) => {
+      test(`a recording takes the ${owner} key as the new shortcut instead of leaving Settings`, async ({ page }) => {
         await openSettings(page, "Keybindings");
         await page.getByRole("button", { name: "Record a shortcut for New tab" }).click();
         await expect(page.getByRole("status")).toHaveText("Press keys…");
-        await page.keyboard.press(key);
+        await pressShortcut(page, action);
         await expect(page).toHaveURL(/\/settings$/);
         await expect(page.getByText(`is ${owner}.`)).toBeVisible();
         await expect(page.getByRole("button", { name: "Replace" })).toBeVisible();

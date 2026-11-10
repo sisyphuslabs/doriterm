@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, openNewTerminal, terminalCount, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
 
 endOwnTerminals();
@@ -16,7 +17,7 @@ test("focus stays inside the open palette and returns to the terminal that opene
   await page.goto("/");
   const opener = (await openNewTerminal(page)).getByRole("textbox");
   await opener.focus();
-  await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+  await pressShortcut(page, "app.palette");
   await expect(combobox(page)).toBeFocused();
 
   for (const key of ["Tab", "Tab", "Tab", "Shift+Tab", "Shift+Tab", "Shift+Tab", "Shift+Tab"]) {
@@ -37,7 +38,7 @@ test("the palette offers Split right as the toolbar does, and runs the same acti
   const before = await tabs.count();
   const row = page.getByRole("option", { name: /^Split right/ });
 
-  await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+  await pressShortcut(page, "app.palette");
   await expect(row).toBeVisible();
   await expect(row).not.toHaveAttribute("aria-disabled", "true");
   await row.click();
@@ -54,7 +55,7 @@ test("the palette runs Filter the sidebar: it closes and the filter field takes 
   await openNewTerminal(page);
   const row = page.getByRole("option", { name: /^Filter the sidebar/ });
 
-  await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+  await pressShortcut(page, "app.palette");
   await expect(row).toBeVisible();
   await row.click();
   await expect(dialog(page)).toBeHidden();
