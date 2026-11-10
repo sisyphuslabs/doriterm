@@ -1,5 +1,5 @@
 {
-  "measured": "A/A noise: Render bench run 42196735742 (bench/670-noise, ubuntu-24.04, 5 rounds, self-a vs self-b); Close prompt: run 42338764501 (bench/986-close-prompt-noise, same setup); A/B: run 42196737507 (bench/670, v0.1.2 vs candidate). See docs/render-bench.md. Long-task time, the ungated main busy at 50 panes and the unpaced drawn bytes per second (#844): A/A run 42328540413 (bench/844-gates-noise), A/B run 42328540737 (bench/844-gates, against v0.1.5, whose web code is the candidate's).",
+  "measured": "A/A noise: Render bench run 42196735742 (bench/670-noise, ubuntu-24.04, 5 rounds, self-a vs self-b); Close prompt: run 42338764501 (bench/986-close-prompt-noise, same setup); A/B: run 42196737507 (bench/670, v0.1.2 vs candidate). See docs/render-bench.md. Long-task time, the ungated main busy at 50 panes and the unpaced drawn bytes per second (#844): A/A run 42328540413 (bench/844-gates-noise), A/B run 42328540737 (bench/844-gates, against v0.1.5, whose web code is the candidate's). Unpaced drawn bytes per second with the unpaced phase after the prompt phase, as merged: A/A run 42566564456 (dev 47bfb6b5, same setup).",
   "limits": {
     "frameP95": {
       "ratio": 1.25,
@@ -25,7 +25,7 @@
     "drawnBytesPerSec": {
       "ratio": 0.85,
       "floor": 0,
-      "why": "unpaced phase (#844): A/A medians moved 7.5% at 1 pane (single rounds 774 to 884 KiB/s), 1.4% at 15 and 0.5% at 50"
+      "why": "unpaced phase (#844), after the prompt phase: A/A medians moved 2.9% at 1 pane (single rounds 744 to 846 KiB/s), 0.9% at 15 and 0.9% at 50 (run 42566564456). With the phase right after the hidden one they moved 7.5% at 1 pane (774 to 884 KiB/s), 1.4% and 0.5% (run 42328540413)"
     },
     "heapMB": {
       "ratio": 1.25,

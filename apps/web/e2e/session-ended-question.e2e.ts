@@ -4,15 +4,13 @@ import { execFileSync } from "node:child_process";
 import type { Page } from "@playwright/test";
 import { E2E_HOST_ENV } from "./config.ts";
 import { expect, openNewTerminal, terminalCount, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { setConfirmClose } from "./close-confirm.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { readSavedEnv } from "./saved-env.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
-
-/** The default close-tab shortcut on this platform's keymap (Cmd+W on macOS, Ctrl+Shift+W elsewhere). */
-const CLOSE_TAB = process.platform === "darwin" ? "Meta+KeyW" : "Control+Shift+KeyW";
 
 function hc(...args: string[]): string {
   const { hc: bin, env } = readSavedEnv(E2E_HOST_ENV);
@@ -72,7 +70,7 @@ test("Cmd+W's question whose session ends under it says the session ended, and o
   await named(page);
 
   await terminal.getByRole("textbox").focus();
-  await page.keyboard.press(CLOSE_TAB);
+  await pressShortcut(page, "tab.close");
   const ask = dialog(page, `Close ${NAME}?`);
   await expect(ask).toBeVisible();
 
@@ -152,7 +150,7 @@ test("closing from Cmd+W's question ends the session with no notice that it ende
   const { before } = await terminalCount(page);
 
   await terminal.getByRole("textbox").focus();
-  await page.keyboard.press(CLOSE_TAB);
+  await pressShortcut(page, "tab.close");
   const ask = page.getByRole("dialog", { name: /^Close .+\?$/ });
   await ask.getByRole("button", { name: "Close" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);

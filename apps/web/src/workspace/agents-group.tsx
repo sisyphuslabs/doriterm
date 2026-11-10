@@ -17,6 +17,7 @@ import { useAskSession } from "./session-context.ts";
 import { filterAgentGroups } from "./sidebar-filter.ts";
 import { agentGroups, type AgentSort } from "./sidebar-model.ts";
 import { useAgentSort } from "./sidebar-prefs.ts";
+import { useAgentPlaces } from "./use-agent-places.ts";
 import { usePin } from "./use-pin.ts";
 import { useNow } from "./use-now.ts";
 import { useTodoOf } from "./todo-progress.ts";
@@ -105,7 +106,7 @@ function AgentActions({ agent }: { readonly agent: Agent }) {
         // smaller inside the same box and would shrink under the pointer (#1562). Only Unpin stands in for that pin; an
         // unpinned row's Pin to top keeps the actions' own size, the same as More beside it (#1555).
         icon={pinned ? <Pin className="fill-current" /> : <Pin />}
-        className={pinned ? "size-6 coarse:hidden [&_svg]:size-3.5" : "size-6 coarse:hidden"}
+        className={pinned ? "size-6 coarse:hidden [&_svg:not([data-slot=spinner])]:size-3.5" : "size-6 coarse:hidden"}
         onClick={() => pin(agent.id, !pinned)}
       />
       <Menu
@@ -126,9 +127,10 @@ export function AgentsGroup({ terminals, active, onOpen, rail = false, heading =
   const now = useNow();
   const [sort] = useAgentSort();
   const todoOf = useTodoOf();
+  const places = useAgentPlaces(terminals);
   const all = useMemo(
     () =>
-      agentGroups(terminals, now, sort).map((group) =>
+      agentGroups(terminals, now, sort, places).map((group) =>
         Object.assign({}, group, {
           agents: group.agents.map((agent) => {
             const todo = todoOf(agent.id);
@@ -136,7 +138,7 @@ export function AgentsGroup({ terminals, active, onOpen, rail = false, heading =
           }),
         }),
       ),
-    [terminals, now, sort, todoOf],
+    [terminals, now, sort, places, todoOf],
   );
   const groups = useMemo(() => filterAgentGroups(all, query, active), [all, query, active]);
   const list = (
