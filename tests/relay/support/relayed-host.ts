@@ -73,6 +73,8 @@ export interface RelayedHostOptions {
   /** For tests of this helper: the relay the host dials, instead of the local one. */
   readonly hostRelayUrl?: string;
   readonly uplinkTimeoutMs?: number;
+  /** How long the host keeps a session whose link dropped for a resume (the host's default, 120 s, otherwise). */
+  readonly resumeGraceMs?: number;
   /** Wraps the sockets the host's uplink and the clients open, e.g. to capture what the relay forwards. */
   readonly wrapSockets?: (base: CreateSocket) => { readonly host: CreateSocket; readonly client: CreateSocket };
   /** Origins of a test push service the host may post web push notices to. */
@@ -135,6 +137,7 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
       stateDir,
       relay: { url: options.hostRelayUrl ?? relay.url, createSocket: sockets.host },
       pushTestOrigins: options.pushTestOrigins,
+      resumeGraceMs: options.resumeGraceMs,
       log: (line) => {
         logs.push(line);
         options.onLog?.(line);
