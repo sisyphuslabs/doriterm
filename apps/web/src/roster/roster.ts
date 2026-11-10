@@ -78,6 +78,8 @@ export class Roster {
   readonly #options: RosterOptions;
   readonly #listeners = new Set<() => void>();
   readonly #changes = new Set<(change: RosterChange) => void>();
+  /** Doc events heard for a machine the last list did not hold a document for, by the name hc used: versions. */
+  readonly #unheard = new Map<string, { readonly layout?: number; readonly pins?: number }>();
   readonly #docHeard = new Set<DocHeard>();
   readonly #gaps = new Set<() => void>();
   #connection: RosterLink;
@@ -96,6 +98,7 @@ export class Roster {
         this.#snapshot = { ...this.#snapshot, machines: read };
         this.docs.sync(this.#wanted(), false);
         this.pins.sync(this.#wanted(), false);
+        this.#replayUnheard();
         this.#emit();
         for (const change of changes) for (const listener of this.#changes) listener(change);
       },
@@ -227,12 +230,35 @@ export class Roster {
     for (const listener of this.#docHeard) listener(machine, name, version);
     if (name === ORDER_DOC && machine === null) void this.order.heard(version);
     if (name !== LAYOUT_DOC && name !== PINS_DOC) return;
+    const docs = name === PINS_DOC ? this.pins : this.docs;
     const id = machine === null ? null : this.machines.read.views.find((view) => view.name === machine)?.id;
-    if (id === undefined) void this.machines.refresh();
-    else (name === PINS_DOC ? this.pins : this.docs).heard(id, version);
+    if (id !== undefined && docs.live(id) !== undefined) return docs.heard(id, version);
+    // The list is behind this event: the machine is unlisted, listed under an old name, or not connected yet, so no
+    // document of its is held. Keep what was heard by the name hc used and read the list again; the answer replays it.
+    if (machine === null) return;
+    const heard = this.#unheard.get(machine) ?? {};
+    this.#unheard.set(machine, name === PINS_DOC ? { ...heard, pins: version } : { ...heard, layout: version });
+    void this.machines.refresh();
+  }
+
+  /** Each event the list was behind, now that a list carries its machine's name and that machine's documents are held. */
+  #replayUnheard(): void {
+    for (const [name, heard] of this.#unheard) {
+      const id = this.machines.read.views.find((view) => view.name === name)?.id;
+      if (id === undefined) continue;
+      const layout = this.docs.live(id);
+      const pins = this.pins.live(id);
+      if (heard.layout !== undefined && layout !== undefined) void layout.heard(heard.layout);
+      if (heard.pins !== undefined && pins !== undefined) void pins.heard(heard.pins);
+      if ((heard.layout === undefined || layout !== undefined) && (heard.pins === undefined || pins !== undefined)) {
+        this.#unheard.delete(name);
+      }
+    }
   }
 
   #gap(): void {
+    // A gap reads every held document again, so nothing heard before it is still owed.
+    this.#unheard.clear();
     this.docs.sync(this.#wanted(), true);
     this.pins.sync(this.#wanted(), true);
     void this.order.refresh();

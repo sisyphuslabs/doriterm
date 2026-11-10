@@ -62,37 +62,50 @@ export class RosterFeed {
     }, this.#fail);
     const feed = this.#connection.subscribe();
     this.#feed = feed;
-    feed.then((subscribed) => {
-      if (this.#closed || this.#feed !== feed) {
-        subscribed.close();
-        return subscribed;
-      }
-      this.#reopens = 0;
-      this.#map = fromSnapshot(subscribed.snapshot);
-      this.#publish();
-      this.#sink.gap();
-      subscribed.onSnapshot((snapshot) => {
-        this.#map = fromSnapshot(snapshot);
+    feed.then(
+      (subscribed) => {
+        if (this.#closed || this.#feed !== feed) {
+          subscribed.close();
+          return subscribed;
+        }
+        this.#reopens = 0;
+        this.#map = fromSnapshot(subscribed.snapshot);
         this.#publish();
         this.#sink.gap();
-      });
-      subscribed.onEvent((event) => {
-        this.#sink.event(event);
-        const next = applyEvent(this.#map, event);
-        if (next === this.#map) return;
-        this.#map = next;
-        this.#publish();
-      });
-      subscribed.onClose((info) => {
-        if (this.#closed || this.#feed !== feed || info.reason === "detached") return;
+        subscribed.onSnapshot((snapshot) => {
+          this.#map = fromSnapshot(snapshot);
+          this.#publish();
+          this.#sink.gap();
+        });
+        subscribed.onEvent((event) => {
+          this.#sink.event(event);
+          const next = applyEvent(this.#map, event);
+          if (next === this.#map) return;
+          this.#map = next;
+          this.#publish();
+        });
+        subscribed.onClose((info) => {
+          if (this.#closed || this.#feed !== feed || info.reason === "detached") return;
+          this.#feed = undefined;
+          this.#reopen();
+        });
+        return subscribed;
+      },
+      (cause: unknown) => {
+        this.#fail(cause);
+        // A reopen that fails is tried again, backing off as a close does; only the first open waits for Try again (#819).
+        if (this.#closed || this.#feed !== feed || !this.#loaded) return;
         this.#feed = undefined;
-        if (this.#connection.closed) return;
-        const inMs = Math.min(REOPEN_MS * 2 ** this.#reopens, REOPEN_CAP_MS);
-        this.#reopens += 1;
-        this.#pendingReopen = this.#schedule(() => this.start(), inMs);
-      });
-      return subscribed;
-    }, this.#fail);
+        this.#reopen();
+      },
+    );
+  }
+
+  #reopen(): void {
+    if (this.#connection.closed) return;
+    const inMs = Math.min(REOPEN_MS * 2 ** this.#reopens, REOPEN_CAP_MS);
+    this.#reopens += 1;
+    this.#pendingReopen = this.#schedule(() => this.start(), inMs);
   }
 
   close(): void {

@@ -241,3 +241,57 @@ describe("a dropped and restored connection reconciles without duplicating or lo
     stop();
   });
 });
+
+describe("a doc event is never lost to a machine list that is behind it (#1876 review)", () => {
+  test("a layout event from a machine listed as still connecting lists it again and reads that layout", async () => {
+    const core = new FakeCore();
+    core.machines = [machine("rohan", "connecting")];
+    const { roster, stop } = rosterOn(core);
+    await settled(roster);
+    expect(spaceIds(roster, "rohan-id")).toBeUndefined();
+
+    core.machines = [machine("rohan")];
+    core.setDoc(LAYOUT_DOC, { spaces: [space("r1")] }, "rohan");
+
+    await until(roster, () => spaceIds(roster, "rohan-id")?.includes("r1") === true, "rohan's layout after its event");
+    stop();
+  });
+
+  test("a layout event under a machine's new name reads that layout again once the list carries the name", async () => {
+    const core = new FakeCore();
+    core.machines = [machine("rohan")];
+    core.setDoc(LAYOUT_DOC, { spaces: [space("r1")] }, "rohan", true);
+    const { roster, stop } = rosterOn(core);
+    await settled(roster);
+    await until(roster, () => spaceIds(roster, "rohan-id")?.includes("r1") === true, "rohan's first layout");
+
+    core.machines = [{ ...machine("rivendell"), id: "rohan-id" }];
+    // The fake keys documents by name; hc keeps a renamed machine's document and its version, so carry it over quietly.
+    core.setDoc(LAYOUT_DOC, { spaces: [space("r1")] }, "rivendell", true);
+    core.setDoc(LAYOUT_DOC, { spaces: [space("r1"), space("r2")] }, "rivendell");
+
+    await until(
+      roster,
+      () => spaceIds(roster, "rohan-id")?.includes("r2") === true,
+      "the layout the renamed event announced",
+    );
+    stop();
+  });
+});
+
+test("a feed whose reopen fails is opened again later, and the documents are read again with it", async () => {
+  const core = new FakeCore();
+  core.setDoc(LAYOUT_DOC, { spaces: [space("s1")] }, null, true);
+  const { roster, stop } = rosterOn(core);
+  await settled(roster);
+  const feed = core.feeds.at(-1);
+  if (feed === undefined) throw new Error("no feed opened");
+
+  core.failSubscribes = 1;
+  core.setDoc(LAYOUT_DOC, { spaces: [space("s1"), space("s2")] }, null, true);
+  feed.end("closed_by_core");
+
+  await until(roster, () => spaceIds(roster, null)?.includes("s2") === true, "the re-read after the second reopen");
+  expect(core.feeds).toHaveLength(2);
+  stop();
+});

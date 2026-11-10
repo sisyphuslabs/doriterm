@@ -19,7 +19,13 @@ const MESH_DOCS: ReadonlySet<string> = new Set([MESH_STATUS_DOC, MESH_APPROVAL_D
 export const meshCallsOf = (connection: HcConnection, roster: Roster): MeshCalls => ({
   doc: (name) => connection.call("doc.get", { name }),
   setDoc: (name, value, version) => connection.call("doc.set", { name, value, version }),
-  machines: () => roster.refreshMachines().then(() => roster.snapshot.machines.views),
+  // The roster keeps a failed read as `error` beside the machines it read before; the mesh read says it failed (#1876).
+  machines: () =>
+    roster.refreshMachines().then(() => {
+      const { views, error } = roster.snapshot.machines;
+      if (error !== undefined) throw new Error(error);
+      return views;
+    }),
 });
 
 /**

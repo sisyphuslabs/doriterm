@@ -62,6 +62,10 @@ export class FakeCore {
   readonly feeds: FakeFeed[] = [];
   machines: readonly MachineView[] = [];
   terminals: readonly Terminal[] = [];
+  /** How many of the next `events.subscribe` calls fail, as a reopen against a core that is restarting would. */
+  failSubscribes = 0;
+  /** Whether `machine.list` fails, as it does while hc cannot reach the machine table. */
+  failMachineList = false;
   readonly #docs = new Map<string, Doc>();
   #seq = 0;
 
@@ -92,7 +96,13 @@ export class FakeCore {
         return closed;
       },
       call: (method: HcMethod, params?: unknown) => this.#call(method, params),
-      subscribe: async (): Promise<FeedLink> => this.#feed(),
+      subscribe: async (): Promise<FeedLink> => {
+        if (this.failSubscribes > 0) {
+          this.failSubscribes -= 1;
+          throw refused("unavailable", "events.subscribe failed");
+        }
+        return this.#feed();
+      },
       drop: () => {
         closed = true;
         for (const feed of this.feeds) if (!feed.ended()) feed.end("connection_closed");
@@ -115,6 +125,7 @@ export class FakeCore {
           machines: this.machines,
         } satisfies HcResult<"terminal.list">;
       case "machine.list":
+        if (this.failMachineList) throw refused("unavailable", "machine.list failed");
         return { machines: this.machines } satisfies HcResult<"machine.list">;
       case "doc.get":
         this.#known(on);
