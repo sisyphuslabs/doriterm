@@ -18,9 +18,10 @@ export interface TerminalPort {
   /**
    * Lets the field go ahead of a press that will ask for the keyboard, so that the press's own focus is a fresh one:
    * on iOS a field a tap focused, let go and focused again inside one click, raises nothing (#1940). A surface with no
-   * soft keyboard keeps its field, and so does a field that has no focus to let go of.
+   * soft keyboard keeps its field, and so does a field that has no focus to let go of. `button` is the pressed control:
+   * a press that lifts off it gives the field back.
    */
-  readonly letGo: () => void;
+  readonly letGo: (button?: Element) => void;
   /** Puts the soft keyboard down: the field asks for none again until the keys ask for one (#1375). */
   readonly quiet: () => void;
 }
@@ -85,40 +86,50 @@ export function quietKeyboard(element: HTMLElement): void {
   if (field.ownerDocument.activeElement !== field) field.inputMode = "none";
 }
 
-/** Fields let go on a press's pointerdown, each with the release that ends that press if its click never comes. */
+/** Fields let go on a press's pointerdown, each with the detach that ends that press's hold. */
 const pressing = new WeakMap<EventTarget, () => void>();
 
 /**
  * Holds the field as the port's own from the press's pointerdown until the click takes it again, so the program hears
- * neither the blur nor the focus (#1519, #1940). A press that ends with no click (the finger slid into a scroll, or the
- * browser cancelled it) gives the field its focus back, still marked, so the terminal is never left without the focus
- * the program was not told it lost.
+ * neither the blur nor the focus (#1519, #1940). A press that ends with no click on its button gives the field its focus
+ * back, still marked, so the terminal is never left without the focus the program was not told it lost: the browser
+ * cancelled it, the pointer lifted off the button, or the click went to another element. A scroll is not an end: the
+ * terminal scrolls itself while it follows output, and a tap the browser turns into a page scroll is cancelled.
  */
-function holdForPress(field: HTMLTextAreaElement, refocus: () => void): void {
+function holdForPress(field: HTMLTextAreaElement, refocus: () => void, button: Element | undefined): void {
   const view = field.ownerDocument.defaultView;
   const release = (): void => {
-    view?.removeEventListener("pointercancel", release, true);
-    view?.removeEventListener("scroll", release, true);
-    if (pressing.get(field) !== release) return;
-    pressing.delete(field);
+    if (pressing.get(field) !== detach) return;
+    detach();
     if (field.ownerDocument.activeElement !== field) refocus();
     queueMicrotask(() => regaining.delete(field));
   };
-  pressing.set(field, release);
+  const lifted = (event: Event): void => {
+    if (!("clientX" in event) || typeof event.clientX !== "number" || !("clientY" in event)) return;
+    if (typeof event.clientY !== "number") return;
+    const under = field.ownerDocument.elementFromPoint(event.clientX, event.clientY);
+    if (button === undefined || under === null || !button.contains(under)) release();
+  };
+  const detach = (): void => {
+    pressing.delete(field);
+    view?.removeEventListener("pointercancel", release, true);
+    view?.removeEventListener("pointerup", lifted, true);
+    view?.removeEventListener("click", release);
+  };
+  pressing.set(field, detach);
   regaining.add(field);
   view?.addEventListener("pointercancel", release, true);
-  view?.addEventListener("scroll", release, true);
+  view?.addEventListener("pointerup", lifted, true);
+  // Bubbling, after the button's own handler: a click the press's focus already took has ended the hold by then.
+  view?.addEventListener("click", release);
 }
 
 /** Ends a press's hold as its click takes the field: the focus that follows is the hold's last part (#1519). */
 function endHold(field: HTMLTextAreaElement | null): boolean {
   if (field === null) return false;
-  const release = pressing.get(field);
-  if (release === undefined) return false;
-  const view = field.ownerDocument.defaultView;
-  view?.removeEventListener("pointercancel", release, true);
-  view?.removeEventListener("scroll", release, true);
-  pressing.delete(field);
+  const detach = pressing.get(field);
+  if (detach === undefined) return false;
+  detach();
   return true;
 }
 
@@ -156,11 +167,11 @@ export function portOf(
       // The press let the field go on its pointerdown; this focus was the last part the program is not told about.
       if (held && field !== null) queueMicrotask(() => regaining.delete(field));
     },
-    letGo: () => {
+    letGo: (button) => {
       if (!softKeyboard) return;
       const field = fieldOf(handle);
       if (field === null || field.ownerDocument.activeElement !== field) return;
-      holdForPress(field, () => handle.current?.focus());
+      holdForPress(field, () => handle.current?.focus(), button);
       field.blur();
     },
     quiet: () => {
