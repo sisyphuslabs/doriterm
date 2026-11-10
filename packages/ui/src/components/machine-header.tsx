@@ -51,8 +51,9 @@ export function MachineHeader({
   buttonProps,
 }: MachineHeaderProps) {
   const Icon = local ? Monitor : Server;
-  // With no terminal to open only the icon dims: the name and count stay as legible as the state label.
-  const quiet = onOpen === undefined && "opacity-45";
+  // With no terminal to open only the icon dims, in a disabled ghost icon's ink (3:1), never a fade (#1243): the name
+  // and count stay as legible as the state label.
+  const quiet = onOpen === undefined && "text-muted-foreground/72";
   return (
     <div className={cn("group flex h-(--row) min-w-0 items-center rounded-md", selected && "bg-selected", className)}>
       <button
