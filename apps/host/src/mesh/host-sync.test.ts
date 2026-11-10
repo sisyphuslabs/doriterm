@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RelayProofs } from "@doriface/relay-client";
 import { MeshStore } from "../state/mesh.ts";
+import { CLIENT_ADMISSION_FORMAT } from "./format-readiness.ts";
 import { HostSync } from "./host-sync.ts";
 import { FakeClock, seededRandom } from "./testing/fake-clock.ts";
 import { meshOf, type Peer, peer, storeOf } from "./testing/mesh-peers.ts";
@@ -197,5 +198,20 @@ describe("the format a client's admission needs, asked before sync runs (#1415)"
     expect(both.sync.formatReady()).toBe(false);
     alone.sync.stop();
     both.sync.stop();
+  });
+
+  test("with sync running, it reads the members' answers: ready once every other machine reads the format (#1436)", async () => {
+    const [a, b, c] = [peer("a"), peer("b"), peer("c")];
+    const { clock, sync } = hostSyncOver(b, storeOf(b, meshOf([a, b, c]).records));
+    sync.changed();
+    await clock.advance(1);
+    const gossip = sync.gossip;
+    expect(gossip).toBeDefined();
+    gossip?.heard(a.signPub, [], {}, [CLIENT_ADMISSION_FORMAT]);
+    gossip?.heard(c.signPub, [], {}, [CLIENT_ADMISSION_FORMAT - 1]);
+    expect(sync.formatReady()).toBe(false);
+    gossip?.heard(c.signPub, [], {}, [CLIENT_ADMISSION_FORMAT - 1, CLIENT_ADMISSION_FORMAT]);
+    expect(sync.formatReady()).toBe(true);
+    sync.stop();
   });
 });

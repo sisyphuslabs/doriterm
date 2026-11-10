@@ -161,9 +161,31 @@ test("pinned tabs stay in view in a group of their own while the other tabs scro
   ]);
   await page.goto("/");
   await expect(tabBar(page)).toHaveCount(12, { timeout: 20_000 });
+  // Pinning moves the tab into the pinned group, a DOM move that must not replay its arrival: the box measured below
+  // would be a frame of that scale-in, not where the tab rests (#2013).
+  await page.evaluate(() => {
+    const ran: string[] = [];
+    Object.defineProperty(window, "__tabTransitions", { value: ran });
+    document.addEventListener(
+      "transitionrun",
+      (event) => {
+        const tab = event.target instanceof HTMLElement ? event.target.dataset["tabId"] : undefined;
+        if (tab !== undefined) ran.push(`${tab}:${event.propertyName}`);
+      },
+      true,
+    );
+  });
   await fromMenu(page, "tab 01", "Pin tab");
   await expect(tabBar(page).first()).toHaveAttribute("data-pinned", "", { timeout: 15_000 });
   const pinned = page.locator("[data-tab-id]").first();
+  // Two frames let a transition the pin started dispatch its transitionrun.
+  const ran = await page.evaluate(
+    () =>
+      new Promise<unknown>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve(Reflect.get(window, "__tabTransitions")))),
+      ),
+  );
+  expect(ran).toEqual([]);
   const before = await pinned.boundingBox();
   // Selecting the last tab scrolls the ordinary tabs to it.
   await tabBar(page).last().click();

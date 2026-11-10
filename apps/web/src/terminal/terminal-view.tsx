@@ -16,6 +16,7 @@ import { useDarkScheme } from "./use-dark-scheme.ts";
 import { useBehaviors, type PendingPaste } from "./use-behaviors.ts";
 import { useFocusAfterSelect } from "./use-focus-after-select.ts";
 import { useLongPressSelect } from "./use-long-press-select.ts";
+import { useTouchWheel } from "./touch-wheel.ts";
 import { useSelectionCells } from "./use-selection-cells.ts";
 import { useShiftDragSelect } from "./use-shift-drag-select.ts";
 import { Ended } from "./ended.tsx";
@@ -186,11 +187,12 @@ export function TerminalView(props: TerminalViewProps) {
       if (warmup.current === made) warmup.current = null;
     };
   }, [wt]);
-  useTerminalActions(wt, typed, focused, pasteFiles, openFind);
   const shown = usePaneVisibility(wt, pacer);
+  useTerminalActions(wt, input, focused, shown, openFind);
   const away = useMachineLine(connection, address, shown);
   useFocusAfterSelect(wt, options.trimCopy);
   useLongPressSelect(wt, setSelectAt);
+  useTouchWheel(wt);
   useShiftDragSelect(wt);
   useSelectionCells(wt);
   useBrowseMode(wt, browsing);
@@ -221,10 +223,10 @@ export function TerminalView(props: TerminalViewProps) {
     holdPaint: setReplayHeld,
   });
 
-  if (error !== null) return <p className="p-4 text-sm text-destructive">{error}</p>;
+  if (error !== null) return <p className="p-4 text-prose text-destructive">{error}</p>;
   if (attachment.restarting) {
     return (
-      <p role="status" className="p-4 text-sm text-muted-foreground">
+      <p role="status" className="p-4 text-prose text-muted-foreground">
         The program in this terminal is restarting…
       </p>
     );
@@ -285,7 +287,7 @@ export function TerminalView(props: TerminalViewProps) {
         // Keys typed now wait for the machine (HeldInput, #1489); the line overlays the top row and takes no room.
         <p
           role="status"
-          className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-muted/95 px-3 py-1 text-center text-sm text-muted-foreground"
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-muted/95 px-3 py-1 text-center text-prose text-muted-foreground"
         >
           Reconnecting to {away}. Your typing will be sent.
         </p>

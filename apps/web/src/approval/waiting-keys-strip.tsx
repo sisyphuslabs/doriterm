@@ -21,7 +21,7 @@ export function WaitingKeysStrip({ connection, address }: { connection: HcConnec
       data-waiting-keys={address}
       className="pointer-events-auto flex w-full max-w-2xl flex-wrap items-center gap-2 rounded-xl border border-border bg-chrome/95 p-2 shadow-lg backdrop-blur-md"
     >
-      <p className="mr-auto px-1 text-sm font-medium text-status-blocked-text">
+      <p className="mr-auto px-1 text-prose font-medium text-status-blocked-text">
         {failed ? "That key did not reach the terminal" : "Waiting for input"}
       </p>
       {WAITING_KEYS.map((each) => (

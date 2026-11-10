@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, type Locator, type Page, type WebSocketRoute } from "@playwright/test";
 import { FAKE_RELAY } from "./capture-relay.ts";
 import { pressNewTab } from "./fixtures.ts";
 import { fakeSoftKeyboard, key } from "./phone-key-bar.ts";
@@ -47,6 +47,43 @@ export async function startRelayHost(): Promise<RelayHost> {
   };
 }
 
+/** A spec's handle on the relay client sockets `delayRelaySockets` carries: what reached them, and a way to drop them. */
+export class RelayLink {
+  #toPage = 0;
+  #opened = 0;
+  readonly #live = new Map<WebSocketRoute, WebSocket>();
+
+  /** Frames the relay has sent toward the page so far, counted as they arrive (each reaches the page later). */
+  toPage(): number {
+    return this.#toPage;
+  }
+
+  /** How many relay client sockets the page has opened. */
+  opened(): number {
+    return this.#opened;
+  }
+
+  /** Closes every relay client socket the page has open, on both sides, as a network blip does. */
+  async drop(): Promise<void> {
+    const live = [...this.#live];
+    this.#live.clear();
+    for (const [, relay] of live) relay.close();
+    await Promise.all(live.map(([socket]) => socket.close({ code: 1011, reason: "relay blip" })));
+  }
+
+  /** @internal Called by delayRelaySockets. */
+  carry(socket: WebSocketRoute, relay: WebSocket): void {
+    this.#opened += 1;
+    this.#live.set(socket, relay);
+    socket.onClose(() => this.#live.delete(socket));
+  }
+
+  /** @internal Called by delayRelaySockets. */
+  received(): void {
+    this.#toPage += 1;
+  }
+}
+
 /**
  * Carries the page's relay client sockets to `host` with a round trip added: every frame, both ways, is delivered
  * `rttMs / 2` (plus a uniform 0..`jitterMs`) after it was sent, and never before the frame sent ahead of it, so the
@@ -57,7 +94,11 @@ export async function startRelayHost(): Promise<RelayHost> {
 export async function delayRelaySockets(
   page: Page,
   host: RelayHost,
-  { rttMs, jitterMs = 0 }: { readonly rttMs: number; readonly jitterMs?: number },
+  {
+    rttMs,
+    jitterMs = 0,
+    link,
+  }: { readonly rttMs: number; readonly jitterMs?: number; readonly link?: RelayLink | undefined },
 ): Promise<void> {
   const base = host.relayUrl.replace(/\/+$/, "");
   /**
@@ -89,6 +130,7 @@ export async function delayRelaySockets(
     const target = new URL(socket.url());
     const relay = new WebSocket(`${base}${target.pathname}${target.search}`);
     relay.binaryType = "arraybuffer";
+    link?.carry(socket, relay);
     const toRelay = oneWay();
     const toPage = oneWay();
     const early: (string | Uint8Array<ArrayBuffer>)[] = [];
@@ -104,6 +146,7 @@ export async function delayRelaySockets(
     });
     relay.addEventListener("message", (event: MessageEvent<string | ArrayBuffer>) => {
       const frame = typeof event.data === "string" ? event.data : Buffer.from(event.data);
+      link?.received();
       toPage(() => socket.send(frame));
     });
     relay.addEventListener("close", (event) => {
@@ -121,12 +164,22 @@ export async function delayRelaySockets(
 export async function pairAndOpenTerminal(
   page: Page,
   host: RelayHost,
-  { phone, rttMs = 0, jitterMs = 0 }: { readonly phone: boolean; readonly rttMs?: number; readonly jitterMs?: number },
+  {
+    phone,
+    rttMs = 0,
+    jitterMs = 0,
+    link,
+  }: {
+    readonly phone: boolean;
+    readonly rttMs?: number;
+    readonly jitterMs?: number;
+    readonly link?: RelayLink;
+  },
 ): Promise<Locator> {
   if (phone) await fakeSoftKeyboard(page);
   // Pairing dials the link's relay; the workspace then dials the production one, as every release build does (#452).
   await routeRelaySockets(page, host.relayUrl);
-  await delayRelaySockets(page, host, { rttMs, jitterMs });
+  await delayRelaySockets(page, host, { rttMs, jitterMs, link });
   await page.goto(`/pair${await host.pairingFragment()}`);
   await page.getByRole("button", { name: "They match" }).click({ timeout: 30_000 });
   await expect(page.getByText("This device now reaches the host through the relay")).toBeVisible({ timeout: 60_000 });

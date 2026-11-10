@@ -110,9 +110,10 @@ export function TabBar({
   // the keyboard as the menu closes: the question's first paint can come after that, and the strip would take it back.
   const handedOn = useRef(false);
   // The tabs the strip drew before its last change of tabs: they carry data-arrived, so the DOM move a reorder makes
-  // does not replay their arrival; a tab new to the list draws once without it and arrives.
+  // does not replay their arrival; a tab new to the list draws once without it and arrives. A pin or unpin is such a
+  // change too, even when the order stays: it moves the tab into the other group, a DOM move as well (#2013).
   const ids = tabs.map((tab) => tab.id);
-  const key = ids.join("\n");
+  const key = tabs.map((tab) => (tab.pinned === true ? `${tab.id}*` : tab.id)).join("\n");
   const [drawn, setDrawn] = useState(() => ({ key, before: new Set<string>(), now: new Set(ids) }));
   if (drawn.key !== key) setDrawn({ key, before: drawn.now, now: new Set(ids) });
   // The strip owns a touch's long press: held and moved it drags the tab, held and let go it opens the tab's menu.
@@ -228,7 +229,7 @@ export function TabBar({
               if (event.detail > 1) onRename?.(tab.id);
               else onClose?.(tab.id);
             }}
-            className="size-5 [&_svg]:size-3"
+            className="size-5 [&_svg:not([data-slot=spinner])]:size-3"
           />
         ) : null}
       </div>
