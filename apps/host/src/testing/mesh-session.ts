@@ -1,4 +1,4 @@
-import { realpathSync, type Stats, unwatchFile, watchFile } from "node:fs";
+import { lstatSync, realpathSync, type Stats, unwatchFile, watchFile } from "node:fs";
 import { dirname } from "node:path";
 import { stopLeftoverCores, type HcSession } from "./hc-session.ts";
 import { adoptProcessGroup, stopProcessGroup } from "./process-group.ts";
@@ -20,10 +20,43 @@ async function stopEscaped(dir: string): Promise<void> {
 }
 
 /**
+ * Copies a stream to this process's stderr as it arrives and keeps its last `keep` characters; `drained` settles once the
+ * stream has ended and every chunk is in the tail.
+ */
+function teeTail(
+  stream: ReadableStream<Uint8Array>,
+  keep = 4096,
+): { readonly tail: () => string; readonly drained: Promise<void> } {
+  let tail = "";
+  const decoder = new TextDecoder();
+  const drained = (async () => {
+    for await (const chunk of stream) {
+      process.stderr.write(chunk);
+      tail = (tail + decoder.decode(chunk, { stream: true })).slice(-keep);
+    }
+  })().catch(() => undefined);
+  return { tail: () => tail.trim(), drained };
+}
+
+/** What is at the socket path when the deadline passes. */
+function socketPathState(socket: string): string {
+  try {
+    return lstatSync(socket).isSocket()
+      ? "socket created only as the deadline passed"
+      : "socket path exists but is not a socket";
+  } catch {
+    return "socket path absent";
+  }
+}
+
+/**
  * Run the fixture's core directly: hc connect would auto-start it through launchd on macOS, outside the fixture's
  * process tree and filesystem access. Its machine bridges share this owned group, including their descendants.
  */
-export async function ownMeshSession(session: HcSession): Promise<HcSession> {
+export async function ownMeshSession(
+  session: HcSession,
+  { readyWithinMs = 15_000 }: { readonly readyWithinMs?: number } = {},
+): Promise<HcSession> {
   const socket = session.env["HC_SOCKET"];
   if (socket === undefined) throw new Error("mesh session has no socket");
   // Resolved, since a process is seen holding resolved paths (macOS: /var is a link into /private).
@@ -40,11 +73,28 @@ export async function ownMeshSession(session: HcSession): Promise<HcSession> {
     detached: true,
     stdin: "ignore",
     stdout: "ignore",
-    stderr: "inherit",
+    stderr: "pipe",
   });
   adoptProcessGroup(core, dir);
-  void core.exited.then((code) => ready.reject(new Error(`mesh core exited before readiness: ${code}`)));
-  const deadline = setTimeout(() => ready.reject(new Error("mesh core did not create its socket")), 15_000);
+  // The core's stderr still reaches the run's log as it comes, and its tail is kept for a failure to quote (#1768).
+  const stderr = teeTail(core.stderr);
+  // The exit is reported once the core's stderr has been read to its end, so its last words are in the message. A
+  // descendant that keeps the pipe open holds this back; the deadline below then names the exit instead.
+  void Promise.all([core.exited, stderr.drained]).then(([code]) =>
+    ready.reject(new Error(`mesh core exited before readiness: ${code}; stderr: ${stderr.tail() || "(none)"}`)),
+  );
+  const deadline = setTimeout(() => {
+    const state =
+      core.exitCode === null && core.signalCode === null
+        ? "was still running"
+        : `had exited (${core.exitCode ?? core.signalCode})`;
+    const path = socketPathState(socket);
+    ready.reject(
+      new Error(
+        `mesh core did not create its socket within ${readyWithinMs} ms: hc serve (pid ${core.pid}) ${state}; ${path}; stderr: ${stderr.tail() || "(none)"}`,
+      ),
+    );
+  }, readyWithinMs);
   let stopping: Promise<void> | undefined;
   const stop = async (shutdown: boolean): Promise<void> => {
     try {

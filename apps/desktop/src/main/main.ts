@@ -42,9 +42,9 @@ const devSetting = app.isPackaged ? undefined : process.env["DORIFACE_DESKTOP_DE
 const devUrl = devSetting === undefined || devSetting === "" ? undefined : loopbackDevUrl(devSetting);
 const origin = devUrl === undefined ? APP_ORIGIN : new URL(devUrl).origin;
 const csp = contentSecurityPolicy({ devServer: devUrl });
-// The system recognizer for dictation, on macOS only; the page is told whether it exists through its preload (#726).
+// The on-device system recognizer; the page is told whether this build carries it through its preload.
 const speech =
-  platform === "darwin"
+  platform === "darwin" || platform === "win32"
     ? loadSpeech(speechAddonPath(app.isPackaged, process.resourcesPath, app.getAppPath()))
     : undefined;
 const noticeAuthorization =
@@ -212,10 +212,14 @@ function ready(): void {
   dictation =
     speech === undefined
       ? undefined
-      : new DictationHost(speech, {
-          status: () => systemPreferences.getMediaAccessStatus("microphone"),
-          ask: () => systemPreferences.askForMediaAccess("microphone"),
-        });
+      : new DictationHost(
+          speech,
+          {
+            status: () => systemPreferences.getMediaAccessStatus("microphone"),
+            ask: () => systemPreferences.askForMediaAccess("microphone"),
+          },
+          platform === "win32" ? "win32" : "darwin",
+        );
   app.on("will-quit", () => dictation?.stopAll());
   // A checkout has no release feed (app-update.yml) to update from, and neither has the macOS electron-builder --dir
   // build the e2e specs launch; only a packaged app that carries the feed looks for an update.

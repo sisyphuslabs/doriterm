@@ -81,7 +81,15 @@ export const VERSION_ARG = "--doriface-app-version=";
 export const DICTATION_ARG = "--doriface-dictation";
 
 /** Why a dictation did not start: a system setting, no on-device model, another session or prompt, or anything else. */
-export const DICTATION_REFUSALS = ["mic-system", "speech-system", "device-mac", "busy", "service"] as const;
+export const DICTATION_REFUSALS = [
+  "mic-system",
+  "speech-system",
+  "device-mac",
+  "mic-windows",
+  "device-windows",
+  "busy",
+  "service",
+] as const;
 export type DictationRefusal = (typeof DICTATION_REFUSALS)[number];
 
 export type DictationStartAnswer = { readonly session: number } | { readonly refused: DictationRefusal };

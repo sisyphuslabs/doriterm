@@ -8,7 +8,7 @@ import { PairDeviceDialog } from "./pair-device-dialog.tsx";
 /**
  * Offers this computer to another device without a command line, on the screen a reader opens to pair one. It draws
  * nothing unless this app runs on its own host: the shell relays the offer, and a host this app merely reaches over the
- * relay runs somewhere else. Both This device and Connect a machine show it, so the desktop answer is never one
+ * relay runs somewhere else. Both This device and Machines show it, so the desktop answer is never one
  * screen away from the question that led there (review of #772).
  */
 export function PairDeviceOffer() {
@@ -22,7 +22,7 @@ export function PairDeviceOffer() {
     <>
       <SettingRow
         title={
-          <span className="flex items-start gap-2 [&_svg]:size-4 [&_svg]:text-muted-foreground">
+          <span className="flex items-start gap-2 [&_svg:not([data-slot=spinner])]:size-4 [&_svg]:text-muted-foreground">
             <span className="flex h-[1lh] shrink-0 items-center">
               <Smartphone aria-hidden />
             </span>
