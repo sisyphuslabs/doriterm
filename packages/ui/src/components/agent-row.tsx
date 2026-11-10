@@ -156,7 +156,8 @@ export function AgentRow({
       )}
       {agent.status === "blocked" && !compactBlocked ? <StatusChip status="blocked" glyph={false} /> : null}
       {agent.pinned === true ? (
-        <Pin role="img" aria-label="Pinned" data-row-meta className="size-3 shrink-0 text-muted-foreground" />
+        // The same 14 px as the row's Unpin action that takes its place on hover, so the pin never jumps in size (#1562).
+        <Pin role="img" aria-label="Pinned" data-row-meta className="size-3.5 shrink-0 text-muted-foreground" />
       ) : null}
       {agent.age === undefined ? null : (
         <time data-numeric data-row-meta className="min-w-7 shrink-0 text-right text-xs text-muted-foreground">
