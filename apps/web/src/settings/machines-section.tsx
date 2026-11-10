@@ -20,6 +20,7 @@ const NO_TERMINALS: readonly Terminal[] = [];
 
 const STATE_WORDS: Readonly<Record<string, string>> = {
   connected: "Connected",
+  reconnecting: "Reconnecting",
   connecting: "Connecting",
   needs_login: "Needs a login",
   unreachable: "Offline",
@@ -27,7 +28,7 @@ const STATE_WORDS: Readonly<Record<string, string>> = {
 
 function title(icon: ReactNode, name: string) {
   return (
-    <span className="flex min-w-0 items-center gap-2 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground">
+    <span className="flex min-w-0 items-center gap-2 [&_svg:not([data-slot=spinner])]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground">
       {icon}
       <span title={name} className="truncate">
         {name}

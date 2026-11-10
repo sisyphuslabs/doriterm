@@ -23,7 +23,7 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907422af1d7 100644
+index 78a86ffd96eec03222777f40e9db6a0561684c3f..5f005ea087d354b1f33bfa237e2899735f637c55 100644
 --- a/dist/input.js
 +++ b/dist/input.js
 @@ -70,6 +70,32 @@ const COMPOSITION_INPUT_DEDUP_MS = 250;
@@ -76,7 +76,12 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
          // The first native deletion mirrors the Backspace already sent on keydown.
          this.suppressNextTouchDeleteInput = false;
          this.mouseButtons = 0;
-@@ -157,6 +193,7 @@ export class InputHandler {
+@@ -153,10 +189,11 @@ export class InputHandler {
+             this.positionTextarea();
+             this.element.classList.add("focused");
+             if (this.getBridge()?.focusEvents?.())
+-                this.onData("\x1b[I");
++                this.onData("\x1b[I", true);
          };
          this._onBlur = () => {
              this.tabExitArmed = false;
@@ -84,6 +89,15 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
              this.focused = false;
              this.composing = false;
              this.recentCompositionCommit = null;
+@@ -169,7 +206,7 @@ export class InputHandler {
+             this.pressedModifiers.clear();
+             this.deliveredKeys.clear();
+             if (this.getBridge()?.focusEvents?.())
+-                this.onData("\x1b[O");
++                this.onData("\x1b[O", true);
+         };
+         this._onMouseDown = (event) => {
+             this.tabExitArmed = false;
 @@ -224,10 +261,12 @@ export class InputHandler {
          this.textarea.focus({ preventScroll: true });
      }
@@ -98,7 +112,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
          this.accessibility.destroy();
          this.textarea.removeEventListener("keydown", this._onKeyDown);
          this.textarea.removeEventListener("keyup", this._onKeyUp);
-@@ -253,13 +292,36 @@ export class InputHandler {
+@@ -253,13 +292,39 @@ export class InputHandler {
          if (physicalModifier) {
              this.pressedModifiers.add(e.code);
          }
@@ -119,10 +133,13 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
 +        // An iPhone or iPad Korean keyboard names the jamo in its keydown and then composes it in the field: the field
 +        // must get it, or the next jamo has nothing to join. Backspace inside a syllable still being typed takes back a
 +        // jamo of it, which is the field's edit too.
++        // A space ends the syllable in the keyboard as much as in the field: a keyboard whose space never reached the field
++        // still holds the syllable, and joins its next jamo to it (가, space, ㄱ becomes 각 in place of 가 and the space, #1508).
++        // So the space is the field's edit too, and the run it ends is sent whole from the field.
 +        this.koreanKeyEdit =
 +            isHangulKey(e) ||
 +                (this.localPreedit !== "" &&
-+                    e.key === "Backspace" &&
++                    (e.key === "Backspace" || e.key === " ") &&
 +                    !e.ctrlKey &&
 +                    !e.metaKey &&
 +                    !e.altKey);
@@ -137,7 +154,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
          const bridge = this.getBridge();
          const kittyFlags = bridge?.kittyKeyboardFlags?.() ?? 0;
          const kittyOwnsModifier = physicalModifier && Boolean(kittyFlags & KITTY_REPORT_ALL);
-@@ -345,6 +407,9 @@ export class InputHandler {
+@@ -345,6 +410,9 @@ export class InputHandler {
              this.suppressedKeyUps.add(keyId);
              if (e.key === "Backspace") {
                  e.preventDefault();
@@ -147,7 +164,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
                  this.selectionActions?.clearSelection();
                  this.onData("\x15");
              }
-@@ -371,6 +436,8 @@ export class InputHandler {
+@@ -371,6 +439,8 @@ export class InputHandler {
          if (kittyFlags !== 0) {
              const seq = encodeKittyKey(e, kittyFlags, e.repeat ? "repeat" : "press", this.pressedModifiers, bridge?.cursorKeysApp?.() ?? false);
              if (seq) {
@@ -156,7 +173,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
                  if (!physicalModifier)
                      this.selectionActions?.clearSelection();
                  if (nativeTouchDelete)
-@@ -385,6 +452,7 @@ export class InputHandler {
+@@ -385,6 +455,7 @@ export class InputHandler {
          }
          const seq = this.keyToSequence(e);
          if (seq) {
@@ -164,7 +181,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
              this.selectionActions?.clearSelection();
              if (nativeTouchDelete)
                  this.suppressNextTouchDeleteInput = true;
-@@ -395,6 +463,7 @@ export class InputHandler {
+@@ -395,6 +466,7 @@ export class InputHandler {
          }
      }
      handleKeyUp(e) {
@@ -172,7 +189,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
          const keyId = e.code || e.key;
          this.pressedModifiers.delete(e.code);
          const delivered = this.deliveredKeys.delete(keyId);
-@@ -421,6 +490,9 @@ export class InputHandler {
+@@ -421,6 +493,9 @@ export class InputHandler {
          this.recentCompositionCommit = null;
          this.suppressNextTouchDeleteInput = false;
          const text = e.clipboardData?.getData("text");
@@ -182,7 +199,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
          // Some mobile browsers leave clipboardData empty but insert the paste
          // into the textarea. Let that input event carry the text instead.
          if (!text)
-@@ -462,6 +534,8 @@ export class InputHandler {
+@@ -462,6 +537,8 @@ export class InputHandler {
      }
      handleCompositionStart() {
          this.tabExitArmed = false;
@@ -191,7 +208,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
          this.prepareComposition();
          this.composing = true;
          this.recentCompositionCommit = null;
-@@ -472,11 +546,22 @@ export class InputHandler {
+@@ -472,11 +549,22 @@ export class InputHandler {
          this.positionTextarea();
          const s = this.textarea.style;
          s.opacity = "1";
@@ -217,7 +234,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
          this.composing = false;
          this.hideComposition();
          this.resetInputValue();
-@@ -485,6 +570,44 @@ export class InputHandler {
+@@ -485,6 +573,44 @@ export class InputHandler {
              this.onData(e.data);
          }
      }
@@ -262,7 +279,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
      hideComposition() {
          this.compositionWidth = 0;
          const s = this.textarea.style;
-@@ -502,7 +625,7 @@ export class InputHandler {
+@@ -502,7 +628,7 @@ export class InputHandler {
          if (!bridge || !cellSize || !firstRow || !bridge.getCursor) {
              this.textarea.style.left = "0px";
              this.textarea.style.top = "0px";
@@ -271,7 +288,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
                  this.textarea.style.width = `${Math.max(1, this.compositionWidth)}px`;
                  this.textarea.style.height = `${cellSize?.rowHeight ?? 17}px`;
              }
-@@ -519,7 +642,7 @@ export class InputHandler {
+@@ -519,7 +645,7 @@ export class InputHandler {
          const s = this.textarea.style;
          s.left = `${rowRect.left - hostRect.left - this.element.clientLeft + this.element.scrollLeft + col * charWidth}px`;
          s.top = `${rowRect.top - hostRect.top - this.element.clientTop + this.element.scrollTop + row * rowHeight}px`;
@@ -280,7 +297,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
              s.width = `${Math.min((bridge.getCols() - col) * charWidth, Math.max(charWidth, this.compositionWidth))}px`;
              s.height = `${rowHeight}px`;
          }
-@@ -528,13 +651,66 @@ export class InputHandler {
+@@ -528,13 +654,66 @@ export class InputHandler {
          const charWidth = this.getCellSize()?.charWidth;
          if (!charWidth || charWidth <= 0)
              return;
@@ -352,7 +369,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
      }
      resetInputValue() {
          this.textarea.value = this.touchPrimary ? TOUCH_INPUT_PLACEHOLDER : "";
-@@ -565,6 +741,32 @@ export class InputHandler {
+@@ -565,6 +744,32 @@ export class InputHandler {
          const value = this.touchPrimary && rawValue.startsWith(TOUCH_INPUT_PLACEHOLDER)
              ? rawValue.slice(TOUCH_INPUT_PLACEHOLDER.length)
              : rawValue;
@@ -385,7 +402,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
          this.resetInputValue();
          const recent = this.recentCompositionCommit;
          this.recentCompositionCommit = null;
-@@ -821,7 +1023,7 @@ export class InputHandler {
+@@ -821,7 +1026,7 @@ export class InputHandler {
                  return other;
          }
          if (e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -394,7 +411,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..e7f5d420abf71d26c7d5d0684a288907
              if (control !== null)
                  return control;
              if (e.key === "Backspace")
-@@ -855,6 +1057,24 @@ export class InputHandler {
+@@ -855,6 +1060,24 @@ export class InputHandler {
          return null;
      }
  }
@@ -609,10 +626,19 @@ index a6746f499859ba9da2d7884dfd71694205c6d819..1a6cc13f68b3d84cc12d7c4a9b51f22f
      setOutputAnnouncements(enabled: boolean): void;
      /** Expose this terminal to in-page agents through WebMCP, or withdraw it. */
 diff --git a/dist/wterm.js b/dist/wterm.js
-index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af06624bdd861d 100644
+index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874fbdf43c80 100644
 --- a/dist/wterm.js
 +++ b/dist/wterm.js
-@@ -131,9 +131,19 @@ export class WTerm {
+@@ -120,6 +120,8 @@ export class WTerm {
+         this._synchronizedOutputTimer = null;
+         this._synchronizedOutputState = "idle";
+         this._synchronizedOutputGeneration = 0;
++        this._synchronizedOutputContinues = false;
++        this._synchronizedOutputDeadline = 0;
+         this._rendererNeedsSetup = false;
+         this.resizeObserver = null;
+         this._destroyed = false;
+@@ -131,9 +133,19 @@ export class WTerm {
          };
          this._shouldScrollToBottom = false;
          this._pinnedToBottom = true;
@@ -632,7 +658,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
          this._rowHeight = 0;
          this._charWidth = 0;
          this._windowSizeQueryState = 0;
-@@ -227,6 +237,7 @@ export class WTerm {
+@@ -227,6 +239,7 @@ export class WTerm {
                  const match = this._search.matches[this.getSearchState().activeIndex];
                  if (match) {
                      this._shouldScrollToBottom = false;
@@ -640,7 +666,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
                      this._pendingResizeScrollTop = null;
                      this._setScrollTop((match.start.row + 0.5) * this._rowHeight -
                          this.element.clientHeight / 2);
-@@ -336,6 +347,16 @@ export class WTerm {
+@@ -336,6 +349,16 @@ export class WTerm {
          this._onScroll = () => {
              if (this._pendingResizeScrollTop !== null)
                  return;
@@ -657,7 +683,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
              const atBottom = this._isScrolledToBottom();
              if (this._shouldScrollToBottom && atBottom) {
                  this._programmaticScrollTop = null;
-@@ -349,6 +370,8 @@ export class WTerm {
+@@ -349,6 +372,8 @@ export class WTerm {
              }
              this._programmaticScrollTop = null;
              this._shouldScrollToBottom = false;
@@ -666,7 +692,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
              this._scheduleRender();
          };
          this.element.addEventListener("scroll", this._onScroll, { passive: true });
-@@ -418,6 +441,7 @@ export class WTerm {
+@@ -418,6 +443,7 @@ export class WTerm {
                  maxImageHeight: this.maxImageHeight,
                  renderer: this._rendererOption,
              });
@@ -674,7 +700,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
              this.renderer.setup(this.cols, this.rows);
              this.input = new InputHandler(this.element, (data, preserveScroll = false) => this._deliverInput(data, preserveScroll), () => this.bridge, () => this._charWidth > 0 && this._rowHeight > 0
                  ? { charWidth: this._charWidth, rowHeight: this._rowHeight }
-@@ -453,7 +477,6 @@ export class WTerm {
+@@ -453,7 +479,6 @@ export class WTerm {
              if (!this.autoResize) {
                  this._lockHeight();
              }
@@ -682,7 +708,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
              this._initialRender();
              this._registerWebMCP();
              if (this.cols !== initialCols || this.rows !== initialRows)
-@@ -465,12 +488,33 @@ export class WTerm {
+@@ -465,12 +490,33 @@ export class WTerm {
          }
          return this;
      }
@@ -716,7 +742,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
          this._setScrollTop(this.element.scrollHeight);
      }
      _setScrollTop(value, frame) {
-@@ -508,6 +552,29 @@ export class WTerm {
+@@ -508,6 +554,29 @@ export class WTerm {
              throw new Error("This terminal core cannot change its scrollback");
          this.bridge.setScrollbackLines(this._scrollbackLines);
      }
@@ -746,7 +772,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
      /**
       * Apply host colors without writing terminal input or restarting the session.
       * Pass `null` to drop them and answer color queries from the page's CSS again.
-@@ -553,7 +620,7 @@ export class WTerm {
+@@ -553,7 +622,7 @@ export class WTerm {
          this.renderer?.beforeMutation(this.bridge);
          if (this.debug)
              this.debug.traceWrite(data);
@@ -755,7 +781,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
          // Answer theme color queries with the colors the page shows right now.
          if (mayQueryThemeColors(data))
              this._syncCssThemeColors();
-@@ -732,9 +799,20 @@ export class WTerm {
+@@ -732,9 +801,30 @@ export class WTerm {
          this._rectangleDrag.cancel();
          this._historySelection.invalidate();
          this.renderer?.beforeMutation(this.bridge);
@@ -767,8 +793,18 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
 +        // writing the update it opened: reopened, the screen keeps showing the
 +        // last finished frame until the program ends it (or the hold times out),
 +        // instead of the frame half drawn.
++        // A reader in history keeps the row at the top of the view, not its pixel offset: a width change reflows
++        // wrapped lines above it into more or fewer rows, and the same scrollTop would then show another line. The
++        // core's tracked position follows that row through the reflow (#1568).
++        const anchor = this._shouldScrollToBottom ? null : this._trackTopRow();
 +        const synchronizedBefore = this.bridge.synchronizedOutput?.() ?? false;
          this.bridge.resize(cols, rows);
++        if (anchor) {
++            const moved = anchor.pin.resolve();
++            anchor.pin.dispose();
++            if (moved)
++                this._pendingResizeScrollTop = anchor.padTop + moved.row * anchor.rowHeight + anchor.within;
++        }
 +        const reopened = synchronizedBefore && !(this.bridge.synchronizedOutput?.() ?? false);
 +        if (reopened)
 +            this.bridge.writeString("\x1b[?2026h");
@@ -778,7 +814,27 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
          this._outputAnnouncements.invalidate();
          this.cols = this.bridge.getCols();
          this.rows = this.bridge.getRows();
-@@ -798,6 +876,7 @@ export class WTerm {
+@@ -751,6 +841,19 @@ export class WTerm {
+         if (this.onResize)
+             this.onResize(this.cols, this.rows);
+     }
++    /** The row at the top of the view as a tracked core position, with the view's offset inside that row. */
++    _trackTopRow() {
++        const rowHeight = this._rowHeight;
++        if (!rowHeight || !this.bridge?.trackPosition)
++            return null;
++        const padTop = parseFloat(getComputedStyle(this.element).paddingTop) || 0;
++        const scrollTop = this._pendingResizeScrollTop ?? this.element.scrollTop;
++        const row = Math.max(0, Math.floor((scrollTop - padTop) / rowHeight));
++        const pin = this.bridge.trackPosition({ row, col: 0 });
++        if (!pin)
++            return null;
++        return { pin, padTop, rowHeight, within: scrollTop - padTop - row * rowHeight };
++    }
+     /** Search retained history and the active screen, using plain text. */
+     search(query, options = {}) {
+         if (this._destroyed)
+@@ -798,6 +901,7 @@ export class WTerm {
              return false;
          const before = this.element.scrollTop;
          this._shouldScrollToBottom = false;
@@ -786,7 +842,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
          this._searchReveal = false;
          this._pendingResizeScrollTop = target * this._rowHeight;
          this._doRender();
-@@ -1127,14 +1206,20 @@ export class WTerm {
+@@ -1127,14 +1231,20 @@ export class WTerm {
              this._synchronizedOutputState = "idle";
              return false;
          }
@@ -809,7 +865,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
          }
          if (this._synchronizedOutputState !== "idle") {
              return this._synchronizedOutputState === "held";
-@@ -1144,9 +1229,10 @@ export class WTerm {
+@@ -1144,9 +1254,10 @@ export class WTerm {
          this._armSynchronizedOutputFallback(generation);
          return true;
      }
@@ -821,7 +877,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
          this._synchronizedOutputTimer = setTimeout(() => {
              if (this._synchronizedOutputState !== "held" ||
                  this._synchronizedOutputGeneration !== generation) {
-@@ -1157,7 +1243,7 @@ export class WTerm {
+@@ -1157,7 +1268,7 @@ export class WTerm {
              this._setupRendererIfNeeded();
              this._cancelScheduledRender();
              this._doRender();
@@ -830,7 +886,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..6cf872f0d1ff0177c298882909af0662
      }
      _cancelSynchronizedOutputFallback() {
          if (this._synchronizedOutputTimer == null)
-@@ -1576,14 +1662,16 @@ export class WTerm {
+@@ -1576,14 +1687,16 @@ export class WTerm {
          const height = this._visibleContentHeight(contentHeight);
          const newCols = Math.max(1, Math.floor(containerRect.width / charWidth));
          const newRows = Math.max(1, Math.floor(height / rowHeight));
