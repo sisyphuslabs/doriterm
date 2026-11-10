@@ -16,6 +16,7 @@ import { useDarkScheme } from "./use-dark-scheme.ts";
 import { useBehaviors, type PendingPaste } from "./use-behaviors.ts";
 import { useFocusAfterSelect } from "./use-focus-after-select.ts";
 import { useLongPressSelect } from "./use-long-press-select.ts";
+import { useTouchWheel } from "./touch-wheel.ts";
 import { useSelectionCells } from "./use-selection-cells.ts";
 import { useShiftDragSelect } from "./use-shift-drag-select.ts";
 import { Ended } from "./ended.tsx";
@@ -191,6 +192,7 @@ export function TerminalView(props: TerminalViewProps) {
   const away = useMachineLine(connection, address, shown);
   useFocusAfterSelect(wt, options.trimCopy);
   useLongPressSelect(wt, setSelectAt);
+  useTouchWheel(wt);
   useShiftDragSelect(wt);
   useSelectionCells(wt);
   useBrowseMode(wt, browsing);
