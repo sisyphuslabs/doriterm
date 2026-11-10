@@ -8,7 +8,7 @@ export function keepFocus(event: MouseEvent): void {
 }
 
 export const keyTarget =
-  "relative flex h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-1.5 outline-none [&_svg]:size-5 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring";
+  "relative flex h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-1.5 outline-none [&_svg:not([data-slot=spinner])]:size-5 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring";
 export const latchedKey =
   "bg-primary font-semibold text-primary-foreground after:absolute after:bottom-1.5 after:h-0.5 after:w-3 after:rounded-full after:bg-current active:opacity-80";
 export const idleKey = "text-foreground active:bg-selected";

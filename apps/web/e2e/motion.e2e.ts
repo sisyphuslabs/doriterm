@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { agentRow, endAgent, startShell } from "./agents.ts";
 import { expect, openNewTerminal, test, pressNewTab } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import { hcOn } from "./machine-switch.ts";
@@ -190,9 +191,8 @@ test("moving a tab is not an arrival: a drag, a keyboard move and a menu move st
   };
   await moved(() => dragPast(page, tabs(page).nth(0), tabs(page).nth(2)));
   await moved(async () => {
-    const mac = await page.evaluate(() => navigator.platform.startsWith("Mac"));
     await tabs(page).nth(0).focus();
-    await page.keyboard.press(mac ? "Meta+Shift+ArrowRight" : "Control+Alt+Shift+PageDown");
+    await pressShortcut(page, "tab.move:right");
   });
   await moved(async () => {
     await tabs(page).nth(3).click({ button: "right" });
@@ -224,7 +224,8 @@ test("a new tab scales and fades in, and settles at rest", async ({ page }) => {
   await openNewTerminal(page);
   await expect.poll(() => page.locator(":root").getAttribute("data-ready")).toBe("");
   const count = await page.getByRole("tab").count();
-  const newest = `[role="tablist"] > div:nth-of-type(${count + 1})`;
+  // Unpinned tabs sit in the strip's scrolling group, pinned ones (#1561) in a group before it; this strip has no pins.
+  const newest = `[role="tablist"] [data-tab-scroll] > div:nth-of-type(${count + 1})`;
   const frames = sample(page, newest);
   await pressNewTab(page.getByRole("button", { name: "New tab", exact: true }));
   const seen = await frames;
@@ -243,7 +244,7 @@ test("under reduced motion a new tab only fades: no frame is transformed", async
   await openNewTerminal(page);
   await expect.poll(() => page.locator(":root").getAttribute("data-ready")).toBe("");
   const count = await page.getByRole("tab").count();
-  const frames = sample(page, `[role="tablist"] > div:nth-of-type(${count + 1})`);
+  const frames = sample(page, `[role="tablist"] [data-tab-scroll] > div:nth-of-type(${count + 1})`);
   await pressNewTab(page.getByRole("button", { name: "New tab", exact: true }));
   const seen = await frames;
   expect(Math.min(...seen.map((frame) => frame.opacity))).toBeLessThan(0.5);

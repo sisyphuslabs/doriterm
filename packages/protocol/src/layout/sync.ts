@@ -16,6 +16,14 @@ export type DocState =
 /** An edit of the whole document: null when it no longer applies (its target went away), and nothing is written. */
 export type DocEdit = (doc: JsonObject | null) => JsonObject | null;
 
+/**
+ * When an edit reaches the screen: `at once` as it is written (what a person does shows without a round trip), or
+ * `once saved`, only as the host took it. An edit no person made that names new ids (adopting loose terminals) is shown
+ * once saved: another device may make the same edit with other ids first, and a list keyed by ids this one dropped on
+ * the conflict would drop what was open on them (#1572).
+ */
+export type EditShown = "at once" | "once saved";
+
 const CONFLICT_RETRIES = 8;
 const reasonOf = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
 const isConflict = (cause: unknown): boolean => cause instanceof HcRpcError && cause.kind === "conflict";
@@ -115,16 +123,16 @@ export class LayoutDoc {
    * Applies an edit and writes it; resolves false when the edit no longer applies (nothing is written), and rejects with
    * the reason when the document cannot take it: not readable or loaded, or changed by others past every retry.
    */
-  edit(change: DocEdit): Promise<boolean> {
-    const run = this.#queue.then(() => this.#write(change));
+  edit(change: DocEdit, shown: EditShown = "at once"): Promise<boolean> {
+    const run = this.#queue.then(() => this.#write(change, shown));
     this.#queue = run.catch(() => undefined);
     return run;
   }
 
-  async #write(change: DocEdit): Promise<boolean> {
+  async #write(change: DocEdit, shown: EditShown): Promise<boolean> {
     this.#writing += 1;
     try {
-      return await this.#attempt(change, CONFLICT_RETRIES);
+      return await this.#attempt(change, shown, CONFLICT_RETRIES);
     } finally {
       this.#writing -= 1;
       const missed = this.#missed;
@@ -135,7 +143,7 @@ export class LayoutDoc {
     }
   }
 
-  async #attempt(change: DocEdit, left: number): Promise<boolean> {
+  async #attempt(change: DocEdit, shown: EditShown, left: number): Promise<boolean> {
     const state = this.#state;
     if (left === 0) {
       throw new DocWriteError(
@@ -151,7 +159,7 @@ export class LayoutDoc {
     const next = change(state.doc);
     if (next === null) return false;
     this.#reads += 1;
-    this.#publish({ phase: "ready", doc: next, version: state.version });
+    if (shown === "at once") this.#publish({ phase: "ready", doc: next, version: state.version });
     try {
       const { version } = await this.#calls.set(this.#on, next, state.version);
       this.#publish({ phase: "ready", doc: next, version });
@@ -166,6 +174,6 @@ export class LayoutDoc {
       const { value, version } = await this.#calls.get(this.#on);
       this.#show(value, version);
     }
-    return this.#attempt(change, left - 1);
+    return this.#attempt(change, shown, left - 1);
   }
 }
