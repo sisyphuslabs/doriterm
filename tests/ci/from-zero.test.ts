@@ -179,6 +179,7 @@ test("every e2e spec gated on the private relay skips with the one shared line, 
     "space-rename-relay.e2e.ts",
     "terminal-images-relay.e2e.ts",
     "terminal-links-relay.e2e.ts",
+    "terminal-resume-relay.e2e.ts",
   ]);
 });
 
