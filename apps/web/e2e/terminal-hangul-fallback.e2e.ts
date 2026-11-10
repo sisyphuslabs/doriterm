@@ -3,7 +3,8 @@ import { expect, openNewTerminal, test } from "./fixtures.ts";
 
 // The default stack, with no Korean font injected: this is the path a macOS user takes, where the only face that
 // covers Hangul is a proportional one. Every other Korean e2e loads its own Plex subset, so none of them can see it.
-test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+// The pinned e2e faces (#862) would replace exactly this platform fallback, so this spec opts out of them.
+test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, pinnedFonts: false });
 
 const LINE = "A 한글 tail B";
 const HANGUL = /^[한글]$/u;

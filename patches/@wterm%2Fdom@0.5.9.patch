@@ -680,10 +680,19 @@ index a6746f499859ba9da2d7884dfd71694205c6d819..1a6cc13f68b3d84cc12d7c4a9b51f22f
      setOutputAnnouncements(enabled: boolean): void;
      /** Expose this terminal to in-page agents through WebMCP, or withdraw it. */
 diff --git a/dist/wterm.js b/dist/wterm.js
-index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999241853c3 100644
+index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874fbdf43c80 100644
 --- a/dist/wterm.js
 +++ b/dist/wterm.js
-@@ -131,9 +131,19 @@ export class WTerm {
+@@ -120,6 +120,8 @@ export class WTerm {
+         this._synchronizedOutputTimer = null;
+         this._synchronizedOutputState = "idle";
+         this._synchronizedOutputGeneration = 0;
++        this._synchronizedOutputContinues = false;
++        this._synchronizedOutputDeadline = 0;
+         this._rendererNeedsSetup = false;
+         this.resizeObserver = null;
+         this._destroyed = false;
+@@ -131,9 +133,19 @@ export class WTerm {
          };
          this._shouldScrollToBottom = false;
          this._pinnedToBottom = true;
@@ -703,7 +712,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
          this._rowHeight = 0;
          this._charWidth = 0;
          this._windowSizeQueryState = 0;
-@@ -227,6 +237,7 @@ export class WTerm {
+@@ -227,6 +239,7 @@ export class WTerm {
                  const match = this._search.matches[this.getSearchState().activeIndex];
                  if (match) {
                      this._shouldScrollToBottom = false;
@@ -711,7 +720,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
                      this._pendingResizeScrollTop = null;
                      this._setScrollTop((match.start.row + 0.5) * this._rowHeight -
                          this.element.clientHeight / 2);
-@@ -336,6 +347,16 @@ export class WTerm {
+@@ -336,6 +349,16 @@ export class WTerm {
          this._onScroll = () => {
              if (this._pendingResizeScrollTop !== null)
                  return;
@@ -728,7 +737,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
              const atBottom = this._isScrolledToBottom();
              if (this._shouldScrollToBottom && atBottom) {
                  this._programmaticScrollTop = null;
-@@ -349,6 +370,8 @@ export class WTerm {
+@@ -349,6 +372,8 @@ export class WTerm {
              }
              this._programmaticScrollTop = null;
              this._shouldScrollToBottom = false;
@@ -737,7 +746,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
              this._scheduleRender();
          };
          this.element.addEventListener("scroll", this._onScroll, { passive: true });
-@@ -418,6 +441,7 @@ export class WTerm {
+@@ -418,6 +443,7 @@ export class WTerm {
                  maxImageHeight: this.maxImageHeight,
                  renderer: this._rendererOption,
              });
@@ -745,7 +754,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
              this.renderer.setup(this.cols, this.rows);
              this.input = new InputHandler(this.element, (data, preserveScroll = false) => this._deliverInput(data, preserveScroll), () => this.bridge, () => this._charWidth > 0 && this._rowHeight > 0
                  ? { charWidth: this._charWidth, rowHeight: this._rowHeight }
-@@ -453,7 +477,6 @@ export class WTerm {
+@@ -453,7 +479,6 @@ export class WTerm {
              if (!this.autoResize) {
                  this._lockHeight();
              }
@@ -753,7 +762,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
              this._initialRender();
              this._registerWebMCP();
              if (this.cols !== initialCols || this.rows !== initialRows)
-@@ -465,12 +488,33 @@ export class WTerm {
+@@ -465,12 +490,33 @@ export class WTerm {
          }
          return this;
      }
@@ -787,7 +796,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
          this._setScrollTop(this.element.scrollHeight);
      }
      _setScrollTop(value, frame) {
-@@ -508,6 +552,29 @@ export class WTerm {
+@@ -508,6 +554,29 @@ export class WTerm {
              throw new Error("This terminal core cannot change its scrollback");
          this.bridge.setScrollbackLines(this._scrollbackLines);
      }
@@ -817,7 +826,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
      /**
       * Apply host colors without writing terminal input or restarting the session.
       * Pass `null` to drop them and answer color queries from the page's CSS again.
-@@ -553,7 +620,7 @@ export class WTerm {
+@@ -553,7 +622,7 @@ export class WTerm {
          this.renderer?.beforeMutation(this.bridge);
          if (this.debug)
              this.debug.traceWrite(data);
@@ -826,7 +835,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
          // Answer theme color queries with the colors the page shows right now.
          if (mayQueryThemeColors(data))
              this._syncCssThemeColors();
-@@ -732,9 +799,30 @@ export class WTerm {
+@@ -732,9 +801,30 @@ export class WTerm {
          this._rectangleDrag.cancel();
          this._historySelection.invalidate();
          this.renderer?.beforeMutation(this.bridge);
@@ -859,7 +868,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
          this._outputAnnouncements.invalidate();
          this.cols = this.bridge.getCols();
          this.rows = this.bridge.getRows();
-@@ -751,6 +839,19 @@ export class WTerm {
+@@ -751,6 +841,19 @@ export class WTerm {
          if (this.onResize)
              this.onResize(this.cols, this.rows);
      }
@@ -879,7 +888,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
      /** Search retained history and the active screen, using plain text. */
      search(query, options = {}) {
          if (this._destroyed)
-@@ -798,6 +899,7 @@ export class WTerm {
+@@ -798,6 +901,7 @@ export class WTerm {
              return false;
          const before = this.element.scrollTop;
          this._shouldScrollToBottom = false;
@@ -887,7 +896,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
          this._searchReveal = false;
          this._pendingResizeScrollTop = target * this._rowHeight;
          this._doRender();
-@@ -1127,14 +1229,20 @@ export class WTerm {
+@@ -1127,14 +1231,20 @@ export class WTerm {
              this._synchronizedOutputState = "idle";
              return false;
          }
@@ -910,7 +919,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
          }
          if (this._synchronizedOutputState !== "idle") {
              return this._synchronizedOutputState === "held";
-@@ -1144,9 +1252,10 @@ export class WTerm {
+@@ -1144,9 +1254,10 @@ export class WTerm {
          this._armSynchronizedOutputFallback(generation);
          return true;
      }
@@ -922,7 +931,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
          this._synchronizedOutputTimer = setTimeout(() => {
              if (this._synchronizedOutputState !== "held" ||
                  this._synchronizedOutputGeneration !== generation) {
-@@ -1157,7 +1266,7 @@ export class WTerm {
+@@ -1157,7 +1268,7 @@ export class WTerm {
              this._setupRendererIfNeeded();
              this._cancelScheduledRender();
              this._doRender();
@@ -931,7 +940,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
      }
      _cancelSynchronizedOutputFallback() {
          if (this._synchronizedOutputTimer == null)
-@@ -1576,14 +1685,16 @@ export class WTerm {
+@@ -1576,14 +1687,16 @@ export class WTerm {
          const height = this._visibleContentHeight(contentHeight);
          const newCols = Math.max(1, Math.floor(containerRect.width / charWidth));
          const newRows = Math.max(1, Math.floor(height / rowHeight));
