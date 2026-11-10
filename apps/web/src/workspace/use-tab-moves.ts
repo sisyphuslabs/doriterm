@@ -21,9 +21,11 @@ export function useTabMoves(
       const layout = tab === undefined || tab.transient ? undefined : layoutOf(tab.machine);
       if (tab === undefined || layout === undefined || layout.readOnly !== null) return;
       const keys = shown.current.map((each) => each.key);
+      // The strip shows one space of one machine, so its pinned tabs are the ones a move keeps to their side (#1561).
+      const pins = new Set(shown.current.filter((each) => each.pinned).map((each) => each.id));
       // Said once the document has the new order, so the strip reads the tab's new place, not the one it left.
       void layout
-        .edit((doc) => (doc === null ? null : moveDocTab(doc, tab.id, to)))
+        .edit((doc) => (doc === null ? null : moveDocTab(doc, tab.id, to, pins)))
         .then((moved) => {
           if (moved) setLastMove((said) => moveTabTo(keys, said, key, to).said);
           return moved;

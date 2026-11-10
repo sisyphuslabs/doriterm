@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { hcOn } from "./machine-switch.ts";
 import { reportedRows, reportRowOf, startMouseTracking, stopMouseTracking } from "./mouse-tracking.ts";
 import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 import { pointOnRowStart, rowEnd } from "./terminal-points.ts";
@@ -163,4 +164,54 @@ test("browsing read-only, a swipe scrolls the scrollback and the program hears n
   await tapReaches(touch, terminal, "alpha beta gamma");
   await nothingReachedFrom(terminal, "delta epsilon zeta");
   await stopMouseTracking(page);
+});
+
+test("entering browse mode in history keeps its position and a held touch selects there (#1368)", async ({
+  page,
+}, info) => {
+  const terminal = await openPhoneTerminal(page);
+  const address = await terminal.getAttribute("data-terminal");
+  if (address === null) throw new Error("terminal has no address");
+  try {
+    hcOn("host", [
+      "send",
+      address,
+      "stty -echo; printf '\\033[?1004h'; for i in $(seq 1 300); do printf 'history-%03d-copy\\n' $i; done; cat >/dev/null",
+    ]);
+    await expect(terminal).toContainText("history-300-copy", { timeout: 15_000 });
+    await terminal.evaluate((element) => {
+      const row = element.querySelector(".term-row");
+      if (row === null) throw new Error("terminal has no rows");
+      element.scrollTop -= row.getBoundingClientRect().height * 50;
+    });
+    await expect(page.getByRole("button", { name: /^Jump to bottom/ })).toBeVisible();
+    const scrolled = await settledScrollTop(terminal);
+    await input(page).blur();
+    await expect.poll(() => terminal.evaluate((element) => element.scrollTop)).toBe(scrolled);
+    await browse(page).click();
+    await expect(terminal).toHaveAttribute("data-browsing", "true");
+    const text = await terminal.evaluate((element) => {
+      const top = element.getBoundingClientRect().top;
+      return (
+        [...element.querySelectorAll(".term-row")]
+          .find((row) => row.getBoundingClientRect().top > top + 60)
+          ?.textContent?.trim() ?? ""
+      );
+    });
+    expect(text).toMatch(/^history-\d{3}-copy$/);
+    const touch = await Touch.on(page);
+    const at = await pointOnRowStart(terminal, text);
+    const end = await rowEnd(terminal, text);
+    await touch.down(at);
+    await expect.poll(() => painted(page).count()).toBeGreaterThan(0);
+    await touch.drag(at, end);
+    await touch.up(end);
+    await expect.poll(() => terminal.evaluate((element) => element.scrollTop)).toBe(scrolled);
+    await page.screenshot({ path: info.outputPath("phone-selected-history.png") });
+    await page.getByRole("menu", { name: "Selected text" }).getByRole("menuitem", { name: "Copy" }).click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain(text);
+    await expect(input(page)).not.toBeFocused();
+  } finally {
+    hcOn("host", ["kill", address]);
+  }
 });

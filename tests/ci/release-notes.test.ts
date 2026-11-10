@@ -146,6 +146,20 @@ test("a prerelease's Unreleased notes carry the fragments too, under their headi
   expect(out).toContain("### Terminal\n\n- Something coming. (#9)\n- From a fragment. (#12)\n");
 });
 
+test("a malformed pending fragment fails only the notes that read the fragments (#1330)", async () => {
+  const dir = checkout(CHANGELOG, { "13.md": "- No heading. (#13)\n" });
+  const own = await Promise.all([
+    run(dir, "--check", "1.2.0"),
+    run(dir, "1.2.0", "assets"),
+    run(dir, "--check", "1.2.0-rc.1"),
+    run(dir, "--check", "1.0.0"),
+  ]);
+  for (const { code, err } of own) expect({ code, err }).toEqual({ code: 0, err: "" });
+  const pending = await run(dir, "--check", "1.3.0-rc.1");
+  expect(pending.code).toBe(1);
+  expect(pending.err).toContain("changes/unreleased/13.md line 1");
+});
+
 test("the release workflow checks the CHANGELOG section before any build", () => {
   const workflow = Bun.YAML.parse(readFileSync(join(ROOT, ".github", "workflows", "release.yml"), "utf8")) as Workflow;
   const version = workflow.jobs["version"];

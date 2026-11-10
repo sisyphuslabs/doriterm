@@ -1,8 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
-import { renderService, renderUnit, type SetupOs, type SetupPaths, setupPaths } from "./render.ts";
+import {
+  renderPlist,
+  renderService,
+  renderUnit,
+  SetupError,
+  type SetupOs,
+  type SetupPaths,
+  setupPaths,
+} from "./render.ts";
 import { ensureService, type Ran, resolvePaths, type SetupContext, updateCheckout } from "./setup.ts";
 
 const roots: string[] = [];
@@ -49,6 +57,29 @@ const install = (root: string, paths: SetupPaths, checkoutChanged: boolean, acti
         : undefined,
   );
   return ensureService(context, paths, checkoutChanged).then((result) => ({ result, run: systemctl(commands) }));
+};
+
+/** A macOS context: launchd has a GUI domain, the agent is `loaded` or not and running or not; every command records. */
+const installMac = (root: string, paths: SetupPaths, checkoutChanged: boolean, loaded: boolean, running: boolean) => {
+  const commands: string[] = [];
+  const domain = `gui/${userInfo().uid}`;
+  const context: SetupContext = {
+    os: "mac",
+    home: root,
+    env: {},
+    report: () => {},
+    options: {},
+    run: (command) => {
+      commands.push(command.join(" "));
+      const agent = command[0] === "launchctl" && command[1] === "print" && command[2] !== domain;
+      const answer = agent ? { code: loaded ? 0 : 113, stdout: running ? "\tstate = running\n" : "" } : {};
+      return Promise.resolve({ code: 0, stdout: "", stderr: "", ...answer });
+    },
+  };
+  const target = `${domain}/${paths.label}`;
+  const changes = () =>
+    commands.filter((c) => !c.startsWith("launchctl print ")).map((c) => c.replace(target, "<target>"));
+  return ensureService(context, paths, checkoutChanged).then((result) => ({ result, run: changes(), domain }));
 };
 
 const checkout = (root: string, head: string, target: string, dirty = "", modules = true) => {
@@ -146,6 +177,49 @@ describe("ensureService's restart rules (#821)", () => {
   });
 });
 
+describe("ensureService's restart rules on macOS (#821, #1248)", () => {
+  test("a first install writes the plist and bootstraps the agent", async () => {
+    const root = home();
+    const paths = setupPaths("mac", root, {}, tools(root));
+    const { result, run, domain } = await installMac(root, paths, false, false, false);
+    expect(readFileSync(paths.serviceFile, "utf8")).toBe(renderPlist(paths));
+    expect(result.restarted).toBe(true);
+    expect(run).toEqual([`launchctl bootstrap ${domain} ${paths.serviceFile}`]);
+  });
+
+  test("a re-run that changes nothing on a running agent restarts nothing", async () => {
+    const root = home();
+    const paths = setupPaths("mac", root, {}, tools(root));
+    await installMac(root, paths, false, false, false);
+    const { result, run } = await installMac(root, paths, false, true, true);
+    expect(result.restarted).toBe(false);
+    expect(run).toEqual([]);
+  });
+
+  test("a moved checkout, or an agent that is loaded but not running, is kickstarted, not bootstrapped again", async () => {
+    const root = home();
+    const paths = setupPaths("mac", root, {}, tools(root));
+    await installMac(root, paths, false, false, false);
+    const moved = await installMac(root, paths, true, true, true);
+    const down = await installMac(root, paths, false, true, false);
+    for (const { result, run } of [moved, down]) {
+      expect(result.restarted).toBe(true);
+      expect(run).toEqual(["launchctl kickstart -k <target>"]);
+    }
+  });
+
+  test("a plist that changed on a loaded agent is rewritten, booted out and bootstrapped", async () => {
+    const root = home();
+    const paths = setupPaths("mac", root, {}, tools(root));
+    await installMac(root, paths, false, false, false);
+    const changed = { ...paths, listen: "127.0.0.1:0" };
+    const { result, run, domain } = await installMac(root, changed, false, true, true);
+    expect(readFileSync(paths.serviceFile, "utf8")).toBe(renderPlist(changed));
+    expect(result.restarted).toBe(true);
+    expect(run).toEqual(["launchctl bootout <target>", `launchctl bootstrap ${domain} ${paths.serviceFile}`]);
+  });
+});
+
 describe("updateCheckout's rules (#821)", () => {
   test("a checkout already at the branch, with its modules, is left alone", async () => {
     const { context, moves } = checkout(home(), "a".repeat(40), "a".repeat(40));
@@ -162,7 +236,12 @@ describe("updateCheckout's rules (#821)", () => {
 
   test("a checkout with local edits is refused, never moved", async () => {
     const { context, moves } = checkout(home(), "a".repeat(40), "b".repeat(40), " M apps/host/src/cli.ts\n");
-    await expect(updateCheckout(context, "dev")).rejects.toThrow();
+    const refused = await updateCheckout(context, "dev").then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(refused).toBeInstanceOf(SetupError);
+    expect(refused).toMatchObject({ code: "checkout", message: expect.stringContaining("has local changes") });
     expect(moves()).toEqual([]);
   });
 

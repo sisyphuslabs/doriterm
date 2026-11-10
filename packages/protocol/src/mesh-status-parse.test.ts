@@ -161,11 +161,12 @@ describe("parseMeshStatus", () => {
 
   test.each([
     ["another version", { ...status, v: 2 }],
-    ["an unknown line state", memberAt(1, { line: "online" })],
+    ["a line state that is not a string", memberAt(1, { line: 7 })],
     ["a negative count", { ...status, members: [{ ...member, owed: -1 }] }],
-    ["an unknown STUCK reason", { ...status, stuck: [{ kind: "melted" }] }],
+    ["a STUCK reason whose kind is not a string", { ...status, stuck: [{ kind: 7 }] }],
+    ["a sync value this reader does not know", { ...status, sync: "paused" }],
     ["a member STUCK reason without its member", { ...status, stuck: [{ kind: "line_idle" }] }],
-    ["an unknown revoke reason", { ...status, revoked: [{ ...status.revoked[0], reason: "bored" }] }],
+    ["a revoke reason that is not a string", { ...status, revoked: [{ ...status.revoked[0], reason: null }] }],
     ["not an object", ["doriface-mesh"]],
     ["sync ok with a STUCK reason", { ...status, sync: "ok" }],
     ["sync stuck without a reason", { ...status, stuck: [] }],
@@ -196,7 +197,7 @@ describe("parseMeshStatus", () => {
     ["an empty line reason", memberAt(1, { line: "unreachable", lineReason: "" })],
     ["a replaced machine name herdr refuses", memberAt(1, { replacedMachine: { name: "old box", kind: "ssh" } })],
     ["a replaced machine as a bare name", memberAt(1, { replacedMachine: "old" })],
-    ["a replaced machine of an unknown kind", memberAt(1, { replacedMachine: { name: "old", kind: "telnet" } })],
+    ["a replaced machine without its kind", memberAt(1, { replacedMachine: { name: "old" } })],
     ["an empty hello core id", memberAt(1, { helloCoreId: "" })],
     [
       "a read-only end that is not a time",
@@ -204,6 +205,47 @@ describe("parseMeshStatus", () => {
     ],
   ])("refuses %s", (_, value) => {
     expect(parseMeshStatus(value)).toBeUndefined();
+  });
+
+  // A host that adds a value to a closed set is still read by a reader built before it (#1139): the reader puts
+  // "unknown" in its place, or leaves out what it must not act on, and never refuses the whole document for it.
+  test("reads a line state a newer host added as unknown, with herdr's reason", () => {
+    const read = parseMeshStatus(memberAt(1, { line: "asleep", lineReason: "lid closed" }));
+    expect(read?.members[1]).toEqual({ ...member, line: "unknown", lineReason: "lid closed" });
+  });
+
+  test("reads a STUCK reason of a kind a newer host added as unknown, without its other keys", () => {
+    const read = parseMeshStatus({ ...status, stuck: [...status.stuck, { kind: "melted", member: member.hostId }] });
+    expect(read?.stuck).toEqual([...status.stuck, { kind: "unknown" }]);
+  });
+
+  test("reads a host outside its own view for a reason a newer host added", () => {
+    const outside = { ...status, sync: "stuck" as const, stuck: [{ kind: "exiled" }], members: [member] };
+    expect(parseMeshStatus(outside)).toEqual({ ...outside, stuck: [{ kind: "unknown" }] });
+  });
+
+  test("reads a revoke reason a newer host added as unknown", () => {
+    const read = parseMeshStatus({
+      ...status,
+      revoked: status.revoked.map((entry) => ({ ...entry, reason: "expired" })),
+    });
+    expect(read?.revoked).toEqual(status.revoked.map((entry) => ({ ...entry, reason: "unknown" as const })));
+  });
+
+  test("reads a replaced machine of a kind a newer host added as unknown, keeping its name", () => {
+    const read = parseMeshStatus(memberAt(1, { replacedMachine: { name: "old", kind: "telnet" } }));
+    expect(read?.members[1]?.replacedMachine).toEqual({ name: "old", kind: "unknown" });
+  });
+
+  test("reads a dial gate of a kind a newer host added as no gate", () => {
+    const read = parseMeshStatus(memberAt(1, { gate: { kind: "paused", until: "2026-11-03T12:01:00.000Z" } }));
+    expect(read?.members[1]?.gate).toBeNull();
+  });
+
+  // Approving a join grants what its kind says, so a join of a kind this reader cannot name is never offered.
+  test("leaves out a pending join of a kind a newer host added, and keeps the others", () => {
+    const robot = { ...status.pending[0], nonce: "r", kind: "robot" };
+    expect(parseMeshStatus({ ...status, pending: [robot, ...status.pending] })?.pending).toEqual(status.pending);
   });
 
   // Any client can write the document: what a reader does not know never reaches it, so a command or an ssh target
