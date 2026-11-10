@@ -116,7 +116,11 @@ export function MachineHeader({
           )}
         />
       )}
-      {rail || onToggle === undefined ? null : (
+      {rail ? null : onToggle === undefined ? (
+        // A filter takes the toggle away (#850); its slot stays reserved so New space and the dot beside it do not move
+        // by its width (#1158).
+        <span aria-hidden className="mr-1 size-6" />
+      ) : (
         <IconButton
           label={`${collapsed ? "Expand" : "Collapse"} ${name}`}
           aria-expanded={!collapsed}

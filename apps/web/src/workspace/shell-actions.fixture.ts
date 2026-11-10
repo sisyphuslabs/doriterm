@@ -31,6 +31,7 @@ export const tab: LayoutTab = {
   root: { children: [{ content: { terminal: "t1" }, id: "p1", type: "block" }], id: "tb1", type: "row" },
   panes: [pane],
   readOnly: null,
+  pinned: false,
   transient: false,
 };
 export const layout: Layout = {
@@ -60,6 +61,8 @@ export const layout: Layout = {
   swap: () => true,
   moveTab: noop,
   renameTab: () => Promise.resolve(),
+  pinTab: () => Promise.resolve(),
+  closeSetOf: () => [],
   restored: true,
   lastMove: null,
 };

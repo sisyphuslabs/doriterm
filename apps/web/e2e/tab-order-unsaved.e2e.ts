@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { openFour, order, rearranged, tabs } from "./tab-strip.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -42,9 +43,8 @@ test("a storage that refuses this screen's view says its tab selection was not s
   await expect.poll(() => timesSaid(page)).toBe(1);
 
   const before = await order(page);
-  const mac = await page.evaluate(() => navigator.platform.startsWith("Mac"));
   await tabs(page).nth(0).focus();
-  await page.keyboard.press(mac ? "Meta+Shift+ArrowRight" : "Control+Alt+Shift+PageDown");
+  await pressShortcut(page, "tab.move:right");
   await expect(tabs(page).nth(1)).toBeFocused();
   expect(await order(page)).toEqual(rearranged(before, [1, 0, 2, 3]));
   // The move itself is the document's (#404); the selection and focus it leaves wrote the view again and were refused
