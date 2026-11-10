@@ -1,6 +1,6 @@
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { base64urlEncode } from "@doriface/crypto";
-import type { KeyValueStore } from "../storage/idb.ts";
+import { refusesToClone, type KeyValueStore } from "../storage/idb.ts";
 
 export interface CardKey {
   readonly publicKey: Uint8Array;
@@ -83,17 +83,31 @@ export async function readOrCreateCardKey(storage: KeyValueStore, subtle: Subtle
   }
   if (subtle !== null) {
     const candidate = await generate(subtle, seed);
-    if (candidate !== undefined) {
-      await storage.put("mesh-sign-key.probe", candidate);
-      const back = await storage.get("mesh-sign-key.probe");
-      await storage.put("mesh-sign-key.probe", null);
-      if (storedKey(back) && back.kind === "webcrypto") {
-        await storage.put("mesh-sign-key", candidate);
-        return usable(candidate, subtle);
-      }
+    if (candidate !== undefined && (await keepsStoredKeys(storage, candidate))) {
+      await storage.put("mesh-sign-key", candidate);
+      return usable(candidate, subtle);
     }
   }
   const raw: Stored = { kind: "raw", privateKey: seed ?? ed25519.utils.randomSecretKey() };
   await storage.put("mesh-sign-key", raw);
   return usable(raw, subtle);
+}
+
+const PROBE = "mesh-sign-key.probe";
+
+/**
+ * Whether this store gives a stored CryptoKey back. WebKit can hand it back as null (bugs.webkit.org 312279, #1329) or
+ * refuse to clone it at write time with a DataCloneError (#1634); both mean this store cannot keep CryptoKeys, so the
+ * card key is kept as raw bytes. Any other failure is a storage error and is raised rather than downgraded.
+ */
+async function keepsStoredKeys(storage: KeyValueStore, candidate: Stored): Promise<boolean> {
+  try {
+    await storage.put(PROBE, candidate);
+  } catch (cause) {
+    if (refusesToClone(cause)) return false;
+    throw cause;
+  }
+  const back = await storage.get(PROBE);
+  await storage.put(PROBE, null);
+  return storedKey(back) && back.kind === "webcrypto";
 }

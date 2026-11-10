@@ -16,6 +16,8 @@ import { meshOf, peer } from "./testing/mesh-peers.ts";
 import { MeshNet, type NetHost } from "./testing/mesh-net.ts";
 
 const noLines = { lines: () => [], status: new Map() };
+/** A three-member mesh's stored set, signed once for the file: this case reads it, and is not about signing it (#780). */
+const STORED = meshOf([peer("a"), peer("b"), peer("c")]).records;
 const coreMember = (name: string): MemberEntry => ({
   signPub: `sign-${name}`,
   hostId: hostIdFor(name),
@@ -194,8 +196,7 @@ describe("a member's line in status (section 8.1)", () => {
 
 describe("the owed count's cost (status runs on the host's event loop)", () => {
   test("a stored set is hashed and parsed once, however many peers and status calls read it", () => {
-    const { records } = meshOf([peer("a"), peer("b"), peer("c")]);
-    expect(indexOf(records)).toBe(indexOf(records));
-    expect(indexOf([...records])).not.toBe(indexOf(records));
+    expect(indexOf(STORED)).toBe(indexOf(STORED));
+    expect(indexOf([...STORED])).not.toBe(indexOf(STORED));
   });
 });
