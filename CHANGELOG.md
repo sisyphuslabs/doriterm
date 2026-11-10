@@ -2,6 +2,153 @@
 
 ## Unreleased
 
+### Corrections to earlier release notes
+
+- v0.1.7 also shipped this, missing from the v0.1.7 section of CHANGELOG.md: the command palette lists Filter the
+  sidebar with its key, and choosing it opens the filter with the keyboard in it. (#848)
+- v0.1.7 also shipped this, missing from the v0.1.7 section of CHANGELOG.md: while a machine is held as connected
+  through a redial, a tab opened, closed or moved on it says the machine is reconnecting, matching its row, instead of
+  calling it not connected. (#918)
+- v0.1.7 also shipped this, missing from the v0.1.7 section of CHANGELOG.md: on a phone, Settings > Machines opens on
+  the machines and Add a machine: the explanation of what each state means sits under the list instead of filling the
+  first screen. (#1007, #1008)
+- v0.1.7 also shipped this, missing from the v0.1.7 section of CHANGELOG.md: Settings, This device, shows how long this
+  device took to open its session with the host, beside the round trip it already measures, so a slow link can be told
+  from a slow host. Both numbers are measured on the live connection and are left out when there is none. (#637)
+- v0.1.7 also shipped this, missing from the v0.1.7 section of CHANGELOG.md: the setup tool's `--listen default` and
+  `--session default` put a host that was installed with its own listener or hc session back on the defaults; before, a
+  re-run could only replace them. (#821)
+- The v0.1.6 notes list Pairing and Settings twice each; each pair is one section. In them, "Settings is one place per
+  question" also comes from #1005, and the disabled field, stepper, switch and menu item line also covers the colour
+  swatch. (#772, #1005, #1034)
+
+## v0.1.16 - 2026-11-09
+
+Highlights: coming back to the app, or reconnecting, no longer replays the old output line by line; the terminal shows
+the screen as it is now, in one paint (#1620). Together with v0.1.15's reconnect fix, which keeps you where you had
+scrolled (#1394), a terminal now comes back still and in place. Typing prediction also follows a cleared screen at
+once (#1624), and Korean draws on Android tablets again. (#1619)
+
+### Terminal
+
+- Korean and other wide characters always draw: a device whose font measurements came back unusable used to size each
+  of them to nothing, so an Android tablet showed blank cells where the Korean was. (#1619)
+- Coming back to the app, or reconnecting, shows the terminal as it is now in one paint, instead of redrawing the
+  output it missed line by line; the replay a reconnect needs is drawn once it has settled. (#1620)
+- After clearing the screen, typing is predicted from the new cursor at once. (#1624)
+- Switching tabs from the keyboard (Cmd+1-9, Cmd+Shift+[ and ], or a space shortcut) puts the keyboard in the terminal
+  it shows, so you can type straight away without clicking it first. (#1752)
+
+### Workspace
+
+- A space row's branch and diff facts drop after the machine has not answered the facts read for a little over a
+  minute, rather than staying on screen for as long as it reads connected. (#1661)
+
+### Host install
+
+- Unsafe Windows state-folder refusals now name the account or local group, identify the ancestor carrying an
+  inherited permission grant, and explain how to remove the grant or move state with `DORIFACE_HOST_STATE_DIR`. (#1633)
+
+### Native apps
+
+- On iPhone, two requests to turn on notifications that arrive together both get the same registration; one no
+  longer waits forever. (#1647)
+
+### Website
+
+- On the doriterm.com landing page, clicking to the Revoke scene eases cloud-box's load bar into place instead of
+  jumping it, whether you arrive from another scene or catch the bar mid-tween. (#1671)
+
+## v0.1.15 - 2026-11-09
+
+Highlights: a terminal no longer jumps when it reconnects (#1394), and typing on a slow link shows at once, Korean
+included (#1640). Pinned agent rows and spinners no longer change size or drift out of step (#1564, #1567), and Safari can
+pair again. (#1639)
+
+### Terminal
+
+- A terminal no longer jumps when it reconnects: if you had scrolled up into its history, you stay at the same place
+  while the screen is redrawn, and if you were following the newest output, you keep following it. Scrolling, a touch,
+  a click or typing ends the hold at once. (#1394)
+- A terminal whose program ends while its machine is offline shows "This session ended" once the machine is back,
+  instead of closing its tab. (#1593)
+- On a slow link, what you type is drawn at once and replaced by the host's own text when it arrives, underlined while
+  the link is slow; Korean syllables are drawn too. Settings, Device, "Show typing before the host echoes it" chooses
+  on slow links (the default), always, or off. (#1640)
+
+### Workspace
+
+- An agent waiting for input that Doriterm draws no card for (a plain "continue?", a menu, an agent it cannot read)
+  shows Enter, Esc and the arrows over its terminal, on the desktop and the phone; each tap presses only that key, and
+  the strip goes once the agent moves on. Claude Code and Codex keep their prompt card. (#1549)
+- A pinned agent's pin no longer changes size when the pointer reaches its row: the resting pin and the Unpin action
+  draw the same 14 px pin shape, filled on hover, and the row does not move. (#1564)
+- Every working spinner turns in step with the others: the agents list, the space counts, tabs and buttons share one
+  clock, so they stand at the same angle at the same moment, however late each appeared. (#1567)
+
+### Machine mesh
+
+- A Windows computer in a mesh names the other members with a command Windows can start, with no `sh`, instead of a
+  POSIX shell line it could never run. Reaching them also needs a herdr-core that runs such commands on Windows.
+  (#1581)
+
+### Joining a mesh
+
+- A browser that refuses to save its pairing key (Safari on some Macs) now keeps the key as raw bytes instead, so
+  joining a mesh no longer fails with "The object can not be cloned." (#1639)
+
+### Phone
+
+- On a phone with a notch, the command palette now opens below it, so its search field and Cancel button are no longer
+  hidden under the status bar. (#1511)
+- With the soft keyboard down, a row of your keys sits under the terminal: Esc, an arrow or ^C answers a program in
+  one tap without raising the keyboard. It is the same set Settings > Keyboard picks, and Read-only hides it. (#1554)
+- With the keyboard up, the keys bar is two rows: the Type field across the width with Send at its end, then the keys,
+  so Esc, ^C and the arrows show without a swipe. Enter joins the default keys, in the bar and in the row under the
+  terminal. (#1554)
+- Back from a terminal returns the Agents list, and a space's screen of tabs, to where you had scrolled them, instead
+  of to the top. (#1557)
+- A terminal at the bottom stays at the bottom when the soft keyboard is dismissed in a browser that resizes the page
+  for it, instead of stopping a few pixels above its last line and no longer following the output. (#1573)
+- A space's screen of tabs keeps each scroll under the space it shows, so Back to a space returns to that space's own
+  place. (#1585)
+
+### Desktop window
+
+- A tab you have not named reads the title of the agent it runs instead of its number; a shell's tab keeps its number,
+  and a name you give a tab still wins. (#1544)
+- Settings > This device has Keep running in the background: closing the window leaves Doriterm and this computer's
+  host running, so your phone stays connected. On a Mac it also leaves the Dock and the menu bar; open Doriterm again
+  to bring the window back. (#1558)
+
+### Settings
+
+- Searching Settings lists the matching settings themselves, each with its section; picking one (or Enter on the
+  first) opens that section scrolled to the row, with its control focused. "keybinds" now finds the keybinding import.
+  (#1545)
+- Successfully turning notifications on or off clears an earlier failure to move notifications to another host.
+  (#1610)
+- On macOS, Notifications reads the app's system authorization through the native addon instead of always saying the
+  computer decides. A denied permission can now show the existing remedy and Check again controls. (#1628)
+
+### Host install
+
+- install.sh hands the mesh link to `mesh join` in a file only you can read, never on its command line where other
+  local users can read it, and `DORIFACE_JOIN=<link>` joins like `--join` with the link off the installer's own
+  command line. (#1625)
+- The setup skill's `uninstall` removes the service even when the only herdr-core on the machine is older than the
+  floor, since removing it never runs herdr-core. (#1629)
+
+### Windows
+
+- The host refuses a state folder that another account may rename, remove or re-permission even when that account's
+  grant is listed after SYSTEM's or Administrators'. (#1636)
+
+### Interface
+
+- The explanation under an error notice, such as a refused pairing or unreadable storage, now uses a softened text
+  colour that belongs to the red card instead of a flat gray. (#1524)
+
 ## v0.1.14 - 2026-11-09
 
 ### Workspace

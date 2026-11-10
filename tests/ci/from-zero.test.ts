@@ -172,12 +172,14 @@ test("every e2e spec gated on the private relay skips with the one shared line, 
     }
   }
   expect(gated.toSorted()).toEqual([
+    "keystroke-latency-relay.e2e.ts",
     "mesh-attach.e2e.ts",
     "mesh-input-hold.e2e.ts",
     "mesh-join-browser.e2e.ts",
     "space-rename-relay.e2e.ts",
     "terminal-images-relay.e2e.ts",
     "terminal-links-relay.e2e.ts",
+    "terminal-resume-relay.e2e.ts",
   ]);
 });
 
