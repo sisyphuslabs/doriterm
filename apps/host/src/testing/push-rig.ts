@@ -126,6 +126,7 @@ export async function rig(): Promise<Rig> {
   };
   const service = new PushService({
     hostId: HOST_ID,
+    machineName: "build-box",
     vapid: await loadVapidKey(dir),
     subscriptions: store,
     paired: () => paired,
