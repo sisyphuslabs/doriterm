@@ -132,7 +132,7 @@ export function TerminalView(props: TerminalViewProps) {
     typesComposition,
     predict,
   });
-  const { pending, typedInto, typed, pasteFiles, linkReady } = input;
+  const { pending, typedInto, typed, typedLater, pasteFiles, linkReady } = input;
   const scroll = useTerminalScroll(wt);
   const outputShown = useRef(scroll.changed);
   outputShown.current = scroll.changed;
@@ -177,7 +177,7 @@ export function TerminalView(props: TerminalViewProps) {
       if (warmup.current === made) warmup.current = null;
     };
   }, [wt]);
-  useTerminalActions(wt, typed, focused, pasteFiles, openFind);
+  useTerminalActions(wt, typed, typedLater, focused, pasteFiles, openFind);
   const shown = usePaneVisibility(wt, pacer);
   const away = useMachineLine(connection, address, shown);
   useFocusAfterSelect(wt, options.trimCopy);

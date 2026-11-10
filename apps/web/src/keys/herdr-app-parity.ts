@@ -12,6 +12,8 @@ export interface HerdrDifference {
 const APP_MENU = "the desktop app's macOS app menu carries it (a standard menu role); a browser keeps it for itself";
 const NO_MODS = "Doriterm has no mods, so there is no picker mod to open";
 const NO_LAYOUTS = "Doriterm has no layout files to switch between";
+const CTRL_V_PASTES =
+  "Ctrl+V stays the browser's paste, as before: an image on the clipboard reaches the terminal's machine as a file through the paste itself (#742), which needs no clipboard permission (the desktop app grants none), and text is pasted as text where herdr-app sends ^V";
 
 /**
  * Every herdr-app default (herdr-app/keys*.json) that doriface binds differently. `herdr-app-parity.test.ts` holds this
@@ -28,6 +30,7 @@ export const HERDR_APP_DIFFERENCES: Readonly<Record<Platform, readonly HerdrDiff
   other: [
     { chord: "ctrl-shift-k", doriface: null, reason: NO_MODS },
     { chord: "ctrl-shift-l", doriface: null, reason: NO_LAYOUTS },
+    { chord: "ctrl-v", doriface: null, reason: CTRL_V_PASTES },
   ],
 };
 

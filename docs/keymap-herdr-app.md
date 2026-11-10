@@ -148,6 +148,6 @@ every chord. Keys a person rebinds in Settings > Keybindings stay theirs.
 | `ctrl-shift-c` | `terminal.copy` | same | same |  |
 | `ctrl-shift-v` | `terminal.paste` | same | same |  |
 | `ctrl-shift-f` | `terminal.search` | same | same |  |
-| `ctrl-v` | `terminal.paste_image` | same | same |  |
+| `ctrl-v` | `terminal.paste_image` | unbound | same | Ctrl+V stays the browser's paste, as before: an image on the clipboard reaches the terminal's machine as a file through the paste itself (#742), which needs no clipboard permission (the desktop app grants none), and text is pasted as text where herdr-app sends ^V |
 | `ctrl-insert` | `terminal.copy` | same | same |  |
 | `shift-insert` | `terminal.paste` | same | same |  |

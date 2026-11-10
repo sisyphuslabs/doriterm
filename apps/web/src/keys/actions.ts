@@ -75,7 +75,8 @@ export const ACTIONS: readonly ActionDef[] = [
   app("app.zoom_reset", "Reset terminal text size", "reset_font_size"),
   term("terminal.copy", "Copy", "copy_to_clipboard"),
   term("terminal.paste", "Paste", "paste_from_clipboard"),
-  // herdr-app's terminal.paste_image on Ctrl+V: the clipboard's image as a file on the terminal's machine, else ^V (#1922).
+  // herdr-app's terminal.paste_image, on a Mac's Ctrl+V: the clipboard's image as a file on the terminal's machine, else
+  // ^V (#1922). Elsewhere Ctrl+V stays the browser's paste, which sends an image as a file itself (#742).
   term("terminal.paste_image", "Paste image"),
   term("terminal.select_all", "Select all", "select_all"),
   term("terminal.clear", "Clear screen", "clear_screen"),

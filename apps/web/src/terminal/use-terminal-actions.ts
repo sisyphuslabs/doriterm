@@ -25,6 +25,7 @@ function copySelection(wt: WTerm): boolean {
 export function useTerminalActions(
   wt: WTerm | null,
   send: (data: TerminalInput) => void,
+  sendLater: (data: Promise<TerminalInput | null>) => void,
   focused: boolean,
   pasteFiles: (files: readonly File[]) => void,
   openFind: () => void,
@@ -47,9 +48,14 @@ export function useTerminalActions(
         // clipboard-read is denied (the desktop shell).
         return false;
       case "terminal.paste_image":
-        // herdr-app's Ctrl+V when bound to it: the clipboard's image as a file on the terminal's machine, else the key.
-        void readClipboardImage(navigator.clipboard ?? {}).then((image) =>
-          image === null ? send("\u0016") : pasteFiles([image]),
+        // herdr-app's Ctrl+V: the clipboard's image as a file on the terminal's machine, else the key. Keys typed while
+        // the clipboard is read reach the program after it, as herdr-app reads the clipboard before the next key.
+        sendLater(
+          readClipboardImage(navigator.clipboard ?? {}).then((image) => {
+            if (image === null) return "\u0016";
+            pasteFiles([image]);
+            return null;
+          }),
         );
         return true;
       case "terminal.select_all": {
