@@ -26,6 +26,14 @@ test("the active tab of a machine's agent reads the agent's title with its icon,
     // on the tab has one (#478).
     await expect(tab.locator("[title]")).toHaveCount(1);
     await expect(tab.locator("[title]")).toHaveAttribute("title", TITLE);
+    // The tooltip has to be reachable: a pointer over the label lands on the element carrying the title (or inside it),
+    // not on a hit layer drawn above it (#1530).
+    const hovered = await tab.locator("[title]").evaluate((label) => {
+      const box = label.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      return hit?.closest("[title]")?.getAttribute("title") ?? null;
+    });
+    expect(hovered).toBe(TITLE);
     await expect(tab.locator("svg.lucide-bot")).toHaveCount(1);
   } finally {
     endAgent("machine", address);
