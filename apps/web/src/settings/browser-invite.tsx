@@ -80,7 +80,9 @@ function InviteAnswer({ connection, install }: { readonly connection: HcConnecti
               </Button>
               <Button onClick={() => setKeep(true)}>Keep</Button>
             </div>
-            <p className="text-sm text-muted-foreground">Keeping this tab leaves one more member key on this phone.</p>
+            <p className="text-prose text-muted-foreground">
+              Keeping this tab leaves one more member key on this phone.
+            </p>
             <LeaveMeshDialog open={leaving} close={() => setLeaving(false)} />
           </>
         ) : null}

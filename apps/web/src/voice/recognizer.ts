@@ -75,6 +75,8 @@ export function errorFor(code: string, local: boolean): VoiceError | null {
     case "mic-system":
     case "speech-system":
     case "device-mac":
+    case "mic-windows":
+    case "device-windows":
       return code;
     case "busy":
       return "service";

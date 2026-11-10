@@ -104,7 +104,8 @@ export const SHOTS: readonly Shot[] = [
     start: "none",
     run: async (page) => {
       await page.goto("/");
-      await expect(page.getByRole("heading", { name: "Connect to a host" })).toBeVisible();
+      // An unpaired browser lands on the mesh join entry (#1446), on / and on /pair alike.
+      await expect(page.getByRole("heading", { name: "Join a mesh" })).toBeVisible();
     },
   },
   {
@@ -112,7 +113,7 @@ export const SHOTS: readonly Shot[] = [
     start: "pairing",
     run: async (page) => {
       await page.goto("/pair");
-      await expect(page.getByRole("heading", { name: "Pair this device" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Join a mesh" })).toBeVisible();
     },
   },
   { name: "pair-code", start: "pairing", run: typeCode },
@@ -165,7 +166,7 @@ export const SHOTS: readonly Shot[] = [
     start: "pairing",
     run: async (page) => {
       await page.goto(MESH_LINK);
-      await expect(page.getByRole("heading", { name: "This link adds a machine to a mesh" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Join this mesh" })).toBeVisible();
     },
   },
   { name: "pair-refused-4429", start: "pairing", run: refusedWith(4429) },
@@ -258,7 +259,7 @@ export const SHOTS: readonly Shot[] = [
     },
   })),
   {
-    // The space keys (#619): the number chords and the cycle pair, with the note that a terminal keeps the number chord.
+    // The space keys (#619): the number chords and the cycle pair.
     name: "settings-keybindings-spaces",
     start: "connected",
     run: async (page) => {
