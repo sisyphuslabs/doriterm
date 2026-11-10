@@ -24,8 +24,8 @@ const DESKTOP: Readonly<Record<string, readonly string[]>> = {
   "first-run": ["Open an invite from a machine you can see"],
   settings: ["This app talks to one host"],
   "settings-mesh": [
-    "These are the computers this host reaches",
-    "Adding one by hand reaches it without the mesh",
+    "These are the computers in your mesh that this host reaches",
+    "A machine that answers reads Connected",
     "reaches the other machines through its own relay only",
   ],
 };

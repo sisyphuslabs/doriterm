@@ -116,6 +116,26 @@ describe("window placement while the window moves", () => {
     }
   });
 
+  test("a settle that comes due after the window is destroyed writes nothing (#1227)", () => {
+    jest.useFakeTimers();
+    const { file, done } = placementFile();
+    try {
+      const { window, fire, moveTo, destroy } = placedWindow(resting);
+      rememberPlacement(window, file);
+      fire("close");
+      expect(savedPlacement(file), "closing writes the placement it rested on").toEqual(resting);
+      // Electron can send a move after `close`, while the window is being torn down: its settle is scheduled, then the
+      // window is gone before the settle comes due, so the save must ask whether there is still a window to read.
+      moveTo({ x: 5, y: 5, width: 500, height: 400 });
+      fire("move");
+      destroy();
+      expect(() => jest.advanceTimersByTime(PLACEMENT_SETTLE_MS)).not.toThrow();
+      expect(savedPlacement(file), "the destroyed window's bounds are never read or written").toEqual(resting);
+    } finally {
+      done();
+    }
+  });
+
   test("a close that was cancelled leaves the window open, and its later moves are still saved (#1113)", () => {
     jest.useFakeTimers();
     const { file, done } = placementFile();
