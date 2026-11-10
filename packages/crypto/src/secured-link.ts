@@ -10,6 +10,9 @@ import type { Transport } from "./transport.ts";
 export const MAX_HELD_BYTES = 4 * 1024 * 1024;
 /** The WebSocket normal close: how a link a session has left is let go. */
 const NORMAL_CLOSE = 1000;
+/** WebSocket 1001: the peer said it is going away (a host shutting down), so its close is meant, not a drop. */
+const GOING_AWAY = 1001;
+const goingAway = (error: Error): boolean => closeCodeOf(error) === GOING_AWAY;
 
 export interface SessionInfo {
   readonly kind: SessionKind;
@@ -210,12 +213,14 @@ export class SecuredLink implements SecureSession, ResumableSession {
   /**
    * The link under the session closed with `error` (undefined: a normal close). A link other than the current one is a
    * former one, whose late close means nothing. A link that failed while a resume is allowed detaches the session; a
-   * normal close ends it, as the peer meant.
+   * close the peer meant ends it: a normal one, or going away, which a host sends as it shuts down.
    */
   linkClosed(error: Error | undefined, link?: ByteLink): void {
     if (this.#closed) return;
     if (link !== undefined && link !== this.#link) return;
-    if (error !== undefined && this.#resumable && this.#link !== undefined) return this.#detachFor(error);
+    if (error !== undefined && !goingAway(error) && this.#resumable && this.#link !== undefined) {
+      return this.#detachFor(error);
+    }
     this.#end(error);
   }
 

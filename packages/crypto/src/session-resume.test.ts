@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CloseCode, type ByteLink } from "./link.ts";
+import { type ByteLink, CloseCode, closeCodeOf } from "./link.ts";
 import { RECORD_RING_BYTES } from "./record-ring.ts";
 import { decodeResumeRequest, encodeResumeAnswer, encodeResumeRequest } from "./resume.ts";
 import type { SecureSession } from "./secured-link.ts";
@@ -57,6 +57,21 @@ describe("a session whose link drops", () => {
     polite.hostEnd.close();
     expect(await closed).toBeUndefined();
     expect(polite.client.closed).toBe(true);
+  });
+
+  test("ends on a close the peer meant, going away (1001), as a host shutting down sends: no detach, no resume", async () => {
+    const { client, server, clientEnd } = await resumable();
+    const detachedFor: Error[] = [];
+    client.onDetached((reason) => detachedFor.push(reason));
+    const closed = nextClose(client);
+    clientEnd.end(new CodedCloseError(1001, "host shutting down"));
+    const error = await closed;
+    expect(error).toBeInstanceOf(Error);
+    expect(closeCodeOf(error)).toBe(1001);
+    expect(client.closed).toBe(true);
+    expect(client.detached).toBe(false);
+    expect(detachedFor).toEqual([]);
+    expect(server.closed).toBe(false);
   });
 
   test("lost() detaches an open session and closes its link once; the link's own close report is then a former one's", async () => {
