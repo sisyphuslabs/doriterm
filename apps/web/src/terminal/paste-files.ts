@@ -1,5 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import { HcRpcError } from "@doriface/protocol";
+import type { TerminalInput } from "./terminal-view-props.ts";
 
 /** The most raw bytes one `terminal.put` takes (herdr-core's `put::MAX_BYTES`, 8 MiB). */
 export const MAX_PUT_BYTES = 8 << 20;
@@ -175,6 +176,59 @@ export async function readClipboardImage(clipboard: Partial<Pick<Clipboard, "rea
   } catch {
     return null;
   }
+}
+
+/** How long keys typed after Paste image wait behind the clipboard's answer (#1989). */
+export const CLIPBOARD_IMAGE_WAIT_MS = 1500;
+
+/** Where Paste image's input goes: the terminal's ordered input path, and its file upload. */
+export interface PasteImageInput {
+  /** Input known once `data` settles; what is sent meanwhile waits behind it. */
+  readonly later: (data: Promise<TerminalInput | null>) => void;
+  /** The ^V sent past the wait, in order: the person may be composing a syllable by then, which it leaves alone. */
+  readonly send: (data: TerminalInput) => void;
+  /** Files sent to the terminal's machine, their paths pasted there. */
+  readonly pasteFiles: (files: readonly File[]) => void;
+  /** Told `true` when the clipboard has not answered within the wait, and `false` once it does. */
+  readonly waiting?: (waiting: boolean) => void;
+}
+
+/**
+ * herdr-app's Ctrl+V: the clipboard's image as a file on the terminal's machine, else ^V. Keys typed while the clipboard
+ * is read reach the program after the ^V. A clipboard that has not answered within `waitMs` (a browser asking the
+ * person to allow the paste, a read that never settles) lets them through at once, so typing never stalls (#1989), and
+ * is still heard: an image it gives later is pasted then, and ^V is sent then if it gives none or the paste is not
+ * allowed. One press sends the image's path or ^V, never both, and never drops an image the person allowed.
+ */
+export function pasteClipboardImage(
+  clipboard: Partial<Pick<Clipboard, "read">>,
+  input: PasteImageInput,
+  waitMs: number = CLIPBOARD_IMAGE_WAIT_MS,
+): void {
+  const reading = readClipboardImage(clipboard);
+  const answer = (image: File | null): TerminalInput | null => {
+    if (image === null) return "\u0016";
+    input.pasteFiles([image]);
+    return null;
+  };
+  // Past the wait, the answer is acted on when it comes: the image pasted then, or ^V sent then, after keys typed meanwhile.
+  const answerLate = async (): Promise<void> => {
+    const image = await reading;
+    input.waiting?.(false);
+    const key = answer(image);
+    if (key !== null) input.send(key);
+  };
+  const waited = Promise.withResolvers<"waited">();
+  const timer = setTimeout(() => waited.resolve("waited"), waitMs);
+  input.later(
+    Promise.race([reading, waited.promise]).then((first) => {
+      clearTimeout(timer);
+      if (first !== "waited") return answer(first);
+      input.waiting?.(true);
+      void answerLate();
+      return null;
+    }),
+  );
 }
 
 /**
