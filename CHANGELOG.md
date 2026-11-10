@@ -24,40 +24,14 @@
 
 ## v0.1.16 - 2026-11-09
 
-Highlights: coming back to the app, or reconnecting, no longer replays the old output line by line; the terminal shows
-the screen as it is now, in one paint (#1620). Together with v0.1.15's reconnect fix, which keeps you where you had
-scrolled (#1394), a terminal now comes back still and in place. Typing prediction also follows a cleared screen at
-once (#1624), and Korean draws on Android tablets again. (#1619)
+Coming back to the app, or reconnecting, no longer replays the old output line by line; the terminal shows the screen as
+it is now, in one paint. Together with v0.1.15's reconnect fix, which keeps you where you had scrolled (#1394), a
+terminal now comes back still and in place.
 
 ### Terminal
 
-- Korean and other wide characters always draw: a device whose font measurements came back unusable used to size each
-  of them to nothing, so an Android tablet showed blank cells where the Korean was. (#1619)
 - Coming back to the app, or reconnecting, shows the terminal as it is now in one paint, instead of redrawing the
   output it missed line by line; the replay a reconnect needs is drawn once it has settled. (#1620)
-- After clearing the screen, typing is predicted from the new cursor at once. (#1624)
-- Switching tabs from the keyboard (Cmd+1-9, Cmd+Shift+[ and ], or a space shortcut) puts the keyboard in the terminal
-  it shows, so you can type straight away without clicking it first. (#1752)
-
-### Workspace
-
-- A space row's branch and diff facts drop after the machine has not answered the facts read for a little over a
-  minute, rather than staying on screen for as long as it reads connected. (#1661)
-
-### Host install
-
-- Unsafe Windows state-folder refusals now name the account or local group, identify the ancestor carrying an
-  inherited permission grant, and explain how to remove the grant or move state with `DORIFACE_HOST_STATE_DIR`. (#1633)
-
-### Native apps
-
-- On iPhone, two requests to turn on notifications that arrive together both get the same registration; one no
-  longer waits forever. (#1647)
-
-### Website
-
-- On the doriterm.com landing page, clicking to the Revoke scene eases cloud-box's load bar into place instead of
-  jumping it, whether you arrive from another scene or catch the bar mid-tween. (#1671)
 
 ## v0.1.15 - 2026-11-09
 
@@ -148,6 +122,25 @@ pair again. (#1639)
 
 - The explanation under an error notice, such as a refused pairing or unreadable storage, now uses a softened text
   colour that belongs to the red card instead of a flat gray. (#1524)
+
+### Also in this release
+
+These changes reached v0.1.15 without a line of their own at release time (they merged while its release pull request
+was open).
+
+- Korean and other wide characters always draw: a device whose font measurements came back unusable used to size each
+  of them to nothing, so an Android tablet showed blank cells where the Korean was. (#1619)
+- After clearing the screen, typing is predicted from the new cursor at once. (#1624)
+- Switching tabs from the keyboard (Cmd+1-9, Cmd+Shift+[ and ], or a space shortcut) puts the keyboard in the terminal
+  it shows, so you can type straight away without clicking it first. (#1752)
+- A space row's branch and diff facts drop after the machine has not answered the facts read for a little over a
+  minute, rather than staying on screen for as long as it reads connected. (#1661)
+- Unsafe Windows state-folder refusals now name the account or local group, identify the ancestor carrying an
+  inherited permission grant, and explain how to remove the grant or move state with `DORIFACE_HOST_STATE_DIR`. (#1633)
+- On iPhone, two requests to turn on notifications that arrive together both get the same registration; one no
+  longer waits forever. (#1647)
+- On the doriterm.com landing page, clicking to the Revoke scene eases cloud-box's load bar into place instead of
+  jumping it, whether you arrive from another scene or catch the bar mid-tween. (#1671)
 
 ## v0.1.14 - 2026-11-09
 
