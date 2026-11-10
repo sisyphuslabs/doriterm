@@ -143,6 +143,10 @@ test("the From zero workflow runs the guide on a clean runner with no secrets", 
   const kept = job?.steps.find((step) => step.uses?.startsWith("actions/upload-artifact@"));
   expect(kept?.["if"]).toBe("failure()");
   expect(JSON.stringify(kept?.with?.["path"])).toContain("from-zero-*/work-*/doriterm/apps/web/test-results");
+  // Playwright writes its HTML report only when CI is set (apps/web/playwright.config.ts), and the guide's environment
+  // does not pass CI, so a report path could never match: the upload keeps the trace in test-results alone (#1353).
+  expect(guideEnv("/home", { CI: "true" })["CI"]).toBeUndefined();
+  expect(JSON.stringify(kept?.with?.["path"])).not.toContain("playwright-report");
   expect(JSON.stringify(job)).not.toContain("HC_BIN");
 });
 

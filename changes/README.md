@@ -19,7 +19,7 @@ with dashes (`fix-paste.md`); rename it once the number exists.
 ```
 
 - Only `### <Section>` headings, `- ` lines, continuation lines indented two spaces, and blank lines. Every heading has
-  at least one line, and every line sits under a heading.
+  a section name and at least one line, and every line sits under a heading.
 - The sections are `CANONICAL_HEADINGS` in `.github/scripts/changelog-fragments.ts`; another spelling of one, in any
   case or by a listed alias, is written under the listed name. A name outside the list is kept as written and goes after
   the listed ones.
