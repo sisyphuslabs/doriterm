@@ -92,7 +92,7 @@ test("a confirmed close whose End fails brings its question back to say why", as
   kept.push(address);
   const release = link.hold("terminal.kill");
   await terminal.getByRole("textbox").focus();
-  await page.keyboard.press(CLOSE_PANE);
+  await pressShortcut(page, "pane.close");
   const ask = page.getByRole("dialog", { name: /^Close .+\?$/ });
   await ask.getByRole("button", { name: "Close" }).click();
   await expect(pane(page, address)).toHaveCount(0);
