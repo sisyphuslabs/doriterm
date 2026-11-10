@@ -83,7 +83,7 @@ jobs:
         env:
           CI: "1"
       - name: Browser mesh membership and home-screen handoff in WebKit
-        run: E2E_BROWSERS=all bun run test:e2e e2e/browser-mesh-join.e2e.ts e2e/browser-mesh-install.e2e.ts --project=webkit --workers=1
+        run: E2E_BROWSERS=all bun run test:e2e e2e/browser-mesh-join.e2e.ts e2e/browser-mesh-install.e2e.ts e2e/device-key-reload.e2e.ts --project=webkit --workers=1
         working-directory: apps/web
         env:
           CI: "1"
