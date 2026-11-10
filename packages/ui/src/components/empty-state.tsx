@@ -28,7 +28,9 @@ export function EmptyState({
     <div
       role="status"
       className={cn(
-        "mx-auto flex w-full max-w-lg flex-col items-center gap-3 px-6 py-10 text-center",
+        // As wide as the description's measure plus the side insets, so the column holds the measure rather than cutting
+        // its lines short. In em, which it inherits at the description's own size.
+        "mx-auto flex w-full max-w-[calc(var(--container-measure)+3rem)] flex-col items-center gap-3 px-6 py-10 text-center",
         // A whole-screen step sits in a page that already pads its edges; a second inset narrows a phone's prose.
         size === "screen" && "px-0",
         className,
