@@ -116,9 +116,13 @@ test("an agent that finishes its turn shows a native notification, and a turned-
   const page = await app().firstWindow();
   const finished = agent("notify-done", "state=done:app=claude");
   press(finished);
+  // What it is about comes from the app's own connection (#1908): the agent and machine, then where and what happened.
   await expect.poll(shown).toEqual([
     { title: "Doriterm", body: "Notifications on this computer work." },
-    { title: "Doriterm", body: "An agent finished its turn." },
+    {
+      title: expect.stringMatching(/^claude(@\S+)?$/),
+      body: expect.stringMatching(/notify-done — Finished its turn$/),
+    },
   ]);
 
   await section(page).getByRole("switch", { name: "An agent finishes its turn" }).click();
@@ -129,7 +133,7 @@ test("an agent that finishes its turn shows a native notification, and a turned-
   await expect.poll(() => hc(["get", quiet, "--json"])).toContain('"state":"done"');
   const asking = agent("notify-input", "state=blocked:app=claude");
   press(asking);
-  await expect.poll(async () => (await shown()).at(-1)?.body).toBe("An agent is waiting for your input.");
+  await expect.poll(async () => (await shown()).at(-1)?.body).toMatch(/notify-input — Waiting for your input$/);
   expect(await shown()).toHaveLength(3);
 });
 
