@@ -67,7 +67,7 @@ test.describe("Settings, Machines", () => {
       }
       // The explanation of a row's state comes after them: its top edge is at or below the button's bottom edge.
       const button = await add.boundingBox();
-      const glossary = await page.getByText("Adding one by hand reaches it without the mesh").boundingBox();
+      const glossary = await page.getByText("A machine that answers reads Connected", { exact: false }).boundingBox();
       expect(button, "button drawn").not.toBeNull();
       expect(glossary, "explanation drawn").not.toBeNull();
       expect(glossary?.y ?? Number.NEGATIVE_INFINITY).toBeGreaterThanOrEqual((button?.y ?? 0) + (button?.height ?? 0));
