@@ -65,8 +65,9 @@ const NOT_CONNECTED = "the machine is not connected";
 
 /**
  * Why a machine with no live document takes no edits, in the words its row uses: one the page holds as connected
- * through a redial (the grace from #904) is reconnecting, and its edits wait for it rather than calling it disconnected
- * while its row reads connected (#918); anything else is not connected.
+ * through a redial (the grace from #904) is reconnecting, and its edits are refused as reconnecting rather than as
+ * disconnected while its row reads connected or reconnecting (#918); anything else is not connected. An edit is never
+ * queued for later.
  */
 export function noEditsWhy(id: string | null, shown: readonly MachineView[]): string {
   const view = shown.find((machine) => machine.id === id);
