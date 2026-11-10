@@ -1,4 +1,5 @@
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import {
   centre,
   domOrder,
@@ -63,12 +64,11 @@ test("a press that wobbles 2 px is a click that selects, and Escape puts a dragg
 
 test("the keyboard moves the focused tab, focus stays on it, and its new place is announced", async ({ page }) => {
   const before = await fourTabs(page);
-  const mac = await page.evaluate(() => navigator.platform.startsWith("Mac"));
   await tabs(page).nth(0).focus();
-  await page.keyboard.press(mac ? "Meta+Shift+ArrowRight" : "Control+Alt+Shift+PageDown");
+  await pressShortcut(page, "tab.move:right");
   await expect(tabs(page).nth(1)).toBeFocused();
   await expect(page.getByRole("status").filter({ hasText: /^Moved .+ to position 2 of 4/ })).toHaveCount(1);
-  await page.keyboard.press(mac ? "Meta+Shift+ArrowRight" : "Control+Alt+Shift+PageDown");
+  await pressShortcut(page, "tab.move:right");
   await expect(tabs(page).nth(2)).toBeFocused();
   expect(await order(page)).toEqual(rearranged(before, [1, 2, 0, 3]));
 });
@@ -109,7 +109,7 @@ test("on macOS the move chord stays with a text field, so the palette keeps its 
   });
   await openFour(page);
   const before = await domOrder(page);
-  await page.keyboard.press("Meta+Shift+P");
+  await pressShortcut(page, "app.palette");
   const field = page.getByRole("combobox");
   await expect(field).toBeFocused();
   await field.fill("hello world");
@@ -120,7 +120,7 @@ test("on macOS the move chord stays with a text field, so the palette keeps its 
         element.dataset["seen"] = `prevented=${String(event.defaultPrevented)}`;
     });
   });
-  await page.keyboard.press("Meta+Shift+ArrowLeft");
+  await pressShortcut(page, "tab.move:left");
   await expect(field).toHaveAttribute("data-seen", "prevented=false");
   await expect(field).toHaveValue("hello world");
   expect(await domOrder(page)).toEqual(before);
@@ -128,7 +128,7 @@ test("on macOS the move chord stays with a text field, so the palette keeps its 
   await page.keyboard.press("Escape");
   await expect(field).toBeHidden();
   await page.locator('[data-focused="true"] [data-terminal]').getByRole("textbox").focus();
-  await page.keyboard.press("Meta+Shift+ArrowLeft");
+  await pressShortcut(page, "tab.move:left");
   await expect.poll(() => domOrder(page)).toEqual(rearranged(before, [0, 1, 3, 2]));
 });
 
@@ -175,9 +175,8 @@ test("a drop let go below the strip leaves the next Enter or click on a tab alon
 
 test("a move is said once: a tab opened afterwards does not change what the strip said", async ({ page }) => {
   await openFour(page);
-  const mac = await page.evaluate(() => navigator.platform.startsWith("Mac"));
   await tabs(page).nth(0).focus();
-  await page.keyboard.press(mac ? "Meta+Shift+ArrowRight" : "Control+Alt+Shift+PageDown");
+  await pressShortcut(page, "tab.move:right");
   const said = page.getByRole("status").filter({ hasText: /^Moved / });
   await expect(said).toHaveText(/^Moved .+ to position 2 of 4/);
   const text = await said.textContent();
