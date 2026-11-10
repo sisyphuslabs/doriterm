@@ -18,6 +18,12 @@ describe("searching for one setting (#1528)", () => {
     expect(hit?.detail).not.toBe("");
   });
 
+  test("Copy on selection is found by its label and its Ghostty config key", () => {
+    const hit = matchSettings("copy on selection").find((each) => each.title === "Copy on selection");
+    expect(hit?.anchor).toBe("terminal-copy-on-select");
+    expect(titles("copy-on-select")).toContain("terminal: Copy on selection");
+  });
+
   test("a row's own words find it: keybinds finds the keybinding import (#1472)", () => {
     expect(titles("keybinds")).toContain("keybindings: Import keybinds…");
     expect(titles("theme")).toContain("appearance: Appearance");

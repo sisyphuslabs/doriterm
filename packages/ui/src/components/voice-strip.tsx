@@ -154,7 +154,7 @@ export function VoiceStrip(props: VoiceStripProps) {
           }}
           className={cn(inputClass, "h-auto resize-none py-1.5 leading-normal")}
         />
-        <p className="px-1 text-sm text-pretty text-muted-foreground">
+        <p className="px-1 text-prose text-pretty text-muted-foreground">
           Types at the cursor. Return in the terminal sends it.
         </p>
         <div className="flex justify-end gap-2">
@@ -177,7 +177,7 @@ export function VoiceStrip(props: VoiceStripProps) {
         : `Transcribing for ${target}…`;
   return frame(
     <>
-      <p className="flex items-center justify-between px-1 text-sm text-muted-foreground">
+      <p className="flex items-center justify-between px-1 text-prose text-muted-foreground">
         <span role="status">{status}</span>
         {state.kind === "preparing" ? null : (
           <span aria-hidden className="tabular-nums">
@@ -201,7 +201,9 @@ export function VoiceStrip(props: VoiceStripProps) {
               />
             </span>
           ) : (
-            <Spinner className="size-4" />
+            <span className="flex size-4 shrink-0 items-center justify-center">
+              <Spinner />
+            </span>
           )}
           <span
             className={cn("line-clamp-2 min-w-0 flex-1 text-base break-words", !listening && "text-muted-foreground")}

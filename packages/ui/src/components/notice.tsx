@@ -43,8 +43,8 @@ export function Notice({ tone = "info", title, children, actions, className }: N
     >
       <Icon aria-hidden className={cn("mt-0.5 size-4 shrink-0", ICON_TONE[tone])} />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-foreground">{title}</p>
-        {children === undefined ? null : <div className={cn("mt-0.5 text-sm", BODY[tone])}>{children}</div>}
+        <p className="text-prose font-semibold text-foreground">{title}</p>
+        {children === undefined ? null : <div className={cn("mt-0.5 text-prose", BODY[tone])}>{children}</div>}
       </div>
       {actions === undefined ? null : <div className="flex shrink-0 gap-2">{actions}</div>}
     </div>

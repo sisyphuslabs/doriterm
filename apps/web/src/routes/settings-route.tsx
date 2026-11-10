@@ -11,6 +11,8 @@ import {
   type Ref,
 } from "react";
 import { currentPlatform, triggerKeys } from "../keys/trigger.ts";
+import { useActionHandler } from "../keys/dispatcher.ts";
+import { stepTerminalFont } from "../workspace/use-app-actions.ts";
 import { AppearanceSection } from "../settings/appearance-section.tsx";
 import { ConnectionSection } from "../settings/connection-section.tsx";
 import { DeviceSection } from "../settings/device-section.tsx";
@@ -70,7 +72,7 @@ function Group({
 
 /** One sentence under the title, in the words the navigation uses: what this screen is about and nothing else. */
 function Lead({ children }: { readonly children: ReactNode }) {
-  return <p className="max-w-measure text-sm text-pretty text-muted-foreground">{children}</p>;
+  return <p className="max-w-measure text-prose text-pretty text-muted-foreground">{children}</p>;
 }
 
 /**
@@ -118,6 +120,11 @@ function SearchSettings({
 
 /** Section navigation beside the form; changes apply as they are made. */
 export function SettingsRoute() {
+  // Settings shows the terminals' text size under Appearance and hints at its keys, so the text-size keys step it here
+  // rather than the browser's zoom, in a browser too (#859, #1162).
+  useActionHandler("app", (action) =>
+    ["app.zoom_in", "app.zoom_out", "app.zoom_reset"].includes(action) ? stepTerminalFont(action) : false,
+  );
   const [opened] = useState(firstLanding);
   const [section, setSection] = useState<SectionId>(opened.section);
   const [query, setQuery] = useState("");
@@ -149,7 +156,9 @@ export function SettingsRoute() {
     else if (event.key === "Enter" && first !== undefined) setSection(first.id);
   };
   const nothing =
-    shown.length === 0 ? <p className="px-2 py-1 text-sm text-muted-foreground">No setting matches "{query}"</p> : null;
+    shown.length === 0 ? (
+      <p className="px-2 py-1 text-prose text-muted-foreground">No setting matches "{query}"</p>
+    ) : null;
   const mesh = useBrowserMembership();
   const joinedBrowser = mesh.phase !== "empty" && desktopBridge() === null;
   const close = useCloseSettings();
@@ -223,7 +232,7 @@ export function SettingsRoute() {
             aria-current={entry.id === section ? "page" : undefined}
             onClick={() => setSection(entry.id)}
             className={cn(
-              "justify-start gap-2.5 px-2 text-sm [&_svg]:size-3.5",
+              "justify-start gap-2.5 px-2 text-sm [&_svg:not([data-slot=spinner])]:size-3.5",
               entry.id === section && "bg-selected text-foreground",
             )}
           >
@@ -292,7 +301,7 @@ export function SettingsRoute() {
                   <MachinesSection />
                   {/* What a row's state means sits under the rows, where a reader meets it: on a phone the list leads (#1007). */}
                   {!joinedBrowser ? (
-                    <p className="max-w-measure pt-3 text-sm text-pretty text-muted-foreground">
+                    <p className="max-w-measure pt-3 text-prose text-pretty text-muted-foreground">
                       A machine that answers reads Connected, one still being dialled reads Connecting, and one that
                       needs a login says so; when a machine is offline the row says when it was last seen and, where the
                       host knows a cause, what it is.
@@ -301,7 +310,7 @@ export function SettingsRoute() {
                 </Group>
                 {/* Connecting a machine joins it to the mesh, so it is on this screen, under the rows it adds to. */}
                 <Group title="Connect a machine" id={CONNECT_GROUP}>
-                  <p className="pb-1 text-sm text-pretty text-muted-foreground">
+                  <p className="pb-1 text-prose text-pretty text-muted-foreground">
                     One command on this host opens an invite, and the other computer or phone joins with it. A join
                     waits for your approval under In your mesh.
                   </p>
