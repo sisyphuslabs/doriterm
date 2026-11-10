@@ -6,9 +6,11 @@ import {
   parseSavedNotices,
   REPEAT_MS,
   rig,
+  settled,
   status,
   terminal,
 } from "./desktop-notices-rig.ts";
+import { CLAUDE_QUESTION_SCREEN } from "../../../../packages/protocol/src/testing/prompt-screens.ts";
 
 describe("the desktop app's native notifications", () => {
   test("off until Turn on: no feed is opened and nothing is shown", async () => {
@@ -27,6 +29,7 @@ describe("the desktop app's native notifications", () => {
     events.emit(status("t3", { state: "blocked", kind: "permission" }));
     events.emit(status("t4", { state: "error" }, "box"));
     events.emit(status("t5", { state: "working" }));
+    await settled();
     expect(shown).toEqual([
       { kind: "done", terminal: "t2" },
       { kind: "permission", terminal: "t3" },
@@ -45,6 +48,7 @@ describe("the desktop app's native notifications", () => {
     tick(REPEAT_MS);
     events.emit(status("t1", { state: "working" }));
     events.emit(status("t1", done));
+    await settled();
     expect(shown).toEqual([
       { kind: "done", terminal: "t1" },
       { kind: "done", terminal: "t1" },
@@ -61,6 +65,7 @@ describe("the desktop app's native notifications", () => {
     events.emit(status("t2", { state: "error" }, "box"));
     events.emit(status("t3", { state: "error" }));
     events.emit(status("t4", { state: "error" }));
+    await settled();
     expect(shown).toEqual([{ kind: "error", terminal: "t4" }]);
   });
 
@@ -94,6 +99,45 @@ describe("the desktop app's native notifications", () => {
     const none = rig({ supported: false });
     await none.notices.load();
     expect(none.notices.view.support).toBe("desktop-app");
+  });
+
+  test("a notice names its agent, machine, space, terminal and question, read off the app's connection (#1908)", async () => {
+    const asking = { state: "blocked", kind: "question", app: "claude-code" };
+    const record = { ...terminal("t3", asking), labels: { "herdr.name": "migrations" } };
+    const box = { ...terminal("box/t4", { state: "error", app: "codex" }), cwd: "/srv/web" };
+    const asked: string[] = [];
+    const { notices, feed, shown } = rig({
+      hostName: "build-box",
+      call: async (method, params) => {
+        asked.push(`${method} ${String(params.terminal)}`);
+        if (method === "terminal.read") return { text: CLAUDE_QUESTION_SCREEN };
+        if (params.terminal === "t3") return record;
+        if (params.terminal === "box/t4") return box;
+        throw new Error("no such terminal");
+      },
+    });
+    await notices.turnOn();
+    const events = await feed();
+    events.emit(status("t3", asking));
+    events.emit(status("t4", { state: "error", app: "codex" }, "box"));
+    events.emit(status("t9", done));
+    await settled();
+    expect(shown).toEqual([
+      {
+        kind: "input",
+        terminal: "t3",
+        context: {
+          machine: "build-box",
+          space: "work",
+          terminal: "migrations",
+          agent: "claude-code",
+          ask: "Which database should the migration target?",
+        },
+      },
+      { kind: "error", terminal: "box/t4", context: { machine: "box", space: "web", agent: "codex" } },
+      { kind: "done", terminal: "t9" },
+    ]);
+    expect(asked).toEqual(["terminal.get t3", "terminal.read t3", "terminal.get box/t4", "terminal.get t9"]);
   });
 
   test("saved settings that cannot be read are notifications off with every event", () => {

@@ -233,7 +233,7 @@ export function KeyboardButton({ onPress, className, label = "Show keyboard", ic
       aria-pressed={pressed}
       onClick={onPress}
       className={cn(
-        "flex size-12 items-center justify-center rounded-full border border-border shadow-lg backdrop-blur-md outline-none [&_svg]:size-5",
+        "flex size-12 items-center justify-center rounded-full border border-border shadow-lg backdrop-blur-md outline-none [&_svg:not([data-slot=spinner])]:size-5",
         pressed === true
           ? "bg-primary text-primary-foreground active:opacity-80"
           : "bg-chrome/90 text-foreground active:bg-selected",

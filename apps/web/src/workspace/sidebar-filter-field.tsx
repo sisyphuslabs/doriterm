@@ -1,6 +1,6 @@
-import { IconButton, Input } from "@doriface/ui";
+import { cn, fieldLabelClass, IconButton, Input } from "@doriface/ui";
 import { ListFilter, Search } from "lucide-react";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useSyncExternalStore } from "react";
 import { useActionKeys } from "../keys/use-action-keys.ts";
 import { terminalInput } from "./focus-targets.ts";
 
@@ -51,36 +51,42 @@ export function useSidebarFilter(): SidebarFilterState {
 export function SidebarFilterField() {
   const { open, query, asks } = useSidebarFilter();
   const field = useRef<HTMLInputElement>(null);
+  const id = useId();
   useEffect(() => {
     if (open) field.current?.focus();
   }, [open, asks]);
   if (!open) return null;
   return (
-    <div className="relative mx-2 mb-2 shrink-0">
-      <Search
-        aria-hidden
-        className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
-      />
-      <Input
-        ref={field}
-        type="search"
-        aria-label="Filter sidebar"
-        placeholder="Filter machines, spaces, agents"
-        value={query}
-        onChange={(event) => sidebarFilter.type(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key !== "Escape") return;
-          event.preventDefault();
-          event.stopPropagation();
-          if (query !== "") {
-            sidebarFilter.type("");
-            return;
-          }
-          sidebarFilter.close();
-          terminalInput()?.focus();
-        }}
-        className="h-8 pl-8 text-sm"
-      />
+    <div className="mx-2 mb-2 flex shrink-0 flex-col gap-1">
+      <label htmlFor={id} className={cn("px-0.5", fieldLabelClass)}>
+        Filter sidebar
+      </label>
+      <div className="relative">
+        <Search
+          aria-hidden
+          className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+        />
+        <Input
+          ref={field}
+          id={id}
+          type="search"
+          placeholder="Filter machines, spaces, agents"
+          value={query}
+          onChange={(event) => sidebarFilter.type(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (query !== "") {
+              sidebarFilter.type("");
+              return;
+            }
+            sidebarFilter.close();
+            terminalInput()?.focus();
+          }}
+          className="h-8 pl-8 text-sm"
+        />
+      </div>
     </div>
   );
 }

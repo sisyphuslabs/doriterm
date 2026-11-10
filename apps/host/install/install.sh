@@ -22,7 +22,8 @@ usage: install.sh [options]
   --version <vX.Y.Z>    the release to install (default: the one this script came with, else the latest)
   --web-origin <url>    the web app the pairing QR code and link open (default: the Doriterm desktop app's link)
   --join <link>         join the mesh of the host that made this link (the app's Add a machine command), instead
-                        of printing a pairing
+                        of printing a pairing; DORIFACE_JOIN=<link> does the same and keeps the link off this
+                        script's command line, where other local users can read it
   --bin-dir <dir>       where doriface-host goes (default ~/.local/bin)
   --from <url>          the release's download base, file:// included (default: the GitHub release)
   --no-service          install only; start doriface-host yourself
@@ -45,7 +46,7 @@ from="${DORIFACE_RELEASE_BASE:-}"
 service=1
 pair=1
 uninstall=0
-join=""
+join="${DORIFACE_JOIN:-}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -169,8 +170,15 @@ else
   say "using herdr-core at ${hc_path} ($("$hc_path" --version 2>/dev/null || echo 'version unknown'))"
 fi
 
+# The link admits one machine into the mesh, so mesh join reads it from a file only this user can read, never from its
+# command line, where other local users can read it while it runs (#1201). The file is gone when the install exits.
+join_file() {
+  (umask 077 && printf '%s\n' "$join" >"${work}/join")
+  printf '%s' "${work}/join"
+}
+
 if [ "$service" -eq 0 ] && [ -n "$join" ]; then
-  "$host_bin" mesh join --yes --hc "$hc_path" --state-dir "$state_dir" "$join"
+  "$host_bin" mesh join --yes --hc "$hc_path" --state-dir "$state_dir" --from-file "$(join_file)"
   say "joined; start the host with: ${host_bin} --hc ${hc_path}"
   exit 0
 fi
@@ -258,7 +266,7 @@ EOF
 fi
 
 if [ -n "$join" ]; then
-  "$host_bin" mesh join --wait-host 60 --yes --state-dir "$state_dir" "$join"
+  "$host_bin" mesh join --wait-host 60 --yes --state-dir "$state_dir" --from-file "$(join_file)"
   say "this machine joined the mesh; its terminals show in the app under its name"
 elif [ "$pair" -eq 1 ]; then
   echo
