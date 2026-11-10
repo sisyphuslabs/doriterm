@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { E2E_HOST_ENV } from "./config.ts";
 import { getCoreDoc, setCoreDoc } from "./core-doc.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { pressShortcut, shortcut } from "./platform-keys.ts";
 import { MACHINE_NAME, viaCommand } from "./machine.ts";
 import { hcOn, machineRow } from "./machine-switch.ts";
 import { readSavedEnv } from "./saved-env.ts";
@@ -110,10 +111,7 @@ test.describe("machine order", () => {
 
   test("the move keys move the focused row, focus stays on it, and the order survives a reload", async ({ page }) => {
     const local = await openWorkspace(page);
-    const mac = await page.evaluate(() => /mac/i.test(navigator.platform));
-    const [up, down] = mac
-      ? ["Meta+Shift+ArrowUp", "Meta+Shift+ArrowDown"]
-      : ["Control+Alt+Shift+PageUp", "Control+Alt+Shift+PageDown"];
+    const [up, down] = await moveKeys(page);
     const button = machineRow(page);
     await button.focus();
     await page.keyboard.press(up);
@@ -137,10 +135,9 @@ test.describe("machine order", () => {
     if ((await tabs(page).count()) < 2) await openNewTerminal(page);
     expect(await selectedIndex(page)).toBeGreaterThan(0);
     const strip = await domOrder(page);
-    const mac = await page.evaluate(() => /mac/i.test(navigator.platform));
     const button = machineRow(page);
     await button.focus();
-    await page.keyboard.press(mac ? "Meta+Shift+ArrowLeft" : "Control+Alt+Shift+PageUp");
+    await pressShortcut(page, "tab.move:left");
     await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
     await expect(button).toBeFocused();
     expect(await domOrder(page)).toEqual(strip);
@@ -180,12 +177,9 @@ test.describe("machine order", () => {
   });
 });
 
-/** The chords that move a focused row on this browser's platform, as the move keys test reads them. */
+/** The chords that move a focused row up and down on the page's platform: the tab move keys (#123). */
 async function moveKeys(page: Page): Promise<readonly [string, string]> {
-  const mac = await page.evaluate(() => /mac/i.test(navigator.platform));
-  return mac
-    ? ["Meta+Shift+ArrowUp", "Meta+Shift+ArrowDown"]
-    : ["Control+Alt+Shift+PageUp", "Control+Alt+Shift+PageDown"];
+  return [await shortcut(page, "tab.move:left"), await shortcut(page, "tab.move:right")];
 }
 
 /** The ids the order document holds, after a move this page made. */

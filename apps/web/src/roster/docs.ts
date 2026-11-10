@@ -1,5 +1,5 @@
 import type { JsonObject } from "@doriface/protocol";
-import { type DocCalls, type DocState, LayoutDoc } from "@doriface/protocol/layout";
+import { type DocCalls, type DocState, LayoutDoc, readDocument } from "@doriface/protocol/layout";
 import { diffSpaces, type SpaceChange } from "./changes.ts";
 
 /**
@@ -12,14 +12,20 @@ import { diffSpaces, type SpaceChange } from "./changes.ts";
 export class LayoutDocs {
   readonly #calls: DocCalls;
   readonly #landed: (changes: readonly SpaceChange[]) => void;
+  readonly #read: typeof readDocument;
   readonly #live = new Map<string | null, LayoutDoc>();
   readonly #kept = new Map<string | null, JsonObject | null>();
   readonly #shown = new Map<string | null, JsonObject | null>();
 
   /** `landed` runs on every state a document publishes (loading, ready, unreadable, unavailable), with what changed. */
-  constructor(calls: DocCalls, landed: (changes: readonly SpaceChange[]) => void) {
+  constructor(
+    calls: DocCalls,
+    landed: (changes: readonly SpaceChange[]) => void,
+    read: typeof readDocument = readDocument,
+  ) {
     this.#calls = calls;
     this.#landed = landed;
+    this.#read = read;
   }
 
   stateOf(id: string | null): DocState | undefined {
@@ -47,7 +53,7 @@ export class LayoutDocs {
         if (reread) void held.refresh();
         continue;
       }
-      const doc = new LayoutDoc(this.#calls, id, (state) => this.#published(id, state));
+      const doc = new LayoutDoc(this.#calls, id, (state) => this.#published(id, state), this.#read);
       this.#live.set(id, doc);
       void doc.refresh();
     }

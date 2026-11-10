@@ -1,6 +1,7 @@
 /**
  * Why a dictation ended without a transcript. `mic-system`, `speech-system` and `device-mac` come only from the macOS
- * desktop app, whose recognizer is the system's own (#726).
+ * desktop app, whose recognizer is the system's own (#726); `mic-windows` and `device-windows` only from the Windows
+ * app, which dictates through SAPI on the device (#749).
  */
 export type VoiceError =
   | "permission"
@@ -12,7 +13,9 @@ export type VoiceError =
   | "device"
   | "mic-system"
   | "speech-system"
-  | "device-mac";
+  | "device-mac"
+  | "mic-windows"
+  | "device-windows";
 
 interface ErrorCopy {
   readonly tone: "warning" | "error";
@@ -86,6 +89,20 @@ export const VOICE_ERROR_COPY: Readonly<Record<VoiceError, ErrorCopy>> = {
     title: (language) => `${language} isn't on this Mac yet`,
     body: (language) =>
       `Add ${language} in System Settings > Keyboard > Dictation so macOS downloads it for this Mac, then try again. Or pick another language in Settings > Voice input.`,
+    retry: true,
+  },
+  "mic-windows": {
+    tone: "error",
+    title: () => "Microphone access is off",
+    body: () =>
+      "Turn on Microphone access and Let desktop apps access your microphone in Settings > Privacy & security > Microphone, then try again. Nothing was typed.",
+    retry: true,
+  },
+  "device-windows": {
+    tone: "warning",
+    title: (language) => `${language} has no installed SAPI recognizer`,
+    body: () =>
+      "Windows needs an installed SAPI 5 desktop speech recognizer for this language. Pick an installed language in Settings > Voice input, or type instead. Audio never goes to an online speech service.",
     retry: true,
   },
 };

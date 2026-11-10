@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { loadFixtureFont } from "./font-fixture.ts";
 
 test.use({ serviceWorkers: "block" });
@@ -90,7 +91,7 @@ for (const dpr of [1, 2, 1.5]) {
     expect(measured.row).toBe(layoutUnits(Math.round(px * dpr) / dpr));
     const mounted = await terminal.elementHandle();
     await terminal.getByRole("textbox").focus();
-    await page.keyboard.press("ControlOrMeta+Equal");
+    await pressShortcut(page, "app.zoom_in");
     const bigger = await cssPixels(page, 17);
     await expect.poll(async () => (await geometry()).size).toBeCloseTo(bigger, 3);
     expect(await mounted?.evaluate((element) => element.isConnected)).toBe(true);

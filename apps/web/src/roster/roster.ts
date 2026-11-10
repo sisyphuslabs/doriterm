@@ -1,6 +1,14 @@
 import type { HcConnection } from "@doriface/client";
 import type { HcEvent } from "@doriface/protocol";
-import { type DocState, LAYOUT_DOC, LayoutDoc, ORDER_DOC, readOrderDocument } from "@doriface/protocol/layout";
+import {
+  type DocState,
+  LAYOUT_DOC,
+  LayoutDoc,
+  ORDER_DOC,
+  PINS_DOC,
+  readOrderDocument,
+  readPinsDocument,
+} from "@doriface/protocol/layout";
 import { machineKey } from "../workspace/machines.ts";
 import type { RosterChange } from "./changes.ts";
 import { docCalls } from "./doc-calls.ts";
@@ -65,6 +73,7 @@ const browser = {
 export class Roster {
   readonly machines: MachineRoster;
   readonly docs: LayoutDocs;
+  readonly pins: LayoutDocs;
   readonly order: LayoutDoc;
   readonly #options: RosterOptions;
   readonly #listeners = new Set<() => void>();
@@ -86,6 +95,7 @@ export class Roster {
       (read, changes) => {
         this.#snapshot = { ...this.#snapshot, machines: read };
         this.docs.sync(this.#wanted(), false);
+        this.pins.sync(this.#wanted(), false);
         this.#emit();
         for (const change of changes) for (const listener of this.#changes) listener(change);
       },
@@ -98,6 +108,14 @@ export class Roster {
         this.#emit();
         for (const change of changes) for (const listener of this.#changes) listener(change);
       },
+    );
+    this.pins = new LayoutDocs(
+      docCalls({ call }, () => this.machines.read.views, PINS_DOC),
+      () => {
+        this.#snapshot = { ...this.#snapshot, docsLanded: this.#snapshot.docsLanded + 1 };
+        this.#emit();
+      },
+      readPinsDocument,
     );
     this.order = new LayoutDoc(
       {
@@ -208,14 +226,15 @@ export class Roster {
     const { name, version } = event.data;
     for (const listener of this.#docHeard) listener(machine, name, version);
     if (name === ORDER_DOC && machine === null) void this.order.heard(version);
-    if (name !== LAYOUT_DOC) return;
+    if (name !== LAYOUT_DOC && name !== PINS_DOC) return;
     const id = machine === null ? null : this.machines.read.views.find((view) => view.name === machine)?.id;
     if (id === undefined) void this.machines.refresh();
-    else this.docs.heard(id, version);
+    else (name === PINS_DOC ? this.pins : this.docs).heard(id, version);
   }
 
   #gap(): void {
     this.docs.sync(this.#wanted(), true);
+    this.pins.sync(this.#wanted(), true);
     void this.order.refresh();
     void this.machines.refresh();
     for (const listener of this.#gaps) listener();

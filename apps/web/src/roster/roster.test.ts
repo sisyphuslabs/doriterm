@@ -1,4 +1,4 @@
-import { LAYOUT_DOC } from "@doriface/protocol/layout";
+import { LAYOUT_DOC, PINS_DOC, storedPins } from "@doriface/protocol/layout";
 import { describe, expect, test } from "bun:test";
 import type { RosterChange } from "./changes.ts";
 import { FakeCore, machine, space, terminal } from "./fake-core.test-support.ts";
@@ -49,6 +49,39 @@ const spaceIds = (roster: Roster, on: string | null): readonly string[] | undefi
 
 const settled = (roster: Roster): Promise<void> =>
   until(roster, () => roster.snapshot.machines.listed > 0 && spaceIds(roster, null) !== undefined, "the first reads");
+
+test("pins follow document events and gaps, and stay available after a machine drops", async () => {
+  const core = new FakeCore();
+  core.machines = [machine("bee")];
+  core.setDoc(PINS_DOC, { pinned_tabs: ["t1"] }, "bee", true);
+  const { roster, stop } = rosterOn(core);
+  const pins = () => [...storedPins(roster.pins.kept("bee-id") ?? null)];
+  await until(roster, () => pins().includes("t1"), "bee's first pins");
+
+  core.setDoc(PINS_DOC, { pinned_tabs: ["t2"] }, "bee");
+  await until(roster, () => pins().includes("t2"), "bee's pin event");
+  core.setDoc(PINS_DOC, { pinned_tabs: ["t3"] }, "bee", true);
+  const feed = core.feeds.at(-1);
+  if (feed === undefined) throw new Error("no feed opened");
+  feed.missed();
+  await until(roster, () => pins().includes("t3"), "bee's pins after a gap");
+
+  core.machines = [];
+  feed.missed();
+  await until(roster, () => roster.pins.live("bee-id") === undefined, "bee's disconnected document");
+  expect(pins()).toEqual(["t3"]);
+  stop();
+});
+
+test("a pin event from an unlisted machine lists it and reads its pins without a timer", async () => {
+  const core = new FakeCore();
+  const { roster, stop } = rosterOn(core);
+  await settled(roster);
+  core.machines = [machine("bee")];
+  core.setDoc(PINS_DOC, { pinned_tabs: ["t1"] }, "bee");
+  await until(roster, () => storedPins(roster.pins.kept("bee-id") ?? null).has("t1"), "the unlisted machine's pins");
+  stop();
+});
 
 describe("a workspace opened on another device appears here without any action", () => {
   test("the doc event hc sends for the other device's write is enough: the space is on screen with no call of ours", async () => {

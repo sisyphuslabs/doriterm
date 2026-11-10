@@ -34,5 +34,7 @@ test("the commands after install skip an hc below the floor and use the herdr-co
 });
 
 test("with no herdr-core at the floor, they say to run install instead of using an older one (#821)", async () => {
-  await expect(findHc(machine({ hc: "hc 0.0.3" }))).rejects.toThrow();
+  await expect(findHc(machine({ hc: "hc 0.0.3" }))).rejects.toThrow(
+    `no herdr-core at or above ${HC_VERSION_FLOOR} is installed; run install first`,
+  );
 });

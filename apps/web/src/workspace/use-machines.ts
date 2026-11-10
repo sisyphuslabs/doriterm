@@ -30,7 +30,7 @@ export interface Machines {
   readonly openAddMachine: () => void;
   /**
    * The added machines as the page shows them: as machine.list last said (state, `why`, since when), except a machine
-   * whose line hc is redialing, which reads connected for `OFFLINE_GRACE_MS` (#904).
+   * whose line hc is redialing, which reads reconnecting for `OFFLINE_GRACE_MS` (#904).
    */
   readonly views: readonly MachineView[];
   /** Dials a machine now (`machine.connect`) instead of at hc's next retry, then reads machine.list again. */
@@ -66,7 +66,7 @@ export interface MachineState {
   /** Reads machine.list again now, e.g. after a call on a machine failed. */
   readonly refresh: () => void;
   readonly listError: string | undefined;
-  /** The machines as the page shows them: a line hc is redialing reads connected for `OFFLINE_GRACE_MS` (#904). */
+  /** The machines as the page shows them: a line hc is redialing reads reconnecting for `OFFLINE_GRACE_MS` (#904). */
   readonly views: readonly MachineView[];
   /** The machines as machine.list last said, with no grace: for checks that must not act on a held state. */
   readonly heard: readonly MachineView[];
