@@ -6,15 +6,17 @@ import { expect, openNewTerminal, test } from "./fixtures.ts";
 test.use({ serviceWorkers: "block" });
 
 const HAN = "\u{D55C}";
+const READER = "while :; do dd bs=1 count=3 2>/dev/null | od -An -tx1; done";
 
 /**
- * Puts the shell's terminal in raw mode under a reader that prints the first three bytes it reads in hex: no Enter, so
- * only bytes the terminal sent on their own show. head ends at the third byte and od prints at that end, because the
- * uutils od of ubuntu-26.04 keeps what it reads until more comes, where GNU od printed each line as it arrived (#1952).
+ * Puts the shell's terminal in raw mode under a reader that prints each three bytes it reads in hex, one row per three:
+ * no Enter, so only bytes the terminal sent on their own show, and a syllable sent twice prints a second row. dd reads
+ * one byte at a time and ends at the third, so od prints at that end: the uutils od of ubuntu-26.04 keeps what it
+ * reads until more comes, where GNU od printed each line as it arrived (#1952). The loop reads the next three bytes.
  */
 async function openRawReader(page: Page, terminal: Locator): Promise<CDPSession> {
   await terminal.getByRole("textbox").focus();
-  await page.keyboard.type("stty -icanon -echo min 1 time 0; echo RE''ADY; head -c 3 | od -An -tx1\r");
+  await page.keyboard.type(`stty -icanon -echo min 1 time 0; echo RE''ADY; ${READER}\r`);
   await expect(terminal.locator(".term-row").filter({ hasText: /^READY/ })).toHaveCount(1);
   return page.context().newCDPSession(page);
 }
