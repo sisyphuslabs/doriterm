@@ -7,8 +7,24 @@ test.use({ serviceWorkers: "block", ...PHONE });
 
 /** The wheel reports the program has echoed so far: 64 for a notch up, 65 for one down. */
 async function wheelReports(terminal: Locator): Promise<string[]> {
+  return (await reportedCells(terminal)).map((report) => report.split(" ")[0] ?? "");
+}
+
+/** The same reports as "button col;row", each distinct one once: where the program was told the wheel turned. */
+async function reportedCells(terminal: Locator): Promise<string[]> {
   const text = await terminal.evaluate((root) => root.textContent ?? "");
-  return [...text.matchAll(/\^\[\[<(6[45]);\d+;\d+M/g)].map((match) => match[1] ?? "");
+  return [...new Set([...text.matchAll(/\^\[\[<(6[45]);(\d+;\d+)M/g)].map((match) => `${match[1]} ${match[2]}`))];
+}
+
+/** The 1-based "col;row" of the grid cell under `point`, as a mouse report names it. */
+function cellUnder(terminal: Locator, point: TouchPoint): Promise<string> {
+  return terminal.evaluate((root, at) => {
+    const row = root.querySelector(".term-row:not(.term-scrollback-row)");
+    if (row === null) throw new Error("the terminal has no grid row");
+    const box = row.getBoundingClientRect();
+    const cell = Number.parseFloat(getComputedStyle(row).getPropertyValue("--term-cell-width"));
+    return `${Math.floor((at.x - box.left) / cell) + 1};${Math.floor((at.y - box.top) / box.height) + 1}`;
+  }, point);
 }
 
 /** Counts each touchmove that reaches the window, and how many of them the page had cancelled by then. */
@@ -56,6 +72,11 @@ test("on the alternate screen a swipe scrolls the program that tracks the mouse,
   expect(await wheelReports(terminal)).not.toContain("65");
   await swipe(touch, bottom, top);
   await expect.poll(() => wheelReports(terminal)).toContain("65");
+  // Every notch is reported where the swipe began, not under the moving finger: a multiplexer sends each wheel to the
+  // pane or status line under its position, so a long swipe must not walk across them.
+  const fromTop = await cellUnder(terminal, top);
+  const fromBottom = await cellUnder(terminal, bottom);
+  await expect.poll(() => reportedCells(terminal)).toEqual([`64 ${fromTop}`, `65 ${fromBottom}`]);
 
   // The grid has nothing to scroll here: a move left to the browser would pan the page, and a phone's pull-to-refresh
   // reloads the app.
