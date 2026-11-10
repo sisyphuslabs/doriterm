@@ -184,7 +184,9 @@ export class OutputPacer {
    * credit window, and waits for credit after each window; credit goes back as each batch is written, and a replay is
    * written as it arrives. So a replay still coming arrives at least a window a round trip, however slow the link: its
    * gaps are at most a round trip, under the quiet window, whose SRTT is sampled on this connection (the attach answer
-   * itself is one sample), and every span of {@link REPLAY_CAP_MS} (a round trip or more) writes a window or more. A fixed
+   * itself is one sample), and every span of {@link REPLAY_CAP_MS} (a round trip or more) writes a window or more. A
+   * quiet window or span whose timer runs more than its own length late is started again rather than read: the page was
+   * not running, so it could not see the next window, already queued behind the timer. A fixed
    * deadline could not hold it: over a 300 ms relay, or on a page slow to write it, a replay of a few hundred KiB to 2
    * MiB takes longer than any one span.
    */
@@ -230,16 +232,30 @@ export class OutputPacer {
   #quietFrom(replay: Replay): void {
     replay.quiet();
     const quiet = Math.max(REPLAY_QUIET_FLOOR_MS, 1.5 * (replay.options.srtt() ?? 0) + 50);
-    replay.quiet = this.#timer(() => this.#endReplay(), quiet);
+    replay.quiet = this.#onTime(
+      quiet,
+      () => this.#endReplay(),
+      () => this.#quietFrom(replay),
+    );
+  }
+
+  /**
+   * Runs `then` `ms` from now, or `again` when the timer runs more than `ms` late: a page that ran nothing for that long
+   * (a starved tab, a phone waking) saw no output in it, which says nothing about whether the replay stopped coming.
+   */
+  #onTime(ms: number, then: () => void, again: () => void): () => void {
+    const due = this.#clock() + ms;
+    return this.#timer(() => (this.#clock() - due > ms ? again() : then()), ms);
   }
 
   /** Starts a {@link REPLAY_CAP_MS} span; at its end the replay is let go unless the span wrote a credit window. */
   #spanFrom(replay: Replay): void {
     replay.spanFrom = replay.written;
-    replay.cap = this.#timer(() => {
-      if (replay.written - replay.spanFrom < CREDIT_WINDOW_BYTES) this.#endReplay();
-      else this.#spanFrom(replay);
-    }, REPLAY_CAP_MS);
+    replay.cap = this.#onTime(
+      REPLAY_CAP_MS,
+      () => (replay.written - replay.spanFrom < CREDIT_WINDOW_BYTES ? this.#endReplay() : this.#spanFrom(replay)),
+      () => this.#spanFrom(replay),
+    );
   }
 
   #endReplay(): void {
