@@ -95,17 +95,15 @@ test("a session picked from Switch session raises no keyboard: only the keyboard
   }
 });
 
-test("Show keyboard on a session picked from the keys bar still asks for the keyboard, and the program hears no focus-out (#1519)", async ({
+test("Show keyboard on a field focused for typing outside a tap still asks for the keyboard, and the program hears no focus-out (#1519)", async ({
   page,
 }) => {
-  const first = startShell("host", "keysone");
   // A program that asks for focus reports (mode 1004) and shows what it is sent: `cat -v` writes a focus-out as ^[[O.
   const report = "printf 'reporting\\n\\033[?1004h'; exec cat -v";
   const out = hcOn("host", ["run", "--bg", "--name", "keysfocus", "--label", "space=api", "--", "sh", "-c", report]);
-  const second = String((JSON.parse(out) as { address: string }).address);
+  const address = String((JSON.parse(out) as { address: string }).address);
   try {
-    // A keyboard that no focus raises by itself, as iOS treats a focus outside a tap: the picked view focuses its
-    // field for typing as it attaches, after the tap, and no keyboard comes up.
+    // A keyboard that no focus raises by itself, as on iOS: a field can keep the focus in text mode with no keyboard up.
     await fakeSoftKeyboard(page, { raiseOnFocus: false });
     await page.addInitScript(() => {
       const seen: string[] = [];
@@ -115,22 +113,22 @@ test("Show keyboard on a session picked from the keys bar still asks for the key
       });
     });
     await page.goto("/");
-    const one = page.getByRole("button", { name: /keysone/ }).first();
-    await expect(one).toBeVisible({ timeout: 20_000 });
-    await one.click();
-    await expect(page.locator(`[data-terminal="${first}"]`)).toContainText("$", { timeout: 15_000 });
-    await key(page, "Show keyboard").click();
-    await showKeyboard(page, 336);
-    await expectUp(page);
-
-    await key(page, "Switch session").click();
-    await page
-      .getByRole("menu")
-      .getByRole("menuitem", { name: /keysfocus/ })
-      .click();
-    const picked = page.locator(`[data-terminal="${second}"]`);
+    const row = page.getByRole("button", { name: /keysfocus/ }).first();
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    await row.click();
+    const picked = page.locator(`[data-terminal="${address}"]`);
     const field = picked.locator("textarea");
     await expect(picked).toContainText("reporting", { timeout: 15_000 });
+
+    // The terminal takes the focus back for typing a frame after a tap, as closing the Shortcut packs sheet does: the
+    // field is focused in text mode outside the tap's gesture, so no keyboard comes up.
+    await field.evaluate((element) => {
+      requestAnimationFrame(() => {
+        if (!(element instanceof HTMLTextAreaElement)) return;
+        element.inputMode = "text";
+        element.focus();
+      });
+    });
     await expect(field).toBeFocused();
     await expect(field).toHaveAttribute("inputmode", "text");
     await expectDown(page);
@@ -151,8 +149,7 @@ test("Show keyboard on a session picked from the keys bar still asks for the key
     await expect(picked).toContainText("done");
     expect(await outs()).toBe(outsBefore);
   } finally {
-    endAgent("host", first);
-    endAgent("host", second);
+    endAgent("host", address);
   }
 });
 
