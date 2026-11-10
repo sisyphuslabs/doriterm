@@ -1,13 +1,22 @@
 import { mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
+import { buildWindowsSpeech, buildWindowsSpeechOptional } from "./build-speech-win.ts";
 
 /**
  * Builds the dictation addon (native/speech/speech.mm, #726) from source with clang: macOS only, universal (arm64 and
  * x86_64), Node-API so one build serves every Electron. electron-builder ships it under Resources/native and signs it
- * with the app. Elsewhere there is nothing to build: the app has no system recognizer there.
+ * with the app. On Windows the SAPI addon (#749) is built with MSVC, and until that build is proven on the release
+ * runners its failure is a warning, not a failed build. Elsewhere there is nothing to build: the app has no system
+ * recognizer there.
  */
 export async function buildSpeech(root: string): Promise<boolean> {
+  if (process.platform === "win32") {
+    // On GitHub Actions the line is an annotation on the run, so a release without dictation is seen.
+    const prefix = process.env["GITHUB_ACTIONS"] === "true" ? "::warning title=Windows dictation::" : "";
+    await buildWindowsSpeechOptional(root, buildWindowsSpeech, (line) => console.error(prefix + line));
+    return true;
+  }
   if (process.platform !== "darwin") return true;
   const headers = join(dirname(createRequire(import.meta.url).resolve("node-api-headers/package.json")), "include");
   const outdir = join(root, "dist", "native");
@@ -37,6 +46,8 @@ export async function buildSpeech(root: string): Promise<boolean> {
       "AVFoundation",
       "-framework",
       "Speech",
+      "-framework",
+      "UserNotifications",
       join(root, "native", "speech", "speech.mm"),
       "-o",
       join(outdir, "speech.node"),

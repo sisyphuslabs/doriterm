@@ -177,6 +177,8 @@ function stuckText(reason: MeshStuckReason, nameOf: NameOf): string {
       return `The mesh log is full (${reason.records} records).`;
     case "counter_behind":
       return `Its record counter is behind (file ${reason.file}, mesh ${reason.mesh}); it syncs before it signs.`;
+    case "unknown":
+      return "The host gives a reason this app does not know yet. Update the app to see it.";
   }
 }
 
