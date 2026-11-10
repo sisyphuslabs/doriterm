@@ -77,6 +77,10 @@ const snapshot = (terminal: Locator) =>
     attaches: (Reflect.get(globalThis, "__dorifaceAttachLog") as unknown[] | undefined)?.length ?? 0,
   }));
 
+/** How many rows the terminal has rendered: the screen, and the window of history a reader scrolled up is shown. */
+const renderedRows = (terminal: Locator) =>
+  terminal.evaluate((element) => element.querySelectorAll(".term-row").length);
+
 /** Samples every animation frame from now until `stop`, as the page paints them. */
 const sampleFrames = (page: Page) =>
   page.evaluate(() => {
@@ -119,11 +123,16 @@ test("a relay blip with nothing new is one request and one answer: no attach, th
     await page.keyboard.type("seq -f 'line-%g' 1 400");
     await page.keyboard.press("Enter");
     await expect(terminal).toContainText("line-400", { timeout: 30_000 });
+    // The screen alone, before the reader goes up: the rows a scroll into history then adds are what settles below.
+    const screenRows = await renderedRows(terminal);
     // A reader up in history, so a scroll that moved would show.
     await terminal.evaluate((element) => {
       element.scrollTop = Math.round((element.scrollHeight - element.clientHeight) / 2);
     });
     await expect.poll(() => terminal.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    // The scroll renders its window of history a frame later than scrollTop reads back. The snapshot waits for those
+    // rows, so the comparison after the blip measures the resume, not whether a frame fell between scroll and snapshot.
+    await expect.poll(() => renderedRows(terminal)).toBeGreaterThan(screenRows);
     const before = await snapshot(terminal);
     expect(before.attaches).toBeGreaterThanOrEqual(1);
     expect(before.scrollTop).toBeGreaterThan(0);
