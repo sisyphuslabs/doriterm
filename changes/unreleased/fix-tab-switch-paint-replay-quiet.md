@@ -1,0 +1,4 @@
+### Terminal
+
+- A tab restored behind another, shown while its history is still arriving, draws that history once it is all there
+  instead of climbing up through it. (#2025)

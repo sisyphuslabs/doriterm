@@ -50,11 +50,22 @@ interface AttachSources {
 /**
  * A reattach after a dropped connection holds its replay: written as it arrives with the paint held, then drawn once it
  * has settled (D5). hc marks no end of the replay (the stream is its first paint, then live bytes), so the hold ends on
- * a quiet gap, bounded by the replay caps. The first open of a terminal has no screen to keep and is not held.
+ * a quiet gap, bounded by the replay caps. The first open of a terminal in view has no screen to keep and is not held.
+ * One out of view (a tab the saved layout restored behind another) is: it takes its replay while hidden, and the replay
+ * may still be coming when it shows, so its paint waits for the replay to settle in view instead of drawing the part
+ * that had arrived (#2025).
  */
-export function replayOnAttach(pacer: OutputPacer, reattach: boolean, options: ReplayOptions): void {
-  if (reattach) pacer.replay(options);
+export function replayOnAttach(
+  pacer: OutputPacer,
+  reattach: boolean,
+  outOfView: boolean,
+  options: ReplayOptions,
+): void {
+  if (reattach || outOfView) pacer.replay(options);
 }
+
+/** Whether a terminal's element is out of view: in a hidden tab it has no layout box. */
+export const outOfView = (element: Element): boolean => element.getClientRects().length === 0;
 
 export interface Attachment {
   readonly attach: (ready: WTerm) => void;
@@ -218,11 +229,12 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         attachedBefore.current = true;
         // A reattach's replay is drawn once it has settled, so the screen before it stays until then instead of climbing
         // a frame's bytes at a time (D5).
-        replayOnAttach(pacer, reattach, {
+        replayOnAttach(pacer, reattach, outOfView(ready.element), {
           srtt: () => connection.rtt?.srtt,
           hold: (held) => {
             holdPaint(held);
-            ready.setRenderingPaused(held);
+            // A hold let go while the pane is out of view leaves it paused, as its visibility does.
+            ready.setRenderingPaused(held || outOfView(ready.element));
           },
         });
         onStream?.current?.();

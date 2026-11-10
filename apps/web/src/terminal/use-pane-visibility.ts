@@ -15,7 +15,8 @@ export function usePaneVisibility(wt: WTerm | null, pacer: OutputPacer): boolean
     const apply = (visible: boolean): void => {
       setShown(visible);
       pacer.setVisible(visible);
-      wt.setRenderingPaused(!visible);
+      // A replay still held when the pane shows keeps the paint until it settles (#2025).
+      wt.setRenderingPaused(!visible || pacer.holding);
     };
     // A pane mounted in a hidden tab is out of view from its first moment, before the observer's first report a frame
     // later: until then it would take output and paint part of it, which shows as a half-drawn screen when the tab is

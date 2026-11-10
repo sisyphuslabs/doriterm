@@ -130,7 +130,7 @@ export class OutputPacer {
   push(bytes: Uint8Array, credit: (bytes: number) => void = () => undefined): void {
     if (bytes.byteLength === 0) return;
     this.#queue.push({ bytes, credit });
-    if (this.#replay !== null) this.#quietFrom(this.#replay);
+    if (this.#replay !== null && this.#visible) this.#quietFrom(this.#replay);
     if (this.#visible && this.#unpaced()) {
       this.#cancel?.();
       this.#cancel = null;
@@ -142,6 +142,11 @@ export class OutputPacer {
   /** Whether output is still waiting to be written: queued bytes, a frame or drain booked, or a replay held. */
   get busy(): boolean {
     return this.#queue.length > 0 || this.#cancel !== null || this.#replay !== null;
+  }
+
+  /** Whether an attach replay holds the terminal's paint. */
+  get holding(): boolean {
+    return this.#replay !== null;
   }
 
   /** Runs `listener` after each batch is written to the terminal; returns how to stop. */
@@ -159,6 +164,9 @@ export class OutputPacer {
     this.#cancel?.();
     this.#cancel = null;
     if (visible && !this.#hidden) this.#flush(Infinity);
+    const replay = this.#replay;
+    if (replay !== null && visible) this.#timeReplay(replay);
+    else if (replay !== null) this.#untimeReplay(replay);
     this.#schedule();
   }
 
@@ -192,15 +200,18 @@ export class OutputPacer {
    * not running, so it could not see the next window, already queued behind the timer. A fixed
    * deadline could not hold it: over a 300 ms relay, or on a page slow to write it, a replay of a few hundred KiB to 2
    * MiB takes longer than any one span.
+   *
+   * Out of view nothing is written or credited, so a replay stops at the stream's credit window and its quiet says
+   * nothing of its end: the quiet window and the span start when the terminal shows, after what waited is written
+   * (#2025). A tab shown while its replay is still coming then draws it whole, not the part that had arrived.
    */
   replay(options: ReplayOptions): void {
     if (this.#replay !== null) this.#endReplay();
     const replay: Replay = { options, written: 0, spanFrom: 0, quiet: () => undefined, cap: () => undefined };
-    this.#spanFrom(replay);
     this.#replay = replay;
     this.#startCatchUp();
     options.hold(true);
-    this.#quietFrom(replay);
+    if (this.#visible) this.#timeReplay(replay);
     if (this.#visible && this.#queue.length > 0) {
       this.#cancel?.();
       this.#cancel = null;
@@ -230,6 +241,18 @@ export class OutputPacer {
     if (catchUp.written < catchUp.budget && this.#queued() > CATCHUP_THRESHOLD) return CATCHUP_FRAME_BYTES;
     this.#catchUp = null;
     return FRAME_BYTES;
+  }
+
+  #timeReplay(replay: Replay): void {
+    this.#spanFrom(replay);
+    this.#quietFrom(replay);
+  }
+
+  #untimeReplay(replay: Replay): void {
+    replay.quiet();
+    replay.cap();
+    replay.quiet = () => undefined;
+    replay.cap = () => undefined;
   }
 
   #quietFrom(replay: Replay): void {

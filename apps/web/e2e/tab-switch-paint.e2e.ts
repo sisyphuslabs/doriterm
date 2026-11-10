@@ -127,3 +127,59 @@ test("a tab restored out of view shows its history at its end when first shown o
   expect(shown.filter((last) => last !== 0 && last !== LONG)).toEqual([]);
   expect(shown.at(-1)).toBe(LONG);
 });
+
+const COLORED = 1000;
+/** Every cell a color change: the core's replay of this history is several times its cells, past one credit window. */
+const COLORED_HISTORY = `s=$(printf '\\033[31m=\\033[32m=%.0s' $(seq 1 30)); for i in $(seq 1 ${COLORED}); do printf "line-%d %s\\033[0m\\n" $i "$s"; done`;
+/** The stream's credit window (CREDIT_WINDOW_BYTES): what the core sends a viewer that writes, and credits, nothing. */
+const CREDIT_WINDOW = 256 * 1024;
+
+test("a tab restored out of view whose replay outgrew the credit window while hidden shows it whole, not the part that had come (#2025)", async ({
+  page,
+}) => {
+  let replayed = 0;
+  let lastAt = 0;
+  let reloaded = false;
+  const link = await routeHcSocket(page, {
+    received: (frame) => {
+      if (!reloaded) return;
+      replayed += frame.length;
+      lastAt = Date.now();
+    },
+  });
+  await page.goto("/");
+  const first = await openNewTerminal(page);
+  await first.getByRole("textbox").focus();
+  await page.keyboard.type(COLORED_HISTORY);
+  await page.keyboard.press("Enter");
+  await expect(first.locator(".term-row").filter({ hasText: `line-${COLORED} ` })).not.toHaveCount(0, {
+    timeout: 30_000,
+  });
+  await openNewTerminal(page);
+
+  link.delay(150);
+  reloaded = true;
+  await page.reload();
+  const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
+  await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true", { timeout: 20_000 });
+  await expect(first).toBeAttached({ timeout: 20_000 });
+  await expect(first).toBeHidden();
+  // The hidden tab writes and credits nothing, so its replay stops at one window. The hold's quiet window is what is under
+  // test: wait it out (it is under a second here) so that a hold timed while hidden has let go before the tab shows.
+  await expect.poll(() => replayed, { timeout: 20_000 }).toBeGreaterThanOrEqual(CREDIT_WINDOW);
+  await expect.poll(() => Date.now() - lastAt, { timeout: 20_000 }).toBeGreaterThan(1_000);
+
+  await startVisibleLineSampler(first);
+  await tabs.nth(0).click();
+  await expect(first.locator(".term-row").filter({ hasText: `line-${COLORED} ` })).not.toHaveCount(0, {
+    timeout: 30_000,
+  });
+  await expect
+    .poll(() => page.evaluate(() => (Reflect.get(window, "__shownFrames") as () => number)()), { timeout: 20_000 })
+    .toBeGreaterThanOrEqual(60);
+  const shown = (await sampledFrames(page)).filter((frame) => frame.shown).map((frame) => frame.last);
+  console.log(`window-stalled first-show frames: ${JSON.stringify(shown)}`);
+
+  expect(shown.filter((last) => last !== 0 && last !== COLORED)).toEqual([]);
+  expect(shown.at(-1)).toBe(COLORED);
+});
