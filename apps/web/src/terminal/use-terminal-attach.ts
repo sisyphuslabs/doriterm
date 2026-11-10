@@ -1,6 +1,6 @@
 import type { HcConnection, TerminalStream } from "@doriface/client";
 import { useToastManager } from "@doriface/ui";
-import type { TerminalHandle, WTerm } from "@wterm/react";
+import type { WTerm } from "@wterm/react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { terminalConfigStore } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
@@ -16,8 +16,6 @@ import { type CoreAnswer, type Settled, settled, type Unsent, unsentReason } fro
 import type { TerminalInput } from "./terminal-view-props.ts";
 import { useReopenWhenMoved } from "./use-reopen-when-moved.ts";
 
-/** RIS: clears the screen and scrollback before an attach replay draws them again. */
-const FULL_RESET = "\u001bc";
 const encoder = new TextEncoder();
 
 interface AttachSources {
@@ -28,7 +26,6 @@ interface AttachSources {
   readonly shown: boolean;
   readonly wt: WTerm | null;
   readonly setWt: (wt: WTerm | null) => void;
-  readonly handle: RefObject<TerminalHandle | null>;
   readonly stream: RefObject<TerminalStream | null>;
   readonly pending: RefObject<TerminalInput[]>;
   readonly pacer: OutputPacer;
@@ -71,7 +68,7 @@ export interface Attachment {
 
 /** What a pane does when a connection arrives: attach, replay, settle what the core says is left, and report unsent input. */
 export function useTerminalAttach(sources: AttachSources): Attachment {
-  const { connection, address, pid, live, shown, wt, setWt, handle, stream, pending, pacer, output } = sources;
+  const { connection, address, pid, live, shown, wt, setWt, stream, pending, pacer, output } = sources;
   const { isFocused, focusWhenFree, onEnd, onEnded, onStream, holdPaint } = sources;
   const toasts = useToastManager();
   const [restarting, setRestarting] = useState(false);
@@ -172,13 +169,15 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     const display = readDisplay(ready.element);
     // A reattach after a reconnect says so: the core applies its size only once this viewer is active again.
     const resumed = attachedBefore.current ? { resumed: true } : {};
+    // A reattach keeps the history the view already holds and asks for the screen alone, as hc does when it reattaches
+    // a viewer on another core: 2,000 lines again played the history back, over a MiB that a slow link hands over for
+    // longer than the replay's paint hold, so the view climbed through all of it (#1997). Lines that scrolled off the
+    // screen while the line was down are not added; the core has no cursor to resume from.
+    const history = attachedBefore.current ? 0 : HISTORY_LINES;
     // A reattach after a reconnect keeps its screen and has the connection's own status; only a first attach says so.
     if (!attachedBefore.current) setOpening(true);
     const attachOwn = () =>
-      connection.attach(
-        { terminal: address, cols, rows, history: HISTORY_LINES, display, ...resumed },
-        { autoCredit: false },
-      );
+      connection.attach({ terminal: address, cols, rows, history, display, ...resumed }, { autoCredit: false });
     viewAttach(connection, address, !attachedBefore.current, { cols, rows, display }, attachOwn).then(
       ({ stream: attached, cols: askedCols, rows: askedRows }) => {
         if (unmounted.current) return void attached.close();
@@ -197,18 +196,17 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         if (attachedBefore.current && inUse) attached.focus(true);
         // A fit while the attach was in flight had no stream to resize.
         if (ready.cols !== askedCols || ready.rows !== askedRows) attached.resize(ready.cols, ready.rows);
-        // Reattached after a reconnect: the replay redraws everything, so the old screen and scrollback go first.
+        // Reattached after a reconnect: the core repaints the screen (it clears the screen, not the scrollback), and the
+        // history above it stays as the view holds it (#1997).
         if (attachedBefore.current) {
-          // Read the reader's place BEFORE the reset: afterwards the buffer is empty and every scroller reads as at the
-          // end, which pinned readers who were up in history to the bottom on every reconnect (#1393).
+          // Read the reader's place before the repaint (#1393).
           const fromEnd = fromEndOf(ready.element);
-          // wterm reads the emptied buffer the same way, and its first replay write would follow the output down: a
-          // reader who is away stays away until they scroll or type.
+          // The repaint's first write would follow the output down: a reader who is away stays away until they scroll
+          // or type.
           if (fromEnd > 0) ready.holdScrollAway();
           pacer.drop();
           output.reset();
-          handle.current?.write(FULL_RESET);
-          // The reset leaves the scroller at the top, where the replay's rows climb past a reader who was at the end.
+          // The repaint lands where the reader was: at the end for one who was following, in history for one who was not.
           endHold.current?.stop();
           // Only the reader's own input lets go early: on the terminal or what overlays it, its scrollbar included.
           const reader = readerInputOn(ready.element.parentElement ?? ready.element);
