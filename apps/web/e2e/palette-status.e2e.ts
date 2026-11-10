@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
@@ -27,7 +28,7 @@ function report(address: string, state: string): void {
 }
 
 async function openPalette(page: Page): Promise<void> {
-  await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+  await pressShortcut(page, "app.palette");
   await expect(dialog(page)).toBeVisible();
 }
 

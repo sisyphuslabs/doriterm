@@ -70,6 +70,7 @@ const stripTab = (key: string): LayoutTab => ({
   root: { children: [], id: key, type: "row" },
   panes: [],
   readOnly: null,
+  pinned: false,
   transient: false,
 });
 

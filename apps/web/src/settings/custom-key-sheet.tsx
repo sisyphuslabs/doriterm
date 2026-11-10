@@ -64,7 +64,7 @@ export function CustomKeySheet({ open, onOpenChange, settings, readOnly }: Custo
     <Sheet title="Your keys" side="bottom" open={open} onOpenChange={onOpenChange}>
       <div className="flex flex-col gap-4">
         {settings.favorites.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No keys of your own yet.</p>
+          <p className="text-prose text-muted-foreground">No keys of your own yet.</p>
         ) : (
           <ul className="flex flex-col">
             {settings.favorites.map((entry) => (
