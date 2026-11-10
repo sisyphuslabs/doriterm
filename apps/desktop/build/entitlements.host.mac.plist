@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- The standalone doriface-host (#1992) is bun-compiled: JavaScriptCore JITs under the hardened runtime, as the copy
+       inside the app does with these two from entitlements.mac.plist. On macOS it loads no native addon or third-party
+       library, so library validation stays on and bun's other suggested entitlements are left out. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+</dict>
+</plist>

@@ -24,7 +24,7 @@ export interface DictationOptions {
   readonly engine: () => Engine;
   /** Stores the user's answer to the consent question, so it is asked once. */
   readonly remember: (engine: Engine) => void;
-  /** The reason shown when the language cannot be recognized on the device: `device`, or `device-mac` on the Mac app. */
+  /** The reason shown when the language cannot be recognized on the device: `device`, or `device-mac` / `device-windows` in the desktop app. */
   readonly unavailableReason?: VoiceError;
   readonly now?: () => number;
 }
