@@ -17,6 +17,8 @@ export interface CloseTabDialogProps {
   readonly tab: LayoutTab;
   /** The space whose last tab this is: closing it closes the space, as herdr-app's `tab.close`, and always asks first. */
   readonly space?: { readonly name: string };
+  /** Several tabs closing together (#1561): `tab` holds all their panes, and the question names how many tabs. */
+  readonly tabs?: number;
   /** Takes the tab out of the layout: at once, while its sessions end behind it. */
   readonly onClosed: () => void;
   readonly onDone: () => void;
@@ -50,7 +52,16 @@ function endsFailed(failed: number, cause: unknown): { readonly title: string; r
  * round trip or a kill escalation later (#1271); an End that fails is reported in a toast, the one surface left once
  * the tab is gone.
  */
-export function CloseTabDialog({ connection, terminals, tab, space, onClosed, onDone, onKept }: CloseTabDialogProps) {
+export function CloseTabDialog({
+  connection,
+  terminals,
+  tab,
+  space,
+  tabs = 1,
+  onClosed,
+  onDone,
+  onKept,
+}: CloseTabDialogProps) {
   const toasts = useToastManager();
   // Asked with focus on the page body (a terminal whose renderer had not started yet), or from an element gone by now,
   // the question gives focus to the focused pane's terminal, as the session's own question does.
@@ -109,7 +120,7 @@ export function CloseTabDialog({ connection, terminals, tab, space, onClosed, on
         if (!open) onDone();
       }}
       finalFocus={backTo}
-      title={space === undefined ? "Close this tab?" : "Close space?"}
+      title={space !== undefined ? "Close space?" : tabs > 1 ? `Close ${tabs} tabs?` : "Close this tab?"}
       description={
         space !== undefined
           ? `${space.name} \u2014 ${counted(1, "tab")}, ${counted(shown.size, "terminal")}`
