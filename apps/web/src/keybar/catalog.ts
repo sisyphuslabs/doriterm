@@ -70,7 +70,7 @@ export function specialKeysOn(host: HostPlatform): readonly SpecialKey[] {
 }
 
 /**
- * The keys the bar carries before the person changes anything: the modifiers through ^C and Return (#1551), the four
+ * The keys the bar carries before the person changes anything: the modifiers through ^C and Enter (#1551), the four
  * arrows, then the characters that used to sit behind a swipe (#195, #667).
  */
 export const DEFAULT_KEY_IDS: readonly string[] = [

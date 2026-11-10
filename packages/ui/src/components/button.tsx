@@ -14,7 +14,7 @@ export const buttonVariants = cva(
     // (#1031): a label of at least 4.5:1 on every variant (#1496) and a ghost icon of 3:1, on every surface in both themes.
     // Loading also sets disabled, but a working button is busy, not unavailable: it keeps its colours (aria-busy).
     "active:scale-[0.97] data-disabled:pointer-events-none",
-    "[&_svg]:size-4 [&_svg]:shrink-0",
+    "[&_svg:not([data-slot=spinner])]:size-4 [&_svg]:shrink-0",
     "after:absolute after:-inset-1 coarse:after:min-h-11 coarse:after:min-w-11",
   ],
   {
