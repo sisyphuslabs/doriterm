@@ -190,6 +190,55 @@ test("a reconnect under a marked prompt does not add the old screen to the histo
   expect(grown).toBeLessThan(6);
 });
 
+/** The text on the terminal's screen rows, without its history. */
+const screenText = (terminal: Locator): Promise<string> =>
+  terminal.evaluate((element) =>
+    [...element.querySelectorAll(".term-grid .term-row:not(.term-scrollback-row)")]
+      .map((row) => row.textContent ?? "")
+      .join("\n"),
+  );
+
+/**
+ * A full-screen program (vim, less, htop) draws on the alternate screen, and the core's repaint leaves it first, so the
+ * repaint's ESC[2J lands on the primary screen, with its marked prompt: clearing the alternate screen alone left that one
+ * to scroll into history, a screen's rows more on every reconnect.
+ */
+test("a reconnect under a full-screen program does not add the old prompt screen to the history (#1997)", async ({
+  page,
+}) => {
+  const link = await routeHcSocket(page);
+  const terminal = await openWithHistory(page, 200, `PS1="$(printf '\\033]133;A\\007')marked$ "; `);
+  await expect(terminal).toContainText("marked$");
+  const row = await laidOutBox(terminal.locator(".term-row:not(.term-scrollback-row)").first());
+  const historyBefore = await historyRows(terminal, row.height);
+
+  await page.keyboard.type(
+    "printf '\\033[?1049h\\033[H\\033[2Jfullscreen-top\\033[10;5Hfullscreen-mid\\033[12;1H'; read x; printf '\\033[?1049l'",
+  );
+  await page.keyboard.press("Enter");
+  await expect.poll(() => screenText(terminal)).toContain("fullscreen-mid");
+
+  await dropAndReconnect(page, link);
+  // What the program echoes comes behind the repaint on the same stream: once it shows, the repaint has been drawn.
+  await page.keyboard.type("typed-after");
+  await expect.poll(() => screenText(terminal), { timeout: 30_000 }).toContain("typed-after");
+  // The program's screen is drawn again as it was, and the prompt screen behind it is not shown over it.
+  const screen = await screenText(terminal);
+  expect(screen).toContain("fullscreen-top");
+  expect(screen).toContain("fullscreen-mid");
+  expect(screen).not.toContain("marked$");
+
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("echo done-$((1+1))");
+  await page.keyboard.press("Enter");
+  await expect(terminal).toContainText("done-2", { timeout: 30_000 });
+  // The program's command, the command after it and their prompts push up a few rows; the old prompt screen kept again
+  // would be a screen's rows more.
+  const grown = (await historyRows(terminal, row.height)) - historyBefore;
+  expect(grown).toBeGreaterThanOrEqual(0);
+  expect(grown).toBeLessThan(6);
+});
+
 /**
  * Try again after a refused reattach mounts a new, empty view: it has no history to keep, so it asks for the history as
  * a first attach does instead of the screen alone.
