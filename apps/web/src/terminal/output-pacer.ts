@@ -81,8 +81,10 @@ type Budget = "arrived" | number;
  * Paces a terminal's output to its paints (#560). Output that arrives is queued and written once a frame, as one batch
  * of at most FRAME_BYTES, and its credit goes back only then: the stream's window then throttles the program to what the
  * page draws, so a flood never fills the main thread and clicks and keys keep their turn. Out of view (a hidden tab),
- * nothing is written: output waits, uncredited, and is written once the terminal shows. Bytes keep their order, and a
- * batch may end inside a character or a sequence: the VT parses a stream.
+ * nothing is written: output waits, uncredited, so at most the stream's credit window of it, and is written all at once
+ * when the terminal shows, before its first paint: a tab switched to shows its screen as it is now, never a fast-forward
+ * of what it missed climbing up from older output (#1588). Bytes keep their order, and a batch may end inside a
+ * character or a sequence: the VT parses a stream.
  *
  * A synchronized update (DECSET 2026) is the exception: the terminal draws nothing of it until it ends, so pacing it
  * would only spread one frame over many paints, and a program redrawing its whole transcript on a resize (pi-tui, Claude
@@ -150,12 +152,13 @@ export class OutputPacer {
     };
   }
 
-  /** Out of view: nothing is written. Back in view: what waited is written from the next frame. */
+  /** Out of view: nothing is written. Back in view: what waited is written now, in one batch; later output is paced. */
   setVisible(visible: boolean): void {
     if (visible === this.#visible) return;
     this.#visible = visible;
     this.#cancel?.();
     this.#cancel = null;
+    if (visible && !this.#hidden) this.#flush(Infinity);
     this.#schedule();
   }
 
