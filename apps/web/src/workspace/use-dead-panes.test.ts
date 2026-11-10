@@ -22,6 +22,7 @@ const tab = (
     mod: address === null ? "files" : null,
   })),
   readOnly: null,
+  pinned: false,
   transient,
 });
 

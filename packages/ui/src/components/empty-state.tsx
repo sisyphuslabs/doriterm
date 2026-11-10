@@ -27,7 +27,12 @@ export function EmptyState({
   return (
     <div
       role="status"
-      className={cn("mx-auto flex w-full max-w-md flex-col items-center gap-3 px-6 py-10 text-center", className)}
+      className={cn(
+        "mx-auto flex w-full max-w-lg flex-col items-center gap-3 px-6 py-10 text-center",
+        // A whole-screen step sits in a page that already pads its edges; a second inset narrows a phone's prose.
+        size === "screen" && "px-0",
+        className,
+      )}
     >
       {icon === undefined ? null : (
         <span className="flex text-muted-foreground [&_svg]:size-8 [&_svg]:stroke-[1.5]">{icon}</span>
@@ -37,7 +42,9 @@ export function EmptyState({
       ) : (
         <h2 className="text-lg font-semibold text-balance text-foreground">{title}</h2>
       )}
-      {description === undefined ? null : <p className="text-base text-pretty text-muted-foreground">{description}</p>}
+      {description === undefined ? null : (
+        <p className="max-w-measure text-base text-pretty text-muted-foreground">{description}</p>
+      )}
       {children}
       {actions === undefined ? null : <div className="mt-2 flex flex-wrap justify-center gap-2">{actions}</div>}
     </div>

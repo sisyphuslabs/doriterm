@@ -125,6 +125,16 @@ export interface HcTarget {
 export const handshakeOf = (core: HcTarget): { readonly handshakeTimeoutMs?: number } =>
   core.handshakeTimeoutMs === undefined ? {} : { handshakeTimeoutMs: core.handshakeTimeoutMs };
 
+/**
+ * Opens a connection on this host's own core with the hello deadline `core` names. Every writer the host starts on its
+ * core opens through here, so a configured deadline reaches each of them (#1011).
+ */
+export const openOnCore = (link: ByteLink, core: HcTarget, options: OpenHcControlOptions = {}): Promise<HcConnection> =>
+  HcConnection.open(link, {
+    ...handshakeOf(core),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  });
+
 /** `hc connect` to a core as a byte link. */
 export function spawnHcLink(target: HcTarget): ChildByteLink {
   const session = target.session === undefined ? [] : ["--session", target.session];
@@ -164,7 +174,7 @@ export async function openHcControl(target: HcTarget, options: OpenHcControlOpti
   };
   let connection: HcConnection;
   try {
-    connection = await HcConnection.open(link, options.signal === undefined ? {} : { signal: options.signal });
+    connection = await openOnCore(link, target, options);
   } catch (error) {
     await stop();
     throw error;
