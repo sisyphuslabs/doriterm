@@ -168,7 +168,7 @@ function PairedDevicesSection() {
               ))
             : null}
           {note === null ? null : (
-            <p role="status" className="text-sm text-muted-foreground">
+            <p role="status" className="text-prose text-muted-foreground">
               {note}
             </p>
           )}

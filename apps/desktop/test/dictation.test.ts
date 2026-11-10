@@ -69,10 +69,10 @@ const mic = (status: string, answer = true): Microphone & { asks: number } => {
   return microphone;
 };
 
-const setup = (status = "granted", answer = true) => {
+const setup = (status = "granted", answer = true, platform: "darwin" | "win32" = "darwin") => {
   const addon = new Addon();
   const microphone = mic(status, answer);
-  return { addon, microphone, host: new DictationHost(addon, microphone) };
+  return { addon, microphone, host: new DictationHost(addon, microphone, platform) };
 };
 
 describe("dictation permissions, in the system's order", () => {
@@ -133,9 +133,13 @@ describe("dictation permissions, in the system's order", () => {
   });
 });
 
-describe("one session, owned by the page that started it", () => {
+describe.each(["darwin", "win32"] as const)("%s: one session, owned by the page that started it", (platform) => {
+  const owned = () => {
+    const addon = new Addon();
+    return { addon, host: new DictationHost(addon, mic("granted"), platform) };
+  };
   test("its events go to that page only, copied to their own fields", async () => {
-    const { host, addon } = setup();
+    const { host, addon } = owned();
     const page = new Page(1);
     await host.start(page, "en-US");
     addon.fire(1, { kind: "result", text: "ls -la", final: false, extra: "dropped" });
@@ -147,7 +151,7 @@ describe("one session, owned by the page that started it", () => {
   });
 
   test("another page cannot start, stop or end it, and a start during a system prompt is busy", async () => {
-    const { host, addon } = setup();
+    const { host, addon } = owned();
     const owner = new Page(1);
     const other = new Page(2);
     await host.start(owner, "en-US");
@@ -158,7 +162,11 @@ describe("one session, owned by the page that started it", () => {
     expect(addon.aborted).toEqual([]);
 
     const prompt = Promise.withResolvers<boolean>();
-    const slow = new DictationHost(new Addon(), { status: () => "not-determined", ask: () => prompt.promise });
+    const slow = new DictationHost(
+      new Addon(),
+      { status: () => (platform === "win32" ? "granted" : "not-determined"), ask: () => prompt.promise },
+      platform,
+    );
     const first = slow.start(owner, "en-US");
     expect(await slow.start(other, "en-US")).toEqual({ refused: "busy" });
     prompt.resolve(true);
@@ -166,7 +174,7 @@ describe("one session, owned by the page that started it", () => {
   });
 
   test("the owner stops by the current session id only", async () => {
-    const { host, addon } = setup();
+    const { host, addon } = owned();
     const page = new Page(1);
     await host.start(page, "en-US");
     expect(host.stop(page, 2)).toBe(false);
@@ -175,7 +183,7 @@ describe("one session, owned by the page that started it", () => {
   });
 
   test("a page that starts again ends its own session first, and the old session's late events are dropped", async () => {
-    const { host, addon } = setup();
+    const { host, addon } = owned();
     const page = new Page(1);
     await host.start(page, "en-US");
     expect(await host.start(page, "en-US")).toEqual({ session: 2 });
@@ -187,7 +195,11 @@ describe("one session, owned by the page that started it", () => {
   test("a page that reloads or navigates while the system prompt is open gets no session once it is answered", async () => {
     const prompt = Promise.withResolvers<boolean>();
     const addon = new Addon();
-    const host = new DictationHost(addon, { status: () => "not-determined", ask: () => prompt.promise });
+    const host = new DictationHost(
+      addon,
+      { status: () => (platform === "win32" ? "granted" : "not-determined"), ask: () => prompt.promise },
+      platform,
+    );
     const page = new Page(1);
     const asked = host.start(page, "en-US");
     host.dropOwner(1);
@@ -195,13 +207,17 @@ describe("one session, owned by the page that started it", () => {
     expect(await asked).toEqual({ refused: "service" });
     expect(addon.started).toEqual([]);
     // The page that came back asks again and gets its session.
-    expect(await new DictationHost(addon, mic("granted")).start(page, "en-US")).toEqual({ session: 1 });
+    expect(await new DictationHost(addon, mic("granted"), platform).start(page, "en-US")).toEqual({ session: 1 });
   });
 
   test("quitting while the system prompt is open starts nothing", async () => {
     const prompt = Promise.withResolvers<boolean>();
     const addon = new Addon();
-    const host = new DictationHost(addon, { status: () => "not-determined", ask: () => prompt.promise });
+    const host = new DictationHost(
+      addon,
+      { status: () => (platform === "win32" ? "granted" : "not-determined"), ask: () => prompt.promise },
+      platform,
+    );
     const asked = host.start(new Page(1), "en-US");
     host.stopAll();
     prompt.resolve(true);
@@ -210,7 +226,7 @@ describe("one session, owned by the page that started it", () => {
   });
 
   test("a page that reloads, navigates or closes ends its session; so does quitting", async () => {
-    const { host, addon } = setup();
+    const { host, addon } = owned();
     await host.start(new Page(1), "en-US");
     host.dropOwner(2);
     expect(addon.aborted).toEqual([]);
@@ -222,7 +238,7 @@ describe("one session, owned by the page that started it", () => {
   });
 
   test("a destroyed owner gets nothing: its session ends at the next event", async () => {
-    const { host, addon } = setup();
+    const { host, addon } = owned();
     const page = new Page(1);
     await host.start(page, "en-US");
     page.destroyed = true;

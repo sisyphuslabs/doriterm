@@ -38,7 +38,7 @@ export function MeshInvite({ offer }: { readonly offer?: PairingOffer }) {
     }
   };
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-5 px-6 py-10">
+    <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col justify-center gap-5 px-4 py-10 md:px-6">
       {state?.phase === "comparing" || state?.phase === "waiting" ? (
         <>
           <h1 className="text-2xl font-semibold text-balance">
@@ -49,11 +49,11 @@ export function MeshInvite({ offer }: { readonly offer?: PairingOffer }) {
           <p aria-label="Join code" className="text-center text-4xl font-semibold tracking-widest tabular-nums">
             {state.code}
           </p>
-          <p className="text-base text-muted-foreground">
+          <p className="max-w-measure text-base text-muted-foreground">
             {`Look at ${flow.inviter}'s screen, or ask the person who sent the invite by a call or in person, not in the chat that carried the link. If it shows no code or another one, the invite is not from your mesh.`}
           </p>
           {installed && isIos() ? (
-            <p className="text-sm text-muted-foreground">Switch to Safari to approve, then come back.</p>
+            <p className="text-prose text-muted-foreground">Switch to Safari to approve, then come back.</p>
           ) : null}
           {state.phase === "comparing" ? (
             <div className="flex flex-col gap-2">
@@ -85,7 +85,7 @@ export function MeshInvite({ offer }: { readonly offer?: PairingOffer }) {
       ) : (
         <>
           <h1 className="text-2xl font-semibold text-balance">Join this mesh</h1>
-          <p className="text-base text-muted-foreground">
+          <p className="max-w-measure text-base text-muted-foreground">
             This browser becomes a member and reaches every machine in the mesh.
           </p>
           <Field
@@ -117,7 +117,7 @@ export function MeshInvite({ offer }: { readonly offer?: PairingOffer }) {
           >
             Join
           </Button>
-          <details className="text-sm text-muted-foreground">
+          <details className="text-prose text-muted-foreground">
             <summary>I meant to add a computer</summary>
             <p className="my-3">
               On that computer, run this with the invite, then compare the join code on both screens.

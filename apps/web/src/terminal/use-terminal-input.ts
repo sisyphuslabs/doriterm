@@ -5,6 +5,7 @@ import { type RefObject, useCallback, useEffect, useRef, useState } from "react"
 import { unprovenLinks } from "../connection/wake.ts";
 import { machineOf } from "../workspace/model.ts";
 import { type Dropped, HeldInput, HOLD_MS } from "./held-input.ts";
+import { inputOrder } from "./input-order.ts";
 import { machineLines } from "./machine-lines.ts";
 import { pasteInto } from "./terminal-port.ts";
 import { putFiles, quotePaths } from "./paste-files.ts";
@@ -21,8 +22,17 @@ export interface TerminalInputPath {
   readonly typedInto: (data: string) => void;
   /** Input from outside the renderer (the phone's keys, a bound key, a confirmed paste). */
   readonly typed: (data: TerminalInput) => void;
+  /** Input from a bound key known only once `data` settles; what is typed meanwhile reaches the program after it. */
+  readonly typedLater: (data: Promise<TerminalInput | null>) => void;
+  /**
+   * Input answering a bound key some time after it, as the person goes on typing (Paste image's late ^V): written in
+   * order, and a syllable still composing in the field is left alone, unlike `typed`, which would end it (#1938).
+   */
+  readonly typedLate: (data: TerminalInput) => void;
   /** Files sent to the terminal's machine, their paths pasted there. */
   readonly pasteFiles: (files: readonly File[]) => void;
+  /** Input sent now would be written at once (the predictor's P6). */
+  readonly linkReady: () => boolean;
 }
 
 interface InputSources {
@@ -33,6 +43,8 @@ interface InputSources {
   readonly address: string;
   readonly transformInput: ((data: string) => string) | undefined;
   readonly typesComposition: boolean;
+  /** Told of every input before it is sent or queued, in the order it reaches the program: the predictor (#1595). */
+  readonly predict?: RefObject<((data: TerminalInput) => void) | null>;
 }
 
 /** Why input that waited for a machine's line was not sent, as the person is told. */
@@ -44,7 +56,7 @@ export function notSent(why: Dropped, machine: string): string {
 
 /** What a pane does with what the person types: one ordered path to the program, queued while no stream is open. */
 export function useTerminalInput(sources: InputSources): TerminalInputPath {
-  const { wt, handle, stream, connection, address, transformInput, typesComposition } = sources;
+  const { wt, handle, stream, connection, address, transformInput, typesComposition, predict } = sources;
   const toasts = useToastManager();
   const latestConnection = useRef(connection);
   latestConnection.current = connection;
@@ -68,24 +80,50 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
   );
   useEffect(() => held.watch(), [held]);
   const pending = useRef(held.pending);
-  const send = useCallback((data: TerminalInput): void => held.send(data), [held]);
+  const latestPredict = useRef(predict);
+  latestPredict.current = predict;
+  const [order] = useState(() =>
+    inputOrder((data) => {
+      latestPredict.current?.current?.(data);
+      held.send(data);
+    }),
+  );
+  const send = order.send;
+  const linkReady = useCallback((): boolean => held.ready(), [held]);
   const typedInto = (data: string): void => {
     const input = transformInput?.(data) ?? data;
     if (input !== "") send(input);
   };
   // Typed input from outside the renderer scrolls to the bottom, as wterm already does for keys typed into it. A
   // syllable still composing in the renderer's field goes first, as typed: the key must not overtake it (#652).
+  const typedFirst = useCallback((): void => {
+    const instance = handle.current?.instance;
+    if (instance === null || instance === undefined) return;
+    const preedit = instance.takeComposition();
+    if (preedit !== "") send(preedit);
+    scrollTerminal(instance, { to: "bottom" });
+  }, [handle, send]);
   const typed = useCallback(
     (data: TerminalInput): void => {
+      typedFirst();
+      send(data);
+    },
+    [typedFirst, send],
+  );
+  const typedLate = useCallback(
+    (data: TerminalInput): void => {
       const instance = handle.current?.instance;
-      if (instance !== null && instance !== undefined) {
-        const preedit = instance.takeComposition();
-        if (preedit !== "") send(preedit);
-        scrollTerminal(instance, { to: "bottom" });
-      }
+      if (instance !== null && instance !== undefined) scrollTerminal(instance, { to: "bottom" });
       send(data);
     },
     [handle, send],
+  );
+  const typedLater = useCallback(
+    (data: Promise<TerminalInput | null>): void => {
+      typedFirst();
+      order.later(data);
+    },
+    [typedFirst, order],
   );
   // herdr-app's send_image: files go to the terminal's machine (`terminal.put`), and where they landed is pasted there,
   // bracketed when the program asked, so an agent on any machine reads the image by its path (#701).
@@ -113,5 +151,5 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
     wt.element.addEventListener("input", onInput);
     return () => wt.element.removeEventListener("input", onInput);
   }, [wt, typesComposition]);
-  return { pending, typedInto, typed, pasteFiles };
+  return { pending, typedInto, typed, typedLater, typedLate, pasteFiles, linkReady };
 }

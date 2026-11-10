@@ -32,18 +32,38 @@ const fieldOf = (handle: RefObject<TerminalHandle | null>): HTMLTextAreaElement 
   return element?.querySelector("textarea") ?? null;
 };
 
+/** Fields let go only to be focused again in the same press: the program is told neither half of that (#1519). */
+const regaining = new WeakSet<EventTarget>();
+
+/** Whether a focus change of this field is the port taking it again for the keyboard, which the program is not told. */
+export const regainingFocus = (target: EventTarget | null): boolean => target !== null && regaining.has(target);
+
+/**
+ * Whether input from the renderer is the focus report (mode 1004) its own field writes as the port lets it go and takes
+ * it again: the renderer reports its field's blur and focus to the program itself, besides the view's.
+ */
+export const isRegainingReport = (handle: RefObject<TerminalHandle | null>, data: string): boolean =>
+  (data === "\x1b[O" || data === "\x1b[I") && regainingFocus(fieldOf(handle));
+
 /**
  * Lets the field under this terminal raise the soft keyboard, before the focus that reads it. On a surface that has one
  * the field carries `inputmode="none"`, so a press in the terminal raises nothing and only the keys ask for the keyboard
  * (#1375); a field that already has the focus is let go first, since a browser raises no keyboard for a focus it already
- * has. A surface with no soft keyboard to raise is left alone, and so is a hardware keyboard: `inputmode` is the soft
- * keyboard's own.
+ * has. That holds even for a field already at `text`: on iOS one focused outside a tap (a picked session's attach) has
+ * no keyboard up, and only a focus inside the tap raises it (#1519). The terminal keeps the focus throughout, so the
+ * blur and the focus that follows it are marked as the port's own until this press is over. A surface with no soft
+ * keyboard to raise is left alone, and so is a hardware keyboard: `inputmode` is the soft keyboard's own.
  */
 export function askingForKeyboard(handle: RefObject<TerminalHandle | null>, softKeyboard: boolean): void {
   if (!softKeyboard) return;
   const field = fieldOf(handle);
   if (field === null) return;
-  if (field.ownerDocument.activeElement === field) field.blur();
+  if (field.ownerDocument.activeElement === field) {
+    regaining.add(field);
+    // The caller focuses the field again synchronously, and both focus events are dispatched as it does.
+    queueMicrotask(() => regaining.delete(field));
+    field.blur();
+  }
   field.inputMode = "text";
 }
 
@@ -83,6 +103,8 @@ export function portOf(
     },
     commitComposition,
     focus: () => {
+      // A syllable still composing is sent first: letting the field go for the keyboard would drop it (#1519).
+      commitComposition();
       askingForKeyboard(handle, softKeyboard);
       handle.current?.focus();
     },
