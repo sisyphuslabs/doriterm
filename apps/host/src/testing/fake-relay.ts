@@ -134,9 +134,10 @@ export class FakeRelay {
           active = false;
         };
       },
-      close: () => {
-        this.#send(encodeClose(sessionId, 1000));
-        session.closed.resolve(1000);
+      // The relay passes the client's close code on to the host (contract: a normal close is 1000, a drop is not).
+      close: (code = 1000) => {
+        this.#send(encodeClose(sessionId, code));
+        session.closed.resolve(code);
       },
     };
   }
