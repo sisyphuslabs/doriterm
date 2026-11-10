@@ -63,14 +63,40 @@ describe("OutputPacer holding a replay that began out of view (#2025)", () => {
     expect(pacer.holding).toBe(false);
   });
 
+  test("a replay that came whole while hidden is drawn as the terminal shows, with no wait", () => {
+    const { pacer, written, holds, advance } = pacerOutOfView();
+    pacer.push(new Uint8Array(4 * 1024));
+    advance(REPLAY_CAP_MS);
+    pacer.setVisible(true);
+    expect(written).toEqual([4 * 1024]);
+    expect(holds).toEqual([true, false]);
+  });
+
+  test("output still arriving as the terminal shows is held until it goes quiet, at most one quiet window", () => {
+    const { pacer, holds, advance } = pacerOutOfView();
+    pacer.push(new Uint8Array(1024));
+    advance(80);
+    pacer.setVisible(true);
+    expect(holds).toEqual([true]);
+    // A spinner: a few bytes every 80 ms never goes quiet, and is let go one quiet window (1.5 x 300 + 50 ms) after it shows.
+    for (let at = 0; at < 480; at += 80) {
+      pacer.push(new Uint8Array(16));
+      advance(80);
+    }
+    expect(holds).toEqual([true]);
+    advance(20);
+    expect(holds).toEqual([true, false]);
+  });
+
   test("hidden again before it settles, the hold waits for the next time the terminal shows", () => {
     const { pacer, holds, advance } = pacerOutOfView();
+    pacer.push(new Uint8Array(CREDIT_WINDOW_BYTES));
     pacer.setVisible(true);
-    pacer.push(new Uint8Array(1024));
     advance(100);
     pacer.setVisible(false);
     advance(REPLAY_CAP_MS * 2);
     expect(holds).toEqual([true]);
+    pacer.push(new Uint8Array(CREDIT_WINDOW_BYTES));
     pacer.setVisible(true);
     advance(499);
     expect(holds).toEqual([true]);

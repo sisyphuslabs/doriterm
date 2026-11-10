@@ -52,8 +52,8 @@ interface AttachSources {
  * has settled (D5). hc marks no end of the replay (the stream is its first paint, then live bytes), so the hold ends on
  * a quiet gap, bounded by the replay caps. The first open of a terminal in view has no screen to keep and is not held.
  * One out of view (a tab the saved layout restored behind another) is: it takes its replay while hidden, and the replay
- * may still be coming when it shows, so its paint waits for the replay to settle in view instead of drawing the part
- * that had arrived (#2025).
+ * may still be coming when it shows, stopped at the credit window or in flight, so its paint waits for the rest instead
+ * of drawing the part that had arrived (#2025). A replay that came whole while hidden is drawn as the tab shows.
  */
 export function replayOnAttach(
   pacer: OutputPacer,
@@ -233,8 +233,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           srtt: () => connection.rtt?.srtt,
           hold: (held) => {
             holdPaint(held);
-            // A hold let go while the pane is out of view leaves it paused, as its visibility does.
-            ready.setRenderingPaused(held || outOfView(ready.element));
+            ready.setRenderingPaused(held);
           },
         });
         onStream?.current?.();
