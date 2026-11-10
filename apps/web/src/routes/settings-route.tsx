@@ -11,6 +11,8 @@ import {
   type Ref,
 } from "react";
 import { currentPlatform, triggerKeys } from "../keys/trigger.ts";
+import { useActionHandler } from "../keys/dispatcher.ts";
+import { stepTerminalFont } from "../workspace/use-app-actions.ts";
 import { AppearanceSection } from "../settings/appearance-section.tsx";
 import { ConnectionSection } from "../settings/connection-section.tsx";
 import { DeviceSection } from "../settings/device-section.tsx";
@@ -118,6 +120,11 @@ function SearchSettings({
 
 /** Section navigation beside the form; changes apply as they are made. */
 export function SettingsRoute() {
+  // Settings shows the terminals' text size under Appearance and hints at its keys, so the text-size keys step it here
+  // rather than the browser's zoom, in a browser too (#859, #1162).
+  useActionHandler("app", (action) =>
+    ["app.zoom_in", "app.zoom_out", "app.zoom_reset"].includes(action) ? stepTerminalFont(action) : false,
+  );
   const [opened] = useState(firstLanding);
   const [section, setSection] = useState<SectionId>(opened.section);
   const [query, setQuery] = useState("");
@@ -225,7 +232,7 @@ export function SettingsRoute() {
             aria-current={entry.id === section ? "page" : undefined}
             onClick={() => setSection(entry.id)}
             className={cn(
-              "justify-start gap-2.5 px-2 text-sm [&_svg]:size-3.5",
+              "justify-start gap-2.5 px-2 text-sm [&_svg:not([data-slot=spinner])]:size-3.5",
               entry.id === section && "bg-selected text-foreground",
             )}
           >
