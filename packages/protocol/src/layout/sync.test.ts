@@ -54,6 +54,8 @@ function store(initial: JsonValue) {
 const named = (doc: JsonObject | null, name: string): JsonObject => ({ ...doc, [name]: true });
 const onlyWithTarget = (current: JsonObject | null): JsonObject | null =>
   isJsonObject(current) && current["target"] === true ? named(current, "mine") : null;
+const unlessTheirs = (current: JsonObject | null): JsonObject | null =>
+  current?.["theirs"] === true ? null : named(current, "mine");
 
 async function ready(calls: DocCalls): Promise<{ doc: LayoutDoc; states: DocState[] }> {
   const states: DocState[] = [];
@@ -104,6 +106,19 @@ describe("the layout document sync", () => {
     expect(await doc.edit(onlyWithTarget)).toBe(false);
     expect(core.current()).toEqual({ spaces: [] });
     expect(doc.state).toEqual({ phase: "ready", doc: { spaces: [] }, version: 2 });
+  });
+
+  test("an edit shown once saved is on screen only as the host took it, and one that loses shows only the winner's document (#1572)", async () => {
+    const core = store({ spaces: [] });
+    const { doc, states } = await ready(core.calls);
+    let shown = states.length;
+    expect(await doc.edit(unlessTheirs, "once saved")).toBe(true);
+    expect(states.slice(shown)).toEqual([{ phase: "ready", doc: { spaces: [], mine: true }, version: 2 }]);
+
+    shown = states.length;
+    core.other({ spaces: [], theirs: true });
+    expect(await doc.edit(unlessTheirs, "once saved")).toBe(false);
+    expect(states.slice(shown)).toEqual([{ phase: "ready", doc: { spaces: [], theirs: true }, version: 3 }]);
   });
 
   test("never writes a document it cannot read in full", async () => {

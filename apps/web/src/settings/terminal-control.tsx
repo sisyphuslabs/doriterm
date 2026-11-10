@@ -180,18 +180,20 @@ export function KeyControl(props: KeyControlProps) {
   const value = values.at(-1) ?? "";
   const kind = def.kind;
   if (def.repeatable) return <ListValue {...props} />;
+  // Ghostty's true and clipboard modes share the browser clipboard: one toggle preserves both imported values.
+  if (kind.type === "bool" || def.key === "copy-on-select") {
+    return (
+      <span className="flex">
+        <Switch
+          aria-label={def.label ?? def.key}
+          disabled={disabled}
+          checked={value === "true" || value === "clipboard"}
+          onCheckedChange={(checked) => onCommit([checked ? "true" : "false"])}
+        />
+      </span>
+    );
+  }
   switch (kind.type) {
-    case "bool":
-      return (
-        <span className="flex">
-          <Switch
-            aria-label={def.key}
-            disabled={disabled}
-            checked={value === "true"}
-            onCheckedChange={(checked) => onCommit([checked ? "true" : "false"])}
-          />
-        </span>
-      );
     case "optional-bool":
       return (
         <SegmentedControl
