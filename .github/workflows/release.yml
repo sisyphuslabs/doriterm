@@ -2,7 +2,8 @@ name: Release
 
 # A vX.Y.Z tag builds every artifact into a draft release, smoke-tests the uploaded files and then publishes it.
 # A manual dispatch builds the same set into a draft release and leaves it a draft, so the pipeline can be proven
-# without publishing anything. Either way the version must match apps/desktop/package.json (release-version.ts).
+# without publishing anything. A published release is then mirrored into the release bucket behind get.doriterm.com and
+# its channel moved (#1969, docs/releasing.md); a dispatch mirrors its draft into the staging bucket instead. Either way the version must match apps/desktop/package.json (release-version.ts).
 # The macOS builds are signed with a Developer ID certificate and notarized with an App Store Connect API key, from the
 # repository secrets CSC_LINK (base64 .p12), CSC_KEY_PASSWORD, APPLE_API_KEY (.p8 contents), APPLE_API_KEY_ID and
 # APPLE_API_ISSUER; the Version job fails before any build when one is missing. Windows builds are not signed: there is
@@ -704,4 +705,120 @@ jobs:
             echo "| --- | --- |"
             echo "| Job status | ${{ job.status }} |"
             echo "| Release | https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  mirror:
+    name: Mirror to get.doriterm.com
+    if: github.event_name == 'push'
+    needs: [version, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    # The R2 key pair scoped to this bucket and the release signing key live in this environment only (#1969).
+    environment: release-mirror
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.version.outputs.version }}
+      TAG: ${{ needs.version.outputs.tag }}
+      CHANNEL: ${{ needs.version.outputs.prerelease == 'true' && 'beta' || 'stable' }}
+      ROLLOUT: ${{ vars.RELEASE_ROLLOUT_PERCENT || '100' }}
+      MINIMUM: ${{ vars.RELEASE_MINIMUM_VERSION }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - name: Download the release
+        run: |
+          mkdir -p "$RUNNER_TEMP/release"
+          gh release download "$TAG" --dir "$RUNNER_TEMP/release"
+          gh release view "$TAG" --json assets > "$RUNNER_TEMP/assets.json"
+      - name: Mirror into doriterm-releases and move the channel
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: >-
+          bun .github/scripts/release-r2.ts mirror --bucket doriterm-releases --origin https://get.doriterm.com
+          --version "$VERSION" --channel "$CHANNEL" --rollout "$ROLLOUT" --minimum "$MINIMUM"
+          --dir "$RUNNER_TEMP/release" --assets "$RUNNER_TEMP/assets.json" --run-id "$GITHUB_RUN_ID"
+      # install.sh fetches it beside SHA256SUMS.txt; Ed25519 is deterministic, so a re-run produces the same bytes.
+      - name: Attach the checksums signature
+        run: |
+          if ! gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx SHA256SUMS.txt.sig; then
+            gh release upload "$TAG" "$RUNNER_TEMP/release/SHA256SUMS.txt.sig"
+          fi
+      - name: get.doriterm.com offers it
+        run: bun .github/scripts/release-r2.ts probe --origin https://get.doriterm.com --channel "$CHANNEL" --version "$VERSION"
+      - name: Workflow summary
+        if: always()
+        run: |
+          {
+            echo "## Mirror $TAG to https://get.doriterm.com"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Job status | ${{ job.status }} |"
+            echo "| Channel | $CHANNEL |"
+            echo "| Rollout | $ROLLOUT% |"
+            echo "| Download | https://get.doriterm.com/dl/host-linux-x64 |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  mirror-staging:
+    name: Mirror the draft to staging.get.doriterm.com
+    if: github.event_name == 'workflow_dispatch'
+    needs: [version, smoke-linux, smoke-mac, smoke-windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    # The R2 key pair scoped to this bucket and the release signing key live in this environment only (#1969).
+    environment: release-mirror-staging
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.version.outputs.version }}
+      TAG: ${{ needs.version.outputs.tag }}
+      CHANNEL: ${{ needs.version.outputs.prerelease == 'true' && 'beta' || 'stable' }}
+      ROLLOUT: ${{ vars.RELEASE_ROLLOUT_PERCENT || '100' }}
+      MINIMUM: ${{ vars.RELEASE_MINIMUM_VERSION }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - name: Download the release
+        run: |
+          mkdir -p "$RUNNER_TEMP/release"
+          gh release download "$TAG" --dir "$RUNNER_TEMP/release"
+          gh release view "$TAG" --json assets > "$RUNNER_TEMP/assets.json"
+      - name: Mirror into doriterm-releases-staging and move the channel
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: >-
+          bun .github/scripts/release-r2.ts mirror --bucket doriterm-releases-staging --origin https://staging.get.doriterm.com
+          --version "$VERSION" --channel "$CHANNEL" --rollout "$ROLLOUT" --minimum "$MINIMUM"
+          --dir "$RUNNER_TEMP/release" --assets "$RUNNER_TEMP/assets.json" --run-id "$GITHUB_RUN_ID"
+      - name: staging.get.doriterm.com offers it
+        run: bun .github/scripts/release-r2.ts probe --origin https://staging.get.doriterm.com --channel "$CHANNEL" --version "$VERSION"
+      - name: Workflow summary
+        if: always()
+        run: |
+          {
+            echo "## Mirror $TAG to https://staging.get.doriterm.com"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Job status | ${{ job.status }} |"
+            echo "| Channel | $CHANNEL |"
+            echo "| Rollout | $ROLLOUT% |"
+            echo "| Download | https://staging.get.doriterm.com/dl/host-linux-x64 |"
           } >> "$GITHUB_STEP_SUMMARY"
