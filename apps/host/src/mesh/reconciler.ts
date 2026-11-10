@@ -11,6 +11,7 @@ import { renameToMeshName } from "./line-names.ts";
 import { replacedOf } from "./replaced.ts";
 import { ProbeBackoff } from "./probe-backoff.ts";
 import { migrate } from "./migration.ts";
+import { addRefusalOf, messageOf } from "./add-refusal.ts";
 
 /** Section 8.1: a named STUCK state is retried when the view or `machine.list` changes, or every 10 minutes. */
 export const STUCK_RETRY_MS = 600_000;
@@ -55,8 +56,6 @@ interface Stuck {
 }
 
 const DIFFERENT_CORE = "a different core answers there";
-const kindOf = (error: unknown): string => (error instanceof HcRpcError ? error.kind : "unreachable");
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 /**
  * Keeps `machine.list` equal to the view (section 8.1): removes, then renames, then adds, concurrently. Every action
@@ -274,15 +273,14 @@ export class Reconciler {
         `mesh: added machine ${name}${replaced === undefined ? "" : `, ${replacedMachineText(replaced)}`}`,
       );
     } catch (error) {
-      const kind = kindOf(error);
-      if (kind === "name_taken") return this.#addAs(member, attempt, rest);
-      if (kind === "invalid_params") {
-        return this.#stick(member, attempt.key, `invalid_name: herdr refused "${name}": ${messageOf(error)}`);
-      }
-      if (kind === "already_added") return this.#migrate(member, attempt, name);
-      this.status.set(member.hostId, { state: "retrying", reason: `${kind}: ${messageOf(error)}` });
-      this.#options.log(`mesh: adding machine ${name} failed (${kind}): ${messageOf(error)}; retrying`);
-      this.#retries.later(member.hostId, !messageOf(error).includes(BUDGET_REFUSAL));
+      const refusal = addRefusalOf(error, name);
+      if (refusal.kind === "next_name") return this.#addAs(member, attempt, rest);
+      if (refusal.kind === "migrate") return this.#migrate(member, attempt, name);
+      if (refusal.kind === "stuck") return this.#stick(member, attempt.key, refusal.reason);
+      const { refused, message } = refusal;
+      this.status.set(member.hostId, { state: "retrying", reason: `${refused}: ${message}` });
+      this.#options.log(`mesh: adding machine ${name} failed (${refused}): ${message}; retrying`);
+      this.#retries.later(member.hostId, !message.includes(BUDGET_REFUSAL));
     }
   }
 
@@ -303,10 +301,6 @@ export class Reconciler {
     const names = [member.name, ...fallbacks(member.name, member.hostId)];
     const parts = { machines, log, reserve: reserve === undefined ? undefined : () => reserve(member.hostId) };
     const done = await migrate(parts, old, names, attempt.via);
-    // Out of the list (added, or lost with its add-back): the line's later add is the replacement. Back in it: not yet.
-    if (done.kind === "added" || done.kind === "lost") this.#replaced.set(member.hostId, replacedOf(old));
-    else this.#replaced.delete(member.hostId);
-    if (done.kind === "copied") return this.#stick(member, attempt.key, copied);
     if (done.kind === "added") {
       this.#retries.clear(member.hostId);
       const replaced = replacedOf(old);
@@ -314,6 +308,12 @@ export class Reconciler {
       this.status.set(member.hostId, { state: "ok", replaced });
       return log(`mesh: added machine ${done.name}, ${replacedMachineText(replaced)}`);
     }
+    // Out of the list, or maybe out of it (a removal herdr did not answer): the line's later add is the replacement.
+    // Back in it: not yet.
+    const out = done.kind === "lost" || (done.kind === "unremoved" && !done.refused);
+    if (out) this.#replaced.set(member.hostId, replacedOf(old));
+    else this.#replaced.delete(member.hostId);
+    if (done.kind === "copied") return this.#stick(member, attempt.key, copied);
     this.status.set(member.hostId, { state: "retrying", reason: done.reason });
     log(`mesh: replacing machine ${old.name} with ${tried}'s mesh line is retried: ${done.reason}`);
     this.#retries.later(member.hostId, !done.reason.includes(BUDGET_REFUSAL));

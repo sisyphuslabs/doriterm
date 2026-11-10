@@ -15,6 +15,11 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
+/** The machines' keys, generated once for the file: the cases below assert records, not how their keys were made (#780). */
+const [ALPHA, XRAY, BETA] = [machine("alpha"), machine("xray"), machine("beta")];
+const TWIN = machine("twin");
+const ROGUE = machine("rogue");
+
 /**
  * A mesh where X, never having acked B's admission, admits T with B's Noise key on an older head: both admissions pass
  * type_ok (neither sees the other), so the view holds two members with one Noise key (#90 case (a)).
@@ -22,11 +27,11 @@ afterEach(() => {
 function concurrentTwin() {
   const dir = mkdtempSync(join(tmpdir(), "dh-twin-key-"));
   dirs.push(dir);
-  const [a, x, b] = [machine("alpha"), machine("xray"), machine("beta")];
+  const [a, x, b] = [ALPHA, XRAY, BETA];
   const mesh = new MeshFixture(dir, a);
-  const admittedX = mesh.admit(a, x);
-  mesh.admit(a, b);
-  const t = machine("twin");
+  const [admittedX] = mesh.admitAll(a, [x, b]);
+  if (admittedX === undefined) throw new Error("the fixture admitted nobody");
+  const t = TWIN;
   const twin = { ...t, identity: { ...t.identity, noise: b.identity.noise } };
   const body = { ...mesh.next(x, "admit", { card: cardFor(twin, mesh.meshId, x) }), prev: [hashOf(admittedX)] };
   const { refused } = mesh.store.merge([signRecord(body, x.identity.sign.secretKey)]);
@@ -70,7 +75,7 @@ describe("#90: a Noise key that another signing key names authorizes nobody", ()
   test("a revoked member re-admitted under its own signing key is authorized by its key again", () => {
     const dir = mkdtempSync(join(tmpdir(), "dh-twin-key-"));
     dirs.push(dir);
-    const [a, b] = [machine("alpha"), machine("beta")];
+    const [a, b] = [ALPHA, BETA];
     const mesh = new MeshFixture(dir, a);
     mesh.admit(a, b);
     mesh.revoke(a, b);
@@ -82,10 +87,9 @@ describe("#90: a Noise key that another signing key names authorizes nobody", ()
   test("a member's rekey onto another member's key is void and contests nothing: that member keeps its key", () => {
     const dir = mkdtempSync(join(tmpdir(), "dh-twin-key-"));
     dirs.push(dir);
-    const [a, b, x] = [machine("alpha"), machine("beta"), machine("xray")];
+    const [a, b, x] = [ALPHA, BETA, XRAY];
     const mesh = new MeshFixture(dir, a);
-    mesh.admit(a, b);
-    mesh.admit(a, x);
+    mesh.admitAll(a, [b, x]);
     // R1 voids X's rekey, but its card is stored: only effective cards may contest a key.
     mesh.rekey(x, b.identity.noise);
     expect(mesh.store.authorizeIndex()?.member(noiseOf(b))?.signPub).toBe(signPubOf(b));
@@ -96,10 +100,9 @@ describe("#90: a Noise key that another signing key names authorizes nobody", ()
   test("a card a revoked host publishes after its revoke contests nothing: the member it names keeps its key", () => {
     const dir = mkdtempSync(join(tmpdir(), "dh-twin-key-"));
     dirs.push(dir);
-    const [a, b, r] = [machine("alpha"), machine("beta"), machine("rogue")];
+    const [a, b, r] = [ALPHA, BETA, ROGUE];
     const mesh = new MeshFixture(dir, a);
-    mesh.admit(a, b);
-    mesh.admit(a, r);
+    mesh.admitAll(a, [b, r]);
     mesh.revoke(a, r);
     const card = cardFor(r, mesh.meshId, r, { ...r.identity, noise: b.identity.noise });
     const { refused } = mesh.store.merge([signRecord(mesh.next(r, "rekey", { card }), r.identity.sign.secretKey)]);
@@ -112,7 +115,7 @@ describe("#90: a Noise key that another signing key names authorizes nobody", ()
   test("key rotation moves authorization to the new key, and a rotation back to the member's own old key works", () => {
     const dir = mkdtempSync(join(tmpdir(), "dh-twin-key-"));
     dirs.push(dir);
-    const [a, b] = [machine("alpha"), machine("beta")];
+    const [a, b] = [ALPHA, BETA];
     const mesh = new MeshFixture(dir, a);
     mesh.admit(a, b);
     const [first, second] = [b.identity.noise, generateX25519()];

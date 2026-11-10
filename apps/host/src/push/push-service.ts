@@ -7,6 +7,8 @@ import {
   type HeldSubscription,
   MAX_NOTICE_LABEL,
   MAX_NOTICE_OPTIONS,
+  type NoticeContext,
+  noticeContextOf,
   noticeMachineId,
   type NoticeKind,
   type NoticePrompt,
@@ -19,6 +21,7 @@ import {
   readApproval,
   type Terminal,
 } from "@doriface/protocol";
+import { hostname } from "node:os";
 import { deliverPush, type PushFetch, pushEndpointAllowed } from "./deliver.ts";
 import { type NoticeEntry, NoticeBook } from "./notices.ts";
 import { LOOPBACK_OWNER, type StoredSubscription, type SubscriptionStore } from "./subscriptions.ts";
@@ -30,6 +33,8 @@ export type PushCore = ApprovalCore;
 
 export interface PushServiceOptions {
   readonly hostId: string;
+  /** This machine as people name it, for a notice about one of its own terminals; the system's host name by default. */
+  readonly machineName?: string | undefined;
   readonly vapid: VapidKey;
   readonly subscriptions: SubscriptionStore;
   /** The paired devices' keys, read when a notice goes out, so a device revoked by another process gets none. */
@@ -218,7 +223,8 @@ export class PushService {
     if (recipients.length === 0) return;
     // A permission or a question (an `input` notice) is marked as it stands now, so its answer is checked against it.
     const mark = hit.kind === "permission" || hit.kind === "input" ? await this.#mark(hit.terminal) : undefined;
-    const id = this.#notices.add({ terminal: hit.terminal, kind: hit.kind, at: this.#now(), mark });
+    const context = await this.#context(hit, mark);
+    const id = this.#notices.add({ terminal: hit.terminal, kind: hit.kind, at: this.#now(), mark, context });
     await Promise.all(recipients.map((entry) => this.#send(entry, this.#notice(id, hit.kind))));
   }
 
@@ -230,6 +236,22 @@ export class PushService {
     } catch (error) {
       this.#options.log(`push: could not read the prompt of ${terminal}: ${String(error)}`);
       return undefined;
+    }
+  }
+
+  /**
+   * What the notice is about, for a device that asks over the push stream (#1908): read when the notice is made, so it
+   * names the prompt the notice was for. A terminal the core cannot read is named by its machine alone.
+   */
+  async #context(hit: Trigger, mark: ApprovalMark | undefined): Promise<NoticeContext> {
+    const machine = hit.machine ?? this.#options.machineName ?? hostname().split(".")[0] ?? "";
+    const core = this.#core;
+    if (core === undefined) return { machine };
+    try {
+      return noticeContextOf(await core.terminal(hit.terminal), machine, mark?.prompt);
+    } catch (error) {
+      this.#options.log(`push: could not read ${hit.terminal} to name it in a notice: ${String(error)}`);
+      return { machine };
     }
   }
 

@@ -35,6 +35,27 @@ function reconciler(): { clock: FakeClock; machines: FakeMachines; reconcile: Re
 const budget = () => hcError("unreachable", "doriface-host connect: waiting for the dial budget");
 
 describe("a member that could not be added (section 8.1, H-54-1)", () => {
+  test("a via command herdr refuses to run is STUCK via_refused, not a name problem (#1582)", async () => {
+    const { machines, reconcile, logs } = reconciler();
+    const refusal = 'bad command "/opt/doriface-host connect --mesh x": one line, run by sh here';
+    machines.failAdds.set("b", [hcError("invalid_params", refusal)]);
+    await reconcile.reconcile(viewOf(b));
+    const reason = `via_refused: this herdr-core cannot run the mesh line here: ${refusal}`;
+    expect(reconcile.status.get(b.hostId)).toEqual({ state: "stuck", reason });
+    expect(logs).toContain(`mesh: STUCK b: ${reason}`);
+    expect(machines.calls).toEqual(["0 add b"]);
+  });
+
+  test("a name herdr refuses stays STUCK invalid_name (#1582)", async () => {
+    const { machines, reconcile } = reconciler();
+    machines.failAdds.set("b", [hcError("invalid_params", "name must be lowercase")]);
+    await reconcile.reconcile(viewOf(b));
+    expect(reconcile.status.get(b.hostId)).toEqual({
+      state: "stuck",
+      reason: 'invalid_name: herdr refused "b": name must be lowercase',
+    });
+  });
+
   test("an unreachable add is retried on the 30 s backoff, doubling, until it lands, and then left alone", async () => {
     const { clock, machines, reconcile } = reconciler();
     machines.failAdds.set("b", [hcError("unreachable"), hcError("unreachable")]);
