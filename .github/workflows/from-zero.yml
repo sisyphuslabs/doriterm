@@ -62,15 +62,15 @@ jobs:
         run: bun tests/ci/from-zero.ts CONTRIBUTING.md
         env:
           FROM_ZERO_REV: ${{ github.sha }}
-      # The guide clones into its own temp tree, so a failing e2e case leaves its trace and report there and nowhere the
-      # workspace's own artifact steps would find them (#1343).
+      # The guide clones into its own temp tree, so a failing e2e case leaves its trace there and nowhere the workspace's
+      # own artifact steps would find it (#1343). No HTML report is kept: Playwright writes one only when CI is set, and
+      # the guide's environment does not pass CI (#1353).
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: from-zero-contributor-e2e
           path: |
             ${{ runner.temp }}/from-zero-*/work-*/doriterm/apps/web/test-results
-            ${{ runner.temp }}/from-zero-*/work-*/doriterm/apps/web/playwright-report
           if-no-files-found: ignore
           retention-days: 3
 

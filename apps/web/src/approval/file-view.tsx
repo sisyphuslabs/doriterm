@@ -61,9 +61,9 @@ export function FileView({
       }
     >
       {read.kind === "reading" ? (
-        <p className="text-sm text-muted-foreground">Reading…</p>
+        <p className="text-prose text-muted-foreground">Reading…</p>
       ) : read.kind === "failed" ? (
-        <p className="text-sm text-muted-foreground">Could not read it: {read.reason}</p>
+        <p className="text-prose text-muted-foreground">Could not read it: {read.reason}</p>
       ) : (
         <>
           <pre className="m-0 max-h-[60dvh] overflow-auto rounded-md bg-raised p-2.5 font-mono text-xs whitespace-pre text-foreground">
