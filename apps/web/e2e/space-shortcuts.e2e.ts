@@ -1,5 +1,5 @@
 // herdr-app's space keys: Ctrl+1-9 on a Mac and Alt+1-9 elsewhere show a space, and the bracket pair cycles them
-// (defaults/keys.macos.json, keys.json). A focused terminal program reads either chord, so the app keeps its hands off it there.
+// (defaults/keys.macos.json, keys.json). They are the app's from a focused terminal too, as every other app chord (#1922).
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -57,7 +57,7 @@ function threeSpaces(): Record<"alpha" | "beta" | "gamma", string> {
   return shells;
 }
 
-/** A number chord is the app's only while the keyboard is outside a terminal: the sidebar row keeps it there. */
+/** A number chord pressed with the keyboard outside a terminal, on a sidebar row. */
 async function pressOutsideTerminal(page: Page, chord: string): Promise<void> {
   await spaceRow(page, "alpha").focus();
   await page.keyboard.press(chord);
@@ -105,70 +105,45 @@ test("2: the cycle keys step through the spaces in order and wrap at either end,
   await expect(tabBar(page)).toHaveText([/gamma-one/]);
 });
 
-test("3: a focused terminal program keeps the space number chord: the key reaches the terminal and the space stays", async ({
-  page,
-}) => {
-  const root = mkdtempSync(join(tmpdir(), "space-keys-kept-"));
-  const [alpha, beta] = [mkdtempSync(join(root, "alpha-")), mkdtempSync(join(root, "beta-"))];
-  const shells = {
-    a1: shellIn(alpha, "kept-a1"),
-    b1: shellIn(beta, "kept-b1"),
-    b2: shellIn(beta, "kept-b2"),
-  };
-  seedSpaces([
-    {
-      id: "spc-kept-alpha",
-      name: "alpha",
-      folder: alpha,
-      tabs: [{ id: "tb-kept-a", name: "a-one", terminal: shells.a1 }],
-    },
-    {
-      id: "spc-kept-beta",
-      name: "beta",
-      folder: beta,
-      tabs: [
-        { id: "tb-kept-b1", name: "b-one", terminal: shells.b1 },
-        { id: "tb-kept-b2", name: "b-two", terminal: shells.b2 },
-      ],
-    },
-  ]);
+// The page's platform is pinned, so one browser presses both chords: Ctrl+2 as on a Mac, Alt+2 as elsewhere.
+for (const platform of ["mac", "other"] as const) {
+  test(`3 ${platform}: from a focused terminal the space number chord shows that space, and no byte of it reaches the program (#1922)`, async ({
+    page,
+  }) => {
+    await page.addInitScript(
+      (value) => Object.defineProperty(Navigator.prototype, "platform", { get: () => value }),
+      platform === "mac" ? "MacIntel" : "Linux x86_64",
+    );
+    await runFromTerminal(page);
+  });
+}
+
+async function runFromTerminal(page: Page): Promise<void> {
+  const shells = threeSpaces();
   await page.goto("/");
-  await spaceRow(page, "beta").click();
-  await tabBar(page).filter({ hasText: "b-two" }).click();
-  await paneOf(page, shells.b2).getByRole("textbox").focus();
+  await expect(tabBar(page)).toHaveText([/alpha-one/], { timeout: 20_000 });
+  const alpha = paneOf(page, shells.alpha);
+  await alpha.getByRole("textbox").focus();
+  // cat -v prints every byte it reads, a control byte as ^X and ESC as ^[, once a line ends.
+  await page.keyboard.type("cat -v\r");
+  await expect(alpha).toContainText("cat -v");
+  await page.keyboard.type("<");
 
-  // The terminal's own listener sees the key after the page's capture listener has had it: `prevented` is whether the
-  // app took it, and a key taken that way never reaches this listener at all.
-  await page.evaluate(() => {
-    const field = document.querySelector('[data-focused="true"] [data-terminal] textarea');
-    Reflect.set(window, "spaceKeySeen", null);
-    field?.addEventListener("keydown", (event: Event) => {
-      const press = event as KeyboardEvent;
-      Reflect.set(window, "spaceKeySeen", {
-        ctrl: press.ctrlKey,
-        alt: press.altKey,
-        key: press.key,
-        prevented: press.defaultPrevented,
-      });
-    });
-  });
-  const onMac = await mac(page);
-  await page.keyboard.press(await spaceNumberChord(page, 1));
-  // Reaching this listener at all means the app left the key alone: a key it takes stops there. The terminal's own input
-  // cancels Alt+1 itself, as it sends it to the program as a Meta digit, so only Ctrl+1 arrives uncancelled.
-  expect(await page.evaluate(() => Reflect.get(window, "spaceKeySeen"))).toEqual({
-    ctrl: onMac,
-    alt: !onMac,
-    key: "1",
-    prevented: !onMac,
-  });
-  await expect(selected(page)).toHaveText(/b-two/);
-  await expect(tabBar(page)).toHaveText([/b-one/, /b-two/]);
-});
+  await page.keyboard.press(await spaceNumberChord(page, 2));
+  await expect(tabBar(page)).toHaveText([/beta-one/]);
+  await expect(selected(page)).toHaveText(/beta-one/);
 
-test("4: Settings lists the space keys with the keys that run them, and says a terminal keeps the number chord", async ({
-  page,
-}) => {
+  await pressOutsideTerminal(page, await spaceNumberChord(page, 1));
+  await expect(tabBar(page)).toHaveText([/alpha-one/]);
+  await alpha.getByRole("textbox").focus();
+  await page.keyboard.type(">\r");
+  // The line holds exactly what was typed around the chord: the tty's echo and cat's copy both read <>, with no ^@, ^[2
+  // or other byte between them.
+  await expect(alpha).toContainText("<>");
+  await expect(alpha).not.toContainText(/<[^>]+>/);
+}
+
+test("4: Settings lists the space keys with the keys that run them", async ({ page }) => {
   await page.goto("/settings");
   await page
     .getByRole("tab", { name: "Keybindings" })
@@ -189,5 +164,5 @@ test("4: Settings lists the space keys with the keys that run them, and says a t
   await expect(row("space.next")).toContainText(chips.next);
   await expect(row("space.prev")).toContainText("Previous space");
   await expect(row("space.prev")).toContainText(chips.previous);
-  await expect(row("space.select:1")).toContainText("A focused terminal program keeps this key");
+  await expect(row("space.select:1")).not.toContainText("keeps this key");
 });

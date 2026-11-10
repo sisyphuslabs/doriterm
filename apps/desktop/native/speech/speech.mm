@@ -11,6 +11,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <Foundation/Foundation.h>
 #import <Speech/Speech.h>
+#import <UserNotifications/UserNotifications.h>
 #import <os/log.h>
 #include <node_api.h>
 #include <stdlib.h>
@@ -231,6 +232,62 @@ static napi_value RequestSpeech(napi_env env, napi_callback_info info) {
   return promise;
 }
 
+static const char *NoticeStatusName(UNAuthorizationStatus status) {
+  switch (status) {
+    case UNAuthorizationStatusAuthorized:
+    case UNAuthorizationStatusProvisional:
+      return "granted";
+    case UNAuthorizationStatusDenied:
+      return "denied";
+    case UNAuthorizationStatusNotDetermined:
+      return "not-determined";
+    default:
+      // Ephemeral is value 4, but its named constant is unavailable on macOS (App Clips only).
+      return (NSInteger)status == 4 ? "granted" : "unknown";
+  }
+}
+
+static void ResolveNoticeStatus(napi_env env, napi_value callback, void *context, void *data) {
+  if (env == NULL) return;  // The JS environment may have shut down before the OS answered.
+  napi_value value;
+  napi_create_string_utf8(env, (const char *)data, NAPI_AUTO_LENGTH, &value);
+  napi_resolve_deferred(env, (napi_deferred)context, value);
+}
+
+static napi_value NoticeAuthorization(napi_env env, napi_callback_info info) {
+  napi_deferred deferred;
+  napi_value promise, name, unknown;
+  napi_create_promise(env, &deferred, &promise);
+  napi_create_string_utf8(env, "unknown", NAPI_AUTO_LENGTH, &unknown);
+  // A bare CLI has no app identity; currentNotificationCenter would raise an exception there.
+  if ([NSBundle mainBundle].bundleIdentifier == nil) {
+    napi_resolve_deferred(env, deferred, unknown);
+    return promise;
+  }
+  napi_create_string_utf8(env, "doriface-notice-auth", NAPI_AUTO_LENGTH, &name);
+  napi_threadsafe_function resolve;
+  if (napi_create_threadsafe_function(env, NULL, NULL, name, 0, 1, NULL, NULL, deferred, ResolveNoticeStatus,
+                                      &resolve) != napi_ok) {
+    napi_resolve_deferred(env, deferred, unknown);
+    return promise;
+  }
+  @try {
+    [[UNUserNotificationCenter currentNotificationCenter]
+        getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
+          // Apple's completion may run off-thread. Only the thread-safe callback touches JS, never a blocking wait
+          // on Electron's main thread. Status names are string literals, so they survive until JS receives them.
+          napi_call_threadsafe_function(resolve, (void *)NoticeStatusName(settings.authorizationStatus),
+                                        napi_tsfn_nonblocking);
+          napi_release_threadsafe_function(resolve, napi_tsfn_release);
+        }];
+  } @catch (NSException *exception) {
+    os_log_error(OS_LOG_DEFAULT, "notification authorization read failed: %{public}@", exception.name);
+    napi_call_threadsafe_function(resolve, (void *)"unknown", napi_tsfn_nonblocking);
+    napi_release_threadsafe_function(resolve, napi_tsfn_release);
+  }
+  return promise;
+}
+
 static napi_value SupportsOnDevice(napi_env env, napi_callback_info info) {
   size_t argc = 1;
   napi_value argv[1];
@@ -378,6 +435,7 @@ static napi_value Init(napi_env env, napi_value exports) {
       {"ready", NULL, Ready, NULL, NULL, NULL, napi_default, NULL},
       {"speechStatus", NULL, SpeechStatus, NULL, NULL, NULL, napi_default, NULL},
       {"requestSpeech", NULL, RequestSpeech, NULL, NULL, NULL, napi_default, NULL},
+      {"noticeAuthorization", NULL, NoticeAuthorization, NULL, NULL, NULL, napi_default, NULL},
       {"supportsOnDevice", NULL, SupportsOnDevice, NULL, NULL, NULL, napi_default, NULL},
       {"start", NULL, Start, NULL, NULL, NULL, napi_default, NULL},
       {"stop", NULL, Stop, NULL, NULL, NULL, napi_default, NULL},

@@ -108,6 +108,35 @@ test("Hangul typed into a terminal paints its cell, two cells wide (#959)", asyn
   expect(wideBox.width / ratio).toBeGreaterThan(1.5);
 });
 
+/**
+ * The blank cells of #959 keep their columns, so the grid holds the syllables and what is missing is their ink. The one
+ * thing in the app that can paint a wide glyph as nothing is its fitted size (`font-size:<factor>em`), and that factor
+ * comes from canvas measurements of the fallback face. Here the canvas measures Hangul at one size whatever size it is
+ * asked for, as a device whose canvas fallback does not follow the font size would: the syllable must still draw.
+ */
+test("Hangul still paints when the canvas measures its face at one size, whatever size is asked (#959)", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const measure = CanvasRenderingContext2D.prototype.measureText;
+    CanvasRenderingContext2D.prototype.measureText = function (this: CanvasRenderingContext2D, text: string) {
+      if (!/[\u{1100}-\u{11FF}\u{3130}-\u{318F}\u{AC00}-\u{D7A3}]/u.test(text)) return measure.call(this, text);
+      const font = this.font;
+      this.font = font.replace(/^[\d.]+px/u, "40px");
+      try {
+        return measure.call(this, text);
+      } finally {
+        this.font = font;
+      }
+    };
+  });
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  const { glyph, blank } = await syllableInk(page, terminal);
+  expect(blank.ink).toBe(0);
+  expect(glyph.ink).toBeGreaterThan(0);
+});
+
 // Chromium ignores a `display-mode` feature in Emulation.setEmulatedMedia, so the block runs installed the way
 // device-install.e2e.ts does: the page's own `matchMedia("(display-mode: standalone)")`, which is how the app tells (#1383).
 test.describe("the reporter's Android PWA: an Android tablet's viewport and user agent, running as an installed app", () => {
