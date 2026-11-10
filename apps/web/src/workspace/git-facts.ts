@@ -70,7 +70,7 @@ export function nextDocs(
 /** The documents each connected machine's doriface-host (and this machine's) wrote, read again every few seconds. */
 export function useGitFacts(connection: HcConnection, machines: readonly MachineView[]): GitFactsOf {
   const names = machines
-    .filter((machine) => machine.state === "connected")
+    .filter((machine) => machine.state === "connected" || machine.state === "reconnecting")
     .map((machine) => machine.name)
     .join("\u0000");
   const [rounds, setRounds] = useState<FactsRounds>(() => ({ docs: new Map(), misses: new Map() }));
