@@ -208,10 +208,13 @@ export function CommandPalette({
           data-slot="palette-where"
           className="flex gap-1.5 border-t border-border px-3 py-1.5 font-mono text-xs whitespace-nowrap text-muted-foreground"
         >
-          <span className="max-w-1/2 truncate">{current.where.place}</span>
+          {/* Each clipped part carries its own title, so its ellipsis can be read out in full. */}
+          <span title={current.where.place} className="max-w-1/2 truncate">
+            {current.where.place}
+          </span>
           <span>{"\u00b7"}</span>
           {/* Right to left, the overflow and its ellipsis go to the start; the path itself still reads left to right. */}
-          <span dir="rtl" className="min-w-0 flex-1 truncate text-left">
+          <span dir="rtl" title={current.where.directory} className="min-w-0 flex-1 truncate text-left">
             <bdi dir="ltr">{current.where.directory}</bdi>
           </span>
         </p>
