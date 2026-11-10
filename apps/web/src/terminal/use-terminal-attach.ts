@@ -18,14 +18,14 @@ import { useReopenWhenMoved } from "./use-reopen-when-moved.ts";
 
 const encoder = new TextEncoder();
 /**
- * Leave the alternate screen, then cursor home and erase to the end of the screen (ED 0): clears the primary screen and
- * leaves the scrollback alone. The core's repaint leaves the alternate screen and starts with ESC[2J on the primary one,
- * which Ghostty answers over a prompt marked with OSC 133 (fish 4, shell integration) by scrolling the screen into
- * history; over a screen already blank there is nothing to scroll. A full-screen program (vim, less, htop) keeps that
- * prompt on the primary screen behind it, so clearing the alternate screen alone is not enough; the repaint enters the
- * alternate screen again (clearing it) when the program is still on it.
+ * Cursor home, then erase to the end of the screen (ED 0): clears the screen in use and leaves the scrollback alone. The
+ * core's repaint starts with ESC[2J, which Ghostty answers over a prompt marked with OSC 133 (fish 4, shell integration)
+ * by scrolling the screen into history; over a screen already blank there is nothing to scroll. Under a full-screen
+ * program (vim, less, htop) this clears the alternate screen only: the repaint leaves it and its ESC[2J scrolls the
+ * primary screen behind it into history once, and since the repaint does not draw the primary screen again, that is the
+ * only copy of the output above the program's command, so the primary screen must not be erased here.
  */
-const CLEAR_SCREEN = "\u001b[?1049l\u001b[H\u001b[J";
+const CLEAR_SCREEN = "\u001b[H\u001b[J";
 
 interface AttachSources {
   readonly connection: HcConnection;
@@ -210,8 +210,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         // A fit while the attach was in flight had no stream to resize.
         if (ready.cols !== askedCols || ready.rows !== askedRows) attached.resize(ready.cols, ready.rows);
         // Reattached after a reconnect: the core repaints the screen, and the history above it stays as the view holds it
-        // (#1997). The view clears its primary screen first, so the repaint's ESC[2J has no marked prompt to scroll into
-        // history, also when a full-screen program had the alternate screen.
+        // (#1997). The view clears its screen first, so the repaint's ESC[2J has no marked prompt to scroll into history.
         if (attachedBefore.current) {
           // Read the reader's place before the repaint (#1393).
           const fromEnd = fromEndOf(ready.element);

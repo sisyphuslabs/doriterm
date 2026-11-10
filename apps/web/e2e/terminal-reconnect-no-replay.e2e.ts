@@ -85,16 +85,58 @@ async function oldestLine(terminal: Locator): Promise<number> {
   return oldest;
 }
 
+/**
+ * How many times each `line-N` shows in the history and on the screen, read half a view at a time from the top: the
+ * history renders only the rows in view. Rows are keyed by their place, so a row read twice counts once. Leaves the
+ * view at its end.
+ */
+async function lineCounts(terminal: Locator, rowHeight: number): Promise<Map<number, number>> {
+  const rows = new Map<number, string>();
+  const { height, view } = await terminal.evaluate((element) => ({
+    height: element.scrollHeight,
+    view: element.clientHeight,
+  }));
+  const inView = (): Promise<(readonly [number, string])[]> =>
+    terminal.evaluate((element, rowPx) => {
+      const box = element.getBoundingClientRect();
+      return [...element.querySelectorAll(".term-grid .term-row")].flatMap((row) => {
+        const rect = row.getBoundingClientRect();
+        if (rect.bottom <= box.top || rect.top >= box.bottom) return [];
+        return [[Math.round((rect.top - box.top + element.scrollTop) / rowPx), row.textContent ?? ""] as const];
+      });
+    }, rowHeight);
+  const tops = Array.from({ length: Math.ceil(height / (view / 2)) }, (_unused, index) => (index * view) / 2);
+  await tops.reduce<Promise<void>>(async (previous, top) => {
+    await previous;
+    await terminal.evaluate((element, y) => {
+      element.scrollTop = y;
+    }, top);
+    // The rows in view render on the next frame: read them once the whole view has its rows.
+    await expect.poll(async () => (await inView()).length).toBeGreaterThanOrEqual(Math.floor(view / rowHeight));
+    for (const [at, text] of await inView()) rows.set(at, text);
+  }, Promise.resolve());
+  await terminal.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  const counts = new Map<number, number>();
+  for (const text of rows.values()) {
+    const line = /^line-(\d+)[\s\u00a0]*$/u.exec(text);
+    if (line) counts.set(Number(line[1]), (counts.get(Number(line[1])) ?? 0) + 1);
+  }
+  return counts;
+}
+
 const attachCount = (page: Page): Promise<number> =>
   page.evaluate(() => (Reflect.get(window, "__dorifaceAttachLog") as unknown[]).length);
 
-/** Drops the link and lets the page connect again: the view has asked to attach a second time once this returns. */
+/** Drops the link and lets the page connect again: the view has asked to attach once more when this returns. */
 async function dropAndReconnect(page: Page, link: HcSocket): Promise<void> {
   const before = link.opened();
+  const attaches = await attachCount(page);
   await link.drop(true);
   link.restore();
   await expect.poll(link.opened, { timeout: 15_000 }).toBeGreaterThan(before);
-  await expect.poll(() => attachCount(page)).toBeGreaterThanOrEqual(2);
+  await expect.poll(() => attachCount(page)).toBeGreaterThan(attaches);
 }
 
 /** Opens a terminal whose shell has printed `lines` lines, with the attach log on. */
@@ -199,18 +241,17 @@ const screenText = (terminal: Locator): Promise<string> =>
   );
 
 /**
- * A full-screen program (vim, less, htop) draws on the alternate screen, and the core's repaint leaves it first, so the
- * repaint's ESC[2J lands on the primary screen, with its marked prompt: clearing the alternate screen alone left that one
- * to scroll into history, a screen's rows more on every reconnect.
+ * A full-screen program (vim, less, htop) draws on the alternate screen and keeps the prompt screen behind it. The core's
+ * repaint leaves the alternate screen, starts with ESC[2J on the primary one, which over the marked prompt scrolls that
+ * screen into history, and does not draw the primary screen again: once the program exits, the history is the only place
+ * that output is, so the view must not erase the primary screen first. A second reconnect finds the primary screen
+ * blank, with nothing to scroll, so the output is not added again.
  */
-test("a reconnect under a full-screen program does not add the old prompt screen to the history (#1997)", async ({
-  page,
-}) => {
+test("a reconnect under a full-screen program keeps the output behind it, once (#1997)", async ({ page }) => {
   const link = await routeHcSocket(page);
   const terminal = await openWithHistory(page, 200, `PS1="$(printf '\\033]133;A\\007')marked$ "; `);
   await expect(terminal).toContainText("marked$");
   const row = await laidOutBox(terminal.locator(".term-row:not(.term-scrollback-row)").first());
-  const historyBefore = await historyRows(terminal, row.height);
 
   await page.keyboard.type(
     "printf '\\033[?1049h\\033[H\\033[2Jfullscreen-top\\033[10;5Hfullscreen-mid\\033[12;1H'; read x; printf '\\033[?1049l'",
@@ -227,16 +268,23 @@ test("a reconnect under a full-screen program does not add the old prompt screen
   expect(screen).toContain("fullscreen-top");
   expect(screen).toContain("fullscreen-mid");
   expect(screen).not.toContain("marked$");
+  const historyAfterFirst = await historyRows(terminal, row.height);
+
+  await dropAndReconnect(page, link);
+  await page.keyboard.type("-again");
+  await expect.poll(() => screenText(terminal), { timeout: 30_000 }).toContain("typed-after-again");
+  expect(await screenText(terminal)).not.toContain("marked$");
+  // The primary screen is blank since the first repaint: the second one scrolls nothing into history.
+  expect((await historyRows(terminal, row.height)) - historyAfterFirst).toBe(0);
 
   await page.keyboard.press("Enter");
   await page.keyboard.type("echo done-$((1+1))");
   await page.keyboard.press("Enter");
   await expect(terminal).toContainText("done-2", { timeout: 30_000 });
-  // The program's command, the command after it and their prompts push up a few rows; the old prompt screen kept again
-  // would be a screen's rows more.
-  const grown = (await historyRows(terminal, row.height)) - historyBefore;
-  expect(grown).toBeGreaterThanOrEqual(0);
-  expect(grown).toBeLessThan(6);
+  // Every line printed before the program is there after it exits, once: on the screen or in history.
+  const counts = await lineCounts(terminal, row.height);
+  const printed = Array.from({ length: 200 }, (_, index) => index + 1);
+  expect(printed.filter((line) => counts.get(line) !== 1)).toEqual([]);
 });
 
 /**
