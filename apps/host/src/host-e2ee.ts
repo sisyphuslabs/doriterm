@@ -32,7 +32,12 @@ export function e2eeDeps(
     slots,
     sessions,
     policy,
-    hc: { hc: options.hc, session: options.session, env: options.env },
+    hc: {
+      hc: options.hc,
+      session: options.session,
+      env: options.env,
+      handshakeTimeoutMs: options.hcHandshakeTimeoutMs,
+    },
     relay: { url: options.relay?.url, createSocket: options.relay?.createSocket, proofs },
     program: options.meshProgram,
     hooks: options.meshHooks,

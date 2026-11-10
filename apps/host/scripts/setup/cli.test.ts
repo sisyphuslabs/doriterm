@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
-import { renderUnit, setupPaths } from "./render.ts";
+import { DEFAULT_LABEL, renderService, setupOs, setupPaths } from "./render.ts";
 
 const CLI = join(import.meta.dir, "cli.ts");
 
@@ -38,18 +38,26 @@ test("uninstall removes the service with only an hc below the floor present, sin
   const localBin = join(home, ".local", "bin");
   for (const dir of [bin, localBin]) mkdirSync(dir, { recursive: true });
   const calls = join(root, "calls.log");
+  // The CLI picks the service manager from the platform it runs on, so both are stubs that only record their calls:
+  // the real launchctl on a Mac must never be reached. launchd answers `print` for the user's domain and has no job.
   writeFileSync(join(bin, "systemctl"), `#!/bin/sh\necho "systemctl $*" >> "${calls}"\n`);
+  writeFileSync(
+    join(bin, "launchctl"),
+    `#!/bin/sh\necho "launchctl $*" >> "${calls}"\ncase "$1 $2" in "print gui/"*/*) exit 113 ;; esac\nexit 0\n`,
+  );
   writeFileSync(join(localBin, "hc"), `#!/bin/sh\necho "hc $*" >> "${calls}"\necho 0.0.3\n`);
-  for (const file of [join(bin, "systemctl"), join(localBin, "hc")]) chmodSync(file, 0o755);
+  for (const name of ["systemctl", "launchctl"]) chmodSync(join(bin, name), 0o755);
+  chmodSync(join(localBin, "hc"), 0o755);
+  const os = setupOs(process.platform);
   const paths = setupPaths(
-    "linux",
+    os,
     home,
     {},
     { bun: process.execPath, hc: join(localBin, "hc"), shell: "/bin/sh" },
     { src },
   );
   mkdirSync(join(paths.serviceFile, ".."), { recursive: true });
-  writeFileSync(paths.serviceFile, renderUnit(paths));
+  writeFileSync(paths.serviceFile, renderService(paths));
 
   const child = Bun.spawn([process.execPath, CLI, "uninstall", "--src", src], {
     env: { HOME: home, PATH: `${bin}:/usr/bin:/bin` },
@@ -61,10 +69,12 @@ test("uninstall removes the service with only an hc below the floor present, sin
   expect(stdout).toContain("doriterm-setup: uninstall changed");
   expect(code).toBe(0);
   expect(existsSync(paths.serviceFile)).toBe(false);
-  expect(readFileSync(calls, "utf8").trim().split("\n")).toEqual([
-    "systemctl --user disable --now --quiet doriface-host.service",
-    "systemctl --user daemon-reload",
-  ]);
+  const job = `gui/${userInfo().uid}/${DEFAULT_LABEL}`;
+  expect(readFileSync(calls, "utf8").trim().split("\n")).toEqual(
+    os === "linux"
+      ? ["systemctl --user disable --now --quiet doriface-host.service", "systemctl --user daemon-reload"]
+      : [`launchctl print gui/${userInfo().uid}`, `launchctl bootout ${job}`, `launchctl print ${job}`],
+  );
 });
 
 test("a --timeout that is not a positive number is refused before any step runs (#821)", async () => {

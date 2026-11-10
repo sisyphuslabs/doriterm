@@ -280,9 +280,12 @@ jobs:
         with:
           path: ~/.cache/playwright-apt
           key: ${{ steps.playwright-apt.outputs.cache-primary-key }}
+      # Also the browser specs that type through the real relay code: keystroke-latency-relay (keystroke-to-glyph latency,
+      # its JSON files land in apps/web/test-results), predictive-echo-relay and terminal-resume-relay. A name that matches
+      # no file yet runs nothing and fails nothing.
       - name: Browser spec through the mesh
         if: env.RELAY_TOKEN_SET == 'true'
-        run: bun run test:e2e e2e/mesh-attach.e2e.ts e2e/mesh-input-hold.e2e.ts e2e/mesh-join-browser.e2e.ts --workers=1
+        run: bun run test:e2e e2e/mesh-attach.e2e.ts e2e/mesh-input-hold.e2e.ts e2e/mesh-join-browser.e2e.ts e2e/keystroke-latency-relay.e2e.ts e2e/predictive-echo-relay.e2e.ts e2e/terminal-resume-relay.e2e.ts --workers=1
         working-directory: apps/web
         env:
           CI: "1"
