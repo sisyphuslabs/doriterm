@@ -1,5 +1,5 @@
 import type { HcConnection } from "@doriface/client";
-import { type AgentStatus, cn, IconButton, TabBar, type WorkspaceTab } from "@doriface/ui";
+import { type AgentStatus, cn, IconButton, TabBar, useToastManager, type WorkspaceTab } from "@doriface/ui";
 import { Bot, Columns2, PanelLeft, Rows2, SquareTerminal, Terminal } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { actionChosen } from "../keys/dispatcher.ts";
@@ -62,6 +62,7 @@ function tabEntry(tab: LayoutTab, position: number, byAddress: ReadonlyMap<strin
     id: tab.key,
     title: tabTitle(tab.name, position, agent),
     controls: panelId(tab.key),
+    pinned: tab.pinned,
     ...(kind === undefined ? {} : { icon: PROGRAM_ICON[kind] }),
     ...(status === undefined ? {} : { status }),
   };
@@ -88,6 +89,8 @@ export interface DesktopShellProps {
   readonly onNewSpace: () => void;
   readonly onSplit: (axis: Axis, target?: PaneTarget) => void;
   readonly onCloseTab: (key: string) => void;
+  /** Closes several tabs at once ("Close tabs to the right", "Close other tabs"), asking once (#1561). */
+  readonly onCloseTabs: (keys: readonly string[]) => void;
   readonly onClosePane: (address: string) => void;
   readonly onEnd: (address: string, end: TerminalEnd) => void;
   readonly onPalette: () => void;
@@ -109,11 +112,13 @@ export function DesktopShell(props: DesktopShellProps) {
     onNewSpace,
     onSplit,
     onCloseTab,
+    onCloseTabs,
     onClosePane,
     onEnd,
     onPalette,
     onSession,
   } = props;
+  const toasts = useToastManager();
   const [sidebar, setSidebar] = useSidebarShown();
   const [{ rail }, setSidebarSize] = useSidebarSize();
   const sidebarKeys = useActionKeys("layout.toggle:sidebar");
@@ -288,6 +293,16 @@ export function DesktopShell(props: DesktopShellProps) {
           {...(newTabKeys === undefined ? {} : { newTabKeys })}
           onSelect={layout.selectTab}
           onClose={onCloseTab}
+          onPin={(key, pinned) =>
+            void layout.pinTab(key, pinned).catch((cause: unknown) =>
+              toasts.add({
+                type: "error",
+                title: pinned ? "The tab was not pinned" : "The tab was not unpinned",
+                description: cause instanceof Error ? cause.message : String(cause),
+              }),
+            )
+          }
+          onCloseSet={(key, which) => onCloseTabs(layout.closeSetOf(key, which))}
           onNew={onNew}
           newMenu={
             <NewTabMenu

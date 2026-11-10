@@ -26,10 +26,11 @@ const FLOOD = `for i in $(seq 1 ${LAST}); do echo line-$i; done; printf '\\033]2
 /** hc's wire frame header: channel (u32), kind (u8), payload length (u32), little-endian; channel 0 carries the RPC. */
 const HC_HEADER_BYTES = 9;
 /**
- * The flood again, each line in two dozen colors: a replay of its history is several hundred KiB (the core repaints every
- * color) in under 40 columns, so it fits a phone's row unwrapped and takes the relay many slices to hand over.
+ * The flood again, its last lines (the 2000 of history a reattach replays, and the screen) each in two dozen colors: the
+ * replay is well over a MiB (the core repaints every color) in under 40 columns, so it fits a phone's row unwrapped and
+ * takes the relay several windows to hand over, while the lines before it stay plain and quick to print.
  */
-const COLORED_FLOOD = `c=$(for k in $(seq 1 24); do printf '\\033[38;5;%d;48;5;%dmx' $((k*9)) $((255-k*9)); done); for i in $(seq 1 ${LAST}); do echo "line-$i $c"; done; printf '\\033[0m\\033]2;${FLOOD_END}\\007'`;
+const COLORED_FLOOD = `c=$(for k in $(seq 1 24); do printf '\\033[38;5;%d;48;5;%dmx' $((k*9)) $((255-k*9)); done); for i in $(seq 1 ${LAST}); do if [ $i -gt ${LAST - 2100} ]; then echo "line-$i $c"; else echo line-$i; fi; done; printf '\\033[0m\\033]2;${FLOOD_END}\\007'`;
 
 /**
  * Watches the frames a routed hc socket delivers on the stream channels: how many bytes came after `since()` turned on
@@ -191,21 +192,25 @@ for (const device of ["desktop", "phone"] as const) {
       test(`over a ${rttMs} ms relay, a reconnect's replay that comes a slice a round trip is painted once it has settled: the screen never climbs back (D5, #1040)`, async ({
         page,
       }) => {
+        // A flood of a few MiB, painted, then a replay of over a MiB a window a round trip: more than the default budget
+        // on a loaded runner, though every wait is on a marker.
+        test.slow();
         await page.addInitScript(() => {
           Reflect.set(window, "__dorifaceAttachLog", []);
         });
-        // Every frame from the host comes a round trip late, so the page measures that SRTT, and the core, which sends
-        // one 256 KiB credit window and waits for its credit, hands the replay over a window a round trip, as the relay does.
         const arrivals = streamArrivals(rttMs);
         const link = await routeHcSocket(page, { received: arrivals.received });
-        link.delay(rttMs);
         const { terminal } = await terminalFor(page);
         await page.keyboard.type(COLORED_FLOOD);
         await page.keyboard.press("Enter");
-        await expect(terminal).toHaveAttribute("aria-label", `${FLOOD_END} output`, { timeout: 30_000 });
-        await expect(terminal).toContainText(`line-${LAST}`, { timeout: 20_000 });
+        await expect(terminal).toHaveAttribute("aria-label", `${FLOOD_END} output`, { timeout: 60_000 });
+        await expect(terminal).toContainText(`line-${LAST}`, { timeout: 60_000 });
 
         await startLastLineSampler(terminal, "nothing");
+        // From the drop on, every frame from the host comes a round trip late: the new connection measures that SRTT, and
+        // the core, which sends one 256 KiB credit window and waits for its credit, hands the replay over a window a round
+        // trip, as the relay does.
+        link.delay(rttMs);
         const before = link.opened();
         arrivals.since();
         await link.drop(true);
