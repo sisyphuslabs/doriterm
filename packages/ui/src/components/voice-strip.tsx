@@ -3,7 +3,7 @@ import { useId, type CSSProperties, type KeyboardEvent, type ReactNode } from "r
 import { cn } from "../lib/cn.ts";
 import { Button } from "./button.tsx";
 import { IconButton } from "./icon-button.tsx";
-import { inputClass } from "./input.tsx";
+import { fieldLabelClass, inputClass } from "./input.tsx";
 import { Notice } from "./notice.tsx";
 import { Spinner } from "./spinner.tsx";
 import { VOICE_ERROR_COPY, type VoiceError } from "./voice-copy.ts";
@@ -137,7 +137,7 @@ export function VoiceStrip(props: VoiceStripProps) {
     const typed = state.transcript.trim() !== "";
     return frame(
       <>
-        <label className="sr-only" htmlFor={transcriptId}>
+        <label className={cn("px-1", fieldLabelClass)} htmlFor={transcriptId}>
           Transcript for {target}
         </label>
         <p role="status" className="sr-only">

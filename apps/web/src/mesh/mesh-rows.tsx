@@ -1,5 +1,4 @@
 import {
-  type MeshLineState,
   type MeshMemberStatus,
   type MeshRevokedStatus,
   meshRevokeCommand,
@@ -13,7 +12,7 @@ import { REACH_LABEL, reachOf } from "./reach.ts";
 
 export type NameOf = (hostId: string) => string;
 
-const LINE_LABEL: Readonly<Record<MeshLineState, string>> = {
+const LINE_LABEL: Readonly<Record<MeshMemberStatus["line"], string>> = {
   self: "this host",
   connected: "connected",
   connecting: "connecting",
@@ -22,13 +21,15 @@ const LINE_LABEL: Readonly<Record<MeshLineState, string>> = {
   incompatible: "incompatible herdr",
   needs_login: "needs login",
   absent: "not added here",
+  unknown: "a state this app does not know",
 };
-const NEEDS_CARE = new Set<MeshLineState>(["unreachable", "hc_missing", "incompatible", "needs_login"]);
+const NEEDS_CARE = new Set<MeshMemberStatus["line"]>(["unreachable", "hc_missing", "incompatible", "needs_login"]);
 
 const REVOKE_REASON: Readonly<Record<MeshRevokedStatus["reason"], string>> = {
   revoke: "revoked",
   compromised: "revoked as compromised",
   leave: "left the mesh",
+  unknown: "revoked for a reason this app does not know",
 };
 
 type CopyState = "idle" | "copied" | "failed";
