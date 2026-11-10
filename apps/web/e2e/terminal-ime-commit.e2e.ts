@@ -8,12 +8,13 @@ test.use({ serviceWorkers: "block" });
 const HAN = "\u{D55C}";
 
 /**
- * Puts the shell's terminal in raw mode under od, which prints each three bytes it reads in hex as they arrive: no
- * Enter, so only bytes the terminal sent on their own show.
+ * Puts the shell's terminal in raw mode under a reader that prints the first three bytes it reads in hex: no Enter, so
+ * only bytes the terminal sent on their own show. head ends at the third byte and od prints at that end, because the
+ * uutils od of ubuntu-26.04 keeps what it reads until more comes, where GNU od printed each line as it arrived (#1952).
  */
 async function openRawReader(page: Page, terminal: Locator): Promise<CDPSession> {
   await terminal.getByRole("textbox").focus();
-  await page.keyboard.type("stty -icanon -echo min 1 time 0; echo RE''ADY; od -An -tx1 -w3 -v\r");
+  await page.keyboard.type("stty -icanon -echo min 1 time 0; echo RE''ADY; head -c 3 | od -An -tx1\r");
   await expect(terminal.locator(".term-row").filter({ hasText: /^READY/ })).toHaveCount(1);
   return page.context().newCDPSession(page);
 }
