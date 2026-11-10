@@ -34,6 +34,7 @@ const listed = (name: string, addresses: readonly string[]): ListedSpace => ({
   addresses,
   tabPanes: addresses.map((address) => [address]),
   tabNames: addresses.map(() => ""),
+  tabPins: addresses.map(() => false),
   dir: "",
 });
 
