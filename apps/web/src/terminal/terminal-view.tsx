@@ -186,8 +186,8 @@ export function TerminalView(props: TerminalViewProps) {
       if (warmup.current === made) warmup.current = null;
     };
   }, [wt]);
-  useTerminalActions(wt, typed, focused, pasteFiles, openFind);
   const shown = usePaneVisibility(wt, pacer);
+  useTerminalActions(wt, input, focused, shown, openFind);
   const away = useMachineLine(connection, address, shown);
   useFocusAfterSelect(wt, options.trimCopy);
   useLongPressSelect(wt, setSelectAt);

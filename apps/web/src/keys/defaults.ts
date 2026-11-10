@@ -63,6 +63,9 @@ const MAC: readonly [string, string][] = [
   ["super+0", "app.zoom_reset"],
   ["super+c", "terminal.copy"],
   ["super+v", "terminal.paste"],
+  // herdr-app's Ctrl+V: the clipboard's image as a file on the terminal's machine, else ^V to the program. Elsewhere
+  // Ctrl+V stays the browser's paste, which already sends an image as a file (herdr-app-parity.ts).
+  ["ctrl+v", "terminal.paste_image"],
   ["super+a", "terminal.select_all"],
   ["super+k", "terminal.clear"],
   ["super+f", "terminal.search"],
