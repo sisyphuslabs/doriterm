@@ -127,7 +127,10 @@ describe("the reconciler against real hc (R-1, R-2, R-9, R-10, R-11)", () => {
       const { self, machines, reconciler, clock, run } = await mesh([]);
       const bad = fakeMember("Bad");
       await run(viewOf(self.member, bad));
-      expect(reconciler.status.get(bad.hostId)?.state).toBe("stuck");
+      const status = reconciler.status.get(bad.hostId);
+      expect(status?.state).toBe("stuck");
+      // herdr's own name refusal is read as a name problem, never as a refused via (#1582).
+      expect(status?.state === "stuck" && status.reason.startsWith('invalid_name: herdr refused "Bad"')).toBe(true);
       expect(machines.calls).toEqual(["add Bad"]);
       await run(viewOf(self.member, bad));
       await clock.advance(STUCK_RETRY_MS - 1);

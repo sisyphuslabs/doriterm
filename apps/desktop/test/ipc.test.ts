@@ -6,6 +6,7 @@ import { Channel } from "../src/shared/bridge.ts";
 import { ipcHandlers, type IpcReplySender, type IpcSender } from "../src/main/ipc-handlers.ts";
 import { DictationHost } from "../src/main/dictation.ts";
 import { LocalHostStartError } from "../src/main/local-host.ts";
+import { readNoticeAuthorization } from "../src/main/notice-authorization.ts";
 import type { DesktopNotice } from "../src/shared/bridge.ts";
 
 const endpoint = { url: "ws://127.0.0.1:1/v1/hc", token: "t".repeat(43) };
@@ -44,7 +45,7 @@ const setup = (
       background.push(enabled);
     },
     noticesSupported: () => true,
-    noticePermission: () => "not-determined",
+    noticePermission: () => readNoticeAuthorization({}, { noticeAuthorization: async () => "not-determined" }),
     showNotice: async (notice) => {
       notices.push(notice);
       return notice.kind === "test" ? { accepted: false, reason: "muted" } : { accepted: true };
@@ -296,6 +297,19 @@ describe("IPC sender gate", () => {
     expect(notices).toEqual([
       { kind: "done", terminal: "box/t7" },
       { kind: "test", terminal: null },
+    ]);
+  });
+
+  test("a native notification carries what the page knows about its terminal only as bounded, named fields (#1908)", async () => {
+    const { handlers, notices } = setup();
+    const context = { machine: "box", agent: "claude\u0007", ask: "q".repeat(500), title: "Your password expired" };
+    expect(await handlers.showNotice(app, { kind: "input", terminal: "box/t7", context })).toEqual({ accepted: true });
+    expect(await handlers.showNotice(app, { kind: "done", terminal: "t1", context: "rm -rf" })).toEqual({
+      accepted: true,
+    });
+    expect(notices).toEqual([
+      { kind: "input", terminal: "box/t7", context: { machine: "box", agent: "claude", ask: `${"q".repeat(159)}…` } },
+      { kind: "done", terminal: "t1" },
     ]);
   });
 

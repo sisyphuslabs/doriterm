@@ -44,3 +44,40 @@ describe("the pinned via (R-1)", () => {
     expect(meshHostOf(`${via}; rm -rf ~`, "/opt/doriface-host", "/state")).toBeUndefined();
   });
 });
+
+describe("the pinned via per platform (#1385)", () => {
+  const hostId = hostIdFor("b");
+  const exe = String.raw`C:\Program Files\Doriterm\doriface-host.exe`;
+  const state = String.raw`C:\Users\me\AppData\Roaming\doriface\state`;
+
+  test("POSIX: a sh -c line that execs the quoted program", () => {
+    for (const platform of ["darwin", "linux"] as const) {
+      expect(meshVia("/opt/doriface-host", "/state", hostId, platform)).toBe(
+        `exec '/opt/doriface-host' connect --mesh --state-dir '/state' ${hostId}`,
+      );
+    }
+  });
+
+  test("Windows: the program and its arguments with no shell, each path one Windows argument", () => {
+    const via = meshVia(exe, state, hostId, "win32");
+    expect(via).toBe(`"${exe}" connect --mesh --state-dir "${state}" ${hostId}`);
+    expect(meshHostOf(via, exe, state, "win32")).toBe(hostId);
+  });
+
+  test("Windows: a trailing backslash cannot escape the closing quote, and a quote in a path is refused", () => {
+    expect(meshVia(exe, "D:\\", hostId, "win32")).toBe(`"${exe}" connect --mesh --state-dir "D:\\\\" ${hostId}`);
+    expect(() => meshVia(String.raw`C:\a"b\doriface-host.exe`, state, hostId, "win32")).toThrow(TypeError);
+  });
+
+  test("Windows: only a program Windows can start names a line; a script needs the compiled host", () => {
+    expect(() => meshVia(String.raw`C:\src\apps\host\src\cli.ts`, state, hostId, "win32")).toThrow(/compiled/);
+  });
+
+  test("each platform reads only its own form", () => {
+    const posix = meshVia("/opt/doriface-host", "/state", hostId, "linux");
+    expect(meshHostOf(posix, "/opt/doriface-host", "/state", "win32")).toBeUndefined();
+    const windows = meshVia(exe, state, hostId, "win32");
+    expect(meshHostOf(windows, exe, state, "linux")).toBeUndefined();
+    expect(meshHostOf(`${windows} & del x`, exe, state, "win32")).toBeUndefined();
+  });
+});
