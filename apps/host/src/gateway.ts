@@ -218,7 +218,7 @@ export function createGateway(options: GatewayOptions): Gateway {
     const room =
       secure.kind === SessionKind.Session ? undefined : requireWithin(e2ee.policy, "sessions", e2ee.sessions.count());
     if (!e2ee.sessions.admitHc(secure, e2ee.policy)) return;
-    const gate = hcGate(secure);
+    const gate = hcGateFor(base64urlEncode(secure.remoteStatic), (code, reason) => secure.close(code, reason));
     if (gate === undefined) return;
     e2ee.mesh?.recordClientSession(base64urlEncode(secure.remoteStatic));
     // An hc session outlives its socket: a client whose link drops comes back to it instead of attaching anew.
@@ -256,26 +256,31 @@ export function createGateway(options: GatewayOptions): Gateway {
 
   /**
    * Section 7.6: the gate for a session's hc lines, whose hellos may announce only a member's own `core.id`, and
-   * never a member's on a device session. Undefined when the mesh state cannot be read: the session is closed 1011
-   * before its plaintext is read, so nothing of it reaches an `hc connect`, and none is started.
+   * never a member's on a device session. The same gate on every transport: a client of this computer over the plain
+   * loopback socket (`key` undefined) is a device here too, so the transport grants nothing a paired device is not
+   * granted. Undefined when the mesh state cannot be read: the session is closed 1011 before its plaintext is read, so
+   * nothing of it reaches an `hc connect`, and none is started.
    */
-  const hcGate = (secure: SecureLink): ((link: Link) => Link) | undefined => {
+  const hcGateFor = (
+    key: string | undefined,
+    close: (code: number, reason: string) => void,
+  ): ((link: Link) => Link) | undefined => {
     let index: AuthorizeIndex | undefined;
     try {
       index = e2ee?.mesh?.authorizeIndex();
     } catch (error) {
       log(`cannot read the mesh state: ${String(error)}`);
-      secure.close(1011, "cannot read the mesh state");
+      close(1011, "cannot read the mesh state");
       return undefined;
     }
-    const peer = meshPeer(index, base64urlEncode(secure.remoteStatic)) ?? { kind: "device" as const };
+    const peer = (key === undefined ? undefined : meshPeer(index, key)) ?? { kind: "device" as const };
     return (link) =>
       gateHello(
         link,
         (coreId) => firstLineRefusal(peer, coreId, index),
         (code, reason) => {
           log(`mesh: closing a session: ${reason}`);
-          secure.close(code, reason);
+          close(code, reason);
         },
       );
   };
@@ -300,7 +305,10 @@ export function createGateway(options: GatewayOptions): Gateway {
         });
         return;
       }
-      pipeTo(link, (code, reason) => link.close(code, reason));
+      const close = (code: number, reason: string): void => link.close(code, reason);
+      const gate = hcGateFor(undefined, close);
+      if (gate === undefined) return;
+      pipeTo(gate(link), close);
     },
     message(ws, message) {
       links.get(ws.data.events)?.receive(message);

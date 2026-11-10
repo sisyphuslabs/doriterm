@@ -19,6 +19,7 @@ import type { DataHandler } from "../link.ts";
 import { DeviceStore } from "../state/devices.ts";
 import { PairingStore } from "../state/pairing.ts";
 import { CLIENT } from "../testing/gateway-harness.ts";
+import type { E2eeTransport } from "./accept.ts";
 import type { E2eeWire } from "./links.ts";
 import { LiveSessions } from "./sessions.ts";
 
@@ -101,9 +102,9 @@ function host(resumeGraceMs?: number) {
       live: { count: () => sessions.count() },
     },
   });
-  const connect = async () => {
+  const connect = async (transport: E2eeTransport = { kind: "relay" }) => {
     const [clientEnd, hostEnd] = memoryLinkPair();
-    const served = gateway.serveE2ee(wireOf(hostEnd), { kind: "relay" });
+    const served = gateway.serveE2ee(wireOf(hostEnd), transport);
     const client: SecureSession = await secureLink(clientEnd, {
       role: "initiator",
       hostId: identity.hostId,
@@ -118,9 +119,9 @@ function host(resumeGraceMs?: number) {
     return { client, clientEnd, hostEnd, received };
   };
   /** A client's fresh socket to the host, served as the relay would hand it over. */
-  const redial = () => {
+  const redial = (transport: E2eeTransport = { kind: "relay" }) => {
     const [clientEnd, hostEnd] = memoryLinkPair();
-    const served = gateway.serveE2ee(wireOf(hostEnd), { kind: "relay" });
+    const served = gateway.serveE2ee(wireOf(hostEnd), transport);
     return { clientEnd, hostEnd, served };
   };
   return { gateway, logs, children, connect, redial };
@@ -128,30 +129,36 @@ function host(resumeGraceMs?: number) {
 
 const dropped = (): CodedCloseError => new CodedCloseError(1006, "dropped");
 
-describe("an hc session whose relay link drops", () => {
-  test("keeps its hc connect, and the client's resume carries on with what was typed meanwhile, exactly once", async () => {
-    const h = host();
-    const { client, clientEnd, hostEnd, received } = await h.connect();
-    client.send(bytes("one\n"));
-    await flush();
-    expect(texts(received)).toEqual(["one\n"]);
-    clientEnd.end(dropped());
-    hostEnd.end(dropped());
-    await flush();
-    expect(h.children.length).toBe(1);
-    expect(h.children[0]?.state.closed).toBe(false);
-    expect(client.detached).toBe(true);
-    client.send(bytes("two\n"));
-    const again = h.redial();
-    await client.resume(again.clientEnd);
-    await again.served;
-    client.send(bytes("three\n"));
-    await flush();
-    expect(texts(received)).toEqual(["one\n", "two\n", "three\n"]);
-    expect(h.children.length).toBe(1);
-    expect(h.logs.some((line) => line.startsWith("session detached"))).toBe(true);
-    expect(h.logs).toContain("session resumed on a new link");
-  });
+/** The transports a session can run on; a resume is the same exchange on each (the loopback socket carries no session). */
+const TRANSPORTS: readonly E2eeTransport[] = [{ kind: "relay" }, { kind: "lan" }];
+
+describe("an hc session whose link drops", () => {
+  test.each(TRANSPORTS)(
+    "over %p keeps its hc connect, and the client's resume carries on with what was typed meanwhile, exactly once",
+    async (transport) => {
+      const h = host();
+      const { client, clientEnd, hostEnd, received } = await h.connect(transport);
+      client.send(bytes("one\n"));
+      await flush();
+      expect(texts(received)).toEqual(["one\n"]);
+      clientEnd.end(dropped());
+      hostEnd.end(dropped());
+      await flush();
+      expect(h.children.length).toBe(1);
+      expect(h.children[0]?.state.closed).toBe(false);
+      expect(client.detached).toBe(true);
+      client.send(bytes("two\n"));
+      const again = h.redial(transport);
+      await client.resume(again.clientEnd);
+      await again.served;
+      client.send(bytes("three\n"));
+      await flush();
+      expect(texts(received)).toEqual(["one\n", "two\n", "three\n"]);
+      expect(h.children.length).toBe(1);
+      expect(h.logs.some((line) => line.startsWith("session detached"))).toBe(true);
+      expect(h.logs).toContain("session resumed on a new link");
+    },
+  );
 
   test("ends, hc connect with it, once the resume window passed; a resume after that is refused with 4408", async () => {
     const h = host(40);
