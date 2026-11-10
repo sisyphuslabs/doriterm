@@ -72,13 +72,18 @@ public class DorifacePushPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func register(_ call: CAPPluginCall) {
-        // One registration at a time: a call while one waits gets the same answer instead of leaving the first unsettled.
-        if let waiting = pendingRegister {
-            pendingCalls.append(call)
-            return
+        // The waiting calls are read and written on the main queue only, where `registered` and `failed` run (AppDelegate
+        // posts them there). Capacitor calls this on the plugin's own queue: a call appended there as the token arrives
+        // could land after the list was taken and never settle (#871).
+        DispatchQueue.main.async {
+            // One registration at a time: a call while one waits gets the same answer instead of leaving the first unsettled.
+            if self.pendingRegister != nil {
+                self.pendingCalls.append(call)
+                return
+            }
+            self.pendingRegister = call
+            UIApplication.shared.registerForRemoteNotifications()
         }
-        pendingRegister = call
-        DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
     }
 
     @objc private func registered(_ note: Notification) {

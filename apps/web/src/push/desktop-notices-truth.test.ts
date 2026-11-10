@@ -88,6 +88,7 @@ describe("what the Notifications tab can tell the truth about (#769)", () => {
     expect(notices.view.waiting).toBe(1);
     events.emit(status("t3", { state: "blocked" }));
     expect(notices.view.waiting).toBe(2);
+    await settled();
     expect(shown).toEqual([{ kind: "input", terminal: "t3" }]);
     connection.move({ phase: "connecting", attempt: 1, stale: null });
     expect(notices.view.waiting).toBeNull();

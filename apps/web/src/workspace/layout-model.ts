@@ -199,6 +199,13 @@ export function pick(tabs: readonly LayoutTab[], view: View): Picked {
   return { active, focused, zoomed: active.panes.some((pane) => pane.id === zoomed) ? (zoomed ?? null) : null };
 }
 
+/** The pane `pick` focuses once the tab `key` is the one in view; null when no tab is `key`. */
+export function landingPane(tabs: readonly LayoutTab[], focused: View["focused"], key: string): string | null {
+  const tab = tabs.find((each) => each.key === key) ?? tabs.find((each) => each.mount === key);
+  if (tab === undefined) return null;
+  return (tab.panes.find((pane) => pane.id === focused[tab.key]) ?? tab.panes[0])?.id ?? null;
+}
+
 /**
  * What a new tab for `address` does with the tab in view when no document holds that tab (`transient`). One of the new
  * tab's machine goes beside it in the same write (`with-new`) when that layout takes edits. The first live terminal

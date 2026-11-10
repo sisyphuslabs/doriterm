@@ -30,7 +30,7 @@ import { runParamsFor } from "./new-terminal.ts";
 import { useNarrow } from "./use-narrow.ts";
 import { machineIds } from "./tab-keys.ts";
 import { findTerminal, type LayoutTab } from "./layout-model.ts";
-import { useLayout, type PaneTarget } from "./use-layout.ts";
+import { useLayout, withoutClaim, type PaneTarget } from "./use-layout.ts";
 import { chainedSplit, SplitChain } from "./split-chain.ts";
 import { afterEnd } from "./session-actions.ts";
 import { useDeadPanes } from "./use-dead-panes.ts";
@@ -215,7 +215,8 @@ export function Workspace({ connection }: WorkspaceProps) {
   const newTabIn = (key: string): void => {
     const space = spaces.find((each) => each.id === key);
     const near = terminals.find((terminal) => terminal.state === "live" && space?.addresses.includes(terminal.address));
-    layout.selectSpace(key);
+    // The terminal being started holds the keyboard (use-type-ahead): the space's tab in view must not claim it.
+    withoutClaim(() => layout.selectSpace(key));
     runs.start(runParamsFor(near, space), (address) => {
       guideStore.opened(address);
       openedNow.current(address);

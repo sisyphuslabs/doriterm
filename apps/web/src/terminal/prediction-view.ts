@@ -60,6 +60,7 @@ export class PredictorView implements OverlaySource {
   #frame = 0;
   #tickUntil = 0;
   #shown: readonly PredictedCell[] = [];
+  #flagging = false;
 
   constructor(wt: WTerm, sources: PredictorViewSources) {
     this.#element = wt.element;
@@ -139,6 +140,11 @@ export class PredictorView implements OverlaySource {
     return this.#predictor.visible();
   }
 
+  /** mosh's flagging: the link is slow or glitching, so drawn cells are underlined (#1439 HIGH 2). */
+  underlined(): boolean {
+    return this.#predictor.underlined;
+  }
+
   subscribe(changed: () => void): () => void {
     this.#listeners.add(changed);
     return () => this.#listeners.delete(changed);
@@ -163,8 +169,10 @@ export class PredictorView implements OverlaySource {
 
   #changed(): void {
     const shown = this.#predictor.visible();
-    if (shown === this.#shown) return;
+    const flagging = this.#predictor.underlined;
+    if (shown === this.#shown && flagging === this.#flagging) return;
     this.#shown = shown;
+    this.#flagging = flagging;
     for (const listener of this.#listeners) listener();
   }
 }
