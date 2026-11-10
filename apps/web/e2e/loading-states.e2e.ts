@@ -117,7 +117,9 @@ test.describe("loading feedback waits before it spins (#1498)", () => {
     expect(await title.boundingBox()).toEqual(resting);
   });
 
-  test("while the workspace's code loads, a status fills the screen instead of leaving it blank", async ({ page }) => {
+  test("while the workspace's code loads, a status fills the screen at once and a spinner comes only after a second", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await routeHcSocket(page);
     const { promise: held, resolve: release } = Promise.withResolvers<void>();
@@ -125,10 +127,25 @@ test.describe("loading feedback waits before it spins (#1498)", () => {
       await held;
       await route.continue();
     });
+    // Fake time before the first load, so the wait the fallback starts can be watched without sleeping.
+    await page.clock.install();
+    // A margin keeps the jump off the past when the page's clock ticks ahead of the runner's between the two calls.
+    await page.clock.pauseAt(new Date(Date.now() + 1_000));
     await page.goto("/");
 
     const loading = page.getByRole("status", { name: "Loading the workspace" });
     await expect(loading).toBeVisible({ timeout: 20_000 });
+    // Painted from the first frame: a wait never opens as a blank screen and then appears.
+    await expect(loading).toHaveCSS("opacity", "1");
+    const text = loading.getByText("Loading the workspace…");
+    // The wait names what it waits for at once; the spinner is held back, and its box with it so no layout moves.
+    await expect(text).toBeVisible();
+    const resting = await text.boundingBox();
+    await page.clock.runFor(500);
+    await expect(loading.locator('[data-slot="spinner"]')).toHaveCount(0);
+    await page.clock.runFor(500);
+    await expect(loading.locator('[data-slot="spinner"]')).toBeVisible();
+    expect(await text.boundingBox()).toEqual(resting);
     const box = await loading.boundingBox();
     expect(box).toMatchObject({ width: 1440, height: 900 });
 
