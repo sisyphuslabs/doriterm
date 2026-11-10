@@ -17,6 +17,7 @@ import { RUN_MARK, runProcesses } from "../testing/run-cores.ts";
 import { RelayClientBridge } from "../testing/relay-client-bridge.ts";
 import { DIAL_LIMITS } from "./dial-policy.ts";
 import { openHcControl } from "./hc-machines.ts";
+import { BUDGET_REFUSAL } from "./line-grants.ts";
 import { meshHostOf, shellQuote } from "./via.ts";
 
 const CLI = join(import.meta.dir, "..", "cli.ts");
@@ -143,11 +144,18 @@ const machinesOf = async (entry: Running): Promise<readonly string[]> => {
 
 const added = (entry: Running): number => entry.logged.filter((line) => line.startsWith("mesh: added machine")).length;
 
+/** Adds this core's reconciler logged as held back for the dial budget: an add that waited for the window to slide. */
+const heldForBudget = (entry: Running): readonly string[] =>
+  entry.logged.filter((line) => line.startsWith("mesh: adding machine") && line.includes(BUDGET_REFUSAL));
+
 /**
  * Design section 8.2 (#106, M-E3): a newcomer joining N - 1 members starts exactly 3N - 3 charged relay upgrades (its
  * pairing dial, N - 2 ack pushes, and the two upgrades of each of the N - 1 machines it adds, reserved together), so
  * `machine.list` on every online member reflects the join within ceil((3N - 3) / 12) windows of the budget: one window
- * at 5 members, checked here with real herdr. join-bound.test.ts checks 6, 7 and 12 on a fake clock.
+ * at 5 members. The bound is counted in budget windows, so it is checked as one here, with real herdr: no core holds
+ * an add back for the budget, which is what a join needing a second window would do. Wall time on real processes
+ * also counts how starved the machine is (#2042), so it is printed, never asserted. join-bound.test.ts checks 5, 6, 7
+ * and 12 members on a fake clock, where the window is time.
  */
 const joinBoundMs = (members: number): number =>
   Math.ceil((3 * members - 3) / DIAL_LIMITS.budget) * DIAL_LIMITS.windowMs;
@@ -173,7 +181,7 @@ describe("sync runs in the running host (sections 5.1 and 5.3)", () => {
     for (const [got, want] of listed) expect(got).toEqual(want);
   });
 
-  test("a fifth member joining a converged four adds every machine on every core within the 60 s bound (8.2, H-D1)", async () => {
+  test("a fifth member joining a converged four adds every machine on every core within one budget window (8.2, H-D1)", async () => {
     const hosts = await Promise.all(["one", "two", "three", "four"].map((name) => start(name)));
     const [first, ...rest] = hosts;
     if (first === undefined) throw new Error("no first host");
@@ -183,12 +191,10 @@ describe("sync runs in the running host (sections 5.1 and 5.3)", () => {
     const all = [...hosts, fifth];
     const joined = performance.now();
     await joinVia(fifth, first);
-    const everyone = Promise.all(all.map((entry) => entry.logsUntil(() => added(entry) >= 4)));
-    expect(joinBoundMs(all.length)).toBe(60_000);
-    const bound = new Promise<"late">((resolve) => setTimeout(() => resolve("late"), joinBoundMs(all.length)));
-    expect(await Promise.race([everyone.then(() => "in time" as const), bound])).toBe("in time");
-    console.log(
-      `five-host join: every core added every member ${Math.round(performance.now() - joined)} ms after the join`,
-    );
+    await Promise.all(all.map((entry) => entry.logsUntil(() => added(entry) >= 4)));
+    const elapsed = Math.round(performance.now() - joined);
+    expect(joinBoundMs(all.length)).toBe(DIAL_LIMITS.windowMs);
+    expect(all.flatMap(heldForBudget)).toEqual([]);
+    console.log(`five-host join: every core added every member ${elapsed} ms after the join, none held for the budget`);
   }, 300_000);
 });
