@@ -68,12 +68,17 @@ test("retryNow makes the waiting attempt at once, and its back-off timer makes n
   store.stop();
 });
 
-test("an open session carries how long its own attempt took to open it, measured on this device (#637)", async () => {
-  jest.useFakeTimers();
-  jest.setSystemTime(new Date("2026-11-07T00:00:00.000Z"));
+/** A clock the test moves by hand, standing in for the monotonic one the store times attempts with. */
+function handClock(start: number): { readonly now: () => number; advance(ms: number): void } {
+  let at = start;
+  return { now: () => at, advance: (ms) => void (at += ms) };
+}
+
+/** Opens a store on a dial the test answers, after `during` runs mid-attempt; resolves with the open state. */
+async function openAfter(now: () => number, during: () => void) {
   const { connection } = standIn();
   const answered = Promise.withResolvers<OpenConnection>();
-  const store = new ConnectionStore(SETTINGS, () => answered.promise);
+  const store = new ConnectionStore(SETTINGS, () => answered.promise, undefined, undefined, now);
   const open = new Promise<void>((resolve) => {
     const off = store.subscribe(() => {
       if (store.state.phase !== "open") return;
@@ -82,12 +87,31 @@ test("an open session carries how long its own attempt took to open it, measured
     });
   });
   store.start();
-  // The host answers 340 ms into the attempt: the session's figure is that attempt's, not a constant.
-  jest.setSystemTime(new Date("2026-11-07T00:00:00.340Z"));
+  during();
   answered.resolve({ connection, path: "relay" });
   await open;
-  expect(store.state).toMatchObject({ phase: "open", connectMs: 340 });
+  const { state } = store;
   store.stop();
+  return state;
+}
+
+test("an open session carries how long its own attempt took to open it, measured on this device (#637)", async () => {
+  const clock = handClock(1_000);
+  // The host answers 340 ms into the attempt: the session's figure is that attempt's, not a constant.
+  const state = await openAfter(clock.now, () => clock.advance(340));
+  expect(state).toMatchObject({ phase: "open", connectMs: 340 });
+});
+
+test("a wall clock stepped back mid-attempt does not skew the open time: it is timed on a monotonic clock (#1234)", async () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date("2026-11-07T00:00:05.000Z"));
+  const clock = handClock(1_000);
+  const state = await openAfter(clock.now, () => {
+    // NTP, a manual change or a wake from sleep moves the wall clock 5 s back while the attempt is in flight.
+    jest.setSystemTime(new Date("2026-11-07T00:00:00.000Z"));
+    clock.advance(340);
+  });
+  expect(state).toMatchObject({ phase: "open", connectMs: 340 });
 });
 
 test("a session pairing proved and handed over has no open time: this store did not dial it (#637, #1271)", () => {
