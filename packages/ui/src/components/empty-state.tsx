@@ -35,7 +35,9 @@ export function EmptyState({
       )}
     >
       {icon === undefined ? null : (
-        <span className="flex text-muted-foreground [&_svg]:size-8 [&_svg]:stroke-[1.5]">{icon}</span>
+        <span className="flex text-muted-foreground [&_svg:not([data-slot=spinner])]:size-8 [&_svg:not([data-slot=spinner])]:stroke-[1.5]">
+          {icon}
+        </span>
       )}
       {size === "screen" ? (
         <h1 className="text-2xl font-semibold text-balance text-foreground">{title}</h1>

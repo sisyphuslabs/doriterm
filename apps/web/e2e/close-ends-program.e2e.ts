@@ -3,13 +3,10 @@
 import type { Page } from "@playwright/test";
 import { runSleep, setConfirmClose } from "./close-confirm.ts";
 import { expect, openNewTerminal, terminalCount, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
-
-/** The pane and tab close keys for the browser's native platform. */
-const CLOSE_PANE = process.platform === "darwin" ? "Meta+Shift+KeyW" : "Control+Shift+X";
-const CLOSE_TAB = process.platform === "darwin" ? "Meta+KeyW" : "Control+Shift+KeyW";
 
 const live = (page: Page, address: string) => page.locator(`[data-terminal="${address}"]`);
 const question = (page: Page) => page.getByRole("dialog", { name: /^Close .+\?$/ });
@@ -23,7 +20,7 @@ test("closing an idle shell ends it with no question", async ({ page }) => {
   const address = (await terminal.getAttribute("data-terminal")) ?? "";
   const { before } = await terminalCount(page);
   await terminal.getByRole("textbox").focus();
-  await page.keyboard.press(CLOSE_PANE);
+  await pressShortcut(page, "pane.close");
   await ended(page, before - 1);
   await expect(live(page, address)).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -43,7 +40,7 @@ test("closing a tab of two idle shells ends both with no question", async ({ pag
   await expect(panes).toHaveCount(2);
   await expect(panes.last()).toContainText("$", { timeout: 15_000 });
   await expect(page.getByRole("tab")).toHaveCount(tabs);
-  await page.keyboard.press(CLOSE_TAB);
+  await pressShortcut(page, "tab.close");
   await ended(page, before - 1);
   await expect(page.getByRole("tab")).toHaveCount(tabs - 1);
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -57,7 +54,7 @@ test("closing a shell with a program running asks once, and Close ends it", asyn
   await runSleep(page, terminal);
   const { before } = await terminalCount(page);
   await terminal.getByRole("textbox").focus();
-  await page.keyboard.press(CLOSE_PANE);
+  await pressShortcut(page, "pane.close");
   const ask = question(page);
   await expect(ask.getByRole("button")).toHaveText(["Cancel", "Close"]);
   await ask.getByRole("button", { name: "Close" }).click();
@@ -74,7 +71,7 @@ test("confirm-close-surface = false never asks, even with a program running", as
   await runSleep(page, terminal);
   const { before } = await terminalCount(page);
   await terminal.getByRole("textbox").focus();
-  await page.keyboard.press(CLOSE_PANE);
+  await pressShortcut(page, "pane.close");
   await ended(page, before - 1);
   await expect(live(page, address)).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
