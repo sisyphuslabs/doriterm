@@ -302,4 +302,25 @@ describe("the line state status reads (#754)", () => {
     await refreshed;
     expect(stateOf(reconcile, "b")).toBe("connected");
   });
+
+  test("a herdr that keeps failing is logged once per failure, not once per refresh, and again after it answers (#1240)", async () => {
+    const { machines, reconcile, logs } = reconciler();
+    const list = machines.list.bind(machines);
+    let failure: string | undefined = "connection is closed";
+    machines.list = () => (failure === undefined ? list() : Promise.reject(hcError("unreachable", failure)));
+    const kept = () => logs.filter((line) => line.startsWith("mesh: status kept the last machine list"));
+    await reconcile.refreshLines();
+    await reconcile.refreshLines();
+    await reconcile.refreshLines();
+    expect(kept()).toEqual(["mesh: status kept the last machine list: herdr did not answer: connection is closed"]);
+    failure = "core busy";
+    await reconcile.refreshLines();
+    await reconcile.refreshLines();
+    expect(kept()).toHaveLength(2);
+    failure = undefined;
+    await reconcile.refreshLines();
+    failure = "core busy";
+    await reconcile.refreshLines();
+    expect(kept()).toHaveLength(3);
+  });
 });
