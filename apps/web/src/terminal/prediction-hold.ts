@@ -3,6 +3,10 @@ import { cellText, type OverlayScreen, type PredictedCell } from "./prediction-c
 const overlaps = (a: PredictedCell, b: PredictedCell): boolean =>
   a.row === b.row && a.col < b.col + b.width && b.col < a.col + a.width;
 
+/** The real cursor has moved past the cell: a write reached it, in typing order. */
+const passed = (cursor: { readonly row: number; readonly col: number }, cell: PredictedCell): boolean =>
+  cursor.row > cell.row || (cursor.row === cell.row && cursor.col >= cell.col + cell.width);
+
 /**
  * What the layer paints after a change (design review HIGH 4, #1439). The predictor drops a cell at the write that
  * echoes it (mosh's Correct, terminaloverlay.cc:546-549), synchronously inside the pacer's frame, while the renderer
@@ -10,9 +14,10 @@ const overlaps = (a: PredictedCell, b: PredictedCell): boolean =>
  * column blank for that frame on every keystroke. So a cell no longer wanted stays painted while the terminal holds a
  * glyph there the renderer may not have painted yet, until `rendered` (the grid changed since, or one frame passed); one
  * over a blank terminal cell (killed, nothing echoed) goes at once, and a wanted cell over any of its columns replaces it.
- * A predicted blank (a typed space) is held the same way, over any terminal cell: its echo leaves the cell blank, so the
- * screen cannot tell it was echoed, and dropping it while the cells either side of it are still held or wanted would cut
- * the painted run in two for that frame (#1970). Held, it paints no more than the screen will.
+ * A predicted blank (a typed space) leaves the cell blank when echoed, so its cell cannot tell an echo from a kill; the
+ * real cursor can: once it has passed the blank, the echo was written, and the blank is held the same way, since dropping
+ * it while the cells either side of it are still held or wanted would cut the painted run in two for that frame (#1970).
+ * A blank the cursor has not passed (erased before its echo) goes at once, as any killed cell does.
  * Additions are never held back: every wanted cell is painted in the same call.
  */
 export function paintedCells(
@@ -26,7 +31,9 @@ export function paintedCells(
     : painted.filter(
         (cell) =>
           !wanted.some((each) => overlaps(each, cell)) &&
-          (cell.text.trim() === "" || cellText(screen.getCell(cell.row, cell.col)).trim() !== ""),
+          (cell.text.trim() === ""
+            ? passed(screen.getCursor(), cell)
+            : cellText(screen.getCell(cell.row, cell.col)).trim() !== ""),
       );
   return [...held, ...wanted].toSorted((a, b) => a.row - b.row || a.col - b.col);
 }
