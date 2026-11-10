@@ -3,13 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { graphics, png, RED } from "./terminal-images.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
-
-const mac = process.platform === "darwin";
-const FIND = mac ? "Meta+f" : "Control+Shift+F";
 
 const findBar = (page: Page) => page.getByRole("search");
 const field = (page: Page) => page.getByRole("searchbox", { name: "Find in terminal" });
@@ -29,7 +27,7 @@ test("the find chord finds a line only in the scrollback, steps, and Escape give
   );
   expect(atBottom).toBeLessThan(5);
 
-  await page.keyboard.press(FIND);
+  await pressShortcut(page, "terminal.search");
   await expect(field(page)).toBeFocused();
   await page.keyboard.type("needle-");
   // The typed command line holds the query too: the matches are that line and the two printed lines, and a new
@@ -63,7 +61,7 @@ test("the find chord finds a line only in the scrollback, steps, and Escape give
   await expect(terminal).toContainText("42-done");
 
   // Reopened, the terminal's query is back and selected, so typing replaces it.
-  await page.keyboard.press(FIND);
+  await pressShortcut(page, "terminal.search");
   await expect(field(page)).toHaveValue("needle-7");
   const selected = await field(page).evaluate((input) =>
     input instanceof HTMLInputElement ? [input.selectionStart, input.selectionEnd] : null,
@@ -72,7 +70,7 @@ test("the find chord finds a line only in the scrollback, steps, and Escape give
 
   // Asked for again from the field itself, with the caret at the end, the query is selected again.
   await page.keyboard.press("End");
-  await page.keyboard.press(FIND);
+  await pressShortcut(page, "terminal.search");
   await expect
     .poll(() =>
       field(page).evaluate((input) =>
@@ -110,7 +108,7 @@ test("a resize that reflows the scrollback with no new output moves the marks wi
   await page.keyboard.type("printf '%080d%s-%s\\n' 0 needle r; sleep 600");
   await page.keyboard.press("Enter");
   await expect(terminal).toContainText("needle-r", { timeout: 30_000 });
-  await page.keyboard.press(FIND);
+  await pressShortcut(page, "terminal.search");
   await page.keyboard.type("needle-r");
   await expect(findBar(page).getByRole("status")).toHaveText("1 of 1");
   await expect
@@ -154,7 +152,7 @@ test("text written after a Kitty PNG decodes is found once it reaches the termin
   // The shell waits for the spec before printing, so the find bar is open with its query when the output comes.
   await page.keyboard.type(`until [ -e ${go} ]; do sleep 0.1; done; cat ${out}; sleep 600`);
   await page.keyboard.press("Enter");
-  await page.keyboard.press(FIND);
+  await pressShortcut(page, "terminal.search");
   await page.keyboard.type("needle-k");
   const status = findBar(page).getByRole("status");
   await expect(status).toHaveText("No matches");
@@ -175,7 +173,7 @@ test("the palette's Find in terminal opens the bar over the terminal in view", a
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   await openNewTerminal(page);
-  await page.keyboard.press(mac ? "Meta+Shift+P" : "Control+Shift+P");
+  await pressShortcut(page, "app.palette");
   await page.keyboard.type("Find in terminal");
   await page.keyboard.press("Enter");
   await expect(field(page)).toBeFocused();

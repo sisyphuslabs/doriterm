@@ -4,7 +4,19 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { collectGitFacts, dirsOf, parseStatus, publishGitFacts, readGitFacts, writeGitFacts } from "./git-facts.ts";
+import {
+  collectGitFacts,
+  dirsOf,
+  GIT_TIMED_OUT,
+  type GitFactsMemory,
+  gitRunner,
+  KEEP_TIMED_OUT_TICKS,
+  parseStatus,
+  publishGitFacts,
+  readGitFacts,
+  type RunGit,
+  writeGitFacts,
+} from "./git-facts.ts";
 
 const root = mkdtempSync(join(tmpdir(), "git-facts-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -81,9 +93,9 @@ describe("readGitFacts on real repositories", () => {
     const upstream = repo("upstream", "trunk");
     const clone = join(root, "clone");
     git(root, "clone", "-q", upstream, clone);
-    expect((await readGitFacts(clone))?.onDefault).toBe(true);
+    expect(await readGitFacts(clone)).toMatchObject({ onDefault: true });
     git(clone, "checkout", "-q", "-b", "main");
-    expect((await readGitFacts(clone))?.onDefault).toBe(false);
+    expect(await readGitFacts(clone)).toMatchObject({ onDefault: false });
   });
 
   test("a detached HEAD", async () => {
@@ -103,7 +115,7 @@ describe("readGitFacts on real repositories", () => {
     const ran = join(root, "fsmonitor-ran");
     git(dir, "config", "core.fsmonitor", `touch ${ran}; false`);
     writeFileSync(join(dir, "README"), "changed\n");
-    expect((await readGitFacts(dir))?.dirty).toBe(true);
+    expect(await readGitFacts(dir)).toMatchObject({ dirty: true });
     expect(existsSync(ran)).toBe(false);
     expect(existsSync(join(dir, ".git", "index.lock"))).toBe(false);
   });
@@ -141,6 +153,77 @@ describe("dirsOf and collectGitFacts", () => {
       v: 1,
       dirs: { "/repo": { branch: "main", detached: false, onDefault: true, ahead: 0, behind: 0, dirty: false } },
     });
+  });
+});
+
+/** A git whose `status` in /repo answers, times out, or says "not a repository", as `answer` says this tick. */
+function scripted(): { run: RunGit; answer: { now: "facts" | "timeout" | "no repo" } } {
+  const answer = { now: "facts" as "facts" | "timeout" | "no repo" };
+  const run: RunGit = async (dir, args) => {
+    if (dir !== "/repo" || answer.now === "no repo") return undefined;
+    if (answer.now === "timeout") return GIT_TIMED_OUT;
+    return args[0] === "status" ? "# branch.head main\n" : undefined;
+  };
+  return { run, answer };
+}
+
+/** A `trunk` checkout whose origin names trunk as its default branch; `slowOrigin` times out reading origin's HEAD. */
+const trunk: RunGit = async (_dir, args) => (args[0] === "status" ? "# branch.head trunk\n" : "origin/trunk\n");
+const slowOrigin: RunGit = async (_dir, args) => (args[0] === "status" ? "# branch.head trunk\n" : GIT_TIMED_OUT);
+
+describe("collectGitFacts across ticks (#1606)", () => {
+  const mainFacts = { branch: "main", detached: false, onDefault: true, ahead: 0, behind: 0, dirty: false };
+
+  test("a timed-out read keeps the directory's last facts for a bounded number of ticks, then drops them", async () => {
+    const { run, answer } = scripted();
+    const memory: GitFactsMemory = new Map();
+    expect((await collectGitFacts(["/repo"], run, memory)).dirs).toEqual({ "/repo": mainFacts });
+    answer.now = "timeout";
+    for (let tick = 1; tick <= KEEP_TIMED_OUT_TICKS; tick += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- ticks run one after another
+      expect((await collectGitFacts(["/repo"], run, memory)).dirs).toEqual({ "/repo": mainFacts });
+    }
+    expect((await collectGitFacts(["/repo"], run, memory)).dirs).toEqual({});
+  });
+
+  test("an answered read resets the bound", async () => {
+    const { run, answer } = scripted();
+    const memory: GitFactsMemory = new Map();
+    await collectGitFacts(["/repo"], run, memory);
+    answer.now = "timeout";
+    await collectGitFacts(["/repo"], run, memory);
+    answer.now = "facts";
+    await collectGitFacts(["/repo"], run, memory);
+    answer.now = "timeout";
+    for (let tick = 1; tick <= KEEP_TIMED_OUT_TICKS; tick += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- ticks run one after another
+      expect((await collectGitFacts(["/repo"], run, memory)).dirs).toEqual({ "/repo": mainFacts });
+    }
+  });
+
+  test("a directory that stops being a repository drops at once, and a later timeout has nothing to keep", async () => {
+    const { run, answer } = scripted();
+    const memory: GitFactsMemory = new Map();
+    await collectGitFacts(["/repo"], run, memory);
+    answer.now = "no repo";
+    expect((await collectGitFacts(["/repo"], run, memory)).dirs).toEqual({});
+    answer.now = "timeout";
+    expect((await collectGitFacts(["/repo"], run, memory)).dirs).toEqual({});
+  });
+
+  test("a directory no terminal sits in any more is forgotten", async () => {
+    const { run, answer } = scripted();
+    const memory: GitFactsMemory = new Map();
+    await collectGitFacts(["/repo"], run, memory);
+    await collectGitFacts([], run, memory);
+    answer.now = "timeout";
+    expect((await collectGitFacts(["/repo"], run, memory)).dirs).toEqual({});
+  });
+
+  test("a timed-out read of origin's HEAD keeps the last facts rather than guessing the default branch", async () => {
+    const memory: GitFactsMemory = new Map();
+    await collectGitFacts(["/repo"], trunk, memory);
+    expect((await collectGitFacts(["/repo"], slowOrigin, memory)).dirs["/repo"]?.onDefault).toBe(true);
   });
 });
 
@@ -206,5 +289,23 @@ describe("publishGitFacts", () => {
     expect(logged).toHaveLength(1);
     expect(logged[0]).toContain("cannot write the git facts on its core");
     expect(publisher.kill()).toEqual([]);
+  });
+});
+
+describe("gitRunner", () => {
+  // Real git, no fake runner: a shell alias stands in for a git that hangs or fails. Git passes the kill on to the
+  // alias's `exec`ed command, so the hang ends at the timeout rather than when the sleep would.
+  test("a git still running at the timeout is killed and reads as GIT_TIMED_OUT", async () => {
+    const started = performance.now();
+    expect(await gitRunner(100)(root, ["-c", "alias.hang=!exec sleep 30", "hang"])).toBe(GIT_TIMED_OUT);
+    expect(performance.now() - started).toBeLessThan(10_000);
+  });
+
+  test("a git that exits non-zero reads as undefined, not as a timeout", async () => {
+    expect(await gitRunner(10_000)(root, ["-c", "alias.fail=!exit 3", "fail"])).toBeUndefined();
+  });
+
+  test("a git that exits zero returns what it printed", async () => {
+    expect(await gitRunner(10_000)(repo("runner"), ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("main\n");
   });
 });
