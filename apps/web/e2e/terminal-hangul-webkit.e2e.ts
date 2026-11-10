@@ -1,6 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
-import { HANGEUL, type Keyboard, safariReplace, typeHangul } from "./hangul-edits.ts";
+import { HANGEUL, type Keyboard, safariReplace, spaceThenJamo, typeHangul } from "./hangul-edits.ts";
 import { key, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE });
@@ -18,7 +18,9 @@ async function openReader(page: Page): Promise<{ readonly terminal: Locator; rea
 /** Ends the line with the keyboard's Return and waits for the bytes the shell read. */
 async function expectRead(page: Page, terminal: Locator, hex: string): Promise<void> {
   await page.keyboard.press("Enter");
-  await expect(terminal).toContainText(new RegExp(`(^|\\s)${hex.replaceAll(" ", "")}:end`), { timeout: 10_000 });
+  await expect(terminal).toContainText(new RegExp(`(^|\\s)${hex.replaceAll(" ", "")}:end`), {
+    timeout: 10_000,
+  });
 }
 
 for (const keyboard of ["iphone", "ipad"] satisfies Keyboard[]) {
@@ -62,7 +64,12 @@ for (const keyboard of ["iphone", "ipad"] satisfies Keyboard[]) {
     await field.evaluate((element) => {
       if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
       const down = element.dispatchEvent(
-        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Backspace", keyCode: 8 }),
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "Backspace",
+          keyCode: 8,
+        }),
       );
       if (!down) return;
       const end = element.selectionEnd;
@@ -72,6 +79,20 @@ for (const keyboard of ["iphone", "ipad"] satisfies Keyboard[]) {
       element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "하" }));
     });
     await expectRead(page, terminal, "78 ed 95 98");
+  });
+
+  test(`${keyboard}: a space after a syllable reaches the field, so the next jamo starts a new syllable (#1508)`, async ({
+    page,
+  }) => {
+    const { terminal, field } = await openReader(page);
+    await typeHangul(field, keyboard, [
+      ["ㄱ", "ㄱ"],
+      ["ㅏ", "가"],
+    ]);
+    // A keyboard that never saw its space would join ㄱ to 가 and put 각 in its place: 가, a deleted space, then 각.
+    expect(await spaceThenJamo(field, keyboard, { jamo: "ㄱ", alone: "ㄱ", withPrevious: "각" })).toBe(true);
+    await typeHangul(field, keyboard, [["ㅏ", "가"]]);
+    await expectRead(page, terminal, "ea b0 80 20 ea b0 80");
   });
 
   test(`${keyboard}: a key-bar key sends the syllable still being typed first`, async ({ page }) => {
@@ -90,7 +111,11 @@ test("a paste the browser delivers only as input, while a syllable is still bein
   // A browser that leaves clipboardData empty inserts the paste into the field itself.
   await field.evaluate((element) => {
     if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
-    const paste = new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: new DataTransfer() });
+    const paste = new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: new DataTransfer(),
+    });
     if (!element.dispatchEvent(paste)) return;
     element.setRangeText("xyz", element.selectionStart, element.selectionEnd, "end");
     element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertFromPaste", data: "xyz" }));
@@ -122,7 +147,13 @@ test("iPad: Cmd+Backspace with a syllable still being typed kills the line with 
   await typeHangul(field, "ipad", HANGEUL.slice(0, 3));
   await field.evaluate((element) => {
     element.dispatchEvent(
-      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Backspace", keyCode: 8, metaKey: true }),
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: "Backspace",
+        keyCode: 8,
+        metaKey: true,
+      }),
     );
   });
   // The kill took x and the syllable: nothing of either reaches the program after it.

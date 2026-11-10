@@ -46,13 +46,13 @@ export function JoinEntry({ onOffer }: { readonly onOffer: (offer: PairingOffer)
     }
   };
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-5 px-6 py-10">
+    <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col justify-center gap-5 px-4 py-10 md:px-6">
       <h1 className="text-2xl font-semibold text-balance">Join a mesh</h1>
-      <p className="text-base text-muted-foreground">
+      <p className="max-w-measure text-base text-muted-foreground">
         Open an invite from a machine you can see, or ask a member for one by a call or in person.
       </p>
       {runsInstalled() && connection.phase === "unconfigured" ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="max-w-measure text-sm text-muted-foreground">
           This app has its own storage, so it starts as a device of its own and is not paired with anything yet.
           {isIos()
             ? " An app added to the Home Screen keeps separate storage from the Safari tab you installed it from, which is why it asks again."
