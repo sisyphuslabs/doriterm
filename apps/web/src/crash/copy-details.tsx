@@ -41,7 +41,7 @@ export function CopyDetails({ error, size = "md" }: CopyDetailsProps) {
         </Button>
       </div>
       {copied === "selected" ? (
-        <p className="text-sm text-muted-foreground">Copying was refused: the details are selected below.</p>
+        <p className="text-prose text-muted-foreground">Copying was refused: the details are selected below.</p>
       ) : null}
       <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)} className="text-sm">
         <summary className="cursor-pointer text-muted-foreground">Details</summary>
