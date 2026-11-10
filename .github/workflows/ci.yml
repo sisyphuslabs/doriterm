@@ -124,7 +124,9 @@ jobs:
     runs-on: ubuntu-latest
     # The relay and mesh suites (tests/relay): real hosts, hc cores and the private relay under wrangler dev, in
     # parallel with Check so neither waits on the other.
-    timeout-minutes: 25
+    # Measured on a loaded hosted runner (#2027): relay:test ~12 min, then the browser step ~13 min at one worker, of
+    # which keystroke-latency-relay's 12-case matrix is ~10.5 min. At 25 the job was cancelled with a spec still running.
+    timeout-minutes: 40
     env:
       # Pull requests from forks get no secrets; only they may skip the relay suites (see the first step).
       RELAY_TOKEN_SET: ${{ secrets.DORIFACE_RELAY_READ_TOKEN != '' }}
