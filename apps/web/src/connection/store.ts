@@ -95,22 +95,26 @@ export class ConnectionStore {
   readonly #save: Saver;
   /** A wake's check on the open link: a socket the page slept on can be half-open (#653), and input must not go into it. */
   readonly #wake: WakeProbe;
+  readonly #now: () => number;
 
   /**
    * `save` is how this store records a change to its settings. A store that owns the saved settings writes them itself; one that
    * is a single member of a mesh (`mesh-connections.ts`) passes a no-op, because its settings are a slice of a roster another
-   * object owns, and writing that slice back would replace the roster with it.
+   * object owns, and writing that slice back would replace the roster with it. `now` times an attempt's open (`connectMs`): a
+   * monotonic clock, like the round trip beside it, so a wall clock stepped mid-attempt (NTP, sleep) cannot skew it (#1234).
    */
   constructor(
     settings: ConnectionSettings,
     open: typeof connect = connect,
     save: Saver = saveSettings,
     probing: WakeProbing = {},
+    now: () => number = () => performance.now(),
   ) {
     this.#settings = lockRelay(settings);
     this.#connect = open;
     this.#save = save;
     this.#wake = new WakeProbe(probing);
+    this.#now = now;
   }
 
   get settings(): ConnectionSettings {
@@ -194,14 +198,14 @@ export class ConnectionStore {
     const relayFirst = this.#relayFirst;
     this.#relayFirst = false;
     this.#set({ phase: "connecting", attempt, stale: this.#stale });
-    const started = Date.now();
+    const started = this.#now();
     try {
       const opened: OpenConnection = await this.#budget.bounded(
         this.#connect(this.#settings, abort.signal, undefined, relayFirst ? { skipDirect: true } : {}),
         abort,
       );
       if (abort.signal.aborted) return opened.connection.close();
-      this.#opened(opened, abort, attempt, Date.now() - started);
+      this.#opened(opened, abort, attempt, this.#now() - started);
     } catch (error) {
       if (this.#abort !== abort) return;
       if (error instanceof AttemptTimeoutError) {

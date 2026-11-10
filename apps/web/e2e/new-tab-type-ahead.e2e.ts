@@ -2,13 +2,13 @@ import type { Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { E2E_HOST_ENV } from "./config.ts";
 import { expect, openNewTerminal, test, pressNewTab } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { type HcSocket, routeHcSocket } from "./hc-socket.ts";
 import { readSavedEnv } from "./saved-env.ts";
 
 test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 
 const focused = (page: Page) => page.locator('[data-focused="true"] [data-terminal]');
-const mac = (page: Page) => page.evaluate(() => /mac/i.test(navigator.platform));
 const catcher = (page: Page) => page.locator("[data-type-ahead]");
 
 /** What the terminal's screen holds on the core itself, so nothing on the page can stand in for it. */
@@ -31,9 +31,8 @@ type Via = "keys" | "button" | "palette";
 async function askNewTab(page: Page, previous: ReturnType<Page["locator"]>, via: Via): Promise<void> {
   if (via === "button") return void (await pressNewTab(page.getByRole("button", { name: "New tab" }).first()));
   await previous.getByRole("textbox").focus();
-  const onMac = await mac(page);
-  if (via === "keys") return void (await page.keyboard.press(onMac ? "Meta+KeyT" : "Control+Shift+KeyT"));
-  await page.keyboard.press(onMac ? "Meta+Shift+KeyP" : "Control+Shift+KeyP");
+  if (via === "keys") return void (await pressShortcut(page, "tab.new"));
+  await pressShortcut(page, "app.palette");
   const palette = page.getByRole("dialog", { name: "Command palette" });
   await palette.getByRole("combobox").fill("New tab");
   await page.keyboard.press("Enter");

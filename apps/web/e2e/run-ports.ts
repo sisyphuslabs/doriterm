@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { bandOutside, ephemeralRange } from "./ephemeral-range.ts";
 import { HOST_BLOCK, PORT_TRY_LIMIT } from "./port-block.ts";
 import { describePortFailure, listPortHolders, type TriedBlock } from "./port-holders.ts";
 
@@ -7,12 +8,16 @@ const NAMES = ["E2E_HOST_PORT", "E2E_WEB_PORT", "E2E_LAYOUT_PORT"] as const;
 /** Set by the runner in this run's environment, and inherited by every web server, worker and spec: this run's own id. */
 export const E2E_RUN_ID_ENV = "DORIFACE_E2E_RUN_ID";
 
-// Binds port 0 for each, so the OS hands out ports no one holds, then releases them for this run's servers: a block of
-// HOST_BLOCK consecutive free ports for the worker hosts, then one for the web server and one for the layout host
-// (taken while the block is still held, so they never fall inside it). Prints them as JSON.
+// Binds HOST_BLOCK + 2 consecutive free ports from a random base in [E2E_PORT_LOW, E2E_PORT_HIGH], then releases them
+// for this run's servers: the block for the worker hosts, then one for the web server and one for the layout host.
+// Prints them as JSON. The band lies outside the ephemeral range (#862): a port from port 0 is one the OS also hands to
+// outgoing connections, and one of those took a worker host's port between this pick and the host's listen.
 const PICK = `
 const net = require("node:net");
 const block = Number(process.env.E2E_HOST_BLOCK);
+const need = block + 2;
+const low = Number(process.env.E2E_PORT_LOW);
+const high = Number(process.env.E2E_PORT_HIGH);
 const limit = Number(process.env.E2E_PORT_TRIES);
 const listen = (port) => new Promise((resolve) => {
   const server = net.createServer();
@@ -23,12 +28,15 @@ const listen = (port) => new Promise((resolve) => {
   const tried = [];
   let held = [];
   for (let tries = 0; tries < limit && held.length === 0; tries++) {
-    const first = await listen(0);
-    if (first === undefined) continue;
-    const base = first.address().port;
+    const base = low + Math.floor(Math.random() * (high - low - need + 2));
+    const first = await listen(base);
+    if (first === undefined) {
+      tried.push({ base, blocked: 0 });
+      continue;
+    }
     const run = [first];
     let blocked = 0;
-    for (let i = 1; i < block && base + i < 65536; i++) {
+    for (let i = 1; i < need; i++) {
       const server = await listen(base + i);
       if (server === undefined) {
         blocked = base + i;
@@ -36,7 +44,7 @@ const listen = (port) => new Promise((resolve) => {
       }
       run.push(server);
     }
-    if (run.length === block) held = run;
+    if (run.length === need) held = run;
     else {
       tried.push({ base, blocked });
       for (const server of run) server.close();
@@ -46,10 +54,8 @@ const listen = (port) => new Promise((resolve) => {
     process.stdout.write(JSON.stringify({ tried: tried.slice(-10) }));
     process.exit(1);
   }
-  const web = await listen(0);
-  const layout = await listen(0);
-  process.stdout.write(JSON.stringify({ host: held[0].address().port, web: web.address().port, layout: layout.address().port }));
-  for (const server of [...held, web, layout]) server.close();
+  process.stdout.write(JSON.stringify({ host: held[0].address().port, web: held[block].address().port, layout: held[block + 1].address().port }));
+  for (const server of held) server.close();
 })();
 `;
 
@@ -84,8 +90,15 @@ export function ensureRunPorts(): void {
   // leaves another run's alone (#1412).
   process.env[E2E_RUN_ID_ENV] ??= crypto.randomUUID();
   if (NAMES.every((name) => process.env[name] !== undefined)) return;
+  const band = bandOutside(ephemeralRange(), HOST_BLOCK + 2);
   const picked = spawnSync(process.execPath, ["-e", PICK], {
-    env: { ...process.env, E2E_HOST_BLOCK: String(HOST_BLOCK), E2E_PORT_TRIES: String(PORT_TRY_LIMIT) },
+    env: {
+      ...process.env,
+      E2E_HOST_BLOCK: String(HOST_BLOCK),
+      E2E_PORT_LOW: String(band.first),
+      E2E_PORT_HIGH: String(band.last),
+      E2E_PORT_TRIES: String(PORT_TRY_LIMIT),
+    },
     encoding: "utf8",
   });
   if (picked.status !== 0) {
