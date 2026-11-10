@@ -121,6 +121,14 @@ async function connectsOverTheRelayAlone(page: Page, phone: boolean): Promise<vo
     // A later load with a Direct address in the file still reaches the host, and dials no direct socket to do it.
     await withDirectAddress(page, paired, host.directUrl);
     await page.goto("/");
+    // A phone reopens where it was, the terminal, and its Back returns to the lists.
+    if (phone) {
+      await expect(page.locator("[data-terminal]").first()).toBeVisible({ timeout: 30_000 });
+      await page
+        .getByRole("banner")
+        .getByRole("button", { name: /^Back to / })
+        .click();
+    }
     await pathSaysRelay(page, phone);
     await terminalOpens(page, phone);
 
