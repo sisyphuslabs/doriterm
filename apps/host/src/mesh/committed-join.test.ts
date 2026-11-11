@@ -179,3 +179,15 @@ test("a client approved after a machine was admitted meanwhile is refused by the
   expect(types).toEqual(["found", "admit"]);
   run.resumes.clear();
 });
+
+test("a machine admission does not ask the in-transaction client format check (#2263)", async () => {
+  const asked: number[] = [];
+  const run = await begin(true, "machine", true, (records?: readonly Signed[]) => {
+    if (records !== undefined) asked.push(records.length);
+    return true;
+  });
+  expect(await run.served).toBe("resolved");
+  expect(run.a.mesh.read()?.records.map((record) => parseRecord(record)?.type)).toEqual(["found", "admit"]);
+  expect(asked).toEqual([]);
+  run.resumes.clear();
+});
