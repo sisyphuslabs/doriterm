@@ -114,6 +114,7 @@ test.describe("renaming a machine with its terminals open", () => {
     const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
     await expect(selectedPane(page, `${MACHINE_NAME}/${remote}`)).toHaveCount(1, { timeout: 20_000 });
     await expect(page.locator(`[data-terminal="${MACHINE_NAME}/${remote}"]`)).toBeVisible({ timeout: 15_000 });
+    await layout.requested(STATE_BOUND_MS);
     layout.release();
     const open = await tabs.count();
 

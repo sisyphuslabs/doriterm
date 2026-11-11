@@ -130,12 +130,13 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   // A touch phone's keys while its keyboard is down (#1526); a mouse-only window opens its keys bar by hand instead.
   const keyRow = !keysOpen && !mouseOnly && !dictating && !browsing && !offline && !ended;
   // The terminal's jump button stays clear of what floats over its bottom right: the keyboard button, or the arrow pad.
-  // Over the tabs bar the keyboard button floats beside the bar, not over the terminal.
+  // Over the tabs bar the keyboard button floats beside the bar, and beside the key row it sits level with the row:
+  // either way under the terminal, not over it (#1555).
   const keysControls =
     offline || ended || dictating
       ? null
       : !keysOpen
-        ? tabsBar
+        ? tabsBar || keyRow
           ? null
           : KEYBOARD_BUTTON_CLEARANCE
         : pad

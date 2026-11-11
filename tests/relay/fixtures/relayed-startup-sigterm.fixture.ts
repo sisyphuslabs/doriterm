@@ -1,6 +1,7 @@
 import { existsSync, watch, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { createInterface } from "node:readline";
+import type { LocalRelay } from "../support/relay-dev.ts";
 import { startRelayedHost } from "../support/relayed-host.ts";
 
 // Not a *.test.ts: relayed-host.test.ts runs it with bun. It starts a relayed host, holds start-up once the part named
@@ -18,7 +19,10 @@ const uplinkTimeoutMs = process.env["UPLINK_MS"] === undefined ? undefined : Num
 process.once("SIGTERM", () => process.stdout.write("SIGNALLED\n"));
 if (stage === "pair") {
   // The stub pair CLI writes this file once it runs; that is when start-up is held at the pair step.
-  const mark = join(dirname(settledFile), "pair-held");
+  const mark = process.env["PAIR_MARK"];
+  // Without it the watch below would watch "." and the test would hang to its timeout instead of failing here (#2220).
+  if (mark === undefined || mark === "")
+    throw new Error("STAGE=pair needs PAIR_MARK, the file the stub pair CLI writes");
   const watcher = watch(dirname(mark), () => {
     if (!existsSync(mark)) return;
     watcher.close();
@@ -30,6 +34,30 @@ try {
   await startRelayedHost("startup-sigterm", {
     ...(hostRelayUrl === undefined ? {} : { hostRelayUrl }),
     ...(pairCli === undefined ? {} : { pairCli }),
+    // STAGE=relay-start: a relay start that never finishes, held from the first step of start-up (#2220).
+    ...(stage === "relay-start"
+      ? {
+          startRelay: () => {
+            process.stdout.write("STAGE relay-start\n");
+            return new Promise<never>(() => {});
+          },
+        }
+      : {}),
+    // STAGE=relay-late: a relay start that finishes on the SIGTERM itself, after start-up has seen the interrupt; the
+    // relay it hands over records its stop in LATE_MARK (#2232).
+    ...(stage === "relay-late"
+      ? {
+          startRelay: () => {
+            process.stdout.write("STAGE relay-late\n");
+            const late: LocalRelay = {
+              url: "http://127.0.0.1:9",
+              output: () => "",
+              stop: async () => writeFileSync(process.env["LATE_MARK"] ?? "", "stopped"),
+            };
+            return new Promise<LocalRelay>((resolve) => process.once("SIGTERM", () => resolve(late)));
+          },
+        }
+      : {}),
     ...(uplinkTimeoutMs === undefined ? {} : { uplinkTimeoutMs }),
     started: async (part) => {
       if (stage === "uplink") {

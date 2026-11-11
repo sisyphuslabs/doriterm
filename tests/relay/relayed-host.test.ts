@@ -178,6 +178,20 @@ describe("startRelayedHost", () => {
       env: { PAIR_CLI: join(import.meta.dir, "fixtures", "pair-never-exits.fixture.ts") },
       settled: "interrupted",
     },
+    {
+      // A relay start that never finishes, as one that retries for minutes looks to the interrupt hook (#2220).
+      stage: "relay-start",
+      title: "a SIGTERM during a relay start that never finishes ends start-up at once, and leaves nothing (#2220)",
+      env: {},
+      settled: "interrupted",
+    },
+    {
+      // The relay start finishes on the SIGTERM itself, once start-up has already ended as interrupted (#2232).
+      stage: "relay-late",
+      title: "a relay whose start finishes after a SIGTERM is stopped, and start-up ends as interrupted (#2232)",
+      env: {},
+      settled: "interrupted",
+    },
   ];
   for (const { stage, title, env, settled } of startupCases) {
     test(
@@ -198,6 +212,7 @@ describe("startRelayedHost", () => {
                 STAGE: stage,
                 SETTLED_FILE: settledFile,
                 PAIR_MARK: join(out, "pair-held"),
+                LATE_MARK: join(out, "late-stopped"),
               },
               stdin: "pipe",
               stdout: "pipe",
@@ -214,6 +229,7 @@ describe("startRelayedHost", () => {
           await fixture.stdin.flush();
           await fixture.exited;
           expect(existsSync(settledFile) ? readFileSync(settledFile, "utf8") : "never settled").toContain(settled);
+          if (stage === "relay-late") expect(existsSync(join(out, "late-stopped"))).toBe(true);
           expect(await stopLeftUnder(tmp)).toEqual([]);
           expect(await liveWithEnvironment(`TMPDIR=${tmp}`)).toEqual([]);
           expect(readdirSync(tmp).filter((name) => name.startsWith("rh-") || name.startsWith("dh-"))).toEqual([]);

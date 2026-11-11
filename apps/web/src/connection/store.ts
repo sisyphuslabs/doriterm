@@ -96,8 +96,11 @@ export class ConnectionStore {
   #current = 0;
   /** A wake already asked for this tick: several page events must cost one attempt, not three. */
   #wakeQueued = false;
-  /** Why the store closed a connection itself, kept with that connection so no other drop can take it. */
-  #closedFor: { readonly connection: HcConnection; readonly reason: Error } | null = null;
+  /**
+   * Why the store closed its connection itself. {@link stop} clears it, and is its one guard: every path that opens
+   * another connection runs it first, so no other connection's drop can take this reason (#2044).
+   */
+  #closedFor: Error | null = null;
   readonly #budget = new AttemptBudget();
   readonly #connect: typeof connect;
   readonly #save: Saver;
@@ -270,7 +273,7 @@ export class ConnectionStore {
       this.#resume = null;
       if (opened.path === "direct") this.#relayFirst = true;
       this.#stale = connection;
-      const closedFor = this.#closedFor?.connection === connection ? this.#closedFor.reason : undefined;
+      const closedFor = this.#closedFor;
       this.#closedFor = null;
       const reason = error ?? closedFor ?? new Error("the host closed the connection");
       this.#retry(reason, this.#stable ? 0 : attempt + 1);
@@ -469,7 +472,7 @@ export class ConnectionStore {
         if (this.#state.phase !== "open" || this.#state.connection !== connection) return;
         // A session that can be carried on takes the loss and dials again; any other link is closed and reconnected.
         if (this.#resume?.lost(reason) === true) return;
-        this.#closedFor = { connection, reason };
+        this.#closedFor = reason;
         connection.close();
       },
     );

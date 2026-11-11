@@ -112,11 +112,49 @@ async function countCreditSent(page: Page): Promise<void> {
   }, CREDIT);
 }
 
-/** The highest flood line number in a terminal's rows. */
-const lastFlood = (terminal: Locator) =>
-  terminal.evaluate((element) =>
-    Math.max(0, ...[...(element.textContent ?? "").matchAll(/flood-(\d+)-/g)].map((match) => Number(match[1]))),
-  );
+/** How long a terminal that draws again has to draw a newer flood line, inside the cases' 180 s budget (#2205). */
+const DRAW_MS = 100_000;
+
+/**
+ * Arms, in the page, a wait for the first flood line drawn in `terminal` past the largest it shows now, and returns that
+ * largest. The draw is caught as the page makes it rather than by reading the whole screen back over and over, which
+ * took seconds a read on a loaded runner (#2108); {@link drawnFlood} awaits it.
+ */
+const armFloodDraw = (terminal: Locator): Promise<number> =>
+  terminal.evaluate((element, ms) => {
+    let shown = 0;
+    for (const match of (element.textContent ?? "").matchAll(/flood-(\d+)-/g))
+      shown = Math.max(shown, Number(match[1]));
+    const drawn = new Promise<number>((resolve, reject) => {
+      const observer = new MutationObserver((records) => {
+        for (const record of records) {
+          const texts =
+            record.type === "characterData"
+              ? [record.target.textContent ?? ""]
+              : [...record.addedNodes].map((node) => node.textContent ?? "");
+          for (const text of texts)
+            for (const match of text.matchAll(/flood-(\d+)-/g)) {
+              if (Number(match[1]) <= shown) continue;
+              observer.disconnect();
+              clearTimeout(late);
+              resolve(Number(match[1]));
+              return;
+            }
+        }
+      });
+      const late = setTimeout(() => {
+        observer.disconnect();
+        reject(new Error(`no flood line past flood-${shown} was drawn within ${ms} ms`));
+      }, ms);
+      observer.observe(element, { childList: true, characterData: true, subtree: true });
+    });
+    Object.assign(window, { floodDrawn: drawn });
+    return shown;
+  }, DRAW_MS);
+
+/** The flood line {@link armFloodDraw} caught being drawn, once it is. */
+const drawnFlood = (page: Page): Promise<number> =>
+  page.evaluate(() => Reflect.get(window, "floodDrawn") as Promise<number>);
 
 /** The highest flood line number on the core's own screen of a terminal, read with hc. */
 function lastFloodOnCore(address: string): number {
@@ -158,6 +196,9 @@ test("credit goes back only for output the page has drawn, so the 256 KiB window
     (stream) => (Reflect.get(window, "creditSent") as Map<number, number>).get(stream) ?? 0,
     channel,
   );
+  // The page has drawn, and credited, the flood's first lines: a count of 0 means the counter misses its frames, and the
+  // wait below would pass at once (#2205).
+  expect(credited, "credit the page counted on the flooding stream").toBeGreaterThan(0);
   await expect.poll(() => flow(link).credit).toBeGreaterThanOrEqual(credited);
   const before = flow(link);
   await page.waitForTimeout(2_000);
@@ -165,41 +206,18 @@ test("credit goes back only for output the page has drawn, so the 256 KiB window
   expect(after.credit - before.credit).toBe(0);
   expect(after.data - before.data).toBeLessThanOrEqual(256 * 1024);
 
-  // Drawing again, the page draws output past what it showed, and gives credit for it. The draw is awaited as the page
-  // makes it: reading the whole screen back over and over took seconds a read on a loaded runner, past any fixed wait
-  // (#2108).
-  const { seen, drawn } = await terminal.evaluate(async (element) => {
-    let shown = 0;
-    for (const match of (element.textContent ?? "").matchAll(/flood-(\d+)-/g))
-      shown = Math.max(shown, Number(match[1]));
-    const next = await new Promise<number>((resolve) => {
-      const observer = new MutationObserver((records) => {
-        for (const record of records) {
-          const texts =
-            record.type === "characterData"
-              ? [record.target.textContent ?? ""]
-              : [...record.addedNodes].map((node) => node.textContent ?? "");
-          for (const text of texts)
-            for (const match of text.matchAll(/flood-(\d+)-/g)) {
-              if (Number(match[1]) <= shown) continue;
-              observer.disconnect();
-              resolve(Number(match[1]));
-              return;
-            }
-        }
-      });
-      observer.observe(element, { childList: true, characterData: true, subtree: true });
-      (Reflect.get(window, "restoreFrames") as () => void)();
-    });
-    return { seen: shown, drawn: next };
-  });
-  expect(drawn).toBeGreaterThan(seen);
+  // Drawing again, the page draws output past what it showed, and gives credit for it.
+  const seen = await armFloodDraw(terminal);
+  await page.evaluate(() => (Reflect.get(window, "restoreFrames") as () => void)());
+  expect(await drawnFlood(page)).toBeGreaterThan(seen);
   await expect.poll(() => flow(link).credit).toBeGreaterThan(after.credit);
 });
 
 test("a terminal in a hidden tab is not drawn while its program floods, and catches up once shown (#560)", async ({
   page,
 }) => {
+  // A loaded runner takes tens of seconds over the catch-up draw below (#2205).
+  test.setTimeout(180_000);
   await page.goto("/");
   const flooding = await openNewTerminal(page);
   await flooding.getByRole("textbox").focus();
@@ -230,8 +248,8 @@ test("a terminal in a hidden tab is not drawn while its program floods, and catc
     top,
   );
 
-  const seen = await lastFlood(flooding);
+  const seen = await armFloodDraw(flooding);
   await tabs(page).nth(0).click();
   await expect(flooding).toBeVisible();
-  await expect.poll(() => lastFlood(flooding), { timeout: 15_000 }).toBeGreaterThan(seen);
+  expect(await drawnFlood(page)).toBeGreaterThan(seen);
 });

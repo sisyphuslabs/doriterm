@@ -143,6 +143,8 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
   // Leaving a closed tab with nowhere to switch to, from the sheet: the sheet's Back lands on that tab's own screen first,
   // so the step up to the screen it came from waits for that landing (#1478 review).
   const upAfterSheet = useRef(false);
+  /** Set while a Back off a space pops down to the space's own landing entry, which the list then replaces (#2200). */
+  const listAfterPop = useRef(false);
   const sheetOn = narrow && path === "/" && listed.sheet;
   const showSheet = useCallback(
     (opening: boolean) => {
@@ -197,7 +199,9 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
       // Spaces is one entry over the agents, so the Agents tab goes back down to it rather than stacking another - but
       // only from the very entry the Spaces tab pushed: one that replaced a space gone from under it (dropSpace) has no
       // Agents list below it, so that one is replaced by the agents in place.
-      if (section === "agents" && listed.section === "spaces" && atRoot && spacesOverAgents === index) {
+      // After a reload `spacesOverAgents` is gone, but the entry's own record of what is under it is not (#1695).
+      const overAgents = spacesOverAgents === index || under === phoneHref(PHONE_LIST);
+      if (section === "agents" && listed.section === "spaces" && atRoot && overAgents) {
         spacesOverAgents = null;
         router.history.back();
         return;
@@ -207,7 +211,7 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
       if (listed.section !== "spaces") spacesOverAgents = index + 1;
       return go({ section: "spaces", space: null, terminal: null, sheet: false }, listed.section === "spaces");
     },
-    [go, index, listed, router],
+    [go, index, listed, router, under],
   );
   const backFromSpace = useCallback(() => {
     if (listed.terminal === null) return back();
@@ -215,8 +219,18 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     // pushed over the list when it is above the landing entry, so Back pops all of them; else the list replaces it.
     const over = listed.sheet ? 3 : 2;
     if (landed !== null && index - over >= landed) router.history.go(-over);
-    else go({ ...listed, space: null, terminal: null, sheet: false }, true);
+    else if (landed !== null && index - over + 1 >= landed) {
+      // The space's own entry is the one this page landed on (a cold open or a reload there): pop down to it, then the
+      // list replaces it, so no Back meets the space again (#2200).
+      listAfterPop.current = true;
+      router.history.go(1 - over);
+    } else go({ ...listed, space: null, terminal: null, sheet: false }, true);
   }, [back, go, index, listed, router]);
+  useEffect(() => {
+    if (!listAfterPop.current || listed.terminal !== null) return;
+    listAfterPop.current = false;
+    go({ ...listed, space: null, terminal: null, sheet: false }, true);
+  }, [go, listed]);
   // A cold start on the bare list (the home screen's icon) picks up where the phone was; an address that names a place, a
   // tapped notice, or a page that has already moved, wins. From then on every place the list route reaches is kept.
   const place = phoneHref({ ...listed, sheet: false });

@@ -75,6 +75,8 @@ export interface RelayedHostOptions {
   readonly hostRelayUrl?: string;
   /** For tests of this helper: the CLI the pairing offer runs instead of doriface-host's, e.g. one that never exits. */
   readonly pairCli?: string;
+  /** For tests of this helper: starts the relay instead of startLocalRelay, e.g. a start that never finishes. */
+  readonly startRelay?: () => Promise<LocalRelay>;
   readonly uplinkTimeoutMs?: number;
   /** How long the host keeps a session whose link dropped for a resume (the host's default, 120 s, otherwise). */
   readonly resumeGraceMs?: number;
@@ -135,12 +137,14 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
   // this stop to its end first. Otherwise the relay's group hook (adoptProcessGroup) kills the relay and raises the
   // signal again within a few milliseconds, ending the process before its host's stop has told the hc core to stop:
   // the core runs outside every process group of this process and outlives it (#2061). An interrupt during start-up
-  // waits for the step in flight, which then ends start-up and tears down once, so no part starts after the teardown
-  // has passed it (#2080). The uplink wait, as long as the hook's own budget, ends at once on an interrupt, and a failed
-  // start keeps the hook until its teardown has finished, so no interrupt finds the hook gone mid-teardown (#2131).
+  // ends it at its next step, which then tears down once, so no part starts after the teardown has passed it (#2080).
+  // The steps that could run past the hook's own budget end at once on an interrupt: the relay start (#2220), the
+  // uplink wait (#2131) and the pair CLI, which is killed (#2155). A failed start keeps the hook until its teardown has finished, so no
+  // interrupt finds the hook gone mid-teardown (#2131).
   let interrupted = false;
   const interruption = Promise.withResolvers<never>();
-  // Read only by the uplink wait: an interrupt at any other step is seen by unlessInterrupted.
+  // Read by the relay start, the uplink wait and the pair step, which race it; an interrupt at any other step is seen by
+  // unlessInterrupted.
   interruption.promise.catch(() => {});
   const settled = Promise.withResolvers<boolean>();
   // Kills a pair CLI start-up is waiting on, which has no bound of its own (#2155).
@@ -155,7 +159,18 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
     if (interrupted) throw interruptedError();
   };
   try {
-    relay = await startLocalRelay();
+    // A relay start can take minutes (90 s per attempt): an interrupt ends start-up at once rather than wait for it, and
+    // a relay that comes up after that is stopped, as start-up has torn down without it (#2220).
+    const relayStarting = (options.startRelay ?? startLocalRelay)();
+    void relayStarting
+      .then(
+        (late) => (interrupted ? late.stop() : undefined),
+        () => undefined,
+      )
+      .catch((error: unknown) => {
+        console.error(`relayed host: could not stop a relay that came up after the interrupt: ${String(error)}`);
+      });
+    relay = await Promise.race([relayStarting, interruption.promise]);
     unlessInterrupted();
     await options.started?.({ relay });
     unlessInterrupted();
@@ -216,7 +231,7 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
 }
 
 interface Started {
-  /** The CLI the pairing offer runs, and what kills it once start-up is interrupted. */
+  /** The CLI the pairing offer runs, and the signal that kills it on any interrupt, during start-up or after it. */
   readonly cli: string;
   readonly signal: AbortSignal;
   readonly relayUrl: string;

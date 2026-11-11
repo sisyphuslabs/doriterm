@@ -5,6 +5,8 @@ import {
   absentPanes,
   absentRemotePanes,
   endedForGood,
+  endedInView,
+  goneFromView,
   type Missing,
   settledPanes,
   stepMissing,
@@ -111,6 +113,17 @@ test("only a program that exited or was killed is over for good; a lost holder, 
   expect(endedForGood({ state: "finished" })).toBe(false);
   // A kept terminal whose program was lost stays live with the loss as its reason, until its shell comes back.
   expect(endedForGood({ state: "live", reason: "killed" })).toBe(false);
+});
+
+test("the panes in view whose terminal the feed lists as over are the ones their views say ended (#2146)", () => {
+  const terminals = [listed("t1", "live"), listed("t2", "finished"), listed("t3", "finished")];
+  expect([...endedInView(terminals, ["t1", "t2", "t9"])]).toEqual(["t2"]);
+});
+
+test("a pane left to its view that no tab shows any more went on another device, which had it out of view (#2146)", () => {
+  const tabs = [tab("a", ["t1"]), tab("b", ["t2", null])];
+  expect(goneFromView(new Set(["t1", "t2", "t3"]), tabs)).toEqual(["t3"]);
+  expect(goneFromView(new Set(), tabs)).toEqual([]);
 });
 
 test("an absent remote pane is asked about only once a later machine.list read still finds it absent on that machine", () => {
