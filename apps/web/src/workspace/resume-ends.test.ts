@@ -204,12 +204,16 @@ describe("one terminal, one identity, however it is reached (#2288)", () => {
     expect(pendingEnds("core-a", storage).list()).toEqual([]);
   });
 
-  test("removing an old prefixed record keeps the record the name's machine now holds for its own terminal", () => {
+  test("an End asked again where an old record sits takes that record over, so the terminal has one and it settles", () => {
     const storage = memoryStorage();
     pendingEnds("core-a", storage).add({ address: "build-box/t7", pid: 1, created: 1, at: NOW });
-    pendingEnds("core-b", storage).add({ address: "t7", pid: 70, created: 500, at: NOW });
-    routedPendingEnds(throughA, storage).remove("build-box/t7");
+    const ends = routedPendingEnds(throughA, storage);
+    ends.add({ address: "build-box/t7", pid: 70, created: 500, at: NOW });
     expect(pendingEnds("core-a", storage).list()).toEqual([]);
-    expect(pendingEnds("core-b", storage).list()).toEqual([{ address: "t7", pid: 70, created: 500, at: NOW }]);
+    expect(ends.list()).toEqual([{ address: "build-box/t7", pid: 70, created: 500, at: NOW }]);
+    // What recordedEnd does when its End settles, either way: nothing of that terminal is left behind (#1278).
+    ends.remove("build-box/t7");
+    expect(ends.list()).toEqual([]);
+    expect(pendingEnds("core-b", storage).list()).toEqual([]);
   });
 });

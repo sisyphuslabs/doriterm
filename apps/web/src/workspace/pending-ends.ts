@@ -80,15 +80,17 @@ export function routedPendingEnds(
 ): PendingEnds {
   const own = (core: string): PendingEnds => pendingEnds(core, storage);
   return {
+    // A record this route's address already had in the old place is taken over here, so one terminal never has two.
     add: (end) => {
       const identity = identityOf(end.address, route);
-      if (identity === undefined) own(route.core).add(end);
-      else own(identity.core).add({ ...end, address: identity.terminal });
+      if (identity === undefined) return own(route.core).add(end);
+      if (end.address.includes("/")) own(route.core).remove(end.address);
+      own(identity.core).add({ ...end, address: identity.terminal });
     },
-    // A prefixed address is first an old record's, kept as written under this core: that one goes alone, so a record
-    // the name's machine keeps for its own terminal of that id (a renamed machine) is not taken with it.
+    // Both places this address can hold a record of its own: the old one under this core, as written, and the new one
+    // with the core that runs the terminal. An End settled here settles whichever of them this page is acting on.
     remove: (address) => {
-      if (address.includes("/") && own(route.core).has(address)) return own(route.core).remove(address);
+      if (address.includes("/")) own(route.core).remove(address);
       const identity = identityOf(address, route);
       if (identity !== undefined) own(identity.core).remove(identity.terminal);
     },
