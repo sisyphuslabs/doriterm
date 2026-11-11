@@ -47,8 +47,15 @@ interface InputSources {
   readonly predict?: RefObject<((data: TerminalInput) => void) | null>;
 }
 
-/** Why input that waited for a machine's line was not sent, as the person is told. */
-export function notSent(why: Dropped, machine: string): string {
+/**
+ * Why input that waited was not sent, as the person is told: for an added machine's line, or for this terminal's own
+ * link, which may be one that has not opened yet (input typed while the terminal opens waits the same way).
+ */
+export function notSent(why: Dropped, machine: string | undefined): string {
+  if (machine === undefined)
+    return why === "expired"
+      ? `Typed input was not sent because this terminal could not be reached for ${HOLD_MS / 1000} s`
+      : "Typed input was not sent because too much was typed while this terminal could not be reached";
   return why === "expired"
     ? `Typed input was not sent because ${machine} did not reconnect within ${HOLD_MS / 1000} s`
     : `Typed input was not sent because too much was typed while ${machine} was reconnecting`;

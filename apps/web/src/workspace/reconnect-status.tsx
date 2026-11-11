@@ -7,6 +7,7 @@ import { staysOnThisComputer } from "../connection/settings.ts";
 import { connectionStore, useConnection } from "../connection/store.ts";
 import { useOnline } from "../pwa/use-online.ts";
 import { HistoryGapLine } from "./history-gap-status.tsx";
+import { PHONE_LINE, PHONE_LINE_TEXT } from "./phone-line.ts";
 import { RetryButton } from "./retry-button.tsx";
 
 function useSecondsUntil(at: number | null, longest: number): number | null {
@@ -145,17 +146,18 @@ export function ConnectionPathItem() {
 }
 
 /**
- * The phone terminal has no status bar: the same notice as one line under its header, only while there is one; once
- * connected, the line says when the reconnect may have lost output (#2033), until dismissed.
+ * The phone has no status bar: the same notice as one line under a screen's header, only while there is one. On a
+ * terminal's screen (`address`), once connected, the line says when that terminal may have lost output (#2033, #2257),
+ * until dismissed; noted as the line went down, it takes the notice's place in the same render, at its height.
  */
-export function ConnectionLine() {
+export function ConnectionLine({ address }: { readonly address?: string }) {
   const notice = useConnectionNotice();
-  if (notice === null) return <HistoryGapLine />;
+  if (notice === null) return address === undefined ? null : <HistoryGapLine address={address} />;
   return (
-    <div className="flex shrink-0 items-start gap-2 border-b border-border bg-chrome px-4 py-2">
+    <div className={PHONE_LINE}>
       <p
         role="status"
-        className="flex min-w-0 flex-1 items-start gap-2 text-prose text-foreground [&_svg:not([data-slot=spinner])]:mt-0.5 [&_svg:not([data-slot=spinner])]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground"
+        className={`${PHONE_LINE_TEXT} [&_svg:not([data-slot=spinner])]:mt-0.5 [&_svg:not([data-slot=spinner])]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground`}
       >
         {glyph(notice, "size-4")}
         {/* The sentence is required content (DESIGN.md 5 (e)): it wraps at narrow widths rather than losing its end. */}

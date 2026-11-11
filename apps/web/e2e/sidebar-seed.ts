@@ -6,6 +6,7 @@ import { E2E_HOST_ENV } from "./config.ts";
 import { LAYOUT_DOC, seedSpaces, type SeedSpace } from "./layout-doc.ts";
 import { setCoreDoc } from "./core-doc.ts";
 import { MACHINE_NAME } from "./machine.ts";
+import { machineStateOf, REDIAL_BOUND_MS } from "./machine-switch.ts";
 import { readSavedEnv } from "./saved-env.ts";
 
 /** Long enough to fill the machine column of a sidebar row. */
@@ -82,21 +83,10 @@ export function stop(addresses: readonly string[]): void {
   for (const address of addresses) endAgent("host", address);
 }
 
-function machineState(name: string): string | undefined {
-  const listed: unknown = JSON.parse(hc(["machine", "ls", "--json"]));
-  const machines = typeof listed === "object" && listed !== null ? Reflect.get(listed, "machines") : undefined;
-  if (!Array.isArray(machines)) throw new Error("hc machine ls printed no machine list");
-  const found: unknown = machines.find(
-    (machine: unknown) => typeof machine === "object" && machine !== null && Reflect.get(machine, "name") === name,
-  );
-  const state = typeof found === "object" && found !== null ? Reflect.get(found, "state") : undefined;
-  return typeof state === "string" ? state : undefined;
-}
-
-/** Waits for hc to report the machine connected: an earlier spec may have dropped its line, and hc redials within 30 s. */
-export async function machineConnected(name: string, deadline = Date.now() + 45_000): Promise<void> {
-  if (machineState(name) === "connected") return;
-  if (Date.now() > deadline) throw new Error(`${name} did not connect within 45 s`);
+/** Waits for hc to report the machine connected: an earlier spec may have dropped its line (REDIAL_BOUND_MS). */
+export async function machineConnected(name: string, deadline = Date.now() + REDIAL_BOUND_MS): Promise<void> {
+  if (machineStateOf(name) === "connected") return;
+  if (Date.now() > deadline) throw new Error(`${name} did not connect within ${REDIAL_BOUND_MS / 1000} s`);
   await new Promise((resolve) => setTimeout(resolve, 250));
   return machineConnected(name, deadline);
 }

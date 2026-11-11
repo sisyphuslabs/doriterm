@@ -236,11 +236,21 @@ expected="$(awk -v name="$asset" '{ file = $2; sub(/^\*/, "", file); if (file ==
 actual="$(sha256 "${work}/${asset}")"
 [ "$expected" = "$actual" ] || fail "${asset} does not match SHA256SUMS.txt (expected ${expected}, got ${actual}); nothing was installed"
 chmod 755 "${work}/${asset}"
-# The binary just checked holds the release's public key; it checks the checksums' signature. Releases before #1969
-# carry no signature, so its absence is said, not fatal; a signature that does not verify is.
+# Whether the release named (stamped, or given with --version) is one of the signed ones, v0.1.18 and later; a stamped
+# script names its release even with --from (#2297). Releases before #1969 carry no signature, and the unstamped
+# repository copy without --version names none, so for those the absence is only said (#1983).
+signed_release() {
+  [ -n "$version" ] || return 1
+  printf '%s\n' "${version#v}" | awk -F '[.-]' '{ exit !($1 > 0 || $2 > 1 || ($2 == 1 && $3 >= 18)) }'
+}
+# The binary just checked holds the release's public key; it checks the checksums' signature. A signed release without
+# its signature installs nothing; for an older one the absence is said, not fatal; a signature that does not verify
+# never installs.
 if curl -fsSL --retry 3 -o "${work}/SHA256SUMS.txt.sig" "${from}/SHA256SUMS.txt.sig" 2>/dev/null; then
   "${work}/${asset}" verify-release "${work}/SHA256SUMS.txt" "${work}/SHA256SUMS.txt.sig" ||
     fail "SHA256SUMS.txt is not signed by a Doriterm release key; nothing was installed"
+elif signed_release; then
+  fail "${version} is signed, but no SHA256SUMS.txt.sig came with it; nothing was installed"
 else
   say "this release carries no SHA256SUMS.txt.sig; checked against SHA256SUMS.txt only"
 fi

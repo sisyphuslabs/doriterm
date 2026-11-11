@@ -62,6 +62,8 @@ export function multipartFraming(
   return { heads, tail, length };
 }
 
+type Cancelled = { readonly reason: unknown } | null;
+
 /**
  * The multipart body: each group read from R2 in turn when the body reaches it, each part's header, then its bytes,
  * skipping the bytes between parts of a group without copying any.
@@ -80,6 +82,7 @@ export function multipartBody(
   let headSent = false;
   let at = 0;
   let progressed = false;
+  let cancelled: Cancelled = null;
 
   /** Enqueues what the chunk in hand allows; "read" when it needs the next chunk, "group" for the next group. */
   const drain = (controller: ReadableStreamDefaultController<Uint8Array>): "read" | "group" | "done" => {
@@ -110,21 +113,32 @@ export function multipartBody(
 
   /** One pull: reads until it has enqueued something, then leaves the rest to the next pull (backpressure). */
   const step = async (controller: ReadableStreamDefaultController<Uint8Array>): Promise<void> => {
+    if (cancelled !== null) return;
     const state = reader === null ? "group" : drain(controller);
-    if (state === "read" && progressed) {
+    // The next group opens only when the client reads on, so a cancel between groups opens no R2 read (#2272).
+    if (state !== "done" && progressed) {
       progressed = false;
       return;
     }
     if (state === "done") {
+      reader?.releaseLock();
       controller.enqueue(framing.tail);
       controller.close();
       return;
     }
     if (state === "group") {
+      // A finished group's R2 body is let go before the next opens (#2264).
+      reader?.releaseLock();
+      reader = null;
       group += 1;
       const next = groups[group];
       if (next === undefined) throw new Error("no range group left to read");
-      reader = (await read(next)).getReader();
+      const source = await read(next);
+      // The client went away while this body was opening: nothing will read it.
+      // The stream's cancel can set `cancelled` during the await above, which narrowing cannot see.
+      const late = cancelled as Cancelled;
+      if (late !== null) return void (await source.cancel(late.reason));
+      reader = source.getReader();
       chunk = new Uint8Array(0);
       chunkStart = next.offset;
       partInGroup = 0;
@@ -138,8 +152,15 @@ export function multipartBody(
     return step(controller);
   };
 
-  return new ReadableStream<Uint8Array>({
-    pull: (controller) => step(controller),
-    cancel: (reason) => reader?.cancel(reason),
-  });
+  // highWaterMark 0: the stream never pulls on its own to refill a queue, so no R2 read opens for an idle client (#2274).
+  return new ReadableStream<Uint8Array>(
+    {
+      pull: (controller) => step(controller),
+      cancel: (reason) => {
+        cancelled = { reason };
+        return reader?.cancel(reason);
+      },
+    },
+    { highWaterMark: 0 },
+  );
 }

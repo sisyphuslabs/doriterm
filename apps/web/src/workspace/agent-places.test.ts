@@ -41,13 +41,15 @@ describe("placeAgents", () => {
   });
 
   test("a watch that wakes the agent again before the wait is over leaves the row where it was", () => {
-    const places = placesAfter([
-      [0, [agent("t1", "idle")]],
-      [1_000, [agent("t1", "working")]],
-      [4_000, [agent("t1", "idle")]],
-      [4_000 + SETTLE_MS, [agent("t1", "idle")]],
-    ]);
-    expect(places.get("t1")).toEqual({ status: "idle" });
+    const steps = [
+      [0, [agent("t1", "working")]],
+      [1_000, [agent("t1", "idle")]],
+      [1_000 + SETTLE_MS - 1, [agent("t1", "working")]],
+    ] as const;
+    const places = placesAfter(steps);
+    // Working again with no move waiting: the row stays in Working and nothing falls due once the old wait would end.
+    expect(places.get("t1")).toEqual({ status: "working" });
+    expect(placeAgents(places, [agent("t1", "working")], 1_000 + SETTLE_MS).due).toBeNull();
   });
 
   test("an agent that starts working moves to Working at once, also one that never reported before", () => {
@@ -103,6 +105,17 @@ describe("agentGroups with places (#1949)", () => {
     expect(names(agentGroups(after, 1_000, "status", places))).toEqual([["Working", ["t1", "t2", "t3"]]]);
     const row = agentGroups(after, 1_000, "status", places)[0]?.agents[1];
     expect(row?.status).toBe("idle");
+  });
+
+  test("each header counts the rows it lists, a row held in Working through its wait included (#1963)", () => {
+    const after = [agent("t1", "idle"), agent("t2", "working")];
+    const places = placesAfter([
+      [0, [agent("t1", "working"), agent("t2", "working")]],
+      [1_000, after],
+    ]);
+    const groups = agentGroups(after, 1_000, "status", places);
+    expect(groups.map((group) => [group.title, group.count])).toEqual([["Working", 2]]);
+    expect(groups.every((group) => group.count === group.agents.length)).toBe(true);
   });
 
   test("once the idle turn has held, the row moves to Idle", () => {
