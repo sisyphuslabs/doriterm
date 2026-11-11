@@ -137,6 +137,21 @@ export async function settledGrid(page: Page, terminal: Locator): Promise<void> 
 export const keysBar = (page: Page) => page.getByRole("toolbar", { name: "Terminal keys" });
 export const key = (page: Page, name: string) => page.getByRole("button", { name, exact: true });
 
+/**
+ * Holds the keys bar's Ctrl until the Shortcut packs sheet opens, as a finger does: a held Ctrl opens the packs panel
+ * (KeyButton's hold), and the lift that follows sends nothing. Resolves once the sheet is on screen.
+ */
+export async function openShortcutPacks(page: Page): Promise<void> {
+  const ctrl = keysBar(page).getByRole("button", { name: "Control", exact: true });
+  const box = await ctrl.boundingBox();
+  if (box === null) throw new Error("the keys bar's Ctrl is not laid out");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  const sheet = page.getByRole("dialog", { name: "Shortcut packs" });
+  await expect(sheet).toBeVisible();
+  await page.mouse.up();
+}
+
 export async function expectTouchTargets(scope: Locator): Promise<void> {
   const small = await scope.getByRole("button").evaluateAll((buttons) =>
     buttons
