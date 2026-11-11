@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RequestContext } from "./bindings.ts";
 import { githubFeed } from "./github-feed.ts";
@@ -113,9 +112,12 @@ test("a feed as release.yml publishes it is accepted whole, every file pointed a
   expect(composed).toContain("releaseDate: 2026-11-09T11:00:39.288Z\n");
 });
 
-test("no file the Worker runs uses a Bun API, which the Workers runtime does not have", () => {
-  const dir = import.meta.dir;
-  const runtime = readdirSync(dir).filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"));
-  expect(runtime.length).toBeGreaterThan(8);
-  expect(runtime.filter((name) => /\bBun\./.test(readFileSync(join(dir, name), "utf8")))).toEqual([]);
+test("no file the Worker runs uses a Bun API, which the Workers runtime does not have", async () => {
+  // Everything wrangler bundles from the entry point, at any depth (#1981): a browser build refuses an import of "bun"
+  // or "bun:*", and the bundle must not name the Bun global.
+  const built = await Bun.build({ entrypoints: [join(import.meta.dir, "index.ts")], target: "browser", throw: false });
+  expect(built.logs.map(String)).toEqual([]);
+  const code = (await built.outputs[0]?.text()) ?? "";
+  expect(code.length).toBeGreaterThan(10_000);
+  expect(code.match(/\bBun\b/g) ?? []).toEqual([]);
 });

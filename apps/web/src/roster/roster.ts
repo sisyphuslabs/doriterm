@@ -186,6 +186,9 @@ export class Roster {
     return this.#lines.watch();
   }
 
+  /** Settles once the line read in flight, if any, has: what a test waits on instead of time. */
+  linesIdle = (): Promise<void> => this.#lines.idle();
+
   /** Asks the core for the terminal list and the stream again after a first answer that failed (#819). */
   retryTerminals(): void {
     this.#feed?.start();

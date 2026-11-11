@@ -1,4 +1,5 @@
-import { writeFileSync } from "node:fs";
+import { existsSync, watch, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { createInterface } from "node:readline";
 import { startRelayedHost } from "../support/relayed-host.ts";
 
@@ -7,16 +8,28 @@ import { startRelayedHost } from "../support/relayed-host.ts";
 // in between, as an e2e helper can be stopped while it starts. How start-up ended is written to SETTLED_FILE.
 // STAGE=uplink says so once the host has started and goes straight on into the uplink wait (HOST_RELAY_URL and UPLINK_MS
 // point it at a relay that never answers). STAGE=teardown fails start-up once the host has started and holds that failed
-// start's teardown at the host's stop, says so, and goes on at the next line on stdin (#2131).
+// start's teardown at the host's stop, says so, and goes on at the next line on stdin (#2131). PAIR_CLI swaps in the
+// pair CLI start-up runs last (#2155).
 const stage = process.env["STAGE"] ?? "";
 const settledFile = process.env["SETTLED_FILE"] ?? "";
 const hostRelayUrl = process.env["HOST_RELAY_URL"];
+const pairCli = process.env["PAIR_CLI"];
 const uplinkTimeoutMs = process.env["UPLINK_MS"] === undefined ? undefined : Number(process.env["UPLINK_MS"]);
 process.once("SIGTERM", () => process.stdout.write("SIGNALLED\n"));
+if (stage === "pair") {
+  // The stub pair CLI writes this file once it runs; that is when start-up is held at the pair step.
+  const mark = process.env["PAIR_MARK"] ?? "";
+  const watcher = watch(dirname(mark), () => {
+    if (!existsSync(mark)) return;
+    watcher.close();
+    process.stdout.write("STAGE pair\n");
+  });
+}
 const lines = createInterface({ input: process.stdin })[Symbol.asyncIterator]();
 try {
   await startRelayedHost("startup-sigterm", {
     ...(hostRelayUrl === undefined ? {} : { hostRelayUrl }),
+    ...(pairCli === undefined ? {} : { pairCli }),
     ...(uplinkTimeoutMs === undefined ? {} : { uplinkTimeoutMs }),
     started: async (part) => {
       if (stage === "uplink") {

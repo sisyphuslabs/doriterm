@@ -23,9 +23,11 @@ const encoder = new TextEncoder();
  * Cursor home, then erase to the end of the screen (ED 0): clears the screen in use and leaves the scrollback alone. The
  * core's repaint starts with ESC[2J, which Ghostty answers over a prompt marked with OSC 133 (fish 4, shell integration)
  * by scrolling the screen into history; over a screen already blank there is nothing to scroll. Under a full-screen
- * program (vim, less, htop) this clears the alternate screen only: the repaint leaves it and its ESC[2J scrolls the
- * primary screen behind it into history once, and since the repaint does not draw the primary screen again, that is the
- * only copy of the output above the program's command, so the primary screen must not be erased here.
+ * program (vim, less, htop) this clears the alternate screen only: the repaint leaves it, and its ESC[2J scrolls the
+ * primary screen behind it into history once when that screen ends at an OSC 133-marked prompt. The repaint does not draw
+ * the primary screen again, so that is the only copy of the output above the program's command, and the primary screen
+ * must not be erased here. Over an unmarked prompt the core's repaint erases that screen with no copy; that loss is the
+ * core's, and belongs with the resume-cursor work in #2033.
  */
 const CLEAR_SCREEN = "\u001b[H\u001b[J";
 

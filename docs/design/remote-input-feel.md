@@ -58,10 +58,13 @@ lost keystroke would look.
 
 ### Reattach
 
-- A reconnect re-attaches with `history: 2000` and `resumed: true` (`apps/web/src/terminal/opening-attach.ts:14`,
-  `use-terminal-attach.ts:158-165`). Before the replay it drops the pacer queue, resets the image transcoder, writes RIS
-  (`FULL_RESET`, `:20`, `:185-188`) so the local scrollback is wiped, and arms a hold at the end (`:190-191`,
-  `hold-view-at-end.ts:20-44`, #1040; #1393/#1394 are reworking which readers it holds).
+- Since #1999 (#1997), a reconnect to a view the core has already painted re-attaches with `history: 0` and
+  `resumed: true`, and keeps the scrollback the view holds (`apps/web/src/terminal/use-terminal-attach.ts`, the
+  `keepsHistory` attach). A first attach, or a new view (Try again on a view the core never painted), still asks for
+  `history: 2000` (`HISTORY_LINES`, `opening-attach.ts`). Before the core's repaint the view drops the pacer queue,
+  clears only its screen (`ESC[H ESC[J`, so the repaint's `ESC[2J` has no marked prompt to scroll into history) and
+  arms a hold at the end (`hold-view-at-end.ts`, #1040, #1393). It no longer writes RIS (`FULL_RESET`) or replays
+  2,000 lines on a reconnect.
 - The core's first paint is one `data()` call (`viewers.rs:95-110`) built by `ghostty-vt`'s `paint()`
   (`crates/ghostty-vt/src/lib.rs:704-740`): a soft reset that **ends** any synchronized update (`ESC[?2026l`), home +
   clear, the history lines pushed up into scrollback, home + clear again, the active screen, an optional title. The wire
@@ -220,10 +223,11 @@ today. The exact fix is the core bracketing its first paint in `ESC[?2026h … E
 pacer already honours such a bracket (`output-pacer.ts:36-39`), so when that lands the replay mode becomes redundant
 without a client change.
 
-Rejected: re-attaching with `history: 0` and keeping the local scrollback. The screen alone fits one frame, but every
-reconnect would leave a hole in the scrollback exactly where the person wants to read what happened while they were
-away. Scrollback older than 2000 lines is already dropped on every reconnect today (`FULL_RESET` + `HISTORY_LINES`);
-that drop is kept and named here, and its real fix is a resume by offset (C2 in #653, D13 in `docs/architecture.md:290`).
+Since #1999 a reattach to a painted view does ask for `history: 0` and keeps the local scrollback, so the screen's
+repaint fits about one frame and no reconnect drops older scrollback any more. The known gap is the one this section
+weighed: output that scrolled off the screen while the line was down is not in the scrollback, so there is a hole
+exactly where the person may want to read what happened while they were away. Its real fix is a resume by offset (C2
+in #653, D13 in `docs/architecture.md:290`).
 
 ### D6. Input typed while the link is unproven is held, in order, never written into a possibly dead socket
 
@@ -279,7 +283,8 @@ correct and merged without them, and so that landing them later makes a client m
 
 The client's role on the output path stays what the passthrough rule says (`docs/architecture.md:91`): the pacer decides
 **when** bytes reach the VT, never what they are. Replay mode and catch-up only change timing and the paint hold. The
-only local bytes written remain the ones written today (`FULL_RESET`, the cursor-style sequence).
+only local bytes written are the screen clear before a reattach's repaint (`ESC[H ESC[J`, which replaced `FULL_RESET` in
+#1999) and the cursor-style sequence.
 
 ## 4. Residuals a reviewer should know
 
@@ -310,7 +315,8 @@ only local bytes written remain the ones written today (`FULL_RESET`, the cursor
 
 - No per-key writes into the terminal model, in any form.
 - No prompt-text or program-name heuristics for password prompts.
-- No change to `HISTORY_LINES`, `FULL_RESET`, or the credit-after-write rule.
+- No change to `HISTORY_LINES` or the credit-after-write rule. (#1999 later replaced the reconnect's `FULL_RESET`
+  with a screen clear and a `history: 0` reattach; see Reattach.)
 - No extra credit granted at wake; no client-side drop of stale bytes.
 - No re-send of input that was already written.
 - No fixed quiet windows shorter than the SRTT-relative floor; no sleeps in specs.

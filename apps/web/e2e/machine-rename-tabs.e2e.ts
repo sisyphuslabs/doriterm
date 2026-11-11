@@ -89,6 +89,7 @@ test.describe("renaming a machine with two tabs open", () => {
     await agentRow(page, "home", false).click();
     await agentRow(page, "e2e", true).click();
     await expect(page.locator(`[data-terminal="${MACHINE_NAME}/${remote}"]`)).toBeVisible({ timeout: 20_000 });
+    await layout.requested(STATE_BOUND_MS);
     layout.release();
     await expect(tabs(page)).toHaveCount(2, { timeout: STATE_BOUND_MS });
     // Which of the two the loaded layout puts first is not the rename's to keep; which terminal each tab shows is.
