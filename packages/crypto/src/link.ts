@@ -17,6 +17,8 @@ export const CloseCode = {
   RelayAuthFailed: 4403,
   HostOffline: 4404,
   IdleTimeout: 4408,
+  /** A typed-code mesh join refused for any reason but the code opening a device pairing (that one stays 4401). */
+  MeshCodeRefused: 4411,
   RateLimited: 4429,
 } as const;
 
