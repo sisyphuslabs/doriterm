@@ -64,30 +64,33 @@ test.each(["inviter", "unclaimed"] as const)(
   },
 );
 
-test.each([false, true])("every card key is checked before accepting a machine refresh=%s", (refresh) => {
-  const a = side("alpha");
-  const c = side("beta");
-  a.mesh.found(a.m.identity, ownOf(a));
-  const mesh = a.mesh.read()?.meshId ?? "";
-  const body = cardBody(c.m.identity, ownOf(c), mesh, signPubOf(a.m));
-  if (refresh)
-    a.mesh.sign(a.m.identity, (n, prev) => ({
-      v: 2,
-      mesh,
-      by: signPubOf(a.m),
-      type: "admit",
-      n,
-      prev,
-      subject: { card: signCard(body, c.m.identity.sign.secretKey) },
-    }));
-  expect(() =>
-    isRejoin(
-      a.mesh.authorizeIndex(),
-      {
-        ...body,
-        devicePub: noiseOf(a.m),
-      },
-      a.mesh.read()?.records ?? [],
-    ),
-  ).toThrow("this Noise key is another mesh member's");
-});
+test.each([{ refresh: false }, { refresh: true }])(
+  "every card key is checked before accepting a machine refresh=$refresh",
+  ({ refresh }) => {
+    const a = side("alpha");
+    const c = side("beta");
+    a.mesh.found(a.m.identity, ownOf(a));
+    const mesh = a.mesh.read()?.meshId ?? "";
+    const body = cardBody(c.m.identity, ownOf(c), mesh, signPubOf(a.m));
+    if (refresh)
+      a.mesh.sign(a.m.identity, (n, prev) => ({
+        v: 2,
+        mesh,
+        by: signPubOf(a.m),
+        type: "admit",
+        n,
+        prev,
+        subject: { card: signCard(body, c.m.identity.sign.secretKey) },
+      }));
+    expect(() =>
+      isRejoin(
+        a.mesh.authorizeIndex(),
+        {
+          ...body,
+          devicePub: noiseOf(a.m),
+        },
+        a.mesh.read()?.records ?? [],
+      ),
+    ).toThrow("this Noise key is another mesh member's");
+  },
+);

@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import type { HcSession } from "../../apps/host/src/testing/hc-session.ts";
 import type { LocalRelay } from "./support/relay-dev.ts";
-import { liveAmong } from "./support/processes.ts";
+import { stopLeftUnder } from "../../apps/host/src/testing/run-dir.ts";
+import { liveAmong, liveWithEnvironment } from "./support/processes.ts";
 import { startRelayedHost } from "./support/relayed-host.ts";
 
 /** Processes still running with this hc session in their environment: its core and any `hc connect` the host ran. */
@@ -102,4 +103,33 @@ describe("startRelayedHost", () => {
       rmSync(tmp, { recursive: true, force: true });
     }
   }, 240_000);
+
+  test("a process that ends on SIGTERM stops its relayed host first, hc core included, and leaves nothing (#2061)", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "relayed-sigterm-"));
+    try {
+      const fixture = Bun.spawn([process.execPath, join(import.meta.dir, "fixtures", "relayed-sigterm.fixture.ts")], {
+        env: { ...process.env, TMPDIR: tmp },
+        stdout: "pipe",
+        stderr: "inherit",
+      });
+      let printed = "";
+      for await (const chunk of fixture.stdout.pipeThrough(new TextDecoderStream())) {
+        printed += chunk;
+        if (printed.includes("READY\n")) break;
+      }
+      expect(printed).toContain("READY\n");
+      fixture.kill("SIGTERM");
+      await fixture.exited;
+      // No hc process holds a file under its tmp dir: its core, with a terminal on it, runs as a daemon outside every
+      // process group of the fixture, so only the host's orderly stop ends it. Every other process it started has ended
+      // too, and the host's and the session's scratch is gone (the stop's last steps; wrangler leaves files of its own
+      // there, such as miniflare-* and update-check).
+      expect(await stopLeftUnder(tmp)).toEqual([]);
+      expect(await liveWithEnvironment(`TMPDIR=${tmp}`)).toEqual([]);
+      expect(readdirSync(tmp).filter((name) => name.startsWith("rh-") || name.startsWith("dh-"))).toEqual([]);
+    } finally {
+      await stopLeftUnder(tmp);
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  }, 120_000);
 });

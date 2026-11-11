@@ -47,6 +47,8 @@ import { orderNotSaved } from "./machine-order.ts";
 import { useMachineOrder } from "./use-machine-order.ts";
 import { useTerminals, type DocHeard } from "./use-terminals.ts";
 import { useResumeEnds } from "./resume-ends.ts";
+import { useSteady } from "./steady.ts";
+import { useStableCallback } from "./use-stable-callback.ts";
 import { useNoticeOpen } from "../push/notice-open.ts";
 import { usePushPresence } from "../push/use-push-presence.ts";
 import { PromptAnswerBanner } from "../push/prompt-answer-banner.tsx";
@@ -283,7 +285,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   useNoticeOpen(connectionStore.settings.mode === "relay" ? connectionStore.settings.hostId : undefined, opened);
   // What this screen reads for attention: a finish it has looked at reads idle here, and only here (#611).
   const sessions = useAttention(terminals, layout, narrow ? phoneOpen : null);
-  const spaces = useMemo(() => layoutSpaces(layouts, sessions, gitOf), [layouts, sessions, gitOf]);
+  const spaces = useSteady(useMemo(() => layoutSpaces(layouts, sessions, gitOf), [layouts, sessions, gitOf]));
   const onPalette = (): void => setPalette(true);
   const onSession: SessionVerb = (verb) => {
     const space = spaces.find((each) => inView !== null && each.addresses.includes(inView));
@@ -317,6 +319,10 @@ export function Workspace({ connection }: WorkspaceProps) {
     },
     [openInLayout, showOnPhone],
   );
+  // Read when a start is asked for, so the run is placed by that render's closure (see useMachineRuns), while the
+  // machines context keeps its value across terminal events (#2086).
+  const inNewSpaceNow = useRef(inNewSpace);
+  inNewSpaceNow.current = inNewSpace;
   const machines = useMemo(
     () => ({
       entries,
@@ -329,8 +335,8 @@ export function Workspace({ connection }: WorkspaceProps) {
       views,
       retry,
       moveMachine,
-      start: (params: TerminalRunParams) => runs.start(params, inNewSpace),
-      newTerminalOn: (machine: string) => runs.start({ on: machine }, inNewSpace),
+      start: (params: TerminalRunParams) => runs.start(params, inNewSpaceNow.current),
+      newTerminalOn: (machine: string) => runs.start({ on: machine }, inNewSpaceNow.current),
     }),
     [
       entries,
@@ -344,10 +350,9 @@ export function Workspace({ connection }: WorkspaceProps) {
       retry,
       moveMachine,
       runs,
-      inNewSpace,
     ],
   );
-  const { selectSpace } = layout;
+  const selectSpace = useStableCallback(layout.selectSpace);
   // The space keys count the spaces as the sidebar lists them, so "space 2" is the second row a person sees.
   const spaceKeys = useMemo(() => spacesInOrder(entries, spaces).map((space) => space.id), [entries, spaces]);
   const selectedSpace = layout.active?.spaceKey ?? null;
@@ -392,6 +397,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                     spaces={spaces}
                     ask={spaceClosing}
                     onAsk={setSpaceClosing}
+                    drops={{ closing: closingSessions, kept }}
                   >
                     {narrow ? (
                       <PhoneShell
