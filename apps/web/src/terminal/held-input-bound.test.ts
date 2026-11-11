@@ -59,12 +59,13 @@ test("more than HOLD_BYTES typed while no stream is open is dropped at once", ()
   expect(held.pending).toEqual([]);
 });
 
-test("Ctrl+C typed while no stream is open reaches the next stream first, the rest in the order typed", () => {
+test("keys typed while no stream is open reach the next stream in the order typed, Ctrl+C included (#2303)", () => {
   jest.useFakeTimers();
   const { held, took, dropped, reattach } = droppedConnection();
-  for (const key of ["o", "m", new Uint8Array([0x03]), "\u0003", "o"]) held.send(key);
+  // A command typed, then Ctrl+C to cancel it: the program must not get Ctrl+C at an idle prompt and then run it.
+  for (const key of ["cmd", "\r", "\u0003", "o", new Uint8Array([0x03])]) held.send(key);
   reattach();
-  expect(took).toEqual([new Uint8Array([0x03]), "\u0003", "o", "m", "o"]);
+  expect(took).toEqual(["cmd", "\r", "\u0003", "o", new Uint8Array([0x03])]);
   jest.advanceTimersByTime(HOLD_MS);
   expect(dropped).toEqual([]);
 });
@@ -177,7 +178,7 @@ test("a machine's line back while a wake check runs: what waited goes once the c
   expect([took, dropped]).toEqual([["a"], []]);
 });
 
-test("a machine's line back while the stream is down: the wait goes on for the stream, in this terminal's words (#2266 review)", () => {
+test("a machine's line back while the stream is down: the wait goes on for the stream, in this terminal's words, within the same HOLD_MS (#2303)", () => {
   jest.useFakeTimers();
   const { held, dropped, line, streamDown } = rackInput();
   line("unreachable");
@@ -185,7 +186,8 @@ test("a machine's line back while the stream is down: the wait goes on for the s
   streamDown();
   jest.advanceTimersByTime(4_000);
   line("connected");
-  jest.advanceTimersByTime(HOLD_MS - 1);
+  // The bound is the input's, not its cause's: the 4 s it waited for the machine count toward it.
+  jest.advanceTimersByTime(HOLD_MS - 4_000 - 1);
   expect(dropped).toEqual([]);
   jest.advanceTimersByTime(1);
   expect(dropped).toEqual([["expired", undefined]]);

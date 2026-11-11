@@ -93,7 +93,7 @@ const hex = (path: string): string => readFileSync(path).toString("hex");
 const notice = () =>
   page.getByRole("status").filter({ hasText: `Reconnecting to ${machine}. Your typing will be sent.` });
 
-test("keys typed while the machine's line is down are held, said so, and reach it once, Ctrl+C first", async () => {
+test("keys typed while the machine's line is down are held, said so, and reach it once, in the order typed (#2303)", async () => {
   const out = await bytesReader("held", 10);
   await ask("STOP");
   // Soft, so a page that never says it still types the keys below and shows where they went.
@@ -106,8 +106,8 @@ test("keys typed while the machine's line is down are held, said so, and reach i
   await page.keyboard.press("Control+c");
   await ask("START");
 
-  // Ctrl+C, then o m o ㅐ 한 in the order typed, each exactly once: nothing dropped and nothing twice.
-  await expect.poll(() => hex(out), { timeout: 20_000 }).toBe("036f6d6fe38590ed959c");
+  // o m o ㅐ 한, then Ctrl+C, in the order typed, each exactly once: nothing dropped, nothing twice, nothing reordered.
+  await expect.poll(() => hex(out), { timeout: 20_000 }).toBe("6f6d6fe38590ed959c03");
   await expect(terminal).toContainText("held-done-42", { timeout: 15_000 });
   await expect(notice()).toHaveCount(0);
 });
