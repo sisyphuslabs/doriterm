@@ -88,3 +88,32 @@ describe("a picked drag keeps every finger's moves (#2096)", () => {
     expect(terminal.move(2)).toBe(false);
   });
 });
+
+const GESTURE = ["pointerdown", "touchstart", "touchmove", "pointerup", "touchend"];
+
+/** A terminal the hook was wired to, and unwired from when `unwire`, then a press held and lifted on it. */
+function pressedAfter(unwire: boolean): LongPressTerminal {
+  jest.useFakeTimers();
+  const terminal = longPressTerminal();
+  mounted.push(terminal);
+  const detach = attachLongPressSelect(terminal.wt as unknown as Pick<WTerm, "element">, () => undefined);
+  if (unwire) detach();
+  else unmounts.push(detach);
+  terminal.down(1);
+  jest.advanceTimersByTime(LONG_PRESS_MS);
+  terminal.move(1);
+  terminal.up(1);
+  return terminal;
+}
+
+describe("unwiring takes every listener away (#1901)", () => {
+  test("while wired, the hook answers the press on the element, the document and the window", () => {
+    const terminal = pressedAfter(false);
+    expect(GESTURE.filter((type) => terminal.handled(type))).toEqual(GESTURE);
+  });
+
+  test("once unwired, nothing answers the same press anywhere", () => {
+    const terminal = pressedAfter(true);
+    expect(GESTURE.filter((type) => terminal.handled(type))).toEqual([]);
+  });
+});

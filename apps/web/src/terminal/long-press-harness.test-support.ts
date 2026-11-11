@@ -165,7 +165,10 @@ export interface LongPressTerminal {
   up(pointerId?: number, primary?: boolean): void;
   /** The finger moves: the browser sends the touchmove to the node it landed on. Whether that move was cancelled. */
   move(pointerId?: number): boolean;
-  /** Whether an element listener answers `type` that this pointer dispatched, once the hook's effect is mounted. */
+  /**
+   * Whether a listener on the element, the document or the window answered a `type` event this harness dispatched. A
+   * fresh terminal has none, and once the hook is unwired none may be left (#1901).
+   */
   readonly handled: (type: string) => boolean;
   /** Whether the last `up` was cancelled, so the tap's own mouse events never arrive. */
   readonly tapCancelled: boolean;
@@ -173,9 +176,9 @@ export interface LongPressTerminal {
 }
 
 /**
- * One terminal with the word "hello" under the point the harness presses, and a count of the element events its
- * listeners handled: a fresh terminal has no listeners, and the hook's own effect is what gives it the pointerdown and
- * touchstart ones.
+ * One terminal with the word "hello" under the point the harness presses, and a count of the events a listener on its
+ * element, document or window answered: a fresh terminal has no listeners, and the hook's own effect is what gives it
+ * the pointerdown, touchstart and pointerup ones.
  */
 export function longPressTerminal(): LongPressTerminal {
   const document = new FakeDocument();
@@ -193,11 +196,13 @@ export function longPressTerminal(): LongPressTerminal {
   const count = (type: string): void => {
     handled.set(type, (handled.get(type) ?? 0) + 1);
   };
-  element.dispatch = (type: string, event: unknown): void => {
-    if (!element.listens(type)) return;
-    count(type);
-    FakeTarget.prototype.dispatch.call(element, type, event);
-  };
+  for (const target of [element, document, window]) {
+    target.dispatch = (type: string, event: unknown): void => {
+      if (!target.listens(type)) return;
+      count(type);
+      FakeTarget.prototype.dispatch.call(target, type, event);
+    };
+  }
   return {
     wt: { element: element as unknown as Element, focus: () => undefined },
     down(pointerId = 1, primary = true, onRedrawnCell = false): void {
