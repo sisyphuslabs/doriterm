@@ -41,6 +41,10 @@ export interface RenameRequest {
   readonly name: string;
 }
 
+/** What revoke, rename and leave answer while this host's first join is pending: its mesh is not founded yet (#1635). */
+export const FIRST_JOIN_PENDING =
+  "this host's mesh is founded only once its first join is admitted: approve or deny the pending join, then run this again";
+
 const INVALID_NAME =
   'is not a valid mesh name: 1 to 32 of a-z, 0-9, "-", "_" and ".", starting with a letter or digit, ' +
   "and not shaped like a terminal id such as t7";
