@@ -87,10 +87,10 @@ export function routedPendingEnds(
       if (end.address.includes("/")) own(route.core).remove(end.address);
       own(identity.core).add({ ...end, address: identity.terminal });
     },
-    // Both places this address can hold a record of its own: the old one under this core, as written, and the new one
-    // with the core that runs the terminal. An End settled here settles whichever of them this page is acting on.
+    // An old record kept as written under this core goes alone: `add` takes one over before it writes, so a record
+    // still sitting there belongs to no End of this page, and the machine the name points to now keeps its own.
     remove: (address) => {
-      if (address.includes("/")) own(route.core).remove(address);
+      if (address.includes("/") && own(route.core).has(address)) return own(route.core).remove(address);
       const identity = identityOf(address, route);
       if (identity !== undefined) own(identity.core).remove(identity.terminal);
     },
