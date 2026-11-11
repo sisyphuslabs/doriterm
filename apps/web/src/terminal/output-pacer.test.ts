@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { dirname, join } from "node:path";
-import { FRAME_BYTES, type FrameTimer, OutputPacer, SYNCHRONIZED_UNPACED_MS } from "./output-pacer.ts";
+import {
+  FRAME_BYTES,
+  type FrameTimer,
+  OutputPacer,
+  SYNCHRONIZED_HOLD_CAP_MS,
+  SYNCHRONIZED_UNPACED_MS,
+} from "./output-pacer.ts";
 
 /** Animation frames that run only when the test says so. */
 function manualFrames() {
@@ -146,6 +152,17 @@ const text = (value: string) => new TextEncoder().encode(value);
 const OPEN = "\u001b[?2026h";
 const CLOSE = "\u001b[?2026l";
 
+/** A pacer whose synchronized updates hold the paint, on fake frames and timers. */
+function holdingUpdates() {
+  const frames = manualFrames();
+  const timers = manualTimers();
+  const written: number[] = [];
+  const holds: boolean[] = [];
+  const pacer = new OutputPacer((batch) => written.push(batch.byteLength), frames.frame, timers.now, timers.timer);
+  pacer.holdSynchronized((held) => holds.push(held));
+  return { frames, timers, written, holds, pacer };
+}
+
 describe("OutputPacer in a synchronized update (#757)", () => {
   test("an update is written as it arrives, uncapped, with its credit, and output after it is paced again", () => {
     const clock = manualFrames();
@@ -195,24 +212,63 @@ describe("OutputPacer in a synchronized update (#757)", () => {
     expect(written.slice(1)).toEqual([FRAME_BYTES]);
   });
 
-  test("an update held open past the terminal's own hold is paced again", () => {
-    const clock = manualFrames();
-    let now = 0;
-    const written: number[] = [];
-    const pacer = new OutputPacer(
-      (batch) => written.push(batch.byteLength),
-      clock.frame,
-      () => now,
-    );
+  test("an update still arriving past the terminal's own hold keeps the paint held and is written as it arrives, then drawn when it closes (#2040)", () => {
+    const { frames, timers, written, holds, pacer } = holdingUpdates();
     pacer.push(text(OPEN));
-    clock.nextFrame();
+    frames.nextFrame();
+    expect(holds).toEqual([true]);
+    // A starved page takes a whole transcript in over seconds, a piece every 300 ms.
+    for (let at = 0; at < 3000; at += 300) {
+      pacer.push(bytes(FRAME_BYTES * 4));
+      timers.advance(300);
+    }
+    expect(written.slice(1)).toEqual(Array.from({ length: 10 }, () => FRAME_BYTES * 4));
+    expect(frames.frames).toHaveLength(0);
+    expect(holds).toEqual([true]);
+    pacer.push(text(CLOSE));
+    expect(holds).toEqual([true, false]);
+  });
+
+  test("an update left open with nothing more coming is let go a terminal's hold after its last bytes, and paced again (#853)", () => {
+    const { frames, timers, written, holds, pacer } = holdingUpdates();
+    pacer.push(text(OPEN));
+    frames.nextFrame();
     pacer.push(bytes(FRAME_BYTES * 2));
-    expect(written).toEqual([OPEN.length, FRAME_BYTES * 2]);
-    now = SYNCHRONIZED_UNPACED_MS;
+    timers.advance(SYNCHRONIZED_UNPACED_MS - 1);
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
+    // Past the hold, what the program writes into the open update is paced again.
     pacer.push(bytes(FRAME_BYTES * 2));
     expect(written).toHaveLength(2);
-    clock.nextFrame();
+    frames.nextFrame();
     expect(written.slice(2)).toEqual([FRAME_BYTES]);
+  });
+
+  test("an update that keeps arriving is let go at the hold's cap, so a program that never closes one is still drawn (#2040)", () => {
+    const { frames, timers, holds, pacer } = holdingUpdates();
+    pacer.push(text(OPEN));
+    frames.nextFrame();
+    for (let at = 0; at < SYNCHRONIZED_HOLD_CAP_MS; at += 250) {
+      pacer.push(bytes(64));
+      timers.advance(at + 250 >= SYNCHRONIZED_HOLD_CAP_MS ? 249 : 250);
+    }
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
+  });
+
+  test("an update met inside an attach replay takes the paint hold over, so the paint is never let go between them (#812, #2040)", () => {
+    const { frames, timers, holds, pacer } = holdingUpdates();
+    const replayHolds: boolean[] = [];
+    pacer.replay({ srtt: () => 300, hold: (held) => replayHolds.push(held) });
+    pacer.push(new Uint8Array([...text(OPEN), ...bytes(FRAME_BYTES)]));
+    expect(holds).toEqual([true]);
+    expect(replayHolds).toEqual([true, false]);
+    timers.advance(300);
+    pacer.push(text(CLOSE));
+    frames.nextFrame();
+    expect(holds).toEqual([true, false]);
   });
 
   test("out of view an update waits like any output, and drop forgets that one was open", () => {
@@ -235,6 +291,44 @@ describe("OutputPacer in a synchronized update (#757)", () => {
     expect(written).toHaveLength(2);
     clock.nextFrame();
     expect(written.slice(2)).toEqual([FRAME_BYTES]);
+  });
+
+  test("drop lets an update's paint hold go: the stream it came from is gone (#2040)", () => {
+    const { frames, holds, pacer } = holdingUpdates();
+    pacer.push(text(OPEN));
+    frames.nextFrame();
+    expect(holds).toEqual([true]);
+    pacer.drop();
+    expect(holds).toEqual([true, false]);
+  });
+
+  test("each write of a held update gives its credit back as it is written, so the core sends the rest (#2040)", () => {
+    const { frames, timers, written, pacer } = holdingUpdates();
+    let credited = 0;
+    const credit = (count: number): void => void (credited += count);
+    pacer.push(text(OPEN), credit);
+    frames.nextFrame();
+    for (let piece = 1; piece <= 5; piece += 1) {
+      timers.advance(300);
+      pacer.push(bytes(FRAME_BYTES * 4), credit);
+      expect(credited).toBe(OPEN.length + FRAME_BYTES * 4 * piece);
+    }
+    expect(written).toHaveLength(6);
+  });
+
+  test("an update held while the app is hidden is written and credited as it arrives, and drawn when it closes (#2040)", () => {
+    const { frames, timers, written, holds, pacer } = holdingUpdates();
+    let credited = 0;
+    const credit = (count: number): void => void (credited += count);
+    pacer.push(text(OPEN), credit);
+    frames.nextFrame();
+    pacer.setHidden(true);
+    pacer.push(bytes(FRAME_BYTES * 3), credit);
+    expect(written).toEqual([OPEN.length, FRAME_BYTES * 3]);
+    expect(credited).toBe(OPEN.length + FRAME_BYTES * 3);
+    timers.advance(500);
+    pacer.push(text(CLOSE), credit);
+    expect(holds).toEqual([true, false]);
   });
 });
 
