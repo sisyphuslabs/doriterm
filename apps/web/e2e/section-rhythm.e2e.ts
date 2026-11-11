@@ -21,13 +21,22 @@ test.afterEach(() => {
   for (const address of started) endAgent("host", address);
 });
 
-async function expectRhythm(page: Page) {
+/**
+ * Measures the screen's headings and groups. `headings` names the headings that must be among those measured: one the
+ * measurement cannot see (covered, or overlapped by what it names) is dropped from it, and would otherwise pass unchecked
+ * (#2356).
+ */
+async function expectRhythm(page: Page, headings: readonly string[] = []) {
   await page.mouse.move(0, 0);
   await page.evaluate(() => document.fonts.ready);
   const rhythm = await page.evaluate(sectionRhythm);
   expect(rhythm.headings.length + rhythm.groups.length, "the screen has headings or groups to measure").toBeGreaterThan(
     0,
   );
+  expect(
+    rhythm.headings.map((heading) => heading.name),
+    "every named heading is measured",
+  ).toEqual(expect.arrayContaining([...headings]));
   for (const heading of rhythm.headings) {
     const label = `heading "${heading.name}": ${heading.above} above, ${heading.below} below`;
     if (heading.below > 0) expect.soft(heading.above / heading.below, label).toBeGreaterThanOrEqual(1.5);
@@ -84,7 +93,8 @@ for (const theme of ["day", "night"] as const) {
         // has no row; the agent sections do not wait for that answer. Measure once the Spaces list has its first row
         // (#2060).
         await expect(spacesFirstRow(page)).toBeVisible({ timeout: 15_000 });
-        await expectRhythm(page);
+        // The top section (Agents) has nothing above it and the last (Done) nothing below, so neither is measured.
+        await expectRhythm(page, ["Spaces", "Needs you", "Working", "Idle"]);
         await expectTitlesAlignedWithRows(page);
       });
     });
