@@ -37,7 +37,7 @@ for (const colorScheme of ["light", "dark"] as const) {
   test.describe(`a portrait phone with a notch, ${colorScheme}`, () => {
     test.use({ colorScheme });
 
-    test("the agents list keeps its header below the notch and its status bar above the home indicator", async ({
+    test("the agents list keeps its header below the notch and its tab bar above the home indicator", async ({
       page,
     }) => {
       await portraitWithInsets(page);
@@ -47,18 +47,15 @@ for (const colorScheme of ["light", "dark"] as const) {
       await Promise.all([
         expectClear(header.getByRole("button", { name: "Command palette" })),
         expectClear(header.getByRole("button", { name: "New tab" })),
-        expectClear(header.getByRole("link", { name: /^Settings/ })),
       ]);
-      // The status bar's background may run under the home indicator; its words must sit above it.
-      const words = await page
-        .getByRole("contentinfo")
-        .locator(":scope > div")
-        .first()
-        .evaluate((row) => Math.round(row.getBoundingClientRect().bottom));
-      expect(words).toBeLessThanOrEqual(SIZE.height - INSETS.bottom);
+      // The tab bar's background may run under the home indicator; its tabs must sit above it.
+      const tabs = page.getByRole("navigation", { name: "Sections" });
+      await Promise.all(
+        [tabs.getByRole("button", { name: /^Agents/ }), tabs.getByRole("link", { name: /^Settings/ })].map(expectClear),
+      );
 
-      // A real tap on the header lands: Settings opens, and so does a new terminal from New tab.
-      await header.getByRole("link", { name: /^Settings/ }).click();
+      // A real tap lands: Settings opens from the tab bar, and a new terminal from the header's New tab.
+      await tabs.getByRole("link", { name: /^Settings/ }).click();
       await expect(page).toHaveURL(/\/settings$/);
       await page.goBack();
       await expect(header.getByRole("heading", { name: "Agents" })).toBeVisible();

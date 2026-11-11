@@ -1,11 +1,10 @@
 import type { HcConnection } from "@doriface/client";
 import { IconButton, ScrollArea, StatusBar, StatusBarItem } from "@doriface/ui";
-import { Link } from "@tanstack/react-router";
-import { Monitor, Plus, Search, Settings } from "lucide-react";
+import { Monitor, Plus, Search } from "lucide-react";
 import { useRef } from "react";
 import { connectionStore } from "../connection/store.ts";
 import { NEW_TAB } from "../keys/actions.ts";
-import { AgentLists } from "./agent-lists.tsx";
+import { AgentLists, PhoneSpaceLists } from "./agent-lists.tsx";
 import { PhoneSortMenu } from "./agents-group.tsx";
 import { onlyThisMachine } from "./machines.ts";
 import type { ListedSpace, Session } from "./model.ts";
@@ -13,7 +12,8 @@ import { PhoneSpace, PhoneSpaceLoading } from "./phone-space.tsx";
 import { useArrivalReady } from "./use-arrival-ready.ts";
 import { useKeptScroll } from "./kept-scroll.ts";
 import { ConnectionLine, ConnectionPathItem, ReconnectStatus } from "./reconnect-status.tsx";
-import { usePendingUpdate } from "../update/update-store.ts";
+import type { PhoneSection } from "./phone-route.ts";
+import { PhoneTabBar } from "./phone-tab-bar.tsx";
 import { FirstRunGuideCard } from "../pair/first-run-guide-card.tsx";
 import { PhoneEmpty } from "./phone-empty.tsx";
 import { PhoneListLoading } from "./phone-loading.tsx";
@@ -37,6 +37,9 @@ export interface PhoneShellProps {
   readonly space: ListedSpace | "loading" | null;
   /** Whether the screen in view was reached by a push, the only arrival a pushed screen slides in for. */
   readonly pushed: boolean;
+  /** The list the phone shows, its bottom tab bar's current tab; a space screen's Back goes to it. */
+  readonly section: PhoneSection;
+  readonly onSection: (section: PhoneSection) => void;
   /** The terminals of the tab that shows the open one, in its panes' order; one when that tab is not split. */
   readonly panes: readonly string[];
   /** The open terminal's tab as the strip reads it (its name, else its number); null when it is in no tab. */
@@ -59,12 +62,11 @@ export interface PhoneShellProps {
 /** Phones: the agents list first; a space opens its own screen, and a terminal shows full screen with extra keys. */
 export function PhoneShell(props: PhoneShellProps) {
   const { connection, terminals, open, space, panes, tabTitle, onOpen, onBack, onNew, onNewInSpace, onPalette } = props;
-  const { onSession, onSpaceBack, onCloseTab, pushed, backTo, ids } = props;
+  const { onSession, onSpaceBack, onCloseTab, pushed, backTo, section, onSection, ids } = props;
   // The open terminal registers its dictation here, so the palette and a bound key reach it from this shell's handler.
   const dictate = useRef<(() => void) | null>(null);
   usePhoneActions(onNew, onSession, () => (dictate.current === null ? false : (dictate.current(), true)));
   const machines = useMachinesContext();
-  const update = usePendingUpdate();
   const terminal = terminals.find((entry) => entry.address === open);
   // An unanswered list is not an empty one: the empty state waits for the core's first answer (#797).
   const live = machines.terminalsLoaded
@@ -74,11 +76,19 @@ export function PhoneShell(props: PhoneShellProps) {
   // A screen pushed after the first loaded paint arrives with motion (DESIGN.md 6); the first screen does not.
   useArrivalReady(machines.terminalsLoaded);
   // The list is unmounted while a terminal is open; Back brings it back where it was, not at the top (#1553).
-  const listViewport = useKeptScroll("agents", machines.terminalsLoaded && terminal === undefined && space === null);
+  // Agents and Spaces scroll in the same frame: each keeps its own place, by its section (#1553).
+  const listViewport = useKeptScroll(section, machines.terminalsLoaded && terminal === undefined && space === null);
   // A space's rows are its live terminals: until the terminals are listed (or when that failed) the screen says so,
   // never "Nothing is running".
   if (terminal === undefined && (space === "loading" || (space !== null && !machines.terminalsLoaded)))
-    return <PhoneSpaceLoading error={machines.terminalsError} onRetry={machines.retryTerminals} onBack={onSpaceBack} />;
+    return (
+      <PhoneSpaceLoading
+        error={machines.terminalsError}
+        onRetry={machines.retryTerminals}
+        from={section}
+        onBack={onSpaceBack}
+      />
+    );
   if (terminal === undefined && space !== null && space !== "loading") {
     return (
       <PhoneSpace
@@ -86,6 +96,7 @@ export function PhoneShell(props: PhoneShellProps) {
         terminals={terminals}
         host={connection.hello.core.name}
         arrive={pushed}
+        from={section}
         onOpen={onOpen}
         onBack={onSpaceBack}
         onNew={() => onNewInSpace(space.id)}
@@ -93,42 +104,27 @@ export function PhoneShell(props: PhoneShellProps) {
     );
   }
   if (terminal === undefined) {
-    const route = connectionStore.settings.mode === "relay" ? "relay" : "loopback";
     return (
       <div className="flex h-dvh min-h-0 min-w-0 flex-col bg-sidebar pr-(--safe-right) pl-(--safe-left)">
         <header
           data-titlebar
           className="flex h-[calc(3rem+var(--safe-top))] shrink-0 items-center gap-1 pt-(--safe-top) pr-4 pl-[var(--titlebar-inset-start,1rem)]"
         >
-          <h1 className="flex-1 text-xl font-semibold text-foreground">Agents</h1>
+          <h1 className="flex-1 text-xl font-semibold text-foreground">{section === "agents" ? "Agents" : "Spaces"}</h1>
           <IconButton label="Command palette" icon={<Search />} size="md" onClick={onPalette} />
-          {machines.terminalsLoaded ? <PhoneSortMenu terminals={terminals} /> : null}
+          {machines.terminalsLoaded && section === "agents" ? <PhoneSortMenu terminals={terminals} /> : null}
           <IconButton label={NEW_TAB.label} icon={<Plus />} size="md" onClick={onNew} />
-          <IconButton
-            label={update === null ? "Settings" : "Settings, update ready"}
-            icon={
-              <>
-                <Settings />
-                {update === null ? null : (
-                  <span
-                    aria-hidden
-                    data-slot="settings-dot"
-                    className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-brand"
-                  />
-                )}
-              </>
-            }
-            size="md"
-            className="relative"
-            render={<Link to="/settings" />}
-          />
         </header>
         <ConnectionLine />
         {/* The page's one main landmark: the list, under the header (#1378). */}
         <main className="flex min-h-0 flex-1 flex-col">
           <ScrollArea slot="agents-list" className="flex-1" viewportRef={listViewport}>
             <FirstRunGuideCard listVisible live={live} ids={ids} onNew={onNew} />
-            {machines.terminalsLoaded ? (
+            {section === "spaces" ? (
+              <RovingLists>
+                <PhoneSpaceLists onOpen={onOpen} />
+              </RovingLists>
+            ) : machines.terminalsLoaded ? (
               <>
                 {empty ? (
                   <PhoneEmpty host={connection.hello.core.name} onNew={onNew} onAddMachine={machines.openAddMachine} />
@@ -146,16 +142,24 @@ export function PhoneShell(props: PhoneShellProps) {
             )}
           </ScrollArea>
         </main>
-        <StatusBar
-          className="h-[calc(var(--statusbar-height)+var(--safe-bottom))] pb-(--safe-bottom)"
-          start={
-            <>
-              <StatusBarItem icon={<Monitor aria-hidden />}>{`${connection.hello.core.name} · ${route}`}</StatusBarItem>
-              <ConnectionPathItem />
-              <ReconnectStatus compact />
-            </>
-          }
-        />
+        {/*
+          The machines' list carries how this device reaches them: the core, the path (Relay or Direct) and a reconnect in
+          progress. The agents list leaves that to the connection line under its header.
+        */}
+        {section === "spaces" ? (
+          <StatusBar
+            start={
+              <>
+                <StatusBarItem icon={<Monitor aria-hidden />}>
+                  {`${connection.hello.core.name} · ${connectionStore.settings.mode === "relay" ? "relay" : "loopback"}`}
+                </StatusBarItem>
+                <ConnectionPathItem />
+                <ReconnectStatus compact />
+              </>
+            }
+          />
+        ) : null}
+        <PhoneTabBar section={section} terminals={terminals} onSection={onSection} />
       </div>
     );
   }

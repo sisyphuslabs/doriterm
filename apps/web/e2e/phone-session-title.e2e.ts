@@ -50,7 +50,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
     }) => {
       const seeded = seed();
       try {
-        await page.goto("/");
+        await page.goto("/?v=spaces");
         await page
           .getByRole("button", { name: /^website\b/ })
           .first()
@@ -71,7 +71,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         // it, so the tab's own name keeps the room and is never cut.
         await expect(switcher(page).getByText("website ·", { exact: true })).toBeHidden();
         const name = switcher(page).getByText("deploy", { exact: true });
-        expect(await name.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+        await expect.poll(() => name.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 
         // The switch sheet names its rows the same way: no "1 \u00b7" before them.
         await switcher(page).click();
@@ -117,7 +117,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
     test("a cold open of a session's address says where Back goes, and goes there", async ({ page }) => {
       const seeded = seed();
       try {
-        await page.goto("/");
+        await page.goto("/?v=spaces");
         await page
           .getByRole("button", { name: /^website\b/ })
           .first()
@@ -125,8 +125,10 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await page.getByRole("region", { name: "Tabs" }).getByRole("button").filter({ hasText: "deploy" }).click();
         await expect(page.locator(`[data-terminal="${seeded.deploy}"]`)).toBeVisible({ timeout: 20_000 });
         const fromSpace = new URL(page.url());
-        const bare = new URL(fromSpace);
-        bare.searchParams.delete("s");
+        const fromSpaces = new URL(fromSpace);
+        fromSpaces.searchParams.delete("s");
+        const bare = new URL(fromSpaces);
+        bare.searchParams.delete("v");
 
         // From a space: a page of its own on the session's address, with nothing of the app behind it.
         const cold = await page.context().newPage();
@@ -134,6 +136,13 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await expect(cold.locator(`[data-terminal="${seeded.deploy}"]`)).toBeVisible({ timeout: 20_000 });
         await header(cold).getByRole("button", { name: "Back to website" }).click();
         await expect(cold.getByRole("heading", { level: 1, name: "website" })).toBeVisible();
+
+        // From the Spaces tab with no space: Back says Spaces and goes there.
+        const coldSpaces = await page.context().newPage();
+        await coldSpaces.goto(fromSpaces.pathname + fromSpaces.search);
+        await expect(coldSpaces.locator(`[data-terminal="${seeded.deploy}"]`)).toBeVisible({ timeout: 20_000 });
+        await header(coldSpaces).getByRole("button", { name: "Back to Spaces" }).click();
+        await expect(coldSpaces.getByRole("heading", { level: 1, name: "Spaces", exact: true })).toBeVisible();
 
         // From no space: Back says the agents list and goes there.
         const coldBare = await page.context().newPage();
