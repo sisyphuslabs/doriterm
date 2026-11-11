@@ -105,7 +105,7 @@ function admit(
       const joining = client
         ? clientDeviceCount(index, deps.devices, inviter) -
           (deps.devices.list().some((device) => device.clientStaticPub === card.devicePub) ? 1 : 0)
-        : (index?.machineCount ?? 0);
+        : index.machineCount;
       const room = requireWithin(deps.policy, client ? "devices" : "machines", joining);
       if (!room.allowed) throw new JoinRefused(room.message);
       checkFloor(tx.records, inviter, deps.floor());
@@ -174,7 +174,7 @@ export async function serveJoin(lines: MeshLines, peerStatic: Uint8Array, deps: 
     const count = client
       ? clientDeviceCount(index, deps.devices, offer.inviter) -
         (deps.devices.list().some((device) => device.clientStaticPub === card.devicePub) ? 1 : 0)
-      : (index?.machineCount ?? 0);
+      : index.machineCount;
     const room = requireWithin(deps.policy, client ? "devices" : "machines", count);
     if (!room.allowed) throw new JoinRefused(room.message);
     const refusal = admissionRefusal(card.kind, deps.formatReady?.() === true);

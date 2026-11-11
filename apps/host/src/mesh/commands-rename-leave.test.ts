@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseRecord, viewOf } from "@doriface/mesh";
 import { benchRecords, commandBench, lastRecord, removeBenches } from "../testing/mesh-commands-bench.ts";
 import { machine, signPubOf } from "../testing/mesh-history.ts";
-import { MeshCommands } from "./commands.ts";
+import { MeshStore } from "../state/mesh.ts";
+import { FIRST_JOIN_PENDING, MeshCommands } from "./commands.ts";
 import { IDLE_MESH_HOOKS, type MeshHooks } from "./host-hooks.ts";
 
 afterEach(removeBenches);
@@ -121,5 +123,32 @@ describe("mesh-leave (design 6.5)", () => {
       revokeCommand: "doriface-host mesh revoke a",
     });
     expect(existsSync(join(it.dir, "mesh.json"))).toBe(false);
+  });
+});
+
+describe("while this host's first join is pending (#1635)", () => {
+  test("revoke, rename and leave say the mesh is founded once the join is admitted, not that there is none", async () => {
+    const f = machine("f");
+    const dir = mkdtempSync(join(tmpdir(), "dh-mesh-cmd-pending-"));
+    try {
+      const store = new MeshStore(dir, { log: () => {}, durable: false });
+      const commands = new MeshCommands({
+        store,
+        stateDir: dir,
+        identity: f.identity,
+        closeRevoked: () => {},
+        hooks: IDLE_MESH_HOOKS,
+        log: () => {},
+      });
+      const { release } = store.prepareFound(f.identity, { name: "f", hcId: "core" });
+      await expect(commands.rename({ member: "f", name: "g" })).rejects.toThrow(FIRST_JOIN_PENDING);
+      await expect(commands.leave()).rejects.toThrow(FIRST_JOIN_PENDING);
+      await expect(commands.revoke({ member: "x", compromised: false, yes: true })).rejects.toThrow(FIRST_JOIN_PENDING);
+      expect(existsSync(join(dir, "mesh.json"))).toBe(false);
+      release();
+      expect(await commands.rename({ member: "f", name: "g" })).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
