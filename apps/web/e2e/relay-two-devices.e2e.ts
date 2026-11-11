@@ -93,8 +93,8 @@ test("a machine that joins the mesh while a device is open shows there as connec
   browser,
 }) => {
   const watcher = await device(browser);
-  // The join takes tens of seconds, so the 10 s read may list b as "connecting" before JOINED: the change that must be
-  // pushed to the untouched device is its line coming up, "connected", which hc announces with `missed`.
+  // The join takes tens of seconds, so the 10 s read may list b as "connecting" before JOINED: the change that must reach
+  // the untouched device in time is its line coming up, online.
   const machine = await ask("JOIN", "JOINED ");
   await expect(
     spaces(watcher).getByRole("region", { name: machine, exact: true }).locator("[data-machine-dot]"),
