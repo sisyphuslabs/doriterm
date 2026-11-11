@@ -84,4 +84,19 @@ describe("the predictor's adaptive display", () => {
     always.predictor.typed("s", "key");
     expect(always.predictor.visible().map((cell) => cell.text)).toEqual(["s"]);
   });
+
+  test("an echo at loopback speed never draws; the same link stalling 250 ms draws, whatever its path (#2003)", () => {
+    const own = harness();
+    own.link.mode = "adaptive";
+    own.predictor.typed("l", "key");
+    own.clock.now += 1;
+    own.hostEchoes("l");
+    own.predictor.typed("s", "key");
+    own.clock.now += 1;
+    own.predictor.tick(own.clock.now);
+    expect(own.predictor.visible()).toEqual([]);
+    own.clock.now += 250;
+    own.predictor.tick(own.clock.now);
+    expect(own.predictor.visible().map((cell) => cell.text)).toEqual(["s"]);
+  });
 });
