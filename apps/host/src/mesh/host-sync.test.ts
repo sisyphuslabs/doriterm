@@ -256,10 +256,11 @@ describe("the format a client's admission needs, asked before sync runs (#1415)"
     if (gossip === undefined) throw new Error("sync did not start");
     gossip.heard(a.signPub, [], {}, [CLIENT_ADMISSION_FORMAT]);
     gossip.heard(c.signPub, [], {}, [CLIENT_ADMISSION_FORMAT]);
-    const records = meshOf([a, b, c]).records;
-    // The records alone read ready; the view handed in also holds d, which has not answered, so the view decides.
-    expect(sync.formatReady(records)).toBe(true);
-    expect(sync.formatReady(records, viewOf(meshOf([a, b, c, d]).records))).toBe(false);
+    const records = meshOf([a, b, c, d]).records;
+    // Evaluated afresh, the records hold d, which has not answered. The view handed in is from before d joined, so it
+    // reads ready only if the check takes that view instead of evaluating the records again.
+    expect(sync.formatReady(records)).toBe(false);
+    expect(sync.formatReady(records, viewOf(meshOf([a, b, c]).records))).toBe(true);
     sync.stop();
   });
 });

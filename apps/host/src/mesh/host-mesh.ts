@@ -1,4 +1,4 @@
-import type { Signed } from "@doriface/mesh";
+import type { Signed, View } from "@doriface/mesh";
 import {
   base64urlEncode,
   CloseCode,
@@ -39,7 +39,7 @@ export interface HostMeshOptions {
   /** The plan this host runs under: a join is refused while the mesh already fills the plan's `machines` limit. */
   readonly policy: PlanPolicy;
   /** Whether every member reads the format a client admission is written in; see `MeshHooks.formatReady`. */
-  readonly formatReady?: ((records?: readonly Signed[]) => boolean) | undefined;
+  readonly formatReady?: ((records?: readonly Signed[], view?: View) => boolean) | undefined;
   readonly hc: HcCoreOptions;
   readonly relay: {
     readonly url: string | undefined;
@@ -139,7 +139,7 @@ export class HostMesh {
       floor,
       log,
       devices: new DeviceStore(stateDir),
-      formatReady: (records) => this.#options.formatReady?.(records) === true,
+      formatReady: (records, view) => this.#options.formatReady?.(records, view) === true,
       changed: this.#options.changed,
       resume: (lines, key, nonce) => this.#resume(lines, key, nonce),
     };
