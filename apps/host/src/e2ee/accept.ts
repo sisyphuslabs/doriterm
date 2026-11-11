@@ -147,8 +147,6 @@ export async function acceptE2ee(
           return refuse(CloseCode.RateLimited, REMOVED_READING);
         return { accept: true };
       }
-      if (peer.kind === "refused" && peer.reason !== "unknown device")
-        deps.log(`mesh: refused a session: ${peer.reason}`);
       return authorizationOf(peer);
     }
     if (hello.kind === SessionKind.PairLink) {
@@ -169,7 +167,15 @@ export async function acceptE2ee(
       role: "responder",
       hostId: deps.identity.hostId,
       staticKey: rawStaticKey(deps.identity.noise),
-      authorize,
+      authorize: (hello) => {
+        const verdict = authorize(hello);
+        if (!verdict.accept && verdict.closeCode === CloseCode.UnknownDevice) {
+          deps.log(
+            `e2ee: close code=4401 source=handshake kind=${hello.kind} stream=${hello.stream ?? "hc"}: ${verdict.reason}`,
+          );
+        }
+        return verdict;
+      },
       lanUrls: deps.lanUrls,
       rekeyInterval: deps.rekeyInterval,
       answerEarly: (early, session) => {
@@ -182,6 +188,7 @@ export async function acceptE2ee(
   }
   if (secure.kind !== SessionKind.Session && secure.stream === "mesh") {
     if (claim === undefined) {
+      deps.log("e2ee: close code=4401 source=mesh-pairing: no mesh pairing claim");
       secure.close(CloseCode.UnknownDevice, "no mesh pairing claim");
       return undefined;
     }
@@ -194,7 +201,7 @@ export async function acceptE2ee(
         ? REFUSED_CLAIM
         : admitPairing(claim, deps.devices, secure.remoteStatic, deviceName, index.index, deps.policy);
     if (!admitted.ok) {
-      deps.log(`pairing refused: ${admitted.reason}`);
+      deps.log(`e2ee: close code=${admitted.code} source=pairing-admission: ${admitted.reason}`);
       secure.close(admitted.code, admitted.reason);
       return undefined;
     }

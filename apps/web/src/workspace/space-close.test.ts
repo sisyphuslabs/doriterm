@@ -151,6 +151,38 @@ describe("closing a space", () => {
     expect(here.state.writes).toBe(1);
   });
 
+  test("every session it ends is dropped once by the close's own write, before any End runs", async () => {
+    const { layouts, spaces, id } = setup();
+    const hc = hcEnds();
+    const did: string[] = [];
+    const calls: SessionCalls = {
+      ...hc.calls,
+      kill: (params) => {
+        did.push(`kill ${params.terminal}`);
+        return hc.calls.kill(params);
+      },
+    };
+    await closeSpace(calls, layouts, spaces, TERMINALS, id("api"), {
+      closing: (addresses) => did.push(`closing ${addresses.join(",")}`),
+      kept: (address) => did.push(`kept ${address}`),
+    });
+    // t3's program had already ended: the two live ones are the close's one drop.
+    expect(did).toEqual(["closing t1,t2", "kill t1", "kill t2"]);
+  });
+
+  test("an End that fails releases that session, so its later end drops its pane again", async () => {
+    const { layouts, spaces, id } = setup();
+    const hc = hcEnds({ t2: "unreachable" });
+    const kept: string[] = [];
+    await expect(
+      closeSpace(hc.calls, layouts, spaces, TERMINALS, id("api"), {
+        closing: () => undefined,
+        kept: (address) => kept.push(address),
+      }),
+    ).rejects.toThrow("unreachable");
+    expect(kept).toEqual(["t2"]);
+  });
+
   test("a space no layout holds is refused with why", () => {
     const { layouts, id } = setup();
     expect(closeRefusal(layouts, "spc-gone")).toBe("This space is no longer in the layout.");

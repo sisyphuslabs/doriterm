@@ -107,7 +107,9 @@ export class HostMesh {
           return this.#resume(lines, key, line.nonce);
         })
         .catch((error: unknown) => {
-          lines.refuse(CloseCode.UnknownDevice, error instanceof Error ? error.message : String(error));
+          const reason = error instanceof Error ? error.message : String(error);
+          this.#options.log(`mesh: close code=4401 source=join-resume: ${reason}`);
+          lines.refuse(CloseCode.UnknownDevice, reason);
         });
       return;
     }
