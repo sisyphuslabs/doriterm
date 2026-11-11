@@ -4,13 +4,12 @@ import { type Axis, type Node, nodeAt, pathTo, resizeAt } from "@doriface/protoc
 import { dropPreview } from "../layout/drop-zone.ts";
 import { arrange, type Rect } from "../layout/rects.ts";
 import type { TerminalEnd } from "../terminal/terminal-end.ts";
-import type { LayoutPane, LayoutTab } from "./layout-model.ts";
+import type { LayoutTab } from "./layout-model.ts";
 import type { Session } from "./model.ts";
 import type { PaneSends } from "./pane-sends.ts";
-import { Pane } from "./pane.tsx";
+import { type PaneActions, PlacedPane } from "./pane-slot.tsx";
 import { PaneDivider } from "./pane-divider.tsx";
 import { linePosition } from "./line-position.ts";
-import { usePaneMotion, type PaneMotion } from "./pane-motion.ts";
 import { usePaneDrag } from "./use-pane-drag.ts";
 import type { Layout, PaneTarget } from "./use-layout.ts";
 
@@ -60,23 +59,6 @@ function axisAround(root: Node, pane: string): "row" | "column" | null {
   return type === "row" || type === "column" ? type : null;
 }
 
-function PaneFrame(props: { readonly motion: PaneMotion; readonly hidden: boolean; readonly children: ReactNode }) {
-  const { motion, hidden, children } = props;
-  const ref = useRef<HTMLDivElement>(null);
-  usePaneMotion(ref, motion);
-  const { rect } = motion;
-  return (
-    <div
-      ref={ref}
-      hidden={hidden}
-      className="absolute flex"
-      style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
-    >
-      {children}
-    </div>
-  );
-}
-
 /**
  * Every tab's tree, each pane placed by its rectangle so a split or a close never remounts a terminal: panes are keyed
  * by id and only move. Hidden tabs stay mounted so their streams and scrollback survive tab switches.
@@ -100,8 +82,27 @@ function shownPreview(preview: Preview | null, tabs: readonly LayoutTab[]): Prev
 
 const HIDDEN: Rect = { x: 0, y: 0, width: 0, height: 0 };
 
+/** One set of pane callbacks for the life of the panes, each calling the latest props: a new one would render every pane. */
+function usePaneActions(props: SplitPanesProps): PaneActions {
+  const latest = useRef(props);
+  latest.current = props;
+  const [actions] = useState<PaneActions>(() => ({
+    focus: (tab, pane) => latest.current.layout.focusPane(tab, pane),
+    split: (axis, tab, pane) => latest.current.onSplit(axis, { tab, pane }),
+    zoom: (tab, pane) => {
+      latest.current.layout.focusPane(tab, pane);
+      latest.current.layout.toggleZoom();
+    },
+    close: (address) => latest.current.onClose(address),
+    end: (address, end) => latest.current.onEnd(address, end),
+    ended: (address, pid) => latest.current.onEnded(address, pid),
+  }));
+  return actions;
+}
+
 export function SplitPanes(props: SplitPanesProps) {
-  const { connection, terminals, layout, titles, onEnd, onEnded, sends, dock, onSplit, onClose } = props;
+  const { connection, terminals, layout, titles, sends, dock } = props;
+  const actions = usePaneActions(props);
   const [ref, box] = useBoxSize();
   const [held, setPreview] = useState<Preview | null>(null);
   const preview = shownPreview(held, layout.tabs);
@@ -150,33 +151,27 @@ export function SplitPanes(props: SplitPanesProps) {
                 const bump = layout.bumped?.pane === pane.id ? layout.bumped : null;
                 // A pane a zoom hides stays mounted, so its stream and scrollback are there when it comes back.
                 return (
-                  <PaneFrame
+                  <PlacedPane
                     key={pane.mount ?? pane.id}
-                    motion={{ rect: placed ?? HIDDEN, frame, grow, bump }}
+                    {...(placed ?? HIDDEN)}
+                    frame={frame}
+                    grow={grow}
+                    bump={bump}
                     hidden={placed === undefined}
-                  >
-                    <PaneSlot
-                      connection={connection}
-                      tab={tab}
-                      pane={pane}
-                      terminal={pane.address === null ? undefined : byAddress.get(pane.address)}
-                      focused={selected && layout.focused?.id === pane.id}
-                      claimed={layout.claimed === pane.id}
-                      zoomed={zoomed === pane.id}
-                      onFocus={() => layout.focusPane(tab.key, pane.id)}
-                      onEnd={onEnd}
-                      onSplit={(axis) => onSplit(axis, { tab: tab.key, pane: pane.id })}
-                      onZoom={() => {
-                        layout.focusPane(tab.key, pane.id);
-                        layout.toggleZoom();
-                      }}
-                      onClose={() => (pane.address === null ? undefined : onClose(pane.address))}
-                      onEnded={onEnded}
-                      sends={sends}
-                      dock={selected && layout.focused?.id === pane.id ? dock : null}
-                      onGrab={movable ? grab(tab.key, pane.id) : undefined}
-                    />
-                  </PaneFrame>
+                    connection={connection}
+                    tab={tab.key}
+                    pane={pane.id}
+                    mod={pane.mod}
+                    terminal={pane.address === null ? undefined : byAddress.get(pane.address)}
+                    split={tab.panes.length > 1}
+                    focused={selected && layout.focused?.id === pane.id}
+                    claimed={layout.claimed === pane.id}
+                    zoomed={zoomed === pane.id}
+                    actions={actions}
+                    sends={sends}
+                    dock={selected && layout.focused?.id === pane.id ? dock : null}
+                    onGrab={movable ? grab(tab.key, pane.id) : undefined}
+                  />
                 );
               })}
               {selected && !tab.transient && tab.readOnly === null
@@ -221,80 +216,5 @@ export function SplitPanes(props: SplitPanesProps) {
         })}
       </div>
     </div>
-  );
-}
-
-interface PaneSlotProps {
-  readonly connection: HcConnection;
-  readonly tab: LayoutTab;
-  readonly pane: LayoutPane;
-  readonly terminal: Session | undefined;
-  readonly focused: boolean;
-  /** This screen asked for this pane: its terminal takes the keyboard as it starts (#332). */
-  readonly claimed: boolean;
-  readonly onFocus: () => void;
-  readonly onEnd: (address: string, end: TerminalEnd) => void;
-  readonly zoomed: boolean;
-  readonly onSplit: (axis: Axis) => void;
-  readonly onZoom: () => void;
-  readonly onClose: () => void;
-  readonly onEnded: (address: string, pid: number | null) => void;
-  readonly sends: PaneSends;
-  readonly dock: ReactNode;
-  readonly onGrab: Parameters<typeof Pane>[0]["onGrab"];
-}
-
-function PaneSlot(props: PaneSlotProps) {
-  const {
-    connection,
-    tab,
-    pane,
-    terminal,
-    focused,
-    claimed,
-    zoomed,
-    onFocus,
-    onEnd,
-    onEnded,
-    sends,
-    dock,
-    onSplit,
-    onZoom,
-    onClose,
-    onGrab,
-  } = props;
-  if (terminal !== undefined) {
-    return (
-      <Pane
-        connection={connection}
-        terminal={terminal}
-        focused={focused}
-        claimed={claimed}
-        split={tab.panes.length > 1}
-        onFocus={onFocus}
-        onEnd={onEnd}
-        zoomed={zoomed}
-        onSplit={onSplit}
-        onZoom={onZoom}
-        onClose={onClose}
-        onEnded={onEnded}
-        onPort={sends.onPort(terminal.address)}
-        dock={dock}
-        onGrab={onGrab}
-      />
-    );
-  }
-  const text =
-    pane.mod !== null ? `herdr-app's ${pane.mod} panel opens in herdr-app.` : "Waiting for this terminal to start…";
-  return (
-    <section
-      aria-label={pane.mod === null ? "Starting terminal" : `${pane.mod} panel`}
-      data-focused={focused}
-      tabIndex={-1}
-      onFocus={onFocus}
-      className="flex min-h-0 min-w-0 flex-1 items-center justify-center rounded-lg border border-border bg-card p-4 text-center text-sm text-muted-foreground"
-    >
-      {text}
-    </section>
   );
 }

@@ -159,6 +159,19 @@ export class PairingStore {
     return this.#claim(pending, { mode: "link", linkSecret: pending.linkSecret }, false);
   }
 
+  /**
+   * Withdraws a mesh offer, live or expired, because this host is joining another mesh (#1301); a device offer stays.
+   * True when one was withdrawn: a claim already taken on it is never spent, so it cannot admit anyone later.
+   */
+  withdrawMesh(): boolean {
+    return this.#locked(() => {
+      const pending = this.read();
+      if (pending?.mesh !== true) return false;
+      this.#removeIfHeld(pending);
+      return true;
+    });
+  }
+
   /** Deletes the offer once it expired, so its relay slot is released. */
   expire(now = Date.now()): void {
     const pending = this.read();
@@ -212,6 +225,7 @@ export class PairingStore {
       retiredCode,
       complete: (at = Date.now()) =>
         this.#locked(() => {
+          if (pending.mesh && this.read()?.linkSecret.toHex() !== pending.linkSecret.toHex()) return false;
           const first = guard.use(at);
           if (first || guard.state === "expired") this.#removeIfHeld(pending);
           return first;

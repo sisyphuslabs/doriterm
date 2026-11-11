@@ -141,7 +141,15 @@ export function harness(): Harness {
     ACCOUNT_ID: "account",
     ANALYTICS_TOKEN: "token",
   };
-  const ctx: RequestContext = { env, cache, waitUntil: (promise) => void pending.push(promise) };
+  // No test reaches the network: a test that needs GitHub's answer passes its own fetcher.
+  const ctx: RequestContext = {
+    env,
+    cache,
+    waitUntil: (promise) => void pending.push(promise),
+    fetcher: async (url) => {
+      throw new Error(`no network in the unit suite: ${url}`);
+    },
+  };
   return { bucket, cache, points, env, ctx, db, sqlite, settle: () => Promise.all(pending) };
 }
 

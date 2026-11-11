@@ -14,6 +14,7 @@ const names = [
   "speechStatus",
   "requestSpeech",
   "noticeAuthorization",
+  "requestNoticeAuthorization",
   "supportsOnDevice",
   "start",
   "stop",
