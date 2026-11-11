@@ -135,6 +135,16 @@ describe("an SVG's own text is checked, since OCR cannot read one", () => {
     );
   });
 
+  test("separate text elements stay separate lines, so a minified SVG's clean lines do not run together", async () => {
+    expect(classify(await captureSvg('<text x="1">$ ls</text><text x="1">demo@my-laptop:~$ ls</text>')).ok).toBe(true);
+  });
+
+  test("a prompt in a CDATA section is read, not dropped", async () => {
+    expect(patterns(await captureSvg('<text x="1"><![CDATA[someone@alpha-box:~$ ls]]></text>'))).toContain(
+      "prompt: account at host",
+    );
+  });
+
   test("a prompt written with an entity is decoded to what a renderer shows", async () => {
     expect(patterns(await captureSvg('<text x="1">someone&#64;alpha-box:~$ ls</text>'))).toContain(
       "prompt: account at host",

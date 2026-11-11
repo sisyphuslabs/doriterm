@@ -94,10 +94,15 @@ const decodeEntities = (text: string): string =>
  */
 export async function captureText(path: string): Promise<string> {
   if (/\.svg$/i.test(path)) {
-    // Tags go with no separator: a prompt split across `<tspan>`s is one string to a reader, and a space where a tag
-    // stood would let `someone@<tspan>alpha-box</tspan>` pass as two words. Entities decode after, so an
-    // entity-encoded bracket is text and never a tag.
-    return decodeEntities((await Bun.file(path).text()).replace(/<[^>]*>/g, ""));
+    // A CDATA section is text as written, so it is kept, its brackets encoded so no later step takes them for a tag.
+    // Each `<text>` is a line of its own, so its tags become a line break: a minified SVG's separate lines must not run
+    // together into a prompt neither shows. Every other tag goes with no separator: a prompt split across `<tspan>`s is
+    // one string to a reader, and a space where a tag stood would let `someone@<tspan>alpha-box</tspan>` pass as two
+    // words. Entities decode last, so an entity-encoded bracket is text and never a tag.
+    const markup = (await Bun.file(path).text()).replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_whole, data: string) =>
+      data.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
+    );
+    return decodeEntities(markup.replace(/<\/?text\b[^>]*>/gi, "\n").replace(/<[^>]*>/g, ""));
   }
   const result = await $`tesseract ${path} -`
     .env({ ...process.env, OMP_THREAD_LIMIT: "1" })
