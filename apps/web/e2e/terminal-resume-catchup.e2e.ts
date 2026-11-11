@@ -55,8 +55,52 @@ function streamArrivals(rttMs: number) {
     since: (): void => {
       on = true;
     },
+    bytes: (): number => bytes,
     report: (): string => `${windows} windows, ${bytes} bytes`,
   };
+}
+
+/** hc's credit window: the core sends this much of a stream and waits for its credit to come back. */
+const CREDIT_WINDOW_BYTES = 256 * 1024;
+
+/**
+ * Call before the page loads: samples, in every painted frame from the load on, the highest line number on the grid of
+ * the terminal at `address` (0 while it shows none), as startLastLineSampler does for a terminal already on screen.
+ * sampledFrames stops it and returns the samples.
+ */
+function sampleFromLoad(address: string): void {
+  const samples: number[] = [];
+  let on = true;
+  let frame = 0;
+  const sample = (): void => {
+    let last = 0;
+    for (const row of document.querySelectorAll(
+      `[data-terminal="${address}"] .term-grid .term-row:not(.term-scrollback-row)`,
+    ))
+      for (const match of (row.textContent ?? "").matchAll(/line-(\d+)/g)) last = Math.max(last, Number(match[1]));
+    samples.push(last);
+  };
+  Reflect.set(window, "__lastLines", () => {
+    on = false;
+    return samples;
+  });
+  const start = (): void => {
+    const probe = document.createElement("div");
+    probe.style.cssText = "position:fixed;left:-10px;top:-10px;height:1px;pointer-events:none";
+    document.body.appendChild(probe);
+    new ResizeObserver(() => {
+      if (on) sample();
+    }).observe(probe);
+    const tick = (): void => {
+      frame += 1;
+      probe.style.width = `${1 + (frame % 2)}px`;
+      if (on) requestAnimationFrame(tick);
+      else probe.remove();
+    };
+    requestAnimationFrame(tick);
+  };
+  if (document.body === null) document.addEventListener("DOMContentLoaded", start, { once: true });
+  else start();
 }
 
 /**
@@ -194,8 +238,9 @@ for (const device of ["desktop", "phone"] as const) {
       test(`over a ${rttMs} ms relay, a reconnect's replay that comes a slice a round trip is painted once it has settled: the screen never climbs back (D5, #1040)`, async ({
         page,
       }) => {
-        // A flood of a few MiB, painted, then a replay of over a MiB a window a round trip: more than the default budget
-        // on a loaded runner, though every wait is on a marker.
+        // A flood of a few MiB, painted, then a reconnect's replay a window a round trip. Since #1999 that replay is the
+        // screen's repaint alone, some 20 KB in a few windows; a replay of the history across many windows is the next
+        // test's. The flood is more than the default budget on a loaded runner, though every wait is on a marker.
         test.slow();
         await page.addInitScript(() => {
           Reflect.set(window, "__dorifaceAttachLog", []);
@@ -234,5 +279,39 @@ for (const device of ["desktop", "phone"] as const) {
         expect(transitions(frames)).toBeLessThanOrEqual(1);
         expect(frames.filter((last) => last !== LAST)).toEqual([]);
       });
+
+    test("over a 300 ms relay, an attach that replays the terminal's history, a window a round trip, is painted once it has settled: the screen never climbs (D5, #2011, #2242)", async ({
+      page,
+    }) => {
+      // A flood of a few MiB, painted, then a replay of over a MiB a window a round trip: more than the default budget on
+      // a loaded runner, though every wait is on a marker.
+      test.slow();
+      const rttMs = 300;
+      const arrivals = streamArrivals(rttMs);
+      const link = await routeHcSocket(page, { received: arrivals.received });
+      const { terminal, address } = await terminalFor(page);
+      await page.keyboard.type(COLORED_FLOOD);
+      await page.keyboard.press("Enter");
+      await expect(terminal).toHaveAttribute("aria-label", `${FLOOD_END} output`, { timeout: 60_000 });
+      await expect(terminal).toContainText(`line-${LAST}`, { timeout: 60_000 });
+
+      // A reload mounts the terminal again, a view this page has never painted, so its attach asks the core for the
+      // history too: the 2,000 colored lines, which the core hands over a credit window a round trip. Every frame from
+      // the host comes a round trip late, so the new connection measures that SRTT, as over the relay.
+      await page.addInitScript(sampleFromLoad, address);
+      link.delay(rttMs);
+      arrivals.since();
+      await page.reload();
+      await expect(page.locator(`[data-terminal="${address}"]`)).toContainText(`line-${LAST}`, { timeout: 60_000 });
+      const frames = await sampledFrames(page);
+      console.log(`history ${device} ${rttMs}: the replay came in ${arrivals.report()}`);
+
+      // The replay this test is for: the history, over many windows, not a screen's repaint.
+      expect(arrivals.bytes()).toBeGreaterThan(4 * CREDIT_WINDOW_BYTES);
+      expect(frames.at(-1)).toBe(LAST);
+      // The empty screen stays until the replay is drawn whole: one change, never a screen that climbs toward the end.
+      expect(transitions(frames)).toBeLessThanOrEqual(1);
+      expect(frames.filter((last) => last !== 0 && last !== LAST)).toEqual([]);
+    });
   });
 }
