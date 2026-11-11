@@ -233,17 +233,20 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           pacer.drop();
           output.reset();
           // Output that scrolled off the core's screen meanwhile is not in the kept history (#2033). A reconnect was
-          // already noted as the line went down (below); a view attached anew has its history played back instead.
+          // already noted as the line went down (below).
           if (keepsHistory) {
             noteHistoryGap(address, sameConnection ? "stream" : "reconnect");
             ready.write(CLEAR_SCREEN);
-          } else clearHistoryGap(address);
+          }
           // The repaint lands where the reader was: at the end for one who was following, in history for one who was not.
           endHold.current?.stop();
           // Only the reader's own input lets go early: on the terminal or what overlays it, its scrollbar included.
           const reader = readerInputOn(ready.element.parentElement ?? ready.element);
           endHold.current = holdFromEnd(ready.element, pacer, fromEnd, reader);
         }
+        // A view attached anew, a first attach included (a phone opens the terminal again as a new view), has its
+        // history played back: nothing it shows is missing any more (#2279 review).
+        if (!keepsHistory) clearHistoryGap(address);
         attachedBefore.current = true;
         paintedView.current = ready;
         // Every attach's first paint is its replay: written as it arrives with the paint held, then drawn once it has
