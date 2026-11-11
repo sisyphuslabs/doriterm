@@ -26,8 +26,13 @@ const keyBar = (page: Page) =>
 
 /** Opens a shell on the added machine from the phone list, once the machine reads connected. */
 async function openOnMachine(page: Page, name: string, address: string) {
-  await page.goto("/");
+  // The machine reads connected on the Spaces tab (mobile nav phase 3); its agent opens from the Agents tab.
+  await page.goto("/?v=spaces");
   await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
+  await page
+    .getByRole("navigation", { name: "Sections" })
+    .getByRole("button", { name: /^Agents\b/ })
+    .click();
   await agentRow(page, name, true).click();
   const terminal = page.locator(`[data-terminal="${MACHINE_NAME}/${address}"]`);
   await expect(terminal).toContainText("$", { timeout: 15_000 });

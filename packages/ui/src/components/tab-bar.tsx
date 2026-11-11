@@ -1,20 +1,14 @@
-import { ArrowLeft, ArrowRight, Pencil, Plus, X } from "lucide-react";
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Plus } from "lucide-react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/cn.ts";
 import { IconButton } from "./icon-button.tsx";
-import { ContextMenu, Menu, MenuItem, skipMenuHandler } from "./menu.tsx";
-import { StatusIndicator, type AgentStatus } from "./status.tsx";
+import { Menu } from "./menu.tsx";
+import { useTabActions } from "./tab-actions.ts";
 import { useTabDrag } from "./tab-drag.ts";
 import { DropCaret, DropIndicator, placement } from "./tab-drop.tsx";
+import { TabItem, type WorkspaceTab } from "./tab-item.tsx";
 
-export interface WorkspaceTab {
-  readonly id: string;
-  readonly title: string;
-  readonly icon?: ReactNode;
-  readonly status?: AgentStatus;
-  /** The id of the tab panel it shows (WAI-ARIA tabs: `aria-controls`). */
-  readonly controls?: string;
-}
+export type { WorkspaceTab } from "./tab-item.tsx";
 
 /** A tab that moved, by any path (drag, its menu, a key); counted so moving it to the same place again is news. */
 export interface TabMoved {
@@ -27,6 +21,10 @@ export interface TabBarProps {
   readonly activeId: string;
   readonly onSelect?: (id: string) => void;
   readonly onClose?: (id: string) => void;
+  /** Pins or unpins a tab from its menu (#1561). */
+  readonly onPin?: (id: string, pinned: boolean) => void;
+  /** "Close tabs to the right" and "Close other tabs" from a tab's menu; neither closes a pinned tab (#1561). */
+  readonly onCloseSet?: (id: string, which: "right" | "others") => void;
   readonly onNew?: () => void;
   /** herdr-app's new menu: given, the strip's New tab button opens it (#466 item 7); else the button is `onNew`. */
   readonly newMenu?: ReactNode;
@@ -47,31 +45,6 @@ export interface TabBarProps {
 }
 
 /**
- * A tab's title, cut at 170 px with an ellipsis; only a title cut short carries a tooltip with the whole of it (an agent's
- * long name, #1541), so a title that fits has none (#478).
- */
-function TabLabel({ text }: { readonly text: string }) {
-  const [clipped, setClipped] = useState(false);
-  const label = useRef<HTMLSpanElement>(null);
-  // Measured again for a new title, whose box can keep its width while the text inside it grows past it.
-  useLayoutEffect(() => {
-    const element = label.current;
-    if (element === null) return undefined;
-    const check = (): void => setClipped(element.scrollWidth > element.clientWidth + 1);
-    const observer = new ResizeObserver(check);
-    observer.observe(element);
-    check();
-    return () => observer.disconnect();
-  }, [text]);
-  return (
-    // Positioned above the tab button's hit layer (its ::after), so a pointer over the label reaches this title (#1530).
-    <span ref={label} title={clipped ? text : undefined} className="relative z-[1] max-w-[170px] truncate">
-      {text}
-    </span>
-  );
-}
-
-/**
  * herdr-app's tab strip: raised pill for the active tab, which alone shows its close button; status glyph instead of
  * colour bars, and a tooltip only on a title cut short; tabs reorder by drag, the wheel steps through them, and a tab's
  * menu renames, adds or closes.
@@ -81,6 +54,8 @@ export function TabBar({
   activeId,
   onSelect,
   onClose,
+  onPin,
+  onCloseSet,
   onNew,
   newMenu,
   onRename,
@@ -102,21 +77,32 @@ export function TabBar({
   // the keyboard as the menu closes: the question's first paint can come after that, and the strip would take it back.
   const handedOn = useRef(false);
   // The tabs the strip drew before its last change of tabs: they carry data-arrived, so the DOM move a reorder makes
-  // does not replay their arrival; a tab new to the list draws once without it and arrives.
+  // does not replay their arrival; a tab new to the list draws once without it and arrives. A pin or unpin is such a
+  // change too, even when the order stays: it moves the tab into the other group, a DOM move as well (#2013).
   const ids = tabs.map((tab) => tab.id);
-  const key = ids.join("\n");
+  const key = tabs.map((tab) => (tab.pinned === true ? `${tab.id}*` : tab.id)).join("\n");
   const [drawn, setDrawn] = useState(() => ({ key, before: new Set<string>(), now: new Set(ids) }));
   if (drawn.key !== key) setDrawn({ key, before: drawn.now, now: new Set(ids) });
   // The strip owns a touch's long press: held and moved it drags the tab, held and let go it opens the tab's menu.
   const [menuFor, setMenuFor] = useState<string | null>(null);
-  const { drag, settle, lifted, touching, onPointerDown, onClickCapture } = useTabDrag(list, ids, {
-    onMove,
+  // Pinned tabs lead (#1561) and sit in a group of their own that never scrolls, so they stay in view while the other
+  // tabs scroll; each group drags within itself, so no drag carries a tab across the last pinned one.
+  const firstUnpinned = tabs.findIndex((tab) => tab.pinned !== true);
+  const pins = firstUnpinned === -1 ? tabs.length : firstUnpinned;
+  const pinnedList = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  const dragOptions = (from: number) => ({
+    onMove: onMove === undefined ? undefined : (id: string, to: number) => onMove(id, to + from),
     onStart: () => setMenuFor(null),
-    onHoldRelease: (id, x, y) => {
+    onHoldRelease: (id: string, x: number, y: number) => {
       const item = list.current?.querySelector(`[data-tab-id="${CSS.escape(id)}"]`);
       item?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: x, clientY: y }));
     },
   });
+  const pinnedDrag = useTabDrag(pinnedList, ids.slice(0, pins), dragOptions(0));
+  const restDrag = useTabDrag(scroller, ids.slice(pins), dragOptions(pins));
+  const lifted = pinnedDrag.lifted ?? restDrag.lifted;
+  const touching = (): boolean => pinnedDrag.touching() || restDrag.touching();
 
   // With more tabs than fit, the selected one (a new tab lands after it) scrolls into view; New tab no longer scrolls
   // with the tabs to carry them along. Again when its title changes: a new tab's label settles after it arrives.
@@ -140,6 +126,45 @@ export function TabBar({
     setSaid({ count: last.count, text });
   }
 
+  const { actions, offers } = useTabActions(
+    { onSelect, onClose, onPin, onCloseSet, onNew, onRename, onMove },
+    { pinnedDrag, restDrag, touching },
+    { buttons, handedOn, setMenuFor },
+  );
+  const lastUnpinned = tabs.findLastIndex((tab) => tab.pinned !== true);
+
+  // One tab, in whichever group it sits: `index` is its place among all the tabs, which the menu's moves use.
+  const tabItem = (tab: WorkspaceTab, index: number): ReactNode => {
+    const pinned = tab.pinned === true;
+    const { drag, settle } = pinned ? pinnedDrag : restDrag;
+    const local = pinned ? index : index - pins;
+    const place = placement(tab.id, local, drag, settle);
+    return (
+      <TabItem
+        key={tab.id}
+        tab={tab}
+        index={index}
+        local={local}
+        active={tab.id === activeId}
+        // Pinned tabs lead and keep to their own side of the strip: a move never crosses the last pinned tab (#1561).
+        leftmost={pinned ? 0 : pins}
+        rightmost={pinned ? pins - 1 : tabs.length - 1}
+        closesRight={lastUnpinned > index}
+        closesOthers={firstUnpinned !== -1 && (lastUnpinned !== index || firstUnpinned !== index)}
+        dragging={drag?.id === tab.id}
+        lifted={lifted === tab.id}
+        arrived={drawn.before.has(tab.id)}
+        offset={place.offset}
+        placeClass={place.className}
+        menuOpen={menuFor === tab.id}
+        moveLeftKeys={moveKeys?.left}
+        moveRightKeys={moveKeys?.right}
+        offers={offers}
+        actions={actions}
+      />
+    );
+  };
+
   return (
     // The row is the titlebar's drag box, padding and gaps included, so the window drags everywhere in it but its
     // controls. A shell that puts a control over the row's start moves the row past it (a margin) rather than unmarking
@@ -152,13 +177,10 @@ export function TabBar({
       )}
     >
       {leading}
-      {/* py-1 holds the buttons' 4 px hit area (after:-inset-1) inside the strip: past its edge it was scrollable
-          overflow, and classic scrollbars drew a vertical bar for it (#343). The strip scrolls only sideways. */}
       <div
         ref={list}
         role="tablist"
         aria-label="Tabs"
-        onClickCapture={onClickCapture}
         // As herdr-app's strip: a vertical wheel step selects the previous or next tab, wrapping at the ends as tab.next
         // and tab.prev do (#466 item 8); sideways scrolls the strip.
         onWheel={(event) => {
@@ -168,143 +190,35 @@ export function TabBar({
           const next = tabs[(at + (event.deltaY > 0 ? 1 : -1) + tabs.length) % tabs.length];
           if (next !== undefined && next.id !== activeId) onSelect?.(next.id);
         }}
-        // herdr-app's #tab-scroll: tabs alone scroll, with a scrollbar once they overflow, and gap(3) between them.
-        className="relative flex min-w-0 flex-1 items-center gap-[3px] overflow-x-auto overflow-y-hidden py-1"
+        className="flex min-w-0 flex-1 items-center gap-[3px]"
       >
-        {drag === null ? null : <DropIndicator drag={drag} />}
-        {drag === null ? null : <DropCaret drag={drag} />}
-        {tabs.map((tab, index) => {
-          const active = tab.id === activeId;
-          const place = placement(tab.id, index, drag, settle);
-          const item = (
-            <div
-              key={tab.id}
-              data-tab-id={tab.id}
-              {...(drag?.id === tab.id ? { "data-dragging": "" } : {})}
-              {...(lifted === tab.id ? { "data-lifted": "" } : {})}
-              {...(drawn.before.has(tab.id) ? { "data-arrived": "" } : {})}
-              onPointerDown={(event) => onPointerDown(event, tab.id, index)}
-              onTouchStart={skipMenuHandler}
-              onContextMenu={(event) => {
-                if (!touching()) return;
-                skipMenuHandler(event);
-                event.preventDefault();
-              }}
-              style={place.offset === 0 ? undefined : { translate: `${place.offset}px 0` }}
-              className={cn(
-                "group relative motion-arrive flex h-[29px] shrink-0 items-center gap-[7px] rounded-[7px] border pl-2.5 text-[0.8rem] select-none [--arrive-duration:var(--duration-micro)]",
-                active
-                  ? "border-border bg-raised pr-1 text-foreground"
-                  : "border-transparent pr-2.5 text-muted-foreground hover:bg-hover",
-                lifted === tab.id && "border-border bg-raised shadow-overlay hover:bg-raised",
-                place.className,
-              )}
-            >
-              <button
-                ref={(element) => {
-                  if (element === null) buttons.current.delete(tab.id);
-                  else buttons.current.set(tab.id, element);
-                }}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                aria-controls={tab.controls}
-                onClick={() => onSelect?.(tab.id)}
-                onDoubleClick={() => onRename?.(tab.id)}
-                // The hit area spans the whole tab and half the 3 px gap to the next, past the wrapper's 1 px border:
-                // no dead column beside its Close button or between two tabs. Close comes later, so it stays on top.
-                className="flex min-w-0 items-center gap-[7px] rounded-xs outline-none after:absolute after:inset-y-0 after:-inset-x-[2.5px] focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
-              >
-                {tab.icon}
-                <TabLabel text={tab.title} />
-                {/* herdr-app draws nothing for an idle tab: a spinner while working, a dot when blocked or done. */}
-                {tab.status === undefined || tab.status === "idle" || tab.status === "unknown" ? null : (
-                  <StatusIndicator status={tab.status} className="size-3" />
-                )}
-              </button>
-              {active ? (
-                <IconButton
-                  label={`Close ${tab.title}`}
-                  icon={<X />}
-                  data-tab-close
-                  onClick={(event) => {
-                    // Selecting a tab moves the strip (only the selected tab has this button), so the second click of a
-                    // double-click on the tab can land here: that is a rename of the tab, never its close.
-                    if (event.detail > 1) onRename?.(tab.id);
-                    else onClose?.(tab.id);
-                  }}
-                  className="size-5 [&_svg]:size-3"
-                />
-              ) : null}
-            </div>
-          );
-          if (onMove === undefined) return item;
-          return (
-            <ContextMenu
-              key={tab.id}
-              trigger={item}
-              // An item that opened a dialog (Rename tab…) has given it the keyboard, and the menu closes a moment
-              // later: taking focus back to the tab would lose the name typed meanwhile. The question's first paint can
-              // come after that close, so what the item chose decides, not who holds the keyboard as the menu goes.
-              finalFocus={() => {
-                if (handedOn.current) return false;
-                const holder = document.activeElement;
-                if (holder instanceof HTMLElement && holder.closest('[role="dialog"]') !== null) return false;
-                return buttons.current.get(tab.id) ?? true;
-              }}
-              open={menuFor === tab.id}
-              onOpenChange={(open) => {
-                if (open) handedOn.current = false;
-                setMenuFor(open ? tab.id : null);
-              }}
-            >
-              <MenuItem
-                icon={<ArrowLeft />}
-                disabled={index === 0}
-                {...(moveKeys?.left === undefined ? {} : { keys: moveKeys.left })}
-                onClick={() => onMove(tab.id, index - 1)}
-              >
-                Move tab left
-              </MenuItem>
-              <MenuItem
-                icon={<ArrowRight />}
-                disabled={index === tabs.length - 1}
-                {...(moveKeys?.right === undefined ? {} : { keys: moveKeys.right })}
-                onClick={() => onMove(tab.id, index + 1)}
-              >
-                Move tab right
-              </MenuItem>
-              {onRename === undefined ? null : (
-                <MenuItem
-                  icon={<Pencil />}
-                  onClick={() => {
-                    handedOn.current = true;
-                    onRename(tab.id);
-                  }}
-                >
-                  Rename tab…
-                </MenuItem>
-              )}
-              {onNew === undefined ? null : (
-                <MenuItem
-                  icon={<Plus />}
-                  onClick={() => {
-                    handedOn.current = true;
-                    onNew();
-                  }}
-                >
-                  New tab
-                </MenuItem>
-              )}
-              {onClose === undefined ? null : (
-                <MenuItem icon={<X />} onClick={() => onClose(tab.id)}>
-                  Close tab
-                </MenuItem>
-              )}
-            </ContextMenu>
-          );
-        })}
+        {pins === 0 ? null : (
+          <div
+            ref={pinnedList}
+            data-tab-pins
+            onClickCapture={pinnedDrag.onClickCapture}
+            className="relative flex shrink-0 items-center gap-[3px] py-1"
+          >
+            {pinnedDrag.drag === null ? null : <DropIndicator drag={pinnedDrag.drag} />}
+            {pinnedDrag.drag === null ? null : <DropCaret drag={pinnedDrag.drag} />}
+            {tabs.slice(0, pins).map((tab, index) => tabItem(tab, index))}
+          </div>
+        )}
+        {/* herdr-app's #tab-scroll: tabs alone scroll, with a scrollbar once they overflow, and gap(3) between them.
+            py-1 holds the buttons' 4 px hit area (after:-inset-1) inside the strip: past its edge it was scrollable
+            overflow, and classic scrollbars drew a vertical bar for it (#343). The strip scrolls only sideways. */}
+        <div
+          ref={scroller}
+          data-tab-scroll
+          onClickCapture={restDrag.onClickCapture}
+          className="relative flex min-w-0 flex-1 items-center gap-[3px] overflow-x-auto overflow-y-hidden py-1"
+        >
+          {restDrag.drag === null ? null : <DropIndicator drag={restDrag.drag} />}
+          {restDrag.drag === null ? null : <DropCaret drag={restDrag.drag} />}
+          {tabs.slice(pins).map((tab, index) => tabItem(tab, index + pins))}
+        </div>
       </div>
+
       {/* Outside the scrolling tabs, as herdr-app's tab-new beside #tab-scroll: 22 tabs never push it away (item 5). */}
       {newMenu === undefined ? (
         <IconButton

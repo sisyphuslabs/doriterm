@@ -17,6 +17,7 @@ describe("a join dies with its offer (section 10.1)", () => {
     const invited = failure(serveJoin(new MeshLines(inviterEnd, INVITER_EXPECTS), generateX25519().publicKey, deps));
     expect(await invited).toBe("the offer expired before the card arrived");
     expect(inviterEnd.closeCode).toBe(CloseCode.UnknownDevice);
+    expect(a.mesh.read()).toBeUndefined();
   });
 
   test("an inviting member that never welcomes the joiner fails the join at its deadline, storing nothing", async () => {

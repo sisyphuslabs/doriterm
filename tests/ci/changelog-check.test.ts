@@ -165,6 +165,20 @@ test("tests, e2e specs, fixtures, docs and CI files need no line", async () => {
   expect(result).toEqual({ code: 0, out: expect.stringContaining("no user-facing") });
 });
 
+test("a test-support helper is test code, so it needs no line (#1904)", async () => {
+  const { dir, base } = await repo({
+    "apps/web/src/terminal/long-press-harness.test-support.ts": "x\n",
+    "apps/web/src/connection/direct-forward.test-support.tsx": "x\n",
+  });
+  const result = await check(dir, base);
+  expect(result).toEqual({ code: 0, out: expect.stringContaining("no user-facing") });
+});
+
+test("a file named like test support but not a test helper is still user-facing", async () => {
+  const { dir, base } = await repo({ "apps/web/src/test-support.ts": "export {};\n" });
+  expect((await check(dir, base)).code).toBe(1);
+});
+
 test("a release pull request that moves Unreleased into a new version section passes", async () => {
   const { dir, base } = await repo({
     "apps/desktop/package.json": '{ "version": "1.1.0" }\n',

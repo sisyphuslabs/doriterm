@@ -43,7 +43,12 @@ export async function hangulKey(
       if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
       const box = element;
       const down = box.dispatchEvent(
-        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: key.jamo, keyCode: key.keyCode }),
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: key.jamo,
+          keyCode: key.keyCode,
+        }),
       );
       const code = key.jamo.charCodeAt(0);
       const press =
@@ -99,26 +104,35 @@ export async function typeHangul(
   }
 }
 
-/** Safari on macOS: the first jamo inserted, each change replacing the syllable it changes, keydown 229 after it. */
-export async function safariReplace(field: Locator, syllables: readonly string[]): Promise<void> {
-  await field.evaluate(async (element, replacements) => {
-    if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
-    const box = element;
-    const at = box.selectionEnd;
-    for (const [index, data] of replacements.entries()) {
-      const inputType = index === 0 ? "insertText" : "insertReplacementText";
-      const end = index === 0 ? at : Math.min(box.value.length, at + 1);
-      box.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType, data }));
-      box.setRangeText(data, Math.min(at, box.value.length), end, "end");
-      box.dispatchEvent(new InputEvent("input", { bubbles: true, inputType, data }));
-      box.dispatchEvent(
-        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Unidentified", keyCode: 229 }),
-      );
-      box.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: "Unidentified", keyCode: 229 }));
-      // oxlint-disable-next-line no-await-in-loop -- one edit a frame, as a person types
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    }
-  }, syllables);
+/**
+ * Safari on macOS: the first jamo inserted, each change replacing the syllable it changes, keydown 229 after it. One
+ * edit a frame, or `pauseMs` apart, as a slower typist leaves them.
+ */
+export async function safariReplace(field: Locator, syllables: readonly string[], pauseMs?: number): Promise<void> {
+  await field.evaluate(
+    async (element, { replacements, pause }) => {
+      if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
+      const box = element;
+      const at = box.selectionEnd;
+      for (const [index, data] of replacements.entries()) {
+        const inputType = index === 0 ? "insertText" : "insertReplacementText";
+        const end = index === 0 ? at : Math.min(box.value.length, at + 1);
+        box.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType, data }));
+        box.setRangeText(data, Math.min(at, box.value.length), end, "end");
+        box.dispatchEvent(new InputEvent("input", { bubbles: true, inputType, data }));
+        box.dispatchEvent(
+          new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Unidentified", keyCode: 229 }),
+        );
+        box.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: "Unidentified", keyCode: 229 }));
+        // oxlint-disable-next-line no-await-in-loop -- one edit after another, as a person types
+        await new Promise<void>((resolve) => {
+          if (pause === undefined) requestAnimationFrame(() => resolve());
+          else setTimeout(resolve, pause);
+        });
+      }
+    },
+    { replacements: syllables, pause: pauseMs },
+  );
 }
 
 /** The steps of 한글 on a 2-set keyboard. */
@@ -130,3 +144,36 @@ export const HANGEUL: readonly (readonly [string, string])[] = [
   ["ㅡ", "한그"],
   ["ㄹ", "한글"],
 ];
+
+/**
+ * One key of a Korean keyboard whose syllable state follows the field (a MODEL of the on-screen keyboard, not a recording):
+ * the keyboard ends its syllable only when a key it sends reaches the field. A space whose keydown the page cancels never
+ * reached it, so the keyboard's next jamo still joins the syllable before it: it takes that syllable back and puts the joined
+ * one in its place. Returns whether the key's keydown was left to the field.
+ */
+export async function spaceThenJamo(
+  field: Locator,
+  keyboard: Keyboard,
+  joined: { readonly jamo: string; readonly alone: string; readonly withPrevious: string },
+): Promise<boolean> {
+  const spaceDown = await field.evaluate((element) => {
+    if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
+    const down = element.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: " ", keyCode: 32 }),
+    );
+    if (down) {
+      element.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data: " " }));
+      element.setRangeText(" ", element.selectionStart, element.selectionEnd, "end");
+      element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: " " }));
+    }
+    element.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: " ", keyCode: 32 }));
+    return down;
+  });
+  await hangulKey(
+    field,
+    keyboard,
+    joined.jamo,
+    spaceDown ? [["insert", joined.alone]] : [["delete"], ["insert", joined.withPrevious]],
+  );
+  return spaceDown;
+}

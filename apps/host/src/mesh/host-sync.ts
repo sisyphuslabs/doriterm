@@ -126,7 +126,13 @@ export class HostSync {
   #sync(secure: SecureLink | undefined): void {
     if (this.#stopped) return;
     const file = this.#options.mesh.read();
-    if (file === undefined) return secure?.close(4401, "this host is in no mesh");
+    if (file === undefined) {
+      if (secure !== undefined) {
+        this.#options.log("mesh: close code=4401 source=host-sync-state: this host is in no mesh");
+        secure.close(4401, "this host is in no mesh");
+      }
+      return;
+    }
     const fresh = file.records.filter((record) => !this.#seen.has(hashOf(record)));
     for (const record of fresh) this.#seen.add(hashOf(record));
     const created = this.#running === undefined;
@@ -145,6 +151,7 @@ export class HostSync {
   #attach(gossip: Gossip, secure: SecureLink): boolean {
     const member = this.#memberOf(secure);
     if (member === undefined) {
+      this.#options.log("mesh: close code=4401 source=host-sync-member: not a member of this mesh");
       secure.close(4401, "not a member of this mesh");
       return false;
     }

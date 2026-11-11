@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { HcRpcError, type JsonObject, type Terminal } from "@doriface/protocol";
 import { docSpaces, type DocEdit } from "@doriface/protocol/layout";
 import { layoutSpaces, type ListedSpace } from "./model.ts";
+import { phoneSpaces } from "./phone-space-rows.ts";
 import type { SessionCalls } from "./session-actions.ts";
-import { closeRefusal, closeSpace } from "./space-close.ts";
+import { closeCounts, closeRefusal, closeSpace } from "./space-close.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
 
 const terminal = (fields: Partial<Terminal>): Terminal => ({
@@ -151,9 +152,63 @@ describe("closing a space", () => {
     expect(here.state.writes).toBe(1);
   });
 
+  test("every session it ends is dropped once by the close's own write, before any End runs", async () => {
+    const { layouts, spaces, id } = setup();
+    const hc = hcEnds();
+    const did: string[] = [];
+    const calls: SessionCalls = {
+      ...hc.calls,
+      kill: (params) => {
+        did.push(`kill ${params.terminal}`);
+        return hc.calls.kill(params);
+      },
+    };
+    await closeSpace(calls, layouts, spaces, TERMINALS, id("api"), {
+      closing: (addresses) => did.push(`closing ${addresses.join(",")}`),
+      kept: (address) => did.push(`kept ${address}`),
+    });
+    // t3's program had already ended: the two live ones are the close's one drop.
+    expect(did).toEqual(["closing t1,t2", "kill t1", "kill t2"]);
+  });
+
+  test("an End that fails releases that session, so its later end drops its pane again", async () => {
+    const { layouts, spaces, id } = setup();
+    const hc = hcEnds({ t2: "unreachable" });
+    const kept: string[] = [];
+    await expect(
+      closeSpace(hc.calls, layouts, spaces, TERMINALS, id("api"), {
+        closing: () => undefined,
+        kept: (address) => kept.push(address),
+      }),
+    ).rejects.toThrow("unreachable");
+    expect(kept).toEqual(["t2"]);
+  });
+
   test("a space no layout holds is refused with why", () => {
     const { layouts, id } = setup();
     expect(closeRefusal(layouts, "spc-gone")).toBe("This space is no longer in the layout.");
     expect(closeRefusal(layouts, id("api"))).toBeNull();
+  });
+});
+
+describe("what a space's Close question counts (#2135)", () => {
+  test("on a desktop, every tab of the document and every terminal they show, as its strip shows them", () => {
+    const { spaces, id } = setup();
+    const api = spaces.find((each) => each.id === id("api"));
+    expect(closeCounts(api, TERMINALS, false)).toEqual({ tabs: 3, terminals: 3 });
+  });
+
+  test("on a phone, the tabs its space row counts and the terminals they show: a finished tab is in neither", () => {
+    const { spaces, id } = setup();
+    const api = spaces.find((each) => each.id === id("api"));
+    // api's three tabs show t1, t2 and the finished t3: its phone row reads 2, and so does its question.
+    const row = phoneSpaces(spaces, TERMINALS).find((each) => each.id === id("api"));
+    expect(row?.tabs).toBe(2);
+    expect(closeCounts(api, TERMINALS, true)).toEqual({ tabs: 2, terminals: 2 });
+  });
+
+  test("a space no list holds counts nothing", () => {
+    expect(closeCounts(undefined, TERMINALS, true)).toEqual({ tabs: 0, terminals: 0 });
+    expect(closeCounts(undefined, TERMINALS, false)).toEqual({ tabs: 0, terminals: 0 });
   });
 });

@@ -13,9 +13,11 @@ const AWAIT_SCENARIO = `new Promise((resolve) => {
 /**
  * Each phase has its own deadline, inside the test's, so a browser slow to start reads as a launch problem and a page
  * that never publishes reads as the scenario's (#1002): one run sat out the whole 60 s ceiling with no word of which.
+ * The deadlines catch a stall, not a slow machine: a browser that starts in 3.6 s took 41 s to load and 17 s to publish
+ * with the test held to 3% of a core, and a saturated hosted runner ran out the old 30 s on a start alone (#2020).
  */
-const LOAD_MS = 30_000;
-const SCENARIO_MS = 20_000;
+const LOAD_MS = 120_000;
+const SCENARIO_MS = 60_000;
 function within<T>(phase: string, ms: number, work: Promise<T>): Promise<T> {
   const { promise: late, reject } = Promise.withResolvers<never>();
   const timer = setTimeout(() => reject(new Error(`${phase} did not finish within ${ms / 1000} s`)), ms);
@@ -73,5 +75,5 @@ describe("@wterm/ghostty 0.5.9 core on the rebuilt wasm (browser)", () => {
         programStatus: null,
       },
     });
-  }, 60_000);
+  }, 240_000);
 });

@@ -65,7 +65,10 @@ test("moving focus to another tab ends the dictation, so nothing heard for one p
   const speech = await stubSpeech(page);
   await page.goto("/");
   await agentRow(page, OTHER, false).click();
-  await expect(page.locator(`[data-terminal="${other}"]`)).toContainText("$", { timeout: 15_000 });
+  // Scoped to the pane on show: one address can have more than one viewport mounted while a selection changes (#2084).
+  await expect(page.locator(`section[data-focused="true"]:visible [data-terminal="${other}"]`)).toContainText("$", {
+    timeout: 15_000,
+  });
   await agentRow(page, NAME, false).click();
   await expect(page.locator(`[data-focused="true"] [data-terminal="${address}"]`)).toContainText("$", {
     timeout: 15_000,
@@ -92,7 +95,10 @@ test("moving focus to the other pane of a split tab ends the dictation, so nothi
   const speech = await stubSpeech(page);
   await page.goto("/");
   await agentRow(page, OTHER, false).click();
-  await expect(page.locator(`[data-terminal="${other}"]`)).toContainText("$", { timeout: 15_000 });
+  // Scoped to the pane on show: one address can have more than one viewport mounted while a selection changes (#2084).
+  await expect(page.locator(`section[data-focused="true"]:visible [data-terminal="${other}"]`)).toContainText("$", {
+    timeout: 15_000,
+  });
   await agentRow(page, NAME, false).click();
   const shown = page.locator("section[data-split='true']:visible");
   const mine = shown.locator(`[data-terminal="${address}"]`);

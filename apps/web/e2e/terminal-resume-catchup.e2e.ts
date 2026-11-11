@@ -4,6 +4,7 @@ import { E2E_HOST_PORT } from "./config.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
+import { hiddenDocumentFrames, hide, sampledFrames, startLastLineSampler, transitions } from "./resume-probe.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
@@ -25,10 +26,13 @@ const FLOOD = `for i in $(seq 1 ${LAST}); do echo line-$i; done; printf '\\033]2
 /** hc's wire frame header: channel (u32), kind (u8), payload length (u32), little-endian; channel 0 carries the RPC. */
 const HC_HEADER_BYTES = 9;
 /**
- * The flood again, each line in two dozen colors: a replay of its history is several hundred KiB (the core repaints every
- * color) in under 40 columns, so it fits a phone's row unwrapped and takes the relay many slices to hand over.
+ * The flood again, its last 2,100 lines each in two dozen colors, in under 40 columns so a line fits a phone's row
+ * unwrapped, while the lines before them stay plain and quick to print. Since #1999 a reattach to a painted view asks for
+ * no history (`history: 0`), so what the core sends back after a reconnect is the screen's repaint alone: some 10-20 KB,
+ * not the 2,000 colored lines of history. The hold tests that use it therefore cover a screen repaint over a slow link,
+ * not a multi-MiB replay (#2032).
  */
-const COLORED_FLOOD = `c=$(for k in $(seq 1 24); do printf '\\033[38;5;%d;48;5;%dmx' $((k*9)) $((255-k*9)); done); for i in $(seq 1 ${LAST}); do echo "line-$i $c"; done; printf '\\033[0m\\033]2;${FLOOD_END}\\007'`;
+const COLORED_FLOOD = `c=$(for k in $(seq 1 24); do printf '\\033[38;5;%d;48;5;%dmx' $((k*9)) $((255-k*9)); done); for i in $(seq 1 ${LAST}); do if [ $i -gt ${LAST - 2100} ]; then echo "line-$i $c"; else echo line-$i; fi; done; printf '\\033[0m\\033]2;${FLOOD_END}\\007'`;
 
 /**
  * Watches the frames a routed hc socket delivers on the stream channels: how many bytes came after `since()` turned on
@@ -111,105 +115,6 @@ async function routeReplayInOneGo(page: Page, whole: string): Promise<{ opened: 
   };
 }
 
-/**
- * Call before page.goto. A hidden document gets no animation frames in a browser, but headless Chromium keeps running
- * them for a page whose visibilityState a spec redefines: frames asked for while it reads "hidden" wait here until it
- * reads "visible" again, as they would.
- */
-async function hiddenDocumentFrames(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const native = window.requestAnimationFrame.bind(window);
-    const cancel = window.cancelAnimationFrame.bind(window);
-    const booked = new Map<number, number>();
-    const parked = new Map<number, FrameRequestCallback>();
-    let next = 1;
-    const book = (id: number, run: FrameRequestCallback): void => {
-      booked.set(
-        id,
-        native((time) => {
-          booked.delete(id);
-          if (document.visibilityState === "hidden") parked.set(id, run);
-          else run(time);
-        }),
-      );
-    };
-    window.requestAnimationFrame = (run) => {
-      const id = next;
-      next += 1;
-      book(id, run);
-      return id;
-    };
-    window.cancelAnimationFrame = (id) => {
-      const real = booked.get(id);
-      if (real !== undefined) cancel(real);
-      booked.delete(id);
-      parked.delete(id);
-    };
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") return;
-      for (const [id, run] of parked) {
-        parked.delete(id);
-        book(id, run);
-      }
-    });
-  });
-}
-
-/**
- * Records, for every frame as painted, the highest `line-N` on the terminal's screen rows (0 when none). Sampled in a
- * ResizeObserver callback, which runs after every animation-frame callback of the frame (the pacer's write, the
- * renderer) and before the paint, as e2e/prediction-frames.ts does. `before` runs right after the sampler is installed,
- * in the same task, so the first sample is the first frame after it.
- */
-async function startLastLineSampler(terminal: Locator, before: "show" | "nothing"): Promise<void> {
-  await terminal.evaluate((element, then) => {
-    const probe = document.createElement("div");
-    probe.style.cssText = "position:fixed;left:-10px;top:-10px;height:1px;pointer-events:none";
-    document.body.appendChild(probe);
-    const samples: number[] = [];
-    let frame = 0;
-    let on = true;
-    const sample = (): void => {
-      let last = 0;
-      for (const row of element.querySelectorAll(".term-grid .term-row:not(.term-scrollback-row)"))
-        for (const match of (row.textContent ?? "").matchAll(/line-(\d+)/g)) last = Math.max(last, Number(match[1]));
-      samples.push(last);
-    };
-    new ResizeObserver(() => {
-      if (on) sample();
-    }).observe(probe);
-    const tick = (): void => {
-      frame += 1;
-      probe.style.width = `${1 + (frame % 2)}px`;
-      if (on) requestAnimationFrame(tick);
-    };
-    Reflect.set(window, "__lastLines", () => {
-      on = false;
-      probe.remove();
-      return samples;
-    });
-    if (then === "show") {
-      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
-      requestAnimationFrame(tick);
-      document.dispatchEvent(new Event("visibilitychange"));
-    } else requestAnimationFrame(tick);
-  }, before);
-}
-
-const sampledFrames = (page: Page): Promise<number[]> =>
-  page.evaluate(() => (Reflect.get(window, "__lastLines") as () => number[])());
-
-/** Tells the page it has gone to the background, the way a phone leaving the app does. */
-const hide = (page: Page) =>
-  page.evaluate(() => {
-    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
-    document.dispatchEvent(new Event("visibilitychange"));
-  });
-
-/** How many times the sampled value changes from one frame to the next. */
-const transitions = (frames: readonly number[]): number =>
-  frames.reduce((count, value, at) => (at > 0 && value !== frames[at - 1] ? count + 1 : count), 0);
-
 for (const device of ["desktop", "phone"] as const) {
   test.describe(device, () => {
     if (device === "phone") test.use({ ...PHONE });
@@ -230,7 +135,7 @@ for (const device of ["desktop", "phone"] as const) {
     test("coming back to the app paints the screen as it is now in its first frame, not a replay (D5)", async ({
       page,
     }) => {
-      await hiddenDocumentFrames(page);
+      await hiddenDocumentFrames(page, "/v1/hc");
       const link = await routeHcSocket(page);
       const { terminal } = await terminalFor(page);
 
@@ -289,21 +194,25 @@ for (const device of ["desktop", "phone"] as const) {
       test(`over a ${rttMs} ms relay, a reconnect's replay that comes a slice a round trip is painted once it has settled: the screen never climbs back (D5, #1040)`, async ({
         page,
       }) => {
+        // A flood of a few MiB, painted, then a replay of over a MiB a window a round trip: more than the default budget
+        // on a loaded runner, though every wait is on a marker.
+        test.slow();
         await page.addInitScript(() => {
           Reflect.set(window, "__dorifaceAttachLog", []);
         });
-        // Every frame from the host comes a round trip late, so the page measures that SRTT, and the core, which sends
-        // one 256 KiB credit window and waits for its credit, hands the replay over a window a round trip, as the relay does.
         const arrivals = streamArrivals(rttMs);
         const link = await routeHcSocket(page, { received: arrivals.received });
-        link.delay(rttMs);
         const { terminal } = await terminalFor(page);
         await page.keyboard.type(COLORED_FLOOD);
         await page.keyboard.press("Enter");
-        await expect(terminal).toHaveAttribute("aria-label", `${FLOOD_END} output`, { timeout: 30_000 });
-        await expect(terminal).toContainText(`line-${LAST}`, { timeout: 20_000 });
+        await expect(terminal).toHaveAttribute("aria-label", `${FLOOD_END} output`, { timeout: 60_000 });
+        await expect(terminal).toContainText(`line-${LAST}`, { timeout: 60_000 });
 
         await startLastLineSampler(terminal, "nothing");
+        // From the drop on, every frame from the host comes a round trip late: the new connection measures that SRTT, and
+        // the core, which sends one 256 KiB credit window and waits for its credit, hands the replay over a window a round
+        // trip, as the relay does.
+        link.delay(rttMs);
         const before = link.opened();
         arrivals.since();
         await link.drop(true);

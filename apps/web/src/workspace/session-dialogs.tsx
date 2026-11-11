@@ -67,11 +67,6 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onDrop, onK
     if (live) setLiveAsk(ask);
   }, [ask, live]);
   const ended = ask !== null && ask === liveAsk && !live && !keep;
-  // The answers it replaces are gone from under the pointer and the keyboard, so OK takes focus.
-  const acknowledge = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (ended) acknowledge.current?.focus();
-  }, [ended]);
   useEffect(() => {
     if (ask === null || keep || live) return;
     // The closed tab's session is gone either way; dropping its tab is tidying up, not an answer.
@@ -133,8 +128,9 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onDrop, onK
     end();
   });
   if (ask === null || !(live || keep || ended)) return null;
-  // A close that needed no question stays without one while its End settles, also once the terminal has left the list
-  // (which ends `quiet`); it shows only to say why that End failed (#518).
+  // A close whose End is under way shows no question while that End settles: one that needed no question, and one
+  // whose question was answered (its question goes as Close is chosen, #1271), also once the terminal has left the
+  // list (which ends `quiet`); it shows only to say why that End failed (#518).
   if ((quiet || endedQuietly.current === ask) && error === null) return null;
   const title = (asked.ask === ask ? asked.name : null) ?? current ?? "";
   // Asked with focus on the page body (a terminal whose renderer had not started yet), or from an element that is gone
@@ -154,7 +150,7 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onDrop, onK
         title={`${title} already ended`}
         description={ENDED[ask.kind]}
         actions={
-          <Button ref={acknowledge} variant="primary" onClick={onDone}>
+          <Button variant="primary" onClick={onDone}>
             OK
           </Button>
         }
@@ -204,7 +200,11 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onDrop, onK
     >
       {error === null ? undefined : (
         <Notice tone="error" title="The session did not end">
-          {error}
+          {`${error.replace(/\.$/, "")}. ${
+            ask.kind === "close"
+              ? "It keeps running outside any pane, and opens as a tab of its own within a few seconds."
+              : "It keeps running."
+          }`}
         </Notice>
       )}
     </Dialog>

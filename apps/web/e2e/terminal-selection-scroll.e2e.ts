@@ -63,6 +63,7 @@ async function selectHistory(page: Page, terminal: Locator): Promise<string> {
         sample();
       }),
   );
+  let positions: number[] = [];
   try {
     await page.mouse.move(box.left + 1, box.y);
     await page.mouse.down();
@@ -72,8 +73,9 @@ async function selectHistory(page: Page, terminal: Locator): Promise<string> {
     await page.mouse.up();
   } finally {
     await terminal.evaluate((element) => element.setAttribute("data-stop-scroll-sample", ""));
+    // Awaited on every exit, so a failed check above is the only error the run reports (#2125).
+    positions = await sampling;
   }
-  const positions = await sampling;
   expect(positions.length).toBeGreaterThan(1);
   expect
     .soft(

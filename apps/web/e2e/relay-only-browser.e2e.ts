@@ -57,7 +57,7 @@ async function joinOneMachine(page: Page, host: FakeRelayHost, phone: boolean): 
   const command = dialog.getByLabel("Join command");
   await expect(command).toBeVisible({ timeout: 30_000 });
   const text = (await command.innerText()).trim();
-  const link = /--join '(doriface:\/\/pair#[^']+)'/.exec(text)?.[1] ?? "";
+  const link = /DORIFACE_JOIN='(doriface:\/\/pair#[^']+)' sh$/.exec(text)?.[1] ?? "";
   expect(link).toContain("doriface://pair#");
   expect(await host.join(link)).toBe("joiner");
   await expect(dialog.getByText("joiner joined this host's mesh")).toBeVisible({ timeout: 60_000 });
@@ -84,6 +84,18 @@ function pastTheRelay(refused: readonly string[]): string[] {
   });
 }
 
+/**
+ * The path the session takes, as the status bar says it: a desktop's is always there; a phone's is on its Spaces tab
+ * (mobile nav phase 3), which this opens and leaves again for the agents list.
+ */
+async function pathSaysRelay(page: Page, phone: boolean): Promise<void> {
+  const sections = page.getByRole("navigation", { name: "Sections" });
+  if (phone) await sections.getByRole("button", { name: "Spaces", exact: true }).click({ timeout: 30_000 });
+  await expect(page.locator('[data-connection-path="relay"]')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("contentinfo")).toContainText("Relay");
+  if (phone) await sections.getByRole("button", { name: /^Agents\b/ }).click();
+}
+
 /** A desktop shows the terminal beside the list; a phone shows the agents list first, and a tap opens the terminal. */
 async function terminalOpens(page: Page, phone: boolean): Promise<void> {
   if (phone)
@@ -103,15 +115,21 @@ async function connectsOverTheRelayAlone(page: Page, phone: boolean): Promise<vo
 
     const paired = await pairAndOpen(page, host);
     // The session pairing proved is a browser session too: it says Relay, with no direct address saved at all.
-    await expect(page.locator('[data-connection-path="relay"]')).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole("contentinfo")).toContainText("Relay");
+    await pathSaysRelay(page, phone);
     await terminalOpens(page, phone);
 
     // A later load with a Direct address in the file still reaches the host, and dials no direct socket to do it.
     await withDirectAddress(page, paired, host.directUrl);
     await page.goto("/");
-    await expect(page.locator('[data-connection-path="relay"]')).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole("contentinfo")).toContainText("Relay");
+    // A phone reopens where it was, the terminal, and its Back returns to the lists.
+    if (phone) {
+      await expect(page.locator("[data-terminal]").first()).toBeVisible({ timeout: 30_000 });
+      await page
+        .getByRole("banner")
+        .getByRole("button", { name: /^Back to / })
+        .click();
+    }
+    await pathSaysRelay(page, phone);
     await terminalOpens(page, phone);
 
     await joinOneMachine(page, host, phone);

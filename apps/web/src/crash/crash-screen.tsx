@@ -20,7 +20,7 @@ export function CrashScreen({ error, onRetry }: CrashScreenProps) {
           <CircleAlert aria-hidden className="size-5 shrink-0 text-status-blocked-text" />
           <h1 className="text-xl font-semibold">Doriterm stopped drawing</h1>
         </div>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-prose text-muted-foreground">
           It hit an error it could not draw past. Your terminals keep running on the host.
         </p>
         <div className="flex flex-wrap gap-2">

@@ -26,12 +26,13 @@ export function rendererOptions(config: TerminalConfig): RendererOptions {
   const blink = single(config, "cursor-style-blink");
   const style = single(config, "cursor-style");
   const [blinking, steady] = SHAPES[style] ?? [1, 2];
+  const copyOnSelect = single(config, "copy-on-select");
   return {
     cursorBlink: blink === "" ? undefined : blink === "true",
     cursorSequence: `\u001b[${blink === "false" ? steady : blinking} q`,
     hollowCursor: style === "block_hollow",
     scrollbackBytes: Number(single(config, "scrollback-limit")),
-    copyOnSelect: single(config, "copy-on-select") !== "false",
+    copyOnSelect: copyOnSelect === "true" || copyOnSelect === "clipboard",
     hideMouseWhileTyping: single(config, "mouse-hide-while-typing") === "true",
     pasteProtection: single(config, "clipboard-paste-protection") === "true",
     trimCopy: single(config, "clipboard-trim-trailing-spaces") !== "false",

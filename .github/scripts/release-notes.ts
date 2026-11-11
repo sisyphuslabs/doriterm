@@ -37,7 +37,7 @@ const DOWNLOADS: readonly Download[] = [
   { label: "Web client and PWA (static files)", matches: (name) => has(name, "-web-") && name.endsWith(".zip") },
   { label: "Render bench against the last release (#670)", matches: (name) => has(name, "-render-bench.") },
   {
-    label: "Host only, Linux and macOS (`curl -fsSL <this release>/install.sh | sh` installs it as a user service)",
+    label: "Host only, Linux and macOS (`curl -fsSL https://get.doriterm.com | sh` installs it as a user service)",
     matches: (name) => name === "install.sh" || name.startsWith("doriface-host-"),
   },
 ];
@@ -103,7 +103,7 @@ function downloads(assets: readonly string[]): string {
 const SIGNING = `## Code signing
 
 - **macOS:** signed with a Developer ID certificate and notarized by Apple, and the dmg is stapled, so it opens without a Gatekeeper warning.
-- **Windows:** not code signed yet, so SmartScreen warns about an unknown publisher. Choose **More info**, then **Run anyway**.
+- **Windows:** check **Settings > System > About > System type**: choose \`x64-setup.exe\` for Intel or AMD (x64), or \`arm64-setup.exe\` for Windows on ARM (arm64). The arm64 setup requires ARM64 Windows; the x64 setup also works on Windows on ARM through x64 emulation, but prefer the native arm64 setup there. Not code signed yet, so SmartScreen warns about an unknown publisher. Choose **More info**, then **Run anyway**.
 - **Linux:** make the AppImage executable (\`chmod +x\`) and run it, or install the deb with \`sudo apt install ./<file>.deb\`.`;
 
 const USAGE =
@@ -126,4 +126,8 @@ const assets = readdirSync(assetsDir)
   .filter((name) => name !== "SHA256SUMS.txt")
   .toSorted();
 const changes = resolved.notes;
-console.log([`# Doriterm v${version}`, changes, `## Downloads\n\n${downloads(assets)}`, SIGNING].join("\n\n"));
+// get.doriterm.com answers each platform's link with the current release of its channel (#1969).
+const STABLE_LINKS = "Every platform's current build, by one stable link each: https://get.doriterm.com";
+console.log(
+  [`# Doriterm v${version}`, changes, `## Downloads\n\n${STABLE_LINKS}\n\n${downloads(assets)}`, SIGNING].join("\n\n"),
+);

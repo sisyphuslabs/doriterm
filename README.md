@@ -25,7 +25,8 @@
 
 <p align="center">
   <a href="https://github.com/sisyphuslabs/doriterm/actions/workflows/ci.yml"><img src="https://github.com/sisyphuslabs/doriterm/actions/workflows/ci.yml/badge.svg?branch=dev" alt="Check on dev" /></a>
-  <a href="https://github.com/sisyphuslabs/doriterm/releases/latest"><img src="https://img.shields.io/github/v/release/sisyphuslabs/doriterm?label=release&labelColor=333333&color=666666" alt="latest release" /></a>
+  <a href="https://get.doriterm.com"><img src="https://img.shields.io/github/v/release/sisyphuslabs/doriterm?label=release&labelColor=333333&color=666666" alt="latest release" /></a>
+  <a href="https://get.doriterm.com/stats/downloads"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fget.doriterm.com%2Fstats%2Fdownloads&query=%24.downloads&label=downloads&labelColor=333333&color=666666" alt="downloads" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/sisyphuslabs/doriterm?labelColor=333333&color=666666" alt="license" /></a>
 </p>
 
@@ -89,21 +90,29 @@ app; and the **relay** between them, which is already deployed. The shortest pat
 
 ### The desktop app
 
-[Releases](https://github.com/sisyphuslabs/doriterm/releases/latest) carries the app for every supported platform:
+[get.doriterm.com](https://get.doriterm.com) carries the app for every supported platform, one link each that always
+answers with the current release (every release is also on [GitHub Releases](https://github.com/sisyphuslabs/doriterm/releases/latest)):
 
-| Platform                          | File                                                                                                  |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| macOS, Apple silicon              | `Doriterm-<version>-arm64.dmg`, or `Doriterm-<version>-arm64-mac.zip`                                 |
-| macOS, Intel                      | `Doriterm-<version>-x64.dmg`, or `Doriterm-<version>-x64-mac.zip`                                     |
-| Windows, x64 and arm64            | `Doriterm-<version>-x64-setup.exe`, `Doriterm-<version>-arm64-setup.exe`                              |
-| Linux, x64 and arm64              | `Doriterm-<version>-x86_64.AppImage`, `-arm64.AppImage`, `Doriterm_<version>_amd64.deb`, `_arm64.deb` |
-| The web client, to serve yourself | `doriterm-web-<version>.zip`                                                                          |
+| Platform                          | Download                                                                                                                                                                                                                                           |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS, Apple silicon              | [dmg](https://get.doriterm.com/dl/mac-arm64.dmg), [zip](https://get.doriterm.com/dl/mac-arm64.zip)                                                                                                                                                 |
+| macOS, Intel                      | [dmg](https://get.doriterm.com/dl/mac-x64.dmg), [zip](https://get.doriterm.com/dl/mac-x64.zip)                                                                                                                                                     |
+| Windows, Intel or AMD (x64)       | [x64 installer](https://get.doriterm.com/dl/win-x64.exe)                                                                                                                                                                                           |
+| Windows on ARM (arm64)            | [arm64 installer](https://get.doriterm.com/dl/win-arm64.exe)                                                                                                                                                                                       |
+| Linux, x64 and arm64              | [x64 AppImage](https://get.doriterm.com/dl/linux-x64.AppImage), [arm64 AppImage](https://get.doriterm.com/dl/linux-arm64.AppImage), [x64 deb](https://get.doriterm.com/dl/linux-x64.deb), [arm64 deb](https://get.doriterm.com/dl/linux-arm64.deb) |
+| The web client, to serve yourself | [zip](https://get.doriterm.com/dl/web.zip)                                                                                                                                                                                                         |
 
 The macOS app has been signed with a Developer ID certificate and notarized since v0.1.1, and its disk image is stapled; v0.1.0
 was only ad-hoc signed, so macOS blocks its first open until you choose **Open Anyway** in System Settings > Privacy &
 Security, or run `xattr -dr com.apple.quarantine /Applications/Doriterm.app`. The Windows installers are not code signed yet, so
-SmartScreen warns about an unknown publisher: choose **More info**, then **Run anyway**. `SHA256SUMS.txt` sits beside every
-asset.
+SmartScreen warns about an unknown publisher: choose **More info**, then **Run anyway**.
+[`SHA256SUMS.txt`](https://get.doriterm.com/dl/SHA256SUMS.txt) lists every file's checksum, and `SHA256SUMS.txt.sig` beside
+it is its Ed25519 signature by the release key in `packages/crypto/src/release.ts`. The app updates itself from the same
+host: Settings > This device > Update channel picks Stable or Beta.
+
+On Windows, check **Settings > System > About > System type** before downloading. The arm64 setup requires an ARM64
+machine and refuses x64 Windows. The x64 setup also works on Windows on ARM through x64 emulation; prefer the native arm64
+setup there.
 
 The desktop app starts a host on the computer it runs on, so that computer's terminals appear as soon as it opens.
 
@@ -124,17 +133,19 @@ naming what it lacks instead of the app (`apps/web/src/baseline.ts`).
 On Linux or macOS, one command installs it:
 
 ```sh
-curl -fsSL https://github.com/sisyphuslabs/doriterm/releases/latest/download/install.sh | sh
+curl -fsSL https://get.doriterm.com | sh
 ```
 
-It downloads `doriface-host` into `~/.local/bin` and checks it against the release's `SHA256SUMS.txt`, installs
+It downloads `doriface-host` into `~/.local/bin`, checks it against the release's `SHA256SUMS.txt` and that file's
+signature, installs
 herdr-core when `hc` is missing, runs the host as a user service at the highest priority a user service can have
 (systemd `--user` on Linux, an `Interactive` LaunchAgent on macOS), then prints a QR code, a link and an 8-character
 code to pair your first device. `sh -s -- --help` lists the options; `--uninstall` removes the service and the binary and
 keeps the host's keys and paired devices. To add a computer to a host you already use, open **Add a machine** in the
-app: it shows this same line with `--join '<link>'`, which installs the host there and joins it to this host's mesh, so
-its terminals show in the app. On Windows, the desktop app carries the host. The installer ships from the first release
-after v0.1.2.
+app: it shows this same line with the link in `DORIFACE_JOIN='<link>'` before `sh`, which installs the host there and
+joins it to this host's mesh, so its terminals show in the app. Pasted into a shell, the line keeps the link off every
+command line the install runs (though the shell's history keeps the line). On Windows, the desktop app carries the host.
+The installer ships from the first release after v0.1.2.
 
 From this repository, with [Bun](https://bun.sh) installed:
 
@@ -183,8 +194,8 @@ Other machines join the same way, through the same relay:
 hc machine add --via 'doriface-host connect <B hostId>' --name b   # B's terminals appear as b/t1, b/t2, …
 ```
 
-Every one of those paths goes through the relay, and the host also serves the contract's direct path — `/v1/e2ee` is mounted on
-the main listener and on `--lan-listen` when that is given — though no shipped client dials it. On the same machine the host
+Every one of those paths goes through the relay: the direct path is off by decision (#2070), so no client dials a host's address,
+and the host's `--lan-listen` exists for tests only. On the same machine the host
 serves a token-gated, loopback-only `ws://127.0.0.1:7766/v1/hc`, which is how the desktop app talks to its own local host. The
 host never parses what `hc` says — it pipes the stream — so the client SDK speaks herdr-core's protocol itself and a future
 native app can reuse it. The full design is in [docs/architecture.md](docs/architecture.md), and the wire contract every package
@@ -198,6 +209,7 @@ agents under their names. Joining needs no ssh and no open port: it runs the sam
 ```sh
 doriface-host mesh pair                       # on a member: invite a machine (a link and a code)
 doriface-host mesh join '<link or code>'      # on the new machine: ask to join
+doriface-host mesh join --from-file <file>    # …the same, reading the link or code from a file, off the command line
 doriface-host mesh status                     # who is in the mesh (--json for scripts)
 doriface-host mesh revoke <member>            # remove a member on every machine
 doriface-host mesh revoke --compromised <member>   # …and everyone it admitted
@@ -238,22 +250,22 @@ The boundaries, and the citation for each, are in [docs/architecture.md §12](do
 
 ## Status
 
-This table describes `dev`. [Download the latest release](https://github.com/sisyphuslabs/doriterm/releases/latest).
+This table describes `dev`. [Download the latest release](https://get.doriterm.com).
 
-| Piece                                        | State                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Host gateway, byte-for-byte `hc` passthrough | works                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| Web client and installable PWA               | works: through the relay once paired, and installable to a home screen; a phone scans the pairing QR code to open its pair page. A development build also offers "Loopback dev" in Settings > This device, with the token from `doriface-host --print-token`; a release build connects through the relay only                                                                                                                                                                                                                     |
-| Desktop app ("Use this computer")            | works: starts the host and `hc` on this computer and attaches terminals, starts the host again if it stops ([#525](https://github.com/sisyphuslabs/doriterm/pull/525)), can install herdr-core from the app, for this user only, when it is missing or too old ([#417](https://github.com/sisyphuslabs/doriterm/pull/417)), and offers this computer to a phone or another computer from Settings > Connect a machine > **Pair a device**, and again on This device ([#614](https://github.com/sisyphuslabs/doriterm/issues/614)) |
-| Terminal rendering with libghostty           | works (Ghostty v1.4.0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| End-to-end encryption                        | works: Noise IK / IKpsk2 between every client and host ([#7](https://github.com/sisyphuslabs/doriterm/pull/7))                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Pairing a device                             | works: an 8-character code protected by CPace, or a one-tap link ([#7](https://github.com/sisyphuslabs/doriterm/pull/7))                                                                                                                                                                                                                                                                                                                                                                                                          |
-| Public relay `relay-doriface.omo.dev`        | deployed: every `hc` method family and bulk traffic, ciphertext only ([#17](https://github.com/sisyphuslabs/doriterm/issues/17), [#26](https://github.com/sisyphuslabs/doriterm/pull/26), [#28](https://github.com/sisyphuslabs/doriterm/pull/28))                                                                                                                                                                                                                                                                                |
-| Other machines through the relay             | works: `hc machine add --via 'doriface-host connect <host>'`, one machine per pairing ([#30](https://github.com/sisyphuslabs/doriterm/pull/30))                                                                                                                                                                                                                                                                                                                                                                                   |
+| Piece                                        | State                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Host gateway, byte-for-byte `hc` passthrough | works                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Web client and installable PWA               | works: through the relay once paired, and installable to a home screen; a phone scans the pairing QR code to open its pair page. A development build also offers "Loopback dev" in Settings > This device, with the token from `doriface-host --print-token`; a release build connects through the relay only                                                                                                                                                                                                                                |
+| Desktop app ("Use this computer")            | works: starts the host and `hc` on this computer and attaches terminals, starts the host again if it stops ([#525](https://github.com/sisyphuslabs/doriterm/pull/525)), can install herdr-core from the app, for this user only, when it is missing or too old ([#417](https://github.com/sisyphuslabs/doriterm/pull/417)), and offers this computer to a phone or another computer from Settings > Machines > Connect a machine > **Pair a device**, and again on This device ([#614](https://github.com/sisyphuslabs/doriterm/issues/614)) |
+| Terminal rendering with libghostty           | works (Ghostty v1.4.0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| End-to-end encryption                        | works: Noise IK / IKpsk2 between every client and host ([#7](https://github.com/sisyphuslabs/doriterm/pull/7))                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Pairing a device                             | works: an 8-character code protected by CPace, or a one-tap link ([#7](https://github.com/sisyphuslabs/doriterm/pull/7))                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Public relay `relay-doriface.omo.dev`        | deployed: every `hc` method family and bulk traffic, ciphertext only ([#17](https://github.com/sisyphuslabs/doriterm/issues/17), [#26](https://github.com/sisyphuslabs/doriterm/pull/26), [#28](https://github.com/sisyphuslabs/doriterm/pull/28))                                                                                                                                                                                                                                                                                           |
+| Other machines through the relay             | works: `hc machine add --via 'doriface-host connect <host>'`, one machine per pairing ([#30](https://github.com/sisyphuslabs/doriterm/pull/30))                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ## Development
 
-Requires [Bun](https://bun.sh) 1.4.4 or newer, and [herdr-core](https://github.com/herdrdev/herdr-core) (`hc`) 0.1.17 on
+Requires [Bun](https://bun.sh) 1.4.4 or newer, and [herdr-core](https://github.com/herdrdev/herdr-core) (`hc`) 0.1.20 on
 `PATH` to run the host, the desktop app, `bun run check` and the end-to-end tests. Starting on a machine with neither,
 follow [CONTRIBUTING.md, "From zero"](CONTRIBUTING.md#from-zero): every step is public, and the `From zero` workflow
 runs it as written on a clean runner with no secrets.
@@ -287,7 +299,8 @@ repository, and why a change to `.github/workflows/` needs to be its own pull re
 
 ## Releases
 
-[Releases](https://github.com/sisyphuslabs/doriterm/releases) carry the desktop app for macOS (Apple silicon and Intel: dmg
+[Releases](https://github.com/sisyphuslabs/doriterm/releases), mirrored to [get.doriterm.com](https://get.doriterm.com)
+([docs/releasing.md](docs/releasing.md)), carry the desktop app for macOS (Apple silicon and Intel: dmg
 and zip), Windows (x64 and arm64: installer exe) and Linux (x64 and arm64: AppImage and deb), the web client and PWA as a zip
 of static files, and `SHA256SUMS.txt`.
 

@@ -2,14 +2,18 @@ import type { EventFeed, HcConnection } from "@doriface/client";
 import { MESH_OFFER_DOC, parseMeshOfferDoc } from "@doriface/protocol";
 import { useEffect, useState } from "react";
 
-export const INSTALL_SCRIPT_URL = "https://github.com/sisyphuslabs/doriterm/releases/latest/download/install.sh";
+/** get.doriterm.com answers curl with the stable channel's install.sh, and GitHub's when it is not mirrored (#1969). */
+export const INSTALL_SCRIPT_URL = "https://get.doriterm.com";
 
 /** How long a host gets to answer before the dialog says it cannot make a join command (a host older than #668). */
 export const OFFER_ANSWER_MS = 15_000;
 
-/** The one line to run on the machine to add: install (or update) the host as a service, then join this mesh. */
+/**
+ * The one line to run on the machine to add: install (or update) the host as a service, then join this mesh. The link
+ * reaches the installer in its environment (DORIFACE_JOIN), which only the same user (and root) can read, never on a command line.
+ */
 export function joinCommand(link: string): string {
-  return `curl -fsSL ${INSTALL_SCRIPT_URL} | sh -s -- --join '${link.replaceAll("'", "'\\''")}'`;
+  return `curl -fsSL ${INSTALL_SCRIPT_URL} | DORIFACE_JOIN='${link.replaceAll("'", "'\\''")}' sh`;
 }
 
 export type JoinOffer =
@@ -39,6 +43,15 @@ export function offerFor(value: unknown, request: string): JoinOffer | undefined
   if ("expired" in doc) return { phase: "expired" };
   if ("joined" in doc) return { phase: "joined", name: doc.joined.name };
   return undefined;
+}
+
+/** Re-read the offer on its doc event or when missed events are replaced by a snapshot without documents. */
+export function followJoinOffer(feed: EventFeed, read: () => void): void {
+  // onEvent drains queued deliveries, including snapshots received before the listener was installed.
+  feed.onSnapshot(read);
+  feed.onEvent((event) => {
+    if (event.type === "doc" && event.machine === undefined && event.data.name === MESH_OFFER_DOC) read();
+  });
 }
 
 /**
@@ -76,11 +89,7 @@ export function useJoinOffer(connection: HcConnection, open: boolean, client = f
       const subscribed = await connection.subscribe();
       if (closed) return subscribed.close();
       feed = subscribed;
-      subscribed.onEvent((event) => {
-        if (event.type === "doc" && event.machine === undefined && event.data.name === MESH_OFFER_DOC) {
-          void read().catch(() => {});
-        }
-      });
+      followJoinOffer(subscribed, () => void read().catch(() => {}));
       const { version } = await calls.get();
       await calls.set({ request, ...(client ? { client: true } : {}) }, version);
       await read();

@@ -15,7 +15,7 @@
   "npmRebuild": false,
   "forceCodeSigning": false,
   "afterSign": "./scripts/notarize-mac.mjs",
-  "publish": [{ "provider": "github", "owner": "sisyphuslabs", "repo": "doriterm" }],
+  "publish": [{ "provider": "generic", "url": "https://get.doriterm.com/desktop/stable" }],
   "protocols": [{ "name": "Doriterm link", "schemes": ["doriface"] }],
   "mac": {
     "category": "public.app-category.developer-tools",
@@ -38,9 +38,10 @@
   "dmg": { "artifactName": "${productName}-${version}-${arch}.${ext}", "sign": true },
   "win": {
     "icon": "build/icon.ico",
+    "extraResources": [{ "from": "dist/native", "to": "native", "filter": ["speech.node"] }],
     "target": [{ "target": "nsis", "arch": ["x64", "arm64"] }]
   },
-  "nsis": { "artifactName": "${productName}-${version}-${arch}-setup.${ext}" },
+  "nsis": { "artifactName": "${productName}-${version}-${arch}-setup.${ext}", "include": "build/installer.nsh" },
   "linux": {
     "category": "Development",
     "icon": "build/icon.png",

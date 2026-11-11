@@ -137,6 +137,7 @@ export async function serveRoster(lines: MeshLines, remoteStatic: Uint8Array, de
     lines.close(1000, "the roster is current");
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
+    deps.log(`mesh: close code=4401 source=roster: ${reason}`);
     lines.refuse(CloseCode.UnknownDevice, reason);
     throw error;
   } finally {

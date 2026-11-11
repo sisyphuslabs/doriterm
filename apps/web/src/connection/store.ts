@@ -88,29 +88,36 @@ export class ConnectionStore {
   #current = 0;
   /** A wake already asked for this tick: several page events must cost one attempt, not three. */
   #wakeQueued = false;
-  /** Why the store closed a connection itself, kept with that connection so no other drop can take it. */
-  #closedFor: { readonly connection: HcConnection; readonly reason: Error } | null = null;
+  /**
+   * Why the store closed its connection itself. {@link stop} clears it, and is its one guard: every path that opens
+   * another connection runs it first, so no other connection's drop can take this reason (#2044).
+   */
+  #closedFor: Error | null = null;
   readonly #budget = new AttemptBudget();
   readonly #connect: typeof connect;
   readonly #save: Saver;
   /** A wake's check on the open link: a socket the page slept on can be half-open (#653), and input must not go into it. */
   readonly #wake: WakeProbe;
+  readonly #now: () => number;
 
   /**
    * `save` is how this store records a change to its settings. A store that owns the saved settings writes them itself; one that
    * is a single member of a mesh (`mesh-connections.ts`) passes a no-op, because its settings are a slice of a roster another
-   * object owns, and writing that slice back would replace the roster with it.
+   * object owns, and writing that slice back would replace the roster with it. `now` times an attempt's open (`connectMs`): a
+   * monotonic clock, like the round trip beside it, so a wall clock stepped mid-attempt (NTP, sleep) cannot skew it (#1234).
    */
   constructor(
     settings: ConnectionSettings,
     open: typeof connect = connect,
     save: Saver = saveSettings,
     probing: WakeProbing = {},
+    now: () => number = () => performance.now(),
   ) {
     this.#settings = lockRelay(settings);
     this.#connect = open;
     this.#save = save;
     this.#wake = new WakeProbe(probing);
+    this.#now = now;
   }
 
   get settings(): ConnectionSettings {
@@ -194,14 +201,14 @@ export class ConnectionStore {
     const relayFirst = this.#relayFirst;
     this.#relayFirst = false;
     this.#set({ phase: "connecting", attempt, stale: this.#stale });
-    const started = Date.now();
+    const started = this.#now();
     try {
       const opened: OpenConnection = await this.#budget.bounded(
         this.#connect(this.#settings, abort.signal, undefined, relayFirst ? { skipDirect: true } : {}),
         abort,
       );
       if (abort.signal.aborted) return opened.connection.close();
-      this.#opened(opened, abort, attempt, Date.now() - started);
+      this.#opened(opened, abort, attempt, this.#now() - started);
     } catch (error) {
       if (this.#abort !== abort) return;
       if (error instanceof AttemptTimeoutError) {
@@ -237,7 +244,7 @@ export class ConnectionStore {
       if (this.#abort !== abort) return;
       if (opened.path === "direct") this.#relayFirst = true;
       this.#stale = connection;
-      const closedFor = this.#closedFor?.connection === connection ? this.#closedFor.reason : undefined;
+      const closedFor = this.#closedFor;
       this.#closedFor = null;
       const reason = error ?? closedFor ?? new Error("the host closed the connection");
       this.#retry(reason, this.#stable ? 0 : attempt + 1);
@@ -432,7 +439,7 @@ export class ConnectionStore {
       },
       (reason) => {
         if (this.#state.phase !== "open" || this.#state.connection !== connection) return;
-        this.#closedFor = { connection, reason };
+        this.#closedFor = reason;
         connection.close();
       },
     );

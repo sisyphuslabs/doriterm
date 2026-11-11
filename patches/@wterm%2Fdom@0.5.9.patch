@@ -23,16 +23,24 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dcefa91176 100644
+index 78a86ffd96eec03222777f40e9db6a0561684c3f..7f92463748c088ff49e72dcac40245af20e09f6d 100644
 --- a/dist/input.js
 +++ b/dist/input.js
-@@ -70,6 +70,32 @@ const COMPOSITION_INPUT_DEDUP_MS = 250;
+@@ -67,9 +67,42 @@ const FIXED_KEYS = {
+     F12: "\x1b[24~",
+ };
+ const COMPOSITION_INPUT_DEDUP_MS = 250;
++// How long a lone jamo inserted with no key before it waits for the keydown Safari on a Mac sends after its Korean
++// edit: with that key (or a further edit) it is the first jamo of a syllable being typed, without one it is committed
++// text and goes to the program (#1244).
++const UNKEYED_LETTER_MS = 100;
  const SCROLLBACK_BOTTOM_TOLERANCE = 5;
  // iOS needs a deletable value to keep emitting input events for held Backspace.
  const TOUCH_INPUT_PLACEHOLDER = "\u200b";
-+// A Hangul letter or syllable: WebKit's Korean keyboards compose these in the field as plain text edits, with no
-+// composition events, so the field has to keep them until the syllable is finished.
-+const WIDE_CHAR = /^[\u1100-\u115f\u2e80-\u303e\u3041-\ua4cf\ua960-\ua97f\uac00-\ud7a3\uf900-\ufaff\ufe10-\ufe19\ufe30-\ufe6f\uff00-\uff60\uffe0-\uffe6\u{1f300}-\u{1f64f}\u{1f900}-\u{1f9ff}\u{20000}-\u{2fffd}\u{30000}-\u{3fffd}]$/u;
++// A character the grid draws over two cells, as Ghostty's width table gives it: the East Asian wide blocks, and an emoji
++// only when it is drawn as one by default (an emoji with text presentation, such as U+1F321, takes one cell). A
++// grapheme with VS16 (U+FE0F) asks for the picture and takes two cells; VS15 keeps the text form in one.
++const WIDE_CHAR = /^[\u1100-\u115f\u2e80-\u303e\u3041-\ua4cf\ua960-\ua97f\uac00-\ud7a3\uf900-\ufaff\ufe10-\ufe19\ufe30-\ufe6f\uff00-\uff60\uffe0-\uffe6\p{Emoji_Presentation}\u{20000}-\u{2fffd}\u{30000}-\u{3fffd}]$/u;
 +const ZERO_WIDTH_CHAR = /^[\p{Mn}\p{Me}\p{Cf}\u1160-\u11ff\ud7b0-\ud7ff]$/u;
 +function charCells(ch) {
 +    return ZERO_WIDTH_CHAR.test(ch) ? 0 : WIDE_CHAR.test(ch) ? 2 : 1;
@@ -43,13 +51,15 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
 +        : Array.from(text);
 +    let cells = 0;
 +    for (const grapheme of graphemes) {
-+        let widest = 0;
++        let widest = grapheme.includes("\ufe0f") ? 2 : 0;
 +        for (const ch of grapheme)
 +            widest = Math.max(widest, charCells(ch));
 +        cells += widest;
 +    }
 +    return cells;
 +}
++// A Hangul letter or syllable: WebKit's Korean keyboards compose these in the field as plain text edits, with no
++// composition events, so the field has to keep them until the syllable is finished.
 +const HANGUL = /[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\uac00-\ud7a3\ud7b0-\ud7ff]$/u;
 +// A Hangul letter alone: the first jamo of a syllable such a keyboard starts in the field.
 +const HANGUL_LETTER = /[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\ud7b0-\ud7ff]$/u;
@@ -59,7 +69,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
  function isAltGraphTextInput(event, pressedModifiers) {
      if (event.metaKey ||
          !(event.getModifierState("AltGraph") ||
-@@ -86,6 +112,16 @@ export class InputHandler {
+@@ -86,6 +119,18 @@ export class InputHandler {
          this.composing = false;
          this.compositionWidth = 0;
          this.recentCompositionCommit = null;
@@ -73,10 +83,12 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
 +        // inside a syllable): only then may a finished syllable go on being typed. A syllable an input method commits
 +        // with no composition and no such key is committed text, and is sent as it arrives (#1104).
 +        this.koreanKeyEdit = false;
++        // Pending while a lone jamo inserted with no key waits for the key that would make it a syllable's first (#1244).
++        this.unkeyedLetterTimer = 0;
          // The first native deletion mirrors the Backspace already sent on keydown.
          this.suppressNextTouchDeleteInput = false;
          this.mouseButtons = 0;
-@@ -153,10 +189,11 @@ export class InputHandler {
+@@ -153,10 +198,13 @@ export class InputHandler {
              this.positionTextarea();
              this.element.classList.add("focused");
              if (this.getBridge()?.focusEvents?.())
@@ -86,10 +98,12 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
          this._onBlur = () => {
              this.tabExitArmed = false;
 +            this.commitLocalPreedit();
++            // A Korean key whose keyup the blur took must not hold the next committed syllable (#1246).
++            this.koreanKeyEdit = false;
              this.focused = false;
              this.composing = false;
              this.recentCompositionCommit = null;
-@@ -169,7 +206,7 @@ export class InputHandler {
+@@ -169,7 +217,7 @@ export class InputHandler {
              this.pressedModifiers.clear();
              this.deliveredKeys.clear();
              if (this.getBridge()?.focusEvents?.())
@@ -98,7 +112,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
          };
          this._onMouseDown = (event) => {
              this.tabExitArmed = false;
-@@ -224,10 +261,12 @@ export class InputHandler {
+@@ -224,10 +272,12 @@ export class InputHandler {
          this.textarea.focus({ preventScroll: true });
      }
      syncInputPosition() {
@@ -112,7 +126,15 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
          this.accessibility.destroy();
          this.textarea.removeEventListener("keydown", this._onKeyDown);
          this.textarea.removeEventListener("keyup", this._onKeyUp);
-@@ -253,13 +292,36 @@ export class InputHandler {
+@@ -246,6 +296,7 @@ export class InputHandler {
+         this.textarea.remove();
+     }
+     handleKeyDown(e) {
++        this.clearUnkeyedLetter();
+         const keyId = e.code || e.key;
+         if (e.key !== "Backspace")
+             this.suppressNextTouchDeleteInput = false;
+@@ -253,13 +304,39 @@ export class InputHandler {
          if (physicalModifier) {
              this.pressedModifiers.add(e.code);
          }
@@ -133,10 +155,13 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
 +        // An iPhone or iPad Korean keyboard names the jamo in its keydown and then composes it in the field: the field
 +        // must get it, or the next jamo has nothing to join. Backspace inside a syllable still being typed takes back a
 +        // jamo of it, which is the field's edit too.
++        // A space ends the syllable in the keyboard as much as in the field: a keyboard whose space never reached the field
++        // still holds the syllable, and joins its next jamo to it (가, space, ㄱ becomes 각 in place of 가 and the space, #1508).
++        // So the space is the field's edit too, and the run it ends is sent whole from the field.
 +        this.koreanKeyEdit =
 +            isHangulKey(e) ||
 +                (this.localPreedit !== "" &&
-+                    e.key === "Backspace" &&
++                    (e.key === "Backspace" || e.key === " ") &&
 +                    !e.ctrlKey &&
 +                    !e.metaKey &&
 +                    !e.altKey);
@@ -151,7 +176,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
          const bridge = this.getBridge();
          const kittyFlags = bridge?.kittyKeyboardFlags?.() ?? 0;
          const kittyOwnsModifier = physicalModifier && Boolean(kittyFlags & KITTY_REPORT_ALL);
-@@ -345,6 +407,9 @@ export class InputHandler {
+@@ -345,6 +422,9 @@ export class InputHandler {
              this.suppressedKeyUps.add(keyId);
              if (e.key === "Backspace") {
                  e.preventDefault();
@@ -161,7 +186,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
                  this.selectionActions?.clearSelection();
                  this.onData("\x15");
              }
-@@ -371,6 +436,8 @@ export class InputHandler {
+@@ -371,6 +451,8 @@ export class InputHandler {
          if (kittyFlags !== 0) {
              const seq = encodeKittyKey(e, kittyFlags, e.repeat ? "repeat" : "press", this.pressedModifiers, bridge?.cursorKeysApp?.() ?? false);
              if (seq) {
@@ -170,7 +195,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
                  if (!physicalModifier)
                      this.selectionActions?.clearSelection();
                  if (nativeTouchDelete)
-@@ -385,6 +452,7 @@ export class InputHandler {
+@@ -385,6 +467,7 @@ export class InputHandler {
          }
          const seq = this.keyToSequence(e);
          if (seq) {
@@ -178,7 +203,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
              this.selectionActions?.clearSelection();
              if (nativeTouchDelete)
                  this.suppressNextTouchDeleteInput = true;
-@@ -395,6 +463,7 @@ export class InputHandler {
+@@ -395,6 +478,7 @@ export class InputHandler {
          }
      }
      handleKeyUp(e) {
@@ -186,7 +211,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
          const keyId = e.code || e.key;
          this.pressedModifiers.delete(e.code);
          const delivered = this.deliveredKeys.delete(keyId);
-@@ -421,6 +490,9 @@ export class InputHandler {
+@@ -421,6 +505,9 @@ export class InputHandler {
          this.recentCompositionCommit = null;
          this.suppressNextTouchDeleteInput = false;
          const text = e.clipboardData?.getData("text");
@@ -196,7 +221,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
          // Some mobile browsers leave clipboardData empty but insert the paste
          // into the textarea. Let that input event carry the text instead.
          if (!text)
-@@ -462,6 +534,8 @@ export class InputHandler {
+@@ -462,6 +549,8 @@ export class InputHandler {
      }
      handleCompositionStart() {
          this.tabExitArmed = false;
@@ -205,7 +230,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
          this.prepareComposition();
          this.composing = true;
          this.recentCompositionCommit = null;
-@@ -472,11 +546,22 @@ export class InputHandler {
+@@ -472,11 +561,22 @@ export class InputHandler {
          this.positionTextarea();
          const s = this.textarea.style;
          s.opacity = "1";
@@ -231,7 +256,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
          this.composing = false;
          this.hideComposition();
          this.resetInputValue();
-@@ -485,6 +570,44 @@ export class InputHandler {
+@@ -485,6 +585,44 @@ export class InputHandler {
              this.onData(e.data);
          }
      }
@@ -276,7 +301,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
      hideComposition() {
          this.compositionWidth = 0;
          const s = this.textarea.style;
-@@ -502,7 +625,7 @@ export class InputHandler {
+@@ -502,7 +640,7 @@ export class InputHandler {
          if (!bridge || !cellSize || !firstRow || !bridge.getCursor) {
              this.textarea.style.left = "0px";
              this.textarea.style.top = "0px";
@@ -285,7 +310,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
                  this.textarea.style.width = `${Math.max(1, this.compositionWidth)}px`;
                  this.textarea.style.height = `${cellSize?.rowHeight ?? 17}px`;
              }
-@@ -519,7 +642,7 @@ export class InputHandler {
+@@ -519,7 +657,7 @@ export class InputHandler {
          const s = this.textarea.style;
          s.left = `${rowRect.left - hostRect.left - this.element.clientLeft + this.element.scrollLeft + col * charWidth}px`;
          s.top = `${rowRect.top - hostRect.top - this.element.clientTop + this.element.scrollTop + row * rowHeight}px`;
@@ -294,7 +319,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
              s.width = `${Math.min((bridge.getCols() - col) * charWidth, Math.max(charWidth, this.compositionWidth))}px`;
              s.height = `${rowHeight}px`;
          }
-@@ -528,13 +651,66 @@ export class InputHandler {
+@@ -528,14 +666,86 @@ export class InputHandler {
          const charWidth = this.getCellSize()?.charWidth;
          if (!charWidth || charWidth <= 0)
              return;
@@ -305,13 +330,31 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
 -            ? Math.max(charWidth, this.textarea.scrollWidth + charWidth)
 -            : charWidth;
 +        this.compositionWidth = this.compositionCells(charWidth);
-+        this.positionTextarea();
-+    }
+         this.positionTextarea();
+     }
 +    compositionCells(charWidth) {
 +        const value = this.textarea.value;
 +        if (!value)
 +            return charWidth;
 +        return Math.max(charWidth, textCells(value) * charWidth);
++    }
++    clearUnkeyedLetter() {
++        clearTimeout(this.unkeyedLetterTimer);
++        this.unkeyedLetterTimer = 0;
++    }
++    /**
++     * A lone jamo that no key came with is committed text: it is sent, and stays in the field as sent text, so a late
++     * Safari edit that replaces it with its syllable still takes it back (#1244).
++     */
++    sendUnkeyedLetter() {
++        this.unkeyedLetterTimer = 0;
++        if (this.localPreedit === "")
++            return;
++        this.selectionActions?.clearSelection();
++        this.onData(this.localPreedit);
++        this.localSent += this.localPreedit;
++        this.localPreedit = "";
++        this.hideComposition();
 +    }
 +    /** Sends the syllable still being typed in a WebKit Korean run, and ends the run. */
 +    commitLocalPreedit() {
@@ -321,6 +364,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
 +            this.endLocalRun();
 +    }
 +    endLocalRun() {
++        this.clearUnkeyedLetter();
 +        this.localSent = "";
 +        this.localPreedit = "";
 +        this.hideComposition();
@@ -361,12 +405,21 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
 +        s.caretColor = "var(--term-preedit-fg, var(--term-fg, currentColor))";
 +        // A syllable takes two cells; one more is left for the caret. Only the end of the field shows.
 +        this.compositionWidth = 3 * (this.getCellSize()?.charWidth ?? 0);
-         this.positionTextarea();
++        this.positionTextarea();
 +        this.textarea.scrollLeft = this.textarea.scrollWidth;
-     }
++    }
      resetInputValue() {
          this.textarea.value = this.touchPrimary ? TOUCH_INPUT_PLACEHOLDER : "";
-@@ -565,6 +741,32 @@ export class InputHandler {
+         if (this.touchPrimary)
+@@ -556,6 +766,7 @@ export class InputHandler {
+     }
+     handleInput(event) {
+         this.tabExitArmed = false;
++        this.clearUnkeyedLetter();
+         if (this.composing) {
+             this.sizeComposition();
+             return;
+@@ -565,6 +776,36 @@ export class InputHandler {
          const value = this.touchPrimary && rawValue.startsWith(TOUCH_INPUT_PLACEHOLDER)
              ? rawValue.slice(TOUCH_INPUT_PLACEHOLDER.length)
              : rawValue;
@@ -382,6 +435,10 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
 +            this.recentCompositionCommit = null;
 +            this.suppressNextTouchDeleteInput = false;
 +            this.editLocalRun(value);
++            // Any edit no Korean key came with that leaves a lone letter waits for its key, not only a run's first:
++            // an input method's second lone letter goes too, and Safari's keydown after each edit still stops it.
++            if (!this.koreanKeyEdit && HANGUL_LETTER.test(this.localPreedit))
++                this.unkeyedLetterTimer = setTimeout(() => this.sendUnkeyedLetter(), UNKEYED_LETTER_MS);
 +            return;
 +        }
 +        if (inputType === "insertFromPaste" && (this.localSent !== "" || this.localPreedit !== "")) {
@@ -399,7 +456,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
          this.resetInputValue();
          const recent = this.recentCompositionCommit;
          this.recentCompositionCommit = null;
-@@ -821,7 +1023,7 @@ export class InputHandler {
+@@ -821,7 +1062,7 @@ export class InputHandler {
                  return other;
          }
          if (e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -408,7 +465,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..047404d3a042452c9ee20cf3666f49dc
              if (control !== null)
                  return control;
              if (e.key === "Backspace")
-@@ -855,6 +1057,24 @@ export class InputHandler {
+@@ -855,6 +1096,24 @@ export class InputHandler {
          return null;
      }
  }
@@ -623,10 +680,19 @@ index a6746f499859ba9da2d7884dfd71694205c6d819..1a6cc13f68b3d84cc12d7c4a9b51f22f
      setOutputAnnouncements(enabled: boolean): void;
      /** Expose this terminal to in-page agents through WebMCP, or withdraw it. */
 diff --git a/dist/wterm.js b/dist/wterm.js
-index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999241853c3 100644
+index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874fbdf43c80 100644
 --- a/dist/wterm.js
 +++ b/dist/wterm.js
-@@ -131,9 +131,19 @@ export class WTerm {
+@@ -120,6 +120,8 @@ export class WTerm {
+         this._synchronizedOutputTimer = null;
+         this._synchronizedOutputState = "idle";
+         this._synchronizedOutputGeneration = 0;
++        this._synchronizedOutputContinues = false;
++        this._synchronizedOutputDeadline = 0;
+         this._rendererNeedsSetup = false;
+         this.resizeObserver = null;
+         this._destroyed = false;
+@@ -131,9 +133,19 @@ export class WTerm {
          };
          this._shouldScrollToBottom = false;
          this._pinnedToBottom = true;
@@ -646,7 +712,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
          this._rowHeight = 0;
          this._charWidth = 0;
          this._windowSizeQueryState = 0;
-@@ -227,6 +237,7 @@ export class WTerm {
+@@ -227,6 +239,7 @@ export class WTerm {
                  const match = this._search.matches[this.getSearchState().activeIndex];
                  if (match) {
                      this._shouldScrollToBottom = false;
@@ -654,7 +720,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
                      this._pendingResizeScrollTop = null;
                      this._setScrollTop((match.start.row + 0.5) * this._rowHeight -
                          this.element.clientHeight / 2);
-@@ -336,6 +347,16 @@ export class WTerm {
+@@ -336,6 +349,16 @@ export class WTerm {
          this._onScroll = () => {
              if (this._pendingResizeScrollTop !== null)
                  return;
@@ -671,7 +737,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
              const atBottom = this._isScrolledToBottom();
              if (this._shouldScrollToBottom && atBottom) {
                  this._programmaticScrollTop = null;
-@@ -349,6 +370,8 @@ export class WTerm {
+@@ -349,6 +372,8 @@ export class WTerm {
              }
              this._programmaticScrollTop = null;
              this._shouldScrollToBottom = false;
@@ -680,7 +746,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
              this._scheduleRender();
          };
          this.element.addEventListener("scroll", this._onScroll, { passive: true });
-@@ -418,6 +441,7 @@ export class WTerm {
+@@ -418,6 +443,7 @@ export class WTerm {
                  maxImageHeight: this.maxImageHeight,
                  renderer: this._rendererOption,
              });
@@ -688,7 +754,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
              this.renderer.setup(this.cols, this.rows);
              this.input = new InputHandler(this.element, (data, preserveScroll = false) => this._deliverInput(data, preserveScroll), () => this.bridge, () => this._charWidth > 0 && this._rowHeight > 0
                  ? { charWidth: this._charWidth, rowHeight: this._rowHeight }
-@@ -453,7 +477,6 @@ export class WTerm {
+@@ -453,7 +479,6 @@ export class WTerm {
              if (!this.autoResize) {
                  this._lockHeight();
              }
@@ -696,7 +762,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
              this._initialRender();
              this._registerWebMCP();
              if (this.cols !== initialCols || this.rows !== initialRows)
-@@ -465,12 +488,33 @@ export class WTerm {
+@@ -465,12 +490,33 @@ export class WTerm {
          }
          return this;
      }
@@ -730,7 +796,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
          this._setScrollTop(this.element.scrollHeight);
      }
      _setScrollTop(value, frame) {
-@@ -508,6 +552,29 @@ export class WTerm {
+@@ -508,6 +554,29 @@ export class WTerm {
              throw new Error("This terminal core cannot change its scrollback");
          this.bridge.setScrollbackLines(this._scrollbackLines);
      }
@@ -760,7 +826,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
      /**
       * Apply host colors without writing terminal input or restarting the session.
       * Pass `null` to drop them and answer color queries from the page's CSS again.
-@@ -553,7 +620,7 @@ export class WTerm {
+@@ -553,7 +622,7 @@ export class WTerm {
          this.renderer?.beforeMutation(this.bridge);
          if (this.debug)
              this.debug.traceWrite(data);
@@ -769,7 +835,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
          // Answer theme color queries with the colors the page shows right now.
          if (mayQueryThemeColors(data))
              this._syncCssThemeColors();
-@@ -732,9 +799,30 @@ export class WTerm {
+@@ -732,9 +801,30 @@ export class WTerm {
          this._rectangleDrag.cancel();
          this._historySelection.invalidate();
          this.renderer?.beforeMutation(this.bridge);
@@ -802,7 +868,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
          this._outputAnnouncements.invalidate();
          this.cols = this.bridge.getCols();
          this.rows = this.bridge.getRows();
-@@ -751,6 +839,19 @@ export class WTerm {
+@@ -751,6 +841,19 @@ export class WTerm {
          if (this.onResize)
              this.onResize(this.cols, this.rows);
      }
@@ -822,7 +888,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
      /** Search retained history and the active screen, using plain text. */
      search(query, options = {}) {
          if (this._destroyed)
-@@ -798,6 +899,7 @@ export class WTerm {
+@@ -798,6 +901,7 @@ export class WTerm {
              return false;
          const before = this.element.scrollTop;
          this._shouldScrollToBottom = false;
@@ -830,7 +896,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
          this._searchReveal = false;
          this._pendingResizeScrollTop = target * this._rowHeight;
          this._doRender();
-@@ -1127,14 +1229,20 @@ export class WTerm {
+@@ -1127,14 +1231,20 @@ export class WTerm {
              this._synchronizedOutputState = "idle";
              return false;
          }
@@ -853,7 +919,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
          }
          if (this._synchronizedOutputState !== "idle") {
              return this._synchronizedOutputState === "held";
-@@ -1144,9 +1252,10 @@ export class WTerm {
+@@ -1144,9 +1254,10 @@ export class WTerm {
          this._armSynchronizedOutputFallback(generation);
          return true;
      }
@@ -865,7 +931,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
          this._synchronizedOutputTimer = setTimeout(() => {
              if (this._synchronizedOutputState !== "held" ||
                  this._synchronizedOutputGeneration !== generation) {
-@@ -1157,7 +1266,7 @@ export class WTerm {
+@@ -1157,7 +1268,7 @@ export class WTerm {
              this._setupRendererIfNeeded();
              this._cancelScheduledRender();
              this._doRender();
@@ -874,7 +940,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..12ec7d4bb7a331f3e838250383a60999
      }
      _cancelSynchronizedOutputFallback() {
          if (this._synchronizedOutputTimer == null)
-@@ -1576,14 +1685,16 @@ export class WTerm {
+@@ -1576,14 +1687,16 @@ export class WTerm {
          const height = this._visibleContentHeight(contentHeight);
          const newCols = Math.max(1, Math.floor(containerRect.width / charWidth));
          const newRows = Math.max(1, Math.floor(height / rowHeight));

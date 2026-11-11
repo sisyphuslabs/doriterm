@@ -1,7 +1,7 @@
 // #668: Add a machine is one command. The dialog asks this host for a single-use mesh offer and shows the line to run on
 // the machine to add; running what that line runs (doriface-host mesh join with its link) on a second machine admits it
-// to this host's mesh, which the host writes back and the dialog reports with no second step. The fake relay keeps one
-// uplink, so the joiner here has none and herdr cannot add it as a machine; that half is proven on the production relay.
+// to this host's mesh, which the host writes back and the dialog reports with no second step. Each host keeps its own
+// uplink on the fake relay, so clients can reach the joiner directly.
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { type FakeRelayHost, startFakeRelayHost } from "./relay-route.ts";
@@ -28,10 +28,9 @@ test("the dialog's one line, run on a second machine, joins it to this host's me
     const command = dialog.getByLabel("Join command");
     await expect(command).toBeVisible({ timeout: 30_000 });
     const text = (await command.innerText()).trim();
-    const match =
-      /^curl -fsSL https:\/\/github\.com\/sisyphuslabs\/doriterm\/releases\/latest\/download\/install\.sh \| sh -s -- --join '(doriface:\/\/pair#[^']+)'$/.exec(
-        text,
-      );
+    const match = /^curl -fsSL https:\/\/get\.doriterm\.com \| DORIFACE_JOIN='(doriface:\/\/pair#[^']+)' sh$/.exec(
+      text,
+    );
     const link = match?.[1] ?? "";
     expect(new URLSearchParams(link.split("#")[1]).get("m")).toBe("1");
     await expect(dialog.getByRole("status")).toContainText("Waiting for the machine to join");

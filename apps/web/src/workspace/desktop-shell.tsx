@@ -1,5 +1,5 @@
 import type { HcConnection } from "@doriface/client";
-import { type AgentStatus, cn, IconButton, TabBar, type WorkspaceTab } from "@doriface/ui";
+import { type AgentStatus, cn, IconButton, TabBar, useToastManager, type WorkspaceTab } from "@doriface/ui";
 import { Bot, Columns2, PanelLeft, Rows2, SquareTerminal, Terminal } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { actionChosen } from "../keys/dispatcher.ts";
@@ -27,6 +27,7 @@ import { useArrivalReady, workspaceSettled } from "./use-arrival-ready.ts";
 import { behindModal, useFocusSidebar } from "./use-focus-sidebar.ts";
 import { useSidebarShown, useSidebarSize } from "./layout-store.ts";
 import { findTerminal, type LayoutTab } from "./layout-model.ts";
+import type { MachineIds } from "./tab-keys.ts";
 import { readDisplay } from "../terminal/display.ts";
 import { attachAhead, openingCallsOf } from "../terminal/opening-attach.ts";
 import type { Axis } from "@doriface/protocol/layout";
@@ -62,6 +63,7 @@ function tabEntry(tab: LayoutTab, position: number, byAddress: ReadonlyMap<strin
     id: tab.key,
     title: tabTitle(tab.name, position, agent),
     controls: panelId(tab.key),
+    pinned: tab.pinned,
     ...(kind === undefined ? {} : { icon: PROGRAM_ICON[kind] }),
     ...(status === undefined ? {} : { status }),
   };
@@ -76,6 +78,8 @@ const FOCUSED_TERMINAL_INPUT = '[data-focused="true"] [data-terminal] textarea';
 export interface DesktopShellProps {
   readonly connection: HcConnection;
   readonly terminals: readonly Session[];
+  /** The machines as now named, so the first-run guide finds its terminal after a rename (#1198). */
+  readonly ids: MachineIds;
   /** False until the core has listed its terminals; the count would read 0 until then. */
   readonly loaded: boolean;
   readonly layout: Layout;
@@ -88,6 +92,8 @@ export interface DesktopShellProps {
   readonly onNewSpace: () => void;
   readonly onSplit: (axis: Axis, target?: PaneTarget) => void;
   readonly onCloseTab: (key: string) => void;
+  /** Closes several tabs at once ("Close tabs to the right", "Close other tabs"), asking once (#1561). */
+  readonly onCloseTabs: (keys: readonly string[]) => void;
   readonly onClosePane: (address: string) => void;
   readonly onEnd: (address: string, end: TerminalEnd) => void;
   readonly onPalette: () => void;
@@ -100,6 +106,7 @@ export function DesktopShell(props: DesktopShellProps) {
   const {
     connection,
     terminals,
+    ids,
     loaded,
     layout,
     spaceKeys,
@@ -109,11 +116,13 @@ export function DesktopShell(props: DesktopShellProps) {
     onNewSpace,
     onSplit,
     onCloseTab,
+    onCloseTabs,
     onClosePane,
     onEnd,
     onPalette,
     onSession,
   } = props;
+  const toasts = useToastManager();
   const [sidebar, setSidebar] = useSidebarShown();
   const [{ rail }, setSidebarSize] = useSidebarSize();
   const sidebarKeys = useActionKeys("layout.toggle:sidebar");
@@ -206,7 +215,7 @@ export function DesktopShell(props: DesktopShellProps) {
   // no live terminal (then there is nothing for the layout to bring back).
   const nothingOpen = layout.restored || (loaded && live.length === 0);
   const openTerminal = (address: string): void => {
-    guideStore.opened(address);
+    guideStore.opened(address, ids);
     if (findTerminal(layout.tabs, address) === null) {
       attachAhead(connection, openingCallsOf(connection), address, readDisplay(document.documentElement));
     }
@@ -246,6 +255,7 @@ export function DesktopShell(props: DesktopShellProps) {
         className="absolute right-4 bottom-10 z-30 m-0 w-72 shadow-lg"
         listVisible={sidebar}
         live={terminals.filter((terminal) => terminal.state === "live").map((terminal) => terminal.address)}
+        ids={ids}
         onNew={onNew}
       />
       {sidebar ? (
@@ -288,6 +298,16 @@ export function DesktopShell(props: DesktopShellProps) {
           {...(newTabKeys === undefined ? {} : { newTabKeys })}
           onSelect={layout.selectTab}
           onClose={onCloseTab}
+          onPin={(key, pinned) =>
+            void layout.pinTab(key, pinned).catch((cause: unknown) =>
+              toasts.add({
+                type: "error",
+                title: pinned ? "The tab was not pinned" : "The tab was not unpinned",
+                description: cause instanceof Error ? cause.message : String(cause),
+              }),
+            )
+          }
+          onCloseSet={(key, which) => onCloseTabs(layout.closeSetOf(key, which))}
           onNew={onNew}
           newMenu={
             <NewTabMenu

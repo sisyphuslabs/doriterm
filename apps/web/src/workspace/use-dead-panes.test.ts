@@ -1,7 +1,16 @@
 import { expect, test } from "bun:test";
 import type { LayoutTab } from "./layout-model.ts";
 import type { MachineView } from "@doriface/protocol";
-import { absentPanes, absentRemotePanes, type Missing, stepMissing } from "./use-dead-panes.ts";
+import {
+  absentPanes,
+  absentRemotePanes,
+  endedForGood,
+  endedInView,
+  goneFromView,
+  type Missing,
+  settledPanes,
+  stepMissing,
+} from "./use-dead-panes.ts";
 
 const tab = (
   key: string,
@@ -22,6 +31,7 @@ const tab = (
     mod: address === null ? "files" : null,
   })),
   readOnly: null,
+  pinned: false,
   transient,
 });
 
@@ -68,6 +78,69 @@ test("while the feed still names a machine machine.list no longer does, no added
   expect([...absentRemotePanes(tabs, new Set(["new/t9"]), [machine("new", "connected")])]).toEqual([
     ["new/t4", "id-new"],
   ]);
+});
+
+const listed = (address: string, state: string) => ({ address, state });
+
+test("a pane whose terminal the feed lists as finished is asked about like an absent one, unless it is in view (#2122)", () => {
+  const terminals = [listed("t1", "live"), listed("t2", "finished"), listed("t3", "finished")];
+  const tabs = [tab("a", ["t1"]), tab("b", ["t2"]), tab("c", ["t3"]), tab("d", ["t9"])];
+  // t3's tab is the one in view: its view says the session ended and closes from there, so it is left alone.
+  expect(absentPanes(tabs, settledPanes(terminals, ["t3"]))).toEqual(["t2", "t9"]);
+  expect(absentPanes(tabs, settledPanes(terminals, []))).toEqual(["t2", "t3", "t9"]);
+  // A pane in view whose terminal the feed does not list at all is still asked about, as before.
+  expect(absentPanes(tabs, settledPanes(terminals, ["t9"]))).toEqual(["t2", "t3", "t9"]);
+});
+
+test("an added machine's finished terminal waits like an absent one, and the rename check still reads the whole feed (#2122)", () => {
+  const terminals = [listed("box/t4", "finished"), listed("box/t5", "live")];
+  const tabs = [tab("box-a", ["box/t4", "box/t5"], false, "box")];
+  const feed = new Set(terminals.map((terminal) => terminal.address));
+  expect([...absentRemotePanes(tabs, settledPanes(terminals, []), [machine("box", "connected")], feed)]).toEqual([
+    ["box/t4", "id-box"],
+  ]);
+  // The feed still lists the machine under its old name, with finished terminals only: nothing is asked about.
+  const renamed = [tab("new-a", ["new/t4"], false, "new")];
+  const stale = [listed("old/t4", "finished")];
+  const staleFeed = new Set(stale.map((terminal) => terminal.address));
+  expect(absentRemotePanes(renamed, settledPanes(stale, []), [machine("new", "connected")], staleFeed).size).toBe(0);
+});
+
+test("only a program that exited or was killed is over for good; a lost holder, a stopped server and a live terminal are not (#2122)", () => {
+  expect(["exited", "killed"].map((reason) => endedForGood({ state: "finished", reason }))).toEqual([true, true]);
+  const kept = ["holder_lost", "server_stop", "stopped_by_restart", "signaled", "host_shutdown", "spawn_pending"];
+  expect(kept.map((reason) => endedForGood({ state: "finished", reason }))).toEqual(kept.map(() => false));
+  expect(endedForGood({ state: "finished" })).toBe(false);
+  // A kept terminal whose program was lost stays live with the loss as its reason, until its shell comes back.
+  expect(endedForGood({ state: "live", reason: "killed" })).toBe(false);
+});
+
+test("the panes in view whose terminal the feed lists as over are the ones their views say ended (#2146)", () => {
+  const terminals = [listed("t1", "live"), listed("t2", "finished"), listed("t3", "finished")];
+  expect([...endedInView(terminals, ["t1", "t2", "t9"])]).toEqual(["t2"]);
+});
+
+test("a pane left to its view that no tab shows any more went on another device, which had it out of view (#2146)", () => {
+  const tabs = [tab("a", ["t1"]), tab("b", ["t2", null])];
+  const left = new Map<string, string | null>([
+    ["t1", null],
+    ["t2", null],
+    ["t3", null],
+  ]);
+  expect(goneFromView(left, tabs, () => true)).toEqual(["t3"]);
+  expect(goneFromView(new Map(), tabs, () => true)).toEqual([]);
+});
+
+/** This core's document and rack's are still written; box was removed, so its document went with it. */
+const writtenOn = (name: string | null): boolean => name === null || name === "rack";
+
+test("a pane that went with its machine or with its layout document did not go on another device (#2231)", () => {
+  const left = new Map<string, string | null>([
+    ["t3", null],
+    ["box/t4", "box"],
+    ["rack/t5", "rack"],
+  ]);
+  expect(goneFromView(left, [], writtenOn)).toEqual(["t3", "rack/t5"]);
 });
 
 test("an absent remote pane is asked about only once a later machine.list read still finds it absent on that machine", () => {
