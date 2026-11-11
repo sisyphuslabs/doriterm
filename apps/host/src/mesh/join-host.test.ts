@@ -1,9 +1,12 @@
 import { buildPairingUrl } from "@doriface/crypto";
+import { HcConnection } from "@doriface/client";
+import { type JsonValue, MESH_STATUS_DOC, parseMeshStatus } from "@doriface/protocol";
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateToken } from "../auth.ts";
+import { meshCommand } from "../commands/mesh.ts";
 import { meshJoinCommand, OFFER_WITHDRAWN_NOTICE } from "../commands/mesh-join.ts";
 import { requestControl } from "../control.ts";
 import { type Host, startHost } from "../host.ts";
@@ -12,8 +15,10 @@ import { loadHostIdentity } from "../state/host-keys.ts";
 import { MeshStore } from "../state/mesh.ts";
 import { PairingStore, pendingFromWire } from "../state/pairing.ts";
 import { FakeRelay } from "../testing/fake-relay.ts";
-import { createHcSession, type HcSession } from "../testing/hc-session.ts";
+import { createHcSession, HELLO, type HcSession } from "../testing/hc-session.ts";
 import { RelayClientBridge } from "../testing/relay-client-bridge.ts";
+import { openWsClient } from "../testing/ws-client.ts";
+import { spawnHcLink } from "./hc-machines.ts";
 
 setDefaultTimeout(60_000);
 
@@ -21,6 +26,7 @@ interface Running {
   readonly dir: string;
   readonly session: HcSession;
   readonly host: Host;
+  readonly token: string;
   readonly logs: string[];
   /** Resolves on the first log line from now on that matches `pattern`. */
   logged(pattern: RegExp): Promise<string>;
@@ -45,9 +51,10 @@ async function start(name: string, withRelay: boolean): Promise<Running> {
     waiters.add(check);
     return promise;
   };
+  const token = generateToken();
   const host = await startHost({
     listen: { hostname: "127.0.0.1", port: 0 },
-    token: generateToken(),
+    token,
     hc: session.hc,
     session: session.name,
     env: session.env,
@@ -58,7 +65,7 @@ async function start(name: string, withRelay: boolean): Promise<Running> {
       for (const waiter of waiters) waiter(line);
     },
   });
-  const started = { dir, session, host, logs, logged };
+  const started = { dir, session, host, token, logs, logged };
   running.push(started);
   return started;
 }
@@ -79,6 +86,86 @@ afterAll(async () => {
 const records = (dir: string) => new MeshStore(dir, { log: () => {} }).read()?.records;
 
 describe("J-1: a link join run by the joiner's running host", () => {
+  test("the first pending comparison is published without a mesh file, and denial clears its document", async () => {
+    const a = await start("approval", true);
+    await relay.answers.next();
+    const b = await start("applicant", false);
+    const client = await openWsClient(a.host.url, a.token);
+    client.socket.send(HELLO);
+    await client.reader.line();
+    const link = spawnHcLink({ hc: a.session.hc, session: a.session.name, env: a.session.env });
+    const core = await HcConnection.open(link);
+    const feed = await core.subscribe();
+    const documentWhen = (accept: (value: JsonValue) => boolean): Promise<JsonValue> => {
+      const { promise, resolve, reject } = Promise.withResolvers<JsonValue>();
+      const read = (): void => {
+        void core.call("doc.get", { name: MESH_STATUS_DOC }).then(
+          ({ value }) => {
+            if (!accept(value)) return;
+            unsubscribe();
+            return resolve(value);
+          },
+          (error: unknown) => {
+            unsubscribe();
+            return reject(error);
+          },
+        );
+      };
+      const unsubscribe = feed.onEvent((event) => {
+        if (event.type === "doc" && event.data.name === MESH_STATUS_DOC) read();
+      });
+      read();
+      return promise;
+    };
+    try {
+      const offer = pendingFromWire(await requestControl(a.dir, { op: "mesh-pair", auto: false }));
+      const identity = loadHostIdentity(a.dir);
+      const target = buildPairingUrl({
+        webOrigin: "https://doriface.example",
+        hostId: identity.hostId,
+        noiseStaticPub: identity.noise.publicKey,
+        signPub: identity.sign.publicKey,
+        linkSecret: offer.linkSecret,
+        relayUrl: bridge.url,
+        mesh: true,
+      });
+      const refused = a.logged(/^mesh: close code=4401 source=invite:/);
+      let observedStatus: ReturnType<typeof parseMeshStatus>;
+      let observedDocument: ReturnType<typeof parseMeshStatus>;
+      let persisted = true;
+      let comparedCode: string | undefined;
+      const result = await requestControl(
+        b.dir,
+        { op: "mesh-join", target, fingerprint: undefined, name: undefined, relay: undefined, yes: true, ask: true },
+        async (code) => {
+          comparedCode = code;
+          observedStatus = parseMeshStatus(await requestControl(a.dir, { op: "mesh-status" }));
+          persisted = new MeshStore(a.dir, { log: () => {} }).read() !== undefined;
+          observedDocument = parseMeshStatus(
+            await documentWhen(
+              (value) => parseMeshStatus(value)?.pending.some((entry) => entry.code === code) === true,
+            ),
+          );
+          return false;
+        },
+      ).then(
+        () => "joined",
+        (error: unknown) => String(error),
+      );
+      expect(result).toContain("not joined");
+      expect(comparedCode).toBeDefined();
+      expect(observedStatus?.pending).toMatchObject([{ code: comparedCode }]);
+      expect(observedDocument?.pending).toMatchObject([{ code: comparedCode }]);
+      expect(persisted).toBe(false);
+      await refused;
+      expect(await documentWhen((value) => value === null)).toBeNull();
+    } finally {
+      core.close();
+      link.close();
+      client.socket.close();
+    }
+  });
+
   test.each([false, undefined])("ask=%s closes before the card and leaves an asking offer unspent", async (ask) => {
     const a = await start("inviter", true);
     await relay.answers.next();
@@ -110,7 +197,7 @@ describe("J-1: a link join run by the joiner's running host", () => {
     expect(result).toContain("terminal");
     expect(result).toContain("one-line command");
     expect(new PairingStore(a.dir).read()?.expiresAt).toBe(offer.expiresAt);
-    expect(records(a.dir)).toHaveLength(1);
+    expect(records(a.dir)).toBeUndefined();
     expect(records(b.dir)).toBeUndefined();
   });
 
@@ -151,9 +238,12 @@ describe("J-1: a link join run by the joiner's running host", () => {
     );
     expect(result).toContain("not joined");
     expect(codes).toHaveLength(1);
-    expect(records(a.dir)).toHaveLength(1);
+    expect(records(a.dir)).toBeUndefined();
     expect(records(b.dir)).toBeUndefined();
     expect(new PairingStore(a.dir).read()).toBeUndefined();
+    const output: string[] = [];
+    expect(await meshCommand(["status", "--state-dir", a.dir], (text) => output.push(text))).toBe(1);
+    expect(output.join("")).toContain("this host is in no mesh");
   });
   test("mesh pair on A, mesh join on B's host: both hold the welcome, the joiner's ack of its admission reaches the inviter on the kept session, and both files are equal", async () => {
     const a = await start("alpha", true);

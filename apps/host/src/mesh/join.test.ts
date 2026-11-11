@@ -1,6 +1,6 @@
 import { CloseCode, generateX25519 } from "@doriface/crypto";
 import { memoryLinkPair } from "@doriface/crypto/testing";
-import { parseRecord, type Signed, signCard, signRecord } from "@doriface/mesh";
+import { cardOf, parseRecord, type Signed, signCard, signRecord, verifyCard } from "@doriface/mesh";
 import { afterEach, describe, expect, test } from "bun:test";
 import { cardBody } from "../state/mesh.ts";
 import {
@@ -73,7 +73,7 @@ describe("J-3: the inviting member's confirmation", () => {
     const run = runJoin(inviteDeps(a, pending), joinerContext(b, a), b.m.identity.noise.publicKey);
     const asked = await pending.next();
     expect([asked.name, asked.hostId]).toEqual(["beta", b.m.identity.hostId]);
-    expect(records(a).map((record) => parseRecord(record)?.type)).toEqual(["found"]);
+    expect(a.mesh.read()).toBeUndefined();
     expect(pending.decide(asked.nonce, true, asked.code)).toBe(true);
     expect(await run.joined).toBe(a.mesh.read()?.meshId ?? "");
   });
@@ -84,7 +84,7 @@ describe("J-3: the inviting member's confirmation", () => {
     const run = runJoin(inviteDeps(a, pending), joinerContext(b, a), b.m.identity.noise.publicKey);
     pending.decide((await pending.next()).nonce, false);
     expect(await failure(run.joined)).toContain("the join was denied on the inviting member");
-    expect(records(a).map((record) => parseRecord(record)?.type)).toEqual(["found"]);
+    expect(a.mesh.read()).toBeUndefined();
     expect(b.mesh.read()).toBeUndefined();
     expect(run.inviterEnd.closeCode).toBe(CloseCode.UnknownDevice);
     expect(a.logs).toContain("mesh: close code=4401 source=invite: the join was denied on the inviting member");
@@ -99,6 +99,7 @@ describe("J-3: the inviting member's confirmation", () => {
       b.m.identity.noise.publicKey,
     );
     expect(await failure(run.joined)).toContain("the join was expired on the inviting member");
+    expect(a.mesh.read()).toBeUndefined();
     expect(b.mesh.read()).toBeUndefined();
   });
 });
@@ -126,6 +127,44 @@ describe("J-4: races", () => {
     expect(ids[0]).toBe(ids[1] ?? "");
     expect(records(a).filter((record) => parseRecord(record)?.type === "found")).toHaveLength(1);
   });
+
+  test("a refused first join cannot remove a concurrently accepted mesh", async () => {
+    const [a, b, c] = [side("alpha"), side("beta"), side("gamma")];
+    const pending = new PendingJoins();
+    const first = runJoin(inviteDeps(a, pending), joinerContext(b, a), b.m.identity.noise.publicKey);
+    const asked = await pending.next();
+    const second = runJoin(inviteDeps(a, autoJoins()), joinerContext(c, a), c.m.identity.noise.publicKey);
+    const accepted = await second.joined;
+    await second.invited;
+    const before = a.mesh.read();
+    pending.decide(asked.nonce, false);
+    expect(await failure(first.invited)).toContain("denied");
+    expect(a.mesh.read()).toEqual(before);
+    expect(a.mesh.read()?.meshId).toBe(accepted);
+    expect(a.mesh.authorizeIndex()?.member(noise(c))?.name).toBe("gamma");
+  });
+
+  test("a later accepted first join uses the host's current name and core after a refusal", async () => {
+    const [a, b] = [side("alpha"), side("beta")];
+    const pending = new PendingJoins();
+    const first = runJoin(inviteDeps(a, pending), joinerContext(b, a), b.m.identity.noise.publicKey);
+    pending.decide((await pending.next()).nonce, false);
+    await failure(first.invited);
+    const current = { name: "renamed", hcId: "new-core" };
+    const next = runJoin(
+      { ...inviteDeps(a, autoJoins()), own: async () => current },
+      joinerContext(b, a),
+      b.m.identity.noise.publicKey,
+    );
+    const meshId = await next.joined;
+    await next.invited;
+    const found = records(a)
+      .map(parseRecord)
+      .find((body) => body?.type === "found");
+    const card = found === undefined ? undefined : cardOf(found);
+    expect(card === undefined ? undefined : verifyCard(card)).toMatchObject(current);
+    expect(a.mesh.read()?.meshId).toBe(meshId);
+  });
 });
 
 describe("the inviter checks the card (section 4.4 step 3)", () => {
@@ -133,7 +172,7 @@ describe("the inviter checks the card (section 4.4 step 3)", () => {
     const [a, b] = [side("alpha"), side("beta")];
     const run = runJoin(inviteDeps(a, autoJoins()), joinerContext(b, a), generateX25519().publicKey);
     expect(await failure(run.invited)).toBe("the card's Noise key is not the session's");
-    expect(records(a).map((record) => parseRecord(record)?.type)).toEqual(["found"]);
+    expect(a.mesh.read()).toBeUndefined();
     expect(b.mesh.read()).toBeUndefined();
   });
 });
