@@ -8,8 +8,9 @@ import { PRIVATE_RELAY_SKIP } from "./private-relay.ts";
 
 // #2309: a change made on one device reaches another device behind the real relay without an interaction (#1837,
 // fixed by #1876). Two devices pair with host a through the private relay under wrangler dev; b is not in a's mesh yet
-// (MESH_JOIN=skip), so it can join while both devices are open. The bound is 1.5 s, under the roster's 10 s machine.list
-// read, so only a pushed change can meet it; every wait is on a state, never on a fixed time.
+// (MESH_JOIN=skip), so it can join while a device is open. The bound is 1.5 s, under the roster's 10 s machine.list read:
+// for the space only a pushed document event can meet it; for the machine the 1 s line read (#2178) or a 10 s read that
+// happens to land in the window can too, so that case guards the outcome, not one path. Every wait is on a state.
 test.skip(process.env["DORIFACE_RELAY_DIR"] === undefined, PRIVATE_RELAY_SKIP);
 test.use({ serviceWorkers: "block" });
 test.describe.configure({ mode: "serial" });
@@ -88,7 +89,7 @@ test("a space opened on one device shows on another behind the relay within 1.5 
   await reader2.context().close();
 });
 
-test("a machine that joins the mesh while two devices are open shows on the untouched one within 1.5 s", async ({
+test("a machine that joins the mesh while a device is open shows there as connected within 1.5 s, untouched", async ({
   browser,
 }) => {
   const watcher = await device(browser);
@@ -96,7 +97,7 @@ test("a machine that joins the mesh while two devices are open shows on the unto
   // pushed to the untouched device is its line coming up, "connected", which hc announces with `missed`.
   const machine = await ask("JOIN", "JOINED ");
   await expect(
-    spaces(watcher).getByRole("region", { name: machine, exact: true }).filter({ hasText: "connected" }),
-  ).toBeVisible({ timeout: PUSHED_MS });
+    spaces(watcher).getByRole("region", { name: machine, exact: true }).locator("[data-machine-dot]"),
+  ).toHaveAttribute("data-machine-dot", "online", { timeout: PUSHED_MS });
   await watcher.context().close();
 });
