@@ -1,13 +1,13 @@
 import { Button, IconButton } from "@doriface/ui";
 import { ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
-import { liveTabs, type Session } from "./model.ts";
+import { liveTabs, type Session, spaceOfAddress } from "./model.ts";
 import { SwitchSheet } from "./phone-switch-sheet.tsx";
 import { useSpaceSelection } from "./space-selection.ts";
 
 /** The live tabs of the space whose tabs show `address`, each as its panes; empty when it is in no space's tab. */
 export function useSpaceTabs(terminals: readonly Session[], address: string): readonly (readonly string[])[] {
   const { spaces } = useSpaceSelection();
-  const space = spaces.find((each) => each.addresses.includes(address));
+  const space = spaceOfAddress(spaces, address);
   return space === undefined ? [] : liveTabs(space, terminals);
 }
 
@@ -35,7 +35,7 @@ export function PhoneTabSwitcher(props: {
 }) {
   const { terminals, tabs, active, title, onOpen, clearance, sheet, onSheet, onNewInSpace, onCloseTab } = props;
   const { spaces } = useSpaceSelection();
-  const space = spaces.find((each) => each.addresses.includes(active))?.name;
+  const space = spaceOfAddress(spaces, active)?.name;
   const at = tabs.findIndex((panes) => panes.includes(active));
   if (at === -1) return null;
   const step = (by: 1 | -1): void => {

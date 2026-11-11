@@ -160,6 +160,8 @@ describe("a press that lets the field go on its pointerdown and takes it on its 
     port.letGo(button, 1);
     listeners.get("pointerup")?.({ clientX: 40, clientY: 40, pointerId: 2 });
     listeners.get("pointercancel")?.({ pointerId: 2 });
+    // A second finger's long-press elsewhere opens its own context menu (#2099).
+    listeners.get("contextmenu")?.({ pointerId: 2 });
     expect(order).toEqual(["blur:none"]);
     expect([...listeners.keys()].toSorted()).toEqual(["click", "contextmenu", "pointercancel", "pointerup"]);
     await Promise.resolve();
