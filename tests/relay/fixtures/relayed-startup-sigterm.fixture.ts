@@ -1,5 +1,5 @@
 import { existsSync, watch, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { createInterface } from "node:readline";
 import { startRelayedHost } from "../support/relayed-host.ts";
 
@@ -18,7 +18,7 @@ const uplinkTimeoutMs = process.env["UPLINK_MS"] === undefined ? undefined : Num
 process.once("SIGTERM", () => process.stdout.write("SIGNALLED\n"));
 if (stage === "pair") {
   // The stub pair CLI writes this file once it runs; that is when start-up is held at the pair step.
-  const mark = join(dirname(settledFile), "pair-held");
+  const mark = process.env["PAIR_MARK"] ?? "";
   const watcher = watch(dirname(mark), () => {
     if (!existsSync(mark)) return;
     watcher.close();
