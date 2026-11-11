@@ -5,13 +5,35 @@ import { startRelayedHost } from "../support/relayed-host.ts";
 // Not a *.test.ts: relayed-host.test.ts runs it with bun. It starts a relayed host, holds start-up once the part named
 // by STAGE (relay, session or host) has started, says so, and goes on at the next line on stdin: the test sends SIGTERM
 // in between, as an e2e helper can be stopped while it starts. How start-up ended is written to SETTLED_FILE.
+// STAGE=uplink says so once the host has started and goes straight on into the uplink wait (HOST_RELAY_URL and UPLINK_MS
+// point it at a relay that never answers). STAGE=teardown fails start-up once the host has started and holds that failed
+// start's teardown at the host's stop, says so, and goes on at the next line on stdin (#2131).
 const stage = process.env["STAGE"] ?? "";
 const settledFile = process.env["SETTLED_FILE"] ?? "";
+const hostRelayUrl = process.env["HOST_RELAY_URL"];
+const uplinkTimeoutMs = process.env["UPLINK_MS"] === undefined ? undefined : Number(process.env["UPLINK_MS"]);
 process.once("SIGTERM", () => process.stdout.write("SIGNALLED\n"));
 const lines = createInterface({ input: process.stdin })[Symbol.asyncIterator]();
 try {
   await startRelayedHost("startup-sigterm", {
+    ...(hostRelayUrl === undefined ? {} : { hostRelayUrl }),
+    ...(uplinkTimeoutMs === undefined ? {} : { uplinkTimeoutMs }),
     started: async (part) => {
+      if (stage === "uplink") {
+        if ("host" in part) process.stdout.write("STAGE uplink\n");
+        return;
+      }
+      if (stage === "teardown") {
+        if (!("host" in part)) return;
+        const { host } = part;
+        const stop = host.stop.bind(host);
+        host.stop = async () => {
+          process.stdout.write("STAGE teardown\n");
+          await lines.next();
+          return stop();
+        };
+        throw new Error("start-up failed on purpose");
+      }
       if (!(stage in part)) return;
       process.stdout.write(`STAGE ${stage}\n`);
       await lines.next();
