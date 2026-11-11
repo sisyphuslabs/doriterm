@@ -27,10 +27,19 @@ stable when stable is newer. The repository variable `RELEASE_ROLLOUT_PERCENT` s
 A failure anywhere leaves the previous pointer in place: get.doriterm.com keeps offering the previous version,
 `/v/<new version>/` redirects to GitHub, and the GitHub release stays published. Re-run the job once the cause is fixed.
 
-A manual dispatch of `release.yml` builds a draft and mirrors it into the staging bucket behind
-`staging.get.doriterm.com`, so the whole path can be tried without publishing anything. Builds are not byte for byte
+A manual dispatch of `release.yml` from `dev` builds a draft and mirrors it into the staging bucket behind
+`staging.get.doriterm.com`, so the whole path can be tried without publishing anything (from another branch it builds
+the draft and skips the mirror, since the staging environment holds the real signing key). Builds are not byte for byte
 reproducible and a mirrored file is never replaced, so a second dispatch of the same version fails against the staging
 bucket: try again with a new prerelease version, or empty that version's folder in the staging bucket first.
+
+## Mirroring a release by hand
+
+Both mirrors run the one job in `release-mirror.yml`. Run it by hand (Actions, Run workflow, on `dev`) with a tag and a
+target (`staging` or `production`) to mirror a release that is already published, such as one published before the
+mirror existed, or to finish a mirror whose run failed. It refuses a tag that is not a published release; a re-run
+accepts the objects an earlier run left and moves the channel only forward. Mirror to `staging` first and read
+`https://staging.get.doriterm.com/desktop/<channel>/latest-mac.yml` back before `production`.
 
 ## Moving a channel
 
