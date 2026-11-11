@@ -172,6 +172,8 @@ describe("a new terminal's attach goes with its run (#1351)", () => {
       attachedAgain,
     );
     expect(viewed.stream.channel).toBe(2);
+    // A terminal this page just started has no history for its first paint to walk: it is not held (#1928).
+    expect(viewed.fresh).toBe(true);
     connection.close();
   });
 
@@ -188,6 +190,7 @@ describe("a new terminal's attach goes with its run (#1351)", () => {
     core.reply(second.id, { result: { channel: 4, terminal: { ...TERMINAL, address } } });
     const viewed = await viewAttach(connection, address, true, { cols: 90, rows: 20, display: DISPLAY }, () => own);
     expect([viewed.stream.channel, viewed.cols, viewed.rows]).toEqual([4, 90, 20]);
+    expect(viewed.fresh).toBe(false);
     connection.close();
   });
 
@@ -243,6 +246,8 @@ describe("a terminal opened from the list asks for its screen before its tab is 
     await listed;
     const viewed = await viewAttach(connection, "t4", true, { cols: 100, rows: 30, display: DISPLAY }, attachedAgain);
     expect(viewed.stream.channel).toBe(6);
+    // A terminal opened from the list has its history: its first paint is held as any other (#1928).
+    expect(viewed.fresh).toBe(false);
     connection.close();
   });
 });
