@@ -1,6 +1,8 @@
 import { afterAll, afterEach, beforeAll, expect, jest, test } from "bun:test";
 import { connect, LoopbackTokenError } from "./connect.ts";
+import { fakeWebSockets } from "./fake-websocket.test-support.ts";
 import { hostFailure, isFinal } from "./host-failure.ts";
+import { LinkCloseError } from "./ws-link.ts";
 import { type ConnectionSettings, DEFAULT_SETTINGS } from "./settings.ts";
 
 // #2003 (DORITERM-04): a loopback link the host refuses for its token is final and says so, as a relay link the host no
@@ -101,4 +103,20 @@ test("the store stops retrying a refused token, unless the desktop app's host ca
   jest.useFakeTimers();
   expect(await retryAfterRefusal(false)).toBeNull();
   expect(await retryAfterRefusal(true)).not.toBeNull();
+});
+
+test("a dial closed before opening with a code of its own keeps that code, and nothing probes the host", async () => {
+  const sockets = fakeWebSockets();
+  try {
+    const failed = failure("ws://127.0.0.1:9/v1/hc");
+    await Promise.resolve();
+    sockets.created[0]?.close(4404, "host not connected");
+    const error = await failed;
+    expect({ code: error instanceof LinkCloseError ? error.code : null, sockets: sockets.created.length }).toEqual({
+      code: 4404,
+      sockets: 1,
+    });
+  } finally {
+    sockets.restore();
+  }
 });

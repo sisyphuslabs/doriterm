@@ -9,7 +9,7 @@ import { canForwardPlainWs, openForwardedLink } from "./direct-forward.ts";
 import { BROWSER_DEPS, deviceKeyFor, type RelayDeps } from "./relay-deps.ts";
 import type { ConnectionSettings } from "./settings.ts";
 import { loopbackOnly } from "./loopback-address.ts";
-import { LinkAbortedError, openWebSocketLink } from "./ws-link.ts";
+import { LinkAbortedError, LinkCloseError, openWebSocketLink } from "./ws-link.ts";
 
 const SUBPROTOCOL = "doriface.v1";
 const TOKEN_PREFIX = "doriface.token.";
@@ -131,8 +131,7 @@ async function openOnPath(
       [SUBPROTOCOL, TOKEN_PREFIX + settings.token],
       signal === undefined ? {} : { signal },
     ).catch(async (error: unknown) => {
-      if (!(error instanceof LinkAbortedError) && (await answersWithoutToken(url, signal)))
-        throw new LoopbackTokenError();
+      if (refusedWithoutCode(error) && (await answersWithoutToken(url, signal))) throw new LoopbackTokenError();
       throw error;
     });
     return { connection: await HcConnection.open(link, signal === undefined ? {} : { signal }), path: "loopback" };
@@ -147,6 +146,16 @@ async function openOnPath(
     path: "relay",
     ...(direct.reason === undefined ? {} : { directReason: direct.reason }),
   };
+}
+
+/**
+ * A failure before the socket opened that says nothing of its own: an HTTP refusal of the upgrade (the gateway's 401 for
+ * a wrong token) reaches the page as an abnormal close (1006) or as a socket that closed before opening. A close with a
+ * code the host or relay chose (4404, 4408, 4400) already says why, and a cancelled attempt says nothing at all.
+ */
+function refusedWithoutCode(error: unknown): boolean {
+  if (error instanceof LinkAbortedError) return false;
+  return !(error instanceof LinkCloseError) || error.code === 1006;
 }
 
 /** How long the probe below waits for the host's tokenless route; a host that is there answers on loopback at once. */
