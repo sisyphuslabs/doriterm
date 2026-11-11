@@ -43,14 +43,16 @@ describe("a silent link", () => {
 
   test("a link that can carry the session on takes the loss: the connection and the feed stay open, and the silence is asked again", async () => {
     const losses: Error[] = [];
+    // The second loss is what proves the silence is asked again; it is awaited, not given a fixed time to happen.
+    const askedAgain = Promise.withResolvers<void>();
     const { core, connection, feed } = await subscribed({ heartbeatTimeoutMs: 30 }, (reason) => {
       losses.push(reason);
+      if (losses.length === 2) askedAgain.resolve();
       return true;
     });
     const feedClosed: unknown[] = [];
     feed.onClose((info) => feedClosed.push(info));
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(losses.length).toBeGreaterThanOrEqual(2);
+    await askedAgain.promise;
     expect(losses[0]).toBeInstanceOf(HcLinkSilentError);
     expect(connection.closed).toBe(false);
     expect(feedClosed).toEqual([]);
