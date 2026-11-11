@@ -22,7 +22,9 @@ export function statusLine(status: DesktopUpdateStatus | null): string {
     case "ready":
       return `Doriterm ${status.version} is downloaded; restart to install it.`;
     case "failed":
-      return status.reason === "check" ? `The update check failed: ${status.message}` : status.message;
+      if (status.reason === "check") return `The update check failed: ${status.message}`;
+      if (status.reason === "download") return `The update download failed: ${status.message}`;
+      return status.message;
   }
 }
 
@@ -39,9 +41,10 @@ export function UpdateChannelRow({ setting }: { readonly setting: UpdateSetting 
       (saved) => live && setChannel(saved),
       (error: unknown) => console.error(`update channel: ${String(error)}`),
     );
-    setting.onStatus((next) => live && setStatus(next));
+    const stop = setting.onStatus((next) => live && setStatus(next));
     return () => {
       live = false;
+      stop();
     };
   }, [setting]);
   const change = (next: UpdateChannel): void => {

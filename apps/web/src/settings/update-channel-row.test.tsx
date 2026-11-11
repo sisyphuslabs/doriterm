@@ -25,6 +25,10 @@ test("each updater state has its own line, and a failed check, a stall and a too
       { state: "failed", reason: "below-floor", message: "Doriterm 0.1.9 is older than 0.1.10" },
       "Doriterm 0.1.9 is older than 0.1.10",
     ],
+    [
+      { state: "failed", reason: "download", message: "sha512 checksum mismatch" },
+      "The update download failed: sha512 checksum mismatch",
+    ],
   ];
   for (const [status, line] of lines) expect(statusLine(status)).toBe(line);
 });
@@ -49,10 +53,42 @@ test("the row is offered only by a shell that has an updater, and passes what it
   expect(await setting.channel()).toBeNull();
   expect(await setting.setChannel("beta")).toBe(true);
   expect(kept).toEqual(["beta"]);
-  setting.onStatus((status) => statuses.push(status));
+  setting.onStatus((status) => statuses.push(status))();
   expect(statuses).toEqual([{ state: "downloading", version: "0.1.17", percent: 0 }, null]);
 
   const html = renderToStaticMarkup(<UpdateChannelRow setting={setting} />);
   expect(html).toContain("Update channel");
   expect(html).toContain("Check now");
+});
+
+test("the status listener the row adds is removed again, so opening Settings again does not pile them up (#1982)", () => {
+  let live = 0;
+  const setting = desktopUpdateSetting({
+    doriface: {
+      updateChannel: async () => "stable",
+      setUpdateChannel: async () => true,
+      checkForUpdates: async () => undefined,
+      onUpdateStatus: () => {
+        live += 1;
+        return () => {
+          live -= 1;
+        };
+      },
+    },
+  });
+  if (setting === null) throw new Error("a full bridge offers the setting");
+  const stops = [setting.onStatus(() => undefined), setting.onStatus(() => undefined)];
+  expect(live).toBe(2);
+  for (const stop of stops) stop();
+  expect(live).toBe(0);
+  // A shell from before the unsubscribe returns nothing; stopping is then a no-op, not a throw.
+  const old = desktopUpdateSetting({
+    doriface: {
+      updateChannel: async () => "stable",
+      setUpdateChannel: async () => true,
+      checkForUpdates: async () => undefined,
+      onUpdateStatus: () => undefined,
+    },
+  });
+  expect(() => old?.onStatus(() => undefined)()).not.toThrow();
 });
