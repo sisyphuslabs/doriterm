@@ -61,7 +61,9 @@ describe("H-1: section 9.2's authorization table", () => {
     const { host, revoked } = meshed();
     const run = runSession(host, { kind: "lan" }, undefined, { staticKey: keyOf(revoked), stream });
     expect(await outcome(run)).toEqual({ code: CloseCode.UnknownDevice, sent: 0 });
-    expect(host.logs).toContain("mesh: refused a session: revoked mesh member");
+    expect(host.logs).toContain(
+      `e2ee: close code=4401 source=handshake kind=1 stream=${stream ?? "hc"}: revoked mesh member`,
+    );
   });
 
   test("a revoked member's key is refused even after a device entry for it was added", async () => {
@@ -91,7 +93,9 @@ describe("H-1: section 9.2's authorization table", () => {
     expect(await push(rawStaticKey(phone))).toBe("accepted");
     expect(await push(keyOf(member))).toEqual(refused);
     expect(await push(rawStaticKey(generateX25519()))).toEqual(refused);
-    expect(host.logs).toContain("mesh: refused a session: a mesh member has no push stream");
+    expect(host.logs).toContain(
+      "e2ee: close code=4401 source=handshake kind=1 stream=push: a mesh member has no push stream",
+    );
   });
 
   test("a device presenting a member's device key is refused 4401 even with a devices.json entry", async () => {
@@ -99,7 +103,9 @@ describe("H-1: section 9.2's authorization table", () => {
     host.deps.devices.add(member.device.publicKey, "member's laptop");
     const run = runSession(host, { kind: "lan" }, undefined, { staticKey: rawStaticKey(member.device) });
     expect(await outcome(run)).toEqual({ code: CloseCode.UnknownDevice, sent: 0 });
-    expect(host.logs).toContain("mesh: refused a session: this key belongs to a mesh member: use the mesh line");
+    expect(host.logs).toContain(
+      "e2ee: close code=4401 source=handshake kind=1 stream=hc: this key belongs to a mesh member: use the mesh line",
+    );
   });
 
   test("an outsider is refused on both streams", async () => {
@@ -154,7 +160,7 @@ describe("H-5: admitPairing refuses a mesh member's keys", () => {
     await run.client;
     expect(run.hostEnd.closeCode).toBe(CloseCode.UnknownDevice);
     expect(host.deps.devices.list()).toEqual([]);
-    expect(host.logs).toContain("pairing refused: this key belongs to a mesh member");
+    expect(host.logs).toContain("e2ee: close code=4401 source=pairing-admission: this key belongs to a mesh member");
   });
 });
 

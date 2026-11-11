@@ -8,9 +8,12 @@ export const INSTALL_SCRIPT_URL = "https://get.doriterm.com";
 /** How long a host gets to answer before the dialog says it cannot make a join command (a host older than #668). */
 export const OFFER_ANSWER_MS = 15_000;
 
-/** The one line to run on the machine to add: install (or update) the host as a service, then join this mesh. */
+/**
+ * The one line to run on the machine to add: install (or update) the host as a service, then join this mesh. The link
+ * reaches the installer in its environment (DORIFACE_JOIN), which only the same user (and root) can read, never on a command line.
+ */
 export function joinCommand(link: string): string {
-  return `curl -fsSL ${INSTALL_SCRIPT_URL} | sh -s -- --join '${link.replaceAll("'", "'\\''")}'`;
+  return `curl -fsSL ${INSTALL_SCRIPT_URL} | DORIFACE_JOIN='${link.replaceAll("'", "'\\''")}' sh`;
 }
 
 export type JoinOffer =

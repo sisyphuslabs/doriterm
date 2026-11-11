@@ -79,7 +79,9 @@ export function LeaveMeshDialog({ open, close }: { readonly open: boolean; reado
           <Notice title="Could not reach the mesh" tone="warning">
             {failure}
           </Notice>
-          <p className="text-sm text-muted-foreground">The mesh still lists this browser until a member removes it.</p>
+          <p className="text-prose text-muted-foreground">
+            The mesh still lists this browser until a member removes it.
+          </p>
           <RevokeCommand name={mesh.self?.name ?? "browser"} />
           <Button onClick={() => void leave(true)}>Forget this mesh here</Button>
         </div>

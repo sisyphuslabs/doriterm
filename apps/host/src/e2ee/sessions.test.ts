@@ -19,7 +19,12 @@ function stores() {
   const dir = mkdtempSync(join(tmpdir(), "dh-sessions-"));
   dirs.push(dir);
   const devices = new DeviceStore(dir);
-  return { devices, sessions: new LiveSessions(devices, () => {}, new MeshStore(dir, { log: () => {} })) };
+  const logs: string[] = [];
+  return {
+    devices,
+    logs,
+    sessions: new LiveSessions(devices, (line) => void logs.push(line), new MeshStore(dir, { log: () => {} })),
+  };
 }
 
 const session = (end: MemoryEnd, remoteStatic: Uint8Array): SecureLink =>
@@ -35,8 +40,10 @@ const session = (end: MemoryEnd, remoteStatic: Uint8Array): SecureLink =>
 describe("registering a live session", () => {
   test("a session no store authorizes is closed at once, and add says so", () => {
     const [end] = memoryLinkPair();
-    expect(stores().sessions.add(session(end, generateX25519().publicKey))).toBe(false);
+    const { sessions, logs } = stores();
+    expect(sessions.add(session(end, generateX25519().publicKey))).toBe(false);
     expect(end.closeCode).toBe(REVOKED.code);
+    expect(logs).toContain("e2ee: close code=4401 source=live-sessions stream=hc: key is no longer authorized");
   });
 
   test("a paired device's session stays open, and add says so", () => {

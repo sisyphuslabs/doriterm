@@ -1,6 +1,7 @@
 import { devices, type Page } from "@playwright/test";
 import { endAgent, startShell } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
+import { hcOn } from "./machine-switch.ts";
 import { fakeSoftKeyboard, key, keysBar, showKeyboard } from "./phone-key-bar.ts";
 
 // A touch phone: the keyboard toggle has to follow the keyboard itself, not the terminal's focus (#274), and opening a
@@ -52,7 +53,7 @@ test("opening a terminal raises no keyboard on its own: it stays down until the 
   await expect(input).not.toBeFocused();
 });
 
-test("a session picked from Switch session takes the keyboard once: left by the system Back and opened again, it raises none (#1375)", async ({
+test("a session picked from Switch session raises no keyboard: only the keyboard button does, then and after the system Back", async ({
   page,
 }) => {
   const first = startShell("host", "pickone");
@@ -67,7 +68,7 @@ test("a session picked from Switch session takes the keyboard once: left by the 
     await key(page, "Show keyboard").click();
     await expectUp(page);
 
-    // Picking a session from the keys bar asks for its keyboard: the picked view takes it as it opens.
+    // Picking a session opens it with the keyboard down, per the product owner: the keyboard button is the only ask.
     await key(page, "Switch session").click();
     await page
       .getByRole("menu")
@@ -75,7 +76,8 @@ test("a session picked from Switch session takes the keyboard once: left by the 
       .click();
     const picked = page.locator(`[data-terminal="${second}"]`);
     await expect(picked).toContainText("$", { timeout: 15_000 });
-    await expectUp(page);
+    await expect(picked.locator("textarea")).not.toBeFocused();
+    await expectDown(page);
 
     // The system Back leaves it without the app's own Back button; opening it again from the list is no new ask.
     await page.goBack();
@@ -90,6 +92,64 @@ test("a session picked from Switch session takes the keyboard once: left by the 
   } finally {
     endAgent("host", first);
     endAgent("host", second);
+  }
+});
+
+test("Show keyboard on a field focused for typing outside a tap still asks for the keyboard, and the program hears no focus-out (#1519)", async ({
+  page,
+}) => {
+  // A program that asks for focus reports (mode 1004) and shows what it is sent: `cat -v` writes a focus-out as ^[[O.
+  const report = "printf 'reporting\\n\\033[?1004h'; exec cat -v";
+  const out = hcOn("host", ["run", "--bg", "--name", "keysfocus", "--label", "space=api", "--", "sh", "-c", report]);
+  const address = String((JSON.parse(out) as { address: string }).address);
+  try {
+    // A keyboard that no focus raises by itself, as on iOS: a field can keep the focus in text mode with no keyboard up.
+    await fakeSoftKeyboard(page, { raiseOnFocus: false });
+    await page.addInitScript(() => {
+      const seen: string[] = [];
+      Object.assign(window, { fieldFocus: seen });
+      document.addEventListener("focusout", (event) => {
+        if (event.target instanceof HTMLTextAreaElement && event.target.closest("[data-terminal]")) seen.push("out");
+      });
+    });
+    await page.goto("/");
+    const row = page.getByRole("button", { name: /keysfocus/ }).first();
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    await row.click();
+    const picked = page.locator(`[data-terminal="${address}"]`);
+    const field = picked.locator("textarea");
+    await expect(picked).toContainText("reporting", { timeout: 15_000 });
+
+    // The terminal takes the focus back for typing a frame after a tap, as closing the Shortcut packs sheet does: the
+    // field is focused in text mode outside the tap's gesture, so no keyboard comes up.
+    await field.evaluate((element) => {
+      requestAnimationFrame(() => {
+        if (!(element instanceof HTMLTextAreaElement)) return;
+        element.inputMode = "text";
+        element.focus();
+      });
+    });
+    await expect(field).toBeFocused();
+    await expect(field).toHaveAttribute("inputmode", "text");
+    await expectDown(page);
+    // What the program was told so far ends in a line of its own, so the press's reports, if any, come after it.
+    await page.keyboard.type("before\r");
+    await expect(picked).toContainText("before");
+    const outs = async (): Promise<number> => ((await picked.textContent()) ?? "").split("^[[O").length - 1;
+    const outsBefore = await outs();
+
+    // The press lets the field go and takes it again inside the tap, which is what raises a keyboard on iOS; the
+    // program is not told the terminal lost the focus.
+    await page.evaluate(() => (Reflect.get(window, "fieldFocus") as string[]).splice(0));
+    await key(page, "Show keyboard").click();
+    await expect(field).toBeFocused();
+    await expect(field).toHaveAttribute("inputmode", "text");
+    expect(await page.evaluate(() => Reflect.get(window, "fieldFocus") as string[])).toEqual(["out"]);
+    await page.keyboard.type("done\r");
+    await expect(picked).toContainText("done");
+    expect(await outs()).toBe(outsBefore);
+  } finally {
+    endAgent("host", address);
   }
 });
 
@@ -150,6 +210,55 @@ test.describe("a finger on a phone", () => {
     expect(
       await field.evaluate((el) => el.closest("[data-terminal]") === null && el.getAttribute("inputmode") !== "none"),
     ).toBe(true);
+  });
+
+  test("after a tap in the terminal, Show keyboard lets the field go on its pointerdown and takes it on its click, a tap apart (#1940)", async ({
+    page,
+  }) => {
+    // A field a tap focused (in `none` mode, so no keyboard came up) has an input session open on iOS. Let go and taken
+    // back in ONE task (a blur and a focus inside the click, whichever of the button's mousedown or the port's own
+    // blur let it go), WebKit keeps the pair in the web process and the keyboard never rises; the press has to let the
+    // field go on its pointerdown, which the finger's landing delivers, a task before the click its lifting delivers.
+    // So the trace reads which of the tap's events the field's focus moved in.
+    await fakeSoftKeyboard(page);
+    await page.addInitScript(() => {
+      const trace: { on: string; mode: string }[] = [];
+      let last = "";
+      for (const type of ["pointerdown", "touchstart", "touchend", "mousedown", "click"]) {
+        document.addEventListener(
+          type,
+          () => {
+            last = type;
+          },
+          true,
+        );
+      }
+      const moved = (event: FocusEvent, way: string): void => {
+        if (!(event.target instanceof HTMLTextAreaElement) || event.target.closest("[data-terminal]") === null) return;
+        trace.push({ on: `${way}:${last}`, mode: event.target.inputMode });
+      };
+      document.addEventListener("focusout", (event) => moved(event, "out"), true);
+      document.addEventListener("focusin", (event) => moved(event, "in"), true);
+      Object.assign(window, { fieldFocusTrace: trace });
+    });
+    const { input } = await openTerminal(page);
+    const box = await page.locator("[data-terminal]").boundingBox();
+    if (box === null) throw new Error("the terminal is not laid out");
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(input).toBeFocused();
+    await expect(input).toHaveAttribute("inputmode", "none");
+    await expectDown(page);
+
+    const trace = () => page.evaluate(() => Reflect.get(window, "fieldFocusTrace") as { on: string; mode: string }[]);
+    await page.evaluate(() => (Reflect.get(window, "fieldFocusTrace") as unknown[]).splice(0));
+    await key(page, "Show keyboard").tap();
+    await expect(input).toBeFocused();
+    await expect(input).toHaveAttribute("inputmode", "text");
+    await expectUp(page);
+    expect(await trace()).toEqual([
+      { on: "out:pointerdown", mode: "none" },
+      { on: "in:click", mode: "text" },
+    ]);
   });
 });
 

@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { KEYS_BAR_HEIGHT } from "../src/workspace/phone-keys.tsx";
 import { expect, test } from "./fixtures.ts";
 import { expectTouchTargets, key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
@@ -39,6 +40,18 @@ for (const width of [390, 320]) {
     expect(screen.y + screen.height).toBeLessThanOrEqual(box.y + 1);
   });
 }
+
+test("the height the terminal keeps clear before the bar reports its own is the two-row bar's (#1555)", async ({
+  page,
+}) => {
+  await openPhoneTerminal(page);
+  const bar = keysBar(page);
+  await expect(bar).toBeVisible();
+  const box = await bar.boundingBox();
+  if (box === null) throw new Error("no bar box");
+  const rem = await page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).fontSize));
+  expect(box.height).toBeCloseTo(Number.parseFloat(KEYS_BAR_HEIGHT) * rem, 0);
+});
 
 test("Enter from the key row ends the line the program reads", async ({ page }) => {
   const terminal = await openPhoneTerminal(page);
