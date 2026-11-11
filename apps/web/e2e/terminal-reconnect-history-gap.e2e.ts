@@ -145,4 +145,36 @@ test.describe("on a phone", () => {
     await page.getByRole("button", { name: "Dismiss" }).click();
     await expect(note).toHaveCount(0);
   });
+
+  /**
+   * A terminal left while its line was down and opened again later is a new view: its first attach plays its history
+   * back, so nothing it shows is missing and it says nothing (#2279 review).
+   */
+  test("a terminal opened again after the reconnect plays its history back and says nothing is missing", async ({
+    page,
+  }) => {
+    test.slow();
+    const link = await routeHcSocket(page);
+    const terminal = await openPhoneTerminal(page);
+    const address = (await terminal.getAttribute("data-terminal")) ?? "";
+    opened.push(address);
+    await page.keyboard.type("for i in $(seq 1 200); do echo kept-$i; done");
+    await page.keyboard.press("Enter");
+    await expect(terminal).toContainText("kept-200", { timeout: 30_000 });
+    await page.keyboard.type("sleep 1; for i in $(seq 1 400); do echo away-$i; done");
+    await page.keyboard.press("Enter");
+    await link.drop(true);
+    await expect.poll(() => coreScreen(address), { timeout: 30_000 }).toContain("away-400");
+    await page.goBack();
+    await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
+    link.restore();
+    await expect(page.getByRole("status").filter({ hasText: /Reconnecting|Offline/ })).toHaveCount(0, {
+      timeout: 30_000,
+    });
+
+    await page.goForward();
+    const again = page.locator(`[data-terminal="${address}"]`);
+    await expect(again).toContainText("away-400", { timeout: 30_000 });
+    await expect(page.locator("[data-history-gap-status]")).toHaveCount(0);
+  });
 });
