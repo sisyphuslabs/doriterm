@@ -50,7 +50,7 @@ for (const action of ["turnOn", "turnOff"] as const) {
     );
 
     await pushSettings[action]();
-    expect(pushSettings.view).toMatchObject({ on: action === "turnOn", busy: false, error: null });
+    expect(pushSettings.view).toMatchObject({ on: action === "turnOn", busy: null, error: null });
     await pushSettings.setPrefs(DEFAULT_PUSH_PREFS);
     expect(pushSettings.view.error).toBeNull();
   });
