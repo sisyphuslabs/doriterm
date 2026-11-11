@@ -38,11 +38,18 @@ const UNCLIPPED = "inset(0px 0px 0px 0px round 8px)";
  * it was split from, and a key that cannot move focus nudges the focused pane toward that edge. A window resize moves
  * every pane at once, so it plays no motion.
  */
-export function usePaneMotion(ref: RefObject<HTMLElement | null>, { rect, frame, grow, bump }: PaneMotion): void {
+export function usePaneMotion(
+  ref: RefObject<HTMLElement | null>,
+  { rect: placed, frame, grow, bump }: PaneMotion,
+): void {
   const last = useRef<Rect | null>(null);
   const lastFrame = useRef(frame);
   const bumped = useRef(bump?.seq ?? 0);
+  // Keyed on the rectangle's numbers, not the object a layout makes on every render: every pane of every tab is mounted,
+  // and a render that moved no pane must not run this for each of them (#2086).
+  const { x, y, width, height } = placed;
   useLayoutEffect(() => {
+    const rect = { x, y, width, height };
     const element = ref.current;
     const before = last.current;
     const resized = lastFrame.current !== frame;
@@ -79,7 +86,7 @@ export function usePaneMotion(ref: RefObject<HTMLElement | null>, { rect, frame,
       ],
       { duration: DURATION, easing: EASE },
     );
-  }, [ref, rect, frame, grow]);
+  }, [ref, x, y, width, height, frame, grow]);
   useLayoutEffect(() => {
     const element = ref.current;
     if (bump === null || bump.seq === bumped.current || element === null) return;

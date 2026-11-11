@@ -1,5 +1,5 @@
 import { devices } from "@playwright/test";
-import { agentRow } from "./agents.ts";
+import { AGENT_SHELL, agentRow } from "./agents.ts";
 import { expect, opened, test } from "./fixtures.ts";
 import { seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
@@ -12,7 +12,7 @@ test.use({ ...phone, viewport: { width: 320, height: 640 }, serviceWorkers: "blo
 endOwnTerminals();
 
 function startShellIn(space: string, name: string): string {
-  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${space}`, "--", "env", "PS1=$ ", "sh"]);
+  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${space}`, "--", ...AGENT_SHELL]);
   const started: unknown = JSON.parse(out);
   if (typeof started !== "object" || started === null || !("address" in started)) throw new Error(out);
   return String(started.address);

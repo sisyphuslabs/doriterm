@@ -1,5 +1,5 @@
 import type { EventFeed, HcConnection } from "@doriface/client";
-import type { HcEvent, Status, Terminal } from "@doriface/protocol";
+import type { HcEvent, NoticeContext, Status, Terminal } from "@doriface/protocol";
 import type { ConnectionState } from "../connection/store.ts";
 import type { NoticeAnswer, NoticeAuthorization } from "./notice-bridge.ts";
 
@@ -78,11 +78,20 @@ export function rig({
   authorization = "unknown" as NoticeAuthorization,
   terminals = [] as Terminal[],
   failing = 0,
+  hostName = "",
+  /** The connection's hc calls a notice makes to name its terminal; none: every call fails, and notices say nothing. */
+  call = undefined as ((method: string, params: { readonly terminal?: unknown }) => Promise<unknown>) | undefined,
 } = {}) {
   const feeds: FakeFeed[] = [];
   let subscribes = 0;
-  const live: Pick<HcConnection, "subscribe" | "closed"> = {
+  const live: Pick<HcConnection, "subscribe" | "closed" | "hello" | "call"> = {
     closed: false,
+    // The core `local` stands for, named in a refusal as its hello names it (#1121).
+    hello: { core: { id: "core-test", name: "dev-box" } } as unknown as HcConnection["hello"],
+    call: ((method: string, params: { readonly terminal?: unknown }) =>
+      call === undefined
+        ? Promise.reject(new Error("no hc calls in this rig"))
+        : call(method, params)) as HcConnection["call"],
     subscribe: async () => {
       subscribes += 1;
       if (subscribes <= failing) throw new Error("the core is busy");
@@ -94,7 +103,7 @@ export function rig({
   const timers: { ms: number; step: () => void; cancelled: boolean; fired: boolean }[] = [];
   const listeners = new Set<() => void>();
   const connection = {
-    state: { phase: "open", connection: live as HcConnection, path: "relay", connectMs: 1 } as ConnectionState,
+    state: { phase: "open", connection: live as HcConnection, path: "relay" } as ConnectionState,
     subscribe: (listener: () => void) => (listeners.add(listener), () => listeners.delete(listener)),
     move(state: ConnectionState) {
       this.state = state;
@@ -102,7 +111,7 @@ export function rig({
     },
   };
   const stored = new Map<string, string>(saved === null ? [] : [[DESKTOP_NOTICES_KEY, saved]]);
-  const shown: { kind: string; terminal: string | null }[] = [];
+  const shown: { kind: string; terminal: string | null; context?: NoticeContext }[] = [];
   let now = 0;
   const notices = new DesktopNotices({
     bridge: {
@@ -113,6 +122,7 @@ export function rig({
     },
     storage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => void stored.set(key, value) },
     connection,
+    hostName: () => hostName,
     now: () => now,
     schedule: (step, ms) => {
       const timer = { ms, step, cancelled: false, fired: false };
@@ -136,8 +146,7 @@ export function rig({
     timer.step();
     await settled();
   };
-  const reopen = () =>
-    connection.move({ phase: "open", connection: live as HcConnection, path: "relay", connectMs: 1 });
+  const reopen = () => connection.move({ phase: "open", connection: live as HcConnection, path: "relay" });
   return {
     notices,
     feeds,

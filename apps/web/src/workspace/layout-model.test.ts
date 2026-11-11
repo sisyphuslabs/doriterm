@@ -103,6 +103,7 @@ const alone = (address: string): LayoutTab => ({
   root: { children: [], id: "", type: "row" },
   panes: [{ id: TRANSIENT, address, mod: null }],
   readOnly: null,
+  pinned: false,
   transient: false,
 });
 const shownAlone = (address: string): LayoutTab => ({ ...alone(address), transient: true });
@@ -114,29 +115,31 @@ const docTab = (key: string, pane: string, address: string): LayoutTab => ({
 });
 
 describe("keepMounts: a document tab that takes over a terminal shown alone keeps its view (#381)", () => {
+  const none = layoutIds([here]);
+
   test("the tab written for it is mounted where the lone tab was, its pane too, and stays so", () => {
     const mounts = newMounts();
-    keepMounts([shownAlone("box/t2")], mounts);
-    const [taken] = keepMounts([docTab("core/tb1", "p1", "box/t2")], mounts);
+    keepMounts([shownAlone("box/t2")], mounts, none);
+    const [taken] = keepMounts([docTab("core/tb1", "p1", "box/t2")], mounts, none);
     expect(taken?.mount).toBe(TRANSIENT);
     expect(taken?.panes[0]?.mount).toBe(TRANSIENT);
     expect(taken?.key).toBe("core/tb1");
     expect(taken?.panes[0]?.id).toBe("p1");
-    const [again] = keepMounts([docTab("core/tb1", "p1", "box/t2"), docTab("core/tb2", "p2", "box/t3")], mounts);
+    const [again] = keepMounts([docTab("core/tb1", "p1", "box/t2"), docTab("core/tb2", "p2", "box/t3")], mounts, none);
     expect(again?.mount).toBe(TRANSIENT);
   });
 
   test("a tab for a terminal never shown alone mounts under its own key", () => {
     const mounts = newMounts();
-    const [tab] = keepMounts([docTab("core/tb1", "p1", "box/t2")], mounts);
+    const [tab] = keepMounts([docTab("core/tb1", "p1", "box/t2")], mounts, none);
     expect(tab?.mount).toBeUndefined();
   });
 
   test("a tab that first showed without the take-over does not take it later, so its view never moves", () => {
     const mounts = newMounts();
-    keepMounts([docTab("core/tb1", "p1", "box/t2")], mounts);
-    keepMounts([shownAlone("box/t2")], mounts);
-    const [tab] = keepMounts([docTab("core/tb1", "p1", "box/t2")], mounts);
+    keepMounts([docTab("core/tb1", "p1", "box/t2")], mounts, none);
+    keepMounts([shownAlone("box/t2")], mounts, none);
+    const [tab] = keepMounts([docTab("core/tb1", "p1", "box/t2")], mounts, none);
     expect(tab?.mount).toBeUndefined();
   });
 
@@ -144,20 +147,65 @@ describe("keepMounts: a document tab that takes over a terminal shown alone keep
     const ids = layoutIds([here]);
     const key = looseKey("box/t2", ids);
     const mounts = newMounts();
-    keepMounts([docTab("core/tb0", "p0", "t1"), { ...shownAlone("box/t2"), key, id: key }], mounts);
-    const tabs = keepMounts([docTab("core/tb0", "p0", "t1"), docTab("box/tb1", "p1", "box/t2")], mounts);
+    keepMounts([docTab("core/tb0", "p0", "t1"), { ...shownAlone("box/t2"), key, id: key }], mounts, none);
+    const tabs = keepMounts([docTab("core/tb0", "p0", "t1"), docTab("box/tb1", "p1", "box/t2")], mounts, none);
     const view = { active: key, focused: { [key]: TRANSIENT }, zoomed: {}, spaces: {}, seen: {} };
     expect(pick(tabs, view).active?.key).toBe("box/tb1");
     expect(pick(tabs, view).focused?.address).toBe("box/t2");
     expect(pick(tabs, { ...view, active: "gone" }).active?.key).toBe("core/tb0");
   });
 
+  test("a loose tab's view is taken over when its machine's rename and the adoption show in one render (#1775)", () => {
+    const box = (name: string): MachineLayout => ({ ...here, machine: name, machineId: "id-box" });
+    const before = layoutIds([here, box("build-box")]);
+    const key = looseKey("build-box/t2", before);
+    const mounts = newMounts();
+    keepMounts([docTab("core/tb0", "p0", "t1"), { ...shownAlone("build-box/t2"), key, id: key }], mounts, before);
+    const after = layoutIds([here, box("build-renamed")]);
+    const adopted = docTab("id-box/tb1", "p1", "build-renamed/t2");
+    const tabs = keepMounts([docTab("core/tb0", "p0", "t1"), adopted], mounts, after);
+    const view = { active: key, focused: { [key]: TRANSIENT }, zoomed: {}, spaces: {}, seen: {} };
+    expect(pick(tabs, view).active?.key).toBe("id-box/tb1");
+    expect(pick(tabs, view).focused?.address).toBe("build-renamed/t2");
+  });
+
+  test("a loose tab first shown before its machine is listed is taken over when the listing and the adoption show in one render (#2107)", () => {
+    const key = looseKey("box/t2", none);
+    const mounts = newMounts();
+    keepMounts([docTab("core/tb0", "p0", "t1"), { ...shownAlone("box/t2"), key, id: key }], mounts, none);
+    const listed = layoutIds([here, { ...here, machine: "box", machineId: "id-box" }]);
+    const tabs = keepMounts([docTab("core/tb0", "p0", "t1"), docTab("id-box/tb1", "p1", "box/t2")], mounts, listed);
+    const view = { active: key, focused: { [key]: TRANSIENT }, zoomed: {}, spaces: {}, seen: {} };
+    expect(pick(tabs, view).active?.key).toBe("id-box/tb1");
+    expect(pick(tabs, view).focused?.address).toBe("box/t2");
+  });
+
+  test("a loose tab listed in one render and saved in a later one leaves no mount for a later tab on its address (#2141)", () => {
+    const key = looseKey("box/t2", none);
+    const mounts = newMounts();
+    keepMounts([docTab("core/tb0", "p0", "t1"), { ...shownAlone("box/t2"), key, id: key }], mounts, none);
+    const listed = layoutIds([here, { ...here, machine: "box", machineId: "id-box" }]);
+    const relisted = looseKey("box/t2", listed);
+    keepMounts(
+      [docTab("core/tb0", "p0", "t1"), { ...shownAlone("box/t2"), key: relisted, id: relisted }],
+      mounts,
+      listed,
+    );
+    keepMounts([docTab("core/tb0", "p0", "t1"), docTab("id-box/tb1", "p1", "box/t2")], mounts, listed);
+    const [, later] = keepMounts(
+      [docTab("core/tb0", "p0", "t1"), docTab("id-box/tb2", "p2", "box/t2")],
+      mounts,
+      listed,
+    );
+    expect(later?.mount).toBeUndefined();
+  });
+
   test("two document tabs never share the lone tab's mount", () => {
     const mounts = newMounts();
-    keepMounts([shownAlone("box/t2")], mounts);
-    keepMounts([docTab("core/tb1", "p1", "box/t2")], mounts);
-    keepMounts([shownAlone("box/t9")], mounts);
-    const tabs = keepMounts([docTab("core/tb1", "p1", "box/t2"), docTab("core/tb9", "p9", "box/t9")], mounts);
+    keepMounts([shownAlone("box/t2")], mounts, none);
+    keepMounts([docTab("core/tb1", "p1", "box/t2")], mounts, none);
+    keepMounts([shownAlone("box/t9")], mounts, none);
+    const tabs = keepMounts([docTab("core/tb1", "p1", "box/t2"), docTab("core/tb9", "p9", "box/t9")], mounts, none);
     expect(tabs.map((tab) => tab.mount ?? tab.key)).toEqual([TRANSIENT, "core/tb9"]);
   });
 });
