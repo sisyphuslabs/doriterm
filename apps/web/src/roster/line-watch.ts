@@ -6,15 +6,23 @@
  */
 export const LINE_READ_MS = 1000;
 
-/** The roster's line read: `machine.list` every LINE_READ_MS while the page is visible and some view watches a line. */
+/**
+ * The roster's line read: `machine.list` every LINE_READ_MS while the page is visible and some view watches a line, one
+ * read at a time, so a stalled link is not sent a read a second it cannot answer (#2184).
+ */
 export class LineWatch {
-  readonly #refresh: () => void;
+  readonly #refresh: () => Promise<void>;
   readonly #every: (run: () => void, ms: number) => () => void;
   readonly #visible: () => boolean;
   #watchers = 0;
   #stop: (() => void) | undefined;
+  #inFlight: Promise<void> | undefined;
 
-  constructor(refresh: () => void, every: (run: () => void, ms: number) => () => void, visible: () => boolean) {
+  constructor(
+    refresh: () => Promise<void>,
+    every: (run: () => void, ms: number) => () => void,
+    visible: () => boolean,
+  ) {
     this.#refresh = refresh;
     this.#every = every;
     this.#visible = visible;
@@ -38,7 +46,15 @@ export class LineWatch {
     };
   }
 
+  /** Settles once the line read in flight, if any, has: what a test waits on instead of time. */
+  idle(): Promise<void> {
+    return this.#inFlight ?? Promise.resolve();
+  }
+
   #read(): void {
-    if (this.#visible()) this.#refresh();
+    if (this.#inFlight !== undefined || !this.#visible()) return;
+    this.#inFlight = this.#refresh().finally(() => {
+      this.#inFlight = undefined;
+    });
   }
 }

@@ -20,10 +20,11 @@ import { MachineRoster, type MachinesRead } from "./machines.ts";
 import { NO_TERMINALS, type TerminalsState } from "./terminals-state.ts";
 
 /**
- * hc sends no event when a machine's line comes up, drops or wants a login; `missed` covers a line that comes or goes
- * with the feed, and the terminals a line brings or takes cover the rest, except a line that drops with no terminals on
- * it. machine.list is read on this timer while the page is visible for that case: hc redials within 250 ms to 30 s and
- * one machine.list is a few hundred bytes, so every 10 s keeps that stale state shorter than it takes to notice.
+ * hc sends no event when a machine's line comes up, drops or wants a login; `missed` covers a line that comes back
+ * (it says nothing at all when a line drops, #2056), and the terminals a line brings or takes cover the rest. The line
+ * read (line-watch.ts) covers a drop each second while a view watches a line; for every other case machine.list is read
+ * on this timer while the page is visible: hc redials within 250 ms to 30 s and one machine.list is a few hundred bytes,
+ * so every 10 s keeps that stale state shorter than it takes to notice.
  */
 export const MACHINE_REFRESH_MS = 10_000;
 
@@ -68,8 +69,8 @@ const browser = {
  * machine order, fed by one `events.subscribe` and read again on every gap. It outlives a connection: a reconnect to
  * the same core attaches the new one, keeps what the screen shows, and diffs the fresh reads against it, so a machine
  * or a space is never shown twice and never dropped for a redial. hc has no event for a machine's line (schema
- * 0.1.17 lists none), so `missed` (which hc sends when a line comes or goes) and the terminals a line brings drive the
- * reads, with one timer as the fallback for a line that drops with no terminals on it.
+ * 0.1.17 lists none), so `missed` (which hc sends when a line comes back, not when it drops) and the terminals a line
+ * brings drive the reads, with two timers for the rest: the line read while a view watches a line, and the 10 s read.
  */
 export class Roster {
   readonly machines: MachineRoster;
@@ -135,8 +136,8 @@ export class Roster {
       readOrderDocument,
     );
     this.#snapshot = { terminals: NO_TERMINALS, machines: this.machines.read, order: this.order.state, docsLanded: 0 };
-    const refresh = (): void => void this.machines.refresh();
-    this.#lines = new LineWatch(refresh, options.every ?? browser.every, options.visible ?? browser.visible);
+    const lineRead = (): Promise<void> => (this.#connection.closed ? Promise.resolve() : this.machines.refresh(true));
+    this.#lines = new LineWatch(lineRead, options.every ?? browser.every, options.visible ?? browser.visible);
   }
 
   get snapshot(): RosterSnapshot {
@@ -184,6 +185,9 @@ export class Roster {
   watchLines(): () => void {
     return this.#lines.watch();
   }
+
+  /** Settles once the line read in flight, if any, has: what a test waits on instead of time. */
+  linesIdle = (): Promise<void> => this.#lines.idle();
 
   /** Asks the core for the terminal list and the stream again after a first answer that failed (#819). */
   retryTerminals(): void {

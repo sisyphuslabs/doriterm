@@ -125,6 +125,9 @@ export function PhoneKeys(props: PhoneKeysProps) {
   const barRef = useHeightReport(reportHeight);
   // Set as the menu closes: the focus went somewhere on its own (the terminal took it, or a pick opens another session).
   const settled = useRef(false);
+  // The same answer as a boolean prop: Base UI keeps a focus that moved elsewhere during the close only for a boolean
+  // finalFocus, never for a function's answer (#2174).
+  const [returnFocus, setReturnFocus] = useState(false);
   const settings = useKeyBarSettings();
   const own = specialEntries(settings, host);
   const packed = activeEntries(settings);
@@ -202,7 +205,7 @@ export function PhoneKeys(props: PhoneKeysProps) {
             // for a focus made inside the tap, so the menu hands the focus to nothing (not its trigger) as it closes. A
             // pick of another session leaves the focus to that one (#1985); with no terminal field to take it, the trigger
             // gets it back (#1986).
-            finalFocus={() => !settled.current}
+            finalFocus={returnFocus}
             onOpenChange={(shown) => {
               if (shown) settled.current = false;
               else if (!settled.current) {
@@ -210,6 +213,7 @@ export function PhoneKeys(props: PhoneKeysProps) {
                 port.current?.focus();
                 settled.current = document.activeElement !== before;
               }
+              setReturnFocus(!shown && !settled.current);
               onMenu(shown);
             }}
           >
