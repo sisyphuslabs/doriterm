@@ -76,6 +76,9 @@ test("a terminal's title change costs the same however many terminals sit in hid
     start(["sh", "-c", "i=0; while :; do printf '\\033]0;spin %d\\007' $i; i=$((i+1)); sleep 0.1; done"]);
     for (let index = 0; index < HIDDEN; index += 1) start(["sleep", "3600"]);
     await page.addInitScript(countRenders);
+    // The sidebar's ages tick once a minute and redraw every agent row in one commit: a run crossing a minute would
+    // measure that tick rather than a title change. Date.now stays put; every timer still runs (#2098).
+    await page.clock.setFixedTime(Date.now());
     await page.goto("/");
     // Every terminal is listed, and the loose ones are adopted into tabs as the page loads, each pane mounted.
     await expect(page.locator("[data-terminal]")).toHaveCount(HIDDEN + 1, { timeout: 30_000 });
