@@ -94,7 +94,8 @@ const pressing = new WeakMap<EventTarget, () => void>();
  * Holds the field as the port's own from the press's pointerdown until the click takes it again, so the program hears
  * neither the blur nor the focus (#1519, #1940). A press that ends with no click on its button gives the field its focus
  * back, still marked, so the terminal is never left without the focus the program was not told it lost: the browser
- * cancelled it, the pointer lifted off the button, or the click went to another element. A scroll is not an end: the
+ * cancelled it, the pointer lifted off the button, the press opened a context menu (a ctrl-click on macOS) and so never
+ * clicks, or the click went to another element. A scroll is not an end: the
  * terminal scrolls itself while it follows output, and a tap the browser turns into a page scroll is cancelled. Nor is
  * another pointer lifting or cancelled (a second finger), when the press's own is known (#2048). Returns the release,
  * which ends the hold early as a press's end would, and does nothing once the hold is over.
@@ -129,12 +130,14 @@ function holdForPress(
     pressing.delete(field);
     view?.removeEventListener("pointercancel", cancelled, true);
     view?.removeEventListener("pointerup", lifted, true);
+    view?.removeEventListener("contextmenu", release, true);
     view?.removeEventListener("click", release);
   };
   pressing.set(field, detach);
   regaining.add(field);
   view?.addEventListener("pointercancel", cancelled, true);
   view?.addEventListener("pointerup", lifted, true);
+  view?.addEventListener("contextmenu", release, true);
   // Bubbling, after the button's own handler: a click the press's focus already took has ended the hold by then.
   view?.addEventListener("click", release);
   return release;
