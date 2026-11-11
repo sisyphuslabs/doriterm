@@ -59,7 +59,9 @@ const historyRows = (terminal: Locator, rowHeight: number): Promise<number> =>
 
 /**
  * The oldest line the history holds: the first row that starts `line-N` once the view is at its top (the command that
- * printed them may be above it). Leaves the view at its end.
+ * printed them may be above it). The history's rows in view render on the next frame, and until then a spacer stands at
+ * the top with the screen's rows below it: the rows are read only once one covers the view's top edge. Leaves the view
+ * at its end.
  */
 async function oldestLine(terminal: Locator): Promise<number> {
   await terminal.evaluate((element) => {
@@ -67,10 +69,14 @@ async function oldestLine(terminal: Locator): Promise<number> {
   });
   const first = (): Promise<number> =>
     terminal.evaluate((element) => {
-      const top = element.getBoundingClientRect().top;
+      const top =
+        element.getBoundingClientRect().top +
+        element.clientTop +
+        Number.parseFloat(getComputedStyle(element).paddingTop);
       const rows = [...element.querySelectorAll(".term-grid .term-row")].filter(
         (row) => row.getBoundingClientRect().bottom > top,
       );
+      if (!rows.some((row) => row.getBoundingClientRect().top <= top + 0.5)) return 0;
       const line = rows.map((row) => /^line-(\d+)/.exec(row.textContent ?? "")).find((match) => match !== null);
       return Number(line?.[1] ?? 0);
     });
