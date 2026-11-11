@@ -22,6 +22,20 @@ describe("notification authorization from the packaged macOS addon", () => {
     expect(await readNoticeAuthorization({}, addon)).toBe("denied");
   });
 
+  test("the permission request is kept bound to the addon; an addon built without it still reads", async () => {
+    const addon = loadNoticeAuthorization("/speech.node", () => ({
+      answer: "granted",
+      noticeAuthorization: async () => "not-determined",
+      async requestNoticeAuthorization(this: { readonly answer: string }) {
+        return this.answer;
+      },
+    }));
+    expect(await addon?.requestNoticeAuthorization?.()).toBe("granted");
+    const older = loadNoticeAuthorization("/speech.node", () => ({ noticeAuthorization: async () => "denied" }));
+    expect(older?.requestNoticeAuthorization).toBeUndefined();
+    expect(await readNoticeAuthorization({}, older)).toBe("denied");
+  });
+
   test("an absent, older or malformed addon leaves the shell/unknown fallback usable", async () => {
     for (const value of [undefined, null, {}, { noticeAuthorization: true }]) {
       expect(loadNoticeAuthorization("/speech.node", () => value)).toBeUndefined();

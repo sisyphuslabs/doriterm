@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { requestControl } from "../../../apps/host/src/control.ts";
 import { createHcSession, type HcSession, stopLeftoverCores } from "../../../apps/host/src/testing/hc-session.ts";
 import { RecordingLink, type Tap, taps, tappedHc } from "./byte-tap.ts";
+import { onInterrupt } from "./process-group.ts";
 import { socketFrom, testIp } from "./probe.ts";
 import { type LocalRelay, RELAY_STOP_MS, startLocalRelay } from "./relay-dev.ts";
 
@@ -116,11 +117,19 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
     () => relay?.stop(),
     () => rmSync(scratch, { recursive: true, force: true }),
   ];
-  const stop = async (): Promise<void> => {
-    if (logs.length > 0) console.log(`host log:\n${logs.join("\n")}`);
-    const failures = await settleAll(teardown);
-    if (failures.length > 0) throw new AggregateError(failures, "the relayed host did not stop cleanly");
-  };
+  let stopping: Promise<void> | undefined;
+  const stop = (): Promise<void> =>
+    (stopping ??= (async () => {
+      unhook();
+      if (logs.length > 0) console.log(`host log:\n${logs.join("\n")}`);
+      const failures = await settleAll(teardown);
+      if (failures.length > 0) throw new AggregateError(failures, "the relayed host did not stop cleanly");
+    })());
+  // A process that ends on SIGTERM or SIGINT (an e2e helper such as web-relay-host.ts is stopped with SIGTERM) runs
+  // this stop to its end first. Otherwise the relay's group hook (adoptProcessGroup) kills the relay and raises the
+  // signal again within a few milliseconds, ending the process before its host's stop has told the hc core to stop:
+  // the core runs outside every process group of this process and outlives it (#2061).
+  const unhook = onInterrupt(stop);
   try {
     relay = await startLocalRelay();
     await options.started?.({ relay });
@@ -158,6 +167,7 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
       stop,
     });
   } catch (error) {
+    unhook();
     if (logs.length > 0) console.log(`host log:\n${logs.join("\n")}`);
     return rethrowAfter(error, teardown);
   }
