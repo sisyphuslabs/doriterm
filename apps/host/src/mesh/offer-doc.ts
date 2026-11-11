@@ -1,7 +1,7 @@
-import { HcConnection } from "@doriface/client";
+import type { HcConnection } from "@doriface/client";
 import { HcRpcError, type JsonValue, MESH_APPROVAL_DOC, MESH_OFFER_DOC, parseMeshOfferDoc } from "@doriface/protocol";
 import { type Clock, monotonicClock } from "./clock.ts";
-import { type ChildByteLink, type HcTarget, spawnHcLink } from "./hc-machines.ts";
+import { type ChildByteLink, type HcTarget, openOnCore, spawnHcLink } from "./hc-machines.ts";
 import { answerMeshApproval, type MeshDecision } from "./approval-doc.ts";
 import { docStoreOf } from "./status-doc.ts";
 
@@ -186,7 +186,7 @@ export function serveMeshOffers(
     linkOpen = true;
     exited = gone.promise;
     try {
-      const connection = await HcConnection.open(child);
+      const connection = await openOnCore(child, target);
       if (stopped) return connection.close();
       const feed = await connection.subscribe();
       live = connection;

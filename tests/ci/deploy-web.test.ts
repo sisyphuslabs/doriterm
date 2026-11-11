@@ -4,8 +4,9 @@ import { dirname, join } from "node:path";
 import { evaluate, type Value } from "./gh-expression.ts";
 
 type Step = { id?: string; name?: string; if?: string; run?: string; uses?: string };
-type Job = { needs?: string; if?: string; steps: Step[] };
-type Workflow = { concurrency: { group: string; "cancel-in-progress": string | boolean }; jobs: Record<string, Job> };
+type Concurrency = { group: string; "cancel-in-progress"?: string | boolean; queue?: string };
+type Job = { needs?: string; if?: string; concurrency?: Concurrency; steps: Step[] };
+type Workflow = { concurrency: Concurrency; jobs: Record<string, Job> };
 type Route = { pattern: string; zone_id?: string; custom_domain?: boolean };
 type Assets = { directory: string; not_found_handling?: string };
 type Wrangler = { assets: Assets; routes: Route[]; env: { staging: { assets: Assets; routes: Route[] } } };
@@ -41,6 +42,25 @@ test("only what deploys dev to production shares dev's concurrency group, and de
   for (const manual of [dispatch("refs/heads/dev", false), dispatch("refs/heads/feature", true)]) {
     expect(group(manual)).not.toBe("deploy-web-dev");
     expect(group(manual)).toContain(String(manual.github["run_id"]));
+  }
+});
+
+// #929, #1143: probe-web.ts wants this build's index.html byte for byte, so a second staging deploy before the probe
+// ends fails it, or passes it on the other run's build. queue: max keeps every waiting deploy, where a group's single
+// pending slot would let a newer run cancel a pending dev deploy (#868, #884).
+// Before a run reaches the staging queue the run-level group (tested above) still applies: a newer push to one pull
+// request cancels that pull request's own older run, and a newer dev run replaces a pending dev run (#1783).
+test("every run deploys and probes staging in one queue, where no run cancels a deploy that is waiting in it", () => {
+  const { staging } = workflow.jobs;
+  if (staging?.concurrency === undefined) throw new Error("deploy-web.yml's staging job has no concurrency group");
+  const { concurrency } = staging;
+  const events = [push, pullRequest, dispatch("refs/heads/dev", true), dispatch("refs/heads/dev", false)];
+  const groups = events.map((event) => evaluate(concurrency.group, { contexts: event }));
+  expect(new Set(groups).size).toBe(1);
+  expect(groups).not.toContain(group(push));
+  expect(concurrency.queue).toBe("max");
+  for (const event of events) {
+    expect(evaluate(String(concurrency["cancel-in-progress"] ?? false), { contexts: event })).toBe(false);
   }
 });
 

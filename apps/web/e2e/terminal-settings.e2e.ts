@@ -1,4 +1,5 @@
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
@@ -13,7 +14,7 @@ test("font-size and cursor-style apply to an open terminal", async ({ page }) =>
 
   // Live: the zoom shortcut changes font-size on this same, still mounted terminal element.
   await terminal.getByRole("textbox").focus();
-  await page.keyboard.press("ControlOrMeta+Equal");
+  await pressShortcut(page, "app.zoom_in");
   await expect.poll(fontSize).toBe("14pt");
   expect(await mounted.evaluate((el) => el.isConnected)).toBe(true);
 

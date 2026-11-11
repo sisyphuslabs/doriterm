@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { commandModifier, pressWithCommand } from "./platform-keys.ts";
 import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE, permissions: ["clipboard-read", "clipboard-write"] });
@@ -147,7 +148,7 @@ test("pasting into the fixed field sends the pasted line when Enter is pressed",
   const terminal = await openPhoneTerminal(page);
   await page.evaluate(() => navigator.clipboard.writeText("echo pasted-$((6*7))"));
   await field(page).click();
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+V" : "Control+V");
+  await pressWithCommand(page, `${await commandModifier(page)}+v`, "paste");
   await expect(field(page)).toHaveValue("echo pasted-$((6*7))");
   expect(await value(page)).not.toContain("pasted-42");
   await page.keyboard.press("Enter");
