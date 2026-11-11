@@ -28,9 +28,11 @@ export interface ReleaseClock {
  * frame, so release then, unless the program has a synchronized update open: wterm then paints nothing until the update
  * ends (or its own 1000 ms fallback fires), which changes the grid; releasing on the next frame instead would blank the
  * cell for as long as the update lasts. That wait is capped at SYNCHRONIZED_HOLD_MS plus SYNCHRONIZED_HOLD_MARGIN_MS from
- * when the update was first seen open, so a render that changes no grid node can never leave a cell held for good. A
- * write that closes the update and opens the next restarts wterm's hold without painting, so when the cap falls on a
- * newer update than the one it was armed for, it counts again from then (#2089).
+ * when the update was first seen open. A write that closes the update and opens the next restarts wterm's hold without
+ * painting, so when the cap falls on a newer update than the one it was armed for, it counts again from then (#2089).
+ * The bound is therefore per update: a render that changes no grid node can leave a cell held only while the program
+ * keeps opening a newer update within each cap. That is about as long as wterm holds the screen, plus at most one more
+ * cap after a resize reopen, where the generation moves but wterm keeps the original update's deadline.
  */
 export class HeldRelease {
   readonly #clock: ReleaseClock;
