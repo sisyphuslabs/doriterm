@@ -165,7 +165,9 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
         (late) => (interrupted ? late.stop() : undefined),
         () => undefined,
       )
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        console.error(`relayed host: could not stop a relay that came up after the interrupt: ${String(error)}`);
+      });
     relay = await Promise.race([relayStarting, interruption.promise]);
     unlessInterrupted();
     await options.started?.({ relay });
