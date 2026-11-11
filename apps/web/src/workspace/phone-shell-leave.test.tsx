@@ -1,4 +1,4 @@
-import { afterAll, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, expect, mock, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import type { HcConnection } from "@doriface/client";
 import type { Session } from "./model.ts";
@@ -8,8 +8,16 @@ import type { Session } from "./model.ts";
 GlobalRegistrator.register();
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => GlobalRegistrator.unregister());
+// Each test reads the End of its own render, never one a previous test left behind.
+beforeEach(() => {
+  onEnded = undefined;
+});
 
-/** The End the terminal view was handed by the last render: PhoneTerminal is replaced so it only records it. */
+/**
+ * The End the terminal view was handed by the last render: PhoneTerminal is replaced so it only records it. Bun's
+ * mock.module is process-wide and is never undone, so a later test file in the same run imports this stub too: a test
+ * of PhoneTerminal itself needs a narrower seam, not this pattern (#2335 review).
+ */
 let onEnded: ((address: string) => void) | undefined;
 mock.module("./phone-terminal.tsx", () => ({
   PhoneTerminal: (props: { readonly onEnded: (address: string) => void }) => {
@@ -67,6 +75,7 @@ test("an End that settles after a re-render leaves through the phone's current l
   const root = createRoot(document.createElement("div"));
   await act(async () => root.render(shell("t1", () => left.push("leave when the End began"))));
   const ended = onEnded;
+  expect(ended).toBeDefined();
   // The sheet opened or closed while the End was in flight: the phone now leaves another way.
   await act(async () => root.render(shell("t1", () => left.push("leave now"))));
   await act(async () => ended?.("t1"));
@@ -79,6 +88,7 @@ test("an End for a terminal the phone no longer shows leaves nowhere: the move m
   const root = createRoot(document.createElement("div"));
   await act(async () => root.render(shell("t1", () => left.push("leave"))));
   const ended = onEnded;
+  expect(ended).toBeDefined();
   await act(async () => root.render(shell("t2", () => left.push("leave"))));
   await act(async () => ended?.("t1"));
   expect(left).toEqual([]);
