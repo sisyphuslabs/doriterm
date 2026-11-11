@@ -22,4 +22,19 @@ describe("readOrCreateCardKey", () => {
     const afterReload = await readOrCreateCardKey(refusing(), globalThis.crypto.subtle);
     expect(afterReload.publicKey).toEqual(first.publicKey);
   });
+
+  test("a store that fails the probe write for another reason is not read as one that cannot keep keys (#1639 review)", async () => {
+    const backing = memoryStore();
+    const storage: KeyValueStore = {
+      get: (key) => backing.get(key),
+      put: (key, value) => {
+        if (key === "mesh-sign-key.probe") throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+        return backing.put(key, value);
+      },
+    };
+    await expect(readOrCreateCardKey(storage, globalThis.crypto.subtle)).rejects.toThrow(
+      "The quota has been exceeded.",
+    );
+    expect(await backing.get("mesh-sign-key")).toBeUndefined();
+  });
 });
