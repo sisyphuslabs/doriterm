@@ -123,6 +123,14 @@ describe("pinned tabs read first even when the document has them elsewhere (#191
   test("a move is placed in the order as read, and writes the pinned tab in front", () => {
     expect(order(moveTab(middle, "c", 1, pinsOf("b")), NO_PINS_READ)).toEqual(["b", "c", "a"]);
   });
+  test("Close tabs to the right from that pinned tab takes the tabs shown after it", () => {
+    expect(closeSet(middle, "b", "right", pinsOf("b"))).toEqual(["a", "c"]);
+  });
+  test("a tab pinned next lands after it, not before it", () => {
+    const pins = pinsOf("b", "c");
+    expect(order(placePinned(middle, "c", pinsOf("b")), pins)).toEqual(["b*", "c*", "a"]);
+    expect(order(placePinned(middle, "c", pinsOf("b")), NO_PINS_READ)).toEqual(["b", "c", "a"]);
+  });
 });
 
 describe("a new tab never lands between pinned tabs (#1561 review)", () => {

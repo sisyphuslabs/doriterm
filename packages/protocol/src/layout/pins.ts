@@ -81,7 +81,9 @@ export function placePinned(doc: JsonObject, tabId: string, pins: ReadonlySet<st
   const tabs = objects(space["tabs"]);
   const moving = tabs.find((tab) => text(tab["id"]) === tabId);
   if (moving === undefined) return null;
-  const rest = tabs.filter((tab) => tab !== moving);
+  // Placed in the order the strip shows (#1916): in a document holding a pinned tab further on, the count alone would
+  // put this one before it.
+  const rest = pinnedFirst(tabs, pins).filter((tab) => tab !== moving);
   const placed = rest.toSpliced(rest.filter(pinnedIn(pins)).length, 0, moving);
   if (placed.every((tab, index) => tab === tabs[index])) return null;
   return { ...doc, spaces: spaces.with(at, { ...space, tabs: placed }) };
@@ -98,7 +100,7 @@ export function closeSet(
   pins: ReadonlySet<string>,
 ): readonly string[] {
   const space = objects(doc["spaces"]).find((each) => objects(each["tabs"]).some((tab) => text(tab["id"]) === tabId));
-  const tabs = space === undefined ? [] : objects(space["tabs"]);
+  const tabs = space === undefined ? [] : pinnedFirst(objects(space["tabs"]), pins);
   const at = tabs.findIndex((tab) => text(tab["id"]) === tabId);
   if (at === -1) return [];
   const picked = which === "right" ? tabs.slice(at + 1) : tabs.filter((_, index) => index !== at);

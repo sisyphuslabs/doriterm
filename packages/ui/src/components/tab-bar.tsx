@@ -85,8 +85,9 @@ export function TabBar({
   if (drawn.key !== key) setDrawn({ key, before: drawn.now, now: new Set(ids) });
   // The strip owns a touch's long press: held and moved it drags the tab, held and let go it opens the tab's menu.
   const [menuFor, setMenuFor] = useState<string | null>(null);
-  // Pinned tabs lead (#1561) and sit in a group of their own that never scrolls, so they stay in view while the other
-  // tabs scroll; each group drags within itself, so no drag carries a tab across the last pinned one.
+  // Pinned tabs lead (#1561) and sit in a group of their own that never scrolls with the other tabs, so they stay in view
+  // while those scroll (past half the strip it scrolls on its own, #1916); each group drags within itself, so no drag
+  // carries a tab across the last pinned one.
   const firstUnpinned = tabs.findIndex((tab) => tab.pinned !== true);
   const pins = firstUnpinned === -1 ? tabs.length : firstUnpinned;
   const pinnedList = useRef<HTMLDivElement>(null);
