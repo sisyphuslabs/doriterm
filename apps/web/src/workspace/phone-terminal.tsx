@@ -28,6 +28,7 @@ import {
 } from "./phone-keys.tsx";
 import { ConnectionLine } from "./reconnect-status.tsx";
 import { afterEnd } from "./session-actions.ts";
+import { useQuietKeyboard } from "./use-quiet-keyboard.ts";
 import { useStickyKeys } from "./use-sticky-keys.ts";
 
 export interface PhoneTerminalProps {
@@ -78,14 +79,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   const keyboard = useSoftKeyboard(scope);
   // A mouse-only device has no soft keyboard to ride on: its keys bar is opened and closed by hand (#287).
   const mouseOnly = useMouseOnly();
-  // The keyboard is down again — closed by its own key, by the keys' Hide, or by the focus moving away — so the field asks
-  // for none until the keys ask again, and the next press in the terminal raises nothing (#1375). A press that lets the
-  // field go and takes it back in the same gesture is no dismissal: this waits a frame for the focus to come back.
-  useEffect(() => {
-    if (keyboard.up) return undefined;
-    const frame = requestAnimationFrame(() => port.current?.quiet());
-    return () => cancelAnimationFrame(frame);
-  }, [keyboard.up]);
+  useQuietKeyboard(port, scope, keyboard.up);
   const [keysShown, setKeysShown] = useState(false);
   // Read-only browsing (browse-mode.ts) belongs to the terminal it was turned on for: opening another ends it.
   const [browsingOn, setBrowsingOn] = useState<string | null>(null);

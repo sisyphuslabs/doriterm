@@ -60,6 +60,21 @@ describe("pairing consumption", () => {
     expect(admitPairing(claim, new DeviceStore(dir), generateX25519().publicKey, "a")).toEqual({ ok: true });
     expect(pairing.read()?.code).toBe(replacement.code);
   });
+
+  test("a mesh claim taken before its offer was withdrawn is never spent, so it cannot admit later", () => {
+    const pairing = new PairingStore(dir);
+    pairing.offer(Date.now(), true);
+    const claim = claimed(pairing.claimLink(Date.now(), true));
+    expect(new PairingStore(dir).withdrawMesh()).toBe(true);
+    expect(claim.complete()).toBe(false);
+  });
+
+  test("withdrawing leaves a device offer open", () => {
+    const pairing = new PairingStore(dir);
+    const offer = pairing.offer();
+    expect(pairing.withdrawMesh()).toBe(false);
+    expect(pairing.read()?.code).toBe(offer.code);
+  });
 });
 
 describe("typed-code attempt reservations", () => {

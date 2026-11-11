@@ -48,6 +48,8 @@ import { orderNotSaved } from "./machine-order.ts";
 import { useMachineOrder } from "./use-machine-order.ts";
 import { useTerminals, type DocHeard } from "./use-terminals.ts";
 import { useResumeEnds } from "./resume-ends.ts";
+import { useSteady } from "./steady.ts";
+import { useStableCallback } from "./use-stable-callback.ts";
 import { useNoticeOpen } from "../push/notice-open.ts";
 import { usePushPresence } from "../push/use-push-presence.ts";
 import { PromptAnswerBanner } from "../push/prompt-answer-banner.tsx";
@@ -296,7 +298,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   useNoticeOpen(connectionStore.settings.mode === "relay" ? connectionStore.settings.hostId : undefined, opened);
   // What this screen reads for attention: a finish it has looked at reads idle here, and only here (#611).
   const sessions = useAttention(terminals, layout, narrow ? phoneOpen : null);
-  const spaces = useMemo(() => layoutSpaces(layouts, sessions, gitOf), [layouts, sessions, gitOf]);
+  const spaces = useSteady(useMemo(() => layoutSpaces(layouts, sessions, gitOf), [layouts, sessions, gitOf]));
   const onPalette = (): void => setPalette(true);
   const onSession: SessionVerb = (verb) => {
     const space = spaces.find((each) => inView !== null && each.addresses.includes(inView));
@@ -334,6 +336,10 @@ export function Workspace({ connection }: WorkspaceProps) {
     },
     [openInLayout, showOnPhone],
   );
+  // Read when a start is asked for, so the run is placed by that render's closure (see useMachineRuns), while the
+  // machines context keeps its value across terminal events (#2086).
+  const inNewSpaceNow = useRef(inNewSpace);
+  inNewSpaceNow.current = inNewSpace;
   const machines = useMemo(
     () => ({
       entries,
@@ -346,8 +352,8 @@ export function Workspace({ connection }: WorkspaceProps) {
       views,
       retry,
       moveMachine,
-      start: (params: TerminalRunParams) => runs.start(params, inNewSpace),
-      newTerminalOn: (machine: string) => runs.start({ on: machine }, inNewSpace),
+      start: (params: TerminalRunParams) => runs.start(params, inNewSpaceNow.current),
+      newTerminalOn: (machine: string) => runs.start({ on: machine }, inNewSpaceNow.current),
     }),
     [
       entries,
@@ -361,10 +367,9 @@ export function Workspace({ connection }: WorkspaceProps) {
       retry,
       moveMachine,
       runs,
-      inNewSpace,
     ],
   );
-  const { selectSpace } = layout;
+  const selectSpace = useStableCallback(layout.selectSpace);
   // The space keys count the spaces as the sidebar lists them, so "space 2" is the second row a person sees.
   const spaceKeys = useMemo(() => spacesInOrder(entries, spaces).map((space) => space.id), [entries, spaces]);
   const selectedSpace = layout.active?.spaceKey ?? null;
@@ -420,12 +425,21 @@ export function Workspace({ connection }: WorkspaceProps) {
                         space={phoneSpace}
                         panes={phonePanes}
                         tabTitle={phoneTitle}
-                        // Back says where it goes: the space it was opened from, by name once the spaces are read ("space" until then).
-                        backTo={phone.space === null ? null : (listedSpace?.name ?? "space")}
+                        // Back says where it goes: the space it was opened from, by name once the spaces are read ("space" until then),
+                        // else the Spaces list when it was opened from there.
+                        backTo={
+                          phone.space === null
+                            ? phone.section === "spaces"
+                              ? "Spaces"
+                              : null
+                            : (listedSpace?.name ?? "space")
+                        }
                         onOpen={showOnPhone}
                         onBack={phone.back}
                         onSpaceBack={phone.backFromSpace}
                         pushed={phone.pushed}
+                        section={phone.section}
+                        onSection={phone.showSection}
                         onNew={() => newTerminal()}
                         onNewInSpace={newTabIn}
                         onCloseTab={(address) => {

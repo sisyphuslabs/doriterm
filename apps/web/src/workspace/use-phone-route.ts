@@ -4,6 +4,7 @@ import { guideStore } from "../pair/first-run-guide.ts";
 import {
   PHONE_LIST,
   type PhoneRoute,
+  type PhoneSection,
   phoneHref,
   phoneOpenKey,
   phoneParent,
@@ -18,6 +19,10 @@ export interface PhoneNavigation {
   readonly open: string | null;
   /** The key of the space whose screen the phone shows (under an open terminal too); null on the list or a desktop. */
   readonly space: string | null;
+  /** The section the phone shows, its bottom tab bar's current tab. */
+  readonly section: PhoneSection;
+  /** Shows a section's list: the bottom tab bar's tabs. */
+  readonly showSection: (section: PhoneSection) => void;
   /** Opens a terminal full screen: from a list or a space screen it is one entry more, a switch replaces the entry. */
   readonly show: (address: string) => void;
   /** Opens a space's screen, one entry over the list. */
@@ -44,6 +49,9 @@ export interface PhoneNavigation {
  */
 let landed: number | null = null;
 
+/** The history entry the Spaces tab pushed over the agents list: the only one the Agents tab may pop back from. */
+let spacesOverAgents: number | null = null;
+
 /** The router's place of an entry in this tab's history (@tanstack/history), counted from the page's first entry. */
 const ENTRY_INDEX = "__TSR_index";
 
@@ -55,7 +63,7 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
   const navigate = useNavigate();
   const router = useRouter();
   const search = useRouterState({
-    select: (state) => state.location.search as { readonly s?: unknown; readonly t?: unknown },
+    select: (state) => state.location.search as { readonly v?: unknown; readonly s?: unknown; readonly t?: unknown },
   });
   const path = useRouterState({ select: (state) => state.location.pathname });
   const index = useRouterState({ select: (state) => state.location.state[ENTRY_INDEX] });
@@ -90,22 +98,44 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
       // made Back step through no-op entries and a landing run close the screen behind it.
       if (!narrow) return;
       // Switching inside an open terminal replaces its entry, so one Back still leaves the terminal for where it came from.
-      go({ space: listed.space, terminal: tabKey(address, ids) }, listed.terminal !== null);
+      go({ ...listed, terminal: tabKey(address, ids) }, listed.terminal !== null);
     },
-    [go, ids, listed.space, listed.terminal, narrow],
+    [go, ids, listed, narrow],
   );
-  const showSpace = useCallback((spaceKey: string) => go({ space: spaceKey, terminal: null }, false), [go]);
+  const showSpace = useCallback(
+    (spaceKey: string) => go({ section: listed.section, space: spaceKey, terminal: null }, false),
+    [go, listed.section],
+  );
+  const showSection = useCallback(
+    (section: PhoneSection) => {
+      const atRoot = listed.space === null && listed.terminal === null;
+      if (section === listed.section && atRoot) return;
+      // Spaces is one entry over the agents, so the Agents tab goes back down to it rather than stacking another - but
+      // only from the very entry the Spaces tab pushed: one that replaced a space gone from under it (dropSpace) has no
+      // Agents list below it, so that one is replaced by the agents in place.
+      if (section === "agents" && listed.section === "spaces" && atRoot && spacesOverAgents === index) {
+        spacesOverAgents = null;
+        router.history.back();
+        return;
+      }
+      if (section === "agents") return go(PHONE_LIST, true);
+      // From the agents, Spaces is entered (one entry); within Spaces, its tab goes back to its own list in place.
+      if (listed.section !== "spaces") spacesOverAgents = index + 1;
+      return go({ section: "spaces", space: null, terminal: null }, listed.section === "spaces");
+    },
+    [go, index, listed, router],
+  );
   const back = useCallback(() => {
     if (landed !== null && index > landed) router.history.back();
     else go(phoneParent(listed), true);
   }, [go, index, listed, router]);
   const backFromSpace = useCallback(() => {
     if (listed.terminal === null) back();
-    else go(PHONE_LIST, true);
-  }, [back, go, listed.terminal]);
+    else go({ ...listed, space: null, terminal: null }, true);
+  }, [back, go, listed]);
   const dropSpace = useCallback(() => {
-    if (path === "/" && listed.space !== null) go({ space: null, terminal: listed.terminal }, true);
-  }, [go, listed.space, listed.terminal, path]);
+    if (path === "/" && listed.space !== null) go({ ...listed, space: null }, true);
+  }, [go, listed, path]);
   const leave = useCallback(
     (next: string | null) => {
       if (!narrow) return;
@@ -114,5 +144,18 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     },
     [back, narrow, show],
   );
-  return { open, space, show, showSpace, back, backFromSpace, dropSpace, pushed: forward.current, leave };
+  const section = narrow ? listed.section : "agents";
+  return {
+    open,
+    space,
+    section,
+    show,
+    showSpace,
+    showSection,
+    back,
+    backFromSpace,
+    dropSpace,
+    pushed: forward.current,
+    leave,
+  };
 }
