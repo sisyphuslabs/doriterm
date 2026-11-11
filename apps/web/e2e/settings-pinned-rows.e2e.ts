@@ -18,7 +18,7 @@ const ROW_CONTROLS = [
   'span:text-is("Needs you")',
 ];
 
-/** Every row control the workspace lays out: its centre where it is now, and whether it is drawn there. */
+/** Every row control the workspace lays out: its label and its centre where it is now. */
 const rowControls = (page: Page) =>
   page.locator(ROW_CONTROLS.join(", ")).evaluateAll((elements) =>
     elements.flatMap((element) => {
