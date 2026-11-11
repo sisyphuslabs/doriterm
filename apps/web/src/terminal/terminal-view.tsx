@@ -273,7 +273,8 @@ export function TerminalView(props: TerminalViewProps) {
         onReady={(ready) => {
           // The renderer no longer focuses itself as it starts (patches/@wterm%2Fdom@0.5.9.patch); the view decides.
           focusWhenFree(ready);
-          attachment.attach(ready);
+          // It attaches once it is shown (useTerminalAttach): a pane that mounts out of view opens no stream yet.
+          setWt(ready);
         }}
         onData={(data) => {
           if (!isRegainingReport(handle, data)) typedInto(data);

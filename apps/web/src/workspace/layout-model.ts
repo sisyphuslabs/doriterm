@@ -41,14 +41,18 @@ export interface Mount {
 
 /** What keepMounts remembers from one render to the next. */
 export interface Mounts {
-  /** Terminals shown in a tab of no document (transient or loose), by address: where their views are mounted. */
+  /**
+   * Terminals shown in a tab of no document (transient or loose), by what each is remembered by (tab-keys.ts): where
+   * their views are mounted. Not by address: a machine renamed in the render that first shows the document tab must not
+   * hide the view it takes over (#1775).
+   */
   readonly shown: Map<string, Mount>;
   /**
    * Per document tab, decided when it first shows and kept for good (a tab's id is never reused): the view it took over
    * (its pane id and that mount), or none. A tab that drops out of a render and comes back keeps its decision.
    */
   readonly taken: Map<string, { readonly pane: string; readonly mount: Mount } | null>;
-  /** Per terminal address, where the document tab that showed it last was mounted, for a loose tab that outlives it. */
+  /** Per terminal (by its tab-keys.ts key, as `shown`), where the document tab that showed it last was mounted, for a loose tab that outlives it. */
   readonly docs: Map<string, Mount>;
 }
 
@@ -70,7 +74,7 @@ const mountOf = (tab: LayoutTab, pane: LayoutPane): Mount => ({
  * saved, replaced by the document as the core holds it) keeps that tab's keys, so the view the person had open stays
  * mounted and selected (`pick` finds it by `mount`) instead of being drawn again as a new tab.
  */
-export function keepMounts(tabs: readonly LayoutTab[], mounts: Mounts): LayoutTab[] {
+export function keepMounts(tabs: readonly LayoutTab[], mounts: Mounts, ids: MachineIds): LayoutTab[] {
   const inUse = new Set(tabs.flatMap((tab) => (tab.transient ? [tab.key] : [])));
   for (const taken of mounts.taken.values()) if (taken !== null) inUse.add(taken.mount.tab);
   const present = new Set(tabs.map((tab) => tab.key));
@@ -78,19 +82,21 @@ export function keepMounts(tabs: readonly LayoutTab[], mounts: Mounts): LayoutTa
     if (tab.transient) {
       const pane = tab.panes[0];
       if (pane?.address == null) return tab;
-      const went = mounts.docs.get(pane.address);
+      const shownAs = terminalKey(pane.address, ids);
+      const went = mounts.docs.get(shownAs);
       const inherited = went !== undefined && !present.has(went.tab) ? went : undefined;
-      mounts.shown.set(pane.address, inherited ?? { tab: tab.key, pane: pane.id });
+      mounts.shown.set(shownAs, inherited ?? { tab: tab.key, pane: pane.id });
       if (inherited === undefined) return tab;
       return { ...tab, mount: inherited.tab, panes: [{ ...pane, mount: inherited.pane }] };
     }
     if (!mounts.taken.has(tab.key)) {
-      const pane = tab.panes.find((each) => each.address !== null && mounts.shown.has(each.address));
-      const mount = pane?.address == null ? undefined : mounts.shown.get(pane.address);
+      const pane = tab.panes.find((each) => each.address !== null && mounts.shown.has(terminalKey(each.address, ids)));
+      const shownAs = pane?.address == null ? undefined : terminalKey(pane.address, ids);
+      const mount = shownAs === undefined ? undefined : mounts.shown.get(shownAs);
       const free = mount !== undefined && !inUse.has(mount.tab);
       mounts.taken.set(tab.key, pane !== undefined && mount !== undefined && free ? { pane: pane.id, mount } : null);
-      if (pane?.address != null && free) {
-        mounts.shown.delete(pane.address);
+      if (shownAs !== undefined && free) {
+        mounts.shown.delete(shownAs);
         inUse.add(mount.tab);
       }
     }
@@ -101,7 +107,8 @@ export function keepMounts(tabs: readonly LayoutTab[], mounts: Mounts): LayoutTa
   });
   for (const tab of kept) {
     if (tab.transient) continue;
-    for (const pane of tab.panes) if (pane.address !== null) mounts.docs.set(pane.address, mountOf(tab, pane));
+    for (const pane of tab.panes)
+      if (pane.address !== null) mounts.docs.set(terminalKey(pane.address, ids), mountOf(tab, pane));
   }
   return kept;
 }

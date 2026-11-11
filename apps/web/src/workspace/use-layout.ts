@@ -200,8 +200,8 @@ export function useLayout(
   }, []);
   const mounts = useRef(newMounts());
   const tabs = useMemo(
-    () => keepMounts(buildTabs(layouts, terminals, loose), mounts.current),
-    [layouts, terminals, loose],
+    () => keepMounts(buildTabs(layouts, terminals, loose), mounts.current, ids),
+    [layouts, terminals, loose, ids],
   );
   const { active, focused, zoomed } = pick(tabs, view);
   // Read when a start answers, which can be after the person picked another tab: the tab in view now, not then.

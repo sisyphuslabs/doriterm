@@ -1,0 +1,167 @@
+name: Deploy get
+
+# Serves apps/get, the get.doriterm.com Worker (#1969): release downloads from the private R2 bucket, the desktop and host
+# update feeds, and the download count. A push on dev that touches it deploys staging (https://staging.get.doriterm.com,
+# with its own bucket, D1 database and Analytics Engine dataset) and probes it (.github/scripts/probe-get.ts). A pull
+# request from this repository labelled deploy-staging deploys its head to staging only. Production
+# (https://get.doriterm.com) runs only from a manual run on dev, after staging passes. Each deploy records the version it
+# replaces and rolls back to it when the probe fails. The secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are the
+# account that holds the doriterm.com zone; the token needs Workers, D1, R2 bucket settings and the zone's custom domains.
+on:
+  push:
+    branches: [dev]
+    paths:
+      - apps/get/**
+      - package.json
+      - bun.lock
+      - .github/scripts/deploy-target.ts
+      - .github/scripts/get-deploy.ts
+      - .github/scripts/probe-get.ts
+      - .github/workflows/deploy-get.yml
+  # The deploy-staging label is shared with deploy-web.yml and deploy-landing.yml; the path filter keeps their PRs off it.
+  pull_request:
+    types: [labeled, synchronize]
+    paths:
+      - apps/get/**
+      - package.json
+      - bun.lock
+      - .github/scripts/deploy-target.ts
+      - .github/scripts/get-deploy.ts
+      - .github/scripts/probe-get.ts
+      - .github/workflows/deploy-get.yml
+  workflow_dispatch:
+    inputs:
+      production:
+        description: Deploy get.doriterm.com after staging passes its probe (dev only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-get
+  cancel-in-progress: false
+
+env:
+  BUN_VERSION: 1.4.4
+  WRANGLER: wrangler@4.158.0
+
+jobs:
+  staging:
+    name: Get staging
+    environment: staging
+    if: >-
+      (github.event_name == 'push') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev') ||
+      (github.event_name == 'pull_request' &&
+      contains(github.event.pull_request.labels.*.name, 'deploy-staging') &&
+      github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - name: Unit tests
+        run: bun test apps/get
+      # The pull request's own wrangler.jsonc is what deploys: anything but this environment's worker, hosts, bucket,
+      # database and dataset stops here (#816), and so does a bucket anyone could read without the Worker.
+      - name: Deploys to staging only
+        run: bun .github/scripts/deploy-target.ts apps/get/wrangler.jsonc staging doriterm-get-staging staging.get.doriterm.com
+      - name: Binds its own data only
+        run: bun .github/scripts/get-deploy.ts bindings apps/get/wrangler.jsonc staging
+      - name: The bucket is private
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bun .github/scripts/get-deploy.ts private doriterm-releases-staging
+      - name: Record the live version
+        id: live
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: echo "version=$(bun .github/scripts/get-deploy.ts live doriterm-get-staging)" >> "$GITHUB_OUTPUT"
+      - name: Apply D1 migrations
+        working-directory: apps/get
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bunx "$WRANGLER" d1 migrations apply doriterm-get-staging --env staging --remote
+      - name: Deploy staging
+        id: deploy
+        working-directory: apps/get
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bunx "$WRANGLER" deploy --env staging --var "ACCOUNT_ID:$CLOUDFLARE_ACCOUNT_ID"
+      - name: Probe staging
+        run: bun .github/scripts/probe-get.ts https://staging.get.doriterm.com
+      # A deploy that does not answer goes back to the version recorded before it; a first deploy has none.
+      - name: Roll back to the recorded version
+        if: failure() && steps.deploy.outcome == 'success' && steps.live.outputs.version != 'none'
+        working-directory: apps/get
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          VERSION: ${{ steps.live.outputs.version }}
+        run: bunx "$WRANGLER" rollback "$VERSION" --env staging --message "deploy-get probe failed" --yes
+
+  production:
+    name: Get production
+    environment: production
+    needs: staging
+    if: github.ref == 'refs/heads/dev' && github.event_name == 'workflow_dispatch' && inputs.production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - name: Unit tests
+        run: bun test apps/get
+      # The pull request's own wrangler.jsonc is what deploys: anything but this environment's worker, hosts, bucket,
+      # database and dataset stops here (#816), and so does a bucket anyone could read without the Worker.
+      - name: Deploys to production only
+        run: bun .github/scripts/deploy-target.ts apps/get/wrangler.jsonc "" doriterm-get get.doriterm.com
+      - name: Binds its own data only
+        run: bun .github/scripts/get-deploy.ts bindings apps/get/wrangler.jsonc ""
+      - name: The bucket is private
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bun .github/scripts/get-deploy.ts private doriterm-releases
+      - name: Record the live version
+        id: live
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: echo "version=$(bun .github/scripts/get-deploy.ts live doriterm-get)" >> "$GITHUB_OUTPUT"
+      - name: Apply D1 migrations
+        working-directory: apps/get
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bunx "$WRANGLER" d1 migrations apply doriterm-get --env "" --remote
+      - name: Deploy production
+        id: deploy
+        working-directory: apps/get
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bunx "$WRANGLER" deploy --env "" --var "ACCOUNT_ID:$CLOUDFLARE_ACCOUNT_ID"
+      - name: Probe production
+        run: bun .github/scripts/probe-get.ts https://get.doriterm.com
+      # A deploy that does not answer goes back to the version recorded before it; a first deploy has none.
+      - name: Roll back to the recorded version
+        if: failure() && steps.deploy.outcome == 'success' && steps.live.outputs.version != 'none'
+        working-directory: apps/get
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          VERSION: ${{ steps.live.outputs.version }}
+        run: bunx "$WRANGLER" rollback "$VERSION" --env "" --message "deploy-get probe failed" --yes
