@@ -1,6 +1,6 @@
 import { base64urlEncode } from "@doriface/crypto";
 import { memoryLinkPair } from "@doriface/crypto/testing";
-import { parseRecord, type Signed, signCard } from "@doriface/mesh";
+import { parseRecord, type Signed, signCard, type View } from "@doriface/mesh";
 import { joinCode, joinCommit, MeshLines } from "@doriface/mesh/join";
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { cardBody } from "../state/mesh.ts";
@@ -18,7 +18,7 @@ async function begin(
   auto = false,
   kind: "client" | "machine" = "client",
   sas = true,
-  formatReady: (records?: readonly Signed[]) => boolean = () => true,
+  formatReady: (records?: readonly Signed[], view?: View) => boolean = () => true,
   a = side("alpha"),
 ) {
   const c = side("browser");
@@ -189,5 +189,21 @@ test("a machine admission does not ask the in-transaction client format check (#
   expect(await run.served).toBe("resolved");
   expect(run.a.mesh.read()?.records.map((record) => parseRecord(record)?.type)).toEqual(["found", "admit"]);
   expect(asked).toEqual([]);
+  run.resumes.clear();
+});
+
+test("a client admission hands its transaction's view to the in-transaction format check (#2263)", async () => {
+  const views: (View | undefined)[] = [];
+  const run = await begin(false, "client", true, (records?: readonly Signed[], view?: View) => {
+    if (records !== undefined) views.push(view);
+    return true;
+  });
+  await run.client.next();
+  const asked = await run.pending.next();
+  run.pending.decide(asked.nonce, true, asked.code);
+  run.client.send({ t: "confirm" });
+  expect(await run.served).toBe("resolved");
+  expect(views).toHaveLength(1);
+  expect(views[0]?.members.size).toBe(1);
   run.resumes.clear();
 });

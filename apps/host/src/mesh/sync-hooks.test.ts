@@ -192,3 +192,22 @@ describe("mesh leave removes this host's mesh machines (design 6.5)", () => {
     expect(stopped).toEqual(["sync"]);
   });
 });
+
+test("the mesh hooks forward the records and the transaction's view to sync's format check (#2263)", () => {
+  const seen: unknown[][] = [];
+  const sync = {
+    gossip: undefined,
+    runtime: undefined,
+    changed: () => undefined,
+    stop: () => undefined,
+    formatReady: (...args: unknown[]) => {
+      seen.push(args);
+      return true;
+    },
+    live: () => NOT_RUNNING,
+  };
+  const { records } = meshOf([peer("a")]);
+  const view = viewOf(records);
+  expect(syncHooks(sync, new FakeClock(), () => []).formatReady(records, view)).toBe(true);
+  expect(seen).toEqual([[records, view]]);
+});

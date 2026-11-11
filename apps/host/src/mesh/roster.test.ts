@@ -52,6 +52,24 @@ test("the format check of a roster admission is asked with the records the admis
   expect(asked).toEqual([before]);
 });
 
+test("the roster admission hands its transaction's view to the format check, so the records are not evaluated twice (#2263)", async () => {
+  const { c, deps } = setup();
+  const views: unknown[] = [];
+  const run = await exchange(
+    {
+      ...deps,
+      formatReady: (records, view) => {
+        if (records !== undefined) views.push(view);
+        return true;
+      },
+    },
+    c,
+  );
+  expect(await run.serving).toBe("resolved");
+  expect(views).toHaveLength(1);
+  expect(views[0]).toBeDefined();
+});
+
 test("the second roster exchange is a refresh and writes no record", async () => {
   const { a, c, deps } = setup();
   await (
