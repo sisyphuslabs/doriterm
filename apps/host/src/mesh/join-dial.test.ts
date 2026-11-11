@@ -158,6 +158,24 @@ describe("J-4: a join withdraws the host's own open mesh offer (#1301)", () => {
     expect(withdrawn).toBe(1);
   });
 
+  test("the host's own invite is refused before its offer is withdrawn", async () => {
+    const joiner = side("joiner");
+    const offer = new PairingStore(joiner.dir).offer(Date.now(), true);
+    const ownLink = buildPairingUrl({
+      webOrigin: "https://doriface.example",
+      hostId: joiner.m.identity.hostId,
+      noiseStaticPub: joiner.m.identity.noise.publicKey,
+      signPub: joiner.m.identity.sign.publicKey,
+      linkSecret: offer.linkSecret,
+      relayUrl: DEFAULT_RELAY_URL,
+      mesh: true,
+    });
+    const run = attempt(joiner, ownLink, { yes: true });
+    expect(await run.outcome).toBe("this invite is this host's own: run mesh join on the machine that joins");
+    expect(run.dials).toEqual([]);
+    expect(new PairingStore(joiner.dir).read()?.code).toBe(offer.code);
+  });
+
   test("a device pairing offer is left open", async () => {
     const joiner = side("joiner");
     const offer = new PairingStore(joiner.dir).offer(Date.now(), false);

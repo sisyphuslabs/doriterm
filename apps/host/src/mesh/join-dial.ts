@@ -117,6 +117,9 @@ async function inviterOf(options: JoinOptions): Promise<Inviter> {
 export async function joinMesh(options: JoinOptions): Promise<Joined> {
   const invite = await refuseEarly(options);
   const inviter = await inviterOf(options);
+  if (inviter.hostId === options.identity.hostId) {
+    throw new JoinRefused("this invite is this host's own: run mesh join on the machine that joins");
+  }
   if (new PairingStore(options.stateDir).withdrawMesh()) {
     options.log("mesh: withdrew this host's own mesh offer to join another mesh");
     options.offerWithdrawn?.();
