@@ -246,7 +246,9 @@ test.describe("Settings across the md breakpoint, and its zoom keys (#859)", () 
     // two cases guard #1160; neither engine delivers a blur to the field's handler while its frame is out of the page.
     await expect(gateway).toBeFocused();
     await expect(gateway).toHaveValue("ws://127.0.0.1:1/half-typed");
-    await expect.poll(saved).toBe(before);
+    // Read once, not polled: a save from the move is written as the field loses its frame, before the sheet above showed,
+    // and a poll that passes on its first read waits for nothing (#1889).
+    expect(await saved()).toBe(before);
   });
 
   test("a resize between dialog and sheet does not save a half-typed terminal value (#1160)", async ({ page }) => {
