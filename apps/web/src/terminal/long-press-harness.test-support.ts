@@ -57,24 +57,32 @@ class FakeRange {
 }
 
 class FakeTarget {
-  readonly #listeners = new Map<string, Set<(event: never) => void>>();
+  /** As the DOM keys them: a listener added for capture and the same one for bubbling are two listeners (#2339 review). */
+  readonly #listeners = new Map<string, { readonly listener: (event: never) => void; readonly capture: boolean }[]>();
 
-  addEventListener(type: string, listener: (event: never) => void): void {
-    const listeners = this.#listeners.get(type) ?? new Set();
-    listeners.add(listener);
+  addEventListener(type: string, listener: (event: never) => void, options?: boolean | { capture?: boolean }): void {
+    const capture = typeof options === "boolean" ? options : (options?.capture ?? false);
+    const listeners = this.#listeners.get(type) ?? [];
+    if (!listeners.some((entry) => entry.listener === listener && entry.capture === capture))
+      listeners.push({ listener, capture });
     this.#listeners.set(type, listeners);
   }
 
-  removeEventListener(type: string, listener: (event: never) => void): void {
-    this.#listeners.get(type)?.delete(listener);
+  removeEventListener(type: string, listener: (event: never) => void, options?: boolean | { capture?: boolean }): void {
+    const capture = typeof options === "boolean" ? options : (options?.capture ?? false);
+    const listeners = this.#listeners.get(type) ?? [];
+    this.#listeners.set(
+      type,
+      listeners.filter((entry) => entry.listener !== listener || entry.capture !== capture),
+    );
   }
 
   dispatch(type: string, event: unknown): void {
-    for (const listener of this.#listeners.get(type) ?? []) listener(event as never);
+    for (const { listener } of this.#listeners.get(type) ?? []) listener(event as never);
   }
 
   listens(type: string): boolean {
-    return (this.#listeners.get(type)?.size ?? 0) > 0;
+    return (this.#listeners.get(type)?.length ?? 0) > 0;
   }
 }
 
@@ -170,6 +178,10 @@ export interface LongPressTerminal {
    * fresh terminal has none, and once the hook is unwired none may be left (#1901).
    */
   readonly handled: (type: string) => boolean;
+  /** The finger moves as the window sees it: pointermove. */
+  pointerMove(pointerId?: number): void;
+  /** The browser takes the touch over (a scroll, a gesture): pointercancel on the window. */
+  pointerCancel(pointerId?: number): void;
   /** Whether the last `up` was cancelled, so the tap's own mouse events never arrive. */
   readonly tapCancelled: boolean;
   restore(): void;
@@ -226,6 +238,12 @@ export function longPressTerminal(): LongPressTerminal {
       const touch = new FakeTouch(landed.size, target);
       target.dispatch("touchend", touch);
       cancelled = touch.defaultPrevented;
+    },
+    pointerMove(pointerId = 1): void {
+      window.dispatch("pointermove", new FakePointer(pointerId, true, 25, 10));
+    },
+    pointerCancel(pointerId = 1): void {
+      window.dispatch("pointercancel", new FakePointer(pointerId, true, 25, 10));
     },
     handled: (type) => (handled.get(type) ?? 0) > 0,
     get tapCancelled(): boolean {
