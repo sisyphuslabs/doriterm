@@ -55,6 +55,25 @@ test("once a channel has a pointer, or every version it named is yanked, GitHub 
   expect(g.asked).toEqual([]);
 });
 
+test("a feed read that R2 fails, all of it or one object, answers GitHub's latest feed, not 503 (#2123)", async () => {
+  const fails = ["all", "releases/v0.1.17/.yanked", "releases/v0.1.17/latest-mac.yml"];
+  const answers = await Promise.all(
+    fails.map(async (fail) => {
+      const g = withGitHub({ "latest-mac.yml": macFeed("0.1.18") });
+      mirror(g.bucket, "0.1.17", { "latest-mac.yml": macFeed("0.1.17") });
+      point(g.bucket, "stable", { version: "0.1.17" });
+      if (fail === "all") g.bucket.failWith = new Error("R2 down");
+      else g.bucket.failKey = fail;
+      const response = await g.get("/desktop/stable/latest-mac.yml");
+      const offersDmg = (await response.text()).includes(
+        `url: ${RELEASES}/download/v0.1.18/Doriterm-0.1.18-arm64.dmg\n`,
+      );
+      return [fail, response.status, response.headers.get("X-Doriterm-Source"), offersDmg];
+    }),
+  );
+  expect(answers).toEqual(fails.map((fail) => [fail, 200, "github", true]));
+});
+
 test("a GitHub feed that names no single version or a file outside the release is refused, not passed on", async () => {
   expect(githubFeed("files:\n  - url: a.zip\n")).toBeNull();
   expect(githubFeed("version: 0.1.18\nversion: 0.1.19\npath: a.zip\n")).toBeNull();

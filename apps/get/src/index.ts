@@ -30,10 +30,19 @@ async function offeredVersion(ctx: RequestContext, channel: Channel): Promise<st
 }
 
 /**
- * With no version to offer: GitHub's latest release before the channel's first mirror (or while R2 fails), but 503 once
- * the channel has had a pointer and every version it could name is yanked, since GitHub's latest can be the yank (#1981).
+ * The version the channel offers, or the answer when there is none: GitHub's latest release before the channel's first
+ * mirror and whenever an R2 read fails, but 503 once the channel has had a pointer and every version it could name is
+ * yanked, since GitHub's latest can be the yank (#1981).
  */
-async function withoutVersion(ctx: RequestContext, channel: Channel, github: string): Promise<Response> {
+async function offeredOr(ctx: RequestContext, channel: Channel, github: string): Promise<string | Response> {
+  let resolved: Awaited<ReturnType<typeof resolveChannel>>;
+  try {
+    resolved = await resolveChannel(ctx.env.RELEASES, channel);
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    return redirect(github, "github");
+  }
+  if (resolved !== null) return resolved.version;
   let unpublished = true;
   try {
     unpublished = await neverPublished(ctx.env.RELEASES, channel);
@@ -50,9 +59,8 @@ async function withoutVersion(ctx: RequestContext, channel: Channel, github: str
  */
 async function serveDl(request: Request, ctx: RequestContext, channel: Channel, key: string): Promise<Response> {
   if (dlFile(key, "0.0.0") === null) return text(404, "unknown download");
-  const version = await offeredVersion(ctx, channel);
-  if (version === null)
-    return withoutVersion(ctx, channel, githubLatestUrl(isVersionFree(key) ? dlFile(key, "0.0.0") : null));
+  const version = await offeredOr(ctx, channel, githubLatestUrl(isVersionFree(key) ? dlFile(key, "0.0.0") : null));
+  if (version instanceof Response) return version;
   const file = dlFile(key, version) ?? key;
   const origin = new URL(request.url).origin;
   return redirect(`${origin}/v/${version}/${file}?via=dl&channel=${channel}`, "worker");
@@ -60,8 +68,8 @@ async function serveDl(request: Request, ctx: RequestContext, channel: Channel, 
 
 /** The channel's stamped install.sh, which `curl -fsSL https://get.doriterm.com | sh` runs. */
 async function serveInstaller(request: Request, ctx: RequestContext, channel: Channel): Promise<Response> {
-  const version = await offeredVersion(ctx, channel);
-  if (version === null) return withoutVersion(ctx, channel, githubLatestUrl("install.sh"));
+  const version = await offeredOr(ctx, channel, githubLatestUrl("install.sh"));
+  if (version instanceof Response) return version;
   const served = await serveFile(request, ctx, { version, file: "install.sh", route: "dl", channel });
   if (served.status !== 200) return served;
   const headers = new Headers(served.headers);

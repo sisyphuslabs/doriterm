@@ -56,23 +56,46 @@ async function offeredOrRefusal(ctx: RequestContext, channel: Channel): Promise<
   }
 }
 
+interface MirroredFeed {
+  readonly offered: Resolved;
+  readonly stored: string | null;
+}
+
+/** The channel's offer and its stored feed; null before any offer, "unavailable" when an R2 read fails. */
+async function readMirroredFeed(
+  ctx: RequestContext,
+  channel: Channel,
+  feed: string,
+): Promise<MirroredFeed | null | "unavailable"> {
+  try {
+    const offered = await resolveChannel(ctx.env.RELEASES, channel);
+    if (offered === null) return null;
+    const stored = await ctx.env.RELEASES.get(objectKey(offered.version, feed));
+    return { offered, stored: stored === null ? null : await stored.text() };
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    return "unavailable";
+  }
+}
+
 export async function serveDesktopFeed(
   request: Request,
   ctx: RequestContext,
   channel: Channel,
   feed: string,
 ): Promise<Response> {
-  const offered = await offeredOrRefusal(ctx, channel);
-  if (offered instanceof Response) {
-    // Before the channel's first mirror, GitHub's own latest feed (#2074: v0.1.17 reads only this host).
-    if (offered.status === 404 && (await neverPublished(ctx.env.RELEASES, channel))) {
-      return serveGithubFeed(request, ctx, channel, feed, DESKTOP_FEEDS[feed] ?? "");
-    }
-    return offered;
+  const github = () => serveGithubFeed(request, ctx, channel, feed, DESKTOP_FEEDS[feed] ?? "");
+  const mirrored = await readMirroredFeed(ctx, channel, feed);
+  // GitHub's own latest feed before the channel's first mirror (#2074: v0.1.17 reads only this host), and whenever an R2
+  // read fails, so an installed app still sees the release (#2123).
+  if (mirrored === "unavailable") return github();
+  if (mirrored === null) {
+    if (await neverPublished(ctx.env.RELEASES, channel)) return github();
+    return text(404, `the ${channel} channel has no release yet`);
   }
-  const stored = await ctx.env.RELEASES.get(objectKey(offered.version, feed));
+  const { offered, stored } = mirrored;
   if (stored === null) return text(404, `${offered.version} has no ${feed}`);
-  const body = composeFeed(await stored.text(), offered);
+  const body = composeFeed(stored, offered);
   if (body === null) return text(502, `${offered.version}'s ${feed} does not describe that release`);
   if (isCounted(request)) {
     recordDownload(ctx.env.DOWNLOADS, {

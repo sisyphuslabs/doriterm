@@ -31,6 +31,25 @@ test("a channel whose every version is yanked answers 503, never GitHub's latest
   expect(answers).toEqual(cases.map(({ previous, path }) => [previous, path, 503, null]));
 });
 
+test("an R2 read that fails, even one of several, sends /dl and the installer to GitHub, not 503 (#2213 review)", async () => {
+  const h = harness();
+  mirror(h.bucket, "0.1.17", { "install.sh": "#!/bin/sh\n" });
+  point(h.bucket, "stable", { version: "0.1.17" });
+  h.bucket.failKey = "releases/v0.1.17/.yanked";
+  const LATEST = "https://github.com/sisyphuslabs/doriterm/releases/latest";
+  const answers = await Promise.all(
+    ["/install.sh", "/dl/host-mac-arm64", "/"].map(async (path) => {
+      const response = await get(h, path, CURL);
+      return [path, response.status, response.headers.get("Location")];
+    }),
+  );
+  expect(answers).toEqual([
+    ["/install.sh", 302, `${LATEST}/download/install.sh`],
+    ["/dl/host-mac-arm64", 302, `${LATEST}/download/doriface-host-mac-arm64`],
+    ["/", 302, `${LATEST}/download/install.sh`],
+  ]);
+});
+
 test("/ varies on User-Agent, so no shared cache hands a browser the installer or curl the page (#1981 item 1)", async () => {
   const h = harness();
   mirror(h.bucket, "0.1.17", { "install.sh": "#!/bin/sh\n" });
