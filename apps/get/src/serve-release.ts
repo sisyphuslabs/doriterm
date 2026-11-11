@@ -1,5 +1,6 @@
-import type { ByteRange, RequestContext, StoredObject } from "./bindings.ts";
+import type { ByteRange, ReleaseBucket, RequestContext, StoredObject } from "./bindings.ts";
 import { isCounted, recordDownload, requestFacts, type Source } from "./datapoint.ts";
+import { groupSpans, multipartBody, multipartFraming, type PartGroup } from "./multi-range.ts";
 import { classify, completeKey, githubAssetUrl, isReleaseFile, isVersion, objectKey, type RouteName } from "./names.ts";
 
 export const IMMUTABLE = "public, max-age=31536000, immutable";
@@ -65,7 +66,78 @@ export function resolveRange(range: RangeSpec, size: number): ByteRange | null {
   return { offset: range.start, length: end - range.start + 1 };
 }
 
+/** electron-updater's differential download asks for at most 1000 ranges a request. */
+const MAX_PARTS = 1000;
+
+/**
+ * The spans of a `bytes=` header that names two or more ranges, resolved against a file of `size` bytes, or null to
+ * answer the whole file instead (RFC 9110 14.2 lets a server ignore a Range): a malformed or unsatisfiable range, ranges
+ * out of order or overlapping, or more than MAX_PARTS. In order and apart, as a differential update sends them, they are
+ * served from one read with the gaps skipped (#2228).
+ */
+export function parseMultiRange(header: string | null, size: number): ByteRange[] | null {
+  const specs = /^bytes=(.+)$/.exec(header ?? "")?.[1]?.split(",") ?? [];
+  if (specs.length < 2 || specs.length > MAX_PARTS) return null;
+  const spans: ByteRange[] = [];
+  for (const spec of specs) {
+    const range = parseRange(`bytes=${spec.trim()}`);
+    const span = range === null ? null : resolveRange(range, size);
+    const last = spans.at(-1);
+    if (span === null || (last !== undefined && span.offset < last.offset + last.length)) return null;
+    spans.push(span);
+  }
+  return spans;
+}
+
+/** Whether the header names several ranges answered in parts, judged before the file's size is known. */
+export const isMultiRange = (header: string | null): boolean =>
+  parseMultiRange(header, Number.MAX_SAFE_INTEGER) !== null;
+
 type Outcome = { readonly response: Response } | { readonly fallback: string };
+
+/** Several ranges as one multipart/byteranges answer from one R2 read, or null to answer the whole file (#2228). */
+async function fromBucketInParts(
+  request: Request,
+  bucket: ReleaseBucket,
+  key: string,
+  file: string,
+): Promise<Outcome | null> {
+  const meta = await bucket.head(key);
+  if (meta === null) return { fallback: "object-missing" };
+  const ifRange = request.headers.get("If-Range");
+  if (ifRange !== null && ifRange !== meta.httpEtag) return null;
+  const spans = parseMultiRange(request.headers.get("Range"), meta.size);
+  if (spans === null) return null;
+  const groups = groupSpans(spans);
+  const [firstGroup] = groups;
+  if (firstGroup === undefined) return null;
+  const first = await bucket.get(key, { range: firstGroup });
+  if (first === null) return { fallback: "object-missing" };
+  const read = async (group: PartGroup): Promise<ReadableStream<Uint8Array>> => {
+    if (group === firstGroup) return first.body;
+    const object = await bucket.get(key, { range: group });
+    if (object === null) throw new Error(`${key} went missing between its range reads`);
+    return object.body;
+  };
+  const headers = objectHeaders(first, file, "r2");
+  const boundary = crypto.randomUUID().replaceAll("-", "");
+  const framing = multipartFraming(spans, meta.size, headers.get("Content-Type") ?? "", boundary);
+  headers.set("Content-Type", `multipart/byteranges; boundary=${boundary}`);
+  headers.set("Content-Length", String(framing.length));
+  const body = multipartBody(groups, read, framing);
+  return { response: new Response(fixedLength(body, framing.length), { status: 206, headers }) };
+}
+
+/**
+ * The body through the Workers runtime's FixedLengthStream, which is the only way a streamed answer carries
+ * Content-Length there (#2251); a runtime without it (Bun, in the unit suite) sends the stream as it is.
+ */
+function fixedLength(body: ReadableStream<Uint8Array>, length: number): ReadableStream<Uint8Array> {
+  const Fixed: unknown = Reflect.get(globalThis, "FixedLengthStream");
+  if (typeof Fixed !== "function") return body;
+  const stream: unknown = Reflect.construct(Fixed, [length]);
+  return stream instanceof TransformStream ? body.pipeThrough(stream) : body;
+}
 
 async function fromBucket(
   request: Request,
@@ -99,6 +171,10 @@ async function fromBucket(
       return { response: new Response(object.body, { status: 206, headers }) };
     }
   }
+  if (isMultiRange(request.headers.get("Range"))) {
+    const multipart = await fromBucketInParts(request, bucket, key, target.file);
+    if (multipart !== null) return multipart;
+  }
   const object = await bucket.get(key);
   if (object === null) return { fallback: "object-missing" };
   const headers = objectHeaders(object, target.file, "r2");
@@ -131,12 +207,14 @@ export async function serveFile(request: Request, ctx: RequestContext, target: F
   };
 
   // One cache entry per file whatever path reached it; only a whole-file GET fills it, and the cache answers a Range
-  // from it itself. If-Range goes to R2, which knows the current ETag.
+  // from it itself. If-Range goes to R2, which knows the current ETag, and so do several ranges, which R2 answers in parts.
   const cacheKey = new Request(`${new URL(request.url).origin}/v/${target.version}/${target.file}`);
   const rangeHeader = request.headers.get("Range");
-  if (request.method === "GET" && request.headers.get("If-Range") === null) {
+  if (request.method === "GET" && request.headers.get("If-Range") === null && !isMultiRange(rangeHeader)) {
+    // Several ranges not answered in parts get the whole file, so the cache is asked for the whole file (#2251).
+    const single = rangeHeader !== null && !rangeHeader.includes(",");
     const cached = await ctx.cache.match(
-      rangeHeader === null ? cacheKey : new Request(cacheKey, { headers: { Range: rangeHeader } }),
+      single ? new Request(cacheKey, { headers: { Range: rangeHeader } }) : cacheKey,
     );
     if (cached !== undefined) {
       count("cache");

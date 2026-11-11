@@ -164,8 +164,7 @@ export function TerminalView(props: TerminalViewProps) {
   useTerminalFont(wt, config);
   // The real predictor reads every input and write of this view (#1595); a spec's stand-in replaces it when installed.
   const seam = useMemo(() => predictionSeam(wt), [wt]);
-  // The chosen mode on every link alike: what carries the session (loopback, direct, relay) decides nothing here; the
-  // echo the predictor measures does, through its display gate, so a link that answers in a frame draws nothing.
+  // One rule on every path: in adaptive the predictor's display gate reads its measured echo round trip (#2003).
   const predictMode = usePredictionMode();
   const predictModeNow = useRef(predictMode);
   predictModeNow.current = predictMode;

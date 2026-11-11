@@ -182,18 +182,20 @@ export class OutputPacer {
   /**
    * An attach replay begins: its output is written as it arrives, uncapped, while `hold` holds the terminal's paint, so
    * the replay is drawn once, whole, and the screen before it stays until then. The hold ends at the first of: no
-   * output for max({@link REPLAY_QUIET_FLOOR_MS}, 1.5 x SRTT + 50) ms, a {@link REPLAY_CAP_MS} span that wrote less than
-   * {@link CREDIT_WINDOW_BYTES}, or {@link REPLAY_MAX_BYTES} written.
+   * output arriving or written for max({@link REPLAY_QUIET_FLOOR_MS}, 1.5 x SRTT + 50) ms, a {@link REPLAY_CAP_MS} span
+   * that wrote less than {@link CREDIT_WINDOW_BYTES}, or {@link REPLAY_MAX_BYTES} written.
    *
    * hc marks no end of the replay: the core sends its first paint as one write, cut into frames under the stream's
    * credit window, and waits for credit after each window; credit goes back as each batch is written, and a replay is
-   * written as it arrives. So a replay still coming arrives at least a window a round trip, however slow the link: its
-   * gaps are at most a round trip, under the quiet window, whose SRTT is sampled on this connection (the attach answer
+   * written as it arrives. So a replay still coming arrives at least a window a round trip, however slow the link: from
+   * the end of the write that handed a window's credit back, the next window is at most a round trip away, under the
+   * quiet window, which restarts at each arrival and again after each write (on a page slow to write, the gap between
+   * arrivals is a round trip plus the write, #2011), and whose SRTT is sampled on this connection (the attach answer
    * itself is one sample), and every span of {@link REPLAY_CAP_MS} (a round trip or more) writes a window or more. A
    * quiet window or span whose timer runs more than its own length late is started again rather than read: the page was
-   * not running, so it could not see the next window, already queued behind the timer. A fixed
-   * deadline could not hold it: over a 300 ms relay, or on a page slow to write it, a replay of a few hundred KiB to 2
-   * MiB takes longer than any one span.
+   * not running, so it could not see the next window, already queued behind the timer. A fixed deadline could not hold
+   * it: over a 300 ms relay, or on a page slow to write it, a replay of a few hundred KiB to 2 MiB takes longer than
+   * any one span.
    */
   replay(options: ReplayOptions): void {
     if (this.#replay !== null) this.#endReplay();
@@ -352,6 +354,9 @@ export class OutputPacer {
     // A synchronized update holds the paint for what it brackets itself, so a replay that met one stands down instead
     // of holding a second time: the update's bracket draws the replay (#812).
     if (synchronized || replay.written >= REPLAY_MAX_BYTES) this.#endReplay();
+    // The core sends the next window only once this one's credit is back, which is now, after the write: the quiet
+    // window starts here too, or a page slow to write a window would spend the window's slack on the write (#2011).
+    else this.#quietFrom(replay);
     return size;
   }
 }

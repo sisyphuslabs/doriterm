@@ -6,6 +6,7 @@ import { terminalConfigStore } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
 import { CursorResets } from "./cursor-reset.ts";
 import { readDisplay } from "./display.ts";
+import { noteHistoryGap } from "./history-gap-notice.ts";
 import { type EndHolder, fromEndOf, holdFromEnd, readerInputOn } from "./hold-view-from-end.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
 import { openFailure } from "./open-failure.ts";
@@ -56,14 +57,17 @@ interface AttachSources {
 }
 
 /**
- * Every attach's first paint holds its replay: written as it arrives with the paint held, then drawn once it has
+ * An attach's first paint holds its replay: written as it arrives with the paint held, then drawn once it has
  * settled (D5, #812). hc marks no end of the replay (the stream is its first paint, then live bytes), so the hold ends
  * on a quiet gap, bounded by the replay caps. A view mounted anew (a phone crossing the layout breakpoint, a pane
  * opened on a terminal already running) has no screen to keep, but its replay covers the last 2,000 history lines,
  * and paced into view it walks them past the person at the bottom; held, it lands whole. A first attach that waited
  * out of view (a background tab, #1187) is held the same way, so the tab appears at the end of its history (#1588).
+ * The one exception is `fresh`, the attach sent with the run that started the terminal: it has no history to walk, so
+ * its first prompt is drawn as it arrives rather than after the quiet window (#1928).
  */
-export function replayOnAttach(pacer: OutputPacer, options: ReplayOptions): void {
+export function replayOnAttach(pacer: OutputPacer, options: ReplayOptions, fresh = false): void {
+  if (fresh) return;
   pacer.replay(options);
 }
 
@@ -199,7 +203,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     const attachOwn = () =>
       connection.attach({ terminal: address, cols, rows, history, display, ...resumed }, { autoCredit: false });
     viewAttach(connection, address, !attachedBefore.current, { cols, rows, display }, attachOwn).then(
-      ({ stream: attached, cols: askedCols, rows: askedRows }) => {
+      ({ stream: attached, cols: askedCols, rows: askedRows, fresh }) => {
         if (unmounted.current) return void attached.close();
         setOpening(false);
         // The program restarted while the line was down: what was typed for it must not reach the new one.
@@ -226,7 +230,11 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           if (fromEnd > 0) ready.holdScrollAway();
           pacer.drop();
           output.reset();
-          if (keepsHistory) ready.write(CLEAR_SCREEN);
+          // Output that scrolled off the core's screen while the line was down is not in the kept history (#2033).
+          if (keepsHistory) {
+            noteHistoryGap();
+            ready.write(CLEAR_SCREEN);
+          }
           // The repaint lands where the reader was: at the end for one who was following, in history for one who was not.
           endHold.current?.stop();
           // Only the reader's own input lets go early: on the terminal or what overlays it, its scrollbar included.
@@ -237,14 +245,18 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         paintedView.current = ready;
         // Every attach's first paint is its replay: written as it arrives with the paint held, then drawn once it has
         // settled, so a view mounted anew, or a tab first attached when switched to, does not walk its history past the
-        // person (D5, #812, #1588).
-        replayOnAttach(pacer, {
-          srtt: () => connection.rtt?.srtt,
-          hold: (held) => {
-            holdPaint(held);
-            ready.setRenderingPaused(held);
+        // person (D5, #812, #1588). A terminal this page just started (`fresh`) is the exception: see replayOnAttach.
+        replayOnAttach(
+          pacer,
+          {
+            srtt: () => connection.rtt?.srtt,
+            hold: (held) => {
+              holdPaint(held);
+              ready.setRenderingPaused(held);
+            },
           },
-        });
+          fresh,
+        );
         onStream?.current?.();
         const resets = new CursorResets();
         const credit = (count: number): void => {

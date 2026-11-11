@@ -399,8 +399,8 @@ export interface DorifaceBridge {
   onUpdateReady(listener: (update: UpdateReady) => void): void;
   /** Quits and installs the staged update; resolves false when none is staged. */
   installUpdate(): Promise<boolean>;
-  /** What the updater is doing now, then every change; null outside a packaged app. */
-  onUpdateStatus(listener: (status: UpdateStatus | null) => void): void;
+  /** What the updater is doing now, then every change, until the answered function is called; null outside a packaged app. */
+  onUpdateStatus(listener: (status: UpdateStatus | null) => void): () => void;
   /** The update channel, and choosing one; resolves false when the choice was not kept. */
   updateChannel(): Promise<UpdateChannel | null>;
   setUpdateChannel(channel: UpdateChannel): Promise<boolean>;

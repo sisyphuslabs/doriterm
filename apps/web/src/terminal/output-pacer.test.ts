@@ -488,6 +488,26 @@ describe("OutputPacer holding an attach replay (D5)", () => {
     expect(holds).toEqual([true, false]);
   });
 
+  test("the quiet window starts when a window's credit goes back, so a page slow to write each window is held to the last (#2011)", () => {
+    const frames = manualFrames();
+    const timers = manualTimers();
+    const holds: boolean[] = [];
+    // Writing each 256 KiB window takes the page 300 ms (a starved page drawing a colored replay); its credit goes back
+    // as the write ends, and the core sends the next window only then.
+    const pacer = new OutputPacer(() => timers.advance(300), frames.frame, timers.now, timers.timer);
+    pacer.replay({ srtt: () => 300, hold: (held) => holds.push(held) });
+    for (let window = 0; window < 4; window += 1) {
+      pacer.push(bytes(256 * KIB));
+      // The next window comes a round trip after the credit: 600 ms after the last one arrived, past 1.5 x SRTT + 50.
+      if (window < 3) timers.advance(300);
+    }
+    expect(holds).toEqual([true]);
+    timers.advance(499);
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
+  });
+
   test("a replay is let go once 2 MiB have been written", () => {
     const { holds, pacer, written } = replaying(300);
     pacer.push(bytes(1024 * KIB));

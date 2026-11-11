@@ -15,8 +15,8 @@ export interface UpdateSetting {
   /** Resolves false when the shell did not keep it. */
   setChannel(channel: UpdateChannel): Promise<boolean>;
   check(): Promise<void>;
-  /** The status now, then every change. */
-  onStatus(listener: (status: DesktopUpdateStatus | null) => void): void;
+  /** The status now, then every change, until the answered function is called. */
+  onStatus(listener: (status: DesktopUpdateStatus | null) => void): () => void;
 }
 
 const asChannel = (value: unknown): UpdateChannel | null => (value === "stable" || value === "beta" ? value : null);
@@ -47,6 +47,10 @@ export function desktopUpdateSetting(scope: object = globalThis): UpdateSetting 
     channel: async () => asChannel(await channel()),
     setChannel: async (next) => (await setChannel(next)) === true,
     check: async () => void (await check()),
-    onStatus: (listener) => void onStatus((status: unknown) => listener(asStatus(status))),
+    onStatus: (listener) => {
+      const stop: unknown = onStatus((status: unknown) => listener(asStatus(status)));
+      // A shell from before #1982 answers nothing to stop.
+      return typeof stop === "function" ? () => void stop() : () => undefined;
+    },
   };
 }

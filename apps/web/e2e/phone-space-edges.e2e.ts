@@ -1,6 +1,6 @@
 // #1421: the phone's space screen at its edges - shown again under a terminal that went away (no slide, and Back pops to
 // the list the page pushed it from), New tab in a space with no tabs, and a session's Back before its space is known.
-import { devices, type Page } from "@playwright/test";
+import { devices, type Locator, type Page } from "@playwright/test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -42,6 +42,38 @@ function seedWebsite(): { readonly deploy: string; readonly tests: string } {
   ]);
   return seeded;
 }
+
+// #2229: where Back off a space shown again under a terminal that went away lands, in the history the page keeps.
+const leaveEndedTab = async (
+  page: Page,
+  reloadOn: "space" | "terminal" | null,
+  tap: (back: Locator) => Promise<void>,
+) => {
+  const seeded = seedWebsite();
+  try {
+    const link = await routeHcSocket(page);
+    await page.goto("/?v=spaces");
+    await expect(spaceRow(page, "website")).toBeVisible({ timeout: 20_000 });
+    const list = await entry(page);
+    await spaceRow(page, "website").click();
+    await expect(heading(page, "website")).toBeVisible({ timeout: 20_000 });
+    if (reloadOn === "space") await page.reload();
+    await tabRows(page).filter({ hasText: "tests" }).click();
+    await expect(page.locator(`[data-terminal="${seeded.tests}"]`)).toBeVisible({ timeout: 20_000 });
+    if (reloadOn === "terminal") await page.reload();
+    await expect.poll(() => page.evaluate(() => document.documentElement.hasAttribute("data-ready"))).toBe(true);
+    link.holdFromHost("finished_ms");
+    endAgent("host", seeded.tests);
+    await expect(heading(page, "website")).toBeVisible({ timeout: 15_000 });
+    await tap(page.getByRole("button", { name: "Back to spaces" }));
+    await expect(heading(page, "Spaces")).toBeVisible();
+    // Back to the Spaces list's own entry: no copy of the list, and no space, is left above or under it.
+    await expect.poll(() => entry(page)).toBe(list);
+  } finally {
+    endAgent("host", seeded.deploy);
+  }
+};
+const once = (back: Locator) => back.click();
 
 const PHONES = { "iPhone 14": devices["iPhone 14"], "Pixel 7": devices["Pixel 7"] };
 
@@ -175,6 +207,34 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
       } finally {
         left.forEach((address) => endAgent("host", address));
       }
+    });
+
+    test("after a reload on the space, Back lands on the list's own entry, not a copy over it (#2229)", async ({
+      page,
+    }) => {
+      await leaveEndedTab(page, "space", once);
+    });
+
+    test("after a reload on the terminal, Back pops down past the space to the list (#2229)", async ({ page }) => {
+      await leaveEndedTab(page, "terminal", once);
+    });
+
+    test("a double tap on Back pops once, staying on the list (#2229)", async ({ page }) => {
+      await leaveEndedTab(page, null, async (back) => {
+        // Both taps land before the first pop does (history.go is asynchronous): only the first may move the history.
+        const moves = await back.evaluate((button: HTMLElement) => {
+          const moved: number[] = [];
+          const go = history.go.bind(history);
+          history.go = (delta?: number) => {
+            moved.push(delta ?? 0);
+            go(delta);
+          };
+          button.click();
+          button.click();
+          return moved;
+        });
+        expect(moves).toHaveLength(1);
+      });
     });
   });
 }

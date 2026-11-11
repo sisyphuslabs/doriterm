@@ -84,7 +84,7 @@ test("an ended tab one device shows as ended goes when another device, which has
     release();
     await expect.poll(savedTerminals, { timeout: 15_000 }).not.toContain(address);
     await expect(tabsOf(page)).toHaveCount(1, { timeout: 15_000 });
-    await expect(page.getByText("Another device closed its tab once its program had finished.")).toBeVisible();
+    await expect(page.getByText("Another device removed its pane once its program had finished.")).toBeVisible();
   } finally {
     await other.context().close();
     removeTerminal("host", address, go);

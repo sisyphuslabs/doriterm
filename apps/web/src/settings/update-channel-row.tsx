@@ -22,15 +22,14 @@ export function statusLine(status: DesktopUpdateStatus | null): string {
     case "ready":
       return `Doriterm ${status.version} is downloaded; restart to install it.`;
     case "failed":
-      return status.reason === "check" ? `The update check failed: ${status.message}` : status.message;
+      if (status.reason === "check") return `The update check failed: ${status.message}`;
+      if (status.reason === "download") return `The update download failed: ${status.message}`;
+      return status.message;
   }
 }
 
-/**
- * The desktop app's Update channel (#1969): stable by default, beta for prereleases. The control waits for the shell's
- * saved channel and goes back when the shell did not keep a change; the description is the updater's status.
- */
-export function UpdateChannelRow({ setting }: { readonly setting: UpdateSetting }) {
+/** The shell's saved channel and the updater's status, subscribed while mounted and stopped on unmount (#2252). */
+export function useUpdateState(setting: UpdateSetting) {
   const [channel, setChannel] = useState<UpdateChannel | null>(null);
   const [status, setStatus] = useState<DesktopUpdateStatus | null>(null);
   useEffect(() => {
@@ -39,11 +38,21 @@ export function UpdateChannelRow({ setting }: { readonly setting: UpdateSetting 
       (saved) => live && setChannel(saved),
       (error: unknown) => console.error(`update channel: ${String(error)}`),
     );
-    setting.onStatus((next) => live && setStatus(next));
+    const stop = setting.onStatus((next) => live && setStatus(next));
     return () => {
       live = false;
+      stop();
     };
   }, [setting]);
+  return { channel, setChannel, status };
+}
+
+/**
+ * The desktop app's Update channel (#1969): stable by default, beta for prereleases. The control waits for the shell's
+ * saved channel and goes back when the shell did not keep a change; the description is the updater's status.
+ */
+export function UpdateChannelRow({ setting }: { readonly setting: UpdateSetting }) {
+  const { channel, setChannel, status } = useUpdateState(setting);
   const change = (next: UpdateChannel): void => {
     const was = channel;
     setChannel(next);

@@ -3,6 +3,7 @@ import { Monitor } from "lucide-react";
 import { useActionKeys } from "../keys/use-action-keys.ts";
 import { agentStatus, nextNeedingYou } from "./attention.ts";
 import { machineOf, type Session, spaceName } from "./model.ts";
+import { HistoryGapStatus } from "./history-gap-status.tsx";
 import { ConnectedStatus, ConnectionPathItem, ReconnectStatus } from "./reconnect-status.tsx";
 
 export interface DesktopStatusBarProps {
@@ -70,6 +71,7 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
           ) : null}
           <ReconnectStatus />
           <ConnectedStatus />
+          <HistoryGapStatus />
           <ConnectionPathItem />
         </>
       }

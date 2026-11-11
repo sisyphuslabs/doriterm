@@ -85,7 +85,7 @@ test("a Range request answers 206 with the bytes it names; If-Range on another E
   expect([stale.status, await stale.text()]).toEqual([200, DMG_BYTES]);
   await h.settle();
   const multi = await get(h, `/v/0.1.17/${DMG}`, { Range: "bytes=0-1,4-5" });
-  expect(multi.status).toBe(200);
+  expect([multi.status, multi.headers.get("Content-Type")?.split(";")[0]]).toEqual([206, "multipart/byteranges"]);
 
   // Only the ranges from byte 0 count: a manager's later ranges, the 416 and the HEAD below do not. The whole-file
   // answers above filled the edge cache, which now answers the range itself.
@@ -98,7 +98,8 @@ test("a Range request answers 206 with the bytes it names; If-Range on another E
   ]);
   const headOnly = await get(h, `/v/0.1.17/${DMG}`, {}, "HEAD");
   expect([headOnly.status, headOnly.headers.get("Content-Length"), await headOnly.text()]).toEqual([200, "16", ""]);
-  expect(h.points.map((p) => p.blobs[2])).toEqual(["cache", "cache"]);
+  // The several ranges from byte 0 count once, from R2 (#2228); the single range from byte 0 from the cache.
+  expect(h.points.map((p) => p.blobs[2])).toEqual(["r2", "cache"]);
 });
 
 test("a version without .complete, a missing object and an R2 failure each redirect to GitHub Releases", async () => {
