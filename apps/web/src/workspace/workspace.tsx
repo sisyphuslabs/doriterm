@@ -210,9 +210,13 @@ export function Workspace({ connection }: WorkspaceProps) {
       },
     );
   };
-  // The latest `opened`: a tab started from a space screen is placed once that space is the selected one (addTab's `near`).
-  const openedNow = useRef(opened);
-  openedNow.current = opened;
+  // The latest `opened`, into a named space: a tab started from a space screen goes after that space's selected tab once
+  // it is the selected one (addTab's `near`), and into that space even when it has no tab to select.
+  const openInSpace = useRef<(address: string, key: string) => void>(() => undefined);
+  openInSpace.current = (address, key) => {
+    openInLayout(address, false, key);
+    showOnPhone(address);
+  };
   const newTabIn = (key: string): void => {
     const space = spaces.find((each) => each.id === key);
     const near = terminals.find((terminal) => terminal.state === "live" && space?.addresses.includes(terminal.address));
@@ -220,7 +224,7 @@ export function Workspace({ connection }: WorkspaceProps) {
     withoutClaim(() => layout.selectSpace(key));
     runs.start(runParamsFor(near, space), (address) => {
       guideStore.opened(address, ids);
-      openedNow.current(address);
+      openInSpace.current(address, key);
     });
   };
   const split = (axis: Axis, target?: PaneTarget): void => {
@@ -427,14 +431,14 @@ export function Workspace({ connection }: WorkspaceProps) {
                         space={phoneSpace}
                         panes={phonePanes}
                         tabTitle={phoneTitle}
-                        // Back says where it goes: the space it was opened from, by name once the spaces are read ("space" until then),
+                        // Back says where it goes: the space it was opened from, by name once the spaces are read (the chevron alone until then),
                         // else the Spaces list when it was opened from there.
                         backTo={
                           phone.space === null
                             ? phone.section === "spaces"
                               ? "Spaces"
                               : null
-                            : (listedSpace?.name ?? "space")
+                            : (listedSpace?.name ?? "")
                         }
                         onOpen={showOnPhone}
                         onBack={phone.back}
