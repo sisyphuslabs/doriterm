@@ -50,7 +50,7 @@ function until(roster: Roster, ok: () => boolean, label: string): Promise<void> 
 /** The first reads (the line read and the feed's gap read) are in, and no line read is in flight. */
 async function started(roster: Roster, reads: number): Promise<void> {
   await until(roster, () => roster.snapshot.machines.listed >= reads, "the first reads");
-  await roster.lines.idle();
+  await roster.linesIdle();
 }
 
 test("a line read that changes nothing notifies no one; a changed line, and every 10 s read, still do (#2184)", async () => {
@@ -62,9 +62,9 @@ test("a line read that changes nothing notifies no one; a changed line, and ever
   const before = { notified: seen.notified, reads: reads(), listed: roster.snapshot.machines.listed };
 
   tick(LINE_READ_MS);
-  await roster.lines.idle();
+  await roster.linesIdle();
   tick(LINE_READ_MS);
-  await roster.lines.idle();
+  await roster.linesIdle();
   expect([reads() - before.reads, seen.notified - before.notified]).toEqual([2, 0]);
 
   // The 10 s read is the count useDeadPanes waits on for an added machine's absent pane, so it moves on regardless.
@@ -75,7 +75,7 @@ test("a line read that changes nothing notifies no one; a changed line, and ever
 
   core.machines = [machine("rack", "connecting")];
   tick(LINE_READ_MS);
-  await roster.lines.idle();
+  await roster.linesIdle();
   expect(seen.notified - before.notified).toBe(2);
   expect(roster.snapshot.machines.views.map((view) => view.state)).toEqual(["connecting"]);
 });
@@ -94,15 +94,15 @@ test("a line read still waiting for its answer sends no second one, and a closed
   expect(reads() - before).toBe(1);
 
   held.resolve();
-  await roster.lines.idle();
+  await roster.linesIdle();
   tick(LINE_READ_MS);
   expect(reads() - before).toBe(2);
-  await roster.lines.idle();
+  await roster.linesIdle();
 
   link.drop();
   tick(LINE_READ_MS);
   expect(reads() - before).toBe(2);
-  await roster.lines.idle();
+  await roster.linesIdle();
 
   // A reconnect attaches a new connection to the same roster: the line read goes on there (#2197).
   roster.attach(core.connection());
@@ -124,7 +124,7 @@ test("a told read that a quiet line read overtakes is still told, so the read co
   const told = roster.refreshMachines();
   core.holdMachineList = undefined;
   tick(LINE_READ_MS);
-  await roster.lines.idle();
+  await roster.linesIdle();
   held.resolve();
   await told;
 
@@ -132,4 +132,30 @@ test("a told read that a quiet line read overtakes is still told, so the read co
   expect(seen.notified - before.notified).toBe(1);
   expect(roster.snapshot.machines).toBe(roster.machines.read);
   expect(roster.snapshot.machines.listed).toBe(before.listed + 1);
+});
+
+test("a told read overtaken by a quiet line read that fails as the last read did is still told (#2207)", async () => {
+  const core = new FakeCore();
+  core.machines = [machine("rack")];
+  const { roster, seen, tick } = rosterOn(core);
+  roster.watchLines();
+  await started(roster, 2);
+  core.failMachineList = true;
+  await roster.refreshMachines();
+  const failed = roster.snapshot.machines.error;
+  const before = seen.notified;
+
+  // The 10 s read waits on a slow answer; the next line read, sent after it, fails at once with the same error.
+  const held = Promise.withResolvers<void>();
+  core.holdMachineList = held.promise;
+  const told = roster.refreshMachines();
+  core.holdMachineList = undefined;
+  tick(LINE_READ_MS);
+  await roster.linesIdle();
+  held.resolve();
+  await told;
+
+  expect(failed).toBeDefined();
+  expect(seen.notified - before).toBe(1);
+  expect(roster.snapshot.machines).toBe(roster.machines.read);
 });
