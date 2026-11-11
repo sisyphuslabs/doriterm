@@ -7,10 +7,9 @@ import type { TerminalEnd } from "../terminal/terminal-end.ts";
 import type { LayoutTab } from "./layout-model.ts";
 import type { Session } from "./model.ts";
 import type { PaneSends } from "./pane-sends.ts";
-import { type PaneActions, PaneSlot } from "./pane-slot.tsx";
+import { type PaneActions, PlacedPane } from "./pane-slot.tsx";
 import { PaneDivider } from "./pane-divider.tsx";
 import { linePosition } from "./line-position.ts";
-import { usePaneMotion, type PaneMotion } from "./pane-motion.ts";
 import { usePaneDrag } from "./use-pane-drag.ts";
 import type { Layout, PaneTarget } from "./use-layout.ts";
 
@@ -58,23 +57,6 @@ function axisAround(root: Node, pane: string): "row" | "column" | null {
   const parent = path === null ? null : nodeAt(root, path.slice(0, -1));
   const type = parent?.["type"];
   return type === "row" || type === "column" ? type : null;
-}
-
-function PaneFrame(props: { readonly motion: PaneMotion; readonly hidden: boolean; readonly children: ReactNode }) {
-  const { motion, hidden, children } = props;
-  const ref = useRef<HTMLDivElement>(null);
-  usePaneMotion(ref, motion);
-  const { rect } = motion;
-  return (
-    <div
-      ref={ref}
-      hidden={hidden}
-      className="absolute flex"
-      style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
-    >
-      {children}
-    </div>
-  );
 }
 
 /**
@@ -169,27 +151,27 @@ export function SplitPanes(props: SplitPanesProps) {
                 const bump = layout.bumped?.pane === pane.id ? layout.bumped : null;
                 // A pane a zoom hides stays mounted, so its stream and scrollback are there when it comes back.
                 return (
-                  <PaneFrame
+                  <PlacedPane
                     key={pane.mount ?? pane.id}
-                    motion={{ rect: placed ?? HIDDEN, frame, grow, bump }}
+                    {...(placed ?? HIDDEN)}
+                    frame={frame}
+                    grow={grow}
+                    bump={bump}
                     hidden={placed === undefined}
-                  >
-                    <PaneSlot
-                      connection={connection}
-                      tab={tab.key}
-                      pane={pane.id}
-                      mod={pane.mod}
-                      terminal={pane.address === null ? undefined : byAddress.get(pane.address)}
-                      split={tab.panes.length > 1}
-                      focused={selected && layout.focused?.id === pane.id}
-                      claimed={layout.claimed === pane.id}
-                      zoomed={zoomed === pane.id}
-                      actions={actions}
-                      sends={sends}
-                      dock={selected && layout.focused?.id === pane.id ? dock : null}
-                      onGrab={movable ? grab(tab.key, pane.id) : undefined}
-                    />
-                  </PaneFrame>
+                    connection={connection}
+                    tab={tab.key}
+                    pane={pane.id}
+                    mod={pane.mod}
+                    terminal={pane.address === null ? undefined : byAddress.get(pane.address)}
+                    split={tab.panes.length > 1}
+                    focused={selected && layout.focused?.id === pane.id}
+                    claimed={layout.claimed === pane.id}
+                    zoomed={zoomed === pane.id}
+                    actions={actions}
+                    sends={sends}
+                    dock={selected && layout.focused?.id === pane.id ? dock : null}
+                    onGrab={movable ? grab(tab.key, pane.id) : undefined}
+                  />
                 );
               })}
               {selected && !tab.transient && tab.readOnly === null

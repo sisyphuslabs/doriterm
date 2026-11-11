@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { E2E_HOST_ENV } from "./config.ts";
+import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { readSavedEnv } from "./saved-env.ts";
 
@@ -52,9 +53,17 @@ function countRenders(): void {
   Object.defineProperty(window, "__commits", { value: commits });
 }
 
-test("a terminal's title change draws its own pane again, not every pane of every hidden tab (#2086)", async ({
-  page,
-}) => {
+/** The most components any one commit rendered again, over twenty commits of the spinning title from now on. */
+async function worstCommit(page: Page): Promise<number> {
+  const from = await page.evaluate(() => Reflect.get(window, "__commits").length);
+  await expect
+    .poll(() => page.evaluate(() => Reflect.get(window, "__commits").length), { timeout: 20_000 })
+    .toBeGreaterThan(from + 20);
+  const commits: number[] = await page.evaluate((skip) => Reflect.get(window, "__commits").slice(skip), from);
+  return Math.max(...commits);
+}
+
+test("a terminal's title change costs the same however many terminals sit in hidden tabs (#2086)", async ({ page }) => {
   const { hc, env } = readSavedEnv(E2E_HOST_ENV);
   const hcRun = (args: readonly string[]): string =>
     execFileSync(hc, args, { env: { ...process.env, ...env }, encoding: "utf8" });
@@ -64,20 +73,20 @@ test("a terminal's title change draws its own pane again, not every pane of ever
     started.push(String(Reflect.get(Object(answer), "address")));
   };
   try {
-    for (let index = 0; index < HIDDEN; index += 1) start(["sleep", "3600"]);
     start(["sh", "-c", "i=0; while :; do printf '\\033]0;spin %d\\007' $i; i=$((i+1)); sleep 0.1; done"]);
+    for (let index = 0; index < HIDDEN; index += 1) start(["sleep", "3600"]);
     await page.addInitScript(countRenders);
     await page.goto("/");
-    // Every terminal is listed, and the loose ones are adopted into tabs, each pane mounted.
+    // Every terminal is listed, and the loose ones are adopted into tabs as the page loads, each pane mounted.
     await expect(page.locator("[data-terminal]")).toHaveCount(HIDDEN + 1, { timeout: 30_000 });
-    const from = await page.evaluate(() => Reflect.get(window, "__commits").length);
-    await expect
-      .poll(() => page.evaluate(() => Reflect.get(window, "__commits").length), { timeout: 20_000 })
-      .toBeGreaterThan(from + 20);
-    const commits: number[] = await page.evaluate((skip) => Reflect.get(window, "__commits").slice(skip), from);
-    // Before #2086 each title change rendered every pane, sidebar row and tab again, many components each: hundreds in
-    // every commit. Now no commit renders as many components as there are hidden terminals.
-    expect(Math.max(...commits)).toBeLessThan(HIDDEN);
+    const few = await worstCommit(page);
+    for (let index = 0; index < HIDDEN; index += 1) start(["sleep", "3600"]);
+    await page.reload();
+    await expect(page.locator("[data-terminal]")).toHaveCount(2 * HIDDEN + 1, { timeout: 30_000 });
+    const many = await worstCommit(page);
+    // Before #2086 each title change rendered every pane, sidebar row and tab again, many components each: twice the
+    // terminals cost about twice as many renders per commit (2136 at 30 hidden terminals).
+    expect(many - few).toBeLessThan(HIDDEN / 3);
   } finally {
     for (const address of started) hcRun(["kill", address]);
     for (const address of started) hcRun(["rm", address]);
