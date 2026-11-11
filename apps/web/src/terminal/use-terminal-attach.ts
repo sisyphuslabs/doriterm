@@ -199,7 +199,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     const attachOwn = () =>
       connection.attach({ terminal: address, cols, rows, history, display, ...resumed }, { autoCredit: false });
     viewAttach(connection, address, !attachedBefore.current, { cols, rows, display }, attachOwn).then(
-      ({ stream: attached, cols: askedCols, rows: askedRows }) => {
+      ({ stream: attached, cols: askedCols, rows: askedRows, fresh }) => {
         if (unmounted.current) return void attached.close();
         setOpening(false);
         // The program restarted while the line was down: what was typed for it must not reach the new one.
@@ -237,14 +237,16 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         paintedView.current = ready;
         // Every attach's first paint is its replay: written as it arrives with the paint held, then drawn once it has
         // settled, so a view mounted anew, or a tab first attached when switched to, does not walk its history past the
-        // person (D5, #812, #1588).
-        replayOnAttach(pacer, {
-          srtt: () => connection.rtt?.srtt,
-          hold: (held) => {
-            holdPaint(held);
-            ready.setRenderingPaused(held);
-          },
-        });
+        // person (D5, #812, #1588). A terminal this page just started has no history to walk, so its first prompt is drawn
+        // as it arrives rather than after the hold's quiet window (#1928).
+        if (!fresh)
+          replayOnAttach(pacer, {
+            srtt: () => connection.rtt?.srtt,
+            hold: (held) => {
+              holdPaint(held);
+              ready.setRenderingPaused(held);
+            },
+          });
         onStream?.current?.();
         const resets = new CursorResets();
         const credit = (count: number): void => {
