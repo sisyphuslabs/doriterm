@@ -24,11 +24,13 @@ export type Kind =
 export interface KeyDef {
   /** Ghostty's own key name. */
   readonly key: string;
+  /** A plain label when the control's name differs from the config key. */
+  readonly label?: string;
   readonly group: Group;
   readonly kind: Kind;
   /** Repeatable keys collect every line (font-family fallbacks, palette entries). */
   readonly repeatable: boolean;
-  /** The value Ghostty uses when the key is unset, as Ghostty would print it. */
+  /** The value used when the key is unset, in Ghostty's config syntax. */
   readonly defaults: readonly string[];
   readonly description: string;
   readonly support: Support;

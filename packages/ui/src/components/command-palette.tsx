@@ -61,7 +61,8 @@ export function CommandPalette({
   const inputId = useId();
   const counts = useMemo(() => statusCounts(commands), [commands]);
   const status = shownStatus(counts, chosen);
-  // A chosen state that emptied has fallen back to All: forget it, so a later agent in that state does not bring it back.
+  // A chosen state that is no longer shown (it emptied, or more urgent states pushed it out of the two shown) has fallen
+  // back to All: forget it, so a later agent in that state does not bring it back.
   if (chosen !== null && status === null) setChosen(null);
   const visible = useMemo(
     () => withStatus(commands, status).filter((command) => matches(command, query)),
@@ -160,7 +161,7 @@ export function CommandPalette({
                         if (command.disabled !== true) onRun?.(command.id);
                       }}
                       className={cn(
-                        "flex h-(--row) cursor-default items-center gap-2.5 rounded-md px-2 text-base text-foreground [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-muted-foreground",
+                        "flex h-(--row) cursor-default items-center gap-2.5 rounded-md px-2 text-base text-foreground [&>svg:not([data-slot=spinner])]:size-4 [&>svg]:shrink-0 [&>svg]:text-muted-foreground",
                         selected && "bg-selected",
                         command.disabled === true && "text-muted-foreground",
                       )}

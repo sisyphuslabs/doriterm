@@ -1,14 +1,12 @@
 import type { Page, Route } from "@playwright/test";
 import { setConfirmClose } from "./close-confirm.ts";
 import { expect, openNewTerminal, terminalCount, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { hcOn } from "./machine-switch.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
-
-/** The default close-tab shortcut on this platform's keymap (Cmd+W on macOS, Ctrl+Shift+W elsewhere). */
-const CLOSE_TAB = process.platform === "darwin" ? "Meta+KeyW" : "Control+Shift+KeyW";
 
 /** Opens a terminal and returns its address; the shared fixture ends it after the test (terminal-guard.ts). */
 const openOwnTerminal = async (page: Page): Promise<string> =>
@@ -60,7 +58,7 @@ test("a terminal that becomes ready while Cmd+W's question is open leaves the qu
   await expect(terminal).not.toContainText("$");
 
   await terminal.locator("textarea").focus();
-  await page.keyboard.press(CLOSE_TAB);
+  await pressShortcut(page, "tab.close");
   const name = /^Close .+\?$/;
   const ask = page.getByRole("dialog", { name });
   await expect(ask).toBeVisible();
@@ -87,7 +85,7 @@ test("a terminal whose renderer starts while Cmd+W's question is open leaves the
   const release = await reloadWithRenderersHeld(page);
 
   // Asked before any renderer started, so focus was on the page body when the question opened.
-  await page.keyboard.press(CLOSE_TAB);
+  await pressShortcut(page, "tab.close");
   const name = /^Close .+\?$/;
   const ask = page.getByRole("dialog", { name });
   await expect(ask).toBeVisible();
@@ -111,7 +109,7 @@ test("the terminal left when Cmd+W's session ends under the question does not ta
   const remaining = await openOwnTerminal(page);
   const asked = await openOwnTerminal(page);
   await page.locator(`[data-terminal="${asked}"]`).getByRole("textbox").focus();
-  await page.keyboard.press(CLOSE_TAB);
+  await pressShortcut(page, "tab.close");
   const name = /^Close .+\?$/;
   const ask = page.getByRole("dialog", { name });
   await expect(ask).toBeVisible();
@@ -145,7 +143,7 @@ test("a press on a terminal that ends after Cmd+W's question opened leaves focus
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
   // The question opens from the keyboard while the button is still down; the press then ends over it.
-  await page.keyboard.press(CLOSE_TAB);
+  await pressShortcut(page, "tab.close");
   const name = /^Close .+\?$/;
   const ask = page.getByRole("dialog", { name });
   await expect(ask).toBeVisible();
