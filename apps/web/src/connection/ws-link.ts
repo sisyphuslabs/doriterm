@@ -35,15 +35,12 @@ export interface LinkOptions {
  * Opens a binary WebSocket and resolves once it is open; one message carries one chunk of bytes. A signal closes the
  * socket at any stage: while connecting (the promise rejects with {@link LinkAbortedError}) and after opening.
  */
-/** How long a link waits for its socket to open before it gives up: the wait #2004 must never cost a known-absent machine. */
-export const LINK_TIMEOUT_MS = 10_000;
-
 export function openWebSocketLink(
   url: string,
   protocols: readonly string[],
   options: LinkOptions = {},
 ): Promise<ByteLink> {
-  const { timeoutMs = LINK_TIMEOUT_MS, signal, pingIntervalMs } = options;
+  const { timeoutMs = 10_000, signal, pingIntervalMs } = options;
   return new Promise((resolve, reject) => {
     if (signal?.aborted === true) {
       reject(new LinkAbortedError(`the ${url} attempt was cancelled`));

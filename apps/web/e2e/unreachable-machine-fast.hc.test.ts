@@ -6,18 +6,18 @@ import { HcConnection } from "@doriface/client";
 import { createHcSession, type HcSession } from "@doriface/host/testing";
 import { stopLeftUnder } from "@doriface/host/testing/run-dir";
 import { spawnHcLink } from "../../host/src/mesh/hc-machines.ts";
-import { LINK_TIMEOUT_MS } from "../src/connection/ws-link.ts";
 import { startTerminal } from "../src/workspace/start-on.ts";
 import { addMachine, DEMO_MACHINE } from "./machine.ts";
 
 /**
- * #2004: a New terminal on an added machine that is not connected must say so from hc's machine state, not after waiting
- * out a link timeout. The failure itself proves where it came from (`unavailable`, naming the machine); the time only
- * has to rule out the wait, which a regression takes in full: half of LINK_TIMEOUT_MS. That holds on a loaded host, where
- * the answer took 3.2 s in two fulls (#2000, #2164), and measures the product instead of the host, as a 1 s budget did
- * not. A line left half-open (after a sleep or a network drop), which the core has not noticed yet, is not timed here.
+ * #2004: a New terminal on an added machine that is not connected must say so from hc's machine state, not after a wait.
+ * The failure itself proves where it came from (`unavailable`, naming the machine); the time rules out the wait. On this
+ * path (hc's stdio link) the only wait there is would be hc dialing the absent machine: herdr's 20 s hello probe through
+ * the line (apps/host/src/mesh/hc-machines.ts), capped by the client's 20 s call timeout. The bound is a quarter of that,
+ * and above the 3.2 s the answer took on a loaded host in two fulls (#2000, #2164), so it measures the product, not the
+ * host, as a 1 s budget did not. A line left half-open, which the core has not noticed yet, is not timed here.
  */
-const FAST_MS = LINK_TIMEOUT_MS / 2;
+const FAST_MS = 5_000;
 
 let dialer: HcSession | undefined;
 let root: string | undefined;
@@ -31,7 +31,7 @@ afterEach(async () => {
   root = undefined;
 });
 
-test("a New terminal on an added machine that is not connected fails from its state, not after a link timeout, naming it (#2004)", async () => {
+test("a New terminal on an added machine that is not connected fails from its state, not after a wait, naming it (#2004)", async () => {
   dialer = createHcSession("machine-unreachable-fast");
   root = mkdtempSync(join(tmpdir(), "dw-machine-"));
   const spec = { ...DEMO_MACHINE, dir: join(root, "files") };
