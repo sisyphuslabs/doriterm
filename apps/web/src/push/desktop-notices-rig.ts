@@ -101,7 +101,7 @@ export function rig({
   const timers: { ms: number; step: () => void; cancelled: boolean; fired: boolean }[] = [];
   const listeners = new Set<() => void>();
   const connection = {
-    state: { phase: "open", connection: live as HcConnection, path: "relay", connectMs: 1 } as ConnectionState,
+    state: { phase: "open", connection: live as HcConnection, path: "relay" } as ConnectionState,
     subscribe: (listener: () => void) => (listeners.add(listener), () => listeners.delete(listener)),
     move(state: ConnectionState) {
       this.state = state;
@@ -144,8 +144,7 @@ export function rig({
     timer.step();
     await settled();
   };
-  const reopen = () =>
-    connection.move({ phase: "open", connection: live as HcConnection, path: "relay", connectMs: 1 });
+  const reopen = () => connection.move({ phase: "open", connection: live as HcConnection, path: "relay" });
   return {
     notices,
     feeds,
