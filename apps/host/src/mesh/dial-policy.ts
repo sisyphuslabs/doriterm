@@ -118,7 +118,7 @@ export class DialPolicy {
   }
 
   /**
-   * Asks to dial `member`. A direct (LAN) dial is not charged. A gated member is refused until its probe is due (any
+   * Asks to dial `member`. A `direct` dial is not charged; no dialer passes it while #2070 keeps every dial, the mesh line's included, on the relay. A gated member is refused until its probe is due (any
    * dial then goes as that probe) unless this is a sweep; a line to a member with no presence waits for settle.
    * `waitMs` bounds the wait for a token.
    */
