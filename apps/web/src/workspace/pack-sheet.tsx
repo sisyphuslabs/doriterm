@@ -25,11 +25,11 @@ export function PackSheet({ open, onOpenChange, settings }: PackSheetProps) {
   };
   return (
     <Sheet title="Shortcut packs" side="bottom" open={open} onOpenChange={onOpenChange}>
-      <p className="pb-2 text-sm text-muted-foreground">
+      <p className="pb-2 text-prose text-muted-foreground">
         A pack's keys lead the bar; your own follow them. Long-press Ctrl opens this panel.
       </p>
       {settings.packs.length === 0 ? (
-        <p className="pb-2 text-sm text-muted-foreground">No packs yet. Add one in Settings &gt; Keyboard.</p>
+        <p className="pb-2 text-prose text-muted-foreground">No packs yet. Add one in Settings &gt; Keyboard.</p>
       ) : (
         <div role="list" className="flex flex-col">
           <button

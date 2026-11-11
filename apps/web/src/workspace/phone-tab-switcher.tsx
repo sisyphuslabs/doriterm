@@ -55,7 +55,12 @@ export function SpaceSheet(props: {
                     <div key={entry.address} className="flex min-w-0 items-center gap-1">
                       <div className="min-w-0 flex-1">
                         <AgentRow
-                          agent={{ ...agent, name, ...(said === "" ? {} : { detail: said }) }}
+                          agent={{
+                            ...agent,
+                            name,
+                            ...(said === "" ? {} : { detail: said }),
+                            ...(space.tabPins[at] === true ? { pinned: true } : {}),
+                          }}
                           selected={entry.address === active}
                           onSelect={pick}
                         />
@@ -145,7 +150,10 @@ export function PhoneTabSwitcher(props: {
           >
             {/*
               The space goes first when the bar is narrow (both round buttons beside it): the header already names it, and
-              the tab's own name is what the stepper is for. The accessible name keeps it.
+              the tab's own name is what the stepper is for. The accessible name keeps it. At 390 px the bar leaves this
+              button 390 - 6 (left padding) - roundButtonsClearance(2) 128 - 2 x 44 (Previous, Next) - 2 x 4 (gaps) = 160 px,
+              under 13rem; with one round button (a mouse-only device, clearance 72) it is 216 px and keeps the space. A
+              change to the round buttons or the steppers moves these numbers: phone-session-title.e2e.ts pins the touch end.
             */}
             {space === undefined ? null : (
               <span title={space} className="min-w-0 shrink-[2] truncate font-semibold @max-[13rem]:hidden">

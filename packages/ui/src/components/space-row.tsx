@@ -1,4 +1,4 @@
-import { Folder } from "lucide-react";
+import { ChevronRight, Folder } from "lucide-react";
 import { useRef } from "react";
 import { cn } from "../lib/cn.ts";
 import { useRowFloors } from "./row-floors.ts";
@@ -65,6 +65,8 @@ export interface SpaceRowProps {
   readonly rail?: boolean;
   /** Under a machine's header the machine is already said, so the row leaves it out. */
   readonly hideMachine?: boolean;
+  /** The row opens a screen of its own (the phone): a trailing chevron says so. */
+  readonly chevron?: boolean;
   readonly className?: string;
 }
 
@@ -78,6 +80,7 @@ export function SpaceRow({
   onSelect,
   rail = false,
   hideMachine = false,
+  chevron = false,
   className,
 }: SpaceRowProps) {
   const row = useRef<HTMLButtonElement | null>(null);
@@ -88,7 +91,9 @@ export function SpaceRow({
     space.color === undefined ? (
       <Folder aria-hidden className="size-4 shrink-0 text-muted-foreground" />
     ) : (
-      <SpaceAvatar name={space.name} color={space.color} />
+      // The avatar is 2 px wider than the size-4 glyph every sidebar row leads with; taking those 2 px out of the gap
+      // keeps the name on the label column the section titles start on (#1612).
+      <SpaceAvatar name={space.name} color={space.color} {...(rail ? {} : { className: "-mr-0.5" })} />
     );
   return (
     <button
@@ -141,6 +146,7 @@ export function SpaceRow({
             >
               {space.tabs}
             </span>
+            {chevron ? <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" /> : null}
           </span>
         </>
       )}

@@ -2,7 +2,6 @@
 import { base64urlDecode } from "@doriface/crypto";
 import {
   DEFAULT_PUSH_PREFS,
-  type NoticePrompt,
   parsePushNotice,
   type PushClientLine,
   type PushHostLine,
@@ -11,7 +10,7 @@ import {
 import { clientsClaim } from "workbox-core";
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from "workbox-precaching";
 import { NavigationRoute, registerRoute } from "workbox-routing";
-import { ICON_FONT_CACHE, isIconFont, pruneIconFonts, splitIconFonts } from "./pwa/icon-font-cache.ts";
+import { ICON_FONT_CACHE, isIconFont, keepsIconFont, pruneIconFonts, splitIconFonts } from "./pwa/icon-font-cache.ts";
 import { planClick } from "./push/notice-click.ts";
 import { DEFAULT_MAX_ACTIONS, noticeDisplay } from "./push/notice-display.ts";
 import { deadlineAfter, exchangeWithin, type PushExchange } from "./push/over-push.ts";
@@ -35,18 +34,28 @@ registerRoute(new NavigationRoute(createHandlerBoundToURL("index.html")));
 
 registerRoute(
   ({ url }) => url.origin === self.location.origin && isIconFont(url),
-  async ({ request }) => {
+  async ({ request, url }) => {
     const cache = await caches.open(ICON_FONT_CACHE);
     const kept = await cache.match(request);
     if (kept !== undefined) return kept;
     const fetched = await fetch(request);
-    if (fetched.ok) await cache.put(request, fetched.clone());
+    // A page left open on an earlier build may still ask for its font: that answer comes from the network, and only a
+    // name this build's precache list carries is kept (#1166). A build whose list names no icon font keeps what it
+    // fetches instead, since it has lost the font from its list rather than chosen none (#1167).
+    if (fetched.ok && keepsIconFont(url, iconFonts)) await cache.put(request, fetched.clone());
     return fetched;
   },
 );
 clientsClaim();
 self.addEventListener("activate", (event) => {
-  event.waitUntil(caches.open(ICON_FONT_CACHE).then((cache) => pruneIconFonts(cache, iconFonts)));
+  event.waitUntil(
+    (async () => {
+      const cache = await caches.open(ICON_FONT_CACHE);
+      // A build whose precache list names no icon font keeps the copies that are there; say it once per activation.
+      if ((await pruneIconFonts(cache, iconFonts)) === null)
+        console.warn("this build's precache list names no icon font: the kept copy is not pruned");
+    })(),
+  );
 });
 
 self.addEventListener("message", (event) => {
@@ -57,7 +66,7 @@ self.addEventListener("message", (event) => {
 
 /** How long an Allow or Deny waits for the host before it opens the pane instead. */
 const ANSWER_TIMEOUT_MS = 15_000;
-/** How long a push waits for the host to name its prompt's rows before it shows the notice without them. */
+/** How long a push waits for the host to name what it is about and its prompt's rows before it shows it without them. */
 const PROMPT_TIMEOUT_MS = 4_000;
 
 function readPayload(event: PushEvent): unknown {
@@ -79,28 +88,29 @@ self.addEventListener("push", (event) => {
 });
 
 /**
- * A permission or a question asks the host over the E2EE push stream which rows its prompt has, so the notification
- * can offer them; the payload itself names nothing. A host that does not answer in time, or names none, gets the
- * notice without rows (a permission keeps Allow and Deny).
+ * Every notice but a test asks the host over the E2EE push stream what it is about (agent, machine, space, terminal,
+ * what it asks: #1908) and which rows its prompt has; the payload itself names nothing. A host that does not answer in
+ * time, or names nothing, gets the fixed text per kind and no rows (a permission keeps Allow and Deny).
  */
 async function showNotice(notice: PushNotice): Promise<void> {
-  const prompt =
-    notice.k === "permission" || notice.k === "input" ? await promptOf(notice).catch(() => undefined) : undefined;
+  const reply = notice.k === "test" ? undefined : await noticeOf(notice).catch(() => undefined);
+  const asks = notice.k === "permission" || notice.k === "input";
   // `Notification.maxActions` is not in TypeScript's DOM types; Chromium reports it.
   const max: unknown = Reflect.get(Notification, "maxActions");
   const { title, ...shown } = noticeDisplay(
     notice,
-    prompt,
+    asks ? reply?.prompt : undefined,
     typeof max === "number" && max > 0 ? max : DEFAULT_MAX_ACTIONS,
+    reply?.context,
   );
   // TypeScript's NotificationOptions lacks `actions`, which Chromium and Firefox show.
   const options: NotificationOptions & Pick<typeof shown, "actions"> = { ...shown, icon: "/icon-192.png" };
   await self.registration.showNotification(title, options);
 }
 
-async function promptOf(notice: PushNotice): Promise<NoticePrompt | undefined> {
+async function noticeOf(notice: PushNotice): Promise<Extract<PushHostLine, { t: "notice" }> | undefined> {
   const reply = await overPush({ t: "notice", id: notice.n }, PROMPT_TIMEOUT_MS);
-  return reply.t === "notice" ? reply.prompt : undefined;
+  return reply.t === "notice" ? reply : undefined;
 }
 
 async function openSession(): Promise<PushExchange> {

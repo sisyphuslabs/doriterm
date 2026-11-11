@@ -5,6 +5,7 @@ import { graceEnds, graceViews, stepHeld, type Held } from "./machine-grace.ts";
 import { machineEntries, machineKey, orderMachines, type MachineEntry } from "./machines.ts";
 import type { Session } from "./model.ts";
 import { withReach } from "./reach.ts";
+import { useSteady } from "./steady.ts";
 
 export interface Machines {
   readonly entries: readonly MachineEntry[];
@@ -26,7 +27,7 @@ export interface Machines {
   readonly openAddMachine: () => void;
   /**
    * The added machines as the page shows them: as machine.list last said (state, `why`, since when), except a machine
-   * whose line hc is redialing, which reads connected for `OFFLINE_GRACE_MS` (#904).
+   * whose line hc is redialing, which reads reconnecting for `OFFLINE_GRACE_MS` (#904).
    */
   readonly views: readonly MachineView[];
   /** Dials a machine now (`machine.connect`) instead of at hc's next retry, then reads machine.list again. */
@@ -69,7 +70,7 @@ export interface MachineState {
   /** Reads machine.list again now, e.g. after a call on a machine failed. */
   readonly refresh: () => void;
   readonly listError: string | undefined;
-  /** The machines as the page shows them: a line hc is redialing reads connected for `OFFLINE_GRACE_MS` (#904). */
+  /** The machines as the page shows them: a line hc is redialing reads reconnecting for `OFFLINE_GRACE_MS` (#904). */
   readonly views: readonly MachineView[];
   /** The machines as machine.list last said, with no grace: for checks that must not act on a held state. */
   readonly heard: readonly MachineView[];
@@ -154,9 +155,8 @@ export function useMachines(connection: HcConnection, terminals: readonly Termin
   const views = useMemo(() => graceViews(read.views, read.held, now), [read, now]);
   const { id: coreId, name: coreName } = connection.hello.core;
   const reached = useMemo(() => withReach(terminals, views), [terminals, views]);
-  const entries = useMemo(
-    () => machineEntries({ id: coreId, name: coreName }, views, reached),
-    [coreId, coreName, views, reached],
+  const entries = useSteady(
+    useMemo(() => machineEntries({ id: coreId, name: coreName }, views, reached), [coreId, coreName, views, reached]),
   );
   // A refused dial is not lost: hc records it as the machine's `why`, which the re-read brings in.
   const retry = useCallback(

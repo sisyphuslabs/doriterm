@@ -48,8 +48,9 @@ private relay, so this prints one line saying they were skipped and why:
 bun run check
 ```
 
-Run the browser suite against a real `hc`. `playwright install --with-deps` installs Chromium's system libraries with `sudo apt-get` each time it runs. The few specs that
-need the private relay are skipped, each with the same one-line reason:
+Run the browser suite against a real `hc`. `playwright install --with-deps` installs Chromium's system libraries with
+`sudo apt-get` each time it runs. The few specs that need the private relay are skipped, each with the same one-line
+reason:
 
 ```sh from-zero
 cd apps/web
@@ -101,6 +102,23 @@ report is a check a fork can fake.
 Do not change `.github/workflows/` in a pull request unless that is the point of the pull request: a run from a fork
 uses the workflow files in the pull request, so a maintainer reads such a change on its own before trusting any check
 it reports.
+
+## Screenshots
+
+Images under `docs/` are public, so a capture shows the product and never the machine that took it.
+
+- Take captures through the e2e hosts (`CAPTURE=1 bunx playwright test capture` in `apps/web`, or
+  `bun run capture:readme`). Their cores announce the neutral name `studio` (`apps/web/e2e/host.ts` and
+  `apps/web/e2e/fake-relay-host.ts` write it into the core's `core.json` before it starts), and their shells start with
+  a prompt the spec sets (`$ `, or `demo@my-laptop:~/project$` in the relay captures), never the capturing account's.
+- Before committing a shot, look where a machine shows through: the sidebar's machine row and the status bar (the host
+  name), the terminal's prompt (account, host and working directory), and a space row's git facts (a branch name, a
+  dirty marker or ahead/behind counts from the checkout that ran the capture).
+- The `Capture text` check reads the text in every image a pull request adds or changes under `docs/` or
+  `.github/assets/` and fails on an account at a host, a home directory or an internal run path
+  (`tests/ci/capture-text.ts`). `bun tests/ci/capture-text.ts <image>...` runs it locally and needs `tesseract`. An
+  example name in a capture uses `studio` for a core and `demo@my-laptop` for a prompt; the check's `NEUTRAL_NAMES` list
+  holds the account and host names it accepts.
 
 ## Changelog
 

@@ -2,11 +2,13 @@ name: Release
 
 # A vX.Y.Z tag builds every artifact into a draft release, smoke-tests the uploaded files and then publishes it.
 # A manual dispatch builds the same set into a draft release and leaves it a draft, so the pipeline can be proven
-# without publishing anything. Either way the version must match apps/desktop/package.json (release-version.ts).
-# The macOS builds are signed with a Developer ID certificate and notarized with an App Store Connect API key, from the
-# repository secrets CSC_LINK (base64 .p12), CSC_KEY_PASSWORD, APPLE_API_KEY (.p8 contents), APPLE_API_KEY_ID and
-# APPLE_API_ISSUER; the Version job fails before any build when one is missing. Windows builds are not signed: there is
-# no Windows code-signing certificate yet.
+# without publishing anything. A published release is then mirrored into the release bucket behind get.doriterm.com and
+# its channel moved (#1969, docs/releasing.md); a dispatch mirrors its draft into the staging bucket instead. Either way
+# the version must match apps/desktop/package.json (release-version.ts).
+# The macOS builds, and the standalone macOS host binaries install.sh downloads, are signed with a Developer ID
+# certificate and notarized with an App Store Connect API key, from the repository secrets CSC_LINK (base64 .p12),
+# CSC_KEY_PASSWORD, APPLE_API_KEY (.p8 contents), APPLE_API_KEY_ID and APPLE_API_ISSUER; the Version job fails before
+# any build when one is missing. Windows builds are not signed: there is no Windows code-signing certificate yet.
 on:
   push:
     tags: ["v*.*.*"]
@@ -201,6 +203,23 @@ jobs:
             exit 1
           fi
           bash ../../.github/scripts/macos-notarize.sh "${dmgs[0]}"
+      # install.sh (#668) downloads the standalone host as a bare binary, outside the app electron-builder signs, and bun
+      # build --compile leaves it only an ad-hoc signature, which Gatekeeper rejects (#1992). It is signed with the app's
+      # Developer ID certificate under the hardened runtime, then notarized as a zip; a bare binary cannot be stapled.
+      - name: Sign and notarize the standalone host
+        if: matrix.os == 'mac'
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ runner.temp }}/notary/AuthKey.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          HOST: apps/desktop/dist/host/${{ matrix.os }}-${{ matrix.arch }}/doriface-host
+        run: |
+          bash .github/scripts/macos-sign-binary.sh "$HOST" apps/desktop/build/entitlements.host.mac.plist
+          # The hardened runtime kills a bun binary at its first start when its entitlements do not let it JIT.
+          "$HOST" --version
+          bash .github/scripts/macos-notarize.sh "$HOST"
       - name: Forget the App Store Connect API key
         if: always() && matrix.os == 'mac'
         run: rm -rf "$RUNNER_TEMP/notary"
@@ -218,6 +237,9 @@ jobs:
           spctl -a -vv -t open --context context:primary-signature "${dmgs[0]}" 2>&1 | tee "$RUNNER_TEMP/spctl-dmg.txt"
           grep -q "source=Notarized Developer ID" "$RUNNER_TEMP/spctl-dmg.txt"
           bash "$GITHUB_WORKSPACE/.github/scripts/macos-stapler.sh" validate "${dmgs[0]}"
+      - name: The standalone host is signed and notarized
+        if: matrix.os == 'mac'
+        run: bash .github/scripts/macos-assess-binary.sh "apps/desktop/dist/host/${{ matrix.os }}-${{ matrix.arch }}/doriface-host"
       # The zip's and the installer's .blockmap let electron-updater download only the blocks that changed since the
       # installed version. The dmg's is left out: stapling changed the dmg after electron-builder wrote it, and the updater
       # never downloads the dmg.
@@ -532,14 +554,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .github/scripts
-      - name: Download the zip and dmg from the draft release
+      - name: Download the zip, the dmg and the standalone host from the draft release
         run: |
           mkdir -p "$RUNNER_TEMP/dl"
           cd "$RUNNER_TEMP/dl"
           zip="Doriterm-$VERSION-arm64-mac.zip"
           dmg="Doriterm-$VERSION-arm64.dmg"
-          gh release download "$TAG" --pattern SHA256SUMS.txt --pattern "$zip" --pattern "$dmg"
-          grep -E "  ($zip|$dmg)\$" SHA256SUMS.txt | shasum -a 256 --check
+          host=doriface-host-mac-arm64
+          gh release download "$TAG" --pattern SHA256SUMS.txt --pattern "$zip" --pattern "$dmg" --pattern "$host"
+          grep -E "  ($zip|$dmg|$host)\$" SHA256SUMS.txt | shasum -a 256 --check
           ditto -x -k "$zip" app
       - name: The dmg is notarized and stapled
         working-directory: ${{ runner.temp }}/dl
@@ -572,6 +595,12 @@ jobs:
           grep -q "DevTools listening on" launch.log
           kill -0 "$pid"
           kill "$pid"
+      - name: The standalone host is signed and notarized and starts
+        working-directory: ${{ runner.temp }}/dl
+        run: |
+          chmod +x doriface-host-mac-arm64
+          bash "$GITHUB_WORKSPACE/.github/scripts/macos-assess-binary.sh" doriface-host-mac-arm64
+          ./doriface-host-mac-arm64 --version
       - name: Workflow summary
         if: always()
         run: |
@@ -582,7 +611,7 @@ jobs:
             echo "| --- | --- |"
             echo "| Job status | ${{ job.status }} |"
             echo "| File | Doriterm-$VERSION-arm64-mac.zip |"
-            echo "| Checks | checksums, codesign --verify, spctl (Notarized Developer ID), stapler validate, bundle version, launch |"
+            echo "| Checks | checksums, codesign --verify, spctl (Notarized Developer ID), stapler validate, bundle version, launch; doriface-host-mac-arm64: codesign --verify --strict, Developer ID, hardened runtime, spctl -t install (Notarized Developer ID), --version |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   smoke-windows:
@@ -704,4 +733,120 @@ jobs:
             echo "| --- | --- |"
             echo "| Job status | ${{ job.status }} |"
             echo "| Release | https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  mirror:
+    name: Mirror to get.doriterm.com
+    if: github.event_name == 'push'
+    needs: [version, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    # The R2 key pair scoped to this bucket and the release signing key live in this environment only (#1969).
+    environment: release-mirror
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.version.outputs.version }}
+      TAG: ${{ needs.version.outputs.tag }}
+      CHANNEL: ${{ needs.version.outputs.prerelease == 'true' && 'beta' || 'stable' }}
+      ROLLOUT: ${{ vars.RELEASE_ROLLOUT_PERCENT || '100' }}
+      MINIMUM: ${{ vars.RELEASE_MINIMUM_VERSION }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - name: Download the release
+        run: |
+          mkdir -p "$RUNNER_TEMP/release"
+          gh release download "$TAG" --dir "$RUNNER_TEMP/release"
+          gh release view "$TAG" --json assets > "$RUNNER_TEMP/assets.json"
+      - name: Mirror into doriterm-releases and move the channel
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: >-
+          bun .github/scripts/release-r2.ts mirror --bucket doriterm-releases --origin https://get.doriterm.com
+          --version "$VERSION" --channel "$CHANNEL" --rollout "$ROLLOUT" --minimum "$MINIMUM"
+          --dir "$RUNNER_TEMP/release" --assets "$RUNNER_TEMP/assets.json" --run-id "$GITHUB_RUN_ID"
+      # install.sh fetches it beside SHA256SUMS.txt; Ed25519 is deterministic, so a re-run produces the same bytes.
+      - name: Attach the checksums signature
+        run: |
+          if ! gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx SHA256SUMS.txt.sig; then
+            gh release upload "$TAG" "$RUNNER_TEMP/release/SHA256SUMS.txt.sig"
+          fi
+      - name: get.doriterm.com offers it
+        run: bun .github/scripts/release-r2.ts probe --origin https://get.doriterm.com --channel "$CHANNEL" --version "$VERSION"
+      - name: Workflow summary
+        if: always()
+        run: |
+          {
+            echo "## Mirror $TAG to https://get.doriterm.com"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Job status | ${{ job.status }} |"
+            echo "| Channel | $CHANNEL |"
+            echo "| Rollout | $ROLLOUT% |"
+            echo "| Download | https://get.doriterm.com/dl/host-linux-x64 |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  mirror-staging:
+    name: Mirror the draft to staging.get.doriterm.com
+    if: github.event_name == 'workflow_dispatch'
+    needs: [version, smoke-linux, smoke-mac, smoke-windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    # The R2 key pair scoped to this bucket and the release signing key live in this environment only (#1969).
+    environment: release-mirror-staging
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.version.outputs.version }}
+      TAG: ${{ needs.version.outputs.tag }}
+      CHANNEL: ${{ needs.version.outputs.prerelease == 'true' && 'beta' || 'stable' }}
+      ROLLOUT: ${{ vars.RELEASE_ROLLOUT_PERCENT || '100' }}
+      MINIMUM: ${{ vars.RELEASE_MINIMUM_VERSION }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - name: Download the release
+        run: |
+          mkdir -p "$RUNNER_TEMP/release"
+          gh release download "$TAG" --dir "$RUNNER_TEMP/release"
+          gh release view "$TAG" --json assets > "$RUNNER_TEMP/assets.json"
+      - name: Mirror into doriterm-releases-staging and move the channel
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: >-
+          bun .github/scripts/release-r2.ts mirror --bucket doriterm-releases-staging --origin https://staging.get.doriterm.com
+          --version "$VERSION" --channel "$CHANNEL" --rollout "$ROLLOUT" --minimum "$MINIMUM"
+          --dir "$RUNNER_TEMP/release" --assets "$RUNNER_TEMP/assets.json" --run-id "$GITHUB_RUN_ID"
+      - name: staging.get.doriterm.com offers it
+        run: bun .github/scripts/release-r2.ts probe --origin https://staging.get.doriterm.com --channel "$CHANNEL" --version "$VERSION"
+      - name: Workflow summary
+        if: always()
+        run: |
+          {
+            echo "## Mirror $TAG to https://staging.get.doriterm.com"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Job status | ${{ job.status }} |"
+            echo "| Channel | $CHANNEL |"
+            echo "| Rollout | $ROLLOUT% |"
+            echo "| Download | https://staging.get.doriterm.com/dl/host-linux-x64 |"
           } >> "$GITHUB_STEP_SUMMARY"

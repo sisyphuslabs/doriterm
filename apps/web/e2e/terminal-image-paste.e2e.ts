@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { createHash } from "node:crypto";
+import { asMac, copyImage, makePng, readRawBytes } from "./clipboard-image.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import { newOn, reconnect } from "./machine-switch.ts";
@@ -12,31 +13,7 @@ import { machineConnected } from "./sidebar-seed.ts";
 endOwnTerminals();
 test.use({ serviceWorkers: "block", permissions: ["clipboard-read", "clipboard-write"] });
 
-/** A PNG made in the page, as base64: `size` px square, a colour of its own so each test's bytes differ. */
-const makePng = (page: Page, size: number, hue: number): Promise<string> =>
-  page.evaluate(
-    async ([side, colour]) => {
-      const canvas = new OffscreenCanvas(side, side);
-      const context = canvas.getContext("2d");
-      if (context === null) throw new Error("no canvas");
-      context.fillStyle = `hsl(${colour} 80% 50%)`;
-      context.fillRect(0, 0, side, side);
-      const bytes = new Uint8Array(await (await canvas.convertToBlob({ type: "image/png" })).arrayBuffer());
-      let binary = "";
-      for (const byte of bytes) binary += String.fromCharCode(byte);
-      return btoa(binary);
-    },
-    [size, hue] as const,
-  );
-
 const sha256 = (base64: string): string => createHash("sha256").update(Buffer.from(base64, "base64")).digest("hex");
-
-/** Puts the PNG on the system clipboard, alone, as a screenshot leaves it. */
-const copyImage = (page: Page, png: string): Promise<void> =>
-  page.evaluate(async (data) => {
-    const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
-    await navigator.clipboard.write([new ClipboardItem({ "image/png": new Blob([bytes], { type: "image/png" }) })]);
-  }, png);
 
 /** The platform's paste chord as the browser delivers it: a keydown carrying its own `paste` command (#510, #862). */
 async function pressPaste(page: Page): Promise<void> {
@@ -139,6 +116,160 @@ test("an image past 8 MB is refused with a notice and nothing reaches the termin
   await expect(page.getByText("huge.png is 9.0 MB; at most 8 MB can be sent")).toBeVisible({ timeout: 15_000 });
   await page.keyboard.type("after\r");
   await expect(terminal).toContainText("before-after", { timeout: 15_000 });
+});
+
+// herdr-app binds Ctrl+V to terminal.paste_image (#1922). On a Mac Ctrl+V is not the paste key, so the app reads the
+// clipboard for an image, and without one, or where the page may not read it (the desktop app), the program gets ^V,
+// with keys typed meanwhile behind it. On Linux and Windows Ctrl+V stays the browser's paste, as before: an image goes
+// in as a file through the paste itself (#742) and text as text, with no clipboard permission needed.
+
+async function asLinux(page: Page): Promise<void> {
+  await page.addInitScript(() => Object.defineProperty(Navigator.prototype, "platform", { get: () => "Linux x86_64" }));
+}
+
+/** The page may not read the clipboard, as in the desktop app or after a person says no. */
+async function readDenied(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    Clipboard.prototype.read = () => Promise.reject(new DOMException("Read permission denied.", "NotAllowedError"));
+  });
+}
+
+test("Ctrl+V pastes the clipboard's image by its path on a Mac, as herdr-app does", async ({ page }) => {
+  await asMac(page);
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await copyImage(page, await makePng(page, 9, 60));
+  await page.keyboard.type("echo ");
+  await page.keyboard.press("Control+KeyV");
+  await expect(terminal).toContainText("doriface-paste-", { timeout: 30_000 });
+});
+
+test("Ctrl+V with no image on the clipboard sends ^V to the program on a Mac", async ({ page }) => {
+  await asMac(page);
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await page.evaluate(() => navigator.clipboard.writeText("only-text"));
+  await readRawBytes(page, terminal, 1);
+  await page.keyboard.press("Control+KeyV");
+  await expect(terminal).toContainText("HEX:16", { timeout: 15_000 });
+  await expect(terminal).not.toContainText("only-text");
+});
+
+test("Ctrl+V sends ^V on a Mac when the page may not read the clipboard, an image on it or not", async ({ page }) => {
+  await asMac(page);
+  await readDenied(page);
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await copyImage(page, await makePng(page, 9, 70));
+  await readRawBytes(page, terminal, 1);
+  await page.keyboard.press("Control+KeyV");
+  await expect(terminal).toContainText("HEX:16", { timeout: 15_000 });
+});
+
+test("a key typed while Ctrl+V reads the clipboard reaches the program after its ^V, on a Mac", async ({ page }) => {
+  await asMac(page);
+  // The clipboard answers only when the test says, as when a browser asks the person first.
+  await page.addInitScript(() => {
+    const read = Clipboard.prototype.read;
+    Clipboard.prototype.read = function held(this: Clipboard) {
+      return new Promise<ClipboardItems>((resolve) => {
+        Object.assign(window, { answerClipboard: () => resolve(read.call(this)) });
+      });
+    };
+  });
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await page.evaluate(() => navigator.clipboard.writeText("only-text"));
+  await readRawBytes(page, terminal, 2);
+  await page.keyboard.press("Control+KeyV");
+  await page.keyboard.press("x");
+  await page.waitForFunction(() => "answerClipboard" in window);
+  await page.evaluate(() => Reflect.get(window, "answerClipboard")());
+  await expect(terminal).toContainText(/HEX:\S+ \S+/u, { timeout: 15_000 });
+  await expect(terminal).toContainText("HEX:16 78");
+});
+
+test("a clipboard that never answers holds keys typed after Ctrl+V only briefly, and sends no ^V while it may still answer, on a Mac (#1989)", async ({
+  page,
+}) => {
+  await asMac(page);
+  // The read never settles, as when a browser's prompt is left unanswered; only Paste image's own bound lets keys out.
+  await page.addInitScript(() => {
+    Clipboard.prototype.read = () => new Promise<ClipboardItems>(() => undefined);
+  });
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await readRawBytes(page, terminal, 2);
+  await page.keyboard.press("Control+KeyV");
+  await page.keyboard.type("xy");
+  await expect(terminal).toContainText(/HEX:\S+ \S+/u, { timeout: 15_000 });
+  await expect(terminal).toContainText("HEX:78 79");
+  await expect(page.getByText("Waiting for the clipboard")).toBeVisible();
+});
+
+test("an image the clipboard gives after Ctrl+V's wait is pasted by its path then, after the keys typed meanwhile, with no ^V, on a Mac (#1938)", async ({
+  page,
+}) => {
+  await asMac(page);
+  // The clipboard answers only when the test says, as when Safari's Paste button waits for the person's click.
+  await page.addInitScript(() => {
+    const read = Clipboard.prototype.read;
+    Clipboard.prototype.read = function held(this: Clipboard) {
+      return new Promise<ClipboardItems>((resolve) => {
+        Object.assign(window, { answerClipboard: () => resolve(read.call(this)) });
+      });
+    };
+  });
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await copyImage(page, await makePng(page, 9, 90));
+  // With lnext off the tty hands a ^V to `read` as it is, and `tr` shows it as @.
+  await page.keyboard.type(
+    "stty -iexten; IFS= read -r line; printf 'GOT:%s\\n' \"$(printf '%s' \"$line\" | tr '\\026' '@')\"\r",
+  );
+  await expect(terminal).toContainText("read -r line", { timeout: 15_000 });
+  await page.keyboard.press("Control+KeyV");
+  await page.keyboard.type("zebra");
+  // Past the wait the keys reach the program while the clipboard is still asking, and a notice says it is waiting.
+  await expect(terminal).toContainText("zebra", { timeout: 15_000 });
+  const notice = page.getByText("Waiting for the clipboard");
+  await expect(notice).toBeVisible();
+  await page.evaluate(() => Reflect.get(window, "answerClipboard")());
+  await expect(terminal).toContainText("doriface-paste-", { timeout: 30_000 });
+  await expect(notice).toBeHidden();
+  await page.keyboard.press("Enter");
+  await expect(terminal).toContainText(/GOT:zebra[^@]*doriface-paste-\d+\.png/u, { timeout: 30_000 });
+});
+
+test("Ctrl+V pastes the clipboard's image by its path on Linux, though the page may not read the clipboard", async ({
+  page,
+}) => {
+  await asLinux(page);
+  await readDenied(page);
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await copyImage(page, await makePng(page, 9, 80));
+  await page.keyboard.type("echo ");
+  await page.keyboard.press("Control+KeyV");
+  await expect(terminal).toContainText("doriface-paste-", { timeout: 30_000 });
+});
+
+test("Ctrl+V pastes the clipboard's text on Linux, as before", async ({ page }) => {
+  await asLinux(page);
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  await page.evaluate(() => navigator.clipboard.writeText("only-text"));
+  await readRawBytes(page, terminal, 1);
+  await page.keyboard.press("Control+KeyV");
+  await expect(terminal).toContainText("HEX:6f", { timeout: 15_000 });
 });
 
 test("several lines of text still ask before they run, as clipboard-paste-protection does", async ({ page }) => {

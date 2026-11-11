@@ -56,24 +56,43 @@ export async function takeBackEnd(calls: SessionCalls, address: string): Promise
   }
 }
 
+/** Addresses whose latest End left no program running (killed, or already gone), whatever failed after it. */
+const killed = new Set<string>();
+
+/**
+ * True when the latest End of the session at `address` left no program running (it killed it, or found it already
+ * gone), even if that End then rejected because terminal.rm or the END label call failed: the session has ended,
+ * though End reported an error (#1342).
+ */
+export function killWentThrough(address: string): boolean {
+  return killed.has(address);
+}
+
 async function killAndRemove(calls: SessionCalls, address: string): Promise<void> {
   // The mark leaves with the kill, so a page closed before terminal.rm goes out still has the host remove it (END_LABEL).
   const marked = calls.label({ terminal: address, labels: { [END_LABEL]: "1" } });
   let notKilled = false;
+  killed.delete(address);
   const removed = (async () => {
     let ended: Pick<Terminal, "state">;
     try {
       ended = await calls.kill({ terminal: address });
     } catch (cause) {
       notKilled = !isGone(cause);
+      // A terminal already gone has no program left: End has done what it is for, whatever else then fails.
+      if (!notKilled) killed.add(address);
       throw cause;
     }
+    killed.add(address);
     if (ended.state === "finished") await calls.rm({ terminal: address });
   })();
   const failed = (await Promise.allSettled([marked, removed])).find(
     (outcome) => outcome.status === "rejected" && !isGone(outcome.reason),
   );
-  if (failed?.status !== "rejected") return;
+  if (failed?.status !== "rejected") {
+    killed.delete(address);
+    return;
+  }
   if (notKilled) {
     await takeBackEnd(calls, address).catch((cause: unknown) =>
       console.error(`take End's mark off ${address}: ${String(cause)}`),

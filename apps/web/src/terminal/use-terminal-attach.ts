@@ -6,11 +6,11 @@ import { terminalConfigStore } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
 import { CursorResets } from "./cursor-reset.ts";
 import { readDisplay } from "./display.ts";
-import { type EndHolder, holdAtEnd } from "./hold-view-at-end.ts";
+import { type EndHolder, fromEndOf, holdFromEnd, readerInputOn } from "./hold-view-from-end.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
 import { openFailure } from "./open-failure.ts";
 import { HISTORY_LINES, noteViewSize, viewAttach } from "./opening-attach.ts";
-import type { OutputPacer } from "./output-pacer.ts";
+import type { OutputPacer, ReplayOptions } from "./output-pacer.ts";
 import { type TerminalEnd, terminalEnd } from "./terminal-end.ts";
 import { type CoreAnswer, type Settled, settled, type Unsent, unsentReason } from "./terminal-settle.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
@@ -38,10 +38,28 @@ interface AttachSources {
   readonly focusWhenFree: (ready: WTerm) => void;
   readonly onEnd: ((address: string, end: TerminalEnd) => void) | undefined;
   readonly onEnded: (() => void) | undefined;
+  /** Called as each stream (first attach or reattach) starts, before what was typed meanwhile is written to it. */
+  readonly onStream?: RefObject<(() => void) | null>;
+  /**
+   * Keeps the view's `renderingPaused` prop in step with a replay's hold: @wterm/react applies that prop on every render,
+   * so a hold set on the terminal alone is let go by the next render of the view, mid-replay.
+   */
+  readonly holdPaint: (held: boolean) => void;
+}
+
+/**
+ * Every attach's first paint holds its replay: written as it arrives with the paint held, then drawn once it has
+ * settled (D5, #812). hc marks no end of the replay (the stream is its first paint, then live bytes), so the hold ends
+ * on a quiet gap, bounded by the replay caps. A view mounted anew (a phone crossing the layout breakpoint, a pane
+ * opened on a terminal already running) has no screen to keep, but its replay covers the last 2,000 history lines,
+ * and paced into view it walks them past the person at the bottom; held, it lands whole. A first attach that waited
+ * out of view (a background tab, #1187) is held the same way, so the tab appears at the end of its history (#1588).
+ */
+export function replayOnAttach(pacer: OutputPacer, options: ReplayOptions): void {
+  pacer.replay(options);
 }
 
 export interface Attachment {
-  readonly attach: (ready: WTerm) => void;
   /** The first attach is unanswered: the pane says it is opening, not a ready shell with nothing in it (#483). */
   readonly opening: boolean;
   readonly restarting: boolean;
@@ -56,7 +74,7 @@ export interface Attachment {
 /** What a pane does when a connection arrives: attach, replay, settle what the core says is left, and report unsent input. */
 export function useTerminalAttach(sources: AttachSources): Attachment {
   const { connection, address, pid, live, shown, wt, setWt, handle, stream, pending, pacer, output } = sources;
-  const { isFocused, focusWhenFree, onEnd, onEnded } = sources;
+  const { isFocused, focusWhenFree, onEnd, onEnded, onStream, holdPaint } = sources;
   const toasts = useToastManager();
   const [restarting, setRestarting] = useState(false);
   const [ended, setEnded] = useState(false);
@@ -83,6 +101,8 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
   );
 
   const attachedTo = useRef(connection);
+  /** The renderer last attached: null until the first attach, which waits until the pane is shown (#1187). */
+  const attachedView = useRef<WTerm | null>(null);
   const attachedBefore = useRef(false);
   const program = useRef(pid);
   const reportUnsent = (why: Unsent): void => {
@@ -142,6 +162,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
   const attach = (ready: WTerm): void => {
     setWt(ready);
     attachedTo.current = connection;
+    attachedView.current = ready;
     // A test hook, as crash-probe is: a spec sets window.__dorifaceAttachLog and reads which terminal re-attached when
     // a link came back (#639). Inert in the product, where nothing sets it.
     const attachLog: unknown = Reflect.get(globalThis, "__dorifaceAttachLog");
@@ -183,14 +204,33 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         if (ready.cols !== askedCols || ready.rows !== askedRows) attached.resize(ready.cols, ready.rows);
         // Reattached after a reconnect: the replay redraws everything, so the old screen and scrollback go first.
         if (attachedBefore.current) {
+          // Read the reader's place BEFORE the reset: afterwards the buffer is empty and every scroller reads as at the
+          // end, which pinned readers who were up in history to the bottom on every reconnect (#1393).
+          const fromEnd = fromEndOf(ready.element);
+          // wterm reads the emptied buffer the same way, and its first replay write would follow the output down: a
+          // reader who is away stays away until they scroll or type.
+          if (fromEnd > 0) ready.holdScrollAway();
           pacer.drop();
           output.reset();
           handle.current?.write(FULL_RESET);
-          // The reset leaves the scroller at the top, where the replay's rows climb past the reader (#1040).
+          // The reset leaves the scroller at the top, where the replay's rows climb past a reader who was at the end.
           endHold.current?.stop();
-          endHold.current = holdAtEnd(ready.element, () => pacer.busy);
+          // Only the reader's own input lets go early: on the terminal or what overlays it, its scrollbar included.
+          const reader = readerInputOn(ready.element.parentElement ?? ready.element);
+          endHold.current = holdFromEnd(ready.element, pacer, fromEnd, reader);
         }
         attachedBefore.current = true;
+        // Every attach's first paint is its replay: written as it arrives with the paint held, then drawn once it has
+        // settled, so a view mounted anew, or a tab first attached when switched to, does not walk its history past the
+        // person (D5, #812, #1588).
+        replayOnAttach(pacer, {
+          srtt: () => connection.rtt?.srtt,
+          hold: (held) => {
+            holdPaint(held);
+            ready.setRenderingPaused(held);
+          },
+        });
+        onStream?.current?.();
         const resets = new CursorResets();
         const credit = (count: number): void => {
           if (stream.current === attached) attached.consumed(count);
@@ -222,10 +262,12 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
 
   useEffect(() => {
     if (wt === null || !shown) return;
-    if (attachedTo.current === connection && reattachedFor.current === lostStreams) return;
+    // A renderer not attached yet (the first, or one mounted again by Try again) attaches here too, once shown.
+    const attached = attachedView.current === wt && attachedTo.current === connection;
+    if (attached && reattachedFor.current === lostStreams) return;
     reattachedFor.current = lostStreams;
     attach(wt);
   }, [wt, connection, shown, lostStreams]);
 
-  return { attach, opening, restarting, ended, unopened, clearUnopened: () => setUnopened(null), onEndNow };
+  return { opening, restarting, ended, unopened, clearUnopened: () => setUnopened(null), onEndNow };
 }

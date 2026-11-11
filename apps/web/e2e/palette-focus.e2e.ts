@@ -1,4 +1,5 @@
 import { expect, openNewTerminal, terminalCount, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
@@ -70,28 +71,53 @@ test("the open palette keeps keyboard input while a terminal starts and waits fo
   await expect(combobox).toHaveValue("abc");
 });
 
+// The app opens in Night whatever the device prefers (default-appearance.e2e.ts), so each run stores its theme before
+// the load; the device scheme is the other one, so only the stored pick can make the theme on screen the measured one.
 for (const theme of ["day", "night"] as const) {
   test.describe(`palette focus ring, ${theme}`, () => {
-    test.use({ viewport: { width: 1440, height: 900 }, colorScheme: theme === "day" ? "light" : "dark" });
+    test.use({ viewport: { width: 1440, height: 900 }, colorScheme: theme === "day" ? "dark" : "light" });
 
-    test("the palette field opened from the keyboard shows a focus indicator (#1495)", async ({ page }, testInfo) => {
+    test.beforeEach(async ({ page }) => {
+      await page.addInitScript(
+        (chosen) => localStorage.setItem("doriface.appearance", JSON.stringify({ theme: chosen, custom: [] })),
+        theme,
+      );
+    });
+
+    test("the palette field opened from the keyboard is ringed in the theme's own colour (#1495)", async ({
+      page,
+    }, testInfo) => {
       await page.goto("/");
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.style.colorScheme))
+        .toBe(theme === "day" ? "light" : "dark");
+
       const opener = (await openNewTerminal(page)).getByRole("textbox");
       await opener.focus();
-      await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+      await pressShortcut(page, "app.palette");
       const combobox = page.getByRole("combobox", { name: "Command" });
       await expect(combobox).toBeFocused();
+      // The field draws the ring as an outline in --ring (packages/ui/src/components/command-palette.tsx), and the probe
+      // is the browser's own resolution of that token, so any other outline, or this one in the other theme, fails here.
       const style = await combobox.evaluate((input) => {
+        const probe = document.createElement("span");
+        probe.style.color = "var(--ring)";
+        document.body.append(probe);
+        const ring = getComputedStyle(probe).color;
+        probe.remove();
         const computed = getComputedStyle(input);
         return {
-          visible: input.matches(":focus-visible"),
           outline: computed.outlineStyle,
-          shadow: computed.boxShadow,
+          width: Number.parseFloat(computed.outlineWidth),
+          color: computed.outlineColor,
+          ring,
         };
       });
       await page.screenshot({ path: testInfo.outputPath(`palette-focus-1440-${theme}.png`), animations: "disabled" });
-      expect(style.visible).toBe(true);
-      expect(style.outline !== "none" || style.shadow !== "none", JSON.stringify(style)).toBe(true);
+      console.log(`${theme}: ${JSON.stringify(style)}`);
+      expect(style.outline, JSON.stringify(style)).toBe("solid");
+      expect(style.width, JSON.stringify(style)).toBeGreaterThanOrEqual(2);
+      expect(style.color, JSON.stringify(style)).toBe(style.ring);
     });
   });
 }
