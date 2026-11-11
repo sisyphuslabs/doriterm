@@ -26,7 +26,7 @@ export function SettingHits(props: {
 }) {
   return (
     <section aria-label="Matching settings" data-setting-hits className="flex flex-col">
-      <h2 className="pb-1 text-lg font-semibold text-foreground md:text-xl">Matching settings</h2>
+      <h2 className="pb-1 text-xl font-semibold text-foreground">Matching settings</h2>
       <ul className="flex flex-col">
         {props.hits.map((hit) => (
           <li key={`${hit.section}:${hit.title}`} className="border-b border-border last:border-b-0">

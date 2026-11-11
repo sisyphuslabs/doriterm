@@ -1,6 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import { NOTICE_EVENTS, type NoticeEvent, type PushPrefs, type Terminal } from "@doriface/protocol";
-import { Button, Notice, SettingRow, Switch } from "@doriface/ui";
+import { Button, Notice, SettingRow, Switch, groupHeadingClass } from "@doriface/ui";
 import { useEffect, useSyncExternalStore } from "react";
 import { useConnection } from "../connection/store.ts";
 import { type DesktopNotices, desktopNotices } from "../push/desktop-notices.ts";
@@ -204,7 +204,7 @@ export function NotificationsSection() {
         </Notice>
       )}
       <section aria-labelledby="push-events" className="flex flex-col">
-        <h3 id="push-events" className="text-sm font-medium text-muted-foreground">
+        <h3 id="push-events" className={groupHeadingClass}>
           Notify me when
         </h3>
         {NOTICE_EVENTS.map((event) => (
@@ -227,7 +227,7 @@ export function NotificationsSection() {
       </section>
       {state.phase === "open" ? (
         <section aria-labelledby="push-machines" className="flex flex-col">
-          <h3 id="push-machines" className="text-sm font-medium text-muted-foreground">
+          <h3 id="push-machines" className={groupHeadingClass}>
             From these machines
           </h3>
           <MachineMutes connection={state.connection} prefs={view.prefs} disabled={off} />

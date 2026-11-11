@@ -1,4 +1,4 @@
-import { Button, Sheet } from "@doriface/ui";
+import { Button, Sheet, groupHeadingClass } from "@doriface/ui";
 import { addPack, removePack, removeKey, restoreKey } from "../keybar/operations.ts";
 import { packName } from "../keybar/entries.ts";
 import { FAVORITES_PACK_ID, PACKS } from "../keybar/packs.ts";
@@ -29,7 +29,7 @@ export function KeyPickerSheet({ open, onOpenChange, settings, host, readOnly }:
       <div className="flex flex-col gap-5">
         {groupedKeys(host).map(({ group, keys }) => (
           <section key={group} aria-label={GROUP_TITLE[group]} className="flex flex-col gap-2">
-            <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{GROUP_TITLE[group]}</h3>
+            <h3 className={groupHeadingClass}>{GROUP_TITLE[group]}</h3>
             <div className="flex flex-wrap gap-1.5">
               {keys.map((entry) => {
                 const on = hasKey(entry.id);
@@ -54,7 +54,7 @@ export function KeyPickerSheet({ open, onOpenChange, settings, host, readOnly }:
           </section>
         ))}
         <section aria-label="Packs" className="flex flex-col gap-2">
-          <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Packs</h3>
+          <h3 className={groupHeadingClass}>Packs</h3>
           <div className="flex flex-wrap gap-1.5">
             {PACK_IDS.map((id) => {
               const on = settings.packs.includes(id);
