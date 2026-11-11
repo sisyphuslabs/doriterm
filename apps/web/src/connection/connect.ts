@@ -9,7 +9,7 @@ import { canForwardPlainWs, openForwardedLink } from "./direct-forward.ts";
 import { BROWSER_DEPS, deviceKeyFor, type RelayDeps } from "./relay-deps.ts";
 import type { ConnectionSettings } from "./settings.ts";
 import { loopbackOnly } from "./loopback-address.ts";
-import { openWebSocketLink } from "./ws-link.ts";
+import { LinkAbortedError, openWebSocketLink } from "./ws-link.ts";
 
 const SUBPROTOCOL = "doriface.v1";
 const TOKEN_PREFIX = "doriface.token.";
@@ -19,6 +19,17 @@ export class DeviceNotPairedError extends Error {
   override readonly name = "DeviceNotPairedError";
   constructor() {
     super("The host does not know this device anymore. Pair it again.");
+  }
+}
+
+/**
+ * This computer's host is there and turned this page's loopback token down: it was started again with a new one. Dialing
+ * again with the same token cannot help; the new token can (#2003).
+ */
+export class LoopbackTokenError extends Error {
+  override readonly name = "LoopbackTokenError";
+  constructor() {
+    super("This computer's host no longer accepts this page's token. Set the token it prints now in Settings.");
   }
 }
 
@@ -114,11 +125,16 @@ async function openOnPath(
   options: OpenOptions,
 ): Promise<OpenConnection> {
   if (settings.mode === "loopback") {
+    const url = loopbackOnly(settings.loopbackUrl, "hc");
     const link = await openWebSocketLink(
-      loopbackOnly(settings.loopbackUrl, "hc"),
+      url,
       [SUBPROTOCOL, TOKEN_PREFIX + settings.token],
       signal === undefined ? {} : { signal },
-    );
+    ).catch(async (error: unknown) => {
+      if (!(error instanceof LinkAbortedError) && (await answersWithoutToken(url, signal)))
+        throw new LoopbackTokenError();
+      throw error;
+    });
     return { connection: await HcConnection.open(link, signal === undefined ? {} : { signal }), path: "loopback" };
   }
   const direct = await openDirect(settings, signal, deps, options);
@@ -131,6 +147,26 @@ async function openOnPath(
     path: "relay",
     ...(direct.reason === undefined ? {} : { directReason: direct.reason }),
   };
+}
+
+/** How long the probe below waits for the host's tokenless route; a host that is there answers on loopback at once. */
+const PROBE_MS = 2_000;
+
+/**
+ * Whether a host listens at `url`'s port though its `/v1/hc` did not open: the page cannot read the 401 a wrong token
+ * gets before the upgrade (#2003), but `/v1/e2ee` on the same port takes no token, so its opening tells a refused token
+ * from a host that is not there. Nothing is sent on it, and it is closed at once.
+ */
+async function answersWithoutToken(url: string, signal: AbortSignal | undefined): Promise<boolean> {
+  const probe = new URL(url);
+  probe.pathname = "/v1/e2ee";
+  try {
+    const link = await openWebSocketLink(probe.toString(), [], { timeoutMs: PROBE_MS, signal });
+    link.close();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 type DirectOutcome = { readonly connection: HcConnection } | { readonly reason: DirectReason | undefined };
