@@ -176,8 +176,7 @@ async function join(args: readonly string[], out: (text: string) => void, log: (
   if (await controlIsLive(stateDir)) {
     const joined = await requestControl(stateDir, { op: "mesh-join", ...request }, confirm);
     const meshId = isRecord(joined) ? joined["meshId"] : undefined;
-    if (isRecord(joined) && joined["withdrewOffer"] === true) out(OFFER_WITHDRAWN_NOTICE);
-    return out(`joined mesh ${String(meshId)}; the running host keeps the session for sync\n`);
+    return out(joinedReport(String(meshId), isRecord(joined) && joined["withdrewOffer"] === true, true));
   }
   const core = await readHcCore({ hc: values.hc, session: values.session });
   const identity = loadHostIdentity(stateDir);
@@ -197,9 +196,14 @@ async function join(args: readonly string[], out: (text: string) => void, log: (
     log,
   });
   joined.secure.close();
-  if (joined.withdrewOffer) out(OFFER_WITHDRAWN_NOTICE);
-  out(`joined mesh ${joined.meshId}; start doriface-host to take part\n`);
+  out(joinedReport(joined.meshId, joined.withdrewOffer, false));
 }
+
+/** What a finished `mesh join` prints, through the running host or without one. */
+export const joinedReport = (meshId: string, withdrewOffer: boolean, running: boolean): string =>
+  `${withdrewOffer ? OFFER_WITHDRAWN_NOTICE : ""}joined mesh ${meshId}; ${
+    running ? "the running host keeps the session for sync" : "start doriface-host to take part"
+  }\n`;
 
 export async function meshJoinCommand(
   args: readonly string[],

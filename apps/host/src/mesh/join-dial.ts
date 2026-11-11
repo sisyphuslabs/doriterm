@@ -134,7 +134,8 @@ export async function joinMesh(options: JoinOptions): Promise<Joined> {
     return { ...(await dialAndJoin(options, invite, inviter)), withdrewOffer };
   } catch (error) {
     // The offer stays withdrawn: reopening it would hand out an invite the person may no longer want (#2136).
-    throw new JoinRefused(`${error instanceof Error ? error.message : String(error)}. ${OFFER_WITHDRAWN}`);
+    const reason = (error instanceof Error ? error.message : String(error)).replace(/\.$/, "");
+    throw new JoinRefused(`${reason}. ${OFFER_WITHDRAWN}`, { cause: error });
   }
 }
 

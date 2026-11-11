@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type ControlRequest, listenControl } from "../control.ts";
-import { meshJoinCommand, OFFER_WITHDRAWN_NOTICE } from "./mesh-join.ts";
+import { joinedReport, meshJoinCommand, OFFER_WITHDRAWN_NOTICE } from "./mesh-join.ts";
 
 const key = (byte: number): string => base64urlEncode(new Uint8Array(32).fill(byte));
 const LINK = `doriface://pair#h=${hostIdOf(new Uint8Array(32).fill(2))}&k=${key(1)}&s=${key(2)}&p=${key(3)}&r=wss%3A%2F%2Frelay.example&m=1`;
@@ -42,6 +42,12 @@ test("mesh join tells its caller when the running host withdrew its own mesh inv
   const quiet: string[] = [];
   await joinWith([LINK, "--yes"], { meshId: "m1", withdrewOffer: false }, (text) => void quiet.push(text));
   expect(quiet.join("")).not.toContain(OFFER_WITHDRAWN_NOTICE);
+});
+
+test.each([true, false])("a join with no running host reports a withdrawn invite too (withdrew=%p)", (withdrew) => {
+  const said = joinedReport("m1", withdrew, false);
+  expect(said.startsWith(OFFER_WITHDRAWN_NOTICE)).toBe(withdrew);
+  expect(said).toEndWith("joined mesh m1; start doriface-host to take part\n");
 });
 
 test("mesh join --from-file joins with the link the file holds (#821)", async () => {
