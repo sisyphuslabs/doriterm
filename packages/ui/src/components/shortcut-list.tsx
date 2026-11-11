@@ -1,5 +1,6 @@
 import { useId } from "react";
 import { cn } from "../lib/cn.ts";
+import { groupHeadingClass } from "./input.tsx";
 import { Kbd } from "./kbd.tsx";
 
 export interface ShortcutRow {
@@ -29,7 +30,7 @@ export function ShortcutList({ groups, className }: ShortcutListProps) {
     <div className={cn("flex flex-col gap-4", className)}>
       {groups.map((group, index) => (
         <section key={group.title} aria-labelledby={`${id}-${index}`} className="flex flex-col">
-          <h3 id={`${id}-${index}`} className="pb-1 text-sm font-semibold text-muted-foreground">
+          <h3 id={`${id}-${index}`} className={cn("pb-1", groupHeadingClass)}>
             {group.title}
           </h3>
           <ul className="flex flex-col">
@@ -38,7 +39,7 @@ export function ShortcutList({ groups, className }: ShortcutListProps) {
                 key={row.id}
                 className="flex min-h-(--row) items-center justify-between gap-3 border-b border-border py-1 last:border-b-0"
               >
-                <span className="min-w-0 truncate text-sm text-foreground">{row.label}</span>
+                <span className="min-w-0 truncate text-base text-foreground">{row.label}</span>
                 <span className="flex shrink-0 flex-wrap justify-end gap-1.5">
                   {row.chords.map((keys) => (
                     <Kbd key={keys.join("+")} keys={keys} persistent />

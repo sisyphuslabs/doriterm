@@ -43,6 +43,17 @@ export function attentionMark(terminal: Session): string | null {
   return terminal.status?.state === "done" ? String(terminal.turn ?? 0) : null;
 }
 
+/** Each terminal's seen copy, so a terminal that did not change stays the same object from render to render (#2086). */
+const seenCopies = new WeakMap<Session, Session>();
+
+function seenCopy(terminal: Session): Session {
+  const known = seenCopies.get(terminal);
+  if (known !== undefined) return known;
+  const copy: Session = { ...terminal, seen: true };
+  seenCopies.set(terminal, copy);
+  return copy;
+}
+
 /**
  * The terminals as this screen reads them: one that finished and whose finish this screen has been shown is idle (#611).
  * Every surface reads the selector, so marking the session here reaches the tab glyph, the sidebar's groups and counts,
@@ -55,7 +66,7 @@ export function withAttention(terminals: readonly Session[], seen: Seen): readon
     const mark = attentionMark(terminal);
     if (mark === null || terminal.seen === true || seen[terminal.address] !== mark) return terminal;
     marked = true;
-    return { ...terminal, seen: true };
+    return seenCopy(terminal);
   });
   return marked ? shown : terminals;
 }

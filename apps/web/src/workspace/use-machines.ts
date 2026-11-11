@@ -7,6 +7,7 @@ import { graceEnds, graceViews } from "./machine-grace.ts";
 import { machineEntries, type MachineEntry } from "./machines.ts";
 import type { Session } from "./model.ts";
 import { withReach } from "./reach.ts";
+import { useSteady } from "./steady.ts";
 
 export { MACHINE_REFRESH_MS };
 
@@ -93,9 +94,8 @@ export function useMachines(connection: HcConnection, terminals: readonly Termin
   const views = useMemo(() => graceViews(read.views, read.held, now), [read, now]);
   const { id: coreId, name: coreName } = connection.hello.core;
   const reached = useMemo(() => withReach(terminals, views), [terminals, views]);
-  const entries = useMemo(
-    () => machineEntries({ id: coreId, name: coreName }, views, reached),
-    [coreId, coreName, views, reached],
+  const entries = useSteady(
+    useMemo(() => machineEntries({ id: coreId, name: coreName }, views, reached), [coreId, coreName, views, reached]),
   );
   // A refused dial is not lost: hc records it as the machine's `why`, which the re-read brings in.
   const retry = useCallback(

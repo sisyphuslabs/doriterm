@@ -38,6 +38,8 @@ export interface HcSocket {
   readonly sent: () => readonly string[];
   /** Holds every later frame from the host `ms`, in order, as a relay round trip does. */
   readonly delay: (ms: number) => void;
+  /** Hands later frames from the host over at most `bytesPerSecond`, as a slow link does; Infinity lifts the limit. */
+  readonly throttle: (bytesPerSecond: number) => void;
   /** Closes every open connection; while `down` is true the page's reconnects are refused. */
   readonly drop: (down: boolean) => Promise<void>;
   readonly restore: () => void;
@@ -120,6 +122,7 @@ export async function routeHcSocket(
   let opened = 0;
   let refused = 0;
   let delay = 0;
+  let rate = Number.POSITIVE_INFINITY;
   let lastDue = 0;
   let hostMessages = 0;
   let held: readonly string[] = [];
@@ -199,11 +202,11 @@ export async function routeHcSocket(
           hold.parked.push(() => deliverOne(frame, text));
           continue;
         }
-        lastDue = Math.max(Date.now() + delay, lastDue);
+        lastDue = Math.max(Date.now() + delay, lastDue) + (frame.length / rate) * 1000;
         const wait = Math.max(0, lastDue - Date.now());
         if (wait > 0 || draining || typeof frame === "string") {
-          // A lagged frame goes on the ordered queue, and so does any frame behind one still queued (a delay just
-          // lowered to 0), so nothing overtakes it. Text is never joined to binary.
+          // A lagged frame (delayed or throttled) goes on the ordered queue, and so does any frame behind one still
+          // queued (a delay just lowered to 0), so nothing overtakes it. Text is never joined to binary.
           pass();
           queued.push({ at: lastDue, deliver: () => deliverOne(frame, text) });
           if (!draining) drain();
@@ -222,6 +225,7 @@ export async function routeHcSocket(
     refused: () => refused,
     sent: () => sent,
     delay: (ms) => void (delay = ms),
+    throttle: (bytesPerSecond) => void (rate = bytesPerSecond),
     drop: async (stayDown) => {
       down = stayDown;
       const closing = [...live].map((socket) => socket.close({ code: 1011, reason: "relay blip" }));

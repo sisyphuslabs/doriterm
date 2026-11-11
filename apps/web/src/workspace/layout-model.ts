@@ -1,6 +1,7 @@
 import type { JsonObject, Terminal } from "@doriface/protocol";
 import { addTab, docSpaces, freshId, type Node, panesOf, tabsOf, terminalBlock } from "@doriface/protocol/layout";
 import { spaceKey, tabKey, type View } from "../layout/view.ts";
+import { looseTerminals } from "./adoption.ts";
 import { machineOf, SPACE_LABEL } from "./model.ts";
 import { type MachineIds, tabKey as terminalKey } from "./tab-keys.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
@@ -64,6 +65,9 @@ const mountOf = (tab: LayoutTab, pane: LayoutPane): Mount => ({
   pane: pane.mount ?? pane.id,
 });
 
+/** No machine listed: what tab-keys.ts remembers a terminal by before machine.list names its machine. */
+const UNLISTED: MachineIds = { byName: new Map(), byId: new Map() };
+
 /**
  * A document tab that takes over a terminal this screen showed in a tab of no document (the first live terminal shown
  * alone while its tab was still being written, or a loose tab) keeps that tab's panel and pane keys, so the terminal's
@@ -78,6 +82,10 @@ export function keepMounts(tabs: readonly LayoutTab[], mounts: Mounts, ids: Mach
   const inUse = new Set(tabs.flatMap((tab) => (tab.transient ? [tab.key] : [])));
   for (const taken of mounts.taken.values()) if (taken !== null) inUse.add(taken.mount.tab);
   const present = new Set(tabs.map((tab) => tab.key));
+  // A view recorded while its machine was not yet listed is remembered by the `name:` key; once the machine is listed
+  // the same terminal's key is `id:`, so that render looks under both (#2107).
+  const recordedAs = (address: string): string | undefined =>
+    [terminalKey(address, ids), terminalKey(address, UNLISTED)].find((key) => mounts.shown.has(key));
   const kept = tabs.map((tab): LayoutTab => {
     if (tab.transient) {
       const pane = tab.panes[0];
@@ -86,12 +94,15 @@ export function keepMounts(tabs: readonly LayoutTab[], mounts: Mounts, ids: Mach
       const went = mounts.docs.get(shownAs);
       const inherited = went !== undefined && !present.has(went.tab) ? went : undefined;
       mounts.shown.set(shownAs, inherited ?? { tab: tab.key, pane: pane.id });
+      // Once its machine is listed, the `name:` record from before is stale: no later tab may take it (#2141).
+      const unlisted = terminalKey(pane.address, UNLISTED);
+      if (unlisted !== shownAs) mounts.shown.delete(unlisted);
       if (inherited === undefined) return tab;
       return { ...tab, mount: inherited.tab, panes: [{ ...pane, mount: inherited.pane }] };
     }
     if (!mounts.taken.has(tab.key)) {
-      const pane = tab.panes.find((each) => each.address !== null && mounts.shown.has(terminalKey(each.address, ids)));
-      const shownAs = pane?.address == null ? undefined : terminalKey(pane.address, ids);
+      const pane = tab.panes.find((each) => each.address !== null && recordedAs(each.address) !== undefined);
+      const shownAs = pane?.address == null ? undefined : recordedAs(pane.address);
       const mount = shownAs === undefined ? undefined : mounts.shown.get(shownAs);
       const free = mount !== undefined && !inUse.has(mount.tab);
       mounts.taken.set(tab.key, pane !== undefined && mount !== undefined && free ? { pane: pane.id, mount } : null);
@@ -289,38 +300,23 @@ export function findTerminal(tabs: readonly LayoutTab[], address: string): { tab
 const holds = (folder: string, dir: string): boolean =>
   folder !== "" && (dir === folder || dir.startsWith(folder.endsWith("/") ? folder : `${folder}/`));
 
-/** Addresses by their numbers (`t9` before `t10`), for terminals started in the same millisecond. */
-const BY_ADDRESS = new Intl.Collator("en", { numeric: true });
-
 /** The space adopted terminals with no space of their own go to, as herdr-app names its fallback. */
 export const HOME_SPACE = "Home";
 
 /**
- * The document with every live terminal of its machine that no tab shows adopted as a tab of its own (#404): in the space
- * its `space` label names (made when there is none, as that label named its space before #404), else in the space
- * whose folder holds its working directory (the deepest such folder), else in the machine's Home space, made when there
- * is none. A terminal another one started (`parent`) is not a tab of its own. Tabs are added in the order the terminals
- * started, not the feed's: hc lists them by address as text, so `t10` came before `t9` (#1269). Null when every terminal
- * has a tab, so nothing is written; read inside the document's edit, so a reload or a second device adopts nothing twice.
+ * The document with every terminal of its machine that is loose (`looseTerminals`: live, no tab shows it, and it gets a
+ * tab of its own) adopted as one (#404): in the space its `space` label names (made when there is none, as that label
+ * named its space before #404), else in the space whose folder holds its working directory (the deepest such folder),
+ * else in the machine's Home space, made when there is none. Tabs are added in the order the terminals started (#1269).
+ * Null when every terminal has a tab, so nothing is written; read inside the document's edit, so a reload or a second
+ * device adopts nothing twice.
  */
 export function adoptLoose(
   doc: JsonObject | null,
   terminals: readonly Terminal[],
   makeId: (prefix: "tb" | "p" | "spc") => string = freshId,
 ): JsonObject | null {
-  const shown = new Set(
-    doc === null
-      ? []
-      : tabsOf(doc).flatMap((tab) =>
-          panesOf(tab.root).flatMap((pane) => (pane.terminal === null ? [] : [pane.terminal])),
-        ),
-  );
-  const loose = terminals
-    .filter(
-      (terminal) =>
-        terminal.state === "live" && (terminal.parent ?? null) === null && !shown.has(localOf(terminal.address)),
-    )
-    .toSorted((a, b) => a.created_ms - b.created_ms || BY_ADDRESS.compare(a.address, b.address));
+  const loose = looseTerminals(doc, terminals);
   if (loose.length === 0) return null;
   const spaces = doc === null ? [] : docSpaces(doc);
   let home = spaces.find((space) => space.name === HOME_SPACE && space.folder === "")?.id;

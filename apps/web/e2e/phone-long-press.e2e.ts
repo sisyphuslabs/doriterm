@@ -1,4 +1,7 @@
 import type { Page } from "@playwright/test";
+import { writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, test } from "./fixtures.ts";
 import { openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 import { pointOnRowStart, rowEnd } from "./terminal-points.ts";
@@ -64,6 +67,63 @@ test("a drag after the hold takes what it reached", async ({ page }) => {
   await expect(menu(page)).toBeVisible();
   await menu(page).getByRole("menuitem", { name: "Copy" }).click();
   await expect.poll(() => clipboard(page)).toContain("beta");
+});
+
+test("a drag after the hold keeps the drag its own when the program redraws the row under the finger (#2057)", async ({
+  page,
+}, info) => {
+  const terminal = await openPhoneTerminal(page);
+  await page.keyboard.type("seq 1 120\r");
+  await expect(terminal).toContainText("120", { timeout: 15_000 });
+  // The program draws the row again once the hold has picked its word, as a prompt, a clock or a progress line does.
+  const redraw = join(tmpdir(), `long-press-redraw-${info.testId}-${info.repeatEachIndex}`);
+  await page.keyboard.type(
+    `printf 'redraw-%s' 'alpha beta gamma'; until [ -e ${redraw} ]; do sleep 0.05; done; printf '\\r\\033[Kredraw-%s!' 'alpha beta gamma'; cat\r`,
+  );
+  await expect(terminal).toContainText("redraw-alpha beta gamma", { timeout: 15_000 });
+  await page.evaluate(() => {
+    const seen = { touched: null as EventTarget | null, moves: [] as Event[] };
+    Object.assign(window, { dragSeen: seen });
+    // The browser sends a touch's moves to the node it came down on, redrawn away or not: they are counted there.
+    window.addEventListener(
+      "touchstart",
+      (event) => {
+        seen.touched = event.target;
+        event.target?.addEventListener("touchmove", (move) => seen.moves.push(move), { passive: true });
+      },
+      { capture: true, passive: true },
+    );
+  });
+  const seen = () =>
+    page.evaluate(() => {
+      const { touched, moves } = (window as unknown as { dragSeen: { touched: EventTarget | null; moves: Event[] } })
+        .dragSeen;
+      return {
+        redrawn: touched instanceof Node && !touched.isConnected,
+        moves: moves.length,
+        cancelled: moves.filter((move) => move.defaultPrevented).length,
+      };
+    });
+  await page.evaluate(() => navigator.clipboard.writeText("nothing"));
+
+  const at = await pointOnRowStart(terminal, "redraw-alpha beta gamma");
+  const end = await rowEnd(terminal, "redraw-alpha beta gamma");
+  const touch = await Touch.on(page);
+  await touch.down(at);
+  await expect.poll(() => painted(page).count()).toBeGreaterThan(0);
+  await writeFile(redraw, "");
+  await expect(terminal).toContainText("redraw-alpha beta gamma!");
+  await expect.poll(async () => (await seen()).redrawn).toBe(true);
+  await touch.drag(at, end);
+  await touch.up(end);
+  // Every move of the drag was the selection's: one left to the browser lets it take the drag as a pan.
+  const { moves, cancelled } = await seen();
+  expect(moves).toBeGreaterThan(0);
+  expect(cancelled).toBe(moves);
+  await expect(menu(page)).toBeVisible();
+  await menu(page).getByRole("menuitem", { name: "Copy" }).click();
+  await expect.poll(() => clipboard(page)).toContain("beta");
+  await page.keyboard.press("Control+C");
 });
 
 test("a tap still types and a swipe still scrolls the scrollback", async ({ page }) => {

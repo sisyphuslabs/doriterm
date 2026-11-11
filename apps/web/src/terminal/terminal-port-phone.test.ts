@@ -100,7 +100,7 @@ describe("a press that lets the field go on its pointerdown and takes it on its 
     // the terminal scrolls itself while it follows output.
     await Promise.resolve();
     expect(regainingFocus(field as unknown as EventTarget)).toBe(true);
-    expect([...listeners.keys()].toSorted()).toEqual(["click", "pointercancel", "pointerup"]);
+    expect([...listeners.keys()].toSorted()).toEqual(["click", "contextmenu", "pointercancel", "pointerup"]);
     listeners.get("pointerup")?.({ clientX: 1, clientY: 1 });
     expect(regainingFocus(field as unknown as EventTarget)).toBe(true);
     port.focus();
@@ -145,13 +145,35 @@ describe("a press that lets the field go on its pointerdown and takes it on its 
     expect(regainingFocus(field as unknown as EventTarget)).toBe(false);
   });
 
+  test("a press that opens a context menu (a ctrl-click on macOS) never clicks, so it ends the hold the same way (#2048)", async () => {
+    const { port, field, order, listeners, button } = phoneField(true, "none", "");
+    port.letGo(button, 1);
+    listeners.get("contextmenu")?.({});
+    expect(order).toEqual(["blur:none", "focus:none"]);
+    expect(listeners.size).toBe(0);
+    await Promise.resolve();
+    expect(regainingFocus(field as unknown as EventTarget)).toBe(false);
+  });
+
+  test("a context menu from the press's own pointer (a ctrl-click in Chrome or Firefox) ends the hold (#2149)", async () => {
+    const { port, field, order, listeners, button } = phoneField(true, "none", "");
+    port.letGo(button, 1);
+    listeners.get("contextmenu")?.({ pointerId: 1 });
+    expect(order).toEqual(["blur:none", "focus:none"]);
+    expect(listeners.size).toBe(0);
+    await Promise.resolve();
+    expect(regainingFocus(field as unknown as EventTarget)).toBe(false);
+  });
+
   test("another pointer lifting or cancelled during the press is not its end: the hold stays until its own click (#2048)", async () => {
     const { port, field, order, listeners, button } = phoneField(true, "none", "");
     port.letGo(button, 1);
     listeners.get("pointerup")?.({ clientX: 40, clientY: 40, pointerId: 2 });
     listeners.get("pointercancel")?.({ pointerId: 2 });
+    // A second finger's long-press elsewhere opens its own context menu (#2099).
+    listeners.get("contextmenu")?.({ pointerId: 2 });
     expect(order).toEqual(["blur:none"]);
-    expect([...listeners.keys()].toSorted()).toEqual(["click", "pointercancel", "pointerup"]);
+    expect([...listeners.keys()].toSorted()).toEqual(["click", "contextmenu", "pointercancel", "pointerup"]);
     await Promise.resolve();
     expect(regainingFocus(field as unknown as EventTarget)).toBe(true);
     // The press's own pointer lifting off its button still gives the field back.

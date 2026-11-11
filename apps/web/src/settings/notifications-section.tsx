@@ -1,13 +1,13 @@
 import type { HcConnection } from "@doriface/client";
 import { NOTICE_EVENTS, type NoticeEvent, type PushPrefs, type Terminal } from "@doriface/protocol";
-import { Button, Notice, SettingRow, Switch } from "@doriface/ui";
+import { Button, Notice, SettingRow, Switch, groupHeadingClass } from "@doriface/ui";
 import { useEffect, useSyncExternalStore } from "react";
 import { useConnection } from "../connection/store.ts";
 import { type DesktopNotices, desktopNotices } from "../push/desktop-notices.ts";
 import { pushSettings, type PushView } from "../push/push-settings.ts";
 import { idOfMachine } from "../workspace/model.ts";
-import { noticeControls } from "./notice-controls.ts";
 import { useMachines } from "../workspace/use-machines.ts";
+import { noticeControls } from "./notice-controls.ts";
 
 const NO_TERMINALS: readonly Terminal[] = [];
 
@@ -155,18 +155,28 @@ export function NotificationsSection() {
             <div className="flex gap-2">
               {controls.actions.map((action) =>
                 action === "check-again" ? (
-                  <Button key={action} loading={view.busy} disabled={view.busy} onClick={() => void settings.load()}>
+                  <Button
+                    key={action}
+                    loading={controls.running === action}
+                    disabled={view.busy !== null}
+                    onClick={() => void settings.load()}
+                  >
                     Check again
                   </Button>
                 ) : action === "turn-off" ? (
-                  <Button key={action} loading={view.busy} disabled={view.busy} onClick={() => void settings.turnOff()}>
+                  <Button
+                    key={action}
+                    loading={controls.running === action}
+                    disabled={view.busy !== null}
+                    onClick={() => void settings.turnOff()}
+                  >
                     Turn off
                   </Button>
                 ) : (
                   <Button
                     key={action}
                     variant="primary"
-                    loading={view.busy}
+                    loading={controls.running === action}
                     disabled={controls.turnOnDisabled}
                     onClick={() => void settings.turnOn()}
                   >
@@ -183,7 +193,7 @@ export function NotificationsSection() {
             view.tested
               ? "Sent. It should appear in a moment."
               : desktop
-                ? "Runs the checks an agent's notification from this computer passes, then shows one."
+                ? "Runs the checks an agent's notification passes, whichever machine it runs on, then shows one."
                 : "Checks that this device gets them."
           }
           control={
@@ -204,7 +214,7 @@ export function NotificationsSection() {
         </Notice>
       )}
       <section aria-labelledby="push-events" className="flex flex-col">
-        <h3 id="push-events" className="text-sm font-medium text-muted-foreground">
+        <h3 id="push-events" className={groupHeadingClass}>
           Notify me when
         </h3>
         {NOTICE_EVENTS.map((event) => (
@@ -227,7 +237,7 @@ export function NotificationsSection() {
       </section>
       {state.phase === "open" ? (
         <section aria-labelledby="push-machines" className="flex flex-col">
-          <h3 id="push-machines" className="text-sm font-medium text-muted-foreground">
+          <h3 id="push-machines" className={groupHeadingClass}>
             From these machines
           </h3>
           <MachineMutes connection={state.connection} prefs={view.prefs} disabled={off} />

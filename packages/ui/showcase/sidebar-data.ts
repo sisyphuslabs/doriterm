@@ -48,15 +48,13 @@ export const MACHINES: readonly {
   local: boolean;
   state: string;
   alarm?: boolean;
-  live: number;
   spaces: readonly Space[];
 }[] = [
-  { name: "studio", local: true, state: "this machine", live: 6, spaces: ONE_MACHINE_SPACES },
+  { name: "studio", local: true, state: "this machine", spaces: ONE_MACHINE_SPACES },
   {
     name: "build-box",
     local: false,
     state: "connected",
-    live: 2,
     spaces: [{ id: "infra", name: "infra", tabs: 2, attention: "working", color: "blue" }],
   },
   {
@@ -64,7 +62,6 @@ export const MACHINES: readonly {
     local: false,
     state: "offline",
     alarm: true,
-    live: 0,
     spaces: [{ id: "train", name: "trainer", tabs: 1, color: "green" }],
   },
 ];

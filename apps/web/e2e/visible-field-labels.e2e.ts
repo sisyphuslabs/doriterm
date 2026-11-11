@@ -1,5 +1,6 @@
 import { devices, type Locator, type Page } from "@playwright/test";
-import { endAgent, startAgent, startShell } from "./agents.ts";
+import { agentRow, endAgent, startAgent, startShell } from "./agents.ts";
+import { startAskingAgent } from "./approval-agent.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { openPhoneTerminal } from "./phone-key-bar.ts";
 import { stubSpeech } from "./speech-stub.ts";
@@ -151,6 +152,30 @@ for (const width of [390, 1440] as const) {
         await expectVisibleLabel(page.getByRole("textbox", { name: `Transcript for ${name}` }));
       } finally {
         endAgent("host", address);
+      }
+    });
+
+    // A typed answer's field is opened by its row; its label is the row's words, not only its placeholder (#1580).
+    test("a typed approval answer shows its label", async ({ page }) => {
+      const name = `label-typed-${width}-${crypto.randomUUID().slice(0, 6)}`;
+      const agent = startAskingAgent(name, "question");
+      try {
+        await page.goto("/");
+        await agentRow(page, name, false).click({ timeout: 20_000 });
+        const card = page.locator(`[data-approval="${agent.address}"]`);
+        await expect(card).toContainText("Claude Code", { timeout: 15_000 });
+        await card.locator('[data-option="4"]').click();
+        const answer = card.getByRole("textbox", { name: "Type something." });
+        await expectVisibleLabel(answer);
+        // The label takes a line of its own; the field and Send still share one, so the banner over the terminal grows by
+        // the label alone.
+        const [field, send] = await Promise.all([
+          answer.boundingBox(),
+          card.getByRole("button", { name: "Send" }).boundingBox(),
+        ]);
+        expect(Math.abs((field?.y ?? 0) - (send?.y ?? -100))).toBeLessThanOrEqual(1);
+      } finally {
+        agent.end();
       }
     });
   });
