@@ -1,19 +1,10 @@
-import { devices, type Page } from "@playwright/test";
+import { devices } from "@playwright/test";
 import { endAgent, startAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
+import { drawnUnderSettings } from "./under-settings.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
 test.use({ ...phone, serviceWorkers: "block" });
-
-/** Every element of the workspace kept under Settings (#607) whose own computed visibility would paint it. */
-const drawnUnderSettings = (page: Page) =>
-  page
-    .locator("[inert] *")
-    .evaluateAll((elements) =>
-      elements
-        .filter((element) => getComputedStyle(element).visibility !== "hidden")
-        .map((element) => element.getAttribute("aria-label") ?? element.tagName.toLowerCase()),
-    );
 
 // Settings paints over a workspace it keeps mounted and hidden, so nothing of that workspace may be drawn while it is
 // open, however a part reveals itself: on a touch screen an agent row keeps its More visible (#808; More alone since
