@@ -36,8 +36,15 @@ const savedTerminals = (): string[] =>
 
 const tabsOf = (page: Page) => page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
 
-const focusedAddress = (page: Page): Promise<string | null> =>
-  page.locator('[data-focused="true"] [data-terminal]').getAttribute("data-terminal", { timeout: 15_000 });
+/** The terminals the selected tab's panel shows: the tab in view, not a pane focused in a tab kept mounted behind it. */
+const inSelectedTab = (page: Page): Promise<string[]> =>
+  page.evaluate(() => {
+    const tab = document.querySelector('[role="tablist"][aria-label="Tabs"] [role="tab"][aria-selected="true"]');
+    const panel = document.getElementById(tab?.getAttribute("aria-controls") ?? "");
+    return [...(panel?.querySelectorAll("[data-terminal]") ?? [])].map(
+      (each) => each.getAttribute("data-terminal") ?? "",
+    );
+  });
 
 test("an ended tab one device shows as ended goes when another device, which has it out of view, drops it, and the first says why", async ({
   page,
@@ -108,7 +115,7 @@ test("a split whose terminal another device adopted while its write waited leave
 
     // The held write finds the terminal shown and writes nothing; the view goes to the tab that shows it.
     release();
-    await expect.poll(() => focusedAddress(page), { timeout: 15_000 }).toBe(adopted);
+    await expect.poll(() => inSelectedTab(page), { timeout: 15_000 }).toEqual([adopted]);
     expect(savedTerminals().toSorted()).toEqual([from, adopted].toSorted());
   } finally {
     await other.context().close();
