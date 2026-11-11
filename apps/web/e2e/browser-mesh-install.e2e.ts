@@ -9,6 +9,9 @@ test("Safari hands an invite to an empty app partition, compares both screens, t
   baseURL,
   browserName,
 }, info) => {
+  // Two app partitions each join through the relay, and the approval waits out up to two of the host's 10 s status
+  // ticks (below). That alone can take 25 s, so the default 60 s left too little for the rest on a loaded host (#2113).
+  test.setTimeout(120_000);
   const host = await startFakeRelayHost({ terminal: true });
   const safari = await phoneContext(browser, baseURL, "tab");
   const app = await phoneContext(browser, baseURL, "app");
