@@ -1,5 +1,6 @@
-import type { ByteRange, RequestContext, StoredObject } from "./bindings.ts";
+import type { ByteRange, ReleaseBucket, RequestContext, StoredObject } from "./bindings.ts";
 import { isCounted, recordDownload, requestFacts, type Source } from "./datapoint.ts";
+import { multipartBody, multipartFraming } from "./multi-range.ts";
 import { classify, completeKey, githubAssetUrl, isReleaseFile, isVersion, objectKey, type RouteName } from "./names.ts";
 
 export const IMMUTABLE = "public, max-age=31536000, immutable";
@@ -65,7 +66,57 @@ export function resolveRange(range: RangeSpec, size: number): ByteRange | null {
   return { offset: range.start, length: end - range.start + 1 };
 }
 
+/** electron-updater's differential download asks for at most 1000 ranges a request. */
+const MAX_PARTS = 1000;
+
+/**
+ * The spans of a `bytes=` header that names two or more ranges, resolved against a file of `size` bytes, or null to
+ * answer the whole file instead (RFC 9110 14.2 lets a server ignore a Range): a malformed or unsatisfiable range, ranges
+ * out of order or overlapping, or more than MAX_PARTS. In order and apart, as a differential update sends them, they are
+ * served from one read with the gaps skipped (#2228).
+ */
+export function parseMultiRange(header: string | null, size: number): ByteRange[] | null {
+  const specs = /^bytes=(.+)$/.exec(header ?? "")?.[1]?.split(",") ?? [];
+  if (specs.length < 2 || specs.length > MAX_PARTS) return null;
+  const spans: ByteRange[] = [];
+  for (const spec of specs) {
+    const range = parseRange(`bytes=${spec.trim()}`);
+    const span = range === null ? null : resolveRange(range, size);
+    const last = spans.at(-1);
+    if (span === null || (last !== undefined && span.offset < last.offset + last.length)) return null;
+    spans.push(span);
+  }
+  return spans;
+}
+
 type Outcome = { readonly response: Response } | { readonly fallback: string };
+
+/** Several ranges as one multipart/byteranges answer from one R2 read, or null to answer the whole file (#2228). */
+async function fromBucketInParts(
+  request: Request,
+  bucket: ReleaseBucket,
+  key: string,
+  file: string,
+): Promise<Outcome | null> {
+  const meta = await bucket.head(key);
+  if (meta === null) return { fallback: "object-missing" };
+  const ifRange = request.headers.get("If-Range");
+  if (ifRange !== null && ifRange !== meta.httpEtag) return null;
+  const spans = parseMultiRange(request.headers.get("Range"), meta.size);
+  const [first] = spans ?? [];
+  const last = spans?.at(-1);
+  if (spans === null || first === undefined || last === undefined) return null;
+  const covering = { offset: first.offset, length: last.offset + last.length - first.offset };
+  const object = await bucket.get(key, { range: covering });
+  if (object === null) return { fallback: "object-missing" };
+  const headers = objectHeaders(object, file, "r2");
+  const boundary = crypto.randomUUID().replaceAll("-", "");
+  const framing = multipartFraming(spans, meta.size, headers.get("Content-Type") ?? "", boundary);
+  headers.set("Content-Type", `multipart/byteranges; boundary=${boundary}`);
+  headers.set("Content-Length", String(framing.length));
+  const body = multipartBody(object.body, covering.offset, spans, framing);
+  return { response: new Response(body, { status: 206, headers }) };
+}
 
 async function fromBucket(
   request: Request,
@@ -99,6 +150,10 @@ async function fromBucket(
       return { response: new Response(object.body, { status: 206, headers }) };
     }
   }
+  if (request.headers.get("Range")?.includes(",")) {
+    const multipart = await fromBucketInParts(request, bucket, key, target.file);
+    if (multipart !== null) return multipart;
+  }
   const object = await bucket.get(key);
   if (object === null) return { fallback: "object-missing" };
   const headers = objectHeaders(object, target.file, "r2");
@@ -131,10 +186,10 @@ export async function serveFile(request: Request, ctx: RequestContext, target: F
   };
 
   // One cache entry per file whatever path reached it; only a whole-file GET fills it, and the cache answers a Range
-  // from it itself. If-Range goes to R2, which knows the current ETag.
+  // from it itself. If-Range goes to R2, which knows the current ETag, and so do several ranges, which R2 answers in parts.
   const cacheKey = new Request(`${new URL(request.url).origin}/v/${target.version}/${target.file}`);
   const rangeHeader = request.headers.get("Range");
-  if (request.method === "GET" && request.headers.get("If-Range") === null) {
+  if (request.method === "GET" && request.headers.get("If-Range") === null && !rangeHeader?.includes(",")) {
     const cached = await ctx.cache.match(
       rangeHeader === null ? cacheKey : new Request(cacheKey, { headers: { Range: rangeHeader } }),
     );
