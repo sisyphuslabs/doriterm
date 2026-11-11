@@ -127,6 +127,48 @@ test("one read of the body pulls only what it needs from R2, not the whole span 
   await reader.cancel();
 });
 
+test("every R2 body the answer opens is cancelled or released, even one opened after a cancel (#2264)", async () => {
+  const opened: { offset: number; cancelled: boolean; locked: () => boolean }[] = [];
+  const pending = Promise.withResolvers<void>();
+  const read = async (group: { readonly offset: number; readonly length: number }) => {
+    const entry = { offset: group.offset, cancelled: false, locked: () => false };
+    const source = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(group.length).fill(66));
+        controller.close();
+      },
+      cancel() {
+        entry.cancelled = true;
+      },
+    });
+    entry.locked = () => source.locked;
+    opened.push(entry);
+    if (group.offset > 0) await pending.promise;
+    return source;
+  };
+  const spans = [
+    { offset: 0, length: 4 },
+    { offset: 3000, length: 4 },
+  ];
+  const groups = groupSpans(spans, 100);
+  const framing = multipartFraming(spans, 4000, "application/octet-stream", "B");
+  const reader = multipartBody(groups, read, framing).getReader();
+  await reader.read();
+  await reader.read();
+  const nextRead = reader.read();
+  await new Promise((resolve) => setImmediate(resolve));
+  const cancelled = reader.cancel("client went away");
+  pending.resolve();
+  await cancelled;
+  await nextRead.catch(() => undefined);
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(opened.map((entry) => [entry.offset, entry.cancelled || !entry.locked()])).toEqual([
+    [0, true],
+    [3000, true],
+  ]);
+  expect(opened.find((entry) => entry.offset === 3000)?.cancelled).toBe(true);
+});
+
 test("spans group by gap, and no more groups are made than the cap allows, closing the smallest gaps first", () => {
   const spans = [0, 10, 5000, 5010, 90_000, 200_000].map((offset) => ({ offset, length: 5 }));
   expect(shape(groupSpans(spans, 1000, 32))).toEqual([
