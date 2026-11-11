@@ -227,7 +227,6 @@ export function TerminalView(props: TerminalViewProps) {
     shown,
     wt,
     setWt,
-    handle,
     stream,
     pending,
     pacer,
