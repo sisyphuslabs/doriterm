@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { ed25519 } from "@noble/curves/ed25519.js";
-import { parseReleaseSecret, releasePublicKey, signRelease, verifyRelease } from "./release.ts";
+import { parseReleaseSecret, RELEASE_PUBLIC_KEYS, releasePublicKey, signRelease, verifyRelease } from "./release.ts";
 
 const utf8 = (text: string): Uint8Array => new TextEncoder().encode(text);
 const oldKey = ed25519.utils.randomSecretKey();
@@ -30,6 +30,21 @@ test("during a rotation a build that trusts both keys accepts either signature",
   const both = [releasePublicKey(oldKey), releasePublicKey(newKey)];
   expect(verifyRelease(sums, signRelease(sums, oldKey), both)).toBe(true);
   expect(verifyRelease(sums, signRelease(sums, newKey), both)).toBe(true);
+});
+
+test("the shipped trust list is one Ed25519 public key, and no other key's signature passes it", () => {
+  expect(RELEASE_PUBLIC_KEYS).toHaveLength(1);
+  for (const key of RELEASE_PUBLIC_KEYS) {
+    const bytes = Uint8Array.fromBase64(key);
+    expect(bytes).toHaveLength(32);
+    expect(ed25519.Point.fromBytes(bytes).isSmallOrder()).toBe(false);
+    expect(releasePublicKey(oldKey)).not.toBe(key);
+  }
+  // A key of the same shape signs, and the shipped list (the default) refuses what that key's own list accepts.
+  const signature = signRelease(sums, oldKey);
+  expect(verifyRelease(sums, signature, [releasePublicKey(oldKey)])).toBe(true);
+  expect(verifyRelease(sums, signature)).toBe(false);
+  expect(verifyRelease(sums, signature, [...RELEASE_PUBLIC_KEYS, releasePublicKey(oldKey)])).toBe(true);
 });
 
 test("the signing secret is base64 of a 32-byte seed", () => {

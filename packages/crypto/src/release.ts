@@ -7,7 +7,7 @@ import { ed25519 } from "@noble/curves/ed25519.js";
  * fetched to check SHA256SUMS.txt. Rotation: a release signed by the old key ships a build that trusts both keys, and
  * the next release is signed with the new key only.
  */
-export const RELEASE_PUBLIC_KEYS: readonly string[] = [];
+export const RELEASE_PUBLIC_KEYS: readonly string[] = ["gyHmvVxtAxI8+BK2tzpS9fotce5Tx9/KUiAVgEWp7LY="];
 
 const decode = (text: string, length: number): Uint8Array | null => {
   const trimmed = text.trim();
