@@ -97,11 +97,8 @@ export class HeldInput {
       this.#flushing = false;
     }
     if (this.pending.length === 0) return this.#release();
-    // A write the stream refused (it closed during that write) leaves input waiting like any other: counted, and timed
-    // once no stream is open (#2266 review).
-    this.#heldBytes = this.pending.reduce((bytes, data) => bytes + sizeOf(data), 0);
-    if (this.#heldBytes > HOLD_BYTES) return this.#drop("overflow", undefined);
-    if (this.#sink() === null) this.#expireIn(undefined);
+    // A write the stream refused (it closed during that write) leaves input waiting like any other (#2266 review).
+    this.#rewait();
   }
 
   /** Writes what waited once this view's link is proved or its machine is back; returns the cleanup for the view. */
@@ -144,10 +141,22 @@ export class HeldInput {
     this.#expiry ??= setTimeout(() => this.#drop("expired", machine), HOLD_MS);
   }
 
-  /** The machine's line is back: what waited for it goes out, as it waits (interrupts first). */
+  /**
+   * The machine's line is back: its drop is called off, and what waited goes out as it waits (interrupts first). If it
+   * still cannot, it waits on as input for this terminal does: timed only while no stream is open (#2266 review).
+   */
   #back(): void {
     if (this.#expiry === undefined) return;
+    this.#release();
+    this.#rewait();
     if (!this.#links.has(this.#connection())) this.flush();
+  }
+
+  /** What waits, after its cause changed: counted again, and timed, in this terminal's words, only while no stream is open. */
+  #rewait(): void {
+    this.#heldBytes = this.pending.reduce((bytes, data) => bytes + sizeOf(data), 0);
+    if (this.#heldBytes > HOLD_BYTES) return this.#drop("overflow", undefined);
+    if (this.#sink() === null) this.#expireIn(undefined);
   }
 
   #drop(why: Dropped, machine: string | undefined): void {

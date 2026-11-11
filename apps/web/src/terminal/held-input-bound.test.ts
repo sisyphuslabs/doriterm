@@ -141,3 +141,52 @@ test("what a refused write leaves waiting counts toward HOLD_BYTES (#2266 review
   held.send("b");
   expect(dropped).toEqual([["overflow", undefined]]);
 });
+
+/** Input for a terminal on the added machine "rack", whose line, stream and wake check a test moves by hand. */
+function rackInput() {
+  const took: TerminalInput[] = [];
+  let sink: InputSink | null = { write: (data) => (took.push(data), true) };
+  const links = new UnprovenLinks();
+  const lines = new MachineLines();
+  const dropped: [Dropped, string | undefined][] = [];
+  const held = new HeldInput(
+    links,
+    () => link,
+    () => sink,
+    { lines, machine: () => "rack", dropped: (why, name) => dropped.push([why, name]) },
+  );
+  held.watch();
+  const line = (state: string) => lines.heard(link, [{ name: "rack", state }]);
+  const streamDown = (): void => {
+    sink = null;
+  };
+  return { held, took, dropped, links, line, streamDown };
+}
+
+test("a machine's line back while a wake check runs: what waited goes once the check passes, never expires (#2266 review)", () => {
+  jest.useFakeTimers();
+  const { held, took, dropped, links, line } = rackInput();
+  line("unreachable");
+  held.send("a");
+  jest.advanceTimersByTime(6_000);
+  links.start(link);
+  line("connected");
+  jest.advanceTimersByTime(5_000);
+  expect([took, dropped]).toEqual([[], []]);
+  links.settle(link, true);
+  expect([took, dropped]).toEqual([["a"], []]);
+});
+
+test("a machine's line back while the stream is down: the wait goes on for the stream, in this terminal's words (#2266 review)", () => {
+  jest.useFakeTimers();
+  const { held, dropped, line, streamDown } = rackInput();
+  line("unreachable");
+  held.send("a");
+  streamDown();
+  jest.advanceTimersByTime(4_000);
+  line("connected");
+  jest.advanceTimersByTime(HOLD_MS - 1);
+  expect(dropped).toEqual([]);
+  jest.advanceTimersByTime(1);
+  expect(dropped).toEqual([["expired", undefined]]);
+});
