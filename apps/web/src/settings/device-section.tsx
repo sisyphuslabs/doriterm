@@ -7,6 +7,8 @@ import { install, useInstallOffer } from "../device/install.ts";
 import { keepAwakeStore, screenWakeLock, useKeepAwake } from "../device/keep-awake.ts";
 import { useBrowserMembership } from "../mesh/membership-state.ts";
 import { BackgroundRow } from "./background-row.tsx";
+import { desktopUpdateSetting } from "../desktop/update-setting.ts";
+import { UpdateChannelRow } from "./update-channel-row.tsx";
 import type { DisplayMode } from "../terminal/prediction-display.ts";
 import { predictionModeStore, usePredictionMode } from "../terminal/prediction-mode.ts";
 
@@ -24,8 +26,10 @@ export function DeviceSection() {
   const offer = useInstallOffer();
   const mesh = useBrowserMembership();
   const [background] = useState(() => desktopBackgroundSetting());
+  const [updates] = useState(() => desktopUpdateSetting());
   const rows = [
     background === null ? null : <BackgroundRow key="background" setting={background} />,
+    updates === null ? null : <UpdateChannelRow key="update-channel" setting={updates} />,
     screenWakeLock() === null ? null : (
       <SettingRow
         key="keep-awake"

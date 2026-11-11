@@ -11,17 +11,23 @@ export interface MenuOptions {
   /** The page's trigger per Shell menu action, as it last reported them; empty until it has. */
   readonly keys: ReadonlyMap<string, string>;
   readonly runAction: (action: string) => void;
+  /** Check for Updates; absent where there is no updater (a checkout or an unpackaged build). */
+  readonly checkForUpdates?: (() => void) | undefined;
 }
+
+const updateItem = (check: (() => void) | undefined): MenuItemConstructorOptions[] =>
+  check === undefined ? [] : [{ label: "Check for Updates…", click: check }];
 
 /**
  * The macOS app menu in its standard order, with Settings… after About. The page's keymap owns Cmd+, (it also closes
  * Settings), so the item shows the shortcut without registering it and never runs twice for one key press.
  */
-function appMenu(openSettings: () => void): MenuItemConstructorOptions {
+function appMenu(openSettings: () => void, check: (() => void) | undefined): MenuItemConstructorOptions {
   return {
     role: "appMenu",
     submenu: [
       { role: "about" },
+      ...updateItem(check),
       { type: "separator" },
       { label: "Settings…", accelerator: "CommandOrControl+,", registerAccelerator: false, click: openSettings },
       { type: "separator" },
@@ -94,8 +100,11 @@ export function menuTemplate(options: MenuOptions): MenuItemConstructorOptions[]
     { role: "windowMenu" },
     {
       role: "help",
-      submenu: [{ label: "Doriterm on GitHub", click: () => options.openExternal(REPOSITORY_URL) }],
+      submenu: [
+        { label: "Doriterm on GitHub", click: () => options.openExternal(REPOSITORY_URL) },
+        ...(mac ? [] : updateItem(options.checkForUpdates)),
+      ],
     },
   ];
-  return mac ? [appMenu(options.openSettings), ...common] : common;
+  return mac ? [appMenu(options.openSettings, options.checkForUpdates), ...common] : common;
 }
