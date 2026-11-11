@@ -209,7 +209,7 @@ export function SettingsRoute() {
       </Tabs>
       <nav
         aria-label="Settings"
-        className="hidden w-56 shrink-0 flex-col gap-px overflow-y-auto border-r border-sidebar-border bg-sidebar px-2 pb-2 md:flex"
+        className="hidden w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-2 pb-2 md:flex"
       >
         <div
           {...titlebar}
@@ -221,25 +221,28 @@ export function SettingsRoute() {
           {back}
           <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
         </div>
-        <div className="mb-1">
+        <div className="mb-1 shrink-0">
           <SearchSettings query={query} onQuery={onQuery} onKeyDown={onSearchKey} inputRef={field} />
         </div>
-        {nothing}
-        {shown.map((entry) => (
-          <Button
-            key={entry.id}
-            variant="ghost"
-            aria-current={entry.id === section ? "page" : undefined}
-            onClick={() => setSection(entry.id)}
-            className={cn(
-              "justify-start gap-2.5 px-2 text-sm [&_svg:not([data-slot=spinner])]:size-3.5",
-              entry.id === section && "bg-selected text-foreground",
-            )}
-          >
-            {entry.icon}
-            {entry.label}
-          </Button>
-        ))}
+        {/* The sections scroll on their own, so a short window never takes the title row, which drags the window (#1915). */}
+        <div data-slot="settings-sections" className="flex min-h-0 flex-col gap-px overflow-y-auto">
+          {nothing}
+          {shown.map((entry) => (
+            <Button
+              key={entry.id}
+              variant="ghost"
+              aria-current={entry.id === section ? "page" : undefined}
+              onClick={() => setSection(entry.id)}
+              className={cn(
+                "shrink-0 justify-start gap-2.5 px-2 text-sm [&_svg:not([data-slot=spinner])]:size-3.5",
+                entry.id === section && "bg-selected text-foreground",
+              )}
+            >
+              {entry.icon}
+              {entry.label}
+            </Button>
+          ))}
+        </div>
       </nav>
       <ScrollArea slot="settings-body" className="flex-1">
         <div ref={body} className="flex max-w-2xl flex-col gap-8 px-4 py-6 md:px-8">
