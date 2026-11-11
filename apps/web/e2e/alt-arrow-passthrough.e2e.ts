@@ -44,8 +44,18 @@ test("Alt+Up reaches the program at the top edge of a split, and the pane does n
   await page.keyboard.press("Enter");
   await expect(first).toContainText("cat -v", { timeout: 20_000 });
 
-  // The focused pane is at the left edge of a row: "up" has no pane to go to, which is the case the report is about.
-  await page.keyboard.press("Alt+ArrowUp");
-  await expect(first, "the program still receives Alt+Up at the edge").toContainText("[1;3A", { timeout: 20_000 });
-  await expect(panes, "and no pane was opened or closed by it").toHaveCount(2);
+  // The chords that actually swallowed a key here were Alt+Left and Alt+Right: they were bound to pane.go, so with a
+  // neighbour that way Doriterm moved focus instead of sending anything (#1302, #1942). Alt+Up was bound to agent.prev,
+  // which is why it is the easier half of the proof.
+  for (const [key, sequence] of [
+    ["Alt+ArrowRight", "[1;3C"],
+    ["Alt+ArrowUp", "[1;3A"],
+    ["Alt+ArrowLeft", "[1;3D"],
+  ] as const) {
+    await page.keyboard.press(key);
+    await expect(first, `the program receives ${key} rather than a pane move`).toContainText(sequence, {
+      timeout: 20_000,
+    });
+    await expect(panes, `${key} opened or closed no pane`).toHaveCount(2);
+  }
 });
