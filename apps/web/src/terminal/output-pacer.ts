@@ -11,10 +11,14 @@ export const CATCHUP_FRAME_BYTES = CREDIT_WINDOW_BYTES;
 /** How often output is written while the app is hidden, when no animation frame runs (D5). */
 export const HIDDEN_DRAIN_MS = 50;
 /**
- * An attach replay's paint is held past each span this long only if the span wrote at least one credit window: a replay
- * still coming does, at a window a round trip, while output that trickles (a prompt, a spinner) never goes quiet (D5).
+ * An attach replay's paint is held past each span this long only if the span and the one before it wrote at least one
+ * credit window between them: a replay still coming does, at a window a round trip or, on a page slow to take each
+ * window in, about a window a span, cut anywhere by the span's ends (#2271). Output that trickles (a prompt, a spinner)
+ * never goes quiet, and writes less than {@link REPLAY_TRICKLE_BYTES} a span (D5).
  */
 export const REPLAY_CAP_MS = 1500;
+/** A {@link REPLAY_CAP_MS} span that wrote less than this is a trickle, not a replay: it lets the replay go (D5, #2271). */
+export const REPLAY_TRICKLE_BYTES = CREDIT_WINDOW_BYTES / 4;
 /** An attach replay's paint is held for at most this much written output (D5). */
 export const REPLAY_MAX_BYTES = 2 * 1024 * 1024;
 /** The shortest quiet after the last replay bytes that ends a replay (D5). */
@@ -64,6 +68,8 @@ interface Replay {
   written: number;
   /** What had been written when the current {@link REPLAY_CAP_MS} span began. */
   spanFrom: number;
+  /** What the span before the current one wrote, or null in the first span. */
+  lastSpan: number | null;
   quiet: () => void;
   cap: () => void;
 }
@@ -183,7 +189,8 @@ export class OutputPacer {
    * An attach replay begins: its output is written as it arrives, uncapped, while `hold` holds the terminal's paint, so
    * the replay is drawn once, whole, and the screen before it stays until then. The hold ends at the first of: no
    * output arriving or written for max({@link REPLAY_QUIET_FLOOR_MS}, 1.5 x SRTT + 50) ms, a {@link REPLAY_CAP_MS} span
-   * that wrote less than {@link CREDIT_WINDOW_BYTES}, or {@link REPLAY_MAX_BYTES} written.
+   * that wrote a trickle or, with the span before it, less than {@link CREDIT_WINDOW_BYTES}, or
+   * {@link REPLAY_MAX_BYTES} written.
    *
    * hc marks no end of the replay: the core sends its first paint as one write, cut into frames under the stream's
    * credit window, and waits for credit after each window; credit goes back as each batch is written, and a replay is
@@ -191,15 +198,23 @@ export class OutputPacer {
    * the end of the write that handed a window's credit back, the next window is at most a round trip away, under the
    * quiet window, which restarts at each arrival and again after each write (on a page slow to write, the gap between
    * arrivals is a round trip plus the write, #2011), and whose SRTT is sampled on this connection (the attach answer
-   * itself is one sample), and every span of {@link REPLAY_CAP_MS} (a round trip or more) writes a window or more. A
-   * quiet window or span whose timer runs more than its own length late is started again rather than read: the page was
-   * not running, so it could not see the next window, already queued behind the timer. A fixed deadline could not hold
-   * it: over a 300 ms relay, or on a page slow to write it, a replay of a few hundred KiB to 2 MiB takes longer than
-   * any one span.
+   * itself is one sample), and every two spans of {@link REPLAY_CAP_MS} (a round trip or more) write a window or more:
+   * on a page slow to take each window in, a window can take about a span, and a span's ends can cut it anywhere, so
+   * one span alone can catch part of one (#2271). A quiet window or span whose timer runs more than its own length late
+   * is started again rather than read: the page was not running, so it could not see the next window, already queued
+   * behind the timer. A fixed deadline could not hold it: over a 300 ms relay, or on a page slow to write it, a replay
+   * of a few hundred KiB to 2 MiB takes longer than any one span.
    */
   replay(options: ReplayOptions): void {
     if (this.#replay !== null) this.#endReplay();
-    const replay: Replay = { options, written: 0, spanFrom: 0, quiet: () => undefined, cap: () => undefined };
+    const replay: Replay = {
+      options,
+      written: 0,
+      spanFrom: 0,
+      lastSpan: null,
+      quiet: () => undefined,
+      cap: () => undefined,
+    };
     this.#spanFrom(replay);
     this.#replay = replay;
     this.#startCatchUp();
@@ -255,12 +270,22 @@ export class OutputPacer {
     return this.#timer(() => (this.#clock() - due > ms ? again() : then()), ms);
   }
 
-  /** Starts a {@link REPLAY_CAP_MS} span; at its end the replay is let go unless the span wrote a credit window. */
+  /**
+   * Starts a {@link REPLAY_CAP_MS} span; at its end the replay is let go if the span wrote a trickle, or if it and the span
+   * before it wrote less than a credit window between them. The first span, with none before it, needs half a window.
+   */
   #spanFrom(replay: Replay): void {
     replay.spanFrom = replay.written;
     replay.cap = this.#onTime(
       REPLAY_CAP_MS,
-      () => (replay.written - replay.spanFrom < CREDIT_WINDOW_BYTES ? this.#endReplay() : this.#spanFrom(replay)),
+      () => {
+        const span = replay.written - replay.spanFrom;
+        if (span < REPLAY_TRICKLE_BYTES || span + (replay.lastSpan ?? span) < CREDIT_WINDOW_BYTES) this.#endReplay();
+        else {
+          replay.lastSpan = span;
+          this.#spanFrom(replay);
+        }
+      },
       () => this.#spanFrom(replay),
     );
   }
