@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { connectionStore } from "../connection/store.ts";
 import { useActionHandler } from "../keys/dispatcher.ts";
 import { ShortcutsHelp } from "../keys/shortcuts-dialog.tsx";
-import { type Axis, LAYOUT_DOC, ORDER_DOC, PINS_DOC } from "@doriface/protocol/layout";
+import type { Axis } from "@doriface/protocol/layout";
 import { closesTab, type TerminalEnd } from "../terminal/terminal-end.ts";
 import { CloseTabDialog } from "./close-tab-dialog.tsx";
 import { stillClosing } from "./close-set.ts";
@@ -46,7 +46,7 @@ import { useAdoptLoose } from "./use-adopt-loose.ts";
 import { useAttention } from "./use-attention.ts";
 import { orderNotSaved } from "./machine-order.ts";
 import { useMachineOrder } from "./use-machine-order.ts";
-import { useTerminals, type DocHeard } from "./use-terminals.ts";
+import { useTerminals } from "./use-terminals.ts";
 import { useResumeEnds } from "./resume-ends.ts";
 import { useSteady } from "./steady.ts";
 import { useStableCallback } from "./use-stable-callback.ts";
@@ -61,16 +61,7 @@ export interface WorkspaceProps {
 
 /** The live terminals of one core: the desktop shell from `md` up, the phone navigation below. */
 export function Workspace({ connection }: WorkspaceProps) {
-  // The feed comes before the machine list the layout documents need, so its doc events reach them through a ref.
-  const heardLayout = useRef<(machine: string | null, version: number) => void>(() => undefined);
-  const heardOrder = useRef<(version: number) => void>(() => undefined);
-  const heardPins = useRef<(machine: string | null, version: number) => void>(() => undefined);
-  const onDoc = useCallback<DocHeard>((machine, name, version) => {
-    if (name === LAYOUT_DOC) heardLayout.current(machine, version);
-    if (name === ORDER_DOC && machine === null) heardOrder.current(version);
-    if (name === PINS_DOC) heardPins.current(machine, version);
-  }, []);
-  const fed = useTerminals(connection, onDoc);
+  const fed = useTerminals(connection);
   useResumeEnds(connection);
   const {
     entries: listed,
@@ -83,13 +74,10 @@ export function Workspace({ connection }: WorkspaceProps) {
     listed: machineReads,
   } = useMachines(connection, fed.terminals);
   // Opened and re-read on what hc said: a document read while its line was down is read again once the line is back.
-  const { layouts, heard, heardPins: heardPinsDoc } = useLayoutDocs(connection, heardMachines, views);
+  const { layouts } = useLayoutDocs(connection, heardMachines, views);
   const gitOf = useGitFacts(connection, views);
   const todoOf = useTodoProgress(connection, fed.terminals);
-  heardLayout.current = heard;
-  heardPins.current = heardPinsDoc;
   const order = useMachineOrder(connection, listed);
-  heardOrder.current = order.heard;
   const entries = order.entries;
   const toasts = useToastManager();
   const { move: saveMove } = order;

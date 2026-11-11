@@ -313,7 +313,13 @@ export function useLayout(
         })
         .then((saved) => {
           const there = adopted;
-          if (saved || there === null) return saved;
+          if (saved) return saved;
+          // A write the machine refused (its line down) is told by `failed`; the terminal stays on this screen as a loose
+          // tab, kept mounted when the document read back without it (keepMounts), instead of going with that read.
+          if (there === null) {
+            setLoose((prev) => (prev.includes(address) ? prev : [...prev, address]));
+            return saved;
+          }
           const key = tabKey(layout.machineId, there.tab);
           setClaimed((claim) => (claim === pane ? there.pane : claim));
           setView((prev) =>
@@ -323,7 +329,7 @@ export function useLayout(
         });
       show(asked, pane);
     },
-    [active, keepApart, keepHere, layoutOf, show],
+    [active, keepApart, keepHere, layoutOf, setLoose, show],
   );
 
   const openTerminal = useCallback(
