@@ -40,7 +40,6 @@ test("release.yml mirrors a published release to production after Publish, and a
   expect(production?.needs).toEqual(["version", "publish"]);
   expect(production?.uses).toBe("./.github/workflows/release-mirror.yml");
   expect(production?.with).toEqual({ tag: "${{ needs.version.outputs.tag }}", target: "production" });
-  expect(staging?.if).toBe("github.event_name == 'workflow_dispatch'");
   expect(staging?.uses).toBe("./.github/workflows/release-mirror.yml");
   expect(staging?.with).toEqual({ tag: "${{ needs.version.outputs.tag }}", target: "staging", published: false });
   for (const job of [production, staging]) {
@@ -65,9 +64,25 @@ test("the mirror job checks the tag, then downloads, mirrors, signs and probes i
   expect([requires(null), requires(true), requires(false)]).toEqual([true, true, false]);
   // The expression it replaced let every hand-run through (#2126 review): null != false is false in GitHub's equality.
   expect(evaluate("${{ inputs.published != false }}", { contexts: { inputs: { published: null } } })).toBe(false);
-  expect(mirror?.steps?.find((step) => step.name === "Attach the checksums signature")?.if).toBe(
-    "inputs.target == 'production'",
-  );
+});
+
+test("a release is never public unsigned: the draft's staging mirror attaches the signature, and Publish waits for it (#2297)", () => {
+  const { publish, "mirror-staging": staging } = release.jobs;
+  expect(publish?.needs).toContain("mirror-staging");
+  // A tag push runs Publish, so the staging mirror it waits for must run on a push too, not only by hand.
+  const runsOn = (event: string) =>
+    staging?.if === undefined ||
+    evaluate(`\${{ ${staging.if} }}`, { contexts: { github: { event_name: event } } }) === true;
+  expect([runsOn("push"), runsOn("workflow_dispatch")]).toEqual([true, true]);
+  const attach = mirror?.steps?.find((step) => step.name === "Attach the checksums signature")?.if ?? "";
+  const attaches = (target: string, published: Value) =>
+    evaluate(`\${{ ${attach} }}`, { contexts: { inputs: { target, published } } });
+  // release.yml's draft call and production call attach it; a staging run by hand (no published input) does not.
+  expect([attaches("staging", false), attaches("production", true), attaches("staging", null)]).toEqual([
+    true,
+    true,
+    false,
+  ]);
 });
 
 test("run by hand it mirrors a published release from dev only, in the environment of its target", () => {
@@ -94,4 +109,16 @@ test("channel operations run only on dev, and the dispatch inputs reach the shel
   expect(job?.environment).toBe("${{ inputs.target == 'production' && 'release-mirror' || 'release-mirror-staging' }}");
   for (const run of runs(job)) expect(run).not.toContain("${{");
   expect(at(job, '--op "$OPERATION" --version "$VERSION" --percent "$PERCENT"')).toBeGreaterThan(0);
+});
+
+test("the mirror takes only the tags a host takes: no number with a leading zero (#2297)", () => {
+  const check = mirrorFlow.jobs["mirror"]?.steps?.find((step) => step.name === "The tag and the target")?.run ?? "";
+  const pattern = /\[\[ "\$TAG" =~ (\S+) \]\]/.exec(check)?.[1];
+  if (pattern === undefined) throw new Error("the tag check has no =~ pattern");
+  const takes = (tag: string): boolean =>
+    Bun.spawnSync(["bash", "-c", `[[ "$1" =~ ${pattern} ]]`, "_", tag]).exitCode === 0;
+  for (const tag of ["v0.1.18", "v0.1.18-beta.9", "v0.1.18-beta.10", "v0.1.18-rc.0", "v10.0.0", "v0.1.18-0a.1"])
+    expect([tag, takes(tag)]).toEqual([tag, true]);
+  for (const tag of ["v0.1.18-beta.09", "v01.1.18", "v0.01.18", "v0.1.018", "v0.1.18-00", "0.1.18", "v0.1"])
+    expect([tag, takes(tag)]).toEqual([tag, false]);
 });

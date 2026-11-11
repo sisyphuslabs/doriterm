@@ -32,8 +32,18 @@ export function updateOrigin(env: Readonly<Record<string, string | undefined>>):
  * host inside the desktop app (`resources/bin`, `Contents/Resources/bin`), which the app's own update replaces (#1983).
  */
 export function updatableBinary(execPath: string): string | undefined {
-  if (/[\\/]resources[\\/]bin[\\/][^\\/]+$/i.test(execPath)) return undefined;
-  return /^doriface-host(?:-[a-z0-9-]+)?$/.test(basename(execPath)) ? execPath : undefined;
+  return notUpdatable(execPath) === undefined ? execPath : undefined;
+}
+
+/** Why this binary is not one `update` or `--auto-update` replaces, in words for its log; undefined when it is (#2297). */
+export function notUpdatable(execPath: string): string | undefined {
+  if (/[\\/]resources[\\/]bin[\\/][^\\/]+$/i.test(execPath)) {
+    return `${execPath} is the host inside the desktop app, which the app's own update replaces`;
+  }
+  if (!/^doriface-host(?:-[a-z0-9-]+)?$/.test(basename(execPath))) {
+    return `${execPath} is not a built doriface-host (bun running the source), so there is nothing to replace`;
+  }
+  return undefined;
 }
 
 /** `doriface-host update`: one check, as the service runs it; exit 0 unless the check failed. */
@@ -45,9 +55,7 @@ export async function updateCommand(args: readonly string[], out: (text: string)
   });
   const binary = updatableBinary(process.execPath);
   if (binary === undefined) {
-    out(
-      `doriface-host update: ${process.execPath} is not a standalone doriface-host (the desktop app updates the host inside it), so there is nothing to replace\n`,
-    );
+    out(`doriface-host update: ${notUpdatable(process.execPath)}\n`);
     return 1;
   }
   try {

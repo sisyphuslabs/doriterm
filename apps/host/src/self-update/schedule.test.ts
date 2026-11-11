@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { releasePublicKey, signRelease } from "@doriface/crypto";
-import { updatableBinary, verifyReleaseCommand } from "../commands/update.ts";
+import { notUpdatable, updatableBinary, verifyReleaseCommand } from "../commands/update.ts";
 import { inRollout, rolloutPlace, updaterId } from "./rollout.ts";
 import { CHECK_EVERY_MS, FIRST_CHECK_MS, scheduleSelfUpdate } from "./schedule.ts";
 import type { UpdateOutcome } from "./self-update.ts";
@@ -98,4 +98,14 @@ test("only a built doriface-host replaces itself, never bun running the source",
     "/tmp/.mount_DoriteXYZ/resources/bin/doriface-host",
   ])
     expect([bundled, updatableBinary(bundled)]).toEqual([bundled, undefined]);
+});
+
+test("why a binary is not updated names the case: the desktop app's own host, or no built doriface-host (#2297)", () => {
+  expect(notUpdatable("/opt/Doriterm/resources/bin/doriface-host")).toBe(
+    "/opt/Doriterm/resources/bin/doriface-host is the host inside the desktop app, which the app's own update replaces",
+  );
+  expect(notUpdatable("/home/a/.bun/bin/bun")).toBe(
+    "/home/a/.bun/bin/bun is not a built doriface-host (bun running the source), so there is nothing to replace",
+  );
+  expect(notUpdatable("/home/a/.local/bin/doriface-host")).toBeUndefined();
 });

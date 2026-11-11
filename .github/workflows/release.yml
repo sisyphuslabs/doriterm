@@ -711,7 +711,8 @@ jobs:
   publish:
     name: Publish
     if: github.event_name == 'push'
-    needs: [version, smoke-linux, smoke-mac, smoke-windows]
+    # The staging mirror attaches SHA256SUMS.txt.sig to the draft, so a release is never public unsigned (#2297).
+    needs: [version, smoke-linux, smoke-mac, smoke-windows, mirror-staging]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -748,9 +749,9 @@ jobs:
       target: production
     secrets: inherit
 
+  # Every draft, a tag's or a manual one, goes through staging first; on a tag push Publish waits for it (#2297).
   mirror-staging:
     name: Mirror the draft to staging.get.doriterm.com
-    if: github.event_name == 'workflow_dispatch'
     needs: [version, smoke-linux, smoke-mac, smoke-windows]
     permissions:
       contents: write
