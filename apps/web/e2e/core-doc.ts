@@ -1,6 +1,7 @@
 // A spec's write to a herdr document on the e2e host's own core, the way another client would make it: read the
 // version, then a compare-and-set at it, with the core environment the e2e host saved (E2E_HOST_ENV).
 import { execFileSync } from "node:child_process";
+import { HcRpcError, parseJsonRpc } from "@doriface/protocol";
 import { E2E_HOST_ENV, E2E_LAYOUT_ENV } from "./config.ts";
 import { readSavedEnv, type SavedEnv } from "./saved-env.ts";
 
@@ -29,6 +30,13 @@ function call(core: CoreEnv, method: string, params: unknown): unknown {
     const message: unknown = line.trim() === "" ? undefined : JSON.parse(line);
     if (typeof message === "object" && message !== null && "id" in message && message.id === 1) {
       if ("result" in message) return message.result;
+      const failure = parseJsonRpc(line);
+      if (failure.kind === "failure") {
+        // The core's own error, so a caller can tell its kind (`data.kind`) from the wording.
+        const error = new HcRpcError(failure.error);
+        error.message = `${method} failed: ${error.message}`;
+        throw error;
+      }
       throw new Error(`${method} failed: ${line.slice(0, 300)}`);
     }
   }
@@ -58,8 +66,8 @@ export function coreDoc(name: string): unknown {
 
 /**
  * Compare-and-set against the version the core reports, retrying a lost race on a fresh read: the app writes these documents
- * too, so a write can land between the read and its set and the core answers "is at version N, not M" (#896). Bounded to five
- * attempts, and only for that refusal -- any other failure is thrown as it came.
+ * too, so a write can land between the read and its set and the core refuses it as a `conflict` (#896). Bounded to five
+ * attempts, and only for that refusal, told by its kind as the app tells it (#1355) -- any other failure is thrown as it came.
  *
  * `next` is called once per attempt with that attempt's read, so an update derived from the document is recomputed from the
  * document the core reports NOW instead of clobbering a write that landed in between.
@@ -80,7 +88,7 @@ export function coreCompareAndSet(
       });
       return;
     } catch (cause) {
-      if (attempt >= 4 || !/is at version \d+, not \d+/.test(String(cause))) throw cause;
+      if (attempt >= 4 || !(cause instanceof HcRpcError && cause.kind === "conflict")) throw cause;
     }
   }
 }

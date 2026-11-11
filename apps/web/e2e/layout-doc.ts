@@ -1,5 +1,6 @@
 // The herdr-app layout document on the e2e core, written the way herdr-app 0.1.12 writes it: keys sorted, `type` on
 // every node, a tab's root a row whose id is the tab's.
+import { HcRpcError } from "@doriface/protocol";
 import type { Locator, Page } from "@playwright/test";
 import { getCoreDoc, setCoreDoc, updateCoreDoc } from "./core-doc.ts";
 import { LAYOUT_MACHINE_SPEC } from "./layout-seed.ts";
@@ -167,7 +168,8 @@ function clearOn(machine: string, core: "host" | "layout"): void {
   try {
     setCoreDoc(LAYOUT_DOC, null, machine, core);
   } catch (error) {
-    if (!/"kind":"(unavailable|machine_unknown|needs_login)"/.test(String(error))) throw error;
+    if (!(error instanceof HcRpcError && ["unavailable", "machine_unknown", "needs_login"].includes(error.kind)))
+      throw error;
   }
 }
 

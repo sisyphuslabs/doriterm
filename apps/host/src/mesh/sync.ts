@@ -57,6 +57,7 @@ export class SyncSession {
   readonly #host: SyncHost;
   readonly #clock: Clock;
   readonly #lingerMs: number;
+  readonly #log: (line: string) => void;
   readonly #peerHeads = new Set<string>();
   /** Every head the peer's `hello` lines named: a mesh holds at most MAX_RECORDS records, so no more heads exist. */
   readonly #claimed = new Set<string>();
@@ -77,6 +78,7 @@ export class SyncSession {
     host: SyncHost,
     clock: Clock,
     lingerMs = LINGER_MS,
+    log: (line: string) => void = () => undefined,
   ) {
     this.peer = ends.peer;
     this.dialer = ends.dialer;
@@ -85,6 +87,7 @@ export class SyncSession {
     this.#host = host;
     this.#clock = clock;
     this.#lingerMs = lingerMs;
+    this.#log = log;
     void this.#lines.ended.then(() => this.#ended());
   }
 
@@ -112,7 +115,10 @@ export class SyncSession {
    */
   retire(reason: string): void {
     if (this.#closed || this.#retiring !== undefined) return;
-    this.#retiring = this.#clock.after(this.#lingerMs, () => this.close(CloseCode.UnknownDevice, reason));
+    this.#retiring = this.#clock.after(this.#lingerMs, () => {
+      this.#log(`mesh: close code=4401 source=sync-retire: ${reason}`);
+      this.close(CloseCode.UnknownDevice, reason);
+    });
   }
 
   /** Back in the view (re-admitted): the retirement is called off. */
@@ -222,6 +228,7 @@ export class SyncSession {
     reads: readonly number[] | undefined,
   ): void {
     if (mesh !== this.#host.meshId) {
+      this.#log("mesh: close code=4401 source=sync-mesh: a mesh stream from another mesh");
       this.#lines.refuse(CloseCode.UnknownDevice, "a mesh stream from another mesh");
       return this.#ended();
     }
