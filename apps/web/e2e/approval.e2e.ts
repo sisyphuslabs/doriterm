@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { WAITING_ANNOUNCEMENT } from "../src/approval/waiting-keys.ts";
 import { agentRow } from "./agents.ts";
 import { type AskingAgent, startAskingAgent } from "./approval-agent.ts";
 import { expect, test } from "./fixtures.ts";
@@ -178,5 +179,7 @@ test("the prompt is announced: the pane's live region is there, empty, before th
     }, agent.address);
   await expect.poll(history, { timeout: 10_000 }).toContainEqual(expect.stringContaining("Claude Code wants to run"));
   expect((await history())[0]).toBe("");
+  // The keys strip, which stands in where no card comes, never showed while the card was being read (#1555).
+  expect(await history()).not.toContainEqual(WAITING_ANNOUNCEMENT);
   await expect(page.locator(`[data-approval-live="${agent.address}"]`)).toHaveAttribute("aria-live", "polite");
 });

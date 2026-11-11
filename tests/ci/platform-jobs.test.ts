@@ -4,14 +4,18 @@ import { join } from "node:path";
 
 type Job = {
   if?: string;
+  steps?: Array<{ run?: string; env?: Record<string, string> }>;
   "runs-on"?: string;
   strategy?: { matrix?: { include?: Array<{ runner?: string }> } };
 };
 type Workflow = { on: { push?: { branches?: string[] }; pull_request?: unknown }; jobs: Record<string, Job> };
 
-const ci = Bun.YAML.parse(
-  readFileSync(join(import.meta.dir, "..", "..", ".github", "workflows", "ci.yml"), "utf8"),
-) as Workflow;
+const ROOT = join(import.meta.dir, "..", "..");
+const ci = Bun.YAML.parse(readFileSync(join(ROOT, ".github", "workflows", "ci.yml"), "utf8")) as Workflow;
+const builder = JSON.parse(readFileSync(join(ROOT, "apps", "desktop", "electron-builder.json"), "utf8")) as {
+  productName: string;
+  executableName?: string;
+};
 
 const PLATFORM_RUNNER = /^(windows|macos)-/;
 
@@ -36,6 +40,17 @@ test("the desktop, Windows and macOS jobs run only on a push to dev", () => {
       !/pull_request|merge_group/.test(condition);
     expect({ id, onlyOnPush }).toEqual({ id, onlyOnPush: true });
   }
+});
+
+// electron-builder names the Linux binary executableName, and the macOS bundle and its binary executableName ?? productName.
+test("the desktop jobs launch the executable electron-builder.json names", () => {
+  const linux = ci.jobs["desktop"]?.steps?.map((step) => step.env?.["DORIFACE_E2E_EXECUTABLE"]).filter(Boolean);
+  expect(linux).toEqual(["${{ github.workspace }}/apps/desktop/dist/release/linux-unpacked/" + builder.executableName]);
+  const mac = builder.executableName ?? builder.productName;
+  const find =
+    ci.jobs["desktop-macos"]?.steps?.find((step) => step.run?.includes("DORIFACE_E2E_EXECUTABLE="))?.run ?? "";
+  expect(find).toContain(`-name ${mac}.app `);
+  expect(find).toContain(`/Contents/MacOS/${mac}" >> "$GITHUB_ENV"`);
 });
 
 test("Check, Relay e2e and Web e2e still run on every pull request", () => {

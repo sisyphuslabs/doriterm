@@ -27,7 +27,7 @@ const HOST_WORST_REFUSAL_MS = 20_000 + 30_000;
 
 /**
  * Records, from now on, every moment the page shows the machine or its tab as anything but up: the machine's row in any
- * state but connected, an Offline agents group, or the tab's terminal view gone. A MutationObserver sees each change as
+ * state but connected or reconnecting, an Offline agents group, or the tab's terminal view gone. A MutationObserver sees each change as
  * it renders, so a flip shorter than any poll is recorded too.
  */
 async function recordFlips(page: Page, terminal: string): Promise<void> {
@@ -36,7 +36,7 @@ async function recordFlips(page: Page, terminal: string): Promise<void> {
       const flips: string[] = [];
       const check = (): void => {
         const row = document.querySelector(`[data-machine-header="${name}"]`)?.getAttribute("title") ?? "no row";
-        if (row !== `${name}, connected`) flips.push(`row: ${row}`);
+        if (row !== `${name}, connected` && row !== `${name}, reconnecting`) flips.push(`row: ${row}`);
         for (const group of document.querySelectorAll("section[aria-labelledby]")) {
           const title = document.getElementById(group.getAttribute("aria-labelledby") ?? "")?.textContent ?? "";
           if (title.trim().startsWith("Offline")) flips.push(`group: ${title.trim()}`);

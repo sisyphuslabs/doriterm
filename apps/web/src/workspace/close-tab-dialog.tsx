@@ -7,7 +7,9 @@ import { single } from "../ghostty/config.ts";
 import { terminalInput } from "./focus-targets.ts";
 import type { LayoutTab } from "./layout-model.ts";
 import { asksBeforeClosing } from "./model.ts";
-import { endSession, sessionCalls } from "./session-actions.ts";
+import { pendingEnds } from "./pending-ends.ts";
+import { recordedEnd } from "./resume-ends.ts";
+import { sessionCalls } from "./session-actions.ts";
 
 export interface CloseTabDialogProps {
   readonly connection: HcConnection;
@@ -15,6 +17,8 @@ export interface CloseTabDialogProps {
   readonly tab: LayoutTab;
   /** The space whose last tab this is: closing it closes the space, as herdr-app's `tab.close`, and always asks first. */
   readonly space?: { readonly name: string };
+  /** Several tabs closing together (#1561): `tab` holds all their panes, and the question names how many tabs. */
+  readonly tabs?: number;
   /** Takes the tab out of the layout: at once, while its sessions end behind it. */
   readonly onClosed: () => void;
   readonly onDone: () => void;
@@ -25,13 +29,39 @@ export interface CloseTabDialogProps {
 const counted = (count: number, word: string): string => `${count} ${word}${count === 1 ? "" : "s"}`;
 
 /**
+ * Why the Ends that failed did not, and where the sessions they kept are shown again: the tab is gone as they fail, so
+ * they run with no tab to show them until the next load adopts them (#1278).
+ */
+function endsFailed(failed: number, cause: unknown): { readonly title: string; readonly description: string } {
+  const why = (cause instanceof Error ? cause.message : String(cause)).replace(/\.$/, "");
+  return failed === 1
+    ? {
+        title: "The session did not end",
+        description: `${why}. It keeps running outside any tab; the next load opens it as a tab.`,
+      }
+    : {
+        title: `${failed} sessions did not end`,
+        description: `${why}. They keep running outside any tab; the next load opens them as tabs.`,
+      };
+}
+
+/**
  * Closing a space's last tab closes the space, as herdr-app's `space.close` asks: "Close space?", naming its tabs and
  * terminals, and Close ends them. Closing a tab of several panes ends all of their programs, as in herdr-app and Ghostty. It asks once first only as
  * confirm-close-surface says (while one of them runs a program, by default). The tab leaves as Close is chosen, not a
  * round trip or a kill escalation later (#1271); an End that fails is reported in a toast, the one surface left once
  * the tab is gone.
  */
-export function CloseTabDialog({ connection, terminals, tab, space, onClosed, onDone, onKept }: CloseTabDialogProps) {
+export function CloseTabDialog({
+  connection,
+  terminals,
+  tab,
+  space,
+  tabs = 1,
+  onClosed,
+  onDone,
+  onKept,
+}: CloseTabDialogProps) {
   const toasts = useToastManager();
   // Asked with focus on the page body (a terminal whose renderer had not started yet), or from an element gone by now,
   // the question gives focus to the focused pane's terminal, as the session's own question does.
@@ -45,9 +75,16 @@ export function CloseTabDialog({ connection, terminals, tab, space, onClosed, on
   const quiet = space === undefined && !asks;
   const end = (): void => {
     const calls = sessionCalls(connection);
-    const ending = Promise.all(
+    // Kept in local storage until each End settles, so a page closed before the tab's Ends leave it has the next page
+    // finish them (#1278): the tab is gone at once, and its sessions must not be adopted back as a new one.
+    const ends = pendingEnds(connection.hello.core.id);
+    const ending = Promise.allSettled(
       live.map((terminal) =>
-        endSession(calls, terminal.address).catch((cause: unknown) => {
+        recordedEnd(
+          ends,
+          { address: terminal.address, pid: terminal.pid ?? null, created: terminal.created_ms, at: Date.now() },
+          calls,
+        ).catch((cause: unknown) => {
           onKept(terminal.address);
           throw cause;
         }),
@@ -55,13 +92,14 @@ export function CloseTabDialog({ connection, terminals, tab, space, onClosed, on
     );
     onClosed();
     onDone();
-    ending.catch((cause: unknown) =>
-      toasts.add({
-        type: "error",
-        title: count === 1 ? "The session did not end" : "A session did not end",
-        description: `${cause instanceof Error ? cause.message : String(cause)} It keeps running.`,
-      }),
-    );
+    const report = async (): Promise<void> => {
+      const outcomes = await ending;
+      const failures = outcomes.flatMap((outcome) => (outcome.status === "rejected" ? [outcome.reason] : []));
+      if (failures.length === 0) return;
+      const [first] = failures;
+      toasts.add({ type: "error", ...endsFailed(failures.length, first) });
+    };
+    void report();
   };
   const endedQuietly = useRef(false);
   useEffect(() => {
@@ -82,7 +120,7 @@ export function CloseTabDialog({ connection, terminals, tab, space, onClosed, on
         if (!open) onDone();
       }}
       finalFocus={backTo}
-      title={space === undefined ? "Close this tab?" : "Close space?"}
+      title={space !== undefined ? "Close space?" : tabs > 1 ? `Close ${tabs} tabs?` : "Close this tab?"}
       description={
         space !== undefined
           ? `${space.name} \u2014 ${counted(1, "tab")}, ${counted(shown.size, "terminal")}`

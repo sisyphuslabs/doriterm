@@ -80,7 +80,7 @@ export function MeshMachineList({
             inline
             className="border-b-0"
             title={
-              <span className="flex items-center gap-2 [&_svg]:size-4 [&_svg]:shrink-0">
+              <span className="flex items-center gap-2 [&_svg:not([data-slot=spinner])]:size-4 [&_svg]:shrink-0">
                 {ownComputer === entry.target.hostId ? <Monitor aria-hidden /> : <Server aria-hidden />}
                 <span className="min-w-0 [overflow-wrap:anywhere]">{entry.target.hostName || entry.target.hostId}</span>
               </span>
