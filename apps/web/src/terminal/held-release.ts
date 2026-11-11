@@ -31,7 +31,8 @@ export interface ReleaseClock {
  * when the update was first seen open. A write that closes the update and opens the next restarts wterm's hold without
  * painting, so when the cap falls on a newer update than the one it was armed for, it counts again from then (#2089).
  * The bound is therefore per update: a render that changes no grid node can leave a cell held only while the program
- * keeps opening a newer update within each cap, which is as long as wterm itself keeps the screen frozen.
+ * keeps opening a newer update within each cap. That is about as long as wterm holds the screen, plus at most one more
+ * cap after a resize reopen, where the generation moves but wterm keeps the original update's deadline.
  */
 export class HeldRelease {
   readonly #clock: ReleaseClock;
