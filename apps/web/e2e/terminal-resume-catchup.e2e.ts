@@ -280,38 +280,43 @@ for (const device of ["desktop", "phone"] as const) {
         expect(frames.filter((last) => last !== LAST)).toEqual([]);
       });
 
-    test("over a 300 ms relay, an attach that replays the terminal's history, a window a round trip, is painted once it has settled: the screen never climbs (D5, #2011, #2242)", async ({
-      page,
-    }) => {
-      // A flood of a few MiB, painted, then a replay of over a MiB a window a round trip: more than the default budget on
-      // a loaded runner, though every wait is on a marker.
-      test.slow();
-      const rttMs = 300;
-      const arrivals = streamArrivals(rttMs);
-      const link = await routeHcSocket(page, { received: arrivals.received });
-      const { terminal, address } = await terminalFor(page);
-      await page.keyboard.type(COLORED_FLOOD);
-      await page.keyboard.press("Enter");
-      await expect(terminal).toHaveAttribute("aria-label", `${FLOOD_END} output`, { timeout: 60_000 });
-      await expect(terminal).toContainText(`line-${LAST}`, { timeout: 60_000 });
+    for (const slowdown of [1, 10])
+      test(`over a 300 ms relay, an attach that replays the terminal's history, a window a round trip, is painted once it has settled${slowdown > 1 ? ` on a page ${slowdown}x slower` : ""}: the screen never climbs (D5, #2011, #2242, #2271)`, async ({
+        page,
+      }) => {
+        // A flood of a few MiB, painted, then a replay of over a MiB a window a round trip: more than the default budget on
+        // a loaded runner, though every wait is on a marker.
+        test.slow();
+        const rttMs = 300;
+        const arrivals = streamArrivals(rttMs);
+        const link = await routeHcSocket(page, { received: arrivals.received });
+        const { terminal, address } = await terminalFor(page);
+        await page.keyboard.type(COLORED_FLOOD);
+        await page.keyboard.press("Enter");
+        await expect(terminal).toHaveAttribute("aria-label", `${FLOOD_END} output`, { timeout: 60_000 });
+        await expect(terminal).toContainText(`line-${LAST}`, { timeout: 60_000 });
 
-      // A reload mounts the terminal again, a view this page has never painted, so its attach asks the core for the
-      // history too: the 2,000 colored lines, which the core hands over a credit window a round trip. Every frame from
-      // the host comes a round trip late, so the new connection measures that SRTT, as over the relay.
-      await page.addInitScript(sampleFromLoad, address);
-      link.delay(rttMs);
-      arrivals.since();
-      await page.reload();
-      await expect(page.locator(`[data-terminal="${address}"]`)).toContainText(`line-${LAST}`, { timeout: 60_000 });
-      const frames = await sampledFrames(page);
-      console.log(`history ${device} ${rttMs}: the replay came in ${arrivals.report()}`);
+        // A reload mounts the terminal again, a view this page has never painted, so its attach asks the core for the
+        // history too: the 2,000 colored lines, which the core hands over a credit window a round trip. Every frame from
+        // the host comes a round trip late, so the new connection measures that SRTT, as over the relay.
+        await page.addInitScript(sampleFromLoad, address);
+        // A slow page (a phone, a starved tab) takes each window in about as long as a span of the hold's cap, so a span's
+        // ends can cut a window anywhere (#2271). Chromium keeps the throttle across the reload.
+        if (slowdown > 1)
+          await (await page.context().newCDPSession(page)).send("Emulation.setCPUThrottlingRate", { rate: slowdown });
+        link.delay(rttMs);
+        arrivals.since();
+        await page.reload();
+        await expect(page.locator(`[data-terminal="${address}"]`)).toContainText(`line-${LAST}`, { timeout: 60_000 });
+        const frames = await sampledFrames(page);
+        console.log(`history ${device} ${rttMs} ${slowdown}x: the replay came in ${arrivals.report()}`);
 
-      // The replay this test is for: the history, over many windows, not a screen's repaint.
-      expect(arrivals.bytes()).toBeGreaterThan(4 * CREDIT_WINDOW_BYTES);
-      expect(frames.at(-1)).toBe(LAST);
-      // The empty screen stays until the replay is drawn whole: one change, never a screen that climbs toward the end.
-      expect(transitions(frames)).toBeLessThanOrEqual(1);
-      expect(frames.filter((last) => last !== 0 && last !== LAST)).toEqual([]);
-    });
+        // The replay this test is for: the history, over many windows, not a screen's repaint.
+        expect(arrivals.bytes()).toBeGreaterThan(4 * CREDIT_WINDOW_BYTES);
+        expect(frames.at(-1)).toBe(LAST);
+        // The empty screen stays until the replay is drawn whole: one change, never a screen that climbs toward the end.
+        expect(transitions(frames)).toBeLessThanOrEqual(1);
+        expect(frames.filter((last) => last !== 0 && last !== LAST)).toEqual([]);
+      });
   });
 }
