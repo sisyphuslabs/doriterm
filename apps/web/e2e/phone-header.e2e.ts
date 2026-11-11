@@ -10,7 +10,7 @@ test.use({ ...phone, serviceWorkers: "block" });
 
 const header = (page: Page) => page.getByRole("banner");
 
-/** A plain shell in a space of its own, started straight on the e2e core; it reports a state only when told to. */
+/** The stand-in agent (`AGENT_SHELL`) in a space of its own, started straight on the e2e core; it reports a state only when told to. */
 function startShellIn(space: string, name: string): string {
   const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${space}`, "--", ...AGENT_SHELL]);
   const started: unknown = JSON.parse(out);
