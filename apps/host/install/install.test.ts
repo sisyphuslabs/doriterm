@@ -384,6 +384,8 @@ describe("install.sh on macOS", () => {
     expect(readFileSync(state, "utf8").trim()).toBe("loaded");
   });
 
+  // About 200 stub processes (101 `launchctl print`, 100 `sleep`): nothing is slept, but on a busy host the spawns alone
+  // can pass bun's default 5 s, so the test gets a bound sized to them (#2006).
   test("an old agent that never unloads stops the install after 10 s and never bootstraps the new one (#834)", () => {
     const r = rig("Darwin", "arm64");
     stub(r.stubs, "launchctl", `echo "launchctl $*" >> "${r.log}"; exit 0`);
@@ -394,7 +396,7 @@ describe("install.sh on macOS", () => {
     expect(run.calls.filter((call) => call.startsWith("launchctl print"))).toHaveLength(101);
     expect(run.calls.filter((call) => call === "sleep 0.1")).toHaveLength(100);
     expect(run.calls.some((call) => call.startsWith("launchctl bootstrap"))).toBe(false);
-  });
+  }, 30_000);
 
   test("an upgrade keeps the agent's state dir and identity, and leaves the agent loaded (#1966)", () => {
     const r = rig("Darwin", "arm64");
@@ -418,6 +420,8 @@ describe("install.sh on macOS", () => {
     expect(readFileSync(agent, "utf8").trim()).toBe("loaded");
   });
 
+  // As many stub processes as the never-unloads test (100 bootstrap attempts through the launchd stub, each running its
+  // own `cat`, and 99 `sleep`), so the same bound (#2006).
   test("a bootstrap launchd keeps refusing fails the install loudly instead of leaving the agent quietly unloaded", () => {
     const r = rig("Darwin", "arm64");
     launchd(r.stubs, r.log, 1000);
@@ -426,7 +430,7 @@ describe("install.sh on macOS", () => {
     expect(run.code).toBe(1);
     expect(run.err).toContain("Bootstrap failed: 5: Input/output error");
     expect(run.err).toContain("launchctl bootstrap gui/");
-  });
+  }, 30_000);
 
   test("registers a LaunchAgent that keeps the host running, then pairs", () => {
     const r = rig("Darwin", "arm64");
