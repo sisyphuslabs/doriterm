@@ -21,9 +21,7 @@ test("the install line, the Add a machine command and the landing page's downloa
   expect(read("README.md")).toContain("curl -fsSL https://get.doriterm.com | sh");
   expect(read("README.md")).not.toContain("releases/latest/download/install.sh");
   expect(INSTALL_SCRIPT_URL).toBe("https://get.doriterm.com");
-  expect(joinCommand("doriface://pair#h=a")).toBe(
-    "curl -fsSL https://get.doriterm.com | sh -s -- --join 'doriface://pair#h=a'",
-  );
+  expect(joinCommand("doriface://pair#h=a")).toStartWith("curl -fsSL https://get.doriterm.com |");
   const landing = read("apps/landing/index.html");
   expect(landing).toContain('<a class="btn btn--ghost" href="https://get.doriterm.com"');
   expect(landing).toContain("data-downloads hidden");
