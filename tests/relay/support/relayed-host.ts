@@ -90,6 +90,8 @@ export interface RelayedHostOptions {
 
 const UPLINK_TIMEOUT_MS = 30_000;
 
+const interruptedError = (): Error => new Error("start-up was interrupted by SIGINT, SIGTERM or SIGHUP");
+
 /** Starts the relay, the hc core and the host; any failure along the way stops whatever had started. */
 export async function startRelayedHost(prefix: string, options: RelayedHostOptions = {}): Promise<RelayedHost> {
   const scratch = mkdtempSync(join(options.scratchRoot ?? tmpdir(), "rh-"));
@@ -130,15 +132,20 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
   // signal again within a few milliseconds, ending the process before its host's stop has told the hc core to stop:
   // the core runs outside every process group of this process and outlives it (#2061). An interrupt during start-up
   // waits for the step in flight, which then ends start-up and tears down once, so no part starts after the teardown
-  // has passed it (#2080).
+  // has passed it (#2080). The uplink wait, as long as the hook's own budget, ends at once on an interrupt, and a failed
+  // start keeps the hook until its teardown has finished, so no interrupt finds the hook gone mid-teardown (#2131).
   let interrupted = false;
+  const interruption = Promise.withResolvers<never>();
+  // Read only by the uplink wait: an interrupt at any other step is seen by unlessInterrupted.
+  interruption.promise.catch(() => {});
   const settled = Promise.withResolvers<boolean>();
   const unhook = onInterrupt(async () => {
     interrupted = true;
+    interruption.reject(interruptedError());
     if (await settled.promise) await stop();
   });
   const unlessInterrupted = (): void => {
-    if (interrupted) throw new Error("start-up was interrupted by SIGTERM or SIGINT");
+    if (interrupted) throw interruptedError();
   };
   try {
     relay = await startLocalRelay();
@@ -167,7 +174,7 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
     await options.started?.({ host });
     unlessInterrupted();
     const uplinkMs = options.uplinkTimeoutMs ?? UPLINK_TIMEOUT_MS;
-    await within(connected.promise, "the host's relay uplink", uplinkMs);
+    await within(Promise.race([connected.promise, interruption.promise]), "the host's relay uplink", uplinkMs);
     const e2ee = host.e2ee;
     if (e2ee === undefined) throw new Error("the host has no E2EE endpoint");
     const started = await relayedHost({
@@ -185,12 +192,12 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
     settled.resolve(true);
     return started;
   } catch (error) {
-    unhook();
     if (logs.length > 0) console.log(`host log:\n${logs.join("\n")}`);
     try {
       return await rethrowAfter(error, teardown);
     } finally {
       settled.resolve(false);
+      unhook();
     }
   }
 }
