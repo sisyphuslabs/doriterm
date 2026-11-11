@@ -202,7 +202,8 @@ test("pinned tabs stay in view in a group of their own while the other tabs scro
     const box = first?.getBoundingClientRect();
     const hit = box === undefined ? null : document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
     return {
-      pinnedScrolls: pinnedScroller !== null,
+      // The pinned group scrolls on its own only past half the strip (#1916), never with the other tabs.
+      pinnedScrolls: pinnedScroller !== null && pinnedScroller === lastScroller,
       othersScrolled: (lastScroller?.scrollLeft ?? 0) > 0,
       pinnedOnTop: hit !== null && first?.contains(hit) === true,
     };

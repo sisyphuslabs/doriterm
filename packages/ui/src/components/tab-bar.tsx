@@ -197,7 +197,9 @@ export function TabBar({
             ref={pinnedList}
             data-tab-pins
             onClickCapture={pinnedDrag.onClickCapture}
-            className="relative flex shrink-0 items-center gap-[3px] py-1"
+            // At most half the strip: past that the pinned tabs scroll in their own group, so the other tabs keep room
+            // (#1916). Below it the group is as wide as its tabs and never scrolls.
+            className="relative flex max-w-1/2 min-w-0 items-center gap-[3px] overflow-x-auto overflow-y-hidden py-1"
           >
             {pinnedDrag.drag === null ? null : <DropIndicator drag={pinnedDrag.drag} />}
             {pinnedDrag.drag === null ? null : <DropCaret drag={pinnedDrag.drag} />}
