@@ -35,7 +35,9 @@ test.describe("a machine whose line drops while its terminals keep running", () 
     const before = Number.parseInt((await statusCount(page).textContent()) ?? "", 10);
 
     switchTo("drop");
-    await expect(machineRow(page)).toContainText(/offline\s*0/, { timeout: OFFLINE_BOUND_MS });
+    // The header counts the tabs of the spaces it lists (#2129), and a dropped line closes no tab: it changes the
+    // state, not the count. Live counts are the status bar's, below.
+    await expect(machineRow(page)).toContainText(/offline\s*1/, { timeout: OFFLINE_BOUND_MS });
     await expect(working.getByRole("button", { name: /crunch/ })).toHaveCount(0);
     const row = agentRow(page.getByRole("region", { name: "Offline" }), "crunch", true);
     await expect(row.getByRole("img", { name: "Unknown" })).toBeVisible();
