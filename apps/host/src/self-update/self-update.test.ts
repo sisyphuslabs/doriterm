@@ -117,6 +117,17 @@ test("a download is read only up to the manifest's size, and the manifest and it
   const manifest = await caughtUpdate(selfUpdate({ ...r.options, fetcher: withBigManifest }));
   expect([manifest.phase, manifest.message]).toEqual(["manifest", "the manifest is larger than 65536 bytes"]);
   expect(hugeManifest.pulled()).toBeLessThan(4);
+
+  const hugeSignature = endless(4096);
+  const withBigSignature = async (url: string) =>
+    url.endsWith("manifest.json.sig")
+      ? hugeSignature.response
+      : fetcher === undefined
+        ? new Response(null)
+        : fetcher(url);
+  const signature = await caughtUpdate(selfUpdate({ ...r.options, fetcher: withBigSignature }));
+  expect([signature.phase, signature.message]).toEqual(["signature", "the signature is larger than 65536 bytes"]);
+  expect(hugeSignature.pulled()).toBeLessThan(4);
 });
 
 test("a signed, newer, rolled-out build is checked, run with --version and renamed over the binary", async () => {

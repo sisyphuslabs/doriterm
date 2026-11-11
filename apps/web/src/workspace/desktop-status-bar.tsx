@@ -4,7 +4,7 @@ import { useActionKeys } from "../keys/use-action-keys.ts";
 import { agentStatus, nextNeedingYou } from "./attention.ts";
 import { machineOf, type Session, spaceName } from "./model.ts";
 import { HistoryGapStatus } from "./history-gap-status.tsx";
-import { ConnectedStatus, ConnectionPathItem, ReconnectStatus } from "./reconnect-status.tsx";
+import { ConnectedStatus, ConnectionPathItem, ReconnectStatus, useConnectionNotice } from "./reconnect-status.tsx";
 import { MachineStatus } from "./machine-status.tsx";
 import type { HcConnection } from "@doriface/client";
 
@@ -31,6 +31,8 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
   const paletteKeys = useActionKeys("app.palette");
   const blocked = live.filter((terminal) => agentStatus(terminal) === "blocked").length;
   const next = nextNeedingYou(terminals, focusedAddress);
+  // Until the connection is back nothing is known to be missing yet: the bar says it reconnects, as the phone line does.
+  const reconnecting = useConnectionNotice() !== null;
   return (
     <StatusBar
       start={
@@ -76,7 +78,7 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
           <ReconnectStatus />
           <MachineStatus connection={connection} address={focusedAddress} />
           <ConnectedStatus />
-          <HistoryGapStatus address={focusedAddress} />
+          {reconnecting ? null : <HistoryGapStatus address={focusedAddress} />}
           <ConnectionPathItem />
         </>
       }

@@ -47,7 +47,7 @@ import { SelectionMenu } from "./selection-menu.tsx";
 import { useTerminalCore } from "./use-terminal-core.ts";
 import { useTerminalInput } from "./use-terminal-input.ts";
 import { usePaneVisibility } from "./use-pane-visibility.ts";
-import { useTerminalAttach } from "./use-terminal-attach.ts";
+import { type PaintHold, useTerminalAttach } from "./use-terminal-attach.ts";
 import { useMachineLine } from "./use-machine-line.ts";
 import { useKeyboardClaim } from "./use-keyboard-claim.ts";
 
@@ -183,7 +183,18 @@ export function TerminalView(props: TerminalViewProps) {
     };
   }, [wt, seam, linkReady]);
   useEffect(() => predictor?.refresh(), [predictor, predictMode]);
-  const predictedCursor = usePredictionOverlay(wt, seam ?? predictor);
+  // A reattach replay holds the paint until it has settled (D5), and a synchronized update until it has come in (#2040);
+  // the paint is held while either holds it, and the prop carries that through the view's renders.
+  const [paintHeld, setPaintHeld] = useState(false);
+  const paintHolds = useRef<Record<PaintHold, boolean>>({ replay: false, update: false });
+  const holdPaint = useCallback((hold: PaintHold, held: boolean): boolean => {
+    paintHolds.current = { ...paintHolds.current, [hold]: held };
+    const paused = paintHolds.current.replay || paintHolds.current.update;
+    setPaintHeld(paused);
+    return paused;
+  }, []);
+  const paintHeldNow = useCallback((): boolean => paintHolds.current.replay || paintHolds.current.update, []);
+  const predictedCursor = usePredictionOverlay(wt, seam ?? predictor, paintHeldNow);
   usePreedit(wt, predictedCursor);
   // Wide characters in the output are laid out in idle time, so scrolling back to them is not the first time (#286).
   const warmup = useRef<GlyphWarmup | null>(null);
@@ -210,8 +221,6 @@ export function TerminalView(props: TerminalViewProps) {
     setSelectAt(null);
     if (!browsing) handle.current?.focus();
   }, [browsing]);
-  // A reattach replay holds the paint until it has settled (D5); the prop carries the hold through the view's renders.
-  const [replayHeld, setReplayHeld] = useState(false);
   const attachment = useTerminalAttach({
     connection,
     address,
@@ -230,7 +239,7 @@ export function TerminalView(props: TerminalViewProps) {
     onEnd,
     onEnded,
     onStream: streamStarted,
-    holdPaint: setReplayHeld,
+    holdPaint,
   });
   // An open that failed while the machine was offline is tried again, as Try again would, once the machine is back.
   const { unopened, clearUnopened } = attachment;
@@ -276,7 +285,7 @@ export function TerminalView(props: TerminalViewProps) {
         ref={handle}
         core={core}
         autoResize
-        renderingPaused={replayHeld}
+        renderingPaused={paintHeld}
         {...(options.cursorBlink === undefined ? {} : { cursorBlink: options.cursorBlink })}
         aria-label={label}
         data-slot="terminal-viewport"

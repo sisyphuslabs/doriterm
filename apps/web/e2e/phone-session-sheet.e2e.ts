@@ -87,7 +87,6 @@ test("the phone header's ... is one sheet: where the session lives, the next age
 test("the session sheet offers Find in terminal only while its machine is online (#1482)", async ({ page }) => {
   test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
   const local = startShell("machine", "find-offline");
-  const go = test.info().outputPath("go");
   try {
     await page.goto("/");
     // The phone lists machines on its Spaces tab (#1398); the agent row is back on Agents.
@@ -129,7 +128,7 @@ test("the session sheet offers Find in terminal only while its machine is online
     await expect(find).toBeVisible();
   } finally {
     reconnect();
-    removeTerminal("machine", local, go);
+    removeTerminal("machine", local);
   }
 });
 

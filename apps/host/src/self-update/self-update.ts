@@ -53,8 +53,8 @@ const runFile = (file: string, args: readonly string[]): Promise<{ code: number;
 const SMALL_FILE_LIMIT = 64 * 1024;
 
 /**
- * The body, read only up to `limit` bytes (#1983): a body that goes past it is cancelled there and refused, so nothing
- * larger than the manifest names is ever held in memory.
+ * The body, read only up to `limit` bytes (#1983): a body that goes past it is cancelled there and refused, so at most
+ * the limit plus the one chunk that crossed it is ever held in memory (#2297).
  */
 async function bytesOf(
   fetcher: (url: string) => Promise<Response>,

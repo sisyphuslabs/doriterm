@@ -33,6 +33,37 @@ test("the dialog reads a joined offer when missed replaces its document event", 
   feed.close();
 });
 
+test("a feed the core ends is opened again; the dialog's own close is not (#1780)", () => {
+  const ended = new EventFeed(
+    { sendBytes: () => {}, send: () => {}, sendClose: () => {}, unregister: () => {} },
+    1,
+    { seq: 1, terminals: [] },
+    0,
+  );
+  let reopened = 0;
+  followJoinOffer(
+    ended,
+    () => {},
+    () => (reopened += 1),
+  );
+  ended.connectionClosed(undefined);
+  expect(reopened).toBe(1);
+
+  const own = new EventFeed(
+    { sendBytes: () => {}, send: () => {}, sendClose: () => {}, unregister: () => {} },
+    1,
+    { seq: 1, terminals: [] },
+    0,
+  );
+  followJoinOffer(
+    own,
+    () => {},
+    () => (reopened += 1),
+  );
+  own.close();
+  expect(reopened).toBe(1);
+});
+
 test("the dialog observes a missed snapshot queued before its first listener", () => {
   const feed = new EventFeed(
     { sendBytes: () => {}, send: () => {}, sendClose: () => {}, unregister: () => {} },

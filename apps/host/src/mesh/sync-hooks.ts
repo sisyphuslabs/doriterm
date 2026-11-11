@@ -1,4 +1,4 @@
-import type { Signed } from "@doriface/mesh";
+import type { Signed, View } from "@doriface/mesh";
 import type { Clock } from "./clock.ts";
 import type { Gossip } from "./gossip.ts";
 import type { MeshView } from "./mesh-view.ts";
@@ -19,7 +19,7 @@ export interface SyncHandle {
   changed(): void;
   stop(): void | Promise<void>;
   /** Whether every machine member reads the format a client admission needs; see `MeshHooks.formatReady`. */
-  formatReady(records?: readonly Signed[]): boolean;
+  formatReady(records?: readonly Signed[], view?: View): boolean;
   /** The running mesh's live facts. */
   live(): SyncFacts;
 }
@@ -75,6 +75,6 @@ export function syncHooks(sync: SyncHandle, clock: Clock, pending: () => readonl
     live: () => ({ ...sync.live(), pending: pending() }),
     refreshLines: () => sync.runtime?.reconciler.refreshLines() ?? Promise.resolve(),
     floor: () => sync.gossip?.floor(),
-    formatReady: (records) => sync.formatReady(records),
+    formatReady: (records, view) => sync.formatReady(records, view),
   };
 }

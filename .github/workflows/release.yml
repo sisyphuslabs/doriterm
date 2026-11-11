@@ -2,8 +2,9 @@ name: Release
 
 # A vX.Y.Z tag builds every artifact into a draft release, smoke-tests the uploaded files and then publishes it.
 # A manual dispatch builds the same set into a draft release and leaves it a draft, so the pipeline can be proven
-# without publishing anything. A published release is then mirrored into the release bucket behind get.doriterm.com and
-# its channel moved (#1969, docs/releasing.md); a dispatch mirrors its draft into the staging bucket instead. Either way
+# without publishing anything. A tag's draft has its SHA256SUMS.txt signed before Publish, which refuses a draft without
+# the signature (#2297). A published release is then mirrored into the release bucket behind get.doriterm.com and its
+# channel moved (#1969, docs/releasing.md); a dispatch mirrors its draft into the staging bucket instead. Either way
 # the version must match apps/desktop/package.json (release-version.ts).
 # The macOS builds, and the standalone macOS host binaries install.sh downloads, are signed with a Developer ID
 # certificate and notarized with an App Store Connect API key, from the repository secrets CSC_LINK (base64 .p12),
@@ -708,10 +709,44 @@ jobs:
             echo "| Checks | checksum, silent per-user install, packaged host fingerprint twice (same identity), app version, launch |"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Signs the draft's SHA256SUMS.txt before Publish, apart from any mirror, so neither a staging bucket that already holds
+  # this version nor a channel that offers a newer one can keep a release unsigned (#2297). The key lives only in the
+  # release-mirror environments (staging's allows release tags); Ed25519 is deterministic, so the production mirror's
+  # signature is the same bytes.
+  sign:
+    name: Sign the draft's checksums
+    if: github.event_name == 'push'
+    needs: [version, smoke-linux, smoke-mac, smoke-windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release-mirror-staging
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - name: Download the draft's checksums
+        run: gh release download "$TAG" --pattern SHA256SUMS.txt --dir "$RUNNER_TEMP/sign"
+      - name: Sign them
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: bun .github/scripts/release-r2.ts sign --dir "$RUNNER_TEMP/sign"
+      - name: Attach the signature to the draft
+        run: gh release upload "$TAG" "$RUNNER_TEMP/sign/SHA256SUMS.txt.sig" --clobber
+
   publish:
     name: Publish
     if: github.event_name == 'push'
-    needs: [version, smoke-linux, smoke-mac, smoke-windows]
+    # The sign job puts SHA256SUMS.txt.sig on the draft, and the first step refuses without it: a release is never public
+    # unsigned (#2297).
+    needs: [version, smoke-linux, smoke-mac, smoke-windows, sign]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -721,6 +756,12 @@ jobs:
       GH_REPO: ${{ github.repository }}
       TAG: ${{ needs.version.outputs.tag }}
     steps:
+      - name: The draft carries its signature
+        run: |
+          if ! gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx SHA256SUMS.txt.sig; then
+            echo "::error title=Publish::$TAG has no SHA256SUMS.txt.sig, so it stays a draft; re-run the Sign job"
+            exit 1
+          fi
       - name: Publish the draft
         run: gh release edit "$TAG" --draft=false
       - name: Workflow summary

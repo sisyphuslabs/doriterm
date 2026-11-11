@@ -65,6 +65,21 @@ test("the mirror job checks the tag, then downloads, mirrors, signs and probes i
   expect([requires(null), requires(true), requires(false)]).toEqual([true, true, false]);
   // The expression it replaced let every hand-run through (#2126 review): null != false is false in GitHub's equality.
   expect(evaluate("${{ inputs.published != false }}", { contexts: { inputs: { published: null } } })).toBe(false);
+});
+
+test("a release is never public unsigned: a sign job signs the draft, and Publish waits for it and checks it (#2297)", () => {
+  const { publish, sign, "mirror-staging": staging } = release.jobs;
+  // Supersedes #2300's first shape, which signed in the staging mirror: a tag after a dispatch of the same version, or a
+  // backport, made that mirror fail and held Publish for ever.
+  expect(publish?.needs).toContain("sign");
+  expect(publish?.needs).not.toContain("mirror-staging");
+  const steps = (publish?.steps ?? []).map((step) => step.name ?? "");
+  const guard = steps.indexOf("The draft carries its signature");
+  expect([guard >= 0, guard < steps.indexOf("Publish the draft")]).toEqual([true, true]);
+  expect(publish?.steps?.[guard]?.run).toContain("grep -qx SHA256SUMS.txt.sig");
+  expect([sign?.if, sign?.environment]).toEqual(["github.event_name == 'push'", "release-mirror-staging"]);
+  expect(runs(sign).join("\n")).toContain("release-r2.ts sign --dir");
+  expect(staging?.if).toBe("github.event_name == 'workflow_dispatch'");
   expect(mirror?.steps?.find((step) => step.name === "Attach the checksums signature")?.if).toBe(
     "inputs.target == 'production'",
   );
@@ -82,8 +97,13 @@ test("run by hand it mirrors a published release from dev only, in the environme
   for (const run of runs(mirror)) expect(run).not.toMatch(/\$\{\{\s*inputs\./);
 });
 
-test("the R2 key pair and the signing key reach only the mirror job and the channel job", () => {
-  expect(holders(release)).toEqual([]);
+test("the R2 key pair and the signing key reach only the mirror job, the channel job and release.yml's sign job", () => {
+  // The sign job holds the signing key alone, in its step, and no R2 key (#2297).
+  expect(holders(release)).toEqual(["sign"]);
+  const sign = release.jobs["sign"];
+  const names = [sign, ...(sign?.steps ?? [])].flatMap((scope) => Object.keys(scope?.env ?? {}));
+  expect(names.filter((name) => /^(R2_|RELEASE_SIGNING_KEY)/.test(name))).toEqual(["RELEASE_SIGNING_KEY"]);
+  expect(Object.keys(sign?.env ?? {})).not.toContain("RELEASE_SIGNING_KEY");
   expect(holders(mirrorFlow)).toEqual(["mirror"]);
   expect(holders(channel)).toEqual(["channel"]);
 });
@@ -94,4 +114,16 @@ test("channel operations run only on dev, and the dispatch inputs reach the shel
   expect(job?.environment).toBe("${{ inputs.target == 'production' && 'release-mirror' || 'release-mirror-staging' }}");
   for (const run of runs(job)) expect(run).not.toContain("${{");
   expect(at(job, '--op "$OPERATION" --version "$VERSION" --percent "$PERCENT"')).toBeGreaterThan(0);
+});
+
+test("the mirror takes only the tags a host takes: no number with a leading zero (#2297)", () => {
+  const check = mirrorFlow.jobs["mirror"]?.steps?.find((step) => step.name === "The tag and the target")?.run ?? "";
+  const pattern = /\[\[ "\$TAG" =~ (\S+) \]\]/.exec(check)?.[1];
+  if (pattern === undefined) throw new Error("the tag check has no =~ pattern");
+  const takes = (tag: string): boolean =>
+    Bun.spawnSync(["bash", "-c", `[[ "$1" =~ ${pattern} ]]`, "_", tag]).exitCode === 0;
+  for (const tag of ["v0.1.18", "v0.1.18-beta.9", "v0.1.18-beta.10", "v0.1.18-rc.0", "v10.0.0", "v0.1.18-0a.1"])
+    expect([tag, takes(tag)]).toEqual([tag, true]);
+  for (const tag of ["v0.1.18-beta.09", "v01.1.18", "v0.01.18", "v0.1.018", "v0.1.18-00", "0.1.18", "v0.1"])
+    expect([tag, takes(tag)]).toEqual([tag, false]);
 });

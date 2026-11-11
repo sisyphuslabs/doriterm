@@ -1,6 +1,6 @@
 import { base64urlEncode } from "@doriface/crypto";
 import { memoryLinkPair } from "@doriface/crypto/testing";
-import { parseRecord, type Signed, signCard } from "@doriface/mesh";
+import { parseRecord, type Signed, signCard, type View } from "@doriface/mesh";
 import { joinCode, joinCommit, MeshLines } from "@doriface/mesh/join";
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { cardBody } from "../state/mesh.ts";
@@ -18,7 +18,7 @@ async function begin(
   auto = false,
   kind: "client" | "machine" = "client",
   sas = true,
-  formatReady: (records?: readonly Signed[]) => boolean = () => true,
+  formatReady: (records?: readonly Signed[], view?: View) => boolean = () => true,
   a = side("alpha"),
 ) {
   const c = side("browser");
@@ -177,5 +177,52 @@ test("a client approved after a machine was admitted meanwhile is refused by the
   expect(await run.served).toContain("format");
   const types = (a.mesh.read()?.records ?? []).map((record) => parseRecord(record)?.type);
   expect(types).toEqual(["found", "admit"]);
+  run.resumes.clear();
+});
+
+test("a machine admission does not ask the in-transaction client format check (#2263)", async () => {
+  const asked: number[] = [];
+  const run = await begin(true, "machine", true, (records?: readonly Signed[]) => {
+    if (records !== undefined) asked.push(records.length);
+    return true;
+  });
+  expect(await run.served).toBe("resolved");
+  expect(run.a.mesh.read()?.records.map((record) => parseRecord(record)?.type)).toEqual(["found", "admit"]);
+  expect(asked).toEqual([]);
+  run.resumes.clear();
+});
+
+test("a client admission hands its transaction's own view to the in-transaction format check (#2263)", async () => {
+  const views: (View | undefined)[] = [];
+  const txViews: View[] = [];
+  const a = side("alpha");
+  const transact = a.mesh.transact.bind(a.mesh);
+  spyOn(a.mesh, "transact").mockImplementation((fn, rollback, initial) =>
+    transact(
+      (tx) => {
+        txViews.push(tx.view());
+        return fn(tx);
+      },
+      rollback,
+      initial,
+    ),
+  );
+  const run = await begin(
+    false,
+    "client",
+    true,
+    (records?: readonly Signed[], view?: View) => {
+      if (records !== undefined) views.push(view);
+      return true;
+    },
+    a,
+  );
+  await run.client.next();
+  const asked = await run.pending.next();
+  run.pending.decide(asked.nonce, true, asked.code);
+  run.client.send({ t: "confirm" });
+  expect(await run.served).toBe("resolved");
+  expect(views).toHaveLength(1);
+  expect(views[0]).toBe(txViews.at(-1));
   run.resumes.clear();
 });

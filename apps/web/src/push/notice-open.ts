@@ -42,6 +42,14 @@ let launchPending = false;
  */
 let launchNotice = false;
 export const hasLaunchNotice = (): boolean => launchNotice;
+/**
+ * Forgets the launch answer and any notice still waiting for its pane. A page decides its start once and its pane takes
+ * the notice, so only a test, whose module state outlives one case, needs it.
+ */
+export const forgetNotices = (): void => {
+  launchNotice = false;
+  set(null);
+};
 const setLaunchPending = (next: boolean): void => {
   launchPending = next;
   for (const listener of listeners) listener();
@@ -87,14 +95,17 @@ function openTapped(url: string, toWorkspace: () => void): boolean {
   return true;
 }
 
-/** The iOS and Android apps hand a tapped notification to the page: the one that launched the app, then each later one. */
-export function listenForAppNotices(toWorkspace: () => void, plugin = nativePush()): void {
+/**
+ * The iOS and Android apps hand a tapped notification to the page: the one that launched the app, then each later one.
+ * Resolves once the launch tap has answered and the start no longer waits for it.
+ */
+export async function listenForAppNotices(toWorkspace: () => void, plugin = nativePush()): Promise<void> {
   if (plugin === null) return;
   void plugin.addListener("noticeTap", (tap) => openTapped(tap.url, toWorkspace));
   // The launch notice is kept before the wait ends, so a start that waited sees it (#1494's "a tapped notice still
   // wins") even when a render in between has already handed the pending notice to its pane.
   setLaunchPending(true);
-  void plugin
+  await plugin
     .takeLaunchTap()
     .then(({ tap }) => {
       launchNotice = tap !== null && openTapped(tap.url, toWorkspace);

@@ -65,11 +65,15 @@ function predictionSpans(element: HTMLElement, placed: PlacedPrediction): HTMLEl
  * only read: each draw checks the predictions against its cells and cursor (`drawnCells`). A change from the predictor
  * is painted at once, so an addition shows in the frame its key is typed in; a cell that leaves is painted away only
  * once the renderer has painted what replaced it (`paintedCells`): at the next grid change, or one frame later unless
- * the program holds a synchronized update open (`HeldRelease`). Hidden
+ * the program holds a synchronized update open or the view holds the paint (`paintHeld`, `HeldRelease`). Hidden
  * while the view is scrolled back from the end (rule P11), since the layer anchors to active-screen rows. Returns the
  * predicted cursor, for the composition to be drawn at.
  */
-export function usePredictionOverlay(wt: WTerm | null, source: OverlaySource | null): PredictedCursor {
+export function usePredictionOverlay(
+  wt: WTerm | null,
+  source: OverlaySource | null,
+  paintHeld: () => boolean = () => false,
+): PredictedCursor {
   const channel = useMemo(cursorChannel, []);
   useEffect(() => {
     if (wt === null || source === null) return undefined;
@@ -97,6 +101,7 @@ export function usePredictionOverlay(wt: WTerm | null, source: OverlaySource | n
         },
         synchronized: () => view.bridge?.synchronizedOutput?.() ?? false,
         generation: () => view.bridge?.synchronizedOutputGeneration?.() ?? 0,
+        paintHeld,
       },
       () => paint(true),
     );
@@ -174,6 +179,6 @@ export function usePredictionOverlay(wt: WTerm | null, source: OverlaySource | n
       watch(false);
       hide();
     };
-  }, [wt, source, channel]);
+  }, [wt, source, channel, paintHeld]);
   return channel;
 }
