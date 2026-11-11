@@ -1,5 +1,5 @@
 // #1172: at the edge of a split, a pane key with no pane that way nudges the pane and leaves its key to the terminal's
-// program, as a lone pane does; a Cmd chord, which a program never receives, stays the app's. The same move chosen from
+// program, as a lone pane does; a Cmd chord, which a program never receives, stays the app's. A pane swap chosen from
 // the palette has no key to leave, so it counts as handled and the palette closes (#2119). Alt+Up reaching the program
 // is alt-arrow-passthrough.e2e.ts's (#1898).
 import type { Locator, Page } from "@playwright/test";
@@ -46,7 +46,7 @@ async function onKeymap(page: Page, keymap: Keymap): Promise<void> {
     const animate = Element.prototype.animate;
     Element.prototype.animate = function (this: Element, ...args: Parameters<Element["animate"]>) {
       const [frames] = args;
-      if (Array.isArray(frames) && frames[1]?.transform === "translateY(-4px)")
+      if (Array.isArray(frames) && frames[1]?.["transform"] === "translateY(-4px)")
         Reflect.set(window, "__upNudges", Number(Reflect.get(window, "__upNudges") ?? 0) + 1);
       return animate.apply(this, args);
     };
@@ -172,19 +172,19 @@ test("other: a pane chord with no pane that way reaches the program, not the app
 });
 
 for (const keymap of ["mac", "other"] as const) {
-  test(`${keymap}: "Focus pane up" chosen from the palette at a split's top edge nudges and closes the palette`, async ({
-    page,
-  }) => {
+  test(`${keymap}: "Swap pane up" chosen from the palette at a split's top edge closes the palette`, async ({ page }) => {
+    // The palette offers the pane swaps (shell-actions.ts). At the top of a row split there is no pane to swap with;
+    // the chosen action has no key to leave to a program, so it counts as handled and the palette closes, as it did
+    // before #1600, and no pane moves.
     await onKeymap(page, keymap);
     await terminalInFocus(page);
     const second = await splitRight(page);
-    const palette = page.getByRole("dialog", { name: "Command palette" });
+    const dialog = page.getByRole("dialog", { name: "Command palette" });
     await pressShortcut(page, "app.palette");
-    await expect(palette).toBeVisible();
-    await page.keyboard.type("Focus pane up");
-    await page.keyboard.press("Enter");
-    await expect(palette).toBeHidden({ timeout: 5_000 });
-    await expect.poll(() => upNudges(page)).toBe(1);
+    await expect(dialog).toBeVisible();
+    await page.getByRole("combobox", { name: "Command" }).fill("Swap pane up");
+    await page.getByRole("option", { name: /^Swap pane up/ }).click();
+    await expect(dialog).toBeHidden({ timeout: 5_000 });
     await expect.poll(() => keyboardAddress(page)).toBe(second.address);
   });
 }
