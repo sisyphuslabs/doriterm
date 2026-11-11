@@ -163,7 +163,9 @@ export class OutputPacer {
 
   /**
    * How a synchronized update holds the terminal's paint. wterm holds one for a second and then draws it, partly
-   * written, on a page too slow to take it in (#2040); this holds it for as long as its bytes keep coming.
+   * written, on a page too slow to take it in (#2040); this holds it while its bytes keep coming, each within
+   * {@link SYNCHRONIZED_UNPACED_MS} of the last. Over a link whose round trip nears that, a redraw spanning several credit
+   * windows can still be let go between two of them (#2306).
    */
   holdSynchronized(hold: (held: boolean) => void): void {
     this.#holdSynchronized = hold;

@@ -292,6 +292,44 @@ describe("OutputPacer in a synchronized update (#757)", () => {
     clock.nextFrame();
     expect(written.slice(2)).toEqual([FRAME_BYTES]);
   });
+
+  test("drop lets an update's paint hold go: the stream it came from is gone (#2040)", () => {
+    const { frames, holds, pacer } = holdingUpdates();
+    pacer.push(text(OPEN));
+    frames.nextFrame();
+    expect(holds).toEqual([true]);
+    pacer.drop();
+    expect(holds).toEqual([true, false]);
+  });
+
+  test("each write of a held update gives its credit back as it is written, so the core sends the rest (#2040)", () => {
+    const { frames, timers, written, pacer } = holdingUpdates();
+    let credited = 0;
+    const credit = (count: number): void => void (credited += count);
+    pacer.push(text(OPEN), credit);
+    frames.nextFrame();
+    for (let piece = 1; piece <= 5; piece += 1) {
+      timers.advance(300);
+      pacer.push(bytes(FRAME_BYTES * 4), credit);
+      expect(credited).toBe(OPEN.length + FRAME_BYTES * 4 * piece);
+    }
+    expect(written).toHaveLength(6);
+  });
+
+  test("an update held while the app is hidden is written and credited by the hidden drain, and drawn when it closes (#2040)", () => {
+    const { frames, timers, written, holds, pacer } = holdingUpdates();
+    let credited = 0;
+    const credit = (count: number): void => void (credited += count);
+    pacer.push(text(OPEN), credit);
+    frames.nextFrame();
+    pacer.setHidden(true);
+    pacer.push(bytes(FRAME_BYTES * 3), credit);
+    expect(written).toEqual([OPEN.length, FRAME_BYTES * 3]);
+    expect(credited).toBe(OPEN.length + FRAME_BYTES * 3);
+    timers.advance(500);
+    pacer.push(text(CLOSE), credit);
+    expect(holds).toEqual([true, false]);
+  });
 });
 
 describe("OutputPacer while the app is hidden (D5)", () => {
