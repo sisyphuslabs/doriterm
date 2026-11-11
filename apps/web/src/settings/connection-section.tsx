@@ -13,18 +13,47 @@ type TextField = "loopbackUrl" | "token";
 /** A relay as people read it: its host name, without the scheme. */
 const relayHost = (url: string): string => (URL.canParse(url) ? new URL(url).host : url);
 
+/** The part of the connection store the Advanced form uses: the settings it reads and the edit that saves one field. */
+export interface ConnectionFormStore {
+  readonly settings: ConnectionSettings;
+  edit(fields: Partial<ConnectionSettings>): void;
+}
+
+export interface ConnectionForm {
+  /** The fields being typed, seeded once: typing is never overwritten by a change behind the form. */
+  readonly draft: ConnectionSettings;
+  type<K extends keyof ConnectionSettings>(field: K, value: ConnectionSettings[K]): void;
+  /**
+   * Saves one field onto the settings as they are now, never the copy the form opened with: the shown machine and the
+   * roster move on their own while the form is open (#1006).
+   */
+  commit<K extends keyof ConnectionSettings>(field: K, value: ConnectionSettings[K]): void;
+}
+
+/** The Advanced form's state, apart from its markup, so a test can mount it and save a field after another pick (#1169). */
+export function useConnectionForm(store: ConnectionFormStore = connectionStore): ConnectionForm {
+  const [draft, setDraft] = useState<ConnectionSettings>(store.settings);
+  const change = <K extends keyof ConnectionSettings>(field: K, value: ConnectionSettings[K]): void => {
+    setDraft((prev) => ({ ...prev, [field]: value }));
+  };
+  return {
+    draft,
+    type: change,
+    commit: (field, value) => {
+      change(field, value);
+      store.edit({ [field]: value } as Partial<ConnectionSettings>);
+    },
+  };
+}
+
 /**
  * Relay (end-to-end encrypted) or the plaintext loopback dev gateway. The relay is shown with no field to change it and
  * there is no direct address (#458): a release build always reaches the production relay and offers no loopback switch,
  * and a dev build reads another relay and a direct address only from saved settings (`doriface.connection`).
  */
 export function ConnectionSection() {
-  // The fields being typed; a commit applies only the one changed, to the settings as they are then (#1006).
-  const [draft, setDraft] = useState<ConnectionSettings>(connectionStore.settings);
-  const commit = (fields: Partial<ConnectionSettings>): void => {
-    setDraft((prev) => ({ ...prev, ...fields }));
-    connectionStore.edit(fields);
-  };
+  const form = useConnectionForm();
+  const { draft } = form;
   const row = (id: TextField, title: string, description: string, secret = false) => (
     <SettingRow
       id={id}
@@ -42,12 +71,12 @@ export function ConnectionSection() {
           autoComplete="off"
           value={draft[id]}
           className="w-full sm:w-64"
-          onValueChange={(value: string) => setDraft((prev) => ({ ...prev, [id]: value }))}
+          onValueChange={(value: string) => form.type(id, value)}
           onBlur={() => {
-            if (draft[id] !== connectionStore.settings[id]) commit({ [id]: draft[id] });
+            if (draft[id] !== connectionStore.settings[id]) form.commit(id, draft[id]);
           }}
           onKeyDown={(event) => {
-            if (event.key === "Enter") commit({ [id]: draft[id] });
+            if (event.key === "Enter") form.commit(id, draft[id]);
           }}
         />
       }
@@ -87,7 +116,7 @@ export function ConnectionSection() {
             label="Connect through"
             options={MODES}
             value={draft.mode}
-            onValueChange={(mode) => commit({ mode })}
+            onValueChange={(mode) => form.commit("mode", mode)}
           />
         }
       />

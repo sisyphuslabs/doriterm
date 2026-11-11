@@ -60,7 +60,8 @@ export function Dialog({
     const element = panel.current;
     if (element === null) return true;
     if (element.scrollHeight > element.clientHeight) return element;
-    if (alert && element.querySelectorAll("button").length === 1) return true;
+    const buttons = element.querySelectorAll<HTMLButtonElement>("button");
+    if (alert && buttons.length === 1) return buttons[0] ?? element;
     return element.querySelector<HTMLElement>(fieldSelector) ?? element;
   };
   // The dialog takes the keyboard as it opens (#2046). Base UI would focus it a frame later, and on a busy page a key

@@ -79,7 +79,7 @@ test("on a phone the terminal header names the session and where it is, follows 
     expect(box.width).toBeGreaterThanOrEqual(44);
     expect(box.height).toBeGreaterThanOrEqual(44);
     await switcher.click();
-    const sheet = page.getByRole("dialog", { name: "Spaces" });
+    const sheet = page.getByRole("dialog", { name: "Switch" });
     await opened(sheet);
     // A visible Done closes the sheet and hands focus back to the switch.
     // Exact: an agent row's name also carries its state, "Done" among them.
