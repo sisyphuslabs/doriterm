@@ -15,6 +15,21 @@ export const lastSaid = (terminal: Session): string => terminal.status?.msg ?? t
 export const rowDetail = (name: string, terminal: Session): string =>
   lastSaid(terminal) || (name === "" ? "" : terminalTitle(terminal));
 
+/**
+ * The terminal a phone moves to when the tab holding `closing` closes: the tab that slides into its place among the
+ * space's live tabs, else the space's last, as herdr-app's `remove_tab` picks it (afterClosing); its pane in view is its
+ * first. Null when the space has no other live tab, and the phone goes up to the screen it came from instead (#1478).
+ *
+ * The closing tab is named by all of its panes, not by the one the phone shows: in a split tab that pane may have
+ * finished while a sibling is still live, and the tab is then still listed, under the sibling's address.
+ */
+export function nextAfterClosing(tabs: readonly (readonly string[])[], closing: readonly string[]): string | null {
+  const at = tabs.findIndex((panes) => panes.some((address) => closing.includes(address)));
+  if (at === -1) return null;
+  const kept = tabs.filter((_, index) => index !== at);
+  return (kept[at] ?? kept.at(-1))?.[0] ?? null;
+}
+
 /** Most urgent first: a split tab reads as the pane that most needs the person. */
 const URGENCY: readonly AgentStatus[] = ["blocked", "working", "done", "idle", "unknown"];
 const urgency = (terminal: Session): number => URGENCY.indexOf(agentStatus(terminal));

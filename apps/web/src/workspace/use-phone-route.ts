@@ -37,6 +37,11 @@ export interface PhoneNavigation {
   readonly dropSpace: () => void;
   /** Whether the last move between entries went forward (a push): only then does a pushed screen slide in. */
   readonly pushed: boolean;
+  /**
+   * Leaves the open terminal, whose tab has closed: to `next` in its place (a switch, replacing its entry), else up to
+   * the screen it was opened from (#1478).
+   */
+  readonly leave: (next: string | null) => void;
   /** Whether the switch sheet is open over the open terminal (`&sheet=switch`). */
   readonly sheet: boolean;
   /** Opens the switch sheet (one entry over its terminal) or closes it (Back off that entry). */
@@ -132,6 +137,9 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
   // The sheet's entry is left by a Back, once: what it switches to is shown when that Back has landed on its terminal.
   const sheetClosing = useRef(false);
   const afterSheet = useRef<string | null>(null);
+  // Leaving a closed tab with nowhere to switch to, from the sheet: the sheet's Back lands on that tab's own screen first,
+  // so the step up to the screen it came from waits for that landing (#1478 review).
+  const upAfterSheet = useRef(false);
   const sheetOn = narrow && path === "/" && listed.sheet;
   const showSheet = useCallback(
     (opening: boolean) => {
@@ -168,8 +176,13 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     sheetClosing.current = false;
     const next = afterSheet.current;
     afterSheet.current = null;
+    // A switch wins over a step up asked for in the same close (an End settling before the sheet's Back lands): the
+    // up intent goes with it, so a later Back off the sheet only closes the sheet (#1478 review).
+    const up = upAfterSheet.current;
+    upAfterSheet.current = false;
     if (next !== null) show(next);
-  }, [sheetOn, show]);
+    else if (up) back();
+  }, [back, sheetOn, show]);
   const showSpace = useCallback(
     (spaceKey: string) => go({ section: listed.section, space: spaceKey, terminal: null, sheet: false }, false),
     [go, listed.section],
@@ -230,6 +243,17 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
   const dropSpace = useCallback(() => {
     if (path === "/" && listed.space !== null) go({ ...listed, space: null }, true);
   }, [go, listed, path]);
+  const leave = useCallback(
+    (next: string | null) => {
+      if (!narrow) return;
+      if (next !== null) show(next);
+      else if (sheetOn) {
+        upAfterSheet.current = true;
+        showSheet(false);
+      } else back();
+    },
+    [back, narrow, sheetOn, show, showSheet],
+  );
   const section = narrow ? listed.section : "agents";
   return {
     open,
@@ -242,6 +266,7 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     backFromSpace,
     dropSpace,
     pushed: forward.current,
+    leave,
     sheet: sheetOn,
     showSheet,
   };
