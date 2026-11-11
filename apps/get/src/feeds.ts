@@ -1,7 +1,7 @@
 import type { RequestContext } from "./bindings.ts";
 import { type Resolved, resolveChannel } from "./channel.ts";
 import { isCounted, recordDownload, requestFacts } from "./datapoint.ts";
-import { ADDED_LINE, FILE_LINE } from "./feed-lines.ts";
+import { ADDED_LINE, placeLines } from "./feed-lines.ts";
 import { neverPublished, serveGithubFeed } from "./github-feed.ts";
 import { type Channel, hostManifestKey, isReleaseFile, objectKey } from "./names.ts";
 import { text } from "./serve-release.ts";
@@ -22,22 +22,24 @@ const FEED_TTL = "public, max-age=60";
  * A stored `latest*.yml` as a channel serves it: each relative `url` and `path` becomes `<version>/<file>`, so the
  * updater fetches it under `/desktop/<channel>/`; `stagingPercentage` carries the pointer's rollout, which
  * electron-updater's isStagingMatch compares with the install's own id; `minimumVersion` is the self-update floor. A
- * feed that names another version or a file outside the release is refused (null), never passed through.
+ * feed that names another version or a file outside the release is refused (null), never passed through. Only a
+ * `files` item's `url` and the top-level `path` name files: the same text inside `releaseNotes` is left as it is.
  */
 export function composeFeed(stored: string, resolved: Resolved): string | null {
   const lines = stored.replaceAll("\r\n", "\n").split("\n");
   if (!lines.some((line) => line.trim() === `version: ${resolved.version}`)) return null;
+  const placed = placeLines(lines);
+  if (placed === null) return null;
   const out: string[] = [];
-  for (const line of lines) {
+  for (const [index, line] of lines.entries()) {
+    const place = placed[index];
     if (ADDED_LINE.test(line)) continue;
-    const file = FILE_LINE.exec(line);
-    if (file === null) {
+    if (place?.at !== "file") {
       out.push(line);
       continue;
     }
-    const [, prefix = "", value = ""] = file;
-    if (!isReleaseFile(value.trim())) return null;
-    out.push(`${prefix}${resolved.version}/${value.trim()}`);
+    if (!isReleaseFile(place.value.trim())) return null;
+    out.push(`${place.prefix}${resolved.version}/${place.value.trim()}`);
   }
   while (out.at(-1) === "") out.pop();
   out.push(`stagingPercentage: ${resolved.rollout}`);
@@ -54,23 +56,51 @@ async function offeredOrRefusal(ctx: RequestContext, channel: Channel): Promise<
   }
 }
 
+interface MirroredFeed {
+  readonly offered: Resolved;
+  readonly stored: string | null;
+}
+
+/** The channel's offer and its stored feed; null before any offer, "unavailable" when an R2 read fails. */
+async function readMirroredFeed(
+  ctx: RequestContext,
+  channel: Channel,
+  feed: string,
+): Promise<MirroredFeed | null | "unavailable"> {
+  try {
+    const offered = await resolveChannel(ctx.env.RELEASES, channel);
+    if (offered === null) return null;
+    const stored = await ctx.env.RELEASES.get(objectKey(offered.version, feed));
+    return { offered, stored: stored === null ? null : await stored.text() };
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    return "unavailable";
+  }
+}
+
 export async function serveDesktopFeed(
   request: Request,
   ctx: RequestContext,
   channel: Channel,
   feed: string,
 ): Promise<Response> {
-  const offered = await offeredOrRefusal(ctx, channel);
-  if (offered instanceof Response) {
-    // Before the channel's first mirror, GitHub's own latest feed (#2074: v0.1.17 reads only this host).
-    if (offered.status === 404 && (await neverPublished(ctx.env.RELEASES, channel))) {
-      return serveGithubFeed(request, ctx, channel, feed, DESKTOP_FEEDS[feed] ?? "");
+  const github = () => serveGithubFeed(request, ctx, channel, feed, DESKTOP_FEEDS[feed] ?? "");
+  const mirrored = await readMirroredFeed(ctx, channel, feed);
+  // GitHub's own latest feed before the channel's first mirror (#2074: v0.1.17 reads only this host), and whenever an R2
+  // read fails, so an installed app still sees the release (#2123).
+  if (mirrored === "unavailable") return github();
+  if (mirrored === null) {
+    let unpublished = true;
+    try {
+      unpublished = await neverPublished(ctx.env.RELEASES, channel);
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
     }
-    return offered;
+    return unpublished ? github() : text(404, `the ${channel} channel has no release yet`);
   }
-  const stored = await ctx.env.RELEASES.get(objectKey(offered.version, feed));
+  const { offered, stored } = mirrored;
   if (stored === null) return text(404, `${offered.version} has no ${feed}`);
-  const body = composeFeed(await stored.text(), offered);
+  const body = composeFeed(stored, offered);
   if (body === null) return text(502, `${offered.version}'s ${feed} does not describe that release`);
   if (isCounted(request)) {
     recordDownload(ctx.env.DOWNLOADS, {

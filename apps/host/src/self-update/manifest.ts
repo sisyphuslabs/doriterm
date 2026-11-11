@@ -19,7 +19,10 @@ export interface HostManifest {
   readonly targets: Readonly<Partial<Record<HostTarget, HostBuild>>>;
 }
 
-const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$/;
+// Semantic versioning: no number, in the core or a numeric prerelease identifier, starts with 0 unless it is 0 (#1983).
+const NUMBER = "(?:0|[1-9]\\d*)";
+const IDENTIFIER = `(?:${NUMBER}|\\d*[A-Za-z][0-9A-Za-z]*)`;
+const VERSION = new RegExp(`^${NUMBER}\\.${NUMBER}\\.${NUMBER}(?:-${IDENTIFIER}(?:\\.${IDENTIFIER})*)?$`);
 const TARGETS: readonly HostTarget[] = ["linux-x64", "linux-arm64", "mac-x64", "mac-arm64"];
 
 /** The build this host runs as, or undefined where none ships (Windows takes the host with the desktop app). */

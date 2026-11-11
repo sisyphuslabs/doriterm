@@ -1,22 +1,19 @@
 import type { JsonObject, Terminal } from "@doriface/protocol";
 import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  addTab as addDocTab,
   type Axis,
   docSpaces,
   type DocEdit,
-  editTab,
   freshId,
   type Node,
   renameTab as renameDocTab,
   closeSet,
   pinEdit,
   placePinned,
-  splitPane,
   terminalBlock,
 } from "@doriface/protocol/layout";
 import { loadView, rememberSeen, saveView, spaceKey, tabKey, type Seen, type View } from "../layout/view.ts";
-import { shownIn } from "./adoption.ts";
+import { apartWrite, newTabWrite, type PaneAt, splitWrite, transientSplitWrite, viewInstead } from "./pane-writes.ts";
 import {
   buildTabs,
   findTerminal,
@@ -262,6 +259,25 @@ export function useLayout(
     });
   }, []);
 
+  /**
+   * The pane asked for (`asked`) is shown at `there` in the document of the machine `machineId` instead: its terminal
+   * was adopted while the write waited (pane-writes.ts). The view and the keyboard's claim follow it there.
+   */
+  const goInstead = useCallback(
+    (
+      machineId: string | null,
+      asked: { readonly key: string; readonly pane: string },
+      there: PaneAt,
+      back: string | null,
+    ): void => {
+      const at = { key: tabKey(machineId, there.tab), pane: there.pane };
+      setClaimed((claim) => (claim === asked.pane ? at.pane : claim));
+      if (at.pane !== asked.pane) setFresh((was) => (was === asked.pane ? null : was));
+      setView((prev) => viewInstead(prev, asked, at, back));
+    },
+    [],
+  );
+
   /** A tab of this screen's own for a terminal its machine's layout could not take. */
   const keepHere = useCallback(
     (address: string): void => {
@@ -281,7 +297,7 @@ export function useLayout(
       }
       const kept = written(tab);
       const space = { id: freshId("spc"), folder: "" };
-      void own.edit((doc) => addDocTab(doc, space, { id: kept.id, name: "", root: kept.root }));
+      void own.edit((doc) => apartWrite(doc, localOf(address), kept, space));
     },
     [layoutOf],
   );
@@ -297,7 +313,14 @@ export function useLayout(
       const id = freshId("tb");
       const pane = freshId("p");
       const tab: JsonObject = { id, name: "", root: rootOf(id, [terminalBlock(pane, localOf(address))]) };
-      const kept = fate === "with-new" && active !== null ? written(active) : null;
+      const kept =
+        fate === "with-new" && active !== null
+          ? {
+              terminal: localOf(active.panes[0]?.address ?? ""),
+              tab: written(active),
+              follows: !newSpace && into === undefined,
+            }
+          : null;
       // herdr-app's add_tab: right after the selected tab of the selected space; a terminal of another machine, or one
       // asked for as a new space, starts a space of its own, never the first space of the document.
       // A named space of this machine takes it, after its selected tab when that is the one in view, else last.
@@ -318,13 +341,12 @@ export function useLayout(
       const asked = tabKey(layout.machineId, id);
       // Where the document already shows the terminal: another device adopted it while this write waited (#2122). A
       // second tab for it is never written; the view asked to show the new tab shows that one instead.
-      let adopted: ReturnType<typeof shownIn> = null;
+      let adopted: PaneAt | null = null;
       void layout
         .edit((doc) => {
-          adopted = shownIn(doc, localOf(address));
-          if (adopted !== null) return null;
-          const first = kept === null ? doc : addDocTab(doc, space, { id: kept.id, name: "", root: kept.root });
-          return addDocTab(first, space, tab, kept?.id ?? near?.id, layout.pins);
+          const write = newTabWrite(doc, localOf(address), tab, space, near?.id, kept, layout.pins);
+          adopted = write.instead;
+          return write.doc;
         })
         .then((saved) => {
           const there = adopted;
@@ -335,16 +357,12 @@ export function useLayout(
             setLoose((prev) => (prev.includes(address) ? prev : [...prev, address]));
             return saved;
           }
-          const key = tabKey(layout.machineId, there.tab);
-          setClaimed((claim) => (claim === pane ? there.pane : claim));
-          setView((prev) =>
-            prev.active === asked ? { ...prev, active: key, focused: { ...prev.focused, [key]: there.pane } } : prev,
-          );
+          goInstead(layout.machineId, { key: asked, pane }, there, null);
           return saved;
         });
       show(asked, pane);
     },
-    [active, keepApart, keepHere, layoutOf, setLoose, show],
+    [active, goInstead, keepApart, keepHere, layoutOf, setLoose, show],
   );
 
   const openTerminal = useCallback(
@@ -374,34 +392,46 @@ export function useLayout(
       if (layout === undefined || layout.readOnly !== null) return undefined;
       const pane = made;
       const block = terminalBlock(pane, localOf(address));
+      const container = freshId("s");
+      // Where the document shows the new pane instead of where it was asked, its terminal (or, for the transient tab,
+      // the terminal it split) adopted while this write waited (#2122, #2146): the view goes there.
+      let adopted: PaneAt | null = null;
       if (tab.transient) {
         const copy = written(tab);
-        const root = splitPane(copy.root, copy.pane, axis, block, freshId("s"));
-        if (root === null) return undefined;
         const space = { id: freshId("spc"), folder: "" };
-        void layout.edit((doc) => addDocTab(doc, space, { id: copy.id, name: "", root }));
+        const source = localOf(tab.panes[0]?.address ?? "");
+        const asked = tabKey(layout.machineId, copy.id);
+        void layout
+          .edit((doc) => {
+            const write = transientSplitWrite(doc, source, localOf(address), copy, { axis, block, container }, space);
+            adopted = write.instead;
+            return write.doc;
+          })
+          .then((placed) => {
+            const there = adopted;
+            if (there !== null) goInstead(layout.machineId, { key: asked, pane }, there, null);
+            return placed;
+          });
         setFresh(pane);
         // The terminal starts asynchronously: a start that answers after the person picked another tab still places
         // its pane here, but their pick stays in view (#1539).
-        return show(tabKey(layout.machineId, copy.id), pane, tab.key === activeNow.current?.key);
+        return show(asked, pane, tab.key === activeNow.current?.key);
       }
-      const container = freshId("s");
       // Whether the edit last found the pane gone; a write that failed instead was already reported by `edit`.
       let gone = false;
-      // Whether the document already shows the terminal in a tab of its own, adopted while this write waited (#2122):
-      // it stays there, since a second pane would show one terminal twice.
-      let adopted = false;
       void layout
         .edit((doc) => {
-          adopted = shownIn(doc, localOf(address)) !== null;
-          if (adopted) return null;
-          const next =
-            doc === null ? null : editTab(doc, tab.id, (root) => splitPane(root, from.id, axis, block, container));
-          gone = next === null;
-          return next;
+          const write = splitWrite(doc, tab.id, from.id, localOf(address), { axis, block, container });
+          gone = write.gone;
+          adopted = write.instead;
+          return write.doc;
         })
         .then((placed) => {
-          if (adopted) return placed;
+          const there = adopted;
+          if (there !== null) {
+            goInstead(layout.machineId, { key: tab.key, pane }, there, from.id);
+            return placed;
+          }
           const landing = splitLanding(placed, gone);
           if (landing === "own-tab") {
             addTab(address);
@@ -415,7 +445,7 @@ export function useLayout(
       // its pane in this tab, but their pick stays in view (#1539).
       return show(tab.key, pane, tab.key === activeNow.current?.key);
     },
-    [active, addTab, focused, keepHere, layoutOf, show, tabs, told],
+    [active, addTab, focused, goInstead, keepHere, layoutOf, show, tabs, told],
   );
 
   // As herdr-app's remove_pane: focus goes back to the pane focused before the closed one that is still there. A write

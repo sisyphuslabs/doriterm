@@ -15,7 +15,10 @@ export interface MachineHeaderProps {
   readonly tabs: number;
   /** Its spaces are folded away under the header. */
   readonly collapsed?: boolean;
-  /** Folds or unfolds its spaces; without it there is no chevron. */
+  /**
+   * Folds or unfolds its spaces. Without it there is no chevron, but its slot stays reserved (as while a filter takes
+   * the toggle away, #850), so the header's other parts do not move by its width (#1158).
+   */
   readonly onToggle?: () => void;
   readonly selected?: boolean;
   /** Opens its first terminal; left out when it has none (the header stays a stop for its action). */
@@ -115,7 +118,7 @@ export function MachineHeader({
       {rail ? null : onToggle === undefined ? (
         // A filter takes the toggle away (#850); its slot stays reserved so New space and the dot beside it do not move
         // by its width (#1158).
-        <span aria-hidden className="mr-1 size-6" />
+        <span aria-hidden className="mr-1 size-6 shrink-0" />
       ) : (
         <IconButton
           label={`${collapsed ? "Expand" : "Collapse"} ${name}`}

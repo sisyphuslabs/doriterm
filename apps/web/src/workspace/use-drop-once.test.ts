@@ -11,6 +11,13 @@ test("a session is dropped once, however many signals report its end", () => {
   expect(once.take("t1")).toBe(false);
 });
 
+test("a session this device dropped is known as dropped here; one another device dropped is not (#2146)", () => {
+  const once = new DropOnce();
+  once.listed([finished("t1"), finished("t2")]);
+  expect(once.take("t1")).toBe(true);
+  expect([once.dropped("t1"), once.dropped("t2")]).toEqual([true, false]);
+});
+
 test("a list that has not heard the end yet still lists the dropped session live: no second drop (#1328)", () => {
   const once = new DropOnce();
   once.listed([live("t1"), live("t2")]);

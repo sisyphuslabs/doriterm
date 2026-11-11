@@ -7,8 +7,8 @@ import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import {
   blip,
-  hcOn,
   machineRow,
+  machineState,
   linesDialed,
   OFFLINE_BOUND_MS,
   reconnect,
@@ -59,15 +59,6 @@ async function recordFlips(page: Page, terminal: string): Promise<void> {
 
 const flips = (page: Page): Promise<string[]> =>
   page.evaluate(() => [...new Set((window as unknown as { flips: string[] }).flips)]);
-
-const machineState = (): string => {
-  const listed: unknown = JSON.parse(hcOn("host", ["machine", "ls"]));
-  const machines = Reflect.get(Object(listed), "machines");
-  const one = Array.isArray(machines)
-    ? machines.find((m: unknown) => Reflect.get(Object(m), "name") === MACHINE_NAME)
-    : undefined;
-  return String(Reflect.get(Object(one), "state"));
-};
 
 test.describe("a machine whose line blips (#904)", () => {
   let address = "";
