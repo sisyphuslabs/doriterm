@@ -114,10 +114,17 @@ export function useJoinOffer(connection: HcConnection, open: boolean, client = f
     }, OFFER_ANSWER_MS);
     let failures = 0;
     let retry: ReturnType<typeof setTimeout> | undefined;
-    // A failed subscribe is tried again; a failed read after it is dropped, as every read here is.
+    let reread: ReturnType<typeof setTimeout> | undefined;
+    // The read after following again is what finds a join written while no feed was open: one that fails is tried
+    // again on the same backoff, on the feed it has, until one is answered or the dialog closes.
+    const readAfterFollow = (attempt: number): void =>
+      void read().catch(() => {
+        if (!closed) reread = setTimeout(() => readAfterFollow(attempt + 1), refollowMs(attempt + 1));
+      });
+    // A failed subscribe is tried again; a failed read after it is read again, without a new feed.
     const followAndRead = (): void =>
       void follow().then(
-        () => read().catch(() => {}),
+        () => readAfterFollow(0),
         () => refollow(false),
       );
     const follow = async (): Promise<void> => {
@@ -154,6 +161,7 @@ export function useJoinOffer(connection: HcConnection, open: boolean, client = f
       closed = true;
       clearTimeout(timer);
       clearTimeout(retry);
+      clearTimeout(reread);
       feed?.close();
     };
   }, [connection, open, client]);

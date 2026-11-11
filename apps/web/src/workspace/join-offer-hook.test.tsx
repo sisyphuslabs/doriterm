@@ -204,3 +204,16 @@ test("a feed that was followed FOLLOWED_MS ends and is followed again at once, w
   await act(async () => connection.end("closed_by_core"));
   expect(connection.subscribes).toBe(4);
 });
+
+test("a read that fails after following again is read again on the same feed, so a join made meanwhile still shows (#1780)", async () => {
+  jest.useFakeTimers();
+  const connection = connectionTo();
+  await act(async () => root.render(<Dialog connection={connection} />));
+  connection.failingReads = 1;
+  joinMeanwhile();
+  await act(async () => connection.end("closed_by_core"));
+  expect(shown).toEqual({ phase: "asking" });
+  await act(async () => jest.advanceTimersByTime(250));
+  expect(shown).toEqual({ phase: "joined", name: "joiner" });
+  expect(connection.subscribes).toBe(2);
+});
