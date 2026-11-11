@@ -1,0 +1,36 @@
+// get.doriterm.com (#1969): release downloads, the desktop and host update feeds, and the download count, served from a
+// private R2 bucket. .github/workflows/deploy-get.yml deploys staging (staging.get.doriterm.com, its own bucket, database
+// and dataset), probes it, and deploys production from a manual run on dev. No account, zone or database id lives here:
+// the deploy passes the account (CLOUDFLARE_ACCOUNT_ID, and ACCOUNT_ID for the rollup as a --var), the custom domains
+// resolve their zone with the deploy token, and the D1 database binds by name. ANALYTICS_TOKEN is a Worker secret.
+// Observability stays off: the platform keeps no request log for this Worker. Self-hosters: put your own hostnames,
+// bucket, database and dataset below.
+{
+  "name": "doriterm-get",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-06",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": false },
+  "routes": [{ "pattern": "get.doriterm.com", "custom_domain": true }],
+  "r2_buckets": [{ "binding": "RELEASES", "bucket_name": "doriterm-releases" }],
+  "d1_databases": [{ "binding": "DB", "database_name": "doriterm-get", "migrations_dir": "migrations" }],
+  "analytics_engine_datasets": [{ "binding": "DOWNLOADS", "dataset": "doriterm_downloads" }],
+  "vars": { "ANALYTICS_DATASET": "doriterm_downloads" },
+  // The hourly rollup from Analytics Engine into D1.
+  "triggers": { "crons": ["17 * * * *"] },
+  "env": {
+    "staging": {
+      "name": "doriterm-get-staging",
+      "workers_dev": false,
+      "preview_urls": false,
+      "observability": { "enabled": false },
+      "routes": [{ "pattern": "staging.get.doriterm.com", "custom_domain": true }],
+      "r2_buckets": [{ "binding": "RELEASES", "bucket_name": "doriterm-releases-staging" }],
+      "d1_databases": [{ "binding": "DB", "database_name": "doriterm-get-staging", "migrations_dir": "migrations" }],
+      "analytics_engine_datasets": [{ "binding": "DOWNLOADS", "dataset": "doriterm_downloads_staging" }],
+      "vars": { "ANALYTICS_DATASET": "doriterm_downloads_staging" },
+      "triggers": { "crons": ["17 * * * *"] },
+    },
+  },
+}
