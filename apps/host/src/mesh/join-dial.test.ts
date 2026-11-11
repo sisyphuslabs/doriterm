@@ -1,10 +1,4 @@
-import {
-  buildPairingUrl,
-  createPairingOffer,
-  DEFAULT_RELAY_URL,
-  fingerprintOf,
-  pairingSlotOf,
-} from "@doriface/crypto";
+import { buildPairingUrl, createPairingOffer, DEFAULT_RELAY_URL, fingerprintOf, pairingSlotOf } from "@doriface/crypto";
 import { OPEN_POLICY } from "@doriface/policy";
 import { afterEach, describe, expect, test } from "bun:test";
 import { parseTarget } from "../connect/target.ts";
