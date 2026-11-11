@@ -96,10 +96,12 @@ const SILENT_KEYS = [
   { key: "Shift", code: "ShiftLeft", windowsVirtualKeyCode: 16, modifiers: 8 },
   { key: "CapsLock", code: "CapsLock", windowsVirtualKeyCode: 20, modifiers: 0 },
   { key: "HangulMode", code: "Lang1", windowsVirtualKeyCode: 21, modifiers: 0 },
+  // The same toggle where the browser and input method name no key for it: only its code says what it is.
+  { key: "Unidentified", code: "Lang1", windowsVirtualKeyCode: 21, modifiers: 0 },
 ] as const;
 
 for (const silent of SILENT_KEYS)
-  test(`${silent.key} pressed while a lone jamo waits for its key does not hold the jamo: it types nothing (#1913)`, async ({
+  test(`${silent.key} (${silent.code}) pressed while a lone jamo waits for its key does not hold the jamo: it types nothing (#1913)`, async ({
     page,
   }) => {
     await page.goto("/");
