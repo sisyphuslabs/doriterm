@@ -66,6 +66,8 @@ export class FakeCore {
   failSubscribes = 0;
   /** Whether `machine.list` fails, as it does while hc cannot reach the machine table. */
   failMachineList = false;
+  /** While set, `machine.list` answers only once it settles, as a stalled link would. */
+  holdMachineList: Promise<void> | undefined;
   readonly #docs = new Map<string, Doc>();
   #seq = 0;
 
@@ -125,6 +127,7 @@ export class FakeCore {
           machines: this.machines,
         } satisfies HcResult<"terminal.list">;
       case "machine.list":
+        await this.holdMachineList;
         if (this.failMachineList) throw refused("unavailable", "machine.list failed");
         return { machines: this.machines } satisfies HcResult<"machine.list">;
       case "doc.get":
