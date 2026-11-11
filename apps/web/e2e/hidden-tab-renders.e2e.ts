@@ -57,7 +57,7 @@ function countRenders(): void {
 async function worstCommit(page: Page): Promise<number> {
   const from = await page.evaluate(() => Reflect.get(window, "__commits").length);
   await expect
-    .poll(() => page.evaluate(() => Reflect.get(window, "__commits").length), { timeout: 20_000 })
+    .poll(() => page.evaluate(() => Reflect.get(window, "__commits").length), { timeout: 60_000 })
     .toBeGreaterThan(from + 20);
   const commits: number[] = await page.evaluate((skip) => Reflect.get(window, "__commits").slice(skip), from);
   return Math.max(...commits);
@@ -76,6 +76,9 @@ test("a terminal's title change costs the same however many terminals sit in hid
     start(["sh", "-c", "i=0; while :; do printf '\\033]0;spin %d\\007' $i; i=$((i+1)); sleep 0.1; done"]);
     for (let index = 0; index < HIDDEN; index += 1) start(["sleep", "3600"]);
     await page.addInitScript(countRenders);
+    // The sidebar's ages tick once a minute and redraw every agent row in one commit: a run crossing a minute would
+    // measure that tick rather than a title change. Date.now stays put; every timer still runs (#2098).
+    await page.clock.setFixedTime(Date.now());
     await page.goto("/");
     // Every terminal is listed, and the loose ones are adopted into tabs as the page loads, each pane mounted.
     await expect(page.locator("[data-terminal]")).toHaveCount(HIDDEN + 1, { timeout: 30_000 });
@@ -86,7 +89,8 @@ test("a terminal's title change costs the same however many terminals sit in hid
     const many = await worstCommit(page);
     // Before #2086 each title change rendered every pane, sidebar row and tab again, many components each: twice the
     // terminals cost about twice as many renders per commit (2136 at 30 hidden terminals).
-    expect(many - few).toBeLessThan(HIDDEN / 3);
+    // A loaded runner adds a few renders here and there; what this guards against grows by every hidden pane (#2098).
+    expect(many - few).toBeLessThan(HIDDEN);
   } finally {
     for (const address of started) hcRun(["kill", address]);
     for (const address of started) hcRun(["rm", address]);

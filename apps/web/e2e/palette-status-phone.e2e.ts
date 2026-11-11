@@ -1,4 +1,5 @@
 import { devices, type Page } from "@playwright/test";
+import { AGENT_SHELL } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { hcOn } from "./machine-switch.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
@@ -13,7 +14,7 @@ const dialog = (page: Page) => page.getByRole("dialog", { name: "Command palette
 const states = (page: Page) => dialog(page).getByRole("group", { name: "Show agents" });
 
 function startShell(name: string): string {
-  const out = hcOn("host", ["run", "--bg", "--name", name, "--", "env", "PS1=$ ", "sh"]);
+  const out = hcOn("host", ["run", "--bg", "--name", name, "--", ...AGENT_SHELL]);
   const started: unknown = JSON.parse(out);
   if (typeof started !== "object" || started === null || !("address" in started)) throw new Error(out);
   return String(started.address);

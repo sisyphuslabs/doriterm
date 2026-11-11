@@ -1,7 +1,7 @@
 import { AgentRow, Button, IconButton, SegmentedControl, Sheet, SidebarSection } from "@doriface/ui";
 import { Plus, X } from "lucide-react";
 import { type ReactElement, type ReactNode, useState } from "react";
-import { type ListedSpace, type Session, toAgent } from "./model.ts";
+import { type ListedSpace, type Session, spaceOfAddress, toAgent } from "./model.ts";
 import { rowDetail, switchTabRows } from "./phone-space-rows.ts";
 import { needsYouCount } from "./phone-tab-bar.tsx";
 import { useSpaceSelection } from "./space-selection.ts";
@@ -74,7 +74,7 @@ function SwitchList(props: {
   // The layout documents' spaces, as the sidebar lists them (#404).
   const { spaces } = useSpaceSelection();
   const now = useNow();
-  const here = spaces.find((each) => each.addresses.includes(active));
+  const here = spaceOfAddress(spaces, active);
   const [shown, setShown] = useState<Shown>(here === undefined ? "all" : "space");
   const needs = needsYouCount(terminals);
   const options = [

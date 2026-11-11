@@ -92,7 +92,7 @@ export function InputBox({ onSend, draftKey, className, style }: InputBoxProps) 
         }}
         className={cn(
           "min-h-11 min-w-0 flex-1 resize-none border border-input bg-chrome/95 px-3.5 py-2.5 font-mono text-base leading-6 wrap-break-word whitespace-pre-wrap text-foreground",
-          "shadow-lg outline-none backdrop-blur-md placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring",
+          "shadow-lg outline-none backdrop-blur-md placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring",
           active ? "rounded-[1.375rem]" : "h-11 rounded-full",
         )}
         placeholder="Type"

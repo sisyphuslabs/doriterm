@@ -81,7 +81,8 @@ function NewSpaceThere({ disabled, onClick }: { readonly disabled: boolean; read
 
 /**
  * The spaces. With one machine they are one list whose header starts a new space; once more than one machine is
- * known, each machine is a list headed by its row (state, terminal count, New space there), in the machines' order.
+ * known, each machine is a list headed by its row (state, the tabs of its spaces, New space there), in the machines'
+ * order.
  */
 export function SpacesGroup({ onOpen, rail = false, query = "", filterable = false, phone = false }: SpacesGroupProps) {
   const machines = useMachinesContext();
@@ -200,14 +201,14 @@ function SpacesLists({
   // While this device's own link is down, the machine list it last read is not news: no row claims a live link (#476).
   const notice = useConnectionNotice();
   const linkDown = notice === null ? null : "unknown";
-  const header = (machine: MachineEntry, button: HeaderButton | undefined) => (
+  const header = (machine: MachineEntry, tabs: number, button: HeaderButton | undefined) => (
     <MachineHeader
       {...(button === undefined ? {} : { buttonProps: button })}
       name={machine.name}
       local={machine.local && ownComputer}
       state={linkDown !== null ? linkDown : machine.local && ownComputer ? "this machine" : stateLabel(machine.state)}
       alarm={linkDown === null && ALARM.has(machine.state)}
-      live={machine.live}
+      tabs={tabs}
       connected={linkDown === null && machine.state === "connected"}
       rail={rail}
       collapsed={collapsed.includes(machine.id) && !filtering}
@@ -245,13 +246,13 @@ function SpacesLists({
       ) : (
         <div ref={list} className="relative flex flex-col gap-6">
           {overlay}
-          {grouped.map(({ machine, spaces: own }, index) => (
+          {grouped.map(({ machine, spaces: own, tabs }, index) => (
             <MachineGroup
               key={machine.id}
               core={machine.core}
               name={machine.name}
               reorder={reorderOf(machine, index)}
-              header={(button) => header(machine, button)}
+              header={(button) => header(machine, tabs, button)}
             >
               {collapsed.includes(machine.id) && !filtering ? null : (
                 <>

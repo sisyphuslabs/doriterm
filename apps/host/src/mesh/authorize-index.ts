@@ -43,9 +43,18 @@ export interface NamingEntry {
   readonly keys: readonly string[];
 }
 
+/**
+ * The admission rules `indexOf` applies, saved with the index. Raise it whenever a change to `indexOf` would leave out a
+ * member an earlier build indexed: a saved index under other rules is rebuilt at start (#1483), as the first such change,
+ * the client key binding of #1476, needs.
+ */
+export const INDEX_RULES = 2;
+
 /** What `authorize` needs from one generation of `mesh.json`, persisted with it so a handshake never evaluates. */
 export interface IndexData {
   readonly generation: number;
+  /** The {@link INDEX_RULES} it was built under. */
+  readonly rules: number;
   readonly members: readonly MemberEntry[];
   readonly revoked: readonly RevokedEntry[];
   /** Every other Noise or device key a current member's cards ever named: refused and cleaned like a revoked key. */
@@ -141,6 +150,7 @@ export function indexOf(records: readonly Signed[], view: View, generation: numb
   });
   return {
     generation,
+    rules: INDEX_RULES,
     members,
     revoked,
     superseded: [...new Set(superseded)],

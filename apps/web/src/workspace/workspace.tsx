@@ -21,6 +21,7 @@ import { SpaceRename } from "./space-rename-dialog.tsx";
 import { availableActions } from "./shell-actions.ts";
 import { someoneElseNeedsYou } from "./attention.ts";
 import { PhoneShell } from "./phone-shell.tsx";
+import { phoneSpaces } from "./phone-space-rows.ts";
 import type { SessionVerb } from "./use-app-actions.ts";
 import { useMachineRuns } from "./use-machine-runs.ts";
 import { PIN_LABEL, spacesInOrder } from "./sidebar-model.ts";
@@ -38,7 +39,7 @@ import { useDropOnce } from "./use-drop-once.ts";
 import { useLayoutDocs } from "./use-layout-docs.ts";
 import { GitFactsContext, useGitFacts } from "./git-facts.ts";
 import { TodoProgressContext, useTodoProgress } from "./todo-progress.ts";
-import { layoutSpaces, phoneTabTitle } from "./model.ts";
+import { layoutSpaces, phoneTabTitle, spaceOfAddress } from "./model.ts";
 import { SpaceSelectionContext } from "./space-selection.ts";
 import { useSpaceMove } from "./space-order.ts";
 import { useAdoptLoose } from "./use-adopt-loose.ts";
@@ -145,13 +146,22 @@ export function Workspace({ connection }: WorkspaceProps) {
   );
   // A session that ends is dropped from the layout once; a refused drop keeps the pane, showing the ended session.
   const { dropEnded, closing: closingSessions, kept } = useDropOnce(terminals, layout.dropPane);
-  // A pane is asked about only on what hc said: a machine held connected through a redial may have no terminals listed.
-  useDeadPanes(connection, layout.tabs, fed.loaded ? terminals : null, heardMachines, machineReads, dropEnded);
-  useAdoptLoose(layouts, fed.loaded ? terminals : null, failed);
+  useAdoptLoose(connection, layouts, fed.loaded ? terminals : null, failed);
   const narrow = useNarrow();
   const ids = useMemo(() => machineIds(views), [views]);
   const phone = usePhoneRoute(narrow, ids);
   const { open: phoneOpen, show: showOnPhone } = phone;
+  const phoneTab = phoneOpen === null ? null : findTerminal(layout.tabs, phoneOpen);
+  const phonePanes = phoneTab?.tab.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? [];
+  // The panes on screen: the open tab's on a phone, the selected tab's on a desktop. A terminal that ended in one of
+  // them is its view's to say ("This session ended"); every other pane goes once its terminal is over (#2122).
+  const onScreen = narrow
+    ? phonePanes
+    : (layout.active?.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? []);
+  // As a view's end does: an End of the session drops its pane only once it has removed the terminal (see afterEnd).
+  const dropDead = useCallback((address: string) => afterEnd(address, () => dropEnded(address)), [dropEnded]);
+  // A pane is asked about only on what hc said: a machine held connected through a redial may have no terminals listed.
+  useDeadPanes(connection, layout.tabs, fed.loaded ? terminals : null, heardMachines, machineReads, dropDead, onScreen);
   const [palette, setPalette] = useState(false);
   const [ask, setAsk] = useState<SessionAsk | null>(null);
   const [spaceAsk, setSpaceAsk] = useState<string | null>(null);
@@ -282,8 +292,6 @@ export function Workspace({ connection }: WorkspaceProps) {
   const [firstClosing] = closingTabs;
   const closingSetTab =
     firstClosing === undefined ? undefined : { ...firstClosing, panes: closingTabs.flatMap((tab) => tab.panes) };
-  const phoneTab = phoneOpen === null ? null : findTerminal(layout.tabs, phoneOpen);
-  const phonePanes = phoneTab?.tab.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? [];
   const phoneTitle = phoneTab === null ? null : phoneTabTitle(phoneTab.tab.name);
   usePushPresence(inView);
   useNoticeOpen(connectionStore.settings.mode === "relay" ? connectionStore.settings.hostId : undefined, opened);
@@ -292,7 +300,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   const spaces = useSteady(useMemo(() => layoutSpaces(layouts, sessions, gitOf), [layouts, sessions, gitOf]));
   const onPalette = (): void => setPalette(true);
   const onSession: SessionVerb = (verb) => {
-    const space = spaces.find((each) => inView !== null && each.addresses.includes(inView));
+    const space = inView === null ? undefined : spaceOfAddress(spaces, inView);
     if (inView === null || (verb === "rename-space" && space === undefined)) return false;
     if (verb === "rename-space") setSpaceAsk(space?.id ?? null);
     else setAsk({ kind: verb, address: inView });
@@ -362,13 +370,18 @@ export function Workspace({ connection }: WorkspaceProps) {
   const selectedSpace = layout.active?.spaceKey ?? null;
   const moveSpace = useSpaceMove(layouts, failed);
   // A phone's space row opens that space's screen (#1387); the desktop's selection is not the phone's, so none is marked.
+  // Its rows count the tabs that screen lists, so a count there is the number of rows it heads (#2122); kept while
+  // those counts hold, so the context does not change on every terminal event (#2086).
   const { showSpace } = phone;
+  const counted = useSteady(
+    useMemo(() => (narrow ? phoneSpaces(spaces, sessions) : spaces), [narrow, spaces, sessions]),
+  );
   const spaceSelection = useMemo(
     () =>
       narrow
-        ? { spaces, selected: null, select: showSpace, move: moveSpace }
-        : { spaces, selected: selectedSpace, select: selectSpace, move: moveSpace },
-    [narrow, spaces, selectedSpace, selectSpace, showSpace, moveSpace],
+        ? { spaces: counted, selected: null, select: showSpace, move: moveSpace }
+        : { spaces: counted, selected: selectedSpace, select: selectSpace, move: moveSpace },
+    [narrow, counted, selectedSpace, selectSpace, showSpace, moveSpace],
   );
   // A space is known once the terminals and every layout document are read; until then its screen says it is loading.
   const spacesRead = fed.loaded && layout.restored;

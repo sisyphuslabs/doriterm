@@ -145,7 +145,8 @@ const AgentItem = memo(function AgentItem({ agent, selected, compactBlocked, onO
   );
 });
 
-const sameAgent = (a: Agent, b: Agent): boolean =>
+/** Whether a sidebar row would draw the same for both: every field AgentRow shows (#2098). */
+export const sameAgent = (a: Agent, b: Agent): boolean =>
   a.id === b.id &&
   a.name === b.name &&
   a.status === b.status &&
@@ -153,6 +154,7 @@ const sameAgent = (a: Agent, b: Agent): boolean =>
   a.machine === b.machine &&
   a.age === b.age &&
   a.pinned === b.pinned &&
+  a.icon === b.icon &&
   a.todo?.done === b.todo?.done &&
   a.todo?.total === b.todo?.total;
 

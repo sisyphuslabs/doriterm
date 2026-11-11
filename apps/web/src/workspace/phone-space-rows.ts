@@ -1,6 +1,6 @@
 import type { Agent, AgentStatus } from "@doriface/ui";
 import { agentStatus } from "./attention.ts";
-import { type ListedSpace, type Session, terminalTitle, toAgent } from "./model.ts";
+import { type ListedSpace, liveTabs, type Session, terminalTitle, toAgent } from "./model.ts";
 
 /** A tab as a phone names it: its own name, else the terminal it shows; never its place among its space's tabs. */
 export const tabLabel = (name: string, terminal: Session): string => (name === "" ? terminalTitle(terminal) : name);
@@ -46,6 +46,14 @@ export function spaceTabRows(space: ListedSpace, terminals: readonly Session[], 
     ];
   });
 }
+
+/**
+ * The spaces as a phone counts them: each by the tabs its sheet and its space screen list, those that show a live
+ * terminal, so a count on a phone is the number of rows under it (#2122). The desktop strip shows every tab of the
+ * document, so there a space counts them all.
+ */
+export const phoneSpaces = (spaces: readonly ListedSpace[], terminals: readonly Session[]): ListedSpace[] =>
+  spaces.map((space) => ({ ...space, tabs: liveTabs(space, terminals).length }));
 
 export interface SwitchTabRow {
   /** The tab's place in its space, from 0. */
