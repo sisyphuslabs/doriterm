@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cardBody } from "../state/mesh.ts";
 import { deviceOf, machine, MeshFixture, noiseOf, signPubOf } from "../testing/mesh-history.ts";
-import { AuthorizeIndex } from "./authorize-index.ts";
+import { AuthorizeIndex, INDEX_RULES } from "./authorize-index.ts";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -25,6 +25,7 @@ const member = (name: string, kind?: "machine" | "client") => ({
 const indexOf = (members: readonly ReturnType<typeof member>[]): AuthorizeIndex =>
   new AuthorizeIndex({
     generation: 1,
+    rules: INDEX_RULES,
     members: [...members],
     revoked: [],
     superseded: [],
@@ -77,6 +78,7 @@ describe("a revoked client is cleaned like any other member", () => {
     const gone = member("old-phone", "client");
     const index = new AuthorizeIndex({
       generation: 1,
+      rules: INDEX_RULES,
       members: [],
       revoked: [{ signPub: gone.signPub, hostId: gone.hostId, keys: [gone.noisePub, gone.devicePub] }],
       superseded: [],
@@ -91,6 +93,7 @@ describe("a revoked client is cleaned like any other member", () => {
     const box = member("box");
     const index = new AuthorizeIndex({
       generation: 1,
+      rules: INDEX_RULES,
       members: [phone, box],
       revoked: [],
       superseded: [],

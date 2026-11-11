@@ -5,8 +5,12 @@ import { useOverrides } from "./keymap-store.ts";
 import { TEXT_FIELD_KEEPS } from "./text-field-keys.ts";
 import { currentPlatform, triggerFromEvent } from "./trigger.ts";
 
-/** Returns true when the action ran; false lets the key reach the page. */
-export type ActionHandler = (action: string) => boolean;
+/**
+ * Returns true when the action ran; false lets the key reach the page. `programReceives` is false when no key would reach
+ * a focused terminal's program: a Meta chord (Cmd on macOS, the Super key elsewhere), which the terminal never encodes,
+ * or an action chosen from a list, which has no key at all. An action that would leave its key to the program keeps it.
+ */
+export type ActionHandler = (action: string, programReceives?: boolean) => boolean;
 
 const handlers: Record<Scope, Set<ActionHandler>> = { app: new Set(), terminal: new Set() };
 
@@ -17,8 +21,8 @@ export function setActionFallback(id: string, fallback: () => boolean): void {
   fallbacks.set(id, fallback);
 }
 
-function dispatch(scope: Scope, action: string): boolean {
-  for (const handler of handlers[scope]) if (handler(action)) return true;
+function dispatch(scope: Scope, action: string, programReceives = true): boolean {
+  for (const handler of handlers[scope]) if (handler(action, programReceives)) return true;
   return fallbacks.get(action)?.() ?? false;
 }
 
@@ -38,7 +42,9 @@ export function runAction(id: string): boolean {
   if (action === null) return false;
   chosen = true;
   try {
-    return dispatch(action.scope, id);
+    // A chosen action has no key to leave to the program, so a pane move at a split edge counts as handled and the
+    // palette closes (#2119, #1850).
+    return dispatch(action.scope, id, false);
   } finally {
     chosen = false;
   }
@@ -53,7 +59,8 @@ export function useActionHandler(scope: Scope, handler: ActionHandler): void {
   const paused = useRef(false);
   paused.current = useContext(ActionsPaused);
   useEffect(() => {
-    const entry: ActionHandler = (action) => !paused.current && latest.current(action);
+    const entry: ActionHandler = (action, programReceives = true) =>
+      !paused.current && latest.current(action, programReceives);
     handlers[scope].add(entry);
     return () => {
       handlers[scope].delete(entry);
@@ -122,7 +129,10 @@ export function useKeymapDispatcher(): void {
         return;
       // The tab move keys stay with a text field (they select text) and with a reorderable row (they move the row).
       if (TEXT_FIELD_KEEPS.has(id) && (inTextField(event.target) || inReorderableRow(event.target))) return;
-      if (dispatch(action.scope, id)) {
+      // A terminal's input stops at any Meta chord (Cmd on macOS, the Super key elsewhere) without sending bytes, so a
+      // Meta key an action does not take would run the browser's or the desktop's own shortcut instead (#1172, #1850).
+      const programReceives = !event.metaKey;
+      if (dispatch(action.scope, id, programReceives)) {
         event.preventDefault();
         event.stopPropagation();
       } else if (BROWSER_RUNS.has(id)) event.stopPropagation();

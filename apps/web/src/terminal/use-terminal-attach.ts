@@ -1,6 +1,8 @@
 import type { HcConnection, TerminalStream } from "@doriface/client";
+import { HcConnectionClosedError } from "@doriface/client";
+import { HcRpcError } from "@doriface/protocol";
 import { useToastManager } from "@doriface/ui";
-import type { TerminalHandle, WTerm } from "@wterm/react";
+import type { WTerm } from "@wterm/react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { terminalConfigStore } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
@@ -8,17 +10,24 @@ import { CursorResets } from "./cursor-reset.ts";
 import { readDisplay } from "./display.ts";
 import { type EndHolder, fromEndOf, holdFromEnd, readerInputOn } from "./hold-view-from-end.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
-import { openFailure } from "./open-failure.ts";
 import { HISTORY_LINES, noteViewSize, viewAttach } from "./opening-attach.ts";
 import type { OutputPacer, ReplayOptions } from "./output-pacer.ts";
 import { type TerminalEnd, terminalEnd } from "./terminal-end.ts";
 import { type CoreAnswer, type Settled, settled, type Unsent, unsentReason } from "./terminal-settle.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
-import { useReopenWhenMoved } from "./use-reopen-when-moved.ts";
+import { TerminalStreamLostError } from "./attach-recovery.ts";
+import { useAttachRecovery } from "./use-attach-recovery.ts";
 
-/** RIS: clears the screen and scrollback before an attach replay draws them again. */
-const FULL_RESET = "\u001bc";
 const encoder = new TextEncoder();
+/**
+ * Cursor home, then erase to the end of the screen (ED 0): clears the screen in use and leaves the scrollback alone. The
+ * core's repaint starts with ESC[2J, which Ghostty answers over a prompt marked with OSC 133 (fish 4, shell integration)
+ * by scrolling the screen into history; over a screen already blank there is nothing to scroll. Under a full-screen
+ * program (vim, less, htop) this clears the alternate screen only: the repaint leaves it and its ESC[2J scrolls the
+ * primary screen behind it into history once, and since the repaint does not draw the primary screen again, that is the
+ * only copy of the output above the program's command, so the primary screen must not be erased here.
+ */
+const CLEAR_SCREEN = "\u001b[H\u001b[J";
 
 interface AttachSources {
   readonly connection: HcConnection;
@@ -28,7 +37,6 @@ interface AttachSources {
   readonly shown: boolean;
   readonly wt: WTerm | null;
   readonly setWt: (wt: WTerm | null) => void;
-  readonly handle: RefObject<TerminalHandle | null>;
   readonly stream: RefObject<TerminalStream | null>;
   readonly pending: RefObject<TerminalInput[]>;
   readonly pacer: OutputPacer;
@@ -48,13 +56,15 @@ interface AttachSources {
 }
 
 /**
- * A reattach after a dropped connection holds its replay: written as it arrives with the paint held, then drawn once it
- * has settled (D5). hc marks no end of the replay (the stream is its first paint, then live bytes), so the hold ends on
- * a quiet gap, bounded by the replay caps. The first open of a terminal on screen has no screen to keep and is not held;
- * one that waited out of view is held too, so the tab it shows in appears at the end of its history (#1588).
+ * Every attach's first paint holds its replay: written as it arrives with the paint held, then drawn once it has
+ * settled (D5, #812). hc marks no end of the replay (the stream is its first paint, then live bytes), so the hold ends
+ * on a quiet gap, bounded by the replay caps. A view mounted anew (a phone crossing the layout breakpoint, a pane
+ * opened on a terminal already running) has no screen to keep, but its replay covers the last 2,000 history lines,
+ * and paced into view it walks them past the person at the bottom; held, it lands whole. A first attach that waited
+ * out of view (a background tab, #1187) is held the same way, so the tab appears at the end of its history (#1588).
  */
-export function replayOnAttach(pacer: OutputPacer, reattach: boolean, options: ReplayOptions): void {
-  if (reattach) pacer.replay(options);
+export function replayOnAttach(pacer: OutputPacer, options: ReplayOptions): void {
+  pacer.replay(options);
 }
 
 export interface Attachment {
@@ -65,27 +75,33 @@ export interface Attachment {
   /** Why attaching failed, in plain words; null once Try again clears it. */
   readonly unopened: string | null;
   readonly clearUnopened: () => void;
+  readonly reconnecting: boolean;
+  readonly interact: () => void;
   /** The view's onEnd as it is now: an end acts on the tabs as they are by then. */
   readonly onEndNow: RefObject<((address: string, end: TerminalEnd) => void) | undefined>;
 }
 
 /** What a pane does when a connection arrives: attach, replay, settle what the core says is left, and report unsent input. */
 export function useTerminalAttach(sources: AttachSources): Attachment {
-  const { connection, address, pid, live, shown, wt, setWt, handle, stream, pending, pacer, output } = sources;
+  const { connection, address, pid, live, shown, wt, setWt, stream, pending, pacer, output } = sources;
   const { isFocused, focusWhenFree, onEnd, onEnded, onStream, holdPaint } = sources;
   const toasts = useToastManager();
   const [restarting, setRestarting] = useState(false);
   const [ended, setEnded] = useState(false);
-  /** Counts the streams the core ended with the program still running; each is re-attached by the effect below. */
-  const [lostStreams, setLostStreams] = useState(0);
-  const reattachedFor = useRef(0);
   const endHold = useRef<EndHolder | null>(null);
-  const [unopened, setUnopened] = useState<string | null>(null);
-  const unopenedAt = useReopenWhenMoved(address, unopened, () => {
-    setWt(null);
-    setUnopened(null);
-  });
+  const retryAttach = useRef<() => void>(() => undefined);
+  const recoveryView = useAttachRecovery({ connection, address, shown, retry: () => retryAttach.current() });
+  const { recovery, unopened, reconnecting, interact } = recoveryView;
+  const request = useRef<AbortController | null>(null);
+  const current = useRef({ connection, address });
+  current.current = { connection, address };
   const [opening, setOpening] = useState(false);
+  useEffect(
+    () => () => {
+      request.current?.abort();
+    },
+    [connection, address, recovery],
+  );
 
   const unmounted = useRef(false);
   const unsent = useRef<() => void>(() => undefined);
@@ -103,14 +119,10 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
   const attachedView = useRef<WTerm | null>(null);
   const attachedBefore = useRef(false);
   /**
-   * The pane was out of view before its first attach (a background tab after a reload, #1187): that attach comes when the
-   * tab is switched to, so its replay is held and drawn once, as a reattach's is, not climbed through on screen (#1588).
+   * The view the core last painted: a reattach to it keeps its history, a view never painted has none to keep. Try again
+   * keeps the renderer (RecoveryFrame), so a retry after a painted view's reattach failed keeps its history too.
    */
-  const firstWaitedHidden = useRef(false);
-  useEffect(() => {
-    if (wt !== null && !shown && !attachedBefore.current && wt.element.getClientRects().length === 0)
-      firstWaitedHidden.current = true;
-  }, [wt, shown]);
+  const paintedView = useRef<WTerm | null>(null);
   const program = useRef(pid);
   const reportUnsent = (why: Unsent): void => {
     const title = why === null ? "Typed input was not sent" : `Typed input was not sent because the program ${why}`;
@@ -118,7 +130,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
   };
   /** The core's answer about this terminal over `over`, as a CoreAnswer. */
   const askCore = (over: HcConnection): Promise<CoreAnswer> =>
-    over.call("terminal.get", { terminal: address }).then(
+    over.call("terminal.get", { terminal: address }, { timeoutMs: 2_000 }).then(
       (terminal) => ({ terminal }),
       (cause: unknown) => ({ error: cause }),
     );
@@ -140,10 +152,24 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
   }, [onEnd]);
 
   /** The core ended the stream, or refused an attach, with the program not known to be over: ask it what is left. */
+  const fail = (cause: unknown): void => {
+    setOpening(false);
+    recoveryView.failed(cause);
+  };
   const settle = (refusal: { readonly cause: unknown } | null): void => {
+    const asked = request.current;
+    if (refusal === null) setOpening(true);
     void askCore(connection).then((answer) => {
       // The line dropped again: the next connection attaches anew.
-      if (connection.closed || unmounted.current) return undefined;
+      if (
+        connection.closed ||
+        unmounted.current ||
+        request.current !== asked ||
+        current.current.connection !== connection ||
+        current.current.address !== address
+      )
+        return undefined;
+      setOpening(false);
       const then: Record<Settled, () => void> = {
         finished: () => onEndNow.current?.(address, "finished"),
         ended: () => {
@@ -151,11 +177,10 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           onEnded?.();
         },
         restarting: () => setRestarting(true),
-        reattach: () => setLostStreams((count) => count + 1),
+        reattach: () => fail(new TerminalStreamLostError("The terminal stream ended before the program did.")),
         replaced: () => undefined,
         error: () => {
-          unopenedAt(address);
-          setUnopened(openFailure(address, "error" in answer ? answer.error : refusal?.cause));
+          fail(refusal?.cause ?? ("error" in answer ? answer.error : undefined));
         },
       };
       return then[settled(answer, program.current, !attachedBefore.current, refusal !== null)]();
@@ -167,6 +192,14 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
   }, [restarting, live, address]);
 
   const attach = (ready: WTerm): void => {
+    if (!recovery.begin()) return;
+    const abort = new AbortController();
+    request.current = abort;
+    const owns = (): boolean =>
+      !abort.signal.aborted &&
+      !unmounted.current &&
+      current.current.connection === connection &&
+      current.current.address === address;
     setWt(ready);
     attachedTo.current = connection;
     attachedView.current = ready;
@@ -184,16 +217,28 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     const display = readDisplay(ready.element);
     // A reattach after a reconnect says so: the core applies its size only once this viewer is active again.
     const resumed = attachedBefore.current ? { resumed: true } : {};
+    // A reattach to a view the core has painted keeps the history it holds and asks for the screen alone, as hc does
+    // when it reattaches a viewer on another core: 2,000 lines again played the history back, over a MiB that a slow
+    // link hands over for longer than the replay's paint hold, so the view climbed through all of it (#1997). Lines that
+    // scrolled off the screen while the line was down are not added; the core has no cursor to resume from. A view the
+    // core never painted (a first attach that failed, then Try again) holds no history, so it asks for it as a first
+    // attach does.
+    const keepsHistory = paintedView.current === ready;
+    const history = keepsHistory ? 0 : HISTORY_LINES;
     // A reattach after a reconnect keeps its screen and has the connection's own status; only a first attach says so.
     if (!attachedBefore.current) setOpening(true);
     const attachOwn = () =>
       connection.attach(
-        { terminal: address, cols, rows, history: HISTORY_LINES, display, ...resumed },
-        { autoCredit: false },
+        { terminal: address, cols, rows, history, display, ...resumed },
+        {
+          autoCredit: false,
+          signal: abort.signal,
+          ...(recovery.state.phase === "idle" ? {} : { timeoutMs: 2_000 }),
+        },
       );
     viewAttach(connection, address, !attachedBefore.current, { cols, rows, display }, attachOwn).then(
       ({ stream: attached, cols: askedCols, rows: askedRows }) => {
-        if (unmounted.current) return void attached.close();
+        if (!owns()) return void attached.close();
         setOpening(false);
         // The program restarted while the line was down: what was typed for it must not reach the new one.
         if (attachedBefore.current && attached.terminal.pid !== program.current) {
@@ -201,6 +246,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           if (pending.current.splice(0).length > 0) reportUnsent("restarted");
           return undefined;
         }
+        recovery.succeeded();
         stream.current = attached;
         // The view in use (the focused pane, in a focused window) was the active viewer before the drop; a FOCUS frame
         // makes it active again, so the core applies its size now. Other views send no FOCUS, which would report
@@ -209,30 +255,29 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         if (attachedBefore.current && inUse) attached.focus(true);
         // A fit while the attach was in flight had no stream to resize.
         if (ready.cols !== askedCols || ready.rows !== askedRows) attached.resize(ready.cols, ready.rows);
-        // Reattached after a reconnect: the replay redraws everything, so the old screen and scrollback go first.
+        // Reattached after a reconnect: the core repaints the screen, and the history above it stays as the view holds it
+        // (#1997). The view clears its screen first, so the repaint's ESC[2J has no marked prompt to scroll into history.
         if (attachedBefore.current) {
-          // Read the reader's place BEFORE the reset: afterwards the buffer is empty and every scroller reads as at the
-          // end, which pinned readers who were up in history to the bottom on every reconnect (#1393).
+          // Read the reader's place before the repaint (#1393).
           const fromEnd = fromEndOf(ready.element);
-          // wterm reads the emptied buffer the same way, and its first replay write would follow the output down: a
-          // reader who is away stays away until they scroll or type.
+          // The repaint's first write would follow the output down: a reader who is away stays away until they scroll
+          // or type.
           if (fromEnd > 0) ready.holdScrollAway();
           pacer.drop();
           output.reset();
-          handle.current?.write(FULL_RESET);
-          // The reset leaves the scroller at the top, where the replay's rows climb past a reader who was at the end.
+          if (keepsHistory) ready.write(CLEAR_SCREEN);
+          // The repaint lands where the reader was: at the end for one who was following, in history for one who was not.
           endHold.current?.stop();
           // Only the reader's own input lets go early: on the terminal or what overlays it, its scrollbar included.
           const reader = readerInputOn(ready.element.parentElement ?? ready.element);
           endHold.current = holdFromEnd(ready.element, pacer, fromEnd, reader);
         }
-        const reattach = attachedBefore.current;
-        const holdReplay = reattach || firstWaitedHidden.current;
         attachedBefore.current = true;
-        firstWaitedHidden.current = false;
-        // A reattach's replay is drawn once it has settled, so the screen before it stays until then instead of climbing
-        // a frame's bytes at a time (D5).
-        replayOnAttach(pacer, holdReplay, {
+        paintedView.current = ready;
+        // Every attach's first paint is its replay: written as it arrives with the paint held, then drawn once it has
+        // settled, so a view mounted anew, or a tab first attached when switched to, does not walk its history past the
+        // person (D5, #812, #1588).
+        replayOnAttach(pacer, {
           srtt: () => connection.rtt?.srtt,
           hold: (held) => {
             holdPaint(held);
@@ -251,10 +296,12 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
             pacer.push(encoder.encode(rendererOptions(terminalConfigStore.config).cursorSequence));
         });
         attached.onClose((close) => {
+          if (!owns() || stream.current !== attached) return;
           if (stream.current === attached) stream.current = null;
           const end = terminalEnd(close);
           onEndNow.current?.(address, end);
           if (end === "lost") settle(null);
+          if (end === "dropped") fail(close.error ?? new HcConnectionClosedError("The connection dropped."));
         });
         for (const data of pending.current.splice(0)) attached.write(data);
         focusWhenFree(ready);
@@ -262,21 +309,46 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
       },
       (cause: unknown) => {
         // The connection dropped mid-attach: the next one attaches again (below).
-        if (connection.closed || unmounted.current) return;
+        if (!owns()) return;
         setOpening(false);
-        settle({ cause });
+        // Only not_found needs the lifecycle read (the terminal may have ended while this view was away).
+        // An auth/protocol refusal is already decisive; a transient failure needs another attach, not another read.
+        if (cause instanceof HcRpcError && cause.kind === "finished") return settle({ cause });
+        fail(cause);
+        if (cause instanceof HcRpcError && cause.kind === "not_found") settle({ cause });
       },
     );
+  };
+  retryAttach.current = () => {
+    if (unmounted.current || !shown) return;
+    if (connection.closed) {
+      // The connection store owns socket backoff. Only human interaction may advance it; an attach timer must not
+      // repeatedly restart its in-flight dial or skip the countdown the workspace is showing.
+      recovery.failed(new HcConnectionClosedError("The connection is still unavailable."));
+      return;
+    }
+    if (wt !== null) attach(wt);
   };
 
   useEffect(() => {
     if (wt === null || !shown) return;
-    // A renderer not attached yet (the first, or one mounted again by Try again) attaches here too, once shown.
-    const attached = attachedView.current === wt && attachedTo.current === connection;
-    if (attached && reattachedFor.current === lostStreams) return;
-    reattachedFor.current = lostStreams;
+    if (recovery.state.phase === "failed" && !recovery.state.transient) return;
+    // A renderer not attached yet (its first attach waits until the pane is shown, #1187) attaches here, once shown.
+    // Try again keeps the same renderer and retries through the recovery (retryAttach), not through this effect.
+    if (attachedView.current === wt && attachedTo.current === connection) return;
     attach(wt);
-  }, [wt, connection, shown, lostStreams]);
+  }, [wt, connection, shown]);
 
-  return { opening, restarting, ended, unopened, clearUnopened: () => setUnopened(null), onEndNow };
+  return {
+    opening,
+    restarting,
+    ended,
+    unopened,
+    // A closed socket already has the workspace's reconnect notice; this status owns only the viewer's attach. A pane out
+    // of view attaches nothing until it is shown, so it says nothing either: shown, its owed attempt runs and says so.
+    reconnecting: shown && !connection.closed && (reconnecting || (opening && attachedBefore.current)),
+    clearUnopened: () => recovery.manual(),
+    interact,
+    onEndNow,
+  };
 }

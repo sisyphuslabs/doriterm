@@ -2,6 +2,7 @@
 // so the first key typed after it lands there with no click (#1704). Each test types straight after the switch, with
 // nothing focusing the new terminal for it.
 import type { Locator, Page } from "@playwright/test";
+import { AGENT_SHELL } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
@@ -22,7 +23,7 @@ const palette = (page: Page) => page.getByRole("dialog", { name: "Command palett
 const combobox = (page: Page) => palette(page).getByRole("combobox");
 
 function startShell(name: string): string {
-  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${SPACE}`, "--", "env", "PS1=$ ", "sh"]);
+  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${SPACE}`, "--", ...AGENT_SHELL]);
   const started: unknown = JSON.parse(out);
   if (typeof started !== "object" || started === null || !("address" in started)) throw new Error(out);
   return String(started.address);

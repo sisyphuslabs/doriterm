@@ -47,14 +47,36 @@ test("the browser chrome colour follows the scheme both ways and a live switch i
   await expect.poll(async () => (await colours(page)).meta).toBe(day);
 });
 
-test("the manifest's title-bar and splash colours come from one theme", async ({ request }) => {
+test("the manifest's title-bar and splash colours come from the dark default (#1403)", async ({ request }) => {
   const manifest: unknown = await (await request.get("/manifest.webmanifest")).json();
   const field = (name: string): unknown =>
     typeof manifest === "object" && manifest !== null ? Reflect.get(manifest, name) : null;
-  // Day's chrome and background: the first launch matches the light metas the page starts with.
-  const day = resolveTheme(BUILTIN_PALETTES.day).roles;
+  // Night's chrome and background: a fresh install opens dark, so its splash and title bar are Night before React.
+  const night = resolveTheme(BUILTIN_PALETTES.night).roles;
   expect({ theme: field("theme_color"), background: field("background_color") }).toEqual({
-    theme: day.chrome,
-    background: day.background,
+    theme: night.chrome,
+    background: night.background,
   });
+});
+
+test("a first launch paints the dark Night chrome before any script runs (#1403)", async ({ browser, baseURL }) => {
+  // A light device: the default must still be dark, and the static meta is what a fresh install shows first.
+  const context = await browser.newContext({
+    javaScriptEnabled: false,
+    colorScheme: "light",
+    ...(baseURL === undefined ? {} : { baseURL }),
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto("/");
+    const metas = await page
+      .locator('meta[name="theme-color"]')
+      .evaluateAll((tags) =>
+        tags.map((tag) => ({ content: tag.getAttribute("content"), media: tag.getAttribute("media") })),
+      );
+    const night = resolveTheme(BUILTIN_PALETTES.night).roles;
+    expect(metas).toEqual([{ content: night.chrome, media: null }]);
+  } finally {
+    await context.close();
+  }
 });

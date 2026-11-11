@@ -43,6 +43,8 @@ export async function startRelayHost(): Promise<RelayHost> {
     async stop() {
       helper.kill("SIGTERM");
       await expect.poll(() => helper.exitCode ?? helper.signalCode, { timeout: 60_000 }).not.toBeNull();
+      // The helper exits 0 only once its relayed host, hc core included, has stopped cleanly (#2061).
+      expect(helper.exitCode).toBe(0);
     },
   };
 }

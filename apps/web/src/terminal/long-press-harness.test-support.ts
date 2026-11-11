@@ -139,6 +139,13 @@ class FakePointer {
 class FakeTouch {
   readonly cancelable = true;
   defaultPrevented = false;
+  /** The fingers still down once this event happened, as TouchEvent.touches lists them. */
+  readonly touches: readonly unknown[];
+  readonly target: unknown;
+  constructor(fingers: number, target: unknown) {
+    this.touches = Array.from({ length: fingers }, () => ({}));
+    this.target = target;
+  }
 
   preventDefault(): void {
     this.defaultPrevented = true;
@@ -148,10 +155,16 @@ class FakeTouch {
 export interface LongPressTerminal {
   /** What the hook takes from WTerm. */
   readonly wt: { readonly element: Element; readonly focus: () => void };
-  /** A finger lands: the document's capture listener runs before the element's, as a browser's does. */
-  down(pointerId?: number, primary?: boolean): void;
-  /** The finger lifts as pointerup on the window, then that touch's own end; `primary` is false for a second finger. */
+  /**
+   * A finger lands: the document's capture listener runs before the element's, as a browser's does, and the element
+   * sees the touch begin. With `onRedrawnCell` it lands on a cell in the terminal that the program then redraws away:
+   * the browser sends that touch's lift to the cell alone, which no longer passes it on (#2057).
+   */
+  down(pointerId?: number, primary?: boolean, onRedrawnCell?: boolean): void;
+  /** The finger lifts as pointerup on the window, then that touch's own end on the node it landed on. */
   up(pointerId?: number, primary?: boolean): void;
+  /** The finger moves: the browser sends the touchmove to the node it landed on. Whether that move was cancelled. */
+  move(pointerId?: number): boolean;
   /** Whether an element listener answers `type` that this pointer dispatched, once the hook's effect is mounted. */
   readonly handled: (type: string) => boolean;
   /** Whether the last `up` was cancelled, so the tap's own mouse events never arrive. */
@@ -162,7 +175,7 @@ export interface LongPressTerminal {
 /**
  * One terminal with the word "hello" under the point the harness presses, and a count of the element events its
  * listeners handled: a fresh terminal has no listeners, and the hook's own effect is what gives it the pointerdown and
- * touchend ones.
+ * touchstart ones.
  */
 export function longPressTerminal(): LongPressTerminal {
   const document = new FakeDocument();
@@ -175,6 +188,8 @@ export function longPressTerminal(): LongPressTerminal {
   Object.assign(globalThis, { window, Text: FakeText, NodeFilter: { SHOW_TEXT: 4 } });
   const handled = new Map<string, number>();
   let cancelled = false;
+  /** The node each finger down landed on, by pointer, which gets that touch's end. */
+  const landed = new Map<number, FakeTarget>();
   const count = (type: string): void => {
     handled.set(type, (handled.get(type) ?? 0) + 1);
   };
@@ -185,15 +200,26 @@ export function longPressTerminal(): LongPressTerminal {
   };
   return {
     wt: { element: element as unknown as Element, focus: () => undefined },
-    down(pointerId = 1, primary = true): void {
+    down(pointerId = 1, primary = true, onRedrawnCell = false): void {
       const event = new FakePointer(pointerId, primary, 25, 10);
       document.dispatch("pointerdown", event);
       element.dispatch("pointerdown", event);
+      const target = onRedrawnCell ? new FakeTarget() : element;
+      landed.set(pointerId, target);
+      element.dispatch("touchstart", new FakeTouch(landed.size, target));
+    },
+    move(pointerId = 1): boolean {
+      const target = landed.get(pointerId) ?? element;
+      const touch = new FakeTouch(landed.size, target);
+      target.dispatch("touchmove", touch);
+      return touch.defaultPrevented;
     },
     up(pointerId = 1, primary = true): void {
       window.dispatch("pointerup", new FakePointer(pointerId, primary, 25, 10));
-      const touch = new FakeTouch();
-      element.dispatch("touchend", touch);
+      const target = landed.get(pointerId) ?? element;
+      landed.delete(pointerId);
+      const touch = new FakeTouch(landed.size, target);
+      target.dispatch("touchend", touch);
       cancelled = touch.defaultPrevented;
     },
     handled: (type) => (handled.get(type) ?? 0) > 0,

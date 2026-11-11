@@ -1,4 +1,12 @@
-import { IconButton, RowDropCaret, RowDropIndicator, rowPlacement, useListDrag } from "@doriface/ui";
+import {
+  IconButton,
+  RowDropCaret,
+  RowDropIndicator,
+  rowPlacement,
+  useListDrag,
+  groupHeadingClass,
+  cn,
+} from "@doriface/ui";
 import { GripVertical, Minus, Plus } from "lucide-react";
 import { useRef, useState, type KeyboardEvent } from "react";
 import { specialKeysOn } from "../keybar/catalog.ts";
@@ -70,7 +78,7 @@ export function KeyboardEdit({ settings, host, readOnly }: KeyboardEditProps) {
     <div className="flex flex-col gap-4">
       {/* While a key is picked up this list owns Escape, so the screen's own close shortcut cannot fire under the move. */}
       <section aria-label="In the bar" data-captures-keys={picked === null ? undefined : ""} className="flex flex-col">
-        <h3 className="px-1 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">In the bar</h3>
+        <h3 className={cn("px-1 pb-1", groupHeadingClass)}>In the bar</h3>
         <ul ref={list} className="relative overflow-hidden rounded-lg border border-border bg-card">
           {shown.map((entry, index) => {
             const place = rowPlacement(entry.id, index, drag, settle);
@@ -123,7 +131,7 @@ export function KeyboardEdit({ settings, host, readOnly }: KeyboardEditProps) {
         </p>
       </section>
       <section aria-label="More keys" className="flex flex-col">
-        <h3 className="px-1 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">More keys</h3>
+        <h3 className={cn("px-1 pb-1", groupHeadingClass)}>More keys</h3>
         <ul className="overflow-hidden rounded-lg border border-border bg-card">
           {removed.map((entry) => (
             <li

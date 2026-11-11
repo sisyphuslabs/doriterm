@@ -146,6 +146,7 @@ describe("install.sh on Linux", () => {
     expect(run.calls).toEqual([
       "systemctl --user show-environment",
       "doriface-host --install-hc",
+      "doriface-host --help",
       "systemctl --user daemon-reload",
       "systemctl --user enable doriface-host.service",
       "systemctl --user restart doriface-host.service",
@@ -435,6 +436,7 @@ describe("install.sh on macOS", () => {
     const uid = Bun.spawnSync(["id", "-u"]).stdout.toString().trim();
     expect(run.calls).toEqual([
       "doriface-host --install-hc",
+      "doriface-host --help",
       `launchctl bootout gui/${uid}/dev.omo.doriface-host`,
       `launchctl print gui/${uid}/dev.omo.doriface-host`,
       `launchctl bootstrap gui/${uid} ${join(r.home, "Library", "LaunchAgents", "dev.omo.doriface-host.plist")}`,

@@ -49,6 +49,32 @@ test("a tapped notice opens its pane, in an open window and in a fresh one", asy
   await expect(fresh).toHaveURL(/\/$/);
 });
 
+test("on a phone a fresh tapped notice opens its pane, not the place the phone remembers", async ({
+  page,
+  context,
+}) => {
+  const service = suite.service();
+  await turnOn(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  // The phone was last on its Spaces list: a cold start on / would reopen it, but a tapped notice names its own pane.
+  await page.goto("/?v=spaces");
+  await expect(page.getByRole("heading", { level: 1, name: "Spaces", exact: true })).toBeVisible({ timeout: 20_000 });
+  const agent = finishingAgent("push-cold-phone", suite.endAfterTest);
+  press(agent);
+  const posted = await service.next();
+  const fresh = await context.newPage();
+  await fresh.setViewportSize({ width: 390, height: 844 });
+  await page.close();
+  await fresh.goto(`/?notice=${String(posted.notice["n"])}&host=${String(posted.notice["h"])}`);
+  await expect(fresh.locator(`[data-terminal="${agent}"]`)).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => new URL(fresh.url()).searchParams.get("t")).not.toBeNull();
+  expect(new URL(fresh.url()).searchParams.get("v")).toBeNull();
+  // Nothing of the remembered place went under it either: Back is the agents list the app opened on.
+  await fresh.getByRole("banner").getByRole("button", { name: "Back to agents" }).click();
+  await expect(fresh.getByRole("heading", { level: 1, name: "Agents", exact: true })).toBeVisible();
+  expect(new URL(fresh.url()).search).toBe("");
+});
+
 test("on a phone a tapped notice switches the open terminal in place, so one Back reaches the list (#999)", async ({
   page,
   context,

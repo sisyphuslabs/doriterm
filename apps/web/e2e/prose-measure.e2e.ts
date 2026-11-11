@@ -28,7 +28,15 @@ const DESKTOP: Readonly<Record<string, readonly string[]>> = {
     "A machine that answers reads Connected",
     "reaches the other machines through its own relay only",
   ],
+  "session-ended": ["Its program finished while this page wasn't showing it"],
 };
+
+/**
+ * Paragraphs of one sentence that a computer sets on a single line, so their own full lines measure nothing. What a
+ * reader meets in their column is measured instead: a copy of the paragraph in its place, its sentence repeated until it
+ * wraps, read the same way.
+ */
+const ONE_LINE: ReadonlySet<string> = new Set(["Its program finished while this page wasn't showing it"]);
 
 /**
  * The fewest full lines each screen wraps to at the measure. The join entry's one sentence fills a line and a bit at both
@@ -38,10 +46,14 @@ const DESKTOP: Readonly<Record<string, readonly string[]>> = {
 const LINES: Readonly<Record<string, number>> = { "first-run": 1 };
 
 /** Characters on each rendered line but the last, read from DOM ranges the way the page draws them. */
-const fullLines = (paragraph: Locator) =>
-  paragraph.evaluate((el) => {
+const fullLines = (paragraph: Locator, filled: boolean) =>
+  paragraph.evaluate((el, repeat) => {
+    const copy = el.cloneNode();
+    copy.textContent = `${el.textContent ?? ""} `.repeat(4);
+    if (repeat) el.after(copy);
+    const measured = repeat ? copy : el;
     const lines = new Map<number, string>();
-    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const walker = document.createTreeWalker(measured, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       const value = node.textContent ?? "";
       for (let i = 0; i < value.length; i++) {
@@ -54,7 +66,19 @@ const fullLines = (paragraph: Locator) =>
         lines.set(y, (lines.get(y) ?? "") + value[i]);
       }
     }
+    if (repeat) copy.parentNode?.removeChild(copy);
     return [...lines.values()].slice(0, -1).map((text) => [...text.trim()].length);
+  }, filled);
+
+/** The paragraph's measure and the content box of the column it sits in, in px. */
+const columnFor = (paragraph: Locator) =>
+  paragraph.evaluate((el) => {
+    const column = el.parentElement ?? document.body;
+    const style = getComputedStyle(column);
+    return {
+      measure: parseFloat(getComputedStyle(el).maxWidth),
+      column: column.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+    };
   });
 
 for (const [width, screens] of [
@@ -70,6 +94,7 @@ for (const [width, screens] of [
     test(`${name} at ${width} sets reading prose to a comfortable measure`, async ({ browser }) => {
       const shot = SHOTS.find((entry) => entry.name === name);
       if (shot === undefined) throw new Error(`capture ${name} is missing`);
+      if (shot.timeoutMs !== undefined) test.setTimeout(shot.timeoutMs);
       const phone = width === 390;
       const context = await browser.newContext({
         viewport: { width, height: phone ? 844 : 900 },
@@ -95,7 +120,7 @@ for (const [width, screens] of [
           phrases.map(async (phrase) => {
             const paragraph = page.locator("p").filter({ hasText: phrase }).first();
             await expect(paragraph).toBeVisible();
-            return [phrase, await fullLines(paragraph)] as const;
+            return [phrase, await fullLines(paragraph, ONE_LINE.has(phrase)), await columnFor(paragraph)] as const;
           }),
         );
         // fullLines drops each paragraph's last line, so one-line paragraphs measure nothing and a screen that renders
@@ -133,7 +158,12 @@ for (const [width, screens] of [
               .toBeGreaterThanOrEqual(box.screen - 32);
           }
         } else {
-          for (const [phrase, counts] of measured) {
+          // The measure is a cap, so a column narrower than it sets shorter lines than the measure names whatever the
+          // face: each paragraph's column must hold its whole measure.
+          for (const [phrase, counts, { measure, column }] of measured) {
+            expect
+              .soft(column, `${phrase}: column for a ${measure} px measure (full lines ${counts.join(",")})`)
+              .toBeGreaterThanOrEqual(measure - 1);
             for (const count of counts) {
               expect.soft(count, `${phrase}: ${counts.join(",")}`).toBeGreaterThanOrEqual(floor);
               expect.soft(count, `${phrase}: ${counts.join(",")}`).toBeLessThanOrEqual(75);

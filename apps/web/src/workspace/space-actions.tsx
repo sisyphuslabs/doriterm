@@ -22,12 +22,15 @@ export function SpaceActions({
   );
 }
 
-/** What can be done with a space: its "..." menu and its right-click menu hold the same items. */
+/**
+ * What can be done with a space: its "..." menu and its right-click menu hold the same items, and on a phone the space
+ * screen's own "..." (its rows hold none).
+ */
 export function SpaceMenuItems({
   space,
   reorder,
 }: {
-  readonly space: Space;
+  readonly space: Pick<Space, "id">;
   readonly reorder: SpaceReorder | undefined;
 }) {
   const renaming = useSpaceRenaming();

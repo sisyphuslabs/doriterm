@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { AGENT_SHELL } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
@@ -15,7 +16,7 @@ const SETTLE_MS = 15_000;
 
 /** A shell in this test's space that reports a status only when told to, as an agent does when its turn changes. */
 function startShell(name: string): string {
-  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${SPACE}`, "--", "env", "PS1=$ ", "sh"]);
+  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${SPACE}`, "--", ...AGENT_SHELL]);
   const started: unknown = JSON.parse(out);
   if (typeof started !== "object" || started === null || !("address" in started)) throw new Error(out);
   return String(started.address);

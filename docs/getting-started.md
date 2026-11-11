@@ -11,15 +11,15 @@ the same check after every merge to `dev` and once a day.
 
 ## 1. Install the desktop app
 
-Download the build for your computer from the [latest release](https://github.com/sisyphuslabs/doriterm/releases/latest)
-and check it against `SHA256SUMS.txt` from the same release.
+Download the build for your computer from [get.doriterm.com](https://get.doriterm.com), which always answers with the
+current release, and check it against [`SHA256SUMS.txt`](https://get.doriterm.com/dl/SHA256SUMS.txt).
 
-| Computer              | File                                            |
-| --------------------- | ----------------------------------------------- |
-| macOS (Apple silicon) | `Doriterm-<version>-arm64.dmg`                  |
-| macOS (Intel)         | `Doriterm-<version>-x64.dmg`                    |
-| Windows (x64, arm64)  | the setup `.exe` for your architecture          |
-| Linux (x64, arm64)    | the `.AppImage` or `.deb` for your architecture |
+| Computer              | Download                                                                                                                                                                                                                                           |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS (Apple silicon) | [Doriterm for Apple silicon](https://get.doriterm.com/dl/mac-arm64.dmg)                                                                                                                                                                            |
+| macOS (Intel)         | [Doriterm for Intel](https://get.doriterm.com/dl/mac-x64.dmg)                                                                                                                                                                                      |
+| Windows (x64, arm64)  | [x64](https://get.doriterm.com/dl/win-x64.exe) or [arm64](https://get.doriterm.com/dl/win-arm64.exe) installer                                                                                                                                     |
+| Linux (x64, arm64)    | [x64 AppImage](https://get.doriterm.com/dl/linux-x64.AppImage), [arm64 AppImage](https://get.doriterm.com/dl/linux-arm64.AppImage), [x64 deb](https://get.doriterm.com/dl/linux-x64.deb), [arm64 deb](https://get.doriterm.com/dl/linux-arm64.deb) |
 
 macOS: from v0.1.1 the app is signed and notarized, so it opens like any other app. Windows: the installer is not code
 signed yet, so SmartScreen warns about an unknown publisher; choose **More info**, then **Run anyway**.

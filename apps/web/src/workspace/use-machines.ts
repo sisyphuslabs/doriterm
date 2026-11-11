@@ -1,10 +1,15 @@
 import type { HcConnection } from "@doriface/client";
 import type { MachineView, Terminal, TerminalRunParams } from "@doriface/protocol";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { graceEnds, graceViews, stepHeld, type Held } from "./machine-grace.ts";
-import { machineEntries, machineKey, orderMachines, type MachineEntry } from "./machines.ts";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { MACHINE_REFRESH_MS } from "../roster/roster.ts";
+import { useRoster } from "../roster/use-roster.ts";
+import { graceEnds, graceViews } from "./machine-grace.ts";
+import { machineEntries, type MachineEntry } from "./machines.ts";
 import type { Session } from "./model.ts";
 import { withReach } from "./reach.ts";
+import { useSteady } from "./steady.ts";
+
+export { MACHINE_REFRESH_MS };
 
 export interface Machines {
   readonly entries: readonly MachineEntry[];
@@ -55,13 +60,6 @@ export const MachinesContext = createContext<Machines>({
 
 export const useMachinesContext = (): Machines => useContext(MachinesContext);
 
-/**
- * hc sends no event when a machine's line comes up, drops or wants a login, so machine.list is also read on a timer
- * while the page is visible. hc redials within 250 ms to 30 s and one machine.list is a few hundred bytes, so every
- * 10 s keeps a stale state shorter than it takes to notice and click, for at most 6 small calls a minute.
- */
-export const MACHINE_REFRESH_MS = 10_000;
-
 export interface MachineState {
   readonly entries: readonly MachineEntry[];
   /** The terminals with those on a machine that is not connected marked unreachable (`withReach`). */
@@ -78,90 +76,40 @@ export interface MachineState {
   readonly listed: number;
 }
 
-/** machine.list, read again when a machine's live terminals change, on a timer while visible, and on return. */
+/** The shared roster's machines as this page shows them: hc's last answer with the redial grace (#904) laid over it. */
 export function useMachines(connection: HcConnection, terminals: readonly Terminal[]): MachineState {
-  const [read, setRead] = useState<{
-    readonly views: readonly MachineView[];
-    readonly at: number | undefined;
-    readonly first?: { readonly at: number; readonly ids: ReadonlySet<string> };
-    readonly up?: ReadonlySet<string>;
-    readonly held: Held;
-  }>({ views: [], at: undefined, held: new Map() });
-  const [now, setNow] = useState(Date.now);
-  const [reads, setReads] = useState(0);
-  const [listError, setListError] = useState<string | undefined>(undefined);
-  const [listed, setListed] = useState(0);
-  const refresh = useCallback(() => setReads((count) => count + 1), []);
-  const key = machineKey(terminals);
-  // Each read is numbered when sent. An answer applies unless a later-sent read's answer was already applied, so an
-  // answer slower than the refresh period still draws, and an old answer never overwrites a newer one.
-  const sentSeq = useRef(0);
-  const appliedSeq = useRef(0);
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-  useEffect(() => {
-    sentSeq.current += 1;
-    const seq = sentSeq.current;
-    const fresh = (): boolean => mounted.current && seq > appliedSeq.current;
-    connection.call("machine.list").then(
-      (list) => {
-        if (!fresh()) return list;
-        appliedSeq.current = seq;
-        const at = Date.now();
-        setRead((before) => {
-          const views = orderMachines(list.machines);
-          const first = before.first ?? { at, ids: new Set(views.map((view) => view.id)) };
-          const up = new Set(before.up);
-          for (const view of views) if (view.state === "connected") up.add(view.id);
-          return { views, at, first, up, held: stepHeld(before.held, before, views, at) };
-        });
-        setNow(at);
-        setListError(undefined);
-        setListed((count) => count + 1);
-        return list;
-      },
-      (error: unknown) => {
-        if (!fresh()) return;
-        appliedSeq.current = seq;
-        setListError(error instanceof Error ? error.message : String(error));
-      },
-    );
-  }, [connection, key, reads]);
-  useEffect(() => {
-    const whenVisible = (): void => {
-      if (document.visibilityState === "visible") refresh();
-    };
-    const timer = setInterval(whenVisible, MACHINE_REFRESH_MS);
-    document.addEventListener("visibilitychange", whenVisible);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", whenVisible);
-    };
-  }, [refresh]);
+  const { roster, snapshot } = useRoster(connection);
+  const read = snapshot.machines;
+  const [clock, setClock] = useState(Date.now);
+  const now = read.at === undefined ? clock : Math.max(clock, read.at);
+  const refresh = useCallback(() => void roster.refreshMachines(), [roster]);
   // A held machine's grace ends between reads: the page shows it offline then, not at the next read up to 10 s later.
   const ends = graceEnds(read.held, now);
   useEffect(() => {
     if (ends === undefined) return undefined;
     // A timer may fire a moment early: `now` is moved to the end itself, so the grace ends and `ends` moves on.
-    const timer = setTimeout(() => setNow(Math.max(Date.now(), ends)), Math.max(0, ends - Date.now()));
+    const timer = setTimeout(() => setClock(Math.max(Date.now(), ends)), Math.max(0, ends - Date.now()));
     return () => clearTimeout(timer);
   }, [ends]);
   const views = useMemo(() => graceViews(read.views, read.held, now), [read, now]);
   const { id: coreId, name: coreName } = connection.hello.core;
   const reached = useMemo(() => withReach(terminals, views), [terminals, views]);
-  const entries = useMemo(
-    () => machineEntries({ id: coreId, name: coreName }, views, reached),
-    [coreId, coreName, views, reached],
+  const entries = useSteady(
+    useMemo(() => machineEntries({ id: coreId, name: coreName }, views, reached), [coreId, coreName, views, reached]),
   );
   // A refused dial is not lost: hc records it as the machine's `why`, which the re-read brings in.
   const retry = useCallback(
     (machine: string) => connection.call("machine.connect", { machine }).then(refresh, refresh),
     [connection, refresh],
   );
-  return { entries, terminals: reached, refresh, listError, views, heard: read.views, retry, listed };
+  return {
+    entries,
+    terminals: reached,
+    refresh,
+    listError: read.error,
+    views,
+    heard: read.views,
+    retry,
+    listed: read.listed,
+  };
 }

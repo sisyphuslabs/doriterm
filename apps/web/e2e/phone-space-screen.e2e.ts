@@ -1,5 +1,5 @@
 // #1387: on a phone a space row opens that space's own screen (its tabs, New tab in it), one history entry over the
-// list, so Back walks back down: terminal -> space -> Agents. A desktop's space row still only selects the space.
+// Spaces list, so Back walks back down: terminal -> space -> Spaces. A desktop's space row still only selects the space.
 import { devices, type Page } from "@playwright/test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -48,7 +48,7 @@ const end = (seeded: Seeded): void => Object.values(seeded).forEach((address) =>
 const param = (page: Page, name: string): string | null => new URL(page.url()).searchParams.get(name);
 const spaceRow = (page: Page, name: string) => page.getByRole("button", { name: new RegExp(`^${name}\\b`) }).first();
 const tabRows = (page: Page) => page.getByRole("region", { name: "Tabs" }).getByRole("button");
-const agentsHeading = (page: Page) => page.getByRole("heading", { name: "Agents", exact: true });
+const spacesHeading = (page: Page) => page.getByRole("heading", { level: 1, name: "Spaces", exact: true });
 
 /** How many tabs the saved layout gives the space named `name`. */
 function savedTabs(name: string): number {
@@ -57,7 +57,7 @@ function savedTabs(name: string): number {
 }
 
 async function openWebsite(page: Page): Promise<void> {
-  await page.goto("/");
+  await page.goto("/?v=spaces");
   await expect(spaceRow(page, "website")).toBeVisible({ timeout: 20_000 });
   await spaceRow(page, "website").click();
   await expect(page.getByRole("heading", { level: 1, name: "website" })).toBeVisible({ timeout: 10_000 });
@@ -70,7 +70,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
     const { defaultBrowserType: _engine, ...metrics } = device;
     test.use({ ...metrics, viewport: { width: 390, height: 844 }, serviceWorkers: "block" });
 
-    test("a space row opens the space's screen of tabs, and Back walks down terminal, space, Agents", async ({
+    test("a space row opens the space's screen of tabs, and Back walks down terminal, space, Spaces", async ({
       page,
     }) => {
       const seeded = seed();
@@ -95,17 +95,17 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         expect(param(page, "t")).toBeNull();
 
         await page.goBack();
-        await expect(agentsHeading(page)).toBeVisible();
+        await expect(spacesHeading(page)).toBeVisible();
         await expect.poll(() => param(page, "s")).toBeNull();
       } finally {
         end(seeded);
       }
     });
 
-    test("the space screen's Back returns to Agents, also on a cold open of the space's address", async ({ page }) => {
+    test("the space screen's Back returns to Spaces, also on a cold open of the space's address", async ({ page }) => {
       const seeded = seed();
       try {
-        await page.goto("/");
+        await page.goto("/?v=spaces");
         await expect(spaceRow(page, "infra")).toBeVisible({ timeout: 20_000 });
         const entries = await page.evaluate(() => history.length);
         await spaceRow(page, "infra").click();
@@ -114,17 +114,17 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await expect(tabRows(page)).toHaveCount(1);
         const url = page.url();
 
-        await page.getByRole("button", { name: "Back to agents" }).click();
-        await expect(agentsHeading(page)).toBeVisible();
+        await page.getByRole("button", { name: "Back to spaces" }).click();
+        await expect(spacesHeading(page)).toBeVisible();
         await expect.poll(() => param(page, "s")).toBeNull();
 
         // Straight onto the space's own address on a page of its own, with nothing of the app behind it: a plain pop has no
-        // entry of the app to land on, so only the guard's replace reaches Agents.
+        // entry of the app to land on, so only the guard's replace reaches the Spaces list.
         const cold = await page.context().newPage();
         await cold.goto(url);
         await expect(cold.getByRole("heading", { level: 1, name: "infra" })).toBeVisible({ timeout: 20_000 });
-        await cold.getByRole("button", { name: "Back to agents" }).click();
-        await expect(agentsHeading(cold)).toBeVisible();
+        await cold.getByRole("button", { name: "Back to spaces" }).click();
+        await expect(spacesHeading(cold)).toBeVisible();
         await expect.poll(() => param(cold, "s")).toBeNull();
       } finally {
         end(seeded);
@@ -154,7 +154,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         release(true);
         const notice = cold.getByRole("alert").filter({ hasText: "Could not load the agents" });
         await expect(notice).toBeVisible({ timeout: 15_000 });
-        await expect(cold.getByRole("button", { name: "Back to agents" })).toBeVisible();
+        await expect(cold.getByRole("button", { name: "Back to spaces" })).toBeVisible();
         link.hold();
         await notice.getByRole("button", { name: "Try again" }).click();
         await expect(cold.getByRole("heading", { level: 1, name: "website" })).toBeVisible({ timeout: 15_000 });
@@ -166,14 +166,14 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
     test("no frame of the space screen's slide reaches past the screen's edge", async ({ page }) => {
       const seeded = seed();
       try {
-        await page.goto("/");
+        await page.goto("/?v=spaces");
         await expect(spaceRow(page, "website")).toBeVisible({ timeout: 20_000 });
         await expect.poll(() => page.evaluate(() => document.documentElement.hasAttribute("data-ready"))).toBe(true);
         // Every frame from the tap until the slide has settled: the page never grows wider than the screen.
         await page.evaluate(() => {
           const frames: { readonly width: number; readonly moving: boolean }[] = [];
           Reflect.set(window, "slideFrames", frames);
-          const sample = (): void => {
+          const record = (): boolean => {
             // Only the arriving screen's own transform transition counts: a spinner or a button's colour is not the slide.
             const moving = document
               .getAnimations()
@@ -187,10 +187,28 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
                   motion.effect.target.classList.contains("motion-arrive"),
               );
             frames.push({ width: document.scrollingElement?.scrollWidth ?? 0, moving });
-            // Until the slide has run and settled, or about two seconds (a bound the check below then fails).
-            const settled = !moving && frames.some((frame) => frame.moving);
-            if (!settled && frames.length < 120) requestAnimationFrame(sample);
-            else Reflect.set(window, "slideDone", true);
+            return moving;
+          };
+          // The slide's start also takes a frame, so a loaded machine that paints few frames still measures one mid-slide;
+          // its end (or cancel) closes the sampling, so a slide no frame saw moving fails the check below, not the wait.
+          for (const type of ["transitionrun", "transitionend", "transitioncancel"]) {
+            document.addEventListener(type, (event) => {
+              const arriving =
+                event instanceof TransitionEvent &&
+                event.propertyName === "transform" &&
+                event.target instanceof Element &&
+                event.target.classList.contains("motion-arrive");
+              if (!arriving) return;
+              record();
+              if (type !== "transitionrun") Reflect.set(window, "slideDone", true);
+            });
+          }
+          const sample = (): void => {
+            if (Reflect.get(window, "slideDone") === true) return;
+            const moving = record();
+            // Until the slide has run and settled; the poll below bounds the wait, however slowly frames come.
+            if (frames.some((frame) => frame.moving) && !moving) Reflect.set(window, "slideDone", true);
+            else requestAnimationFrame(sample);
           };
           requestAnimationFrame(sample);
         });
@@ -204,7 +222,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         );
         expect(
           frames.some((frame) => frame.moving),
-          "the slide ran while it was sampled",
+          "a sampled frame shows the slide moving",
         ).toBe(true);
         expect(Math.max(...frames.map((frame) => frame.width))).toBeLessThanOrEqual(390);
       } finally {
@@ -226,7 +244,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
             tabs: [{ id: "tb-plan", name: "", terminal: seeded.plan }],
           },
         ]);
-        await expect(agentsHeading(page)).toBeVisible({ timeout: 15_000 });
+        await expect(spacesHeading(page)).toBeVisible({ timeout: 15_000 });
         await expect.poll(() => param(page, "s")).toBeNull();
         expect(await page.evaluate(() => history.length), "the gone space is replaced, not stacked").toBe(entries);
       } finally {

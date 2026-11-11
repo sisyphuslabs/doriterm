@@ -2,7 +2,8 @@ import type { EventFeed, HcConnection } from "@doriface/client";
 import { MESH_OFFER_DOC, parseMeshOfferDoc } from "@doriface/protocol";
 import { useEffect, useState } from "react";
 
-export const INSTALL_SCRIPT_URL = "https://github.com/sisyphuslabs/doriterm/releases/latest/download/install.sh";
+/** get.doriterm.com answers curl with the stable channel's install.sh, and GitHub's when it is not mirrored (#1969). */
+export const INSTALL_SCRIPT_URL = "https://get.doriterm.com";
 
 /** How long a host gets to answer before the dialog says it cannot make a join command (a host older than #668). */
 export const OFFER_ANSWER_MS = 15_000;
@@ -44,6 +45,15 @@ export function offerFor(value: unknown, request: string): JoinOffer | undefined
   return undefined;
 }
 
+/** Re-read the offer on its doc event or when missed events are replaced by a snapshot without documents. */
+export function followJoinOffer(feed: EventFeed, read: () => void): void {
+  // onEvent drains queued deliveries, including snapshots received before the listener was installed.
+  feed.onSnapshot(read);
+  feed.onEvent((event) => {
+    if (event.type === "doc" && event.machine === undefined && event.data.name === MESH_OFFER_DOC) read();
+  });
+}
+
 /**
  * While `open`, asks this host for a single-use mesh offer through the offer document and follows the document's events
  * on its own event feed until the host answers; a host that does not answer in {@link OFFER_ANSWER_MS} cannot make one.
@@ -79,11 +89,7 @@ export function useJoinOffer(connection: HcConnection, open: boolean, client = f
       const subscribed = await connection.subscribe();
       if (closed) return subscribed.close();
       feed = subscribed;
-      subscribed.onEvent((event) => {
-        if (event.type === "doc" && event.machine === undefined && event.data.name === MESH_OFFER_DOC) {
-          void read().catch(() => {});
-        }
-      });
+      followJoinOffer(subscribed, () => void read().catch(() => {}));
       const { version } = await calls.get();
       await calls.set({ request, ...(client ? { client: true } : {}) }, version);
       await read();

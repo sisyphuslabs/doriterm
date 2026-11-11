@@ -41,6 +41,14 @@ describe("parseAppearance", () => {
     expect(parseAppearance(null)).toEqual(DEFAULT_APPEARANCE);
     expect(parseAppearance("night")).toEqual(DEFAULT_APPEARANCE);
   });
+
+  test("a fresh profile opens in the dark Night theme, even on a light device (#1403)", () => {
+    expect(DEFAULT_APPEARANCE.mode).toBe("dark");
+    expect(DEFAULT_APPEARANCE.dark).toBe("night");
+    // The default is a setting value, not a rule: a light device does not move it, and Light stays one pick away.
+    expect(activeThemeId(DEFAULT_APPEARANCE, false)).toBe("night");
+    expect(activeThemeId({ ...DEFAULT_APPEARANCE, mode: "light" }, true)).toBe("day");
+  });
 });
 
 describe("activeThemeId", () => {
