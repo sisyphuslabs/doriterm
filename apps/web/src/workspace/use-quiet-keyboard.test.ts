@@ -166,3 +166,14 @@ test("the wait needs no AbortSignal.any, which Firefox before 124 lacks (baselin
     Object.defineProperty(AbortSignal, "any", { value: any, configurable: true, writable: true });
   }
 });
+
+test("a wait whose signal is already aborted never quiets, even when the held press then lifts (#2182)", () => {
+  const terminal = pressed();
+  terminal.down(1, "touch");
+  let quieted = 0;
+  const abort = new AbortController();
+  abort.abort();
+  whenPressEnds(terminal.view, terminal.held, () => quieted++, abort.signal);
+  terminal.up(1, "touch");
+  expect(quieted).toBe(0);
+});
