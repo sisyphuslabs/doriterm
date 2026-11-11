@@ -1,6 +1,9 @@
 import { devices, type Locator, type Page } from "@playwright/test";
 import { endAgent, startAgent } from "./agents.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { machineRow, STATE_BOUND_MS } from "./machine-switch.ts";
+import { resetMeshDocs } from "./mesh-reset.ts";
+import { fakeSoftKeyboard } from "./phone-key-bar.ts";
 import { shortcut } from "./platform-keys.ts";
 
 // Every heading step in use differs by at least 1.25x, and the smallest heading from its body, on every screen (#1578).
@@ -62,7 +65,7 @@ for (const width of [390, 1440] as const) {
     const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
     test.use(width === 390 ? phone : { viewport: { width: 1440, height: 900 } });
 
-    for (const section of ["Keybindings", "Terminal", "Notifications", "Machines"] as const) {
+    for (const section of ["Keybindings", "Terminal", "Notifications"] as const) {
       test(`Settings > ${section} keeps its heading steps apart`, async ({ page }) => {
         await page.goto("/settings");
         const settings = settingsDialog(page);
@@ -74,8 +77,35 @@ for (const width of [390, 1440] as const) {
         await expectScale(settings);
       });
     }
+
+    // The fixture's mesh documents draw every group, so the case measures MeshGroup's headings, not the loading state.
+    test("Settings > Machines keeps its mesh groups apart from their rows", async ({ page }) => {
+      resetMeshDocs();
+      await page.goto("/");
+      await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
+      await page.goto("/settings");
+      const settings = settingsDialog(page);
+      await settings
+        .getByRole(width === 390 ? "tab" : "button", { name: "Machines", exact: true })
+        .first()
+        .click();
+      await expect(settings.locator("[data-mesh-group]").first()).toBeVisible({ timeout: 20_000 });
+      await expectScale(settings);
+    });
   });
 }
+
+test("the Add keys sheet keeps its title, groups and chips apart", async ({ page }) => {
+  const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
+  await page.setViewportSize(phone.viewport);
+  await fakeSoftKeyboard(page);
+  await page.goto("/settings");
+  await page.getByRole("tab", { name: "Keyboard" }).click();
+  await page.getByRole("button", { name: /^Keys/ }).click();
+  const sheet = page.getByRole("dialog", { name: "Add keys" });
+  await expect(sheet).toBeVisible();
+  await expectScale(sheet);
+});
 
 test("a dialog's title stands apart from its description", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });

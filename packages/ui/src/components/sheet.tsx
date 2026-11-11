@@ -38,7 +38,7 @@ export function SheetPanel({ title, side = "bottom", children }: Pick<SheetProps
       )}
     >
       <div className={TITLE_ROW}>
-        <p className="min-w-0 flex-1 text-base font-semibold">{title}</p>
+        <p className="min-w-0 flex-1 text-xl font-semibold">{title}</p>
         <Button variant="ghost" size="sm" className={DONE}>
           Done
         </Button>

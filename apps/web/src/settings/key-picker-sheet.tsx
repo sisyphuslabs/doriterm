@@ -40,7 +40,7 @@ export function KeyPickerSheet({ open, onOpenChange, settings, host, readOnly }:
                     aria-pressed={on}
                     aria-label={entry.name}
                     disabled={readOnly}
-                    className="h-9 rounded-full px-3 text-[0.8125rem]"
+                    className="h-9 rounded-full px-3 text-base"
                     variant={on ? "primary" : "secondary"}
                     onClick={() =>
                       set((current) => (on ? removeKey(current, entry.id) : restoreKey(current, entry.id)))
@@ -64,7 +64,7 @@ export function KeyPickerSheet({ open, onOpenChange, settings, host, readOnly }:
                   size="sm"
                   aria-pressed={on}
                   disabled={readOnly}
-                  className="h-9 rounded-full px-3 text-[0.8125rem]"
+                  className="h-9 rounded-full px-3 text-base"
                   variant={on ? "primary" : "secondary"}
                   onClick={() => set((current) => (on ? removePack(current, id) : addPack(current, id)))}
                 >

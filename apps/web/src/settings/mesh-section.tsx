@@ -27,7 +27,7 @@ function MeshGroup({ id, title, count, urgent = false, children }: MeshGroupProp
         className={cn("flex items-baseline gap-2 pb-1", groupHeadingClass, urgent && "text-status-blocked-text")}
       >
         {title}
-        <span className="text-sm font-normal text-muted-foreground tabular-nums">{count}</span>
+        <span className="font-normal text-muted-foreground tabular-nums">{count}</span>
       </h3>
       {children}
     </section>
