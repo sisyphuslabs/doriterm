@@ -20,6 +20,11 @@ export interface ReleaseClock {
   synchronized(): boolean;
   /** Which synchronized update is open: a write that closes one and opens the next moves it on. */
   generation(): number;
+  /**
+   * The view holds the terminal's paint (an attach replay settling, or an update still coming in past wterm's own hold,
+   * #2040): nothing is painted until it lets go, which changes the grid.
+   */
+  paintHeld(): boolean;
 }
 
 /**
@@ -30,7 +35,9 @@ export interface ReleaseClock {
  * cell for as long as the update lasts. That wait is capped at SYNCHRONIZED_HOLD_MS plus SYNCHRONIZED_HOLD_MARGIN_MS from
  * when the update was first seen open, so a render that changes no grid node can never leave a cell held for good. A
  * write that closes the update and opens the next restarts wterm's hold without painting, so when the cap falls on a
- * newer update than the one it was armed for, it counts again from then (#2089).
+ * newer update than the one it was armed for, it counts again from then (#2089). While the view holds the terminal's
+ * paint, the renderer paints nothing either, so the release waits the same way, its cap counting again for as long as
+ * the paint is held; the view's own holds are capped (#2040).
  */
 export class HeldRelease {
   readonly #clock: ReleaseClock;
@@ -48,12 +55,12 @@ export class HeldRelease {
   hold(): void {
     if (this.#cancel !== null) return;
     this.#since = this.#clock.now();
-    if (this.#clock.synchronized()) this.#capped();
+    if (this.#waits()) this.#capped();
     else
       this.#cancel = this.#clock.frame(() => {
         this.#cancel = null;
         this.#since = this.#clock.now();
-        if (this.#clock.synchronized()) this.#capped();
+        if (this.#waits()) this.#capped();
         else this.#release();
       });
   }
@@ -69,12 +76,18 @@ export class HeldRelease {
     this.#cancel = null;
   }
 
+  /** The renderer will not paint on the next frame: a synchronized update is open, or the view holds the paint. */
+  #waits(): boolean {
+    return this.#clock.synchronized() || this.#clock.paintHeld();
+  }
+
   #capped(): void {
     this.#generation = this.#clock.generation();
     const left = Math.max(0, this.#since + SYNCHRONIZED_HOLD_MS + SYNCHRONIZED_HOLD_MARGIN_MS - this.#clock.now());
     this.#cancel = this.#clock.timer(() => {
       this.#cancel = null;
-      if (this.#clock.synchronized() && this.#clock.generation() !== this.#generation) {
+      const reopened = this.#clock.synchronized() && this.#clock.generation() !== this.#generation;
+      if (reopened || this.#clock.paintHeld()) {
         this.#since = this.#clock.now();
         this.#capped();
       } else this.#release();

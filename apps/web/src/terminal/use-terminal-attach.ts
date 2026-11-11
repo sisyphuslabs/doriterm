@@ -18,6 +18,9 @@ import type { TerminalInput } from "./terminal-view-props.ts";
 import { useReopenWhenMoved } from "./use-reopen-when-moved.ts";
 
 const encoder = new TextEncoder();
+
+/** What holds a terminal's paint: an attach replay settling (D5), or a synchronized update still coming in (#2040). */
+export type PaintHold = "replay" | "update";
 /**
  * Cursor home, then erase to the end of the screen (ED 0): clears the screen in use and leaves the scrollback alone. The
  * core's repaint starts with ESC[2J, which Ghostty answers over a prompt marked with OSC 133 (fish 4, shell integration)
@@ -50,10 +53,11 @@ interface AttachSources {
   /** Called as each stream (first attach or reattach) starts, before what was typed meanwhile is written to it. */
   readonly onStream?: RefObject<(() => void) | null>;
   /**
-   * Keeps the view's `renderingPaused` prop in step with a replay's hold: @wterm/react applies that prop on every render,
-   * so a hold set on the terminal alone is let go by the next render of the view, mid-replay.
+   * Notes that a replay or a synchronized update holds the paint (true) or lets it go (false), and returns whether the
+   * paint is still held by either. It keeps the view's `renderingPaused` prop in step: @wterm/react applies that prop on
+   * every render, so a hold set on the terminal alone is let go by the next render of the view, mid-replay.
    */
-  readonly holdPaint: (held: boolean) => void;
+  readonly holdPaint: (hold: PaintHold, held: boolean) => boolean;
 }
 
 /**
@@ -250,13 +254,12 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           pacer,
           {
             srtt: () => connection.rtt?.srtt,
-            hold: (held) => {
-              holdPaint(held);
-              ready.setRenderingPaused(held);
-            },
+            hold: (held) => ready.setRenderingPaused(holdPaint("replay", held)),
           },
           fresh,
         );
+        // The terminal is paused at once, not at the view's next render: wterm's own hold of the update may run out first.
+        pacer.holdSynchronized((held) => ready.setRenderingPaused(holdPaint("update", held)));
         onStream?.current?.();
         const resets = new CursorResets();
         const credit = (count: number): void => {
