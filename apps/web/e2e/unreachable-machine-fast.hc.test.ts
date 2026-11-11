@@ -13,7 +13,7 @@ import { addMachine, DEMO_MACHINE } from "./machine.ts";
  * #2004: a New terminal on an added machine that is not connected must say so from hc's machine state, not after a wait.
  * The failure itself proves where it came from (`unavailable`, naming the machine); the time rules out the wait. On this
  * path (hc's stdio link) the only wait there is would be hc dialing the absent machine: herdr's 20 s hello probe through
- * the line (apps/host/src/mesh/hc-machines.ts), capped by the client's 20 s call timeout. The bound tells failing fast from
+ * the line (apps/host/src/mesh/hc-machines.ts); the client sets no cap of its own, as terminal.run is a waiting call. The bound tells failing fast from
  * that hang: half of it, and about three times the 3.2 s the answer took on a loaded host in two fulls (#2000, #2164),
  * so it measures the product, not the host, as a 1 s budget did not. A line left half-open, which the core has not noticed yet, is not timed here.
  */
