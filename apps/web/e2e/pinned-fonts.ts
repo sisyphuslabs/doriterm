@@ -18,17 +18,42 @@ const HANGUL = readFileSync(new URL("./fonts/pinned-hangul.woff2", import.meta.u
 const UI_FALLBACK =
   '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
 
-const TERM_FALLBACK =
-  'ui-monospace, "SF Mono", Menlo, Consolas, "Apple SD Gothic Neo", "Noto Sans Mono CJK KR", "Noto Sans CJK KR", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji", "Noto Color Emoji", "Segoe UI Emoji", monospace';
+const styles = (name: string): string =>
+  readFileSync(new URL(`../../../packages/ui/src/styles/${name}`, import.meta.url), "utf8");
 
-const CSS = [
+/** The families of a `font-family` value, in the order the browser tries them, each as written (quoted or not). */
+function families(value: string): string[] {
+  return value
+    .split(",")
+    .map((family) => family.trim())
+    .filter((family) => family !== "");
+}
+
+/**
+ * The terminal stack the suite draws with: the shipped `--font-term` (tokens.css), read rather than copied so it cannot
+ * drift from what the app draws (#2034), with the pinned Hangul face added after the last face the app bundles
+ * (terminal-fonts.css). The bundled faces keep the terminal's own symbols, Powerline included (#1403); the platform's
+ * Hangul names after the pin still catch a syllable the subset lacks.
+ */
+export function pinnedTermStack(tokens: string, bundled: string): string {
+  const shipped = families(/--font-term:\s*([^;]+);/s.exec(tokens)?.[1] ?? "");
+  if (shipped.length === 0) throw new Error("tokens.css declares no --font-term");
+  const faces = new Set([...bundled.matchAll(/font-family:\s*"([^"]+)"/g)].map((match) => `"${match[1]}"`));
+  const last = shipped.findLastIndex((family) => faces.has(family));
+  if (last < 0) throw new Error("--font-term names none of the faces terminal-fonts.css bundles");
+  return [...shipped.slice(0, last + 1), '"E2E Pinned Hangul"', ...shipped.slice(last + 1)].join(", ");
+}
+
+const TERM = pinnedTermStack(styles("tokens.css"), styles("terminal-fonts.css"));
+
+export const PINNED_CSS = [
   '@font-face { font-family: "E2E UI"; font-style: normal; font-weight: 400; font-display: block;',
   `  src: url(data:font/woff2;base64,${UI}) format("woff2"); }`,
   '@font-face { font-family: "E2E Pinned Hangul"; font-style: normal; font-weight: 400; font-display: block;',
   `  src: url(data:font/woff2;base64,${HANGUL}) format("woff2"); }`,
   ":root:root {",
   `  --font-ui: "E2E UI", "E2E Pinned Hangul", ${UI_FALLBACK};`,
-  `  --font-term: "JetBrains Mono Variable", "JetBrains Mono", "Symbols Nerd Font Mono", "Doriterm Noto Symbols 2", "Doriterm Noto Symbols", "Doriterm Noto Math", "E2E Pinned Hangul", ${TERM_FALLBACK};`,
+  `  --font-term: ${TERM};`,
   "}",
 ].join("\n");
 
@@ -56,5 +81,5 @@ export async function pinFonts(page: Page): Promise<void> {
       if (install()) observer.disconnect();
     });
     observer.observe(document, { childList: true });
-  }, CSS);
+  }, PINNED_CSS);
 }
