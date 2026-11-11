@@ -1,6 +1,6 @@
 import type { EventFeed, HcConnection } from "@doriface/client";
 import { MESH_OFFER_DOC, parseMeshOfferDoc } from "@doriface/protocol";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /** get.doriterm.com answers curl with the stable channel's install.sh, and GitHub's when it is not mirrored (#1969). */
 export const INSTALL_SCRIPT_URL = "https://get.doriterm.com";
@@ -45,36 +45,51 @@ export function offerFor(value: unknown, request: string): JoinOffer | undefined
   return undefined;
 }
 
-/** Re-read the offer on its doc event or when missed events are replaced by a snapshot without documents. */
-export function followJoinOffer(feed: EventFeed, read: () => void): void {
+/**
+ * Re-read the offer on its doc event or when missed events are replaced by a snapshot without documents; a feed that
+ * ends for any reason but the dialog's own close is opened again (`reopen`), so a join is never missed (#1780).
+ */
+export function followJoinOffer(feed: EventFeed, read: () => void, reopen?: () => void): void {
   // onEvent drains queued deliveries, including snapshots received before the listener was installed.
   feed.onSnapshot(read);
   feed.onEvent((event) => {
     if (event.type === "doc" && event.machine === undefined && event.data.name === MESH_OFFER_DOC) read();
+  });
+  feed.onClose((close) => {
+    if (close.reason !== "detached") reopen?.();
   });
 }
 
 /**
  * While `open`, asks this host for a single-use mesh offer through the offer document and follows the document's events
  * on its own event feed until the host answers; a host that does not answer in {@link OFFER_ANSWER_MS} cannot make one.
+ * The request lasts while the dialog is open: a new connection reads it back before asking again, so a join the host
+ * took on a connection that dropped still shows (#1780).
  */
 export function useJoinOffer(connection: HcConnection, open: boolean, client = false): JoinOffer {
   const [offer, setOffer] = useState<JoinOffer>({ phase: "asking" });
+  const asked = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      asked.current = undefined;
+      return;
+    }
     const calls = callsOf(connection);
-    const request = crypto.randomUUID();
+    const request = asked.current ?? crypto.randomUUID();
+    const fresh = asked.current === undefined;
+    asked.current = request;
     let answered = false;
     let closed = false;
-    setOffer({ phase: "asking" });
+    if (fresh) setOffer({ phase: "asking" });
     const settle = (next: JoinOffer): void => {
       if (closed) return;
       answered = true;
       setOffer(next);
     };
-    const read = async (): Promise<void> => {
+    const read = async (): Promise<boolean> => {
       const answer = offerFor((await calls.get()).value, request);
       if (answer !== undefined) settle(answer);
+      return answer !== undefined;
     };
     let feed: EventFeed | undefined;
     const timer = setTimeout(() => {
@@ -85,11 +100,22 @@ export function useJoinOffer(connection: HcConnection, open: boolean, client = f
           "This host did not answer. It may be older than this app: update doriface-host, or use the steps below.",
       });
     }, OFFER_ANSWER_MS);
-    void (async () => {
+    const follow = async (): Promise<void> => {
       const subscribed = await connection.subscribe();
       if (closed) return subscribed.close();
       feed = subscribed;
-      followJoinOffer(subscribed, () => void read().catch(() => {}));
+      const reopen = (): void => {
+        // A connection that closed is replaced as a whole, which runs this effect again.
+        if (!closed && !connection.closed)
+          void follow()
+            .then(() => read())
+            .catch(() => {});
+      };
+      followJoinOffer(subscribed, () => void read().catch(() => {}), reopen);
+    };
+    void (async () => {
+      await follow();
+      if (closed || (!fresh && (await read()))) return;
       const { version } = await calls.get();
       await calls.set({ request, ...(client ? { client: true } : {}) }, version);
       await read();
