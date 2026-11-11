@@ -72,6 +72,26 @@ function openingName(): string {
   return OPENING_NAME_PREFIX + Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/** A terminal this page is starting: named before the run answers, so a lost answer can still be looked for (#1343). */
+export interface Opening {
+  readonly name: string;
+  /** The address the attach names it by before the run answers: its name, or `machine/name` for an added machine. */
+  readonly address: string;
+  /** The added machine it runs on; null on this core. */
+  readonly machine: string | null;
+}
+
+/**
+ * The name this page gives the terminal it starts for `params`, and the address it will have; null when the caller
+ * named the run (a template's), whose address only its answer knows.
+ */
+export function openingTerminal(params: TerminalRunParams): Opening | null {
+  if (params.name !== undefined && params.name !== null) return null;
+  const name = openingName();
+  const machine = params.on === undefined || params.on === null ? null : params.on;
+  return { name, machine, address: machine === null ? name : `${machine}/${name}` };
+}
+
 /**
  * Starts a terminal and asks for its screen in the same breath (#1351): the run names the terminal, and the attach
  * that names it goes right behind the run, so the host hands it to the core once the run has answered and the first
@@ -87,12 +107,12 @@ export async function runWithAttach(
   calls: OpeningCalls,
   params: TerminalRunParams,
   display: Display | undefined,
+  attempt: Opening | null = openingTerminal(params),
 ): Promise<{ readonly address: string }> {
-  if (params.name !== undefined && params.name !== null) return calls.run(params);
-  const name = openingName();
+  if (attempt === null) return calls.run(params);
+  const { name, address: terminal } = attempt;
   const { cols, rows } = lastSize;
   const ran = calls.run({ ...params, name, size: { cols, rows } });
-  const terminal = params.on === undefined || params.on === null ? name : `${params.on}/${name}`;
   const stream = calls.attach(
     { terminal, cols, rows, history: HISTORY_LINES, ...(display === undefined ? {} : { display }) },
     { autoCredit: false },

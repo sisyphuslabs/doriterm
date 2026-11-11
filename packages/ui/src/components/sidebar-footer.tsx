@@ -31,7 +31,10 @@ export function SidebarFooterItem({ icon, label, dot, rail = false, onClick, ren
       aria-label={name}
       {...(onClick === undefined ? {} : { onClick })}
       {...(render === undefined ? {} : { render })}
-      className={cn("text-sm [&_svg]:size-3.5", rail ? "relative size-(--control) px-0" : "justify-start gap-2.5 px-2")}
+      className={cn(
+        "text-sm [&_svg:not([data-slot=spinner])]:size-3.5",
+        rail ? "relative size-(--control) px-0" : "justify-start gap-2.5 px-2",
+      )}
     >
       {icon}
       {rail ? null : <span className="flex-1 text-left">{label}</span>}

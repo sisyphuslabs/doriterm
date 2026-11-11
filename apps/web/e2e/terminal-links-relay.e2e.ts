@@ -5,6 +5,7 @@ import { createInterface } from "node:readline";
 import { devices, expect, type Locator, type Page, test } from "@playwright/test";
 import { routeRelaySockets } from "./relay-route.ts";
 import { PRIVATE_RELAY_SKIP } from "./private-relay.ts";
+import { commandModifier } from "./platform-keys.ts";
 
 // A real hc reached through the private relay: the relay-host helper runs it under wrangler dev, so these specs need
 // a relay checkout (DORIFACE_RELAY_DIR, as `bun run relay:fetch` makes) and are skipped without one.
@@ -101,7 +102,9 @@ async function cellPoint(terminal: Locator, text: RegExp, col: number): Promise<
   return { x: box.x + (col + 0.5) * cell, y: box.y + box.height / 2 };
 }
 
-const MOD = process.platform === "darwin" ? "Meta" : "Control";
+/** The key held for Cmd/Ctrl+click on the page's platform (#1309), not the runner's. */
+const linkModifier = async (page: Page): Promise<"Meta" | "Control"> =>
+  (await commandModifier(page)) === "super" ? "Meta" : "Control";
 const OSC8 = (target: string, text: string) => String.raw`printf '\033]8;;${target}\033\\${text}\033]8;;\033\\\n'`;
 
 /** A link to a scheme that may not open: Cmd/Ctrl+click names it in the menu, whose Open link is disabled. */
@@ -109,9 +112,10 @@ async function expectRefused(page: Page, terminal: Locator, target: string): Pro
   const text = `bad-${target.slice(0, 4)}`;
   await run(page, terminal, OSC8(target, text));
   const at = await cellPoint(terminal, new RegExp(`^${text}`), 1);
-  await page.keyboard.down(MOD);
+  const mod = await linkModifier(page);
+  await page.keyboard.down(mod);
   await page.mouse.click(at.x, at.y);
-  await page.keyboard.up(MOD);
+  await page.keyboard.up(mod);
   const menu = page.getByRole("menu", { name: "Link" });
   await expect(menu).toContainText(`Does not open: ${target}`);
   await expect(menu.getByRole("menuitem", { name: "Open link" })).toHaveAttribute("aria-disabled", "true");
@@ -125,17 +129,18 @@ test("over the relay, Cmd/Ctrl+click opens plain and OSC 8 links, whole when wra
   await page.setViewportSize({ width: 1440, height: 900 });
   const terminal = await pairAndOpen(page, (p) => p.getByRole("button", { name: "New tab", exact: true }));
   expect(page.url()).not.toContain("127.0.0.1:7799");
+  const mod = await linkModifier(page);
 
   // A plain URL: a plain click does nothing, Cmd/Ctrl+click opens it.
   await run(page, terminal, "echo 'see https://example.com/plain-link now'");
   let at = await cellPoint(terminal, /^see https:\/\/example\.com\/plain-link now/, 10);
   await page.mouse.click(at.x, at.y);
   expect(await opened(page)).toEqual([]);
-  await page.keyboard.down(MOD);
+  await page.keyboard.down(mod);
   await page.mouse.move(at.x, at.y);
   await expect(page.locator("[data-link-underline]")).toHaveCount(1);
   await page.mouse.click(at.x, at.y);
-  await page.keyboard.up(MOD);
+  await page.keyboard.up(mod);
   await expect.poll(() => opened(page)).toEqual(["https://example.com/plain-link"]);
 
   // A URL longer than a row wraps: clicking its second row opens it whole.
@@ -143,21 +148,21 @@ test("over the relay, Cmd/Ctrl+click opens plain and OSC 8 links, whole when wra
   const long = `https://example.com/${"w".repeat(cols)}/end`;
   await run(page, terminal, `echo ${long}`);
   at = await cellPoint(terminal, /^w*\/end/, 1);
-  await page.keyboard.down(MOD);
+  await page.keyboard.down(mod);
   await page.mouse.move(at.x, at.y);
   await expect(page.locator("[data-link-underline]")).toHaveCount(2);
   await page.mouse.click(at.x, at.y);
-  await page.keyboard.up(MOD);
+  await page.keyboard.up(mod);
   await expect.poll(() => opened(page)).toEqual(["https://example.com/plain-link", long]);
 
   // An OSC 8 link whose text is not its target: the target shows, on hover and in the menu, before anything opens.
   await run(page, terminal, OSC8("https://example.org/real-target", "the docs"));
   at = await cellPoint(terminal, /^the docs/, 2);
-  await page.keyboard.down(MOD);
+  await page.keyboard.down(mod);
   await page.mouse.move(at.x, at.y);
   await expect(page.getByRole("tooltip").filter({ hasText: "https://example.org/real-target" })).toBeVisible();
   await page.mouse.click(at.x, at.y);
-  await page.keyboard.up(MOD);
+  await page.keyboard.up(mod);
   const menu = page.getByRole("menu", { name: "Link" });
   await expect(menu).toContainText("https://example.org/real-target");
   expect(await opened(page)).toHaveLength(2);

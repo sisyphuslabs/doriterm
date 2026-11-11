@@ -1,5 +1,6 @@
 import { devices, type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 /**
@@ -54,8 +55,6 @@ const smallerText = async (page: Page): Promise<void> => {
   await expect(page.getByRole("dialog", { name: "Command palette" })).toBeHidden();
 };
 
-const FIND = process.platform === "darwin" ? "Meta+f" : "Control+Shift+F";
-
 for (const [name, device] of PHONES) {
   test.describe(name, () => {
     test.use({ ...device, serviceWorkers: "block" });
@@ -101,14 +100,17 @@ for (const [name, device] of PHONES) {
       expect(await zoomingFields(page)).toEqual([]);
 
       await page.getByRole("button", { name: "Back to agents" }).click();
-      await expectNoZoomOnFocus(await openPalette(page));
+      const command = await openPalette(page);
+      await expectNoZoomOnFocus(command);
+      // The palette's field is `text-lg`: 18px on a phone, above the 16px floor, so the floor must leave it alone (#1401).
+      expect(await fontPx(command)).toBe(18);
       expect(await zoomingFields(page)).toEqual([]);
     });
 
     test("find and rename do not zoom when focused", async ({ page }) => {
       const terminal = await openPhoneTerminal(page);
       await terminal.locator("textarea").focus();
-      await page.keyboard.press(FIND);
+      await pressShortcut(page, "terminal.search");
       await expectNoZoomOnFocus(page.getByRole("searchbox", { name: "Find in terminal" }));
       expect(await zoomingFields(page)).toEqual([]);
       await page.keyboard.press("Escape");

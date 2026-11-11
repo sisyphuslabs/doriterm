@@ -31,7 +31,9 @@ import { registerAppScheme, serveApp } from "./protocol.ts";
 import { applyMacTitlebar } from "./titlebar.ts";
 import { readSaved, rememberPlacement, placedWindow, savedPlacement, writeSaved } from "./window-state.ts";
 import { revealWhenReady } from "./window-reveal.ts";
-import { UpdateWatch } from "./updater.ts";
+import { UPDATE_ORIGIN, UPDATE_ORIGINS, UpdateWatch } from "./updater.ts";
+import { registerUpdateIpc } from "./ipc-update.ts";
+import { isUpdateChannel, type UpdateChannel } from "../shared/update.ts";
 
 const platform = parsePlatform(process.platform);
 const pinnedStorage = storageDirToPin(app.getPath("appData"), app.commandLine.hasSwitch("user-data-dir"));
@@ -40,9 +42,9 @@ const devSetting = app.isPackaged ? undefined : process.env["DORIFACE_DESKTOP_DE
 const devUrl = devSetting === undefined || devSetting === "" ? undefined : loopbackDevUrl(devSetting);
 const origin = devUrl === undefined ? APP_ORIGIN : new URL(devUrl).origin;
 const csp = contentSecurityPolicy({ devServer: devUrl });
-// The system recognizer for dictation, on macOS only; the page is told whether it exists through its preload (#726).
+// The on-device system recognizer; the page is told whether this build carries it through its preload.
 const speech =
-  platform === "darwin"
+  platform === "darwin" || platform === "win32"
     ? loadSpeech(speechAddonPath(app.isPackaged, process.resourcesPath, app.getAppPath()))
     : undefined;
 const noticeAuthorization =
@@ -123,10 +125,27 @@ function runAction(action: string): void {
   liveWindow()?.webContents.send(Channel.runAction, action);
 }
 
+/** Check for Updates in the app menu: set once a packaged app has an updater, and it opens Settings to show the answer. */
+let checkForUpdates: (() => void) | undefined;
+
 function showMenu(keys: ReadonlyMap<string, string>): void {
   Menu.setApplicationMenu(
-    Menu.buildFromTemplate(menuTemplate({ platform, openExternal, openSettings, keys, runAction })),
+    Menu.buildFromTemplate(menuTemplate({ platform, openExternal, openSettings, keys, runAction, checkForUpdates })),
   );
+}
+
+const updateChannelFile = (): string => savedFile("update-channel.json");
+
+function savedUpdateChannel(): UpdateChannel {
+  const saved: unknown = readSaved(updateChannelFile());
+  const channel = typeof saved === "object" && saved !== null ? Reflect.get(saved, "channel") : undefined;
+  return isUpdateChannel(channel) ? channel : "stable";
+}
+
+/** The feed's origin: get.doriterm.com, or its staging copy when DORITERM_UPDATE_ORIGIN names it (the e2e run). */
+function updateOrigin(): string {
+  const override = process.env["DORITERM_UPDATE_ORIGIN"];
+  return override !== undefined && UPDATE_ORIGINS.includes(override) ? override : UPDATE_ORIGIN;
 }
 
 function createWindow(path: string): BrowserWindow {
@@ -193,21 +212,46 @@ function ready(): void {
   dictation =
     speech === undefined
       ? undefined
-      : new DictationHost(speech, {
-          status: () => systemPreferences.getMediaAccessStatus("microphone"),
-          ask: () => systemPreferences.askForMediaAccess("microphone"),
-        });
+      : new DictationHost(
+          speech,
+          {
+            status: () => systemPreferences.getMediaAccessStatus("microphone"),
+            ask: () => systemPreferences.askForMediaAccess("microphone"),
+          },
+          platform === "win32" ? "win32" : "darwin",
+        );
   app.on("will-quit", () => dictation?.stopAll());
   // A checkout has no release feed (app-update.yml) to update from, and neither has the macOS electron-builder --dir
   // build the e2e specs launch; only a packaged app that carries the feed looks for an update.
   const updates =
     app.isPackaged && existsSync(join(process.resourcesPath, "app-update.yml"))
-      ? new UpdateWatch(
-          electronUpdater.autoUpdater,
-          () => liveWindow()?.webContents.send(Channel.updateReady),
-          (line) => console.log(line),
-        )
+      ? new UpdateWatch(electronUpdater.autoUpdater, {
+          currentVersion: app.getVersion(),
+          channel: savedUpdateChannel(),
+          origin: updateOrigin(),
+          onReady: () => liveWindow()?.webContents.send(Channel.updateReady),
+          onStatus: (status) => liveWindow()?.webContents.send(Channel.updateStatus, status),
+          log: (line) => console.log(line),
+        })
       : undefined;
+  if (updates !== undefined) {
+    checkForUpdates = () => {
+      updates.check();
+      openSettings();
+    };
+  }
+  registerUpdateIpc({
+    origin,
+    status: () => updates?.status ?? null,
+    channel: () => updates?.channel ?? null,
+    setChannel: (channel) => {
+      if (updates === undefined) return false;
+      writeSaved(updateChannelFile(), { channel });
+      updates.setChannel(channel);
+      return true;
+    },
+    check: () => updates?.check(),
+  });
   lockPermissions(session.defaultSession, origin);
   if (devUrl === undefined) serveApp(webRoot(), csp);
   else applyDevCsp(session.defaultSession, origin, csp);
