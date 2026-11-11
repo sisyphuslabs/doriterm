@@ -1,9 +1,11 @@
-// #1302: Alt+Up / Alt+Down are the answer keys an agent's question UI and many editors wait for, so the default keymap
-// must leave them to a focused terminal's program. The program reads its terminal's own sequence and no pane moves; a
-// chord that is bound still acts as a binding.
+// #1172: at the edge of a split, a pane key with no pane that way nudges the pane and leaves its key to the terminal's
+// program, as a lone pane does; a Cmd chord, which a program never receives, stays the app's. The same move chosen from
+// the palette has no key to leave, so it counts as handled and the palette closes (#2119). Alt+Up reaching the program
+// is alt-arrow-passthrough.e2e.ts's (#1898).
 import type { Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
+import { pressShortcut } from "./platform-keys.ts";
 
 test.use({ serviceWorkers: "block" });
 endOwnTerminals();
@@ -13,8 +15,6 @@ type Keymap = "mac" | "other";
 /** The platform the page resolves, as Chromium reports it on that OS (currentPlatform, src/keys/trigger.ts). */
 const PLATFORM: Readonly<Record<Keymap, string>> = { mac: "MacIntel", other: "Linux x86_64" };
 
-/** Alt+ArrowUp as the terminal's encoder sends it: CSI 1;3A, read as hex by `od`. */
-const ALT_UP_BYTES = "1b 5b 31 3b 33 41";
 /** Ctrl+Alt+ArrowUp: CSI 1;7A. */
 const CTRL_ALT_UP_BYTES = "1b 5b 31 3b 37 41";
 /** Alt+Shift+K, the pane swap key to the top: Meta-Shift-K, which the terminal sends as ESC K. */
@@ -27,8 +27,8 @@ let reads = 0;
 const keyboardAddress = (page: Page): Promise<string | null> =>
   page.evaluate(() => document.activeElement?.closest("[data-terminal]")?.getAttribute("data-terminal") ?? null);
 
-const paneOf = (page: Page, address: string): Locator =>
-  page.locator("section", { has: page.locator(`[data-terminal="${address}"]`) });
+/** Up-nudges the panes played so far, counted by a wrapper on Element.animate installed before the app loads. */
+const upNudges = (page: Page): Promise<number> => page.evaluate(() => Number(Reflect.get(window, "__upNudges") ?? 0));
 
 const addressOf = async (terminal: Locator): Promise<string> => {
   const address = await terminal.getAttribute("data-terminal");
@@ -41,6 +41,16 @@ async function onKeymap(page: Page, keymap: Keymap): Promise<void> {
     (value) => Object.defineProperty(Navigator.prototype, "platform", { get: () => value }),
     PLATFORM[keymap],
   );
+  // pane-motion.ts nudges a pane with no pane that way by animating it to translateY(-4px) and back.
+  await page.addInitScript(() => {
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (this: Element, ...args: Parameters<Element["animate"]>) {
+      const [frames] = args;
+      if (Array.isArray(frames) && frames[1]?.transform === "translateY(-4px)")
+        Reflect.set(window, "__upNudges", Number(Reflect.get(window, "__upNudges") ?? 0) + 1);
+      return animate.apply(this, args);
+    };
+  });
   await page.goto("/");
 }
 
@@ -114,32 +124,6 @@ async function readBytes(page: Page, terminal: Locator, count: number): Promise<
 }
 
 for (const keymap of ["mac", "other"] as const) {
-  test(`${keymap}: Alt+ArrowUp reaches the program in a lone pane, as its terminal would send it`, async ({ page }) => {
-    await onKeymap(page, keymap);
-    const { terminal, address } = await terminalInFocus(page);
-    await readBytes(page, terminal, 6);
-    await page.keyboard.press("Alt+ArrowUp");
-    await expect(terminal).toContainText(ALT_UP_BYTES, { timeout: 10_000 });
-    await expect.poll(() => keyboardAddress(page)).toBe(address);
-  });
-
-  test(`${keymap}: Alt+ArrowUp reaches the program in a split tab, and no pane moves`, async ({ page }) => {
-    await onKeymap(page, keymap);
-    const first = await terminalInFocus(page);
-    const second = await splitRight(page);
-    const placed = {
-      first: await paneOf(page, first.address).boundingBox(),
-      second: await paneOf(page, second.address).boundingBox(),
-    };
-    await readBytes(page, second.terminal, 6);
-    await page.keyboard.press("Alt+ArrowUp");
-    await expect(second.terminal).toContainText(ALT_UP_BYTES, { timeout: 10_000 });
-    // The key moved no focus and resized no pane: both panes still hold the boxes the split gave them.
-    await expect.poll(() => keyboardAddress(page)).toBe(second.address);
-    expect(await paneOf(page, first.address).boundingBox()).toEqual(placed.first);
-    expect(await paneOf(page, second.address).boundingBox()).toEqual(placed.second);
-  });
-
   test(`${keymap}: a pane chord that is bound still moves focus between the split's panes`, async ({ page }) => {
     await onKeymap(page, keymap);
     const first = await terminalInFocus(page);
@@ -162,6 +146,7 @@ test("mac: a Cmd+Alt arrow with no pane that way stays cancelled, so the browser
   await terminalInFocus(page);
   const second = await splitRight(page);
   expect(await defaultPrevented(page, "ArrowUp", () => page.keyboard.press("Meta+Alt+ArrowUp"))).toEqual([true]);
+  await expect.poll(() => upNudges(page)).toBe(1);
   // Swapping with no pane that way keeps its key too, and neither chord moves focus.
   expect(await defaultPrevented(page, "ArrowUp", () => page.keyboard.press("Meta+Alt+Shift+ArrowUp"))).toEqual([true]);
   await expect.poll(() => keyboardAddress(page)).toBe(second.address);
@@ -176,6 +161,7 @@ test("other: a pane chord with no pane that way reaches the program, not the app
   await readBytes(page, second.terminal, 6);
   await page.keyboard.press("Control+Alt+ArrowUp");
   await expect(second.terminal).toContainText(CTRL_ALT_UP_BYTES, { timeout: 10_000 });
+  await expect.poll(() => upNudges(page)).toBe(1);
   await expect.poll(() => keyboardAddress(page)).toBe(second.address);
 
   // Swapping with no pane that way is the same promise: the key reaches the program and nothing moves.
@@ -184,3 +170,21 @@ test("other: a pane chord with no pane that way reaches the program, not the app
   await expect(second.terminal).toContainText(ALT_SHIFT_K_BYTES, { timeout: 10_000 });
   await expect.poll(() => keyboardAddress(page)).toBe(second.address);
 });
+
+for (const keymap of ["mac", "other"] as const) {
+  test(`${keymap}: "Focus pane up" chosen from the palette at a split's top edge nudges and closes the palette`, async ({
+    page,
+  }) => {
+    await onKeymap(page, keymap);
+    await terminalInFocus(page);
+    const second = await splitRight(page);
+    const palette = page.getByRole("dialog", { name: "Command palette" });
+    await pressShortcut(page, "app.palette");
+    await expect(palette).toBeVisible();
+    await page.keyboard.type("Focus pane up");
+    await page.keyboard.press("Enter");
+    await expect(palette).toBeHidden({ timeout: 5_000 });
+    await expect.poll(() => upNudges(page)).toBe(1);
+    await expect.poll(() => keyboardAddress(page)).toBe(second.address);
+  });
+}
