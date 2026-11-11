@@ -20,9 +20,9 @@ export async function resumeEnds(
       const step = resumeOf(end, await get(end.address));
       if (step === "end") await endSession(calls, end.address);
       else if (step === "remove") await calls.rm({ terminal: end.address });
-      ends.remove(end.address);
+      ends.remove(end.address, end);
     } catch (cause) {
-      if (isGone(cause)) ends.remove(end.address);
+      if (isGone(cause)) ends.remove(end.address, end);
       else console.error(`finish the End of ${end.address} later: ${String(cause)}`);
     }
   };
@@ -40,7 +40,7 @@ export async function resumeEnds(
  */
 export function recordedEnd(ends: PendingEnds, end: PendingEnd, calls: SessionCalls): Promise<void> {
   ends.add(end);
-  return endSession(calls, end.address).finally(() => ends.remove(end.address));
+  return endSession(calls, end.address).finally(() => ends.remove(end.address, end));
 }
 
 /**

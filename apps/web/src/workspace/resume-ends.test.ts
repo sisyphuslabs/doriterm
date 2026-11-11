@@ -221,8 +221,20 @@ describe("one terminal, one identity, however it is reached (#2288)", () => {
     const storage = memoryStorage();
     pendingEnds("core-a", storage).add({ address: "build-box/t7", pid: 1, created: 1, at: NOW });
     pendingEnds("core-b", storage).add({ address: "t7", pid: 70, created: 500, at: NOW });
-    routedPendingEnds(throughA, storage).remove("build-box/t7");
+    routedPendingEnds(throughA, storage).remove("build-box/t7", { pid: 1, created: 1 });
     expect(pendingEnds("core-a", storage).list()).toEqual([]);
     expect(pendingEnds("core-b", storage).list()).toEqual([{ address: "t7", pid: 70, created: 500, at: NOW }]);
+  });
+
+  test("an End that settles while an older tab wrote the old way for the same terminal leaves neither record (#1278)", () => {
+    const storage = memoryStorage();
+    const ends = routedPendingEnds(throughA, storage);
+    const end = { address: "build-box/t7", pid: 70, created: 500, at: NOW };
+    ends.add(end);
+    // An older tab of this browser, before #2288, records the same terminal under the core it asked through.
+    pendingEnds("core-a", storage).add(end);
+    ends.remove(end.address, end);
+    expect(pendingEnds("core-a", storage).list()).toEqual([]);
+    expect(pendingEnds("core-b", storage).list()).toEqual([]);
   });
 });

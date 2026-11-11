@@ -22,7 +22,8 @@ export const PENDING_END_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 /** The Ends of one core this browser asked and has not seen settle, kept in local storage across page loads. */
 export interface PendingEnds {
   add(end: PendingEnd): void;
-  remove(address: string): void;
+  /** Drops the record at `address`; given `end`, only one about that same terminal (its pid and creation time). */
+  remove(address: string, end?: Pick<PendingEnd, "pid" | "created">): void;
   /** Whether an End is kept for this address, whatever its age. */
   has(address: string): boolean;
   /** The ones still young enough to resume, oldest first. */
@@ -59,7 +60,14 @@ export function pendingEnds(core: string, storage: StorageLike | undefined = gua
   };
   return {
     add: (end) => write([...read().filter((entry) => entry.address !== end.address), end]),
-    remove: (address) => write(read().filter((entry) => entry.address !== address)),
+    remove: (address, end) =>
+      write(
+        read().filter(
+          (entry) =>
+            entry.address !== address ||
+            (end !== undefined && (entry.pid !== end.pid || entry.created !== end.created)),
+        ),
+      ),
     has: (address) => read().some((entry) => entry.address === address),
     list: (now = Date.now()) =>
       read()
@@ -87,12 +95,12 @@ export function routedPendingEnds(
       if (end.address.includes("/")) own(route.core).remove(end.address);
       own(identity.core).add({ ...end, address: identity.terminal });
     },
-    // An old record kept as written under this core goes alone: `add` takes one over before it writes, so a record
-    // still sitting there belongs to no End of this page, and the machine the name points to now keeps its own.
-    remove: (address) => {
-      if (address.includes("/") && own(route.core).has(address)) return own(route.core).remove(address);
+    // Given the End it settles, it drops that terminal's record wherever it is kept (an older tab may have written one
+    // the old way meanwhile) and nothing else: a renamed machine's record for its own terminal of that id stays.
+    remove: (address, end) => {
+      if (address.includes("/")) own(route.core).remove(address, end);
       const identity = identityOf(address, route);
-      if (identity !== undefined) own(identity.core).remove(identity.terminal);
+      if (identity !== undefined) own(identity.core).remove(identity.terminal, end);
     },
     has: (address) => {
       const identity = identityOf(address, route);
