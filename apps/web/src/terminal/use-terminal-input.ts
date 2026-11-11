@@ -47,11 +47,12 @@ interface InputSources {
   readonly predict?: RefObject<((data: TerminalInput) => void) | null>;
 }
 
-/** Why input that waited for a machine's line was not sent, as the person is told. */
-export function notSent(why: Dropped, machine: string): string {
+/** Why input that waited was not sent, as the person is told: for an added machine's line, or for this terminal's link. */
+export function notSent(why: Dropped, machine: string | undefined): string {
+  const away = machine ?? "this terminal";
   return why === "expired"
-    ? `Typed input was not sent because ${machine} did not reconnect within ${HOLD_MS / 1000} s`
-    : `Typed input was not sent because too much was typed while ${machine} was reconnecting`;
+    ? `Typed input was not sent because ${away} did not reconnect within ${HOLD_MS / 1000} s`
+    : `Typed input was not sent because too much was typed while ${away} was reconnecting`;
 }
 
 /** What a pane does with what the person types: one ordered path to the program, queued while no stream is open. */
