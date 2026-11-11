@@ -1,8 +1,8 @@
 import type { HcConnection } from "@doriface/client";
 import type { MeshStatus } from "@doriface/protocol";
-import { Notice, SettingRow, Skeleton, cn } from "@doriface/ui";
+import { Notice, SettingRow, Skeleton, cn, groupHeadingClass } from "@doriface/ui";
 import type { ReactNode } from "react";
-import { connectionStore, useConnection } from "../connection/store.ts";
+import { useConnection, useConnectionSettings } from "../connection/store.ts";
 import { ExpiredJoinRow, MeshBanners, PendingRow, RemovedRows } from "../mesh/attention.tsx";
 import { disagreement, meshGroups } from "../mesh/groups.ts";
 import { MemberRow, RevokedRow } from "../mesh/mesh-rows.tsx";
@@ -24,13 +24,10 @@ function MeshGroup({ id, title, count, urgent = false, children }: MeshGroupProp
     <section aria-labelledby={`mesh-${id}`} data-mesh-group={id} className="flex flex-col">
       <h3
         id={`mesh-${id}`}
-        className={cn(
-          "flex items-baseline gap-2 pb-1 text-base font-semibold",
-          urgent ? "text-status-blocked-text" : "text-foreground",
-        )}
+        className={cn("flex items-baseline gap-2 pb-1", groupHeadingClass, urgent && "text-status-blocked-text")}
       >
         {title}
-        <span className="text-sm font-normal text-muted-foreground tabular-nums">{count}</span>
+        <span className="font-normal text-muted-foreground tabular-nums">{count}</span>
       </h3>
       {children}
     </section>
@@ -53,6 +50,8 @@ export function MeshBody({
   readonly connection: HcConnection;
   readonly attentionOnly: boolean;
 }) {
+  // Subscribed, and above the early returns, so a mode or shown machine change reaches the banners below (#1132).
+  const settings = useConnectionSettings();
   const { read, answer } = useMesh(connection);
   const now = useNow();
   const host = connection.hello.core.name;
@@ -83,7 +82,6 @@ export function MeshBody({
       break;
   }
   const { status, machines, answered } = read;
-  const settings = connectionStore.settings;
   const nameOf = namesIn(status);
   const groups = meshGroups(status, now);
   const self = nameOf(status.self);

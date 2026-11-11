@@ -38,6 +38,14 @@ async function expectRhythm(page: Page) {
   }
 }
 
+/** The first labelled row under the sidebar's Spaces title, the row expectTitlesAlignedWithRows measures it against. */
+const spacesFirstRow = (page: Page) =>
+  page
+    .locator("aside[aria-label=Workspace] section")
+    .filter({ has: page.getByRole("heading", { name: "Spaces", exact: true }) })
+    .locator("[data-floor=name]")
+    .first();
+
 /** Each sidebar section's title, Spaces included, starts on the label column of the first row it heads (#1496, #1612). */
 async function expectTitlesAlignedWithRows(page: Page) {
   await page.mouse.move(0, 0);
@@ -72,6 +80,10 @@ for (const theme of ["day", "night"] as const) {
             expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible({ timeout: 15_000 }),
           ),
         );
+        // The Spaces title is drawn before the first machine.list answer, over a "Loading machines…" placeholder that
+        // has no row; the agent sections do not wait for that answer. Measure once the Spaces list has its first row
+        // (#2060).
+        await expect(spacesFirstRow(page)).toBeVisible({ timeout: 15_000 });
         await expectRhythm(page);
         await expectTitlesAlignedWithRows(page);
       });

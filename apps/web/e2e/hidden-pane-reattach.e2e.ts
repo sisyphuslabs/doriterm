@@ -93,7 +93,14 @@ test("a pane out of view whose stream the core ends waits to re-attach until it 
 
   // The view asks the core what is left of its program; it still runs, so the view is to attach to it again.
   await expect.poll(() => answerTo(socket, "terminal.get", hidden)).toBeDefined();
-  // Read after the page has handled that answer: the pane is out of view, so nothing attached.
+  // A command's output in the pane on screen comes over the same socket after that answer, and a socket delivers in
+  // order, so its message handler ran first. The re-attach itself is decided in a React effect after the re-render that
+  // handler starts; a round trip to the shell takes far longer than that render, which is what this wait relies on, not
+  // ordering alone. The pane is out of view, so nothing attached.
+  const onScreen = page.locator(`[data-terminal="${shown}"]`);
+  await onScreen.click();
+  await page.keyboard.type("echo handled-$((40+2))\n");
+  await expect(onScreen).toContainText("handled-42");
   expect(await attachLog(page)).toEqual([hidden, shown]);
 
   await page.getByRole("tab").first().click();
@@ -121,7 +128,7 @@ test("a pane that mounts out of view, as a background tab after a reload, does n
   await expect.poll(() => attachLog(page)).toEqual([shown, hidden]);
 });
 
-test("a program that ends while its pane is out of view and holds no stream is found when the pane is shown (#906)", async ({
+test("a program that ends while its pane is out of view and holds no stream closes its tab without anyone looking (#906, #2122)", async ({
   page,
 }) => {
   test.setTimeout(150_000);
@@ -132,12 +139,10 @@ test("a program that ends while its pane is out of view and holds no stream is f
   const { hc, env } = readSavedEnv(E2E_HOST_ENV);
   execFileSync(hc, ["kill", hidden], { env: { ...process.env, ...env } });
   const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
-  // Nothing tells the hidden pane: it holds no stream, and the core's CLOSE went to no one.
-  await expect(tabs).toHaveCount(2);
-
-  // Shown, it attaches, the core says the program is over, and its tab closes as that CLOSE would have closed it.
-  await tabs.first().click();
+  // Nothing tells the hidden pane's view: it holds no stream, and the core's CLOSE went to no one. The feed lists its
+  // terminal as finished, so the page asks the core about it, and its tab closes as that CLOSE would have closed it.
   await expect(tabs).toHaveCount(1, { timeout: 20_000 });
   await expect(page.locator(`[data-terminal="${shown}"]`)).toBeVisible();
-  expect(await attachLog(page)).toEqual([hidden, shown, shown, hidden]);
+  // Nobody looked: the hidden pane never attached again.
+  expect(await attachLog(page)).toEqual([hidden, shown, shown]);
 });

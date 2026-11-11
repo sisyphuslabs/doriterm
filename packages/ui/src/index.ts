@@ -30,7 +30,15 @@ export { FIND_CURRENT_CLASS, FIND_MATCH_CLASS, FindBar, type FindBarProps } from
 export { Fingerprint, type FingerprintProps } from "./components/fingerprint.tsx";
 export { FontFamilyList, type FontFamilyListProps } from "./components/font-family-list.tsx";
 export { IconButton, type IconButtonProps } from "./components/icon-button.tsx";
-export { Field, fieldLabelClass, Input, inputClass, type FieldProps, type InputProps } from "./components/input.tsx";
+export {
+  Field,
+  fieldLabelClass,
+  groupHeadingClass,
+  Input,
+  inputClass,
+  type FieldProps,
+  type InputProps,
+} from "./components/input.tsx";
 export { Kbd, type KbdProps } from "./components/kbd.tsx";
 export {
   type ListDrag,

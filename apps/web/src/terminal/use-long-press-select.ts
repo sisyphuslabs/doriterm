@@ -14,6 +14,9 @@ import {
   wordRangeAt,
 } from "./long-press.ts";
 
+/** A followed node is any EventTarget, so its listeners take any event: a touch one carries its fingers. */
+const isTouch = (event: Event): event is TouchEvent => "touches" in event;
+
 interface Press {
   readonly pointer: number;
   readonly from: Point;
@@ -85,14 +88,34 @@ export function attachLongPressSelect(wt: Pick<WTerm, "element">, openMenu: (at:
     stop();
     if (picked) openMenu({ x: event.clientX, y: event.clientY });
   };
-  const onEnd = (event: TouchEvent): void => {
+  const onEnd = (event: Event): void => {
     // Only a press that selected something suppresses the tap's own mouse events; every other touch ends untouched.
     if (event.cancelable && longPressed(element)) event.preventDefault();
+    if (!isTouch(event) || event.touches.length === 0) follow(null);
   };
   // Once the hold has picked its word the drag belongs to the selection, not to the scrollback: a cancelled
   // touchmove keeps the browser from taking the gesture (and the pointer events with it) as a pan.
-  const onTouchMove = (event: TouchEvent): void => {
+  const onTouchMove = (event: Event): void => {
     if (press !== null && press.picked && event.cancelable) event.preventDefault();
+  };
+  /**
+   * The node the first finger came down on. The browser sends that touch's moves and lift to it alone, even once the
+   * program has redrawn it out of the terminal, where they no longer bubble (#2057, as #2054 for the swipe): so they are
+   * followed on that node itself.
+   */
+  let touched: EventTarget | null = null;
+  const follow = (target: EventTarget | null): void => {
+    if (target === touched) return;
+    touched?.removeEventListener("touchmove", onTouchMove);
+    touched?.removeEventListener("touchend", onEnd);
+    touched?.removeEventListener("touchcancel", onEnd);
+    touched = target;
+    touched?.addEventListener("touchmove", onTouchMove, { passive: false });
+    touched?.addEventListener("touchend", onEnd, { passive: false });
+    touched?.addEventListener("touchcancel", onEnd);
+  };
+  const onTouchStart = (event: TouchEvent): void => {
+    if (event.touches.length === 1) follow(event.target);
   };
   // The mark belongs to one touch, and the next press anywhere answers for its own tap. A finger still down is that
   // press, so a second one beside it leaves the mark alone.
@@ -106,8 +129,7 @@ export function attachLongPressSelect(wt: Pick<WTerm, "element">, openMenu: (at:
   window.addEventListener("pointermove", onMove);
   window.addEventListener("pointerup", onUp);
   window.addEventListener("pointercancel", stop);
-  element.addEventListener("touchend", onEnd, { passive: false });
-  element.addEventListener("touchmove", onTouchMove, { passive: false });
+  element.addEventListener("touchstart", onTouchStart, { capture: true, passive: true });
   return () => {
     stop();
     clearLongPress(element);
@@ -116,7 +138,7 @@ export function attachLongPressSelect(wt: Pick<WTerm, "element">, openMenu: (at:
     window.removeEventListener("pointermove", onMove);
     window.removeEventListener("pointerup", onUp);
     window.removeEventListener("pointercancel", stop);
-    element.removeEventListener("touchend", onEnd);
-    element.removeEventListener("touchmove", onTouchMove);
+    element.removeEventListener("touchstart", onTouchStart, { capture: true });
+    follow(null);
   };
 }

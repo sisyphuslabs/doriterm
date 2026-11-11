@@ -18,7 +18,7 @@ import { REMOVED_READING } from "../mesh/roster-removal.ts";
 import type { DeviceStore } from "../state/devices.ts";
 import type { MeshStore } from "../state/mesh.ts";
 import type { ClaimRefusal, PairingClaim, PairingStore } from "../state/pairing.ts";
-import { authorizationOf, sessionPeer } from "./authorize.ts";
+import { authorizationOf, handshakeRefusalLine, sessionPeer } from "./authorize.ts";
 import type { SpeculativeHello } from "./speculative-hello.ts";
 
 /** Where a session arrived: the direct listener, or a relay session (`openSlot` is the slot a `?pair` session named). */
@@ -170,9 +170,7 @@ export async function acceptE2ee(
       authorize: (hello) => {
         const verdict = authorize(hello);
         if (!verdict.accept && verdict.closeCode === CloseCode.UnknownDevice) {
-          deps.log(
-            `e2ee: close code=4401 source=handshake kind=${hello.kind} stream=${hello.stream ?? "hc"}: ${verdict.reason}`,
-          );
+          deps.log(handshakeRefusalLine(hello, verdict.reason));
         }
         return verdict;
       },

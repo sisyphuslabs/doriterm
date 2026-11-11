@@ -30,18 +30,19 @@ const counted = (count: number, word: string): string => `${count} ${word}${coun
 
 /**
  * Why the Ends that failed did not, and where the sessions they kept are shown again: the tab is gone as they fail, so
- * they run with no tab to show them until the next load adopts them (#1278).
+ * they run with no tab to show them until they are adopted again, a few seconds after End takes its mark off them
+ * (#1278, #2122).
  */
 function endsFailed(failed: number, cause: unknown): { readonly title: string; readonly description: string } {
   const why = (cause instanceof Error ? cause.message : String(cause)).replace(/\.$/, "");
   return failed === 1
     ? {
         title: "The session did not end",
-        description: `${why}. It keeps running outside any tab; the next load opens it as a tab.`,
+        description: `${why}. It keeps running outside any tab, and opens as a tab again within a few seconds.`,
       }
     : {
         title: `${failed} sessions did not end`,
-        description: `${why}. They keep running outside any tab; the next load opens them as tabs.`,
+        description: `${why}. They keep running outside any tab, and open as tabs again within a few seconds.`,
       };
 }
 

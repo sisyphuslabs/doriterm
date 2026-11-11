@@ -4,6 +4,7 @@ import { parseMeshStatus } from "@doriface/protocol";
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { join } from "node:path";
 import { writePrivateJson } from "../state/files.ts";
+import { withStateLock } from "../state/lock.ts";
 import { cardBody, MeshStore } from "../state/mesh.ts";
 import { meshFileJson } from "../state/mesh-file.ts";
 import { noiseOf, signPubOf } from "../testing/mesh-history.ts";
@@ -135,6 +136,33 @@ test("a paired roster session records its client time when the signed card estab
   }
   const current = storedMeshStatus(f.a.mesh, f.a.m.identity, IDLE_MESH_HOOKS);
   expect(current?.members.find((member) => member.hostId === f.c.m.identity.hostId)?.lastSessionAt).toBe(AT);
+});
+
+test("a busy state lock is logged and never waited on, leaving the recorded time alone", async () => {
+  const f = clients();
+  const clock = spyOn(Date, "now").mockReturnValue(AT);
+  try {
+    await accept(f, undefined);
+  } finally {
+    clock.mockRestore();
+  }
+  expect(lastSeen(f)).toBe(AT);
+  const before = f.a.mesh.read();
+  let waits = 0;
+  const sleeps = spyOn(Bun, "sleepSync").mockImplementation(() => {
+    waits += 1;
+  });
+  try {
+    withStateLock(f.a.dir, () => {
+      f.a.mesh.recordClientSession(noiseOf(f.c.m), AT + 5 * 60_000 + 1);
+    });
+  } finally {
+    sleeps.mockRestore();
+  }
+  expect(waits).toBe(0);
+  expect(f.a.logs).toContainEqual(expect.stringContaining("mesh: cannot record client session"));
+  expect(f.a.mesh.read()).toEqual(before);
+  expect(lastSeen(f)).toBe(AT);
 });
 
 test("a current client is observed only after its later roster card is accepted", async () => {

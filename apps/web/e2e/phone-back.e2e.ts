@@ -135,6 +135,37 @@ test("a reload on ?t= reopens the terminal without a second entry, and Back reac
   }
 });
 
+test("after a reload on ?t=, Back to agents goes down to the list's own entry, so the next Back leaves the app (#1153)", async ({
+  page,
+}) => {
+  const address = startAgent("host", "reloadback", "idle");
+  try {
+    await page.goto("/");
+    const list = page.url();
+    const row = page.getByRole("button", { name: /reloadback/ }).first();
+    const back = page.getByRole("button", { name: "Back to agents" });
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    await row.click();
+    await expect(back).toBeVisible({ timeout: 20_000 });
+
+    // The reload forgets that this page pushed the terminal's entry; the entry under it is still the list.
+    await page.reload();
+    await expect(page.locator(`[data-terminal="${address}"]`)).toBeVisible({ timeout: 20_000 });
+    await back.click();
+    await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
+    // The same terminal again from that list, and its Back: still one list entry, not one more per visit.
+    await row.click();
+    await expect(back).toBeVisible({ timeout: 20_000 });
+    await back.click();
+    await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
+
+    await page.goBack();
+    await expect.poll(() => page.url(), "no second list entry under the list").not.toBe(list);
+  } finally {
+    endAgent("host", address);
+  }
+});
+
 test("a cold open on ?t= comes back to the list instead of leaving the app", async ({ page }) => {
   const address = startAgent("host", "backcold", "idle");
   try {

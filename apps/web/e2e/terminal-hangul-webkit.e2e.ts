@@ -168,3 +168,36 @@ test("Safari on a Mac: replacement edits without composition events reach the pr
   await page.keyboard.type(" ");
   await expectRead(page, terminal, "ed 95 9c ea b8 80 20");
 });
+
+test("Safari on a Mac: a first jamo held longer than the lone-jamo wait still reaches the program only as its syllable (#1244)", async ({
+  page,
+}) => {
+  const terminal = await openPhoneTerminal(page);
+  // Raw mode, three bytes a row as they arrive: a jamo sent alone, and the erase that would take it back, reach the
+  // program and show, where a line read would hide them behind the erase. dd ends at each third byte so od prints
+  // then: the uutils od of ubuntu-26.04 keeps what it reads until more comes (#1952, as terminal-ime-commit's reader).
+  await page.keyboard.type(
+    "stty -icanon -echo min 1 time 0; echo RE''ADY; while :; do dd bs=1 count=3 2>/dev/null | od -An -tx1; done\r",
+  );
+  await expect(terminal.locator(".term-row").filter({ hasText: /^READY/ })).toHaveCount(1);
+  const field = terminal.getByRole("textbox");
+  // Safari's keydown comes after each edit; edits 150 ms apart outlast the 100 ms a lone jamo waits for a key.
+  await safariReplace(field, ["ㅎ", "하", "한"], 150);
+  await safariReplace(field, ["ㄱ", "그", "글"], 150);
+  // A key after the last syllable sends it.
+  await page.keyboard.type("x");
+  const rows = terminal.locator(".term-row");
+  const read = async (): Promise<string> => {
+    const text = await rows.allTextContents();
+    return text
+      .slice(text.findIndex((row) => row.startsWith("READY")) + 1)
+      .join(" ")
+      .replaceAll(/\s+/g, " ")
+      .trim();
+  };
+  await expect.poll(read, { timeout: 10_000 }).toContain("ea b8 80");
+  const bytes = await read();
+  expect(bytes, "no lone jamo reaches the program").not.toMatch(/e3 8[45] [0-9a-f]{2}/);
+  expect(bytes, "no erase reaches the program").not.toMatch(/\b7f\b/);
+  expect(bytes).toMatch(/^ed 95 9c ea b8 80\b/);
+});

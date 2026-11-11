@@ -38,6 +38,10 @@ test("a terminal waiting on its attach says it is opening, and the pane is busy 
 
   const release = socket.hold("terminal.attach");
   await page.reload();
+  // The reload boots the workspace again: it reconnects to the host and lists its terminals before the pane can mount,
+  // which took over 5 s on a loaded host (#2053). Wait for that boot, the status bar's count of the open terminal, with
+  // the budget this file gives every fresh load.
+  await expect(page.getByText(/^1 terminal$/)).toBeVisible({ timeout: 20_000 });
   const pane = page.locator(`[data-terminal="${address}"]`);
   await expect(pane).toBeVisible();
   const opening = page.getByRole("status", { name: "Opening terminal" });

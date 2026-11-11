@@ -39,7 +39,7 @@ export function applyAppearance(
   if (choice === undefined) return;
   for (const [name, value] of Object.entries(themeVariables(choice.theme))) root.style.setProperty(`--${name}`, value);
   root.style.setProperty("color-scheme", choice.theme.light ? "light" : "dark");
-  // Both per-scheme metas: the theme in view already accounts for the system scheme and the user's own pick.
+  // Every theme-color meta (the page starts with one): the theme in view already accounts for the system scheme and the user's pick.
   for (const meta of root.ownerDocument.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]'))
     meta.content = choice.theme.roles.chrome;
 }

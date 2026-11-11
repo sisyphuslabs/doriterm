@@ -176,6 +176,15 @@ export class HostMesh {
     return this.#options.slots.open(false);
   }
 
+  /** A `mesh join` withdrew this host's mesh offer: its pending joins expire with it and its relay slot is released. */
+  offerWithdrawn(): void {
+    this.pending.expireAll();
+    this.pending.setAuto(0);
+    this.resumes.clear();
+    this.#offerExpiresAt = 0;
+    this.#options.slots.sync();
+  }
+
   /** Serves a session on the mesh stream: a join on a mesh offer, or a member's sync session for the sync hook. */
   serve(secure: SecureLink): void {
     if (secure.kind === SessionKind.Session) return this.#options.sync?.(secure);
@@ -211,7 +220,7 @@ export class HostMesh {
   async join(
     request: MeshJoinRequest,
     confirm?: (code: string) => Promise<boolean>,
-  ): Promise<{ readonly meshId: string; readonly hostId: string }> {
+  ): Promise<{ readonly meshId: string; readonly hostId: string; readonly withdrewOffer: boolean }> {
     const { stateDir, identity, relay, log } = this.#options;
     const own = await this.#own(request.name);
     const joined = await joinMesh({
@@ -228,10 +237,11 @@ export class HostMesh {
       defaultRelayUrl: relay.url ?? DEFAULT_RELAY_URL,
       createSocket: relay.createSocket,
       proofs: relay.proofs,
+      offerWithdrawn: () => this.offerWithdrawn(),
       log,
     });
     this.#keep(joined.secure);
-    return { meshId: joined.meshId, hostId: joined.hostId };
+    return { meshId: joined.meshId, hostId: joined.hostId, withdrewOffer: joined.withdrewOffer };
   }
 
   /** The session a join ran on stays open as a sync session, registered so a revoke closes it. */

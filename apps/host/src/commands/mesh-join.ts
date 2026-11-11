@@ -33,10 +33,14 @@ export const MESH_JOIN_USAGE = `usage: doriface-host mesh pair [--auto] [--no-qr
   --hc <path>        mesh join without a running host: the herdr-core binary (default hc)
   --session <name>   mesh join without a running host: the hc session this host serves
   --wait-host <secs> mesh join: wait up to <secs> for the running host (a service still starting), and fail if none answers
-  --from-file <file> mesh join: read the link or code from <file>, so it is never on the command line where other
-                     local users can read it`;
+  --from-file <file> mesh join: read the link or code from the first non-blank line of <file>, so it is never on the
+                     command line where other local users can read it`;
 
-/** The link or code to join: the argument, or the first line of `--from-file`, never both (#821). */
+/** What `mesh join` says when the join withdrew this host's own open mesh invite (#2117). */
+export const OFFER_WITHDRAWN_NOTICE =
+  "withdrew this host's own open mesh invite: a host cannot invite into its mesh while it joins another\n";
+
+/** The link or code to join: the argument, or the first non-blank line of `--from-file`, never both (#821, #1200). */
 export function joinTargetOf(positional: string | undefined, fromFile: string | undefined): string {
   if (positional !== undefined && fromFile !== undefined) {
     throw new Error("mesh join takes a link or code, or --from-file, not both");
@@ -45,7 +49,11 @@ export function joinTargetOf(positional: string | undefined, fromFile: string | 
     if (positional === undefined) throw new Error("mesh join needs a mesh pairing link or code");
     return positional;
   }
-  const given = readFileSync(fromFile, "utf8").trim();
+  const given =
+    readFileSync(fromFile, "utf8")
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line !== "") ?? "";
   if (given === "") throw new Error(`${fromFile} holds no mesh pairing link or code`);
   return given;
 }
@@ -172,7 +180,7 @@ async function join(args: readonly string[], out: (text: string) => void, log: (
   if (await controlIsLive(stateDir)) {
     const joined = await requestControl(stateDir, { op: "mesh-join", ...request }, confirm);
     const meshId = isRecord(joined) ? joined["meshId"] : undefined;
-    return out(`joined mesh ${String(meshId)}; the running host keeps the session for sync\n`);
+    return out(joinedReport(String(meshId), isRecord(joined) && joined["withdrewOffer"] === true, true));
   }
   const core = await readHcCore({ hc: values.hc, session: values.session });
   const identity = loadHostIdentity(stateDir);
@@ -192,8 +200,14 @@ async function join(args: readonly string[], out: (text: string) => void, log: (
     log,
   });
   joined.secure.close();
-  out(`joined mesh ${joined.meshId}; start doriface-host to take part\n`);
+  out(joinedReport(joined.meshId, joined.withdrewOffer, false));
 }
+
+/** What a finished `mesh join` prints, through the running host or without one. */
+export const joinedReport = (meshId: string, withdrewOffer: boolean, running: boolean): string =>
+  `${withdrewOffer ? OFFER_WITHDRAWN_NOTICE : ""}joined mesh ${meshId}; ${
+    running ? "the running host keeps the session for sync" : "start doriface-host to take part"
+  }\n`;
 
 export async function meshJoinCommand(
   args: readonly string[],

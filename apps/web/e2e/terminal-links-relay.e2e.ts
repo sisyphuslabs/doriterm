@@ -49,6 +49,8 @@ test.afterAll(async () => {
   if (running === undefined) return;
   running.kill("SIGTERM");
   await expect.poll(() => running.exitCode ?? running.signalCode, { timeout: 60_000 }).not.toBeNull();
+  // The helper exits 0 only once its relayed host, hc core included, has stopped cleanly (#2061).
+  expect(running.exitCode).toBe(0);
 });
 
 /** Every href the page asked to open in a new tab; window.open is stubbed so a test never leaves the page. */

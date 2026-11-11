@@ -52,7 +52,7 @@ test("a move to a different host that goes through clears the last move's failur
   const hostB = { mode: "loopback", pushUrl: "ws://host-b.invalid/v1/push", token: "b" } as const;
   expect(await loadPushRoute()).toEqual(hostB);
   expect(request.mock.calls.filter(([line]) => line.t === "subscribe").map(([, route]) => route)).toEqual([hostB]);
-  expect(pushSettings.view).toMatchObject({ on: true, busy: false, error: null });
+  expect(pushSettings.view).toMatchObject({ on: true, busy: null, error: null });
 
   await pushSettings.setPrefs(DEFAULT_PUSH_PREFS);
   expect(pushSettings.view.error).toBeNull();
