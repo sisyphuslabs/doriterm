@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { PHONE, openPhoneTerminal } from "./phone-key-bar.ts";
-import { type RowSample, startRowSampler, stopRowSampler } from "./prediction-frames.ts";
+import { type RowSample, rowSamplesSoFar, startRowSampler, stopRowSampler } from "./prediction-frames.ts";
 import { predictTyping } from "./prediction-probe.ts";
 import { installPredictor } from "./prediction-stand-in.ts";
 
@@ -73,6 +73,9 @@ for (const device of ["desktop", "phone"] as const) {
       await expect(terminal.locator(".term-prediction-cell")).toHaveText(["Q"]);
       await expect(terminal.locator(".term-row").filter({ hasText: /^ready> Q *$/ })).toHaveCount(1, { timeout: 5000 });
       await expect(terminal.locator(".term-prediction-cell")).toHaveCount(0);
+      // wterm paints a held update from a timer, outside any frame, so the row can read "ready> Q" before a frame has
+      // drawn it. Stop only once a sampled frame shows the echo in the grid itself (#1990).
+      await expect.poll(async () => (await rowSamplesSoFar(page)).some((sample) => sample.grid[0] === "Q")).toBe(true);
       return { terminal, samples: await stopRowSampler(page) };
     }
 
