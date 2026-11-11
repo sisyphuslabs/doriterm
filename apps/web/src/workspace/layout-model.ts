@@ -23,6 +23,8 @@ export interface LayoutTab {
   readonly machine: string | null;
   readonly name: string;
   readonly root: Node;
+  /** Pinned in front of its space's other tabs (#1561). */
+  readonly pinned: boolean;
   readonly panes: readonly LayoutPane[];
   readonly readOnly: string | null;
   /** Not in any document (the first live terminal shown alone, or a loose tab); written once it is split. */
@@ -106,7 +108,7 @@ export function localOf(address: string): string {
 
 function docTabs(layout: MachineLayout): LayoutTab[] {
   if (layout.doc === null) return [];
-  return tabsOf(layout.doc).map((tab) => ({
+  return tabsOf(layout.doc, layout.pins).map((tab) => ({
     key: tabKey(layout.machineId, tab.id),
     id: tab.id,
     space: tab.space,
@@ -114,6 +116,7 @@ function docTabs(layout: MachineLayout): LayoutTab[] {
     machine: layout.machine,
     name: tab.name,
     root: tab.root,
+    pinned: tab.pinned,
     panes: panesOf(tab.root).map((pane) => ({
       id: pane.id,
       address: pane.terminal === null ? null : qualify(pane.terminal, layout.machine),
@@ -135,6 +138,7 @@ function looseTab(address: string, layouts: readonly MachineLayout[], ids: Machi
     machine,
     name: "",
     root: { children: [terminalBlock(TRANSIENT, localOf(address))], id: "", type: "row" },
+    pinned: false,
     panes: [{ id: TRANSIENT, address, mod: null }],
     readOnly: owner?.readOnly ?? "the machine is not connected",
     transient: true,
@@ -193,6 +197,13 @@ export function pick(tabs: readonly LayoutTab[], view: View): Picked {
   const focused = active.panes.find((pane) => pane.id === remembered) ?? active.panes[0] ?? null;
   const zoomed = view.zoomed[active.key];
   return { active, focused, zoomed: active.panes.some((pane) => pane.id === zoomed) ? (zoomed ?? null) : null };
+}
+
+/** The pane `pick` focuses once the tab `key` is the one in view; null when no tab is `key`. */
+export function landingPane(tabs: readonly LayoutTab[], focused: View["focused"], key: string): string | null {
+  const tab = tabs.find((each) => each.key === key) ?? tabs.find((each) => each.mount === key);
+  if (tab === undefined) return null;
+  return (tab.panes.find((pane) => pane.id === focused[tab.key]) ?? tab.panes[0])?.id ?? null;
 }
 
 /**

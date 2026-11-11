@@ -133,8 +133,9 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onDrop, onK
     end();
   });
   if (ask === null || !(live || keep || ended)) return null;
-  // A close that needed no question stays without one while its End settles, also once the terminal has left the list
-  // (which ends `quiet`); it shows only to say why that End failed (#518).
+  // A close whose End is under way shows no question while that End settles: one that needed no question, and one
+  // whose question was answered (its question goes as Close is chosen, #1271), also once the terminal has left the
+  // list (which ends `quiet`); it shows only to say why that End failed (#518).
   if ((quiet || endedQuietly.current === ask) && error === null) return null;
   const title = (asked.ask === ask ? asked.name : null) ?? current ?? "";
   // Asked with focus on the page body (a terminal whose renderer had not started yet), or from an element that is gone
@@ -204,7 +205,11 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onDrop, onK
     >
       {error === null ? undefined : (
         <Notice tone="error" title="The session did not end">
-          {error}
+          {`${error.replace(/\.$/, "")}. ${
+            ask.kind === "close"
+              ? "It keeps running outside any pane; the next load opens it as a tab."
+              : "It keeps running."
+          }`}
         </Notice>
       )}
     </Dialog>

@@ -113,7 +113,7 @@ export function KeyboardEdit({ settings, host, readOnly }: KeyboardEditProps) {
             );
           })}
           {shown.length === 0 ? (
-            <li className="px-3 py-3 text-sm text-muted-foreground">The bar has no keys. Add one below.</li>
+            <li className="px-3 py-3 text-prose text-muted-foreground">The bar has no keys. Add one below.</li>
           ) : null}
           {drag === null ? null : <RowDropIndicator drag={drag} />}
           {drag === null ? null : <RowDropCaret drag={drag} />}
@@ -142,7 +142,7 @@ export function KeyboardEdit({ settings, host, readOnly }: KeyboardEditProps) {
             </li>
           ))}
           {removed.length === 0 ? (
-            <li className="px-3 py-3 text-sm text-muted-foreground">Every key is in the bar.</li>
+            <li className="px-3 py-3 text-prose text-muted-foreground">Every key is in the bar.</li>
           ) : null}
         </ul>
       </section>

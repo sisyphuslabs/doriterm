@@ -1,12 +1,4 @@
-import type { NoticeKind, NoticePrompt, PushNotice } from "@doriface/protocol";
-
-const BODY: Readonly<Record<NoticeKind, string>> = {
-  input: "An agent is waiting for your input.",
-  permission: "An agent is asking for permission.",
-  done: "An agent finished its turn.",
-  error: "An agent stopped with an error.",
-  test: "Notifications from this host work.",
-};
+import { type NoticeContext, type NoticePrompt, noticeText, type PushNotice } from "@doriface/protocol";
 
 /** The two answers a permission notice offers where the platform shows notification actions and the host names no rows. */
 export const ANSWER_ACTIONS = [
@@ -52,21 +44,23 @@ function rowActions(prompt: NoticePrompt, max: number) {
 }
 
 /**
- * What the service worker shows: a fixed text per kind; the payload holds nothing more, by design. A permission or a
- * question whose prompt the host named over the push stream offers its own rows; a permission from a host that names
- * none offers Allow and Deny; anything else (several steps, boxes, typed text) offers none and a tap opens the card.
+ * What the service worker shows. The payload holds nothing but an id, by design; what the notice is about (agent,
+ * machine, space, terminal, what it asks) is what the host named over the E2EE push stream (#1908), and a host that
+ * named nothing, or could not be reached, leaves the fixed text per kind. A permission or a question whose prompt the
+ * host named offers its own rows; a permission from a host that names none offers Allow and Deny; anything else
+ * (several steps, boxes, typed text) offers none and a tap opens the card.
  */
 export function noticeDisplay(
   notice: PushNotice,
   prompt?: NoticePrompt,
   max: number = DEFAULT_MAX_ACTIONS,
+  context?: NoticeContext,
 ): NoticeDisplay {
   const asks = notice.k === "permission" || notice.k === "input";
   const actions =
     asks && prompt !== undefined ? rowActions(prompt, max) : notice.k === "permission" ? ANSWER_ACTIONS : [];
   return {
-    title: "Doriterm",
-    body: BODY[notice.k],
+    ...noticeText(notice.k, context),
     tag: notice.n,
     data: notice,
     actions,

@@ -103,6 +103,7 @@ const alone = (address: string): LayoutTab => ({
   root: { children: [], id: "", type: "row" },
   panes: [{ id: TRANSIENT, address, mod: null }],
   readOnly: null,
+  pinned: false,
   transient: false,
 });
 const shownAlone = (address: string): LayoutTab => ({ ...alone(address), transient: true });
