@@ -6,6 +6,7 @@ import { terminalConfigStore } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
 import { CursorResets } from "./cursor-reset.ts";
 import { readDisplay } from "./display.ts";
+import { noteHistoryGap } from "./history-gap-notice.ts";
 import { type EndHolder, fromEndOf, holdFromEnd, readerInputOn } from "./hold-view-from-end.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
 import { openFailure } from "./open-failure.ts";
@@ -229,7 +230,11 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           if (fromEnd > 0) ready.holdScrollAway();
           pacer.drop();
           output.reset();
-          if (keepsHistory) ready.write(CLEAR_SCREEN);
+          // Output that scrolled off the core's screen while the line was down is not in the kept history (#2033).
+          if (keepsHistory) {
+            noteHistoryGap();
+            ready.write(CLEAR_SCREEN);
+          }
           // The repaint lands where the reader was: at the end for one who was following, in history for one who was not.
           endHold.current?.stop();
           // Only the reader's own input lets go early: on the terminal or what overlays it, its scrollbar included.
