@@ -96,7 +96,8 @@ test.describe("on a phone", () => {
     // Its program ends before the page opens, so no view saw it end: the document still holds its tab, and a phone
     // lists only the tabs that show a live terminal.
     await end(over);
-    await page.goto("/");
+    // The machines and their spaces are the phone's Spaces tab (#1484).
+    await page.goto("/?v=spaces");
     const spaces = page.getByRole("region", { name: "Spaces" });
     const space = rows(spaces).filter({ hasText: "phone2122" });
     await expect(space.getByLabel(/^\d+ tabs$/)).toHaveText("1", { timeout: 20_000 });
