@@ -13,13 +13,6 @@ import { SettingsRoute } from "./routes/settings-route.tsx";
 import { SettingsDialog, SettingsInDialog, useSettingsSheet } from "./settings/settings-dialog.tsx";
 import { WorkspaceRoute } from "./routes/workspace-route.tsx";
 
-/**
- * The workspace stays mounted under Settings, inert, so leaving Settings shows its terminals as they were: no pane
- * attaches again and replays its history (seconds over the relay), the scroll stays where it was, and the keyboard goes
- * back to the focused pane's terminal, as it did when the workspace mounted again. On a wide, tall enough screen Settings
- * is a dialog over the workspace, which stays in view and keeps drawing; on a phone, or a screen too short for the dialog,
- * it is a full-screen sheet and the workspace under it is hidden.
- */
 /** Where the settings body was scrolled to when its frame was taken out of the page, and which element scrolled. */
 interface KeptScroll {
   readonly viewport: HTMLElement;
@@ -64,6 +57,13 @@ function SettingsSlot({
   return <div ref={slot} className="contents" />;
 }
 
+/**
+ * The workspace stays mounted under Settings, inert, so leaving Settings shows its terminals as they were: no pane
+ * attaches again and replays its history (seconds over the relay), the scroll stays where it was, and the keyboard goes
+ * back to the focused pane's terminal, as it did when the workspace mounted again. On a wide, tall enough screen Settings
+ * is a dialog over the workspace, which stays in view and keeps drawing; on a phone, or a screen too short for the dialog,
+ * it is a full-screen sheet and the workspace under it is hidden.
+ */
 function Root() {
   const path = useRouterState({ select: (state) => state.location.pathname });
   const settings = path === "/settings";
