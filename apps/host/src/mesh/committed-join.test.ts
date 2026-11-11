@@ -1,11 +1,11 @@
 import { base64urlEncode } from "@doriface/crypto";
 import { memoryLinkPair } from "@doriface/crypto/testing";
-import { signCard } from "@doriface/mesh";
+import { parseRecord, type Signed, signCard } from "@doriface/mesh";
 import { joinCode, joinCommit, MeshLines } from "@doriface/mesh/join";
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { cardBody } from "../state/mesh.ts";
 import { failure, inviteDeps, removeSides, side } from "../testing/join-harness.ts";
-import { noiseOf } from "../testing/mesh-history.ts";
+import { machine, MeshFixture, noiseOf } from "../testing/mesh-history.ts";
 import { serveJoin } from "./invite.ts";
 import { PendingJoins } from "./pending-joins.ts";
 import { finishJoin, JoinResumes } from "./join-resumes.ts";
@@ -14,15 +14,20 @@ afterEach(removeSides);
 const h = new Uint8Array(32).fill(11);
 const Nj = new Uint8Array(32).fill(12);
 
-async function begin(auto = false, kind: "client" | "machine" = "client", sas = true) {
-  const a = side("alpha");
+async function begin(
+  auto = false,
+  kind: "client" | "machine" = "client",
+  sas = true,
+  formatReady: (records?: readonly Signed[]) => boolean = () => true,
+  a = side("alpha"),
+) {
   const c = side("browser");
   const pending = new PendingJoins();
   if (auto) pending.setAuto(Date.now() + 60_000);
   const resumes = new JoinResumes();
   const [hostEnd, clientEnd] = memoryLinkPair(true);
   const client = new MeshLines(clientEnd, ["offer", "reveal", "records", "done", "refused"]);
-  const deps = { ...inviteDeps(a, pending), handshakeHash: h, resumes, formatReady: () => true };
+  const deps = { ...inviteDeps(a, pending), handshakeHash: h, resumes, formatReady };
   const served = failure(serveJoin(new MeshLines(hostEnd, ["card", "refused"]), c.m.identity.noise.publicKey, deps));
   const offer = await client.next();
   if (offer.t !== "offer") throw new Error("no offer");
@@ -154,4 +159,23 @@ test("an approved join that reaches its transaction after expiry signs nothing",
     clock.mockRestore();
     run.resumes.clear();
   }
+});
+
+/** Ready while the roster holds no machine that has not answered: here, any admitted machine has not (#1436). */
+const readyFor = (records?: readonly Signed[]): boolean =>
+  (records ?? []).every((record) => parseRecord(record)?.type !== "admit");
+
+test("a client approved after a machine was admitted meanwhile is refused by the roster it is written over (#1436)", async () => {
+  const a = side("alpha");
+  const fixture = new MeshFixture(a.dir, a.m);
+  const run = await begin(false, "client", true, readyFor, a);
+  await run.client.next();
+  const asked = await run.pending.next();
+  fixture.admit(a.m, machine("mid"));
+  run.pending.decide(asked.nonce, true, asked.code);
+  run.client.send({ t: "confirm" });
+  expect(await run.served).toContain("format");
+  const types = (a.mesh.read()?.records ?? []).map((record) => parseRecord(record)?.type);
+  expect(types).toEqual(["found", "admit"]);
+  run.resumes.clear();
 });

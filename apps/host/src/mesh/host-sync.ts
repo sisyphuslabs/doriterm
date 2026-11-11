@@ -7,7 +7,7 @@ import {
   secureLink,
   SessionKind,
 } from "@doriface/crypto";
-import { hashOf } from "@doriface/mesh";
+import { hashOf, type Signed, viewOf } from "@doriface/mesh";
 import { connectRelayClient, type CreateSocket, type RelayProofs } from "@doriface/relay-client";
 import { withPassRetry } from "../relay/pass-retry.ts";
 import type { MeshStore } from "../state/mesh.ts";
@@ -17,7 +17,7 @@ import { CLIENT_ADMISSION_FORMAT, formatReadiness } from "./format-readiness.ts"
 import type { Gossip } from "./gossip.ts";
 import type { HcTarget } from "./hc-machines.ts";
 import { type HostRuntime, startHostRuntime } from "./host-runtime.ts";
-import { machinesOf } from "./mesh-view.ts";
+import { machinesOf, meshViewOf } from "./mesh-view.ts";
 import { NoUplinkError } from "./no-uplink.ts";
 import type { MeshRuntime } from "./runtime.ts";
 import { StoredMesh } from "./stored-mesh.ts";
@@ -90,11 +90,16 @@ export class HostSync {
   /**
    * Whether every machine in this host's mesh, itself aside, has answered that it reads the format a client admission
    * is written in (design of #942). The roster decides it, not whether gossip happens to run: a host that founds its
-   * mesh to admit its first member has a roster of one, and no member is in it to be held back (#1415).
+   * mesh to admit its first member has a roster of one, and no member is in it to be held back (#1415). An admission
+   * passes the records it is written over, so a machine admitted on this host since gossip's last view is in the roster
+   * it checks (#1436); the answers still come from gossip.
    */
-  formatReady(): boolean {
+  formatReady(records?: readonly Signed[]): boolean {
     const gossip = this.gossip;
-    const view = gossip?.view ?? new StoredMesh(this.#options.mesh).view();
+    const view =
+      records !== undefined
+        ? meshViewOf(records, viewOf(records))
+        : (gossip?.view ?? new StoredMesh(this.#options.mesh).view());
     const self = base64urlEncode(this.#options.identity.sign.publicKey);
     const members = machinesOf(view)
       .map((member) => member.signPub)

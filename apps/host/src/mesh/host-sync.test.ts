@@ -229,4 +229,20 @@ describe("the format a client's admission needs, asked before sync runs (#1415)"
     expect(sync.formatReady()).toBe(true);
     sync.stop();
   });
+
+  test("an admission reads the roster from the records it is written over, not gossip's last view (#1436)", async () => {
+    const [a, b, c, d] = [peer("a"), peer("b"), peer("c"), peer("d")];
+    const { clock, sync } = hostSyncOver(b, storeOf(b, meshOf([a, b, c]).records));
+    sync.changed();
+    await clock.advance(1);
+    const gossip = sync.gossip;
+    if (gossip === undefined) throw new Error("sync did not start");
+    gossip.heard(a.signPub, [], {}, [CLIENT_ADMISSION_FORMAT]);
+    gossip.heard(c.signPub, [], {}, [CLIENT_ADMISSION_FORMAT]);
+    expect(sync.formatReady()).toBe(true);
+    // A machine admitted on this host a moment ago: on disk, but not yet in gossip's view, and it has not answered.
+    const onDisk = meshOf([a, b, c, d]).records;
+    expect(sync.formatReady(onDisk)).toBe(false);
+    sync.stop();
+  });
 });

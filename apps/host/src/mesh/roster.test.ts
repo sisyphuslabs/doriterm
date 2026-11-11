@@ -34,6 +34,24 @@ test("a paired device becomes a client and receives the host's record bundle", a
   expect(a.mesh.read()?.records.map((r) => parseRecord(r)?.type)).toEqual(["found", "admit"]);
 });
 
+test("the format check of a roster admission is asked with the records the admission is written over (#1436)", async () => {
+  const { a, c, deps } = setup();
+  const before = a.mesh.read()?.records ?? [];
+  const asked: (readonly unknown[] | undefined)[] = [];
+  const run = await exchange(
+    {
+      ...deps,
+      formatReady: (records) => {
+        asked.push(records);
+        return true;
+      },
+    },
+    c,
+  );
+  expect(await run.serving).toBe("resolved");
+  expect(asked).toEqual([before]);
+});
+
 test("the second roster exchange is a refresh and writes no record", async () => {
   const { a, c, deps } = setup();
   await (

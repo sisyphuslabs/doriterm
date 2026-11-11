@@ -34,7 +34,7 @@ export interface MeshHooks {
    * Whether every member reads the format a client admission is written in. False while any member has not said so, which
    * is why the gate is asked before the record is signed and not after (design of #942).
    */
-  formatReady(): boolean;
+  formatReady(records?: readonly Signed[]): boolean;
 }
 
 export const IDLE_MESH_HOOKS: MeshHooks = {
