@@ -58,6 +58,15 @@ test("a GitHub feed that names no single version or a file outside the release i
   expect(githubFeed("version: 0.1.18\nversion: 0.1.19\npath: a.zip\n")).toBeNull();
   expect(githubFeed("version: 0.1.18\npath: https://evil.example/a.zip\n")).toBeNull();
   expect(githubFeed("version: 0.1.18\npath: ../a.zip\n")).toBeNull();
+  // Shapes the line rewrite does not see are caught when the result is read back as YAML (#2109 review).
+  for (const hostile of [
+    "version: 0.1.18\nfiles: [{url: 'https://evil.example/a.zip', sha512: a}]\npath: a.zip\n",
+    "version: 0.1.18\nfiles:\n  - url:\thttps://evil.example/a.zip\npath: a.zip\n",
+    'version: 0.1.18\nfiles:\n  - "url": https://evil.example/a.zip\npath: a.zip\n',
+    "version: 0.1.18\nfiles: oops\npath: a.zip\n",
+  ]) {
+    expect([hostile, githubFeed(hostile)]).toEqual([hostile, null]);
+  }
   expect(githubFeed("version: 0.1.18\npath: a.zip\nstagingPercentage: 5\n")).toBe(
     `version: 0.1.18\npath: ${RELEASES}/download/v0.1.18/a.zip\n`,
   );

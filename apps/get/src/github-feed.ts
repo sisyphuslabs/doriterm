@@ -6,6 +6,9 @@ import { text } from "./serve-release.ts";
 
 const FEED_TTL_SECONDS = 60;
 
+const field = (value: unknown, name: string): unknown =>
+  typeof value === "object" && value !== null ? Reflect.get(value, name) : undefined;
+
 /**
  * GitHub's latest release feed as get.doriterm.com serves it before a channel's first mirror (#1969): every file it
  * names becomes its absolute GitHub Releases URL, which electron-updater's generic provider downloads as given. The
@@ -31,7 +34,33 @@ export function githubFeed(stored: string): string | null {
     out.push(`${prefix}${githubAssetUrl(version, value.trim())}`);
   }
   while (out.at(-1) === "") out.pop();
-  return `${out.join("\n")}\n`;
+  const composed = `${out.join("\n")}\n`;
+  return namesOnly(composed, version) ? composed : null;
+}
+
+/**
+ * The composed feed read back as YAML, as electron-updater reads it: its version, and every file URL it would download,
+ * must be this release's on GitHub. Any entry the line rewrite missed (flow style, a quoted key, a tab) fails here.
+ */
+function namesOnly(composed: string, version: string): boolean {
+  let parsed: unknown;
+  try {
+    parsed = Bun.YAML.parse(composed);
+  } catch (error) {
+    if (error instanceof Error) return false;
+    throw error;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return false;
+  if (String(field(parsed, "version")) !== version) return false;
+  const files: unknown = field(parsed, "files") ?? [];
+  if (!Array.isArray(files)) return false;
+  const urls = [...files.map((file: unknown) => field(file, "url")), field(parsed, "path")].filter(
+    (u) => u !== undefined,
+  );
+  const prefix = githubAssetUrl(version, "");
+  return urls.every(
+    (url) => typeof url === "string" && url.startsWith(prefix) && isReleaseFile(url.slice(prefix.length)),
+  );
 }
 
 /**
