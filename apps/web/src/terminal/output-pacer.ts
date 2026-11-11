@@ -182,8 +182,8 @@ export class OutputPacer {
   /**
    * An attach replay begins: its output is written as it arrives, uncapped, while `hold` holds the terminal's paint, so
    * the replay is drawn once, whole, and the screen before it stays until then. The hold ends at the first of: no
-   * output for max({@link REPLAY_QUIET_FLOOR_MS}, 1.5 x SRTT + 50) ms, a {@link REPLAY_CAP_MS} span that wrote less than
-   * {@link CREDIT_WINDOW_BYTES}, or {@link REPLAY_MAX_BYTES} written.
+   * output arriving or written for max({@link REPLAY_QUIET_FLOOR_MS}, 1.5 x SRTT + 50) ms, a {@link REPLAY_CAP_MS} span
+   * that wrote less than {@link CREDIT_WINDOW_BYTES}, or {@link REPLAY_MAX_BYTES} written.
    *
    * hc marks no end of the replay: the core sends its first paint as one write, cut into frames under the stream's
    * credit window, and waits for credit after each window; credit goes back as each batch is written, and a replay is
@@ -352,6 +352,9 @@ export class OutputPacer {
     // A synchronized update holds the paint for what it brackets itself, so a replay that met one stands down instead
     // of holding a second time: the update's bracket draws the replay (#812).
     if (synchronized || replay.written >= REPLAY_MAX_BYTES) this.#endReplay();
+    // The core sends the next window only once this one's credit is back, which is now, after the write: the quiet
+    // window starts here too, or a page slow to write a window would spend the window's slack on the write (#2011).
+    else this.#quietFrom(replay);
     return size;
   }
 }
