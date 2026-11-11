@@ -40,6 +40,29 @@ export function trackHeldPress(scope: EventTarget, view: EventTarget, signal: Ab
   return () => held?.pointer ?? null;
 }
 
+/** Calls `then` once the press `held` reports has ended, or at once with none held, unless `signal` aborts first. */
+export function whenPressEnds(
+  view: EventTarget,
+  held: () => number | null,
+  then: () => void,
+  signal: AbortSignal,
+): void {
+  const pointer = held();
+  if (pointer === null) {
+    then();
+    return;
+  }
+  const done = new AbortController();
+  const ended = (event: Event): void => {
+    if (!isPress(event) || event.pointerId !== pointer) return;
+    done.abort();
+    then();
+  };
+  const listen = { signal: AbortSignal.any([signal, done.signal]) };
+  view.addEventListener("pointerup", ended, listen);
+  view.addEventListener("pointercancel", ended, listen);
+}
+
 export function useQuietKeyboard(port: RefObject<TerminalPort | null>, scope: HTMLElement | null, up: boolean): void {
   /** The pointer of the press begun in `scope` that is still down, or null. */
   const pressing = useRef<() => number | null>(() => null);
@@ -56,20 +79,14 @@ export function useQuietKeyboard(port: RefObject<TerminalPort | null>, scope: HT
     if (up) return undefined;
     const abort = new AbortController();
     let frame = 0;
-    const quietSoon = (): void => {
-      frame = requestAnimationFrame(() => port.current?.quiet());
-    };
-    const held = pressing.current();
-    if (held === null) quietSoon();
-    else {
-      const ended = (event: PointerEvent): void => {
-        if (event.pointerId !== held) return;
-        abort.abort();
-        quietSoon();
-      };
-      window.addEventListener("pointerup", ended, { signal: abort.signal });
-      window.addEventListener("pointercancel", ended, { signal: abort.signal });
-    }
+    whenPressEnds(
+      window,
+      () => pressing.current(),
+      () => {
+        frame = requestAnimationFrame(() => port.current?.quiet());
+      },
+      abort.signal,
+    );
     return () => {
       abort.abort();
       cancelAnimationFrame(frame);
