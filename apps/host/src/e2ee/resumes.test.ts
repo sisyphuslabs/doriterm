@@ -160,7 +160,7 @@ describe("an hc session whose link drops", () => {
     },
   );
 
-  test("ends, hc connect with it, once the resume window passed; a resume after that is refused with 4408", async () => {
+  test("ends, hc connect with it, once the resume window passed; a resume after that is refused with 4411", async () => {
     const h = host(40);
     const { client, clientEnd, hostEnd } = await h.connect();
     clientEnd.end(dropped());
@@ -176,7 +176,7 @@ describe("an hc session whose link drops", () => {
     );
     expect(failed).toBeInstanceOf(Error);
     await again.served;
-    expect(again.hostEnd.closeCode).toBe(CloseCode.IdleTimeout);
+    expect(again.hostEnd.closeCode).toBe(CloseCode.ResumeRefused);
     expect(h.children.length).toBe(1);
   });
 
@@ -218,7 +218,7 @@ describe("a host that stops", () => {
 });
 
 describe("a resume request the host cannot honour", () => {
-  test("for a session it does not hold is refused with 4408, and starts no hc connect", async () => {
+  test("for a session it does not hold is refused with 4411, and starts no hc connect", async () => {
     const h = host();
     const stranger = resumeKeys(new Uint8Array(32).fill(7));
     const [clientEnd, hostEnd] = memoryLinkPair();
@@ -226,7 +226,7 @@ describe("a resume request the host cannot honour", () => {
     clientEnd.send(encodeResumeRequest(stranger, { sent: 1, received: 0 }));
     await served;
     await flush();
-    expect(clientEnd.closeCode === undefined ? hostEnd.closeCode : clientEnd.closeCode).toBe(CloseCode.IdleTimeout);
+    expect(clientEnd.closeCode === undefined ? hostEnd.closeCode : clientEnd.closeCode).toBe(CloseCode.ResumeRefused);
     expect(h.children.length).toBe(0);
     expect(h.logs).toContain("resume refused: no such session");
   });

@@ -17,6 +17,8 @@ export const CloseCode = {
   RelayAuthFailed: 4403,
   HostOffline: 4404,
   IdleTimeout: 4408,
+  /** A resume that cannot be honoured (contract v1.11): another dial meets the same answer, so a new session is opened. */
+  ResumeRefused: 4411,
   RateLimited: 4429,
 } as const;
 

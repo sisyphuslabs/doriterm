@@ -7,7 +7,7 @@ const link = (): ByteLink => ({ send() {}, onData: () => () => {}, onClose: () =
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 /** The parts of a session the resumer drives, with scripted outcomes for each resume. */
-function fakeSession(outcomes: readonly ("ok" | "refused" | "revoked")[]) {
+function fakeSession(outcomes: readonly ("ok" | "refused" | "revoked" | "gone")[]) {
   const calls = { redials: 0, resumes: 0, abandoned: [] as Error[] };
   let detached = true;
   let closed = false;
@@ -28,6 +28,7 @@ function fakeSession(outcomes: readonly ("ok" | "refused" | "revoked")[]) {
       socket.close();
       const error = new Error(outcome);
       if (outcome === "revoked") Object.assign(error, { code: CloseCode.UnknownDevice });
+      if (outcome === "gone") Object.assign(error, { code: CloseCode.ResumeRefused });
       throw error;
     },
     abandon: (reason: Error) => {
@@ -102,6 +103,19 @@ describe("SessionResumer", () => {
     await settle();
     expect(revoked.calls.resumes).toBe(1);
     expect(revoked.calls.abandoned.length).toBe(1);
+  });
+
+  test("gives the session up at once when the host refuses the resume (4411): another dial meets the same answer", async () => {
+    const { session, calls } = fakeSession(["gone", "ok"]);
+    const resuming: boolean[] = [];
+    const resumer = new SessionResumer(session, { resuming: (on) => resuming.push(on) });
+    resumer.start(new Error("dropped"));
+    await settle();
+    expect(calls.redials).toBe(1);
+    expect(calls.abandoned.length).toBe(1);
+    expect(calls.abandoned[0]?.cause).toMatchObject({ code: CloseCode.ResumeRefused });
+    expect(resuming).toEqual([true, false]);
+    expect(resumer.active).toBe(false);
   });
 
   test("stop ends the dialing without giving the session up", async () => {

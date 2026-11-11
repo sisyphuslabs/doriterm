@@ -34,9 +34,14 @@ export class ResumeAbandonedError extends SecureLinkError {
   }
 }
 
-/** A refusal a later dial cannot change: the host no longer knows this device. */
+/**
+ * A refusal a later dial cannot change: the host no longer knows this device, or it does not hold this session or
+ * cannot join its position (4411), so the store opens a new session at once instead of dialing out the budget.
+ */
 const isFinal = (error: unknown): boolean =>
-  error instanceof Error && "code" in error && error.code === CloseCode.UnknownDevice;
+  error instanceof Error &&
+  "code" in error &&
+  (error.code === CloseCode.UnknownDevice || error.code === CloseCode.ResumeRefused);
 
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 

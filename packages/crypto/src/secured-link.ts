@@ -91,6 +91,8 @@ export class SecuredLink implements SecureSession, ResumableSession {
   #attached: PromiseWithResolvers<void> | undefined;
   #resumable = false;
   #sent = 0;
+  /** `#sent` when the session last detached: records numbered from here on were never on a link the peer read. */
+  #detachedAt = 0;
   #received = 0;
   #heldBytes = 0;
   #draining = false;
@@ -147,10 +149,12 @@ export class SecuredLink implements SecureSession, ResumableSession {
     if (this.#closed) throw new SecureLinkError(undefined, "secure link is closed");
     for (const record of this.#transport.seal(bytes)) {
       if (this.#closed) return;
-      const evicted = this.#ring.push(record);
+      this.#ring.push(record);
       this.#sent += 1;
-      // A record the peer may still need is gone: the session cannot be resumed exactly, so it does not wait to be.
-      if (evicted > 0 && this.#link === undefined) {
+      // A record sent while detached is gone from the ring: the peer can never have opened it, so the session cannot be
+      // resumed exactly and does not wait to be. Older records leaving the ring decide nothing here; the peer most likely
+      // opened them, and the resume exchange checks its position against what the ring still holds.
+      if (this.#link === undefined && this.#ring.first > this.#detachedAt) {
         return this.fail(new SecureLinkError(CloseCode.IdleTimeout, "too much data while detached"));
       }
       this.#link?.send(record);
@@ -290,6 +294,7 @@ export class SecuredLink implements SecureSession, ResumableSession {
   #detachFor(reason: Error): void {
     this.#unbind();
     this.#link = undefined;
+    this.#detachedAt = this.#sent;
     this.#detach.emit(reason);
   }
 

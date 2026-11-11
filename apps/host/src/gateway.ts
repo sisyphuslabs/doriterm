@@ -201,7 +201,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       return;
     }
     if (isResumeRequest(first)) {
-      if (!resumes.accept(wire, first, wire.drain())) wire.close(CloseCode.IdleTimeout, "cannot resume this session");
+      if (!resumes.accept(wire, first, wire.drain())) wire.close(CloseCode.ResumeRefused, "cannot resume this session");
       return;
     }
     const secure = await acceptE2ee(wire, { ...e2ee, speculative: options.speculative }, transport);

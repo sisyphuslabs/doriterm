@@ -230,7 +230,7 @@ describe("a resume the host cannot honour", () => {
     expect(client.closed).toBe(false);
   });
 
-  test("an answer that is no answer fails with 4400; one from a position that cannot be joined with 4408", async () => {
+  test("an answer that is no answer fails with 4400; one from a position that cannot be joined with 4411", async () => {
     const { client, server, clientEnd, hostEnd } = await resumable();
     drop(clientEnd, hostEnd);
     await flush();
@@ -250,7 +250,7 @@ describe("a resume the host cannot honour", () => {
       if (theirs === undefined) throw new Error("the client sent no request");
       return encodeResumeAnswer(server.resumeKeys, theirs, { sent: 0, received: theirs.sent + 5 });
     });
-    expect(ahead).toMatchObject({ code: CloseCode.IdleTimeout });
+    expect(ahead).toMatchObject({ code: CloseCode.ResumeRefused });
     expect(client.detached).toBe(true);
     expect(client.closed).toBe(false);
   });

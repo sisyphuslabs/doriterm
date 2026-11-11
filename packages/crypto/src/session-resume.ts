@@ -116,8 +116,8 @@ export async function resumeOn(
   const replay = session.replayFrom(answer.received);
   if (session.closed || !session.detached || !joinable(mine, answer, replay)) {
     drain();
-    link.close(CloseCode.IdleTimeout, "positions do not meet");
-    throw new SecureLinkError(CloseCode.IdleTimeout, "the host's position cannot be joined to this session's");
+    link.close(CloseCode.ResumeRefused, "positions do not meet");
+    throw new SecureLinkError(CloseCode.ResumeRefused, "the host's position cannot be joined to this session's");
   }
   for (const record of replay) link.send(record);
   session.rebind(link, drain());
