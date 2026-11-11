@@ -51,7 +51,8 @@ test("a host whose hc is missing says so once and stops without spawning it agai
   );
   const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
   expect(code, stderr).toBe(1);
-  // Counted, not just found: a second spawn of the missing hc would print the same reason again.
+  // Counted, not just found: the reason is reported once, not twice. The second spawn of the missing hc (#1538) is what
+  // the next line rules out: without the fix it surfaces as a raw "could not stop everything" error.
   expect(stderr.split(`herdr-core was not found at ${missing}`).length - 1, stderr).toBe(1);
   expect(stderr).not.toContain("could not stop everything");
 }, 10_000);
