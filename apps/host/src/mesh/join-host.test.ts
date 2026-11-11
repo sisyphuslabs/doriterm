@@ -1,9 +1,10 @@
 import { buildPairingUrl } from "@doriface/crypto";
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateToken } from "../auth.ts";
+import { meshJoinCommand, OFFER_WITHDRAWN_NOTICE } from "../commands/mesh-join.ts";
 import { requestControl } from "../control.ts";
 import { type Host, startHost } from "../host.ts";
 import { parseRecord } from "@doriface/mesh";
@@ -199,5 +200,47 @@ describe("J-1: a link join run by the joiner's running host", () => {
         .authorizeIndex()
         ?.member(Buffer.from(identity.noise.publicKey).toString("base64url")),
     ).toBeDefined();
+  });
+});
+
+describe("J-1b: a link join with no running host on the joiner", () => {
+  test("a joiner holding its own open mesh invite says the join withdrew it, and keeps none (#2162)", async () => {
+    const a = await start("inviting", true);
+    await relay.answers.next();
+    const offer = pendingFromWire(await requestControl(a.dir, { op: "mesh-pair", auto: true }));
+    const identity = loadHostIdentity(a.dir);
+    const link = buildPairingUrl({
+      webOrigin: "https://doriface.example",
+      hostId: identity.hostId,
+      noiseStaticPub: identity.noise.publicKey,
+      signPub: identity.sign.publicKey,
+      linkSecret: offer.linkSecret,
+      relayUrl: bridge.url,
+      mesh: true,
+    });
+    const dir = mkdtempSync(join(tmpdir(), "dh-join-host-offline-"));
+    try {
+      loadHostIdentity(dir);
+      new PairingStore(dir).offer(Date.now(), true);
+      // A stand-in for `hc connect` that answers the hello with this machine's core.
+      const hc = join(dir, "hc");
+      const hello = '{"jsonrpc":"2.0","id":0,"result":{"core":{"id":"core-offline","name":"offline"}}}';
+      writeFileSync(hc, `#!/bin/sh\nread line\necho '${hello}'\n`);
+      chmodSync(hc, 0o755);
+      let said = "";
+      await meshJoinCommand(
+        ["join", link, "--yes", "--state-dir", dir, "--hc", hc],
+        (text) => void (said += text),
+        () => {},
+      );
+      expect(said.startsWith(OFFER_WITHDRAWN_NOTICE)).toBe(true);
+      expect(said).toEndWith("start doriface-host to take part\n");
+      expect(new PairingStore(dir).read()).toBeUndefined();
+      const welcome = records(a.dir)?.slice(0, 2);
+      expect(welcome).toHaveLength(2);
+      expect(records(dir)?.slice(0, 2)).toEqual(welcome);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
