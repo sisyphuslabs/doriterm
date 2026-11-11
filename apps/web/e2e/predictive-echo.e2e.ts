@@ -125,24 +125,35 @@ for (const device of ["desktop", "phone"] as const) {
       test("on a wrapped line a prediction sits at the cursor on the continuation row", async ({ page }, info) => {
         const { terminal, link } = await open(page);
         const cols = Number((await gridSize(terminal)).split(" ")[1]);
-        const prompt = await terminal.evaluate(painted);
-        // "$ " and cols + 3 letters wrap the line: the cursor is five cells into the next row, three right of the prompt's.
-        // Waits for that end position, not the first wrap: readline redraws a wrapping line, moving the cursor meanwhile.
-        // The line itself is typed without the injected round trip: only the predicted keys need it.
+        // "$ " and cols + 3 letters wrap the line: the cursor ends on the continuation row, three cells right of the
+        // prompt's. Waits for that end position, not the first wrap: readline redraws a wrapping line, moving the cursor
+        // meanwhile. The line itself is typed without the injected round trip: only the predicted keys need it.
         link.delay(0);
         await page.keyboard.insertText("x".repeat(cols + 3));
         await expect
           .poll(
             async () => {
-              const cursor = (await terminal.evaluate(painted)).cursor;
-              if (cursor === null || prompt.cursor === null) return null;
-              const rows = Math.round((cursor.top - prompt.cursor.top) / prompt.cursor.height);
-              return { rows, cols: Math.round((cursor.left - prompt.cursor.left) / prompt.cell) };
+              const shown = await terminal.evaluate(painted);
+              const first = terminal.locator(".term-row:not(.term-scrollback-row)").first();
+              const box = await first.boundingBox();
+              const width = (await first.textContent())?.length ?? 0;
+              if (shown.cursor === null || box === null || width === 0) return "no cursor";
+              // Placed against the grid as it is now, not the prompt's box from before the line was typed: a font that
+              // settles late re-fits the grid (a different width, cell and row height) and a phone's keyboard inset
+              // scrolls it, and the line wraps at whatever width the grid has. The line is "$ " and cols + 3 letters.
+              const line = cols + 5;
+              const rows = Math.round((shown.cursor.top - box.y) / shown.cursor.height);
+              const col = Math.round((shown.cursor.left - box.x) / shown.cell);
+              const want = { rows: Math.floor(line / width), col: line % width };
+              return rows === want.rows && col === want.col
+                ? "the line's end"
+                : `cursor ${rows},${col}, the line ${line} cells at ${width} ends at ${want.rows},${want.col}`;
             },
             { timeout: 15_000 },
           )
-          .toEqual({ rows: 1, cols: 3 });
+          .toBe("the line's end");
         link.delay(RTT_MS);
+        const width = Number((await gridSize(terminal)).split(" ")[1]);
         const wrapped = await terminal.evaluate(painted);
         const release = link.holdFromHost("");
         const first = await predict(page, "l");
@@ -150,7 +161,7 @@ for (const device of ["desktop", "phone"] as const) {
         await page.keyboard.type("ls");
         const shown = await terminal.evaluate(painted);
         console.log(`predicted on a wrapped row ${device} ${colorScheme}: ${JSON.stringify({ cols, shown })}`);
-        expect(first.col).toBe(5);
+        expect(first.col).toBe((cols + 5) % width);
         expect(shown.cells.map((cell) => cell.text)).toEqual(["l", "s"]);
         expectSameBox(shown.cells[0], wrapped.cursor, "first predicted cell vs the cursor on the continuation row");
         expectSameBox(shown.cells[1], cellAfter(wrapped.cursor, 1, shown.cell), "second predicted cell");
