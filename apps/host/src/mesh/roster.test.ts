@@ -52,9 +52,21 @@ test("the format check of a roster admission is asked with the records the admis
   expect(asked).toEqual([before]);
 });
 
-test("the roster admission hands its transaction's view to the format check, so the records are not evaluated twice (#2263)", async () => {
-  const { c, deps } = setup();
+test("the roster admission hands its transaction's own view to the format check, so the records are not evaluated twice (#2263)", async () => {
+  const { a, c, deps } = setup();
   const views: unknown[] = [];
+  const txViews: unknown[] = [];
+  const transact = a.mesh.transact.bind(a.mesh);
+  spyOn(a.mesh, "transact").mockImplementation((fn, rollback, initial) =>
+    transact(
+      (tx) => {
+        txViews.push(tx.view());
+        return fn(tx);
+      },
+      rollback,
+      initial,
+    ),
+  );
   const run = await exchange(
     {
       ...deps,
@@ -67,7 +79,8 @@ test("the roster admission hands its transaction's view to the format check, so 
   );
   expect(await run.serving).toBe("resolved");
   expect(views).toHaveLength(1);
-  expect(views[0]).toBeDefined();
+  // The exchange runs more than one transaction; the admission's is one of them, by identity.
+  expect(txViews.some((txView) => txView === views[0])).toBe(true);
 });
 
 test("the second roster exchange is a refresh and writes no record", async () => {

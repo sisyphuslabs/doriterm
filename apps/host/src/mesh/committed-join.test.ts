@@ -192,18 +192,37 @@ test("a machine admission does not ask the in-transaction client format check (#
   run.resumes.clear();
 });
 
-test("a client admission hands its transaction's view to the in-transaction format check (#2263)", async () => {
+test("a client admission hands its transaction's own view to the in-transaction format check (#2263)", async () => {
   const views: (View | undefined)[] = [];
-  const run = await begin(false, "client", true, (records?: readonly Signed[], view?: View) => {
-    if (records !== undefined) views.push(view);
-    return true;
-  });
+  const txViews: View[] = [];
+  const a = side("alpha");
+  const transact = a.mesh.transact.bind(a.mesh);
+  spyOn(a.mesh, "transact").mockImplementation((fn, rollback, initial) =>
+    transact(
+      (tx) => {
+        txViews.push(tx.view());
+        return fn(tx);
+      },
+      rollback,
+      initial,
+    ),
+  );
+  const run = await begin(
+    false,
+    "client",
+    true,
+    (records?: readonly Signed[], view?: View) => {
+      if (records !== undefined) views.push(view);
+      return true;
+    },
+    a,
+  );
   await run.client.next();
   const asked = await run.pending.next();
   run.pending.decide(asked.nonce, true, asked.code);
   run.client.send({ t: "confirm" });
   expect(await run.served).toBe("resolved");
   expect(views).toHaveLength(1);
-  expect(views[0]?.members.size).toBe(1);
+  expect(views[0]).toBe(txViews.at(-1));
   run.resumes.clear();
 });
