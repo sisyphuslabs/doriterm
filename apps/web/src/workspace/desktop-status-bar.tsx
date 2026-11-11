@@ -71,7 +71,7 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
           ) : null}
           <ReconnectStatus />
           <ConnectedStatus />
-          <HistoryGapStatus />
+          <HistoryGapStatus address={focusedAddress} />
           <ConnectionPathItem />
         </>
       }
