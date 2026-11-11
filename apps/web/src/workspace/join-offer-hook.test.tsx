@@ -2,7 +2,14 @@ import { afterEach, beforeEach, expect, jest, test } from "bun:test";
 import type { HcConnection } from "@doriface/client";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { type JoinOffer, OFFER_ANSWER_MS, useJoinOffer } from "./join-command.ts";
+import {
+  FOLLOWED_MS,
+  type JoinOffer,
+  OFFER_ANSWER_MS,
+  REFOLLOW_MAX_MS,
+  refollowMs,
+  useJoinOffer,
+} from "./join-command.ts";
 
 // bun test has no DOM: React's client renderer reads `window` and a container, as in use-push-presence-hook.test.tsx.
 const view = { HTMLIFrameElement: function NoFrame() {}, document: { activeElement: null } };
@@ -33,36 +40,57 @@ afterEach(async () => {
 /** The host's offer document, shared by every connection to it, and the requests written to it. */
 const host = { value: null as unknown, version: 0, requests: [] as string[] };
 
-/** A connection to `host` whose feeds send nothing: `end` ends the open one as the core would, `failing` subscribes fail. */
+/**
+ * A connection to `host` whose feeds send nothing: `end` ends the newest one as the core would, `failing` subscribes
+ * and `failingReads` offer reads fail, and `open()` counts the feeds not yet closed.
+ */
 type Fake = HcConnection & {
   closed: boolean;
   subscribes: number;
   failing: number;
+  failingReads: number;
   end: (reason: string) => void;
+  open: () => number;
 };
 const connectionTo = (): Fake => {
-  const ends: ((close: { reason: string }) => void)[] = [];
-  const feed = {
-    onSnapshot: () => () => {},
-    onEvent: () => () => {},
-    onClose: (listener: (close: { reason: string }) => void) => (ends.push(listener), () => {}),
-    close: () => {},
-  };
+  const feeds: { open: boolean; ends: ((close: { reason: string }) => void)[] }[] = [];
   const connection = {
     closed: false,
     subscribes: 0,
     failing: 0,
-    end: (reason: string) => ends.splice(0).forEach((listener) => listener({ reason })),
+    failingReads: 0,
+    open: () => feeds.filter((each) => each.open).length,
+    end: (reason: string) => {
+      const newest = feeds.at(-1);
+      if (newest === undefined) return;
+      newest.open = false;
+      for (const listener of newest.ends.splice(0)) listener({ reason });
+    },
     subscribe: async () => {
       connection.subscribes += 1;
       if (connection.failing > 0) {
         connection.failing -= 1;
         throw new Error("events.subscribe failed");
       }
-      return feed;
+      const state = { open: true, ends: [] as ((close: { reason: string }) => void)[] };
+      feeds.push(state);
+      return {
+        onSnapshot: () => () => {},
+        onEvent: () => () => {},
+        onClose: (listener: (close: { reason: string }) => void) => (state.ends.push(listener), () => {}),
+        close: () => {
+          state.open = false;
+        },
+      };
     },
     call: async (method: string, params: { value?: { request: string } }) => {
-      if (method === "doc.get") return { value: host.value, version: host.version };
+      if (method === "doc.get") {
+        if (connection.failingReads > 0) {
+          connection.failingReads -= 1;
+          throw new Error("doc.get failed");
+        }
+        return { value: host.value, version: host.version };
+      }
       host.requests.push(params.value?.request ?? "");
       host.value = params.value;
       host.version += 1;
@@ -134,4 +162,45 @@ test("a host that did not answer on the connection before is asked again on the 
   first.closed = true;
   await act(async () => root.render(<Dialog connection={connectionTo()} />));
   expect(shown).toEqual({ phase: "asking" });
+});
+
+test("a read that fails after following again leaves no feed open behind the new one, nor after the dialog closes (#1780)", async () => {
+  jest.useFakeTimers();
+  const connection = connectionTo();
+  await act(async () => root.render(<Dialog connection={connection} />));
+  connection.failingReads = 1;
+  await act(async () => connection.end("closed_by_core"));
+  // A failed read is not a failed subscribe: nothing follows again, however long the dialog waits.
+  await act(async () => jest.advanceTimersByTime(REFOLLOW_MAX_MS));
+  expect(connection.subscribes).toBe(2);
+  expect(connection.open()).toBe(1);
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  expect(connection.open()).toBe(0);
+});
+
+test("following again waits at once, then 250 ms doubling, never past REFOLLOW_MAX_MS (#1780)", () => {
+  expect([0, 1, 2, 3, 4, 5, 6, 20].map(refollowMs)).toEqual([
+    0,
+    250,
+    500,
+    1000,
+    2000,
+    4000,
+    REFOLLOW_MAX_MS,
+    REFOLLOW_MAX_MS,
+  ]);
+});
+
+test("a feed that was followed FOLLOWED_MS ends and is followed again at once, whatever failed before it (#1780)", async () => {
+  jest.useFakeTimers();
+  const connection = connectionTo();
+  await act(async () => root.render(<Dialog connection={connection} />));
+  connection.failing = 1;
+  await act(async () => connection.end("protocol_error"));
+  await act(async () => jest.advanceTimersByTime(250));
+  expect(connection.subscribes).toBe(3);
+  await act(async () => jest.advanceTimersByTime(FOLLOWED_MS));
+  await act(async () => connection.end("closed_by_core"));
+  expect(connection.subscribes).toBe(4);
 });

@@ -114,10 +114,12 @@ export function useJoinOffer(connection: HcConnection, open: boolean, client = f
     }, OFFER_ANSWER_MS);
     let failures = 0;
     let retry: ReturnType<typeof setTimeout> | undefined;
+    // A failed subscribe is tried again; a failed read after it is dropped, as every read here is.
     const followAndRead = (): void =>
-      void follow()
-        .then(() => read())
-        .catch(() => refollow(false));
+      void follow().then(
+        () => read().catch(() => {}),
+        () => refollow(false),
+      );
     const follow = async (): Promise<void> => {
       const subscribed = await connection.subscribe();
       if (closed) return subscribed.close();
