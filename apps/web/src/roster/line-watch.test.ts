@@ -113,10 +113,10 @@ test("a line read still waiting for its answer sends no second one, and a closed
 test("a told read that a quiet line read overtakes is still told, so the read count moves on (#2197)", async () => {
   const core = new FakeCore();
   core.machines = [machine("rack")];
-  const { roster, seen, tick } = rosterOn(core);
+  const { roster, seen, tick, reads } = rosterOn(core);
   roster.watchLines();
   await started(roster, 2);
-  const before = { notified: seen.notified, listed: roster.snapshot.machines.listed };
+  const before = { notified: seen.notified, listed: roster.snapshot.machines.listed, reads: reads() };
 
   // The 10 s read waits on a slow answer while the next line read, sent after it, answers first and changes nothing.
   const held = Promise.withResolvers<void>();
@@ -125,6 +125,8 @@ test("a told read that a quiet line read overtakes is still told, so the read co
   core.holdMachineList = undefined;
   tick(LINE_READ_MS);
   await roster.linesIdle();
+  // Both reads went out, and the quiet one has answered while the told one is still held: it overtook it (#2233).
+  expect(reads() - before.reads).toBe(2);
   held.resolve();
   await told;
 
