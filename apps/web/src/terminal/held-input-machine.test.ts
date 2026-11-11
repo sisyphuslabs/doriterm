@@ -12,8 +12,8 @@ const link = {} as HcConnection;
 function machineInput(machine: string | undefined) {
   const took: TerminalInput[] = [];
   const sink: InputSink = { write: (data) => (took.push(data), true) };
-  const lines = new MachineLines(() => true);
-  const dropped: [Dropped, string][] = [];
+  const lines = new MachineLines();
+  const dropped: [Dropped, string | undefined][] = [];
   const held = new HeldInput(
     new UnprovenLinks(),
     () => link,

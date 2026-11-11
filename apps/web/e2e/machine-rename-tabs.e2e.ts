@@ -4,13 +4,11 @@ import { expect, test } from "./fixtures.ts";
 import { seedSpaces } from "./layout-doc.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import { hcOn, STATE_BOUND_MS } from "./machine-switch.ts";
-import { domOrder, tabs } from "./tab-strip.ts";
+import { holdMachineLayout } from "./hc-socket.ts";
+import { domOrder, selectedPane, tabs } from "./tab-strip.ts";
 
 const RENAMED = "build-renamed";
 const localOf = (address: string): string => address.slice(address.indexOf("/") + 1);
-
-const selectedPane = (page: Page, address: string) =>
-  page.locator(`[role="tabpanel"]:not([hidden]) [data-terminal="${address}"]`);
 
 const stripNames = (page: Page): Promise<string[]> => tabs(page).allInnerTexts();
 
@@ -32,9 +30,6 @@ async function answerAt(page: Page, place: number, address: string, typed: strin
   await expect(pane).toContainText(`${typed}-42`, { timeout: 15_000 });
 }
 
-const frameText = (message: string | Buffer): string =>
-  typeof message === "string" ? message : message.toString("latin1");
-
 /** Names the strip's tab at `place` through the dialog a double-click opens, as a person renames one (#466). */
 async function nameTab(page: Page, place: number, name: string): Promise<void> {
   await tabs(page).nth(place).dblclick();
@@ -44,58 +39,6 @@ async function nameTab(page: Page, place: number, name: string): Promise<void> {
   await dialog.getByRole("textbox").press("Enter");
   await expect(dialog).toBeHidden({ timeout: 10_000 });
   await expect(tabs(page).nth(place)).toHaveText(name, { timeout: 10_000 });
-}
-
-/**
- * Holds the core's answer to the page's first read of the added machine's layout until `release`, so a terminal opened
- * meanwhile finds that layout still loading and gets a tab of this screen's own (#459). `requested` resolves once the
- * page has sent that read: the page reads a machine's layout only after the feed reports it connected.
- */
-async function holdMachineLayout(page: Page): Promise<{
-  readonly requested: (timeoutMs: number) => Promise<void>;
-  readonly release: () => void;
-}> {
-  const held: (() => void)[] = [];
-  let holding = true;
-  let asked: RegExp | undefined;
-  const sent = Promise.withResolvers<void>();
-  await page.routeWebSocket(/\/v1\/hc/, (socket) => {
-    const server = socket.connectToServer();
-    socket.onMessage((message) => {
-      const text = frameText(message);
-      const id = /"id":(\d+),"method":"doc\.get"/.exec(text)?.[1];
-      if (holding && asked === undefined && id !== undefined && text.includes(`"on":"${MACHINE_NAME}"`)) {
-        asked = new RegExp(`"id":${id}[,}]`);
-        sent.resolve();
-      }
-      server.send(message);
-    });
-    server.onMessage((message) => {
-      if (holding && asked?.test(frameText(message)) === true) held.push(() => socket.send(message));
-      else socket.send(message);
-    });
-  });
-  return {
-    requested: async (timeoutMs) => {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const late = new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`the page did not request the machine's layout within ${timeoutMs} ms`)),
-          timeoutMs,
-        );
-      });
-      try {
-        await Promise.race([sent.promise, late]);
-      } finally {
-        clearTimeout(timer);
-      }
-    },
-    release: () => {
-      if (asked === undefined) throw new Error("the page never requested the machine's layout");
-      holding = false;
-      for (const send of held.splice(0)) send();
-    },
-  };
 }
 
 test.describe("renaming a machine with two tabs open", () => {
@@ -146,6 +89,7 @@ test.describe("renaming a machine with two tabs open", () => {
     await agentRow(page, "home", false).click();
     await agentRow(page, "e2e", true).click();
     await expect(page.locator(`[data-terminal="${MACHINE_NAME}/${remote}"]`)).toBeVisible({ timeout: 20_000 });
+    await layout.requested(STATE_BOUND_MS);
     layout.release();
     await expect(tabs(page)).toHaveCount(2, { timeout: STATE_BOUND_MS });
     // Which of the two the loaded layout puts first is not the rename's to keep; which terminal each tab shows is.
@@ -161,10 +105,8 @@ test.describe("renaming a machine with two tabs open", () => {
     await expect(tabs(page)).toHaveCount(2);
     expect(await stripNames(page)).toEqual(["build", "logs"]);
     expect(await domOrder(page)).toEqual(order);
-    await tabs(page).nth(0).click();
-    await expect(selectedPane(page, `${RENAMED}/${held[0]}`)).toBeVisible({ timeout: 15_000 });
-    await tabs(page).nth(1).click();
-    await expect(selectedPane(page, `${RENAMED}/${held[1]}`)).toBeVisible({ timeout: 15_000 });
+    await answerAt(page, 0, `${RENAMED}/${held[0]}`, "first");
+    await answerAt(page, 1, `${RENAMED}/${held[1]}`, "second");
     await expect(tabs(page)).toHaveCount(2);
   });
 
@@ -193,9 +135,7 @@ test.describe("renaming a machine with two tabs open", () => {
     layout.release();
     await expect(tabs(page)).toHaveCount(2, { timeout: STATE_BOUND_MS });
     expect(await stripNames(page)).toEqual(["one", "two"]);
-    await tabs(page).nth(0).click();
-    await expect(selectedPane(page, `${RENAMED}/${remote}`)).toBeVisible({ timeout: 15_000 });
-    await tabs(page).nth(1).click();
-    await expect(selectedPane(page, `${RENAMED}/${second}`)).toBeVisible({ timeout: 15_000 });
+    await answerAt(page, 0, `${RENAMED}/${remote}`, "first");
+    await answerAt(page, 1, `${RENAMED}/${second}`, "second");
   });
 });

@@ -6,6 +6,8 @@ export interface OpeningAttach {
   readonly rows: number;
   readonly display: Display | undefined;
   readonly stream: Promise<TerminalStream>;
+  /** Sent with the run that started the terminal: it has no history yet (#1928). */
+  readonly fresh: boolean;
 }
 
 /** Names this page gives the terminals it starts, so the attach can name the terminal before the run has answered. */
@@ -124,7 +126,7 @@ export async function runWithAttach(
     const { address } = await ran;
     const byAddress = opening.get(connection) ?? new Map<string, OpeningAttach>();
     opening.set(connection, byAddress);
-    byAddress.set(address, { cols, rows, display, stream });
+    byAddress.set(address, { cols, rows, display, stream, fresh: true });
     return { address };
   } catch (error) {
     void stream.then(
@@ -155,7 +157,7 @@ export function attachAhead(
   );
   stream.catch(() => undefined);
   track(connection, address, stream);
-  byAddress.set(address, { cols, rows, display, stream });
+  byAddress.set(address, { cols, rows, display, stream, fresh: false });
 }
 
 /** The attach sent with this terminal's run, once: the first view to open it on that connection takes it. */
@@ -176,7 +178,7 @@ interface Asked {
  * The stream a view opens its terminal with, and the grid the core was asked for: on a first attach, the one sent with
  * the terminal's run when there is one, told the view's own colours if they differ; else, or when that one found no
  * terminal (a host that sent it on before the run had answered), the view's own `attach`. Any other failure is the
- * attach's own, and is the view's to show.
+ * attach's own, and is the view's to show. `fresh`: the stream is the one sent with the run that started the terminal.
  */
 export async function viewAttach(
   connection: object,
@@ -184,9 +186,9 @@ export async function viewAttach(
   first: boolean,
   asked: Asked,
   attach: () => Promise<TerminalStream>,
-): Promise<{ readonly stream: TerminalStream; readonly cols: number; readonly rows: number }> {
+): Promise<{ readonly stream: TerminalStream; readonly cols: number; readonly rows: number; readonly fresh: boolean }> {
   const early = first ? takeOpeningAttach(connection, address) : undefined;
-  const own = async () => ({ stream: await attach(), cols: asked.cols, rows: asked.rows });
+  const own = async () => ({ stream: await attach(), cols: asked.cols, rows: asked.rows, fresh: false });
   if (early === undefined) return own();
   let stream: TerminalStream;
   try {
@@ -197,5 +199,5 @@ export async function viewAttach(
     throw error;
   }
   if (JSON.stringify(early.display) !== JSON.stringify(asked.display)) stream.facts(asked.display);
-  return { stream, cols: early.cols, rows: early.rows };
+  return { stream, cols: early.cols, rows: early.rows, fresh: early.fresh };
 }

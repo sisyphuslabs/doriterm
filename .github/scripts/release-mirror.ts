@@ -116,18 +116,31 @@ async function putComplete(store: ObjectStore, record: CompleteRecord): Promise<
   }
 }
 
-export async function mirrorRelease(store: ObjectStore, plan: MirrorPlan, log: (line: string) => void): Promise<void> {
-  const files = await verifyAssets(plan.dir, plan.assets);
-  log(`checked ${Object.keys(files).length} files against SHA256SUMS.txt and GitHub's digests`);
-
-  if (!plan.trustedKeys.includes(releasePublicKey(plan.secretKey))) {
+/**
+ * Signs `<dir>/SHA256SUMS.txt` into `<dir>/SHA256SUMS.txt.sig` and answers the signature, refusing a key no shipped
+ * build trusts. Ed25519 is deterministic, so the mirror and release.yml's sign job write the same bytes (#2297).
+ */
+export async function signChecksums(
+  dir: string,
+  secretKey: Uint8Array,
+  trustedKeys: readonly string[],
+): Promise<Uint8Array> {
+  if (!trustedKeys.includes(releasePublicKey(secretKey))) {
     throw new Error(
       "the signing key is not one of RELEASE_PUBLIC_KEYS, so no shipped build would accept its signatures",
     );
   }
-  const sums = await Bun.file(`${plan.dir}/SHA256SUMS.txt`).bytes();
-  const signature = new TextEncoder().encode(signRelease(sums, plan.secretKey));
-  await Bun.write(`${plan.dir}/${SIGNATURE}`, signature);
+  const sums = await Bun.file(`${dir}/SHA256SUMS.txt`).bytes();
+  const signature = new TextEncoder().encode(signRelease(sums, secretKey));
+  await Bun.write(`${dir}/${SIGNATURE}`, signature);
+  return signature;
+}
+
+export async function mirrorRelease(store: ObjectStore, plan: MirrorPlan, log: (line: string) => void): Promise<void> {
+  const files = await verifyAssets(plan.dir, plan.assets);
+  log(`checked ${Object.keys(files).length} files against SHA256SUMS.txt and GitHub's digests`);
+
+  const signature = await signChecksums(plan.dir, plan.secretKey, plan.trustedKeys);
   files[SIGNATURE] = { sha256: sha256Hex(signature), size: signature.byteLength };
 
   const names = Object.keys(files).toSorted();

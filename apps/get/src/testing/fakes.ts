@@ -18,8 +18,12 @@ import type {
 export class FakeBucket implements ReleaseBucket {
   readonly objects = new Map<string, Uint8Array<ArrayBuffer>>();
   failWith: Error | null = null;
+  /** Fails only the reads of this key, or only one operation on it ("head <key>"): a partial R2 outage. */
+  failKey: string | null = null;
   /** Every key read, in order, with the operation. */
   readonly reads: string[] = [];
+  /** The bytes every `get` has returned, ranges included. */
+  bytesRead = 0;
 
   put(key: string, body: string | Uint8Array<ArrayBuffer>): void {
     this.objects.set(key, typeof body === "string" ? new TextEncoder().encode(body) : body);
@@ -32,6 +36,7 @@ export class FakeBucket implements ReleaseBucket {
   private read(op: string, key: string): Uint8Array<ArrayBuffer> | undefined {
     this.reads.push(`${op} ${key}`);
     if (this.failWith !== null) throw this.failWith;
+    if (key === this.failKey || `${op} ${key}` === this.failKey) throw new Error(`R2 failed reading ${key}`);
     return this.objects.get(key);
   }
 
@@ -50,6 +55,7 @@ export class FakeBucket implements ReleaseBucket {
     const range = options?.range;
     if (range !== undefined && range.offset + range.length > bytes.byteLength) throw new Error("range out of bounds");
     const slice = range === undefined ? bytes : bytes.slice(range.offset, range.offset + range.length);
+    this.bytesRead += slice.byteLength;
     return {
       ...this.meta(key, bytes.byteLength),
       body: new Response(slice).body ?? new ReadableStream(),

@@ -6,12 +6,18 @@ stays the source of truth: the mirror copies a published release into a private 
 
 ## What a tag does
 
-`release.yml` builds a `vX.Y.Z` tag into a draft, smoke-tests the draft on Linux, macOS and Windows, publishes it, and
-then runs the `Mirror to get.doriterm.com` job:
+`release.yml` builds a `vX.Y.Z` tag into a draft, smoke-tests the draft on Linux, macOS and Windows, signs the draft's
+`SHA256SUMS.txt` (the `Sign the draft's checksums` job, in the `release-mirror-staging` environment, which attaches
+`SHA256SUMS.txt.sig` to the draft), publishes it, and then runs the `Mirror to get.doriterm.com` job. Publish waits for
+the sign job and refuses a draft without `SHA256SUMS.txt.sig`, so no release is ever public unsigned (#2297); install.sh
+refuses a release from v0.1.18 on that has no signature. If the sign job fails, re-run it; the draft stays a draft.
+
+The mirror job:
 
 1. Download every file of the release and check each against `SHA256SUMS.txt` and GitHub's own digest.
 2. Sign `SHA256SUMS.txt` with the release key (Ed25519), refusing a key the shipped builds do not trust
-   (`RELEASE_PUBLIC_KEYS` in `packages/crypto/src/release.ts`), and attach `SHA256SUMS.txt.sig` to the release.
+   (`RELEASE_PUBLIC_KEYS` in `packages/crypto/src/release.ts`). Ed25519 is deterministic, so this is the signature the
+   sign job attached; a production run attaches it only to a release published before that job existed.
 3. Upload each file to `releases/v<version>/` with its SHA-256 as the signed payload hash. An object is created once; a
    re-run accepts the identical object and refuses a different one.
 4. Read every object back and hash it again.
@@ -27,10 +33,19 @@ stable when stable is newer. The repository variable `RELEASE_ROLLOUT_PERCENT` s
 A failure anywhere leaves the previous pointer in place: get.doriterm.com keeps offering the previous version,
 `/v/<new version>/` redirects to GitHub, and the GitHub release stays published. Re-run the job once the cause is fixed.
 
-A manual dispatch of `release.yml` builds a draft and mirrors it into the staging bucket behind
-`staging.get.doriterm.com`, so the whole path can be tried without publishing anything. Builds are not byte for byte
+A manual dispatch of `release.yml` from `dev` builds a draft and mirrors it into the staging bucket behind
+`staging.get.doriterm.com`, so the whole path can be tried without publishing anything (from another branch it builds
+the draft and skips the mirror, since the staging environment holds the real signing key). Builds are not byte for byte
 reproducible and a mirrored file is never replaced, so a second dispatch of the same version fails against the staging
 bucket: try again with a new prerelease version, or empty that version's folder in the staging bucket first.
+
+## Mirroring a release by hand
+
+Both mirrors run the one job in `release-mirror.yml`. Run it by hand (Actions, Run workflow, on `dev`) with a tag and a
+target (`staging` or `production`) to mirror a release that is already published, such as one published before the
+mirror existed, or to finish a mirror whose run failed. It refuses a tag that is not a published release; a re-run
+accepts the objects an earlier run left and moves the channel only forward. Mirror to `staging` first and read
+`https://staging.get.doriterm.com/desktop/<channel>/latest-mac.yml` back before `production`.
 
 ## Moving a channel
 
@@ -58,7 +73,8 @@ host compares it with the id in `<state dir>/updater-id`. Neither id ever leaves
 The `release-mirror` and `release-mirror-staging` environments hold `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`
 (an R2 token scoped to the one bucket), `CLOUDFLARE_ACCOUNT_ID` and `RELEASE_SIGNING_KEY` (base64 of the 32-byte
 Ed25519 seed). Both environments hold the real signing key (the mirror refuses a key the builds do not trust), so both
-must allow deployments from `dev` and release tags only, in the environment's deployment branch rules. Rotating the
+must allow deployments from `dev` and release tags only, in the environment's deployment branch rules; `release.yml`'s
+sign job runs on a tag push in `release-mirror-staging` and reads only `RELEASE_SIGNING_KEY`. Rotating the
 release key: ship a release whose `RELEASE_PUBLIC_KEYS` lists the old and the new key, signed
 with the old one; sign the next release with the new key only.
 

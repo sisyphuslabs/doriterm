@@ -1,6 +1,6 @@
 import { CloseCode } from "@doriface/crypto";
 import { memoryLinkPair, type MemoryEnd } from "@doriface/crypto/testing";
-import { MAX_RECORDS, parseRecord } from "@doriface/mesh";
+import { MAX_RECORDS } from "@doriface/mesh";
 import { afterEach, describe, expect, test } from "bun:test";
 import { failure, inviteDeps, joinerContext, ownOf, removeSides, runJoin, side } from "../testing/join-harness.ts";
 import { signPubOf } from "../testing/mesh-history.ts";
@@ -37,7 +37,8 @@ describe("section 10.2: a known line the join cannot consume closes the session 
     expect(await failure(run.invited)).toContain("the session closed before the join was decided");
     expect(run.inviterEnd.closeCode).toBe(CloseCode.CryptoFailure);
     expect(pending.list()).toEqual([]);
-    expect(a.mesh.read()?.records.map((record) => parseRecord(record)?.type)).toEqual(["found"]);
+    // A refused first join founds nothing: no mesh file at all, so no admit either (#1428).
+    expect(a.mesh.read()).toBeUndefined();
   });
 
   test("an offer during the welcome closes the joiner's session", async () => {

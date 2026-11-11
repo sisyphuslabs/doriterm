@@ -6,6 +6,7 @@ import { terminalConfigStore } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
 import { CursorResets } from "./cursor-reset.ts";
 import { readDisplay } from "./display.ts";
+import { clearHistoryGap, noteHistoryGap } from "./history-gap-notice.ts";
 import { type EndHolder, fromEndOf, holdFromEnd, readerInputOn } from "./hold-view-from-end.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
 import { openFailure } from "./open-failure.ts";
@@ -17,13 +18,18 @@ import type { TerminalInput } from "./terminal-view-props.ts";
 import { useReopenWhenMoved } from "./use-reopen-when-moved.ts";
 
 const encoder = new TextEncoder();
+
+/** What holds a terminal's paint: an attach replay settling (D5), or a synchronized update still coming in (#2040). */
+export type PaintHold = "replay" | "update";
 /**
  * Cursor home, then erase to the end of the screen (ED 0): clears the screen in use and leaves the scrollback alone. The
  * core's repaint starts with ESC[2J, which Ghostty answers over a prompt marked with OSC 133 (fish 4, shell integration)
  * by scrolling the screen into history; over a screen already blank there is nothing to scroll. Under a full-screen
- * program (vim, less, htop) this clears the alternate screen only: the repaint leaves it and its ESC[2J scrolls the
- * primary screen behind it into history once, and since the repaint does not draw the primary screen again, that is the
- * only copy of the output above the program's command, so the primary screen must not be erased here.
+ * program (vim, less, htop) this clears the alternate screen only: the repaint leaves it, and its ESC[2J scrolls the
+ * primary screen behind it into history once when that screen ends at an OSC 133-marked prompt. The repaint does not draw
+ * the primary screen again, so that is the only copy of the output above the program's command, and the primary screen
+ * must not be erased here. Over an unmarked prompt the core's repaint erases that screen with no copy; that loss is the
+ * core's, and belongs with the resume-cursor work in #2033.
  */
 const CLEAR_SCREEN = "\u001b[H\u001b[J";
 
@@ -47,21 +53,25 @@ interface AttachSources {
   /** Called as each stream (first attach or reattach) starts, before what was typed meanwhile is written to it. */
   readonly onStream?: RefObject<(() => void) | null>;
   /**
-   * Keeps the view's `renderingPaused` prop in step with a replay's hold: @wterm/react applies that prop on every render,
-   * so a hold set on the terminal alone is let go by the next render of the view, mid-replay.
+   * Notes that a replay or a synchronized update holds the paint (true) or lets it go (false), and returns whether the
+   * paint is still held by either. It keeps the view's `renderingPaused` prop in step: @wterm/react applies that prop on
+   * every render, so a hold set on the terminal alone is let go by the next render of the view, mid-replay.
    */
-  readonly holdPaint: (held: boolean) => void;
+  readonly holdPaint: (hold: PaintHold, held: boolean) => boolean;
 }
 
 /**
- * Every attach's first paint holds its replay: written as it arrives with the paint held, then drawn once it has
+ * An attach's first paint holds its replay: written as it arrives with the paint held, then drawn once it has
  * settled (D5, #812). hc marks no end of the replay (the stream is its first paint, then live bytes), so the hold ends
  * on a quiet gap, bounded by the replay caps. A view mounted anew (a phone crossing the layout breakpoint, a pane
  * opened on a terminal already running) has no screen to keep, but its replay covers the last 2,000 history lines,
  * and paced into view it walks them past the person at the bottom; held, it lands whole. A first attach that waited
  * out of view (a background tab, #1187) is held the same way, so the tab appears at the end of its history (#1588).
+ * The one exception is `fresh`, the attach sent with the run that started the terminal: it has no history to walk, so
+ * its first prompt is drawn as it arrives rather than after the quiet window (#1928).
  */
-export function replayOnAttach(pacer: OutputPacer, options: ReplayOptions): void {
+export function replayOnAttach(pacer: OutputPacer, options: ReplayOptions, fresh = false): void {
+  if (fresh) return;
   pacer.replay(options);
 }
 
@@ -169,6 +179,8 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
 
   const attach = (ready: WTerm): void => {
     setWt(ready);
+    // The same connection attaching again means the core ended this terminal's stream while the line stayed up.
+    const sameConnection = attachedTo.current === connection;
     attachedTo.current = connection;
     attachedView.current = ready;
     // A test hook, as crash-probe is: a spec sets window.__dorifaceAttachLog and reads which terminal re-attached when
@@ -197,7 +209,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     const attachOwn = () =>
       connection.attach({ terminal: address, cols, rows, history, display, ...resumed }, { autoCredit: false });
     viewAttach(connection, address, !attachedBefore.current, { cols, rows, display }, attachOwn).then(
-      ({ stream: attached, cols: askedCols, rows: askedRows }) => {
+      ({ stream: attached, cols: askedCols, rows: askedRows, fresh }) => {
         if (unmounted.current) return void attached.close();
         setOpening(false);
         // The program restarted while the line was down: what was typed for it must not reach the new one.
@@ -224,25 +236,36 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           if (fromEnd > 0) ready.holdScrollAway();
           pacer.drop();
           output.reset();
-          if (keepsHistory) ready.write(CLEAR_SCREEN);
+          // Output that scrolled off the core's screen meanwhile is not in the kept history (#2033). A reconnect was
+          // already noted as the line went down (below).
+          if (keepsHistory) {
+            noteHistoryGap(address, sameConnection ? "stream" : "reconnect");
+            ready.write(CLEAR_SCREEN);
+          }
           // The repaint lands where the reader was: at the end for one who was following, in history for one who was not.
           endHold.current?.stop();
           // Only the reader's own input lets go early: on the terminal or what overlays it, its scrollbar included.
           const reader = readerInputOn(ready.element.parentElement ?? ready.element);
           endHold.current = holdFromEnd(ready.element, pacer, fromEnd, reader);
         }
+        // A view attached anew, a first attach included (a phone opens the terminal again as a new view), has its
+        // history played back: nothing it shows is missing any more (#2279 review).
+        if (!keepsHistory) clearHistoryGap(address);
         attachedBefore.current = true;
         paintedView.current = ready;
         // Every attach's first paint is its replay: written as it arrives with the paint held, then drawn once it has
         // settled, so a view mounted anew, or a tab first attached when switched to, does not walk its history past the
-        // person (D5, #812, #1588).
-        replayOnAttach(pacer, {
-          srtt: () => connection.rtt?.srtt,
-          hold: (held) => {
-            holdPaint(held);
-            ready.setRenderingPaused(held);
+        // person (D5, #812, #1588). A terminal this page just started (`fresh`) is the exception: see replayOnAttach.
+        replayOnAttach(
+          pacer,
+          {
+            srtt: () => connection.rtt?.srtt,
+            hold: (held) => ready.setRenderingPaused(holdPaint("replay", held)),
           },
-        });
+          fresh,
+        );
+        // The terminal is paused at once, not at the view's next render: wterm's own hold of the update may run out first.
+        pacer.holdSynchronized((held) => ready.setRenderingPaused(holdPaint("update", held)));
         onStream?.current?.();
         const resets = new CursorResets();
         const credit = (count: number): void => {
@@ -257,6 +280,9 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         attached.onClose((close) => {
           if (stream.current === attached) stream.current = null;
           const end = terminalEnd(close);
+          // The line went down under a painted view: what it prints meanwhile may not reach the history. Said now, the
+          // note takes over the phone's Reconnecting line as the connection comes back, at its height (#2257).
+          if (end === "dropped" && paintedView.current === ready) noteHistoryGap(address, "reconnect");
           onEndNow.current?.(address, end);
           if (end === "lost") settle(null);
         });

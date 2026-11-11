@@ -1,50 +1,12 @@
-import type { Page } from "@playwright/test";
 import { agentRow, endAgent, startShell } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import { hcOn, STATE_BOUND_MS } from "./machine-switch.ts";
-import { tabOf } from "./tab-strip.ts";
-import { routeHcSocket } from "./hc-socket.ts";
+import { selectedPane, tabOf } from "./tab-strip.ts";
+import { holdMachineLayout, routeHcSocket } from "./hc-socket.ts";
 import { getCoreDoc } from "./core-doc.ts";
 
 const RENAMED = "build-renamed";
-
-/** The selected tab shows the terminal: a tab reads its number, as herdr-app's, so it is found by what it shows. */
-const inSelectedTab = (page: Page, address: string) =>
-  page.locator(`[role="tabpanel"]:not([hidden]) [data-terminal="${address}"]`);
-
-/** A WebSocket message as text: JSON-RPC sits in it as plain UTF-8 after each frame header. */
-const text = (message: string | Buffer): string => (typeof message === "string" ? message : message.toString("latin1"));
-
-/**
- * Holds the core's answer to the page's first read of the added machine's layout until `release`, so a terminal opened
- * meanwhile finds that layout still loading and gets a tab of this screen's own (#459).
- */
-async function holdMachineLayout(page: Page): Promise<{ readonly release: () => void }> {
-  const held: (() => void)[] = [];
-  let holding = true;
-  let asked: RegExp | undefined;
-  await page.routeWebSocket(/\/v1\/hc/, (ws) => {
-    const server = ws.connectToServer();
-    ws.onMessage((message) => {
-      const sent = text(message);
-      const id = /"id":(\d+),"method":"doc\.get"/.exec(sent)?.[1];
-      if (holding && asked === undefined && id !== undefined && sent.includes(`"on":"${MACHINE_NAME}"`))
-        asked = new RegExp(`"id":${id}[,}]`);
-      server.send(message);
-    });
-    server.onMessage((message) => {
-      if (holding && asked?.test(text(message)) === true) held.push(() => ws.send(message));
-      else ws.send(message);
-    });
-  });
-  return {
-    release: () => {
-      holding = false;
-      for (const send of held.splice(0)) send();
-    },
-  };
-}
 
 test.describe("renaming a machine with its terminals open", () => {
   let local = "";
@@ -66,7 +28,7 @@ test.describe("renaming a machine with its terminals open", () => {
     await agentRow(page, "home", false).click();
     await agentRow(page, "e2e", true).click();
     const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
-    await expect(inSelectedTab(page, `${MACHINE_NAME}/${remote}`)).toHaveCount(1, { timeout: 20_000 });
+    await expect(selectedPane(page, `${MACHINE_NAME}/${remote}`)).toHaveCount(1, { timeout: 20_000 });
     // This machine's tab is in a space of its own machine, so the strip shows only the added machine's (#404).
     await expect(await tabOf(page, local)).toHaveCount(0);
     await expect(page.locator(`[data-terminal="${MACHINE_NAME}/${remote}"]`)).toBeVisible({ timeout: 15_000 });
@@ -77,7 +39,7 @@ test.describe("renaming a machine with its terminals open", () => {
     const moved = page.locator(`[data-terminal="${RENAMED}/${remote}"]`);
     await expect(moved).toBeVisible({ timeout: STATE_BOUND_MS });
     await expect(tabs).toHaveCount(open);
-    await expect(inSelectedTab(page, `${RENAMED}/${remote}`)).toHaveCount(1);
+    await expect(selectedPane(page, `${RENAMED}/${remote}`)).toHaveCount(1);
 
     await moved.click();
     await page.keyboard.type("echo renamed-$((40 + 2))\r");
@@ -118,7 +80,7 @@ test.describe("renaming a machine with its terminals open", () => {
     await page.goto("/");
     await agentRow(page, "home", false).click();
     await agentRow(page, "e2e", true).click();
-    await expect(inSelectedTab(page, `${MACHINE_NAME}/${remote}`)).toBeVisible({ timeout: 15_000 });
+    await expect(selectedPane(page, `${MACHINE_NAME}/${remote}`)).toBeVisible({ timeout: 15_000 });
     // The terminal has a loose tab while its layout loads. The host renames first, but the page still sees the old
     // feed and machine list when that initial read arrives and adopts the terminal into the machine's document.
     const releaseFeed = socket.holdFromHost('"method":"event"', '"method":"heartbeat"', '"method":"missed"');
@@ -133,7 +95,7 @@ test.describe("renaming a machine with its terminals open", () => {
     await refused.promise;
     releaseFeed();
 
-    const moved = inSelectedTab(page, `${RENAMED}/${remote}`);
+    const moved = selectedPane(page, `${RENAMED}/${remote}`);
     await expect(moved).toBeVisible({ timeout: STATE_BOUND_MS });
     await moved.click();
     await page.keyboard.type("echo raced-$((40 + 2))\r");
@@ -141,7 +103,7 @@ test.describe("renaming a machine with its terminals open", () => {
     await saved.promise;
     expect(getCoreDoc("herdr-app", RENAMED)).toEqual(expected);
     await page.reload();
-    await expect(inSelectedTab(page, `${RENAMED}/${remote}`)).toBeVisible({ timeout: STATE_BOUND_MS });
+    await expect(selectedPane(page, `${RENAMED}/${remote}`)).toBeVisible({ timeout: STATE_BOUND_MS });
   });
 
   test("keeps a tab opened while the machine's layout was still loading, now at the new address", async ({ page }) => {
@@ -150,8 +112,9 @@ test.describe("renaming a machine with its terminals open", () => {
     await agentRow(page, "home", false).click();
     await agentRow(page, "e2e", true).click();
     const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
-    await expect(inSelectedTab(page, `${MACHINE_NAME}/${remote}`)).toHaveCount(1, { timeout: 20_000 });
+    await expect(selectedPane(page, `${MACHINE_NAME}/${remote}`)).toHaveCount(1, { timeout: 20_000 });
     await expect(page.locator(`[data-terminal="${MACHINE_NAME}/${remote}"]`)).toBeVisible({ timeout: 15_000 });
+    await layout.requested(STATE_BOUND_MS);
     layout.release();
     const open = await tabs.count();
 

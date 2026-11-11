@@ -169,7 +169,95 @@ describe("startRelayedHost", () => {
       env: {},
       settled: "start-up failed on purpose",
     },
+    {
+      // The pair CLI start-up runs last has no bound of its own: one that never exits must not hold the interrupt past
+      // the hook's budget either.
+      stage: "pair",
+      title:
+        "a SIGTERM while start-up waits on a pair CLI that never exits ends start-up at once, and leaves nothing (#2155)",
+      env: { PAIR_CLI: join(import.meta.dir, "fixtures", "pair-never-exits.fixture.ts") },
+      settled: "interrupted",
+    },
+    {
+      // A relay start that never finishes, as one that retries for minutes looks to the interrupt hook (#2220).
+      stage: "relay-start",
+      title: "a SIGTERM during a relay start that never finishes ends start-up at once, and leaves nothing (#2220)",
+      env: {},
+      settled: "interrupted",
+    },
+    {
+      // The relay start finishes on the SIGTERM itself, after start-up has seen the interrupt (#2232).
+      stage: "relay-late",
+      title: "a relay whose start finishes after a SIGTERM is stopped, and start-up ends as interrupted (#2232)",
+      env: {},
+      settled: "interrupted",
+    },
+    {
+      // The same, but stopping that late relay fails: start-up still ends as interrupted, and the failure is reported.
+      stage: "relay-late-fail",
+      title: "a late relay whose stop fails is reported, and start-up still ends as interrupted (#2239)",
+      env: {},
+      settled: "interrupted",
+    },
   ];
+  const earlyFailures = [
+    {
+      title: "a start-up whose relay start fails before its hold ends the fixture, and the reason is on stderr (#2268)",
+      env: { STAGE: "relay-fail" },
+      reason: "the relay start failed on purpose",
+    },
+    {
+      // The pair stage also watches for its mark: that watch must not keep the fixture running either. No relay checkout
+      // fails start-up at its first step.
+      title: "a pair-stage start-up that fails before its hold ends the fixture, and the reason is on stderr (#2268)",
+      env: { STAGE: "pair" },
+      reason: "no installed relay checkout",
+    },
+  ];
+  for (const { title, env, reason } of earlyFailures) {
+    test(
+      title,
+      async () => {
+        const tmp = mkdtempSync(join(tmpdir(), "relayed-startup-"));
+        const out = mkdtempSync(join(tmpdir(), "relayed-startup-out-"));
+        try {
+          const fixture = Bun.spawn(
+            [process.execPath, join(import.meta.dir, "fixtures", "relayed-startup-sigterm.fixture.ts")],
+            {
+              env: {
+                ...process.env,
+                ...env,
+                TMPDIR: tmp,
+                SETTLED_FILE: join(out, "settled"),
+                PAIR_MARK: join(out, "pair-held"),
+                ...(env.STAGE === "pair" ? { DORIFACE_RELAY_DIR: join(out, "no-relay") } : {}),
+              },
+              stdin: "pipe",
+              stdout: "pipe",
+              stderr: "pipe",
+            },
+          );
+          const stderr = new Response(fixture.stderr).text();
+          // Bounded: the stdin stays open, as in the other cases, so a fixture that waited on it would never exit.
+          const ended = await Promise.race([
+            fixture.exited.then(() => "exited"),
+            Bun.sleep(20_000).then(() => "still running"),
+          ]);
+          if (ended !== "exited") fixture.kill("SIGKILL");
+          const errors = await stderr;
+          process.stderr.write(errors);
+          expect(ended).toBe("exited");
+          expect(errors).toContain(reason);
+          expect(await stopLeftUnder(tmp)).toEqual([]);
+        } finally {
+          await stopLeftUnder(tmp);
+          rmSync(tmp, { recursive: true, force: true });
+          rmSync(out, { recursive: true, force: true });
+        }
+      },
+      60_000,
+    );
+  }
   for (const { stage, title, env, settled } of startupCases) {
     test(
       title,
@@ -181,12 +269,31 @@ describe("startRelayedHost", () => {
           const fixture = Bun.spawn(
             [process.execPath, join(import.meta.dir, "fixtures", "relayed-startup-sigterm.fixture.ts")],
             {
-              env: { ...process.env, ...env, TMPDIR: tmp, STAGE: stage, SETTLED_FILE: settledFile },
+              // PAIR_MARK: the file the stub pair CLI writes once it runs, which the fixture watches for (#2155).
+              env: {
+                ...process.env,
+                ...env,
+                TMPDIR: tmp,
+                STAGE: stage,
+                SETTLED_FILE: settledFile,
+                PAIR_MARK: join(out, "pair-held"),
+                LATE_MARK: join(out, "late-stopped"),
+              },
               stdin: "pipe",
               stdout: "pipe",
-              stderr: "inherit",
+              stderr: "pipe",
             },
           );
+          // Piped only to be read: each chunk goes on to the test output as it arrives, so a case that hangs or throws
+          // still shows the fixture's stderr.
+          const stderr = (async () => {
+            let text = "";
+            for await (const chunk of fixture.stderr.pipeThrough(new TextDecoderStream())) {
+              process.stderr.write(chunk);
+              text += chunk;
+            }
+            return text;
+          })();
           const reader = fixture.stdout.pipeThrough(new TextDecoderStream()).getReader();
           const seen = { text: "" };
           await lineFrom(reader, seen, `STAGE ${stage}`);
@@ -196,7 +303,11 @@ describe("startRelayedHost", () => {
           fixture.stdin.write("GO\n");
           await fixture.stdin.flush();
           await fixture.exited;
+          const errors = await stderr;
           expect(existsSync(settledFile) ? readFileSync(settledFile, "utf8") : "never settled").toContain(settled);
+          if (stage === "relay-late") expect(existsSync(join(out, "late-stopped"))).toBe(true);
+          // The fixture's own error message, so a failed late stop that went unreported would fail here (#2239).
+          if (stage === "relay-late-fail") expect(errors).toContain("the late relay's stop failed on purpose");
           expect(await stopLeftUnder(tmp)).toEqual([]);
           expect(await liveWithEnvironment(`TMPDIR=${tmp}`)).toEqual([]);
           expect(readdirSync(tmp).filter((name) => name.startsWith("rh-") || name.startsWith("dh-"))).toEqual([]);

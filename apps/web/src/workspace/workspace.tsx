@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { connectionStore } from "../connection/store.ts";
 import { useActionHandler } from "../keys/dispatcher.ts";
 import { ShortcutsHelp } from "../keys/shortcuts-dialog.tsx";
-import { type Axis, LAYOUT_DOC, ORDER_DOC, PINS_DOC } from "@doriface/protocol/layout";
+import type { Axis } from "@doriface/protocol/layout";
 import { closesTab, type TerminalEnd } from "../terminal/terminal-end.ts";
 import { CloseTabDialog } from "./close-tab-dialog.tsx";
 import { stillClosing } from "./close-set.ts";
@@ -39,14 +39,16 @@ import { useDropOnce } from "./use-drop-once.ts";
 import { useLayoutDocs } from "./use-layout-docs.ts";
 import { GitFactsContext, useGitFacts } from "./git-facts.ts";
 import { TodoProgressContext, useTodoProgress } from "./todo-progress.ts";
-import { layoutSpaces, phoneTabTitle, spaceOfAddress } from "./model.ts";
+import { layoutSpaces, liveTabs, phoneTabTitle, spaceOfAddress } from "./model.ts";
+import { nextAfterClosing } from "./phone-space-rows.ts";
 import { SpaceSelectionContext } from "./space-selection.ts";
 import { useSpaceMove } from "./space-order.ts";
 import { useAdoptLoose } from "./use-adopt-loose.ts";
 import { useAttention } from "./use-attention.ts";
 import { orderNotSaved } from "./machine-order.ts";
 import { useMachineOrder } from "./use-machine-order.ts";
-import { useTerminals, type DocHeard } from "./use-terminals.ts";
+import { useTerminals } from "./use-terminals.ts";
+import { useForgetEndedHistoryGaps } from "../terminal/history-gap-notice.ts";
 import { useResumeEnds } from "./resume-ends.ts";
 import { useSteady } from "./steady.ts";
 import { useStableCallback } from "./use-stable-callback.ts";
@@ -61,17 +63,9 @@ export interface WorkspaceProps {
 
 /** The live terminals of one core: the desktop shell from `md` up, the phone navigation below. */
 export function Workspace({ connection }: WorkspaceProps) {
-  // The feed comes before the machine list the layout documents need, so its doc events reach them through a ref.
-  const heardLayout = useRef<(machine: string | null, version: number) => void>(() => undefined);
-  const heardOrder = useRef<(version: number) => void>(() => undefined);
-  const heardPins = useRef<(machine: string | null, version: number) => void>(() => undefined);
-  const onDoc = useCallback<DocHeard>((machine, name, version) => {
-    if (name === LAYOUT_DOC) heardLayout.current(machine, version);
-    if (name === ORDER_DOC && machine === null) heardOrder.current(version);
-    if (name === PINS_DOC) heardPins.current(machine, version);
-  }, []);
-  const fed = useTerminals(connection, onDoc);
+  const fed = useTerminals(connection);
   useResumeEnds(connection);
+  useForgetEndedHistoryGaps(fed.loaded, fed.terminals);
   const {
     entries: listed,
     terminals,
@@ -83,13 +77,10 @@ export function Workspace({ connection }: WorkspaceProps) {
     listed: machineReads,
   } = useMachines(connection, fed.terminals);
   // Opened and re-read on what hc said: a document read while its line was down is read again once the line is back.
-  const { layouts, heard, heardPins: heardPinsDoc } = useLayoutDocs(connection, heardMachines, views);
+  const { layouts } = useLayoutDocs(connection, heardMachines, views);
   const gitOf = useGitFacts(connection, views);
   const todoOf = useTodoProgress(connection, fed.terminals);
-  heardLayout.current = heard;
-  heardPins.current = heardPinsDoc;
   const order = useMachineOrder(connection, listed);
-  heardOrder.current = order.heard;
   const entries = order.entries;
   const toasts = useToastManager();
   const { move: saveMove } = order;
@@ -145,14 +136,46 @@ export function Workspace({ connection }: WorkspaceProps) {
     machineReads > 0,
   );
   // A session that ends is dropped from the layout once; a refused drop keeps the pane, showing the ended session.
-  const { dropEnded, closing: closingSessions, kept } = useDropOnce(terminals, layout.dropPane);
-  // A pane is asked about only on what hc said: a machine held connected through a redial may have no terminals listed.
-  useDeadPanes(connection, layout.tabs, fed.loaded ? terminals : null, heardMachines, machineReads, dropEnded);
-  useAdoptLoose(layouts, fed.loaded ? terminals : null, failed);
+  const { dropEnded, closing: closingSessions, kept, dropped } = useDropOnce(terminals, layout.dropPane);
+  useAdoptLoose(connection, layouts, fed.loaded ? terminals : null, failed);
   const narrow = useNarrow();
   const ids = useMemo(() => machineIds(views), [views]);
   const phone = usePhoneRoute(narrow, ids);
   const { open: phoneOpen, show: showOnPhone } = phone;
+  const phoneTab = phoneOpen === null ? null : findTerminal(layout.tabs, phoneOpen);
+  const phonePanes = phoneTab?.tab.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? [];
+  // The panes on screen: the open tab's on a phone, the selected tab's on a desktop. A terminal that ended in one of
+  // them is its view's to say ("This session ended"); every other pane goes once its terminal is over (#2122).
+  const onScreen = narrow
+    ? phonePanes
+    : (layout.active?.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? []);
+  // As a view's end does: an End of the session drops its pane only once it has removed the terminal (see afterEnd).
+  const dropDead = useCallback((address: string) => afterEnd(address, () => dropEnded(address)), [dropEnded]);
+  // An ended pane this screen showed went from its tab with no drop of its own while its document stayed: another
+  // device, which had it out of view, took it (#2146, #2231). The person looking at it is told why, here only.
+  const endedElsewhere = useCallback(
+    (address: string): void => {
+      if (dropped(address)) return;
+      toasts.add({
+        type: "info",
+        title: "This session ended",
+        description: "Another device removed its pane once its program had finished.",
+      });
+    },
+    [dropped, toasts],
+  );
+  // A pane is asked about only on what hc said: a machine held connected through a redial may have no terminals listed.
+  useDeadPanes(
+    connection,
+    layout.tabs,
+    fed.loaded ? terminals : null,
+    heardMachines,
+    machineReads,
+    dropDead,
+    onScreen,
+    endedElsewhere,
+    layouts,
+  );
   const [palette, setPalette] = useState(false);
   const [ask, setAsk] = useState<SessionAsk | null>(null);
   const [spaceAsk, setSpaceAsk] = useState<string | null>(null);
@@ -212,9 +235,13 @@ export function Workspace({ connection }: WorkspaceProps) {
       },
     );
   };
-  // The latest `opened`: a tab started from a space screen is placed once that space is the selected one (addTab's `near`).
-  const openedNow = useRef(opened);
-  openedNow.current = opened;
+  // The latest `opened`, into a named space: a tab started from a space screen goes after that space's selected tab once
+  // it is the selected one (addTab's `near`), and into that space even when it has no tab to select.
+  const openInSpace = useRef<(address: string, key: string) => void>(() => undefined);
+  openInSpace.current = (address, key) => {
+    openInLayout(address, false, key);
+    showOnPhone(address);
+  };
   const newTabIn = (key: string): void => {
     const space = spaces.find((each) => each.id === key);
     const near = terminals.find((terminal) => terminal.state === "live" && space?.addresses.includes(terminal.address));
@@ -222,7 +249,7 @@ export function Workspace({ connection }: WorkspaceProps) {
     withoutClaim(() => layout.selectSpace(key));
     runs.start(runParamsFor(near, space), (address) => {
       guideStore.opened(address, ids);
-      openedNow.current(address);
+      openInSpace.current(address, key);
     });
   };
   const split = (axis: Axis, target?: PaneTarget): void => {
@@ -246,6 +273,15 @@ export function Workspace({ connection }: WorkspaceProps) {
   // A space's last tab takes the space with it, as herdr-app's tab.close: that always asks first (CloseTabDialog).
   const lastOfSpace = (tab: LayoutTab | undefined): boolean =>
     tab !== undefined && !tab.transient && layout.tabs.filter((each) => each.spaceKey === tab.spaceKey).length === 1;
+  // What a close of this tab does once it is confirmed, not while it asks and not when it is cancelled: the phone
+  // leaving the tab it is showing (#1478).
+  const afterClose = useRef<{ readonly key: string; readonly leave: () => void } | null>(null);
+  const closed = (key: string): void => {
+    const after = afterClose.current;
+    if (after?.key !== key) return;
+    afterClose.current = null;
+    after.leave();
+  };
   const closeTab = (key: string): void => {
     const tab = layout.tabs.find((each) => each.key === key);
     if (lastOfSpace(tab)) return setClosingTab(key);
@@ -253,7 +289,10 @@ export function Workspace({ connection }: WorkspaceProps) {
     const [only] = shown;
     if (shown.length === 1 && only !== undefined) setAsk({ kind: "close", address: only });
     else if (shown.length > 1) setClosingTab(key);
-    else layout.closeTab(key);
+    else {
+      closed(key);
+      layout.closeTab(key);
+    }
   };
   // "Close tabs to the right" and "Close other tabs" (#1561): at once when nothing runs in them, else one question for
   // all of them, as closing one tab of several panes asks once.
@@ -279,8 +318,6 @@ export function Workspace({ connection }: WorkspaceProps) {
   const [firstClosing] = closingTabs;
   const closingSetTab =
     firstClosing === undefined ? undefined : { ...firstClosing, panes: closingTabs.flatMap((tab) => tab.panes) };
-  const phoneTab = phoneOpen === null ? null : findTerminal(layout.tabs, phoneOpen);
-  const phonePanes = phoneTab?.tab.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? [];
   const phoneTitle = phoneTab === null ? null : phoneTabTitle(phoneTab.tab.name);
   usePushPresence(inView);
   useNoticeOpen(connectionStore.settings.mode === "relay" ? connectionStore.settings.hostId : undefined, opened);
@@ -295,7 +332,11 @@ export function Workspace({ connection }: WorkspaceProps) {
     else setAsk({ kind: verb, address: inView });
     return true;
   };
-  const done = useCallback(() => setAsk(null), []);
+  const done = useCallback(() => {
+    // The question is gone, answered or cancelled; a close that went ahead has already taken its move (closed).
+    afterClose.current = null;
+    setAsk(null);
+  }, []);
   const pin = useCallback<PinTerminal>(
     (address, pinned) => {
       const labels = { [PIN_LABEL]: pinned ? "1" : "" };
@@ -404,6 +445,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                     ask={spaceClosing}
                     onAsk={setSpaceClosing}
                     drops={{ closing: closingSessions, kept }}
+                    phone={narrow}
                   >
                     {narrow ? (
                       <PhoneShell
@@ -414,17 +456,18 @@ export function Workspace({ connection }: WorkspaceProps) {
                         space={phoneSpace}
                         panes={phonePanes}
                         tabTitle={phoneTitle}
-                        // Back says where it goes: the space it was opened from, by name once the spaces are read ("space" until then),
+                        // Back says where it goes: the space it was opened from, by name once the spaces are read (the chevron alone until then),
                         // else the Spaces list when it was opened from there.
                         backTo={
                           phone.space === null
                             ? phone.section === "spaces"
                               ? "Spaces"
                               : null
-                            : (listedSpace?.name ?? "space")
+                            : (listedSpace?.name ?? "")
                         }
                         onOpen={showOnPhone}
                         onBack={phone.back}
+                        onLeave={() => phone.leave(null)}
                         onSpaceBack={phone.backFromSpace}
                         pushed={phone.pushed}
                         section={phone.section}
@@ -433,7 +476,23 @@ export function Workspace({ connection }: WorkspaceProps) {
                         onNewInSpace={newTabIn}
                         onCloseTab={(address) => {
                           const found = findTerminal(layout.tabs, address);
-                          if (found !== null) closeTab(found.tab.key);
+                          if (found === null) return;
+                          // Closing the tab the phone shows moves the phone on once the close goes ahead: to the tab
+                          // that takes its place in the space, else up to the screen it came from (#1478).
+                          const open = found.tab.panes.some((pane) => pane.address === phoneOpen) ? phoneOpen : null;
+                          afterClose.current = null;
+                          if (open !== null) {
+                            // By every pane of the closing tab, not just the one in view: a split tab whose shown pane
+                            // finished is still listed, under a live sibling's address.
+                            const closingPanes = found.tab.panes.flatMap((pane) =>
+                              pane.address === null ? [] : [pane.address],
+                            );
+                            const space = spaceOfAddress(spaces, open);
+                            const next =
+                              space === undefined ? null : nextAfterClosing(liveTabs(space, sessions), closingPanes);
+                            afterClose.current = { key: found.tab.key, leave: () => phone.leave(next) };
+                          }
+                          closeTab(found.tab.key);
                         }}
                         sheet={phone.sheet}
                         onSheet={phone.showSheet}
@@ -488,7 +547,12 @@ export function Workspace({ connection }: WorkspaceProps) {
               terminals={terminals}
               ask={ask}
               onDone={done}
-              onDrop={dropEnded}
+              onDrop={(address) => {
+                // A tab's only pane closes as its tab (closeTab), so its drop is that tab's close going ahead.
+                const found = findTerminal(layout.tabs, address);
+                if (found !== null && found.tab.panes.length === 1) closed(found.tab.key);
+                dropEnded(address);
+              }}
               onKept={kept}
             />
             {closing === undefined ? null : (
@@ -501,10 +565,14 @@ export function Workspace({ connection }: WorkspaceProps) {
                   ? { space: { name: spaces.find((space) => space.id === closing.spaceKey)?.name ?? "Space" } }
                   : {})}
                 onClosed={() => {
+                  closed(closing.key);
                   closingSessions(closing.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])));
                   layout.closeTab(closing.key);
                 }}
-                onDone={() => setClosingTab(null)}
+                onDone={() => {
+                  afterClose.current = null;
+                  setClosingTab(null);
+                }}
                 onKept={kept}
               />
             )}

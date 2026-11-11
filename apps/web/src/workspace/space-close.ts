@@ -1,6 +1,6 @@
 import type { Terminal } from "@doriface/protocol";
 import { removeSpace as removedSpace } from "@doriface/protocol/layout";
-import type { ListedSpace } from "./model.ts";
+import { liveTabs, type ListedSpace } from "./model.ts";
 import { endSession, isGone, type SessionCalls } from "./session-actions.ts";
 import { spacePlace } from "./space-place.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
@@ -19,6 +19,29 @@ export interface SpaceCloseDrops {
   readonly closing: (addresses: readonly string[]) => void;
   /** An End failed and this session keeps running: its later end drops its pane again. */
   readonly kept: (address: string) => void;
+}
+
+/** What a space's Close question counts: its tabs and the terminals they show. */
+export interface CloseCounts {
+  readonly tabs: number;
+  readonly terminals: number;
+}
+
+/**
+ * The counts space `space`'s Close question names, as the row it was asked from counts (#2122): on a desktop every tab
+ * of the document and every terminal its tabs show, as its strip shows them; on a phone the tabs that show a live
+ * terminal and those terminals, the rows its space row counts (phoneSpaces). A finished tab the phone does not list
+ * still goes with the space; it has nothing left to end.
+ */
+export function closeCounts(
+  space: ListedSpace | undefined,
+  terminals: readonly Terminal[],
+  phone: boolean,
+): CloseCounts {
+  if (space === undefined) return { tabs: 0, terminals: 0 };
+  if (!phone) return { tabs: space.tabs, terminals: space.addresses.length };
+  const live = liveTabs(space, terminals);
+  return { tabs: live.length, terminals: live.flat().length };
 }
 
 const NO_DROPS: SpaceCloseDrops = { closing: () => undefined, kept: () => undefined };
