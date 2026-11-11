@@ -54,13 +54,15 @@ interface AttachSources {
 }
 
 /**
- * A reattach after a dropped connection holds its replay: written as it arrives with the paint held, then drawn once it
- * has settled (D5). hc marks no end of the replay (the stream is its first paint, then live bytes), so the hold ends on
- * a quiet gap, bounded by the replay caps. The first open of a terminal on screen has no screen to keep and is not held;
- * one that waited out of view is held too, so the tab it shows in appears at the end of its history (#1588).
+ * Every attach's first paint holds its replay: written as it arrives with the paint held, then drawn once it has
+ * settled (D5, #812). hc marks no end of the replay (the stream is its first paint, then live bytes), so the hold ends
+ * on a quiet gap, bounded by the replay caps. A view mounted anew (a phone crossing the layout breakpoint, a pane
+ * opened on a terminal already running) has no screen to keep, but its replay covers the last 2,000 history lines,
+ * and paced into view it walks them past the person at the bottom; held, it lands whole. A first attach that waited
+ * out of view (a background tab, #1187) is held the same way, so the tab appears at the end of its history (#1588).
  */
-export function replayOnAttach(pacer: OutputPacer, reattach: boolean, options: ReplayOptions): void {
-  if (reattach) pacer.replay(options);
+export function replayOnAttach(pacer: OutputPacer, options: ReplayOptions): void {
+  pacer.replay(options);
 }
 
 export interface Attachment {
@@ -110,15 +112,6 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
   const attachedBefore = useRef(false);
   /** The view the core last painted: a reattach to it keeps its history, a new one (Try again) has none to keep. */
   const paintedView = useRef<WTerm | null>(null);
-  /**
-   * The pane was out of view before its first attach (a background tab after a reload, #1187): that attach comes when the
-   * tab is switched to, so its replay is held and drawn once, as a reattach's is, not climbed through on screen (#1588).
-   */
-  const firstWaitedHidden = useRef(false);
-  useEffect(() => {
-    if (wt !== null && !shown && !attachedBefore.current && wt.element.getClientRects().length === 0)
-      firstWaitedHidden.current = true;
-  }, [wt, shown]);
   const program = useRef(pid);
   const reportUnsent = (why: Unsent): void => {
     const title = why === null ? "Typed input was not sent" : `Typed input was not sent because the program ${why}`;
@@ -238,14 +231,12 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           const reader = readerInputOn(ready.element.parentElement ?? ready.element);
           endHold.current = holdFromEnd(ready.element, pacer, fromEnd, reader);
         }
-        const reattach = attachedBefore.current;
-        const holdReplay = reattach || firstWaitedHidden.current;
         attachedBefore.current = true;
         paintedView.current = ready;
-        firstWaitedHidden.current = false;
-        // A reattach's replay is drawn once it has settled, so the screen before it stays until then instead of climbing
-        // a frame's bytes at a time (D5).
-        replayOnAttach(pacer, holdReplay, {
+        // Every attach's first paint is its replay: written as it arrives with the paint held, then drawn once it has
+        // settled, so a view mounted anew, or a tab first attached when switched to, does not walk its history past the
+        // person (D5, #812, #1588).
+        replayOnAttach(pacer, {
           srtt: () => connection.rtt?.srtt,
           hold: (held) => {
             holdPaint(held);

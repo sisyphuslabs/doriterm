@@ -118,6 +118,25 @@ test("an idle, empty field keeps the pill's 44 pt height, and grows only while i
   await expect.poll(async () => (await field(page).boundingBox())?.height ?? 0).toBeGreaterThan(44);
 });
 
+test("a press held in the terminal while typing gives the keyboard back as it lifts, field and all (#2035)", async ({
+  page,
+}) => {
+  const terminal = await openPhoneTerminal(page);
+  await expect(field(page)).toBeVisible();
+  const box = await terminal.boundingBox();
+  if (box === null) throw new Error("the terminal is not laid out");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  // The press lets the terminal's field go, as one that may select text does, and its lift takes the field back. Held
+  // past two frames, as a slow press or a busy page holds it, it is still the same gesture: no dismissal.
+  await page.mouse.down();
+  await page.evaluate(
+    () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
+  );
+  await page.mouse.up();
+  await expect(page.locator("[data-terminal] textarea")).toBeFocused();
+  await expect(field(page)).toBeVisible();
+});
+
 test("what is typed in the field is still there after the keyboard closes and opens again", async ({ page }) => {
   await openPhoneTerminal(page);
   await field(page).click();

@@ -4,15 +4,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { type Browser, expect, type Page, test } from "@playwright/test";
-import { PRIVATE_RELAY_SKIP } from "./private-relay.ts";
 import { RUN_DIR } from "./run-dir.ts";
 
 // #1413's browser join was proved in a bun process only: the web modules ran there, on a memory store and a raw key,
 // against the private relay under wrangler dev. This spec runs the same join in a real Chromium at a phone's size, so the
 // page's own WebCrypto device key, its own Ed25519 signing key and its own IndexedDB join the mesh and then open a session
-// to the member that did NOT invite it. The two hosts and the pinned relay come from tests/relay/support/web-mesh-hosts.ts,
-// so this needs a relay checkout (DORIFACE_RELAY_DIR, as `bun run relay:fetch` makes) and skips without one.
-test.skip(process.env["DORIFACE_RELAY_DIR"] === undefined, PRIVATE_RELAY_SKIP);
+// to the member that did NOT invite it. The two hosts come from tests/relay/support/web-mesh-hosts.ts, using the pinned
+// private relay when DORIFACE_RELAY_DIR is set and the multi-host FakeRelay otherwise (#1297).
 test.use({ serviceWorkers: "block" });
 test.setTimeout(300_000);
 
@@ -190,6 +188,21 @@ test("at 390x844 the page's own WebCrypto and IndexedDB join the mesh and reach 
   expect(field(reached, "path")).toBe("relay");
   expect(at(reached, "framed")).toBe(true);
   expect(listOf(reached, "terminals")).toContain("on-b");
+
+  // The inviter cannot forward this request: its host has stopped. The other member's terminal and the page's own
+  // authorization still work through a fresh direct session to that member.
+  expect(await ask("STOP_INVITER", "STOPPED ")).toBe("inviter");
+  const surviving: Answer = await page.evaluate(
+    async ({ specifier, target }) => {
+      const loaded: unknown = await import(specifier);
+      const reach: unknown = typeof loaded === "object" && loaded !== null ? Reflect.get(loaded, "reach") : undefined;
+      if (typeof reach !== "function") throw new Error("the join entry exports no reach");
+      return Reflect.apply(reach, loaded, [target]);
+    },
+    { specifier: HARNESS_URL, target: bHostId },
+  );
+  expect(field(surviving, "hostId")).toBe(bHostId);
+  expect(listOf(surviving, "terminals")).toContain("on-b");
 
   // The membership and the page's keys came back from IndexedDB in a new document, not from anything this run held.
   await page.reload();

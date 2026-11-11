@@ -84,8 +84,10 @@ export function rig({
 } = {}) {
   const feeds: FakeFeed[] = [];
   let subscribes = 0;
-  const live: Pick<HcConnection, "subscribe" | "closed" | "call"> = {
+  const live: Pick<HcConnection, "subscribe" | "closed" | "hello" | "call"> = {
     closed: false,
+    // The core `local` stands for, named in a refusal as its hello names it (#1121).
+    hello: { core: { id: "core-test", name: "dev-box" } } as unknown as HcConnection["hello"],
     call: ((method: string, params: { readonly terminal?: unknown }) =>
       call === undefined
         ? Promise.reject(new Error("no hc calls in this rig"))
