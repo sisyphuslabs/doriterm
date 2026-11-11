@@ -7,7 +7,7 @@ const link = (): ByteLink => ({ send() {}, onData: () => () => {}, onClose: () =
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 /** The parts of a session the resumer drives, with scripted outcomes for each resume. */
-function fakeSession(outcomes: readonly ("ok" | "refused" | "revoked" | "gone")[]) {
+function fakeSession(outcomes: readonly ("ok" | "refused" | "revoked" | "gone" | "old-host")[]) {
   const calls = { redials: 0, resumes: 0, abandoned: [] as Error[] };
   let detached = true;
   let closed = false;
@@ -29,6 +29,7 @@ function fakeSession(outcomes: readonly ("ok" | "refused" | "revoked" | "gone")[
       const error = new Error(outcome);
       if (outcome === "revoked") Object.assign(error, { code: CloseCode.UnknownDevice });
       if (outcome === "gone") Object.assign(error, { code: CloseCode.ResumeRefused });
+      if (outcome === "old-host") Object.assign(error, { code: CloseCode.CryptoFailure });
       throw error;
     },
     abandon: (reason: Error) => {
@@ -115,6 +116,17 @@ describe("SessionResumer", () => {
     expect(calls.abandoned.length).toBe(1);
     expect(calls.abandoned[0]?.cause).toMatchObject({ code: CloseCode.ResumeRefused });
     expect(resuming).toEqual([true, false]);
+    expect(resumer.active).toBe(false);
+  });
+
+  test("gives the session up at once when a host from before resume refuses the request as an unknown kind (4400)", async () => {
+    const { session, calls } = fakeSession(["old-host", "ok"]);
+    const resumer = new SessionResumer(session, { resuming: () => undefined });
+    resumer.start(new Error("dropped"));
+    await settle();
+    expect(calls.redials).toBe(1);
+    expect(calls.abandoned.length).toBe(1);
+    expect(calls.abandoned[0]?.cause).toMatchObject({ code: CloseCode.CryptoFailure });
     expect(resumer.active).toBe(false);
   });
 

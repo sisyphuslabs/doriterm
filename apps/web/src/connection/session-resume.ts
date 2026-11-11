@@ -43,7 +43,11 @@ export class ResumeAbandonedError extends SecureLinkError {
 const isFinal = (error: unknown): boolean =>
   error instanceof Error &&
   "code" in error &&
-  (error.code === CloseCode.UnknownDevice || error.code === CloseCode.ResumeRefused);
+  (error.code === CloseCode.UnknownDevice ||
+    error.code === CloseCode.ResumeRefused ||
+    // A host from before resume (contract v1.11) refuses the request as an unknown session kind, and a reply that is no
+    // resume answer fails the same way: another dial meets the same host, so the store opens a new session at once.
+    error.code === CloseCode.CryptoFailure);
 
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
