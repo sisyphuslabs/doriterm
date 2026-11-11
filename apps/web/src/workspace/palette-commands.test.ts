@@ -69,7 +69,7 @@ describe("paletteCommands", () => {
   test("names the first space an address is listed in, as the sidebar does, when two list it (#1486)", () => {
     const spaces = [listed("first", ["t4", "t1"]), listed("second", ["t1"])];
     const [agent] = paletteCommands({ ...source([terminal({ address: "t1" })]), spaceOf: spaceNameOf(spaces) });
-    expect(agent?.where).toBe("studio \u203a first \u00b7 /work/doriface");
+    expect(agent?.where).toEqual({ place: "studio \u203a first", directory: "/work/doriface" });
     expect(spaceNameOf(spaces)("t9")).toBeUndefined();
   });
 
