@@ -15,6 +15,7 @@ import { meshOf, type Peer, peer, storeOf } from "./testing/mesh-peers.ts";
 function hostSyncOver(owner: Peer, store: MeshStore, proofs?: RelayProofs) {
   const clock = new FakeClock();
   const dialed: string[] = [];
+  const logs: string[] = [];
   const sync = new HostSync({
     identity: owner.machine.identity,
     mesh: store,
@@ -31,11 +32,11 @@ function hostSyncOver(owner: Peer, store: MeshStore, proofs?: RelayProofs) {
     program: "/opt/doriface-host",
     openFrom: () => false,
     closeRevoked: () => undefined,
-    log: () => undefined,
+    log: (line) => void logs.push(line),
     clock,
     random: seededRandom(31),
   });
-  return { clock, dialed, sync };
+  return { clock, dialed, sync, logs };
 }
 
 /** b's running mesh with a, and the host that syncs over it. */
@@ -59,6 +60,20 @@ function keptSession(peerNoise: Uint8Array, inviterSide: boolean): SecureLink {
 }
 
 describe("a join's kept session (section 4.4, M-D1)", () => {
+  test("missing local state and an unknown member have distinct close sources", async () => {
+    const empty = new MeshStore(mkdtempSync(join(tmpdir(), "dh-no-mesh-")), { log: () => undefined, durable: false });
+    const missing = hostSyncOver(peer("b"), empty);
+    const known = hostSyncAtB();
+    try {
+      missing.sync.adopt(keptSession(peer("a").machine.identity.noise.publicKey, false));
+      known.sync.adopt(keptSession(peer("outsider").machine.identity.noise.publicKey, false));
+      expect(missing.logs).toContain("mesh: close code=4401 source=host-sync-state: this host is in no mesh");
+      expect(known.logs).toContain("mesh: close code=4401 source=host-sync-member: not a member of this mesh");
+    } finally {
+      await Promise.all([missing.sync.stop(), known.sync.stop()]);
+    }
+  });
+
   test.each([
     ["the joiner's side", false],
     ["the inviter's side", true],
