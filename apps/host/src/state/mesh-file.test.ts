@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { INDEX_RULES } from "../mesh/authorize-index.ts";
 import { meshFileJson, newMeshFile, parseMeshFile } from "./mesh-file.ts";
 
 const record = { body: "body", sig: "sig" };
+
+/** A version-3 mesh file holding `saved` as its persisted index. */
+const fileWithIndex = (saved: object) =>
+  parseMeshFile({ version: 3, meshId: "m", generation: 1, self: { n: 1 }, records: [record], index: saved });
 
 describe("the mesh file format guard", () => {
   test("a fresh file is written in the format a v2 reader accepts", () => {
@@ -40,13 +45,14 @@ describe("the mesh file format guard", () => {
       generation: 1,
       self: { n: 1 },
       records: [record],
-      index: { generation: 1, members: [client], revoked: [], superseded: [], named: [] },
+      index: { generation: 1, rules: INDEX_RULES, members: [client], revoked: [], superseded: [], named: [] },
     });
     expect(withoutBinding.index).toBeUndefined();
     const withKind = parseMeshFile({
       ...meshFileJson(withoutBinding),
       index: {
         generation: 1,
+        rules: INDEX_RULES,
         members: [{ ...client, admitter: "inviter", admitId: "governing-admit" }],
         revoked: [],
         superseded: [],
@@ -63,8 +69,15 @@ describe("the mesh file format guard", () => {
       generation: 1,
       self: { n: 1 },
       records: [record],
-      index: { generation: 1, members: [legacy], revoked: [], superseded: [], named: [] },
+      index: { generation: 1, rules: INDEX_RULES, members: [legacy], revoked: [], superseded: [], named: [] },
     });
     expect(older.index?.members[0]?.kind).toBe("machine");
+  });
+
+  test("an index saved under other admission rules, or none, reads as missing so the host rebuilds it (#1483)", () => {
+    const index = { generation: 1, members: [], revoked: [], superseded: [], named: [] };
+    expect(fileWithIndex(index).index).toBeUndefined();
+    expect(fileWithIndex({ ...index, rules: INDEX_RULES - 1 }).index).toBeUndefined();
+    expect(fileWithIndex({ ...index, rules: INDEX_RULES }).index?.rules).toBe(INDEX_RULES);
   });
 });

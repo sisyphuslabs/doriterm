@@ -155,6 +155,16 @@ describe("a press that lets the field go on its pointerdown and takes it on its 
     expect(regainingFocus(field as unknown as EventTarget)).toBe(false);
   });
 
+  test("a context menu from the press's own pointer (a ctrl-click in Chrome or Firefox) ends the hold (#2149)", async () => {
+    const { port, field, order, listeners, button } = phoneField(true, "none", "");
+    port.letGo(button, 1);
+    listeners.get("contextmenu")?.({ pointerId: 1 });
+    expect(order).toEqual(["blur:none", "focus:none"]);
+    expect(listeners.size).toBe(0);
+    await Promise.resolve();
+    expect(regainingFocus(field as unknown as EventTarget)).toBe(false);
+  });
+
   test("another pointer lifting or cancelled during the press is not its end: the hold stays until its own click (#2048)", async () => {
     const { port, field, order, listeners, button } = phoneField(true, "none", "");
     port.letGo(button, 1);

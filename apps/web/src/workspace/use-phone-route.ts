@@ -1,6 +1,8 @@
 import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef } from "react";
 import { guideStore } from "../pair/first-run-guide.ts";
+import { hasLaunchNotice, hasPendingNotice, useLaunchTapPending } from "../push/notice-open.ts";
+import { keepsPlace, loadPhonePlace, placeStart, savePhonePlace } from "./phone-place.ts";
 import {
   PHONE_LIST,
   type PhoneRoute,
@@ -55,6 +57,14 @@ let landed: number | null = null;
 
 /** The history entry the Spaces tab pushed over the agents list: the only one the Agents tab may pop back from. */
 let spacesOverAgents: number | null = null;
+
+/**
+ * Whether this page has decided where a cold start on the bare list goes (the remembered place, or nowhere), and the
+ * address it sent the phone to: the place is kept again only once the route has reached it.
+ */
+let placeDecided = false;
+let restoring: string | null = null;
+let saved: string | null = null;
 
 /** The router's place of an entry in this tab's history (@tanstack/history), counted from the page's first entry. */
 const ENTRY_INDEX = "__TSR_index";
@@ -192,6 +202,36 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     if (listed.terminal === null) back();
     else go({ ...listed, space: null, terminal: null, sheet: false }, true);
   }, [back, go, listed]);
+  // A cold start on the bare list (the home screen's icon) picks up where the phone was; an address that names a place, a
+  // tapped notice, or a page that has already moved, wins. From then on every place the list route reaches is kept.
+  const place = phoneHref({ ...listed, sheet: false });
+  const launchPending = useLaunchTapPending();
+  useEffect(() => {
+    if (!narrow || path !== "/") return;
+    if (!placeDecided) {
+      const remembered = loadPhonePlace();
+      const start = placeStart({
+        atBareList: place === "/",
+        landedHere: landed === index,
+        noticePending: hasPendingNotice() || hasLaunchNotice(),
+        launchPending,
+        remembered: phoneHref(remembered),
+      });
+      // Nothing is decided, or kept, until an app knows whether a notice launched it.
+      if (start === "wait") return;
+      placeDecided = true;
+      if (start === "restore") {
+        restoring = phoneHref(remembered);
+        go(remembered, true);
+        return;
+      }
+    }
+    if (!keepsPlace(place, restoring !== null)) return;
+    restoring = null;
+    if (place === saved) return;
+    saved = place;
+    savePhonePlace(listed);
+  }, [go, index, launchPending, listed, narrow, path, place]);
   const dropSpace = useCallback(() => {
     if (path === "/" && listed.space !== null) go({ ...listed, space: null }, true);
   }, [go, listed, path]);

@@ -8,7 +8,7 @@ import { DeviceStore } from "../state/devices.ts";
 import { PairingStore } from "../state/pairing.ts";
 import { failure, ownOf, removeSides, side, type Side } from "../testing/join-harness.ts";
 import { HostMesh } from "./host-mesh.ts";
-import { joinMesh, type JoinOptions } from "./join-dial.ts";
+import { joinMesh, type JoinOptions, OFFER_WITHDRAWN } from "./join-dial.ts";
 import type { PendingJoin } from "./pending-joins.ts";
 
 afterEach(removeSides);
@@ -152,7 +152,7 @@ describe("J-4: a join withdraws the host's own open mesh offer (#1301)", () => {
     new PairingStore(joiner.dir).offer(Date.now(), true);
     let withdrawn = 0;
     const run = attempt(joiner, linkTo(true), { yes: true, offerWithdrawn: () => void withdrawn++ });
-    expect(await run.outcome).toBe("dialed");
+    expect(await run.outcome).toBe(`dialed. ${OFFER_WITHDRAWN}`);
     expect(run.dials).toHaveLength(1);
     expect(new PairingStore(joiner.dir).read()).toBeUndefined();
     expect(withdrawn).toBe(1);
@@ -206,7 +206,7 @@ describe("J-4: a join withdraws the host's own open mesh offer (#1301)", () => {
     const offer = await host.pair(false);
     const asked = host.pending.ask({ ...PENDING, expiresAt: offer.expiresAt });
     const run = attempt(joiner, linkTo(true), { yes: true, offerWithdrawn: () => host.offerWithdrawn() });
-    expect(await run.outcome).toBe("dialed");
+    expect(await run.outcome).toBe(`dialed. ${OFFER_WITHDRAWN}`);
     expect(await asked).toBe("expired");
     expect(await released.promise).toBe(pairingSlotOf(offer.code));
     slots.stop();

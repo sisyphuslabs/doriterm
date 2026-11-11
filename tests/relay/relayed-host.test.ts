@@ -147,39 +147,66 @@ describe("startRelayedHost", () => {
     }
   }, 120_000);
 
-  for (const stage of ["relay", "session", "host"] as const) {
-    test(`a SIGTERM while start-up holds after the ${stage} has started ends start-up there, and leaves nothing (#2080)`, async () => {
-      const tmp = mkdtempSync(join(tmpdir(), "relayed-startup-"));
-      const out = mkdtempSync(join(tmpdir(), "relayed-startup-out-"));
-      const settledFile = join(out, "settled");
-      try {
-        const fixture = Bun.spawn(
-          [process.execPath, join(import.meta.dir, "fixtures", "relayed-startup-sigterm.fixture.ts")],
-          {
-            env: { ...process.env, TMPDIR: tmp, STAGE: stage, SETTLED_FILE: settledFile },
-            stdin: "pipe",
-            stdout: "pipe",
-            stderr: "inherit",
-          },
-        );
-        const reader = fixture.stdout.pipeThrough(new TextDecoderStream()).getReader();
-        const seen = { text: "" };
-        await lineFrom(reader, seen, `STAGE ${stage}`);
-        fixture.kill("SIGTERM");
-        await lineFrom(reader, seen, "SIGNALLED");
-        // Start-up goes on only now, after the interrupt: it must end at its next step rather than race the teardown.
-        fixture.stdin.write("GO\n");
-        await fixture.stdin.flush();
-        await fixture.exited;
-        expect(existsSync(settledFile) ? readFileSync(settledFile, "utf8") : "never settled").toContain("interrupted");
-        expect(await stopLeftUnder(tmp)).toEqual([]);
-        expect(await liveWithEnvironment(`TMPDIR=${tmp}`)).toEqual([]);
-        expect(readdirSync(tmp).filter((name) => name.startsWith("rh-") || name.startsWith("dh-"))).toEqual([]);
-      } finally {
-        await stopLeftUnder(tmp);
-        rmSync(tmp, { recursive: true, force: true });
-        rmSync(out, { recursive: true, force: true });
-      }
-    }, 120_000);
+  const startupCases = [
+    ...(["relay", "session", "host"] as const).map((stage) => ({
+      stage,
+      title: `a SIGTERM while start-up holds after the ${stage} has started ends start-up there, and leaves nothing (#2080)`,
+      env: {},
+      settled: "interrupted",
+    })),
+    {
+      // An uplink wait longer than the interrupt hook's own budget (30 s): one that ran to its end would leave the hook
+      // to kill the groups and end the process before the host and its hc core had stopped.
+      stage: "uplink",
+      title:
+        "a SIGTERM during the uplink wait, to a relay that never answers, ends start-up at once and leaves nothing (#2131)",
+      env: { HOST_RELAY_URL: "http://127.0.0.1:9", UPLINK_MS: "60000" },
+      settled: "interrupted",
+    },
+    {
+      stage: "teardown",
+      title: "a SIGTERM while a failed start-up tears down waits for that teardown, and leaves nothing (#2131)",
+      env: {},
+      settled: "start-up failed on purpose",
+    },
+  ];
+  for (const { stage, title, env, settled } of startupCases) {
+    test(
+      title,
+      async () => {
+        const tmp = mkdtempSync(join(tmpdir(), "relayed-startup-"));
+        const out = mkdtempSync(join(tmpdir(), "relayed-startup-out-"));
+        const settledFile = join(out, "settled");
+        try {
+          const fixture = Bun.spawn(
+            [process.execPath, join(import.meta.dir, "fixtures", "relayed-startup-sigterm.fixture.ts")],
+            {
+              env: { ...process.env, ...env, TMPDIR: tmp, STAGE: stage, SETTLED_FILE: settledFile },
+              stdin: "pipe",
+              stdout: "pipe",
+              stderr: "inherit",
+            },
+          );
+          const reader = fixture.stdout.pipeThrough(new TextDecoderStream()).getReader();
+          const seen = { text: "" };
+          await lineFrom(reader, seen, `STAGE ${stage}`);
+          fixture.kill("SIGTERM");
+          await lineFrom(reader, seen, "SIGNALLED");
+          // Start-up goes on only now, after the interrupt: it must end at its next step rather than race the teardown.
+          fixture.stdin.write("GO\n");
+          await fixture.stdin.flush();
+          await fixture.exited;
+          expect(existsSync(settledFile) ? readFileSync(settledFile, "utf8") : "never settled").toContain(settled);
+          expect(await stopLeftUnder(tmp)).toEqual([]);
+          expect(await liveWithEnvironment(`TMPDIR=${tmp}`)).toEqual([]);
+          expect(readdirSync(tmp).filter((name) => name.startsWith("rh-") || name.startsWith("dh-"))).toEqual([]);
+        } finally {
+          await stopLeftUnder(tmp);
+          rmSync(tmp, { recursive: true, force: true });
+          rmSync(out, { recursive: true, force: true });
+        }
+      },
+      120_000,
+    );
   }
 });
