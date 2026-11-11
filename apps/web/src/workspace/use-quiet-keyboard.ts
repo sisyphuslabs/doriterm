@@ -12,27 +12,32 @@ import type { TerminalPort } from "../terminal/terminal-port.ts";
  * trackpad button) does not end it (#2093).
  */
 /** A pointer event as the tracker reads it. */
-type PressEvent = Pick<PointerEvent, "pointerId" | "isPrimary">;
+type PressEvent = Pick<PointerEvent, "pointerId" | "pointerType" | "isPrimary">;
 const isPress = (event: Event): event is Event & PressEvent => "pointerId" in event && "isPrimary" in event;
 
 /**
  * Follows the press begun in `scope` that is still down, until `signal` aborts: returns that press's pointer, or null.
+ * The first press stays held until its own lift: a pointer of another type is primary for its own type, so a touch landing
+ * beside a held mouse button does not take the press over (#2138). A new press of the same type does, since that type's
+ * last press has ended even if the page never saw it lift: a press can never be left held for good.
  */
 export function trackHeldPress(scope: EventTarget, view: EventTarget, signal: AbortSignal): () => number | null {
-  let held: number | null = null;
+  let held: { readonly pointer: number; readonly type: string } | null = null;
   const end = (event: Event): void => {
-    if (isPress(event) && event.pointerId === held) held = null;
+    if (isPress(event) && event.pointerId === held?.pointer) held = null;
   };
   scope.addEventListener(
     "pointerdown",
     (event) => {
-      if (isPress(event) && event.isPrimary) held = event.pointerId;
+      if (!isPress(event) || !event.isPrimary) return;
+      if (held === null || held.type === event.pointerType)
+        held = { pointer: event.pointerId, type: event.pointerType };
     },
     { capture: true, signal },
   );
   view.addEventListener("pointerup", end, { capture: true, signal });
   view.addEventListener("pointercancel", end, { capture: true, signal });
-  return () => held;
+  return () => held?.pointer ?? null;
 }
 
 export function useQuietKeyboard(port: RefObject<TerminalPort | null>, scope: HTMLElement | null, up: boolean): void {

@@ -6,6 +6,10 @@ afterEach(() => {
   for (const abort of aborts.splice(0)) abort.abort();
 });
 
+/** A pointer event as the browser dispatches it, with only what the tracker reads. */
+const pointer = (type: string, pointerId: number, pointerType: string, isPrimary = true): Event =>
+  Object.assign(new Event(type), { pointerId, pointerType, isPrimary });
+
 /** A phone terminal's scope and its window, with a pointer's down, up and cancel as the browser dispatches them. */
 function pressed() {
   const scope = new EventTarget();
@@ -13,11 +17,10 @@ function pressed() {
   const abort = new AbortController();
   aborts.push(abort);
   const held = trackHeldPress(scope, view, abort.signal);
-  const pointer = (type: string, pointerId: number, pointerType: string, isPrimary = true): Event =>
-    Object.assign(new Event(type), { pointerId, pointerType, isPrimary });
   return {
     held,
-    down: (id: number, kind: string, isPrimary = true) => scope.dispatchEvent(pointer("pointerdown", id, kind, isPrimary)),
+    down: (id: number, kind: string, isPrimary = true) =>
+      scope.dispatchEvent(pointer("pointerdown", id, kind, isPrimary)),
     up: (id: number, kind: string) => view.dispatchEvent(pointer("pointerup", id, kind)),
     cancel: (id: number, kind: string) => view.dispatchEvent(pointer("pointercancel", id, kind)),
   };
