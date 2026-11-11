@@ -38,7 +38,11 @@ export function withStatus(commands: readonly Command[], status: AgentStatus | n
   return status === null ? commands : commands.filter((command) => command.status === status);
 }
 
-/** The chosen state while some row is still in it; once none is, every row shows again rather than an empty list. */
+/**
+ * The chosen state while it is still one of the states shown. Once it is no longer shown, because no row is in it any more
+ * or because more urgent states pushed it out of the two shown, every row shows again rather than a filter the person
+ * cannot see or clear.
+ */
 export function shownStatus(counts: readonly StatusCount[], chosen: AgentStatus | null): AgentStatus | null {
   return counts.some(({ status }) => status === chosen) ? chosen : null;
 }

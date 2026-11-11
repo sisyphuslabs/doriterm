@@ -1,6 +1,7 @@
 import { devices } from "@playwright/test";
 import { endAgent, startAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { fakeSoftKeyboard, key } from "./phone-key-bar.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
@@ -73,11 +74,7 @@ test("on a desktop, Settings opened over an open terminal keeps it mounted inste
 
     // Settings is a route with no terminal in it; the workspace stays mounted under it (#607), so the terminal must too,
     // rather than being torn down and reattached by a route that says nothing about which terminal is open.
-    // The palette is bound to super+shift+p on macOS and ctrl+shift+p elsewhere, so ask the page which it is.
-    const paletteChord = await page.evaluate(() =>
-      /Mac|iPhone|iPad|iPod/i.test(navigator.platform) ? "Meta" : "Control",
-    );
-    await page.keyboard.press(`${paletteChord}+Shift+p`);
+    await pressShortcut(page, "app.palette");
     const palette = page.getByRole("combobox");
     await expect(palette).toBeVisible({ timeout: 10_000 });
     await palette.fill("Settings");
@@ -209,7 +206,7 @@ test("at 390, Settings opened from an open terminal keeps it mounted, and Settin
     await terminal.evaluate((el) => ((el as HTMLElement).dataset["kept"] = "yes"));
 
     // Settings from inside the terminal, an in-app route with no ?t=: the terminal stays mounted (the same node).
-    await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+    await pressShortcut(page, "app.palette");
     await page.getByRole("combobox", { name: "Command" }).fill("Settings");
     await page.keyboard.press("Enter");
     await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible({ timeout: 20_000 });

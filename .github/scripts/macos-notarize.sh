@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Notarizes a Developer ID signed .app or .dmg with an App Store Connect API key, then staples the ticket to it.
+# Notarizes a Developer ID signed .app, .dmg or bare Mach-O binary with an App Store Connect API key, then staples the
+# ticket to an app or a dmg. A bare binary cannot carry a ticket: Gatekeeper looks it up online.
 #
-# Usage: macos-notarize.sh <path to .app or .dmg>
+# Usage: macos-notarize.sh <path to .app, .dmg or binary>
 # Env:   APPLE_API_KEY (path to the AuthKey .p8 file), APPLE_API_KEY_ID, APPLE_API_ISSUER,
 #        NOTARIZE_TIMEOUT_SECONDS (optional, default 2700).
 #
@@ -9,7 +10,7 @@
 # working retries instead of failing a build whose submission is fine.
 set -euo pipefail
 
-target="${1:?usage: macos-notarize.sh <path to .app or .dmg>}"
+target="${1:?usage: macos-notarize.sh <path to .app, .dmg or binary>}"
 fail() {
   echo "::error title=Notarization::$1"
   exit 1
@@ -26,6 +27,7 @@ name=$(basename "$target")
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
+staple=1
 case "$target" in
   *.app)
     # notarytool takes an app as a zip; the ticket is stapled to the app itself afterwards.
@@ -33,7 +35,13 @@ case "$target" in
     ditto -c -k --keepParent "$target" "$upload"
     ;;
   *.dmg) upload="$target" ;;
-  *) fail "expected a .app or a .dmg, got $target" ;;
+  *)
+    # notarytool takes a bare binary as a zip too, and nothing can be stapled to it (#1992).
+    file -b "$target" | grep -q '^Mach-O' || fail "expected a .app, a .dmg or a Mach-O binary, got $target"
+    upload="$work/$name.zip"
+    ditto -c -k --keepParent "$target" "$upload"
+    staple=0
+    ;;
 esac
 
 submitted=$(xcrun notarytool submit "$upload" "${notary[@]}" --output-format json)
@@ -62,6 +70,10 @@ while :; do
   sleep 20
 done
 echo "Notarization accepted for $name"
+if [ "$staple" -eq 0 ]; then
+  echo "$name is a bare binary, which cannot be stapled; Gatekeeper fetches its ticket from Apple online"
+  exit 0
+fi
 
 stapler="$(dirname "$0")/macos-stapler.sh"
 bash "$stapler" staple "$target" || fail "could not staple the notarization ticket to $name ($id)"

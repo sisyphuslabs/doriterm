@@ -1,7 +1,9 @@
 // #545: while the host cannot be reached, the connection notice says so once; the sidebar shows no raw error of its own
 // beside it, and is back to normal when the host answers again.
+import { getCoreDoc } from "./core-doc.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
+import { LAYOUT_DOC } from "./layout-doc.ts";
 
 test.use({ serviceWorkers: "block" });
 
@@ -33,7 +35,13 @@ test("a host that cannot be reached leaves the sidebar without a raw error besid
 test("a layout write the drop cuts off says it was not saved, without the raw cause", async ({ page }) => {
   const link = await routeHcSocket(page);
   await page.goto("/");
-  await openNewTerminal(page);
+  const first = await openNewTerminal(page);
+  const address = await first.getAttribute("data-terminal");
+  // The first tab's own layout write has to reach the host before the hold: a terminal shows its prompt before its tab
+  // is saved, and a hold that parks that write keeps the second tab's write queued behind it, so it never shows (#1539).
+  await expect
+    .poll(() => JSON.stringify(getCoreDoc(LAYOUT_DOC)).includes(`"terminal":"${String(address)}"`))
+    .toBe(true);
   const before = link.sent().length;
   link.hold("doc.set");
   await openNewTerminal(page);

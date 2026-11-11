@@ -243,7 +243,7 @@ export function NotificationsSection() {
           <MachineMutes connection={state.connection} prefs={view.prefs} disabled={off} />
         </section>
       ) : null}
-      <p className="text-sm text-pretty text-muted-foreground">
+      <p className="text-prose text-pretty text-muted-foreground">
         {desktop
           ? "A notification carries no command or output. Clicking one opens the session it is about."
           : "A notification carries no command or output. When you open one, your host tells this device which session it is about over the encrypted connection."}
