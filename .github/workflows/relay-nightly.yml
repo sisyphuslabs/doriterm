@@ -1,0 +1,134 @@
+# The keystroke latency matrix's nightly rows (#2028): keystroke-latency-relay.e2e.ts cases tagged @nightly, the rtt 150
+# ones, which pull requests leave out (ci.yml's Relay e2e runs rtt 0 and 300, both platforms, both modes). Same toolchain
+# and relay checkout as Relay e2e; a failure here is not a pull request check. workflow_dispatch runs it on demand.
+name: Relay nightly
+
+on:
+  schedule:
+    - cron: "41 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keystroke-latency-nightly:
+    name: Keystroke latency (nightly rows)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RELAY_TOKEN_SET: ${{ secrets.DORIFACE_RELAY_READ_TOKEN != '' }}
+    steps:
+      - name: The relay spec needs the read token
+        if: env.RELAY_TOKEN_SET != 'true'
+        run: |
+          echo "::error::DORIFACE_RELAY_READ_TOKEN is not set, so the relay spec cannot run."
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.RELAY_TOKEN_SET == 'true'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: env.RELAY_TOKEN_SET == 'true'
+        with:
+          bun-version: 1.4.4
+      # The relay suites run the private relay under wrangler dev, which needs Node 22 or newer.
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        if: env.RELAY_TOKEN_SET == 'true'
+        with:
+          node-version: 24
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: env.RELAY_TOKEN_SET == 'true'
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - name: Install herdr-core
+        if: env.RELAY_TOKEN_SET == 'true'
+        env:
+          HC_URL: https://releases.herdr.dev/core/0.1.20/herdr-core-linux-x86_64.tar.gz
+          HC_SHA256: ac6b86890c451a37584620aaa438b71bc0d0bd430a2e7c1d7e095f052c414e74
+        run: |
+          mkdir -p "$RUNNER_TEMP/hc"
+          curl -fsSL "$HC_URL" -o "$RUNNER_TEMP/hc.tar.gz"
+          echo "$HC_SHA256  $RUNNER_TEMP/hc.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/hc.tar.gz" -C "$RUNNER_TEMP/hc" herdr-core
+          ln -s herdr-core "$RUNNER_TEMP/hc/hc"
+          echo "$RUNNER_TEMP/hc" >> "$GITHUB_PATH"
+          echo "HC_BIN=$RUNNER_TEMP/hc/hc" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/hc/hc" --version
+      - if: env.RELAY_TOKEN_SET == 'true'
+        run: bun install --frozen-lockfile
+      # The relay server is deployed separately, from its own private repository, named by the RELAY_REPO secret so
+      # that Actions masks it in the log. tests/relay runs this repository's host and client against it at the commit
+      # relay-pin.json names, cloned over HTTPS with a fine-grained token that can only read that repository. git asks a
+      # step-scoped credential helper for it, so it never appears in a URL, an argument or the log (Actions masks
+      # secrets as well).
+      - name: Fetch the private relay
+        if: env.RELAY_TOKEN_SET == 'true'
+        env:
+          RELAY_READ_TOKEN: ${{ secrets.DORIFACE_RELAY_READ_TOKEN }}
+          RELAY_REPO: ${{ secrets.RELAY_REPO }}
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: credential.https://github.com.helper
+          GIT_CONFIG_VALUE_0: '!f() { test "$1" = get && printf "username=x-access-token\npassword=%s\n" "$RELAY_READ_TOKEN"; }; f'
+        run: bun run relay:fetch
+      - name: Playwright version
+        if: env.RELAY_TOKEN_SET == 'true'
+        id: playwright
+        working-directory: apps/web
+        run: |
+          echo "version=$(bunx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          echo "distro=$(. /etc/os-release && echo "$ID-$VERSION_ID")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: env.RELAY_TOKEN_SET == 'true'
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ hashFiles('bun.lock') }}
+      # The .deb files of the system packages Chromium is missing on the image (doriterm#1012); the install step decides
+      # whether they are enough, so this only restores them.
+      - name: Restore the Playwright system packages
+        if: env.RELAY_TOKEN_SET == 'true'
+        id: playwright-apt
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/playwright-apt
+          # One key per run: a set saved after an archive update can never overwrite an older one, so the newest wins by prefix.
+          key: playwright-apt-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.distro }}-${{ steps.playwright.outputs.version }}-${{ hashFiles('.github/scripts/playwright-linux-deps.sh') }}-${{ github.run_id }}
+          restore-keys: playwright-apt-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.distro }}-${{ steps.playwright.outputs.version }}-${{ hashFiles('.github/scripts/playwright-linux-deps.sh') }}-
+      - name: Install Chromium
+        if: env.RELAY_TOKEN_SET == 'true'
+        id: chromium
+        working-directory: apps/web
+        timeout-minutes: 12
+        run: |
+          # The browser binary and the system packages are cached separately. playwright-linux-deps.sh installs the
+          # packages from their cache only when Playwright's own check finds its whole list installed, and from the apt
+          # mirror otherwise: doriterm#1012, a mirror at ~38 kB/s ran the every-run download past its limit, and
+          # doriterm#915, skipping the packages instead cost the Korean width assertions their fonts. The installs are
+          # bounded by timeout, and the step by timeout-minutes (doriterm#914).
+          bash "$GITHUB_WORKSPACE/.github/scripts/playwright-linux-deps.sh" "$HOME/.cache/playwright-apt"
+          if compgen -G "$HOME/.cache/ms-playwright/chromium-*" >/dev/null; then
+            echo "browser cache hit: installing the engine without downloading it again"
+            timeout 300 bunx playwright install chromium
+          else
+            timeout 600 bunx playwright install chromium
+          fi
+      - name: Save the Playwright system packages
+        if: env.RELAY_TOKEN_SET == 'true' && steps.chromium.outputs.save-debs == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/playwright-apt
+          key: ${{ steps.playwright-apt.outputs.cache-primary-key }}
+      - name: Keystroke latency, nightly rows
+        if: env.RELAY_TOKEN_SET == 'true'
+        run: bun run test:e2e e2e/keystroke-latency-relay.e2e.ts --grep @nightly --workers=1
+        working-directory: apps/web
+        env:
+          CI: "1"
+          DORIFACE_RELAY_DIR: ${{ github.workspace }}/.relay
+      - if: always() && env.RELAY_TOKEN_SET == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: keystroke-latency-nightly
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results

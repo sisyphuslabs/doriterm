@@ -284,10 +284,11 @@ jobs:
           key: ${{ steps.playwright-apt.outputs.cache-primary-key }}
       # Every browser spec that needs this job's relay checkout runs here, one worker, as listed on the line below: the mesh
       # specs above and those that go through the real relay code (keystroke-latency-relay's JSON files land in
-      # apps/web/test-results). A name that matches no file yet runs nothing and fails nothing.
+      # apps/web/test-results). A name that matches no file yet runs nothing and fails nothing. Cases tagged @nightly run in
+      # relay-nightly.yml instead (#2028): keystroke-latency-relay's rtt 150 rows, between the rtt 0 and 300 rows kept here.
       - name: Browser spec through the mesh
         if: env.RELAY_TOKEN_SET == 'true'
-        run: bun run test:e2e e2e/mesh-attach.e2e.ts e2e/mesh-input-hold.e2e.ts e2e/mesh-join-browser.e2e.ts e2e/keystroke-latency-relay.e2e.ts e2e/predictive-echo-relay.e2e.ts e2e/terminal-resume-relay.e2e.ts e2e/relay-two-devices.e2e.ts --workers=1
+        run: bun run test:e2e e2e/mesh-attach.e2e.ts e2e/mesh-input-hold.e2e.ts e2e/mesh-join-browser.e2e.ts e2e/keystroke-latency-relay.e2e.ts e2e/predictive-echo-relay.e2e.ts e2e/terminal-resume-relay.e2e.ts e2e/relay-two-devices.e2e.ts --grep-invert @nightly --workers=1
         working-directory: apps/web
         env:
           CI: "1"
