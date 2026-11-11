@@ -17,7 +17,7 @@ import type { AuthorizeIndex } from "../mesh/authorize-index.ts";
 import { REMOVED_READING } from "../mesh/roster-removal.ts";
 import type { DeviceStore } from "../state/devices.ts";
 import type { MeshStore } from "../state/mesh.ts";
-import type { ClaimRefusal, PairingClaim, PairingStore } from "../state/pairing.ts";
+import { type ClaimRefusal, JOIN_ON_DEVICE_OFFER, type PairingClaim, type PairingStore } from "../state/pairing.ts";
 import { authorizationOf, handshakeRefusalLine, sessionPeer } from "./authorize.ts";
 import type { SpeculativeHello } from "./speculative-hello.ts";
 
@@ -49,6 +49,16 @@ export interface E2eeDeps {
 }
 
 const refuse = (closeCode: number, reason: string): Authorization => ({ accept: false, closeCode, reason });
+
+/**
+ * A typed code does not say which offer it opens, so a joiner reads the refusal of its typed-code join: 4401 means the
+ * code opens a device pairing (it pairs as a device instead), and every other 4401 of that join goes out as 4411, so the
+ * joiner keeps its own words for a used, expired or replaced invite (#1492). Older hosts send 4401 for all of them.
+ */
+const typedJoinVerdict = (verdict: Authorization): Authorization =>
+  !verdict.accept && verdict.closeCode === CloseCode.UnknownDevice && verdict.reason !== JOIN_ON_DEVICE_OFFER
+    ? { ...verdict, closeCode: CloseCode.MeshCodeRefused }
+    : verdict;
 const meshClaims = new WeakMap<SecureLink, PairingClaim>();
 
 /** A mesh offer is spent by its first card, leaving a no-terminal refusal before the card unspent. */
@@ -156,10 +166,10 @@ export async function acceptE2ee(
     if (transport.kind !== "relay" || transport.openSlot === undefined) {
       return refuse(CloseCode.UnknownDevice, "typed-code pairing runs over the relay with ?pair");
     }
-    const open = pairingRoom(hello.remoteStatic, mesh);
-    if (open !== undefined) return open;
     const openSlot = transport.openSlot;
-    return claimWith(() => deps.pairing.claimCode(openSlot, Date.now(), mesh));
+    const verdict =
+      pairingRoom(hello.remoteStatic, mesh) ?? claimWith(() => deps.pairing.claimCode(openSlot, Date.now(), mesh));
+    return mesh ? typedJoinVerdict(verdict) : verdict;
   };
   let secure: SecureLink;
   try {
