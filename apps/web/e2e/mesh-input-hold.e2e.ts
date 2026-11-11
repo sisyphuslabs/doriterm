@@ -8,7 +8,7 @@ import { routeRelaySockets } from "./relay-route.ts";
 
 // #1489: keys typed into a terminal on another mesh member while that member's line is down. hc drops what is written to
 // such a terminal meanwhile and keeps the stream open, so nothing failed as far as the page could tell. The page holds
-// the keys, says so on the terminal, and sends them once, Ctrl+C first, when the machine is connected again; a hold that
+// the keys, says so on the terminal, and sends them once, in the order typed (#2303), when the machine is connected again; a hold that
 // outlasts its limit is dropped and said to be not sent. Two real doriface-hosts behind the private relay under wrangler
 // dev (web-mesh-hosts.ts); b's host process is stopped and started again on the same state, so its shell lives on.
 test.skip(process.env["DORIFACE_RELAY_DIR"] === undefined, PRIVATE_RELAY_SKIP);

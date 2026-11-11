@@ -6,7 +6,7 @@ import { MachineLines } from "./machine-lines.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
 
 // #2003 (DORITERM-15): input that waits for a stream after the connection dropped is held as input for an added
-// machine's line is (#1489): at most HOLD_MS and HOLD_BYTES, Ctrl+C first.
+// machine's line is (#1489): at most HOLD_MS and HOLD_BYTES, in the order typed (#2303).
 
 afterEach(() => jest.useRealTimers());
 
@@ -104,6 +104,16 @@ test("keys typed while a wake check runs wait for it untimed; if it fails, they 
   later.drop();
   jest.advanceTimersByTime(HOLD_MS);
   expect(later.dropped).toEqual([["expired", undefined]]);
+});
+
+test("keys typed while a wake check runs reach the proved link in the order typed, Ctrl+C included (#1370, #2303)", () => {
+  const links = new UnprovenLinks();
+  const { held, took } = droppedConnection(links, true);
+  links.start(link);
+  for (const key of ["cmd", "\r", "\u0003"]) held.send(key);
+  expect(took).toEqual([]);
+  links.settle(link, true);
+  expect(took).toEqual(["cmd", "\r", "\u0003"]);
 });
 
 /** A stream that closes inside its own write, as a socket found CLOSING does: the view clears it, then the write fails. */
