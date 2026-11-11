@@ -34,7 +34,7 @@ import { router } from "./router.tsx";
 import { guardedSessionStorage } from "./storage/guarded.ts";
 import { reloadIntoWaitingWorker, resumeUpdate } from "./update/reload-into-waiting.ts";
 import { updateStore } from "./update/update-store.ts";
-import { stepTerminalFont } from "./workspace/use-app-actions.ts";
+import { stepTerminalFont, takesTextSizeKey } from "./workspace/use-app-actions.ts";
 import { restoreMembership } from "./mesh/membership-state.ts";
 import { followRoster } from "./mesh/roster-refresh.ts";
 
@@ -111,9 +111,10 @@ onDesktopNavigate((path) => router.history.push(path));
 onDesktopUpdateReady((version) => updateStore.set({ apply: "restart", version, run: () => installDesktopUpdate() }));
 // Screens with no workspace (Settings, pairing) handle no text-size action, so the text-size keys (and the desktop
 // app's View menu) step the terminal text from here, as Settings > Appearance hints, in a browser too (#859); the window
-// itself is never zoomed (#388).
+// itself is never zoomed (#388). The workspace and Settings take these keys themselves, so in a browser this fallback is
+// reached only where no screen shows what a step changes, and there the page zooms (#1162).
 for (const action of ["app.zoom_in", "app.zoom_out", "app.zoom_reset"]) {
-  setActionFallback(action, () => stepTerminalFont(action));
+  setActionFallback(action, () => (takesTextSizeKey(desktop !== null) ? stepTerminalFont(action) : false));
 }
 if (desktopBridge() !== null) {
   // The desktop app's Close Window leaves Cmd+W to the keymap; with no pane, tab or Settings to close, it closes the window.

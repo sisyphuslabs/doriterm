@@ -6,7 +6,7 @@ const member = (hostId: string, phase: MemberEntry["state"]["phase"]): MemberEnt
   ({ target: { hostId }, state: { phase } }) as unknown as MemberEntry;
 
 describe("the machines list keeps a row per member (#942 stage 6)", () => {
-  test("two members, one stopped: both rows stay and only one reads connected", () => {
+  test("the summary counts the two members it is given and the one that reads connected", () => {
     const summary = summarizeMembers([member("a", "open"), member("b", "failed")]);
     expect(summary.total).toBe(2);
     expect(summary.open).toBe(1);

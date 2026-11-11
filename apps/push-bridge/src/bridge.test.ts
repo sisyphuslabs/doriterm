@@ -581,6 +581,53 @@ describe("a rate limit per device token (#830)", () => {
     expect(limiter.keys).toEqual([]);
   });
 
+  test("a limiter that fails forwards the push unlimited and logs once per burst; only over the limit is 429 (#1124)", async () => {
+    const { sent, fetch } = upstream();
+    let down = true;
+    const limiter = countingLimiter(1);
+    const failing: TokenLimiter = {
+      allows: async (key) => {
+        if (down) throw new Error("rate limiting binding unavailable");
+        return limiter.allows(key);
+      },
+    };
+    const logged: string[] = [];
+    const bridge = createBridge(await config(), {
+      fetch,
+      now: () => NOW,
+      limiter: failing,
+      log: (line) => logged.push(line),
+    });
+    const keys = await receiverKeys();
+    const vapid = await vapidKey();
+    const statuses: number[] = [];
+    const post: PushFetch = async (url, init) => {
+      const reply = await bridge(new Request(url, init));
+      statuses.push(reply.status);
+      return reply;
+    };
+    const push = () =>
+      deliverPush({ endpoint: `${ORIGIN}/v1/apns/${APNS_TOKEN}`, ...keys }, NOTICE, vapid, post, { now: () => NOW });
+
+    expect(await Promise.all([push(), push(), push()])).toEqual(["sent", "sent", "sent"]);
+    expect(statuses).toEqual([201, 201, 201]);
+    expect(sent.filter((request) => request.url.includes(APNS_TOKEN))).toHaveLength(3);
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain("rate limiting binding unavailable");
+    expect(logged[0]).not.toContain(APNS_TOKEN);
+
+    // Back up: the limiter's answers count again, and "over the limit" is still a 429.
+    down = false;
+    expect([await push(), await push()]).toEqual(["sent", "failed"]);
+    expect(statuses.slice(3)).toEqual([201, 429]);
+    expect(logged).toHaveLength(1);
+
+    // A second outage is a new burst, logged once more.
+    down = true;
+    expect([await push(), await push()]).toEqual(["sent", "sent"]);
+    expect(logged).toHaveLength(2);
+  });
+
   test("the Worker reads the binding's answer as the limiter's, and runs without one", async () => {
     const asked: string[] = [];
     const limiter = limiterOf({

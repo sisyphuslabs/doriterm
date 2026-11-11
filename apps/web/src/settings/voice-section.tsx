@@ -65,7 +65,7 @@ export function VoiceSection() {
   );
   return (
     <div className="flex flex-col gap-4">
-      <p data-voice-intro className="text-sm text-pretty text-muted-foreground">
+      <p data-voice-intro className="text-prose text-pretty text-muted-foreground">
         Dictation types what you say into the focused terminal, at the cursor, without pressing Return. Start it with
         the mic above the terminal, beside its title, then speak.
       </p>
@@ -77,7 +77,7 @@ export function VoiceSection() {
             control={language}
           />
           {native !== null ? (
-            <p data-voice-on-mac className="text-sm text-pretty text-muted-foreground">
+            <p data-voice-on-mac className="text-prose text-pretty text-muted-foreground">
               {native.unavailableReason === "device-windows"
                 ? "Windows SAPI recognizes speech on this computer; the audio never leaves it."
                 : "macOS recognizes speech on this Mac; the audio never leaves it."}

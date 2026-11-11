@@ -1,8 +1,18 @@
 import { devices, type Page } from "@playwright/test";
-import { agentRow } from "./agents.ts";
+import { agentRow, startShell } from "./agents.ts";
+import { removeTerminal } from "./ended-terminal.ts";
 import { expect, opened, test } from "./fixtures.ts";
 import { seedSpaces } from "./layout-doc.ts";
-import { hcOn } from "./machine-switch.ts";
+import { MACHINE_NAME } from "./machine.ts";
+import {
+  hcOn,
+  machineRow,
+  reconnect,
+  STATE_BOUND_MS,
+  switchTo,
+  OFFLINE_BOUND_MS,
+  OFFLINE_TEST_TIMEOUT_MS,
+} from "./machine-switch.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
@@ -72,6 +82,55 @@ test("the phone header's ... is one sheet: where the session lives, the next age
     timeout: 15_000,
   });
   report(started[1] ?? "", "working");
+});
+
+test("the session sheet offers Find in terminal only while its machine is online (#1482)", async ({ page }) => {
+  test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
+  const local = startShell("machine", "find-offline");
+  const go = test.info().outputPath("go");
+  try {
+    await page.goto("/");
+    // The phone lists machines on its Spaces tab (#1398); the agent row is back on Agents.
+    const sections = page.getByRole("navigation", { name: "Sections" });
+    await sections.getByRole("button", { name: "Spaces", exact: true }).click();
+    await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
+    await sections.getByRole("button", { name: /^Agents\b/ }).click();
+    await agentRow(page, "find-offline", true).click();
+    const terminal = page.locator(`[data-terminal="${MACHINE_NAME}/${local}"]`);
+    await expect(terminal).toContainText("$", { timeout: 15_000 });
+
+    const actions = header(page).getByRole("button", { name: "Session actions for find-offline", exact: true });
+    const sheet = page.getByRole("dialog", { name: "find-offline" });
+    const find = sheet.getByRole("button", { name: "Find in terminal", exact: true });
+    await actions.click();
+    await opened(sheet);
+    await expect(find).toBeVisible();
+    await sheet.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(sheet).toBeHidden();
+
+    // Offline, the screen draws MachineOffline in place of the terminal, so no view can take terminal.search.
+    switchTo("drop");
+    await expect(page.getByRole("heading", { name: `${MACHINE_NAME} is offline` })).toBeVisible({
+      timeout: OFFLINE_BOUND_MS,
+    });
+    await actions.click();
+    await opened(sheet);
+    await expect(find).toHaveCount(0);
+    // The rest of the sheet still reaches the core, so it does not lose its rows with the terminal.
+    await expect(sheet.getByRole("button", { name: "Rename…", exact: true })).toBeVisible();
+    await sheet.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(sheet).toBeHidden();
+
+    // Back online, the terminal is drawn again and the row returns with it.
+    reconnect();
+    await expect(terminal).toContainText("$", { timeout: OFFLINE_BOUND_MS });
+    await actions.click();
+    await opened(sheet);
+    await expect(find).toBeVisible();
+  } finally {
+    reconnect();
+    removeTerminal("machine", local, go);
+  }
 });
 
 test("a named tab's sheet and its trigger carry the name the header's heading reads (#1502)", async ({ page }) => {

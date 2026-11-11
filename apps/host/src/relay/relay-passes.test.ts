@@ -19,7 +19,7 @@ function stateDir(): string {
 /** A pass for `signPub`'s host (its first 16 hash bytes at offset 10), valid for 30 days. */
 async function farPass(signPub: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
   const pass = new Uint8Array(58);
-  pass.set(new Uint8Array(await crypto.subtle.digest("SHA-256", signPub)).subarray(0, 16), 10);
+  pass.set(new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(signPub))).subarray(0, 16), 10);
   const view = new DataView(pass.buffer);
   view.setUint8(0, 1);
   view.setUint8(1, 1);

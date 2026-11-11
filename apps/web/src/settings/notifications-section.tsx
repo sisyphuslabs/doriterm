@@ -6,8 +6,8 @@ import { useConnection } from "../connection/store.ts";
 import { type DesktopNotices, desktopNotices } from "../push/desktop-notices.ts";
 import { pushSettings, type PushView } from "../push/push-settings.ts";
 import { idOfMachine } from "../workspace/model.ts";
-import { noticeControls } from "./notice-controls.ts";
 import { useMachines } from "../workspace/use-machines.ts";
+import { noticeControls } from "./notice-controls.ts";
 
 const NO_TERMINALS: readonly Terminal[] = [];
 
@@ -155,18 +155,28 @@ export function NotificationsSection() {
             <div className="flex gap-2">
               {controls.actions.map((action) =>
                 action === "check-again" ? (
-                  <Button key={action} loading={view.busy} disabled={view.busy} onClick={() => void settings.load()}>
+                  <Button
+                    key={action}
+                    loading={controls.running === action}
+                    disabled={view.busy !== null}
+                    onClick={() => void settings.load()}
+                  >
                     Check again
                   </Button>
                 ) : action === "turn-off" ? (
-                  <Button key={action} loading={view.busy} disabled={view.busy} onClick={() => void settings.turnOff()}>
+                  <Button
+                    key={action}
+                    loading={controls.running === action}
+                    disabled={view.busy !== null}
+                    onClick={() => void settings.turnOff()}
+                  >
                     Turn off
                   </Button>
                 ) : (
                   <Button
                     key={action}
                     variant="primary"
-                    loading={view.busy}
+                    loading={controls.running === action}
                     disabled={controls.turnOnDisabled}
                     onClick={() => void settings.turnOn()}
                   >
@@ -183,7 +193,7 @@ export function NotificationsSection() {
             view.tested
               ? "Sent. It should appear in a moment."
               : desktop
-                ? "Runs the checks an agent's notification from this computer passes, then shows one."
+                ? "Runs the checks an agent's notification passes, whichever machine it runs on, then shows one."
                 : "Checks that this device gets them."
           }
           control={
@@ -233,7 +243,7 @@ export function NotificationsSection() {
           <MachineMutes connection={state.connection} prefs={view.prefs} disabled={off} />
         </section>
       ) : null}
-      <p className="text-sm text-pretty text-muted-foreground">
+      <p className="text-prose text-pretty text-muted-foreground">
         {desktop
           ? "A notification carries no command or output. Clicking one opens the session it is about."
           : "A notification carries no command or output. When you open one, your host tells this device which session it is about over the encrypted connection."}

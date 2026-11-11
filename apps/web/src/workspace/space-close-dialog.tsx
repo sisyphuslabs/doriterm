@@ -3,7 +3,7 @@ import type { Terminal } from "@doriface/protocol";
 import { Button, Dialog, Notice } from "@doriface/ui";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { ListedSpace } from "./model.ts";
-import { closeRefusal, closeSpace } from "./space-close.ts";
+import { closeRefusal, closeSpace, type SpaceCloseDrops } from "./space-close.ts";
 import { SpaceCloseContext, type SpaceClosing } from "./space-close-context.ts";
 import { sessionCalls } from "./session-actions.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
@@ -18,6 +18,8 @@ export interface SpaceCloseProps {
   /** The space whose Close question is open (its sidebar menu), or null. */
   readonly ask: string | null;
   readonly onAsk: (id: string | null) => void;
+  /** Records the sessions the close ends as dropped by its one write, and releases an End that failed. */
+  readonly drops: SpaceCloseDrops;
   readonly children: ReactNode;
 }
 
@@ -25,7 +27,7 @@ const counted = (count: number, word: string): string => `${count} ${word}${coun
 const messageOf = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
 
 /** Closing spaces for everything inside it (SpaceCloseContext), and the question for the space asked about. */
-export function SpaceClose({ connection, terminals, layouts, spaces, ask, onAsk, children }: SpaceCloseProps) {
+export function SpaceClose({ connection, terminals, layouts, spaces, ask, onAsk, drops, children }: SpaceCloseProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The counts read as the question opens: they stay while the close takes the space out of the list behind it.
@@ -56,7 +58,7 @@ export function SpaceClose({ connection, terminals, layouts, spaces, ask, onAsk,
     const now = latest.current;
     setBusy(true);
     setError(null);
-    closeSpace(sessionCalls(connection), now.layouts, now.spaces, now.terminals, id).then(
+    closeSpace(sessionCalls(connection), now.layouts, now.spaces, now.terminals, id, drops).then(
       () => onAsk(null),
       (cause: unknown) => {
         setBusy(false);

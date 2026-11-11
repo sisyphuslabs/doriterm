@@ -21,10 +21,16 @@ const MAX_CARRY = 256;
  */
 export class SynchronizedUpdate {
   #open = false;
+  #opened = false;
   #carry: Uint8Array = new Uint8Array(0);
 
   get open(): boolean {
     return this.#open;
+  }
+
+  /** Whether the last {@link advance} read an update opening, even one it then read closing in the same chunk. */
+  get opened(): boolean {
+    return this.#opened;
   }
 
   /**
@@ -35,6 +41,7 @@ export class SynchronizedUpdate {
     const carried = this.#carry.length;
     const bytes = carried === 0 ? chunk : join(this.#carry, chunk);
     this.#carry = new Uint8Array(0);
+    this.#opened = false;
     for (let index = 0; index < bytes.length; index++) {
       if (bytes[index] !== ESC) continue;
       const [mode, end] = read(bytes, index);
@@ -45,6 +52,7 @@ export class SynchronizedUpdate {
       if (mode === null) continue;
       const wasOpen = this.#open;
       this.#open = mode;
+      if (mode && !wasOpen) this.#opened = true;
       if (wasOpen && !mode) return Math.max(0, end - carried);
       index = end - 1;
     }
