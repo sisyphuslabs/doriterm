@@ -176,6 +176,7 @@ async function join(args: readonly string[], out: (text: string) => void, log: (
   if (await controlIsLive(stateDir)) {
     const joined = await requestControl(stateDir, { op: "mesh-join", ...request }, confirm);
     const meshId = isRecord(joined) ? joined["meshId"] : undefined;
+    if (isRecord(joined) && joined["withdrewOffer"] === true) out(OFFER_WITHDRAWN_NOTICE);
     return out(`joined mesh ${String(meshId)}; the running host keeps the session for sync\n`);
   }
   const core = await readHcCore({ hc: values.hc, session: values.session });
@@ -196,6 +197,7 @@ async function join(args: readonly string[], out: (text: string) => void, log: (
     log,
   });
   joined.secure.close();
+  if (joined.withdrewOffer) out(OFFER_WITHDRAWN_NOTICE);
   out(`joined mesh ${joined.meshId}; start doriface-host to take part\n`);
 }
 

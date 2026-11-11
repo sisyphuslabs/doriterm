@@ -206,7 +206,7 @@ describe("J-4: a join withdraws the host's own open mesh offer (#1301)", () => {
     const offer = await host.pair(false);
     const asked = host.pending.ask({ ...PENDING, expiresAt: offer.expiresAt });
     const run = attempt(joiner, linkTo(true), { yes: true, offerWithdrawn: () => host.offerWithdrawn() });
-    expect(await run.outcome).toBe("dialed");
+    expect(await run.outcome).toBe(`dialed. ${OFFER_WITHDRAWN}`);
     expect(await asked).toBe("expired");
     expect(await released.promise).toBe(pairingSlotOf(offer.code));
     slots.stop();

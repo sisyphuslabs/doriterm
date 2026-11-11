@@ -208,7 +208,7 @@ export class HostMesh {
   async join(
     request: MeshJoinRequest,
     confirm?: (code: string) => Promise<boolean>,
-  ): Promise<{ readonly meshId: string; readonly hostId: string }> {
+  ): Promise<{ readonly meshId: string; readonly hostId: string; readonly withdrewOffer: boolean }> {
     const { stateDir, identity, relay, log } = this.#options;
     const own = await this.#own(request.name);
     const joined = await joinMesh({
@@ -229,7 +229,7 @@ export class HostMesh {
       log,
     });
     this.#keep(joined.secure);
-    return { meshId: joined.meshId, hostId: joined.hostId };
+    return { meshId: joined.meshId, hostId: joined.hostId, withdrewOffer: joined.withdrewOffer };
   }
 
   /** The session a join ran on stays open as a sync session, registered so a revoke closes it. */

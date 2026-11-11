@@ -56,6 +56,8 @@ export interface Joined {
   /** The session the join ran on; it stays open as a sync session. */
   readonly secure: SecureLink;
   readonly lines: MeshLines;
+  /** The join withdrew this host's own open mesh offer (#1301), which its caller is told. */
+  readonly withdrewOffer: boolean;
 }
 
 interface Inviter {
@@ -67,7 +69,8 @@ interface Inviter {
 }
 
 /** Added to a join's failure once the join withdrew this host's own mesh offer, so its caller knows the offer is gone. */
-export const OFFER_WITHDRAWN = "This host's own mesh invite was withdrawn for this join: run mesh pair to open a new one";
+export const OFFER_WITHDRAWN =
+  "This host's own mesh invite was withdrawn for this join: run mesh pair to open a new one";
 
 const joinTargetOf = (target: ConnectTarget): JoinTarget =>
   target.kind === "link" ? { kind: "link", mesh: target.link.mesh === true } : { kind: target.kind };
@@ -123,10 +126,24 @@ export async function joinMesh(options: JoinOptions): Promise<Joined> {
   if (inviter.hostId === options.identity.hostId) {
     throw new JoinRefused("this invite is this host's own: run mesh join on the machine that joins");
   }
-  if (new PairingStore(options.stateDir).withdrawMesh()) {
-    options.log("mesh: withdrew this host's own mesh offer to join another mesh");
-    options.offerWithdrawn?.();
+  const withdrewOffer = new PairingStore(options.stateDir).withdrawMesh();
+  if (!withdrewOffer) return { ...(await dialAndJoin(options, invite, inviter)), withdrewOffer };
+  options.log("mesh: withdrew this host's own mesh offer to join another mesh");
+  options.offerWithdrawn?.();
+  try {
+    return { ...(await dialAndJoin(options, invite, inviter)), withdrewOffer };
+  } catch (error) {
+    // The offer stays withdrawn: reopening it would hand out an invite the person may no longer want (#2136).
+    throw new JoinRefused(`${error instanceof Error ? error.message : String(error)}. ${OFFER_WITHDRAWN}`);
   }
+}
+
+/** The pairing handshake with the inviting member, then the join exchange; stores the welcome once it checked out. */
+async function dialAndJoin(
+  options: JoinOptions,
+  invite: MeshInvite,
+  inviter: Inviter,
+): Promise<Omit<Joined, "withdrewOffer">> {
   const dialInviter = async () => {
     const link = await connectRelayClient({
       relayUrl: inviter.relayUrl,

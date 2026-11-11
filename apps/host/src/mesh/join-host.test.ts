@@ -179,7 +179,7 @@ describe("J-1: a link join run by the joiner's running host", () => {
       yes: true,
     });
     const meshId = new MeshStore(a.dir, { log: () => {} }).read()?.meshId;
-    expect(joined).toEqual({ meshId, hostId: identity.hostId });
+    expect(joined).toEqual({ meshId, hostId: identity.hostId, withdrewOffer: false });
     const welcome = records(a.dir)?.slice(0, 2);
     expect(welcome).toHaveLength(2);
     expect(records(b.dir)?.slice(0, 2)).toEqual(welcome);
