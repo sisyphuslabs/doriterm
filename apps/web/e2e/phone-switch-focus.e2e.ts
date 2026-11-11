@@ -61,4 +61,30 @@ test.describe("with a mouse, where the keys bar stays open as the menu closes", 
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(key(page, "Switch session")).toBeFocused();
   });
+
+  test("a terminal that takes the focus while the closing menu animates out keeps it (#2174)", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("banner").getByRole("button", { name: "New tab" }).click();
+    const terminal = page.locator("[data-terminal]");
+    await expect(terminal).toContainText("$", { timeout: 15_000 });
+    opened = await terminal.getAttribute("data-terminal");
+    await key(page, "Show keys").click();
+    await key(page, "Switch session").click();
+    await expect(page.getByRole("menu")).toBeVisible();
+    const field = terminal.locator("textarea");
+    await field.evaluate((element) => {
+      if (element instanceof HTMLTextAreaElement) element.disabled = true;
+    });
+    // The close finds no field to focus; the terminal attaches and takes the focus before the menu has animated out.
+    await field.evaluate((element) => {
+      if (!(element instanceof HTMLTextAreaElement)) return;
+      const escape = { key: "Escape", code: "Escape", bubbles: true, cancelable: true };
+      document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", escape));
+      element.disabled = false;
+      element.focus();
+    });
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(field).toBeFocused();
+  });
 });
