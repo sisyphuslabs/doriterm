@@ -75,7 +75,13 @@ export function keepMounts(tabs: readonly LayoutTab[], mounts: Mounts, ids: Mach
   const kept = tabs.map((tab): LayoutTab => {
     if (tab.transient) {
       const pane = tab.panes[0];
-      if (pane?.address != null) mounts.shown.set(terminalKey(pane.address, ids), { tab: tab.key, pane: pane.id });
+      if (pane?.address != null) {
+        const key = terminalKey(pane.address, ids);
+        mounts.shown.set(key, { tab: tab.key, pane: pane.id });
+        // Once its machine is listed, the `name:` record from before is stale: no later tab may take it (#2141).
+        const unlisted = terminalKey(pane.address, UNLISTED);
+        if (unlisted !== key) mounts.shown.delete(unlisted);
+      }
       return tab;
     }
     if (!mounts.taken.has(tab.key)) {

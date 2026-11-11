@@ -180,6 +180,26 @@ describe("keepMounts: a document tab that takes over a terminal shown alone keep
     expect(pick(tabs, view).focused?.address).toBe("box/t2");
   });
 
+  test("a loose tab listed in one render and saved in a later one leaves no mount for a later tab on its address (#2141)", () => {
+    const key = looseKey("box/t2", none);
+    const mounts = newMounts();
+    keepMounts([docTab("core/tb0", "p0", "t1"), { ...shownAlone("box/t2"), key, id: key }], mounts, none);
+    const listed = layoutIds([here, { ...here, machine: "box", machineId: "id-box" }]);
+    const relisted = looseKey("box/t2", listed);
+    keepMounts(
+      [docTab("core/tb0", "p0", "t1"), { ...shownAlone("box/t2"), key: relisted, id: relisted }],
+      mounts,
+      listed,
+    );
+    keepMounts([docTab("core/tb0", "p0", "t1"), docTab("id-box/tb1", "p1", "box/t2")], mounts, listed);
+    const [, later] = keepMounts(
+      [docTab("core/tb0", "p0", "t1"), docTab("id-box/tb2", "p2", "box/t2")],
+      mounts,
+      listed,
+    );
+    expect(later?.mount).toBeUndefined();
+  });
+
   test("two document tabs never share the lone tab's mount", () => {
     const mounts = newMounts();
     keepMounts([shownAlone("box/t2")], mounts, none);
