@@ -127,46 +127,62 @@ test("one read of the body pulls only what it needs from R2, not the whole span 
   await reader.cancel();
 });
 
-test("every R2 body the answer opens is cancelled or released, even one opened after a cancel (#2264)", async () => {
-  const opened: { offset: number; cancelled: boolean; locked: () => boolean }[] = [];
-  const pending = Promise.withResolvers<void>();
+/** Two far-apart ranges whose R2 reads the test controls: the second group's body opens only when `release` is called. */
+function twoGroups() {
+  const spans = [
+    { offset: 0, length: 4 },
+    { offset: 3000, length: 4 },
+  ];
+  const opened: { offset: number; locked: () => boolean }[] = [];
+  const secondAsked = Promise.withResolvers<void>();
+  const secondCancelled = Promise.withResolvers<unknown>();
+  const release = Promise.withResolvers<void>();
   const read = async (group: { readonly offset: number; readonly length: number }) => {
-    const entry = { offset: group.offset, cancelled: false, locked: () => false };
     const source = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(new Uint8Array(group.length).fill(66));
         controller.close();
       },
-      cancel() {
-        entry.cancelled = true;
-      },
+      cancel: (reason) => secondCancelled.resolve(reason),
     });
-    entry.locked = () => source.locked;
-    opened.push(entry);
-    if (group.offset > 0) await pending.promise;
+    opened.push({ offset: group.offset, locked: () => source.locked });
+    if (group.offset === 0) return source;
+    secondAsked.resolve();
+    await release.promise;
     return source;
   };
-  const spans = [
-    { offset: 0, length: 4 },
-    { offset: 3000, length: 4 },
-  ];
-  const groups = groupSpans(spans, 100);
   const framing = multipartFraming(spans, 4000, "application/octet-stream", "B");
-  const reader = multipartBody(groups, read, framing).getReader();
-  await reader.read();
-  await reader.read();
-  const nextRead = reader.read();
-  await new Promise((resolve) => setImmediate(resolve));
-  const cancelled = reader.cancel("client went away");
-  pending.resolve();
+  const reader = multipartBody(groupSpans(spans, 100), read, framing).getReader();
+  return { reader, opened, secondAsked: secondAsked.promise, secondCancelled: secondCancelled.promise, release };
+}
+
+test("every R2 body the answer opens is cancelled or released, even one opened after a cancel (#2264)", async () => {
+  const g = twoGroups();
+  await g.reader.read();
+  await g.reader.read();
+  const nextRead = g.reader.read();
+  await g.secondAsked;
+  const cancelled = g.reader.cancel("client went away");
+  g.release.resolve();
+  expect(await g.secondCancelled).toBe("client went away");
   await cancelled;
-  await nextRead.catch(() => undefined);
-  await new Promise((resolve) => setImmediate(resolve));
-  expect(opened.map((entry) => [entry.offset, entry.cancelled || !entry.locked()])).toEqual([
-    [0, true],
-    [3000, true],
+  await nextRead;
+  expect(g.opened.map((entry) => [entry.offset, entry.locked()])).toEqual([
+    [0, false],
+    [3000, false],
   ]);
-  expect(opened.find((entry) => entry.offset === 3000)?.cancelled).toBe(true);
+});
+
+test("a cancel between groups opens no further R2 read: the next group opens only when it is read (#2272)", async () => {
+  const g = twoGroups();
+  expect((await g.reader.read()).done).toBe(false);
+  expect((await g.reader.read()).done).toBe(false);
+  // An idle client: every pull the stream would make on its own settles within microtasks, so one macrotask later any
+  // refill pull has already run. This checks that nothing ran, not how long anything takes (#2274 review).
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(g.opened.map((entry) => entry.offset)).toEqual([0]);
+  await g.reader.cancel("client went away");
+  expect(g.opened.map((entry) => entry.offset)).toEqual([0]);
 });
 
 test("spans group by gap, and no more groups are made than the cap allows, closing the smallest gaps first", () => {
