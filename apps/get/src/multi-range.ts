@@ -1,5 +1,44 @@
 import type { ByteRange } from "./bindings.ts";
 
+/** A gap this small is cheaper to stream through than to skip with another R2 read. */
+const MAX_GAP = 1024 * 1024;
+/** R2 reads one multipart answer may make; past it the smallest gaps are streamed through. */
+const MAX_GROUPS = 32;
+
+/** One R2 read: the span from its first range to its last, and the ranges it serves. */
+export interface PartGroup extends ByteRange {
+  readonly spans: readonly ByteRange[];
+}
+
+/**
+ * The ranges, in order and apart, grouped into R2 reads (#2251): a new read starts at every gap wider than `maxGap`,
+ * the widest gaps first, at most `maxGroups` reads, so the bytes between far-apart ranges are never streamed.
+ */
+export function groupSpans(spans: readonly ByteRange[], maxGap = MAX_GAP, maxGroups = MAX_GROUPS): PartGroup[] {
+  const gaps = spans.slice(1).map((span, i) => {
+    const before = spans[i];
+    return { at: i + 1, width: before === undefined ? 0 : span.offset - (before.offset + before.length) };
+  });
+  const splits = new Set(
+    gaps
+      .filter((gap) => gap.width > maxGap)
+      .toSorted((a, b) => b.width - a.width)
+      .slice(0, maxGroups - 1)
+      .map((gap) => gap.at),
+  );
+  const groups: ByteRange[][] = [];
+  for (const [index, span] of spans.entries()) {
+    if (index === 0 || splits.has(index)) groups.push([]);
+    groups.at(-1)?.push(span);
+  }
+  return groups.flatMap((group) => {
+    const [first] = group;
+    const last = group.at(-1);
+    if (first === undefined || last === undefined) return [];
+    return [{ offset: first.offset, length: last.offset + last.length - first.offset, spans: group }];
+  });
+}
+
 const encoder = new TextEncoder();
 
 /** The bytes of a multipart/byteranges answer around the parts' data: each part's header, then the closing line. */
@@ -23,33 +62,34 @@ export function multipartFraming(
   return { heads, tail, length };
 }
 
+type Cancelled = { readonly reason: unknown } | null;
+
 /**
- * The multipart body from `source`, the file's bytes from `base` to the end of the last span: each part's header, then
- * its bytes, skipping the bytes between parts without copying any.
+ * The multipart body: each group read from R2 in turn when the body reaches it, each part's header, then its bytes,
+ * skipping the bytes between parts of a group without copying any.
  */
 export function multipartBody(
-  source: ReadableStream<Uint8Array>,
-  base: number,
-  spans: readonly ByteRange[],
+  groups: readonly PartGroup[],
+  read: (group: PartGroup) => Promise<ReadableStream<Uint8Array>>,
   framing: { readonly heads: readonly Uint8Array[]; readonly tail: Uint8Array },
 ): ReadableStream<Uint8Array> {
-  const reader = source.getReader();
+  let group = -1;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   let chunk: Uint8Array = new Uint8Array(0);
-  let chunkStart = base;
+  let chunkStart = 0;
   let part = 0;
+  let partInGroup = 0;
   let headSent = false;
-  let at = spans[0]?.offset ?? base;
+  let at = 0;
+  let progressed = false;
+  let cancelled: Cancelled = null;
 
-  /** Enqueues what the chunk in hand allows; true once it enqueued anything or the body is complete. */
-  const drain = (controller: ReadableStreamDefaultController<Uint8Array>): boolean => {
-    let progressed = false;
+  /** Enqueues what the chunk in hand allows; "read" when it needs the next chunk, "group" for the next group. */
+  const drain = (controller: ReadableStreamDefaultController<Uint8Array>): "read" | "group" | "done" => {
     for (;;) {
-      const span = spans[part];
-      if (span === undefined) {
-        controller.enqueue(framing.tail);
-        controller.close();
-        return true;
-      }
+      const spans = groups[group]?.spans ?? [];
+      const span = spans[partInGroup];
+      if (span === undefined) return group + 1 < groups.length ? "group" : "done";
       if (!headSent) {
         controller.enqueue(framing.heads[part] ?? new Uint8Array(0));
         headSent = true;
@@ -58,11 +98,12 @@ export function multipartBody(
       const end = span.offset + span.length;
       if (at >= end) {
         part += 1;
+        partInGroup += 1;
         headSent = false;
-        at = spans[part]?.offset ?? at;
+        at = spans[partInGroup]?.offset ?? at;
         continue;
       }
-      if (at >= chunkStart + chunk.byteLength) return progressed;
+      if (at >= chunkStart + chunk.byteLength) return "read";
       const stop = Math.min(chunk.byteLength, end - chunkStart);
       controller.enqueue(chunk.subarray(at - chunkStart, stop));
       at = chunkStart + stop;
@@ -70,17 +111,56 @@ export function multipartBody(
     }
   };
 
+  /** One pull: reads until it has enqueued something, then leaves the rest to the next pull (backpressure). */
   const step = async (controller: ReadableStreamDefaultController<Uint8Array>): Promise<void> => {
-    if (drain(controller)) return;
-    const next = await reader.read();
-    if (next.done) throw new Error("the release object ended before its last range");
+    if (cancelled !== null) return;
+    const state = reader === null ? "group" : drain(controller);
+    // The next group opens only when the client reads on, so a cancel between groups opens no R2 read (#2272).
+    if (state !== "done" && progressed) {
+      progressed = false;
+      return;
+    }
+    if (state === "done") {
+      reader?.releaseLock();
+      controller.enqueue(framing.tail);
+      controller.close();
+      return;
+    }
+    if (state === "group") {
+      // A finished group's R2 body is let go before the next opens (#2264).
+      reader?.releaseLock();
+      reader = null;
+      group += 1;
+      const next = groups[group];
+      if (next === undefined) throw new Error("no range group left to read");
+      const source = await read(next);
+      // The client went away while this body was opening: nothing will read it.
+      // The stream's cancel can set `cancelled` during the await above, which narrowing cannot see.
+      const late = cancelled as Cancelled;
+      if (late !== null) return void (await source.cancel(late.reason));
+      reader = source.getReader();
+      chunk = new Uint8Array(0);
+      chunkStart = next.offset;
+      partInGroup = 0;
+      at = next.spans[0]?.offset ?? next.offset;
+      return step(controller);
+    }
+    const next = await reader?.read();
+    if (next === undefined || next.done) throw new Error("the release object ended before its last range");
     chunkStart += chunk.byteLength;
     chunk = next.value;
     return step(controller);
   };
 
-  return new ReadableStream<Uint8Array>({
-    pull: (controller) => step(controller),
-    cancel: (reason) => reader.cancel(reason),
-  });
+  // highWaterMark 0: the stream never pulls on its own to refill a queue, so no R2 read opens for an idle client (#2274).
+  return new ReadableStream<Uint8Array>(
+    {
+      pull: (controller) => step(controller),
+      cancel: (reason) => {
+        cancelled = { reason };
+        return reader?.cancel(reason);
+      },
+    },
+    { highWaterMark: 0 },
+  );
 }

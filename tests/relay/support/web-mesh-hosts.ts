@@ -10,7 +10,8 @@
 // `MEMBERS {"meshId": ..., "a": [...], "b": [...]}`, the members each machine's `mesh status --json` lists. `STOP`
 // stops b's host process and answers `STOPPED` once a's core lists b as not connected; `START` starts it again on the
 // same state (its shell lives on in b's core), dials it from a at once instead of at hc's next redial, and answers
-// `STARTED` once a lists it connected. It stops every process it started on SIGTERM or SIGINT.
+// `STARTED` once a lists it connected. `JOIN`, under MESH_JOIN=skip, joins b to a's mesh then and answers `JOINED <machine>`
+// once a lists it connected (relay-two-devices.e2e.ts adds a machine while two devices are open). It stops every process it started on SIGTERM or SIGINT.
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -124,6 +125,13 @@ const startB = async (): Promise<string> => {
   return "STARTED";
 };
 
+/** Under MESH_JOIN=skip: b joins a's mesh now, while a spec's pages are open, and is answered once a lists it connected. */
+const joinB = async (): Promise<string> => {
+  await mesh.join("a", "b");
+  await mesh.until("b connected as a machine on a's core", async () => (await machineOfB()) !== undefined, 120_000);
+  return `JOINED ${(await machineOfB()) ?? "b"}`;
+};
+
 /** Each ask's one answer line, given what follows the ask's first word. */
 const answers: Readonly<Record<string, (arg: string) => Promise<string>>> = {
   PAIR: async () => `LINK ${await pairingFragment()}`,
@@ -132,6 +140,7 @@ const answers: Readonly<Record<string, (arg: string) => Promise<string>>> = {
   STATUS: async () => `MEMBERS ${JSON.stringify(await membersOfBoth())}`,
   STOP: stopB,
   START: startB,
+  JOIN: joinB,
   STOP_INVITER: async () => {
     await a.stop();
     return "STOPPED inviter";
