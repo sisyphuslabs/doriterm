@@ -51,7 +51,7 @@ export function DirectionPad({ onKey, className, style }: DirectionPadProps) {
             onMouseDown={keepFocus}
             onClick={() => onKey?.(key.id)}
             className={cn(
-              "flex size-12 items-center justify-center rounded-xl border border-border bg-raised/90 text-foreground shadow-xs outline-none active:bg-selected [&_svg]:size-5",
+              "flex size-12 items-center justify-center rounded-xl border border-border bg-raised/90 text-foreground shadow-xs outline-none active:bg-selected [&_svg:not([data-slot=spinner])]:size-5",
               "focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring",
             )}
           >

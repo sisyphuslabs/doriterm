@@ -100,7 +100,9 @@ test("a pairing link asked for long after the start gets its own deadline, not t
 }, 60_000);
 
 test("a start that reports its stages resolves, and a pairing link comes back over the same channel", async () => {
-  const host = await startFakeRelayHost({ machine: true });
+  // The test's clock runs the deadlines, so a loaded host's start and pair may take any wall-clock time: this case is
+  // about the lines coming back, not about how fast they do (#1101).
+  const host = await startFakeRelayHost({ machine: true, clock: new TestClock() });
   try {
     expect(await host.pairingLink()).toContain("/pair#");
   } finally {

@@ -3,7 +3,6 @@ import { actionFor, type Scope } from "./actions.ts";
 import { resolveKeymap } from "./keymap.ts";
 import { useOverrides } from "./keymap-store.ts";
 import { TEXT_FIELD_KEEPS } from "./text-field-keys.ts";
-import { TERMINAL_KEEPS } from "./terminal-keeps.ts";
 import { currentPlatform, triggerFromEvent } from "./trigger.ts";
 
 /** Returns true when the action ran; false lets the key reach the page. */
@@ -26,8 +25,10 @@ function dispatch(scope: Scope, action: string): boolean {
 let chosen = false;
 
 /**
- * True while an action chosen from a list (the palette, the desktop app's menu) runs, rather than one a key sent. A
- * modal that lists the action closes once it runs, so a handler's guard against acting behind a modal does not apply.
+ * True while an action chosen from a list runs, rather than one a key sent: from the command palette, which closes once
+ * runAction returns true and so is still open while the action runs, or from an item in the desktop app's native Shell
+ * or View menu, which closes no dialog of the page's. A handler's guard against acting behind a modal does not apply
+ * either way.
  */
 export const actionChosen = (): boolean => chosen;
 
@@ -119,8 +120,6 @@ export function useKeymapDispatcher(): void {
         !(id === "terminal.search" && inFindBar(event.target))
       )
         return;
-      // A focused terminal program keeps its own control keys: the key reaches it uncancelled, as it would from the shell.
-      if (TERMINAL_KEEPS.has(id) && inTerminal(event.target)) return;
       // The tab move keys stay with a text field (they select text) and with a reorderable row (they move the row).
       if (TEXT_FIELD_KEEPS.has(id) && (inTextField(event.target) || inReorderableRow(event.target))) return;
       if (dispatch(action.scope, id)) {

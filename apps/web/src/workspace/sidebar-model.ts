@@ -1,5 +1,6 @@
 import type { Agent, AvatarColor, Space } from "@doriface/ui";
 import { AVATAR_COLORS } from "@doriface/ui";
+import type { AgentPlaces } from "./agent-places.ts";
 import type { MachineEntry } from "./machines.ts";
 import { groupAgents, type Session } from "./model.ts";
 
@@ -34,12 +35,24 @@ const RANK: Readonly<Record<string, number>> = { blocked: 0, working: 1, idle: 2
 
 /**
  * The agents list, pinned agents first in their own group, then by status (Needs you, Working, Idle, Done, Offline)
- * or by space (each space's agents most urgent first). Empty groups are left out.
+ * or by space (each space's agents most urgent first). Empty groups are left out. A row is listed by its `places` entry
+ * where it has one (`placeAgents`), so a turn between Working and Idle moves it only once it has held (#1949).
  */
-export function agentGroups(terminals: readonly Session[], nowMs: number, sort: AgentSort): AgentGroup[] {
+export function agentGroups(
+  terminals: readonly Session[],
+  nowMs: number,
+  sort: AgentSort,
+  places: AgentPlaces = new Map(),
+): AgentGroup[] {
   const pinnedIds = new Set(terminals.filter(isPinned).map((terminal) => terminal.address));
   const groups = groupAgents(terminals, nowMs);
-  const all = STATUS_GROUPS.flatMap(({ key }) => groups[key]);
+  const offline = new Set(groups.offline.map((agent) => agent.id));
+  const placed = (agent: Agent): string =>
+    offline.has(agent.id) ? "offline" : (places.get(agent.id)?.status ?? agent.status);
+  const order = new Map(terminals.map((terminal, index) => [terminal.address, index]));
+  const all = STATUS_GROUPS.flatMap(({ key }) => groups[key]).toSorted(
+    (a, b) => (RANK[placed(a)] ?? 4) - (RANK[placed(b)] ?? 4) || (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0),
+  );
   for (const agent of all) if (pinnedIds.has(agent.id)) Object.assign(agent, { pinned: true });
   const pinned = all.filter((agent) => agent.pinned === true);
   const rest = all.filter((agent) => agent.pinned !== true);
@@ -51,7 +64,7 @@ export function agentGroups(terminals: readonly Session[], nowMs: number, sort: 
     return [
       ...head,
       ...STATUS_GROUPS.flatMap((group) => {
-        const agents = rest.filter((agent) => groups[group.key].some((one) => one.id === agent.id));
+        const agents = rest.filter((agent) => placed(agent) === group.key);
         return agents.length === 0
           ? []
           : [{ ...group, compactBlocked: group.key === "blocked", agents, count: agents.length }];
@@ -72,7 +85,7 @@ export function agentGroups(terminals: readonly Session[], nowMs: number, sort: 
       title,
       compactBlocked: false,
       count: agents.length,
-      agents: agents.toSorted((a, b) => (RANK[a.status] ?? 4) - (RANK[b.status] ?? 4)),
+      agents: agents.toSorted((a, b) => (RANK[placed(a)] ?? 4) - (RANK[placed(b)] ?? 4)),
     })),
   ];
 }

@@ -18,10 +18,12 @@ const COOLDOWN_MS = 600_000;
 const CLAIM = { [b.signPub]: Number.MAX_SAFE_INTEGER };
 /** Every 10 s through the first window and a little past it, then once a minute: each signing writes mesh.json. */
 const sampled = (at: number): boolean => at < 50_000 || at % 60_000 === 0;
+/** The a-and-b mesh's records, signed once for the file: every case below starts from this mesh (#780). */
+const MESH = meshOf([a, b]);
 
 /** b's mesh with a; `connect()` opens one more sync session a dialed to b, and the test speaks for a on it. */
 function meshAtB(seed: number) {
-  const { records } = meshOf([a, b]);
+  const { records } = MESH;
   const clock = new FakeClock();
   const host = new MeshNet(clock, seededRandom(seed)).add(b, records);
   const mesh = host.gossip.meshId;
@@ -107,10 +109,11 @@ describe("a peer's hello.n claim on this host's counter (section 10.1, M-E1)", (
     expect(session.ours.closeCode).toBeUndefined();
     await s.clock.advance(1);
     expect(session.ours.closeCode).toBe(CloseCode.CryptoFailure);
-    expect(s.signs()).toBe(true);
+    // Whether b signs now, decided as `append` decides it, without the signature and its writes (#780).
+    expect(s.refuses()).toBe(false);
     s.connect().hello(CLAIM);
     await s.clock.advance(1);
-    expect(s.signs()).toBe(true);
+    expect(s.refuses()).toBe(false);
     await s.clock.advance(COOLDOWN_MS);
     s.connect().hello(CLAIM);
     await s.clock.advance(1);

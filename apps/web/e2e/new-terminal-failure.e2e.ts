@@ -1,4 +1,4 @@
-import { expect, openNewTerminal, test, pressNewTab } from "./fixtures.ts";
+import { expect, openNewTerminal, terminalCount, test, pressNewTab } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 
 test.use({ serviceWorkers: "block" });
@@ -38,6 +38,41 @@ test("one New tab asks the core once, so a failure has one cause to report", asy
   await expect(page.getByRole("heading", { name: "Could not open a new tab" })).toHaveCount(1);
   expect(asked(), "one New tab asks the core once, not twice").toBe(before + 1);
   socket.delay(0);
+  socket.restore();
+});
+
+test("a New tab whose answer the link lost still opened, so only the press while down reports", async ({ page }) => {
+  // The run reaches the core and the feed lists its terminal before its answer does, as on a busy host. Its answer is
+  // held here, so the tab opens first and the link drops before the answer lands: the press did open a tab, and only
+  // the press made while reconnecting is a failure to report. Without that, the two failing asks show two identical
+  // notices for what a person made out as one failure (#1343).
+  let asked: string | undefined;
+  let answer: (() => void) | undefined;
+  const socket = await routeHcSocket(page, {
+    sent: (frame) => {
+      if (asked !== undefined || !frame.includes('"method":"terminal.run"')) return;
+      const id = /"id":(\d+)/.exec(frame)?.[1];
+      if (id === undefined) return;
+      asked = id;
+      answer = socket.holdFromHost(`"id":${id},`);
+    },
+  });
+  await page.goto("/");
+  const count = await terminalCount(page);
+  await pressNewTab(page.getByRole("button", { name: "New tab", exact: true }));
+  await count.grown();
+  // The terminal is live, and the first-live rule opened its tab, without the run's answer.
+  await expect(page.locator('[data-focused="true"] [data-terminal]')).toHaveAttribute("data-terminal", /./, {
+    timeout: 15_000,
+  });
+  // The second press is made once the page says the link is down, so it cannot reach the core. Pressed while the link
+  // was still up, its run could reach the core and the feed before the drop, and then it rightly opened a tab too.
+  await socket.drop(true);
+  await expect(page.getByRole("status").filter({ hasText: "Reconnecting" })).toBeVisible();
+  await pressNewTab(page.getByRole("button", { name: "New tab", exact: true }));
+  await expect(page.getByRole("heading", { name: "Could not open a new tab" })).toHaveCount(1);
+  await expect(page.getByText(/try again once it is back/)).toBeVisible();
+  answer?.();
   socket.restore();
 });
 

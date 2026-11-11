@@ -35,14 +35,17 @@ test("5: + sits outside the scrolling tabs, so with 22 tabs it stays in view and
   );
   expect(hit).toBe("New tab");
 
-  const list = await strip(page).evaluate((element) => {
-    const style = getComputedStyle(element);
-    return {
-      overflows: element.scrollWidth > element.clientWidth,
-      overflowX: style.overflowX,
-      scrollbarWidth: style.scrollbarWidth,
-    };
-  });
+  // The ordinary tabs scroll inside the strip; pinned ones (#1561) sit before them, out of the scroller.
+  const list = await strip(page)
+    .locator("[data-tab-scroll]")
+    .evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        overflows: element.scrollWidth > element.clientWidth,
+        overflowX: style.overflowX,
+        scrollbarWidth: style.scrollbarWidth,
+      };
+    });
   expect(list).toEqual({ overflows: true, overflowX: "auto", scrollbarWidth: "thin" });
   // The newest tab is the selected one, scrolled into view rather than past the strip's end (fractional tab widths
   // can leave a sub-pixel sliver clipped, hence not 1).

@@ -16,10 +16,17 @@ import { useDarkScheme } from "./use-dark-scheme.ts";
 import { useBehaviors, type PendingPaste } from "./use-behaviors.ts";
 import { useFocusAfterSelect } from "./use-focus-after-select.ts";
 import { useLongPressSelect } from "./use-long-press-select.ts";
+import { useTouchWheel } from "./touch-wheel.ts";
 import { useSelectionCells } from "./use-selection-cells.ts";
 import { useShiftDragSelect } from "./use-shift-drag-select.ts";
 import { Ended } from "./ended.tsx";
-import { askingForKeyboard, quietKeyboard, useTerminalPort } from "./terminal-port.ts";
+import {
+  askingForKeyboard,
+  isRegainingReport,
+  quietKeyboard,
+  regainingFocus,
+  useTerminalPort,
+} from "./terminal-port.ts";
 import type { TerminalViewProps } from "./terminal-view-props.ts";
 import { Unopened } from "./unopened.tsx";
 import { JumpToBottom, TerminalScrollbar, useTerminalScroll } from "./terminal-scroll.tsx";
@@ -31,6 +38,12 @@ import { useTerminalFont } from "./use-terminal-font.ts";
 import { usePreedit } from "./use-preedit.ts";
 import { usePredictionOverlay } from "./use-prediction-overlay.ts";
 import { predictionSeam } from "./prediction-seam.ts";
+import { effectivePredictionMode, usePredictionMode } from "./prediction-mode.ts";
+import { useMeshMembers } from "../connection/store.ts";
+import type { ConnectionPath } from "../connection/connect.ts";
+import { desktopBridge } from "../desktop/bridge.ts";
+import { PredictorView } from "./prediction-view.ts";
+import type { TerminalInput } from "./terminal-view-props.ts";
 import { wideGlyphScaler } from "./face-scales.ts";
 import { GlyphWarmup } from "./glyph-warmup.ts";
 import { SelectionMenu } from "./selection-menu.tsx";
@@ -115,8 +128,21 @@ export function TerminalView(props: TerminalViewProps) {
   }, [wt, config, dark]);
 
   const onUnsafePaste = useCallback((pending: PendingPaste) => setPaste(pending), []);
-  const input = useTerminalInput({ wt, handle, stream, connection, address, transformInput, typesComposition });
-  const { pending, typedInto, typed, pasteFiles } = input;
+  const predict = useRef<((data: TerminalInput) => void) | null>(null);
+  // Each stream, first or after a reconnect, starts the predictor over: what it predicted for the last one says nothing
+  // about this one (Predictor.reset).
+  const streamStarted = useRef<(() => void) | null>(null);
+  const input = useTerminalInput({
+    wt,
+    handle,
+    stream,
+    connection,
+    address,
+    transformInput,
+    typesComposition,
+    predict,
+  });
+  const { pending, typedInto, typed, pasteFiles, linkReady } = input;
   const scroll = useTerminalScroll(wt);
   const outputShown = useRef(scroll.changed);
   outputShown.current = scroll.changed;
@@ -128,8 +154,33 @@ export function TerminalView(props: TerminalViewProps) {
   }, [wt, softKeyboard]);
   useBehaviors(wt, stream, options, onUnsafePaste, pasteFiles);
   useTerminalFont(wt, config);
-  const prediction = useMemo(() => predictionSeam(wt), [wt]);
-  const predictedCursor = usePredictionOverlay(wt, prediction);
+  // The real predictor reads every input and write of this view (#1595); a spec's stand-in replaces it when installed.
+  const seam = useMemo(() => predictionSeam(wt), [wt]);
+  const chosenMode = usePredictionMode();
+  const link = useMeshMembers().find(({ state }) => state.phase === "open" && state.connection === connection)?.state;
+  // While the link reconnects it is not open; the path it last had stands until it opens again, so the mode does not flip.
+  const lastPath = useRef<ConnectionPath | undefined>(undefined);
+  const path = link?.phase === "open" ? link.path : lastPath.current;
+  lastPath.current = path;
+  const predictMode = effectivePredictionMode(chosenMode, path, desktopBridge() !== null, address);
+  const predictModeNow = useRef(predictMode);
+  predictModeNow.current = predictMode;
+  const [predictor, setPredictor] = useState<PredictorView | null>(null);
+  useEffect(() => {
+    if (wt === null || seam !== null) return undefined;
+    const made = new PredictorView(wt, { linkReady, mode: () => predictModeNow.current });
+    predict.current = (data) => made.typed(data);
+    streamStarted.current = () => made.reset();
+    setPredictor(made);
+    return () => {
+      predict.current = null;
+      streamStarted.current = null;
+      made.dispose();
+      setPredictor(null);
+    };
+  }, [wt, seam, linkReady]);
+  useEffect(() => predictor?.refresh(), [predictor, predictMode]);
+  const predictedCursor = usePredictionOverlay(wt, seam ?? predictor);
   usePreedit(wt, predictedCursor);
   // Wide characters in the output are laid out in idle time, so scrolling back to them is not the first time (#286).
   const warmup = useRef<GlyphWarmup | null>(null);
@@ -142,11 +193,12 @@ export function TerminalView(props: TerminalViewProps) {
       if (warmup.current === made) warmup.current = null;
     };
   }, [wt]);
-  useTerminalActions(wt, typed, focused, pasteFiles, openFind);
   const shown = usePaneVisibility(wt, pacer);
+  useTerminalActions(wt, input, focused, shown, openFind);
   const away = useMachineLine(connection, address, shown);
   useFocusAfterSelect(wt, options.trimCopy);
   useLongPressSelect(wt, setSelectAt);
+  useTouchWheel(wt);
   useShiftDragSelect(wt);
   useSelectionCells(wt);
   useBrowseMode(wt, browsing);
@@ -154,6 +206,8 @@ export function TerminalView(props: TerminalViewProps) {
     setSelectAt(null);
     if (!browsing) handle.current?.focus();
   }, [browsing]);
+  // A reattach replay holds the paint until it has settled (D5); the prop carries the hold through the view's renders.
+  const [replayHeld, setReplayHeld] = useState(false);
   const attachment = useTerminalAttach({
     connection,
     address,
@@ -171,12 +225,14 @@ export function TerminalView(props: TerminalViewProps) {
     focusWhenFree,
     onEnd,
     onEnded,
+    onStream: streamStarted,
+    holdPaint: setReplayHeld,
   });
 
-  if (error !== null) return <p className="p-4 text-sm text-destructive">{error}</p>;
+  if (error !== null) return <p className="p-4 text-prose text-destructive">{error}</p>;
   if (attachment.restarting) {
     return (
-      <p role="status" className="p-4 text-sm text-muted-foreground">
+      <p role="status" className="p-4 text-prose text-muted-foreground">
         The program in this terminal is restarting…
       </p>
     );
@@ -207,6 +263,7 @@ export function TerminalView(props: TerminalViewProps) {
         ref={handle}
         core={core}
         autoResize
+        renderingPaused={replayHeld}
         {...(options.cursorBlink === undefined ? {} : { cursorBlink: options.cursorBlink })}
         aria-label={label}
         data-slot="terminal-viewport"
@@ -216,18 +273,25 @@ export function TerminalView(props: TerminalViewProps) {
         onReady={(ready) => {
           // The renderer no longer focuses itself as it starts (patches/@wterm%2Fdom@0.5.9.patch); the view decides.
           focusWhenFree(ready);
-          attachment.attach(ready);
+          // It attaches once it is shown (useTerminalAttach): a pane that mounts out of view opens no stream yet.
+          setWt(ready);
         }}
-        onData={typedInto}
+        onData={(data) => {
+          if (!isRegainingReport(handle, data)) typedInto(data);
+        }}
         onResize={(cols, rows) => stream.current?.resize(cols, rows)}
         onFocus={(event) => {
+          // The field taken again for the soft keyboard never left the terminal, as far as the program knows (#1519).
+          if (regainingFocus(event.target)) return;
           // wterm focuses the terminal as it starts, and the patch drops that start call; a focus event can still
           // arrive for a pane the view did not choose. Only the focused pane's keeps it; any other hands it back to
           // where it was, so a pane another device adds never takes the keyboard.
           if (wt === null && !isFocused.current) return handBack(event);
           stream.current?.focus(true);
         }}
-        onBlur={() => stream.current?.focus(false)}
+        onBlur={(event) => {
+          if (!regainingFocus(event.target)) stream.current?.focus(false);
+        }}
       />
       {attachment.opening ? (
         <QuietBusy label="Opening terminal" text="Opening…" className="absolute inset-0 z-10 bg-term-bg" />
@@ -236,7 +300,7 @@ export function TerminalView(props: TerminalViewProps) {
         // Keys typed now wait for the machine (HeldInput, #1489); the line overlays the top row and takes no room.
         <p
           role="status"
-          className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-muted/95 px-3 py-1 text-center text-sm text-muted-foreground"
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-muted/95 px-3 py-1 text-center text-prose text-muted-foreground"
         >
           Reconnecting to {away}. Your typing will be sent.
         </p>

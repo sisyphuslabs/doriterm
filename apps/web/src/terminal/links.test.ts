@@ -70,6 +70,24 @@ function screen(
 }
 
 describe("linkAt", () => {
+  test.each([
+    ["\u754c", ""],
+    ["\u754c", "x"],
+    ["\u{1f680}", ""],
+    ["\u{1f680}", "x"],
+  ])("a link ending in %s after %s underlines both cells of the wide glyph", (glyph, prefix) => {
+    const target = "https://example.com/";
+    const core: CellSource = {
+      ...screen([""], prefix.length + 2),
+      getCell: (_row, col) => {
+        if (col < prefix.length) return { char: 120, width: 1, linkUri: target };
+        if (col === prefix.length) return { char: glyph.codePointAt(0) ?? 32, width: 2, linkUri: target };
+        return { char: 0, width: 0 };
+      },
+    };
+    expect(linkAt(core, { row: 0, col: prefix.length })?.runs).toEqual([{ row: 0, start: 0, end: prefix.length + 2 }]);
+  });
+
   test("a plain URL is found from any of its cells and opens whole", () => {
     const core = screen(["open https://example.com/a now"], 40);
     const link = linkAt(core, { row: 0, col: 10 });
