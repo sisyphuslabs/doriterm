@@ -1,0 +1,5 @@
+### Terminal
+
+- On a phone, Show keyboard no longer leaves the terminal's field waiting for a click that never comes: a right-click on
+  the button (an iPad trackpad) starts no press, a second finger lifting during a tap no longer ends it early, and a
+  terminal that closes mid-press stops listening for that press. (#2048)
