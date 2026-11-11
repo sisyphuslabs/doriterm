@@ -28,8 +28,10 @@ function dispatch(scope: Scope, action: string, programReceives = true): boolean
 let chosen = false;
 
 /**
- * True while an action chosen from a list (the palette, the desktop app's menu) runs, rather than one a key sent. A
- * modal that lists the action closes once it runs, so a handler's guard against acting behind a modal does not apply.
+ * True while an action chosen from a list runs, rather than one a key sent: from the command palette, which closes once
+ * runAction returns true and so is still open while the action runs, or from an item in the desktop app's native Shell
+ * or View menu, which closes no dialog of the page's. A handler's guard against acting behind a modal does not apply
+ * either way.
  */
 export const actionChosen = (): boolean => chosen;
 
