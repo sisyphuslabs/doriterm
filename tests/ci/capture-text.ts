@@ -88,6 +88,30 @@ const decodeEntities = (text: string): string =>
     return codePoint > 0 && codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : whole;
   });
 
+const SVG_Y = /(?:^|\s)y\s*=\s*["']([^"']*)["']/;
+const SVG_DY = /(?:^|\s)dy\s*=\s*["']([^"']*)["']/;
+
+/**
+ * An SVG's text as it reads on screen, one line per drawn line. A line break goes only where a `<text>` or `<tspan>`
+ * moves to a new line: a new `y`, or a nonzero `dy`. Every other tag goes with no separator, so runs drawn on the same
+ * line (a prompt split across `<tspan>`s, or across sibling `<text>`s one per colour) are one string to a reader, as a
+ * space where a tag stood would let `someone@<tspan>alpha-box</tspan>` pass as two words. Lines drawn one under
+ * another stay apart, so a minified SVG's clean lines never run together into a prompt neither shows.
+ */
+function joinSvgLines(markup: string): string {
+  let line: string | undefined;
+  return markup.replace(/<[^>]*>/g, (tag: string): string => {
+    const start = /^<(text|tspan)\b([^>]*)>$/i.exec(tag);
+    if (start === null) return "";
+    const attributes = ` ${start[2] ?? ""}`;
+    const dy = Number.parseFloat(SVG_DY.exec(attributes)?.[1] ?? "0");
+    const y = SVG_Y.exec(attributes)?.[1] ?? (start[1]?.toLowerCase() === "text" ? "0" : undefined);
+    const moved = (y !== undefined && line !== undefined && y !== line) || (Number.isFinite(dy) && dy !== 0);
+    if (y !== undefined) line = y;
+    return moved ? "\n" : "";
+  });
+}
+
 /**
  * The text a capture shows: an SVG's own character data (OCR cannot read one), any other image's OCR.
  * tesseract reads only the first frame of an animated GIF, so a leak shown in a later frame is out of its reach.
@@ -95,14 +119,11 @@ const decodeEntities = (text: string): string =>
 export async function captureText(path: string): Promise<string> {
   if (/\.svg$/i.test(path)) {
     // A CDATA section is text as written, so it is kept, its brackets encoded so no later step takes them for a tag.
-    // Each `<text>` is a line of its own, so its tags become a line break: a minified SVG's separate lines must not run
-    // together into a prompt neither shows. Every other tag goes with no separator: a prompt split across `<tspan>`s is
-    // one string to a reader, and a space where a tag stood would let `someone@<tspan>alpha-box</tspan>` pass as two
-    // words. Entities decode last, so an entity-encoded bracket is text and never a tag.
+    // Entities decode last, so an entity-encoded bracket is text and never a tag.
     const markup = (await Bun.file(path).text()).replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_whole, data: string) =>
       data.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
     );
-    return decodeEntities(markup.replace(/<\/?text\b[^>]*>/gi, "\n").replace(/<[^>]*>/g, ""));
+    return decodeEntities(joinSvgLines(markup));
   }
   const result = await $`tesseract ${path} -`
     .env({ ...process.env, OMP_THREAD_LIMIT: "1" })
