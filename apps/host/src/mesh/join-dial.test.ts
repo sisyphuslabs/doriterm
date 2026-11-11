@@ -1,11 +1,36 @@
-import { buildPairingUrl, createPairingOffer, DEFAULT_RELAY_URL, fingerprintOf } from "@doriface/crypto";
+import {
+  buildPairingUrl,
+  createPairingOffer,
+  DEFAULT_RELAY_URL,
+  fingerprintOf,
+  pairingSlotOf,
+} from "@doriface/crypto";
+import { OPEN_POLICY } from "@doriface/policy";
 import { afterEach, describe, expect, test } from "bun:test";
 import { parseTarget } from "../connect/target.ts";
+import { LiveSessions } from "../e2ee/sessions.ts";
+import { PairingSlots } from "../pairing-slots.ts";
+import { DeviceStore } from "../state/devices.ts";
 import { PairingStore } from "../state/pairing.ts";
 import { failure, ownOf, removeSides, side, type Side } from "../testing/join-harness.ts";
+import { HostMesh } from "./host-mesh.ts";
 import { joinMesh, type JoinOptions } from "./join-dial.ts";
+import type { PendingJoin } from "./pending-joins.ts";
 
 afterEach(removeSides);
+
+const log = (): void => {};
+const PENDING: PendingJoin = {
+  nonce: "waiting",
+  name: "beta",
+  noisePub: "noise-beta",
+  hostId: "h",
+  fingerprint: "f",
+  expiresAt: 0,
+  kind: "machine",
+  code: "123 456",
+  joinerConfirmed: false,
+};
 
 const inviter = side("inviter");
 const linkTo = (mesh: boolean): string =>
@@ -106,12 +131,14 @@ describe("refusals before dialing", () => {
     expect(run.dials).toEqual([]);
   });
 
-  test("J-4: a host with an open mesh offer of its own cannot be invited", async () => {
+  test("a join refused before dialing keeps the host's own mesh offer", async () => {
     const joiner = side("joiner");
-    new PairingStore(joiner.dir).offer(Date.now(), true);
-    const run = attempt(joiner, linkTo(true), { yes: true });
-    expect(await run.outcome).toContain("a host cannot be invited and inviting at once");
-    expect(run.dials).toEqual([]);
+    const offer = new PairingStore(joiner.dir).offer(Date.now(), true);
+    let withdrawn = 0;
+    const run = attempt(joiner, linkTo(true), { yes: true, name: "t7", offerWithdrawn: () => void withdrawn++ });
+    expect(await run.outcome).toBe('"t7" is not a valid mesh name');
+    expect(new PairingStore(joiner.dir).read()?.code).toBe(offer.code);
+    expect(withdrawn).toBe(0);
   });
 
   test("a host already in a mesh, and a name herdr would refuse, are refused", async () => {
@@ -122,5 +149,54 @@ describe("refusals before dialing", () => {
     const badName = attempt(side("joiner"), linkTo(true), { yes: true, name: "t7" });
     expect(await badName.outcome).toBe('"t7" is not a valid mesh name');
     expect([...inMesh.dials, ...badName.dials]).toEqual([]);
+  });
+});
+
+describe("J-4: a join withdraws the host's own open mesh offer (#1301)", () => {
+  test("the offer is withdrawn, the running host is told, and the join dials", async () => {
+    const joiner = side("joiner");
+    new PairingStore(joiner.dir).offer(Date.now(), true);
+    let withdrawn = 0;
+    const run = attempt(joiner, linkTo(true), { yes: true, offerWithdrawn: () => void withdrawn++ });
+    expect(await run.outcome).toBe("dialed");
+    expect(run.dials).toHaveLength(1);
+    expect(new PairingStore(joiner.dir).read()).toBeUndefined();
+    expect(withdrawn).toBe(1);
+  });
+
+  test("a device pairing offer is left open", async () => {
+    const joiner = side("joiner");
+    const offer = new PairingStore(joiner.dir).offer(Date.now(), false);
+    let withdrawn = 0;
+    const run = attempt(joiner, linkTo(true), { yes: true, offerWithdrawn: () => void withdrawn++ });
+    expect(await run.outcome).toBe("dialed");
+    expect(new PairingStore(joiner.dir).read()?.code).toBe(offer.code);
+    expect(withdrawn).toBe(0);
+  });
+
+  test("on the running host, the offer's pending joins expire and its relay slot is released", async () => {
+    const joiner = side("joiner");
+    const released = Promise.withResolvers<string>();
+    const registrar = { register: async () => "registered" as const, release: released.resolve };
+    const slots = new PairingSlots(new PairingStore(joiner.dir), joiner.m.identity.noise.publicKey, registrar, log);
+    const host = new HostMesh({
+      stateDir: joiner.dir,
+      identity: joiner.m.identity,
+      mesh: joiner.mesh,
+      slots,
+      sessions: new LiveSessions(new DeviceStore(joiner.dir), log, joiner.mesh),
+      policy: OPEN_POLICY,
+      hc: { hc: "hc" },
+      relay: { url: undefined },
+      floor: () => undefined,
+      log,
+    });
+    const offer = await host.pair(false);
+    const asked = host.pending.ask({ ...PENDING, expiresAt: offer.expiresAt });
+    const run = attempt(joiner, linkTo(true), { yes: true, offerWithdrawn: () => host.offerWithdrawn() });
+    expect(await run.outcome).toBe("dialed");
+    expect(await asked).toBe("expired");
+    expect(await released.promise).toBe(pairingSlotOf(offer.code));
+    slots.stop();
   });
 });
