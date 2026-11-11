@@ -235,8 +235,11 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
       router.history.go(1 - over);
     } else go({ ...listed, space: null, terminal: null, sheet: false }, true);
   }, [back, go, index, listed, router, under]);
+  // The pop has landed once the history moves; `listed` is rebuilt on every render, so it cannot mark that (#2235 review).
   useEffect(() => {
     popping.current = false;
+  }, [index]);
+  useEffect(() => {
     if (!listAfterPop.current || listed.terminal !== null) return;
     listAfterPop.current = false;
     back();
