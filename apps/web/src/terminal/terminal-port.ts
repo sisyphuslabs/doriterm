@@ -130,14 +130,14 @@ function holdForPress(
     pressing.delete(field);
     view?.removeEventListener("pointercancel", cancelled, true);
     view?.removeEventListener("pointerup", lifted, true);
-    view?.removeEventListener("contextmenu", release, true);
+    view?.removeEventListener("contextmenu", cancelled, true);
     view?.removeEventListener("click", release);
   };
   pressing.set(field, detach);
   regaining.add(field);
   view?.addEventListener("pointercancel", cancelled, true);
   view?.addEventListener("pointerup", lifted, true);
-  view?.addEventListener("contextmenu", release, true);
+  view?.addEventListener("contextmenu", cancelled, true);
   // Bubbling, after the button's own handler: a click the press's focus already took has ended the hold by then.
   view?.addEventListener("click", release);
   return release;
