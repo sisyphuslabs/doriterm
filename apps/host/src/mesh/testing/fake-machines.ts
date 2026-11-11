@@ -69,13 +69,16 @@ export class FakeMachines implements HcMachines {
 
   /** Each rm fails with the next queued error, then succeeds. */
   readonly failRms: HcRpcError[] = [];
+  /** Each rm removes the entry and then fails with the next queued error, as a call that timed out after herdr did it. */
+  readonly lateRms: Error[] = [];
 
   rm(name: string): Promise<void> {
     this.#log(`rm ${name}`);
     const failure = this.failRms.shift();
     if (failure !== undefined) return Promise.reject(failure);
     this.#machines = this.#machines.filter((machine) => machine.name !== name);
-    return Promise.resolve();
+    const late = this.lateRms.shift();
+    return late === undefined ? Promise.resolve() : Promise.reject(late);
   }
 
   rename(name: string, newName: string): Promise<void> {

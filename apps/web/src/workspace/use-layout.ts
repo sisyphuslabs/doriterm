@@ -8,6 +8,9 @@ import {
   freshId,
   type Node,
   renameTab as renameDocTab,
+  closeSet,
+  pinEdit,
+  placePinned,
   splitPane,
   terminalBlock,
 } from "@doriface/protocol/layout";
@@ -81,6 +84,13 @@ export interface Layout extends PaneMoves {
    * it; rejects with why when the tab is not in a document that takes edits, or the write fails.
    */
   readonly renameTab: (key: string, name: string) => Promise<void>;
+  /**
+   * Pins a tab in front of its space's others, or unpins it (#1561): the pin goes in the machine's pins document, which
+   * every device reads and herdr-app leaves alone, and the tab moves to its side in the herdr-app document.
+   */
+  readonly pinTab: (key: string, pinned: boolean) => Promise<void>;
+  /** The keys "Close tabs to the right" or "Close other tabs" closes from a tab: never a pinned one (#1561). */
+  readonly closeSetOf: (key: string, which: "right" | "others") => readonly string[];
   /** The last tab moved, counted so the strip can say where it went each time, even to the same place twice. */
   readonly lastMove: TabMove | null;
   /**
@@ -190,8 +200,8 @@ export function useLayout(
   }, []);
   const mounts = useRef(newMounts());
   const tabs = useMemo(
-    () => keepMounts(buildTabs(layouts, terminals, loose), mounts.current),
-    [layouts, terminals, loose],
+    () => keepMounts(buildTabs(layouts, terminals, loose), mounts.current, ids),
+    [layouts, terminals, loose, ids],
   );
   const { active, focused, zoomed } = pick(tabs, view);
   // Read when a start answers, which can be after the person picked another tab: the tab in view now, not then.
@@ -291,7 +301,7 @@ export function useLayout(
       const space = { id: near?.space ?? freshId("spc"), folder: "" };
       void layout.edit((doc) => {
         const first = kept === null ? doc : addDocTab(doc, space, { id: kept.id, name: "", root: kept.root });
-        return addDocTab(first, space, tab, kept?.id ?? near?.id);
+        return addDocTab(first, space, tab, kept?.id ?? near?.id, layout.pins);
       });
       show(tabKey(layout.machineId, id), pane);
     },
@@ -406,6 +416,33 @@ export function useLayout(
     },
     [layouts, tabs],
   );
+  const pinTab = useCallback(
+    async (key: string, pinned: boolean): Promise<void> => {
+      const tab = tabs.find((each) => each.key === key);
+      const layout = tab === undefined ? undefined : layouts.find((each) => each.machine === tab.machine);
+      if (tab === undefined || tab.transient || layout === undefined) throw new Error("This tab is not saved yet.");
+      if (layout.readOnly !== null) throw new Error(layout.readOnly);
+      if (layout.editPins === undefined) throw new Error("The pins of this machine cannot take changes now.");
+      const pins = layout.pins ?? new Set<string>();
+      const live = tabs.filter((each) => each.machine === tab.machine && !each.transient).map((each) => each.id);
+      await Promise.all([
+        layout.editPins(pinEdit(live, tab.id, pinned)),
+        layout.edit((doc) => (doc === null ? null : placePinned(doc, tab.id, pins))),
+      ]);
+    },
+    [layouts, tabs],
+  );
+  const closeSetOf = useCallback(
+    (key: string, which: "right" | "others"): readonly string[] => {
+      const tab = tabs.find((each) => each.key === key);
+      const doc = tab === undefined ? null : (layouts.find((each) => each.machine === tab.machine)?.doc ?? null);
+      if (tab === undefined || doc === null) return [];
+      const pins = new Set(tabs.filter((each) => each.machine === tab.machine && each.pinned).map((each) => each.id));
+      const closing = new Set(closeSet(doc, tab.id, which, pins));
+      return tabs.filter((each) => each.spaceKey === tab.spaceKey && closing.has(each.id)).map((each) => each.key);
+    },
+    [layouts, tabs],
+  );
 
   return {
     tabs,
@@ -427,6 +464,8 @@ export function useLayout(
     ...moves,
     moveTab,
     renameTab,
+    pinTab,
+    closeSetOf,
     lastMove,
     restored: machinesListed && layouts.every((layout) => layout.loaded || layout.readOnly !== LAYOUT_LOADING),
   };

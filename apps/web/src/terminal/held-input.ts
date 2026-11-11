@@ -44,6 +44,8 @@ const isInterrupt = (data: TerminalInput): boolean =>
 export class HeldInput {
   /** Typed and not written yet, oldest first: no stream was open, the link was being proved, or the machine was away. */
   readonly pending: TerminalInput[] = [];
+  /** True while a drain is inside sink.write, so a release that fires from there does not take a byte twice (#1490). */
+  #flushing = false;
   readonly #links: UnprovenLinks;
   readonly #connection: () => HcConnection;
   readonly #sink: () => InputSink | null;
@@ -80,8 +82,16 @@ export class HeldInput {
   flush(): void {
     const sink = this.#sink();
     if (sink === null || this.#awayMachine() !== undefined) return;
-    for (let next = this.pending[0]; next !== undefined && sink.write(next); next = this.pending[0])
-      this.pending.shift();
+    // A release can fire from inside sink.write - the link proving, or a machine's line coming back - before the loop
+    // has shifted the byte that write just took. Draining again from there would take the same byte twice (#1490).
+    if (this.#flushing) return;
+    this.#flushing = true;
+    try {
+      for (let next = this.pending[0]; next !== undefined && sink.write(next); next = this.pending[0])
+        this.pending.shift();
+    } finally {
+      this.#flushing = false;
+    }
   }
 
   /** Writes what waited once this view's link is proved or its machine is back; returns the cleanup for the view. */

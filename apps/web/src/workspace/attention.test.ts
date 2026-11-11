@@ -115,6 +115,14 @@ describe("withAttention", () => {
     expect(shown[1]).toBe(terminals[1]);
     expect(shown[2]).toBe(terminals[2]);
   });
+
+  test("a seen terminal that did not change is the same object on the next render, so its pane does not draw again (#2086)", () => {
+    const terminals = [session({ status: { state: "done" }, turn: 3 })];
+    const [first] = withAttention(terminals, { t1: "3" });
+    const [next] = withAttention([...terminals], { t1: "3" });
+    expect(first?.seen).toBe(true);
+    expect(next).toBe(first);
+  });
 });
 
 describe("panesInView", () => {

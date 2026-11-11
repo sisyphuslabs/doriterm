@@ -67,16 +67,45 @@ function parts(trigger: string): { readonly mods: readonly string[]; readonly ke
   return { mods: split.slice(0, split.at(-1) === "" ? -2 : -1), key };
 }
 
-/** A trigger ("super+alt+]") in Playwright's syntax ("Meta+Alt+BracketRight"). */
+/** A trigger ("super+alt+]") in Playwright's syntax, its modifiers by Playwright's names and its key by code (BracketRight). */
 export function chordOf(trigger: string): string {
   const { mods, key } = parts(trigger);
   return [...mods.map((mod) => MODIFIERS[mod]?.key ?? mod), codeOf(key)].join("+");
 }
 
+/** The first chord the app binds to `action` on `platform`, in Playwright's syntax: for a spec that sets the platform. */
+export function chordFor(platform: Platform, action: string): string {
+  return chordOf(triggersFor(platform, action)[0] ?? "");
+}
+
+/** The chord bound to `action` on `platform` whose trigger `pick` selects: for a spec about one binding among several. */
+export function chordWhere(platform: Platform, action: string, pick: (trigger: string) => boolean): string {
+  const trigger = triggersFor(platform, action).find(pick);
+  if (trigger === undefined) throw new Error(`no binding of ${action} on ${platform} matches`);
+  return chordOf(trigger);
+}
+
+/**
+ * Ghostty's focus chord for `move`: Cmd+Alt+arrow on macOS, Ctrl+Alt+arrow elsewhere. Off macOS herdr-app's Alt+arrow
+ * and Alt+H/J/K/L are bound to the same actions first, so the first chord would not press Ghostty's (#1309).
+ */
+export function focusChord(platform: Platform, move: "left" | "right" | "up" | "down"): string {
+  // The keymap names modifiers in its own order (alt+super+up), so the trigger is matched by its set of parts.
+  const want = [platform === "mac" ? "super" : "ctrl", "alt", move].toSorted().join("+");
+  return chordWhere(platform, `pane.go:${move}`, (trigger) => trigger.split("+").toSorted().join("+") === want);
+}
+
 /** The first chord the app binds to `action` on the page's platform, in Playwright's syntax. */
 export async function shortcut(page: Page, action: string): Promise<string> {
-  return chordOf(triggersFor(await pagePlatform(page), action)[0] ?? "");
+  return chordFor(await pagePlatform(page), action);
 }
+
+/**
+ * The modifier a person holds on the page's platform for a key the app binds to no action (select all in a field, a
+ * paste, Cmd/Ctrl+Enter in the voice strip), as a trigger's: super (Cmd) on a Mac, ctrl elsewhere.
+ */
+export const commandModifier = async (page: Page): Promise<"super" | "ctrl"> =>
+  (await pagePlatform(page)) === "mac" ? "super" : "ctrl";
 
 /** Presses the chord that runs `action` on the page's platform. */
 export async function pressShortcut(page: Page, action: string): Promise<void> {

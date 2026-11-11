@@ -288,6 +288,43 @@ static napi_value NoticeAuthorization(napi_env env, napi_callback_info info) {
   return promise;
 }
 
+// Asks for permission to show notifications with the options Electron's own presenter asks for, so the two requests are
+// one prompt (#1958). It settles when the person answers it, at once when the OS has an answer already: until then the
+// app knows its request is on screen, since macOS can read denied meanwhile.
+static napi_value RequestNoticeAuthorization(napi_env env, napi_callback_info info) {
+  napi_deferred deferred;
+  napi_value promise, name, unknown;
+  napi_create_promise(env, &deferred, &promise);
+  napi_create_string_utf8(env, "unknown", NAPI_AUTO_LENGTH, &unknown);
+  // A bare CLI has no app identity; currentNotificationCenter would raise an exception there.
+  if ([NSBundle mainBundle].bundleIdentifier == nil) {
+    napi_resolve_deferred(env, deferred, unknown);
+    return promise;
+  }
+  napi_create_string_utf8(env, "doriface-notice-request", NAPI_AUTO_LENGTH, &name);
+  napi_threadsafe_function resolve;
+  if (napi_create_threadsafe_function(env, NULL, NULL, name, 0, 1, NULL, NULL, deferred, ResolveNoticeStatus,
+                                      &resolve) != napi_ok) {
+    napi_resolve_deferred(env, deferred, unknown);
+    return promise;
+  }
+  @try {
+    [[UNUserNotificationCenter currentNotificationCenter]
+        requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound |
+                                         UNAuthorizationOptionBadge)
+                      completionHandler:^(BOOL granted, NSError *error) {
+                        const char *answer = error != nil ? "unknown" : granted ? "granted" : "denied";
+                        napi_call_threadsafe_function(resolve, (void *)answer, napi_tsfn_nonblocking);
+                        napi_release_threadsafe_function(resolve, napi_tsfn_release);
+                      }];
+  } @catch (NSException *exception) {
+    os_log_error(OS_LOG_DEFAULT, "notification permission request failed: %{public}@", exception.name);
+    napi_call_threadsafe_function(resolve, (void *)"unknown", napi_tsfn_nonblocking);
+    napi_release_threadsafe_function(resolve, napi_tsfn_release);
+  }
+  return promise;
+}
+
 static napi_value SupportsOnDevice(napi_env env, napi_callback_info info) {
   size_t argc = 1;
   napi_value argv[1];
@@ -436,6 +473,7 @@ static napi_value Init(napi_env env, napi_value exports) {
       {"speechStatus", NULL, SpeechStatus, NULL, NULL, NULL, napi_default, NULL},
       {"requestSpeech", NULL, RequestSpeech, NULL, NULL, NULL, napi_default, NULL},
       {"noticeAuthorization", NULL, NoticeAuthorization, NULL, NULL, NULL, napi_default, NULL},
+      {"requestNoticeAuthorization", NULL, RequestNoticeAuthorization, NULL, NULL, NULL, napi_default, NULL},
       {"supportsOnDevice", NULL, SupportsOnDevice, NULL, NULL, NULL, napi_default, NULL},
       {"start", NULL, Start, NULL, NULL, NULL, napi_default, NULL},
       {"stop", NULL, Stop, NULL, NULL, NULL, napi_default, NULL},

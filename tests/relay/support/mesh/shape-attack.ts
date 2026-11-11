@@ -1,3 +1,5 @@
+import { SessionKind } from "@doriface/crypto";
+import { handshakeRefusalLine } from "../../../../apps/host/src/e2ee/authorize.ts";
 import { type ForbiddenWatch, watchForbidden } from "./forbidden-watch.ts";
 import { deliver, type Delivery, type Judgement, judgementOf, untilJudged } from "./inject.ts";
 import { identityOf } from "./identity.ts";
@@ -22,6 +24,8 @@ export interface AttackResult {
 const MEMBERS_MS = 120_000;
 /** A member that answered 4404 is probed at most every 5 minutes (section 5.4); one probe reaches the returned host. */
 const PROBE_MS = 6 * 60_000;
+/** What the returned host logs when a judge's sync session (the mesh stream) reaches it: the host's own line. */
+const REFUSED_AS_REVOKED = handshakeRefusalLine({ kind: SessionKind.Session, stream: "mesh" }, "revoked mesh member");
 
 /** Injects through member sessions, each judge's carrier being the next judge, with every pair isolated (5.1). */
 async function injectThroughMembers(
@@ -48,7 +52,7 @@ async function injectThroughMembers(
 async function untilRefusedBy(mesh: Mesh, host: MeshHost, from: number): Promise<void> {
   await mesh.until(
     `${host.name} refuses a judge's session as a revoked member's`,
-    () => host.logs.slice(from).some((line) => line.includes("mesh: refused a session: revoked mesh member")),
+    () => host.logs.slice(from).some((line) => line.includes(REFUSED_AS_REVOKED)),
     PROBE_MS,
   );
 }

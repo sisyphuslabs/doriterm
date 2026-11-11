@@ -71,7 +71,7 @@ every chord. Keys a person rebinds in Settings > Keybindings stay theirs.
 | `cmd-f` | `terminal.search` | same | same |  |
 | `cmd-c` | `terminal.copy` | same | same |  |
 | `cmd-v` | `terminal.paste` | same | same |  |
-| `ctrl-v` | `terminal.paste_image` | unbound | same | Ctrl+V is left to the terminal's own key handling; a pasted image already reaches the terminal's machine through the paste itself (#742), and Paste image can be bound in Settings > Keybindings |
+| `ctrl-v` | `terminal.paste_image` | same | same |  |
 | `alt-left` | `send:\u001bb` | same | same |  |
 | `alt-right` | `send:\u001bf` | same | same |  |
 | `alt-backspace` | `send:\u0017` | same | same |  |
@@ -96,8 +96,8 @@ every chord. Keys a person rebinds in Settings > Keybindings stay theirs.
 | `alt-j` | `pane.go:down` | same | same |  |
 | `alt-k` | `pane.go:up` | same | same |  |
 | `alt-l` | `pane.go:right` | same | same |  |
-| `alt-left` | `pane.go:left` | same | same |  |
-| `alt-right` | `pane.go:right` | same | same |  |
+| `alt-left` | `pane.go:left` | unbound | same | #1302: the program's keys — an agent reads Alt+arrows for its answers and a shell for its word moves |
+| `alt-right` | `pane.go:right` | unbound | same | #1302: the program's keys — an agent reads Alt+arrows for its answers and a shell for its word moves |
 | `alt-shift-h` | `pane.swap:left` | same | same |  |
 | `alt-shift-j` | `pane.swap:down` | same | same |  |
 | `alt-shift-k` | `pane.swap:up` | same | same |  |
@@ -123,8 +123,8 @@ every chord. Keys a person rebinds in Settings > Keybindings stay theirs.
 | `alt-[` | `tab.prev` | same | same |  |
 | `ctrl-shift-pagedown` | `space.next` | same | same |  |
 | `ctrl-shift-pageup` | `space.prev` | same | same |  |
-| `alt-down` | `agent.next` | same | same |  |
-| `alt-up` | `agent.prev` | same | same |  |
+| `alt-down` | `agent.next` | unbound | same | #1302: the program's keys — an agent reads Alt+arrows for its answers and a shell for its word moves |
+| `alt-up` | `agent.prev` | unbound | same | #1302: the program's keys — an agent reads Alt+arrows for its answers and a shell for its word moves |
 | `ctrl-?` | `app.help` | same | same |  |
 | `ctrl-shift-/` | `app.help` | same | same |  |
 | `ctrl-shift-?` | `app.help` | same | same |  |
@@ -148,6 +148,6 @@ every chord. Keys a person rebinds in Settings > Keybindings stay theirs.
 | `ctrl-shift-c` | `terminal.copy` | same | same |  |
 | `ctrl-shift-v` | `terminal.paste` | same | same |  |
 | `ctrl-shift-f` | `terminal.search` | same | same |  |
-| `ctrl-v` | `terminal.paste_image` | unbound | same | Ctrl+V is left to the terminal's own key handling; a pasted image already reaches the terminal's machine through the paste itself (#742), and Paste image can be bound in Settings > Keybindings |
+| `ctrl-v` | `terminal.paste_image` | unbound | same | Ctrl+V stays the browser's paste, as before: an image on the clipboard reaches the terminal's machine as a file through the paste itself (#742), which needs no clipboard permission (the desktop app grants none), and text is pasted as text where herdr-app sends ^V |
 | `ctrl-insert` | `terminal.copy` | same | same |  |
 | `shift-insert` | `terminal.paste` | same | same |  |

@@ -35,6 +35,15 @@ function withField(focused: boolean) {
   return { handle, field, order };
 }
 
+/** The port over a field, with nothing to send to: what it does to the field is all that is read. */
+const portOver = (handle: Parameters<typeof portOf>[0], softKeyboard: boolean) =>
+  portOf(
+    handle,
+    () => undefined,
+    () => undefined,
+    softKeyboard,
+  );
+
 describe("the soft keyboard a focus may raise (#1375)", () => {
   test("on a surface that has one, the field is set to ask for the keyboard", () => {
     const { handle, field, order } = withField(false);
@@ -56,6 +65,25 @@ describe("the soft keyboard a focus may raise (#1375)", () => {
     expect(field.inputMode).toBe("");
     expect(order).toEqual([]);
     expect(() => askingForKeyboard({ current: null }, true)).not.toThrow();
+  });
+});
+
+describe("letting the field go ahead of a press that asks for the keyboard (#1940)", () => {
+  test("a focused field is let go, in the mode it has: the press's own focus is then a fresh one", () => {
+    const { handle, field, order } = withField(true);
+    field.inputMode = "none";
+    portOver(handle, true).letGo();
+    expect(order).toEqual(["blur:none"]);
+    expect(field.inputMode).toBe("none");
+  });
+
+  test("a field without the focus, and a surface with no soft keyboard, are left alone", () => {
+    const unfocused = withField(false);
+    portOver(unfocused.handle, true).letGo();
+    expect(unfocused.order).toEqual([]);
+    const mouse = withField(true);
+    portOver(mouse.handle, false).letGo();
+    expect(mouse.order).toEqual([]);
   });
 });
 
