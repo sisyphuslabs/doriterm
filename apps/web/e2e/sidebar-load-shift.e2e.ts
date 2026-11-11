@@ -11,7 +11,11 @@ test.beforeAll(() => {
 });
 test.afterAll(() => endAgent("host", address));
 
-/** Layout shifts on this page whose moved nodes sit in the sidebar, as the browser reports them from the first paint. */
+/**
+ * Layout shifts on this page that moved a node in the sidebar, as the browser reports them from the first paint. A source
+ * whose box is where it was is not a move: a count whose digit changes in place (a loose terminal adopted into its tab
+ * as the workspace loads, #2129) is reported with a score of about 6e-7 and the same box before and after (#2321).
+ */
 const sidebarShift = () => {
   const shifts: PerformanceEntry[] = [];
   new PerformanceObserver((list) => shifts.push(...list.getEntries())).observe({
@@ -27,8 +31,18 @@ const sidebarShift = () => {
         return (
           Array.isArray(sources) &&
           sources.some((source: unknown) => {
-            const node: unknown = typeof source === "object" && source !== null ? Reflect.get(source, "node") : null;
-            return node instanceof Node && aside?.contains(node) === true;
+            if (typeof source !== "object" || source === null) return false;
+            const node: unknown = Reflect.get(source, "node");
+            const before: unknown = Reflect.get(source, "previousRect");
+            const after: unknown = Reflect.get(source, "currentRect");
+            const moved =
+              !(before instanceof DOMRectReadOnly) ||
+              !(after instanceof DOMRectReadOnly) ||
+              before.x !== after.x ||
+              before.y !== after.y ||
+              before.width !== after.width ||
+              before.height !== after.height;
+            return moved && node instanceof Node && aside?.contains(node) === true;
           })
         );
       })
