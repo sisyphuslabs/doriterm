@@ -15,6 +15,9 @@ export async function tabOf(page: Page, address: string): Promise<Locator> {
   const id = (await panel.getAttribute("id")) ?? "";
   return strip(page).locator(`[role="tab"][aria-controls="${id}"]`);
 }
+/** The selected tab's panel showing the terminal: none (count 0) while another tab is selected. */
+export const selectedPane = (page: Page, address: string) =>
+  page.locator(`[role="tabpanel"]:not([hidden]) [data-terminal="${address}"]`);
 export const focusedAddress = (page: Page) =>
   page.locator('[data-focused="true"] [data-terminal]').getAttribute("data-terminal");
 export const selectedIndex = (page: Page) =>

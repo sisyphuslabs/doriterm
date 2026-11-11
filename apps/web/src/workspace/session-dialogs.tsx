@@ -67,11 +67,6 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onDrop, onK
     if (live) setLiveAsk(ask);
   }, [ask, live]);
   const ended = ask !== null && ask === liveAsk && !live && !keep;
-  // The answers it replaces are gone from under the pointer and the keyboard, so OK takes focus.
-  const acknowledge = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (ended) acknowledge.current?.focus();
-  }, [ended]);
   useEffect(() => {
     if (ask === null || keep || live) return;
     // The closed tab's session is gone either way; dropping its tab is tidying up, not an answer.
@@ -155,7 +150,7 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onDrop, onK
         title={`${title} already ended`}
         description={ENDED[ask.kind]}
         actions={
-          <Button ref={acknowledge} variant="primary" onClick={onDone}>
+          <Button variant="primary" onClick={onDone}>
             OK
           </Button>
         }
@@ -207,7 +202,7 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onDrop, onK
         <Notice tone="error" title="The session did not end">
           {`${error.replace(/\.$/, "")}. ${
             ask.kind === "close"
-              ? "It keeps running outside any pane; the next load opens it as a tab."
+              ? "It keeps running outside any pane, and opens as a tab of its own within a few seconds."
               : "It keeps running."
           }`}
         </Notice>

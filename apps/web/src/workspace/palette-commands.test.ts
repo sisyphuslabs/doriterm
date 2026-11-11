@@ -1,7 +1,8 @@
 import type { Terminal } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
 import { resolveKeymap } from "../keys/keymap.ts";
-import { choiceOf, paletteCommands } from "./palette-commands.ts";
+import type { ListedSpace } from "./model.ts";
+import { choiceOf, paletteCommands, spaceNameOf } from "./palette-commands.ts";
 import { availableActions, type Shell } from "./shell-actions.ts";
 
 const terminal = (fields: Partial<Terminal>): Terminal => ({
@@ -26,6 +27,17 @@ const source = (terminals: readonly Terminal[], shell: Shell = "desktop") => ({
   keymap: resolveKeymap("mac", new Map()),
 });
 
+const listed = (name: string, addresses: readonly string[]): ListedSpace => ({
+  id: name,
+  name,
+  tabs: addresses.length,
+  addresses,
+  tabPanes: addresses.map((address) => [address]),
+  tabNames: addresses.map(() => ""),
+  tabPins: addresses.map(() => false),
+  dir: "",
+});
+
 const split = (inView: boolean, readOnly: string | null = null) =>
   paletteCommands({ ...source([]), actions: availableActions("desktop", inView, readOnly) }).find(
     (command) => command.id === "pane.split:right",
@@ -47,11 +59,18 @@ describe("paletteCommands", () => {
         group: "Agents",
         status: "blocked",
         hint: "box",
-        where: "box \u203a doriface \u00b7 /work/doriface",
+        where: { place: "box \u203a doriface", directory: "/work/doriface" },
       },
     ]);
     expect(commands.find((command) => command.id === "tab.new")?.keys).toEqual(["⌘", "T"]);
     expect(commands.find((command) => command.group === "Hosts")).toMatchObject({ label: "studio", hint: "relay" });
+  });
+
+  test("names the first space an address is listed in, as the sidebar does, when two list it (#1486)", () => {
+    const spaces = [listed("first", ["t4", "t1"]), listed("second", ["t1"])];
+    const [agent] = paletteCommands({ ...source([terminal({ address: "t1" })]), spaceOf: spaceNameOf(spaces) });
+    expect(agent?.where).toEqual({ place: "studio \u203a first", directory: "/work/doriface" });
+    expect(spaceNameOf(spaces)("t9")).toBeUndefined();
   });
 
   test("lists Filter the sidebar with its key, as it lists the other sidebar actions (#848)", () => {

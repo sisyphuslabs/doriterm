@@ -73,6 +73,8 @@ export interface RelayedHost {
 export interface RelayedHostOptions {
   /** For tests of this helper: the relay the host dials, instead of the local one. */
   readonly hostRelayUrl?: string;
+  /** For tests of this helper: the CLI the pairing offer runs instead of doriface-host's, e.g. one that never exits. */
+  readonly pairCli?: string;
   readonly uplinkTimeoutMs?: number;
   /** How long the host keeps a session whose link dropped for a resume (the host's default, 120 s, otherwise). */
   readonly resumeGraceMs?: number;
@@ -91,6 +93,8 @@ export interface RelayedHostOptions {
 }
 
 const UPLINK_TIMEOUT_MS = 30_000;
+
+const interruptedError = (): Error => new Error("start-up was interrupted by SIGINT, SIGTERM or SIGHUP");
 
 /** Starts the relay, the hc core and the host; any failure along the way stops whatever had started. */
 export async function startRelayedHost(prefix: string, options: RelayedHostOptions = {}): Promise<RelayedHost> {
@@ -130,13 +134,34 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
   // A process that ends on SIGTERM or SIGINT (an e2e helper such as web-relay-host.ts is stopped with SIGTERM) runs
   // this stop to its end first. Otherwise the relay's group hook (adoptProcessGroup) kills the relay and raises the
   // signal again within a few milliseconds, ending the process before its host's stop has told the hc core to stop:
-  // the core runs outside every process group of this process and outlives it (#2061).
-  const unhook = onInterrupt(stop);
+  // the core runs outside every process group of this process and outlives it (#2061). An interrupt during start-up
+  // waits for the step in flight, which then ends start-up and tears down once, so no part starts after the teardown
+  // has passed it (#2080). The uplink wait, as long as the hook's own budget, ends at once on an interrupt, and a failed
+  // start keeps the hook until its teardown has finished, so no interrupt finds the hook gone mid-teardown (#2131).
+  let interrupted = false;
+  const interruption = Promise.withResolvers<never>();
+  // Read only by the uplink wait: an interrupt at any other step is seen by unlessInterrupted.
+  interruption.promise.catch(() => {});
+  const settled = Promise.withResolvers<boolean>();
+  // Kills a pair CLI start-up is waiting on, which has no bound of its own (#2155).
+  const aborted = new AbortController();
+  const unhook = onInterrupt(async () => {
+    interrupted = true;
+    aborted.abort();
+    interruption.reject(interruptedError());
+    if (await settled.promise) await stop();
+  });
+  const unlessInterrupted = (): void => {
+    if (interrupted) throw interruptedError();
+  };
   try {
     relay = await startLocalRelay();
+    unlessInterrupted();
     await options.started?.({ relay });
+    unlessInterrupted();
     session = createHcSession(prefix);
     await options.started?.({ session });
+    unlessInterrupted();
     host = await startHost({
       listen: { hostname: "127.0.0.1", port: 0 },
       token: "relayed-host-token-relayed-host-token-relayed",
@@ -153,12 +178,16 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
         if (line.startsWith("relay: connected")) connected.resolve();
       },
     });
+    unlessInterrupted();
     await options.started?.({ host });
+    unlessInterrupted();
     const uplinkMs = options.uplinkTimeoutMs ?? UPLINK_TIMEOUT_MS;
-    await within(connected.promise, "the host's relay uplink", uplinkMs);
+    await within(Promise.race([connected.promise, interruption.promise]), "the host's relay uplink", uplinkMs);
     const e2ee = host.e2ee;
     if (e2ee === undefined) throw new Error("the host has no E2EE endpoint");
-    return await relayedHost({
+    const pending = relayedHost({
+      cli: options.pairCli ?? CLI,
+      signal: aborted.signal,
       relayUrl: relay.url,
       hostId: e2ee.hostId,
       ip,
@@ -169,14 +198,27 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
       logs,
       stop,
     });
+    // Its pair CLI is killed on an interrupt, which rejects it too: that rejection has nothing left to tell.
+    pending.catch(() => {});
+    const started = await Promise.race([pending, interruption.promise]);
+    unlessInterrupted();
+    settled.resolve(true);
+    return started;
   } catch (error) {
-    unhook();
     if (logs.length > 0) console.log(`host log:\n${logs.join("\n")}`);
-    return rethrowAfter(error, teardown);
+    try {
+      return await rethrowAfter(error, teardown);
+    } finally {
+      settled.resolve(false);
+      unhook();
+    }
   }
 }
 
 interface Started {
+  /** The CLI the pairing offer runs, and what kills it once start-up is interrupted. */
+  readonly cli: string;
+  readonly signal: AbortSignal;
   readonly relayUrl: string;
   readonly hostId: string;
   readonly ip: string;
@@ -189,10 +231,10 @@ interface Started {
 }
 
 async function relayedHost(started: Started): Promise<RelayedHost> {
-  const { relayUrl, hostId, stateDir, scratch, createSocket } = started;
+  const { cli, signal, relayUrl, hostId, stateDir, scratch, createSocket } = started;
   const pairingOffer = async (): Promise<{ readonly url: string; readonly code: string }> => {
     const args = ["pair", "--no-qr", "--web-origin", "https://web.example", "--relay", relayUrl];
-    const proc = Bun.spawn([process.execPath, CLI, ...args, "--state-dir", stateDir], { stdout: "pipe" });
+    const proc = Bun.spawn([process.execPath, cli, ...args, "--state-dir", stateDir], { stdout: "pipe", signal });
     const stdout = await new Response(proc.stdout).text();
     const url = stdout.split("\n").find((line) => line.startsWith("https://web.example/pair#"));
     const code = /^code\s+(\S{4}) (\S{4})/m.exec(stdout);

@@ -90,6 +90,8 @@ jobs:
           if-no-files-found: error
       # The pull request's own wrangler.jsonc is what deploys: anything but the staging worker and hosts stops here (#816).
       - name: Staging deploys to staging only
+        env:
+          PRODUCTION_WORKER: doriface-web
         run: >-
           bun .github/scripts/deploy-target.ts apps/web/wrangler.jsonc staging doriface-web-staging
           staging.app.doriterm.com doriface-staging.omo.dev

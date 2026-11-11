@@ -2,7 +2,7 @@
 // in hidden tabs) and a click on the active tab's Close must still bring its question up at once. confirm-close-surface
 // is `always`, so the question does not depend on what hc last reported running there.
 import { execFileSync } from "node:child_process";
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { E2E_HOST_ENV } from "./config.ts";
 import { setConfirmClose } from "./close-confirm.ts";
 import { clickToDialog } from "./close-probe.ts";
@@ -83,10 +83,33 @@ function frameBytes(messages: readonly string[], kind: number): Map<number, numb
 }
 
 /** DATA received and CREDIT sent on the flooding terminal's stream: the channel that carried the most output. */
-function flow(link: HcSocket): { data: number; credit: number } {
+function flow(link: HcSocket): { channel: number; data: number; credit: number } {
   const data = frameBytes(link.received(), DATA);
   const [channel] = [...data].reduce((most, entry) => (entry[1] > most[1] ? entry : most), [-1, -1]);
-  return { data: data.get(channel) ?? 0, credit: frameBytes(link.sent(), CREDIT).get(channel) ?? 0 };
+  return { channel, data: data.get(channel) ?? 0, credit: frameBytes(link.sent(), CREDIT).get(channel) ?? 0 };
+}
+
+/**
+ * From here on the page counts the credit it hands its sockets, per channel (`window.creditSent`). The route carries
+ * each frame on when it gets to it, so a spec can wait until it has carried every credit the page sent.
+ */
+async function countCreditSent(page: Page): Promise<void> {
+  await page.evaluate((kind) => {
+    const sent = new Map<number, number>();
+    Object.assign(window, { creditSent: sent });
+    const send = WebSocket.prototype.send;
+    WebSocket.prototype.send = function (this: WebSocket, data) {
+      if (data instanceof Uint8Array) {
+        const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+        for (let at = 0; at + 9 <= data.byteLength; at += 9 + view.getUint32(at + 5, true)) {
+          if (data[at + 4] !== kind) continue;
+          const channel = view.getUint32(at, true);
+          sent.set(channel, (sent.get(channel) ?? 0) + view.getUint32(at + 9, true));
+        }
+      }
+      send.call(this, data);
+    };
+  }, CREDIT);
 }
 
 /** The highest flood line number in a terminal's rows. */
@@ -105,14 +128,18 @@ function lastFloodOnCore(address: string): number {
 test("credit goes back only for output the page has drawn, so the 256 KiB window holds a flood back (#560)", async ({
   page,
 }) => {
+  // A loaded runner takes tens of seconds over the draws below (#2108).
+  test.setTimeout(180_000);
   const link = await routeHcSocket(page);
   await page.goto("/");
+  await countCreditSent(page);
   const terminal = await openNewTerminal(page);
   await terminal.getByRole("textbox").focus();
   await page.keyboard.type(`${FLOOD}\r`);
   await expect(terminal).toContainText("flood-", { timeout: 15_000 });
-  // The page stops drawing: no animation frame runs from here.
-  await page.evaluate(() => {
+  // The page stops drawing: no animation frame runs from here. A frame asked for now runs after every frame asked for
+  // before it, so once it has run, the page has written, and credited, all it will until frames come back.
+  await page.evaluate(async () => {
     const frames = window.requestAnimationFrame.bind(window);
     const waiting: FrameRequestCallback[] = [];
     window.requestAnimationFrame = (run) => waiting.push(run);
@@ -122,19 +149,52 @@ test("credit goes back only for output the page has drawn, so the 256 KiB window
         for (const run of waiting.splice(0)) frames(run);
       },
     });
+    await new Promise((resolve) => frames(resolve));
   });
-  // Frames already asked for run once; then the flow settles.
-  await page.waitForTimeout(500);
+  // The window is measured once the route has carried every credit the page sent: one it carries late is not credit
+  // given while nothing was drawn (#2108).
+  const { channel } = flow(link);
+  const credited = await page.evaluate(
+    (stream) => (Reflect.get(window, "creditSent") as Map<number, number>).get(stream) ?? 0,
+    channel,
+  );
+  await expect.poll(() => flow(link).credit).toBeGreaterThanOrEqual(credited);
   const before = flow(link);
   await page.waitForTimeout(2_000);
   const after = flow(link);
   expect(after.credit - before.credit).toBe(0);
   expect(after.data - before.data).toBeLessThanOrEqual(256 * 1024);
 
-  const seen = await lastFlood(terminal);
-  await page.evaluate(() => (Reflect.get(window, "restoreFrames") as () => void)());
-  await expect.poll(() => lastFlood(terminal), { timeout: 15_000 }).toBeGreaterThan(seen);
-  expect(flow(link).credit).toBeGreaterThan(after.credit);
+  // Drawing again, the page draws output past what it showed, and gives credit for it. The draw is awaited as the page
+  // makes it: reading the whole screen back over and over took seconds a read on a loaded runner, past any fixed wait
+  // (#2108).
+  const { seen, drawn } = await terminal.evaluate(async (element) => {
+    let shown = 0;
+    for (const match of (element.textContent ?? "").matchAll(/flood-(\d+)-/g))
+      shown = Math.max(shown, Number(match[1]));
+    const next = await new Promise<number>((resolve) => {
+      const observer = new MutationObserver((records) => {
+        for (const record of records) {
+          const texts =
+            record.type === "characterData"
+              ? [record.target.textContent ?? ""]
+              : [...record.addedNodes].map((node) => node.textContent ?? "");
+          for (const text of texts)
+            for (const match of text.matchAll(/flood-(\d+)-/g)) {
+              if (Number(match[1]) <= shown) continue;
+              observer.disconnect();
+              resolve(Number(match[1]));
+              return;
+            }
+        }
+      });
+      observer.observe(element, { childList: true, characterData: true, subtree: true });
+      (Reflect.get(window, "restoreFrames") as () => void)();
+    });
+    return { seen: shown, drawn: next };
+  });
+  expect(drawn).toBeGreaterThan(seen);
+  await expect.poll(() => flow(link).credit).toBeGreaterThan(after.credit);
 });
 
 test("a terminal in a hidden tab is not drawn while its program floods, and catches up once shown (#560)", async ({

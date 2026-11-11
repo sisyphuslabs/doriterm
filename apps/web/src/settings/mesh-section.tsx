@@ -1,7 +1,8 @@
 import type { HcConnection } from "@doriface/client";
 import type { MeshStatus } from "@doriface/protocol";
-import { Notice, SettingRow, Skeleton, cn } from "@doriface/ui";
-import type { ReactNode } from "react";
+import { Notice, SettingRow, Skeleton, cn, groupHeadingClass } from "@doriface/ui";
+import { type ReactNode, useSyncExternalStore } from "react";
+import type { ConnectionSettings } from "../connection/settings.ts";
 import { connectionStore, useConnection } from "../connection/store.ts";
 import { ExpiredJoinRow, MeshBanners, PendingRow, RemovedRows } from "../mesh/attention.tsx";
 import { disagreement, meshGroups } from "../mesh/groups.ts";
@@ -24,13 +25,10 @@ function MeshGroup({ id, title, count, urgent = false, children }: MeshGroupProp
     <section aria-labelledby={`mesh-${id}`} data-mesh-group={id} className="flex flex-col">
       <h3
         id={`mesh-${id}`}
-        className={cn(
-          "flex items-baseline gap-2 pb-1 text-base font-semibold",
-          urgent ? "text-status-blocked-text" : "text-foreground",
-        )}
+        className={cn("flex items-baseline gap-2 pb-1", groupHeadingClass, urgent && "text-status-blocked-text")}
       >
         {title}
-        <span className="text-sm font-normal text-muted-foreground tabular-nums">{count}</span>
+        <span className="font-normal text-muted-foreground tabular-nums">{count}</span>
       </h3>
       {children}
     </section>
@@ -46,6 +44,22 @@ function namesIn(status: MeshStatus): (hostId: string) => string {
   return (hostId) => names.get(hostId) ?? hostId;
 }
 
+/** The part of the connection store the Mesh banners read: the settings, and the change they follow. */
+export interface PairedHostStore {
+  readonly settings: ConnectionSettings;
+  subscribe(listener: () => void): () => void;
+}
+
+/**
+ * The host this device is paired with over the relay, or undefined in loopback mode: the status document is checked
+ * against it. Subscribed, so a change of mode or of the shown machine while Settings > Mesh is open reaches the
+ * disagreement banner (#1132, #2023).
+ */
+export function usePairedHost(store: PairedHostStore = connectionStore): string | undefined {
+  const settings = useSyncExternalStore(store.subscribe, () => store.settings);
+  return settings.mode === "relay" ? settings.hostId : undefined;
+}
+
 export function MeshBody({
   connection,
   attentionOnly,
@@ -53,6 +67,8 @@ export function MeshBody({
   readonly connection: HcConnection;
   readonly attentionOnly: boolean;
 }) {
+  // Above the early returns, so the hooks run in the same order whatever the mesh read's phase.
+  const pairedHost = usePairedHost();
   const { read, answer } = useMesh(connection);
   const now = useNow();
   const host = connection.hello.core.name;
@@ -83,17 +99,12 @@ export function MeshBody({
       break;
   }
   const { status, machines, answered } = read;
-  const settings = connectionStore.settings;
   const nameOf = namesIn(status);
   const groups = meshGroups(status, now);
   const self = nameOf(status.self);
   return (
     <div className="flex flex-col gap-6">
-      <MeshBanners
-        status={status}
-        nameOf={nameOf}
-        disagreement={disagreement(status, machines, settings.mode === "relay" ? settings.hostId : undefined)}
-      />
+      <MeshBanners status={status} nameOf={nameOf} disagreement={disagreement(status, machines, pairedHost)} />
       {!attentionOnly ? (
         <p className="max-w-measure text-prose text-muted-foreground">
           {`${self} reaches the other machines through its own relay only, and nowhere without one; it opens no direct link to them. A machine row says whether a session to it is open now.`}

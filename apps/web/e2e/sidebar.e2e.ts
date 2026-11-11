@@ -151,7 +151,11 @@ async function expectRowsKeepFloors(
     }),
   );
 
-  // A space on the long-named machine keeps five characters of its name before the machine's.
+  // A space on the long-named machine keeps five characters of its name before the machine's; a phone lists them on its
+  // Spaces tab.
+  const tabs = page.getByRole("navigation", { name: "Sections" });
+  const phone = (await tabs.count()) > 0;
+  if (phone) await tabs.getByRole("button", { name: "Spaces", exact: true }).click();
   await Promise.all(
     [SHARED_SPACE, KOREAN_SPACE].map(async (name) => {
       const group = spaces.getByRole("region", { name: LONG_MACHINE, exact: true });
@@ -192,6 +196,10 @@ for (const { name, use } of VIEWPORTS) {
       await expectRowsKeepFloors(page, true, (narrow) => narrow || phoneList);
       const machines = page.getByRole("region", { name: "Spaces" });
       await expect(machines.getByTitle(LONG_MACHINE, { exact: true }).first()).toHaveText(LONG_MACHINE);
+      if (phoneList) {
+        await page.goBack();
+        await expect(page.getByRole("region", { name: "Idle" })).toBeVisible();
+      }
 
       // Narrower than where the floors were fitted: without a refit the parts keep widths the row no longer holds and run
       // past its edge.

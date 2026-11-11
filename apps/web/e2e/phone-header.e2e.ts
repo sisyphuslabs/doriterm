@@ -1,5 +1,5 @@
 import { devices, type Page } from "@playwright/test";
-import { agentRow, endAgent } from "./agents.ts";
+import { AGENT_SHELL, agentRow, endAgent } from "./agents.ts";
 import { expect, laidOutBox, opened, test } from "./fixtures.ts";
 import { seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
@@ -10,9 +10,9 @@ test.use({ ...phone, serviceWorkers: "block" });
 
 const header = (page: Page) => page.getByRole("banner");
 
-/** A plain shell in a space of its own, started straight on the e2e core; it reports a state only when told to. */
+/** The stand-in agent (`AGENT_SHELL`) in a space of its own, started straight on the e2e core; it reports a state only when told to. */
 function startShellIn(space: string, name: string): string {
-  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${space}`, "--", "env", "PS1=$ ", "sh"]);
+  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${space}`, "--", ...AGENT_SHELL]);
   const started: unknown = JSON.parse(out);
   if (typeof started !== "object" || started === null || !("address" in started)) throw new Error(out);
   return String(started.address);
@@ -79,7 +79,7 @@ test("on a phone the terminal header names the session and where it is, follows 
     expect(box.width).toBeGreaterThanOrEqual(44);
     expect(box.height).toBeGreaterThanOrEqual(44);
     await switcher.click();
-    const sheet = page.getByRole("dialog", { name: "Spaces" });
+    const sheet = page.getByRole("dialog", { name: "Switch" });
     await opened(sheet);
     // A visible Done closes the sheet and hands focus back to the switch.
     // Exact: an agent row's name also carries its state, "Done" among them.

@@ -87,9 +87,12 @@ test("on the phone an agent row draws More alone, which takes a tap just inside 
       }),
     );
 
-    // A space row's meta is its own signal: its status dot and tab count stay in its name, and its "..." waits for a hover.
+    // A space row, on the Spaces tab, is its own signal: its status dot and tab count stay in its name, and it draws no "...".
+    await page.getByRole("navigation", { name: "Sections" }).getByRole("button", { name: "Spaces", exact: true }).tap();
     await expect(page.getByRole("button", { name: /\d+ tabs/ }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "More for api" })).toHaveCount(0);
+    await page.goBack();
+    await expect(more).toBeVisible();
 
     // Pin is More's first item, so the action the row no longer draws is one tap further.
     await more.tap();

@@ -6,7 +6,7 @@ import { triggersFor } from "../keys/keymap.ts";
 import { triggerKeys, type Platform } from "../keys/trigger.ts";
 import type { AgentStatus } from "@doriface/ui";
 import { agentStatus } from "./attention.ts";
-import { machineOf, terminalTitle } from "./model.ts";
+import { type ListedSpace, machineOf, spaceOfAddress, terminalTitle } from "./model.ts";
 import { agentWhere } from "./palette-where.ts";
 import type { ShellAction } from "./shell-actions.ts";
 
@@ -65,6 +65,11 @@ export function paletteCommands(source: PaletteSource): Command[] {
     { id: `${HOST}${source.host}`, label: source.host, group: "Hosts", hint: source.route },
     ...source.actions.filter((action) => GENERAL.has(action.id)).map((action) => command(source, action, "General")),
   ];
+}
+
+/** The palette's `spaceOf`: the first listed space showing an address, as the sidebar resolves it (#1486). */
+export function spaceNameOf(spaces: readonly ListedSpace[]): (address: string) => string | undefined {
+  return (address) => spaceOfAddress(spaces, address)?.name;
 }
 
 /** What running a palette row does. */

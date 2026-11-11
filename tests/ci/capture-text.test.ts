@@ -39,7 +39,7 @@ describe("a capture's OCR text", () => {
   });
 
   test("a fully qualified host is a host", () => {
-    expect(patterns("alpha@build.example.com:~$ ls")).toContain("prompt: account at host");
+    expect(patterns("alpha@build.acme.dev:~$ ls")).toContain("prompt: account at host");
   });
 
   test("an account at a host says which shape it trips, never the text", () => {
@@ -109,17 +109,102 @@ describe("the Capture text workflow starts", () => {
   });
 });
 
-test("an SVG's own text is checked, since OCR cannot read one", async () => {
+/** An SVG is written out and read back through captureText, the way the workflow reads a committed one. */
+async function captureSvg(markup: string): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), "capture-text-"));
   try {
     const svg = join(dir, "a.svg");
-    writeFileSync(svg, '<svg xmlns="http://www.w3.org/2000/svg"><text x="1">someone@alpha-box:~$ ls</text></svg>');
-    expect(classify(await captureText(svg)).findings.map((one) => one.pattern)).toContain("prompt: account at host");
-    writeFileSync(svg, '<svg xmlns="http://www.w3.org/2000/svg"><text x="1">demo@my-laptop:~$ ls</text></svg>');
-    expect(classify(await captureText(svg)).ok).toBe(true);
+    writeFileSync(svg, `<svg xmlns="http://www.w3.org/2000/svg">${markup}</svg>`);
+    return await captureText(svg);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+describe("an SVG's own text is checked, since OCR cannot read one", () => {
+  test("a prompt in one text node is found, and a placeholder is spared", async () => {
+    expect(patterns(await captureSvg('<text x="1">someone@alpha-box:~$ ls</text>'))).toContain(
+      "prompt: account at host",
+    );
+    expect(classify(await captureSvg('<text x="1">demo@my-laptop:~$ ls</text>')).ok).toBe(true);
+  });
+
+  test("a prompt split across tspans is joined, since a separator would hide it", async () => {
+    expect(patterns(await captureSvg('<text x="1">someone@<tspan>alpha-box</tspan>:~$ ls</text>'))).toContain(
+      "prompt: account at host",
+    );
+  });
+
+  test("lines drawn at different heights stay apart, so a minified SVG's clean lines do not run together", async () => {
+    expect(
+      classify(await captureSvg('<text x="0" y="10">$ ls</text><text x="0" y="30">demo@my-laptop:~$ ls</text>')).ok,
+    ).toBe(true);
+    expect(
+      classify(await captureSvg('<text x="0" y="10">$ ls<tspan x="0" dy="1em">demo@my-laptop:~$ ls</tspan></text>')).ok,
+    ).toBe(true);
+  });
+
+  test("runs drawn on the same line are joined, so a prompt split across sibling texts is still found", async () => {
+    expect(
+      patterns(await captureSvg('<text x="0" y="10">someone@</text><text x="56" y="10">alpha-box</text>')),
+    ).toContain("prompt: account at host");
+  });
+
+  test("a text's own dy shifts it within its line, so same-y siblings centred with dy still join (#2171)", async () => {
+    expect(
+      patterns(
+        await captureSvg(
+          '<text x="0" y="10" dy=".35em">someone@</text><text x="56" y="10" dy=".35em">alpha-box</text>',
+        ),
+      ),
+    ).toContain("prompt: account at host");
+  });
+
+  test("y compares as a number, so 10 and 10.0 are one line (#2171)", async () => {
+    expect(
+      patterns(await captureSvg('<text x="0" y="10">someone@</text><text x="56" y="10.0">alpha-box</text>')),
+    ).toContain("prompt: account at host");
+  });
+
+  test("a title's text stays apart from the drawn lines (#2172)", async () => {
+    expect(classify(await captureSvg('<title>Terminal</title><text x="0" y="10">demo@my-laptop:~$ ls</text>')).ok).toBe(
+      true,
+    );
+  });
+
+  test("texts placed only by transform stay separate lines (#2172)", async () => {
+    expect(
+      classify(
+        await captureSvg(
+          '<text transform="translate(0 10)">$ ls</text><text transform="translate(0 30)">demo@my-laptop:~$ ls</text>',
+        ),
+      ).ok,
+    ).toBe(true);
+  });
+
+  test("a prompt in a CDATA section is read, not dropped", async () => {
+    expect(patterns(await captureSvg('<text x="1"><![CDATA[someone@alpha-box:~$ ls]]></text>'))).toContain(
+      "prompt: account at host",
+    );
+  });
+
+  test("a prompt written with an entity is decoded to what a renderer shows", async () => {
+    expect(patterns(await captureSvg('<text x="1">someone&#64;alpha-box:~$ ls</text>'))).toContain(
+      "prompt: account at host",
+    );
+    expect(patterns(await captureSvg('<text x="1">someone&#x40;alpha-box:~$ ls</text>'))).toContain(
+      "prompt: account at host",
+    );
+  });
+
+  test("a split or encoded placeholder still names no one", async () => {
+    expect(classify(await captureSvg('<text x="1">you@<tspan>example.com</tspan></text>')).ok).toBe(true);
+    expect(classify(await captureSvg('<text x="1">you&#64;example.com</text>')).ok).toBe(true);
+  });
+
+  test("every XML entity decodes, and an entity-encoded bracket stays text", async () => {
+    expect(await captureSvg("<text>&amp; &lt; &gt; &quot; &apos;</text>")).toContain("& < > \" '");
+  });
 });
 const tesseract = ((): string | undefined => {
   try {
@@ -136,10 +221,13 @@ describe.skipIf(tesseract === undefined)("the committed captures raise no false 
     "docs/design/app/pane-drop-1440-day.png",
   ].filter((path) => existsSync(join(REPO, path)));
 
-  test("every sampled capture passes, so a clean image is never blocked", () => {
+  // Read through the workflow's own captureText, which runs tesseract on one thread: with its default thread pool a
+  // capture took 2-34 s on a loaded host instead of 0.3 s, and the test ran out of its 5 s (#2012).
+  test("every sampled capture passes, so a clean image is never blocked", async () => {
     expect(samples.length).toBeGreaterThan(0);
     for (const sample of samples) {
-      const text = execFileSync(tesseract as string, [join(REPO, sample), "-"], { encoding: "utf8" });
+      // oxlint-disable-next-line no-await-in-loop -- one capture at a time, as the workflow's limit of one per core does
+      const text = await captureText(join(REPO, sample));
       expect({ sample, findings: classify(text).findings }).toEqual({ sample, findings: [] });
     }
   });

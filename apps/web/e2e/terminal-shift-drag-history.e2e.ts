@@ -115,25 +115,30 @@ for (const focus of ["in the terminal", "outside the terminal"] as const) {
     }
 
     const frames = sampleFrames(terminal);
-    await page.keyboard.down("Shift");
+    let positions: number[] = [];
     try {
-      await page.mouse.move(row.left + 1, row.y);
-      await page.mouse.down();
-      expect.soft(await position(terminal), "the Shift press keeps the history position").toBe(before);
-      await page.mouse.move((row.left + row.right) / 2, row.y, { steps: 4 });
-      // Output arriving mid-drag, as from an agent that keeps drawing, must not move the reader either.
-      hcOn("host", ["send", address, "request-output"]);
-      await expect(terminal).toContainText("new-output-5");
-      await page.mouse.move(row.right - 1, row.y, { steps: 4 });
-      expect.soft(await position(terminal), "the Shift drag keeps the history position").toBe(before);
-      await page.mouse.up();
+      await page.keyboard.down("Shift");
+      try {
+        await page.mouse.move(row.left + 1, row.y);
+        await page.mouse.down();
+        expect.soft(await position(terminal), "the Shift press keeps the history position").toBe(before);
+        await page.mouse.move((row.left + row.right) / 2, row.y, { steps: 4 });
+        // Output arriving mid-drag, as from an agent that keeps drawing, must not move the reader either.
+        hcOn("host", ["send", address, "request-output"]);
+        await expect(terminal).toContainText("new-output-5");
+        await page.mouse.move(row.right - 1, row.y, { steps: 4 });
+        expect.soft(await position(terminal), "the Shift drag keeps the history position").toBe(before);
+        await page.mouse.up();
+      } finally {
+        await page.keyboard.up("Shift");
+      }
+      await expect(input).toBeFocused();
+      if (focus === "outside the terminal")
+        await expect.poll(() => framesSent(socket, sent, FOCUS_IN)).toBeGreaterThan(0);
     } finally {
-      await page.keyboard.up("Shift");
+      // Stopped and awaited on every exit, so a failed check above is the only error the run reports (#2118).
+      positions = await frames.stop();
     }
-    await expect(input).toBeFocused();
-    if (focus === "outside the terminal")
-      await expect.poll(() => framesSent(socket, sent, FOCUS_IN)).toBeGreaterThan(0);
-    const positions = await frames.stop();
     expect
       .soft(
         positions.filter((top) => top !== before),

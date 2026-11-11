@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { releasePublicKey, verifyRelease } from "../../packages/crypto/src/release.ts";
+import { RELEASE_PUBLIC_KEYS, releasePublicKey, verifyRelease } from "../../packages/crypto/src/release.ts";
 import { type MirrorPlan, mirrorRelease } from "../../.github/scripts/release-mirror.ts";
 import { type FakeRelease, fakeRelease, MemoryBucket } from "./support/release-bucket.ts";
 
@@ -89,6 +89,10 @@ test("a file that does not match SHA256SUMS.txt or GitHub's digest stops the run
 test("a signing key the shipped builds do not trust is refused before anything is uploaded", async () => {
   const bucket = new MemoryBucket();
   await expect(mirrorRelease(bucket, { ...plan("0.1.17"), trustedKeys: [] }, quiet)).rejects.toThrow(
+    "RELEASE_PUBLIC_KEYS",
+  );
+  // The list builds actually ship refuses the test's random key too.
+  await expect(mirrorRelease(bucket, { ...plan("0.1.17"), trustedKeys: RELEASE_PUBLIC_KEYS }, quiet)).rejects.toThrow(
     "RELEASE_PUBLIC_KEYS",
   );
   expect(bucket.puts).toEqual([]);
