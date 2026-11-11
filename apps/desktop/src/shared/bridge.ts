@@ -1,3 +1,4 @@
+import type { UpdateChannel, UpdateStatus } from "./update.ts";
 import type { NoticeContext } from "@doriface/protocol";
 
 /** IPC channels between the preload and the main process. */
@@ -30,6 +31,13 @@ export const Channel = {
   takeUpdate: "doriface:take-update",
   /** Renderer to main: quit and install the staged update (Restart to update). */
   installUpdate: "doriface:install-update",
+  /** Main to renderer: the updater's status changed (#1969); renderer to main: the status now. */
+  updateStatus: "doriface:update-status",
+  /** Renderer to main: the update channel, and choosing one (stable or beta). */
+  updateChannel: "doriface:update-channel",
+  setUpdateChannel: "doriface:set-update-channel",
+  /** Renderer to main: check for an update now. */
+  checkForUpdates: "doriface:check-for-updates",
   /** Renderer to main: download, verify and install herdr-core for this user (Install herdr-core). */
   installHc: "doriface:install-hc",
   /** Main to renderer: the phase an Install herdr-core has reached, e.g. `download`. */
@@ -391,6 +399,13 @@ export interface DorifaceBridge {
   onUpdateReady(listener: (update: UpdateReady) => void): void;
   /** Quits and installs the staged update; resolves false when none is staged. */
   installUpdate(): Promise<boolean>;
+  /** What the updater is doing now, then every change; null outside a packaged app. */
+  onUpdateStatus(listener: (status: UpdateStatus | null) => void): void;
+  /** The update channel, and choosing one; resolves false when the choice was not kept. */
+  updateChannel(): Promise<UpdateChannel | null>;
+  setUpdateChannel(channel: UpdateChannel): Promise<boolean>;
+  /** Checks for an update now; the answer arrives as a status. */
+  checkForUpdates(): Promise<void>;
   /** Whether this system shows native notifications at all (a Linux desktop may run no notification service). */
   noticesSupported(): Promise<boolean>;
   /** The OS's standing answer about this app's notifications; `unknown` where this shell cannot read one. */

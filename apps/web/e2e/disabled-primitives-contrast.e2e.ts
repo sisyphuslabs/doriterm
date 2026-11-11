@@ -51,8 +51,24 @@ for (const theme of ["day", "night"] as const) {
 
       const increase = page.getByRole("button", { name: "Increase font-size" });
       await expect(increase).toBeDisabled();
-      const glyph = await measure(page, increase, { svg: true });
+      // The same button with its disabled marks lifted paints the enabled glyph, as a stepper at its bound sits beside
+      // its enabled other button: the disabled one is a visible step from it, the Button spec's 1.7 (#1241).
+      const marks = await increase.evaluate((element) =>
+        ["disabled", "data-disabled", "aria-disabled"].flatMap((name) => {
+          const value = element.getAttribute(name);
+          return value === null ? [] : [[name, value] as const];
+        }),
+      );
+      await increase.evaluate((element, names) => {
+        for (const [name] of names) element.removeAttribute(name);
+      }, marks);
+      const enabledGlyph = await measure(page, increase, { svg: true });
+      await increase.evaluate((element, names) => {
+        for (const [name, value] of names) element.setAttribute(name, value);
+      }, marks);
+      const glyph = await measure(page, increase, { svg: true, enabled: enabledGlyph.ink });
       expect(glyph.ratio, glyph.label).toBeGreaterThanOrEqual(3);
+      expect(glyph.step, glyph.label).toBeGreaterThanOrEqual(1.7);
       const value = await measure(page, page.getByRole("textbox", { name: "font-size", exact: true }), {
         part: { selector: "", paint: "color" },
       });

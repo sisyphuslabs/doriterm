@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { CDPSession, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 
 test.use({ serviceWorkers: "block", viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
@@ -33,23 +33,40 @@ function octal(text: string): string {
 }
 
 /** The faces that drew the row holding `text`, as Chromium reports them, and whether each is one the page loaded. */
-async function facesOf(page: Page, text: string): Promise<readonly { name: string; bundled: boolean }[]> {
+async function facesOf(
+  page: Page,
+  cdp: CDPSession,
+  text: string,
+): Promise<readonly { name: string; bundled: boolean }[]> {
   await page.evaluate((probe) => {
     const row = [...document.querySelectorAll(".term-row")].find((node) => node.textContent?.includes(probe));
     row?.setAttribute("data-probe", "");
   }, text);
-  const cdp = await page.context().newCDPSession(page);
   try {
-    await cdp.send("DOM.enable");
-    await cdp.send("CSS.enable");
-    const { root } = await cdp.send("DOM.getDocument", { depth: -1 });
+    const { root } = await cdp.send("DOM.getDocument", { depth: 0 });
     const { nodeIds } = await cdp.send("DOM.querySelectorAll", { nodeId: root.nodeId, selector: "[data-probe] span" });
     const reports = await Promise.all(nodeIds.map((nodeId) => cdp.send("CSS.getPlatformFontsForNode", { nodeId })));
     return reports.flatMap(({ fonts }) => fonts.map((font) => ({ name: font.familyName, bundled: font.isCustomFont })));
   } finally {
     await page.evaluate(() => document.querySelector("[data-probe]")?.removeAttribute("data-probe"));
-    await cdp.detach();
   }
+}
+
+/**
+ * Every bundled face is declared per unicode-range with font-display: swap, so the browser fetches a face only once a
+ * glyph asks for it, and until then draws the row with a system fallback. Waiting for exactly those loads, not for a
+ * time, is what makes the read below hold under any load (#1991): `document.fonts.load` resolves once the faces that
+ * cover the text at the rows' font have loaded, then two frames let the rows be laid out again in them.
+ */
+async function fontsLoadedFor(page: Page, texts: readonly string[]): Promise<void> {
+  await page.evaluate(async (probes) => {
+    const row = document.querySelector('[data-focused="true"] .term-row');
+    if (row === null) throw new Error("no terminal row");
+    const style = getComputedStyle(row);
+    await Promise.all(probes.map((probe) => document.fonts.load(`${style.fontSize} ${style.fontFamily}`, probe)));
+    await document.fonts.ready;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  }, texts);
 }
 
 test("symbols, spinners and icons in the terminal are drawn by faces the app ships, on any device (#949)", async ({
@@ -61,18 +78,36 @@ test("symbols, spinners and icons in the terminal are drawn by faces the app shi
   await expect(terminal).toContainText("$");
   await terminal.getByRole("textbox").focus();
   const lines = Object.values(PROBES);
-  await page.keyboard.type(`printf '\\033[2J\\033[H${lines.map(octal).join("\\n")}\\n'`);
+  // One input, as a paste: typed key by key, this 851-character command is a round trip a key to the terminal, which
+  // under whole-suite load took the whole test budget before a row was read (#1991).
+  await page.keyboard.insertText(`printf '\\033[2J\\033[H${lines.map(octal).join("\\n")}\\n'`);
   await page.keyboard.press("Enter");
-  for (const [name, text] of Object.entries(PROBES)) {
-    // oxlint-disable-next-line no-await-in-loop -- one row at a time, each read once its fonts have loaded
-    await expect
-      .poll(async () => (await facesOf(page, text)).filter((face) => !face.bundled).map((face) => face.name), {
-        message: `${name} (${text}) drawn by a face the app does not ship`,
-        timeout: 10_000,
-      })
-      .toEqual([]);
-    // oxlint-disable-next-line no-await-in-loop -- the faces of the row just checked, for the run's record
-    const faces = [...new Set((await facesOf(page, text)).map((face) => face.name))];
-    console.log(`${name}: ${faces.join(", ")}`);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (probes) => {
+          const rows = [...document.querySelectorAll('[data-focused="true"] .term-row')].map((row) => row.textContent);
+          return probes.filter((probe) => !rows.some((text) => text?.includes(probe)));
+        },
+        [...lines],
+      ),
+    )
+    .toEqual([]);
+  await fontsLoadedFor(page, lines);
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send("DOM.enable");
+    await cdp.send("CSS.enable");
+    for (const [name, text] of Object.entries(PROBES)) {
+      // oxlint-disable-next-line no-await-in-loop -- one row at a time: each marks its row, which the next unmarks
+      const faces = await facesOf(page, cdp, text);
+      expect(
+        faces.filter((face) => !face.bundled).map((face) => face.name),
+        `${name} (${text}) drawn by a face the app does not ship`,
+      ).toEqual([]);
+      console.log(`${name}: ${[...new Set(faces.map((face) => face.name))].join(", ")}`);
+    }
+  } finally {
+    await cdp.detach();
   }
 });
