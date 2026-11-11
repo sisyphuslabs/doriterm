@@ -6,7 +6,7 @@ import { terminalConfigStore } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
 import { CursorResets } from "./cursor-reset.ts";
 import { readDisplay } from "./display.ts";
-import { noteHistoryGap } from "./history-gap-notice.ts";
+import { clearHistoryGap, noteHistoryGap } from "./history-gap-notice.ts";
 import { type EndHolder, fromEndOf, holdFromEnd, readerInputOn } from "./hold-view-from-end.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
 import { openFailure } from "./open-failure.ts";
@@ -175,6 +175,8 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
 
   const attach = (ready: WTerm): void => {
     setWt(ready);
+    // The same connection attaching again means the core ended this terminal's stream while the line stayed up.
+    const sameConnection = attachedTo.current === connection;
     attachedTo.current = connection;
     attachedView.current = ready;
     // A test hook, as crash-probe is: a spec sets window.__dorifaceAttachLog and reads which terminal re-attached when
@@ -230,9 +232,10 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           if (fromEnd > 0) ready.holdScrollAway();
           pacer.drop();
           output.reset();
-          // Output that scrolled off the core's screen while the line was down is not in the kept history (#2033).
+          // Output that scrolled off the core's screen meanwhile is not in the kept history (#2033). A reconnect was
+          // already noted as the line went down (below).
           if (keepsHistory) {
-            noteHistoryGap();
+            noteHistoryGap(address, sameConnection ? "stream" : "reconnect");
             ready.write(CLEAR_SCREEN);
           }
           // The repaint lands where the reader was: at the end for one who was following, in history for one who was not.
@@ -241,6 +244,9 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           const reader = readerInputOn(ready.element.parentElement ?? ready.element);
           endHold.current = holdFromEnd(ready.element, pacer, fromEnd, reader);
         }
+        // A view attached anew, a first attach included (a phone opens the terminal again as a new view), has its
+        // history played back: nothing it shows is missing any more (#2279 review).
+        if (!keepsHistory) clearHistoryGap(address);
         attachedBefore.current = true;
         paintedView.current = ready;
         // Every attach's first paint is its replay: written as it arrives with the paint held, then drawn once it has
@@ -271,6 +277,9 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         attached.onClose((close) => {
           if (stream.current === attached) stream.current = null;
           const end = terminalEnd(close);
+          // The line went down under a painted view: what it prints meanwhile may not reach the history. Said now, the
+          // note takes over the phone's Reconnecting line as the connection comes back, at its height (#2257).
+          if (end === "dropped" && paintedView.current === ready) noteHistoryGap(address, "reconnect");
           onEndNow.current?.(address, end);
           if (end === "lost") settle(null);
         });
