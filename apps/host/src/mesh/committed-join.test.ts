@@ -161,12 +161,13 @@ test("an approved join that reaches its transaction after expiry signs nothing",
   }
 });
 
+/** Ready while the roster holds no machine that has not answered: here, any admitted machine has not (#1436). */
+const readyFor = (records?: readonly Signed[]): boolean =>
+  (records ?? []).every((record) => parseRecord(record)?.type !== "admit");
+
 test("a client approved after a machine was admitted meanwhile is refused by the roster it is written over (#1436)", async () => {
   const a = side("alpha");
   const fixture = new MeshFixture(a.dir, a.m);
-  // Ready while the roster holds no machine that has not answered: here, any admitted machine has not.
-  const readyFor = (records?: readonly Signed[]): boolean =>
-    (records ?? []).every((record) => parseRecord(record)?.type !== "admit");
   const run = await begin(false, "client", true, readyFor, a);
   await run.client.next();
   const asked = await run.pending.next();
