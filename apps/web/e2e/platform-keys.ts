@@ -114,9 +114,15 @@ export async function pressShortcut(page: Page, action: string): Promise<void> {
 
 /**
  * Presses `trigger` as the browser delivers it, a keydown carrying its own editing command (`paste`), which runs unless
- * the page cancels the keydown. Playwright's keyboard.press sends no editing command on Linux (#510).
+ * the page cancels the keydown. Playwright's keyboard.press sends no editing command in Chromium on Linux (#510), so
+ * there the keydown goes through CDP. CDP exists only in Chromium; Firefox and WebKit run the chord's editing command
+ * for a pressed key themselves, so outside Chromium it is pressed as any key is (#1909).
  */
 export async function pressWithCommand(page: Page, trigger: string, command: string): Promise<void> {
+  if (page.context().browser()?.browserType().name() !== "chromium") {
+    await page.keyboard.press(chordOf(trigger));
+    return;
+  }
   const { mods, key } = parts(trigger);
   const code = codeOf(key);
   const modifiers = mods.reduce((bits, mod) => bits | (MODIFIERS[mod]?.bit ?? 0), 0);
