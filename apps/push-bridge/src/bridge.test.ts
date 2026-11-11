@@ -592,7 +592,12 @@ describe("a rate limit per device token (#830)", () => {
       },
     };
     const logged: string[] = [];
-    const bridge = createBridge(await config(), { fetch, now: () => NOW, limiter: failing, log: (line) => logged.push(line) });
+    const bridge = createBridge(await config(), {
+      fetch,
+      now: () => NOW,
+      limiter: failing,
+      log: (line) => logged.push(line),
+    });
     const keys = await receiverKeys();
     const vapid = await vapidKey();
     const statuses: number[] = [];
