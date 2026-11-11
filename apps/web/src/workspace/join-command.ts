@@ -8,6 +8,16 @@ export const INSTALL_SCRIPT_URL = "https://get.doriterm.com";
 /** How long a host gets to answer before the dialog says it cannot make a join command (a host older than #668). */
 export const OFFER_ANSWER_MS = 15_000;
 
+/** The longest wait before following the offer again after a feed ended or a subscribe failed (#1780). */
+export const REFOLLOW_MAX_MS = 5_000;
+
+/** A feed that lived this long counts as followed: the next one that ends is opened again at once (#1780). */
+export const FOLLOWED_MS = 5_000;
+
+/** The wait before following again after `failures` ends in a row: at once the first time, then 250 ms doubling. */
+export const refollowMs = (failures: number): number =>
+  failures === 0 ? 0 : Math.min(REFOLLOW_MAX_MS, 250 * 2 ** (failures - 1));
+
 /**
  * The one line to run on the machine to add: install (or update) the host as a service, then join this mesh. The link
  * reaches the installer in its environment (DORIFACE_JOIN), which only the same user (and root) can read, never on a command line.
@@ -80,7 +90,9 @@ export function useJoinOffer(connection: HcConnection, open: boolean, client = f
     asked.current = request;
     let answered = false;
     let closed = false;
+    // A new connection asks again: a "did not answer" from the one before is not the new one's answer.
     if (fresh) setOffer({ phase: "asking" });
+    else setOffer((shown) => (shown.phase === "failed" ? { phase: "asking" } : shown));
     const settle = (next: JoinOffer): void => {
       if (closed) return;
       answered = true;
@@ -100,18 +112,32 @@ export function useJoinOffer(connection: HcConnection, open: boolean, client = f
           "This host did not answer. It may be older than this app: update doriface-host, or use the steps below.",
       });
     }, OFFER_ANSWER_MS);
+    let failures = 0;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const followAndRead = (): void =>
+      void follow()
+        .then(() => read())
+        .catch(() => refollow(false));
     const follow = async (): Promise<void> => {
       const subscribed = await connection.subscribe();
       if (closed) return subscribed.close();
       feed = subscribed;
-      const reopen = (): void => {
-        // A connection that closed is replaced as a whole, which runs this effect again.
-        if (!closed && !connection.closed)
-          void follow()
-            .then(() => read())
-            .catch(() => {});
-      };
-      followJoinOffer(subscribed, () => void read().catch(() => {}), reopen);
+      const since = Date.now();
+      followJoinOffer(
+        subscribed,
+        () => void read().catch(() => {}),
+        () => refollow(Date.now() - since >= FOLLOWED_MS),
+      );
+    };
+    // Follows the offer again on this connection, at once or after a backoff, and reads it so a join written while no
+    // feed was open still shows; a connection that closed is replaced as a whole, which runs this effect again.
+    const refollow = (lived: boolean): void => {
+      if (closed || connection.closed) return;
+      failures = lived ? 0 : failures;
+      const wait = refollowMs(failures);
+      failures += 1;
+      if (wait === 0) followAndRead();
+      else retry = setTimeout(followAndRead, wait);
     };
     void (async () => {
       await follow();
@@ -125,6 +151,7 @@ export function useJoinOffer(connection: HcConnection, open: boolean, client = f
     return () => {
       closed = true;
       clearTimeout(timer);
+      clearTimeout(retry);
       feed?.close();
     };
   }, [connection, open, client]);
