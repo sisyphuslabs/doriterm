@@ -1,6 +1,6 @@
-import { type ByteLink, HcConnection } from "@doriface/client";
+import type { ByteLink, HcConnection } from "@doriface/client";
 import { HcRpcError } from "@doriface/protocol";
-import { type ChildByteLink, type HcTarget, spawnHcLink } from "../mesh/hc-machines.ts";
+import { type ChildByteLink, type HcTarget, openOnCore, spawnHcLink } from "../mesh/hc-machines.ts";
 import type { PushCore, PushService } from "./push-service.ts";
 
 const RETRY_MS = 5_000;
@@ -48,7 +48,7 @@ export function startCoreFeed(
     linkOpen = true;
     exited = gone.promise;
     try {
-      const connection = await HcConnection.open(child);
+      const connection = await openOnCore(child, target);
       if (stopped) return connection.close();
       current = connection;
       const feed = await connection.subscribe();

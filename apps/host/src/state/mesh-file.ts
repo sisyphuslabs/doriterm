@@ -1,5 +1,11 @@
 import type { Signed } from "@doriface/mesh";
-import type { IndexData, MemberEntry, NamingEntry, RevokedEntry } from "../mesh/authorize-index.ts";
+import {
+  type IndexData,
+  INDEX_RULES,
+  type MemberEntry,
+  type NamingEntry,
+  type RevokedEntry,
+} from "../mesh/authorize-index.ts";
 import { isRecord } from "./files.ts";
 
 export const MESH_FILE = "mesh.json";
@@ -100,6 +106,8 @@ function all<T>(value: unknown, item: (entry: unknown) => T | undefined): readon
  */
 function indexData(value: unknown): IndexData | undefined {
   if (!isRecord(value) || !Number.isSafeInteger(value["generation"]) || "overCap" in value) return undefined;
+  // An index built under other admission rules may hold a member the current rules leave out (#1483).
+  if (value["rules"] !== INDEX_RULES) return undefined;
   const members = all(value["members"], memberEntry);
   const revoked = all(value["revoked"], revokedEntry);
   const superseded = value["superseded"];
@@ -107,7 +115,7 @@ function indexData(value: unknown): IndexData | undefined {
   const named = all(value["named"], namingEntry);
   if (members === undefined || revoked === undefined || !strings(superseded)) return undefined;
   if (named === undefined) return undefined;
-  return { generation: Number(value["generation"]), members, revoked, superseded, named };
+  return { generation: Number(value["generation"]), rules: INDEX_RULES, members, revoked, superseded, named };
 }
 
 const objectOr = (value: unknown): Readonly<Record<string, unknown>> => (isRecord(value) ? value : {});

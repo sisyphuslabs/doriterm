@@ -61,7 +61,7 @@ export function ImportPreview({ parsed, onClose }: { readonly parsed: ParsedConf
             </span>
             <Badge tone={STATUS[line.status].tone}>{STATUS[line.status].label}</Badge>
             {line.reason === undefined ? null : (
-              <span className="basis-full pl-9 font-sans text-sm text-muted-foreground">{line.reason}</span>
+              <span className="basis-full pl-9 font-sans text-prose text-muted-foreground">{line.reason}</span>
             )}
           </li>
         ))}

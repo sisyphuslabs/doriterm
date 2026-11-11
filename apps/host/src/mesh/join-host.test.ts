@@ -260,6 +260,8 @@ describe("J-1: a link join run by the joiner's running host", () => {
       mesh: true,
     });
     const ackReached = a.logged(/^mesh: merged 1 records from /);
+    // B holds an open mesh invite of its own: the join withdraws it and says so in its reply (#2136).
+    await requestControl(b.dir, { op: "mesh-pair", auto: false });
     const joined = await requestControl(b.dir, {
       op: "mesh-join",
       target: link,
@@ -269,7 +271,8 @@ describe("J-1: a link join run by the joiner's running host", () => {
       yes: true,
     });
     const meshId = new MeshStore(a.dir, { log: () => {} }).read()?.meshId;
-    expect(joined).toEqual({ meshId, hostId: identity.hostId });
+    expect(joined).toEqual({ meshId, hostId: identity.hostId, withdrewOffer: true });
+    expect(new PairingStore(b.dir).read()).toBeUndefined();
     const welcome = records(a.dir)?.slice(0, 2);
     expect(welcome).toHaveLength(2);
     expect(records(b.dir)?.slice(0, 2)).toEqual(welcome);

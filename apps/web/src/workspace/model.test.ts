@@ -9,6 +9,7 @@ import {
   phoneTabTitle,
   terminalTitle,
   layoutSpaces,
+  spaceOfAddress,
   type SpacesSource,
 } from "./model.ts";
 
@@ -162,6 +163,24 @@ describe("tabPosition", () => {
     ]);
     const first = listed[0];
     expect(first === undefined ? [] : liveTabs(first, many)).toEqual([["t1"], ["t2", "t3", "t4"], ["t5"]]);
+  });
+
+  test("an address listed in two spaces resolves to the first, for its position and its space (#1486)", () => {
+    const both = layoutSpaces(
+      [
+        here(
+          docOf([
+            { id: "first", folder: "/a", tabs: [["t4"], ["t1"]] },
+            { id: "second", folder: "/b", tabs: [["t1"]] },
+          ]),
+        ),
+      ],
+      terminals,
+    );
+    expect(spaceOfAddress(both, "t1")?.name).toBe(both[0]?.name);
+    expect(spaceOfAddress(both, "t1")).toBe(both[0]);
+    expect(tabPosition(both, terminals, "t1")).toEqual({ index: 2, count: 2 });
+    expect(spaceOfAddress(both, "t9")).toBeUndefined();
   });
 
   test("a finished terminal, one in no tab and an unknown one have no position", () => {

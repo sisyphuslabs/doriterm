@@ -3,7 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import { type ReactNode, useRef } from "react";
 import { useFittedLines } from "./fit-lines.ts";
 import { agentStatus } from "./attention.ts";
-import { machineOf, type Session, spaceName, terminalTitle } from "./model.ts";
+import { machineOf, type Session, spaceName, spaceOfAddress, terminalTitle } from "./model.ts";
 import { useSpaceSelection } from "./space-selection.ts";
 import { PhoneSessionSheet } from "./phone-session-sheet.tsx";
 
@@ -37,7 +37,7 @@ export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBac
   const machine = machineOf(terminal.address);
   // Where it is: the layout space whose tab shows it (#404), else where it runs.
   const { spaces } = useSpaceSelection();
-  const space = spaces.find((each) => each.addresses.includes(terminal.address))?.name ?? spaceName(terminal);
+  const space = spaceOfAddress(spaces, terminal.address)?.name ?? spaceName(terminal);
   const where = `${machine ?? host} · ${space}`;
   return (
     <header
@@ -80,13 +80,7 @@ export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBac
       <span data-header-action className="contents">
         {action}
       </span>
-      <PhoneSessionSheet
-        terminal={terminal}
-        terminals={terminals}
-        title={terminalTitle(terminal)}
-        where={where}
-        onOpen={onOpen}
-      />
+      <PhoneSessionSheet terminal={terminal} terminals={terminals} title={title} where={where} onOpen={onOpen} />
     </header>
   );
 }

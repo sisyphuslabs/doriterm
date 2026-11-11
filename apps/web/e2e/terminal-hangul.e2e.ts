@@ -2,7 +2,9 @@ import type { Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
-test.use({ serviceWorkers: "block" });
+// The pinned faces replace the product stack this spec asserts on (#959) and draw the ink it measures, so it runs on the
+// platform's own stack, as terminal-hangul-fallback.e2e.ts does.
+test.use({ serviceWorkers: "block", pinnedFonts: false });
 
 const HANGUL_FAMILIES = [
   "Noto Sans Mono CJK KR",
@@ -108,17 +110,57 @@ test("Hangul typed into a terminal paints its cell, two cells wide (#959)", asyn
   expect(wideBox.width / ratio).toBeGreaterThan(1.5);
 });
 
-test.describe("the reporter's Android PWA", () => {
+/**
+ * The blank cells of #959 keep their columns, so the grid holds the syllables and what is missing is their ink. The one
+ * thing in the app that can paint a wide glyph as nothing is its fitted size (`font-size:<factor>em`), and that factor
+ * comes from canvas measurements of the fallback face. Here the canvas measures Hangul at one size whatever size it is
+ * asked for, as a device whose canvas fallback does not follow the font size would: the syllable must still draw.
+ */
+test("Hangul still paints when the canvas measures its face at one size, whatever size is asked (#959)", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const measure = CanvasRenderingContext2D.prototype.measureText;
+    CanvasRenderingContext2D.prototype.measureText = function (this: CanvasRenderingContext2D, text: string) {
+      if (!/[\u{1100}-\u{11FF}\u{3130}-\u{318F}\u{AC00}-\u{D7A3}]/u.test(text)) return measure.call(this, text);
+      const font = this.font;
+      this.font = font.replace(/^[\d.]+px/u, "40px");
+      try {
+        return measure.call(this, text);
+      } finally {
+        this.font = font;
+      }
+    };
+  });
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  const { glyph, blank } = await syllableInk(page, terminal);
+  expect(blank.ink).toBe(0);
+  expect(glyph.ink).toBeGreaterThan(0);
+});
+
+// Chromium ignores a `display-mode` feature in Emulation.setEmulatedMedia, so the block runs installed the way
+// device-install.e2e.ts does: the page's own `matchMedia("(display-mode: standalone)")`, which is how the app tells (#1383).
+test.describe("the reporter's Android PWA: an Android tablet's viewport and user agent, running as an installed app", () => {
   test.use({
     userAgent:
       "Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
     viewport: { width: 800, height: 1280 },
   });
 
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      const original = window.matchMedia.bind(window);
+      window.matchMedia = (query: string) =>
+        query === "(display-mode: standalone)" ? { ...original(query), matches: true } : original(query);
+    });
+  });
+
   test("a tablet-sized viewport with an Android user agent keeps a Hangul face and draws the syllable (#959)", async ({
     page,
   }) => {
     await page.goto("/");
+    expect(await page.evaluate(() => matchMedia("(display-mode: standalone)").matches)).toBe(true);
 
     const stack = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--font-term"));
     expect(HANGUL_FAMILIES.filter((family) => stack.includes(family))).not.toHaveLength(0);

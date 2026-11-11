@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createHcSession, type HcSession, stopLeftoverCores } from "./hc-session.ts";
 
 const line = (method: string): Uint8Array =>
@@ -65,6 +68,22 @@ test("the guard's sweep reports a core started again after dispose, and stops it
     }
   }
 }, 30_000);
+
+test("disposing a session whose core never started spawns nothing, so a missing hc fails no teardown (#1538)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "dh-missing-"));
+  const before = process.env["HC_BIN"];
+  process.env["HC_BIN"] = join(dir, "no-such-hc");
+  try {
+    const session = createHcSession("never-started");
+    // No core serves this session: stopping one would spawn hc, which is not there.
+    await session.dispose();
+    expect(await serving(session)).toBe(false);
+  } finally {
+    if (before === undefined) delete process.env["HC_BIN"];
+    else process.env["HC_BIN"] = before;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test("a test's sweep of its own sessions does not report another file's core that still serves (#261)", async () => {
   // Another test file's scratch session, its core started again after dispose: registered and serving when this

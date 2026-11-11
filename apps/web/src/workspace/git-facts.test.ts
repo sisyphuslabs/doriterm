@@ -1,6 +1,6 @@
 import type { GitFacts, GitFactsDoc, JsonObject, Terminal } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
-import { nextDocs, shownGit } from "./git-facts.ts";
+import { FAILED_ROUNDS_KEPT, type FactsRead, type FactsRounds, nextDocs, shownGit } from "./git-facts.ts";
 import { layoutSpaces } from "./model.ts";
 
 const clean: GitFacts = { branch: "main", detached: false, onDefault: true, ahead: 0, behind: 0, dirty: false };
@@ -36,16 +36,41 @@ describe("nextDocs: a round of reads", () => {
   ]);
 
   test("a read that could not be made keeps the machine's last document, so its facts do not blink out (#913)", () => {
-    const next = nextDocs(before, [
+    const next = nextDocs(before, new Map(), [
       ["", doc("main")],
       ["laptop", "failed"],
     ]);
-    expect(next.get("laptop")).toEqual(doc("feat/a"));
+    expect(next.docs.get("laptop")).toEqual(doc("feat/a"));
   });
 
   test("a machine that answers with no document, or is no longer asked, has none", () => {
-    expect(nextDocs(before, [["", undefined]])).toEqual(new Map());
-    expect([...nextDocs(before, [["", doc("dev")]]).keys()]).toEqual([""]);
+    expect(nextDocs(before, new Map(), [["", undefined]]).docs).toEqual(new Map());
+    expect([...nextDocs(before, new Map(), [["", doc("dev")]]).docs.keys()]).toEqual([""]);
+  });
+
+  test("a failure that persists while the machine reads connected drops its document after a bounded run (#1165)", () => {
+    // This page reads every 5 s and holds a redialing line as connected for 75 s (#904): a longer run is no blip.
+    let rounds: FactsRounds = { docs: before, misses: new Map() };
+    const failed = (): FactsRead[] => [
+      ["", doc("main")],
+      ["laptop", "failed"],
+    ];
+    for (let round = 0; round < FAILED_ROUNDS_KEPT; round += 1) rounds = nextDocs(rounds.docs, rounds.misses, failed());
+    expect(rounds.docs.get("laptop")).toEqual(doc("feat/a"));
+    rounds = nextDocs(rounds.docs, rounds.misses, failed());
+    expect(rounds.docs.has("laptop")).toBe(false);
+  });
+
+  test("a machine that answers again starts its run of failed reads over", () => {
+    let rounds: FactsRounds = { docs: before, misses: new Map() };
+    for (let round = 0; round < FAILED_ROUNDS_KEPT; round += 1)
+      rounds = nextDocs(rounds.docs, rounds.misses, [["laptop", "failed"]]);
+    rounds = nextDocs(rounds.docs, rounds.misses, [["laptop", doc("feat/b")]]);
+    for (let round = 0; round < FAILED_ROUNDS_KEPT; round += 1)
+      rounds = nextDocs(rounds.docs, rounds.misses, [["laptop", "failed"]]);
+    expect(rounds.docs.get("laptop")).toEqual(doc("feat/b"));
+    rounds = nextDocs(rounds.docs, rounds.misses, [["laptop", "failed"]]);
+    expect(rounds.docs.has("laptop")).toBe(false);
   });
 });
 

@@ -1,6 +1,6 @@
 import type { Agent, AgentStatus } from "@doriface/ui";
 import { agentStatus } from "./attention.ts";
-import { type ListedSpace, type Session, terminalTitle, toAgent } from "./model.ts";
+import { type ListedSpace, liveTabs, type Session, terminalTitle, toAgent } from "./model.ts";
 
 /** A tab as a phone names it: its own name, else the terminal it shows; never its place among its space's tabs. */
 export const tabLabel = (name: string, terminal: Session): string => (name === "" ? terminalTitle(terminal) : name);
@@ -36,8 +36,61 @@ export function spaceTabRows(space: ListedSpace, terminals: readonly Session[], 
     if (lead === undefined) return [];
     const { detail: _where, machine: _machine, ...agent } = toAgent(lead, nowMs);
     const detail = shown.length > 1 ? `${shown.length} panes` : rowDetail(space.tabNames[at] ?? "", lead);
-    return [{ ...agent, name: tabLabel(space.tabNames[at] ?? "", lead), ...(detail === "" ? {} : { detail }) }];
+    return [
+      {
+        ...agent,
+        name: tabLabel(space.tabNames[at] ?? "", lead),
+        ...(detail === "" ? {} : { detail }),
+        ...(space.tabPins[at] === true ? { pinned: true } : {}),
+      },
+    ];
   });
+}
+
+/**
+ * The spaces as a phone counts them: each by the tabs its sheet and its space screen list, those that show a live
+ * terminal, so a count on a phone is the number of rows under it (#2122). The desktop strip shows every tab of the
+ * document, so there a space counts them all.
+ */
+export const phoneSpaces = (spaces: readonly ListedSpace[], terminals: readonly Session[]): ListedSpace[] =>
+  spaces.map((space) => ({ ...space, tabs: liveTabs(space, terminals).length }));
+
+export interface SwitchTabRow {
+  /** The tab's place in its space, from 0. */
+  readonly at: number;
+  /** The pane the row opens: the open one when it is this tab's, else the tab's first live pane; with Needs you, its pane that waits on the person. */
+  readonly shown: Session;
+  readonly name: string;
+  /** What its Close button names: the row's name, with "tab N" added when another row reads the same name. */
+  readonly closes: string;
+}
+
+/**
+ * The switch sheet's rows for a space, one per tab that has a pane to show. Twins are counted among the rows as shown, by
+ * the pane each row shows: two tabs whose rows both read "claude" get Closes that say which tab.
+ */
+export function switchTabRows(
+  space: ListedSpace,
+  terminals: readonly Session[],
+  active: string,
+  needs: boolean,
+): readonly SwitchTabRow[] {
+  const rows = space.tabPanes.flatMap((panes, at) => {
+    const live = panes.flatMap((address) =>
+      terminals.filter((entry) => entry.address === address && entry.state === "live"),
+    );
+    const shown = needs
+      ? live.find((entry) => agentStatus(entry) === "blocked")
+      : (live.find((entry) => entry.address === active) ?? live[0]);
+    return shown === undefined ? [] : [{ at, shown, name: tabLabel(space.tabNames[at] ?? "", shown) }];
+  });
+  const twins = (name: string): boolean => rows.filter((each) => each.name === name).length > 1;
+  return rows.map(({ at, shown, name }) => ({
+    at,
+    shown,
+    name,
+    closes: twins(name) ? `${name}, tab ${at + 1}` : name,
+  }));
 }
 
 /** The space screen's subtitle: where it runs, how many tabs run, and how many of them need the person. */

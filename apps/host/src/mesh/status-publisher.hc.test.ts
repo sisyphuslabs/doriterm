@@ -80,6 +80,32 @@ test("a status that did not change writes nothing; one that did is written on th
   }
 }, 30_000);
 
+test("each tick reads herdr's lines again before it publishes, so the document carries what the refresh found (#1239)", async () => {
+  const session = createHcSession("dh-mesh-publish-refresh");
+  let refreshes = 0;
+  const publisher = publishMeshStatusOnCore(
+    { hc: session.hc, session: session.name, env: session.env },
+    () => ({ ...status, generation: refreshes }),
+    status.self,
+    () => {},
+    spawnHcLink,
+    NEVER,
+    () => {
+      refreshes += 1;
+      return Promise.resolve();
+    },
+  );
+  try {
+    await publisher.settled();
+    expect(await docOf(session)).toMatchObject({ value: { generation: 1 }, version: 1 });
+    await publisher.tick();
+    expect(await docOf(session)).toMatchObject({ value: { generation: 2 }, version: 2 });
+  } finally {
+    await publisher.stop();
+    await session.dispose();
+  }
+}, 30_000);
+
 test("a host in no mesh clears the document the mesh it left had written", async () => {
   const session = createHcSession("dh-mesh-publish-clear");
   await withCore(session, (core) => core.call("doc.set", { name: MESH_STATUS_DOC, value: status, version: 0 }));

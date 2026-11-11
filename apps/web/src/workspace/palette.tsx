@@ -6,7 +6,8 @@ import { resolveKeymap } from "../keys/keymap.ts";
 import { useOverrides } from "../keys/keymap-store.ts";
 import { runAction } from "../keys/dispatcher.ts";
 import { currentPlatform } from "../keys/trigger.ts";
-import { choiceOf, paletteCommands } from "./palette-commands.ts";
+import { useOverlayActive } from "../keys/use-overlay-active.ts";
+import { choiceOf, paletteCommands, spaceNameOf } from "./palette-commands.ts";
 import type { ListedSpace } from "./model.ts";
 import type { ShellAction } from "./shell-actions.ts";
 import { useOverlayFocus } from "./use-overlay-focus.ts";
@@ -24,11 +25,11 @@ export interface PaletteProps {
 
 /** The palette over the dimmed workspace, near the top; Escape or the backdrop closes it. */
 export function Palette({ terminals, host, route, actions, spaces, onOpenTerminal, onClose }: PaletteProps) {
+  const active = useOverlayActive(onClose);
   const navigate = useNavigate();
   const overrides = useOverrides();
   const commands = useMemo(() => {
     const platform = currentPlatform();
-    const named = new Map(spaces.flatMap((space) => space.addresses.map((address) => [address, space.name] as const)));
     return paletteCommands({
       terminals,
       host,
@@ -36,7 +37,7 @@ export function Palette({ terminals, host, route, actions, spaces, onOpenTermina
       actions,
       platform,
       keymap: resolveKeymap(platform, overrides),
-      spaceOf: (address) => named.get(address),
+      spaceOf: spaceNameOf(spaces),
     });
   }, [terminals, host, route, actions, spaces, overrides]);
   const frame = useRef<HTMLDivElement>(null);
@@ -49,7 +50,7 @@ export function Palette({ terminals, host, route, actions, spaces, onOpenTermina
     if (choice.kind === "agent") onOpenTerminal(choice.address);
     else void navigate({ to: "/settings" });
   };
-  return (
+  return active ? (
     <>
       <div className="fixed inset-0 z-40 bg-black/40" aria-hidden onClick={onClose} />
       <div
@@ -62,10 +63,10 @@ export function Palette({ terminals, host, route, actions, spaces, onOpenTermina
           event.stopPropagation();
           onClose();
         }}
-        className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center px-3 pt-3 md:pt-[12vh] [&>*]:pointer-events-auto"
+        className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center px-3 pt-[calc(var(--safe-top)+0.75rem)] md:pt-[12vh] [&>*]:pointer-events-auto"
       >
         <CommandPalette commands={commands} onRun={run} onCancel={onClose} />
       </div>
     </>
-  );
+  ) : null;
 }

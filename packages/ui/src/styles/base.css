@@ -47,22 +47,26 @@
    * is therefore at least 16px. The sink shows nothing but the caret and a composing syllable, so raising its size costs
    * no visible space. `!important` wins over the package's inline `font: inherit` and over the fields' own text-size
    * utilities.
+   *
+   * `1em` in the floor is the parent's size, not the field's own, so the floor shrinks a field whose own text size is
+   * larger than its parent: the palette's field is `text-lg` (18px) inside a 17px page, and it came out at 17px (#1401).
+   * A `text-lg` field is already above the floor, so the floor skips it and the field keeps its designed 18px.
    */
   @media (pointer: coarse) {
     input:not(
-      [type="checkbox"],
-      [type="radio"],
-      [type="range"],
-      [type="color"],
-      [type="file"],
-      [type="button"],
-      [type="submit"],
-      [type="reset"],
-      [type="image"],
-      [type="hidden"]
-    ),
-    textarea,
-    select {
+        [type="checkbox"],
+        [type="radio"],
+        [type="range"],
+        [type="color"],
+        [type="file"],
+        [type="button"],
+        [type="submit"],
+        [type="reset"],
+        [type="image"],
+        [type="hidden"]
+      ):not(.text-lg),
+    textarea:not(.text-lg),
+    select:not(.text-lg) {
       font-size: max(16px, 1em) !important;
     }
   }

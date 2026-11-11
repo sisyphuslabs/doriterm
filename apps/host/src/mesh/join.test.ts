@@ -87,6 +87,8 @@ describe("J-3: the inviting member's confirmation", () => {
     expect(a.mesh.read()).toBeUndefined();
     expect(b.mesh.read()).toBeUndefined();
     expect(run.inviterEnd.closeCode).toBe(CloseCode.UnknownDevice);
+    expect(a.logs).toContain("mesh: close code=4401 source=invite: the join was denied on the inviting member");
+    expect(b.logs).toContain("mesh: join failed source=join-ceremony: the join was denied on the inviting member");
   });
 
   test("a pending join expires with its offer", async () => {
@@ -113,6 +115,7 @@ describe("J-4: races", () => {
     pending.decide(asked.nonce, true, asked.code);
     expect(await failure(run.joined)).toBe("a mesh.json appeared on this host meanwhile");
     expect(b.mesh.read()?.meshId).toBe(own ?? "");
+    expect(b.logs).toContain("mesh: close code=4401 source=join-welcome: a mesh.json appeared on this host meanwhile");
   });
 
   test("two joins served at once by a host with no mesh found exactly one mesh", async () => {

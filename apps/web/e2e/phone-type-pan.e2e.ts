@@ -5,6 +5,7 @@ import { openPhoneTerminal, panViewport, PHONE } from "./phone-key-bar.ts";
 test.use({ serviceWorkers: "block", ...PHONE });
 
 const field = (page: Page) => page.getByLabel("Type into the terminal");
+const bar = (page: Page) => page.getByRole("toolbar", { name: "Terminal keys" });
 const focusedLabel = (page: Page) =>
   page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.tagName ?? null);
 
@@ -21,13 +22,21 @@ for (const px of [120, 336]) {
   }) => {
     await typeFieldUp(page);
     await panViewport(page, px);
-    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    const vv = await page.evaluate(() => ({
+      top: window.visualViewport?.offsetTop ?? 0,
+      height: window.visualViewport?.height ?? 0,
+    }));
+    expect(vv.top).toBe(px);
+    // The bar re-lays out to the panned viewport's bottom: one left where it was before the pan is still on screen, so
+    // only its bottom reaching the new edge tells the two apart.
+    await expect
+      .poll(async () => {
+        const box = await bar(page).boundingBox();
+        return box === null ? null : Math.round(box.y + box.height);
+      })
+      .toBe(vv.top + vv.height);
     expect(await focusedLabel(page)).toBe("Type into the terminal");
-    const [box, vv] = await Promise.all([
-      field(page).boundingBox(),
-      page.evaluate(() => ({ top: window.visualViewport?.offsetTop ?? 0, height: window.visualViewport?.height ?? 0 })),
-    ]);
+    const box = await field(page).boundingBox();
     expect(box?.y ?? -1).toBeGreaterThanOrEqual(vv.top);
-    expect((box?.y ?? 0) + (box?.height ?? Infinity)).toBeLessThanOrEqual(vv.top + vv.height);
   });
 }

@@ -8,14 +8,19 @@ import {
   freshId,
   type Node,
   renameTab as renameDocTab,
+  closeSet,
+  pinEdit,
+  placePinned,
   splitPane,
   terminalBlock,
 } from "@doriface/protocol/layout";
 import { loadView, rememberSeen, saveView, tabKey, type Seen, type View } from "../layout/view.ts";
+import { shownIn } from "./adoption.ts";
 import {
   buildTabs,
   findTerminal,
   keepTransient,
+  landingPane,
   layoutIds,
   localOf,
   looseKey,
@@ -80,6 +85,13 @@ export interface Layout extends PaneMoves {
    * it; rejects with why when the tab is not in a document that takes edits, or the write fails.
    */
   readonly renameTab: (key: string, name: string) => Promise<void>;
+  /**
+   * Pins a tab in front of its space's others, or unpins it (#1561): the pin goes in the machine's pins document, which
+   * every device reads and herdr-app leaves alone, and the tab moves to its side in the herdr-app document.
+   */
+  readonly pinTab: (key: string, pinned: boolean) => Promise<void>;
+  /** The keys "Close tabs to the right" or "Close other tabs" closes from a tab: never a pinned one (#1561). */
+  readonly closeSetOf: (key: string, which: "right" | "others") => readonly string[];
   /** The last tab moved, counted so the strip can say where it went each time, even to the same place twice. */
   readonly lastMove: TabMove | null;
   /**
@@ -189,10 +201,13 @@ export function useLayout(
   }, []);
   const mounts = useRef(newMounts());
   const tabs = useMemo(
-    () => keepMounts(buildTabs(layouts, terminals, loose), mounts.current),
-    [layouts, terminals, loose],
+    () => keepMounts(buildTabs(layouts, terminals, loose), mounts.current, ids),
+    [layouts, terminals, loose, ids],
   );
   const { active, focused, zoomed } = pick(tabs, view);
+  // Read when a start answers, which can be after the person picked another tab: the tab in view now, not then.
+  const activeNow = useRef(active);
+  activeNow.current = active;
   // A document tab that took over the selected loose tab's view is the selected tab from now on, also after a reload.
   const takenOver = active !== null && active.key !== view.active && active.mount === view.active ? active.key : null;
   useEffect(() => {
@@ -222,8 +237,12 @@ export function useLayout(
 
   // Panes focused per tab, oldest first, as herdr-app's `before`: moving focus prefers the pane left last.
   const history = useRef(new Map<string, string[]>());
-  const show = useCallback((key: string, pane: string | null): void => {
-    if (pane !== null && !placingQuietly) setClaimed(pane);
+  const picked = useRef({ tabs, focused: view.focused });
+  picked.current = { tabs, focused: view.focused };
+  const show = useCallback((key: string, pane: string | null, select = true): void => {
+    // Picking a tab claims the pane it focuses, so that terminal takes the keyboard from the tab left behind (#1704).
+    const landing = pane ?? landingPane(picked.current.tabs, picked.current.focused, key);
+    if (landing !== null && !placingQuietly) setClaimed(landing);
     if (pane !== null) {
       const visited = (history.current.get(key) ?? []).filter((id) => id !== pane);
       history.current.set(key, [...visited, pane].slice(-HISTORY));
@@ -234,7 +253,7 @@ export function useLayout(
       const { [key]: inTab, ...others } = prev.zoomed;
       return {
         ...prev,
-        active: key,
+        active: select ? key : prev.active,
         focused: pane === null ? prev.focused : { ...prev.focused, [key]: pane },
         zoomed: pane === null || inTab === undefined || inTab === pane ? prev.zoomed : others,
       };
@@ -281,11 +300,28 @@ export function useLayout(
       // asked for as a new space, starts a space of its own, never the first space of the document.
       const near = !newSpace && active !== null && !active.transient && active.machine === machine ? active : null;
       const space = { id: near?.space ?? freshId("spc"), folder: "" };
-      void layout.edit((doc) => {
-        const first = kept === null ? doc : addDocTab(doc, space, { id: kept.id, name: "", root: kept.root });
-        return addDocTab(first, space, tab, kept?.id ?? near?.id);
-      });
-      show(tabKey(layout.machineId, id), pane);
+      const asked = tabKey(layout.machineId, id);
+      // Where the document already shows the terminal: another device adopted it while this write waited (#2122). A
+      // second tab for it is never written; the view asked to show the new tab shows that one instead.
+      let adopted: ReturnType<typeof shownIn> = null;
+      void layout
+        .edit((doc) => {
+          adopted = shownIn(doc, localOf(address));
+          if (adopted !== null) return null;
+          const first = kept === null ? doc : addDocTab(doc, space, { id: kept.id, name: "", root: kept.root });
+          return addDocTab(first, space, tab, kept?.id ?? near?.id, layout.pins);
+        })
+        .then((saved) => {
+          const there = adopted;
+          if (saved || there === null) return saved;
+          const key = tabKey(layout.machineId, there.tab);
+          setClaimed((claim) => (claim === pane ? there.pane : claim));
+          setView((prev) =>
+            prev.active === asked ? { ...prev, active: key, focused: { ...prev.focused, [key]: there.pane } } : prev,
+          );
+          return saved;
+        });
+      show(asked, pane);
     },
     [active, keepApart, keepHere, layoutOf, show],
   );
@@ -324,19 +360,27 @@ export function useLayout(
         const space = { id: freshId("spc"), folder: "" };
         void layout.edit((doc) => addDocTab(doc, space, { id: copy.id, name: "", root }));
         setFresh(pane);
-        return show(tabKey(layout.machineId, copy.id), pane);
+        // The terminal starts asynchronously: a start that answers after the person picked another tab still places
+        // its pane here, but their pick stays in view (#1539).
+        return show(tabKey(layout.machineId, copy.id), pane, tab.key === activeNow.current?.key);
       }
       const container = freshId("s");
       // Whether the edit last found the pane gone; a write that failed instead was already reported by `edit`.
       let gone = false;
+      // Whether the document already shows the terminal in a tab of its own, adopted while this write waited (#2122):
+      // it stays there, since a second pane would show one terminal twice.
+      let adopted = false;
       void layout
         .edit((doc) => {
+          adopted = shownIn(doc, localOf(address)) !== null;
+          if (adopted) return null;
           const next =
             doc === null ? null : editTab(doc, tab.id, (root) => splitPane(root, from.id, axis, block, container));
           gone = next === null;
           return next;
         })
         .then((placed) => {
+          if (adopted) return placed;
           const landing = splitLanding(placed, gone);
           if (landing === "own-tab") {
             addTab(address);
@@ -346,7 +390,9 @@ export function useLayout(
           return placed;
         });
       setFresh(pane);
-      return show(tab.key, pane);
+      // The terminal starts asynchronously: a start that answers after the person picked another tab still places
+      // its pane in this tab, but their pick stays in view (#1539).
+      return show(tab.key, pane, tab.key === activeNow.current?.key);
     },
     [active, addTab, focused, keepHere, layoutOf, show, tabs, told],
   );
@@ -394,6 +440,33 @@ export function useLayout(
     },
     [layouts, tabs],
   );
+  const pinTab = useCallback(
+    async (key: string, pinned: boolean): Promise<void> => {
+      const tab = tabs.find((each) => each.key === key);
+      const layout = tab === undefined ? undefined : layouts.find((each) => each.machine === tab.machine);
+      if (tab === undefined || tab.transient || layout === undefined) throw new Error("This tab is not saved yet.");
+      if (layout.readOnly !== null) throw new Error(layout.readOnly);
+      if (layout.editPins === undefined) throw new Error("The pins of this machine cannot take changes now.");
+      const pins = layout.pins ?? new Set<string>();
+      const live = tabs.filter((each) => each.machine === tab.machine && !each.transient).map((each) => each.id);
+      await Promise.all([
+        layout.editPins(pinEdit(live, tab.id, pinned)),
+        layout.edit((doc) => (doc === null ? null : placePinned(doc, tab.id, pins))),
+      ]);
+    },
+    [layouts, tabs],
+  );
+  const closeSetOf = useCallback(
+    (key: string, which: "right" | "others"): readonly string[] => {
+      const tab = tabs.find((each) => each.key === key);
+      const doc = tab === undefined ? null : (layouts.find((each) => each.machine === tab.machine)?.doc ?? null);
+      if (tab === undefined || doc === null) return [];
+      const pins = new Set(tabs.filter((each) => each.machine === tab.machine && each.pinned).map((each) => each.id));
+      const closing = new Set(closeSet(doc, tab.id, which, pins));
+      return tabs.filter((each) => each.spaceKey === tab.spaceKey && closing.has(each.id)).map((each) => each.key);
+    },
+    [layouts, tabs],
+  );
 
   return {
     tabs,
@@ -415,6 +488,8 @@ export function useLayout(
     ...moves,
     moveTab,
     renameTab,
+    pinTab,
+    closeSetOf,
     lastMove,
     restored: machinesListed && layouts.every((layout) => layout.loaded || layout.readOnly !== LAYOUT_LOADING),
   };

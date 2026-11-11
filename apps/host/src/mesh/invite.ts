@@ -6,6 +6,7 @@ import type { MeshCandidate, MeshStore, OwnCard } from "../state/mesh.ts";
 import type { MeshFile } from "../state/mesh-file.ts";
 import { AuthorizeIndex, indexOf } from "./authorize-index.ts";
 import { clientDeviceCount, isRejoin } from "./admission.ts";
+import { announceChange } from "./announce.ts";
 import { admissionRefusal } from "./format-readiness.ts";
 import { type MeshLines, recordLines } from "./lines.ts";
 import { checkFloor, type CounterFloor } from "./merge.ts";
@@ -125,7 +126,7 @@ function admit(
     undefined,
     candidate,
   );
-  if (card.kind === "client") deps.changed?.();
+  if (card.kind === "client") announceChange(deps);
   return records;
 }
 
@@ -218,7 +219,7 @@ export async function serveJoin(lines: MeshLines, peerStatic: Uint8Array, deps: 
         ? new JoinRefused(`the session closed before the join was decided: ${lines.closed.message}`)
         : error;
     const reason = failure instanceof Error ? failure.message : String(failure);
-    deps.log(`mesh: join refused: ${reason}`);
+    deps.log(`mesh: close code=4401 source=invite: ${reason}`);
     lines.refuse(CloseCode.UnknownDevice, reason);
     throw failure;
   } finally {
