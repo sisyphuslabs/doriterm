@@ -179,13 +179,14 @@ test("entering browse mode in history keeps its position and a held touch select
       "stty -echo; printf '\\033[?1004h'; for i in $(seq 1 300); do printf 'history-%03d-copy\\n' $i; done; cat >/dev/null",
     ]);
     await expect(terminal).toContainText("history-300-copy", { timeout: 15_000 });
+    const settled = await scrollEnd(terminal);
     await terminal.evaluate((element) => {
       const row = element.querySelector(".term-row");
       if (row === null) throw new Error("terminal has no rows");
       element.scrollTop -= row.getBoundingClientRect().height * 50;
     });
     await expect(page.getByRole("button", { name: /^Jump to bottom/ })).toBeVisible();
-    const scrolled = await settledScrollTop(terminal);
+    const scrolled = await settled();
     await input(page).blur();
     await expect.poll(() => terminal.evaluate((element) => element.scrollTop)).toBe(scrolled);
     await browse(page).click();
