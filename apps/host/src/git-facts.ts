@@ -1,4 +1,4 @@
-import { HcConnection } from "@doriface/client";
+import type { HcConnection } from "@doriface/client";
 import {
   GIT_FACTS_DOC,
   type GitFacts,
@@ -8,7 +8,7 @@ import {
   parseGitFacts,
   type Terminal,
 } from "@doriface/protocol";
-import { handshakeOf, type HcTarget, type KillableLink, spawnHcLink } from "./mesh/hc-machines.ts";
+import { type HcTarget, type KillableLink, openOnCore, spawnHcLink } from "./mesh/hc-machines.ts";
 
 const TICK_MS = 5_000;
 const GIT_TIMEOUT_MS = 5_000;
@@ -16,28 +16,52 @@ const GIT_TIMEOUT_MS = 5_000;
 const MAX_DIRS = 64;
 const PARALLEL = 4;
 
-/** Runs `git` in a directory and returns what it printed, or undefined when it failed (not a repository, too slow). */
-export type RunGit = (dir: string, args: readonly string[]) => Promise<string | undefined>;
+/**
+ * A directory whose read timed out keeps its last facts for this many ticks in a row (about 3 x (5 s timeout + 5 s
+ * tick) = 30 s), then drops them. One slow `git status` (a cold cache, a busy disk, a large checkout) usually answers on
+ * the next tick, so the row should not blink; a read that keeps timing out means git is stuck there (a hung mount, a
+ * huge tree), and facts that old should not keep showing as current.
+ */
+export const KEEP_TIMED_OUT_TICKS = 3;
+
+/** What `RunGit` returns for a `git` that was killed at the timeout, unlike one that exited non-zero. */
+export const GIT_TIMED_OUT: unique symbol = Symbol("git timed out");
 
 /**
- * Reads only: no optional locks (status would otherwise refresh the index and take its lock under the user's feet),
- * and no fsmonitor, which a repository's own config can point at a program of its choosing.
+ * Runs `git` in a directory and returns what it printed, `GIT_TIMED_OUT` when it was killed for being too slow, or
+ * undefined when it exited non-zero (not a repository, the directory is gone).
  */
-export const runGit: RunGit = async (dir, args) => {
-  const child = Bun.spawn(["git", "-C", dir, "--no-optional-locks", "-c", "core.fsmonitor=false", ...args], {
-    stdin: "ignore",
-    stdout: "pipe",
-    stderr: "ignore",
-    env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", GIT_TERMINAL_PROMPT: "0" },
-  });
-  const timer = setTimeout(() => child.kill(), GIT_TIMEOUT_MS);
-  try {
-    const [out, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
-    return code === 0 ? out : undefined;
-  } finally {
-    clearTimeout(timer);
-  }
-};
+export type RunGit = (dir: string, args: readonly string[]) => Promise<string | undefined | typeof GIT_TIMED_OUT>;
+
+/**
+ * A `RunGit` that kills `git` after `timeoutMs`. Reads only: no optional locks (status would otherwise refresh the
+ * index and take its lock under the user's feet), and no fsmonitor, which a repository's own config can point at a
+ * program of its choosing.
+ */
+export const gitRunner =
+  (timeoutMs: number = GIT_TIMEOUT_MS): RunGit =>
+  async (dir, args) => {
+    const child = Bun.spawn(["git", "-C", dir, "--no-optional-locks", "-c", "core.fsmonitor=false", ...args], {
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "ignore",
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", GIT_TERMINAL_PROMPT: "0" },
+    });
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, timeoutMs);
+    try {
+      const [out, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+      if (timedOut) return GIT_TIMED_OUT;
+      return code === 0 ? out : undefined;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+export const runGit: RunGit = gitRunner();
 
 /** What `git status --porcelain=v2 --branch` says about the branch and the work tree. */
 export function parseStatus(text: string): Omit<GitFacts, "onDefault"> {
@@ -60,12 +84,18 @@ export function parseStatus(text: string): Omit<GitFacts, "onDefault"> {
   return detached || head === undefined ? facts : { branch: head, ...facts };
 }
 
-/** A directory's git facts, or undefined when it is not in a repository. */
-export async function readGitFacts(dir: string, run: RunGit = runGit): Promise<GitFacts | undefined> {
+/** A directory's git facts, undefined when it is not in a repository, or `GIT_TIMED_OUT` when a read was too slow. */
+export async function readGitFacts(
+  dir: string,
+  run: RunGit = runGit,
+): Promise<GitFacts | undefined | typeof GIT_TIMED_OUT> {
   const status = await run(dir, ["status", "--porcelain=v2", "--branch", "--untracked-files=normal"]);
-  if (status === undefined) return undefined;
+  if (status === undefined || status === GIT_TIMED_OUT) return status;
   const facts = parseStatus(status);
-  const origin = (await run(dir, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]))?.trim();
+  const head = await run(dir, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
+  // A slow origin read is not "no origin": guessing main/master could flip onDefault for a tick.
+  if (head === GIT_TIMED_OUT) return GIT_TIMED_OUT;
+  const origin = head?.trim();
   const defaultBranch = origin === undefined || origin === "" ? undefined : origin.replace(/^origin\//, "");
   const onDefault =
     facts.branch !== undefined &&
@@ -85,18 +115,36 @@ export function dirsOf(terminals: readonly Terminal[]): string[] {
   return [...dirs].slice(0, MAX_DIRS);
 }
 
-/** The facts of every directory that is in a repository. */
-export async function collectGitFacts(dirs: readonly string[], run: RunGit = runGit): Promise<GitFactsDoc> {
+/** Each directory's last published facts, and how many reads in a row have timed out since. */
+export type GitFactsMemory = Map<string, { readonly facts: GitFacts; readonly timeouts: number }>;
+
+/**
+ * The facts of every directory that is in a repository. A directory whose read timed out keeps its facts from `memory`
+ * for up to `KEEP_TIMED_OUT_TICKS` calls in a row; one that is not a repository (any more) drops at once.
+ */
+export async function collectGitFacts(
+  dirs: readonly string[],
+  run: RunGit = runGit,
+  memory: GitFactsMemory = new Map(),
+): Promise<GitFactsDoc> {
   const found: Record<string, GitFacts> = {};
   const queue = [...dirs];
   const worker = async (): Promise<void> => {
     for (let dir = queue.shift(); dir !== undefined; dir = queue.shift()) {
       // oxlint-disable-next-line no-await-in-loop -- each worker reads its directories one after another
       const facts = await readGitFacts(dir, run);
-      if (facts !== undefined) found[dir] = facts;
+      const kept = memory.get(dir);
+      if (facts === GIT_TIMED_OUT && kept !== undefined && kept.timeouts < KEEP_TIMED_OUT_TICKS) {
+        found[dir] = kept.facts;
+        memory.set(dir, { facts: kept.facts, timeouts: kept.timeouts + 1 });
+      } else if (facts !== undefined && facts !== GIT_TIMED_OUT) {
+        found[dir] = facts;
+        memory.set(dir, { facts, timeouts: 0 });
+      } else memory.delete(dir);
     }
   };
   await Promise.all(Array.from({ length: PARALLEL }, worker));
+  for (const dir of memory.keys()) if (!dirs.includes(dir)) memory.delete(dir);
   const dirsInOrder = Object.fromEntries(dirs.filter((dir) => dir in found).map((dir) => [dir, found[dir]]));
   return { v: 1, dirs: dirsInOrder as Record<string, GitFacts> };
 }
@@ -155,6 +203,7 @@ export function publishGitFacts(
   let exited: Promise<void> = Promise.resolve();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let lastError: string | undefined;
+  const memory: GitFactsMemory = new Map();
   const tick = async (): Promise<void> => {
     if (stopped) return;
     try {
@@ -169,10 +218,10 @@ export function publishGitFacts(
         }),
       );
       try {
-        const connection = await HcConnection.open(current, handshakeOf(core));
+        const connection = await openOnCore(current, core);
         try {
           const listed = await connection.call("terminal.list", {});
-          await writeGitFacts(connection, await collectGitFacts(dirsOf(listed.terminals), run));
+          await writeGitFacts(connection, await collectGitFacts(dirsOf(listed.terminals), run, memory));
           lastError = undefined;
         } finally {
           connection.close();

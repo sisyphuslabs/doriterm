@@ -13,10 +13,11 @@
     },
     "apps/desktop": {
       "name": "@doriface/desktop",
-      "version": "0.1.15",
+      "version": "0.1.17",
       "devDependencies": {
         "@doriface/crypto": "workspace:*",
         "@doriface/host": "workspace:*",
+        "@doriface/protocol": "workspace:*",
         "@playwright/test": "1.64.1",
         "@types/node": "24.19.2",
         "@types/ws": "8.18.1",

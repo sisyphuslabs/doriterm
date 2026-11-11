@@ -72,6 +72,17 @@ async function rowInView(list: Locator): Promise<Locator> {
     .nth(index);
 }
 
+/**
+ * Waits out a pushed screen's arrival (it slides in, DESIGN.md 6). While it slides, its rows move: Playwright retries a
+ * click on a moving row and scrolls it into view on each retry (block "end", then "center"), which takes the list off the
+ * offset the test has just read, so Back rightly brings back the new one (#1968).
+ */
+const arrived = (screen: Locator): Promise<void> =>
+  screen.evaluate(async (el) => {
+    const sliding = el.ownerDocument.getAnimations().filter((each) => each instanceof CSSTransition);
+    await Promise.all(sliding.map((each) => each.finished.catch(() => undefined)));
+  });
+
 async function expectSamePlace(list: Locator, before: Place): Promise<void> {
   await expect.poll(() => list.evaluate((el) => el.scrollTop), "the same offset").toBe(before.top);
   expect((await place(list)).first, "the same first row in view").toBe(before.first);
@@ -129,6 +140,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await spaceRow.click();
         const tabs = spaceTabs(page);
         await expect(tabs.getByRole("button", { name: /keep24/ }).first()).toBeVisible({ timeout: 20_000 });
+        await arrived(tabs);
 
         const before = await scrollHalfway(tabs);
         await (await rowInView(tabs)).click();

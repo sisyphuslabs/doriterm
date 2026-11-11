@@ -12,10 +12,14 @@ test("a paging cue keeps its 32 px slot with a mouse, at rest and paged to the e
       .evaluateAll((all) =>
         all.map((cue) => `${cue.getAttribute("data-tab-edge") ?? ""} ${Math.round(cue.getBoundingClientRect().width)}`),
       );
-  const end = tab.locator('[data-tab-edge="end"]');
-  await expect(end).toHaveCount(1);
+  // Each read waits for the strip to reach that state first. A cue pages with a smooth scroll, and the end cue goes once
+  // the scroll reaches the end; evaluateAll finds the cues and measures them in two calls, so a read during the scroll
+  // could measure an end cue already taken out of the page, at 0 px (#2045). The strip names its state in the same render
+  // that draws the cues, and nothing moves once it reads "start".
+  const strip = tab.locator("[data-tab-overflow]");
+  await expect(strip).toHaveAttribute("data-tab-overflow", "end");
   expect(await cues()).toEqual(["end 32"]);
-  await end.click();
-  await expect(tab.locator('[data-tab-edge="start"]')).toHaveCount(1);
-  expect((await cues()).every((cue) => cue.endsWith(" 32"))).toBe(true);
+  await tab.locator('[data-tab-edge="end"]').click();
+  await expect(strip).toHaveAttribute("data-tab-overflow", "start");
+  expect(await cues()).toEqual(["start 32"]);
 });

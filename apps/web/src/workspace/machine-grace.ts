@@ -71,13 +71,13 @@ export function stepHeld(held: Held, before: Before, list: readonly MachineView[
   return next;
 }
 
-/** What the page shows at `now`: a held machine inside its grace as connected, every other one as hc said. */
+/** The grace keeps existing terminals visible, but a down line is never advertised as ready to create. */
 export function graceViews(list: readonly MachineView[], held: Held, now: number): readonly MachineView[] {
   if (held.size === 0) return list;
   return list.map((view) => {
     const since = held.get(view.id);
     if (since === undefined || now - since >= OFFLINE_GRACE_MS) return view;
-    return { ...view, state: "connected", why: null, since_ms: null };
+    return { ...view, state: "reconnecting" };
   });
 }
 

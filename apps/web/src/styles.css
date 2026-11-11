@@ -108,7 +108,7 @@
 }
 
 /* Predicted cells (use-prediction-overlay.ts) sit over the grid in their own layer, in the terminal's colours, opaque
-   over the cell they cover and underlined: the underline says the echo has not confirmed them yet (design D8). */
+   over the cell they cover; underlined while the link is slow or glitching, mosh's flagging (design D8). */
 .wterm .term-prediction {
   position: absolute;
   top: 0;
@@ -127,6 +127,8 @@
 .wterm .term-prediction-cell {
   color: var(--term-app-fg, var(--term-fg));
   background: var(--term-app-bg, var(--term-bg));
+}
+.wterm .term-prediction[data-flagging] .term-prediction-cell {
   text-decoration: underline;
   text-decoration-thickness: max(1px, var(--term-device-pixel, 1px));
 }
