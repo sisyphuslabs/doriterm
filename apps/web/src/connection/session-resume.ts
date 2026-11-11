@@ -20,6 +20,8 @@ export const RESUME_BACKOFF_MS = [500, 1_000, 2_000, 5_000] as const;
 export interface ResumeHooks {
   /** The session is being carried on (true) or is carried on or given up (false). */
   readonly resuming: (on: boolean) => void;
+  /** A dial or resume failed and another follows: why, so the page can say the host is not back yet. */
+  readonly failed?: ((error: Error) => void) | undefined;
   readonly log?: ((line: string) => void) | undefined;
   readonly now?: (() => number) | undefined;
 }
@@ -123,6 +125,7 @@ export class SessionResumer {
         last = error;
         if (isFinal(error) || now() - startedAt >= this.#budgetMs) break;
         this.#hooks.log?.(`resume attempt ${attempt + 1} failed: ${message(error)}`);
+        this.#hooks.failed?.(error instanceof Error ? error : new Error(String(error)));
         // oxlint-disable-next-line no-await-in-loop -- dials run one after another, each after its backoff
         await this.#wait(RESUME_BACKOFF_MS[Math.min(attempt, RESUME_BACKOFF_MS.length - 1)] ?? 5_000);
       } finally {

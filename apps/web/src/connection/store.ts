@@ -45,6 +45,8 @@ export type ConnectionState =
        * stays as it is, and input typed meanwhile waits for the new socket.
        */
       readonly resuming?: boolean | undefined;
+      /** While resuming: why the last dial to carry the session on failed (a host gone answers 4404). */
+      readonly resumeFailure?: Error | undefined;
     }
   /** This computer's host did not start: nothing is tried until a start succeeds. */
   | { readonly phase: "host-failed"; readonly failure: HostStartFailure }
@@ -252,7 +254,13 @@ export class ConnectionStore {
     this.#resume = wireResume(opened, {
       resuming: (on) => {
         const state = this.#state;
-        if (state.phase === "open" && state.connection === connection) this.#set({ ...state, resuming: on });
+        if (state.phase === "open" && state.connection === connection)
+          this.#set({ ...state, resuming: on, resumeFailure: undefined });
+      },
+      failed: (error) => {
+        const state = this.#state;
+        if (state.phase === "open" && state.connection === connection && state.resuming === true)
+          this.#set({ ...state, resumeFailure: error });
       },
       links: this.#links,
     });

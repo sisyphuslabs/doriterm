@@ -118,6 +118,22 @@ describe("SessionResumer", () => {
     expect(resumer.active).toBe(false);
   });
 
+  test("reports each failed attempt while it keeps dialing, so the page can say why the host is not back yet", async () => {
+    const { session } = fakeSession(["refused", "ok"]);
+    const failures: string[] = [];
+    const resumer = new SessionResumer(session, {
+      resuming: () => undefined,
+      failed: (error) => failures.push(error.message),
+    });
+    resumer.start(new Error("dropped"));
+    await settle();
+    expect(failures).toEqual(["refused"]);
+    resumer.now();
+    await settle();
+    expect(failures).toEqual(["refused"]);
+    expect(resumer.active).toBe(false);
+  });
+
   test("stop ends the dialing without giving the session up", async () => {
     const { session, calls } = fakeSession(["refused"]);
     const resuming: boolean[] = [];

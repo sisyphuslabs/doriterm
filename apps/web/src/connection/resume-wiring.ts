@@ -7,6 +7,8 @@ export interface ResumeWiringHooks {
   readonly resuming: (on: boolean) => void;
   /** Where the connection is listed while its session is being carried on, so typed input waits (#1370). */
   readonly links: UnprovenLinks;
+  /** A dial to carry the session on failed and another follows. */
+  readonly failed?: ((error: Error) => void) | undefined;
   readonly log?: ((line: string) => void) | undefined;
 }
 
@@ -33,6 +35,7 @@ export function wireResume(opened: OpenConnection, hooks: ResumeWiringHooks): Re
       // to the next one's stream.
       if (!on) hooks.links.settle(connection, !session.secure.closed);
     },
+    failed: hooks.failed,
     log: hooks.log,
   });
   session.secure.allowResume();

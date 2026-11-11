@@ -13,7 +13,7 @@ const SETTINGS: ConnectionSettings = { ...DEFAULT_SETTINGS, mode: "relay", hostI
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 /** A relay session as the store sees it: a connection, and under it a session whose socket the test drops. */
-function opened(outcome: "ok" | "revoked") {
+function opened(outcome: "ok" | "revoked" | "offline-then-ok") {
   const closes: ((error?: Error) => void)[] = [];
   const connection = {
     hello: { core: { id: "c0re", name: "studio" } },
@@ -44,7 +44,11 @@ function opened(outcome: "ok" | "revoked") {
     },
     resume: async (socket: ByteLink) => {
       calls.resumes += 1;
-      if (outcome === "ok") {
+      if (outcome === "offline-then-ok" && calls.resumes === 1) {
+        socket.close();
+        throw Object.assign(new Error("host offline"), { code: CloseCode.HostOffline });
+      }
+      if (outcome !== "revoked") {
         detached = false;
         return;
       }
@@ -116,6 +120,23 @@ test("a session the host refuses to carry on drops the connection, and the store
   await settle();
   expect(store.state).toMatchObject({ phase: "failed", stale: session.open.connection });
   expect(session.calls.resumes).toBe(1);
+  store.stop();
+});
+
+test("while the session is being carried on, the open state says why the last dial failed, until the session is back", async () => {
+  const session = opened("offline-then-ok");
+  const store = await openStore(session, new UnprovenLinks());
+  session.drop();
+  expect(store.state).toMatchObject({ phase: "open", resuming: true, resumeFailure: undefined });
+  await settle();
+  expect(store.state).toMatchObject({
+    phase: "open",
+    resuming: true,
+    resumeFailure: { code: CloseCode.HostOffline },
+  });
+  store.retryNow();
+  await settle();
+  expect(store.state).toMatchObject({ phase: "open", resuming: false, resumeFailure: undefined });
   store.stop();
 });
 
