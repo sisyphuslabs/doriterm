@@ -39,12 +39,22 @@ describe("the palette's state filter (#1454)", () => {
     expect(withStatus(commands, null)).toBe(commands);
   });
 
-  test("a chosen state no row is in any more falls back to every row", () => {
+  test("a chosen state that is no longer shown falls back to every row: it emptied", () => {
     const counts = statusCounts(commands);
     expect(shownStatus(counts, "blocked")).toBe("blocked");
     expect(shownStatus(counts, "done")).toBeNull();
     expect(shownStatus([], "idle")).toBeNull();
     expect(shownStatus(counts, null)).toBeNull();
+  });
+
+  test("a chosen state that is no longer shown falls back to every row: more urgent states pushed it out", () => {
+    // Open on Done, then a blocked and a working agent appear: Done still has a row, but only the two most urgent show.
+    const before = [agent("a", "done"), agent("b", "idle")];
+    expect(shownStatus(statusCounts(before), "done")).toBe("done");
+    const after = [...before, agent("c", "blocked"), agent("d", "working")];
+    expect(withStatus(after, "done")).toHaveLength(1);
+    expect(statusCounts(after).map(({ status }) => status)).toEqual(["blocked", "working"]);
+    expect(shownStatus(statusCounts(after), "done")).toBeNull();
   });
 
   test("All counts every agent, the states without a segment and an offline machine's included", () => {

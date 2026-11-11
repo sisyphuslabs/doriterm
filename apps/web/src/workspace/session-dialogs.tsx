@@ -205,7 +205,11 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onDrop, onK
     >
       {error === null ? undefined : (
         <Notice tone="error" title="The session did not end">
-          {error}
+          {`${error.replace(/\.$/, "")}. ${
+            ask.kind === "close"
+              ? "It keeps running outside any pane; the next load opens it as a tab."
+              : "It keeps running."
+          }`}
         </Notice>
       )}
     </Dialog>
