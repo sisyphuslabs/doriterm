@@ -42,6 +42,17 @@ export function transientAttachFailure(cause: unknown): boolean {
   );
 }
 
+/**
+ * What recovery is told when a stream ended because its connection went away. The next connection re-attaches it, so the
+ * loss is transient (#2224), unless the link closed with a code that is not (an auth or crypto refusal: 4400, 4401,
+ * 4403): that error is passed on as it is, so the pane offers Try again at once rather than retrying.
+ */
+export function droppedStreamCause(error: Error | undefined): Error {
+  const link = error instanceof SecureLinkError || error instanceof RelayCloseError || error instanceof LinkCloseError;
+  if (link && error.code !== undefined && !TRANSIENT_CLOSE_CODES.has(error.code)) return error;
+  return new HcConnectionClosedError("The connection dropped.", { cause: error });
+}
+
 export type RecoveryState =
   | { readonly phase: "idle" }
   | { readonly phase: "reconnecting" | "failed"; readonly cause: unknown; readonly transient: boolean };

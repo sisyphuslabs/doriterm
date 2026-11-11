@@ -16,7 +16,7 @@ import type { OutputPacer, ReplayOptions } from "./output-pacer.ts";
 import { type TerminalEnd, terminalEnd } from "./terminal-end.ts";
 import { type CoreAnswer, type Settled, settled, type Unsent, unsentReason } from "./terminal-settle.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
-import { TerminalStreamLostError } from "./attach-recovery.ts";
+import { droppedStreamCause, TerminalStreamLostError } from "./attach-recovery.ts";
 import { useAttachRecovery } from "./use-attach-recovery.ts";
 
 const encoder = new TextEncoder();
@@ -327,9 +327,9 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           if (end === "dropped" && paintedView.current === ready) noteHistoryGap(address, "reconnect");
           onEndNow.current?.(address, end);
           if (end === "lost") settle(null);
-          // Whatever closed the connection, the stream is not refused: the next connection re-attaches it, so the loss
-          // stays transient (#2224). Why the connection closed is the workspace's to show.
-          if (end === "dropped") fail(new HcConnectionClosedError("The connection dropped.", { cause: close.error }));
+          // The stream is not refused: the next connection re-attaches it, so the loss stays transient (#2224), unless
+          // the link closed with a code that is not (4400, 4401, 4403). Why the connection closed is the workspace's to show.
+          if (end === "dropped") fail(droppedStreamCause(close.error));
         });
         for (const data of pending.current.splice(0)) attached.write(data);
         focusWhenFree(ready);
