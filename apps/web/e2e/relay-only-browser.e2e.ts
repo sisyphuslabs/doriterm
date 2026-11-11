@@ -57,7 +57,7 @@ async function joinOneMachine(page: Page, host: FakeRelayHost, phone: boolean): 
   const command = dialog.getByLabel("Join command");
   await expect(command).toBeVisible({ timeout: 30_000 });
   const text = (await command.innerText()).trim();
-  const link = /--join '(doriface:\/\/pair#[^']+)'/.exec(text)?.[1] ?? "";
+  const link = /DORIFACE_JOIN='(doriface:\/\/pair#[^']+)' sh$/.exec(text)?.[1] ?? "";
   expect(link).toContain("doriface://pair#");
   expect(await host.join(link)).toBe("joiner");
   await expect(dialog.getByText("joiner joined this host's mesh")).toBeVisible({ timeout: 60_000 });
