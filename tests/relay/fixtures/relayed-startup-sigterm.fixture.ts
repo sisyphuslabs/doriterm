@@ -29,7 +29,8 @@ if (stage === "pair") {
     process.stdout.write("STAGE pair\n");
   });
 }
-const lines = createInterface({ input: process.stdin })[Symbol.asyncIterator]();
+const stdinLines = createInterface({ input: process.stdin });
+const lines = stdinLines[Symbol.asyncIterator]();
 try {
   await startRelayedHost("startup-sigterm", {
     ...(hostRelayUrl === undefined ? {} : { hostRelayUrl }),
@@ -42,6 +43,10 @@ try {
             return new Promise<never>(() => {});
           },
         }
+      : {}),
+    // STAGE=relay-fail: the relay start fails, so start-up fails before any hold and with no SIGTERM (#2268).
+    ...(stage === "relay-fail"
+      ? { startRelay: () => Promise.reject(new Error("the relay start failed on purpose")) }
       : {}),
     // STAGE=relay-late: a relay start that finishes on the SIGTERM itself, after start-up has seen the interrupt; the
     // relay it hands over records its stop in LATE_MARK (#2232). STAGE=relay-late-fail: the same, but that relay's stop
@@ -87,4 +92,9 @@ try {
   writeFileSync(settledFile, "resolved");
 } catch (error) {
   writeFileSync(settledFile, `rejected: ${String(error)}`);
+  // On stderr too: a start-up that fails before its hold prints no STAGE line, and this is the only sign of why (#2268).
+  console.error(`relayed-startup-sigterm: start-up rejected: ${String(error)}`);
 }
+// Nothing more is read: without this the open stdin would keep the fixture running after a start-up that failed with no
+// SIGTERM, and the test would wait to its timeout (#2268). Closing the reader is what lets it end; destroying stdin is not.
+stdinLines.close();
