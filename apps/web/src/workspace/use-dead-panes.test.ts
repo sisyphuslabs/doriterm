@@ -131,15 +131,16 @@ test("a pane left to its view that no tab shows any more went on another device,
   expect(goneFromView(new Map(), tabs, () => true)).toEqual([]);
 });
 
+/** This core's document and rack's are still written; box was removed, so its document went with it. */
+const writtenOn = (name: string | null): boolean => name === null || name === "rack";
+
 test("a pane that went with its machine or with its layout document did not go on another device (#2231)", () => {
   const left = new Map<string, string | null>([
     ["t3", null],
     ["box/t4", "box"],
     ["rack/t5", "rack"],
   ]);
-  // This core's document and rack's are still written; box was removed, so its document went with it.
-  const written = (machine: string | null): boolean => machine === null || machine === "rack";
-  expect(goneFromView(left, [], written)).toEqual(["t3", "rack/t5"]);
+  expect(goneFromView(left, [], writtenOn)).toEqual(["t3", "rack/t5"]);
 });
 
 test("an absent remote pane is asked about only once a later machine.list read still finds it absent on that machine", () => {

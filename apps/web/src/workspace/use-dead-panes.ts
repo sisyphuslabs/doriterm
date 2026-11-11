@@ -2,6 +2,7 @@ import type { HcConnection } from "@doriface/client";
 import { HcRpcError, type MachineView, type Terminal } from "@doriface/protocol";
 import { useEffect, useRef } from "react";
 import type { LayoutTab } from "./layout-model.ts";
+import type { MachineLayout } from "./use-layout-docs.ts";
 import { machineOf } from "./model.ts";
 
 /** The finishes that end a terminal for good, as herdr-app reads them (`checked_closed`): any other may come back. */
@@ -42,13 +43,25 @@ export function endedInView(
 }
 
 /**
- * Of the panes this device left to their views (`left`, endedInView), those no tab shows any more. An ended pane goes
- * everywhere once any device has it out of view, as herdr-app's `reconcile` drops it whoever looks: the in-view rule is
- * this device's own, so another device can take a pane this one was showing as ended (#2146).
+ * Of the panes this device left to their views (`left`, endedInView, each with the machine whose document showed it),
+ * those no tab shows any more while that machine's document is still `written`. An ended pane goes everywhere once any
+ * device has it out of view, as herdr-app's `reconcile` drops it whoever looks: the in-view rule is this device's own,
+ * so another device can take a pane this one was showing as ended (#2146). A pane that went with its machine or its
+ * document went for that reason, not by another device's write (#2231).
  */
-export function goneFromView(left: ReadonlySet<string>, tabs: readonly LayoutTab[]): string[] {
+export function goneFromView(
+  left: ReadonlyMap<string, string | null>,
+  tabs: readonly LayoutTab[],
+  written: (machine: string | null) => boolean,
+): string[] {
   const shown = new Set(tabs.flatMap((tab) => tab.panes.map((pane) => pane.address)));
-  return [...left].filter((address) => !shown.has(address));
+  return [...left].flatMap(([address, machine]) => (!shown.has(address) && written(machine) ? [address] : []));
+}
+
+/** The panes in view whose terminal is over (endedInView), each with the machine of the tab that shows it. */
+function leftWithMachines(ended: ReadonlySet<string>, tabs: readonly LayoutTab[]): Map<string, string | null> {
+  const machineByPane = new Map(tabs.flatMap((tab) => tab.panes.map((pane) => [pane.address, tab.machine] as const)));
+  return new Map([...ended].map((address) => [address, machineByPane.get(address) ?? null]));
 }
 
 /** The terminals this core's document panes show that are not settled (`listed`), each once; panels have none. */
@@ -144,9 +157,10 @@ export function useDeadPanes(
   drop: (address: string) => void,
   inView: readonly string[],
   gone: (address: string) => void,
+  layouts: readonly Pick<MachineLayout, "machine" | "doc">[],
 ): void {
   const asked = useRef(new Set<string>());
-  const left = useRef<ReadonlySet<string>>(new Set());
+  const left = useRef<ReadonlyMap<string, string | null>>(new Map());
   const viewed = inView.join("\u0000");
   const viewedNow = useRef(inView);
   viewedNow.current = inView;
@@ -154,14 +168,16 @@ export function useDeadPanes(
   useEffect(() => {
     asked.current = new Set();
     missing.current = new Map();
-    left.current = new Set();
+    left.current = new Map();
   }, [connection]);
   useEffect(() => {
     if (terminals === null) return;
     const feed = new Set(terminals.map((terminal) => terminal.address));
     const watched = viewed === "" ? [] : viewed.split("\u0000");
-    for (const address of goneFromView(left.current, tabs)) gone(address);
-    left.current = endedInView(terminals, watched);
+    const written = (machine: string | null): boolean =>
+      layouts.some((layout) => layout.machine === machine && layout.doc !== null);
+    for (const address of goneFromView(left.current, tabs, written)) gone(address);
+    left.current = leftWithMachines(endedInView(terminals, watched), tabs);
     const settled = settledPanes(terminals, watched);
     for (const address of asked.current) if (settled.has(address)) asked.current.delete(address);
     const step = stepMissing(missing.current, absentRemotePanes(tabs, settled, machines, feed), reads);
@@ -182,5 +198,5 @@ export function useDeadPanes(
         },
       );
     }
-  }, [connection, tabs, terminals, machines, reads, drop, viewed, gone]);
+  }, [connection, tabs, terminals, machines, reads, drop, viewed, gone, layouts]);
 }

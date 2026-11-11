@@ -1,5 +1,14 @@
 import type { JsonObject } from "@doriface/protocol";
-import { addTab, type Axis, editTab, idOf, type NewSpace, type Node, splitPane } from "@doriface/protocol/layout";
+import {
+  addTab,
+  type Axis,
+  docSpaces,
+  editTab,
+  idOf,
+  type NewSpace,
+  type Node,
+  splitPane,
+} from "@doriface/protocol/layout";
 import type { View } from "../layout/view.ts";
 import { shownIn } from "./adoption.ts";
 
@@ -49,7 +58,18 @@ export function newTabWrite(
 ): PaneWrite {
   const instead = shownIn(doc, terminal);
   if (instead !== null) return { doc: null, instead };
-  const keep = kept !== null && shownIn(doc, kept.terminal) === null ? kept.tab : null;
+  const adopted = kept === null ? null : shownIn(doc, kept.terminal);
+  // The kept tab was adopted while this write waited: the new tab goes right after the tab that adopted it, in its space
+  // (#2231), as herdr-app's `add_tab` puts a tab after the selected one.
+  const home =
+    adopted === null || doc === null ? undefined : docSpaces(doc).find((each) => each.tabs.includes(adopted.tab));
+  if (home !== undefined && adopted !== null) {
+    return {
+      doc: addTab(doc, { id: home.id, folder: home.folder, name: home.name }, tab, adopted.tab, pins),
+      instead: null,
+    };
+  }
+  const keep = kept !== null && adopted === null ? kept.tab : null;
   const first = keep === null ? doc : addTab(doc, space, { id: keep.id, name: "", root: keep.root });
   return { doc: addTab(first, space, tab, keep?.id ?? after, pins), instead: null };
 }
