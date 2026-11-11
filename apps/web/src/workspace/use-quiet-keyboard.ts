@@ -36,10 +36,12 @@ export function trackHeldPress(scope: EventTarget, view: EventTarget, signal: Ab
     },
     { capture: true, signal },
   );
+  // The page itself losing the focus, not a field in it: a press lets the terminal's field go as it lands (#2035), and
+  // that blur reaches a capture listener here too.
   view.addEventListener(
     "blur",
-    () => {
-      held = null;
+    (event) => {
+      if (event.target === view) held = null;
     },
     { capture: true, signal },
   );
@@ -68,7 +70,8 @@ export function whenPressEnds(
     then();
   };
   const listen = { signal: AbortSignal.any([signal, done.signal]) };
-  for (const type of ["pointerup", "pointercancel", "pointermove", "blur"]) view.addEventListener(type, check, listen);
+  for (const type of ["pointerup", "pointercancel", "pointermove"]) view.addEventListener(type, check, listen);
+  view.addEventListener("blur", (event) => event.target === view && check(), listen);
 }
 
 /**

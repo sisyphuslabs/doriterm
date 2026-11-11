@@ -116,3 +116,12 @@ test("with no press held the keyboard quiets at once, and only once", () => {
   terminal.up(1, "touch");
   expect(quieted).toBe(1);
 });
+
+test("a field in the page losing the focus is not the page losing it: the press stays held (#2035)", () => {
+  const terminal = pressed();
+  terminal.down(1, "mouse");
+  // The press lets the terminal's field go as it lands; that blur reaches the window's capture listeners too.
+  const field = new EventTarget();
+  terminal.view.dispatchEvent(Object.defineProperty(new Event("blur"), "target", { value: field }));
+  expect(terminal.held()).toBe(1);
+});
