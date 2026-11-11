@@ -229,3 +229,34 @@ test("keys typed with no wake in progress are written as they are typed (#1370)"
   expect(sink.took).toEqual(["a", "b"]);
   store.stop();
 });
+
+test("a release that fires while a write is in flight sends that byte once", () => {
+  // A second release trigger (the link proving, the machine's line coming back) can land inside sink.write, before the
+  // queue has shifted the byte that write just took. The byte must still reach the program once.
+  const took: TerminalInput[] = [];
+  let held: HeldInput | null = null;
+  let reentered = false;
+  const sink: InputSink = {
+    write: (data) => {
+      took.push(data);
+      if (!reentered) {
+        reentered = true;
+        held?.flush();
+      }
+      return true;
+    },
+  };
+  const links = new UnprovenLinks();
+  held = new HeldInput(
+    links,
+    () => link,
+    () => sink,
+  );
+  const unwatch = held.watch();
+  links.start(link);
+  held.send(" ");
+  held.send(new Uint8Array([0xed, 0x95, 0x9c]));
+  held.flush();
+  expect(took).toEqual([" ", new Uint8Array([0xed, 0x95, 0x9c])]);
+  unwatch();
+});

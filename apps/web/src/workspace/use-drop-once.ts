@@ -34,9 +34,13 @@ export class DropOnce {
     return true;
   }
 
-  /** A close dropped this session's pane, but its End failed: the session keeps running, and its later end drops again. */
+  /**
+   * A close dropped this session's pane, but its End failed: the session keeps running, and its later end drops again.
+   * End also fails after a kill that worked (terminal.rm or the END label refused, #1342): a session a list has already
+   * shown ended keeps its mark, so its end is not dropped a second time.
+   */
   kept(address: string): void {
-    this.#dropped.delete(address);
+    if (this.#dropped.get(address)?.ended !== true) this.#dropped.delete(address);
   }
 
   /** What the page lists now: a dropped address listed with a new session in it is dropped again when that one ends. */

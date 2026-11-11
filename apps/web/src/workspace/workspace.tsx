@@ -192,7 +192,7 @@ export function Workspace({ connection }: WorkspaceProps) {
       },
       // The first run's agent step completes once the terminal really started, not when it was asked for (#668).
       (address) => {
-        guideStore.opened(address);
+        guideStore.opened(address, ids);
         opened(address);
       },
     );
@@ -206,7 +206,7 @@ export function Workspace({ connection }: WorkspaceProps) {
     // The terminal being started holds the keyboard (use-type-ahead): the space's tab in view must not claim it.
     withoutClaim(() => layout.selectSpace(key));
     runs.start(runParamsFor(near, space), (address) => {
-      guideStore.opened(address);
+      guideStore.opened(address, ids);
       openedNow.current(address);
     });
   };
@@ -385,6 +385,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                       <PhoneShell
                         connection={connection}
                         terminals={sessions}
+                        ids={ids}
                         open={phoneOpen}
                         space={phoneSpace}
                         panes={phonePanes}
@@ -408,6 +409,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                       <DesktopShell
                         connection={connection}
                         terminals={sessions}
+                        ids={ids}
                         loaded={fed.loaded}
                         layout={layout}
                         spaceKeys={spaceKeys}

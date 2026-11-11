@@ -216,6 +216,8 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
 
 export interface KeyboardButtonProps {
   readonly onPress?: () => void;
+  /** The press as it lands (pointerdown), a task before `onPress`: what has to be let go before the click runs. */
+  readonly onPressStart?: (button: HTMLButtonElement) => void;
   readonly className?: string;
   /** Show keyboard by default; Show keys where the button opens the keys bar itself (no soft keyboard to raise). */
   readonly label?: string;
@@ -225,12 +227,20 @@ export interface KeyboardButtonProps {
   readonly pressed?: boolean;
 }
 
-export function KeyboardButton({ onPress, className, label = "Show keyboard", icon, pressed }: KeyboardButtonProps) {
+export function KeyboardButton({
+  onPress,
+  onPressStart,
+  className,
+  label = "Show keyboard",
+  icon,
+  pressed,
+}: KeyboardButtonProps) {
   return (
     <button
       type="button"
       aria-label={label}
       aria-pressed={pressed}
+      onPointerDown={onPressStart === undefined ? undefined : (event) => onPressStart(event.currentTarget)}
       // The keyboard button leaves the focus on the terminal it asks the keyboard for, as the keys do: a press that took
       // the focus would tell the program the terminal lost it (#1519). Another round control is left as it was.
       onMouseDown={icon === undefined ? keepFocus : undefined}
