@@ -190,3 +190,23 @@ test("a machine's line back while the stream is down: the wait goes on for the s
   jest.advanceTimersByTime(1);
   expect(dropped).toEqual([["expired", undefined]]);
 });
+
+test("another machine's line changing does not restart the drop of input waiting for this terminal's stream (#2266 review 3)", () => {
+  jest.useFakeTimers();
+  const took: TerminalInput[] = [];
+  const lines = new MachineLines();
+  const dropped: [Dropped, string | undefined][] = [];
+  const held = new HeldInput(
+    new UnprovenLinks(),
+    () => link,
+    () => null,
+    { lines, machine: () => undefined, dropped: (why, name) => dropped.push([why, name]) },
+  );
+  held.watch();
+  held.send("rm -rf build\r");
+  for (let at = 0; at < 6; at++) {
+    lines.heard(link, [{ name: "rack", state: at % 2 === 0 ? "unreachable" : "connecting" }]);
+    jest.advanceTimersByTime(9_000);
+  }
+  expect([took, dropped]).toEqual([[], [["expired", undefined]]]);
+});

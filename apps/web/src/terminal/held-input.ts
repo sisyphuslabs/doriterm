@@ -31,7 +31,8 @@ const isInterrupt = (data: TerminalInput): boolean =>
   typeof data === "string" ? data === "\u0003" : data.length === 1 && data[0] === 0x03;
 
 /**
- * One terminal's typed input, written in the order typed (#1370).
+ * One terminal's typed input, written in the order typed (#1370), except that Ctrl+C that waited goes ahead of what
+ * waited with it (#2003).
  *
  * Every input joins `pending` and leaves it only when a write took it, so none is written twice. It is written at once
  * unless the view's link is being proved after a wake: then it waits until the link answers, and goes to the same stream;
@@ -55,6 +56,8 @@ export class HeldInput {
   /** Bytes waiting, and the drop due once HOLD_MS has passed; none while nothing waits. */
   #heldBytes = 0;
   #expiry: ReturnType<typeof setTimeout> | undefined;
+  /** The added machine the due drop waits for; undefined when it waits for this terminal's own stream (#2266 review 3). */
+  #expiryFor: string | undefined;
 
   constructor(links: UnprovenLinks, connection: () => HcConnection, sink: () => InputSink | null, hold?: MachineHold) {
     this.#links = links;
@@ -138,7 +141,9 @@ export class HeldInput {
 
   /** What waits is dropped HOLD_MS from now, unless a drop is already due. */
   #expireIn(machine: string | undefined): void {
-    this.#expiry ??= setTimeout(() => this.#drop("expired", machine), HOLD_MS);
+    if (this.#expiry !== undefined) return;
+    this.#expiry = setTimeout(() => this.#drop("expired", machine), HOLD_MS);
+    this.#expiryFor = machine;
   }
 
   /**
@@ -146,7 +151,8 @@ export class HeldInput {
    * still cannot, it waits on as input for this terminal does: timed only while no stream is open (#2266 review).
    */
   #back(): void {
-    if (this.#expiry === undefined) return;
+    // Only a drop started for a machine's line is this return's to call off: another machine's change is not.
+    if (this.#expiry === undefined || this.#expiryFor === undefined) return;
     this.#release();
     this.#rewait();
     if (!this.#links.has(this.#connection())) this.flush();
@@ -169,6 +175,7 @@ export class HeldInput {
   #release(): void {
     clearTimeout(this.#expiry);
     this.#expiry = undefined;
+    this.#expiryFor = undefined;
     this.#heldBytes = 0;
   }
 }
