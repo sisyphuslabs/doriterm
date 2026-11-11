@@ -4,9 +4,9 @@
 
 ## v0.1.18 - 2026-11-11
 
-If you are on v0.1.17, download this release once from the GitHub release page: v0.1.17 looks for its updates only at
-get.doriterm.com, which does not serve them yet, so it cannot update itself. From this release on, the desktop app
-takes its updates from the GitHub release again, and later releases install on their own (#2074).
+Installs of v0.1.17 update to this release on their own: v0.1.17 looks for updates only at get.doriterm.com, which
+now answers and passes on the GitHub release's update feed (#1975, #2109). From this release on, the desktop app takes
+its updates from the GitHub release directly again (#2074).
 
 ### Terminal
 
@@ -49,8 +49,7 @@ takes its updates from the GitHub release again, and later releases install on t
 ### Desktop updates
 
 - The desktop app takes its updates from the GitHub release again, as it did before v0.1.17, rather than from
-  get.doriterm.com, which does not serve them yet. v0.1.17 cannot update itself: if you are on v0.1.17, download this
-  release once from the GitHub release page; later releases then update on their own. (#2074)
+  get.doriterm.com. (#2074)
 - The Update channel row in Settings > This device, its Check now button and the Check for Updates menu item that
   v0.1.17 added are removed for now, and installs on the Beta channel return to stable releases. (#2074)
 - Doriterm 0.1.17, which looks for updates only at get.doriterm.com, can update itself to the next release once that
