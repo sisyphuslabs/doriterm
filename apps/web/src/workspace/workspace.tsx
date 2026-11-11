@@ -312,10 +312,17 @@ export function Workspace({ connection }: WorkspaceProps) {
   const retryTerminals = fed.retry;
   const machinesListed = machineReads > 0 || listError !== undefined;
   // The sidebar's runs are its New space buttons: each terminal they start is the first tab of a new space (#404).
-  const inNewSpace = useStableCallback((address: string): void => {
-    openInLayout(address, true);
-    showOnPhone(address);
-  });
+  const inNewSpace = useCallback(
+    (address: string): void => {
+      openInLayout(address, true);
+      showOnPhone(address);
+    },
+    [openInLayout, showOnPhone],
+  );
+  // Read when a start is asked for, so the run is placed by that render's closure (see useMachineRuns), while the
+  // machines context keeps its value across terminal events (#2086).
+  const inNewSpaceNow = useRef(inNewSpace);
+  inNewSpaceNow.current = inNewSpace;
   const machines = useMemo(
     () => ({
       entries,
@@ -328,8 +335,8 @@ export function Workspace({ connection }: WorkspaceProps) {
       views,
       retry,
       moveMachine,
-      start: (params: TerminalRunParams) => runs.start(params, inNewSpace),
-      newTerminalOn: (machine: string) => runs.start({ on: machine }, inNewSpace),
+      start: (params: TerminalRunParams) => runs.start(params, inNewSpaceNow.current),
+      newTerminalOn: (machine: string) => runs.start({ on: machine }, inNewSpaceNow.current),
     }),
     [
       entries,
@@ -343,7 +350,6 @@ export function Workspace({ connection }: WorkspaceProps) {
       retry,
       moveMachine,
       runs,
-      inNewSpace,
     ],
   );
   const selectSpace = useStableCallback(layout.selectSpace);
