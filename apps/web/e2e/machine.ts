@@ -55,6 +55,9 @@ export function viaCommand(own: Readonly<Record<string, string>>, spec: MachineS
     .map(([key, value]) => `${key}="${value}"`)
     .join(" ");
   const refusals = [
+    // The machine's stop removes its dir first: a dial that comes after (a line its dialing core started before it
+    // stopped) is refused, since its hc connect would start the stopped core again with nothing left to stop it (#2142).
+    `[ -d "${spec.dir}" ] || { echo "${spec.name} is stopped" >&2; exit 1; }`,
     `m=$(cat "${join(spec.dir, "switch")}" 2>/dev/null)`,
     `[ "$m" = off ] && { echo "${spec.name} is switched off" >&2; exit 1; }`,
     `[ "$m" = login ] && { echo "Permission denied (publickey,password)." >&2; exit 255; }`,
