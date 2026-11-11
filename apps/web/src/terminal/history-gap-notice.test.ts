@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { clearHistoryGap, dismissHistoryGap, historyGapFor, noteHistoryGap } from "./history-gap-notice.ts";
+import {
+  clearHistoryGap,
+  dismissHistoryGap,
+  historyGapFor,
+  keepHistoryGapsOf,
+  noteHistoryGap,
+} from "./history-gap-notice.ts";
 
 describe("history gap notice", () => {
   test("a note belongs to the terminal it was raised for", () => {
@@ -27,5 +33,14 @@ describe("history gap notice", () => {
     expect(historyGapFor("t5")).toBe("reconnect");
     clearHistoryGap("t5");
     expect(historyGapFor("t5")).toBeNull();
+  });
+
+  test("a terminal the feed no longer lists live loses its note, so a reused address starts clean (#2292)", () => {
+    noteHistoryGap("t6", "reconnect");
+    noteHistoryGap("t7", "stream");
+    keepHistoryGapsOf(new Set(["t7"]));
+    expect(historyGapFor("t6")).toBeNull();
+    expect(historyGapFor("t7")).toBe("stream");
+    dismissHistoryGap("t7");
   });
 });

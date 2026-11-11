@@ -72,7 +72,11 @@ test("after a reconnect the status bar says output from while the line was down 
   await page.keyboard.type("sleep 1; for i in $(seq 1 400); do echo away-$i; done");
   await page.keyboard.press("Enter");
   await link.drop(true);
+  // Until the connection is back nothing is known to be missing: the bar says it reconnects, not that output is lost.
+  await expect(page.getByRole("status").filter({ hasText: /Reconnecting/ })).toBeVisible({ timeout: 15_000 });
+  await expect(note).toHaveCount(0);
   await expect.poll(() => coreScreen(address), { timeout: 30_000 }).toContain("away-400");
+  await expect(note).toHaveCount(0);
   link.restore();
   // Output after the reattach comes behind its repaint on the same stream: once it shows, the repaint has been drawn.
   await page.keyboard.type("echo back-$((1+1))");
