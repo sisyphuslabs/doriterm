@@ -47,6 +47,8 @@ import { orderNotSaved } from "./machine-order.ts";
 import { useMachineOrder } from "./use-machine-order.ts";
 import { useTerminals, type DocHeard } from "./use-terminals.ts";
 import { useResumeEnds } from "./resume-ends.ts";
+import { useSteady } from "./steady.ts";
+import { useStableCallback } from "./use-stable-callback.ts";
 import { useNoticeOpen } from "../push/notice-open.ts";
 import { usePushPresence } from "../push/use-push-presence.ts";
 import { PromptAnswerBanner } from "../push/prompt-answer-banner.tsx";
@@ -283,7 +285,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   useNoticeOpen(connectionStore.settings.mode === "relay" ? connectionStore.settings.hostId : undefined, opened);
   // What this screen reads for attention: a finish it has looked at reads idle here, and only here (#611).
   const sessions = useAttention(terminals, layout, narrow ? phoneOpen : null);
-  const spaces = useMemo(() => layoutSpaces(layouts, sessions, gitOf), [layouts, sessions, gitOf]);
+  const spaces = useSteady(useMemo(() => layoutSpaces(layouts, sessions, gitOf), [layouts, sessions, gitOf]));
   const onPalette = (): void => setPalette(true);
   const onSession: SessionVerb = (verb) => {
     const space = spaces.find((each) => inView !== null && each.addresses.includes(inView));
@@ -310,13 +312,10 @@ export function Workspace({ connection }: WorkspaceProps) {
   const retryTerminals = fed.retry;
   const machinesListed = machineReads > 0 || listError !== undefined;
   // The sidebar's runs are its New space buttons: each terminal they start is the first tab of a new space (#404).
-  const inNewSpace = useCallback(
-    (address: string): void => {
-      openInLayout(address, true);
-      showOnPhone(address);
-    },
-    [openInLayout, showOnPhone],
-  );
+  const inNewSpace = useStableCallback((address: string): void => {
+    openInLayout(address, true);
+    showOnPhone(address);
+  });
   const machines = useMemo(
     () => ({
       entries,
@@ -347,7 +346,7 @@ export function Workspace({ connection }: WorkspaceProps) {
       inNewSpace,
     ],
   );
-  const { selectSpace } = layout;
+  const selectSpace = useStableCallback(layout.selectSpace);
   // The space keys count the spaces as the sidebar lists them, so "space 2" is the second row a person sees.
   const spaceKeys = useMemo(() => spacesInOrder(entries, spaces).map((space) => space.id), [entries, spaces]);
   const selectedSpace = layout.active?.spaceKey ?? null;
