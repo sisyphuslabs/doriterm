@@ -1,5 +1,5 @@
 import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { guideStore } from "../pair/first-run-guide.ts";
 import {
   PHONE_LIST,
@@ -40,6 +40,10 @@ export interface PhoneNavigation {
    * the screen it was opened from (#1478).
    */
   readonly leave: (next: string | null) => void;
+  /** Whether the switch sheet is open over the open terminal (`&sheet=switch`). */
+  readonly sheet: boolean;
+  /** Opens the switch sheet (one entry over its terminal) or closes it (Back off that entry). */
+  readonly showSheet: (open: boolean) => void;
 }
 
 /**
@@ -56,6 +60,17 @@ let spacesOverAgents: number | null = null;
 const ENTRY_INDEX = "__TSR_index";
 
 /**
+ * The phone place of the entry under this one, kept in the entry's own history state when this page pushed it there. A
+ * reload forgets which entries the page pushed (`landed` starts again), but not this: Back can still pop down to the
+ * screen it goes to instead of replacing this entry with a second copy of it (#1153).
+ */
+declare module "@tanstack/react-router" {
+  interface HistoryState {
+    readonly phoneUnder?: string;
+  }
+}
+
+/**
  * Each phone screen is a history entry (`?s=`, `?t=`), so Android's Back walks up one screen at a time instead of leaving
  * the app, and a reload reopens what was open without pushing a second entry. A desktop keeps no entries of its own.
  */
@@ -63,10 +78,17 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
   const navigate = useNavigate();
   const router = useRouter();
   const search = useRouterState({
-    select: (state) => state.location.search as { readonly v?: unknown; readonly s?: unknown; readonly t?: unknown },
+    select: (state) =>
+      state.location.search as {
+        readonly v?: unknown;
+        readonly s?: unknown;
+        readonly t?: unknown;
+        readonly sheet?: unknown;
+      },
   });
   const path = useRouterState({ select: (state) => state.location.pathname });
   const index = useRouterState({ select: (state) => state.location.state[ENTRY_INDEX] });
+  const under = useRouterState({ select: (state) => state.location.state.phoneUnder ?? null });
   landed ??= index;
   // The direction of the last move between entries: a push raises the index, a pop or a Back lowers it.
   const lastIndex = useRef(index);
@@ -87,8 +109,36 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
   const space = narrow ? phoneOpenKey(path, route.space, lastSpace.current) : null;
   const open = key === null || !narrow ? null : (tabAddress(key, ids) ?? null);
   const go = useCallback(
-    (next: PhoneRoute, replace: boolean) => void navigate({ href: phoneHref(next), replace }),
-    [navigate],
+    (next: PhoneRoute, replace: boolean) => {
+      // A push records the place it leaves, the entry now under it; a replace keeps the record of the entry it replaces,
+      // because what sits under it has not changed.
+      const below = replace ? under : path === "/" ? phoneHref(listed) : null;
+      void navigate({ href: phoneHref(next), replace, state: () => (below === null ? {} : { phoneUnder: below }) });
+    },
+    [listed, navigate, path, under],
+  );
+  const back = useCallback(() => {
+    // Popping is right when this page pushed the entry in this load, and also when the entry under this one is the very
+    // screen Back goes to - which a reload forgets in `landed` but not in the entry's own state (#1153).
+    const parent = phoneParent(listed);
+    if ((landed !== null && index > landed) || under === phoneHref(parent)) router.history.back();
+    else go(parent, true);
+  }, [go, index, listed, router, under]);
+  // The sheet's entry is left by a Back, once: what it switches to is shown when that Back has landed on its terminal.
+  const sheetClosing = useRef(false);
+  const afterSheet = useRef<string | null>(null);
+  const sheetOn = narrow && path === "/" && listed.sheet;
+  const showSheet = useCallback(
+    (opening: boolean) => {
+      if (opening) {
+        if (!listed.sheet && listed.terminal !== null) go({ ...listed, sheet: true }, false);
+        return;
+      }
+      if (!listed.sheet || sheetClosing.current) return;
+      sheetClosing.current = true;
+      back();
+    },
+    [back, go, listed],
   );
   const show = useCallback(
     (address: string) => {
@@ -97,13 +147,26 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
       // A desktop keeps no history entries of its own: its New tab and its notices are not navigations, and pushing one
       // made Back step through no-op entries and a landing run close the screen behind it.
       if (!narrow) return;
+      // From the sheet: its entry goes first, so the switch replaces the terminal's own entry, not the sheet's.
+      if (sheetOn) {
+        afterSheet.current = address;
+        showSheet(false);
+        return;
+      }
       // Switching inside an open terminal replaces its entry, so one Back still leaves the terminal for where it came from.
       go({ ...listed, terminal: tabKey(address, ids) }, listed.terminal !== null);
     },
-    [go, ids, listed, narrow],
+    [go, ids, listed, narrow, sheetOn, showSheet],
   );
+  useEffect(() => {
+    if (sheetOn) return;
+    sheetClosing.current = false;
+    const next = afterSheet.current;
+    afterSheet.current = null;
+    if (next !== null) show(next);
+  }, [sheetOn, show]);
   const showSpace = useCallback(
-    (spaceKey: string) => go({ section: listed.section, space: spaceKey, terminal: null }, false),
+    (spaceKey: string) => go({ section: listed.section, space: spaceKey, terminal: null, sheet: false }, false),
     [go, listed.section],
   );
   const showSection = useCallback(
@@ -121,17 +184,13 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
       if (section === "agents") return go(PHONE_LIST, true);
       // From the agents, Spaces is entered (one entry); within Spaces, its tab goes back to its own list in place.
       if (listed.section !== "spaces") spacesOverAgents = index + 1;
-      return go({ section: "spaces", space: null, terminal: null }, listed.section === "spaces");
+      return go({ section: "spaces", space: null, terminal: null, sheet: false }, listed.section === "spaces");
     },
     [go, index, listed, router],
   );
-  const back = useCallback(() => {
-    if (landed !== null && index > landed) router.history.back();
-    else go(phoneParent(listed), true);
-  }, [go, index, listed, router]);
   const backFromSpace = useCallback(() => {
     if (listed.terminal === null) back();
-    else go({ ...listed, space: null, terminal: null }, true);
+    else go({ ...listed, space: null, terminal: null, sheet: false }, true);
   }, [back, go, listed]);
   const dropSpace = useCallback(() => {
     if (path === "/" && listed.space !== null) go({ ...listed, space: null }, true);
@@ -157,5 +216,7 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     dropSpace,
     pushed: forward.current,
     leave,
+    sheet: sheetOn,
+    showSheet,
   };
 }

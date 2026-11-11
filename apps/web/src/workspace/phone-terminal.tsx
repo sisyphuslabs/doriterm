@@ -48,9 +48,12 @@ export interface PhoneTerminalProps {
    * the Spaces sheet has already moved the phone to the tab in its place, and a late End must not drag it back up (#1478).
    */
   readonly onEnded: (address: string) => void;
-  /** The Spaces sheet's tab controls: close the tab that shows an address, start a tab in a space (#1463). */
+  /** The sheet's tab controls: close the tab that shows an address, start a tab in a space (#1463). */
   readonly onCloseTab: (address: string) => void;
   readonly onNewInSpace: (space: string) => void;
+  /** Whether the switch sheet is open over this terminal, and its opening and closing (the route holds it). */
+  readonly sheet: boolean;
+  readonly onSheet: (open: boolean) => void;
   /** Where this terminal registers its dictation for the shell's palette row and bound key; null while it takes none. */
   readonly dictate: RefObject<(() => void) | null>;
 }
@@ -71,6 +74,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
     onNewInSpace,
     dictate,
   } = props;
+  const { sheet, onSheet } = props;
   const port = useRef<TerminalPort | null>(null);
   const onPort = useCallback((next: TerminalPort | null) => {
     port.current = next;
@@ -237,6 +241,8 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
           clearance={roundButtonsClearance(mouseOnly ? 1 : 2)}
           onCloseTab={onCloseTab}
           onNewInSpace={onNewInSpace}
+          sheet={sheet}
+          onSheet={onSheet}
         />
       ) : null}
       {dictating ? (

@@ -96,6 +96,7 @@ export function usePredictionOverlay(wt: WTerm | null, source: OverlaySource | n
           return () => clearTimeout(id);
         },
         synchronized: () => view.bridge?.synchronizedOutput?.() ?? false,
+        generation: () => view.bridge?.synchronizedOutputGeneration?.() ?? 0,
       },
       () => paint(true),
     );

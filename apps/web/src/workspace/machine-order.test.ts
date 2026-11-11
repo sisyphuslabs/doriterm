@@ -9,7 +9,6 @@ const machine = (core: string, name: string, local = false): MachineEntry => ({
   name,
   local,
   state: "connected",
-  live: 0,
   first: undefined,
 });
 

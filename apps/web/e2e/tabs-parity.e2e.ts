@@ -570,9 +570,11 @@ test.describe("10: on a phone at 390", () => {
     expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(44);
 
     await switcher.click();
-    const sheet = page.getByRole("dialog", { name: "Spaces" });
+    const sheet = page.getByRole("dialog", { name: "Switch" });
     // Measured at rest: a frame of the open transition reads a row a hair under 44 (#583).
     await opened(sheet);
+    // It opens on the session's own space; every space is one segment away (mobile nav phase 4).
+    await sheet.getByRole("group", { name: "Show" }).getByRole("button", { name: "All spaces" }).click();
     // Each row is named as the strip names its tab, the terminal it opens after it (ruling A).
     const rows = [
       ["alpha", "a-one"],
@@ -631,9 +633,10 @@ test.describe("10: on a phone at 390", () => {
 
     // Its middle opens the spaces sheet, for a tab of another space.
     await bar.getByRole("button", { name: /^Switch tab, beta, b-two/ }).tap();
-    const sheet = page.getByRole("dialog", { name: "Spaces" });
+    const sheet = page.getByRole("dialog", { name: "Switch" });
     // Measured at rest: a frame of the open transition reads a row a hair under 44 (#583).
     await opened(sheet);
+    await sheet.getByRole("group", { name: "Show" }).getByRole("button", { name: "All spaces" }).tap();
     await tabRow(sheet.getByRole("region", { name: "alpha" }), "a-two").tap();
     await expect(sheet).toBeHidden();
     await expect(header.getByRole("heading", { name: "a-two", exact: true })).toBeVisible({ timeout: 15_000 });
@@ -679,8 +682,8 @@ test.describe("10: on a phone at 390", () => {
     await expect(tabSwitch).toContainText("2/3");
 
     await tabSwitch.click();
-    await opened(page.getByRole("dialog", { name: "Spaces" }));
-    const web = page.getByRole("dialog", { name: "Spaces" }).getByRole("region", { name: "web" });
+    await opened(page.getByRole("dialog", { name: "Switch" }));
+    const web = page.getByRole("dialog", { name: "Switch" }).getByRole("region", { name: "web" });
     // One row per tab, each unnamed one read by the terminal it opens; the split tab's row opens the pane in view.
     await expect(tabRows(page, web)).toHaveCount(3);
     await expect(tabRow(web, "split-w1")).toHaveCount(1);

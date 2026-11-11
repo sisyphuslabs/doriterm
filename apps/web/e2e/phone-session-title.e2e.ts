@@ -75,7 +75,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
 
         // The switch sheet names its rows the same way: no "1 \u00b7" before them.
         await switcher(page).click();
-        const sheet = page.getByRole("dialog", { name: "Spaces" });
+        const sheet = page.getByRole("dialog", { name: "Switch" });
         await opened(sheet);
         // Each tab's row, not its Close or the space's New tab (#1464).
         const rows = sheet

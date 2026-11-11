@@ -581,7 +581,7 @@ describe("a rate limit per device token (#830)", () => {
     expect(limiter.keys).toEqual([]);
   });
 
-  test("a limiter that fails forwards the push unlimited and logs once per burst; only over the limit is 429 (#1124)", async () => {
+  test("a limiter that fails forwards the push unlimited and one bridge logs it once per outage; only over the limit is 429 (#1124)", async () => {
     const { sent, fetch } = upstream();
     let down = true;
     const limiter = countingLimiter(1);
@@ -622,7 +622,7 @@ describe("a rate limit per device token (#830)", () => {
     expect(statuses.slice(3)).toEqual([201, 429]);
     expect(logged).toHaveLength(1);
 
-    // A second outage is a new burst, logged once more.
+    // A second outage is logged once more.
     down = true;
     expect([await push(), await push()]).toEqual(["sent", "sent"]);
     expect(logged).toHaveLength(2);

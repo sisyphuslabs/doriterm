@@ -62,7 +62,7 @@ function Group({
 }) {
   return (
     <section className="flex flex-col">
-      <h2 id={id} className="pb-1 text-lg font-semibold text-foreground md:text-xl">
+      <h2 id={id} className="pb-1 text-xl font-semibold text-foreground">
         {title}
       </h2>
       {children}
@@ -192,7 +192,7 @@ export function SettingsRoute() {
       <Tabs value={section} onValueChange={(value: SectionId) => setSection(value)} className="md:hidden">
         <div {...titlebar} className="flex items-center gap-1 pt-3 pr-2 pb-1 pl-[var(--titlebar-inset-start,0.5rem)]">
           {back}
-          <h1 className="text-xl font-semibold text-foreground">Settings</h1>
+          <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
           {/* In the title row, so the phone header keeps its height and the sections below do not move (#1460). */}
           <div className="ml-2 min-w-0 flex-1">
             <SearchSettings query={query} onQuery={onQuery} onKeyDown={onSearchKey} inputRef={field} inline />
@@ -219,7 +219,7 @@ export function SettingsRoute() {
           )}
         >
           {back}
-          <h1 className="text-lg font-semibold text-foreground">Settings</h1>
+          <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
         </div>
         <div className="mb-1">
           <SearchSettings query={query} onQuery={onQuery} onKeyDown={onSearchKey} inputRef={field} />

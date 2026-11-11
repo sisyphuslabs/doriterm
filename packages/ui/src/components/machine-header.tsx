@@ -11,8 +11,8 @@ export interface MachineHeaderProps {
   readonly state: string;
   /** Says the state in the blocked ink: offline or needs login. */
   readonly alarm?: boolean;
-  /** Live terminals on it. */
-  readonly live: number;
+  /** The tabs of the spaces listed under it: the sum of their rows' counts. */
+  readonly tabs: number;
   /** Its spaces are folded away under the header. */
   readonly collapsed?: boolean;
   /** Folds or unfolds its spaces; without it there is no chevron. */
@@ -30,7 +30,7 @@ export interface MachineHeaderProps {
 }
 
 /**
- * The head of one machine's spaces, shown once more than one machine is known: icon, name, state, terminal count, then
+ * The head of one machine's spaces, shown once more than one machine is known: icon, name, state, tab count, then
  * herdr-app's New space on <name>, status dot and fold chevron. The row is the group's first stop; the actions follow it
  * with ArrowRight.
  */
@@ -39,7 +39,7 @@ export function MachineHeader({
   local,
   state,
   alarm = false,
-  live,
+  tabs,
   collapsed = false,
   onToggle,
   selected = false,
@@ -86,12 +86,8 @@ export function MachineHeader({
               {state}
             </span>
             {/* At least one digit wide, so single digits keep their column, and as wide as more digits need (#878). */}
-            <span
-              data-numeric
-              aria-label={`${live} terminals`}
-              className="min-w-4 shrink-0 text-right whitespace-nowrap"
-            >
-              {live}
+            <span data-numeric aria-label={`${tabs} tabs`} className="min-w-4 shrink-0 text-right whitespace-nowrap">
+              {tabs}
             </span>
           </>
         )}

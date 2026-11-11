@@ -14,7 +14,7 @@ endOwnTerminals();
 
 const header = (page: Page) => page.getByRole("banner");
 const switcher = (page: Page) => page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / });
-const sheet = (page: Page) => page.getByRole("dialog", { name: "Spaces" });
+const sheet = (page: Page) => page.getByRole("dialog", { name: "Switch" });
 
 function startShellIn(space: string, name: string): string {
   const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${space}`, "--", "env", "PS1=$ ", "sh"]);
@@ -23,7 +23,7 @@ function startShellIn(space: string, name: string): string {
   return String(started.address);
 }
 
-test("the Spaces sheet closes a tab as the strip's close does and starts a new tab in its space (#1463)", async ({
+test("the switch sheet closes a tab as the strip's close does and starts a new tab in its space (#1463)", async ({
   page,
 }) => {
   const run = Date.now().toString(36);
@@ -46,12 +46,11 @@ test("the Spaces sheet closes a tab as the strip's close does and starts a new t
 
   await switcher(page).click();
   await opened(sheet(page));
+  // It opens on the session's own space (mobile nav phase 4): its rows, and New tab in it at the sheet's foot.
   const section = sheet(page).getByRole("region", { name: space });
+  const newTab = sheet(page).getByRole("button", { name: `New tab in ${space}`, exact: true });
   // Both new controls take a 44 px tap, as every phone target does (#1030).
-  for (const control of [
-    section.getByRole("button", { name: "Close t2", exact: true }),
-    section.getByRole("button", { name: "New tab", exact: true }),
-  ]) {
+  for (const control of [section.getByRole("button", { name: "Close t2", exact: true }), newTab]) {
     // oxlint-disable-next-line no-await-in-loop -- measured at rest, one after the other
     const box = await laidOutBox(control);
     expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(44);
@@ -72,7 +71,7 @@ test("the Spaces sheet closes a tab as the strip's close does and starts a new t
 
   await switcher(page).click();
   await opened(sheet(page));
-  await sheet(page).getByRole("region", { name: space }).getByRole("button", { name: "New tab", exact: true }).click();
+  await newTab.click();
   await expect(sheet(page)).toBeHidden();
   await expect(switcher(page)).toContainText("2/2", { timeout: 15_000 });
 });

@@ -128,13 +128,26 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
   // A process that ends on SIGTERM or SIGINT (an e2e helper such as web-relay-host.ts is stopped with SIGTERM) runs
   // this stop to its end first. Otherwise the relay's group hook (adoptProcessGroup) kills the relay and raises the
   // signal again within a few milliseconds, ending the process before its host's stop has told the hc core to stop:
-  // the core runs outside every process group of this process and outlives it (#2061).
-  const unhook = onInterrupt(stop);
+  // the core runs outside every process group of this process and outlives it (#2061). An interrupt during start-up
+  // waits for the step in flight, which then ends start-up and tears down once, so no part starts after the teardown
+  // has passed it (#2080).
+  let interrupted = false;
+  const settled = Promise.withResolvers<boolean>();
+  const unhook = onInterrupt(async () => {
+    interrupted = true;
+    if (await settled.promise) await stop();
+  });
+  const unlessInterrupted = (): void => {
+    if (interrupted) throw new Error("start-up was interrupted by SIGTERM or SIGINT");
+  };
   try {
     relay = await startLocalRelay();
+    unlessInterrupted();
     await options.started?.({ relay });
+    unlessInterrupted();
     session = createHcSession(prefix);
     await options.started?.({ session });
+    unlessInterrupted();
     host = await startHost({
       listen: { hostname: "127.0.0.1", port: 0 },
       token: "relayed-host-token-relayed-host-token-relayed",
@@ -150,12 +163,14 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
         if (line.startsWith("relay: connected")) connected.resolve();
       },
     });
+    unlessInterrupted();
     await options.started?.({ host });
+    unlessInterrupted();
     const uplinkMs = options.uplinkTimeoutMs ?? UPLINK_TIMEOUT_MS;
     await within(connected.promise, "the host's relay uplink", uplinkMs);
     const e2ee = host.e2ee;
     if (e2ee === undefined) throw new Error("the host has no E2EE endpoint");
-    return await relayedHost({
+    const started = await relayedHost({
       relayUrl: relay.url,
       hostId: e2ee.hostId,
       ip,
@@ -166,10 +181,17 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
       logs,
       stop,
     });
+    unlessInterrupted();
+    settled.resolve(true);
+    return started;
   } catch (error) {
     unhook();
     if (logs.length > 0) console.log(`host log:\n${logs.join("\n")}`);
-    return rethrowAfter(error, teardown);
+    try {
+      return await rethrowAfter(error, teardown);
+    } finally {
+      settled.resolve(false);
+    }
   }
 }
 
