@@ -173,9 +173,12 @@ test("Safari on a Mac: a first jamo held longer than the lone-jamo wait still re
   page,
 }) => {
   const terminal = await openPhoneTerminal(page);
-  // Raw mode under od, which prints each three bytes it reads as they arrive: a jamo sent alone, and the erase that
-  // would take it back, reach the program and show, where a line read would hide them behind the erase.
-  await page.keyboard.type("stty -icanon -echo min 1 time 0; echo RE''ADY; od -An -tx1 -w3 -v\r");
+  // Raw mode, three bytes a row as they arrive: a jamo sent alone, and the erase that would take it back, reach the
+  // program and show, where a line read would hide them behind the erase. dd ends at each third byte so od prints
+  // then: the uutils od of ubuntu-26.04 keeps what it reads until more comes (#1952, as terminal-ime-commit's reader).
+  await page.keyboard.type(
+    "stty -icanon -echo min 1 time 0; echo RE''ADY; while :; do dd bs=1 count=3 2>/dev/null | od -An -tx1; done\r",
+  );
   await expect(terminal.locator(".term-row").filter({ hasText: /^READY/ })).toHaveCount(1);
   const field = terminal.getByRole("textbox");
   // Safari's keydown comes after each edit; edits 150 ms apart outlast the 100 ms a lone jamo waits for a key.
