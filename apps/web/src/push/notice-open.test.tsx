@@ -6,6 +6,7 @@ import type { NativePushPlugin, NoticeTap } from "../native/shell.ts";
 import { placeStart } from "../workspace/phone-place.ts";
 import { pushChannel } from "./push-channel.ts";
 import {
+  forgetLaunchNotice,
   hasLaunchNotice,
   hasPendingNotice,
   listenForAppNotices,
@@ -44,6 +45,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await act(async () => root.unmount());
+  forgetLaunchNotice();
   mock.restore();
   Reflect.deleteProperty(navigator, "serviceWorker");
   for (const key of ["IS_REACT_ACT_ENVIRONMENT", "window", "location"]) Reflect.deleteProperty(globalThis, key);
@@ -87,6 +89,7 @@ test("a launch notice its pane takes in a render before the start decides still 
     takeLaunchTap: () => launch.promise,
     addListener: async () => ({ remove: async () => undefined }) satisfies PluginListenerHandle,
   };
+  expect(hasLaunchNotice()).toBe(false);
   const listened = listenForAppNotices(() => undefined, plugin);
   launch.resolve({ tap: { url: `/?notice=${NOTICE}&host=h` } });
   await listened;

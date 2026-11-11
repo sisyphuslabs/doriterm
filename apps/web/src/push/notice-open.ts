@@ -42,6 +42,10 @@ let launchPending = false;
  */
 let launchNotice = false;
 export const hasLaunchNotice = (): boolean => launchNotice;
+/** Forgets that answer. A page decides its start once, so only a test, whose module state outlives one case, needs it. */
+export const forgetLaunchNotice = (): void => {
+  launchNotice = false;
+};
 const setLaunchPending = (next: boolean): void => {
   launchPending = next;
   for (const listener of listeners) listener();
