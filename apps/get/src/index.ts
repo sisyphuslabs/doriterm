@@ -1,6 +1,7 @@
 import type { Env, EdgeCache, RequestContext } from "./bindings.ts";
 import { resolveChannel } from "./channel.ts";
 import { isDesktopFeed, serveDesktopFeed, serveHostManifest } from "./feeds.ts";
+import { neverPublished } from "./github-feed.ts";
 import { type Channel, dlFile, githubLatestUrl, isChannel, isVersionFree } from "./names.ts";
 import { downloadPage } from "./page.ts";
 import { runDownloadsRollup } from "./rollup.ts";
@@ -29,6 +30,20 @@ async function offeredVersion(ctx: RequestContext, channel: Channel): Promise<st
 }
 
 /**
+ * With no version to offer: GitHub's latest release before the channel's first mirror (or while R2 fails), but 503 once
+ * the channel has had a pointer and every version it could name is yanked, since GitHub's latest can be the yank (#1981).
+ */
+async function withoutVersion(ctx: RequestContext, channel: Channel, github: string): Promise<Response> {
+  let unpublished = true;
+  try {
+    unpublished = await neverPublished(ctx.env.RELEASES, channel);
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+  }
+  return unpublished ? redirect(github, "github") : text(503, `every ${channel} version is yanked`);
+}
+
+/**
  * `/dl/<key>`: a 302 to the file at the channel's version, never cached, so a link follows a pointer move within a
  * minute. The redirect carries where it came from, and the `/v/` request it leads to is the one counted. Before the
  * channel's first mirror a file with a fixed name goes to GitHub's latest release, any other to the releases page.
@@ -36,7 +51,8 @@ async function offeredVersion(ctx: RequestContext, channel: Channel): Promise<st
 async function serveDl(request: Request, ctx: RequestContext, channel: Channel, key: string): Promise<Response> {
   if (dlFile(key, "0.0.0") === null) return text(404, "unknown download");
   const version = await offeredVersion(ctx, channel);
-  if (version === null) return redirect(githubLatestUrl(isVersionFree(key) ? dlFile(key, "0.0.0") : null), "github");
+  if (version === null)
+    return withoutVersion(ctx, channel, githubLatestUrl(isVersionFree(key) ? dlFile(key, "0.0.0") : null));
   const file = dlFile(key, version) ?? key;
   const origin = new URL(request.url).origin;
   return redirect(`${origin}/v/${version}/${file}?via=dl&channel=${channel}`, "worker");
@@ -45,7 +61,7 @@ async function serveDl(request: Request, ctx: RequestContext, channel: Channel, 
 /** The channel's stamped install.sh, which `curl -fsSL https://get.doriterm.com | sh` runs. */
 async function serveInstaller(request: Request, ctx: RequestContext, channel: Channel): Promise<Response> {
   const version = await offeredVersion(ctx, channel);
-  if (version === null) return redirect(githubLatestUrl("install.sh"), "github");
+  if (version === null) return withoutVersion(ctx, channel, githubLatestUrl("install.sh"));
   const served = await serveFile(request, ctx, { version, file: "install.sh", route: "dl", channel });
   if (served.status !== 200) return served;
   const headers = new Headers(served.headers);
@@ -54,10 +70,17 @@ async function serveInstaller(request: Request, ctx: RequestContext, channel: Ch
   return new Response(served.body, { headers });
 }
 
+/** `/` answers by User-Agent, so every answer varies on it and no shared cache hands one client the other's (#1981). */
+function varyOnUserAgent(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("Vary", "User-Agent");
+  return new Response(response.body, { status: response.status, headers });
+}
+
 async function serveRoot(request: Request, ctx: RequestContext): Promise<Response> {
   const userAgent = request.headers.get("User-Agent") ?? "";
   // curl, wget and fetch() send no Mozilla token; every browser does.
-  if (!userAgent.includes("Mozilla/")) return serveInstaller(request, ctx, "stable");
+  if (!userAgent.includes("Mozilla/")) return varyOnUserAgent(await serveInstaller(request, ctx, "stable"));
   const origin = new URL(request.url).origin;
   const page = downloadPage(origin, await offeredVersion(ctx, "stable"), userAgent);
   return new Response(request.method === "HEAD" ? null : page, {
@@ -66,6 +89,7 @@ async function serveRoot(request: Request, ctx: RequestContext): Promise<Respons
       "Cache-Control": "no-store",
       "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
       "X-Content-Type-Options": "nosniff",
+      Vary: "User-Agent",
     },
   });
 }
