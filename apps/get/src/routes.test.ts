@@ -239,7 +239,8 @@ test("/ gives curl the stable install.sh and a browser the download page; before
     "https://github.com/sisyphuslabs/doriterm/releases/latest",
   );
   expect((await get(empty, "/dl/nope")).status).toBe(404);
-  expect((await get(empty, "/desktop/stable/latest-mac.yml")).status).toBe(404);
+  // Before any mirror the feed comes from GitHub (github-feed.test.ts); here GitHub does not answer.
+  expect((await get(empty, "/desktop/stable/latest-mac.yml")).status).toBe(503);
   expect(await (await get(empty, "/healthz")).text()).toBe("ok\n");
 });
 
