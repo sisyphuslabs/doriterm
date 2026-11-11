@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -12,7 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const SCRIPT = join(import.meta.dir, "..", "..", ".github", "scripts", "playwright-linux-deps.sh");
+const SCRIPTS = join(import.meta.dir, "..", "..", ".github", "scripts");
 
 // The script runs on Ubuntu runners: it needs a bash with mapfile (4+), which macOS's /bin/bash is not.
 const bash = Bun.spawnSync(["bash", "-c", "type mapfile"], { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
@@ -35,7 +36,11 @@ afterEach(() => {
  * Runs the script against stub sudo, apt-get, dpkg-deb, dpkg-query, bunx and timeout; package files are
  * <package>_<version>.deb, and the installed packages are lines of "<package> <version>".
  */
-function run(cached: readonly string[], apt: Apt): { save: string; cache: string[]; mirrorInstalls: number } {
+function run(
+  cached: readonly string[],
+  apt: Apt,
+  options: { scripts?: string; conf?: string } = {},
+): { save: string; cache: string[]; mirrorInstalls: number } {
   const root = mkdtempSync(join(tmpdir(), "pw-deps-"));
   dirs.push(root);
   const debs = join(root, "debs");
@@ -77,13 +82,13 @@ function run(cached: readonly string[], apt: Apt): { save: string; cache: string
     chmodSync(join(bin, name), 0o755);
   }
   const output = join(root, "github-output");
-  const result = Bun.spawnSync(["bash", SCRIPT, debs], {
+  const result = Bun.spawnSync(["bash", join(options.scripts ?? SCRIPTS, "playwright-linux-deps.sh"), debs], {
     env: {
       ...process.env,
       PATH: `${bin}:${process.env["PATH"] ?? ""}`,
       GITHUB_OUTPUT: output,
       PLAYWRIGHT_APT_ARCHIVES: archives,
-      PLAYWRIGHT_APT_CONF: join(root, "99-playwright-ci"),
+      PLAYWRIGHT_APT_CONF: options.conf ?? join(root, "99-playwright-ci"),
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -122,4 +127,64 @@ test.skipIf(!bash)("a cache that covers only part of the list keeps its files an
 test.skipIf(!bash)("an empty cache is filled from the mirror", () => {
   const found = run([], { candidates: ["fonts-a_1"] });
   expect(found).toEqual({ save: "save-debs=true", cache: ["fonts-a_1.deb"], mirrorInstalls: 1 });
+});
+
+/**
+ * Runs apt-bounds.sh from `scripts` with a stub sudo and tee: whatever path the script asks tee to write, the stub
+ * writes to `conf`, and the test reads that. Returns what the script wrote.
+ */
+function runAptBounds(scripts: string, conf: string): string {
+  const root = mkdtempSync(join(tmpdir(), "apt-bounds-"));
+  dirs.push(root);
+  const bin = join(root, "bin");
+  mkdirSync(bin);
+  const stubs: Record<string, string> = { sudo: 'exec "$@"', tee: 'cat > "$TEE_TARGET"' };
+  for (const [name, body] of Object.entries(stubs)) {
+    writeFileSync(join(bin, name), `#!/usr/bin/env bash\n${body}\n`);
+    chmodSync(join(bin, name), 0o755);
+  }
+  const result = Bun.spawnSync(["bash", join(scripts, "apt-bounds.sh")], {
+    env: {
+      ...process.env,
+      PATH: `${bin}:${process.env["PATH"] ?? ""}`,
+      APT_BOUNDS_CONF: conf,
+      TEE_TARGET: conf,
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (result.exitCode !== 0)
+    throw new Error(`apt-bounds.sh exited ${String(result.exitCode)}: ${result.stderr.toString()}`);
+  return readFileSync(conf, "utf8");
+}
+
+// doriterm#1215: the Acquire limits lived in both scripts and could drift; they now come from one shared file.
+test.skipIf(!bash)("both apt bounds scripts write the one shared definition", () => {
+  const root = mkdtempSync(join(tmpdir(), "apt-bounds-shared-"));
+  dirs.push(root);
+  const scripts = join(root, "scripts");
+  mkdirSync(scripts);
+  for (const name of ["apt-bounds.sh", "playwright-linux-deps.sh"])
+    copyFileSync(join(SCRIPTS, name), join(scripts, name));
+  // Values neither script could produce on its own: both have to read them from the shared file.
+  writeFileSync(
+    join(scripts, "apt-bounds.conf"),
+    'Acquire::Retries "7";\nAcquire::http::Timeout "31";\nAcquire::https::Timeout "32";\n',
+  );
+
+  const bounds = runAptBounds(scripts, join(root, "98-ci-bounds"));
+  const depsConf = join(root, "99-playwright-ci");
+  run([], { candidates: ["fonts-a_1"] }, { scripts, conf: depsConf });
+  const deps = readFileSync(depsConf, "utf8");
+
+  for (const [name, written] of [
+    ["apt-bounds.sh", bounds],
+    ["playwright-linux-deps.sh", deps],
+  ] as const) {
+    expect({ name, retries: written.includes('Acquire::Retries "7";') }).toEqual({ name, retries: true });
+    expect({ name, http: written.includes('Acquire::http::Timeout "31";') }).toEqual({ name, http: true });
+    expect({ name, https: written.includes('Acquire::https::Timeout "32";') }).toEqual({ name, https: true });
+  }
+  // The Playwright script's extra setting stays its own.
+  expect(deps).toContain('APT::Keep-Downloaded-Packages "true";');
 });
