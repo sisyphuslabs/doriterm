@@ -69,7 +69,10 @@ export function whenPressEnds(
     done.abort();
     then();
   };
-  const listen = { signal: AbortSignal.any([signal, done.signal]) };
+  // Not AbortSignal.any: Firefox before 124 lacks it, and the baseline is Firefox 121 (baseline.ts).
+  signal.addEventListener("abort", () => done.abort(), { once: true, signal: done.signal });
+  if (signal.aborted) return;
+  const listen = { signal: done.signal };
   for (const type of ["pointerup", "pointercancel", "pointermove"]) view.addEventListener(type, check, listen);
   view.addEventListener("blur", (event) => event.target === view && check(), listen);
 }
