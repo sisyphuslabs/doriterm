@@ -144,5 +144,37 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         Object.values(seeded).forEach((address) => endAgent("host", address));
       }
     });
+
+    test("a space the page landed on, under a terminal that went away, is left for the list and not met again by Back (#2200)", async ({
+      page,
+    }) => {
+      const seeded = seedWebsite();
+      const left = [seeded.deploy];
+      try {
+        const link = await routeHcSocket(page);
+        await page.goto("/?v=spaces");
+        await spaceRow(page, "website").click();
+        await expect(heading(page, "website")).toBeVisible({ timeout: 20_000 });
+        // A reload makes the space's own entry the one this page landed on: nothing the page pushes sits under it.
+        await page.reload();
+        await expect(heading(page, "website")).toBeVisible({ timeout: 20_000 });
+        await expect.poll(() => page.evaluate(() => document.documentElement.hasAttribute("data-ready"))).toBe(true);
+        await tabRows(page).filter({ hasText: "tests" }).click();
+        await expect(page.locator(`[data-terminal="${seeded.tests}"]`)).toBeVisible({ timeout: 20_000 });
+
+        link.holdFromHost("finished_ms");
+        endAgent("host", seeded.tests);
+        await expect(heading(page, "website")).toBeVisible({ timeout: 15_000 });
+
+        // Back leaves the space for the list, and the history Back after it does not bring the space back.
+        await page.getByRole("button", { name: "Back to spaces" }).click();
+        await expect(heading(page, "Spaces")).toBeVisible();
+        await expect.poll(() => param(page, "s")).toBeNull();
+        await page.goBack();
+        await expect(heading(page, "website")).toBeHidden();
+      } finally {
+        left.forEach((address) => endAgent("host", address));
+      }
+    });
   });
 }

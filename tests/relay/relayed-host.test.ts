@@ -178,6 +178,13 @@ describe("startRelayedHost", () => {
       env: { PAIR_CLI: join(import.meta.dir, "fixtures", "pair-never-exits.fixture.ts") },
       settled: "interrupted",
     },
+    {
+      // A relay start that never finishes, as one that retries for minutes looks to the interrupt hook (#2220).
+      stage: "relay-start",
+      title: "a SIGTERM during a relay start that never finishes ends start-up at once, and leaves nothing (#2220)",
+      env: {},
+      settled: "interrupted",
+    },
   ];
   for (const { stage, title, env, settled } of startupCases) {
     test(

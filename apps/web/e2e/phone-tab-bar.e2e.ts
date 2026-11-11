@@ -54,6 +54,8 @@ const agentsTab = (page: Page) => bar(page).getByRole("button", { name: /^Agents
 const spacesTab = (page: Page) => bar(page).getByRole("button", { name: "Spaces", exact: true });
 const settingsTab = (page: Page) => bar(page).getByRole("link", { name: /^Settings\b/ });
 const title = (page: Page, name: string) => page.getByRole("heading", { level: 1, name, exact: true });
+/** The router's place of the entry in view in this tab's history (@tanstack/history). */
+const entry = (page: Page): Promise<unknown> => page.evaluate(() => Reflect.get(history.state ?? {}, "__TSR_index"));
 const spacesList = (page: Page) => page.getByRole("main").getByRole("region", { name: "Spaces" });
 const spaceRow = (page: Page, name: string) =>
   spacesList(page).getByRole("button", { name: new RegExp(`^${name}\\b`) });
@@ -206,6 +208,26 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await agentsTab(page).click();
         await expect(title(page, "Agents")).toBeVisible();
         expect(new URL(page.url()).search).toBe("");
+      } finally {
+        end(seeded);
+      }
+    });
+
+    test("after a reload on Spaces, the Agents tab still goes back down to the agents under it (#1695)", async ({
+      page,
+    }) => {
+      const seeded = seed();
+      try {
+        await openAgents(page);
+        const agents = await entry(page);
+        await spacesTab(page).click();
+        await expect(title(page, "Spaces")).toBeVisible();
+        await page.reload();
+        await expect(spaceRow(page, "website")).toBeVisible({ timeout: 20_000 });
+        await agentsTab(page).click();
+        await expect(title(page, "Agents")).toBeVisible();
+        // Popped down to the agents' own entry, not a second Agents list stacked over it.
+        await expect.poll(() => entry(page)).toBe(agents);
       } finally {
         end(seeded);
       }
