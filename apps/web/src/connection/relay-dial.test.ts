@@ -61,8 +61,9 @@ test("a connect the caller abandons rejects at once and closes the relay socket 
   }
 });
 
-// Only the desktop shell races a direct leg first (#1381 §8); a browser goes to the relay at once.
-test("in the desktop shell, an attempt abandoned during the direct leg does not dial the relay at all", async () => {
+// Only the desktop shell races a direct leg first (#1381 §8); a browser goes to the relay at once. The direct path is
+// off (#2070): the leg is tested with the switch on for this test alone.
+test("in the desktop shell with the direct path on, an attempt abandoned during the direct leg does not dial the relay at all", async () => {
   const shell = installShellForwarder();
   const cancelled = new AbortController();
   const lan = neverAnswers({ open: () => cancelled.abort(new Error("the person changed the settings")) });
@@ -74,7 +75,7 @@ test("in the desktop shell, an attempt abandoned during the direct leg does not 
   });
   try {
     const outcome = await Promise.race([
-      connect(settings(relay.port, lan.port), cancelled.signal, deps).then(
+      connect(settings(relay.port, lan.port), cancelled.signal, deps, { directPath: true }).then(
         () => "opened",
         (caught: unknown) => caught,
       ),

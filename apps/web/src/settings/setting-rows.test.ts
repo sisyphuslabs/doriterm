@@ -29,6 +29,11 @@ describe("searching for one setting (#1528)", () => {
     expect(titles("theme")).toContain("appearance: Appearance");
   });
 
+  test("direct finds no setting: the direct path is off and nothing offers it (#2070)", () => {
+    expect(matchSettings("direct")).toEqual([]);
+    expect(matchSections(SECTIONS, "direct")).toEqual([]);
+  });
+
   test("an empty query or one nothing holds lists no setting", () => {
     expect(matchSettings("")).toEqual([]);
     expect(matchSettings("   ")).toEqual([]);

@@ -1,5 +1,5 @@
 import type { ConnectionSettings } from "../connection/settings.ts";
-import { canForwardPlainWs } from "../connection/direct-forward.ts";
+import { directPathAvailable } from "../connection/direct-switch.ts";
 
 /** How this app reaches its host: the relay, or the plaintext loopback gateway a development build uses. */
 export type HostRoute = "relay" | "loopback";
@@ -20,12 +20,13 @@ const addressOf = (url: string): string => (URL.canParse(url) ? new URL(url).hos
 /**
  * The relay and the direct `/v1/e2ee` race both carry a Noise session, so both are end-to-end encrypted, and a paired
  * host with a known direct address may answer either way: the label names both rather than claiming one. Only the
- * desktop shell can dial a direct address (#1381 §8), so only it is told about one; a browser names the relay alone,
- * whatever address an older file holds. The loopback gateway is the plaintext development path the connection settings
+ * desktop shell with the direct path switched on can dial a direct address (#1381 §8, #2070), so only it is told about
+ * one; everywhere else the label names the relay alone, whatever address an older file holds. The loopback gateway is
+ * the plaintext development path the connection settings
  * already label as such. An app with no host paired has no route to name, so it gets no label at all rather than the
  * relay it would use once paired (review of #772).
  */
-export function hostRouteOf(settings: RouteSettings, desktopShell: boolean = canForwardPlainWs()): HostRouteText {
+export function hostRouteOf(settings: RouteSettings, directPath: boolean = directPathAvailable()): HostRouteText {
   if (settings.mode === "loopback") {
     const address = addressOf(settings.loopbackUrl);
     return { route: "loopback", address, label: `Loopback ${address} · plain text, for development` };
@@ -33,6 +34,6 @@ export function hostRouteOf(settings: RouteSettings, desktopShell: boolean = can
   const address = addressOf(settings.relayUrl);
   if (settings.hostId === "") return { route: "relay", address, label: undefined };
   const direct =
-    !desktopShell || settings.directUrl === "" ? "" : `, or direct to ${addressOf(settings.directUrl)} when it answers`;
+    !directPath || settings.directUrl === "" ? "" : `, or direct to ${addressOf(settings.directUrl)} when it answers`;
   return { route: "relay", address, label: `Through the relay ${address}${direct} · end-to-end encrypted` };
 }

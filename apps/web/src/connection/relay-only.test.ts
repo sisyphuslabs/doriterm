@@ -11,8 +11,9 @@ import { connect, type OpenConnection } from "./connect.ts";
 import { installShellForwarder } from "./direct-forward.test-support.ts";
 import { DEFAULT_SETTINGS } from "./settings.ts";
 
-// #1381 §8: a browser reaches every member over the relay. A saved direct address is a file an older build (or the
-// desktop shell) wrote and is kept for it, but a browser never dials it; the desktop shell keeps its direct race.
+// #2070: the direct path is off. A saved direct address is a file an older build wrote (v0.1.0-v0.1.2 offered the
+// field, #458) or one edited by hand; it is kept, and never dialled, in a browser (#1381 §8) and in the desktop shell
+// alike. The shell's direct race stays behind the switch, and is proved here with the switch on for one test alone.
 
 const CLI = join(import.meta.dir, "..", "..", "..", "host", "src", "cli.ts");
 const TOKEN = "web-relay-only-token-web-relay-only-token-web";
@@ -144,12 +145,61 @@ describe("a browser has no direct path (#1381 §8)", () => {
   }, 30_000);
 });
 
-describe("the desktop shell keeps the direct path it had (#446)", () => {
-  test("with the forwarder present, the paired host still races direct and the relay is not dialled", async () => {
+describe("the direct path is off (#2070): the desktop shell dials no saved address either", () => {
+  test("a saved address that answers is left alone: the relay carries the session, and the shell is handed no target", async () => {
     const shell = installShellForwarder();
     try {
       const before = relayDials();
       const opened = await connect(settingsWith(lanUrl), undefined, deps);
+      // No reason means no attempt at all, as for a browser: the address was never raced.
+      expect(opened.path).toBe("relay");
+      expect(opened.directReason).toBeUndefined();
+      expect(relayDials()).toBe(before + 1);
+      expect(shell.targets).toEqual([]);
+      expect(opened.connection.hello.framed).toBe(true);
+      opened.connection.close();
+    } finally {
+      shell.restore();
+    }
+  }, 30_000);
+
+  test("no socket is opened to a saved address at all, and the relay carries the session", async () => {
+    const shell = installShellForwarder();
+    const canary = dialCanary();
+    try {
+      const before = relayDials();
+      const opened = await connect(settingsWith(canary.url), undefined, deps);
+      expect(opened.path).toBe("relay");
+      expect(opened.directReason).toBeUndefined();
+      expect(canary.opened()).toBe(0);
+      expect(relayDials()).toBe(before + 1);
+      expect(shell.targets).toEqual([]);
+      opened.connection.close();
+    } finally {
+      canary.stop();
+      shell.restore();
+    }
+  }, 30_000);
+
+  test("an address that is not even an address is left alone too: nothing is parsed, and nothing fails", async () => {
+    const shell = installShellForwarder();
+    try {
+      const opened = await connect(settingsWith("not an address at all"), undefined, deps);
+      expect(opened.path).toBe("relay");
+      expect(opened.directReason).toBeUndefined();
+      opened.connection.close();
+    } finally {
+      shell.restore();
+    }
+  }, 30_000);
+});
+
+describe("the desktop shell's direct path stays behind the switch (#446, #2070)", () => {
+  test("switched on for this test, the paired host races direct and the relay is not dialled", async () => {
+    const shell = installShellForwarder();
+    try {
+      const before = relayDials();
+      const opened = await connect(settingsWith(lanUrl), undefined, deps, { directPath: true });
       expect(opened.path).toBe("direct");
       expect(opened.connection.hello.framed).toBe(true);
       expect(relayDials()).toBe(before);
@@ -157,8 +207,9 @@ describe("the desktop shell keeps the direct path it had (#446)", () => {
     } finally {
       shell.restore();
     }
-    // The same address with no forwarder is a browser's: the relay carries it, and nothing was dialled direct.
-    const browser = await connect(settingsWith(lanUrl), undefined, deps);
+    // The same address with no forwarder is a browser's, switch or no switch: the relay carries it, and nothing was
+    // dialled direct.
+    const browser = await connect(settingsWith(lanUrl), undefined, deps, { directPath: true });
     expect(browser.path).toBe("relay");
     expect(browser.directReason).toBeUndefined();
     browser.connection.close();
