@@ -197,7 +197,9 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
       // Spaces is one entry over the agents, so the Agents tab goes back down to it rather than stacking another - but
       // only from the very entry the Spaces tab pushed: one that replaced a space gone from under it (dropSpace) has no
       // Agents list below it, so that one is replaced by the agents in place.
-      if (section === "agents" && listed.section === "spaces" && atRoot && spacesOverAgents === index) {
+      // After a reload `spacesOverAgents` is gone, but the entry's own record of what is under it is not (#1695).
+      const overAgents = spacesOverAgents === index || under === phoneHref(PHONE_LIST);
+      if (section === "agents" && listed.section === "spaces" && atRoot && overAgents) {
         spacesOverAgents = null;
         router.history.back();
         return;
@@ -207,7 +209,7 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
       if (listed.section !== "spaces") spacesOverAgents = index + 1;
       return go({ section: "spaces", space: null, terminal: null, sheet: false }, listed.section === "spaces");
     },
-    [go, index, listed, router],
+    [go, index, listed, router, under],
   );
   const backFromSpace = useCallback(() => {
     if (listed.terminal === null) return back();
