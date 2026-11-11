@@ -28,6 +28,29 @@ export function settledPanes(
   );
 }
 
+/** The panes in view whose terminal the feed lists as over: each is left to its view, which says the session ended. */
+export function endedInView(
+  terminals: readonly Pick<Terminal, "address" | "state">[],
+  inView: readonly string[],
+): Set<string> {
+  const watched = new Set(inView);
+  return new Set(
+    terminals.flatMap((terminal) =>
+      terminal.state !== "live" && watched.has(terminal.address) ? [terminal.address] : [],
+    ),
+  );
+}
+
+/**
+ * Of the panes this device left to their views (`left`, endedInView), those no tab shows any more. An ended pane goes
+ * everywhere once any device has it out of view, as herdr-app's `reconcile` drops it whoever looks: the in-view rule is
+ * this device's own, so another device can take a pane this one was showing as ended (#2146).
+ */
+export function goneFromView(left: ReadonlySet<string>, tabs: readonly LayoutTab[]): string[] {
+  const shown = new Set(tabs.flatMap((tab) => tab.panes.map((pane) => pane.address)));
+  return [...left].filter((address) => !shown.has(address));
+}
+
 /** The terminals this core's document panes show that are not settled (`listed`), each once; panels have none. */
 export function absentPanes(tabs: readonly LayoutTab[], listed: ReadonlySet<string>): string[] {
   const addresses = tabs.flatMap((tab) =>
@@ -108,6 +131,9 @@ export function stepMissing(
  * An added machine's terminals can read as unknown while it reconnects or right after a rename, so its panes are asked
  * about only after `stepMissing`'s wait: absent across two machine.list reads, with the machine connected at both and
  * the feed agreeing with machine.list on its name (`absentRemotePanes`). `reads` counts machine.list answers.
+ *
+ * A pane left to its view that then goes from every tab is reported to `gone` (goneFromView), so the person who was
+ * looking at it is told why it went (#2146).
  */
 export function useDeadPanes(
   connection: HcConnection,
@@ -117,8 +143,10 @@ export function useDeadPanes(
   reads: number,
   drop: (address: string) => void,
   inView: readonly string[],
+  gone: (address: string) => void,
 ): void {
   const asked = useRef(new Set<string>());
+  const left = useRef<ReadonlySet<string>>(new Set());
   const viewed = inView.join("\u0000");
   const viewedNow = useRef(inView);
   viewedNow.current = inView;
@@ -126,11 +154,15 @@ export function useDeadPanes(
   useEffect(() => {
     asked.current = new Set();
     missing.current = new Map();
+    left.current = new Set();
   }, [connection]);
   useEffect(() => {
     if (terminals === null) return;
     const feed = new Set(terminals.map((terminal) => terminal.address));
-    const settled = settledPanes(terminals, viewed === "" ? [] : viewed.split("\u0000"));
+    const watched = viewed === "" ? [] : viewed.split("\u0000");
+    for (const address of goneFromView(left.current, tabs)) gone(address);
+    left.current = endedInView(terminals, watched);
+    const settled = settledPanes(terminals, watched);
     for (const address of asked.current) if (settled.has(address)) asked.current.delete(address);
     const step = stepMissing(missing.current, absentRemotePanes(tabs, settled, machines, feed), reads);
     missing.current = step.missing;
@@ -150,5 +182,5 @@ export function useDeadPanes(
         },
       );
     }
-  }, [connection, tabs, terminals, machines, reads, drop, viewed]);
+  }, [connection, tabs, terminals, machines, reads, drop, viewed, gone]);
 }
