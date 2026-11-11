@@ -245,6 +245,25 @@ describe("OutputPacer in a synchronized update (#757)", () => {
     expect(written.slice(2)).toEqual([FRAME_BYTES]);
   });
 
+  test("on a link whose round trip nears a second, an update waits 1.5 x SRTT + 50 ms between its bytes, never less than the terminal's hold (#2306)", () => {
+    const { frames, timers, holds, pacer } = holdingUpdates();
+    // The attach that brought the view its replay measured the link: a 900 ms round trip.
+    pacer.replay({ srtt: () => 900, hold: () => undefined });
+    pacer.push(bytes(64));
+    timers.advance(1500);
+    frames.nextFrame();
+    pacer.push(text(OPEN));
+    frames.nextFrame();
+    pacer.push(bytes(FRAME_BYTES));
+    // The next credit window is a round trip away: past the fixed second, the update is still on its way.
+    timers.advance(SYNCHRONIZED_UNPACED_MS);
+    expect(holds).toEqual([true]);
+    timers.advance(1.5 * 900 + 50 - SYNCHRONIZED_UNPACED_MS - 1);
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
+  });
+
   test("an update that keeps arriving is let go at the hold's cap, so a program that never closes one is still drawn (#2040)", () => {
     const { frames, timers, holds, pacer } = holdingUpdates();
     pacer.push(text(OPEN));
