@@ -316,7 +316,7 @@ describe("OutputPacer in a synchronized update (#757)", () => {
     expect(written).toHaveLength(6);
   });
 
-  test("an update held while the app is hidden is written and credited by the hidden drain, and drawn when it closes (#2040)", () => {
+  test("an update held while the app is hidden is written and credited as it arrives, and drawn when it closes (#2040)", () => {
     const { frames, timers, written, holds, pacer } = holdingUpdates();
     let credited = 0;
     const credit = (count: number): void => void (credited += count);
