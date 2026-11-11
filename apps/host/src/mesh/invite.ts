@@ -185,7 +185,7 @@ export async function serveJoin(lines: MeshLines, peerStatic: Uint8Array, deps: 
         ? new JoinRefused(`the session closed before the join was decided: ${lines.closed.message}`)
         : error;
     const reason = failure instanceof Error ? failure.message : String(failure);
-    deps.log(`mesh: join refused: ${reason}`);
+    deps.log(`mesh: close code=4401 source=invite: ${reason}`);
     lines.refuse(CloseCode.UnknownDevice, reason);
     throw failure;
   }

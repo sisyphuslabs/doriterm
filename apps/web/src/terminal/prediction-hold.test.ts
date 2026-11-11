@@ -4,11 +4,11 @@ import { paintedCells, predictedCursor } from "./prediction-hold.ts";
 
 const at = (row: number, col: number, text: string, width: 1 | 2 = 1): PredictedCell => ({ row, col, text, width });
 
-function screen(written: Record<string, string>, cols = 20): OverlayScreen {
+function screen(written: Record<string, string>, cols = 20, cursorCol = 0): OverlayScreen {
   return {
     getCols: () => cols,
     getRows: () => 6,
-    getCursor: () => ({ row: 2, col: 0, visible: true }),
+    getCursor: () => ({ row: 2, col: cursorCol, visible: true }),
     usingAltScreen: () => false,
     getCell: (row, col) => ({ char: written[`${row},${col}`]?.codePointAt(0) ?? 0, width: 1 }),
   };
@@ -28,6 +28,21 @@ describe("paintedCells: a confirmed cell leaves the layer only once the renderer
   test("a cell dropped over a blank terminal cell (killed, nothing echoed) goes at once", () => {
     expect(paintedCells([], [at(2, 4, "a")], screen({}), false)).toEqual([]);
     expect(paintedCells([], [at(2, 4, "a")], screen({ "2,4": " " }), false)).toEqual([]);
+  });
+
+  test("a confirmed space between a held cell and the wanted tail stays painted until the render (#1970)", () => {
+    const echoed = screen({ "2,3": "o", "2,4": " " }, 20, 5);
+    const before = [at(2, 3, "o"), at(2, 4, " "), at(2, 5, "p")];
+    expect(paintedCells([at(2, 5, "p")], before, echoed, false)).toEqual(before);
+    expect(paintedCells([at(2, 5, "p")], before, screen({ "2,3": "o" }, 20, 5), false)).toEqual(before);
+    expect(paintedCells([at(2, 5, "p")], before, echoed, true)).toEqual([at(2, 5, "p")]);
+  });
+
+  test("a space erased before its echo (the real cursor has not passed it) goes at once", () => {
+    expect(paintedCells([], [at(2, 4, " ")], screen({}, 20, 4), false)).toEqual([]);
+    expect(paintedCells([at(2, 3, "a")], [at(2, 3, "a"), at(2, 4, " ")], screen({}, 20, 3), false)).toEqual([
+      at(2, 3, "a"),
+    ]);
   });
 
   test("a held cell gives way to a wanted cell over any of its columns", () => {

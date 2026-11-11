@@ -191,7 +191,7 @@ export class Gossip implements SyncHost {
   /** An authenticated sync session, inbound or outbound; one per peer, as section 5.1 picks it. */
   attach(peer: string, dialer: string, link: LineLink, sweeping = false, waitForHello = false): SyncSession {
     const ends = { peer, dialer, sweeping };
-    const session = new SyncSession(ends, link, this, this.#options.clock, this.#timings.lingerMs);
+    const session = new SyncSession(ends, link, this, this.#options.clock, this.#timings.lingerMs, this.#options.log);
     const existing = this.#sessions.get(peer);
     if (existing !== undefined && !existing.closed) {
       const keepOld =
