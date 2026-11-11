@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { Touch } from "./touch.ts";
 import { commandModifier, pressWithCommand } from "./platform-keys.ts";
 import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
@@ -132,6 +133,31 @@ test("a press held in the terminal while typing gives the keyboard back as it li
   await page.evaluate(
     () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
   );
+  await page.mouse.up();
+  await expect(page.locator("[data-terminal] textarea")).toBeFocused();
+  await expect(field(page)).toBeVisible();
+});
+
+test("another pointer lifting during a held press in the terminal leaves that press to give the keyboard back (#2093)", async ({
+  page,
+}) => {
+  const terminal = await openPhoneTerminal(page);
+  await expect(field(page)).toBeVisible();
+  const box = await terminal.boundingBox();
+  if (box === null) throw new Error("the terminal is not laid out");
+  const frames = (): Promise<void> =>
+    page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await frames();
+  // A finger swipes across the terminal while the button is still held, and lifts first: its lift is not the press's.
+  const finger = await Touch.on(page);
+  const from = { x: box.x + 40, y: box.y + 40 };
+  const to = { x: box.x + 40, y: box.y + 140 };
+  await finger.down(from);
+  await finger.drag(from, to);
+  await finger.up(to);
+  await frames();
   await page.mouse.up();
   await expect(page.locator("[data-terminal] textarea")).toBeFocused();
   await expect(field(page)).toBeVisible();
