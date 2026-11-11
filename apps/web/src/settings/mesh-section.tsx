@@ -1,6 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import type { MeshStatus } from "@doriface/protocol";
-import { Notice, SettingRow, Skeleton, cn } from "@doriface/ui";
+import { Notice, SettingRow, Skeleton, cn, groupHeadingClass } from "@doriface/ui";
 import type { ReactNode } from "react";
 import { useConnection, useConnectionSettings } from "../connection/store.ts";
 import { ExpiredJoinRow, MeshBanners, PendingRow, RemovedRows } from "../mesh/attention.tsx";
@@ -24,13 +24,10 @@ function MeshGroup({ id, title, count, urgent = false, children }: MeshGroupProp
     <section aria-labelledby={`mesh-${id}`} data-mesh-group={id} className="flex flex-col">
       <h3
         id={`mesh-${id}`}
-        className={cn(
-          "flex items-baseline gap-2 pb-1 text-base font-semibold",
-          urgent ? "text-status-blocked-text" : "text-foreground",
-        )}
+        className={cn("flex items-baseline gap-2 pb-1", groupHeadingClass, urgent && "text-status-blocked-text")}
       >
         {title}
-        <span className="text-sm font-normal text-muted-foreground tabular-nums">{count}</span>
+        <span className="font-normal text-muted-foreground tabular-nums">{count}</span>
       </h3>
       {children}
     </section>
