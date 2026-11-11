@@ -48,6 +48,7 @@ export async function startRowSampler(terminal: Locator, row: number, col: numbe
         probe.remove();
         return samples;
       });
+      Reflect.set(window, "__rowSamplesSoFar", () => [...samples]);
     },
     [row, col, length] as const,
   );
@@ -63,6 +64,10 @@ export interface RowSample {
   readonly at: number;
   readonly cells: readonly { readonly text: string; readonly col: number }[];
 }
+
+/** Every frame the sampler has taken so far, in order, without stopping it. */
+export const rowSamplesSoFar = (page: Page) =>
+  page.evaluate(() => (Reflect.get(window, "__rowSamplesSoFar") as () => RowSample[])());
 
 /** Stops the sampler and returns every frame, in order. */
 export const stopRowSampler = (page: Page) =>
