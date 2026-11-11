@@ -105,7 +105,7 @@ scenario("a host with no mesh admits a browser as its first member (#1415)", ["j
     const members = (await statusOf(a)).members;
     expect(members.map((member) => member.hostId).toSorted()).toEqual([a.hostId, web.hostId].toSorted());
     expect(members.find((member) => member.hostId === web.hostId)?.name).toBe("chrome-on-macos");
-    for (const line of a.logs) expect(line).not.toContain("mesh: join refused");
+    for (const line of a.logs) expect(line).not.toContain("mesh: close code=4401 source=invite:");
 
     const targets = reachableTargets(joined.members);
     expect(targets.map((target) => target.hostId)).toEqual([a.hostId]);

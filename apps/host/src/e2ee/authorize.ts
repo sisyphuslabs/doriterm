@@ -1,4 +1,4 @@
-import { type Authorization, base64urlEncode, CloseCode, type Stream } from "@doriface/crypto";
+import { type Authorization, base64urlEncode, type ClientHello, CloseCode, type Stream } from "@doriface/crypto";
 import type { AuthorizeIndex, MemberEntry } from "../mesh/authorize-index.ts";
 import type { DeviceStore } from "../state/devices.ts";
 
@@ -62,6 +62,10 @@ export function sessionPeer(
   if (mesh !== undefined) return mesh;
   return devicePeer(devices, key);
 }
+
+/** The one line a host logs when its handshake refuses a session with 4401: the session's kind and stream, and why. */
+export const handshakeRefusalLine = (hello: Pick<ClientHello, "kind" | "stream">, reason: string | undefined): string =>
+  `e2ee: close code=4401 source=handshake kind=${hello.kind} stream=${hello.stream ?? "hc"}: ${reason}`;
 
 export const authorizationOf = (peer: Peer): Authorization =>
   peer.kind === "refused" ? refuse(peer.reason) : { accept: true };
