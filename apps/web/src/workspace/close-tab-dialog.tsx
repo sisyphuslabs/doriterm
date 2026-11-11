@@ -7,9 +7,10 @@ import { single } from "../ghostty/config.ts";
 import { terminalInput } from "./focus-targets.ts";
 import type { LayoutTab } from "./layout-model.ts";
 import { asksBeforeClosing } from "./model.ts";
-import { pendingEnds } from "./pending-ends.ts";
+import { routedPendingEnds } from "./pending-ends.ts";
 import { recordedEnd } from "./resume-ends.ts";
 import { sessionCalls } from "./session-actions.ts";
+import { useMachinesContext } from "./use-machines.ts";
 
 export interface CloseTabDialogProps {
   readonly connection: HcConnection;
@@ -74,11 +75,12 @@ export function CloseTabDialog({
   const count = live.length;
   const asks = asksBeforeClosing(single(useTerminalConfig(), "confirm-close-surface"), live);
   const quiet = space === undefined && !asks;
+  const { views } = useMachinesContext();
   const end = (): void => {
     const calls = sessionCalls(connection);
     // Kept in local storage until each End settles, so a page closed before the tab's Ends leave it has the next page
     // finish them (#1278): the tab is gone at once, and its sessions must not be adopted back as a new one.
-    const ends = pendingEnds(connection.hello.core.id);
+    const ends = routedPendingEnds({ core: connection.hello.core.id, machines: views });
     const ending = Promise.allSettled(
       live.map((terminal) =>
         recordedEnd(

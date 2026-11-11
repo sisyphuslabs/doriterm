@@ -7,10 +7,11 @@ import { single } from "../ghostty/config.ts";
 import { terminalInput } from "./focus-targets.ts";
 import { asksBeforeClosing, terminalTitle } from "./model.ts";
 import { RenameDialog } from "./rename-dialog.tsx";
-import { pendingEnds } from "./pending-ends.ts";
+import { routedPendingEnds } from "./pending-ends.ts";
 import { recordedEnd } from "./resume-ends.ts";
 import { endSession, renameSession, sessionCalls, takeBackEnd } from "./session-actions.ts";
 import type { SessionAsk } from "./session-context.ts";
+import { useMachinesContext } from "./use-machines.ts";
 
 export interface SessionDialogsProps {
   readonly connection: HcConnection;
@@ -92,6 +93,7 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onDrop, onK
       },
     );
   };
+  const { views } = useMachinesContext();
   // Kept in local storage until it settles, so a page closed before End's calls leave it has the next page finish it.
   const end = (): void => {
     if (ask === null) return;
@@ -101,7 +103,11 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onDrop, onK
     const ending = (): Promise<void> =>
       record === null
         ? endSession(calls, address)
-        : recordedEnd(pendingEnds(connection.hello.core.id), { ...record, at: Date.now() }, calls);
+        : recordedEnd(
+            routedPendingEnds({ core: connection.hello.core.id, machines: views }),
+            { ...record, at: Date.now() },
+            calls,
+          );
     const closing = ask.kind === "close";
     run(
       () =>
