@@ -84,8 +84,7 @@ export class Roster {
   readonly #unheard = new Map<string, { readonly layout?: number; readonly pins?: number }>();
   readonly #docHeard = new Set<DocHeard>();
   readonly #gaps = new Set<() => void>();
-  /** The line read (line-watch.ts); `watchLines` starts it for a view. */
-  readonly lines: LineWatch;
+  readonly #lines: LineWatch;
   #connection: RosterLink;
   #feed: RosterFeed | undefined;
   #snapshot: RosterSnapshot;
@@ -138,7 +137,7 @@ export class Roster {
     );
     this.#snapshot = { terminals: NO_TERMINALS, machines: this.machines.read, order: this.order.state, docsLanded: 0 };
     const lineRead = (): Promise<void> => (this.#connection.closed ? Promise.resolve() : this.machines.refresh(true));
-    this.lines = new LineWatch(lineRead, options.every ?? browser.every, options.visible ?? browser.visible);
+    this.#lines = new LineWatch(lineRead, options.every ?? browser.every, options.visible ?? browser.visible);
   }
 
   get snapshot(): RosterSnapshot {
@@ -184,8 +183,11 @@ export class Roster {
 
   /** Reads machine.list every LINE_READ_MS (line-watch.ts) while a view watches an added machine's line; returns the stop. */
   watchLines(): () => void {
-    return this.lines.watch();
+    return this.#lines.watch();
   }
+
+  /** Settles once the line read in flight, if any, has: what a test waits on instead of time. */
+  linesIdle = (): Promise<void> => this.#lines.idle();
 
   /** Asks the core for the terminal list and the stream again after a first answer that failed (#819). */
   retryTerminals(): void {

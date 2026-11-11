@@ -58,11 +58,11 @@ test("a line drop reaches machine lines through the roster's line read, and mach
   const { roster, lines, connection, tick, periods, reads } = linesOn(core);
   const stop = lines.watch(connection);
   await until(lines, () => lines.down(connection, "rack"), "the first read", 500);
-  await roster.lines.idle();
+  await roster.linesIdle();
   core.machines = [machine("rack")];
   tick(LINE_READ_MS);
   await until(lines, () => !lines.down(connection, "rack"), "the line back", 500);
-  await roster.lines.idle();
+  await roster.linesIdle();
 
   // hc says nothing when a line drops (#2056), so the roster reads machine.list every LINE_READ_MS while a line is
   // watched: the drop is seen on the next read, sooner than the old poll of machine lines could have read it.
