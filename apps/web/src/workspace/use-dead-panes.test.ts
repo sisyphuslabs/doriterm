@@ -122,8 +122,24 @@ test("the panes in view whose terminal the feed lists as over are the ones their
 
 test("a pane left to its view that no tab shows any more went on another device, which had it out of view (#2146)", () => {
   const tabs = [tab("a", ["t1"]), tab("b", ["t2", null])];
-  expect(goneFromView(new Set(["t1", "t2", "t3"]), tabs)).toEqual(["t3"]);
-  expect(goneFromView(new Set(), tabs)).toEqual([]);
+  const left = new Map<string, string | null>([
+    ["t1", null],
+    ["t2", null],
+    ["t3", null],
+  ]);
+  expect(goneFromView(left, tabs, () => true)).toEqual(["t3"]);
+  expect(goneFromView(new Map(), tabs, () => true)).toEqual([]);
+});
+
+test("a pane that went with its machine or with its layout document did not go on another device (#2231)", () => {
+  const left = new Map<string, string | null>([
+    ["t3", null],
+    ["box/t4", "box"],
+    ["rack/t5", "rack"],
+  ]);
+  // This core's document and rack's are still written; box was removed, so its document went with it.
+  const written = (machine: string | null): boolean => machine === null || machine === "rack";
+  expect(goneFromView(left, [], written)).toEqual(["t3", "rack/t5"]);
 });
 
 test("an absent remote pane is asked about only once a later machine.list read still finds it absent on that machine", () => {

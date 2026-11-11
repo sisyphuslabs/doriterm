@@ -1,5 +1,5 @@
 import type { JsonObject } from "@doriface/protocol";
-import { panesOf, tabsOf, terminalBlock } from "@doriface/protocol/layout";
+import { docSpaces, panesOf, tabsOf, terminalBlock } from "@doriface/protocol/layout";
 import { describe, expect, test } from "bun:test";
 import { NO_VIEW } from "../layout/view.ts";
 import { apartWrite, newTabWrite, splitWrite, transientSplitWrite, viewInstead } from "./pane-writes.ts";
@@ -57,6 +57,16 @@ describe("every write that adds a pane checks the document first (#2146)", () =>
     // The new tab's own terminal already shown: nothing is written, and the view goes where it is.
     const both = newTabWrite(docOf([["t1"], ["t2"]]), "t2", tab, space, undefined, kept);
     expect(both).toEqual({ doc: null, instead: { tab: "tb1", pane: "p1-0" } });
+  });
+
+  test("a new tab whose kept tab was adopted while it waited goes right after the adopting tab, in its space (#2231)", () => {
+    const tab = { id: "tb-new", name: "", root: rowOf("tb-new", "p-new", "t2").root };
+    const kept = { terminal: "t1", tab: rowOf("tb-kept", "p-kept", "t1") };
+    // t1, the terminal the transient tab showed, was adopted into tb0 of space spc while this write waited.
+    const written = newTabWrite(docOf([["t1"], ["t0"]]), "t2", tab, space, undefined, kept).doc;
+    expect(written === null ? [] : docSpaces(written).map((each) => [each.id, each.tabs])).toEqual([
+      ["spc", ["tb0", "tb-new", "tb1"]],
+    ]);
   });
 
   test("the transient tab's split writes its tab with the new pane, or splits that terminal's pane where it was adopted", () => {
