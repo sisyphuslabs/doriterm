@@ -1,36 +1,25 @@
 import type { HcConnection } from "@doriface/client";
+import { type Roster, rosterFor } from "../roster/roster.ts";
 
 /** hc's states for an added machine whose line is down and being redialed. */
 const DOWN = new Set(["connecting", "unreachable"]);
 
-/**
- * How often machine.list is read while a terminal on an added machine is in view. hc sends no event when a machine's line
- * drops or comes back, and it drops what is written to that machine's terminals meanwhile while keeping their streams
- * open (#1489), so this read is how a view learns to hold its input. Keys typed between the drop and the next read are
- * still lost (an hc gap); a read a second keeps that window short for one small call a second, only while it matters.
- */
-export const LINE_READ_MS = 1000;
-
 type Changed = (connection: HcConnection) => void;
 
-interface Watch {
-  count: number;
-  timer: ReturnType<typeof setInterval>;
-  reading: boolean;
-}
+/** What machine lines need of a core's roster: its reads, and its line read (roster/line-watch.ts). */
+type LineRoster = Pick<Roster, "subscribe" | "snapshot" | "watchLines">;
 
-/** The page is visible: keys are typed only then, and a hidden page reads nothing. */
-const pageVisible = (): boolean => typeof document === "undefined" || document.visibilityState === "visible";
-
-/** Each connection's added machines by name, as its last machine.list read said, for the views that write to them. */
+/**
+ * Each connection's added machines by name, as the core's roster last read them, for the views that write to them. The
+ * roster is the one reader of machine.list (#2056): a view that watches a line has the roster read it every second.
+ */
 export class MachineLines {
   readonly #states = new WeakMap<HcConnection, ReadonlyMap<string, string>>();
-  readonly #watches = new Map<HcConnection, Watch>();
   readonly #listeners = new Set<Changed>();
-  readonly #visible: () => boolean;
+  readonly #rosterOf: (connection: HcConnection) => LineRoster;
 
-  constructor(visible: () => boolean = pageVisible) {
-    this.#visible = visible;
+  constructor(rosterOf: (connection: HcConnection) => LineRoster = rosterFor) {
+    this.#rosterOf = rosterOf;
   }
 
   /** The machine's line is down on that connection's core, as last read: what is written to its terminals is lost. */
@@ -51,43 +40,20 @@ export class MachineLines {
     return () => this.#listeners.delete(listener);
   }
 
-  /** Reads machine.list on the connection now and every LINE_READ_MS until every watcher stopped; returns the stop. */
+  /** Takes the lines from the connection's roster, which reads them every second until every watcher stopped. */
   watch(connection: HcConnection): () => void {
-    const existing = this.#watches.get(connection);
-    const watch = existing ?? {
-      count: 0,
-      timer: setInterval(() => this.#read(connection), LINE_READ_MS),
-      reading: false,
-    };
-    watch.count += 1;
-    this.#watches.set(connection, watch);
-    if (existing === undefined) this.#read(connection);
+    const roster = this.#rosterOf(connection);
+    const read = (): void => this.heard(connection, roster.snapshot.machines.views);
+    const unsubscribe = roster.subscribe(read);
+    const unwatch = roster.watchLines();
+    read();
     let stopped = false;
     return () => {
       if (stopped) return;
       stopped = true;
-      watch.count -= 1;
-      if (watch.count > 0) return;
-      clearInterval(watch.timer);
-      this.#watches.delete(connection);
+      unwatch();
+      unsubscribe();
     };
-  }
-
-  /** One read at a time, so answers apply in the order sent. A failed read changes nothing: the link's own status says why. */
-  #read(connection: HcConnection): void {
-    const watch = this.#watches.get(connection);
-    if (watch === undefined || watch.reading || connection.closed || !this.#visible()) return;
-    watch.reading = true;
-    connection.call("machine.list").then(
-      (list) => {
-        watch.reading = false;
-        this.heard(connection, list.machines);
-        return list;
-      },
-      () => {
-        watch.reading = false;
-      },
-    );
   }
 }
 

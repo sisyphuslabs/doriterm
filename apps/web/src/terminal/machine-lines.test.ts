@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { FakeCore, machine } from "../roster/fake-core.test-support.ts";
-import { LINE_READ_MS, MACHINE_REFRESH_MS, Roster } from "../roster/roster.ts";
+import { LINE_READ_MS } from "../roster/line-watch.ts";
+import { MACHINE_REFRESH_MS, Roster } from "../roster/roster.ts";
 import { MachineLines } from "./machine-lines.ts";
 
 /**
