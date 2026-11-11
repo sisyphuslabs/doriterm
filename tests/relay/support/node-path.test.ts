@@ -18,6 +18,11 @@ test("a PATH without the shim, or no PATH at all, is passed on as it is", () => 
   expect(withoutBunNodeShim({ HOME: "/home/u" })).toEqual({ HOME: "/home/u" });
 });
 
+test("a shim directory named just bun-node, as a Bun build without a commit hash makes, goes too (#2346)", () => {
+  const bare = join("/tmp", "bun-node");
+  expect(withoutBunNodeShim({ PATH: [bare, "/usr/bin"].join(delimiter) })).toEqual({ PATH: "/usr/bin" });
+});
+
 test("only a directory named like the shim goes: one that merely contains the words stays", () => {
   const kept = join("/opt", "my-bun-node-tools");
   expect(withoutBunNodeShim({ PATH: [shim, kept].join(delimiter) })).toEqual({ PATH: kept });
