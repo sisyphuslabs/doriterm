@@ -2,13 +2,15 @@ import { bridgeMethod } from "../desktop/bridge.ts";
 import type { LocalAvailability, Recognizer, RecognizerClass, RecognizerOptions } from "./recognizer.ts";
 
 /**
- * The macOS desktop app's recognizer (#726): the system's own, on this Mac only, run by the app's main process. The
- * page never captures audio; it starts and stops a session and hears its events.
+ * The desktop app's recognizer: the system's own, on this computer only (macOS Speech, #726; Windows SAPI, #749), run
+ * by the app's main process. The page never captures audio; it starts and stops a session and hears its events.
  */
 export interface DesktopDictation {
-  /** Whether this Mac can recognize `lang` on the device. */
+  /** What a language without an on-device recognizer is told, by the system this shell runs on. */
+  readonly unavailableReason: "device-mac" | "device-windows";
+  /** Whether this computer can recognize `lang` on the device. */
   available(lang: string): Promise<boolean>;
-  /** A session id, or why none started (`mic-system`, `speech-system`, `device-mac`, `busy`, `service`). */
+  /** A session id, or why none started (`mic-system`, `speech-system`, `device-mac`, `mic-windows`, `device-windows`, `busy`, `service`). */
   start(lang: string): Promise<{ readonly session: number } | { readonly refused: string }>;
   stop(session: number): void;
   abort(session: number): void;
@@ -56,6 +58,7 @@ export function desktopDictation(scope: object = globalThis): DesktopDictation |
   const onEvent = bridgeMethod("onDictationEvent", scope);
   if (available === null || start === null || stop === null || abort === null || onEvent === null) return null;
   return {
+    unavailableReason: field(field(scope, "doriface"), "platform") === "win32" ? "device-windows" : "device-mac",
     available: async (lang) => (await available(lang)) === true,
     start: async (lang) => {
       const answer: unknown = await start(lang);

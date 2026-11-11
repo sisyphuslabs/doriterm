@@ -72,6 +72,7 @@ export class LiveSessions {
     const closed = new Set<SecureLink>();
     let paired: ReadonlySet<string>;
     let index: AuthorizeIndex | undefined;
+    let unreadable = false;
     try {
       paired = new Set(this.#devices.list().map((device) => device.clientStaticPub));
       index = this.#mesh?.authorizeIndex();
@@ -79,6 +80,7 @@ export class LiveSessions {
       this.#log(`cannot read the devices or mesh file, closing every session: ${String(error)}`);
       paired = new Set();
       index = undefined;
+      unreadable = true;
     }
     for (const [key, sessions] of this.#byKey) {
       // A client is a member of the roster without a machine line, so it is kept by its own lookup: `member()` answers
@@ -87,6 +89,10 @@ export class LiveSessions {
       if (member || (paired.has(key) && index?.deviceRefusal(key) === undefined)) continue;
       for (const session of sessions) {
         closed.add(session);
+        const reason = unreadable
+          ? "authorization stores could not be read"
+          : (index?.deviceRefusal(key) ?? "key is no longer authorized");
+        this.#log(`e2ee: close code=4401 source=live-sessions stream=${session.stream ?? "hc"}: ${reason}`);
         session.close(REVOKED.code, REVOKED.reason);
       }
     }

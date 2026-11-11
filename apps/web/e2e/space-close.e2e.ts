@@ -6,6 +6,7 @@ import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
 import { getCoreDoc } from "./core-doc.ts";
 import { expect, terminalCount, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
+import { paneOf, seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -52,7 +53,14 @@ async function secondDevice(browser: Browser): Promise<Page> {
 }
 
 test.afterEach(() => {
-  for (const address of started.splice(0)) endAgent("host", address);
+  for (const address of started.splice(0)) {
+    try {
+      endAgent("host", address);
+    } catch (error) {
+      // A closed space ended that terminal already.
+      if (!(error instanceof Error && error.message.includes('"kind":"not_found"'))) throw error;
+    }
+  }
 });
 
 test("a space closed from its menu asks first, naming its tabs; Escape and Cancel keep it, and Close takes it and its terminals with it on every device", async ({
@@ -124,6 +132,100 @@ test("a space closed from its menu asks first, naming its tabs; Escape and Cance
   await other.context().close();
 });
 
+/**
+ * How many refused-write notices the page has shown from now on, closed ones included: a toast closes itself after
+ * five seconds, and the close's question keeps its own refusal up until it is answered (#1337).
+ */
+async function refusalNotices(page: Page): Promise<() => Promise<number>> {
+  await page.evaluate(() => {
+    const titles = new Set(["The layout was not saved", "The space was not closed"]);
+    let shown = 0;
+    Reflect.set(window, "__refusalNotices", () => shown);
+    new MutationObserver((records) => {
+      for (const node of records.flatMap((record) => [...record.addedNodes]))
+        if (node instanceof Element)
+          shown += [node, ...node.querySelectorAll("*")].filter(
+            (element) =>
+              element.childElementCount === 0 && element.textContent !== null && titles.has(element.textContent),
+          ).length;
+    }).observe(document.body, { subtree: true, childList: true });
+  });
+  return () =>
+    page.evaluate(() => {
+      const read: unknown = Reflect.get(window, "__refusalNotices");
+      return typeof read === "function" ? Number(read()) : Number.NaN;
+    });
+}
+
+test("a space closed while its layout write is refused says so once, not once per pane (#1337)", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const name = `cl1337-${test.info().repeatEachIndex}`;
+  const [one = "", two = ""] = ["cl1337-one", "cl1337-two"].map((shellName) => startIn(name, shellName));
+  // One tab of two panes: closing the space ends both programs through their mounted views, so each pane's drop could
+  // write and be refused on its own.
+  seedSpaces([
+    {
+      id: `spc-${name}`,
+      name,
+      folder: "/tmp",
+      tabs: [{ id: `tb-${name}`, name, terminal: one, beside: [two] }],
+    },
+  ]);
+  const socket = await routeHcSocket(page);
+  await page.goto("/");
+  await expect(spaceRow(page, name)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("tab")).toHaveCount(1, { timeout: 20_000 });
+  await expect(paneOf(page, one)).toBeVisible({ timeout: 20_000 });
+  await expect(paneOf(page, two)).toBeVisible({ timeout: 20_000 });
+  const said = await refusalNotices(page);
+  /** Whether hc has answered the page's terminal.get for this session with not_found (the dead-pane check). */
+  const toldGone = (address: string): boolean => {
+    const asks = socket
+      .sent()
+      .filter((text) => text.includes('"method":"terminal.get"') && text.includes(`"terminal":"${address}"`));
+    const ids = asks.flatMap((text) => /"id":(\d+)/.exec(text)?.[1] ?? []);
+    return socket
+      .received()
+      .some(
+        (text) =>
+          text.includes("not_found") && ids.some((id) => text.includes(`"id":${id},`) || text.includes(`"id":${id}}`)),
+      );
+  };
+
+  // Every layout write is refused, as when another device keeps changing the document.
+  socket.staleWrites(true);
+  await openSpaceMenu(page, name);
+  const item = page.getByRole("menuitem", { name: "Close space\u2026" });
+  await expect(item).toBeVisible();
+  await item.click();
+  const question = ask(page);
+  await expect(question).toContainText(`${name} \u2014 1 tab, 2 terminals`);
+  await question.getByRole("button", { name: "Close" }).click();
+  // The close ends both programs first, and the feed then has the page ask about each pane it finds absent, answered
+  // not_found: both drops it could report are queued behind the close's own write.
+  await expect.poll(() => [one, two].every(toldGone), { timeout: 20_000 }).toBe(true);
+  started.splice(0);
+  await expect(question.getByText("The space was not closed")).toBeVisible({ timeout: 20_000 });
+  await expect(
+    question.getByText("The layout kept changing on another device, so this change was not saved"),
+  ).toBeVisible();
+
+  // A later write to the same document is refused only after every drop the close queued has been, so once its question
+  // says why, every notice the close showed has been counted. The rename is that later write; its refusal stays where it
+  // was typed, so it adds no notice of its own.
+  await question.getByRole("button", { name: "Cancel" }).click();
+  await expect(question).toHaveCount(0);
+  await openSpaceMenu(page, name);
+  await page.getByRole("menuitem", { name: "Rename space\u2026" }).click();
+  const rename = page.getByRole("dialog", { name: `Rename ${name}` });
+  await rename.getByRole("textbox", { name: "Name" }).fill(`${name}-later`);
+  await rename.getByRole("button", { name: "Rename" }).click();
+  await expect(
+    rename.getByText("The layout kept changing on another device, so this change was not saved"),
+  ).toBeVisible({ timeout: 20_000 });
+  expect(await said()).toBe(1);
+});
+
 test("a close still writing keeps its question: Cancel waits, Escape does nothing, and a refused write says why there (#1498)", async ({
   page,
 }) => {
@@ -141,15 +243,29 @@ test("a close still writing keeps its question: Cancel waits, Escape does nothin
   // The layout write is held, as a slow host would hold it: the close is in flight, not finished.
   const release = socket.hold("doc.set");
   socket.staleWrites(true);
+  // The page wrote this core's layout once already, adopting the space's terminal as it loaded (the row shows once that
+  // write is saved): only the writes after Close are the close's (#2043). An added machine's layout is written with `on`
+  // and adopts on its own load, so its writes are not counted.
+  const writes = (): number =>
+    socket
+      .sent()
+      .filter(
+        (frame) =>
+          frame.includes('"method":"doc.set"') && frame.includes('"name":"herdr-app"') && !frame.includes('"on":'),
+      ).length;
+  const loaded = writes();
   await question.getByRole("button", { name: "Close" }).click();
   await expect(question.getByRole("button", { name: "Close" })).toHaveAttribute("aria-busy", "true");
   // The held write comes after the close ended its program: nothing is left for the cleanup to stop.
-  await expect
-    .poll(() => socket.sent().filter((frame) => frame.includes('"method":"doc.set"')).length, { timeout: 15_000 })
-    .toBe(1);
+  await expect.poll(() => writes() - loaded, { timeout: 15_000 }).toBe(1);
   started.splice(0);
   await expect(question.getByRole("button", { name: "Cancel" })).toBeDisabled();
   await page.keyboard.press("Escape");
+  await expect(question).toBeVisible();
+  // So does a click beside the question: the dialog is centred, so the left of its box is the backdrop.
+  const box = await question.boundingBox();
+  if (box === null) throw new Error("the Close question has no box");
+  await page.mouse.click(Math.max(4, box.x / 2), box.y + box.height / 2);
   await expect(question).toBeVisible();
 
   // The write is refused on every retry: the question stays up and says why.

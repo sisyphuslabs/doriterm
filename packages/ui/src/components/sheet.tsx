@@ -38,7 +38,7 @@ export function SheetPanel({ title, side = "bottom", children }: Pick<SheetProps
       )}
     >
       <div className={TITLE_ROW}>
-        <p className="min-w-0 flex-1 text-base font-semibold">{title}</p>
+        <p className="min-w-0 flex-1 text-xl font-semibold">{title}</p>
         <Button variant="ghost" size="sm" className={DONE}>
           Done
         </Button>
@@ -67,7 +67,7 @@ export function Sheet({ title, side = "right", children, trigger, open, onOpenCh
           )}
         >
           <div className={TITLE_ROW}>
-            <BaseDialog.Title className="min-w-0 flex-1 text-base font-semibold">{title}</BaseDialog.Title>
+            <BaseDialog.Title className="min-w-0 flex-1 text-xl font-semibold">{title}</BaseDialog.Title>
             <BaseDialog.Close render={<Button variant="ghost" size="sm" className={DONE} />}>Done</BaseDialog.Close>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">{children}</div>

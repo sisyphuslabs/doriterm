@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { coreSize, gridSize } from "./core-size.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
@@ -99,7 +100,7 @@ async function gridAtCoreSize(terminal: Locator): Promise<string> {
 
 /** One Cmd/Ctrl + - press, read once the view has refit to `fontSize` and the core holds its grid. */
 async function zoomOutTo(page: Page, terminal: Locator, fontSize: string): Promise<Geometry> {
-  await page.keyboard.press("ControlOrMeta+Minus");
+  await pressShortcut(page, "app.zoom_out");
   return settledAt(terminal, fontSize);
 }
 
@@ -135,7 +136,7 @@ for (const dpr of [1, 2, 1.5]) {
     expect(previous.rowDevicePx).toBeLessThan(before.rowDevicePx);
     expect(previous.cellDevicePx).toBeLessThan(before.cellDevicePx);
 
-    await page.keyboard.press("ControlOrMeta+0");
+    await pressShortcut(page, "app.zoom_reset");
     const reset = await settledAt(terminal, before.fontSize);
     expect(`${reset.rows} ${reset.cols}`).toBe(beforeGrid);
   });

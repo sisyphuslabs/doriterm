@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { isRecord, readJson, removeFile, stringField, writePrivateJson } from "../state/files.ts";
 import type { RosterDeps } from "./roster.ts";
+import { announceChange } from "./announce.ts";
 import { checkFloor } from "./merge.ts";
 
 export interface RosterAdmit {
@@ -88,7 +89,7 @@ export function sweepRoster(deps: RosterDeps): void {
       }
       return removed.length > 0;
     });
-    if (changed === true) deps.changed?.();
+    if (changed === true) announceChange(deps);
   } catch (error) {
     deps.log(`mesh: roster sweep stopped: ${error instanceof Error ? error.message : String(error)}`);
   }

@@ -1,9 +1,10 @@
 // The sidebar's sections and the phone palette's groups read as groups (#1496): a heading sits closer to what it names
-// than to what came before it, and the space between groups is at least twice the space between lines inside one.
+// than to what came before it, the space between groups is at least twice the space between lines inside one, and an
+// agent section's heading starts on the label column of its rows.
 import type { Page } from "@playwright/test";
 import { endAgent, startAgent, startShell } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
-import { sectionRhythm } from "./section-rhythm.ts";
+import { sectionRhythm, sectionTitleAlignments } from "./section-rhythm.ts";
 
 test.use({ serviceWorkers: "block" });
 
@@ -37,6 +38,30 @@ async function expectRhythm(page: Page) {
   }
 }
 
+/** The first labelled row under the sidebar's Spaces title, the row expectTitlesAlignedWithRows measures it against. */
+const spacesFirstRow = (page: Page) =>
+  page
+    .locator("aside[aria-label=Workspace] section")
+    .filter({ has: page.getByRole("heading", { name: "Spaces", exact: true }) })
+    .locator("[data-floor=name]")
+    .first();
+
+/** Each sidebar section's title, Spaces included, starts on the label column of the first row it heads (#1496, #1612). */
+async function expectTitlesAlignedWithRows(page: Page) {
+  await page.mouse.move(0, 0);
+  await page.evaluate(() => document.fonts.ready);
+  const sections = await page.evaluate(sectionTitleAlignments);
+  const names = sections.map((section) => section.name);
+  for (const title of ["Agents", "Needs you", "Working", "Idle", "Done"])
+    expect(names, `the sidebar has a "${title}" section`).toContain(title);
+  expect(names, 'the sidebar has a "Spaces" section').toContain("Spaces");
+  for (const section of sections) {
+    const label = `section "${section.name}": title at ${section.title}, first row's label at ${section.row}`;
+    expect.soft(section.row, label).not.toBeNull();
+    if (section.row !== null) expect.soft(Math.abs(section.title - section.row), label).toBeLessThanOrEqual(1);
+  }
+}
+
 for (const theme of ["day", "night"] as const) {
   test.describe(theme, () => {
     test.use({ colorScheme: theme === "day" ? "light" : "dark" });
@@ -55,7 +80,12 @@ for (const theme of ["day", "night"] as const) {
             expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible({ timeout: 15_000 }),
           ),
         );
+        // The Spaces title is drawn before the first machine.list answer, over a "Loading machines…" placeholder that
+        // has no row; the agent sections do not wait for that answer. Measure once the Spaces list has its first row
+        // (#2060).
+        await expect(spacesFirstRow(page)).toBeVisible({ timeout: 15_000 });
         await expectRhythm(page);
+        await expectTitlesAlignedWithRows(page);
       });
     });
 

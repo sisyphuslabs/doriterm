@@ -1,6 +1,6 @@
 import type { CardBody } from "@doriface/mesh";
 import { meshRevokeCommand, type MeshMemberStatus } from "@doriface/protocol";
-import { SettingRow } from "@doriface/ui";
+import { SettingRow, groupHeadingClass } from "@doriface/ui";
 import { Command } from "../mesh/mesh-rows.tsx";
 import { formatAge } from "../workspace/model.ts";
 
@@ -25,7 +25,7 @@ export function BrowserMemberList({
 }) {
   return (
     <section aria-labelledby="browser-members">
-      <h3 id="browser-members" className="text-lg font-semibold">
+      <h3 id="browser-members" className={groupHeadingClass}>
         Browsers and phones
       </h3>
       {clients.map((client) => {
