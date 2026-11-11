@@ -1,8 +1,9 @@
 import type { Locator, Page } from "@playwright/test";
 import { coreSize, gridSize } from "./core-size.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { hcOn } from "./machine-switch.ts";
-import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
+import { key, keysBar, openPhoneTerminal, PHONE, settledGrid } from "./phone-key-bar.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
@@ -92,6 +93,20 @@ function scrollTopForThumbTop(m: Measure, top: number): number {
   return row >= m.scrollback ? m.max : row * m.rowHeight;
 }
 
+/** A terminal at `points` through Settings, wider than the terminal's default so a cell is wider than the lane's 8 px floor. */
+async function setFontSize(page: Page, points: number): Promise<void> {
+  await page.getByRole("link", { name: "Settings" }).first().click();
+  await page
+    .getByRole("tab", { name: "Terminal", exact: true })
+    .or(page.getByRole("button", { name: "Terminal", exact: true }))
+    .first()
+    .click();
+  await page.getByRole("textbox", { name: "font-size", exact: true }).fill(String(points));
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Close settings" }).first().click();
+  await expect(page.locator('[data-focused="true"] [data-terminal]')).toContainText("$");
+}
+
 async function fill(page: Page, terminal: Locator): Promise<void> {
   await terminal.getByRole("textbox").focus();
   await page.keyboard.type(`seq 1 ${LINES}`);
@@ -137,12 +152,19 @@ test("the bar's lane runs from the end of the text to the edge, as herdr-app's d
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
-  const terminal = await openNewTerminal(page);
+  await openNewTerminal(page);
+  // The lane's floor is 8 px: a cell narrower than that leaves no width where the text ends more than 8 px from the
+  // edge, so the floor branch would be the only one sampled. 16 pt gives a wider cell on both platforms (#862).
+  await setFontSize(page, 16);
+  const terminal = page.locator('[data-focused="true"] [data-terminal]');
   const address = (await terminal.getAttribute("data-terminal")) ?? "";
   await fill(page, terminal);
   await expect(bar(terminal)).toBeVisible();
+  const cell = await terminal.evaluate((element) =>
+    parseFloat(getComputedStyle(element).getPropertyValue("--term-cell-width")),
+  );
   // Widths a cell apart cover every way the columns can fall short of the pane; some leave more than 8 px past the text.
-  const widths = Array.from({ length: 12 }, (_unused, index) => 1440 + index);
+  const widths = Array.from({ length: Math.ceil(cell) + 2 }, (_unused, index) => 1440 + index);
   const widest = await widths.reduce<Promise<number>>(async (previous, width) => {
     const room = await previous;
     await page.setViewportSize({ width, height: 900 });
@@ -189,7 +211,7 @@ test("at 1440 the scrollbar overlays the padding without reflow, matches the vie
   await expect(jump(terminal)).toHaveCount(0);
 
   // The scroll-to-top key: the thumb goes to the top, and the jump button shows, with no new output yet.
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+Home" : "Shift+Home");
+  await pressShortcut(page, "terminal.scroll:top");
   await expect.poll(async () => (await measure(terminal)).scrollTop).toBe(0);
   m = await settled(terminal);
   await expect(jump(terminal)).toBeVisible();
@@ -202,6 +224,15 @@ test("at 1440 the scrollbar overlays the padding without reflow, matches the vie
   expect((await measure(terminal)).scrollTop).toBe(0);
 
   // Dragging the thumb 120 px down lands on the row that thumb top stands for.
+  // The mapping below reads the scrollback length, so no output may land between this measure and the drag: the echo
+  // above is still followed by its prompt, and one late row moves the landing line by more than a row (#1334). Once the
+  // prompt after the echo's output is drawn, the shell has nothing left to print.
+  await expect(
+    terminal
+      .locator(".term-row")
+      .filter({ hasText: /^fresh-output\s*$/ })
+      .locator("xpath=following-sibling::*[1]"),
+  ).toHaveText(/^\$\s*$/);
   m = await settled(terminal);
   const grabX = (m.thumb.left + m.thumb.right) / 2;
   const grabY = m.thumb.top + m.thumb.height / 2;
@@ -265,6 +296,10 @@ test.describe("on a phone", () => {
 
   test("at 390 the bar and the jump button work, and the button sits above the key bar", async ({ page }) => {
     const terminal = await openPhoneTerminal(page);
+    // The keys raise the keyboard on one animation frame and the terminal draws its new row count on the next: read
+    // right after openPhoneTerminal, the grid is still the one from before the keyboard. Measure the settled view.
+    await expect(keysBar(page)).toBeVisible();
+    await settledGrid(page, terminal);
     const address = (await terminal.getAttribute("data-terminal")) ?? "";
     const before = { pty: coreSize(address), grid: await gridSize(terminal) };
     await fill(page, terminal);
@@ -303,6 +338,9 @@ test.describe("on a phone", () => {
     // With the soft keyboard down only the round keyboard button floats there, and the jump button stays clear of it.
     await key(page, "Hide keyboard").click();
     await expect(keysBar(page)).toBeHidden();
+    // Growing the pane back fits the grid again, and that fit scrolls a view at the bottom back to the bottom on its
+    // own frame: scroll after it, or it takes the scroll back and the jump button never shows.
+    await settledGrid(page, terminal);
     await scrollTo(terminal, 0);
     await expect(jump(terminal)).toBeVisible();
     await expectApart(jump(terminal), key(page, "Show keyboard"));

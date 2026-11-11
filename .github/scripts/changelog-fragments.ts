@@ -18,7 +18,9 @@ export const FRAGMENT_DIR = "changes/unreleased";
 /**
  * The section headings a release is written under, in the order they appear in it. A heading that names one of these,
  * in any case or by one of its aliases, is written with this spelling; any other heading is kept as written and goes
- * after these, in the order CHANGELOG.md first uses it, then in the order the fragments do.
+ * after these, in the order CHANGELOG.md first uses it, then in the order the fragments do. An alias names one section
+ * and nothing broader: a bare `Host` is not an alias of Host install, since a line about the host at run time (its
+ * version, /healthz) is not about installing it (#1326), so a `### Host` heading is kept as written.
  */
 export const CANONICAL_HEADINGS: readonly { readonly heading: string; readonly aliases?: readonly string[] }[] = [
   { heading: "Terminal", aliases: ["Terminals", "The terminal"] },
@@ -35,7 +37,7 @@ export const CANONICAL_HEADINGS: readonly { readonly heading: string; readonly a
   { heading: "Settings" },
   { heading: "Notifications" },
   { heading: "Connection and offline wording", aliases: ["Connection"] },
-  { heading: "Host install", aliases: ["The host installer", "Host setup", "Host"] },
+  { heading: "Host install", aliases: ["The host installer", "Host setup"] },
   { heading: "Native apps" },
   { heading: "Windows" },
   { heading: "Linux" },
@@ -60,7 +62,7 @@ export type Refusal = { readonly ok: false; readonly problems: readonly string[]
 
 const FRAGMENT_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
 const SECTION_HEADING = /^##\s/;
-const SUBHEADING = /^###\s+(.+?)\s*$/;
+const SUBHEADING = /^###\s+(\S.*?)\s*$/;
 const UNRELEASED = /^##\s+\[?Unreleased\]?(?:\s|$)/i;
 const RELEASE_HEADING = /^##\s+\[?v?(\d+\.\d+\.\d+[^\]\s]*)/;
 const VERSION = /^\d+\.\d+\.\d+$/;
@@ -117,6 +119,8 @@ export function parseFragment(fragment: Fragment): { readonly ok: true; readonly
       group = { heading: heading[1], entries: [] };
       notes.groups.push(group);
       entry = false;
+    } else if (/^###\s*$/.test(line)) {
+      problems.push(`${where}: a \`###\` heading with no section name`);
     } else if (line.startsWith("#")) {
       problems.push(`${where}: only \`### <Section>\` headings go in a fragment, not \`${line.trim()}\``);
     } else if (line.startsWith("- ")) {
@@ -260,7 +264,8 @@ export interface Assembly {
 /**
  * Writes the `## vX.Y.Z - <date>` section from the Unreleased lines and the fragments, leaving `## Unreleased` empty
  * above it; the caller deletes the fragments. A section that already exists keeps its heading and gains the new lines,
- * so running it again once the fragments are gone changes nothing. Every other section stays as written.
+ * where it stands, even below a newer one, so running it again once the fragments are gone changes nothing. Every
+ * other section stays as written.
  */
 export function assembleRelease(input: {
   readonly changelog: string;
@@ -287,10 +292,12 @@ export function assembleRelease(input: {
   const merged = mergeNotes([before, ...incoming], headingsOf(changelog));
   const release = { heading: existing?.heading ?? `## v${version} - ${date}`, body: ["", renderNotes(merged)] };
   const emptied = { heading: unreleased?.heading ?? "## Unreleased", body: [] };
-  const rest = sections.filter((section) => section !== unreleased && section !== existing);
+  const rest = sections
+    .filter((section) => section !== unreleased)
+    .map((section) => (section === existing ? release : section));
   const firstRelease = rest.findIndex((section) => RELEASE_HEADING.test(section.heading));
   const at = firstRelease === -1 ? rest.length : firstRelease;
-  const ordered = [...rest.slice(0, at), emptied, release, ...rest.slice(at)];
+  const ordered = [...rest.slice(0, at), emptied, ...(existing === undefined ? [release] : []), ...rest.slice(at)];
   const blocks = [trimEnd(preamble), ...ordered.map((section) => trimEnd([section.heading, ...section.body]))];
   const written = `${blocks.filter((block) => block !== "").join("\n\n")}\n`;
   const added = lineCount(merged) - lineCount(before);

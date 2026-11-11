@@ -1,7 +1,8 @@
-import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
-import type { KeyboardEvent, Ref } from "react";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
+import { useId, type KeyboardEvent, type Ref } from "react";
 import { cn } from "../lib/cn.ts";
 import { IconButton } from "./icon-button.tsx";
+import { fieldLabelClass } from "./input.tsx";
 
 export interface FindBarProps {
   readonly query: string;
@@ -51,6 +52,7 @@ export function FindBar({
     }
   };
   const stepping = result !== null && result.total > 0;
+  const id = useId();
   return (
     <div
       role="search"
@@ -60,12 +62,14 @@ export function FindBar({
         className,
       )}
     >
-      <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+      <label htmlFor={id} className={cn("shrink-0", fieldLabelClass)}>
+        Find<span className="sr-only"> in terminal</span>
+      </label>
       <input
         ref={inputRef}
+        id={id}
         type="search"
-        aria-label="Find in terminal"
-        placeholder="Find"
+        placeholder="e.g. error"
         spellCheck={false}
         autoComplete="off"
         value={query}

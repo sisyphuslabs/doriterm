@@ -24,7 +24,7 @@ export interface DialogProps {
 const popupClass = "w-[min(28rem,calc(100%-2rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto p-5";
 /** What a dialog opens in when it has one: the field it asks for, never a button. */
 const fieldSelector = "input:not([type=hidden]):not(:disabled), textarea:not(:disabled), select:not(:disabled)";
-const titleClass = "text-lg font-semibold text-foreground";
+const titleClass = "text-xl font-semibold text-foreground";
 const descriptionClass = "mt-1.5 text-base text-pretty text-muted-foreground";
 
 function Body({ children, actions }: Pick<DialogProps, "children" | "actions">) {
@@ -56,12 +56,21 @@ export function Dialog({
   // question taller than the screen opens at its title too, since focusing a field below the fold would scroll it away.
   // A statement to acknowledge (an alert with one button, OK) has no choice to default to, so OK keeps focus; an alert
   // that asks (Cancel and an action) opens on itself like any question.
-  const initialFocus = () => {
+  const initialTarget = (): HTMLElement | true => {
     const element = panel.current;
     if (element === null) return true;
     if (element.scrollHeight > element.clientHeight) return element;
-    if (alert && element.querySelectorAll("button").length === 1) return true;
+    const buttons = element.querySelectorAll<HTMLButtonElement>("button");
+    if (alert && buttons.length === 1) return buttons[0] ?? element;
     return element.querySelector<HTMLElement>(fieldSelector) ?? element;
+  };
+  // The dialog takes the keyboard as it opens (#2046). Base UI would focus it a frame later, and on a busy page a key
+  // pressed before that frame goes to whatever had focus behind the dialog: a terminal or a button that keeps Escape.
+  const initialFocus = () => {
+    const target = initialTarget();
+    if (target === true) return true;
+    target.focus({ preventScroll: target === panel.current });
+    return false;
   };
   const popup = (
     <BaseDialog.Portal>

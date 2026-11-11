@@ -39,6 +39,8 @@ export interface HcSocket {
   readonly sent: () => readonly string[];
   /** Holds every later frame from the host `ms`, in order, as a relay round trip does. */
   readonly delay: (ms: number) => void;
+  /** Hands later frames from the host over at most `bytesPerSecond`, as a slow link does; Infinity lifts the limit. */
+  readonly throttle: (bytesPerSecond: number) => void;
   /** Closes every open connection; while `down` is true the page's reconnects are refused. */
   readonly drop: (down: boolean) => Promise<void>;
   readonly restore: () => void;
@@ -49,6 +51,11 @@ export interface HcSocket {
   readonly hold: (...methods: string[]) => (fail?: boolean) => void;
   /** Every frame the host has delivered to the page, in order, as text. */
   readonly received: () => readonly string[];
+  /**
+   * How many messages the host has sent, before their frames are told apart: one page message per message the host's
+   * stream is cut into, as a page read from a real socket has it.
+   */
+  readonly messages: () => number;
   /**
    * Holds hc frames from the host that contain any of these texts (others pass, even from the same message) until the
    * returned release delivers them, in order; holds are independent. Hold a channel's whole stream, not one event in
@@ -116,13 +123,20 @@ export async function routeHcSocket(
   let opened = 0;
   let refused = 0;
   let delay = 0;
+  let rate = Number.POSITIVE_INFINITY;
   let lastDue = 0;
+  let hostMessages = 0;
   let held: readonly string[] = [];
   let stale = false;
   const parked: ((fail: boolean) => void)[] = [];
   const received: string[] = [];
   const hostHolds = new Set<HostHold>();
   await page.routeWebSocket(`ws://127.0.0.1:${E2E_HOST_PORT}/v1/hc`, (socket) => {
+    const deliverOne = (frame: Buffer | string, text: string): void => {
+      received.push(text);
+      observe?.received?.(text);
+      socket.send(frame);
+    };
     if (down) {
       refused += 1;
       void socket.close({ code: 1011, reason: "host unreachable" });
@@ -142,23 +156,67 @@ export async function routeHcSocket(
           host.send(fail ? Buffer.from(text.replace(`"method":"${method}"`, broken), "latin1") : frame);
         });
     });
+    // Delayed frames leave in the order they came: one queue per connection, drained by one timer at a time. A timer per
+    // frame does not keep that order when the delay changes between frames, since timers due at the same moment can fire
+    // in either order (#1640 review: an echo arrived as "remotet yping").
+    const queued: { readonly at: number; readonly deliver: () => void }[] = [];
+    let draining = false;
+    const drain = (): void => {
+      const next = queued[0];
+      if (next === undefined) {
+        draining = false;
+        return;
+      }
+      draining = true;
+      setTimeout(
+        () => {
+          queued.shift();
+          next.deliver();
+          drain();
+        },
+        Math.max(0, next.at - Date.now()),
+      );
+    };
     host.onMessage((message) => {
-      // One message can carry several hc frames (an event and an RPC answer together): each is held or passed alone.
-      for (const frame of typeof message === "string" ? [message] : hcFrames(message)) {
-        const text = typeof frame === "string" ? frame : frame.toString("latin1");
-        const deliver = (): void => {
+      hostMessages += 1;
+      // One message can carry several hc frames (an event and an RPC answer together): each is held or passed alone,
+      // and those that pass go on as one message, the cut the host made. A frame of its own is a driver round trip
+      // into the page, and a terminal's echo is many tiny frames: one per frame, the page trails the core by seconds
+      // on a loaded machine, and a spec reading the grid sees a line that has not arrived yet (#1462).
+      const due: Buffer[] = [];
+      const dueText: string[] = [];
+      const pass = (): void => {
+        for (const text of dueText) {
           received.push(text);
           observe?.received?.(text);
-          socket.send(frame);
-        };
+        }
+        const whole = due.length === 1 ? due[0] : due.length > 1 ? Buffer.concat(due) : undefined;
+        if (whole !== undefined) socket.send(whole);
+        due.length = 0;
+        dueText.length = 0;
+      };
+      for (const frame of typeof message === "string" ? [message] : hcFrames(message)) {
+        const text = typeof frame === "string" ? frame : frame.toString("latin1");
         const hold = [...hostHolds].find((entry) => entry.needles.some((needle) => text.includes(needle)));
         if (hold !== undefined) {
-          hold.parked.push(deliver);
+          pass();
+          hold.parked.push(() => deliverOne(frame, text));
           continue;
         }
-        lastDue = Math.max(Date.now() + delay, lastDue);
-        setTimeout(deliver, Math.max(0, lastDue - Date.now()));
+        lastDue = Math.max(Date.now() + delay, lastDue) + (frame.length / rate) * 1000;
+        const wait = Math.max(0, lastDue - Date.now());
+        if (wait > 0 || draining || typeof frame === "string") {
+          // A lagged frame (delayed or throttled) goes on the ordered queue, and so does any frame behind one still
+          // queued (a delay just lowered to 0), so nothing overtakes it. Text is never joined to binary.
+          pass();
+          queued.push({ at: lastDue, deliver: () => deliverOne(frame, text) });
+          if (!draining) drain();
+          continue;
+        }
+        due.push(frame);
+        dueText.push(text);
       }
+      pass();
     });
     live.add(socket);
     opened += 1;
@@ -168,6 +226,7 @@ export async function routeHcSocket(
     refused: () => refused,
     sent: () => sent,
     delay: (ms) => void (delay = ms),
+    throttle: (bytesPerSecond) => void (rate = bytesPerSecond),
     drop: async (stayDown) => {
       down = stayDown;
       const closing = [...live].map((socket) => socket.close({ code: 1011, reason: "relay blip" }));
@@ -178,6 +237,7 @@ export async function routeHcSocket(
       down = false;
     },
     received: () => received,
+    messages: () => hostMessages,
     holdFromHost: (...needles) => {
       const hold: HostHold = { needles, parked: [] };
       hostHolds.add(hold);

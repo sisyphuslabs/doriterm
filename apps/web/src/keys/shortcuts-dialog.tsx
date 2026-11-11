@@ -1,14 +1,18 @@
 import { Dialog, ShortcutList } from "@doriface/ui";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { resolveKeymap } from "./keymap.ts";
 import { useOverrides } from "./keymap-store.ts";
 import { shortcutGroups } from "./shortcut-groups.ts";
 import { closeShortcuts, useShortcutsShown } from "./shortcuts-store.ts";
 import { currentPlatform } from "./trigger.ts";
+import { useOverlayActive } from "./use-overlay-active.ts";
 
 /** The shortcuts dialog while app.help has it shown; each shell's action handler toggles it. */
 export function ShortcutsHelp() {
-  return useShortcutsShown() ? <ShortcutsDialog onClose={closeShortcuts} /> : null;
+  useEffect(() => closeShortcuts, []);
+  const shown = useShortcutsShown();
+  const active = useOverlayActive(closeShortcuts);
+  return shown && active ? <ShortcutsDialog onClose={closeShortcuts} /> : null;
 }
 
 export interface ShortcutsDialogProps {

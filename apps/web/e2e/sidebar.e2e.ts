@@ -1,6 +1,7 @@
 import { expect, laidOutBox, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { devices, type Locator, type Page } from "@playwright/test";
-import { rowEdges, rows, visibleCharacters } from "./sidebar-measure.ts";
+import { rowEdges, rows, settle, visibleCharacters } from "./sidebar-measure.ts";
 import {
   clearMachineLayout,
   KOREAN_SPACE,
@@ -150,7 +151,11 @@ async function expectRowsKeepFloors(
     }),
   );
 
-  // A space on the long-named machine keeps five characters of its name before the machine's.
+  // A space on the long-named machine keeps five characters of its name before the machine's; a phone lists them on its
+  // Spaces tab.
+  const tabs = page.getByRole("navigation", { name: "Sections" });
+  const phone = (await tabs.count()) > 0;
+  if (phone) await tabs.getByRole("button", { name: "Spaces", exact: true }).click();
   await Promise.all(
     [SHARED_SPACE, KOREAN_SPACE].map(async (name) => {
       const group = spaces.getByRole("region", { name: LONG_MACHINE, exact: true });
@@ -165,17 +170,6 @@ async function expectRowsKeepFloors(
     }),
   );
 }
-
-/**
- * Waits for the sidebar's width to finish easing (a new --sidebar-width eases like a drag does), then two frames, so a
- * ResizeObserver has reported and any refit has been laid out.
- */
-const settle = (page: Page) =>
-  page.evaluate(async () => {
-    const aside = document.querySelector("aside");
-    await Promise.all((aside?.getAnimations() ?? []).map((animation) => animation.finished));
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  });
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
 const VIEWPORTS = [
@@ -202,6 +196,10 @@ for (const { name, use } of VIEWPORTS) {
       await expectRowsKeepFloors(page, true, (narrow) => narrow || phoneList);
       const machines = page.getByRole("region", { name: "Spaces" });
       await expect(machines.getByTitle(LONG_MACHINE, { exact: true }).first()).toHaveText(LONG_MACHINE);
+      if (phoneList) {
+        await page.goBack();
+        await expect(page.getByRole("region", { name: "Idle" })).toBeVisible();
+      }
 
       // Narrower than where the floors were fitted: without a refit the parts keep widths the row no longer holds and run
       // past its edge.
@@ -273,9 +271,9 @@ test("a hidden sidebar comes back from a named button at the window's left edge,
   await page.keyboard.press("Enter");
   await expect(sidebar).toBeVisible();
 
-  await page.keyboard.press("Control+Shift+B");
+  await pressShortcut(page, "layout.toggle:sidebar");
   await expect(sidebar).toBeHidden();
-  await page.keyboard.press("Control+Shift+B");
+  await pressShortcut(page, "layout.toggle:sidebar");
   await expect(sidebar).toBeVisible();
 });
 

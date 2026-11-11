@@ -13,8 +13,8 @@ export interface Tap {
   /** What the host is given as `--relay`. Its port is part of the origin the host signs over. */
   readonly url: string;
   readonly port: number;
-  /** The `cf-connecting-ip` this tap sets, so the relay's per-IP budgets see it as the host's address. */
-  readonly ip: string;
+  /** The source IP this tap sets; undefined on a transparent front that preserves the caller's header. */
+  readonly ip: string | undefined;
   /** Bytes forwarded in both directions. */
   bytes(): number;
   /** Connections currently open through the tap. */
@@ -53,7 +53,7 @@ interface Conn {
   closes: CloseFrameReader;
 }
 
-export function makeTap(upstreamPort: number, ip: string): Tap {
+export function makeTap(upstreamPort: number | (() => number), ip?: string): Tap {
   const conns = new Set<Socket<Conn>>();
   const wakes = new Set<() => void>();
   const changed = (): void => {
@@ -93,7 +93,7 @@ export function makeTap(upstreamPort: number, ip: string): Tap {
         changed();
         void Bun.connect({
           hostname: "127.0.0.1",
-          port: upstreamPort,
+          port: typeof upstreamPort === "number" ? upstreamPort : upstreamPort(),
           socket: {
             data(_up, bytes) {
               forwarded += bytes.length;
@@ -129,7 +129,8 @@ export function makeTap(upstreamPort: number, ip: string): Tap {
         conn.uplink = HOST_UPLINK.test(line);
         if (conn.target !== undefined) dialed.push(conn.target);
         if (refused(conn)) return void socket.end();
-        forward(conn, Buffer.from(`${line}cf-connecting-ip: ${ip}${CRLF}${conn.head.slice(line.length)}`, "latin1"));
+        const source = ip === undefined ? "" : `cf-connecting-ip: ${ip}${CRLF}`;
+        forward(conn, Buffer.from(`${line}${source}${conn.head.slice(line.length)}`, "latin1"));
         conn.head = "";
       },
       close(socket) {

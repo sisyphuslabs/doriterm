@@ -1,7 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" translate="no">
   <head>
     <meta charset="UTF-8" />
+    <!-- Doriterm draws its own text, and a translated terminal would be wrong output, so the page asks every browser
+         translator to leave it alone. Without the opt-out a translator replaces React's text nodes and the next commit
+         throws NotFoundError, stopping the window (#1157). -->
+    <meta name="google" content="notranslate" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="description" content="Your terminals and agents, from any device." />
     <meta property="og:type" content="website" />
@@ -28,11 +32,11 @@
     <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
     <link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <!-- Add to Home Screen on iOS Safari opens standalone. The status bar keeps its own bar (black text on the page's
-         own background) rather than overlaying the app, because the app has both a light and a dark theme. -->
+    <!-- Add to Home Screen on iOS Safari opens standalone. The app opens in the dark Night theme, so the first launch's
+         status bar is black with light text; the app cannot re-point this one at runtime, so it matches the default. -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="Doriterm" />
     <link rel="stylesheet" href="/src/styles.css" />
     <title>Doriterm</title>

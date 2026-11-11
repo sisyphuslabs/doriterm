@@ -23,6 +23,12 @@ export interface FeedRetry {
   readonly inMs: number;
 }
 
+/**
+ * The step Settings > Notifications is running: the action whose button started it, or a step no button shows. Only the
+ * action named here spins; the rest of the row stays still (#1152).
+ */
+export type NoticeStep = "check-again" | "turn-on" | "turn-off" | "save" | "test" | "move";
+
 export interface PushView {
   readonly support: PushSupport;
   /**
@@ -32,7 +38,8 @@ export interface PushView {
   readonly permission: NotificationPermission | null;
   readonly on: boolean;
   readonly prefs: PushPrefs;
-  readonly busy: boolean;
+  /** The step running now; its button spins, and while one runs nothing else can be changed. */
+  readonly busy: NoticeStep | null;
   readonly error: string | null;
   /** Set once a test notice was handed to the push service. */
   readonly tested: boolean;
@@ -49,7 +56,7 @@ const INITIAL: PushView = {
   permission: null,
   on: false,
   prefs: DEFAULT_PUSH_PREFS,
-  busy: true,
+  busy: "check-again",
   error: null,
   tested: false,
   retry: null,
@@ -70,8 +77,8 @@ class PushSettings {
   /** Moves run one at a time (see `retarget`). */
   readonly #moves = new MoveQueue();
   /**
-   * Why the last move failed, shown until another move settles. Opening Notifications reads the settings again, and that
-   * read must not hide that notifications stayed with the old host (#890).
+   * Why the last move failed, shown until another move settles or Turn on/off succeeds. Opening Notifications reads the
+   * settings again, and that read must not hide that notifications stayed with the old host (#890).
    */
   #unmoved: string | null = null;
 
@@ -92,8 +99,8 @@ class PushSettings {
     const support = pushSupport(browserScope());
     const permission = support === "supported" ? await pushRegistrar().permission() : null;
     this.#set({ support, permission });
-    if (support !== "supported") return this.#set({ busy: false });
-    await this.#run("read the notification settings", async () => {
+    if (support !== "supported") return this.#set({ busy: null });
+    await this.#run("check-again", "read the notification settings", async () => {
       const route = await loadPushRoute();
       const granted = permission === "granted";
       if (!granted || route === undefined) {
@@ -122,15 +129,16 @@ class PushSettings {
     const permission = await pushRegistrar().requestPermission();
     this.#set({ permission });
     if (permission !== "granted") return;
-    await this.#run("turn notifications on", async () => {
+    await this.#run("turn-on", "turn notifications on", async () => {
       await this.#register(routeOf(connectionStore.settings), this.#view.prefs);
+      this.#settled(null);
       this.#set({ on: true });
     });
   }
 
   /** Removes the subscription from the host and the browser; the permission itself stays the browser's. */
   async turnOff(): Promise<void> {
-    await this.#run("turn notifications off", async () => {
+    await this.#run("turn-off", "turn notifications off", async () => {
       const registrar = pushRegistrar();
       const subscription = await registrar.current();
       if (subscription !== null) {
@@ -138,6 +146,7 @@ class PushSettings {
         await registrar.unsubscribe();
       }
       await savePushRoute(null);
+      this.#settled(null);
       this.#set({ on: false, tested: false });
     });
   }
@@ -165,7 +174,7 @@ class PushSettings {
       return this.#settled(failure(MOVE, error));
     }
     if (target !== undefined && sameRoute(route, target)) return this.#settled(null);
-    const failed = await this.#run(MOVE, async () => {
+    const failed = await this.#run("move", MOVE, async () => {
       const registrar = pushRegistrar();
       const subscription = await registrar.current();
       if (subscription !== null) {
@@ -185,7 +194,7 @@ class PushSettings {
   async setPrefs(prefs: PushPrefs): Promise<void> {
     const before = this.#view.prefs;
     this.#set({ prefs });
-    await this.#run("save the notification settings", async () => {
+    await this.#run("save", "save the notification settings", async () => {
       const subscription = await pushRegistrar().current();
       if (subscription === null) return;
       const reply = await pushChannel.requestOnce({ t: "prefs", endpoint: subscription.endpoint, prefs });
@@ -196,7 +205,7 @@ class PushSettings {
   }
 
   async test(): Promise<void> {
-    await this.#run("send a test notification", async () => {
+    await this.#run("test", "send a test notification", async () => {
       const subscription = await pushRegistrar().current();
       if (subscription === null) throw new Error("this device has no subscription");
       expect(await pushChannel.requestOnce({ t: "test", endpoint: subscription.endpoint }), "send a test notification");
@@ -221,21 +230,21 @@ class PushSettings {
     await savePushPrefs(prefs);
   }
 
-  /** Runs one step with the view busy; answers why it failed, or null. */
-  async #run(what: string, step: () => Promise<void>): Promise<string | null> {
-    this.#set({ busy: true, error: this.#unmoved });
+  /** Runs one step with the view naming it; answers why it failed, or null. */
+  async #run(busy: NoticeStep, what: string, step: () => Promise<void>): Promise<string | null> {
+    this.#set({ busy, error: this.#unmoved });
     try {
       await step();
-      this.#set({ busy: false });
+      this.#set({ busy: null });
       return null;
     } catch (error) {
       const message = failure(what, error);
-      this.#set({ busy: false, error: message });
+      this.#set({ busy: null, error: message });
       return message;
     }
   }
 
-  /** A move settled: its failure is shown until the next one, and a move that went through clears the last failure. */
+  /** A move or an explicit on/off action settled; successful actions clear the last move failure. */
   #settled(unmoved: string | null): void {
     const shown = this.#view.error === this.#unmoved;
     this.#unmoved = unmoved;

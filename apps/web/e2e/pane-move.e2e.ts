@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { startShell } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { fractionOf, paneOf, savedTab, seedLayout } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 
@@ -148,7 +149,7 @@ test("on macOS Cmd+Option+Shift+arrows swap the focused pane with its neighbour,
   await paneOf(page, t9).locator("[data-terminal]").getByRole("textbox").focus();
   await expect(paneOf(page, t9)).toHaveAttribute("data-focused", "true");
 
-  await page.keyboard.press("Meta+Alt+Shift+ArrowLeft");
+  await pressShortcut(page, "pane.swap:left");
   await expect.poll(() => drawnOrder(page, t), { timeout: 15_000 }).toBe(`${t7} ${t9} ${t8}`);
   await expect.poll(() => savedTab("tb-move")).toBe("tb-move(p1,p3,p2)");
   await expect(paneOf(page, t9)).toHaveAttribute("data-focused", "true");
