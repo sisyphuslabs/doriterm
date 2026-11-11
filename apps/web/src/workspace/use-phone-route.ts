@@ -176,11 +176,12 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     sheetClosing.current = false;
     const next = afterSheet.current;
     afterSheet.current = null;
+    // A switch wins over a step up asked for in the same close (an End settling before the sheet's Back lands): the
+    // up intent goes with it, so a later Back off the sheet only closes the sheet (#1478 review).
+    const up = upAfterSheet.current;
+    upAfterSheet.current = false;
     if (next !== null) show(next);
-    else if (upAfterSheet.current) {
-      upAfterSheet.current = false;
-      back();
-    }
+    else if (up) back();
   }, [back, sheetOn, show]);
   const showSpace = useCallback(
     (spaceKey: string) => go({ section: listed.section, space: spaceKey, terminal: null, sheet: false }, false),
