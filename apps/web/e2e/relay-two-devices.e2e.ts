@@ -92,7 +92,11 @@ test("a machine that joins the mesh while two devices are open shows on the unto
   browser,
 }) => {
   const watcher = await device(browser);
+  // The join takes tens of seconds, so the 10 s read may list b as "connecting" before JOINED: the change that must be
+  // pushed to the untouched device is its line coming up, "connected", which hc announces with `missed`.
   const machine = await ask("JOIN", "JOINED ");
-  await expect(spaces(watcher).getByRole("region", { name: machine, exact: true })).toBeVisible({ timeout: PUSHED_MS });
+  await expect(
+    spaces(watcher).getByRole("region", { name: machine, exact: true }).filter({ hasText: "connected" }),
+  ).toBeVisible({ timeout: PUSHED_MS });
   await watcher.context().close();
 });
