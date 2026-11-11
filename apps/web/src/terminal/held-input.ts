@@ -27,12 +27,12 @@ export interface MachineHold {
 
 const encoder = new TextEncoder();
 const sizeOf = (data: TerminalInput): number => (typeof data === "string" ? encoder.encode(data).length : data.length);
-const isInterrupt = (data: TerminalInput): boolean =>
-  typeof data === "string" ? data === "\u0003" : data.length === 1 && data[0] === 0x03;
 
 /**
- * One terminal's typed input, written in the order typed (#1370), except that Ctrl+C that waited goes ahead of what
- * waited with it (#2003).
+ * One terminal's typed input, written in the order typed (#1370), Ctrl+C included, whatever it waited for (#2303). A
+ * Ctrl+C typed after a command is there to cancel it: sent first, it would reach an idle prompt and the command would
+ * then run. In order, the worst case is keys meant for the shell reaching a program still running, as on a local
+ * terminal.
  *
  * Every input joins `pending` and leaves it only when a write took it, so none is written twice. It is written at once
  * unless the view's link is being proved after a wake: then it waits until the link answers, and goes to the same stream;
@@ -40,9 +40,10 @@ const isInterrupt = (data: TerminalInput): boolean =>
  *
  * Input for a terminal whose added machine's line is down waits too, since hc drops it while keeping the stream open
  * (#1489). Whatever it waits for (a stream after a drop, a link being proved, a machine's line) the wait is the same
- * (#2003): Ctrl+C goes ahead of the rest as it joins, so a runaway program stops before the rest arrives, and past
- * HOLD_BYTES, or HOLD_MS after the link is known to be down, what waits is dropped, and the view says it was not sent. A
- * link being proved is not known down: its check has its own deadline (WAKE_PROBE_MAX_MS), and HOLD_MS starts if it fails.
+ * (#2003): past HOLD_BYTES, or HOLD_MS after the link is known to be down, what waits is dropped, and the view says it
+ * was not sent. HOLD_MS is the input's, not its cause's: a machine's line back while the stream is still down keeps the
+ * time already waited (#2303). A link being proved is not known down: its check has its own deadline
+ * (WAKE_PROBE_MAX_MS), and HOLD_MS starts if it fails.
  */
 export class HeldInput {
   /** Typed and not written yet, oldest first: no stream was open, the link was being proved, or the machine was away. */
@@ -128,32 +129,34 @@ export class HeldInput {
     return machine;
   }
 
-  /** Input that cannot be written now waits, interrupts ahead of the rest; a wait drained by a reattach starts afresh. */
+  /** Input that cannot be written now waits, in the order typed; a wait drained by a reattach starts afresh. */
   #wait(machine: string | undefined, data: TerminalInput): void {
     if (this.pending.length === 0) this.#release();
     this.#heldBytes += sizeOf(data);
     if (this.#heldBytes > HOLD_BYTES) return this.#drop("overflow", machine);
-    const firstOther = this.pending.findIndex((waiting) => !isInterrupt(waiting));
-    if (isInterrupt(data) && firstOther !== -1) this.pending.splice(firstOther, 0, data);
-    else this.pending.push(data);
+    this.pending.push(data);
     if (machine !== undefined || this.#sink() === null) this.#expireIn(machine);
   }
 
-  /** What waits is dropped HOLD_MS from now, unless a drop is already due. */
+  /** What waits is dropped HOLD_MS from now, unless a drop is already due; it says what it waited for by then. */
   #expireIn(machine: string | undefined): void {
     if (this.#expiry !== undefined) return;
-    this.#expiry = setTimeout(() => this.#drop("expired", machine), HOLD_MS);
+    this.#expiry = setTimeout(() => this.#drop("expired", this.#expiryFor), HOLD_MS);
     this.#expiryFor = machine;
   }
 
   /**
-   * The machine's line is back: its drop is called off, and what waited goes out as it waits (interrupts first). If it
-   * still cannot, it waits on as input for this terminal does: timed only while no stream is open (#2266 review).
+   * The machine's line is back, and what waited goes out in the order typed. If it still cannot, it waits on as input
+   * for this terminal does: timed only while no stream is open (#2266 review), and then within the time it has already
+   * waited, not a fresh HOLD_MS (#2303).
    */
   #back(): void {
-    // Only a drop started for a machine's line is this return's to call off: another machine's change is not.
+    // Only a drop started for a machine's line is this return's to change: another machine's change is not.
     if (this.#expiry === undefined || this.#expiryFor === undefined) return;
-    this.#release();
+    // The stream is down too: the drop already due stays, now in this terminal's words. A stream that is open (a link
+    // being proved, or one that takes it now) has no drop due: the check, or the write, settles it.
+    if (this.#sink() === null) this.#expiryFor = undefined;
+    else this.#release();
     this.#rewait();
     if (!this.#links.has(this.#connection())) this.flush();
   }
