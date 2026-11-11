@@ -50,7 +50,7 @@ describe("what a browser may join (#1386, the shared guard)", () => {
     expect(loaded).toEqual([]);
   });
 
-  test("a typed code the host refuses as a device pairing offer pairs this browser as a device, with the same code", () => {
+  test("a typed code the host refuses with 4401 (a device pairing offer, or any refusal from an older host) pairs this browser as a device, with the same code", () => {
     const typed = offerOf("mesh", { mode: "code", code: "7K3M9QXR" });
     const refusal = dialRefusalOf(typed, closed(CloseCode.UnknownDevice));
     expect(refusal).toBeInstanceOf(DeviceCodeOffer);
@@ -65,6 +65,17 @@ describe("what a browser may join (#1386, the shared guard)", () => {
     const wrong = dialRefusalOf(offerOf("mesh", { mode: "code", code: "7K3M9QXR" }), closed(CloseCode.CryptoFailure));
     expect(wrong).toBeInstanceOf(JoinRefused);
     expect(wrong?.message).toBe("The code doesn't match this host. Check it and try again.");
+  });
+
+  test("a typed code the host refuses on a mesh offer (used, expired, replaced) keeps the mesh join's words (#1492)", () => {
+    const refusal = dialRefusalOf(
+      offerOf("mesh", { mode: "code", code: "7K3M9QXR" }),
+      closed(CloseCode.MeshCodeRefused),
+    );
+    expect(refusal).toBeInstanceOf(JoinRefused);
+    expect(refusal?.message).toBe(
+      "The host refused this invite: it was used already or replaced. Run doriface-host mesh pair again.",
+    );
   });
 
   test("a mesh invite passes the early refusals when this browser is in no mesh yet", async () => {

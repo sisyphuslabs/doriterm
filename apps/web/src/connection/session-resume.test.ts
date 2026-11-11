@@ -105,7 +105,7 @@ describe("SessionResumer", () => {
     expect(revoked.calls.abandoned.length).toBe(1);
   });
 
-  test("gives the session up at once when the host refuses the resume (4411): another dial meets the same answer", async () => {
+  test("gives the session up at once when the host refuses the resume (4413): another dial meets the same answer", async () => {
     const { session, calls } = fakeSession(["gone", "ok"]);
     const resuming: boolean[] = [];
     const resumer = new SessionResumer(session, { resuming: (on) => resuming.push(on) });

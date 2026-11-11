@@ -160,7 +160,7 @@ describe("an hc session whose link drops", () => {
     },
   );
 
-  test("ends, hc connect with it, once the resume window passed; a resume after that is refused with 4411", async () => {
+  test("ends, hc connect with it, once the resume window passed; a resume after that is refused with 4413", async () => {
     const h = host(40);
     const { client, clientEnd, hostEnd } = await h.connect();
     clientEnd.end(dropped());
@@ -218,7 +218,7 @@ describe("a host that stops", () => {
 });
 
 describe("a resume request the host cannot honour", () => {
-  test("for a session it does not hold is refused with 4411, and starts no hc connect", async () => {
+  test("for a session it does not hold is refused with 4413, and starts no hc connect", async () => {
     const h = host();
     const stranger = resumeKeys(new Uint8Array(32).fill(7));
     const [clientEnd, hostEnd] = memoryLinkPair();

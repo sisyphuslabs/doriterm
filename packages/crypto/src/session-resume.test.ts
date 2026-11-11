@@ -230,7 +230,7 @@ describe("a resume the host cannot honour", () => {
     expect(client.closed).toBe(false);
   });
 
-  test("an answer that is no answer fails with 4400; one from a position that cannot be joined with 4411", async () => {
+  test("an answer that is no answer fails with 4400; one from a position that cannot be joined with 4413", async () => {
     const { client, server, clientEnd, hostEnd } = await resumable();
     drop(clientEnd, hostEnd);
     await flush();
