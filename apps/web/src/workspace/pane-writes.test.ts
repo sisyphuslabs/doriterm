@@ -32,6 +32,10 @@ const docOf = (tabs: readonly (readonly string[])[]): JsonObject => ({
 const shown = (doc: JsonObject | null): string[][] =>
   doc === null ? [] : tabsOf(doc).map((tab) => panesOf(tab.root).map((pane) => pane.terminal ?? ""));
 
+/** Each space of the document as its id and its tabs' ids, in order. */
+const spacesOf = (doc: JsonObject | null): [string, readonly string[]][] =>
+  doc === null ? [] : docSpaces(doc).map((each) => [each.id, each.tabs]);
+
 const rowOf = (id: string, pane: string, terminal: string) => ({
   id,
   root: { id, type: "row", children: [terminalBlock(pane, terminal)] },
@@ -49,7 +53,7 @@ describe("every write that adds a pane checks the document first (#2146)", () =>
 
   test("a new tab writes the tab it keeps beside it, unless the document already shows that tab's terminal", () => {
     const tab = { id: "tb-new", name: "", root: rowOf("tb-new", "p-new", "t2").root };
-    const kept = { terminal: "t1", tab: rowOf("tb-kept", "p-kept", "t1") };
+    const kept = { terminal: "t1", tab: rowOf("tb-kept", "p-kept", "t1"), follows: true };
     expect(shown(newTabWrite(null, "t2", tab, space, undefined, kept).doc)).toEqual([["t1"], ["t2"]]);
     const adopted = newTabWrite(docOf([["t1"]]), "t2", tab, space, undefined, kept);
     expect(shown(adopted.doc)).toEqual([["t1"], ["t2"]]);
@@ -61,12 +65,22 @@ describe("every write that adds a pane checks the document first (#2146)", () =>
 
   test("a new tab whose kept tab was adopted while it waited goes right after the adopting tab, in its space (#2231)", () => {
     const tab = { id: "tb-new", name: "", root: rowOf("tb-new", "p-new", "t2").root };
-    const kept = { terminal: "t1", tab: rowOf("tb-kept", "p-kept", "t1") };
+    const kept = { terminal: "t1", tab: rowOf("tb-kept", "p-kept", "t1"), follows: true };
     // t1, the terminal the transient tab showed, was adopted into tb0 of space spc while this write waited.
     const written = newTabWrite(docOf([["t1"], ["t0"]]), "t2", tab, space, undefined, kept).doc;
-    expect(written === null ? [] : docSpaces(written).map((each) => [each.id, each.tabs])).toEqual([
-      ["spc", ["tb0", "tb-new", "tb1"]],
+    expect(spacesOf(written)).toEqual([["spc", ["tb0", "tb-new", "tb1"]]]);
+  });
+
+  test("a new tab asked for in a new space or in a named space goes there, even when its kept tab was adopted (#2231)", () => {
+    const tab = { id: "tb-new", name: "", root: rowOf("tb-new", "p-new", "t2").root };
+    const kept = { terminal: "t1", tab: rowOf("tb-kept", "p-kept", "t1"), follows: false };
+    const fresh = newTabWrite(docOf([["t1"], ["t0"]]), "t2", tab, space, undefined, kept).doc;
+    expect(spacesOf(fresh)).toEqual([
+      ["spc", ["tb0", "tb1"]],
+      ["spc-new", ["tb-new"]],
     ]);
+    const named = newTabWrite(docOf([["t1"], ["t0"]]), "t2", tab, { id: "spc", folder: "" }, undefined, kept).doc;
+    expect(spacesOf(named)).toEqual([["spc", ["tb0", "tb1", "tb-new"]]]);
   });
 
   test("the transient tab's split writes its tab with the new pane, or splits that terminal's pane where it was adopted", () => {

@@ -1,6 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import { HcRpcError, type MachineView, type Terminal } from "@doriface/protocol";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { LayoutTab } from "./layout-model.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
 import { machineOf } from "./model.ts";
@@ -57,6 +57,9 @@ export function goneFromView(
   const shown = new Set(tabs.flatMap((tab) => tab.panes.map((pane) => pane.address)));
   return [...left].flatMap(([address, machine]) => (!shown.has(address) && written(machine) ? [address] : []));
 }
+
+/** This core's own layout in the written-documents key (its machine is null; no machine name is empty). */
+const THIS_CORE = "\u0001";
 
 /** The panes in view whose terminal is over (endedInView), each with the machine of the tab that shows it. */
 function leftWithMachines(ended: ReadonlySet<string>, tabs: readonly LayoutTab[]): Map<string, string | null> {
@@ -165,6 +168,11 @@ export function useDeadPanes(
   const viewedNow = useRef(inView);
   viewedNow.current = inView;
   const missing = useRef<ReadonlyMap<string, Missing>>(new Map());
+  // The machines whose document is written, as one key: `layouts` is a new array each render, its machines seldom change.
+  const writtenKey = layouts
+    .flatMap((layout) => (layout.doc === null ? [] : [layout.machine ?? THIS_CORE]))
+    .join("\u0000");
+  const writtenOn = useMemo(() => new Set(writtenKey === "" ? [] : writtenKey.split("\u0000")), [writtenKey]);
   useEffect(() => {
     asked.current = new Set();
     missing.current = new Map();
@@ -174,8 +182,7 @@ export function useDeadPanes(
     if (terminals === null) return;
     const feed = new Set(terminals.map((terminal) => terminal.address));
     const watched = viewed === "" ? [] : viewed.split("\u0000");
-    const written = (machine: string | null): boolean =>
-      layouts.some((layout) => layout.machine === machine && layout.doc !== null);
+    const written = (machine: string | null): boolean => writtenOn.has(machine ?? THIS_CORE);
     for (const address of goneFromView(left.current, tabs, written)) gone(address);
     left.current = leftWithMachines(endedInView(terminals, watched), tabs);
     const settled = settledPanes(terminals, watched);
@@ -198,5 +205,5 @@ export function useDeadPanes(
         },
       );
     }
-  }, [connection, tabs, terminals, machines, reads, drop, viewed, gone, layouts]);
+  }, [connection, tabs, terminals, machines, reads, drop, viewed, gone, writtenOn]);
 }
