@@ -233,3 +233,45 @@ test("a reread still waiting when the dialog closes never reads again (#1780)", 
   await act(async () => jest.advanceTimersByTime(REFOLLOW_MAX_MS * 4));
   expect(connection.reads).toBe(before);
 });
+
+/** Runs the fake clock in short steps, letting each step's promise callbacks run, so chained timers fire as they would. */
+const step = (ms: number): Promise<void> =>
+  Array.from({ length: Math.ceil(ms / 50) }).reduce<Promise<void>>(
+    (previous) =>
+      previous.then(() =>
+        act(async () => {
+          jest.advanceTimersByTime(50);
+        }),
+      ),
+    Promise.resolve(),
+  );
+
+test("a second follow while a reread waits replaces it: one reread chain, and none left after the dialog closes (#1780)", async () => {
+  jest.useFakeTimers();
+  const connection = connectionTo();
+  await act(async () => root.render(<Dialog connection={connection} />));
+  connection.failingReads = 10_000;
+  await act(async () => connection.end("closed_by_core"));
+  await step(100);
+  await act(async () => connection.end("closed_by_core"));
+  await step(30_000);
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  const before = connection.reads;
+  await step(30_000);
+  expect(connection.reads).toBe(before);
+});
+
+test("a connection that closed is not read again while it waits to be replaced (#1780)", async () => {
+  jest.useFakeTimers();
+  const connection = connectionTo();
+  await act(async () => root.render(<Dialog connection={connection} />));
+  connection.failingReads = 10_000;
+  await act(async () => connection.end("closed_by_core"));
+  await step(30_000);
+  connection.closed = true;
+  const before = connection.reads;
+  await step(30_000);
+  // The one reread already waiting when it closed may still go; none follows it.
+  expect(connection.reads - before).toBeLessThanOrEqual(1);
+});
