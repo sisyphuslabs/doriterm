@@ -1,7 +1,7 @@
 import type { ByteLink } from "@doriface/client";
 import { CloseCode, type SecureSession } from "@doriface/crypto";
 import { describe, expect, test } from "bun:test";
-import { RESUME_BACKOFF_MS, type ResumableSession, SessionResumer } from "./session-resume.ts";
+import { RESUME_BACKOFF_MS, ResumeAbandonedError, type ResumableSession, SessionResumer } from "./session-resume.ts";
 
 const link = (): ByteLink => ({ send() {}, onData: () => () => {}, onClose: () => () => {}, close() {} });
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
@@ -127,6 +127,10 @@ describe("SessionResumer", () => {
     expect(calls.redials).toBe(1);
     expect(calls.abandoned.length).toBe(1);
     expect(calls.abandoned[0]?.cause).toMatchObject({ code: CloseCode.CryptoFailure });
+    // What the streams see is the wrapper's own code, a drop to re-attach on the new session (4408), never the raw 4400
+    // a pane would read as final (#2256).
+    expect(calls.abandoned[0]).toBeInstanceOf(ResumeAbandonedError);
+    expect(calls.abandoned[0]).toMatchObject({ code: CloseCode.IdleTimeout });
     expect(resumer.active).toBe(false);
   });
 

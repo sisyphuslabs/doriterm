@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CloseCode } from "./link.ts";
+import { CloseCode, SecureLinkError } from "./link.ts";
 import { RECORD_RING_BYTES } from "./record-ring.ts";
 import type { SecureSession } from "./secured-link.ts";
 import { CodedCloseError, memoryLinkPair, nextClose } from "./testing/memory-link.ts";
@@ -29,6 +29,22 @@ const total = (chunks: readonly Uint8Array[]): number => chunks.reduce((sum, chu
 // #2000 review: once a session has sent more than its ring holds in its life, the ring is always full, so any record
 // sent while detached pushes out one the peer opened long ago. Only a record the peer can never have opened (one sent
 // after the detach) being pushed out makes the session impossible to resume.
+describe("a session given up after a refused resume", () => {
+  test("closes with the reason it was given, unchanged, so what reads its close sees that code and not the cause's", async () => {
+    const { client, clientEnd, hostEnd } = await resumable();
+    clientEnd.end(new CodedCloseError(1006, "dropped"));
+    hostEnd.end(new CodedCloseError(1006, "dropped"));
+    await flush();
+    const closed = nextClose(client);
+    const refusal = new SecureLinkError(CloseCode.CryptoFailure, "unknown session kind");
+    const reason = new SecureLinkError(CloseCode.IdleTimeout, "could not resume the session", { cause: refusal });
+    client.abandon(reason);
+    const error = await closed;
+    expect(error).toBe(reason);
+    expect(error).toMatchObject({ code: CloseCode.IdleTimeout, cause: refusal });
+  });
+});
+
 describe("a session that has sent more than its ring holds in its life", () => {
   test("still detaches and resumes: records the peer opened before the drop may leave the ring", async () => {
     const { client, server, clientEnd, hostEnd } = await resumable();
