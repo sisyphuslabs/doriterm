@@ -91,7 +91,9 @@ export function createBridge(config: BridgeConfig, deps: BridgeDeps = {}): (requ
   const apns = config.apns === undefined ? undefined : new ApnsSender(config.apns, fetch);
   const fcm = config.fcm === undefined ? undefined : new FcmSender(config.fcm, fetch);
   // A limiter that fails lets the push through unlimited (#1124): an outage of the limit must not stop every notice.
-  // It is logged once per outage, not once per push; the next answer from the limiter ends the outage.
+  // It is logged once per outage in each Worker isolate, not once per push: the flag lives in this handler, which every
+  // isolate builds for itself (worker.ts), so one outage logs once in each live isolate, and a limiter that comes back
+  // and fails again logs again. The next answer from the limiter ends the outage.
   let limiterDown = false;
   const allows = async (limiter: TokenLimiter, key: string): Promise<boolean> => {
     try {
