@@ -2,6 +2,78 @@
 
 ## Unreleased
 
+## v0.1.18 - 2026-11-11
+
+If you are on v0.1.17, download this release once from the GitHub release page: v0.1.17 looks for its updates only at
+get.doriterm.com, which does not serve them yet, so it cannot update itself. From this release on, the desktop app
+takes its updates from the GitHub release again, and later releases install on their own (#2074).
+
+### Terminal
+
+- A tab in the background after a reload no longer opens its terminal until you show it, as a tab that reconnects
+  already did, so it does not fetch a screen nobody is looking at. (#1721)
+- While you type ahead of a slow echo, a typed space no longer drops out of the predicted text for a frame before its
+  echo is drawn, so the predicted line and its underline stay unbroken. (#1970)
+- On a phone, a swipe inside a full-screen program keeps scrolling that program to its end when the program redraws the
+  spot under the finger mid-swipe. Before, the browser took the rest of the swipe as a page pan, and the program missed
+  those scroll steps. (#2055)
+- On a phone, Show keyboard no longer leaves the terminal's field waiting for a click that never comes: a right-click on
+  the button (an iPad trackpad) starts no press, a second finger lifting during a tap no longer ends it early, and a
+  terminal that closes mid-press stops listening for that press. (#2067)
+- A character you type into a program that holds its screen update open (a synchronized update it never closes) no
+  longer blinks out for one frame about a second later, just before the program's own output is drawn. (#2085)
+
+### Workspace
+
+- Closing a space whose layout the host refuses says so once, instead of once per pane in it.
+- A closed tab whose session ended but whose cleanup then failed no longer comes back to drop its pane a second time,
+  with a second refused-layout notice. (#1693)
+- Spinners stay in step when reduced motion is switched on or off while they spin: the gentle pulse that replaces the
+  turn starts on the same shared clock as every other spinner. (#1836)
+- A terminal opened while an added machine's layout was still loading stays the tab in view when that machine is
+  renamed at the same moment its layout saves the terminal's tab. Before, the workspace could jump to another
+  machine's space and leave the renamed terminal hidden. (#1775)
+
+### Keys
+
+- Alt+arrows reach the program on Windows and Linux again: they are the keys an agent reads for its answers and a shell for its word moves, so agent navigation moved to Ctrl+Shift+] and Ctrl+Shift+[. (#1898)
+- A dialog takes the keyboard as soon as it opens. On a busy machine, Escape pressed right after Keyboard shortcuts
+  appeared from the command palette could reach the terminal behind it and leave the dialog open. (#2046)
+
+### Machine mesh
+
+- When the host closes a session with 4401 ("not authorized"), its log now says which check closed it and why, as one
+  line `close code=4401 source=...`, so a peer's "closed by host" can be traced to the revocation, refusal or gate
+  that sent it. (#1703)
+
+### Desktop updates
+
+- The desktop app takes its updates from the GitHub release again, as it did before v0.1.17, rather than from
+  get.doriterm.com, which does not serve them yet. v0.1.17 cannot update itself: if you are on v0.1.17, download this
+  release once from the GitHub release page; later releases then update on their own. (#2074)
+- The Update channel row in Settings > This device, its Check now button and the Check for Updates menu item that
+  v0.1.17 added are removed for now, and installs on the Beta channel return to stable releases. (#2074)
+- Doriterm 0.1.17, which looks for updates only at get.doriterm.com, can update itself to the next release once that
+  host answers, without a manual download: until a release is copied there, the host passes on GitHub's own update
+  feed. (#2109)
+
+### Host install
+
+- `doriface-host --help` no longer offers "reach this host only directly" as a way to run the host: the direct
+  path is off (#2070), so `--no-relay` and `--lan-listen` are labelled as the test knobs they are. Both keep
+  working exactly as before. (#2075)
+
+### Website
+
+- get.doriterm.com serves each release from Doriterm's own storage: a stable link per platform such as
+  get.doriterm.com/dl/mac-arm64.dmg, the update feeds the desktop app and the host read, and a public download count at
+  get.doriterm.com/stats/downloads, with GitHub Releases behind every file until a release is copied there. (#1975)
+
+### Documentation
+
+- The transport contract, the architecture notes and the README say that the direct path is off by decision and
+  that every session goes through the relay, instead of describing it as a path no client happened to dial. (#2075)
+
 ## v0.1.17 - 2026-11-11
 
 Highlights: tabs can be pinned, and a tab's menu closes the tabs to its right or every other tab, with pins and order
