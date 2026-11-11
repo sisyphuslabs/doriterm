@@ -141,9 +141,16 @@ test("a close still writing keeps its question: Cancel waits, Escape does nothin
   // The layout write is held, as a slow host would hold it: the close is in flight, not finished.
   const release = socket.hold("doc.set");
   socket.staleWrites(true);
-  // The page wrote the layout once already, adopting the space's terminal as it loaded (the row shows once that write is
-  // saved): only the writes after Close are the close's (#2043).
-  const writes = (): number => socket.sent().filter((frame) => frame.includes('"method":"doc.set"')).length;
+  // The page wrote this core's layout once already, adopting the space's terminal as it loaded (the row shows once that
+  // write is saved): only the writes after Close are the close's (#2043). An added machine's layout is written with `on`
+  // and adopts on its own load, so its writes are not counted.
+  const writes = (): number =>
+    socket
+      .sent()
+      .filter(
+        (frame) =>
+          frame.includes('"method":"doc.set"') && frame.includes('"name":"herdr-app"') && !frame.includes('"on":'),
+      ).length;
   const loaded = writes();
   await question.getByRole("button", { name: "Close" }).click();
   await expect(question.getByRole("button", { name: "Close" })).toHaveAttribute("aria-busy", "true");
