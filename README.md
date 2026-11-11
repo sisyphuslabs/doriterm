@@ -137,9 +137,10 @@ herdr-core when `hc` is missing, runs the host as a user service at the highest 
 (systemd `--user` on Linux, an `Interactive` LaunchAgent on macOS), then prints a QR code, a link and an 8-character
 code to pair your first device. `sh -s -- --help` lists the options; `--uninstall` removes the service and the binary and
 keeps the host's keys and paired devices. To add a computer to a host you already use, open **Add a machine** in the
-app: it shows this same line with `--join '<link>'`, which installs the host there and joins it to this host's mesh, so
-its terminals show in the app. On Windows, the desktop app carries the host. The installer ships from the first release
-after v0.1.2.
+app: it shows this same line with the link in `DORIFACE_JOIN='<link>'` before `sh`, which installs the host there and
+joins it to this host's mesh, so its terminals show in the app. Pasted into a shell, the line keeps the link off every
+command line the install runs (though the shell's history keeps the line). On Windows, the desktop app carries the host.
+The installer ships from the first release after v0.1.2.
 
 From this repository, with [Bun](https://bun.sh) installed:
 
@@ -188,8 +189,8 @@ Other machines join the same way, through the same relay:
 hc machine add --via 'doriface-host connect <B hostId>' --name b   # B's terminals appear as b/t1, b/t2, …
 ```
 
-Every one of those paths goes through the relay, and the host also serves the contract's direct path — `/v1/e2ee` is mounted on
-the main listener and on `--lan-listen` when that is given — though no shipped client dials it. On the same machine the host
+Every one of those paths goes through the relay: the direct path is off by decision (#2070), so no client dials a host's address,
+and the host's `--lan-listen` exists for tests only. On the same machine the host
 serves a token-gated, loopback-only `ws://127.0.0.1:7766/v1/hc`, which is how the desktop app talks to its own local host. The
 host never parses what `hc` says — it pipes the stream — so the client SDK speaks herdr-core's protocol itself and a future
 native app can reuse it. The full design is in [docs/architecture.md](docs/architecture.md), and the wire contract every package
