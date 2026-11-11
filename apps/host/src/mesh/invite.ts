@@ -1,5 +1,5 @@
 import { base64urlDecode, base64urlEncode, CloseCode, fingerprintOf, type HostIdentity } from "@doriface/crypto";
-import { type CardBody, checkName, type Signed, verifyCard, viewOf } from "@doriface/mesh";
+import { type CardBody, checkName, type Signed, type View, verifyCard, viewOf } from "@doriface/mesh";
 import { byDeadline, joinCode, joinCommit, JoinRefused, MeshProtocolError } from "@doriface/mesh/join";
 import { type PlanPolicy, requireWithin } from "@doriface/policy";
 import type { MeshCandidate, MeshStore, OwnCard } from "../state/mesh.ts";
@@ -31,9 +31,12 @@ export interface InviteDeps {
   readonly floor: () => CounterFloor | undefined;
   /** The plan this host runs under: its `machines` limit narrows what the protocol admits, and never widens it. */
   readonly policy: PlanPolicy;
-  /** Whether every machine left in the mesh has shown it reads the format a client admission needs (design of #942). */
-  /** `records`: the mesh.json records an admission is written over, so the roster is the one on disk (#1436). */
-  readonly formatReady?: ((records?: readonly Signed[]) => boolean) | undefined;
+  /**
+   * Whether every machine left in the mesh has shown it reads the format a client admission needs (design of #942).
+   * `records` and `view`: the mesh.json records an admission is written over and the transaction's view of them, so the
+   * roster is the one on disk (#1436) and is not evaluated twice (#2263).
+   */
+  readonly formatReady?: ((records?: readonly Signed[], view?: View) => boolean) | undefined;
   /** Announces a committed client admission even if its original transport has disconnected. */
   readonly changed?: (() => void) | undefined;
   readonly log: (line: string) => void;
@@ -102,9 +105,10 @@ function admit(
       if (Date.now() >= deps.expiresAt) throw new JoinRefused("the offer expired before the admit was signed");
       const index = deps.mesh.authorizeIndex() ?? new AuthorizeIndex(indexOf(tx.records, tx.view(), 0));
       if (isRejoin(index, card, tx.records)) return tx.records;
-      const inTx = admissionRefusal(card.kind, deps.formatReady?.(tx.records) === true);
-      if (inTx !== undefined) throw new JoinRefused(inTx);
       const client = card.kind === "client";
+      // Only a client admission waits on the format, so a machine card never asks (#2263).
+      const inTx = client ? admissionRefusal(card.kind, deps.formatReady?.(tx.records, tx.view()) === true) : undefined;
+      if (inTx !== undefined) throw new JoinRefused(inTx);
       const joining = client
         ? clientDeviceCount(index, deps.devices, inviter) -
           (deps.devices.list().some((device) => device.clientStaticPub === card.devicePub) ? 1 : 0)

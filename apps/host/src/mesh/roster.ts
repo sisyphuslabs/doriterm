@@ -1,5 +1,5 @@
 import { base64urlEncode, CloseCode, type HostIdentity } from "@doriface/crypto";
-import { type CardBody, hashOf, type Signed, verifyCard } from "@doriface/mesh";
+import { type CardBody, hashOf, type Signed, type View, verifyCard } from "@doriface/mesh";
 import { byDeadline, JoinRefused, type MeshLines, recordLines } from "@doriface/mesh/join";
 import { type PlanPolicy, requireWithin } from "@doriface/policy";
 import type { DeviceStore } from "../state/devices.ts";
@@ -17,7 +17,7 @@ export interface RosterDeps {
   readonly mesh: MeshStore;
   readonly devices: DeviceStore;
   readonly policy: PlanPolicy;
-  readonly formatReady: (records?: readonly Signed[]) => boolean;
+  readonly formatReady: (records?: readonly Signed[], view?: View) => boolean;
   readonly floor: () => CounterFloor | undefined;
   readonly log: (line: string) => void;
   readonly changed?: (() => void) | undefined;
@@ -32,7 +32,7 @@ function admitRoster(deps: RosterDeps, card: CardBody, signed: Signed): void {
     (tx) => {
       const index = deps.mesh.authorizeIndex();
       if (index?.client(card.noisePub)?.signPub === card.signPub) return tx.records;
-      const refusal = admissionRefusal("client", deps.formatReady(tx.records));
+      const refusal = admissionRefusal("client", deps.formatReady(tx.records, tx.view()));
       if (refusal !== undefined) throw new JoinRefused(refusal);
       if (isRejoin(index, card, tx.records)) return tx.records;
       const paired = deps.devices.list();

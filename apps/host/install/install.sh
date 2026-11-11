@@ -237,8 +237,9 @@ expected="$(awk -v name="$asset" '{ file = $2; sub(/^\*/, "", file); if (file ==
 actual="$(sha256 "${work}/${asset}")"
 [ "$expected" = "$actual" ] || fail "${asset} does not match SHA256SUMS.txt (expected ${expected}, got ${actual}); nothing was installed"
 chmod 755 "${work}/${asset}"
-# Whether the release named (stamped, or given with --version) is one of the signed ones, v0.1.18 and later. Releases
-# before #1969 carry no signature, and an unnamed one (the repository copy, a --from base) is not known to (#1983).
+# Whether the release named (stamped, or given with --version) is one of the signed ones, v0.1.18 and later; a stamped
+# script names its release even with --from (#2297). Releases before #1969 carry no signature, and the unstamped
+# repository copy without --version names none, so for those the absence is only said (#1983).
 signed_release() {
   [ -n "$version" ] || return 1
   printf '%s\n' "${version#v}" | awk -F '[.-]' '{ exit !($1 > 0 || $2 > 1 || ($2 == 1 && $3 >= 18)) }'

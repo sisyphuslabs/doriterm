@@ -1,7 +1,7 @@
 import { devices } from "@playwright/test";
 import { endAgent, startAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
-import { drawnUnderSettings } from "./under-settings.ts";
+import { drawnUnderSettings, workspaceInert } from "./under-settings.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
 test.use({ ...phone, serviceWorkers: "block" });
@@ -24,6 +24,7 @@ test("nothing the workspace draws shows through Settings on a touch screen, and 
       .first()
       .click();
     await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible();
+    expect(await workspaceInert(page)).toBe(true);
     await expect.poll(() => drawnUnderSettings(page)).toEqual([]);
 
     await page.getByRole("button", { name: "Close settings" }).click();
@@ -51,6 +52,7 @@ test("the Appearance section keeps nothing of the workspace over it in dark (#87
     await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible();
     await page.getByRole("tab", { name: "Appearance" }).click();
     await expect(page.getByRole("heading", { name: "Appearance", exact: true })).toHaveCount(1);
+    expect(await workspaceInert(page)).toBe(true);
     await expect.poll(() => drawnUnderSettings(page)).toEqual([]);
     // Queried by attribute, not by role: the workspace under Settings is aria-hidden, and getByRole skips it, so a role
     // query here could never fail whatever the workspace drew.

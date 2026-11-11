@@ -2,7 +2,8 @@ name: Mirror a release
 
 # The one mirror job (#1969, docs/releasing.md): copies a release into the release bucket behind get.doriterm.com (or
 # its staging copy), moves its channel (stable, or beta for a prerelease tag) and probes the origin. release.yml calls it
-# after Publish (production) and after the smoke of a manual draft (staging). Run by hand, it mirrors a release that is
+# after Publish (production) and after the smoke of a manual draft (staging); a tag's draft is signed before Publish by
+# release.yml's own sign job, not here (#2297). Run by hand, it mirrors a release that is
 # already published, such as one published before this job existed (v0.1.18); that run starts only from dev and refuses
 # a tag that is not published. Either way it runs in the target's environment, the only place holding the
 # bucket-scoped R2 key pair and the release signing key.
@@ -66,7 +67,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: The tag and the target
         run: |
-          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$ ]]; then
+          if ! [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z][0-9A-Za-z]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z][0-9A-Za-z]*))*)?$ ]]; then
             echo "::error title=Mirror::$TAG is not a release tag such as v0.1.18"
             exit 1
           fi
@@ -96,7 +97,8 @@ jobs:
           --version "$VERSION" --channel "$CHANNEL" --rollout "$ROLLOUT" --minimum "$MINIMUM"
           --dir "$RUNNER_TEMP/release" --assets "$RUNNER_TEMP/assets.json" --run-id "$GITHUB_RUN_ID"
       # install.sh fetches it beside SHA256SUMS.txt; Ed25519 is deterministic, so every run produces the same bytes.
-      # Only a production run attaches it to the release users download.
+      # release.yml's sign job attaches it to the draft before Publish (#2297); a production run attaches it only when it
+      # is still missing, as for a release published before that job existed.
       - name: Attach the checksums signature
         if: inputs.target == 'production'
         run: |

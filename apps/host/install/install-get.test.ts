@@ -126,6 +126,13 @@ test("a release from v0.1.18 on, when releases are signed, installs nothing with
   }
 });
 
+test("a stamped v0.1.18+ install.sh given --from still names its release, so a missing signature installs nothing (#2297)", () => {
+  const r = rig({ on: ["get"], signature: "none", release: "v0.1.18" });
+  const unsigned = r.run("--from", `file://${join(r.root, "get", "v", "0.1.18")}`);
+  expect([unsigned.code, unsigned.installed]).toEqual([1, false]);
+  expect(unsigned.out).toContain("v0.1.18 is signed, but no SHA256SUMS.txt.sig came with it; nothing was installed");
+});
+
 test("--channel beta and --no-auto-update reach the service, and a host without --auto-update gets no flag", () => {
   expect(rig({ on: ["get"] }).run("--channel", "beta").execStart).toEndWith("--auto-update beta");
   expect(rig({ on: ["get"] }).run("--no-auto-update").execStart).toEndWith("--auto-update off");

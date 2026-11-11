@@ -6,6 +6,9 @@ import { DialPolicy } from "../../../host/src/mesh/dial-policy.ts";
 import { BUDGET_REFUSAL, LineGrants } from "../../../host/src/mesh/line-grants.ts";
 import { NoUplinkError } from "../../../host/src/mesh/no-uplink.ts";
 import { FakeClock, seededRandom } from "../../../host/src/mesh/testing/fake-clock.ts";
+import { HcCoreMismatchError } from "@doriface/client";
+import { HC_VERSION_FLOOR } from "@doriface/protocol";
+import { hostFailure } from "../connection/host-failure.ts";
 import { machineCause } from "./machine-cause.ts";
 
 const unreachable = (why: string) => machineCause({ name: "box", state: "unreachable", why });
@@ -81,4 +84,34 @@ test("every other refusal a mesh line gives reads as its own cause, never the ge
 test("a member that left the mesh is not said to come back by itself", async () => {
   const line = await lineRefusal(() => undefined, undefined, "h-gone");
   expect(unreachable(meshWhy(line))?.detail).not.toContain("keeps trying");
+});
+
+test("a connected machine whose core is below the floor says to update hc there, in the connected host's words (#2285)", () => {
+  const host = hostFailure(
+    new HcCoreMismatchError({ kind: "core-too-old", version: "0.1.16", need: HC_VERSION_FLOOR }),
+  );
+  for (const version of ["0.1.16", "hc 0.1.16"]) {
+    const cause = machineCause({ name: "box", state: "connected", why: null, version });
+    expect(cause?.title).toBe("box needs an hc update");
+    expect(cause?.detail).toBe(host.replace("Your host's", "box's"));
+    expect(cause?.retryless).toBe(true);
+  }
+});
+
+test("a machine whose line is down keeps its line's own cause: the version it last reported may be stale (#2285)", () => {
+  const old = { name: "box", version: "0.1.16" } as const;
+  expect(machineCause({ ...old, state: "needs_login", why: null })).toEqual(
+    machineCause({ name: "box", state: "needs_login", why: null }),
+  );
+  expect(machineCause({ ...old, state: "unreachable", why: "(4404)" })).toEqual(unreachable("(4404)"));
+  expect(machineCause({ ...old, state: "unreachable", why: "(4404)" })?.retryless).toBeUndefined();
+});
+
+test("a core at or past the floor, or one hc has not reported, adds no cause of its own (#2285)", () => {
+  for (const version of [HC_VERSION_FLOOR, "0.1.20", "hc 0.2.0", "", "unknown", undefined]) {
+    expect({ version, cause: machineCause({ name: "box", state: "connected", why: null, version }) }).toEqual({
+      version,
+      cause: undefined,
+    });
+  }
 });

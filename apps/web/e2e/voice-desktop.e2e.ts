@@ -153,7 +153,7 @@ test("a dictation under way ends when its terminal's machine drops: the recogniz
     await expect(page.getByRole("button", { name: /^Dictate into/ })).toHaveCount(0);
   } finally {
     reconnect();
-    removeTerminal("machine", remote, test.info().outputPath("go"));
+    removeTerminal("machine", remote);
   }
 });
 
@@ -196,7 +196,7 @@ test("the desktop's ended view offers no dictation: no mic, no strip, and a boun
     expect(await speech.started()).toEqual([]);
   } finally {
     reconnect();
-    removeTerminal("machine", remote, test.info().outputPath("go"));
+    removeTerminal("machine", remote);
   }
 });
 
@@ -222,6 +222,6 @@ test("a tab whose program ended while the page was closed offers no Dictate in t
     await expect(page.locator("[data-voice-strip]")).toHaveCount(0);
     expect(await speech.started()).toEqual([]);
   } finally {
-    removeTerminal("host", ended, test.info().outputPath("go"));
+    removeTerminal("host", ended);
   }
 });

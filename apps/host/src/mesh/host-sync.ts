@@ -7,7 +7,7 @@ import {
   secureLink,
   SessionKind,
 } from "@doriface/crypto";
-import { hashOf, type Signed, viewOf } from "@doriface/mesh";
+import { hashOf, type Signed, type View, viewOf } from "@doriface/mesh";
 import { connectRelayClient, type CreateSocket, type RelayProofs } from "@doriface/relay-client";
 import { withPassRetry } from "../relay/pass-retry.ts";
 import type { MeshStore } from "../state/mesh.ts";
@@ -92,16 +92,17 @@ export class HostSync {
    * is written in (design of #942). The roster decides it, not whether gossip happens to run: a host that founds its
    * mesh to admit its first member has a roster of one, and no member is in it to be held back (#1415). An admission
    * passes the records it is written over, so a machine admitted on this host since gossip's last view is in the roster
-   * it checks (#1436); the answers still come from gossip.
+   * it checks (#1436); the answers still come from gossip. The transaction that writes the admission hands in the view it
+   * already holds, so the records are not evaluated again inside the lock (#2263).
    */
-  formatReady(records?: readonly Signed[]): boolean {
+  formatReady(records?: readonly Signed[], view?: View): boolean {
     const gossip = this.gossip;
-    const view =
+    const roster =
       records !== undefined
-        ? meshViewOf(records, viewOf(records))
+        ? meshViewOf(records, view ?? viewOf(records))
         : (gossip?.view ?? new StoredMesh(this.#options.mesh).view());
     const self = base64urlEncode(this.#options.identity.sign.publicKey);
-    const members = machinesOf(view)
+    const members = machinesOf(roster)
       .map((member) => member.signPub)
       .filter((signPub) => signPub !== self);
     return formatReadiness(members, gossip?.formatAnswers() ?? [], CLIENT_ADMISSION_FORMAT).kind === "ready";

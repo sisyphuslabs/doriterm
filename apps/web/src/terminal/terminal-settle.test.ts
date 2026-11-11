@@ -1,6 +1,13 @@
 import { HcRpcError } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
-import { type CoreAnswer, settled, type Settled, type Unsent, unsentReason } from "./terminal-settle.ts";
+import {
+  type CoreAnswer,
+  restartOnReattach,
+  settled,
+  type Settled,
+  type Unsent,
+  unsentReason,
+} from "./terminal-settle.ts";
 
 const PROGRAM = 4242;
 const live = (pid: number | null): CoreAnswer => ({ terminal: { state: "live", pid } });
@@ -27,6 +34,23 @@ describe("settled", () => {
   ];
   test.each(cases)("%s", (_, answer, first, refused, expected) => {
     expect(settled(answer, PROGRAM, first, refused)).toBe(expected);
+  });
+});
+
+describe("restartOnReattach", () => {
+  // #2303: the reattach that finds another program drops what was typed for the old one and says so.
+  const cases: readonly [string, boolean, number | null | undefined, number, boolean, Unsent][] = [
+    ["a first attach, whatever runs there", false, PROGRAM + 1, 1, false, null],
+    ["a reattach to the same program", true, PROGRAM, 1, false, null],
+    ["a reattach to another program, with input waiting", true, PROGRAM + 1, 2, true, "restarted"],
+    ["a reattach to another program, nothing waiting", true, PROGRAM + 1, 0, true, null],
+    ["a reattach that finds the program lost, with input waiting", true, null, 1, true, "restarted"],
+  ];
+  test.each(cases)("%s", (_, reattach, pid, waiting, close, unsent) => {
+    const pending = Array.from({ length: waiting }, (__, at) => `key-${at}`);
+    expect(restartOnReattach(reattach, pid, PROGRAM, pending)).toEqual({ close, unsent });
+    // Input for a program that is gone is dropped, never written to the new one.
+    expect(pending).toHaveLength(close ? 0 : waiting);
   });
 });
 
