@@ -1,12 +1,12 @@
 import type { ReleaseBucket, RequestContext } from "./bindings.ts";
 import { isCounted, recordDownload, requestFacts } from "./datapoint.ts";
-import { ADDED_LINE, FILE_LINE } from "./feed-lines.ts";
+import { ADDED_LINE, placeLines } from "./feed-lines.ts";
 import { type Channel, GITHUB_REPOSITORY, githubAssetUrl, isReleaseFile, isVersion, pointerKey } from "./names.ts";
 import { text } from "./serve-release.ts";
 
 const FEED_TTL_SECONDS = 60;
 
-/** The line shapes of an electron-builder update feed; FILE_LINE's url and path lines among them. */
+/** The line shapes of an electron-builder update feed, the file-naming url and path lines among them. */
 const FEED_LINE = new RegExp(
   [
     /^version: \S+$/,
@@ -36,20 +36,22 @@ export function githubFeed(stored: string): string | null {
   // Every line has one of the shapes electron-builder writes (latest*.yml since v0.1.0), nothing else: no YAML
   // parser is needed (the Workers runtime has none), and a flow-style list, a quoted key or a tab cannot match.
   if (!lines.every((line) => line === "" || FEED_LINE.test(line))) return null;
+  // And in electron-builder's structure (#1981): an item or an item field outside the `files` list is refused.
+  const placed = placeLines(lines);
+  if (placed === null || placed.some((place) => place.at === "nested")) return null;
   const versions = lines.flatMap((line) => /^version: (\S+)$/.exec(line)?.slice(1) ?? []);
   const [version] = versions;
   if (versions.length !== 1 || version === undefined || !isVersion(version)) return null;
   const out: string[] = [];
-  for (const line of lines) {
+  for (const [index, line] of lines.entries()) {
+    const place = placed[index];
     if (ADDED_LINE.test(line)) continue;
-    const file = FILE_LINE.exec(line);
-    if (file === null) {
+    if (place?.at !== "file") {
       out.push(line);
       continue;
     }
-    const [, prefix = "", value = ""] = file;
-    if (!isReleaseFile(value)) return null;
-    out.push(`${prefix}${githubAssetUrl(version, value)}`);
+    if (!isReleaseFile(place.value)) return null;
+    out.push(`${place.prefix}${githubAssetUrl(version, place.value)}`);
   }
   while (out.at(-1) === "") out.pop();
   return `${out.join("\n")}\n`;
