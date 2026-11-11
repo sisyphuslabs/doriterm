@@ -109,8 +109,8 @@ function paintWindow(): void {
 
 onDesktopNavigate((path) => router.history.push(path));
 onDesktopUpdateReady((version) => updateStore.set({ apply: "restart", version, run: () => installDesktopUpdate() }));
-// The workspace and Settings take the text-size keys themselves (#859, #1651). A screen that does not (pairing) reaches
-// this fallback: in the desktop app it steps the terminal text, since the window itself is never zoomed (#388); in a
+// The workspace and Settings take the text-size keys themselves (#859, #1651). A screen that does not reaches this
+// fallback (pairing, first run, a host that failed to start, a removed membership, connecting before any connection): in the desktop app it steps the terminal text, since the window itself is never zoomed (#388); in a
 // browser it leaves the key to the page's own zoom, as no screen there shows what a step would change (#1162).
 for (const action of ["app.zoom_in", "app.zoom_out", "app.zoom_reset"]) {
   setActionFallback(action, () => (desktop !== null ? stepTerminalFont(action) : false));
