@@ -177,6 +177,10 @@ test("a cancel between groups opens no further R2 read: the next group opens onl
   const g = twoGroups();
   expect((await g.reader.read()).done).toBe(false);
   expect((await g.reader.read()).done).toBe(false);
+  // An idle client: every pull the stream would make on its own settles within microtasks, so one macrotask later any
+  // refill pull has already run. This checks that nothing ran, not how long anything takes (#2274 review).
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(g.opened.map((entry) => entry.offset)).toEqual([0]);
   await g.reader.cancel("client went away");
   expect(g.opened.map((entry) => entry.offset)).toEqual([0]);
 });
