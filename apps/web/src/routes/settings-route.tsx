@@ -1,7 +1,18 @@
-import { Button, IconButton, Input, ScrollArea, Tab, TabList, Tabs, cn } from "@doriface/ui";
+import { Button, IconButton, Input, ScrollArea, Tab, TabList, Tabs, cn, fieldLabelClass } from "@doriface/ui";
 import { ArrowLeft } from "lucide-react";
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { currentPlatform, triggerKeys } from "../keys/trigger.ts";
+import { useActionHandler } from "../keys/dispatcher.ts";
+import { stepTerminalFont } from "../workspace/use-app-actions.ts";
 import { AppearanceSection } from "../settings/appearance-section.tsx";
 import { ConnectionSection } from "../settings/connection-section.tsx";
 import { DeviceSection } from "../settings/device-section.tsx";
@@ -61,11 +72,59 @@ function Group({
 
 /** One sentence under the title, in the words the navigation uses: what this screen is about and nothing else. */
 function Lead({ children }: { readonly children: ReactNode }) {
-  return <p className="max-w-measure text-sm text-pretty text-muted-foreground">{children}</p>;
+  return <p className="max-w-measure text-prose text-pretty text-muted-foreground">{children}</p>;
+}
+
+/**
+ * The one search over every section; drawn in the phone header and in the desktop navigation, each with its own id.
+ * `inline` puts the label beside the field, so the phone's title row keeps its height (#1460).
+ */
+function SearchSettings({
+  query,
+  onQuery,
+  onKeyDown,
+  inputRef,
+  inline = false,
+}: {
+  readonly query: string;
+  readonly onQuery: (next: string) => void;
+  readonly onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
+  readonly inputRef: Ref<HTMLInputElement>;
+  readonly inline?: boolean;
+}) {
+  const id = useId();
+  return (
+    <div className={inline ? "flex items-center gap-2" : "flex flex-col gap-1"}>
+      <label htmlFor={id} className={cn(inline ? "shrink-0" : "px-0.5", fieldLabelClass)}>
+        {inline ? (
+          <>
+            Search<span className="sr-only"> settings</span>
+          </>
+        ) : (
+          "Search settings"
+        )}
+      </label>
+      <Input
+        ref={inputRef}
+        id={id}
+        className={cn(inline && "min-w-0 flex-1")}
+        type="search"
+        placeholder="e.g. theme or relay"
+        value={query}
+        onValueChange={onQuery}
+        onKeyDown={onKeyDown}
+      />
+    </div>
+  );
 }
 
 /** Section navigation beside the form; changes apply as they are made. */
 export function SettingsRoute() {
+  // Settings shows the terminals' text size under Appearance and hints at its keys, so the text-size keys step it here
+  // rather than the browser's zoom, in a browser too (#859, #1162).
+  useActionHandler("app", (action) =>
+    ["app.zoom_in", "app.zoom_out", "app.zoom_reset"].includes(action) ? stepTerminalFont(action) : false,
+  );
   const [opened] = useState(firstLanding);
   const [section, setSection] = useState<SectionId>(opened.section);
   const [query, setQuery] = useState("");
@@ -83,30 +142,23 @@ export function SettingsRoute() {
     setSection(hit.section);
     setLanding({ ...hit });
   };
-  const search = (
-    <Input
-      ref={field}
-      aria-label="Search settings"
-      type="search"
-      placeholder="Search settings"
-      value={query}
-      onValueChange={(next: string) => {
-        setQuery(next);
-        setLanding(null);
-      }}
-      onKeyDown={(event) => {
-        const [hit] = hits;
-        const first = shown[0];
-        if (event.key === "ArrowDown" && hit !== undefined) {
-          event.preventDefault();
-          body.current?.querySelector<HTMLElement>("[data-setting-hits] button")?.focus();
-        } else if (event.key === "Enter" && hit !== undefined) open(hit);
-        else if (event.key === "Enter" && first !== undefined) setSection(first.id);
-      }}
-    />
-  );
+  const onQuery = (next: string) => {
+    setQuery(next);
+    setLanding(null);
+  };
+  const onSearchKey = (event: KeyboardEvent<HTMLInputElement>) => {
+    const [hit] = hits;
+    const first = shown[0];
+    if (event.key === "ArrowDown" && hit !== undefined) {
+      event.preventDefault();
+      body.current?.querySelector<HTMLElement>("[data-setting-hits] button")?.focus();
+    } else if (event.key === "Enter" && hit !== undefined) open(hit);
+    else if (event.key === "Enter" && first !== undefined) setSection(first.id);
+  };
   const nothing =
-    shown.length === 0 ? <p className="px-2 py-1 text-sm text-muted-foreground">No setting matches "{query}"</p> : null;
+    shown.length === 0 ? (
+      <p className="px-2 py-1 text-prose text-muted-foreground">No setting matches "{query}"</p>
+    ) : null;
   const mesh = useBrowserMembership();
   const joinedBrowser = mesh.phase !== "empty" && desktopBridge() === null;
   const close = useCloseSettings();
@@ -142,7 +194,9 @@ export function SettingsRoute() {
           {back}
           <h1 className="text-xl font-semibold text-foreground">Settings</h1>
           {/* In the title row, so the phone header keeps its height and the sections below do not move (#1460). */}
-          <div className="ml-2 min-w-0 flex-1">{search}</div>
+          <div className="ml-2 min-w-0 flex-1">
+            <SearchSettings query={query} onQuery={onQuery} onKeyDown={onSearchKey} inputRef={field} inline />
+          </div>
         </div>
         {nothing}
         <TabList className="scroll-px-2 px-2">
@@ -155,7 +209,7 @@ export function SettingsRoute() {
       </Tabs>
       <nav
         aria-label="Settings"
-        className="hidden w-56 shrink-0 flex-col gap-px border-r border-sidebar-border bg-sidebar px-2 pb-2 md:flex"
+        className="hidden w-56 shrink-0 flex-col gap-px overflow-y-auto border-r border-sidebar-border bg-sidebar px-2 pb-2 md:flex"
       >
         <div
           {...titlebar}
@@ -167,7 +221,9 @@ export function SettingsRoute() {
           {back}
           <h1 className="text-lg font-semibold text-foreground">Settings</h1>
         </div>
-        <div className="mb-1">{search}</div>
+        <div className="mb-1">
+          <SearchSettings query={query} onQuery={onQuery} onKeyDown={onSearchKey} inputRef={field} />
+        </div>
         {nothing}
         {shown.map((entry) => (
           <Button
@@ -176,7 +232,7 @@ export function SettingsRoute() {
             aria-current={entry.id === section ? "page" : undefined}
             onClick={() => setSection(entry.id)}
             className={cn(
-              "justify-start gap-2.5 px-2 text-sm [&_svg]:size-3.5",
+              "justify-start gap-2.5 px-2 text-sm [&_svg:not([data-slot=spinner])]:size-3.5",
               entry.id === section && "bg-selected text-foreground",
             )}
           >
@@ -245,7 +301,7 @@ export function SettingsRoute() {
                   <MachinesSection />
                   {/* What a row's state means sits under the rows, where a reader meets it: on a phone the list leads (#1007). */}
                   {!joinedBrowser ? (
-                    <p className="max-w-measure pt-3 text-sm text-pretty text-muted-foreground">
+                    <p className="max-w-measure pt-3 text-prose text-pretty text-muted-foreground">
                       A machine that answers reads Connected, one still being dialled reads Connecting, and one that
                       needs a login says so; when a machine is offline the row says when it was last seen and, where the
                       host knows a cause, what it is.
@@ -254,7 +310,7 @@ export function SettingsRoute() {
                 </Group>
                 {/* Connecting a machine joins it to the mesh, so it is on this screen, under the rows it adds to. */}
                 <Group title="Connect a machine" id={CONNECT_GROUP}>
-                  <p className="pb-1 text-sm text-pretty text-muted-foreground">
+                  <p className="pb-1 text-prose text-pretty text-muted-foreground">
                     One command on this host opens an invite, and the other computer or phone joins with it. A join
                     waits for your approval under In your mesh.
                   </p>

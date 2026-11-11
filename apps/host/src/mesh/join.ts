@@ -48,6 +48,10 @@ export async function runJoiner(lines: MeshLines, ctx: JoinerContext): Promise<s
     card: async (offer) => signCard(cardBodyFor(member, ctx.own, offer), identity.sign.secretKey),
     saveAnchor: async () => undefined,
     clearAnchor: async () => undefined,
+  }).catch((error: unknown) => {
+    // The shared ceremony owns its close; distinguish its failure from checking/storing the welcome below.
+    ctx.log(`mesh: join failed source=join-ceremony: ${error instanceof Error ? error.message : String(error)}`);
+    throw error;
   });
   try {
     checkWelcome(welcome.records, welcome.offer, { identity: member, dialed: ctx.dialed });
@@ -57,7 +61,9 @@ export async function runJoiner(lines: MeshLines, ctx: JoinerContext): Promise<s
     ctx.log(`mesh: joined mesh ${welcome.offer.mesh} via ${ctx.dialed.hostId} on a mesh ${inviteKindOf(ctx.invite)}`);
     return welcome.offer.mesh;
   } catch (error) {
-    lines.close(4401, error instanceof Error ? error.message : String(error));
+    const reason = error instanceof Error ? error.message : String(error);
+    ctx.log(`mesh: close code=4401 source=join-welcome: ${reason}`);
+    lines.close(4401, reason);
     throw error;
   }
 }

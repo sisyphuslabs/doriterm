@@ -126,7 +126,9 @@ function rowOf(core: CellSource, row: number) {
 /** One logical line, wrapped rows joined: its text and the cell each character (code point) came from. */
 export interface Line {
   readonly text: string;
-  readonly cells: readonly (CellAt & { readonly uri: string | undefined })[];
+  readonly cells: readonly (CellAt & { readonly width: number; readonly uri: string | undefined })[];
+  /** The absolute row after the logical line, including rows that contribute no text cells. */
+  readonly nextRow: number;
 }
 
 export function lineAround(core: CellSource, row: number): Line | null {
@@ -139,22 +141,24 @@ export function lineAround(core: CellSource, row: number): Line | null {
     first -= 1;
   }
   let text = "";
-  const cells: (CellAt & { readonly uri: string | undefined })[] = [];
+  const cells: (CellAt & { readonly width: number; readonly uri: string | undefined })[] = [];
+  let nextRow = first;
   for (let at = first; ; at += 1) {
     const current = rowOf(core, at);
     if (current === null) break;
+    nextRow = at + 1;
     for (let col = 0; col < current.cols; col += 1) {
       const cell = current.cell(col);
       if (cell.width === 0 || cell.spacerHead === true) continue;
       const chars = cell.chars ?? String.fromCodePoint(cell.char || 32);
       for (const unit of chars) {
         text += unit;
-        cells.push({ row: at, col, uri: cell.linkUri });
+        cells.push({ row: at, col, width: cell.width ?? 1, uri: cell.linkUri });
       }
     }
     if (!current.wrap?.wrapsToNext) break;
   }
-  return { text, cells };
+  return { text, cells, nextRow };
 }
 
 /** The cells from index `start` to `end` (exclusive) of a line, as one run per row. */
@@ -162,8 +166,8 @@ export function runsOf(line: Line, start: number, end: number): LinkRun[] {
   const runs: LinkRun[] = [];
   for (const cell of line.cells.slice(start, end)) {
     const last = runs.at(-1);
-    if (last !== undefined && last.row === cell.row) runs[runs.length - 1] = { ...last, end: cell.col + 1 };
-    else runs.push({ row: cell.row, start: cell.col, end: cell.col + 1 });
+    if (last !== undefined && last.row === cell.row) runs[runs.length - 1] = { ...last, end: cell.col + cell.width };
+    else runs.push({ row: cell.row, start: cell.col, end: cell.col + cell.width });
   }
   return runs;
 }

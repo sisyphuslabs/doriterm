@@ -50,14 +50,19 @@ export function SessionPlace({ where, dir }: { readonly where: string; readonly 
 
 /**
  * The phone header's "..." for the session in view (#1467): one bottom sheet that says where it lives, then the next
- * agent that needs you and Find in terminal, then Rename and End. Each row closes the sheet before it acts.
+ * agent that needs you and, while its machine is online, Find in terminal, then Rename and End. Each row closes the
+ * sheet before it acts.
  */
 export function PhoneSessionSheet({ terminal, terminals, title, where, onOpen }: PhoneSessionSheetProps) {
   const [open, setOpen] = useState(false);
   const ask = useAskSession();
   const { address } = terminal;
   const next = nextNeedingYou(terminals, address);
+  const nextAgent = next === null || next === address ? null : next;
   const waiting = waitingBesides(terminals, address);
+  // An offline machine draws MachineOffline in place of the terminal (phone-terminal.tsx), so nothing takes
+  // terminal.search: Find in terminal would only close this sheet, and the row waits for the machine to come back.
+  const offline = terminal.offline === true;
   const act = (run: () => void) => () => {
     setOpen(false);
     run();
@@ -71,16 +76,20 @@ export function PhoneSessionSheet({ terminal, terminals, title, where, onOpen }:
       trigger={<IconButton label={`Session actions for ${title}`} icon={<Ellipsis />} size="md" />}
     >
       <SessionPlace where={where} dir={terminal.foreground?.cwd ?? terminal.cwd} />
-      <div className="flex flex-col border-t border-border pt-1">
-        {next === null || next === address ? null : (
-          <Row icon={<CircleAlert aria-hidden />} onClick={act(() => onOpen(next))}>
-            Open the next agent that needs you ({waiting})
-          </Row>
-        )}
-        <Row icon={<Search aria-hidden />} onClick={act(() => runAction("terminal.search"))}>
-          Find in terminal
-        </Row>
-      </div>
+      {nextAgent === null && offline ? null : (
+        <div className="flex flex-col border-t border-border pt-1">
+          {nextAgent === null ? null : (
+            <Row icon={<CircleAlert aria-hidden />} onClick={act(() => onOpen(nextAgent))}>
+              Open the next agent that needs you ({waiting})
+            </Row>
+          )}
+          {offline ? null : (
+            <Row icon={<Search aria-hidden />} onClick={act(() => runAction("terminal.search"))}>
+              Find in terminal
+            </Row>
+          )}
+        </div>
+      )}
       <div className="flex flex-col border-t border-border pt-1">
         <Row icon={<Pencil aria-hidden />} onClick={act(() => ask({ kind: "rename", address }))}>
           Rename…

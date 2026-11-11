@@ -53,7 +53,7 @@ test("on a 320 px touch phone the palette shows All and the two most urgent stat
     expect(box.clipped).toBe(false);
   }
   // The segments' own widths fit the row's room. CI runs this on Linux, whose fonts set the row wider than a Mac's, so
-  // the check holds on the widest platform the app ships to rather than through a margin guessed on a narrower one.
+  // the check holds on the platform CI runs it on rather than through a margin guessed on a narrower one.
   const room = await states(page).evaluate((group) => {
     const holder = group.parentElement;
     if (holder === null) return 0;

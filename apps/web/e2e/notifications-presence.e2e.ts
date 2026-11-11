@@ -6,13 +6,28 @@ import { finishingAgent, press, pushSuite, turnOn } from "./push-suite.ts";
 
 const suite = pushSuite();
 
+/** The `focus` lines a push-stream frame carries, read as the host reads them: one JSON object a line. */
+function focusLines(frame: string): (string | null)[] {
+  const found: (string | null)[] = [];
+  for (const line of frame.split("\n")) {
+    let message: unknown;
+    try {
+      message = JSON.parse(line);
+    } catch {
+      continue; // Not a push line: the websocket carries other frames too.
+    }
+    if (typeof message !== "object" || message === null || Reflect.get(message, "t") !== "focus") continue;
+    const terminal: unknown = Reflect.get(message, "terminal");
+    found.push(typeof terminal === "string" ? terminal : null);
+  }
+  return found;
+}
+
 test("a pane behind the Settings dialog is not shown: its agent's notice still comes (#1024)", async ({ page }) => {
-  const sentFocus: string[] = [];
+  const sentFocus: (string | null)[] = [];
   page.on("websocket", (socket) => {
     socket.on("framesent", ({ payload }) => {
-      const text = typeof payload === "string" ? payload : payload.toString("latin1");
-      const found = /"t":"focus","terminal":("[^"]*"|null)/.exec(text);
-      if (found !== null) sentFocus.push(found[1] ?? "");
+      sentFocus.push(...focusLines(typeof payload === "string" ? payload : payload.toString("utf8")));
     });
   });
   await turnOn(page);
@@ -33,5 +48,8 @@ test("a pane behind the Settings dialog is not shown: its agent's notice still c
     )
     .toEqual(["done"]);
   // Whichever reached the host first, the page never told it that a pane under Settings is the one being read.
-  expect(sentFocus.filter((terminal) => terminal !== "null")).toEqual([]);
+  expect(sentFocus.filter((terminal) => terminal !== null)).toEqual([]);
+  // The same capture hears the pane once Settings closes, so the check above could have caught a focus line.
+  await page.getByRole("button", { name: "Close settings" }).first().click();
+  await expect.poll(() => sentFocus, { timeout: 15_000 }).toContain(address);
 });
