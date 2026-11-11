@@ -24,9 +24,10 @@ export const REPLAY_MAX_BYTES = 2 * 1024 * 1024;
 /** The shortest quiet after the last replay bytes that ends a replay (D5). */
 export const REPLAY_QUIET_FLOOR_MS = 100;
 /**
- * How long a synchronized update may go with no bytes before its paint is let go and the rest of it is paced: wterm's
- * own hold of one (@wterm/dom's `SYNCHRONIZED_OUTPUT_TIMEOUT_MS`, which output-pacer.test.ts reads from the installed
- * package), so an update a program left open is drawn a second after its last bytes, as wterm would (#853).
+ * The least a synchronized update may go with no bytes before its paint is let go and the rest of it is paced (the
+ * floor of its quiet window, max(this, 1.5 x SRTT + 50), #2306): wterm's own hold of one (@wterm/dom's
+ * `SYNCHRONIZED_OUTPUT_TIMEOUT_MS`, which output-pacer.test.ts reads from the installed package), so an update a
+ * program left open is drawn a second after its last bytes, as wterm would (#853).
  */
 export const SYNCHRONIZED_UNPACED_MS = 1000;
 /**
@@ -102,9 +103,9 @@ type Budget = "arrived" | number;
  * Code) would outlast the terminal's hold and be drawn top to bottom (#757). Its bytes are written the moment they
  * arrive, uncapped, and the terminal's paint is held (`holdSynchronized`) while they keep coming, past wterm's own
  * one-second hold, which a page too slow to take a whole redraw in would otherwise outlast (#2040). The hold ends when
- * the update closes, so it is drawn whole; when no bytes of it have come for {@link SYNCHRONIZED_UNPACED_MS}, as an
- * update a program left open (#853); or at {@link SYNCHRONIZED_HOLD_CAP_MS}. What is left of an update past its hold is
- * paced.
+ * the update closes, so it is drawn whole; when no bytes of it have come for max({@link SYNCHRONIZED_UNPACED_MS},
+ * 1.5 x SRTT + 50) ms, as an update a program left open (#853, #2306); or at {@link SYNCHRONIZED_HOLD_CAP_MS}. What
+ * is left of an update past its hold is paced.
  *
  * Coming back to the app is drawn in one paint, not replayed (D5): while the app is hidden no frame runs, so the queue
  * is written whole every {@link HIDDEN_DRAIN_MS} and credited, and what is left when it shows is written at once.
@@ -132,6 +133,8 @@ export class OutputPacer {
   #holdSynchronized: (held: boolean) => void = () => undefined;
   /** The open update whose paint is held while its bytes still arrive; null when none is. */
   #held: { quiet: () => void; cap: () => void } | null = null;
+  /** The link's smoothed round trip, from the last attach's replay options; an attach without one leaves it unknown. */
+  #srtt: () => number | undefined = () => undefined;
   #replay: Replay | null = null;
   #catchUp: CatchUp | null = null;
   readonly #written = new Set<() => void>();
@@ -164,8 +167,9 @@ export class OutputPacer {
   /**
    * How a synchronized update holds the terminal's paint. wterm holds one for a second and then draws it, partly
    * written, on a page too slow to take it in (#2040); this holds it while its bytes keep coming, each within
-   * {@link SYNCHRONIZED_UNPACED_MS} of the last. Over a link whose round trip nears that, a redraw spanning several credit
-   * windows can still be let go between two of them (#2306).
+   * max({@link SYNCHRONIZED_UNPACED_MS}, 1.5 x SRTT + 50) ms of the last: over a link whose round trip nears a second,
+   * a redraw spanning several credit windows waits a round trip for each, and is not let go between two of them
+   * (#2306). The floor keeps an update left open on a fast link drawn a second after its last bytes (#853).
    */
   holdSynchronized(hold: (held: boolean) => void): void {
     this.#holdSynchronized = hold;
@@ -231,6 +235,7 @@ export class OutputPacer {
    */
   replay(options: ReplayOptions): void {
     if (this.#replay !== null) this.#endReplay();
+    this.#srtt = options.srtt;
     const replay: Replay = {
       options,
       written: 0,
@@ -276,7 +281,7 @@ export class OutputPacer {
   #heldQuietFrom(held: { quiet: () => void }): void {
     held.quiet();
     held.quiet = this.#onTime(
-      SYNCHRONIZED_UNPACED_MS,
+      Math.max(SYNCHRONIZED_UNPACED_MS, 1.5 * (this.#srtt() ?? 0) + 50),
       () => this.#endHeld(),
       () => this.#heldQuietFrom(held),
     );
