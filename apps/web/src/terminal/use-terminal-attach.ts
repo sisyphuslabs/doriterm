@@ -303,7 +303,9 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           const end = terminalEnd(close);
           onEndNow.current?.(address, end);
           if (end === "lost") settle(null);
-          if (end === "dropped") fail(close.error ?? new HcConnectionClosedError("The connection dropped."));
+          // Whatever closed the connection, the stream is not refused: the next connection re-attaches it, so the loss
+          // stays transient (#2224). Why the connection closed is the workspace's to show.
+          if (end === "dropped") fail(new HcConnectionClosedError("The connection dropped.", { cause: close.error }));
         });
         for (const data of pending.current.splice(0)) attached.write(data);
         focusWhenFree(ready);

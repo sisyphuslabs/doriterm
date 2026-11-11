@@ -1,4 +1,5 @@
 import { HcConnectionClosedError, HcHandshakeTimeoutError, HcProtocolError, HcTimeoutError } from "@doriface/client";
+import { SecureLinkError } from "@doriface/crypto";
 import { HcRpcError } from "@doriface/protocol";
 import { RelayCloseError } from "@doriface/relay-client";
 import { LinkCloseError } from "../connection/ws-link.ts";
@@ -6,6 +7,11 @@ import { afterEach, expect, jest, test } from "bun:test";
 import { AttachRecovery, TerminalStreamLostError, transientAttachFailure } from "./attach-recovery.ts";
 
 const rpc = (kind: string, message = kind): HcRpcError => new HcRpcError({ code: -32000, message, data: { kind } });
+/** What a relayed stream's close carries when the relay socket drops: the secured link's error over the relay's. */
+const relayBlip = (): SecureLinkError =>
+  new SecureLinkError(1011, "relay socket closed with 1011: relay blip", {
+    cause: new RelayCloseError(1011, "relay blip"),
+  });
 afterEach(() => jest.useRealTimers());
 
 test.each([
@@ -17,6 +23,11 @@ test.each([
   [new LinkCloseError(1006, ""), true],
   [new RelayCloseError(4404, "host offline"), true],
   [new RelayCloseError(4408, "deadline"), true],
+  [relayBlip(), true],
+  [new SecureLinkError(1006, "link closed during the handshake"), true],
+  [new SecureLinkError(4400, "crypto failure"), false],
+  [new SecureLinkError(4401, "unknown device"), false],
+  [new SecureLinkError(undefined, "closed"), false],
   [new LinkCloseError(4401, "unknown device"), false],
   [new RelayCloseError(4403, "auth refused"), false],
   [new RelayCloseError(4402, "invalid frame"), false],
@@ -63,6 +74,31 @@ test("a transient failure gets three bounded, jittered retries and then stays fa
   }
   jest.advanceTimersByTime(60_000);
   expect(calls).toBe(3);
+});
+
+test("a relayed stream lost again and again re-attaches with no interaction, at most twice in its first second and three times in all (#2224)", () => {
+  jest.useFakeTimers();
+  let attaches = 0;
+  const recovery = new AttachRecovery(
+    () => {
+      if (!recovery.begin()) return;
+      attaches += 1;
+      // Each re-attach opens, and the relay drops it again at once.
+      recovery.succeeded();
+      recovery.failed(relayBlip());
+    },
+    () => {},
+  );
+  recovery.begin();
+  recovery.succeeded();
+  recovery.failed(relayBlip());
+  // Retries are due 250 and 500 ms (each +-20%) apart: two land within the first second, the third no sooner than 1.4 s.
+  jest.advanceTimersByTime(1_000);
+  expect(attaches).toBe(2);
+  // A stream that never stays up for 10 s keeps one budget: three attempts, then Try again.
+  jest.advanceTimersByTime(60_000);
+  expect(attaches).toBe(3);
+  expect(recovery.state).toMatchObject({ phase: "failed", transient: true });
 });
 
 test("interaction advances a waiting tick once, never overlaps the in-flight attach", () => {

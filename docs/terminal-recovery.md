@@ -12,8 +12,9 @@ unavailable, unreachable, timeout and connection_closed RPC kinds. Older cores' 
 stable missing targets and unknown errors are not retried automatically. The existing terminal lifecycle read
 still distinguishes a terminal that ended from one whose stream ended.
 WebSocket/relay closure codes 1001, 1005, 1006, 1011, 1012, 1013, 4404, 4408, 4409 and 4412 are transient;
-authentication and invalid-frame codes are terminal. A relay's 4404 means its host is currently offline, not
-a stable fact that the machine does not exist.
+authentication and invalid-frame codes are terminal. A secured link's error carries its transport's close code and is
+judged by it. A relay's 4404 means its host is currently offline, not a stable fact that the machine does not exist.
+A stream that ended because its connection dropped is always transient: the next connection re-attaches it.
 
 Pressing into the pane, keys, paste, wheel or touch scrolling inside it and a pane becoming visible advance its
 pending retry. Focus and scroll events alone do not: the view focuses and scrolls the pane itself. An attempt that

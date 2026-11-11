@@ -5,6 +5,7 @@ import {
   HcTimeoutError,
   LinkClosedError,
 } from "@doriface/client";
+import { SecureLinkError } from "@doriface/crypto";
 import { HcRpcError } from "@doriface/protocol";
 import { RelayCloseError } from "@doriface/relay-client";
 import { LinkCloseError } from "../connection/ws-link.ts";
@@ -13,6 +14,10 @@ import { recordRecovery } from "./recovery-metrics.ts";
 
 /** A stream ended without the program ending; reattaching is safe, rerunning the program is not. */
 export class TerminalStreamLostError extends Error {}
+
+const TRANSIENT_CLOSE_CODES: ReadonlySet<number> = new Set([
+  1001, 1005, 1006, 1011, 1012, 1013, 4404, 4408, 4409, 4412,
+]);
 
 /** Unknown failures stay visible. Only evidence of an interrupted connection earns an automatic retry. */
 export function transientAttachFailure(cause: unknown): boolean {
@@ -26,8 +31,9 @@ export function transientAttachFailure(cause: unknown): boolean {
     cause instanceof TerminalStreamLostError
   )
     return true;
-  if (cause instanceof LinkCloseError || cause instanceof RelayCloseError)
-    return [1001, 1005, 1006, 1011, 1012, 1013, 4404, 4408, 4409, 4412].includes(cause.code);
+  if (cause instanceof LinkCloseError || cause instanceof RelayCloseError) return TRANSIENT_CLOSE_CODES.has(cause.code);
+  // A secured link (relay or direct) reports its transport's close as a SecureLinkError carrying the same code (#2224).
+  if (cause instanceof SecureLinkError) return cause.code !== undefined && TRANSIENT_CLOSE_CODES.has(cause.code);
   if (!(cause instanceof HcRpcError)) return false;
   return (
     ["unavailable", "unreachable", "timeout", "connection_closed"].includes(cause.kind) ||
