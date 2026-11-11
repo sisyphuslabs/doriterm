@@ -211,4 +211,58 @@ test.describe("Settings across the md breakpoint, and its zoom keys (#859)", () 
     await page.keyboard.press("Escape");
     await expect(recorder).toHaveCount(0);
   });
+
+  test("a resize between dialog and sheet keeps the reader's place in the settings body (#1161)", async ({ page }) => {
+    await page.goto("/settings#terminal");
+    await expect(settingsDialog(page)).toBeVisible({ timeout: 15_000 });
+    const body = page.locator('[data-slot="settings-body"]');
+    await expect.poll(() => body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+    await body.evaluate((el) => {
+      el.scrollTop = 600;
+    });
+    await expect.poll(() => body.evaluate((el) => el.scrollTop)).toBe(600);
+
+    await page.setViewportSize({ width: 700, height: 800 });
+    await expect(settingsSheet(page)).toBeVisible();
+    // The frame moves, and the reader stays where they were reading rather than at the first row of the section.
+    await expect.poll(() => body.evaluate((el) => el.scrollTop)).toBe(600);
+  });
+
+  test("a resize between dialog and sheet does not save a half-typed connection address (#1160)", async ({ page }) => {
+    await page.goto("/settings");
+    await expect(settingsDialog(page)).toBeVisible({ timeout: 15_000 });
+    // The fixture's loopback link gives a release build the Gateway field, as on a developer's own machine.
+    const gateway = page.getByRole("textbox", { name: "Gateway", exact: true });
+    await expect(gateway).toBeVisible();
+    const saved = (): Promise<string> =>
+      page.evaluate(() => JSON.parse(localStorage.getItem("doriface.connection") ?? "null").loopbackUrl as string);
+    const before = await saved();
+    await gateway.fill("ws://127.0.0.1:1/half-typed");
+    await expect(gateway).toBeFocused();
+
+    await page.setViewportSize({ width: 700, height: 800 });
+    await expect(settingsSheet(page)).toBeVisible();
+    // Focus comes back to the field, and the draft stays in it: the move saves nothing the reader is still typing. These
+    // two cases guard #1160; neither engine delivers a blur to the field's handler while its frame is out of the page.
+    await expect(gateway).toBeFocused();
+    await expect(gateway).toHaveValue("ws://127.0.0.1:1/half-typed");
+    await expect.poll(saved).toBe(before);
+  });
+
+  test("a resize between dialog and sheet does not save a half-typed terminal value (#1160)", async ({ page }) => {
+    await page.goto("/settings#terminal");
+    await expect(settingsDialog(page)).toBeVisible({ timeout: 15_000 });
+    const field = page.getByRole("textbox", { name: "adjust-cell-height" });
+    // Committing shows the row's Reset button; a draft still being typed leaves it hidden.
+    const reset = page.locator('button[aria-label="Reset adjust-cell-height"]');
+    await field.fill("4");
+    await expect(field).toBeFocused();
+    await expect(reset).toBeHidden();
+
+    await page.setViewportSize({ width: 700, height: 800 });
+    await expect(settingsSheet(page)).toBeVisible();
+    await expect(field).toBeFocused();
+    await expect(field).toHaveValue("4");
+    await expect(reset).toBeHidden();
+  });
 });

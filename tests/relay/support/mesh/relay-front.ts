@@ -30,8 +30,8 @@ export interface MeshRelay {
   provenAt(): readonly number[];
   stop(): Promise<void>;
   /**
-   * Restarts the relay in place: same port, same persisted Durable Object state (design E-RELAY, E-IP). Resolves once
-   * the relay answers `GET /healthz` again, the moment a recovery bound counts from.
+   * Restarts the relay behind its held front: same public port and persisted Durable Object state (design E-RELAY,
+   * E-IP). Resolves once the relay answers `GET /healthz` again, the moment a recovery bound counts from.
    */
   restart(): Promise<void>;
 }
@@ -58,13 +58,6 @@ async function answers(url: string): Promise<void> {
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 
-function freePort(): number {
-  const listener = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
-  const { port } = listener;
-  listener.stop(true);
-  return port;
-}
-
 /**
  * The pinned relay's own wrangler config without its production route. With a route, wrangler rewrites every request
  * URL to it, and the origin a host signs over (the tap's) would never match what the relay computes.
@@ -84,7 +77,10 @@ export async function startMeshRelay(): Promise<MeshRelay> {
   const scratch = mkdtempSync(join(tmpdir(), "mrelay-"));
   const config = join(scratch, "wrangler.json");
   writeFileSync(config, routeFreeConfig(dir));
-  const port = freePort();
+  // Keep the public socket bound through restarts. Every workerd launch gets its port from the kernel, rather than
+  // racing another process between a free-port probe and wrangler's eventual bind (#1015).
+  let upstreamPort = 0;
+  const front = makeTap(() => upstreamPort);
   let output = "";
   let scanned = 0;
   const provenAt: number[] = [];
@@ -104,9 +100,9 @@ export async function startMeshRelay(): Promise<MeshRelay> {
         "--ip",
         "127.0.0.1",
         "--port",
-        String(port),
+        "0",
         "--inspector-port",
-        String(freePort()),
+        "0",
         "--persist-to",
         join(scratch, "state"),
       ],
@@ -148,7 +144,7 @@ export async function startMeshRelay(): Promise<MeshRelay> {
     return { proc, drained, ready: ready.promise };
   };
   let current = launch();
-  const taps: Tap[] = [];
+  const taps: Tap[] = [front];
   const ip = testIp();
   const stop = async (): Promise<void> => {
     for (const tap of taps) tap.stop();
@@ -159,9 +155,9 @@ export async function startMeshRelay(): Promise<MeshRelay> {
     }
   };
   try {
-    const url = await current.ready;
+    upstreamPort = Number(new URL(await current.ready).port);
     return {
-      url,
+      url: front.url,
       ip,
       get pid() {
         return current.proc.pid;
@@ -170,12 +166,14 @@ export async function startMeshRelay(): Promise<MeshRelay> {
       provenAt: () => provenAt,
       stop,
       async restart() {
+        upstreamPort = 0;
         await stopLaunch(current);
         current = launch();
-        await answers(await current.ready);
+        upstreamPort = Number(new URL(await current.ready).port);
+        await answers(front.url);
       },
       tapFor() {
-        const tap = makeTap(port, ip);
+        const tap = makeTap(front.port, ip);
         taps.push(tap);
         return tap;
       },
