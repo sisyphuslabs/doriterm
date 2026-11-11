@@ -260,7 +260,7 @@ function Answers({
               value={text}
               disabled={busy}
               onChange={(event) => setText(event.target.value)}
-              className="h-(--control-sm) text-sm"
+              className="h-(--control-sm) min-w-0 flex-1 basis-0 text-sm"
             />
             <Button type="submit" variant="primary" size="sm" loading={pressing(option)} disabled={busy}>
               <Send aria-hidden />
