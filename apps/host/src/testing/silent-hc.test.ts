@@ -18,6 +18,8 @@ import { STARTED_FIFO, silentHc } from "./silent-hc.ts";
 const READ_SYSCALL: Readonly<Partial<Record<string, string>>> = { x64: "0", arm64: "63" };
 const readSyscall = process.platform === "linux" ? READ_SYSCALL[process.arch] : undefined;
 const PARK_DEADLINE_MS = 5_000;
+/** Past the park deadline, so a read that never parks fails with the sampler's message, not bun's test timeout (#1312). */
+const PARK_TEST_TIMEOUT_MS = 3 * PARK_DEADLINE_MS;
 
 /** What a connect starting now meets on the FIFO: a reader, or ENXIO when no read is left on it. */
 function lateConnect(fifo: string): string {
@@ -65,13 +67,14 @@ describe("the silent hc's FIFO (#1146)", () => {
         await untilReadParked(fifo);
         await silent.close();
         // A read still parked there holds the FIFO open, and a signal that wakes it retries it on a fd number that is
-        // closed or another file's: the EBADF between tests of #1146.
-        expect(readParkedOn(fifo)).toBe(false);
+        // closed or another file's: the EBADF between tests of #1146. A writer opening now meets no reader. (Sampling
+        // /proc here proves nothing: close has closed the fd, so its link no longer names the FIFO either way, #1313.)
         expect(lateConnect(fifo)).toBe("ENXIO");
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
     },
+    PARK_TEST_TIMEOUT_MS,
   );
 
   test("a second close resolves, and writes nothing to the fd the first one closed", async () => {
