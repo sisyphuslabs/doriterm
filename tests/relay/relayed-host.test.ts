@@ -185,6 +185,13 @@ describe("startRelayedHost", () => {
       env: {},
       settled: "interrupted",
     },
+    {
+      // The relay start finishes on the SIGTERM itself, once start-up has already ended as interrupted (#2232).
+      stage: "relay-late",
+      title: "a relay whose start finishes after a SIGTERM is stopped, and start-up ends as interrupted (#2232)",
+      env: {},
+      settled: "interrupted",
+    },
   ];
   for (const { stage, title, env, settled } of startupCases) {
     test(
@@ -205,6 +212,7 @@ describe("startRelayedHost", () => {
                 STAGE: stage,
                 SETTLED_FILE: settledFile,
                 PAIR_MARK: join(out, "pair-held"),
+                LATE_MARK: join(out, "late-stopped"),
               },
               stdin: "pipe",
               stdout: "pipe",
@@ -221,6 +229,7 @@ describe("startRelayedHost", () => {
           await fixture.stdin.flush();
           await fixture.exited;
           expect(existsSync(settledFile) ? readFileSync(settledFile, "utf8") : "never settled").toContain(settled);
+          if (stage === "relay-late") expect(existsSync(join(out, "late-stopped"))).toBe(true);
           expect(await stopLeftUnder(tmp)).toEqual([]);
           expect(await liveWithEnvironment(`TMPDIR=${tmp}`)).toEqual([]);
           expect(readdirSync(tmp).filter((name) => name.startsWith("rh-") || name.startsWith("dh-"))).toEqual([]);

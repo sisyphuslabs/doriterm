@@ -1,6 +1,7 @@
 import { existsSync, watch, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { createInterface } from "node:readline";
+import type { LocalRelay } from "../support/relay-dev.ts";
 import { startRelayedHost } from "../support/relayed-host.ts";
 
 // Not a *.test.ts: relayed-host.test.ts runs it with bun. It starts a relayed host, holds start-up once the part named
@@ -39,6 +40,21 @@ try {
           startRelay: () => {
             process.stdout.write("STAGE relay-start\n");
             return new Promise<never>(() => {});
+          },
+        }
+      : {}),
+    // STAGE=relay-late: a relay start that finishes on the SIGTERM itself, after start-up has seen the interrupt; the
+    // relay it hands over records its stop in LATE_MARK (#2232).
+    ...(stage === "relay-late"
+      ? {
+          startRelay: () => {
+            process.stdout.write("STAGE relay-late\n");
+            const late: LocalRelay = {
+              url: "http://127.0.0.1:9",
+              output: () => "",
+              stop: async () => writeFileSync(process.env["LATE_MARK"] ?? "", "stopped"),
+            };
+            return new Promise<LocalRelay>((resolve) => process.once("SIGTERM", () => resolve(late)));
           },
         }
       : {}),
