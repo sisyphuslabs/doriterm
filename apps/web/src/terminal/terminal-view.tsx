@@ -241,13 +241,13 @@ export function TerminalView(props: TerminalViewProps) {
     onStream: streamStarted,
     holdPaint,
   });
-  // An open that failed while the machine was offline is tried again, as Try again would, once the machine is back.
+  // An open that failed as the machine went offline is a wait, not a failure: it is cleared as soon as the machine reads
+  // offline, so the view stays mounted and its attach effect opens it once the machine is back. Clearing it only on the
+  // return would show the failure for one render and remount the view (#2003).
   const { unopened, clearUnopened } = attachment;
   useEffect(() => {
-    if (!reachable || unopened === null) return;
-    setWt(null);
-    clearUnopened();
-  }, [reachable]);
+    if (!reachable && unopened !== null) clearUnopened();
+  }, [reachable, unopened, clearUnopened]);
 
   if (error !== null) return <p className="p-4 text-prose text-destructive">{error}</p>;
   if (attachment.restarting) {
