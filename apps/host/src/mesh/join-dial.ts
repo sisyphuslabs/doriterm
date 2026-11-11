@@ -66,6 +66,9 @@ interface Inviter {
   readonly pairSlot?: string;
 }
 
+/** Added to a join's failure once the join withdrew this host's own mesh offer, so its caller knows the offer is gone. */
+export const OFFER_WITHDRAWN = "This host's own mesh invite was withdrawn for this join: run mesh pair to open a new one";
+
 const joinTargetOf = (target: ConnectTarget): JoinTarget =>
   target.kind === "link" ? { kind: "link", mesh: target.link.mesh === true } : { kind: target.kind };
 

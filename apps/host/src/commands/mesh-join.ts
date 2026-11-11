@@ -36,6 +36,10 @@ export const MESH_JOIN_USAGE = `usage: doriface-host mesh pair [--auto] [--no-qr
   --from-file <file> mesh join: read the link or code from <file>, so it is never on the command line where other
                      local users can read it`;
 
+/** What `mesh join` says when the join withdrew this host's own open mesh invite (#2117). */
+export const OFFER_WITHDRAWN_NOTICE =
+  "withdrew this host's own open mesh invite: a host cannot invite into its mesh while it joins another\n";
+
 /** The link or code to join: the argument, or the first line of `--from-file`, never both (#821). */
 export function joinTargetOf(positional: string | undefined, fromFile: string | undefined): string {
   if (positional !== undefined && fromFile !== undefined) {
