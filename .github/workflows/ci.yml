@@ -5,6 +5,8 @@ on:
     branches: [dev]
   pull_request:
   merge_group:
+  # A maintainer runs the platform jobs at a pull request's head on demand (#1886); nothing else changes.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -99,7 +101,7 @@ jobs:
   install-macos:
     # The same on a Mac, with a LaunchAgent. Like the other macOS job it runs after the merge, on the push to dev.
     name: Install (macOS)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/dev') || github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
@@ -401,7 +403,7 @@ jobs:
     # After the merge, like the other platform jobs: the Android app (#704) builds from the web build, and its JVM tests
     # open the host's own push bodies (RFC 8291) with the app's decrypting code.
     name: Android
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/dev') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -427,7 +429,7 @@ jobs:
     # After the merge, like the other platform jobs: the iOS app (#704) and its Notification Service Extension build for
     # the simulator, unsigned.
     name: iOS
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/dev') || github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     timeout-minutes: 30
     steps:
@@ -450,7 +452,7 @@ jobs:
   desktop:
     # After the merge, not on the pull request: nothing here can hold a pull request before it lands.
     name: Desktop
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/dev') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -504,7 +506,7 @@ jobs:
     # and pairing-link specs take their Command branch only on a Mac (#609). Like the other platform jobs it runs after
     # the merge, on the push to dev, and never on a pull request.
     name: Desktop (macOS)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/dev') || github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     timeout-minutes: 25
     steps:
@@ -627,7 +629,7 @@ jobs:
     # real-ACL suite and the compiled host, so bun:ffi is proven in the packaged binary too.
     name: Windows private state (${{ matrix.arch }})
     # After the merge, not on the pull request, like the rest of the platform jobs.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/dev') || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
