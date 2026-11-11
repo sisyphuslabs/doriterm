@@ -67,7 +67,7 @@ test("the default bar opens on the same three keys on either host: no gap where 
   expect(defaultRowOn("other").slice(0, 3)).toEqual(["Control", "Shift", "Tab"]);
 });
 
-test("the default bar is the modifiers through ^C and Return (#1551), the arrows, then the keys behind the old swipe", () => {
+test("the default bar is the modifiers through ^C and Enter (#1551), the arrows, then the keys behind the old swipe", () => {
   expect(DEFAULT_KEY_IDS).toEqual([
     "ctrl",
     "cmd",

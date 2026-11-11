@@ -34,6 +34,16 @@ test.describe("Settings, Machines", () => {
     await expect(added).toContainText("Connected", { timeout: STATE_BOUND_MS });
   });
 
+  test("connecting a machine is part of Machines, and an older link to it lands there", async ({ page }) => {
+    await page.goto("/settings#pair");
+    const nav = page.getByRole("navigation", { name: "Settings" });
+    await expect(nav.getByRole("button", { name: "Machines" })).toHaveAttribute("aria-current", "page");
+    await expect(nav.getByRole("button", { name: "Connect a machine" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Connect a machine", level: 2 })).toBeInViewport();
+    await expect(page.getByText("Open an invite on your host")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "In your mesh", level: 2 })).toBeVisible();
+  });
+
   test.describe("on a phone", () => {
     test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
@@ -48,12 +58,26 @@ test.describe("Settings, Machines", () => {
       // The list leads: its heading sits in the screen's top third, not under a screenful of explanation.
       const heading = await page.getByRole("heading", { name: "Machines", level: 2 }).boundingBox();
       expect(heading?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(viewport.height / 3);
-      for (const target of [list.getByRole("listitem").first(), page.getByRole("button", { name: "Add a machine" })]) {
+      const add = page.getByRole("button", { name: "Add a machine" });
+      for (const target of [list.getByRole("listitem").first(), add]) {
         // oxlint-disable-next-line no-await-in-loop -- each target is measured on the same settled screen
         const box = await target.boundingBox();
         expect(box, "drawn").not.toBeNull();
         expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(viewport.height);
       }
+      // The explanation of a row's state comes after them: its top edge is at or below the button's bottom edge.
+      const button = await add.boundingBox();
+      const glossary = await page.getByText("A machine that answers reads Connected").boundingBox();
+      expect(button, "button drawn").not.toBeNull();
+      expect(glossary, "explanation drawn").not.toBeNull();
+      expect(glossary?.y ?? Number.NEGATIVE_INFINITY).toBeGreaterThanOrEqual((button?.y ?? 0) + (button?.height ?? 0));
+    });
+
+    test("the join page's Connect a machine opens Machines on that group", async ({ page }) => {
+      await page.goto("/settings#connect");
+      await expect(page.getByRole("tab", { name: "Machines" })).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByRole("tab", { name: "Connect a machine" })).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: "Connect a machine", level: 2 })).toBeInViewport();
     });
   });
 });

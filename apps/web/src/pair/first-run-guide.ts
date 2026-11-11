@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { guardedLocalStorage, type StorageLike } from "../storage/guarded.ts";
+import { type MachineIds, tabAddress, tabKey } from "../workspace/tab-keys.ts";
 
 /**
  * The first run on a newly paired device (#668): pair, then start or pick an agent, then see it in the agents list.
@@ -12,12 +13,17 @@ export interface GuideState {
   readonly status: GuideStatus;
   /** This device started a terminal, or opened one from the agents list, since the guide started. */
   readonly opened: boolean;
-  /** The terminal it last started or opened; null before that, or in a record an app before #834 saved. */
-  readonly address: string | null;
+  /**
+   * The terminal it last started or opened, by its tab key (`tab-keys.ts`): its machine's permanent id rather than its name,
+   * so a rename before the list shows it still finds it (#1198). Null before that, or in a record an app before #834 saved.
+   */
+  readonly key: string | null;
 }
 
+const NO_IDS: MachineIds = { byName: new Map(), byId: new Map() };
+
 export const GUIDE_KEY = "doriface.firstRunGuide";
-const OFF: GuideState = { status: "off", opened: false, address: null };
+const OFF: GuideState = { status: "off", opened: false, key: null };
 const STATUSES: readonly GuideStatus[] = ["off", "active", "skipped", "done"];
 
 export function loadGuide(storage: Pick<StorageLike, "getItem"> = guardedLocalStorage()): GuideState {
@@ -30,11 +36,12 @@ export function loadGuide(storage: Pick<StorageLike, "getItem"> = guardedLocalSt
   if (typeof parsed !== "object" || parsed === null) return OFF;
   const status: unknown = Reflect.get(parsed, "status");
   const opened: unknown = Reflect.get(parsed, "opened");
+  const key: unknown = Reflect.get(parsed, "key");
+  // A record an app before #1198 saved names the terminal by its address: kept as the name-based key that address has.
   const address: unknown = Reflect.get(parsed, "address");
   const known = STATUSES.find((entry) => entry === status);
-  return known === undefined
-    ? OFF
-    : { status: known, opened: opened === true, address: typeof address === "string" ? address : null };
+  const remembered = typeof key === "string" ? key : typeof address === "string" ? tabKey(address, NO_IDS) : null;
+  return known === undefined ? OFF : { status: known, opened: opened === true, key: remembered };
 }
 
 export class GuideStore {
@@ -60,13 +67,13 @@ export class GuideStore {
 
   /** A pairing finished on this device, or Settings reopened the guide: every step after pairing starts over. */
   start(): void {
-    this.#set({ status: "active", opened: false, address: null });
+    this.#set({ status: "active", opened: false, key: null });
   }
 
-  /** This device started or opened the terminal at `address`; counts only while the guide runs. */
-  opened(address: string): void {
-    if (this.#value.status === "active" && this.#value.address !== address)
-      this.#set({ ...this.#value, opened: true, address });
+  /** This device started or opened the terminal at `address` (`ids`: the machines as now named); counts only while the guide runs. */
+  opened(address: string, ids: MachineIds): void {
+    const key = tabKey(address, ids);
+    if (this.#value.status === "active" && this.#value.key !== key) this.#set({ ...this.#value, opened: true, key });
   }
 
   skip(): void {
@@ -103,13 +110,16 @@ export interface GuideFacts {
   readonly listVisible: boolean;
   /** The addresses of the live terminals the list holds. */
   readonly live: readonly string[];
+  /** The machines as now named, to find the remembered terminal at its address today. */
+  readonly ids: MachineIds;
 }
 
 /** The three steps in order, each done by its own event; the first one not done is current. */
 export function guideSteps(state: GuideState, facts: GuideFacts): readonly GuideStep[] {
   // The list step is about the terminal this device opened, not any live one the host already had (#834). A record
   // from before #834 names none, so for it any live terminal still counts.
-  const listed = state.address === null ? facts.live.length > 0 : facts.live.includes(state.address);
+  const address = state.key === null ? undefined : tabAddress(state.key, facts.ids);
+  const listed = state.key === null ? facts.live.length > 0 : address !== undefined && facts.live.includes(address);
   const done = [true, state.opened, state.opened && facts.listVisible && listed];
   const current = done.indexOf(false);
   const labels = [

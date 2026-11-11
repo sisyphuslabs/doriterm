@@ -2,7 +2,7 @@ import type { HcConnection } from "@doriface/client";
 import { IconButton, ScrollArea, StatusBar, StatusBarItem } from "@doriface/ui";
 import { Link } from "@tanstack/react-router";
 import { Monitor, Plus, Search, Settings } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import { connectionStore } from "../connection/store.ts";
 import { NEW_TAB } from "../keys/actions.ts";
 import { AgentLists } from "./agent-lists.tsx";
@@ -22,10 +22,13 @@ import { PhoneTerminal } from "./phone-terminal.tsx";
 import { RovingLists } from "./roving-lists.tsx";
 import { usePhoneActions, type SessionVerb } from "./use-app-actions.ts";
 import { useMachinesContext } from "./use-machines.ts";
+import type { MachineIds } from "./tab-keys.ts";
 
 export interface PhoneShellProps {
   readonly connection: HcConnection;
   readonly terminals: readonly Session[];
+  /** The machines as now named, so the first-run guide finds its terminal after a rename (#1198). */
+  readonly ids: MachineIds;
   readonly open: string | null;
   /**
    * The space whose screen shows under the open terminal, or on its own when none is open; "loading" while the space the
@@ -56,23 +59,13 @@ export interface PhoneShellProps {
 /** Phones: the agents list first; a space opens its own screen, and a terminal shows full screen with extra keys. */
 export function PhoneShell(props: PhoneShellProps) {
   const { connection, terminals, open, space, panes, tabTitle, onOpen, onBack, onNew, onNewInSpace, onPalette } = props;
-  const { onSession, onSpaceBack, onCloseTab, pushed, backTo } = props;
+  const { onSession, onSpaceBack, onCloseTab, pushed, backTo, ids } = props;
   // The open terminal registers its dictation here, so the palette and a bound key reach it from this shell's handler.
   const dictate = useRef<(() => void) | null>(null);
   usePhoneActions(onNew, onSession, () => (dictate.current === null ? false : (dictate.current(), true)));
   const machines = useMachinesContext();
   const update = usePendingUpdate();
   const terminal = terminals.find((entry) => entry.address === open);
-  // A session picked from the keys bar is the person asking for its keyboard: its view takes the keyboard as it opens.
-  // The ask is answered once that keyboard is up, and it ends when the session is left by any route (the app's Back, the
-  // system Back, the tabs bar, the list), so a later reopen or re-attach of that session raises nothing (#1375).
-  const [picked, setPicked] = useState<string | null>(null);
-  const shown = terminal?.address ?? null;
-  const lastShown = useRef(shown);
-  useEffect(() => {
-    if (shown !== lastShown.current && shown !== picked) setPicked(null);
-    lastShown.current = shown;
-  }, [shown, picked]);
   // An unanswered list is not an empty one: the empty state waits for the core's first answer (#797).
   const live = machines.terminalsLoaded
     ? terminals.filter((entry) => entry.state === "live").map((entry) => entry.address)
@@ -134,7 +127,7 @@ export function PhoneShell(props: PhoneShellProps) {
         {/* The page's one main landmark: the list, under the header (#1378). */}
         <main className="flex min-h-0 flex-1 flex-col">
           <ScrollArea slot="agents-list" className="flex-1" viewportRef={listViewport}>
-            <FirstRunGuideCard listVisible live={live} onNew={onNew} />
+            <FirstRunGuideCard listVisible live={live} ids={ids} onNew={onNew} />
             {machines.terminalsLoaded ? (
               <>
                 {empty ? (
@@ -177,19 +170,10 @@ export function PhoneShell(props: PhoneShellProps) {
       tabTitle={tabTitle}
       backTo={backTo}
       onOpen={onOpen}
-      onBack={() => {
-        setPicked(null);
-        onBack();
-      }}
+      onBack={onBack}
       onCloseTab={onCloseTab}
       onNewInSpace={onNewInSpace}
       dictate={dictate}
-      claimed={picked === terminal.address}
-      onClaimed={() => setPicked(null)}
-      onPick={(address) => {
-        setPicked(address);
-        onOpen(address);
-      }}
     />
   );
 }

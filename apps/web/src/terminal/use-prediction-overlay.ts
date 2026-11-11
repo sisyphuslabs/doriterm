@@ -60,7 +60,7 @@ function predictionSpans(element: HTMLElement, placed: PlacedPrediction): HTMLEl
 
 /**
  * Draws a predictor's cells over the grid in a layer of their own (design D1), as `use-preedit.ts` draws a composition:
- * each predicted cell in its column and row of the active screen, underlined, a wide one over two cells at its fitted
+ * each predicted cell in its column and row of the active screen, underlined while the source flags them, a wide one over two cells at its fitted
  * size, and a predicted cursor after the last, while the real cursor is not drawn (`data-predicting`). The terminal is
  * only read: each draw checks the predictions against its cells and cursor (`drawnCells`). A change from the predictor
  * is painted at once, so an addition shows in the frame its key is typed in; a cell that leaves is painted away only
@@ -144,10 +144,13 @@ export function usePredictionOverlay(wt: WTerm | null, source: OverlaySource | n
       const cols = bridge.getCols();
       const placed = placeCells(painted, { left, top, cell, row: origin.height, cols }, bridge.getCursor().visible);
       const shape = grid.dataset["cursorShape"] ?? "block";
-      const key = JSON.stringify([placed, shape]);
+      const flagging = from.underlined?.() === true;
+      const key = JSON.stringify([placed, shape, flagging]);
       if (key !== drawn) {
         drawn = key;
         layer.dataset["cursorShape"] = shape;
+        if (flagging) layer.dataset["flagging"] = "";
+        else delete layer.dataset["flagging"];
         layer.replaceChildren(...predictionSpans(element, placed));
       }
       if (layer.parentElement !== element) element.appendChild(layer);

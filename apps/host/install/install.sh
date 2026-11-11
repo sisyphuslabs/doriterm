@@ -22,8 +22,11 @@ usage: install.sh [options]
   --version <vX.Y.Z>    the release to install (default: the one this script came with, else the latest)
   --web-origin <url>    the web app the pairing QR code and link open (default: the Doriterm desktop app's link)
   --join <link>         join the mesh of the host that made this link (the app's Add a machine command), instead
-                        of printing a pairing
+                        of printing a pairing; DORIFACE_JOIN=<link> does the same and keeps the link off this
+                        script's command line, where other local users can read it
   --bin-dir <dir>       where doriface-host goes (default ~/.local/bin)
+  --state-dir <dir>     the host's keys and paired devices (default: the one the installed service uses, else
+                        ~/.local/state/doriface-host); DORIFACE_HOST_STATE_DIR=<dir> does the same
   --from <url>          the release's download base, file:// included (default: the GitHub release)
   --no-service          install only; start doriface-host yourself
   --no-pair             skip printing the pairing QR code
@@ -45,13 +48,15 @@ from="${DORIFACE_RELEASE_BASE:-}"
 service=1
 pair=1
 uninstall=0
-join=""
+join="${DORIFACE_JOIN:-}"
+state_dir="${DORIFACE_HOST_STATE_DIR:-}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --version) [ $# -ge 2 ] || fail "--version wants a value"; version="$2"; shift 2 ;;
     --web-origin) [ $# -ge 2 ] || fail "--web-origin wants a URL"; web_origin="$2"; shift 2 ;;
     --bin-dir) [ $# -ge 2 ] || fail "--bin-dir wants a directory"; bin_dir="$2"; shift 2 ;;
+    --state-dir) [ $# -ge 2 ] || fail "--state-dir wants a directory"; state_dir="$2"; shift 2 ;;
     --from) [ $# -ge 2 ] || fail "--from wants a URL"; from="$2"; shift 2 ;;
     --join) [ $# -ge 2 ] || fail "--join wants a mesh link"; join="$2"; shift 2 ;;
     --no-service) service=0; shift ;;
@@ -79,11 +84,66 @@ asset="doriface-host-${os}-${arch}"
 host_bin="${bin_dir}/doriface-host"
 unit_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user"
 unit="${unit_dir}/doriface-host.service"
-# Named once and passed to the service and to every command below, so they all use the same keys and devices.
-state_dir="$(absolute "${DORIFACE_HOST_STATE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/doriface-host}")"
 plist="${HOME}/Library/LaunchAgents/${SERVICE_LABEL}.plist"
 
 have() { command -v "$1" >/dev/null 2>&1; }
+
+# The --state-dir the installed service runs with, as the unit or plist written below spells it, else nothing.
+installed_state_dir() {
+  if [ "$os" = linux ]; then
+    [ -f "$unit" ] || return 0
+    # The quoted word sd_exec wrote: \ escapes the next character, and %% and $$ stand for % and $.
+    awk '
+      /^ExecStart=/ {
+        i = index($0, " --state-dir")
+        if (i == 0) exit
+        s = substr($0, i + 12)
+        if (substr(s, 1, 1) == "=") s = substr(s, 2); else sub(/^[ \t]+/, "", s)
+        v = ""
+        if (substr(s, 1, 1) == "\"") {
+          s = substr(s, 2)
+          while (s != "" && substr(s, 1, 1) != "\"") {
+            if (substr(s, 1, 1) == "\\") s = substr(s, 2)
+            v = v substr(s, 1, 1)
+            s = substr(s, 2)
+          }
+        } else { v = s; sub(/[ \t].*/, "", v) }
+        gsub(/%%/, "%", v); gsub(/\$\$/, "$", v)
+        print v
+        exit
+      }' "$unit"
+  else
+    [ -f "$plist" ] || return 0
+    # The <string> after --state-dir in ProgramArguments; a plist saved in binary form is read through plutil.
+    { if have plutil; then plutil -convert xml1 -o - "$plist" 2>/dev/null || cat "$plist"; else cat "$plist"; fi; } | awk '
+      { doc = doc $0 "\n" }
+      END {
+        found = 0
+        while (!found && (i = index(doc, "<string>")) > 0) {
+          doc = substr(doc, i + 8)
+          j = index(doc, "</string>")
+          if (j == 0) break
+          v = substr(doc, 1, j - 1)
+          doc = substr(doc, j + 9)
+          if (want) found = 1
+          else if (substr(v, 1, 12) == "--state-dir=") { v = substr(v, 13); found = 1 }
+          else want = (v == "--state-dir")
+        }
+        if (!found) exit
+        gsub(/&lt;/, "<", v); gsub(/&gt;/, ">", v); gsub(/&quot;/, "\"", v); gsub(/&amp;/, "\\&", v)
+        print v
+      }'
+  fi
+}
+
+# Named once and passed to the service and to every command below, so they all use the same keys and devices. The
+# keys are this host's identity on the mesh, so running the installer again keeps the state dir the installed service
+# uses (#1966): only --state-dir or DORIFACE_HOST_STATE_DIR moves it, and only a fresh install takes the default.
+if [ -z "$state_dir" ]; then
+  state_dir="$(installed_state_dir)"
+  [ -z "$state_dir" ] || say "keeping the state dir the installed service uses: ${state_dir}"
+fi
+state_dir="$(absolute "${state_dir:-${XDG_STATE_HOME:-${HOME}/.local/state}/doriface-host}")"
 
 # systemd --user answers only inside a login session with a user manager (not in most containers).
 user_systemd() { have systemctl && systemctl --user show-environment >/dev/null 2>&1; }
@@ -169,8 +229,15 @@ else
   say "using herdr-core at ${hc_path} ($("$hc_path" --version 2>/dev/null || echo 'version unknown'))"
 fi
 
+# The link admits one machine into the mesh, so mesh join reads it from a file only this user can read, never from its
+# command line, where other local users can read it while it runs (#1201). The file is gone when the install exits.
+join_file() {
+  (umask 077 && printf '%s\n' "$join" >"${work}/join")
+  printf '%s' "${work}/join"
+}
+
 if [ "$service" -eq 0 ] && [ -n "$join" ]; then
-  "$host_bin" mesh join --yes --hc "$hc_path" --state-dir "$state_dir" "$join"
+  "$host_bin" mesh join --yes --hc "$hc_path" --state-dir "$state_dir" --from-file "$(join_file)"
   say "joined; start the host with: ${host_bin} --hc ${hc_path}"
   exit 0
 fi
@@ -253,12 +320,22 @@ EOF
     [ "$waited" -le 100 ] || fail "the old ${SERVICE_LABEL} did not unload within 10 s; see what holds it with: launchctl print gui/$(id -u)/${SERVICE_LABEL}"
     sleep 0.1
   done
-  launchctl bootstrap "gui/$(id -u)" "$plist"
+  # launchd can still refuse the new agent for a moment after the old one has left `print` (5, EIO), and an agent left
+  # booted out keeps this machine off the mesh until someone loads it by hand (#1966): the bootstrap is retried for
+  # 10 s, and the install fails, saying how to load it, unless the agent is loaded at the end.
+  tries=0
+  until launchctl bootstrap "gui/$(id -u)" "$plist" 2>"${work}/bootstrap"; do
+    tries=$((tries + 1))
+    [ "$tries" -lt 100 ] || fail "launchd did not load ${SERVICE_LABEL} ($(cat "${work}/bootstrap")); load it with: launchctl bootstrap gui/$(id -u) ${plist}"
+    sleep 0.1
+  done
+  launchctl print "gui/$(id -u)/${SERVICE_LABEL}" >/dev/null 2>&1 ||
+    fail "${SERVICE_LABEL} is not loaded after its bootstrap; load it with: launchctl bootstrap gui/$(id -u) ${plist}"
   say "doriface-host runs as the LaunchAgent ${SERVICE_LABEL} (logs: ~/Library/Logs/doriface-host.log)"
 fi
 
 if [ -n "$join" ]; then
-  "$host_bin" mesh join --wait-host 60 --yes --state-dir "$state_dir" "$join"
+  "$host_bin" mesh join --wait-host 60 --yes --state-dir "$state_dir" --from-file "$(join_file)"
   say "this machine joined the mesh; its terminals show in the app under its name"
 elif [ "$pair" -eq 1 ]; then
   echo
