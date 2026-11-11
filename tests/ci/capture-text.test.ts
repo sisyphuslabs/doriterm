@@ -221,10 +221,13 @@ describe.skipIf(tesseract === undefined)("the committed captures raise no false 
     "docs/design/app/pane-drop-1440-day.png",
   ].filter((path) => existsSync(join(REPO, path)));
 
-  test("every sampled capture passes, so a clean image is never blocked", () => {
+  // Read through the workflow's own captureText, which runs tesseract on one thread: with its default thread pool a
+  // capture took 2-34 s on a loaded host instead of 0.3 s, and the test ran out of its 5 s (#2012).
+  test("every sampled capture passes, so a clean image is never blocked", async () => {
     expect(samples.length).toBeGreaterThan(0);
     for (const sample of samples) {
-      const text = execFileSync(tesseract as string, [join(REPO, sample), "-"], { encoding: "utf8" });
+      // oxlint-disable-next-line no-await-in-loop -- one capture at a time, as the workflow's limit of one per core does
+      const text = await captureText(join(REPO, sample));
       expect({ sample, findings: classify(text).findings }).toEqual({ sample, findings: [] });
     }
   });
