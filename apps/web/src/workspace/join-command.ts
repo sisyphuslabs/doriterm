@@ -117,10 +117,12 @@ export function useJoinOffer(connection: HcConnection, open: boolean, client = f
     let reread: ReturnType<typeof setTimeout> | undefined;
     // The read after following again is what finds a join written while no feed was open: one that fails is tried
     // again on the same backoff, on the feed it has, until one is answered or the dialog closes.
-    const readAfterFollow = (attempt: number): void =>
+    const readAfterFollow = (attempt: number): void => {
       void read().catch(() => {
-        if (!closed) reread = setTimeout(() => readAfterFollow(attempt + 1), refollowMs(attempt + 1));
+        if (closed) return;
+        reread = setTimeout(() => readAfterFollow(attempt + 1), refollowMs(attempt + 1));
       });
+    };
     // A failed subscribe is tried again; a failed read after it is read again, without a new feed.
     const followAndRead = (): void =>
       void follow().then(

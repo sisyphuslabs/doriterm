@@ -49,6 +49,7 @@ type Fake = HcConnection & {
   subscribes: number;
   failing: number;
   failingReads: number;
+  reads: number;
   end: (reason: string) => void;
   open: () => number;
 };
@@ -59,6 +60,7 @@ const connectionTo = (): Fake => {
     subscribes: 0,
     failing: 0,
     failingReads: 0,
+    reads: 0,
     open: () => feeds.filter((each) => each.open).length,
     end: (reason: string) => {
       const newest = feeds.at(-1);
@@ -85,6 +87,7 @@ const connectionTo = (): Fake => {
     },
     call: async (method: string, params: { value?: { request: string } }) => {
       if (method === "doc.get") {
+        connection.reads += 1;
         if (connection.failingReads > 0) {
           connection.failingReads -= 1;
           throw new Error("doc.get failed");
@@ -216,4 +219,17 @@ test("a read that fails after following again is read again on the same feed, so
   await act(async () => jest.advanceTimersByTime(250));
   expect(shown).toEqual({ phase: "joined", name: "joiner" });
   expect(connection.subscribes).toBe(2);
+});
+
+test("a reread still waiting when the dialog closes never reads again (#1780)", async () => {
+  jest.useFakeTimers();
+  const connection = connectionTo();
+  await act(async () => root.render(<Dialog connection={connection} />));
+  connection.failingReads = 100;
+  await act(async () => connection.end("closed_by_core"));
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  const before = connection.reads;
+  await act(async () => jest.advanceTimersByTime(REFOLLOW_MAX_MS * 4));
+  expect(connection.reads).toBe(before);
 });
