@@ -49,7 +49,7 @@ function PaneButtons({
   const down = useActionKeys("pane.split:down");
   const zoom = useActionKeys("pane.zoom");
   const close = useActionKeys("pane.close");
-  const small = "size-6 [&_svg]:size-3.5";
+  const small = "size-6 [&_svg:not([data-slot=spinner])]:size-3.5";
   return (
     <span className="ml-auto flex shrink-0 items-center">
       <IconButton

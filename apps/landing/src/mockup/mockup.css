@@ -29,3 +29,11 @@ body,
   height: 100%;
   overflow: hidden;
 }
+
+/* The landing's motion toggle (frame-message.ts): an animation that appears while it is on starts paused, a spinner
+   mounted after a reload included; holdMotion pauses the ones already running. */
+[data-motion="paused"] *,
+[data-motion="paused"] *::before,
+[data-motion="paused"] *::after {
+  animation-play-state: paused !important;
+}

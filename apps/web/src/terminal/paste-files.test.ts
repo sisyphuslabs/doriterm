@@ -1,8 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 import { HcRpcError } from "@doriface/protocol";
 import {
   base64Of,
   choosePaste,
+  pasteClipboardImage,
   MAX_PUT_BYTES,
   putFiles,
   quotePaths,
@@ -11,6 +12,8 @@ import {
   sendable,
   type ToPng,
 } from "./paste-files.ts";
+import { inputOrder } from "./input-order.ts";
+import type { TerminalInput } from "./terminal-view-props.ts";
 
 const png = (name = "image.png", size = 4): File =>
   new File([new Uint8Array(size).fill(7)], name, { type: "image/png" });
@@ -206,4 +209,118 @@ test("readClipboardImage is null, so the key itself is sent, when reading the cl
     getType: () => Promise.reject(new DOMException("gone", "NotFoundError")),
   } as never;
   expect(await readClipboardImage({ read: reads([broken]) })).toBeNull();
+});
+
+/** A write the tests watch for, never one a program would see. */
+const MARK = "\u0000mark";
+
+/** Paste image on the terminal's ordered input path, the clipboard answering only once the test settles `clipboard`. */
+function pressed() {
+  const written: TerminalInput[] = [];
+  const pasted: File[] = [];
+  const waiting: boolean[] = [];
+  const outcome = Promise.withResolvers<void>();
+  let reached: (() => void) | undefined;
+  const order = inputOrder((data) => {
+    if (data === MARK) return reached?.();
+    written.push(data);
+    if (data === "\u0016") outcome.resolve();
+  });
+  /** Settles once everything sent before it has been written. */
+  const drained = (): Promise<void> => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    reached = resolve;
+    order.send(MARK);
+    return promise;
+  };
+  const clipboard = Promise.withResolvers<ClipboardItems>();
+  pasteClipboardImage(
+    { read: () => clipboard.promise },
+    {
+      later: order.later,
+      send: order.send,
+      pasteFiles: (files) => (pasted.push(...files), outcome.resolve()),
+      waiting: (now) => waiting.push(now),
+    },
+    1500,
+  );
+  return { order, drained, written, pasted, waiting, clipboard, outcome: outcome.promise };
+}
+
+describe("pasteClipboardImage: herdr-app's Ctrl+V, the clipboard's image or ^V, never stalling typing (#1989)", () => {
+  test("an image the clipboard gives after 5 s is pasted then, after the keys typed meanwhile, with no ^V", async () => {
+    jest.useFakeTimers();
+    try {
+      const press = pressed();
+      press.order.send("x");
+      expect(press.written).toEqual([]);
+      jest.advanceTimersByTime(1500);
+      await press.drained();
+      expect(press.written).toEqual(["x"]);
+      expect(press.waiting).toEqual([true]);
+      press.order.send("y");
+      jest.advanceTimersByTime(3500);
+      press.clipboard.resolve([item({ "image/png": png() })]);
+      await press.outcome;
+      expect(press.pasted.map((file) => file.type)).toEqual(["image/png"]);
+      expect(press.waiting).toEqual([true, false]);
+      await press.drained();
+      expect(press.written).toEqual(["x", "y"]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  const settles = [
+    [
+      "gives no image",
+      (clipboard: PromiseWithResolvers<ClipboardItems>) =>
+        clipboard.resolve([item({ "text/plain": new Blob(["hi"]) })]),
+    ],
+    [
+      "refuses",
+      (clipboard: PromiseWithResolvers<ClipboardItems>) =>
+        clipboard.reject(new DOMException("denied", "NotAllowedError")),
+    ],
+  ] as const;
+
+  test.each(settles)(
+    "a clipboard that %s after 5 s sends one ^V then, after the keys typed meanwhile",
+    async (_, settle) => {
+      jest.useFakeTimers();
+      try {
+        const press = pressed();
+        press.order.send("x");
+        jest.advanceTimersByTime(1500);
+        await press.drained();
+        expect(press.written).toEqual(["x"]);
+        jest.advanceTimersByTime(3500);
+        settle(press.clipboard);
+        await press.outcome;
+        press.order.send("y");
+        await press.drained();
+        expect(press.written).toEqual(["x", "\u0016", "y"]);
+        expect(press.pasted).toEqual([]);
+        expect(press.waiting).toEqual([true, false]);
+      } finally {
+        jest.useRealTimers();
+      }
+    },
+  );
+
+  test("a clipboard that answers in time holds the keys typed meanwhile behind its ^V, or lets them by for an image", async () => {
+    const empty = pressed();
+    empty.order.send("x");
+    empty.clipboard.resolve([]);
+    await empty.drained();
+    expect(empty.written).toEqual(["\u0016", "x"]);
+    expect(empty.waiting).toEqual([]);
+    const image = pressed();
+    image.order.send("x");
+    image.clipboard.resolve([item({ "image/png": png() })]);
+    await image.drained();
+    expect(image.written).toEqual(["x"]);
+    expect(image.pasted).toHaveLength(1);
+    expect(image.waiting).toEqual([]);
+  });
 });

@@ -59,8 +59,8 @@ export const ACTIONS: readonly ActionDef[] = [
   app("session.rename", "Rename session…"),
   app("session.end", "End session…"),
   app("space.rename", "Rename space…"),
-  // herdr-app's space chords: a number chord selects a space and the bracket pair cycles through them. A focused terminal
-  // program keeps the number chords (terminal-keeps.ts), which are Ctrl and a digit, its own control keys.
+  // herdr-app's space chords: a number chord selects a space and the bracket pair cycles through them, from a focused
+  // terminal too, as herdr-app's global bindings do (#1922).
   ...Array.from({ length: 9 }, (_, index) => app(`space.select:${index + 1}`, `Go to space ${index + 1}`)),
   app("space.next", "Next space"),
   app("space.prev", "Previous space"),
@@ -75,7 +75,8 @@ export const ACTIONS: readonly ActionDef[] = [
   app("app.zoom_reset", "Reset terminal text size", "reset_font_size"),
   term("terminal.copy", "Copy", "copy_to_clipboard"),
   term("terminal.paste", "Paste", "paste_from_clipboard"),
-  // herdr-app's terminal.paste_image, unbound here (#701): Ctrl+V keeps its own handling unless bound to it.
+  // herdr-app's terminal.paste_image, on a Mac's Ctrl+V: the clipboard's image as a file on the terminal's machine, else
+  // ^V (#1922). Elsewhere Ctrl+V stays the browser's paste, which sends an image as a file itself (#742).
   term("terminal.paste_image", "Paste image"),
   term("terminal.select_all", "Select all", "select_all"),
   term("terminal.clear", "Clear screen", "clear_screen"),

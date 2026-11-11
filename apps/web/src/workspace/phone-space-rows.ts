@@ -51,7 +51,14 @@ export function spaceTabRows(space: ListedSpace, terminals: readonly Session[], 
     if (lead === undefined) return [];
     const { detail: _where, machine: _machine, ...agent } = toAgent(lead, nowMs);
     const detail = shown.length > 1 ? `${shown.length} panes` : rowDetail(space.tabNames[at] ?? "", lead);
-    return [{ ...agent, name: tabLabel(space.tabNames[at] ?? "", lead), ...(detail === "" ? {} : { detail }) }];
+    return [
+      {
+        ...agent,
+        name: tabLabel(space.tabNames[at] ?? "", lead),
+        ...(detail === "" ? {} : { detail }),
+        ...(space.tabPins[at] === true ? { pinned: true } : {}),
+      },
+    ];
   });
 }
 

@@ -14,8 +14,11 @@ export function keysBottom(inset: number): string {
   return inset > 0 ? `${inset}px` : "var(--safe-bottom)";
 }
 
-/** The keys bar's own height (a 3.25rem pill and 0.25rem above and below it), which the terminal keeps clear. */
-export const KEYS_BAR_HEIGHT = "3.75rem";
+/**
+ * The keys bar's own height at rest, which the terminal keeps clear until the bar reports its drawn one: two 2.75rem rows
+ * with 0.25rem between them, the panel's 0.25rem padding and 1px border, and 0.25rem above and below it (#1551).
+ */
+export const KEYS_BAR_HEIGHT = "6.875rem";
 
 /** How far up from the terminal's bottom the round keyboard button reaches: its 3rem and the gap below it. */
 export const KEYBOARD_BUTTON_CLEARANCE = "calc(max(1rem, calc(var(--safe-bottom) + 0.5rem)) + 3rem)";
@@ -146,6 +149,9 @@ export function PhoneKeys(props: PhoneKeysProps) {
         {browsing ? null : (
           <KeyboardButton
             {...(onKeys === undefined ? {} : { label: "Show keys" })}
+            // The field is let go as the press lands, a task before the click asks for the keyboard: on iOS a field a
+            // tap focused, let go and taken back inside one click, raises nothing (#1940).
+            onPressStart={(button) => port.current?.letGo(button)}
             onPress={() => {
               onKeys?.(true);
               port.current?.focus();
@@ -190,10 +196,12 @@ export function PhoneKeys(props: PhoneKeysProps) {
           <Menu
             trigger={trigger}
             align="end"
+            // The terminal takes the focus back itself, in the tap that closes the menu: a phone raises its keyboard only
+            // for a focus made inside the tap, so the menu hands the focus to nothing (not its trigger) as it closes.
+            finalFocus={false}
             onOpenChange={(shown) => {
+              if (!shown) port.current?.focus();
               onMenu(shown);
-              // Closing the menu puts focus back on its trigger; the terminal takes it after, so the keyboard stays.
-              if (!shown) requestAnimationFrame(() => port.current?.focus());
             }}
           >
             {terminals.map((entry) => (

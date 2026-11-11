@@ -199,7 +199,7 @@ export function MenuItem({ icon, keys, destructive = false, children, ...props }
       className={cn(
         // A label too long for the menu's width wraps, so the row grows from its usual height instead of running out.
         "flex min-h-(--row) cursor-default items-center gap-2.5 rounded-md px-2 py-1 text-sm outline-none select-none",
-        "data-highlighted:bg-hover [&_svg]:size-3.5 [&_svg]:text-muted-foreground",
+        "data-highlighted:bg-hover [&_svg:not([data-slot=spinner])]:size-3.5 [&_svg]:text-muted-foreground",
         destructive && "text-destructive [&_svg]:text-destructive",
         "data-disabled:text-muted-foreground data-disabled:[&_svg]:text-muted-foreground",
       )}
@@ -246,7 +246,7 @@ export function MenuRadioItem({
       closeOnClick
       className={cn(
         "flex h-(--row) cursor-default items-center gap-2.5 rounded-md px-2 text-sm outline-none select-none",
-        "data-highlighted:bg-hover [&_svg]:size-3.5 [&_svg]:text-muted-foreground",
+        "data-highlighted:bg-hover [&_svg:not([data-slot=spinner])]:size-3.5 [&_svg]:text-muted-foreground",
       )}
     >
       {icon}

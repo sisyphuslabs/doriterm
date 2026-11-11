@@ -52,15 +52,6 @@ export interface PhoneTerminalProps {
   readonly onNewInSpace: (space: string) => void;
   /** Where this terminal registers its dictation for the shell's palette row and bound key; null while it takes none. */
   readonly dictate: RefObject<(() => void) | null>;
-  /**
-   * This page asked for this terminal's pane (a session picked from the keys bar): its view takes the keyboard as it
-   * opens. Unset, opening a terminal on a phone leaves the soft keyboard down (#1375).
-   */
-  readonly claimed: boolean;
-  /** A session picked from the keys bar, which is the person asking for its keyboard as it opens. */
-  readonly onPick: (address: string) => void;
-  /** The keyboard a pick asked for is up: the ask is answered, so a later re-attach takes none of its own (#1375). */
-  readonly onClaimed: () => void;
 }
 
 /** One session full screen on a phone, its terminal kept clear of the soft keyboard and the keys bar riding on it. */
@@ -79,7 +70,6 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
     onNewInSpace,
     dictate,
   } = props;
-  const { claimed, onPick, onClaimed } = props;
   const port = useRef<TerminalPort | null>(null);
   const onPort = useCallback((next: TerminalPort | null) => {
     port.current = next;
@@ -91,9 +81,6 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   // The keyboard is down again — closed by its own key, by the keys' Hide, or by the focus moving away — so the field asks
   // for none until the keys ask again, and the next press in the terminal raises nothing (#1375). A press that lets the
   // field go and takes it back in the same gesture is no dismissal: this waits a frame for the focus to come back.
-  useEffect(() => {
-    if (claimed && keyboard.up) onClaimed();
-  }, [claimed, keyboard.up]);
   useEffect(() => {
     if (keyboard.up) return undefined;
     const frame = requestAnimationFrame(() => port.current?.quiet());
@@ -202,7 +189,9 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
               pid={terminal.pid ?? null}
               live={terminal.state === "live"}
               focused
-              claimed={claimed}
+              // Opening a terminal, a session picked from the keys bar included, leaves the soft keyboard down: only the
+              // keyboard button raises it (#1375).
+              claimed={false}
               // A soft keyboard is the phone's to ask for, so opening a terminal leaves it down (#1375); a narrow window
               // driven by a mouse has none to raise, and keeps taking the focus as it starts (#287).
               softKeyboard={!mouseOnly}
@@ -280,7 +269,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
             sticky={sticky}
             terminals={terminals}
             current={terminal.address}
-            onOpen={onPick}
+            onOpen={onOpen}
             onMenu={setMenu}
             pad={pad}
             onPad={setPad}

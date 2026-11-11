@@ -40,6 +40,25 @@ describe("findMatches", () => {
     ]);
   });
 
+  test.each(["empty", "wide tails", "spacer heads"] as const)(
+    "a wrapped line ending in a row of %s is searched once, then the following line is searched",
+    (kind) => {
+      const base = core(["needle", ""], ["needle"], 6, [0]);
+      const source: CellSource = {
+        ...base,
+        getScrollbackLineLen: (offset) => (offset === 0 && kind !== "empty" ? 6 : base.getScrollbackLineLen(offset)),
+        getScrollbackCell: (offset, col) =>
+          offset === 0
+            ? { char: 0, width: kind === "wide tails" ? 0 : 1, spacerHead: kind === "spacer heads" }
+            : base.getScrollbackCell(offset, col),
+      };
+      expect(findMatches(source, "needle").map((match) => match.runs)).toEqual([
+        [{ row: 0, start: 0, end: 6 }],
+        [{ row: 2, start: 0, end: 6 }],
+      ]);
+    },
+  );
+
   test("is case-insensitive unless the query has a capital, and an empty query finds nothing", () => {
     const source = core(["Error here", "error there"], [], 12);
     expect(findMatches(source, "error")).toHaveLength(2);
