@@ -1,0 +1,5 @@
+### Desktop updates
+
+- The desktop app takes its updates from get.doriterm.com again, now that it serves every release from Doriterm's own
+  storage with a signed checksum list: Settings > This device > Update channel picks Stable or Beta, Check for Updates is
+  in the app menu, and new releases reach installs in stages.
