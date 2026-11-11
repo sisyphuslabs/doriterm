@@ -10,6 +10,8 @@
     "../../.github/scripts/changelog-assemble.ts",
     "../../.github/scripts/changelog-check.ts",
     "../../.github/scripts/changelog-fragments.ts",
+    "../../.github/scripts/get-deploy.ts",
+    "../../.github/scripts/probe-get.ts",
     "../../.github/scripts/release-notes.ts"
   ],
   "exclude": ["types"]

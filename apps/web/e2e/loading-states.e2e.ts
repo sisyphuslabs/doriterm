@@ -38,6 +38,10 @@ test("a terminal waiting on its attach says it is opening, and the pane is busy 
 
   const release = socket.hold("terminal.attach");
   await page.reload();
+  // The reload boots the workspace again: it reconnects to the host and lists its terminals before the pane can mount,
+  // which took over 5 s on a loaded host (#2053). Wait for that boot, the status bar's count of the open terminal, with
+  // the budget this file gives every fresh load.
+  await expect(page.getByText(/^1 terminal$/)).toBeVisible({ timeout: 20_000 });
   const pane = page.locator(`[data-terminal="${address}"]`);
   await expect(pane).toBeVisible();
   const opening = page.getByRole("status", { name: "Opening terminal" });
@@ -67,9 +71,10 @@ test.describe("loading feedback waits before it spins (#1498)", () => {
     await page.goto("/");
     // Fake time starts once the workspace is on screen; the tab this watcher opens arrives by the host's own document.
     await expect(page.getByRole("button", { name: "New tab" })).toBeVisible({ timeout: 20_000 });
-    await page.clock.install();
-    // A margin keeps the jump off the past when the page's clock ticks ahead of the runner's between the two calls.
-    await page.clock.pauseAt(new Date(Date.now() + 1_000));
+    // The clock starts at an instant taken before it is installed and pauses a second past the runner's own now, so
+    // the page's clock cannot have passed the target unless the pause takes over a second to reach it (#1976).
+    await page.clock.install({ time: Date.now() });
+    await page.clock.pauseAt(Date.now() + 1_000);
 
     const address = startShell("host", "load-opening");
     started.push(address);
@@ -100,8 +105,8 @@ test.describe("loading feedback waits before it spins (#1498)", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     // A socket that never opens holds the screen in its connecting state long enough to watch the wait itself.
     await page.routeWebSocket(`ws://127.0.0.1:${E2E_HOST_PORT}/v1/hc`, () => {});
-    await page.clock.install();
-    await page.clock.pauseAt(new Date());
+    await page.clock.install({ time: Date.now() });
+    await page.clock.pauseAt(Date.now() + 1_000);
     await page.goto("/");
 
     const title = page.getByText("Connecting to your host");
@@ -128,9 +133,8 @@ test.describe("loading feedback waits before it spins (#1498)", () => {
       await route.continue();
     });
     // Fake time before the first load, so the wait the fallback starts can be watched without sleeping.
-    await page.clock.install();
-    // A margin keeps the jump off the past when the page's clock ticks ahead of the runner's between the two calls.
-    await page.clock.pauseAt(new Date(Date.now() + 1_000));
+    await page.clock.install({ time: Date.now() });
+    await page.clock.pauseAt(Date.now() + 1_000);
     await page.goto("/");
 
     const loading = page.getByRole("status", { name: "Loading the workspace" });
