@@ -87,7 +87,7 @@ test("interaction advances a waiting tick once, never overlaps the in-flight att
   expect(recovery.state.phase).toBe("idle");
 });
 
-test("an attempt that came due while the pane was hidden runs when it is shown, inside the interaction rate limit", () => {
+test("an attempt that came due while the pane was hidden runs when it is shown, exempt from the interaction rate limit", () => {
   jest.useFakeTimers();
   let shown = false;
   let attaches = 0;
@@ -109,6 +109,35 @@ test("an attempt that came due while the pane was hidden runs when it is shown, 
   expect(recovery.state.phase).toBe("reconnecting");
   recovery.succeeded();
   expect(recovery.state.phase).toBe("idle");
+});
+
+test("with a retry pending, showing the pane and an interaction share the 250 ms limit in either order", () => {
+  jest.useFakeTimers();
+  let calls = 0;
+  const recovery = new AttachRecovery(
+    () => {
+      if (!recovery.begin()) return;
+      calls += 1;
+      recovery.failed(rpc("unavailable"));
+    },
+    () => {},
+  );
+  recovery.begin();
+  recovery.failed(rpc("unavailable"));
+  expect(recovery.interact()).toBe(true);
+  expect(calls).toBe(1);
+  // The fast failure left a 500 ms retry pending; showing the pane 100 ms later is inside the limit.
+  jest.advanceTimersByTime(100);
+  recovery.shown();
+  expect(calls).toBe(1);
+  // Past the limit, showing accelerates and starts a new limit window that input then respects.
+  jest.advanceTimersByTime(160);
+  recovery.shown();
+  expect(calls).toBe(2);
+  jest.advanceTimersByTime(100);
+  expect(recovery.interact()).toBe(false);
+  expect(calls).toBe(2);
+  recovery.stop();
 });
 
 test("auth and stable missing targets do not retry on interaction, but allow an explicit retry", () => {

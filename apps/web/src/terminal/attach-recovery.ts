@@ -135,15 +135,16 @@ export class AttachRecovery {
 
   /**
    * The pane came into view. An attempt that came due while it was hidden found no view to attach and is still owed: it
-   * runs now, outside the input rate limit, and its retry was already counted. Otherwise showing is an interaction.
+   * runs now, outside the input rate limit, and its retry was already counted. Otherwise showing is an interaction,
+   * including while a retry timer is still pending.
    */
   shown(): void {
-    if (this.#busy || this.#state.phase !== "reconnecting") {
+    if (this.#busy || this.#state.phase !== "reconnecting" || this.#timer !== undefined) {
       this.interact();
       return;
     }
     this.#source = "interaction";
-    this.#next(this.#timer !== undefined);
+    this.#next(false);
   }
 
   /** An explicit retry may retry even a terminal error, after the person has corrected it. */
