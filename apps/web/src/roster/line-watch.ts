@@ -16,7 +16,7 @@ export class LineWatch {
   readonly #visible: () => boolean;
   #watchers = 0;
   #stop: (() => void) | undefined;
-  #reading = false;
+  #inFlight: Promise<void> | undefined;
 
   constructor(
     refresh: () => Promise<void>,
@@ -46,11 +46,15 @@ export class LineWatch {
     };
   }
 
+  /** Settles once the line read in flight, if any, has: what a test waits on instead of time. */
+  idle(): Promise<void> {
+    return this.#inFlight ?? Promise.resolve();
+  }
+
   #read(): void {
-    if (this.#reading || !this.#visible()) return;
-    this.#reading = true;
-    void this.#refresh().finally(() => {
-      this.#reading = false;
+    if (this.#inFlight !== undefined || !this.#visible()) return;
+    this.#inFlight = this.#refresh().finally(() => {
+      this.#inFlight = undefined;
     });
   }
 }

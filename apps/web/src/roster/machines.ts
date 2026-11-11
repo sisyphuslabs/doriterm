@@ -38,6 +38,8 @@ export class MachineRoster {
   #read: MachinesRead = UNREAD;
   #sent = 0;
   #applied = 0;
+  /** Told reads sent and not yet applied or overtaken, by send number. */
+  #owed: number[] = [];
 
   constructor(
     list: () => Promise<MachineListResult>,
@@ -56,24 +58,33 @@ export class MachineRoster {
   /**
    * Reads `machine.list` now; settles once this read's answer was applied or a later read's overtook it. A `quiet` read
    * (the line read, every second) that changes nothing is kept without telling anyone, so it re-renders nothing (#2184);
-   * every other read is told, changed or not, since a read count moving on is what some checks wait for.
+   * every other read is told, changed or not, since a read count moving on is what some checks wait for. A quiet read
+   * that overtakes a told one still owed is told in its place, as that read would have been (#2197).
    */
   async refresh(quiet = false): Promise<void> {
     this.#sent += 1;
     const seq = this.#sent;
+    if (!quiet) this.#owed.push(seq);
     try {
       const list = await this.#list();
       if (seq <= this.#applied) return;
       this.#applied = seq;
-      this.#apply(list.machines, quiet);
+      this.#apply(list.machines, this.#quietAt(seq, quiet));
     } catch (cause) {
       if (seq <= this.#applied) return;
       this.#applied = seq;
       const error = cause instanceof Error ? cause.message : String(cause);
-      const same = quiet && error === this.#read.error;
+      const same = this.#quietAt(seq, quiet) && error === this.#read.error;
       this.#read = { ...this.#read, error };
       if (!same) this.#changed(this.#read, []);
     }
+  }
+
+  /** Whether the read applied at `seq` stays quiet: it is quiet and no told read sent before it is still owed. */
+  #quietAt(seq: number, quiet: boolean): boolean {
+    const owed = this.#owed.some((sent) => sent < seq);
+    this.#owed = this.#owed.filter((sent) => sent > seq);
+    return quiet && !owed;
   }
 
   #apply(listed: readonly MachineView[], quiet: boolean): void {
