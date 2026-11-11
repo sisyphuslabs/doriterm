@@ -54,6 +54,33 @@ test("a transformed ancestor is the containing block too", async () => {
   expect(await at(html, 80, 20)).toBe("drag");
 });
 
+test("an individual translate makes the containing block too, as the tab item's inline translate does", async () => {
+  const html = row("", "translate:0 0");
+  expect(await at(html, 97, 20)).toBe("no-drag");
+  expect(await at(html, 80, 20)).toBe("drag");
+});
+
+test("a scrolled containing block moves its ::after by the scroll", async () => {
+  // The button scrolls out of view; its ::after, placed at 250 in the strip, is on screen at 150 once scrolled by 100.
+  const html = `
+    <style>
+      .row { -webkit-app-region: drag; height: 40px; }
+      .strip { position: relative; width: 200px; height: 30px; overflow-x: scroll; white-space: nowrap; }
+      button { -webkit-app-region: no-drag; width: 50px; height: 20px; border: 0; padding: 0; }
+      button::after { content: ""; position: absolute; left: 250px; top: 0; width: 20px; height: 20px; }
+      .spacer { display: inline-block; width: 400px; height: 1px; }
+    </style>
+    <div class="row"><div class="strip"><button>b</button><span class="spacer"></span></div></div>`;
+  if (page === undefined) throw new Error("no window");
+  await page.setContent(`<style>body{margin:0}</style>${html}`);
+  await page.evaluate(() => {
+    const strip = document.querySelector(".strip");
+    if (strip !== null) strip.scrollLeft = 100;
+  });
+  expect(await page.evaluate(appRegionAt, { x: 160, y: 10 }), "the scrolled ::after").toBe("no-drag");
+  expect(await page.evaluate(appRegionAt, { x: 260, y: 10 }), "where it sits unscrolled").toBe("drag");
+});
+
 test("an absolute ::after with no positioned ancestor is placed against the page", async () => {
   const html = `
     <style>

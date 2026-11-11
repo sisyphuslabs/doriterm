@@ -15,7 +15,8 @@
  * read in their place (::before before an element's children, ::after after them). app-region is inherited, so a
  * button's hit-area pseudo-element lists its own region too. A pseudo-element's box is read from its used insets and
  * size against its containing block: the viewport for a fixed one; for an absolute one, the padding box of the nearest
- * box from its own element up that is positioned or transformed (a static button's hit layer is placed by the tab item
+ * box from its own element up that is positioned, transformed (transform or translate, rotate, scale), filtered, given
+ * perspective, content-visibility or paint/layout containment (a static button's hit layer is placed by the tab item
  * around it, #1530, #2366), else the page. A containing block this cannot read (an inline box's) throws, as does a
  * pseudo-element with an app-region that is neither absolute nor fixed, instead of being skipped.
  */
@@ -36,10 +37,15 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
       const establishes =
         style.position !== "static" ||
         style.transform !== "none" ||
+        style.translate !== "none" ||
+        style.rotate !== "none" ||
+        style.scale !== "none" ||
         style.filter !== "none" ||
+        style.backdropFilter !== "none" ||
+        /auto|hidden/.test(style.contentVisibility) ||
         style.perspective !== "none" ||
         /paint|layout|strict|content/.test(contain) ||
-        /transform|perspective|filter/.test(style.willChange);
+        /transform|translate|rotate|scale|perspective|filter/.test(style.willChange);
       if (!establishes) continue;
       return style.display === "inline" ? "unreadable" : node;
     }
@@ -63,7 +69,11 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
         origin = { left: -window.scrollX, top: -window.scrollY };
       } else {
         const box = block.getBoundingClientRect();
-        origin = { left: box.left + block.clientLeft, top: box.top + block.clientTop };
+        // A scrolled containing block moves what it places by its scroll offset.
+        origin = {
+          left: box.left + block.clientLeft - block.scrollLeft,
+          top: box.top + block.clientTop - block.scrollTop,
+        };
       }
     } else if (style.position !== "fixed") {
       throw new Error(`${element.tagName}${which} has app-region ${mode} and no readable box`);
