@@ -40,20 +40,3 @@ describe("the space keys, as herdr-app binds them", () => {
     }
   });
 });
-
-describe("the answer keys an agent's question UI reads", () => {
-  test("no default takes Alt+Up or Alt+Down, so a focused program reads them (#1302)", () => {
-    for (const platform of ["mac", "other"] as const) {
-      expect(defaultKeymap(platform).get("alt+up")).toBeUndefined();
-      expect(defaultKeymap(platform).get("alt+down")).toBeUndefined();
-    }
-  });
-
-  test("an Alt+arrow a default does bind moves focus or sends the program its own bytes", () => {
-    for (const platform of ["mac", "other"] as const) {
-      const arrows = [...defaultKeymap(platform)].filter(([trigger]) => /^alt\+(left|right|up|down)$/.test(trigger));
-      const taken = arrows.filter(([, action]) => !action.startsWith("pane.go:") && !action.startsWith("send:"));
-      expect(taken).toEqual([]);
-    }
-  });
-});

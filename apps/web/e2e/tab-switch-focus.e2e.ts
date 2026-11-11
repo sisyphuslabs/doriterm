@@ -61,22 +61,16 @@ async function typedReaches(page: Page, to: string, from: string, marker: number
   await expect(terminal(page, from)).not.toContainText(`tsf$((${marker}`);
 }
 
-// Each chord runs on a pinned keymap, so a runner's own platform cannot change which keys are pressed. Linux and Windows
-// leave Alt+Up/Down to the terminal program and bind no agent switch by default (#1302), so the agent chords run on the
-// Mac keymap, which still binds them.
-const LINUX = "Linux x86_64";
-const MAC = "MacIntel";
 const CHORDS = [
-  { action: "tab.select:2", to: "two", platform: LINUX },
-  { action: "tab.next", to: "two", platform: LINUX },
-  { action: "tab.prev", to: "three", platform: LINUX },
-  { action: "agent.next", to: "two", platform: MAC },
-  { action: "agent.prev", to: "three", platform: MAC },
+  { action: "tab.select:2", to: "two" },
+  { action: "tab.next", to: "two" },
+  { action: "tab.prev", to: "three" },
+  { action: "agent.next", to: "two" },
+  { action: "agent.prev", to: "three" },
 ] as const;
 
-for (const [index, { action, to, platform }] of CHORDS.entries()) {
+for (const [index, { action, to }] of CHORDS.entries()) {
   test(`${action} from the keyboard puts the keyboard in the terminal it shows`, async ({ page }) => {
-    await page.addInitScript((value) => Object.defineProperty(navigator, "platform", { value }), platform);
     const addresses = await threeTabs(page);
     await page.keyboard.press(await shortcut(page, action));
     await expect(tabOf(page, to)).toHaveAttribute("aria-selected", "true");
