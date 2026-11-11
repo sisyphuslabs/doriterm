@@ -137,6 +137,9 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
   // The sheet's entry is left by a Back, once: what it switches to is shown when that Back has landed on its terminal.
   const sheetClosing = useRef(false);
   const afterSheet = useRef<string | null>(null);
+  // Leaving a closed tab with nowhere to switch to, from the sheet: the sheet's Back lands on that tab's own screen first,
+  // so the step up to the screen it came from waits for that landing (#1478 review).
+  const upAfterSheet = useRef(false);
   const sheetOn = narrow && path === "/" && listed.sheet;
   const showSheet = useCallback(
     (opening: boolean) => {
@@ -174,7 +177,11 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     const next = afterSheet.current;
     afterSheet.current = null;
     if (next !== null) show(next);
-  }, [sheetOn, show]);
+    else if (upAfterSheet.current) {
+      upAfterSheet.current = false;
+      back();
+    }
+  }, [back, sheetOn, show]);
   const showSpace = useCallback(
     (spaceKey: string) => go({ section: listed.section, space: spaceKey, terminal: null, sheet: false }, false),
     [go, listed.section],
@@ -238,10 +245,13 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
   const leave = useCallback(
     (next: string | null) => {
       if (!narrow) return;
-      if (next === null) back();
-      else show(next);
+      if (next !== null) show(next);
+      else if (sheetOn) {
+        upAfterSheet.current = true;
+        showSheet(false);
+      } else back();
     },
-    [back, narrow, show],
+    [back, narrow, sheetOn, show, showSheet],
   );
   const section = narrow ? listed.section : "agents";
   return {

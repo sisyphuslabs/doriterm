@@ -442,6 +442,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                         }
                         onOpen={showOnPhone}
                         onBack={phone.back}
+                        onLeave={() => phone.leave(null)}
                         onSpaceBack={phone.backFromSpace}
                         pushed={phone.pushed}
                         section={phone.section}
@@ -461,7 +462,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                             const closingPanes = found.tab.panes.flatMap((pane) =>
                               pane.address === null ? [] : [pane.address],
                             );
-                            const space = spaces.find((each) => each.addresses.includes(open));
+                            const space = spaceOfAddress(spaces, open);
                             const next =
                               space === undefined ? null : nextAfterClosing(liveTabs(space, sessions), closingPanes);
                             afterClose.current = { key: found.tab.key, leave: () => phone.leave(next) };

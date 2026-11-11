@@ -46,6 +46,8 @@ export interface PhoneShellProps {
   readonly tabTitle: string | null;
   readonly onOpen: (address: string) => void;
   readonly onBack: () => void;
+  /** Leaves the open terminal for the screen it came from, past the switch sheet when it is open (#1478). */
+  readonly onLeave: () => void;
   /** Where the open terminal's Back goes when that is a space (its name); null when it goes to the agents list. */
   readonly backTo: string | null;
   /** The space screen's Back, to the list. */
@@ -65,7 +67,8 @@ export interface PhoneShellProps {
 /** Phones: the agents list first; a space opens its own screen, and a terminal shows full screen with extra keys. */
 export function PhoneShell(props: PhoneShellProps) {
   const { connection, terminals, open, space, panes, tabTitle, onOpen, onBack, onNew, onNewInSpace, onPalette } = props;
-  const { onSession, onSpaceBack, onCloseTab, pushed, backTo, section, onSection, sheet, onSheet, ids } = props;
+  const { onSession, onSpaceBack, onCloseTab, onLeave, pushed, backTo, section, onSection, sheet, onSheet, ids } =
+    props;
   // The open terminal registers its dictation here, so the palette and a bound key reach it from this shell's handler.
   const dictate = useRef<(() => void) | null>(null);
   usePhoneActions(onNew, onSession, () => (dictate.current === null ? false : (dictate.current(), true)));
@@ -185,7 +188,7 @@ export function PhoneShell(props: PhoneShellProps) {
         // Read at the moment the End settles, not at the render that registered it: by then a close from the sheet may
         // have moved the phone to the tab that took its place, and that move stands (#1478).
         if (openNow.current !== address) return;
-        onBack();
+        onLeave();
       }}
       onCloseTab={onCloseTab}
       onNewInSpace={onNewInSpace}
