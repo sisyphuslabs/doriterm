@@ -59,7 +59,7 @@ describe("paletteCommands", () => {
         group: "Agents",
         status: "blocked",
         hint: "box",
-        where: "box \u203a doriface \u00b7 /work/doriface",
+        where: { place: "box \u203a doriface", directory: "/work/doriface" },
       },
     ]);
     expect(commands.find((command) => command.id === "tab.new")?.keys).toEqual(["⌘", "T"]);

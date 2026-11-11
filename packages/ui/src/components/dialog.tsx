@@ -24,7 +24,7 @@ export interface DialogProps {
 const popupClass = "w-[min(28rem,calc(100%-2rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto p-5";
 /** What a dialog opens in when it has one: the field it asks for, never a button. */
 const fieldSelector = "input:not([type=hidden]):not(:disabled), textarea:not(:disabled), select:not(:disabled)";
-const titleClass = "text-lg font-semibold text-foreground";
+const titleClass = "text-xl font-semibold text-foreground";
 const descriptionClass = "mt-1.5 text-base text-pretty text-muted-foreground";
 
 function Body({ children, actions }: Pick<DialogProps, "children" | "actions">) {
@@ -60,7 +60,8 @@ export function Dialog({
     const element = panel.current;
     if (element === null) return true;
     if (element.scrollHeight > element.clientHeight) return element;
-    if (alert && element.querySelectorAll("button").length === 1) return true;
+    const buttons = element.querySelectorAll<HTMLButtonElement>("button");
+    if (alert && buttons.length === 1) return buttons[0] ?? element;
     return element.querySelector<HTMLElement>(fieldSelector) ?? element;
   };
   // The dialog takes the keyboard as it opens (#2046). Base UI would focus it a frame later, and on a busy page a key

@@ -45,6 +45,8 @@ export interface JoinOptions {
   readonly createSocket?: CreateSocket | undefined;
   /** This host's relay passes (contract v1.6): the pairing dial to the inviter carries a proof. */
   readonly proofs?: RelayProofs | undefined;
+  /** The join withdrew this host's own mesh offer: the running host expires its pending joins and frees its slot. */
+  readonly offerWithdrawn?: (() => void) | undefined;
   readonly log: (line: string) => void;
 }
 
@@ -74,10 +76,6 @@ const joinTargetOf = (target: ConnectTarget): JoinTarget =>
 async function refuseEarly(options: JoinOptions): Promise<MeshInvite> {
   const mesh = new MeshStore(options.stateDir, { log: options.log }).read();
   if (mesh !== undefined) throw new JoinRefused(`this host is in mesh ${mesh.meshId} already: run mesh leave first`);
-  const offer = new PairingStore(options.stateDir).read();
-  if (offer?.mesh === true && Date.now() < offer.expiresAt) {
-    throw new JoinRefused("this host has an open mesh offer: a host cannot be invited and inviting at once");
-  }
   if (!checkName(options.name)) throw new JoinRefused(`"${options.name}" is not a valid mesh name`);
   const { target } = options;
   const invite = meshInviteOf(joinTargetOf(target));
@@ -113,10 +111,19 @@ async function inviterOf(options: JoinOptions): Promise<Inviter> {
 /**
  * Joins a mesh by pairing with one member (section 4.2): refusals first, then the pairing handshake as initiator with
  * this host's own Noise key and `stream: "mesh"`, then the join exchange. Stores the welcome only once it checked out.
+ * A host cannot invite into its own mesh while it joins another, so a join that passed its refusals withdraws this
+ * host's own open mesh offer before it dials (#1301).
  */
 export async function joinMesh(options: JoinOptions): Promise<Joined> {
   const invite = await refuseEarly(options);
   const inviter = await inviterOf(options);
+  if (inviter.hostId === options.identity.hostId) {
+    throw new JoinRefused("this invite is this host's own: run mesh join on the machine that joins");
+  }
+  if (new PairingStore(options.stateDir).withdrawMesh()) {
+    options.log("mesh: withdrew this host's own mesh offer to join another mesh");
+    options.offerWithdrawn?.();
+  }
   const dialInviter = async () => {
     const link = await connectRelayClient({
       relayUrl: inviter.relayUrl,
