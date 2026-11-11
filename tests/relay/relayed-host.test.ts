@@ -169,6 +169,15 @@ describe("startRelayedHost", () => {
       env: {},
       settled: "start-up failed on purpose",
     },
+    {
+      // The pair CLI start-up runs last has no bound of its own: one that never exits must not hold the interrupt past
+      // the hook's budget either.
+      stage: "pair",
+      title:
+        "a SIGTERM while start-up waits on a pair CLI that never exits ends start-up at once, and leaves nothing (#2155)",
+      env: { PAIR_CLI: join(import.meta.dir, "fixtures", "pair-never-exits.fixture.ts") },
+      settled: "interrupted",
+    },
   ];
   for (const { stage, title, env, settled } of startupCases) {
     test(
@@ -181,7 +190,15 @@ describe("startRelayedHost", () => {
           const fixture = Bun.spawn(
             [process.execPath, join(import.meta.dir, "fixtures", "relayed-startup-sigterm.fixture.ts")],
             {
-              env: { ...process.env, ...env, TMPDIR: tmp, STAGE: stage, SETTLED_FILE: settledFile },
+              // PAIR_MARK: the file the stub pair CLI writes once it runs, which the fixture watches for (#2155).
+              env: {
+                ...process.env,
+                ...env,
+                TMPDIR: tmp,
+                STAGE: stage,
+                SETTLED_FILE: settledFile,
+                PAIR_MARK: join(out, "pair-held"),
+              },
               stdin: "pipe",
               stdout: "pipe",
               stderr: "inherit",
