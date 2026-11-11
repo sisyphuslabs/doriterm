@@ -464,6 +464,41 @@ describe("OutputPacer holding an attach replay (D5)", () => {
     expect(holds).toEqual([true, false]);
   });
 
+  test("a replay that comes slower than a window a span, as on a page slow to take each window in, is held to its last frame (#2271)", () => {
+    const { timers, holds, written, pacer } = replaying(300);
+    // 16 KiB every 125 ms is 128 KiB/s: each 1500 ms span writes 192 KiB, under a credit window, for 1.5 MiB.
+    for (let frame = 0; frame < 96; frame += 1) {
+      pacer.push(bytes(16 * KIB));
+      timers.advance(frame === 95 ? 0 : 125);
+    }
+    expect(holds).toEqual([true]);
+    timers.advance(499);
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
+    expect(written).toHaveLength(96);
+  });
+
+  test("a span that caught part of a window does not end the hold while the span before wrote a window (#2271)", () => {
+    const { timers, holds, pacer } = replaying(300);
+    // A window's worth in the first span, 96 KiB in the second (the rest of the next window falls after its end), then
+    // the replay goes on.
+    for (let at = 0; at < 1500; at += 250) {
+      pacer.push(bytes(48 * KIB));
+      timers.advance(250);
+    }
+    for (let at = 1500; at < 3000; at += 250) {
+      pacer.push(bytes(16 * KIB));
+      timers.advance(250);
+    }
+    expect(holds).toEqual([true]);
+    for (let at = 3000; at < 4500; at += 250) {
+      pacer.push(bytes(48 * KIB));
+      timers.advance(250);
+    }
+    expect(holds).toEqual([true]);
+  });
+
   test("a quiet window whose timer ran late because the page stalled is not taken for the replay's end", () => {
     const frames = manualFrames();
     const timers = manualTimers();
