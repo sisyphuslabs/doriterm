@@ -104,6 +104,9 @@ export function indexOf(records: readonly Signed[], view: View, generation: numb
     if (card === undefined) return [];
     const admitter = view.admitter.get(signPub);
     if (card.kind === "client") {
+      // Design 4.1: a client's session key is its device key. A card naming another key reaches no one, so it is left
+      // out of the index instead of failing the whole view (#1473).
+      if (card.devicePub !== card.noisePub) return [];
       const author = byHash.get(view.governing.get(admitter ?? "") ?? "");
       const authorCard = author === undefined ? undefined : cardOfRecord(author);
       if (

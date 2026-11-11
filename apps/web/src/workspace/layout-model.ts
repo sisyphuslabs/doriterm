@@ -41,7 +41,11 @@ export interface Mount {
 
 /** What keepMounts remembers from one render to the next. */
 export interface Mounts {
-  /** Terminals shown in a tab of no document (transient or loose), by address: where their views are mounted. */
+  /**
+   * Terminals shown in a tab of no document (transient or loose), by what each is remembered by (tab-keys.ts): where
+   * their views are mounted. Not by address: a machine renamed in the render that first shows the document tab must not
+   * hide the view it takes over (#1775).
+   */
   readonly shown: Map<string, Mount>;
   /**
    * Per document tab, decided when it first shows and kept for good (a tab's id is never reused): the view it took over
@@ -52,28 +56,36 @@ export interface Mounts {
 
 export const newMounts = (): Mounts => ({ shown: new Map(), taken: new Map() });
 
+/** No machine listed: what tab-keys.ts remembers a terminal by before machine.list names its machine. */
+const UNLISTED: MachineIds = { byName: new Map(), byId: new Map() };
+
 /**
  * A document tab that takes over a terminal this screen showed in a tab of no document (the first live terminal shown
  * alone while its tab was still being written, or a loose tab) keeps that tab's panel and pane keys, so the terminal's
  * view is not mounted again: a remount drops the keys typed into it meanwhile (#381). Decided when the document tab
  * first shows and kept while it lives; nothing else changes, since tabs and panes are still named by `key` and `id`.
  */
-export function keepMounts(tabs: readonly LayoutTab[], mounts: Mounts): LayoutTab[] {
+export function keepMounts(tabs: readonly LayoutTab[], mounts: Mounts, ids: MachineIds): LayoutTab[] {
   const inUse = new Set(tabs.flatMap((tab) => (tab.transient ? [tab.key] : [])));
   for (const taken of mounts.taken.values()) if (taken !== null) inUse.add(taken.mount.tab);
+  // A view recorded while its machine was not yet listed is remembered by the `name:` key; once the machine is listed
+  // the same terminal's key is `id:`, so that render looks under both (#2107).
+  const recordedAs = (address: string): string | undefined =>
+    [terminalKey(address, ids), terminalKey(address, UNLISTED)].find((key) => mounts.shown.has(key));
   const kept = tabs.map((tab): LayoutTab => {
     if (tab.transient) {
       const pane = tab.panes[0];
-      if (pane?.address != null) mounts.shown.set(pane.address, { tab: tab.key, pane: pane.id });
+      if (pane?.address != null) mounts.shown.set(terminalKey(pane.address, ids), { tab: tab.key, pane: pane.id });
       return tab;
     }
     if (!mounts.taken.has(tab.key)) {
-      const pane = tab.panes.find((each) => each.address !== null && mounts.shown.has(each.address));
-      const mount = pane?.address == null ? undefined : mounts.shown.get(pane.address);
+      const pane = tab.panes.find((each) => each.address !== null && recordedAs(each.address) !== undefined);
+      const shownAs = pane?.address == null ? undefined : recordedAs(pane.address);
+      const mount = shownAs === undefined ? undefined : mounts.shown.get(shownAs);
       const free = mount !== undefined && !inUse.has(mount.tab);
       mounts.taken.set(tab.key, pane !== undefined && mount !== undefined && free ? { pane: pane.id, mount } : null);
-      if (pane?.address != null && free) {
-        mounts.shown.delete(pane.address);
+      if (shownAs !== undefined && free) {
+        mounts.shown.delete(shownAs);
         inUse.add(mount.tab);
       }
     }

@@ -67,6 +67,57 @@ function stateLine(entry: MemberEntry): ReactNode {
   );
 }
 
+/** The connection rows, apart from the screen that decides to show them, so a two-machine list can be rendered (#1170). */
+export function MemberConnections({
+  members,
+  selectedHostId,
+}: {
+  readonly members: readonly MemberEntry[];
+  readonly selectedHostId: string;
+}) {
+  return (
+    // Named so a screen reader can tell this list from the Machines list under it (#1170).
+    <ul aria-label="Connections" className="flex flex-col divide-y divide-border">
+      {members.map((entry) => {
+        const action = rowAction(entry, selectedHostId);
+        return (
+          <li key={entry.target.hostId}>
+            <SettingRow
+              className="border-b-0"
+              inline
+              title={title(
+                entry.target.hostId === selectedHostId ? <Monitor aria-hidden /> : <Server aria-hidden />,
+                entry.target.hostName === "" ? entry.target.hostId : entry.target.hostName,
+              )}
+              description={stateLine(entry)}
+              control={
+                action === "retry" ? (
+                  <RetryButton
+                    size="sm"
+                    onRetry={async () => {
+                      connectionStore.retry(entry.target.hostId);
+                    }}
+                  />
+                ) : action === null ? null : (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      connectionStore.select(entry.target.hostId);
+                    }}
+                  >
+                    Switch to this machine
+                  </Button>
+                )
+              }
+            />
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 /**
  * Every machine this app holds its own connection to, each with that connection's own state.
  *
@@ -81,44 +132,7 @@ export function MembersSection() {
   if (!summary.listed) return null;
   return (
     <div className="flex flex-col gap-3">
-      <ul className="flex flex-col divide-y divide-border">
-        {members.map((entry) => {
-          const action = rowAction(entry, selectedHostId);
-          return (
-            <li key={entry.target.hostId}>
-              <SettingRow
-                className="border-b-0"
-                inline
-                title={title(
-                  entry.target.hostId === selectedHostId ? <Monitor aria-hidden /> : <Server aria-hidden />,
-                  entry.target.hostName === "" ? entry.target.hostId : entry.target.hostName,
-                )}
-                description={stateLine(entry)}
-                control={
-                  action === "retry" ? (
-                    <RetryButton
-                      size="sm"
-                      onRetry={async () => {
-                        connectionStore.retry(entry.target.hostId);
-                      }}
-                    />
-                  ) : action === null ? null : (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => {
-                        connectionStore.select(entry.target.hostId);
-                      }}
-                    >
-                      Switch to this machine
-                    </Button>
-                  )
-                }
-              />
-            </li>
-          );
-        })}
-      </ul>
+      <MemberConnections members={members} selectedHostId={selectedHostId} />
       {summary.open === summary.total ? null : (
         <Notice tone="info" title="One machine down is one machine down">
           Each machine has its own connection, so the others stay usable while one is away.

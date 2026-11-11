@@ -90,7 +90,11 @@ test("the session sheet offers Find in terminal only while its machine is online
   const go = test.info().outputPath("go");
   try {
     await page.goto("/");
+    // The phone lists machines on its Spaces tab (#1398); the agent row is back on Agents.
+    const sections = page.getByRole("navigation", { name: "Sections" });
+    await sections.getByRole("button", { name: "Spaces", exact: true }).click();
     await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
+    await sections.getByRole("button", { name: /^Agents\b/ }).click();
     await agentRow(page, "find-offline", true).click();
     const terminal = page.locator(`[data-terminal="${MACHINE_NAME}/${local}"]`);
     await expect(terminal).toContainText("$", { timeout: 15_000 });

@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, openNewTerminal, terminalCount, test } from "./fixtures.ts";
+import { holdFrames } from "./hold-frames.ts";
 import { pagePlatform, shortcut } from "./platform-keys.ts";
 
 test.use({ serviceWorkers: "block" });
@@ -61,6 +62,29 @@ test("shortcuts opened from the palette return focus to the terminal when closed
   await expect(dialog).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Command palette" })).toHaveCount(0);
   await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(() => focusedTerminal(page)).toBe(address);
+});
+
+test("shortcuts opened from the palette take the keyboard before the next frame, so an Escape at once closes them (#2046)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  const address = await terminal.getAttribute("data-terminal");
+  await terminal.getByRole("textbox").focus();
+  await page.keyboard.press(await shortcut(page, "app.palette"));
+  const command = page.getByRole("combobox", { name: "Command" });
+  await expect(command).toBeFocused();
+  await command.fill("Keyboard shortcuts");
+  // A busy page draws late: the dialog is on screen before its next frame, and a key pressed then is the dialog's.
+  const release = await holdFrames(page);
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toBeFocused();
+  await page.keyboard.press("Escape");
+  await release();
   await expect(dialog).toHaveCount(0);
   await expect.poll(() => focusedTerminal(page)).toBe(address);
 });
