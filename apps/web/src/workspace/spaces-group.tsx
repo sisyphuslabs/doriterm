@@ -44,7 +44,7 @@ export interface SpacesGroupProps {
 const ALARM = new Set(["unreachable", "needs_login"]);
 
 /** A machine's problem under its header, including why creation is unavailable during its reconnect grace. */
-function MachineNotice({ name }: { readonly name: string }) {
+export function MachineNotice({ name }: { readonly name: string }) {
   const { views, retry } = useMachinesContext();
   const view = views.find((one) => one.name === name);
   const cause = view === undefined || view.state === "connecting" ? undefined : machineCause(view);
@@ -52,7 +52,7 @@ function MachineNotice({ name }: { readonly name: string }) {
   return (
     <Notice tone="warning" className="mx-1 mt-1" title={cause.title}>
       {cause.detail}
-      <RetryButton size="sm" className="mt-2 flex" onRetry={() => retry(name)} />
+      {cause.retryless === true ? null : <RetryButton size="sm" className="mt-2 flex" onRetry={() => retry(name)} />}
     </Notice>
   );
 }
