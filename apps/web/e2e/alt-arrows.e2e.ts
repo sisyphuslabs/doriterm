@@ -172,7 +172,9 @@ test("other: a pane chord with no pane that way reaches the program, not the app
 });
 
 for (const keymap of ["mac", "other"] as const) {
-  test(`${keymap}: "Swap pane up" chosen from the palette at a split's top edge closes the palette`, async ({ page }) => {
+  test(`${keymap}: "Swap pane up" chosen from the palette at a split's top edge closes the palette`, async ({
+    page,
+  }) => {
     // The palette offers the pane swaps (shell-actions.ts). At the top of a row split there is no pane to swap with;
     // the chosen action has no key to leave to a program, so it counts as handled and the palette closes, as it did
     // before #1600, and no pane moves.
