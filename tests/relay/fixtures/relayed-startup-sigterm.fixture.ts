@@ -44,15 +44,19 @@ try {
         }
       : {}),
     // STAGE=relay-late: a relay start that finishes on the SIGTERM itself, after start-up has seen the interrupt; the
-    // relay it hands over records its stop in LATE_MARK (#2232).
-    ...(stage === "relay-late"
+    // relay it hands over records its stop in LATE_MARK (#2232). STAGE=relay-late-fail: the same, but that relay's stop
+    // fails (#2239).
+    ...(stage === "relay-late" || stage === "relay-late-fail"
       ? {
           startRelay: () => {
-            process.stdout.write("STAGE relay-late\n");
+            process.stdout.write(`STAGE ${stage}\n`);
             const late: LocalRelay = {
               url: "http://127.0.0.1:9",
               output: () => "",
-              stop: async () => writeFileSync(process.env["LATE_MARK"] ?? "", "stopped"),
+              stop: async () => {
+                if (stage === "relay-late-fail") throw new Error("the late relay's stop failed on purpose");
+                writeFileSync(process.env["LATE_MARK"] ?? "", "stopped");
+              },
             };
             return new Promise<LocalRelay>((resolve) => process.once("SIGTERM", () => resolve(late)));
           },

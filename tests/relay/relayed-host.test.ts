@@ -186,9 +186,16 @@ describe("startRelayedHost", () => {
       settled: "interrupted",
     },
     {
-      // The relay start finishes on the SIGTERM itself, once start-up has already ended as interrupted (#2232).
+      // The relay start finishes on the SIGTERM itself, after start-up has seen the interrupt (#2232).
       stage: "relay-late",
       title: "a relay whose start finishes after a SIGTERM is stopped, and start-up ends as interrupted (#2232)",
+      env: {},
+      settled: "interrupted",
+    },
+    {
+      // The same, but stopping that late relay fails: start-up still ends as interrupted, and the failure is reported.
+      stage: "relay-late-fail",
+      title: "a late relay whose stop fails is reported, and start-up still ends as interrupted (#2239)",
       env: {},
       settled: "interrupted",
     },
@@ -216,9 +223,19 @@ describe("startRelayedHost", () => {
               },
               stdin: "pipe",
               stdout: "pipe",
-              stderr: "inherit",
+              stderr: "pipe",
             },
           );
+          // Piped only to be read: each chunk goes on to the test output as it arrives, so a case that hangs or throws
+          // still shows the fixture's stderr.
+          const stderr = (async () => {
+            let text = "";
+            for await (const chunk of fixture.stderr.pipeThrough(new TextDecoderStream())) {
+              process.stderr.write(chunk);
+              text += chunk;
+            }
+            return text;
+          })();
           const reader = fixture.stdout.pipeThrough(new TextDecoderStream()).getReader();
           const seen = { text: "" };
           await lineFrom(reader, seen, `STAGE ${stage}`);
@@ -228,8 +245,11 @@ describe("startRelayedHost", () => {
           fixture.stdin.write("GO\n");
           await fixture.stdin.flush();
           await fixture.exited;
+          const errors = await stderr;
           expect(existsSync(settledFile) ? readFileSync(settledFile, "utf8") : "never settled").toContain(settled);
           if (stage === "relay-late") expect(existsSync(join(out, "late-stopped"))).toBe(true);
+          // The fixture's own error message, so a failed late stop that went unreported would fail here (#2239).
+          if (stage === "relay-late-fail") expect(errors).toContain("the late relay's stop failed on purpose");
           expect(await stopLeftUnder(tmp)).toEqual([]);
           expect(await liveWithEnvironment(`TMPDIR=${tmp}`)).toEqual([]);
           expect(readdirSync(tmp).filter((name) => name.startsWith("rh-") || name.startsWith("dh-"))).toEqual([]);
