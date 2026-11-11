@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { evaluate, type Value } from "./gh-expression.ts";
 
 type Step = { name?: string; run?: string; if?: string; env?: Record<string, string> };
 type Job = {
@@ -58,7 +59,12 @@ test("the mirror job checks the tag, then downloads, mirrors, signs and probes i
   ].map((needle) => at(mirror, needle));
   expect(order.every((index, i) => index >= 0 && (i === 0 || index > (order[i - 1] ?? 0)))).toBe(true);
   expect(runs(mirror)[order[0] ?? 0]).toContain('if [ "$REQUIRE_PUBLISHED" = true ] && [ "$draft" != false ]');
-  expect(mirror?.env?.["REQUIRE_PUBLISHED"]).toBe("${{ inputs.published != false }}");
+  // What it comes to for each caller: a hand-run (no published input), release.yml's production call and its draft call.
+  const requires = (published: Value) =>
+    evaluate(mirror?.env?.["REQUIRE_PUBLISHED"] ?? "", { contexts: { inputs: { published } } });
+  expect([requires(null), requires(true), requires(false)]).toEqual([true, true, false]);
+  // The expression it replaced let every hand-run through (#2126 review): null != false is false in GitHub's equality.
+  expect(evaluate("${{ inputs.published != false }}", { contexts: { inputs: { published: null } } })).toBe(false);
   expect(mirror?.steps?.find((step) => step.name === "Attach the checksums signature")?.if).toBe(
     "inputs.target == 'production'",
   );

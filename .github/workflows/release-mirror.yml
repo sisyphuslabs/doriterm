@@ -51,7 +51,9 @@ jobs:
       GH_REPO: ${{ github.repository }}
       TAG: ${{ inputs.tag }}
       TARGET: ${{ inputs.target }}
-      REQUIRE_PUBLISHED: ${{ inputs.published != false }}
+      # Only release.yml's draft run passes published: false. A hand-run has no published input, so inputs.published is
+      # null, and null == false in GitHub's loose equality: compare its JSON text instead, which tells them apart.
+      REQUIRE_PUBLISHED: ${{ toJSON(inputs.published) != 'false' }}
       BUCKET: ${{ inputs.target == 'production' && 'doriterm-releases' || 'doriterm-releases-staging' }}
       ORIGIN: ${{ inputs.target == 'production' && 'https://get.doriterm.com' || 'https://staging.get.doriterm.com' }}
       ROLLOUT: ${{ vars.RELEASE_ROLLOUT_PERCENT || '100' }}

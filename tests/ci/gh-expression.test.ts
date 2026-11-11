@@ -72,3 +72,12 @@ test("contains() searches the array that * selects", () => {
   expect(value("contains(labels.*.name, 'BUG')", contexts)).toBe(true);
   expect(value("contains(labels.*.name, 'chore')", contexts)).toBe(false);
 });
+
+// #2126: a missing input is null, and null == false, so a workflow tells "not given" from false by its JSON text.
+test("toJSON writes a scalar as JSON, so a null input and a false one compare apart", () => {
+  expect(value("toJSON(inputs.x)", { inputs: { x: null } })).toBe("null");
+  expect(value("toJSON(inputs.x)", { inputs: { x: false } })).toBe("false");
+  expect(value("toJSON(inputs.x)", { inputs: {} })).toBe("null");
+  expect(value("inputs.x == false", { inputs: { x: null } })).toBe(true);
+  expect(value("toJSON(inputs.x) == 'false'", { inputs: { x: null } })).toBe(false);
+});
