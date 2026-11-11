@@ -2,6 +2,7 @@ import { AgentRow, Button, EmptyState, ScrollArea, SidebarSection } from "@dorif
 import { ChevronLeft, Plus, SquareTerminal } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ListedSpace, Session } from "./model.ts";
+import type { PhoneSection } from "./phone-route.ts";
 import { spaceSummary, spaceTabRows } from "./phone-space-rows.ts";
 import { QuietBusy } from "../terminal/quiet-busy.tsx";
 import { TerminalsLoadError } from "./terminals-load-error.tsx";
@@ -17,6 +18,8 @@ export interface PhoneSpaceProps {
   readonly host: string;
   /** Reached by a push: it slides in. Reached by Back from a terminal over it, it is simply there again. */
   readonly arrive: boolean;
+  /** The list it was opened from, where its Back goes. */
+  readonly from: PhoneSection;
   readonly onOpen: (address: string) => void;
   readonly onBack: () => void;
   /** Starts a terminal as a new tab of this space and opens it. */
@@ -27,7 +30,7 @@ export interface PhoneSpaceProps {
  * A space on a phone: its running tabs, one row each, and New tab in it at the bottom, within thumb reach (#1387). It is
  * pushed over the list, so it slides in from the trailing edge (DESIGN.md 6, Standard); Back unmounts it at once.
  */
-export function PhoneSpace({ space, terminals, host, arrive, onOpen, onBack, onNew }: PhoneSpaceProps) {
+export function PhoneSpace({ space, terminals, host, arrive, from, onOpen, onBack, onNew }: PhoneSpaceProps) {
   const now = useNow();
   const closing = useSpaceClosing();
   const rows = spaceTabRows(space, terminals, now);
@@ -36,6 +39,7 @@ export function PhoneSpace({ space, terminals, host, arrive, onOpen, onBack, onN
   return (
     <SpaceFrame
       arrive={arrive}
+      from={from}
       onBack={onBack}
       title={
         <>
@@ -93,10 +97,11 @@ export function PhoneSpace({ space, terminals, host, arrive, onOpen, onBack, onN
 export function PhoneSpaceLoading(props: {
   readonly error: string | null;
   readonly onRetry: () => void;
+  readonly from: PhoneSection;
   readonly onBack: () => void;
 }) {
   return (
-    <SpaceFrame arrive={false} onBack={props.onBack} title={<h1 className="sr-only">Space</h1>}>
+    <SpaceFrame arrive={false} from={props.from} onBack={props.onBack} title={<h1 className="sr-only">Space</h1>}>
       {props.error === null ? (
         <QuietBusy label="Loading the space" text="Loading the space…" className="h-full" />
       ) : (
@@ -109,6 +114,7 @@ export function PhoneSpaceLoading(props: {
 /** The space screen's frame: Back to the list and the title in the header, the content as the page's main landmark. */
 function SpaceFrame(props: {
   readonly arrive: boolean;
+  readonly from: PhoneSection;
   readonly onBack: () => void;
   readonly title: ReactNode;
   readonly children: ReactNode;
@@ -126,12 +132,12 @@ function SpaceFrame(props: {
         >
           <Button
             variant="ghost"
-            aria-label="Back to agents"
+            aria-label={`Back to ${props.from}`}
             className="gap-0.5 px-1.5 text-foreground"
             onClick={props.onBack}
           >
             <ChevronLeft aria-hidden />
-            Agents
+            {props.from === "agents" ? "Agents" : "Spaces"}
           </Button>
           <div className="flex min-w-0 flex-1 flex-col py-1">{props.title}</div>
         </header>

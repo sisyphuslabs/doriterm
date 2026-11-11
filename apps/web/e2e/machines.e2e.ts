@@ -73,9 +73,16 @@ test.describe("machines added with hc machine add", () => {
     await page.keyboard.type("exit\r");
     await expect(machineRow(page)).toContainText(/connected\s*0/, { timeout: 15_000 });
     await expect(machineRow(page)).toBeDisabled();
-    // With no terminal to open only the icon dims; the name stays legible (#472, #504).
-    await expect(machineRow(page).locator("svg").first()).toHaveCSS("opacity", "0.45");
-    await expect(machineRow(page).getByText(MACHINE_NAME, { exact: true })).toHaveCSS("opacity", "1");
+    // With no terminal to open only the icon dims; the name stays legible (#472, #504). It dims by colour, not by a fade
+    // over the icon (#1243): disabled-sidebar-contrast.e2e.ts measures that colour against the 3:1 floor.
+    const icon = machineRow(page).locator("svg").first();
+    const name = machineRow(page).getByText(MACHINE_NAME, { exact: true });
+    await expect(icon).toHaveCSS("opacity", "1");
+    await expect(name).toHaveCSS("opacity", "1");
+    const [iconInk, nameInk] = await Promise.all(
+      [icon, name].map((el) => el.evaluate((e) => getComputedStyle(e).color)),
+    );
+    expect(iconInk).not.toBe(nameInk);
   });
 
   test("a machine that goes offline with the page open reads offline and offers no new terminal", async ({ page }) => {

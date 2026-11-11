@@ -1,5 +1,5 @@
 import { Search } from "lucide-react";
-import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
 import { Button } from "./button.tsx";
 import { fieldLabelClass } from "./input.tsx";
@@ -23,8 +23,11 @@ export interface Command {
   readonly status?: AgentStatus;
   /** Listed but not runnable right now, as its disabled toolbar button; the hint says why. */
   readonly disabled?: boolean;
-  /** Where the row lives (place and directory): the line under the list says it while the row is highlighted. */
-  readonly where?: string;
+  /**
+   * Where the row lives: the line under the list says it while the row is highlighted. A long directory is clipped at
+   * its start, so its deepest folder stays in view on a phone, where the title tooltip cannot be reached (#1475).
+   */
+  readonly where?: { readonly place: string; readonly directory: string };
 }
 
 export interface CommandPaletteProps {
@@ -59,9 +62,11 @@ export function CommandPalette({
   const [chosen, setChosen] = useState<AgentStatus | null>(null);
   const listId = useId();
   const inputId = useId();
+  const input = useRef<HTMLInputElement>(null);
   const counts = useMemo(() => statusCounts(commands), [commands]);
   const status = shownStatus(counts, chosen);
-  // A chosen state that emptied has fallen back to All: forget it, so a later agent in that state does not bring it back.
+  // A chosen state that is no longer shown (it emptied, or more urgent states pushed it out of the two shown) has fallen
+  // back to All: forget it, so a later agent in that state does not bring it back.
   if (chosen !== null && status === null) setChosen(null);
   const visible = useMemo(
     () => withStatus(commands, status).filter((command) => matches(command, query)),
@@ -91,6 +96,7 @@ export function CommandPalette({
         </label>
         <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         <input
+          ref={input}
           id={inputId}
           role="combobox"
           aria-expanded
@@ -114,7 +120,13 @@ export function CommandPalette({
         )}
       </div>
       {counts.length === 0 ? null : (
-        <div className="border-b border-border px-3 py-2">
+        // A pointer pick hands typing back to the search field; a key press (a click with no detail) keeps the row (#1479).
+        <div
+          className="border-b border-border px-3 py-2"
+          onClick={(event) => {
+            if (event.detail > 0) input.current?.focus();
+          }}
+        >
           <SegmentedControl<AgentStatus | typeof ALL>
             label="Show agents"
             compact
@@ -194,11 +206,19 @@ export function CommandPalette({
       {current?.where === undefined ? null : (
         <p
           id={`${listId}-where`}
-          title={current.where}
+          title={`${current.where.place} \u00b7 ${current.where.directory}`}
           data-slot="palette-where"
-          className="truncate border-t border-border px-3 py-1.5 font-mono text-xs text-muted-foreground"
+          className="flex gap-1.5 border-t border-border px-3 py-1.5 font-mono text-xs whitespace-nowrap text-muted-foreground"
         >
-          {current.where}
+          {/* Each clipped part carries its own title, so its ellipsis can be read out in full. */}
+          <span title={current.where.place} className="max-w-1/2 truncate">
+            {current.where.place}
+          </span>
+          <span>{"\u00b7"}</span>
+          {/* Right to left, the overflow and its ellipsis go to the start; the path itself still reads left to right. */}
+          <span dir="rtl" title={current.where.directory} className="min-w-0 flex-1 truncate text-left">
+            <bdi dir="ltr">{current.where.directory}</bdi>
+          </span>
         </p>
       )}
     </div>

@@ -12,6 +12,8 @@ export interface HerdrDifference {
 const APP_MENU = "the desktop app's macOS app menu carries it (a standard menu role); a browser keeps it for itself";
 const NO_MODS = "Doriterm has no mods, so there is no picker mod to open";
 const NO_LAYOUTS = "Doriterm has no layout files to switch between";
+const PROGRAM_KEYS =
+  "#1302: the program's keys — an agent reads Alt+arrows for its answers and a shell for its word moves";
 const CTRL_V_PASTES =
   "Ctrl+V stays the browser's paste, as before: an image on the clipboard reaches the terminal's machine as a file through the paste itself (#742), which needs no clipboard permission (the desktop app grants none), and text is pasted as text where herdr-app sends ^V";
 
@@ -28,6 +30,11 @@ export const HERDR_APP_DIFFERENCES: Readonly<Record<Platform, readonly HerdrDiff
     { chord: "cmd-p", doriface: null, reason: NO_MODS },
   ],
   other: [
+    // #1302: Alt+arrows belong to the program below (answers, word moves, Meta keys), so doriterm binds none of them.
+    { chord: "alt-left", doriface: null, reason: PROGRAM_KEYS },
+    { chord: "alt-right", doriface: null, reason: PROGRAM_KEYS },
+    { chord: "alt-up", doriface: null, reason: PROGRAM_KEYS },
+    { chord: "alt-down", doriface: null, reason: PROGRAM_KEYS },
     { chord: "ctrl-shift-k", doriface: null, reason: NO_MODS },
     { chord: "ctrl-shift-l", doriface: null, reason: NO_LAYOUTS },
     { chord: "ctrl-v", doriface: null, reason: CTRL_V_PASTES },

@@ -56,6 +56,13 @@ describe("doriface-only bindings", () => {
     expect(Object.keys(TAKEN_ON_PURPOSE).filter((trigger) => !(trigger in PLATFORM_RESERVED))).toEqual([]);
   });
 
+  // The reverse check (#824): a chord kept here that no default binds any more is a claim about a binding that is gone,
+  // so a rebinding that frees the chord must remove the entry with it.
+  test("every chord taken on purpose is bound by a default on mac or other", () => {
+    const bound = new Set([...defaultKeymap("mac").keys(), ...defaultKeymap("other").keys()]);
+    expect(Object.keys(TAKEN_ON_PURPOSE).filter((trigger) => !bound.has(trigger))).toEqual([]);
+  });
+
   test("on Linux and Windows moving a tab takes Ctrl+Alt+Shift+PgUp / PgDn, since herdr-app's spaces take Ctrl+Shift", () => {
     const keymap = defaultKeymap("other");
     expect([triggersFor(keymap, "tab.move:left"), triggersFor(keymap, "tab.move:right")]).toEqual([

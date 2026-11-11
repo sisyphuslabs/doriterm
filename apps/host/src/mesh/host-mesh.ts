@@ -100,7 +100,9 @@ export class HostMesh {
           return this.#resume(lines, key, line.nonce);
         })
         .catch((error: unknown) => {
-          lines.refuse(CloseCode.UnknownDevice, error instanceof Error ? error.message : String(error));
+          const reason = error instanceof Error ? error.message : String(error);
+          this.#options.log(`mesh: close code=4401 source=join-resume: ${reason}`);
+          lines.refuse(CloseCode.UnknownDevice, reason);
         });
       return;
     }
@@ -162,6 +164,15 @@ export class HostMesh {
     return this.#options.slots.open(false);
   }
 
+  /** A `mesh join` withdrew this host's mesh offer: its pending joins expire with it and its relay slot is released. */
+  offerWithdrawn(): void {
+    this.pending.expireAll();
+    this.pending.setAuto(0);
+    this.resumes.clear();
+    this.#offerExpiresAt = 0;
+    this.#options.slots.sync();
+  }
+
   /** Serves a session on the mesh stream: a join on a mesh offer, or a member's sync session for the sync hook. */
   serve(secure: SecureLink): void {
     if (secure.kind === SessionKind.Session) return this.#options.sync?.(secure);
@@ -214,6 +225,7 @@ export class HostMesh {
       defaultRelayUrl: relay.url ?? DEFAULT_RELAY_URL,
       createSocket: relay.createSocket,
       proofs: relay.proofs,
+      offerWithdrawn: () => this.offerWithdrawn(),
       log,
     });
     this.#keep(joined.secure);
