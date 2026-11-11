@@ -420,6 +420,8 @@ describe("install.sh on macOS", () => {
     expect(readFileSync(agent, "utf8").trim()).toBe("loaded");
   });
 
+  // As many stub processes as the test above, and more (100 bootstrap retries through the launchd stub, 100 `sleep`), so
+  // the same bound (#2006).
   test("a bootstrap launchd keeps refusing fails the install loudly instead of leaving the agent quietly unloaded", () => {
     const r = rig("Darwin", "arm64");
     launchd(r.stubs, r.log, 1000);
@@ -428,7 +430,7 @@ describe("install.sh on macOS", () => {
     expect(run.code).toBe(1);
     expect(run.err).toContain("Bootstrap failed: 5: Input/output error");
     expect(run.err).toContain("launchctl bootstrap gui/");
-  });
+  }, 30_000);
 
   test("registers a LaunchAgent that keeps the host running, then pairs", () => {
     const r = rig("Darwin", "arm64");
