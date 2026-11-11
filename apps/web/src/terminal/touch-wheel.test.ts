@@ -39,6 +39,11 @@ interface SwipeTerminal {
    * cell alone, which is no longer in the terminal to pass them on (#2054).
    */
   swipeOnRedrawnCell(from: Point, ...path: Point[]): boolean[];
+  /**
+   * Two fingers land, each on its own cell, and the second lifts: the first is left down and drags through `path`. The
+   * browser sends each touch's moves and lift to the cell that finger landed on. Returns whether each move was cancelled.
+   */
+  pinchThenDrag(first: Point, second: Point, ...path: Point[]): boolean[];
 }
 
 const unmounts: (() => void)[] = [];
@@ -55,6 +60,13 @@ const touchEvent = (type: string, fingers: readonly Point[]): Event =>
     touches: fingers.map(({ x, y }) => ({ clientX: x, clientY: y })),
   });
 
+/** A touch event sent to the cell a finger landed on, as the browser sends that touch's moves and lift. */
+const sendToCell = (cell: EventTarget, type: string, fingers: readonly Point[]): Event => {
+  const event = touchEvent(type, fingers);
+  cell.dispatchEvent(event);
+  return event;
+};
+
 /** A terminal wired as the terminal view wires it through useTouchWheel, on the alternate screen unless `alt` is false. */
 function wiredTerminal(alt = true): SwipeTerminal {
   Object.assign(globalThis, { WheelEvent: FakeWheelEvent });
@@ -69,6 +81,10 @@ function wiredTerminal(alt = true): SwipeTerminal {
   const wheels: FakeWheelEvent[] = [];
   element.addEventListener("wheel", (event) => wheels.push(event as FakeWheelEvent));
   unmounts.push(attachTouchWheel({ element, bridge } as unknown as Pick<WTerm, "element" | "bridge">));
+  /** A finger lands on `cell` inside the terminal: the terminal sees the touchstart, with that cell its target. */
+  const landed = (fingers: readonly Point[], cell: EventTarget): void => {
+    element.dispatchEvent(Object.defineProperty(touchEvent("touchstart", fingers), "target", { value: cell }));
+  };
   const touch = (type: string, fingers: readonly Point[]): Event => {
     const event = touchEvent(type, fingers);
     element.dispatchEvent(event);
@@ -80,6 +96,17 @@ function wiredTerminal(alt = true): SwipeTerminal {
       touch("touchstart", [from]);
       const cancelled = path.map((at) => touch("touchmove", [at]).defaultPrevented);
       touch("touchend", []);
+      return cancelled;
+    },
+    pinchThenDrag(first, second, ...path) {
+      const firstCell = new EventTarget();
+      const secondCell = new EventTarget();
+      landed([first], firstCell);
+      landed([first, second], secondCell);
+      // The second finger lifts: its touchend goes to its own cell and lists the finger still down.
+      sendToCell(secondCell, "touchend", [first]);
+      const cancelled = path.map((at) => sendToCell(firstCell, "touchmove", [at]).defaultPrevented);
+      sendToCell(firstCell, "touchend", []);
       return cancelled;
     },
     swipeOnRedrawnCell(from, ...path) {
@@ -146,4 +173,18 @@ test("on the normal screen a swipe turns no wheel and is left to the browser's p
   const cancelled = terminal.swipe({ x: 50, y: 130 }, { x: 50, y: 130 + 5 * ROW_H });
   expect(terminal.wheels).toHaveLength(0);
   expect(cancelled).toEqual([false]);
+});
+
+test("after a pinch, the finger left down starts a swipe of its own, and the page never gets its moves (#2031)", () => {
+  const terminal = wiredTerminal();
+  const first = { x: 50, y: 130 };
+  const cancelled = terminal.pinchThenDrag(
+    first,
+    { x: 90, y: 200 },
+    { x: 50, y: 130 + ROW_H },
+    { x: 50, y: 130 + 3 * ROW_H },
+  );
+  expect(cancelled).toEqual([true, true]);
+  // Measured from where that finger was when the pinch ended: three rows down turns the wheel up three notches.
+  expect(terminal.wheels.map((wheel) => wheel.deltaY)).toEqual(Array.from({ length: 3 }, () => -ROW_H));
 });
