@@ -86,7 +86,7 @@ describe("every write that adds a pane checks the document first (#2146)", () =>
       gone: false,
     });
     // The pane it split closed on another device first.
-    expect(splitWrite(docOf([["t2"]]), "tb0", "p0-0", "t9", split)).toEqual({ doc: null, instead: null, gone: true });
+    expect(splitWrite(docOf([["t2"]]), "tb0", "p-gone", "t9", split)).toEqual({ doc: null, instead: null, gone: true });
   });
 });
 
