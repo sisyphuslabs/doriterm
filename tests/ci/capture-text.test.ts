@@ -150,6 +150,38 @@ describe("an SVG's own text is checked, since OCR cannot read one", () => {
     ).toContain("prompt: account at host");
   });
 
+  test("a text's own dy shifts it within its line, so same-y siblings centred with dy still join (#2171)", async () => {
+    expect(
+      patterns(
+        await captureSvg(
+          '<text x="0" y="10" dy=".35em">someone@</text><text x="56" y="10" dy=".35em">alpha-box</text>',
+        ),
+      ),
+    ).toContain("prompt: account at host");
+  });
+
+  test("y compares as a number, so 10 and 10.0 are one line (#2171)", async () => {
+    expect(
+      patterns(await captureSvg('<text x="0" y="10">someone@</text><text x="56" y="10.0">alpha-box</text>')),
+    ).toContain("prompt: account at host");
+  });
+
+  test("a title's text stays apart from the drawn lines (#2172)", async () => {
+    expect(classify(await captureSvg('<title>Terminal</title><text x="0" y="10">demo@my-laptop:~$ ls</text>')).ok).toBe(
+      true,
+    );
+  });
+
+  test("texts placed only by transform stay separate lines (#2172)", async () => {
+    expect(
+      classify(
+        await captureSvg(
+          '<text transform="translate(0 10)">$ ls</text><text transform="translate(0 30)">demo@my-laptop:~$ ls</text>',
+        ),
+      ).ok,
+    ).toBe(true);
+  });
+
   test("a prompt in a CDATA section is read, not dropped", async () => {
     expect(patterns(await captureSvg('<text x="1"><![CDATA[someone@alpha-box:~$ ls]]></text>'))).toContain(
       "prompt: account at host",

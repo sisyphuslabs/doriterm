@@ -90,24 +90,47 @@ const decodeEntities = (text: string): string =>
 
 const SVG_Y = /(?:^|\s)y\s*=\s*["']([^"']*)["']/;
 const SVG_DY = /(?:^|\s)dy\s*=\s*["']([^"']*)["']/;
+const SVG_TRANSFORM = /(?:^|\s)transform\s*=\s*["']([^"']*)["']/;
 
 /**
- * An SVG's text as it reads on screen, one line per drawn line. A line break goes only where a `<text>` or `<tspan>`
- * moves to a new line: a new `y`, or a nonzero `dy`. Every other tag goes with no separator, so runs drawn on the same
- * line (a prompt split across `<tspan>`s, or across sibling `<text>`s one per colour) are one string to a reader, as a
- * space where a tag stood would let `someone@<tspan>alpha-box</tspan>` pass as two words. Lines drawn one under
- * another stay apart, so a minified SVG's clean lines never run together into a prompt neither shows.
+ * An SVG's text as it reads on screen, one line per drawn line. A `<text>` sits on the line its `y`, its own `dy` and
+ * its `transform` place it on, `y` read as a number, so sibling `<text>`s that share all three (one per colour, each
+ * centred with the same `dy`) are one line, and texts placed only by `transform` are apart when their transforms
+ * differ. A `<tspan>` moves to a new line with a different `y` or a nonzero `dy`. Every other drawn tag goes with no
+ * separator, so a prompt split across runs on one line is one string to a reader, as a space where a tag stood would
+ * let `someone@<tspan>alpha-box</tspan>` pass as two words. A `<title>` or `<desc>` is not drawn, so its text is a
+ * line apart. Lines drawn one under another stay apart, so a minified SVG's clean lines never run together into a
+ * prompt neither shows.
  */
 function joinSvgLines(markup: string): string {
   let line: string | undefined;
+  let lineY: number | undefined;
   return markup.replace(/<[^>]*>/g, (tag: string): string => {
+    if (/^<\/?(?:title|desc)\b/i.test(tag)) {
+      line = undefined;
+      lineY = undefined;
+      return "\n";
+    }
     const start = /^<(text|tspan)\b([^>]*)>$/i.exec(tag);
     if (start === null) return "";
     const attributes = ` ${start[2] ?? ""}`;
-    const dy = Number.parseFloat(SVG_DY.exec(attributes)?.[1] ?? "0");
-    const y = SVG_Y.exec(attributes)?.[1] ?? (start[1]?.toLowerCase() === "text" ? "0" : undefined);
-    const moved = (y !== undefined && line !== undefined && y !== line) || (Number.isFinite(dy) && dy !== 0);
-    if (y !== undefined) line = y;
+    const yText = SVG_Y.exec(attributes)?.[1];
+    const dyText = SVG_DY.exec(attributes)?.[1]?.trim() ?? "";
+    if (start[1]?.toLowerCase() === "text") {
+      const y = Number.parseFloat(yText ?? "0");
+      const transform = (SVG_TRANSFORM.exec(attributes)?.[1] ?? "").replace(/\s+/g, " ").trim();
+      const key = `${y}|${dyText}|${transform}`;
+      const moved = line !== undefined && key !== line;
+      line = key;
+      lineY = y;
+      return moved ? "\n" : "";
+    }
+    const y = yText === undefined ? undefined : Number.parseFloat(yText);
+    const dy = Number.parseFloat(dyText === "" ? "0" : dyText);
+    const moved = (y !== undefined && y !== lineY) || (Number.isFinite(dy) && dy !== 0);
+    if (y !== undefined) lineY = y;
+    // A tspan that moves leaves its text's line, so a later sibling text with that text's key starts a line of its own.
+    if (moved) line = `${line ?? ""}+`;
     return moved ? "\n" : "";
   });
 }
