@@ -20,6 +20,12 @@ test("every get.doriterm.com/dl link in the docs and the landing page names a ke
 test("the install line, the Add a machine command and the landing page's download all point at get.doriterm.com", () => {
   expect(read("README.md")).toContain("curl -fsSL https://get.doriterm.com | sh");
   expect(read("README.md")).not.toContain("releases/latest/download/install.sh");
+  // The Add a machine spec matched the old URL and failed Web e2e once (#1980 review); no web file may name it.
+  const web = Array.from(new Bun.Glob("apps/web/{src,e2e}/**/*.{ts,tsx}").scanSync(ROOT));
+  expect(web.length).toBeGreaterThan(50);
+  // Written plain or regex-escaped (releases\/latest\/download\/install\.sh).
+  const oldUrl = /releases\\?\/latest\\?\/download\\?\/install\\?\.sh/;
+  expect(web.filter((path) => oldUrl.test(read(path)))).toEqual([]);
   expect(INSTALL_SCRIPT_URL).toBe("https://get.doriterm.com");
   expect(joinCommand("doriface://pair#h=a")).toStartWith("curl -fsSL https://get.doriterm.com |");
   const landing = read("apps/landing/index.html");
