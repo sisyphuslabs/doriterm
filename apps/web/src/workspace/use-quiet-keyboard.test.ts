@@ -125,3 +125,44 @@ test("a field in the page losing the focus is not the page losing it: the press 
   terminal.view.dispatchEvent(Object.defineProperty(new Event("blur"), "target", { value: field }));
   expect(terminal.held()).toBe(1);
 });
+
+test("the wait ends when the held mouse moves with no button down, its lift lost (#2160)", () => {
+  const terminal = pressed();
+  terminal.down(1, "mouse");
+  let quieted = 0;
+  const abort = new AbortController();
+  aborts.push(abort);
+  whenPressEnds(terminal.view, terminal.held, () => quieted++, abort.signal);
+  terminal.hover(1, "mouse");
+  expect(quieted).toBe(1);
+});
+
+test("the wait ends when the page loses the focus, and only then, not on a field's blur (#2160)", () => {
+  const terminal = pressed();
+  terminal.down(1, "mouse");
+  let quieted = 0;
+  const abort = new AbortController();
+  aborts.push(abort);
+  whenPressEnds(terminal.view, terminal.held, () => quieted++, abort.signal);
+  terminal.view.dispatchEvent(Object.defineProperty(new Event("blur"), "target", { value: new EventTarget() }));
+  expect(quieted).toBe(0);
+  terminal.blur();
+  expect(quieted).toBe(1);
+});
+
+test("the wait needs no AbortSignal.any, which Firefox before 124 lacks (baseline Firefox 121)", () => {
+  const any = Reflect.get(AbortSignal, "any");
+  Reflect.deleteProperty(AbortSignal, "any");
+  try {
+    const terminal = pressed();
+    terminal.down(1, "touch");
+    let quieted = 0;
+    const abort = new AbortController();
+    whenPressEnds(terminal.view, terminal.held, () => quieted++, abort.signal);
+    abort.abort();
+    terminal.up(1, "touch");
+    expect(quieted).toBe(0);
+  } finally {
+    Object.defineProperty(AbortSignal, "any", { value: any, configurable: true, writable: true });
+  }
+});
