@@ -200,37 +200,64 @@ describe("startRelayedHost", () => {
       settled: "interrupted",
     },
   ];
-  test("a start-up that fails before its hold ends the fixture, and the reason is on stderr (#2268)", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "relayed-startup-"));
-    const out = mkdtempSync(join(tmpdir(), "relayed-startup-out-"));
-    try {
-      const fixture = Bun.spawn(
-        [process.execPath, join(import.meta.dir, "fixtures", "relayed-startup-sigterm.fixture.ts")],
-        {
-          env: { ...process.env, TMPDIR: tmp, STAGE: "relay-fail", SETTLED_FILE: join(out, "settled") },
-          stdin: "pipe",
-          stdout: "pipe",
-          stderr: "pipe",
-        },
-      );
-      const stderr = new Response(fixture.stderr).text();
-      // Bounded: the stdin stays open, as in the other cases, so a fixture that waited on it would never exit.
-      const ended = await Promise.race([
-        fixture.exited.then(() => "exited"),
-        Bun.sleep(20_000).then(() => "still running"),
-      ]);
-      if (ended !== "exited") fixture.kill("SIGKILL");
-      const errors = await stderr;
-      process.stderr.write(errors);
-      expect(ended).toBe("exited");
-      expect(errors).toContain("the relay start failed on purpose");
-      expect(await stopLeftUnder(tmp)).toEqual([]);
-    } finally {
-      await stopLeftUnder(tmp);
-      rmSync(tmp, { recursive: true, force: true });
-      rmSync(out, { recursive: true, force: true });
-    }
-  }, 60_000);
+  const earlyFailures = [
+    {
+      title: "a start-up whose relay start fails before its hold ends the fixture, and the reason is on stderr (#2268)",
+      env: { STAGE: "relay-fail" },
+      reason: "the relay start failed on purpose",
+    },
+    {
+      // The pair stage also watches for its mark: that watch must not keep the fixture running either. No relay checkout
+      // fails start-up at its first step.
+      title: "a pair-stage start-up that fails before its hold ends the fixture, and the reason is on stderr (#2268)",
+      env: { STAGE: "pair" },
+      reason: "no installed relay checkout",
+    },
+  ];
+  for (const { title, env, reason } of earlyFailures) {
+    test(
+      title,
+      async () => {
+        const tmp = mkdtempSync(join(tmpdir(), "relayed-startup-"));
+        const out = mkdtempSync(join(tmpdir(), "relayed-startup-out-"));
+        try {
+          const fixture = Bun.spawn(
+            [process.execPath, join(import.meta.dir, "fixtures", "relayed-startup-sigterm.fixture.ts")],
+            {
+              env: {
+                ...process.env,
+                ...env,
+                TMPDIR: tmp,
+                SETTLED_FILE: join(out, "settled"),
+                PAIR_MARK: join(out, "pair-held"),
+                ...(env.STAGE === "pair" ? { DORIFACE_RELAY_DIR: join(out, "no-relay") } : {}),
+              },
+              stdin: "pipe",
+              stdout: "pipe",
+              stderr: "pipe",
+            },
+          );
+          const stderr = new Response(fixture.stderr).text();
+          // Bounded: the stdin stays open, as in the other cases, so a fixture that waited on it would never exit.
+          const ended = await Promise.race([
+            fixture.exited.then(() => "exited"),
+            Bun.sleep(20_000).then(() => "still running"),
+          ]);
+          if (ended !== "exited") fixture.kill("SIGKILL");
+          const errors = await stderr;
+          process.stderr.write(errors);
+          expect(ended).toBe("exited");
+          expect(errors).toContain(reason);
+          expect(await stopLeftUnder(tmp)).toEqual([]);
+        } finally {
+          await stopLeftUnder(tmp);
+          rmSync(tmp, { recursive: true, force: true });
+          rmSync(out, { recursive: true, force: true });
+        }
+      },
+      60_000,
+    );
+  }
   for (const { stage, title, env, settled } of startupCases) {
     test(
       title,
