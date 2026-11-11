@@ -71,6 +71,9 @@ async function expectScale(scope: Locator): Promise<{ readonly headings: number[
 
 const settingsDialog = (page: Page) => page.getByRole("dialog", { name: "Settings" });
 
+/** How long Settings > Machines may take to draw its mesh groups once the machine is connected. */
+const MESH_GROUPS_MS = 20_000;
+
 for (const width of [390, 1440] as const) {
   test.describe(`${width}`, () => {
     const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
@@ -92,6 +95,8 @@ for (const width of [390, 1440] as const) {
     // The fixture's mesh documents draw every group, so the case measures MeshGroup's headings, not the loading state.
     // The added machine is connected first, read from the core: a phone's first screen draws no machine row (#2204).
     test("Settings > Machines keeps its mesh groups apart from their rows", async ({ page }) => {
+      // Room for both named waits, the core's redial and the mesh groups', past the default 60 s test timeout.
+      test.setTimeout(REDIAL_BOUND_MS + MESH_GROUPS_MS + 30_000);
       resetMeshDocs();
       await expect.poll(machineState, { timeout: REDIAL_BOUND_MS }).toBe("connected");
       await page.goto("/settings");
@@ -100,7 +105,7 @@ for (const width of [390, 1440] as const) {
         .getByRole(width === 390 ? "tab" : "button", { name: "Machines", exact: true })
         .first()
         .click();
-      await expect(settings.locator("[data-mesh-group]").first()).toBeVisible({ timeout: 20_000 });
+      await expect(settings.locator("[data-mesh-group]").first()).toBeVisible({ timeout: MESH_GROUPS_MS });
       await expectScale(settings);
     });
   });
