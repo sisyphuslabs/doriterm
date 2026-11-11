@@ -73,6 +73,8 @@ export interface RelayedHost {
 export interface RelayedHostOptions {
   /** For tests of this helper: the relay the host dials, instead of the local one. */
   readonly hostRelayUrl?: string;
+  /** For tests of this helper: the CLI the pairing offer runs instead of doriface-host's, e.g. one that never exits. */
+  readonly pairCli?: string;
   readonly uplinkTimeoutMs?: number;
   /** Wraps the sockets the host's uplink and the clients open, e.g. to capture what the relay forwards. */
   readonly wrapSockets?: (base: CreateSocket) => { readonly host: CreateSocket; readonly client: CreateSocket };
@@ -139,8 +141,11 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
   // Read only by the uplink wait: an interrupt at any other step is seen by unlessInterrupted.
   interruption.promise.catch(() => {});
   const settled = Promise.withResolvers<boolean>();
+  // Kills a pair CLI start-up is waiting on, which has no bound of its own (#2155).
+  const aborted = new AbortController();
   const unhook = onInterrupt(async () => {
     interrupted = true;
+    aborted.abort();
     interruption.reject(interruptedError());
     if (await settled.promise) await stop();
   });
@@ -177,7 +182,9 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
     await within(Promise.race([connected.promise, interruption.promise]), "the host's relay uplink", uplinkMs);
     const e2ee = host.e2ee;
     if (e2ee === undefined) throw new Error("the host has no E2EE endpoint");
-    const started = await relayedHost({
+    const pending = relayedHost({
+      cli: options.pairCli ?? CLI,
+      signal: aborted.signal,
       relayUrl: relay.url,
       hostId: e2ee.hostId,
       ip,
@@ -188,6 +195,9 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
       logs,
       stop,
     });
+    // Its pair CLI is killed on an interrupt, which rejects it too: that rejection has nothing left to tell.
+    pending.catch(() => {});
+    const started = await Promise.race([pending, interruption.promise]);
     unlessInterrupted();
     settled.resolve(true);
     return started;
@@ -203,6 +213,9 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
 }
 
 interface Started {
+  /** The CLI the pairing offer runs, and what kills it once start-up is interrupted. */
+  readonly cli: string;
+  readonly signal: AbortSignal;
   readonly relayUrl: string;
   readonly hostId: string;
   readonly ip: string;
@@ -215,10 +228,10 @@ interface Started {
 }
 
 async function relayedHost(started: Started): Promise<RelayedHost> {
-  const { relayUrl, hostId, stateDir, scratch, createSocket } = started;
+  const { cli, signal, relayUrl, hostId, stateDir, scratch, createSocket } = started;
   const pairingOffer = async (): Promise<{ readonly url: string; readonly code: string }> => {
     const args = ["pair", "--no-qr", "--web-origin", "https://web.example", "--relay", relayUrl];
-    const proc = Bun.spawn([process.execPath, CLI, ...args, "--state-dir", stateDir], { stdout: "pipe" });
+    const proc = Bun.spawn([process.execPath, cli, ...args, "--state-dir", stateDir], { stdout: "pipe", signal });
     const stdout = await new Response(proc.stdout).text();
     const url = stdout.split("\n").find((line) => line.startsWith("https://web.example/pair#"));
     const code = /^code\s+(\S{4}) (\S{4})/m.exec(stdout);
