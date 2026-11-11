@@ -9,7 +9,6 @@ import { RegionBoundary } from "../crash/region-boundary.tsx";
 import type { TerminalEnd } from "../terminal/terminal-end.ts";
 import type { TerminalPort } from "../terminal/terminal-port.ts";
 import { TerminalView } from "../terminal/terminal-view.tsx";
-import { MachineOffline } from "./machine-offline.tsx";
 import { machineOf, type Session, terminalTitle } from "./model.ts";
 import { picksPane } from "./pane-focus.ts";
 import { SessionMenuItems } from "./session-menu.tsx";
@@ -145,6 +144,9 @@ export function Pane(props: PaneProps) {
               <h2 title={title} className="min-w-0 truncate">
                 {title}
               </h2>
+              {terminal.offline === true && machine !== undefined ? (
+                <span className="shrink-0 text-muted-foreground">· {machine} is offline</span>
+              ) : null}
               <PaneButtons zoomed={zoomed} onSplit={onSplit} onZoom={onZoom} onClose={onClose} />
             </header>
           }
@@ -160,24 +162,23 @@ export function Pane(props: PaneProps) {
           detail="The program keeps running on the host."
         >
           {terminal.offline === true ? null : <ApprovalOverlay connection={connection} terminal={terminal} />}
-          {terminal.offline === true && machine !== undefined ? (
-            <MachineOffline machine={machine} />
-          ) : (
-            // A restarted program (a kept terminal's loss) has a new pid: its view attaches to it afresh.
-            <TerminalView
-              key={terminal.pid ?? undefined}
-              connection={connection}
-              address={terminal.address}
-              pid={terminal.pid ?? null}
-              live={terminal.state === "live"}
-              focused={focused}
-              claimed={claimed}
-              label={`${title} output`}
-              onEnd={onEnd}
-              onEnded={() => onEnded(terminal.address, terminal.pid ?? null)}
-              onPort={onPort}
-            />
-          )}
+          {/* An offline machine is said in the status bar and the split header; its view stays, and one not
+              attached yet waits for the machine (#2003). A restarted program (a kept terminal's loss) has a new pid: its
+              view attaches afresh. */}
+          <TerminalView
+            key={terminal.pid ?? undefined}
+            reachable={terminal.offline !== true}
+            connection={connection}
+            address={terminal.address}
+            pid={terminal.pid ?? null}
+            live={terminal.state === "live"}
+            focused={focused}
+            claimed={claimed}
+            label={`${title} output`}
+            onEnd={onEnd}
+            onEnded={() => onEnded(terminal.address, terminal.pid ?? null)}
+            onPort={onPort}
+          />
         </RegionBoundary>
       </div>
       {dock}

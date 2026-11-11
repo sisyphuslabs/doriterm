@@ -104,7 +104,7 @@ test.describe("a machine whose line blips (#904)", () => {
     await expect(agentRow(page.getByRole("region", { name: "Working" }), "crunch", true)).toBeVisible();
   });
 
-  test("a machine that is really gone reads offline, with its tab, once the grace ends and not before", async ({
+  test("a machine that is really gone reads offline in the status bar, its view kept, once the grace ends and not before", async ({
     page,
   }) => {
     test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
@@ -119,7 +119,14 @@ test.describe("a machine whose line blips (#904)", () => {
     await expect(machineRow(page)).toContainText("offline", { timeout: OFFLINE_BOUND_MS });
     // The page counts the grace from hc's own drop time, moved back at most one 10 s read, so it never ends early.
     expect(Date.now() - dropped).toBeGreaterThanOrEqual(OFFLINE_GRACE_MS - 10_000);
-    await expect(page.locator(`[data-terminal="${terminal}"]`)).toHaveCount(0);
+    // The view stays where it was and the status bar says why (#2003); nothing replaces or covers the terminal.
+    await expect(page.locator(`[data-terminal="${terminal}"]`)).toHaveCount(1);
+    await expect(
+      page
+        .getByRole("contentinfo")
+        .getByRole("status")
+        .filter({ hasText: `${MACHINE_NAME} is offline` }),
+    ).toBeVisible();
     await expect(page.getByRole("region", { name: "Offline" })).toBeVisible();
   });
 });

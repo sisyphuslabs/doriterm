@@ -60,8 +60,8 @@ export function PhoneSessionSheet({ terminal, terminals, title, where, onOpen }:
   const next = nextNeedingYou(terminals, address);
   const nextAgent = next === null || next === address ? null : next;
   const waiting = waitingBesides(terminals, address);
-  // An offline machine draws MachineOffline in place of the terminal (phone-terminal.tsx), so nothing takes
-  // terminal.search: Find in terminal would only close this sheet, and the row waits for the machine to come back.
+  // While its machine is offline the line under the header says so (MachineLine) and the row waits for the machine to
+  // come back: Find in terminal is offered again then (#1482).
   const offline = terminal.offline === true;
   const act = (run: () => void) => () => {
     setOpen(false);
