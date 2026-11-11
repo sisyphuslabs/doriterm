@@ -89,6 +89,29 @@ test("each lone jamo an input method commits with no Korean key reaches the prog
   await expect(read).toHaveCount(2);
 });
 
+test("a modifier pressed while a lone jamo waits for its key does not hold the jamo: a modifier types nothing (#1913)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  const cdp = await openRawReader(page, terminal);
+  // A jamo inserted as plain text waits 100 ms for the key that would make it a syllable's first. Shift goes down inside
+  // that wait, as a person reaching for a capital does; it sends nothing, so the jamo is still committed text.
+  // Both commands are sent before either is awaited, so the modifier reaches the field in the same task batch as the
+  // insertion, well inside the 100 ms the jamo waits.
+  await Promise.all([
+    cdp.send("Input.insertText", { text: "\u{314B}" }),
+    cdp.send("Input.dispatchKeyEvent", {
+      type: "rawKeyDown",
+      key: "Shift",
+      code: "ShiftLeft",
+      windowsVirtualKeyCode: 16,
+      modifiers: 8,
+    }),
+  ]);
+  await expectRead(terminal, cdp, "e3 85 8b");
+});
+
 test("a Korean key whose keyup a blur took does not hold the next committed syllable (#1246)", async ({ page }) => {
   await page.goto("/");
   const terminal = await openNewTerminal(page);
