@@ -15,6 +15,7 @@ import { PAIR_USAGE, pairCommand } from "./commands/pair.ts";
 import { HcInstallError, installHc } from "./hc-install.ts";
 import { HOST_VERSION, startHost } from "./host.ts";
 import {
+  notUpdatable,
   parseChannel,
   UPDATE_USAGE,
   updatableBinary,
@@ -211,8 +212,7 @@ async function serve(args: readonly string[]): Promise<void> {
 
   // The host a desktop app starts from its own resources is replaced with the app and passes no --auto-update.
   const binary = updatableBinary(process.execPath);
-  if (autoUpdate !== undefined && binary === undefined)
-    log(`--auto-update: ${process.execPath} is not a built doriface-host`);
+  if (autoUpdate !== undefined && binary === undefined) log(`--auto-update: ${notUpdatable(process.execPath)}`);
   if (autoUpdate !== undefined && binary !== undefined) {
     const stateDir = values["state-dir"] ?? defaultStateDir();
     scheduleSelfUpdate({

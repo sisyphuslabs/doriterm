@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { DEFAULT_RELAY_URL } from "@doriface/crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHcSession, type HcSession } from "../../host/src/testing/hc-session.ts";
@@ -27,6 +27,7 @@ beforeAll(() => {
   host = new LocalHost({
     command: { file: process.execPath, args: [cli] },
     hc: () => session.hc,
+    cwd: tmpdir(),
     env: session.env,
     log: (line) => logs.push(line),
   });
@@ -75,6 +76,7 @@ describe("LocalHost against the workspace doriface-host and a real hc", () => {
     const broken = new LocalHost({
       command: { file: process.execPath, args: ["-e", "console.error('boom'); process.exit(3)"] },
       hc: () => undefined,
+      cwd: tmpdir(),
       env: process.env,
       log: () => {},
     });
@@ -96,6 +98,7 @@ describe("LocalHost against the workspace doriface-host and a real hc", () => {
     const dying = new LocalHost({
       command: { file: process.execPath, args: ["-e", child] },
       hc: () => undefined,
+      cwd: tmpdir(),
       env: process.env,
       log: (line) => {
         if (!line.startsWith("doriface-host exited")) return;
@@ -117,6 +120,7 @@ describe("the host the desktop app starts (#596)", () => {
     const started = new LocalHost({
       command: { file: process.execPath, args: [join(import.meta.dir, "fixtures", "spawn-args.fixture.ts")] },
       hc: () => undefined,
+      cwd: tmpdir(),
       env: process.env,
       log: (line) => lines.push(line),
     });
@@ -133,6 +137,30 @@ describe("the host the desktop app starts (#596)", () => {
     expect(valueOf("--listen")).toBe("127.0.0.1:0");
     expect(args).toContain("--relay");
     expect(valueOf("--relay")).toBe(DEFAULT_RELAY_URL);
+  });
+
+  test("the host starts in the folder it is given, not the one the app was launched from (#2047)", async () => {
+    // The app's own folder is wherever its launcher started it: a Windows shortcut's Start in is the install folder.
+    // The host passes its folder to the core it starts, and a new terminal with no directory opens there.
+    const home = realpathSync(mkdtempSync(join(tmpdir(), "dd-home-")));
+    const lines: string[] = [];
+    const started = new LocalHost({
+      command: { file: process.execPath, args: [join(import.meta.dir, "fixtures", "spawn-args.fixture.ts")] },
+      hc: () => undefined,
+      cwd: home,
+      env: process.env,
+      log: (line) => lines.push(line),
+    });
+    try {
+      await started.start();
+    } finally {
+      await started.stop();
+      rmSync(home, { recursive: true, force: true });
+    }
+    const printed = lines.find((line) => line.includes("SPAWN-CWD "));
+    if (printed === undefined) throw new Error(`the host printed no folder: ${lines.join("\n")}`);
+    expect(process.cwd()).not.toBe(home);
+    expect(printed.slice(printed.indexOf("SPAWN-CWD ") + "SPAWN-CWD ".length)).toBe(home);
   });
 });
 
@@ -152,6 +180,7 @@ describe("LocalHost when doriface-host cannot start", () => {
       command,
       hc: () => hc,
       ...(searched === undefined ? {} : { searched: () => searched }),
+      cwd: tmpdir(),
       env: { ...process.env, DORIFACE_HOST_STATE_DIR: stateDir },
       log: () => {},
     });

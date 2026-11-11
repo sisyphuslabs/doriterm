@@ -7,7 +7,6 @@ import { expect, test } from "./fixtures.ts";
 import { seedLayout } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 import { fakeSoftKeyboard, PHONE, showKeyboard } from "./phone-key-bar.ts";
-import { synchronizedUpdates, watchSynchronizedUpdates } from "./synchronized-updates.ts";
 import { expectFollowed, sampleWhile } from "./transcript-follow.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -59,6 +58,20 @@ const terminalOf = (page: Page, address: string): Locator => page.locator(`[data
 const fromBottom = (terminal: Locator): Promise<number> =>
   terminal.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop);
 
+/**
+ * How much slower than the host each case's page runs once the transcript is drawn: also 6x, a page too starved to take
+ * a whole redraw in within wterm's one-second hold of it, so the pacer must hold the paint until it closes (#2040).
+ */
+const SLOWDOWNS = [1, 6] as const;
+
+/** Slows the page's CPU `slowdown` times, as a busy phone or a starved tab runs. */
+async function slowPage(page: Page, slowdown: number): Promise<void> {
+  if (slowdown > 1)
+    await (await page.context().newCDPSession(page)).send("Emulation.setCPUThrottlingRate", { rate: slowdown });
+}
+
+const slower = (slowdown: number): string => (slowdown > 1 ? `, on a page ${slowdown}x slower` : "");
+
 /** The view at the bottom, its screen showing the transcript's last line. */
 async function atLastLine(terminal: Locator): Promise<void> {
   await expect(terminal.locator(".term-row:not(.term-scrollback-row)").last()).toContainText(
@@ -68,111 +81,117 @@ async function atLastLine(terminal: Locator): Promise<void> {
   await expect.poll(() => fromBottom(terminal)).toBeLessThan(5);
 }
 
-test("a following terminal stays on its last line, in every frame painted inside the synchronized-update hold, through window resizes that redraw an agent's transcript", async ({
-  page,
-}) => {
-  const dir = mkdtempSync(join(tmpdir(), "doriface-resize-scroll-"));
-  try {
-    const agent = startAgent(dir);
-    seedLayout([{ id: "tb-757", name: "agent", root: [{ pane: "p1", terminal: agent.address }] }]);
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await watchSynchronizedUpdates(page);
-    await page.goto("/");
-    const terminal = terminalOf(page, agent.address);
-    await atLastLine(terminal);
-    const resize = async (width: number): Promise<void> => {
-      const drawn = agent.frames();
-      const samples = await sampleWhile(page, agent.address, async () => {
-        await page.setViewportSize({ width, height: 800 });
-        await expect.poll(agent.frames, { timeout: 30_000 }).toBeGreaterThan(drawn);
-        await atLastLine(terminal);
-      });
-      expectFollowed(samples, await synchronizedUpdates(page), LINES);
-    };
-    await resize(960);
-    await resize(1280);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("a following terminal stays on its last line, in every frame painted inside the synchronized-update hold, while a split divider is dragged", async ({
-  page,
-}) => {
-  const dir = mkdtempSync(join(tmpdir(), "doriface-resize-scroll-"));
-  try {
-    const agent = startAgent(dir);
-    const shell = startShell("host", "resize-757-side");
-    started.push(shell);
-    seedLayout([
-      {
-        id: "tb-757",
-        name: "split",
-        root: [
-          { pane: "p1", terminal: agent.address, weight: 0.6 },
-          { pane: "p2", terminal: shell, weight: 0.4 },
-        ],
-      },
-    ]);
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await watchSynchronizedUpdates(page);
-    await page.goto("/");
-    const terminal = terminalOf(page, agent.address);
-    await atLastLine(terminal);
-    const divider = page.locator('[role="separator"][data-container="tb-757"]');
-    const line = await divider.boundingBox();
-    if (line === null) throw new Error("no divider box");
-    const [x, y] = [line.x + line.width / 2, line.y + line.height / 2];
-    const drawn = agent.frames();
-    const samples = await sampleWhile(page, agent.address, async () => {
-      await page.mouse.move(x, y);
-      await page.mouse.down();
-      await page.mouse.move(x - 240, y, { steps: 8 });
-      await page.mouse.up();
-      await expect.poll(agent.frames, { timeout: 30_000 }).toBeGreaterThan(drawn);
-      await atLastLine(terminal);
-    });
-    expectFollowed(samples, await synchronizedUpdates(page), LINES);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test.describe("on a phone", () => {
-  test.use({ ...PHONE });
-
-  test("a following terminal stays on its last line, in every frame painted inside the synchronized-update hold, as the soft keyboard opens and closes", async ({
+for (const slowdown of SLOWDOWNS)
+  test(`a following terminal stays on its last line, in every frame, through window resizes that redraw an agent's transcript${slower(slowdown)}`, async ({
     page,
   }) => {
+    test.slow(slowdown > 1);
     const dir = mkdtempSync(join(tmpdir(), "doriface-resize-scroll-"));
     try {
       const agent = startAgent(dir);
       seedLayout([{ id: "tb-757", name: "agent", root: [{ pane: "p1", terminal: agent.address }] }]);
-      await fakeSoftKeyboard(page, { raiseOnFocus: false });
-      await watchSynchronizedUpdates(page);
+      await page.setViewportSize({ width: 1280, height: 800 });
       await page.goto("/");
-      await page
-        .getByRole("button", { name: /resize-agent/ })
-        .first()
-        .click();
       const terminal = terminalOf(page, agent.address);
       await atLastLine(terminal);
-      // The keyboard takes rows from the grid, as on a phone: the agent redraws for the new height.
-      const keyboard = async (px: number): Promise<void> => {
+      await slowPage(page, slowdown);
+      const resize = async (width: number): Promise<void> => {
         const drawn = agent.frames();
         const samples = await sampleWhile(page, agent.address, async () => {
-          await showKeyboard(page, px);
+          await page.setViewportSize({ width, height: 800 });
           await expect.poll(agent.frames, { timeout: 30_000 }).toBeGreaterThan(drawn);
           await atLastLine(terminal);
         });
-        expectFollowed(samples, await synchronizedUpdates(page), LINES, { atBottom: false });
+        expectFollowed(samples, LINES);
       };
-      await keyboard(336);
-      await keyboard(0);
+      await resize(960);
+      await resize(1280);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+for (const slowdown of SLOWDOWNS)
+  test(`a following terminal stays on its last line, in every frame, while a split divider is dragged${slower(slowdown)}`, async ({
+    page,
+  }) => {
+    test.slow(slowdown > 1);
+    const dir = mkdtempSync(join(tmpdir(), "doriface-resize-scroll-"));
+    try {
+      const agent = startAgent(dir);
+      const shell = startShell("host", "resize-757-side");
+      started.push(shell);
+      seedLayout([
+        {
+          id: "tb-757",
+          name: "split",
+          root: [
+            { pane: "p1", terminal: agent.address, weight: 0.6 },
+            { pane: "p2", terminal: shell, weight: 0.4 },
+          ],
+        },
+      ]);
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await page.goto("/");
+      const terminal = terminalOf(page, agent.address);
+      await atLastLine(terminal);
+      await slowPage(page, slowdown);
+      const divider = page.locator('[role="separator"][data-container="tb-757"]');
+      const line = await divider.boundingBox();
+      if (line === null) throw new Error("no divider box");
+      const [x, y] = [line.x + line.width / 2, line.y + line.height / 2];
+      const drawn = agent.frames();
+      const samples = await sampleWhile(page, agent.address, async () => {
+        await page.mouse.move(x, y);
+        await page.mouse.down();
+        await page.mouse.move(x - 240, y, { steps: 8 });
+        await page.mouse.up();
+        await expect.poll(agent.frames, { timeout: 30_000 }).toBeGreaterThan(drawn);
+        await atLastLine(terminal);
+      });
+      expectFollowed(samples, LINES);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+test.describe("on a phone", () => {
+  test.use({ ...PHONE });
+
+  for (const slowdown of SLOWDOWNS)
+    test(`a following terminal stays on its last line, in every frame, as the soft keyboard opens and closes${slower(slowdown)}`, async ({
+      page,
+    }) => {
+      test.slow(slowdown > 1);
+      const dir = mkdtempSync(join(tmpdir(), "doriface-resize-scroll-"));
+      try {
+        const agent = startAgent(dir);
+        seedLayout([{ id: "tb-757", name: "agent", root: [{ pane: "p1", terminal: agent.address }] }]);
+        await fakeSoftKeyboard(page, { raiseOnFocus: false });
+        await page.goto("/");
+        await page
+          .getByRole("button", { name: /resize-agent/ })
+          .first()
+          .click();
+        const terminal = terminalOf(page, agent.address);
+        await atLastLine(terminal);
+        await slowPage(page, slowdown);
+        // The keyboard takes rows from the grid, as on a phone: the agent redraws for the new height.
+        const keyboard = async (px: number): Promise<void> => {
+          const drawn = agent.frames();
+          const samples = await sampleWhile(page, agent.address, async () => {
+            await showKeyboard(page, px);
+            await expect.poll(agent.frames, { timeout: 30_000 }).toBeGreaterThan(drawn);
+            await atLastLine(terminal);
+          });
+          expectFollowed(samples, LINES, { atBottom: false });
+        };
+        await keyboard(336);
+        await keyboard(0);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
 });
 
 /** The text of the first row in view (the top one the scroll box shows), trimmed. */
