@@ -77,6 +77,10 @@ export function PhoneShell(props: PhoneShellProps) {
   // The terminal the phone shows now, for callbacks that settle after the render that made them (onEnded).
   const openNow = useRef(open);
   openNow.current = open;
+  // The leave of this render, for the same reason: an End settles about one RPC after the render that registered it, and
+  // a switch sheet opened or closed meanwhile changes how the phone leaves (#2177).
+  const leaveNow = useRef(onLeave);
+  leaveNow.current = onLeave;
   // An unanswered list is not an empty one: the empty state waits for the core's first answer (#797).
   const live = machines.terminalsLoaded
     ? terminals.filter((entry) => entry.state === "live").map((entry) => entry.address)
@@ -188,7 +192,7 @@ export function PhoneShell(props: PhoneShellProps) {
         // Read at the moment the End settles, not at the render that registered it: by then a close from the sheet may
         // have moved the phone to the tab that took its place, and that move stands (#1478).
         if (openNow.current !== address) return;
-        onLeave();
+        leaveNow.current();
       }}
       onCloseTab={onCloseTab}
       onNewInSpace={onNewInSpace}
