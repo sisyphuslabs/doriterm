@@ -420,8 +420,8 @@ describe("install.sh on macOS", () => {
     expect(readFileSync(agent, "utf8").trim()).toBe("loaded");
   });
 
-  // As many stub processes as the test above, and more (100 bootstrap retries through the launchd stub, 100 `sleep`), so
-  // the same bound (#2006).
+  // As many stub processes as the never-unloads test (100 bootstrap attempts through the launchd stub, each running its
+  // own `cat`, and 99 `sleep`), so the same bound (#2006).
   test("a bootstrap launchd keeps refusing fails the install loudly instead of leaving the agent quietly unloaded", () => {
     const r = rig("Darwin", "arm64");
     launchd(r.stubs, r.log, 1000);
