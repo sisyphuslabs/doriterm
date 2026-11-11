@@ -6,16 +6,18 @@ import { HcConnection } from "@doriface/client";
 import { createHcSession, type HcSession } from "@doriface/host/testing";
 import { stopLeftUnder } from "@doriface/host/testing/run-dir";
 import { spawnHcLink } from "../../host/src/mesh/hc-machines.ts";
+import { LINK_TIMEOUT_MS } from "../src/connection/ws-link.ts";
 import { startTerminal } from "../src/workspace/start-on.ts";
 import { addMachine, DEMO_MACHINE } from "./machine.ts";
 
 /**
- * #2004: a New terminal on an added machine that is not connected must say so at once, not after a link timeout. hc
- * answers `unavailable` from its machine state; measured at 0-6 ms. The bound is 1 s: far above that on a loaded runner,
- * and a tenth of the 10 s a regression to waiting out a link timeout would take. It covers a line that closed: a line
- * left half-open (after a sleep or a network drop), which the core has not noticed yet, is not timed here (#2004).
+ * #2004: a New terminal on an added machine that is not connected must say so from hc's machine state, not after waiting
+ * out a link timeout. The failure itself proves where it came from (`unavailable`, naming the machine); the time only
+ * has to rule out the wait, which a regression takes in full: half of LINK_TIMEOUT_MS. That holds on a loaded host, where
+ * the answer took 3.2 s in two fulls (#2000, #2164), and measures the product instead of the host, as a 1 s budget did
+ * not. A line left half-open (after a sleep or a network drop), which the core has not noticed yet, is not timed here.
  */
-const FAST_MS = 1_000;
+const FAST_MS = LINK_TIMEOUT_MS / 2;
 
 let dialer: HcSession | undefined;
 let root: string | undefined;
@@ -29,7 +31,7 @@ afterEach(async () => {
   root = undefined;
 });
 
-test("a New terminal on an added machine that is not connected fails within a second, naming it (#2004)", async () => {
+test("a New terminal on an added machine that is not connected fails from its state, not after a link timeout, naming it (#2004)", async () => {
   dialer = createHcSession("machine-unreachable-fast");
   root = mkdtempSync(join(tmpdir(), "dw-machine-"));
   const spec = { ...DEMO_MACHINE, dir: join(root, "files") };
