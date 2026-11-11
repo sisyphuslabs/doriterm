@@ -1,5 +1,5 @@
 import { devices, type Page } from "@playwright/test";
-import { agentRow, startShell } from "./agents.ts";
+import { AGENT_SHELL, agentRow, startShell } from "./agents.ts";
 import { removeTerminal } from "./ended-terminal.ts";
 import { expect, opened, test } from "./fixtures.ts";
 import { seedSpaces } from "./layout-doc.ts";
@@ -24,7 +24,7 @@ endOwnTerminals();
 const header = (page: Page) => page.getByRole("banner");
 
 function startShellIn(space: string, name: string): string {
-  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${space}`, "--", "env", "PS1=$ ", "sh"]);
+  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${space}`, "--", ...AGENT_SHELL]);
   const started: unknown = JSON.parse(out);
   if (typeof started !== "object" || started === null || !("address" in started)) throw new Error(out);
   return String(started.address);
