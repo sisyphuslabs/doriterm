@@ -23,10 +23,10 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640a38e17f1 100644
+index 78a86ffd96eec03222777f40e9db6a0561684c3f..453711b1d0921012e42077278fc2d9123b42022d 100644
 --- a/dist/input.js
 +++ b/dist/input.js
-@@ -67,9 +67,45 @@ const FIXED_KEYS = {
+@@ -67,9 +67,48 @@ const FIXED_KEYS = {
      F12: "\x1b[24~",
  };
  const COMPOSITION_INPUT_DEDUP_MS = 250;
@@ -42,6 +42,9 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
 +// grapheme with VS16 (U+FE0F) asks for the picture and takes two cells; VS15 keeps the text form in one.
 +const WIDE_CHAR = /^[\u1100-\u115f\u2e80-\u303e\u3041-\ua4cf\ua960-\ua97f\uac00-\ud7a3\uf900-\ufaff\ufe10-\ufe19\ufe30-\ufe6f\uff00-\uff60\uffe0-\uffe6\p{Emoji_Presentation}\u{20000}-\u{2fffd}\u{30000}-\u{3fffd}]$/u;
 +const ZERO_WIDTH_CHAR = /^[\p{Mn}\p{Me}\p{Cf}\u1160-\u11ff\ud7b0-\ud7ff]$/u;
++// Keys that type nothing on their own: locks, and the mode keys an input method switches with (a Korean keyboard's
++// Hangul/English and Hanja keys among them). Modifiers are told apart by their code (physicalModifier).
++const SILENT_KEYS = new Set(["CapsLock", "NumLock", "ScrollLock", "Fn", "FnLock", "HangulMode", "HanjaMode", "KanaMode", "Alphanumeric", "Eisu", "KanjiMode", "Hiragana", "Katakana", "HiraganaKatakana", "ZenkakuHankaku"]);
 +// A grapheme that starts with an emoji: a VS16 after such a base asks for its picture, which the grid draws over two
 +// cells. After a base that is no emoji there is no picture to ask for, and the grid draws the base in its own width.
 +const EMOJI_BASE = /^\p{Emoji}/u;
@@ -72,7 +75,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
  function isAltGraphTextInput(event, pressedModifiers) {
      if (event.metaKey ||
          !(event.getModifierState("AltGraph") ||
-@@ -86,6 +122,18 @@ export class InputHandler {
+@@ -86,6 +125,18 @@ export class InputHandler {
          this.composing = false;
          this.compositionWidth = 0;
          this.recentCompositionCommit = null;
@@ -91,7 +94,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
          // The first native deletion mirrors the Backspace already sent on keydown.
          this.suppressNextTouchDeleteInput = false;
          this.mouseButtons = 0;
-@@ -153,10 +201,13 @@ export class InputHandler {
+@@ -153,10 +204,13 @@ export class InputHandler {
              this.positionTextarea();
              this.element.classList.add("focused");
              if (this.getBridge()?.focusEvents?.())
@@ -106,7 +109,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
              this.focused = false;
              this.composing = false;
              this.recentCompositionCommit = null;
-@@ -169,7 +220,7 @@ export class InputHandler {
+@@ -169,7 +223,7 @@ export class InputHandler {
              this.pressedModifiers.clear();
              this.deliveredKeys.clear();
              if (this.getBridge()?.focusEvents?.())
@@ -115,7 +118,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
          };
          this._onMouseDown = (event) => {
              this.tabExitArmed = false;
-@@ -224,10 +275,12 @@ export class InputHandler {
+@@ -224,10 +278,12 @@ export class InputHandler {
          this.textarea.focus({ preventScroll: true });
      }
      syncInputPosition() {
@@ -129,15 +132,15 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
          this.accessibility.destroy();
          this.textarea.removeEventListener("keydown", this._onKeyDown);
          this.textarea.removeEventListener("keyup", this._onKeyUp);
-@@ -253,13 +306,44 @@ export class InputHandler {
+@@ -253,13 +309,44 @@ export class InputHandler {
          if (physicalModifier) {
              this.pressedModifiers.add(e.code);
          }
 -        if (this.composing || e.isComposing || e.keyCode === 229) {
 +        // A key names what a lone jamo would join, so the jamo waits no longer: with it the jamo is a syllable's first,
-+        // and the key's own edit follows. A modifier alone names nothing and sends nothing, so the jamo keeps its wait;
-+        // clearing on one held it for the next key again, as before #1718 (#1913).
-+        if (!physicalModifier)
++        // and the key's own edit follows. A key that types nothing (a modifier, a lock, the Hangul/English toggle) names
++        // nothing, so the jamo keeps its wait; clearing on one held it for the next key again, as before #1718 (#1913).
++        if (!physicalModifier && !SILENT_KEYS.has(e.key) && !/^Lang\d$/.test(e.code))
 +            this.clearUnkeyedLetter();
 +        const composingKey = this.composing || e.isComposing || e.keyCode === 229;
 +        if (composingKey && !(isComposingCtrlChord(e) && this.chordEndsComposition())) {
@@ -176,7 +179,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
          const bridge = this.getBridge();
          const kittyFlags = bridge?.kittyKeyboardFlags?.() ?? 0;
          const kittyOwnsModifier = physicalModifier && Boolean(kittyFlags & KITTY_REPORT_ALL);
-@@ -345,6 +429,9 @@ export class InputHandler {
+@@ -345,6 +432,9 @@ export class InputHandler {
              this.suppressedKeyUps.add(keyId);
              if (e.key === "Backspace") {
                  e.preventDefault();
@@ -186,7 +189,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
                  this.selectionActions?.clearSelection();
                  this.onData("\x15");
              }
-@@ -371,6 +458,8 @@ export class InputHandler {
+@@ -371,6 +461,8 @@ export class InputHandler {
          if (kittyFlags !== 0) {
              const seq = encodeKittyKey(e, kittyFlags, e.repeat ? "repeat" : "press", this.pressedModifiers, bridge?.cursorKeysApp?.() ?? false);
              if (seq) {
@@ -195,7 +198,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
                  if (!physicalModifier)
                      this.selectionActions?.clearSelection();
                  if (nativeTouchDelete)
-@@ -385,6 +474,7 @@ export class InputHandler {
+@@ -385,6 +477,7 @@ export class InputHandler {
          }
          const seq = this.keyToSequence(e);
          if (seq) {
@@ -203,7 +206,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
              this.selectionActions?.clearSelection();
              if (nativeTouchDelete)
                  this.suppressNextTouchDeleteInput = true;
-@@ -395,6 +485,7 @@ export class InputHandler {
+@@ -395,6 +488,7 @@ export class InputHandler {
          }
      }
      handleKeyUp(e) {
@@ -211,7 +214,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
          const keyId = e.code || e.key;
          this.pressedModifiers.delete(e.code);
          const delivered = this.deliveredKeys.delete(keyId);
-@@ -421,6 +512,9 @@ export class InputHandler {
+@@ -421,6 +515,9 @@ export class InputHandler {
          this.recentCompositionCommit = null;
          this.suppressNextTouchDeleteInput = false;
          const text = e.clipboardData?.getData("text");
@@ -221,7 +224,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
          // Some mobile browsers leave clipboardData empty but insert the paste
          // into the textarea. Let that input event carry the text instead.
          if (!text)
-@@ -462,6 +556,8 @@ export class InputHandler {
+@@ -462,6 +559,8 @@ export class InputHandler {
      }
      handleCompositionStart() {
          this.tabExitArmed = false;
@@ -230,7 +233,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
          this.prepareComposition();
          this.composing = true;
          this.recentCompositionCommit = null;
-@@ -472,11 +568,22 @@ export class InputHandler {
+@@ -472,11 +571,22 @@ export class InputHandler {
          this.positionTextarea();
          const s = this.textarea.style;
          s.opacity = "1";
@@ -256,7 +259,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
          this.composing = false;
          this.hideComposition();
          this.resetInputValue();
-@@ -485,6 +592,44 @@ export class InputHandler {
+@@ -485,6 +595,44 @@ export class InputHandler {
              this.onData(e.data);
          }
      }
@@ -301,7 +304,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
      hideComposition() {
          this.compositionWidth = 0;
          const s = this.textarea.style;
-@@ -502,7 +647,7 @@ export class InputHandler {
+@@ -502,7 +650,7 @@ export class InputHandler {
          if (!bridge || !cellSize || !firstRow || !bridge.getCursor) {
              this.textarea.style.left = "0px";
              this.textarea.style.top = "0px";
@@ -310,7 +313,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
                  this.textarea.style.width = `${Math.max(1, this.compositionWidth)}px`;
                  this.textarea.style.height = `${cellSize?.rowHeight ?? 17}px`;
              }
-@@ -519,7 +664,7 @@ export class InputHandler {
+@@ -519,7 +667,7 @@ export class InputHandler {
          const s = this.textarea.style;
          s.left = `${rowRect.left - hostRect.left - this.element.clientLeft + this.element.scrollLeft + col * charWidth}px`;
          s.top = `${rowRect.top - hostRect.top - this.element.clientTop + this.element.scrollTop + row * rowHeight}px`;
@@ -319,7 +322,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
              s.width = `${Math.min((bridge.getCols() - col) * charWidth, Math.max(charWidth, this.compositionWidth))}px`;
              s.height = `${rowHeight}px`;
          }
-@@ -528,14 +673,86 @@ export class InputHandler {
+@@ -528,14 +676,86 @@ export class InputHandler {
          const charWidth = this.getCellSize()?.charWidth;
          if (!charWidth || charWidth <= 0)
              return;
@@ -411,7 +414,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
      resetInputValue() {
          this.textarea.value = this.touchPrimary ? TOUCH_INPUT_PLACEHOLDER : "";
          if (this.touchPrimary)
-@@ -556,6 +773,7 @@ export class InputHandler {
+@@ -556,6 +776,7 @@ export class InputHandler {
      }
      handleInput(event) {
          this.tabExitArmed = false;
@@ -419,7 +422,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
          if (this.composing) {
              this.sizeComposition();
              return;
-@@ -565,6 +783,36 @@ export class InputHandler {
+@@ -565,6 +786,36 @@ export class InputHandler {
          const value = this.touchPrimary && rawValue.startsWith(TOUCH_INPUT_PLACEHOLDER)
              ? rawValue.slice(TOUCH_INPUT_PLACEHOLDER.length)
              : rawValue;
@@ -456,7 +459,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
          this.resetInputValue();
          const recent = this.recentCompositionCommit;
          this.recentCompositionCommit = null;
-@@ -821,7 +1069,7 @@ export class InputHandler {
+@@ -821,7 +1072,7 @@ export class InputHandler {
                  return other;
          }
          if (e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -465,7 +468,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..9526628fc93ed35b093b199d2d101640
              if (control !== null)
                  return control;
              if (e.key === "Backspace")
-@@ -855,6 +1103,24 @@ export class InputHandler {
+@@ -855,6 +1106,24 @@ export class InputHandler {
          return null;
      }
  }
