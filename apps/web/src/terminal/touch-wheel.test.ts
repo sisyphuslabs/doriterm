@@ -60,6 +60,13 @@ const touchEvent = (type: string, fingers: readonly Point[]): Event =>
     touches: fingers.map(({ x, y }) => ({ clientX: x, clientY: y })),
   });
 
+/** A touch event sent to the cell a finger landed on, as the browser sends that touch's moves and lift. */
+const sendToCell = (cell: EventTarget, type: string, fingers: readonly Point[]): Event => {
+  const event = touchEvent(type, fingers);
+  cell.dispatchEvent(event);
+  return event;
+};
+
 /** A terminal wired as the terminal view wires it through useTouchWheel, on the alternate screen unless `alt` is false. */
 function wiredTerminal(alt = true): SwipeTerminal {
   Object.assign(globalThis, { WheelEvent: FakeWheelEvent });
@@ -74,6 +81,10 @@ function wiredTerminal(alt = true): SwipeTerminal {
   const wheels: FakeWheelEvent[] = [];
   element.addEventListener("wheel", (event) => wheels.push(event as FakeWheelEvent));
   unmounts.push(attachTouchWheel({ element, bridge } as unknown as Pick<WTerm, "element" | "bridge">));
+  /** A finger lands on `cell` inside the terminal: the terminal sees the touchstart, with that cell its target. */
+  const landed = (fingers: readonly Point[], cell: EventTarget): void => {
+    element.dispatchEvent(Object.defineProperty(touchEvent("touchstart", fingers), "target", { value: cell }));
+  };
   const touch = (type: string, fingers: readonly Point[]): Event => {
     const event = touchEvent(type, fingers);
     element.dispatchEvent(event);
@@ -90,20 +101,12 @@ function wiredTerminal(alt = true): SwipeTerminal {
     pinchThenDrag(first, second, ...path) {
       const firstCell = new EventTarget();
       const secondCell = new EventTarget();
-      const landed = (fingers: readonly Point[], cell: EventTarget): void => {
-        element.dispatchEvent(Object.defineProperty(touchEvent("touchstart", fingers), "target", { value: cell }));
-      };
-      const on = (cell: EventTarget, type: string, fingers: readonly Point[]): Event => {
-        const event = touchEvent(type, fingers);
-        cell.dispatchEvent(event);
-        return event;
-      };
       landed([first], firstCell);
       landed([first, second], secondCell);
       // The second finger lifts: its touchend goes to its own cell and lists the finger still down.
-      on(secondCell, "touchend", [first]);
-      const cancelled = path.map((at) => on(firstCell, "touchmove", [at]).defaultPrevented);
-      on(firstCell, "touchend", []);
+      sendToCell(secondCell, "touchend", [first]);
+      const cancelled = path.map((at) => sendToCell(firstCell, "touchmove", [at]).defaultPrevented);
+      sendToCell(firstCell, "touchend", []);
       return cancelled;
     },
     swipeOnRedrawnCell(from, ...path) {
