@@ -81,6 +81,8 @@ export function multipartBody(
   let at = 0;
   let progressed = false;
   let cancelled: { readonly reason: unknown } | null = null;
+  /** Read through a call: `cancelled` is set by the stream's cancel, which can run during any await below. */
+  const cancelledNow = (): { readonly reason: unknown } | null => cancelled;
 
   /** Enqueues what the chunk in hand allows; "read" when it needs the next chunk, "group" for the next group. */
   const drain = (controller: ReadableStreamDefaultController<Uint8Array>): "read" | "group" | "done" => {
@@ -111,8 +113,10 @@ export function multipartBody(
 
   /** One pull: reads until it has enqueued something, then leaves the rest to the next pull (backpressure). */
   const step = async (controller: ReadableStreamDefaultController<Uint8Array>): Promise<void> => {
+    if (cancelled !== null) return;
     const state = reader === null ? "group" : drain(controller);
-    if (state === "read" && progressed) {
+    // The next group opens only when the client reads on, so a cancel between groups opens no R2 read (#2272).
+    if (state !== "done" && progressed) {
       progressed = false;
       return;
     }
@@ -131,7 +135,8 @@ export function multipartBody(
       if (next === undefined) throw new Error("no range group left to read");
       const source = await read(next);
       // The client went away while this body was opening: nothing will read it.
-      if (cancelled !== null) return void (await source.cancel(cancelled.reason));
+      const late = cancelledNow();
+      if (late !== null) return void (await source.cancel(late.reason));
       reader = source.getReader();
       chunk = new Uint8Array(0);
       chunkStart = next.offset;
