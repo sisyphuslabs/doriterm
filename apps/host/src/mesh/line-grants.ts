@@ -31,7 +31,10 @@ export const ADD_RESERVATION_MS = 30_000;
 export interface LineGrantsOptions {
   readonly view: () => MeshView;
   readonly policy: DialPolicy;
-  /** Dials the member's hc stream with this host's Noise key (section 7.2), LAN first when one is known. */
+  /**
+   * Dials the member's hc stream with this host's Noise key (section 7.2), over the relay: the dialer has no LAN or other
+   * direct path, and the owner's decision (#2070) keeps every session on the relay, the mesh line included (#2284).
+   */
   readonly dial: (member: MemberEntry) => Promise<ByteLink>;
   readonly waitMs?: number;
   /** Times the reservations out; the policy's own clock in the running host. */
