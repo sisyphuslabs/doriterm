@@ -19,7 +19,6 @@ import {
   VERSION_ARG,
   type DorifaceBridge,
 } from "../shared/bridge.ts";
-import { isUpdateChannel, isUpdateStatus } from "../shared/update.ts";
 
 const version = process.argv.find((arg) => arg.startsWith(VERSION_ARG))?.slice(VERSION_ARG.length) ?? "0.0.0";
 
@@ -151,25 +150,6 @@ const bridge: DorifaceBridge = {
   async installUpdate() {
     const installing: unknown = await ipcRenderer.invoke(Channel.installUpdate);
     return installing === true;
-  },
-  onUpdateStatus(listener) {
-    ipcRenderer.on(Channel.updateStatus, (_event, status: unknown) => {
-      if (isUpdateStatus(status)) listener(status);
-    });
-    void ipcRenderer
-      .invoke(Channel.updateStatus)
-      .then((status: unknown) => listener(isUpdateStatus(status) ? status : null));
-  },
-  async updateChannel() {
-    const channel: unknown = await ipcRenderer.invoke(Channel.updateChannel);
-    return isUpdateChannel(channel) ? channel : null;
-  },
-  async setUpdateChannel(channel) {
-    const kept: unknown = await ipcRenderer.invoke(Channel.setUpdateChannel, channel);
-    return kept === true;
-  },
-  async checkForUpdates() {
-    await ipcRenderer.invoke(Channel.checkForUpdates);
   },
   async noticesSupported() {
     const supported: unknown = await ipcRenderer.invoke(Channel.noticesSupported);

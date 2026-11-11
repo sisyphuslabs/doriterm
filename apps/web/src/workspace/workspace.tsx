@@ -409,6 +409,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                     spaces={spaces}
                     ask={spaceClosing}
                     onAsk={setSpaceClosing}
+                    drops={{ closing: closingSessions, kept }}
                   >
                     {narrow ? (
                       <PhoneShell
