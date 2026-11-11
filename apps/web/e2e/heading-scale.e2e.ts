@@ -39,7 +39,13 @@ async function scale(
       const heading = parent.closest("h1, h2, h3, h4, [role=heading]");
       if (heading !== null) {
         const own = Number.parseFloat(getComputedStyle(heading).fontSize);
-        if (px > own) larger.push(`${heading.textContent?.trim() ?? ""}: ${text} ${px}/${own}`);
+        // Named by the heading's own words, not its whole text, which would include the count being reported.
+        const name = [...heading.childNodes]
+          .filter((child) => child.nodeType === Node.TEXT_NODE)
+          .map((child) => child.textContent?.trim() ?? "")
+          .join(" ")
+          .trim();
+        if (px > own) larger.push(`${name}: ${text} ${px}/${own}`);
         continue;
       }
       counts.set(px, (counts.get(px) ?? 0) + text.length);
@@ -124,10 +130,11 @@ for (const pointer of ["phone", "mouse"] as const) {
       await page.getByRole("button", { name: /^Keys/ }).click();
       const sheet = page.getByRole("dialog", { name: "Add keys" });
       await expect(sheet).toBeVisible();
-      const measured = await expectScale(sheet);
-      // The two pointers draw the sheet from different type tokens, so the case is measured twice, not once.
+      // The two pointers draw the sheet from different type tokens, so the case is measured twice, not once: a wrong
+      // emulation fails here, by name, rather than as a scale step.
       const coarse = await page.evaluate(() => matchMedia("(pointer: coarse)").matches);
       expect(coarse).toBe(pointer === "phone");
+      const measured = await expectScale(sheet);
       console.log(`Add keys ${pointer}: headings ${measured.headings.join("/")} px, body ${measured.body} px`);
     });
   });
