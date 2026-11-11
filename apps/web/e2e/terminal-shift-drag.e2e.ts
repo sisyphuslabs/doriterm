@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { reportedRows, reportRowOf, startMouseTracking, stopMouseTracking } from "./mouse-tracking.ts";
 import { enableCopyOnSelection } from "./terminal-settings.ts";
 
@@ -83,7 +84,7 @@ test("under a program that tracks the mouse, Shift and a drag select the text an
   await expect.poll(() => clipboard(page)).toContain("elta epsilon");
   await page.evaluate(() => navigator.clipboard.writeText("nothing"));
   // The held range copies as the Copy action does: Cmd/Ctrl+C with no document selection reads it.
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+c" : "Control+Shift+c");
+  await pressShortcut(page, "terminal.copy");
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("elta epsilon");
 
   // A plain drag on another row is reported; it arrives after anything the shift-drag could have sent.
