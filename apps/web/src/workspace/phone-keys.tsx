@@ -151,7 +151,7 @@ export function PhoneKeys(props: PhoneKeysProps) {
             {...(onKeys === undefined ? {} : { label: "Show keys" })}
             // The field is let go as the press lands, a task before the click asks for the keyboard: on iOS a field a
             // tap focused, let go and taken back inside one click, raises nothing (#1940).
-            onPressStart={(button) => port.current?.letGo(button)}
+            onPressStart={(button, pointerId) => port.current?.letGo(button, pointerId)}
             onPress={() => {
               onKeys?.(true);
               port.current?.focus();

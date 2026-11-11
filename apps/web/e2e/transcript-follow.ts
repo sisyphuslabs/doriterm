@@ -25,8 +25,8 @@ export interface Sample {
 /**
  * Samples the view after every paint until `change` is done: how far it is from the bottom, and the newest line its
  * screen shows. Each sample is what the user saw: read after the frame's ResizeObserver callbacks and paint, not in its
- * animation-frame callback, before a layout change has been fitted. The terminal is found by its address on each frame, as a layout
- * change can mount it anew; a frame without it records nothing.
+ * animation-frame callback, before a layout change has been fitted. The terminal is found by its address on each frame,
+ * as a layout change can mount it anew; a frame without it records nothing.
  */
 export async function sampleWhile(page: Page, address: string, change: () => Promise<void>): Promise<Sample[]> {
   const samples = page.evaluate(
@@ -85,17 +85,17 @@ const followsEnd = (sample: Sample, last: number, atBottom: boolean): boolean =>
   (!atBottom || sample.away < 5);
 
 /**
- * Every frame painted inside wterm's synchronized-update hold showed the transcript's end, and none scrolled back through
- * it: the lines in view are all within two views of the end, a view being the screen's rows or the rows the visible box
- * holds, whichever is more. `atBottom` also requires each frame at the scroll element's very bottom; a layout change that
- * React commits in its own task can be read after it lands and before the frame's ResizeObserver fits the grid to it, a
- * state the browser never paints, so that is checked only where no such change happens.
+ * Every frame painted inside wterm's synchronized-update hold showed the transcript's end, and none scrolled back
+ * through it: the lines in view are all within two views of the end, a view being the screen's rows or the rows the
+ * visible box holds, whichever is more. `atBottom` also requires each frame at the scroll element's very bottom; a
+ * layout change that React commits in its own task can be read after it lands and before the frame's ResizeObserver
+ * fits the grid to it, a state the browser never paints, so that is checked only where no such change happens.
  *
  * That is the product's contract (#757, #853): a redraw is drawn whole when its synchronized update closes within the
  * hold. A page too starved to take an update in {@link SYNC_HOLD_MS} (it hands the stream's credit back slowly, #2011)
  * gets it painted as it comes, by design: past the hold the terminal paints anyway and the rest is paced. The page
- * cannot see when its pacer's backlog of such an update drains, so from the first moment a hold could have run out
- * (an update open {@link SYNC_HOLD_MS} after it reached the page; the hold starts no earlier) each frame is held only to
+ * cannot see when its pacer's backlog of such an update drains, so from the first moment a hold could have run out (an
+ * update open {@link SYNC_HOLD_MS} after it reached the page; the hold starts no earlier) each frame is held only to
  * what a paced redraw still guarantees: at the bottom, and no line in view older than two views before the newest one
  * drawn. How many frames that covered is reported. Every frame before it is held to the end, so a view that leaves the
  * end inside the hold still fails here, and one that scrolls back through its history fails anywhere.
