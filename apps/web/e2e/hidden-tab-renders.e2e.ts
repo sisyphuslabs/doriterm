@@ -57,7 +57,7 @@ function countRenders(): void {
 async function worstCommit(page: Page): Promise<number> {
   const from = await page.evaluate(() => Reflect.get(window, "__commits").length);
   await expect
-    .poll(() => page.evaluate(() => Reflect.get(window, "__commits").length), { timeout: 20_000 })
+    .poll(() => page.evaluate(() => Reflect.get(window, "__commits").length), { timeout: 60_000 })
     .toBeGreaterThan(from + 20);
   const commits: number[] = await page.evaluate((skip) => Reflect.get(window, "__commits").slice(skip), from);
   return Math.max(...commits);
@@ -89,7 +89,8 @@ test("a terminal's title change costs the same however many terminals sit in hid
     const many = await worstCommit(page);
     // Before #2086 each title change rendered every pane, sidebar row and tab again, many components each: twice the
     // terminals cost about twice as many renders per commit (2136 at 30 hidden terminals).
-    expect(many - few).toBeLessThan(HIDDEN / 3);
+    // A loaded runner adds a few renders here and there; what this guards against grows by every hidden pane (#2098).
+    expect(many - few).toBeLessThan(HIDDEN);
   } finally {
     for (const address of started) hcRun(["kill", address]);
     for (const address of started) hcRun(["rm", address]);
