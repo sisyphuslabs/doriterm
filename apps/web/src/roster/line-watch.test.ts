@@ -137,13 +137,13 @@ test("a told read that a quiet line read overtakes is still told, so the read co
 test("a told read overtaken by a quiet line read that fails as the last read did is still told (#2207)", async () => {
   const core = new FakeCore();
   core.machines = [machine("rack")];
-  const { roster, seen, tick } = rosterOn(core);
+  const { roster, seen, tick, reads } = rosterOn(core);
   roster.watchLines();
   await started(roster, 2);
   core.failMachineList = true;
   await roster.refreshMachines();
   const failed = roster.snapshot.machines.error;
-  const before = seen.notified;
+  const before = { notified: seen.notified, reads: reads() };
 
   // The 10 s read waits on a slow answer; the next line read, sent after it, fails at once with the same error.
   const held = Promise.withResolvers<void>();
@@ -152,10 +152,12 @@ test("a told read overtaken by a quiet line read that fails as the last read did
   core.holdMachineList = undefined;
   tick(LINE_READ_MS);
   await roster.linesIdle();
+  // Both reads went out, and the quiet one has answered while the told one is still held: it overtook it (#2223).
+  expect(reads() - before.reads).toBe(2);
   held.resolve();
   await told;
 
   expect(failed).toBeDefined();
-  expect(seen.notified - before).toBe(1);
+  expect(seen.notified - before.notified).toBe(1);
   expect(roster.snapshot.machines).toBe(roster.machines.read);
 });
