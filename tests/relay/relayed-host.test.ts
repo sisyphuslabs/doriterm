@@ -226,7 +226,16 @@ describe("startRelayedHost", () => {
               stderr: "pipe",
             },
           );
-          const stderr = new Response(fixture.stderr).text();
+          // Piped only to be read: each chunk goes on to the test output as it arrives, so a case that hangs or throws
+          // still shows the fixture's stderr.
+          const stderr = (async () => {
+            let text = "";
+            for await (const chunk of fixture.stderr.pipeThrough(new TextDecoderStream())) {
+              process.stderr.write(chunk);
+              text += chunk;
+            }
+            return text;
+          })();
           const reader = fixture.stdout.pipeThrough(new TextDecoderStream()).getReader();
           const seen = { text: "" };
           await lineFrom(reader, seen, `STAGE ${stage}`);
@@ -236,9 +245,7 @@ describe("startRelayedHost", () => {
           fixture.stdin.write("GO\n");
           await fixture.stdin.flush();
           await fixture.exited;
-          // Piped only to be read: it still shows in the test output.
           const errors = await stderr;
-          process.stderr.write(errors);
           expect(existsSync(settledFile) ? readFileSync(settledFile, "utf8") : "never settled").toContain(settled);
           if (stage === "relay-late") expect(existsSync(join(out, "late-stopped"))).toBe(true);
           // The fixture's own error message, so a failed late stop that went unreported would fail here (#2239).
