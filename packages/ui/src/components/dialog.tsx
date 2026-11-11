@@ -56,12 +56,20 @@ export function Dialog({
   // question taller than the screen opens at its title too, since focusing a field below the fold would scroll it away.
   // A statement to acknowledge (an alert with one button, OK) has no choice to default to, so OK keeps focus; an alert
   // that asks (Cancel and an action) opens on itself like any question.
-  const initialFocus = () => {
+  const initialTarget = (): HTMLElement | true => {
     const element = panel.current;
     if (element === null) return true;
     if (element.scrollHeight > element.clientHeight) return element;
     if (alert && element.querySelectorAll("button").length === 1) return true;
     return element.querySelector<HTMLElement>(fieldSelector) ?? element;
+  };
+  // The dialog takes the keyboard as it opens (#2046). Base UI would focus it a frame later, and on a busy page a key
+  // pressed before that frame goes to whatever had focus behind the dialog: a terminal or a button that keeps Escape.
+  const initialFocus = () => {
+    const target = initialTarget();
+    if (target === true) return true;
+    target.focus({ preventScroll: target === panel.current });
+    return false;
   };
   const popup = (
     <BaseDialog.Portal>
