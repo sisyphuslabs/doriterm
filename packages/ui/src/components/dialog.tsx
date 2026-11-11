@@ -61,7 +61,8 @@ export function Dialog({
     if (element === null) return true;
     if (element.scrollHeight > element.clientHeight) return element;
     const buttons = element.querySelectorAll<HTMLButtonElement>("button");
-    if (alert && buttons.length === 1) return buttons[0] ?? element;
+    // A lone button that cannot take focus leaves the statement on itself, not the keyboard behind it (#2102).
+    if (alert && buttons.length === 1) return buttons[0]?.disabled === false ? buttons[0] : element;
     return element.querySelector<HTMLElement>(fieldSelector) ?? element;
   };
   // The dialog takes the keyboard as it opens (#2046). Base UI would focus it a frame later, and on a busy page a key

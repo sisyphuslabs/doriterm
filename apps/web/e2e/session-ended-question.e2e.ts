@@ -178,7 +178,8 @@ test("a statement whose only button cannot take focus opens on itself, so the ke
   // focus goes (mutation records are delivered before that choice, which waits for the layout effects).
   await page.evaluate(() => {
     new MutationObserver(() => {
-      for (const button of document.querySelectorAll<HTMLButtonElement>("[role='alertdialog'] button")) button.disabled = true;
+      for (const button of document.querySelectorAll<HTMLButtonElement>("[role='alertdialog'] button"))
+        button.disabled = true;
     }).observe(document.body, { subtree: true, childList: true });
   });
   hc("kill", address);
