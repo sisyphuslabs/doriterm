@@ -26,9 +26,11 @@ const FLOOD = `for i in $(seq 1 ${LAST}); do echo line-$i; done; printf '\\033]2
 /** hc's wire frame header: channel (u32), kind (u8), payload length (u32), little-endian; channel 0 carries the RPC. */
 const HC_HEADER_BYTES = 9;
 /**
- * The flood again, its last lines (the 2000 of history a reattach replays, and the screen) each in two dozen colors: the
- * replay is well over a MiB (the core repaints every color) in under 40 columns, so it fits a phone's row unwrapped and
- * takes the relay several windows to hand over, while the lines before it stay plain and quick to print.
+ * The flood again, its last 2,100 lines each in two dozen colors, in under 40 columns so a line fits a phone's row
+ * unwrapped, while the lines before them stay plain and quick to print. Since #1999 a reattach to a painted view asks for
+ * no history (`history: 0`), so what the core sends back after a reconnect is the screen's repaint alone: some 10-20 KB,
+ * not the 2,000 colored lines of history. The hold tests that use it therefore cover a screen repaint over a slow link,
+ * not a multi-MiB replay (#2032).
  */
 const COLORED_FLOOD = `c=$(for k in $(seq 1 24); do printf '\\033[38;5;%d;48;5;%dmx' $((k*9)) $((255-k*9)); done); for i in $(seq 1 ${LAST}); do if [ $i -gt ${LAST - 2100} ]; then echo "line-$i $c"; else echo line-$i; fi; done; printf '\\033[0m\\033]2;${FLOOD_END}\\007'`;
 
