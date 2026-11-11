@@ -104,3 +104,40 @@ test("keys typed while a wake check runs wait for it untimed; if it fails, they 
   jest.advanceTimersByTime(HOLD_MS);
   expect(later.dropped).toEqual([["expired", undefined]]);
 });
+
+/** A stream that closes inside its own write, as a socket found CLOSING does: the view clears it, then the write fails. */
+function closingDuringWrite(): { readonly held: HeldInput; readonly dropped: [Dropped, string | undefined][] } {
+  let sink: InputSink | null = null;
+  sink = {
+    write: () => {
+      sink = null;
+      return false;
+    },
+  };
+  const dropped: [Dropped, string | undefined][] = [];
+  const held = new HeldInput(
+    new UnprovenLinks(),
+    () => link,
+    () => sink,
+    { lines: new MachineLines(), machine: () => undefined, dropped: (why, name) => dropped.push([why, name]) },
+  );
+  held.watch();
+  return { held, dropped };
+}
+
+test("a key refused by a stream that closes during its own write waits HOLD_MS like any other (#2266 review)", () => {
+  jest.useFakeTimers();
+  const { held, dropped } = closingDuringWrite();
+  held.send("rm -rf build\r");
+  expect(held.pending).toEqual(["rm -rf build\r"]);
+  jest.advanceTimersByTime(HOLD_MS);
+  expect([held.pending, dropped]).toEqual([[], [["expired", undefined]]]);
+});
+
+test("what a refused write leaves waiting counts toward HOLD_BYTES (#2266 review)", () => {
+  jest.useFakeTimers();
+  const { held, dropped } = closingDuringWrite();
+  held.send("a".repeat(HOLD_BYTES));
+  held.send("b");
+  expect(dropped).toEqual([["overflow", undefined]]);
+});

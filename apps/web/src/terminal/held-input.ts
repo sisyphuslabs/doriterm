@@ -96,7 +96,12 @@ export class HeldInput {
     } finally {
       this.#flushing = false;
     }
-    if (this.pending.length === 0) this.#release();
+    if (this.pending.length === 0) return this.#release();
+    // A write the stream refused (it closed during that write) leaves input waiting like any other: counted, and timed
+    // once no stream is open (#2266 review).
+    this.#heldBytes = this.pending.reduce((bytes, data) => bytes + sizeOf(data), 0);
+    if (this.#heldBytes > HOLD_BYTES) return this.#drop("overflow", undefined);
+    if (this.#sink() === null) this.#expireIn(undefined);
   }
 
   /** Writes what waited once this view's link is proved or its machine is back; returns the cleanup for the view. */
