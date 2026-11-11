@@ -102,15 +102,16 @@ test("a second hold while one is armed keeps the first deadline", () => {
   expect(count()).toBe(1);
 });
 
-test("an update first seen a frame after the hold is held until the renderer's own fallback has painted (#2083)", () => {
+test("an update opened after the hold began is held until the renderer's own fallback has painted (#2083)", () => {
   const fake = fakeClock();
   const { hold, count } = released(fake.clock);
   hold.hold();
-  // The update shows open at the next frame; the renderer applies the write that opened it a frame later still and
-  // starts its own SYNCHRONIZED_HOLD_MS fallback then, at 32 ms.
+  // The write that opens the update lands at 10 ms and starts wterm's own SYNCHRONIZED_HOLD_MS there; the hold sees the
+  // update open at its frame, at 16 ms.
+  fake.advance(10);
   fake.sync(true);
-  fake.frame(16);
-  const fallback = 32 + SYNCHRONIZED_HOLD_MS;
+  const fallback = 10 + SYNCHRONIZED_HOLD_MS;
+  fake.frame(6);
   fake.advance(fallback - 16 - 1);
   expect(count()).toBe(0);
   // The fallback paints: the grid changes, and the cell goes in the same frame as the echo appears.
@@ -119,14 +120,27 @@ test("an update first seen a frame after the hold is held until the renderer's o
   expect(count()).toBe(1);
 });
 
+test("a hold made inside the write that opens the update outlasts the fallback that write starts (#2083)", () => {
+  const fake = fakeClock();
+  const { hold, count } = released(fake.clock);
+  // A reply sent during the write reaches the hold with the update already open, before wterm arms its timer.
+  fake.sync(true);
+  hold.hold();
+  fake.advance(SYNCHRONIZED_HOLD_MS);
+  expect(count()).toBe(0);
+  hold.rendered();
+  expect(count()).toBe(1);
+});
+
 test("on a starved frame the cap counts from when the update was seen open, not from the hold (#2083)", () => {
   const fake = fakeClock();
   const { hold, count } = released(fake.clock);
   hold.hold();
-  // The next frame comes 300 ms late; the renderer applied the update's write just before it and started its fallback.
+  // The next frame comes 300 ms late; the write that opened the update landed at 290 ms and started wterm's fallback.
+  fake.advance(290);
   fake.sync(true);
-  fake.frame(300);
-  fake.advance(SYNCHRONIZED_HOLD_MS - 1);
+  fake.frame(10);
+  fake.advance(SYNCHRONIZED_HOLD_MS - 10 - 1);
   expect(count()).toBe(0);
   fake.advance(1);
   hold.rendered();

@@ -2,10 +2,12 @@
 export const SYNCHRONIZED_HOLD_MS = 1000;
 
 /**
- * How far past wterm's hold a held cell may wait for that paint. wterm starts its 1000 ms when it applies the write that
- * opened the update, which can be a task or a frame after this release first sees the update open; were the cap due
- * first, the cell would go a frame before the echo is painted, a blank frame (#2083). wterm's fallback writes the grid in
- * its own timer task, so with the cap behind it the grid change releases the cell in the frame the echo appears.
+ * How far past wterm's hold a held cell may wait for that paint. wterm starts its 1000 ms inside the write that opens the
+ * update (the same call that sets the bridge's synchronized flag), so a hold first seeing the update at its next frame
+ * counts from after it. A hold made from inside that write, by a reply the write sends, sees the update open a fraction
+ * of a millisecond before wterm starts its timer; were the cap due first, the cell would go a frame before the echo is
+ * painted, a blank frame (#2083). wterm's fallback writes the grid in its own timer task, so with the cap behind it the
+ * grid change releases the cell in the frame the echo appears.
  */
 export const SYNCHRONIZED_HOLD_MARGIN_MS = 250;
 
