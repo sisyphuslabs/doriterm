@@ -74,6 +74,8 @@ class FakeConnection implements MemberConnection {
     this.retries += 1;
   }
 
+  nudge(): void {}
+
   updates = 0;
 
   update(settings: ConnectionSettings): void {

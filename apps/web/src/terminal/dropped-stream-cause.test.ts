@@ -38,6 +38,15 @@ test("a stream dropped by a 1011 relay close re-attaches by itself (#2224)", () 
   expect(reattaches).toBe(1);
 });
 
+test("a stream dropped by a 4408 secured-link close re-attaches though its cause carries 4400: the top-level code decides", () => {
+  // How a session resumer reports a resume it abandoned (#2000): the idle timeout over the refusal that ended the resume.
+  const abandoned = new SecureLinkError(4408, "idle timeout", { cause: new SecureLinkError(4400, "crypto failure") });
+  const { cause, state, reattaches } = dropped(abandoned);
+  expect(cause).toBeInstanceOf(HcConnectionClosedError);
+  expect(state).toMatchObject({ phase: "reconnecting", transient: true });
+  expect(reattaches).toBe(1);
+});
+
 test("a stream dropped with no error from the link re-attaches by itself", () => {
   const { cause, reattaches } = dropped(undefined);
   expect(cause).toBeInstanceOf(HcConnectionClosedError);

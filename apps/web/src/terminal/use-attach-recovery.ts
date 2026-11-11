@@ -50,8 +50,9 @@ export function useAttachRecovery({ connection, address, shown, retry }: Recover
         const member = connectionStore
           .entries()
           .find(({ state: line }) => line.phase === "failed" && line.stale === connection && line.retryInMs !== null);
-        // Advance only this pane's waiting socket. Typing must not abort an in-flight dial or probe other members.
-        if (member !== undefined) connectionStore.retry(member.target.hostId);
+        // Advance only this pane's waiting socket. Typing must not abort an in-flight dial or probe other members, and a
+        // refused early dial must not climb the back-off, or a blip typed through waits the longest delay (#2266).
+        if (member !== undefined) connectionStore.nudge(member.target.hostId);
       }
     },
   };

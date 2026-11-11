@@ -35,6 +35,7 @@ class QuietStore implements MemberConnection {
   }
 
   retryNow(): void {}
+  nudge(): void {}
 
   update(settings: ConnectionSettings): void {
     this.settings = settings;

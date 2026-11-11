@@ -18,6 +18,7 @@ export interface MemberConnection {
   adopt(opened: OpenConnection, settings?: ConnectionSettings): void;
   stop(): void;
   retryNow(): void;
+  nudge(): void;
   update(settings: ConnectionSettings): void;
   restoring(): void;
   restartsLocalHost(starter: LocalHostStarter): void;
@@ -261,6 +262,11 @@ export class MeshConnections {
   /** Retries one member: the row a person clicked, not every connection this app holds. */
   retry(hostId: string): void {
     this.#stores.get(hostId)?.retryNow();
+  }
+
+  /** Tries one member's waiting attempt early for typing into its pane, never moving its back-off later (#2256). */
+  nudge(hostId: string): void {
+    this.#stores.get(hostId)?.nudge();
   }
 
   retryNow(): void {
