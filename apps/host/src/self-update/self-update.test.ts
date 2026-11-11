@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { releasePublicKey, signRelease } from "@doriface/crypto";
-import { compareVersions } from "./manifest.ts";
+import { compareVersions, parseHostManifest } from "./manifest.ts";
 import { selfUpdate, SelfUpdateError, type SelfUpdateOptions } from "./self-update.ts";
 import { parseChannel } from "../commands/update.ts";
 
@@ -74,14 +74,50 @@ function rig(release: Release = {}) {
   return { binary, options, downloaded, untouched };
 }
 
-const refusal = async (promise: Promise<unknown>): Promise<string> => {
+const caughtUpdate = async (promise: Promise<unknown>): Promise<SelfUpdateError> => {
   const error = await promise.then(
     () => undefined,
     (caught: unknown) => caught,
   );
   if (!(error instanceof SelfUpdateError)) throw new Error(`expected a SelfUpdateError, got ${String(error)}`);
-  return error.phase;
+  return error;
 };
+const refusal = async (promise: Promise<unknown>): Promise<string> => (await caughtUpdate(promise)).phase;
+
+/** A response that would stream `chunks` chunks of 64 KiB, counting how many were read. */
+function endless(chunks: number) {
+  let pulled = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      pulled += 1;
+      if (pulled > chunks) controller.close();
+      else controller.enqueue(new Uint8Array(64 * 1024).fill(35));
+    },
+  });
+  return { response: new Response(body), pulled: () => pulled };
+}
+
+test("a download is read only up to the manifest's size, and the manifest and its signature up to a fixed bound (#1983)", async () => {
+  const r = rig();
+  const big = endless(4096);
+  const fetcher = r.options.fetcher;
+  const withBigDownload = async (url: string) =>
+    url.endsWith("doriface-host-linux-x64") ? big.response : fetcher === undefined ? new Response(null) : fetcher(url);
+  const download = await caughtUpdate(selfUpdate({ ...r.options, fetcher: withBigDownload }));
+  expect([download.phase, download.message]).toEqual([
+    "verify",
+    `the download is larger than the ${NEW_BINARY.length} bytes the manifest names; nothing was replaced`,
+  ]);
+  expect(big.pulled()).toBeLessThan(4);
+  expect(r.untouched()).toBe(true);
+
+  const hugeManifest = endless(4096);
+  const withBigManifest = async (url: string) =>
+    url.endsWith("manifest.json") ? hugeManifest.response : fetcher === undefined ? new Response(null) : fetcher(url);
+  const manifest = await caughtUpdate(selfUpdate({ ...r.options, fetcher: withBigManifest }));
+  expect([manifest.phase, manifest.message]).toEqual(["manifest", "the manifest is larger than 65536 bytes"]);
+  expect(hugeManifest.pulled()).toBeLessThan(4);
+});
 
 test("a signed, newer, rolled-out build is checked, run with --version and renamed over the binary", async () => {
   const r = rig();
@@ -159,6 +195,17 @@ test("a build hosted elsewhere, a binary that answers another version, or a malf
   expect(await refusal(selfUpdate(malformed.options))).toBe("manifest");
 });
 
+const manifestVersion = (version: string) =>
+  parseHostManifest(JSON.stringify({ version, channel: "beta", rollout: 100, targets: {} }))?.version ?? null;
+
+test("a version with a leading zero, which semver forbids, is no manifest version (#1983)", () => {
+  const manifest = manifestVersion;
+  for (const bad of ["0.1.18-beta.09", "01.1.18", "0.01.18", "0.1.018", "0.1.18-00"])
+    expect([bad, manifest(bad)]).toEqual([bad, null]);
+  for (const good of ["0.1.18", "0.1.18-beta.9", "0.1.18-beta.10", "0.1.18-rc.0", "0.1.18-0a.1", "10.0.0"])
+    expect(manifest(good)).toBe(good);
+});
+
 test("prerelease identifiers order by value, so beta.10 follows beta.9 and a beta.9 manifest never replaces beta.10", async () => {
   const ordered = ["0.1.17", "0.1.18-beta.2", "0.1.18-beta.9", "0.1.18-beta.10", "0.1.18-rc.1", "0.1.18", "0.2.0"];
   for (let i = 0; i < ordered.length - 1; i++) {
@@ -180,7 +227,8 @@ test("prerelease identifiers order by value, so beta.10 follows beta.9 and a bet
 
 test("a signed manifest is taken only on its own channel, and beta also takes stable's", async () => {
   const beta = rig({ manifest: { channel: "beta" } });
-  expect(await refusal(selfUpdate(beta.options))).toBe("manifest");
+  const refused = await caughtUpdate(selfUpdate(beta.options));
+  expect([refused.phase, refused.message]).toEqual(["manifest", "the signed manifest is for beta, not stable"]);
   expect([beta.downloaded(), beta.untouched()]).toEqual([false, true]);
   const stableOnBeta = rig();
   const betaFiles = { ...stableOnBeta.options, channel: "beta" as const };

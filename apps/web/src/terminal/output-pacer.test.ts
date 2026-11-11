@@ -541,7 +541,7 @@ describe("OutputPacer holding an attach replay (D5)", () => {
     expect(written).toHaveLength(7);
   });
 
-  test("a replay that wrote a credit window in each 1500 ms span is let go at the first span that writes less", () => {
+  test("a replay that wrote a credit window in each 1500 ms span is let go at the first span that writes a trickle", () => {
     const { timers, holds, pacer } = replaying(300);
     for (let at = 0; at < 3000; at += 250) {
       pacer.push(bytes(64 * KIB));
@@ -591,6 +591,34 @@ describe("OutputPacer holding an attach replay (D5)", () => {
       timers.advance(250);
     }
     expect(holds).toEqual([true]);
+  });
+
+  test("a first span that writes under half a credit window, though more than a trickle, lets the replay go (#2271)", () => {
+    const { timers, holds, pacer } = replaying(300);
+    // 96 KiB over the first span, in frames under the quiet window: more than a trickle, under half a window.
+    for (let at = 0; at < 1500; at += 250) {
+      pacer.push(bytes(16 * KIB));
+      timers.advance(at + 250 >= 1500 ? 249 : 250);
+    }
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
+  });
+
+  test("two spans that write under a credit window between them, each more than a trickle, let the replay go (#2271)", () => {
+    const { timers, holds, pacer } = replaying(300);
+    // 132 KiB, then 96 KiB: each more than a trickle, 228 KiB together, under a window.
+    for (const [from, frame] of [
+      [0, 22],
+      [1500, 16],
+    ] as const)
+      for (let at = from; at < from + 1500; at += 250) {
+        pacer.push(bytes(frame * KIB));
+        timers.advance(at + 250 >= 3000 ? 249 : 250);
+      }
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
   });
 
   test("a quiet window whose timer ran late because the page stalled is not taken for the replay's end", () => {

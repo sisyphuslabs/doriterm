@@ -91,4 +91,11 @@ test("only a built doriface-host replaces itself, never bun running the source",
   expect(updatableBinary("/tmp/doriface-host-linux-x64")).toBe("/tmp/doriface-host-linux-x64");
   expect(updatableBinary("/home/a/.bun/bin/bun")).toBeUndefined();
   expect(updatableBinary("/Applications/Doriterm.app/Contents/MacOS/Doriterm")).toBeUndefined();
+  // The desktop app's own host is the app's to update, never the command's (#1983).
+  for (const bundled of [
+    "/Applications/Doriterm.app/Contents/Resources/bin/doriface-host",
+    "/opt/Doriterm/resources/bin/doriface-host",
+    "/tmp/.mount_DoriteXYZ/resources/bin/doriface-host",
+  ])
+    expect([bundled, updatableBinary(bundled)]).toEqual([bundled, undefined]);
 });

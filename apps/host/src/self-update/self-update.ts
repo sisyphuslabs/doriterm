@@ -49,7 +49,19 @@ const runFile = (file: string, args: readonly string[]): Promise<{ code: number;
     });
   });
 
-async function bytesOf(fetcher: (url: string) => Promise<Response>, url: string, phase: SelfUpdatePhase) {
+/** The manifest and its signature are a few hundred bytes; this bounds what a hostile or broken origin can make us read. */
+const SMALL_FILE_LIMIT = 64 * 1024;
+
+/**
+ * The body, read only up to `limit` bytes (#1983): a body that goes past it is cancelled there and refused, so nothing
+ * larger than the manifest names is ever held in memory.
+ */
+async function bytesOf(
+  fetcher: (url: string) => Promise<Response>,
+  url: string,
+  phase: SelfUpdatePhase,
+  limit: { readonly bytes: number; readonly tooLarge: string },
+) {
   let response: Response;
   try {
     response = await fetcher(url);
@@ -57,8 +69,35 @@ async function bytesOf(fetcher: (url: string) => Promise<Response>, url: string,
     throw new SelfUpdateError(phase, `cannot reach ${url}`, { cause: error });
   }
   if (!response.ok) throw new SelfUpdateError(phase, `${url} answered HTTP ${response.status}`);
-  return new Uint8Array(await response.arrayBuffer());
+  if (response.body === null) return new Uint8Array(0);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    // oxlint-disable-next-line no-await-in-loop -- a stream is read one chunk after another
+    const next = await reader.read();
+    if (next.done) break;
+    total += next.value.byteLength;
+    if (total > limit.bytes) {
+      // oxlint-disable-next-line no-await-in-loop -- the loop ends here: the body is cancelled, then refused
+      await reader.cancel();
+      throw new SelfUpdateError(phase === "download" ? "verify" : phase, limit.tooLarge);
+    }
+    chunks.push(next.value);
+  }
+  const bytes = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return bytes;
 }
+
+const small = (name: string) => ({
+  bytes: SMALL_FILE_LIMIT,
+  tooLarge: `the ${name} is larger than ${SMALL_FILE_LIMIT} bytes`,
+});
 
 /**
  * One check, in the order #1969 fixes, stopping at the first failure: the manifest and its signature are fetched and the
@@ -72,8 +111,8 @@ export async function selfUpdate(options: SelfUpdateOptions): Promise<UpdateOutc
   const fetcher = options.fetcher ?? ((url: string) => fetch(url, { redirect: "follow" }));
   const base = `${origin}/host/${options.channel}/manifest.json`;
   const [body, signature] = await Promise.all([
-    bytesOf(fetcher, base, "manifest"),
-    bytesOf(fetcher, `${base}.sig`, "signature"),
+    bytesOf(fetcher, base, "manifest", small("manifest")),
+    bytesOf(fetcher, `${base}.sig`, "signature", small("signature")),
   ]);
   if (!verifyRelease(body, new TextDecoder().decode(signature), options.trustedKeys ?? RELEASE_PUBLIC_KEYS)) {
     throw new SelfUpdateError(
@@ -101,7 +140,10 @@ export async function selfUpdate(options: SelfUpdateOptions): Promise<UpdateOutc
   if (new URL(build.url).origin !== new URL(origin).origin) {
     throw new SelfUpdateError("manifest", `the manifest names a build outside ${origin}: ${build.url}`);
   }
-  const download = await bytesOf(fetcher, build.url, "download");
+  const download = await bytesOf(fetcher, build.url, "download", {
+    bytes: build.size,
+    tooLarge: `the download is larger than the ${build.size} bytes the manifest names; nothing was replaced`,
+  });
   const got = createHash("sha256").update(download).digest("hex");
   if (download.byteLength !== build.size || got !== build.sha256) {
     throw new SelfUpdateError(

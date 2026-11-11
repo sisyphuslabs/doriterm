@@ -301,7 +301,9 @@ for (const device of ["desktop", "phone"] as const) {
         // the host comes a round trip late, so the new connection measures that SRTT, as over the relay.
         await page.addInitScript(sampleFromLoad, address);
         // A slow page (a phone, a starved tab) takes each window in about as long as a span of the hold's cap, so a span's
-        // ends can cut a window anywhere (#2271). Chromium keeps the throttle across the reload.
+        // ends can cut a window anywhere (#2271). Chromium keeps the throttle across the reload. How slow 10x is depends on
+        // the host: on a fast, idle one the page may keep up and pass without #2271's fix, so the unit tests in
+        // output-pacer.test.ts prove that rule, and this guards the whole path.
         if (slowdown > 1)
           await (await page.context().newCDPSession(page)).send("Emulation.setCPUThrottlingRate", { rate: slowdown });
         link.delay(rttMs);
