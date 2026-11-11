@@ -206,6 +206,11 @@ try {
       say({ link: artifact.url, code: offer.code });
     } else if (line === "members") {
       const status = await requestControl(stateDir, { op: "mesh-status" });
+      // A host in no mesh answers null: since #1635 a first join that is refused or never completed leaves no mesh at all.
+      if (status === null) {
+        say({ members: [] });
+        continue;
+      }
       if (!isJsonObject(status) || !Array.isArray(status["members"])) throw new Error("no current mesh status");
       const members = status["members"].map((member) => {
         if (!isJsonObject(member) || typeof member["hostId"] !== "string") throw new Error("invalid member identity");
