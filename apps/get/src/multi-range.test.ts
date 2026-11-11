@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { route } from "./index.ts";
-import { multipartBody, multipartFraming } from "./multi-range.ts";
+import { groupSpans, multipartBody, multipartFraming } from "./multi-range.ts";
 import { harness, mirror, point } from "./testing/fakes.ts";
 
 const BYTES = "0123456789abcdefghijklmnopqrstuv";
@@ -14,7 +14,14 @@ function released() {
 }
 
 const get = (h: ReturnType<typeof harness>, range: string, extra: Record<string, string> = {}) =>
-  route(new Request(`https://get.doriterm.com/v/0.1.17/${FILE}`, { headers: { Range: range, ...extra } }), h.ctx);
+  route(
+    new Request(`https://get.doriterm.com/v/0.1.17/${FILE}`, {
+      headers: range === "" ? extra : { Range: range, ...extra },
+    }),
+    h.ctx,
+  );
+
+const shape = (groups: ReturnType<typeof groupSpans>) => groups.map((g) => [g.offset, g.length, g.spans.length]);
 
 /** The parts of a multipart/byteranges body, read the way electron-updater's DataSplitter reads them. */
 function parts(body: string, boundary: string): { range: string; data: string }[] {
@@ -70,11 +77,103 @@ test("parts are cut from a body that arrives in small chunks, across every chunk
         },
       });
       const framing = multipartFraming(spans, bytes.length, "application/octet-stream", "B");
-      const body = await new Response(multipartBody(source, base, spans, framing)).text();
+      const group = { offset: base, length: covered.length, spans };
+      const body = await new Response(multipartBody([group], async () => source, framing)).text();
       return [size, body.length === framing.length, parts(body, "B").map((part) => part.data)];
     }),
   );
   expect(results).toEqual([1, 2, 5, 7, 22].map((size) => [size, true, ["3456", "9", "cdefghijklmno"]]));
+});
+
+test("ranges far apart are read in separate R2 reads, so the gap between them is never streamed (#2251)", async () => {
+  const big = "x".repeat(3 * 1024 * 1024);
+  const h = harness();
+  mirror(h.bucket, "0.1.17", { [FILE]: big });
+  point(h.bucket, "stable", { version: "0.1.17" });
+  const response = await get(h, "bytes=0-9,20-29,2000000-2000009");
+  const boundary = /boundary=(\S+)/.exec(response.headers.get("Content-Type") ?? "")?.[1] ?? "";
+  expect(parts(await response.text(), boundary).map((part) => part.range)).toEqual([
+    "bytes 0-9/3145728",
+    "bytes 20-29/3145728",
+    "bytes 2000000-2000009/3145728",
+  ]);
+  expect(h.bucket.reads.filter((read) => read.startsWith("get ")).length).toBe(2);
+  expect(h.bucket.bytesRead).toBe(40);
+});
+
+test("one read of the body pulls only what it needs from R2, not the whole span (backpressure)", async () => {
+  let pulled = 0;
+  const source = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        pulled += 1;
+        if (pulled > 1000) controller.close();
+        else controller.enqueue(new Uint8Array(64).fill(65));
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  const spans = [
+    { offset: 0, length: 32_000 },
+    { offset: 40_000, length: 10 },
+  ];
+  const framing = multipartFraming(spans, 64_000, "application/octet-stream", "B");
+  const reader = multipartBody([{ offset: 0, length: 40_010, spans }], async () => source, framing).getReader();
+  await reader.read();
+  await reader.read();
+  // Every pull here settles in microtasks, so one macrotask later an unbounded pull would have read the whole span.
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(pulled).toBeLessThan(10);
+  await reader.cancel();
+});
+
+test("spans group by gap, and no more groups are made than the cap allows, closing the smallest gaps first", () => {
+  const spans = [0, 10, 5000, 5010, 90_000, 200_000].map((offset) => ({ offset, length: 5 }));
+  expect(shape(groupSpans(spans, 1000, 32))).toEqual([
+    [0, 15, 2],
+    [5000, 15, 2],
+    [90_000, 5, 1],
+    [200_000, 5, 1],
+  ]);
+  expect(shape(groupSpans(spans, 1000, 2))).toEqual([
+    [0, 90_005, 5],
+    [200_000, 5, 1],
+  ]);
+});
+
+test("in the Workers runtime the multipart body goes through a FixedLengthStream, so Content-Length is sent (#2251)", async () => {
+  const lengths: number[] = [];
+  class FakeFixedLengthStream extends TransformStream<Uint8Array, Uint8Array> {
+    constructor(length: number) {
+      super();
+      lengths.push(length);
+    }
+  }
+  Object.assign(globalThis, { FixedLengthStream: FakeFixedLengthStream });
+  try {
+    const response = await get(released(), "bytes=2-4,10-11");
+    const body = await response.text();
+    expect([response.status, lengths]).toEqual([206, [new TextEncoder().encode(body).byteLength]]);
+  } finally {
+    Reflect.deleteProperty(globalThis, "FixedLengthStream");
+  }
+});
+
+test("several ranges the Worker does not answer in parts are served the whole file from the edge cache (#2251)", async () => {
+  const h = released();
+  await (await get(h, "")).text();
+  await h.settle();
+  const before = h.bucket.reads.length;
+  const rejected = await Promise.all(
+    ["bytes=10-11,2-4", "bytes=2-6,4-8", "bytes=2-4,x"].map(async (range) => {
+      const response = await get(h, range);
+      return [range, response.status, response.headers.get("X-Doriterm-Source"), await response.text()];
+    }),
+  );
+  expect(rejected).toEqual(
+    ["bytes=10-11,2-4", "bytes=2-6,4-8", "bytes=2-4,x"].map((range) => [range, 200, "cache", BYTES]),
+  );
+  expect(h.bucket.reads.length).toBe(before);
 });
 
 test("ranges out of order, overlapping, unsatisfiable or too many get the whole file, as before (#2228)", async () => {
