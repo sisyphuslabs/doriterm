@@ -75,10 +75,9 @@ test("a terminal's title change draws its own pane again, not every pane of ever
       .poll(() => page.evaluate(() => Reflect.get(window, "__commits").length), { timeout: 20_000 })
       .toBeGreaterThan(from + 20);
     const commits: number[] = await page.evaluate((skip) => Reflect.get(window, "__commits").slice(skip), from);
-    const sorted = commits.toSorted((a, b) => a - b);
-    const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
-    // Before #2086 each title change rendered every hidden pane again, many components each: hundreds per commit.
-    expect(median).toBeLessThan(HIDDEN);
+    // Before #2086 each title change rendered every pane, sidebar row and tab again, many components each: hundreds in
+    // every commit. Now no commit renders as many components as there are hidden terminals.
+    expect(Math.max(...commits)).toBeLessThan(HIDDEN);
   } finally {
     for (const address of started) hcRun(["kill", address]);
     for (const address of started) hcRun(["rm", address]);

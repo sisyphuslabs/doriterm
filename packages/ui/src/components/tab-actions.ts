@@ -73,17 +73,17 @@ export function useTabActions(
       handedOn.current = true;
     },
   }));
-  const { onMove, onRename, onNew, onPin, onClose, onCloseSet } = callbacks;
+  // Keyed on which callbacks were given, not on the callbacks: a shell that passes a fresh one each render must not draw
+  // every tab again.
+  const move = callbacks.onMove !== undefined;
+  const rename = callbacks.onRename !== undefined;
+  const newTab = callbacks.onNew !== undefined;
+  const pin = callbacks.onPin !== undefined;
+  const close = callbacks.onClose !== undefined;
+  const closeSet = callbacks.onCloseSet !== undefined;
   const offers = useMemo<TabOffers>(
-    () => ({
-      move: onMove !== undefined,
-      rename: onRename !== undefined,
-      newTab: onNew !== undefined,
-      pin: onPin !== undefined,
-      close: onClose !== undefined,
-      closeSet: onCloseSet !== undefined,
-    }),
-    [onMove, onRename, onNew, onPin, onClose, onCloseSet],
+    () => ({ move, rename, newTab, pin, close, closeSet }),
+    [move, rename, newTab, pin, close, closeSet],
   );
   return { actions, offers };
 }
