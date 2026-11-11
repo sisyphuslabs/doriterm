@@ -12,11 +12,6 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-const dirs: string[] = [];
-afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
-
 const member = (name: string, kind?: "machine" | "client") => ({
   signPub: `sign-${name}`,
   hostId: `host-${name}`,
