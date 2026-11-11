@@ -10,13 +10,13 @@ import { buttonVariants } from "./button.tsx";
 // emits, so this measures what ships: it holds 3:1 on every surface a ghost button sits on, and stays the Button spec's
 // DISABLED_STEP from the enabled icon beside it (#1241), in every built-in theme.
 
-/** The role and opacity a ghost Button class paints with, as `text-<role>/<percent>`. */
+/** The role and opacity a ghost Button class paints with, as `text-<role>` or `text-<role>/<percent>`. */
 function paintOf(classes: readonly string[], prefix: string): { readonly role: string; readonly alpha: number } {
   const match = classes
-    .map((name) => (name.startsWith(prefix) ? /^text-([a-z-]+)\/(\d+)$/.exec(name.slice(prefix.length)) : null))
+    .map((name) => (name.startsWith(prefix) ? /^text-([a-z-]+)(?:\/(\d+))?$/.exec(name.slice(prefix.length)) : null))
     .find((found) => found !== null);
-  if (match?.[1] === undefined || match[2] === undefined) throw new Error(`no ${prefix}text-<role>/<n> class`);
-  return { role: match[1], alpha: Number(match[2]) / 100 };
+  if (match?.[1] === undefined) throw new Error(`no ${prefix}text-<role> class`);
+  return { role: match[1], alpha: match[2] === undefined ? 1 : Number(match[2]) / 100 };
 }
 
 const ghost = buttonVariants({ variant: "ghost" }).split(/\s+/);
