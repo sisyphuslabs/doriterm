@@ -30,10 +30,9 @@ function rosterOn(core: FakeCore) {
   };
 }
 
-/** Lets the fake core's answers, which settle without a timer, land. */
-async function answered(): Promise<void> {
-  for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
-}
+/** Lets the fake core's answers, which settle without a timer, land, and the line read's in-flight mark clear. */
+const answered = (): Promise<void> =>
+  Array.from({ length: 10 }).reduce<Promise<void>>((turn) => turn.then(() => undefined), Promise.resolve());
 
 test("a line read that changes nothing notifies no one; a changed line, and every 10 s read, still do (#2184)", async () => {
   const core = new FakeCore();

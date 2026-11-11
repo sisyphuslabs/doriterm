@@ -34,6 +34,10 @@ function linesOn(core: FakeCore) {
   };
 }
 
+/** Lets the read that just landed settle, so the roster's one-read-at-a-time mark is clear for the next tick. */
+const settled = (): Promise<void> =>
+  Array.from({ length: 10 }).reduce<Promise<void>>((turn) => turn.then(() => undefined), Promise.resolve());
+
 /** Resolves once `ok` holds, woken by the lines' own changes; fails if it takes `ms`. */
 function until(lines: MachineLines, ok: () => boolean, label: string, ms: number): Promise<void> {
   if (ok()) return Promise.resolve();
@@ -57,9 +61,11 @@ test("a line drop reaches machine lines through the roster's line read, and mach
   const { lines, connection, tick, periods, reads } = linesOn(core);
   const stop = lines.watch(connection);
   await until(lines, () => lines.down(connection, "rack"), "the first read", 500);
+  await settled();
   core.machines = [machine("rack")];
   tick(LINE_READ_MS);
   await until(lines, () => !lines.down(connection, "rack"), "the line back", 500);
+  await settled();
 
   // hc says nothing when a line drops (#2056), so the roster reads machine.list every LINE_READ_MS while a line is
   // watched: the drop is seen on the next read, sooner than the old poll of machine lines could have read it.
