@@ -1,5 +1,16 @@
-import { describe, expect, test } from "bun:test";
+import { signCard } from "@doriface/mesh";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { cardBody } from "../state/mesh.ts";
+import { deviceOf, machine, MeshFixture, noiseOf, signPubOf } from "../testing/mesh-history.ts";
 import { AuthorizeIndex } from "./authorize-index.ts";
+
+const dirs: string[] = [];
+afterEach(() => {
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
 
 const member = (name: string, kind?: "machine" | "client") => ({
   signPub: `sign-${name}`,
@@ -88,5 +99,33 @@ describe("a revoked client is cleaned like any other member", () => {
     const keys = index.cleanup().keys;
     expect(keys.has(phone.devicePub)).toBe(false);
     expect(keys.has(box.noisePub)).toBe(true);
+  });
+});
+
+describe("a client admitted under a device key that is not its session key (design 4.1)", () => {
+  test("is not indexed as a client, and the rest of the view still builds", () => {
+    const dir = mkdtempSync(join(tmpdir(), "dh-client-binding-"));
+    dirs.push(dir);
+    const founder = machine("founder");
+    const browser = machine("browser");
+    const elsewhere = machine("elsewhere");
+    const mesh = new MeshFixture(dir, founder);
+    const card = signCard(
+      cardBody(
+        browser.identity,
+        { name: browser.name, hcId: "", devicePub: deviceOf(elsewhere) },
+        mesh.meshId,
+        signPubOf(founder),
+        undefined,
+        "client",
+      ),
+      browser.identity.sign.secretKey,
+    );
+    mesh.record(founder, "admit", { card });
+    expect(mesh.store.read()?.records).toHaveLength(2);
+    const index = mesh.store.authorizeIndex();
+    expect(index?.client(deviceOf(elsewhere))).toBeUndefined();
+    expect(index?.isMember(signPubOf(browser))).toBe(false);
+    expect(index?.member(noiseOf(founder))?.signPub).toBe(signPubOf(founder));
   });
 });
