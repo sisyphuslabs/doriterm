@@ -11,7 +11,12 @@ import {
 const ROOT = join(import.meta.dir, "..", "..");
 const read = (path: string): string => readFileSync(join(ROOT, path), "utf8");
 
-type Step = { readonly name?: string; readonly run?: string; readonly uses?: string };
+type Step = {
+  readonly name?: string;
+  readonly run?: string;
+  readonly uses?: string;
+  readonly env?: Record<string, unknown>;
+};
 type Workflow = {
   readonly on: Record<string, unknown>;
   readonly jobs: Record<string, { readonly steps?: readonly Step[] }>;
@@ -41,9 +46,11 @@ test("pull requests run the keystroke latency spec without its nightly rows", ()
 test("a scheduled, dispatchable job runs only the nightly rows, with the relay checkout", () => {
   const nightly = workflow(".github/workflows/relay-nightly.yml");
   expect(Object.keys(nightly.on).toSorted()).toEqual(["schedule", "workflow_dispatch"]);
-  const all = runs(nightly);
-  expect(all).toContain("bun run relay:fetch");
-  const spec = all.find((run) => run.includes("e2e/keystroke-latency-relay.e2e.ts"));
-  expect(spec).toContain(`--grep ${NIGHTLY_TAG}`);
-  expect(spec).toContain("--workers=1");
+  const steps = Object.values(nightly.jobs).flatMap((job) => job.steps ?? []);
+  expect(steps.map((step) => step.run ?? "")).toContain("bun run relay:fetch");
+  const spec = steps.find((step) => (step.run ?? "").includes("e2e/keystroke-latency-relay.e2e.ts"));
+  expect(spec?.run).toContain(`--grep ${NIGHTLY_TAG}`);
+  expect(spec?.run).toContain("--workers=1");
+  // Without the checkout's path the spec skips every case (keystroke-latency-relay.e2e.ts), and a run of nothing is green.
+  expect(spec?.env?.["DORIFACE_RELAY_DIR"]).toBe("${{ github.workspace }}/.relay");
 });
