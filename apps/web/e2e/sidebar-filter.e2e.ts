@@ -131,13 +131,24 @@ test.describe("on a phone", () => {
 test("while the filter holds a query a machine header offers no fold toggle, and its saved fold is unchanged after (#850)", async ({
   page,
 }) => {
+  // One space on this machine, so the fold has a row to hide and the filter a row to show.
+  seedSpaces([
+    {
+      id: "spc-fold850",
+      name: "fold850",
+      folder: join(dir, "alpha673"),
+      tabs: [{ id: "tb-fold850", name: "fold850", terminal: startIn(join(dir, "alpha673"), "fold850-agent") }],
+    },
+  ]);
   await page.goto("/");
   const sidebar = page.getByRole("complementary", { name: "Workspace" });
   const spaces = sidebar.getByRole("region", { name: "Spaces" });
   const fold = spaces.getByRole("button", { name: /^(Collapse|Expand) studio$/ });
+  const spaceRow = rows(spaces).filter({ hasText: "fold850" });
+  await expect(spaceRow).toHaveCount(1, { timeout: 20_000 });
   await expect(fold).toHaveAccessibleName("Collapse studio", { timeout: 20_000 });
 
-  await page.keyboard.press("Control+Alt+F");
+  await pressShortcut(page, "layout.filter:sidebar");
   const field = sidebar.getByRole("searchbox", { name: "Filter sidebar" });
   await expect(field).toBeFocused();
   // The machine's own name: its group stays, with every space it holds.
@@ -150,4 +161,20 @@ test("while the filter holds a query a machine header offers no fold toggle, and
   await page.keyboard.press("Escape");
   await expect(field).toBeHidden();
   await expect(fold).toHaveAccessibleName("Collapse studio");
+
+  // A machine saved folded comes back folded: the filter opened it only while it held a query. Its space's row is what
+  // the fold hides, so it shows the filter opened the machine and the fold closed it again.
+  await fold.click();
+  await expect(fold).toHaveAccessibleName("Expand studio");
+  await expect(spaceRow).toHaveCount(0);
+  await pressShortcut(page, "layout.filter:sidebar");
+  await expect(field).toBeFocused();
+  await page.keyboard.type("studio");
+  await expect(fold).toHaveCount(0);
+  await expect(spaceRow).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await expect(field).toBeHidden();
+  await expect(fold).toHaveAccessibleName("Expand studio");
+  await expect(spaceRow).toHaveCount(0);
 });

@@ -2,6 +2,7 @@ import { Search } from "lucide-react";
 import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
 import { Button } from "./button.tsx";
+import { fieldLabelClass } from "./input.tsx";
 import { Kbd } from "./kbd.tsx";
 import { overlaySurface } from "./overlay.ts";
 import { agentCount, shownStatus, statusCounts, withStatus } from "./palette-status.ts";
@@ -60,7 +61,8 @@ export function CommandPalette({
   const inputId = useId();
   const counts = useMemo(() => statusCounts(commands), [commands]);
   const status = shownStatus(counts, chosen);
-  // A chosen state that emptied has fallen back to All: forget it, so a later agent in that state does not bring it back.
+  // A chosen state that is no longer shown (it emptied, or more urgent states pushed it out of the two shown) has fallen
+  // back to All: forget it, so a later agent in that state does not bring it back.
   if (chosen !== null && status === null) setChosen(null);
   const visible = useMemo(
     () => withStatus(commands, status).filter((command) => matches(command, query)),
@@ -84,8 +86,8 @@ export function CommandPalette({
 
   return (
     <div className={cn(overlaySurface, "flex w-[min(40rem,100%)] flex-col overflow-hidden", className)}>
-      <div className="flex items-center gap-2.5 border-b border-border px-3">
-        <label id={`${inputId}-label`} htmlFor={inputId} className="sr-only">
+      <div className="flex flex-wrap items-center gap-x-2.5 border-b border-border px-3">
+        <label id={`${inputId}-label`} htmlFor={inputId} className={cn("basis-full pt-2", fieldLabelClass)}>
           Command
         </label>
         <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />
@@ -137,7 +139,7 @@ export function CommandPalette({
         className="max-h-[min(24rem,60dvh)] overflow-y-auto p-1.5"
       >
         {visible.length === 0 ? (
-          <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing matches "{query}".</p>
+          <p className="px-3 py-6 text-center text-prose text-muted-foreground">Nothing matches "{query}".</p>
         ) : (
           groups.map((group) => (
             <div key={group} role="group" aria-label={group} className="pb-4 coarse:pb-9">
@@ -159,7 +161,7 @@ export function CommandPalette({
                         if (command.disabled !== true) onRun?.(command.id);
                       }}
                       className={cn(
-                        "flex h-(--row) cursor-default items-center gap-2.5 rounded-md px-2 text-base text-foreground [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-muted-foreground",
+                        "flex h-(--row) cursor-default items-center gap-2.5 rounded-md px-2 text-base text-foreground [&>svg:not([data-slot=spinner])]:size-4 [&>svg]:shrink-0 [&>svg]:text-muted-foreground",
                         selected && "bg-selected",
                         command.disabled === true && "text-muted-foreground",
                       )}

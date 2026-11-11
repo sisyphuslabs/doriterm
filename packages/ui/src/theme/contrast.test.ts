@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { BUILTIN_PALETTES } from "./builtins.ts";
 import { contrast, parseRgba } from "./color.ts";
-import { themeVariables } from "./css.ts";
+import { DISABLED_STEP, themeVariables } from "./css.ts";
 import { AA_GRAPHIC, AA_TEXT, flatten, worstContrast } from "./guard.ts";
 import { resolveTheme } from "./resolve.ts";
 
@@ -36,6 +36,16 @@ describe.each(Object.entries(BUILTIN_PALETTES))("%s meets WCAG 2.2 AA", (_, pale
       expect(worstContrast(role(name), surfaces)).toBeGreaterThanOrEqual(AA_GRAPHIC);
     },
   );
+
+  test("--disabled-glyph holds 3:1 on its raised stepper and steps 1.7 from --muted-foreground where that leaves room", () => {
+    const raised = opaque[4];
+    const muted = parseRgba(role("muted-foreground"))?.rgb;
+    const disabled = parseRgba(role("disabled-glyph"))?.rgb;
+    if (raised === undefined || muted === undefined || disabled === undefined) throw new Error("missing role");
+    expect(contrast(disabled, raised)).toBeGreaterThanOrEqual(AA_GRAPHIC);
+    if (contrast(muted, raised) >= AA_GRAPHIC * DISABLED_STEP)
+      expect(contrast(disabled, muted)).toBeGreaterThanOrEqual(DISABLED_STEP);
+  });
 
   test("primary button label", () => {
     expect(worstContrast(role("primary-foreground"), [flatten(role("primary"), base)])).toBeGreaterThanOrEqual(AA_TEXT);

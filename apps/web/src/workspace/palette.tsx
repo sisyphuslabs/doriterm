@@ -6,6 +6,7 @@ import { resolveKeymap } from "../keys/keymap.ts";
 import { useOverrides } from "../keys/keymap-store.ts";
 import { runAction } from "../keys/dispatcher.ts";
 import { currentPlatform } from "../keys/trigger.ts";
+import { useOverlayActive } from "../keys/use-overlay-active.ts";
 import { choiceOf, paletteCommands } from "./palette-commands.ts";
 import type { ListedSpace } from "./model.ts";
 import type { ShellAction } from "./shell-actions.ts";
@@ -24,6 +25,7 @@ export interface PaletteProps {
 
 /** The palette over the dimmed workspace, near the top; Escape or the backdrop closes it. */
 export function Palette({ terminals, host, route, actions, spaces, onOpenTerminal, onClose }: PaletteProps) {
+  const active = useOverlayActive(onClose);
   const navigate = useNavigate();
   const overrides = useOverrides();
   const commands = useMemo(() => {
@@ -49,7 +51,7 @@ export function Palette({ terminals, host, route, actions, spaces, onOpenTermina
     if (choice.kind === "agent") onOpenTerminal(choice.address);
     else void navigate({ to: "/settings" });
   };
-  return (
+  return active ? (
     <>
       <div className="fixed inset-0 z-40 bg-black/40" aria-hidden onClick={onClose} />
       <div
@@ -67,5 +69,5 @@ export function Palette({ terminals, host, route, actions, spaces, onOpenTermina
         <CommandPalette commands={commands} onRun={run} onCancel={onClose} />
       </div>
     </>
-  );
+  ) : null;
 }
