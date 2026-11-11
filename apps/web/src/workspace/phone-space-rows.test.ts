@@ -1,7 +1,7 @@
 import type { Terminal } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
 import type { ListedSpace } from "./model.ts";
-import { phoneSpaces, spaceSummary, spaceTabRows, switchTabRows } from "./phone-space-rows.ts";
+import { nextAfterClosing, phoneSpaces, spaceSummary, spaceTabRows, switchTabRows } from "./phone-space-rows.ts";
 
 const terminal = (address: string, fields: Partial<Terminal> = {}): Terminal => ({
   address,
@@ -26,6 +26,29 @@ const space = (tabPanes: readonly (readonly string[])[], tabNames: readonly stri
   tabPins: tabPanes.map(() => false),
   tabNames,
   dir: "/work/website",
+});
+
+describe("where a phone goes when its open tab closes (#1478)", () => {
+  const tabs = [["t1"], ["t2", "t3"], ["t4"]];
+
+  test("the tab that slides into its place, at its first pane", () => {
+    expect(nextAfterClosing(tabs, ["t1"])).toBe("t2");
+    expect(nextAfterClosing(tabs, ["t2", "t3"])).toBe("t4");
+  });
+
+  test("the space's last tab when the closed one was last", () => {
+    expect(nextAfterClosing(tabs, ["t4"])).toBe("t2");
+  });
+
+  test("a split tab whose shown pane has finished is still found by a live sibling", () => {
+    // The phone showed t2, which ended; the tab is listed under t3, and closing it still moves on to t4.
+    expect(nextAfterClosing([["t1"], ["t3"], ["t4"]], ["t2", "t3"])).toBe("t4");
+  });
+
+  test("nowhere when it was the only tab, or in none of them", () => {
+    expect(nextAfterClosing([["t1"]], ["t1"])).toBeNull();
+    expect(nextAfterClosing(tabs, ["t9"])).toBeNull();
+  });
 });
 
 const shown = (rows: ReturnType<typeof switchTabRows>) => rows.map((row) => [row.shown.address, row.name, row.closes]);
@@ -111,6 +134,32 @@ describe("a phone's space counts (#2122)", () => {
     const [counted] = phoneSpaces([listed], terminals);
     expect(counted?.tabs).toBe(2);
     expect(counted?.tabs).toBe(spaceTabRows(listed, terminals, 0).length);
+  });
+});
+
+describe("phoneSpaces builds the set of live terminals once (#2135)", () => {
+  test("each terminal's state is read once however many spaces it counts, and the counts are the same", () => {
+    let reads = 0;
+    /** A terminal that counts how often its state is read. */
+    const watched = (address: string, state: Terminal["state"]): Terminal => {
+      const each = terminal(address);
+      Object.defineProperty(each, "state", {
+        get: () => {
+          reads += 1;
+          return state;
+        },
+      });
+      return each;
+    };
+    const terminals = [watched("t1", "live"), watched("t2", "finished"), watched("t3", "live"), watched("t4", "live")];
+    const spaces = [
+      { ...space([["t1"], ["t2"]], ["", ""]), id: "space:local/a" },
+      { ...space([["t3", "t2"]], [""]), id: "space:local/b" },
+      { ...space([["t4"], ["t5"]], ["", ""]), id: "space:local/c" },
+    ];
+    const counted = phoneSpaces(spaces, terminals);
+    expect(reads).toBe(terminals.length);
+    expect(counted.map((each) => each.tabs)).toEqual([1, 1, 1]);
   });
 });
 

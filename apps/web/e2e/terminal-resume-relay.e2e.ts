@@ -32,7 +32,7 @@ const FLOOD_END = "relay-flood-end";
  * follows the flood would put that title back before the page could be asked for this one (#2016). So the command first
  * sets a prompt that leaves the title alone.
  */
-const FLOOD = `PS1='$ ' PROMPT_COMMAND=; for i in $(seq 1 ${LAST}); do echo relay-line-$i; done; printf '\\033]2;${FLOOD_END}\\007'`;
+const FLOOD = `PS1='$ '; unset PROMPT_COMMAND; for i in $(seq 1 ${LAST}); do echo relay-line-$i; done; printf '\\033]2;${FLOOD_END}\\007'`;
 /** The page's relay client sockets, as delayRelaySockets routes them. */
 const CLIENT_SOCKET = "/v1/client/";
 

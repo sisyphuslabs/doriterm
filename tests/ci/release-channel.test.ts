@@ -95,6 +95,9 @@ test("a key the shipped builds do not trust re-signs nothing and moves nothing",
   await expect(
     runOperation({ ...ctx(bucket), trustedKeys: [] }, { op: "rollback", version: "0.1.17" }),
   ).rejects.toThrow("RELEASE_PUBLIC_KEYS");
+  // With no trustedKeys the operation uses the shipped RELEASE_PUBLIC_KEYS, which does not hold the test's random key.
+  const { trustedKeys: _unused, ...shipped } = ctx(bucket);
+  await expect(runOperation(shipped, { op: "rollback", version: "0.1.17" })).rejects.toThrow("RELEASE_PUBLIC_KEYS");
   expect(bucket.objects).toEqual(before);
   expect(await runOperation({ ...ctx(bucket), trustedKeys: [] }, { op: "head" })).toContain('"version":"0.1.17"');
 });

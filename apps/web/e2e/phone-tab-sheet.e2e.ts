@@ -3,6 +3,7 @@ import { agentRow } from "./agents.ts";
 import { expect, laidOutBox, opened, test } from "./fixtures.ts";
 import { seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
+import { stateOn } from "./ended-terminal.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
@@ -74,4 +75,92 @@ test("the switch sheet closes a tab as the strip's close does and starts a new t
   await newTab.click();
   await expect(sheet(page)).toBeHidden();
   await expect(switcher(page)).toContainText("2/2", { timeout: 15_000 });
+});
+
+test("closing the tab the phone is showing moves it to the tab in its place (#1478)", async ({ page }) => {
+  const run = Date.now().toString(36);
+  const space = `tso-${run}`;
+  const first = `tso-a-${run}`;
+  const started = [startShellIn(space, first), startShellIn(space, `tso-b-${run}`)];
+  seedSpaces([
+    {
+      id: "spc-tso",
+      name: space,
+      folder: "",
+      tabs: started.map((terminal, index) => ({ id: `tb-tso-${index}`, name: `t${index + 1}`, terminal })),
+    },
+  ]);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+  await agentRow(page, first, false).click();
+  await expect(header(page).getByRole("heading", { name: "t1", exact: true })).toBeVisible({ timeout: 15_000 });
+
+  await switcher(page).click();
+  await opened(sheet(page));
+  // The open tab's own row: closing it leaves the phone on a tab that no longer exists unless it is moved on (#1478).
+  await sheet(page).getByRole("region", { name: space }).getByRole("button", { name: "Close t1", exact: true }).click();
+
+  // t2 takes its place, as a pick of t2 would: the space's next tab, not the space screen and not a dead terminal.
+  await expect(header(page).getByRole("heading", { name: "t2", exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(`[data-terminal="${started[0]}"]`)).toHaveCount(0);
+  await expect(page.locator(`[data-terminal="${started[1]}"]`)).toBeVisible();
+  await expect(switcher(page)).toContainText("1/1");
+});
+
+test("closing the phone's only tab from the sheet leaves the screen for the list (#1478)", async ({ page }) => {
+  const run = Date.now().toString(36);
+  const space = `tsl-${run}`;
+  const only = `tsl-a-${run}`;
+  const started = startShellIn(space, only);
+  seedSpaces([{ id: "spc-tsl", name: space, folder: "", tabs: [{ id: "tb-tsl-0", name: "t1", terminal: started }] }]);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+  await agentRow(page, only, false).click();
+  await expect(header(page).getByRole("heading", { name: "t1", exact: true })).toBeVisible({ timeout: 15_000 });
+
+  await switcher(page).click();
+  await opened(sheet(page));
+  // A space's last tab takes the space with it, so this close asks first.
+  await sheet(page).getByRole("region", { name: space }).getByRole("button", { name: "Close t1", exact: true }).click();
+  const question = page.getByRole("dialog", { name: "Close space?" });
+  await expect(question).toBeVisible();
+  await question.getByRole("button", { name: "Close", exact: true }).click();
+
+  // Nothing is left to show in that space, so the phone goes up to the list it came from.
+  await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator("[data-terminal]")).toHaveCount(0);
+  await expect.poll(() => new URL(page.url()).searchParams.get("t")).toBeNull();
+});
+
+test("the shown pane ending under the sheet takes the phone up to the list, not back to the ended pane (#1478 review)", async ({
+  page,
+}) => {
+  const run = Date.now().toString(36);
+  const space = `tse-${run}`;
+  const shown = `tse-a-${run}`;
+  const [first, second] = [startShellIn(space, shown), startShellIn(space, `tse-b-${run}`)];
+  // One tab, split: the phone shows its first pane, and the tab is the space's only one.
+  seedSpaces([
+    {
+      id: "spc-tse",
+      name: space,
+      folder: "",
+      tabs: [{ id: "tb-tse-0", name: "t1", terminal: first, beside: [second] }],
+    },
+  ]);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+  await agentRow(page, shown, false).click();
+  await expect(header(page).getByRole("heading", { name: "t1", exact: true })).toBeVisible({ timeout: 15_000 });
+
+  await switcher(page).click();
+  await opened(sheet(page));
+  // The shown pane ends while the sheet is over it. Without the sheet this End takes the phone up to the list; with it, one
+  // Back only closes the sheet and leaves the phone on the ended pane.
+  hcOn("host", ["kill", first]);
+  await expect.poll(() => stateOn("host", first), { timeout: 15_000 }).toBe("finished");
+
+  await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+  await expect(sheet(page)).toHaveCount(0);
+  await expect.poll(() => new URL(page.url()).searchParams.get("t")).toBeNull();
 });

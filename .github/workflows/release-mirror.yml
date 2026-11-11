@@ -1,0 +1,120 @@
+name: Mirror a release
+
+# The one mirror job (#1969, docs/releasing.md): copies a release into the release bucket behind get.doriterm.com (or
+# its staging copy), moves its channel (stable, or beta for a prerelease tag) and probes the origin. release.yml calls it
+# after Publish (production) and after the smoke of a manual draft (staging). Run by hand, it mirrors a release that is
+# already published, such as one published before this job existed (v0.1.18); that run starts only from dev and refuses
+# a tag that is not published. Either way it runs in the target's environment, the only place holding the
+# bucket-scoped R2 key pair and the release signing key.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+      target:
+        type: string
+        required: true
+      published:
+        description: Refuse a tag that is not a published release (false for release.yml's draft run)
+        type: boolean
+        default: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The published release to mirror, such as v0.1.18
+        required: true
+        type: string
+      target:
+        description: Which bucket and origin
+        type: choice
+        options: [staging, production]
+        default: staging
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: 1.4.4
+
+jobs:
+  mirror:
+    name: Mirror ${{ inputs.tag }} to ${{ inputs.target }}
+    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: ${{ inputs.target == 'production' && 'release-mirror' || 'release-mirror-staging' }}
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ inputs.tag }}
+      TARGET: ${{ inputs.target }}
+      # Only release.yml's draft run passes published: false. A hand-run has no published input, so inputs.published is
+      # null, and null == false in GitHub's loose equality: compare its JSON text instead, which tells them apart.
+      REQUIRE_PUBLISHED: ${{ toJSON(inputs.published) != 'false' }}
+      BUCKET: ${{ inputs.target == 'production' && 'doriterm-releases' || 'doriterm-releases-staging' }}
+      ORIGIN: ${{ inputs.target == 'production' && 'https://get.doriterm.com' || 'https://staging.get.doriterm.com' }}
+      ROLLOUT: ${{ vars.RELEASE_ROLLOUT_PERCENT || '100' }}
+      MINIMUM: ${{ vars.RELEASE_MINIMUM_VERSION }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - name: The tag and the target
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$ ]]; then
+            echo "::error title=Mirror::$TAG is not a release tag such as v0.1.18"
+            exit 1
+          fi
+          case "$TARGET" in staging | production) ;; *) echo "::error title=Mirror::unknown target $TARGET"; exit 1 ;; esac
+          draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null || echo none)
+          if [ "$REQUIRE_PUBLISHED" = true ] && [ "$draft" != false ]; then
+            echo "::error title=Mirror::$TAG is not a published release ($draft)"
+            exit 1
+          fi
+          version="${TAG#v}"
+          channel=stable
+          case "$version" in *-*) channel=beta ;; esac
+          { echo "VERSION=$version"; echo "CHANNEL=$channel"; } >> "$GITHUB_ENV"
+      - name: Download the release
+        run: |
+          mkdir -p "$RUNNER_TEMP/release"
+          gh release download "$TAG" --dir "$RUNNER_TEMP/release"
+          gh release view "$TAG" --json assets > "$RUNNER_TEMP/assets.json"
+      - name: Mirror into the bucket and move the channel
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: >-
+          bun .github/scripts/release-r2.ts mirror --bucket "$BUCKET" --origin "$ORIGIN"
+          --version "$VERSION" --channel "$CHANNEL" --rollout "$ROLLOUT" --minimum "$MINIMUM"
+          --dir "$RUNNER_TEMP/release" --assets "$RUNNER_TEMP/assets.json" --run-id "$GITHUB_RUN_ID"
+      # install.sh fetches it beside SHA256SUMS.txt; Ed25519 is deterministic, so every run produces the same bytes.
+      # Only a production run attaches it to the release users download.
+      - name: Attach the checksums signature
+        if: inputs.target == 'production'
+        run: |
+          if ! gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx SHA256SUMS.txt.sig; then
+            gh release upload "$TAG" "$RUNNER_TEMP/release/SHA256SUMS.txt.sig"
+          fi
+      - name: The origin offers it
+        run: bun .github/scripts/release-r2.ts probe --origin "$ORIGIN" --channel "$CHANNEL" --version "$VERSION"
+      - name: Workflow summary
+        if: always()
+        run: |
+          {
+            echo "## Mirror $TAG to $ORIGIN"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Job status | ${{ job.status }} |"
+            echo "| Channel | ${CHANNEL:-unknown} |"
+            echo "| Rollout | $ROLLOUT% |"
+            echo "| Download | $ORIGIN/dl/host-linux-x64 |"
+          } >> "$GITHUB_STEP_SUMMARY"

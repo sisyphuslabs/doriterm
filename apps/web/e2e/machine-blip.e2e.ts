@@ -14,6 +14,7 @@ import {
   reconnect,
   redialedSince,
   slowDials,
+  switchOn,
   switchTo,
   OFFLINE_TEST_TIMEOUT_MS,
 } from "./machine-switch.ts";
@@ -96,6 +97,9 @@ test.describe("a machine whose line blips (#904)", () => {
     const dialed = linesDialed();
     await blip(0);
     await expect.poll(() => redialedSince(dialed), { timeout: 30_000 }).toBe(true);
+    // redialedSince is a moment's reading, and the switch stays slow until the next blip writes it: put it back to fast
+    // now, so a dial hc starts after the poll passed cannot sleep and land past the refusal below (#2065).
+    switchOn();
     await expect.poll(machineState, { timeout: 15_000 }).toBe("connected");
 
     // A relay uplink drop at its worst: every line ends, and the host refuses this one for its settle and one probe.

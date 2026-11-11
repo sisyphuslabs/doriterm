@@ -60,3 +60,31 @@ describe("the held-press mark lives for one touch (#854)", () => {
     expect(terminal.tapCancelled).toBe(true);
   });
 });
+
+describe("a picked drag keeps every finger's moves (#2096)", () => {
+  test("the dragging finger's moves are cancelled, so the browser never pans the drag away", () => {
+    const terminal = wiredTerminal();
+    terminal.down(1);
+    jest.advanceTimersByTime(LONG_PRESS_MS);
+    expect(terminal.move(1)).toBe(true);
+  });
+
+  test("a second finger landing on another cell and moving on its own is cancelled too, so it cannot pinch the drag away", () => {
+    const terminal = wiredTerminal();
+    terminal.down(1);
+    jest.advanceTimersByTime(LONG_PRESS_MS);
+    // Each finger's moves go to the node that finger came down on: the second one's are never the first one's node's.
+    terminal.down(2, false, true);
+    expect(terminal.move(2)).toBe(true);
+    terminal.up(2, false);
+    expect(terminal.move(1)).toBe(true);
+  });
+
+  test("before the hold has picked its word, no finger's moves are cancelled: the touch is still a scroll or a tap", () => {
+    const terminal = wiredTerminal();
+    terminal.down(1);
+    terminal.down(2, false, true);
+    expect(terminal.move(1)).toBe(false);
+    expect(terminal.move(2)).toBe(false);
+  });
+});
