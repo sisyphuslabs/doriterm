@@ -48,6 +48,16 @@ const objects = (value: JsonValue | undefined): readonly JsonObject[] =>
   Array.isArray(value) ? value.filter(isJsonObject) : [];
 const pinnedIn = (pins: ReadonlySet<string>) => (tab: JsonObject) => pins.has(text(tab["id"]));
 
+/**
+ * A space's tabs with its pinned ones in front, each group in the document's order. The app writes pinned tabs first,
+ * but a document an older client or herdr-app wrote can hold one further on; it is read, and moved, as if in front (#1916).
+ */
+export function pinnedFirst(tabs: readonly JsonObject[], pins: ReadonlySet<string>): readonly JsonObject[] {
+  if (pins.size === 0) return tabs;
+  const pinned = pinnedIn(pins);
+  return [...tabs.filter(pinned), ...tabs.filter((tab) => !pinned(tab))];
+}
+
 /** The first and last index a tab may move to among `tabs`: pinned ones stay in front, unpinned ones behind them. */
 export function moveBounds(
   tabs: readonly JsonObject[],
