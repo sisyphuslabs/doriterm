@@ -37,6 +37,9 @@ test("a new space asked for while the tab kept beside it is adopted meanwhile st
     await expect(page.locator('[data-tab-id="transient"]')).toHaveCount(1, { timeout: 20_000 });
     await expect(page.locator(`[data-terminal="${alone}"]`).first()).toBeVisible({ timeout: 20_000 });
 
+    // This screen's own adoption of the tab shown alone has been sent and is held, so it lands before the new space's.
+    const sentWrites = (): number => link.sent().filter((frame) => frame.includes('"method":"doc.set"')).length;
+    await expect.poll(sentWrites, { timeout: 15_000 }).toBeGreaterThan(0);
     // The new space's write, which keeps the tab shown alone beside the new one, is held on its way too.
     const answers = (): number => link.received().filter((frame) => frame.includes('"result":{"address"')).length;
     const before = answers();
