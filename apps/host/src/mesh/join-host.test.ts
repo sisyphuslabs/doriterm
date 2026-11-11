@@ -128,7 +128,7 @@ describe("J-1: a link join run by the joiner's running host", () => {
         relayUrl: bridge.url,
         mesh: true,
       });
-      const refused = a.logged(/^mesh: join refused:/);
+      const refused = a.logged(/^mesh: close code=4401 source=invite:/);
       let observedStatus: ReturnType<typeof parseMeshStatus>;
       let observedDocument: ReturnType<typeof parseMeshStatus>;
       let persisted = true;
