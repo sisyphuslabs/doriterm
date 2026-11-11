@@ -1,0 +1,77 @@
+name: Release channel
+
+# Moves a channel on get.doriterm.com (#1969, docs/releasing.md): head prints the pointer, promote sets the rollout of
+# the version the channel offers, rollback points the channel back at the version before while it still offers the one
+# named, and yank stops every feed, manifest and /dl link from naming a version while /v/<version>/ keeps serving it.
+# Each operation re-signs the host manifest. Runs only on dev, from the environment that holds the bucket-scoped R2 key
+# pair and the release signing key.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Which bucket and origin
+        type: choice
+        options: [staging, production]
+        default: staging
+      channel:
+        type: choice
+        options: [stable, beta]
+        default: stable
+      operation:
+        type: choice
+        options: [head, promote, rollback, yank]
+        default: head
+      version:
+        description: The version the operation names (promote, rollback, yank)
+        type: string
+        default: ""
+      percent:
+        description: The rollout percentage for promote, 0 to 100
+        type: string
+        default: "100"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-channel-${{ inputs.target }}-${{ inputs.channel }}
+  cancel-in-progress: false
+
+env:
+  BUN_VERSION: 1.4.4
+
+jobs:
+  channel:
+    name: Channel ${{ inputs.operation }}
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: ${{ inputs.target == 'production' && 'release-mirror' || 'release-mirror-staging' }}
+    env:
+      BUCKET: ${{ inputs.target == 'production' && 'doriterm-releases' || 'doriterm-releases-staging' }}
+      ORIGIN: ${{ inputs.target == 'production' && 'https://get.doriterm.com' || 'https://staging.get.doriterm.com' }}
+      CHANNEL: ${{ inputs.channel }}
+      OPERATION: ${{ inputs.operation }}
+      VERSION: ${{ inputs.version }}
+      PERCENT: ${{ inputs.percent }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - name: Run the operation
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: >-
+          bun .github/scripts/release-r2.ts channel --bucket "$BUCKET" --origin "$ORIGIN" --channel "$CHANNEL"
+          --op "$OPERATION" --version "$VERSION" --percent "$PERCENT"
+      - name: The pointer now
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: bun .github/scripts/release-r2.ts channel --bucket "$BUCKET" --origin "$ORIGIN" --channel "$CHANNEL" --op head

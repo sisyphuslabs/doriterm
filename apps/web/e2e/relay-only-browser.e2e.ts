@@ -57,7 +57,7 @@ async function joinOneMachine(page: Page, host: FakeRelayHost, phone: boolean): 
   const command = dialog.getByLabel("Join command");
   await expect(command).toBeVisible({ timeout: 30_000 });
   const text = (await command.innerText()).trim();
-  const link = /--join '(doriface:\/\/pair#[^']+)'/.exec(text)?.[1] ?? "";
+  const link = /DORIFACE_JOIN='(doriface:\/\/pair#[^']+)' sh$/.exec(text)?.[1] ?? "";
   expect(link).toContain("doriface://pair#");
   expect(await host.join(link)).toBe("joiner");
   await expect(dialog.getByText("joiner joined this host's mesh")).toBeVisible({ timeout: 60_000 });
@@ -121,6 +121,14 @@ async function connectsOverTheRelayAlone(page: Page, phone: boolean): Promise<vo
     // A later load with a Direct address in the file still reaches the host, and dials no direct socket to do it.
     await withDirectAddress(page, paired, host.directUrl);
     await page.goto("/");
+    // A phone reopens where it was, the terminal, and its Back returns to the lists.
+    if (phone) {
+      await expect(page.locator("[data-terminal]").first()).toBeVisible({ timeout: 30_000 });
+      await page
+        .getByRole("banner")
+        .getByRole("button", { name: /^Back to / })
+        .click();
+    }
     await pathSaysRelay(page, phone);
     await terminalOpens(page, phone);
 

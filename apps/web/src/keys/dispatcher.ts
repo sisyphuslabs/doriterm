@@ -5,8 +5,11 @@ import { useOverrides } from "./keymap-store.ts";
 import { TEXT_FIELD_KEEPS } from "./text-field-keys.ts";
 import { currentPlatform, triggerFromEvent } from "./trigger.ts";
 
-/** Returns true when the action ran; false lets the key reach the page. */
-export type ActionHandler = (action: string) => boolean;
+/**
+ * Returns true when the action ran; false lets the key reach the page. `programReceives` is false for a chord a focused
+ * terminal's program can never receive (any Cmd chord), which an action that would leave its key to the program keeps.
+ */
+export type ActionHandler = (action: string, programReceives?: boolean) => boolean;
 
 const handlers: Record<Scope, Set<ActionHandler>> = { app: new Set(), terminal: new Set() };
 
@@ -17,16 +20,18 @@ export function setActionFallback(id: string, fallback: () => boolean): void {
   fallbacks.set(id, fallback);
 }
 
-function dispatch(scope: Scope, action: string): boolean {
-  for (const handler of handlers[scope]) if (handler(action)) return true;
+function dispatch(scope: Scope, action: string, programReceives = true): boolean {
+  for (const handler of handlers[scope]) if (handler(action, programReceives)) return true;
   return fallbacks.get(action)?.() ?? false;
 }
 
 let chosen = false;
 
 /**
- * True while an action chosen from a list (the palette, the desktop app's menu) runs, rather than one a key sent. A
- * modal that lists the action closes once it runs, so a handler's guard against acting behind a modal does not apply.
+ * True while an action chosen from a list runs, rather than one a key sent: from the command palette, which closes once
+ * runAction returns true and so is still open while the action runs, or from an item in the desktop app's native Shell
+ * or View menu, which closes no dialog of the page's. A handler's guard against acting behind a modal does not apply
+ * either way.
  */
 export const actionChosen = (): boolean => chosen;
 
@@ -51,7 +56,8 @@ export function useActionHandler(scope: Scope, handler: ActionHandler): void {
   const paused = useRef(false);
   paused.current = useContext(ActionsPaused);
   useEffect(() => {
-    const entry: ActionHandler = (action) => !paused.current && latest.current(action);
+    const entry: ActionHandler = (action, programReceives = true) =>
+      !paused.current && latest.current(action, programReceives);
     handlers[scope].add(entry);
     return () => {
       handlers[scope].delete(entry);
@@ -120,7 +126,10 @@ export function useKeymapDispatcher(): void {
         return;
       // The tab move keys stay with a text field (they select text) and with a reorderable row (they move the row).
       if (TEXT_FIELD_KEEPS.has(id) && (inTextField(event.target) || inReorderableRow(event.target))) return;
-      if (dispatch(action.scope, id)) {
+      // A terminal's input stops at any Cmd (Meta) chord without sending bytes, so a Cmd key an action does not take
+      // would run the browser's own shortcut instead (#1302, #1172).
+      const programReceives = !event.metaKey;
+      if (dispatch(action.scope, id, programReceives)) {
         event.preventDefault();
         event.stopPropagation();
       } else if (BROWSER_RUNS.has(id)) event.stopPropagation();

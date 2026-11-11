@@ -57,7 +57,10 @@ function MachineNotice({ name }: { readonly name: string }) {
   );
 }
 
-/** herdr-app's row under a machine with no spaces yet: starts the first one there. */
+/**
+ * herdr-app's row under a machine with no spaces yet: starts the first one there. It is a ghost Button's inks, so its
+ * disabled state dims with them, never a fade over its label (#1243).
+ */
 function NewSpaceThere({ disabled, onClick }: { readonly disabled: boolean; readonly onClick: () => void }) {
   return (
     <button
@@ -65,8 +68,9 @@ function NewSpaceThere({ disabled, onClick }: { readonly disabled: boolean; read
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "flex h-(--row) min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm text-muted-foreground outline-none",
-        "hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-45 disabled:hover:bg-transparent",
+        "flex h-(--row) min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm text-foreground/85 outline-none",
+        "enabled:hover:bg-hover enabled:hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring",
+        "disabled:text-muted-foreground disabled:[&_svg]:text-muted-foreground/72",
       )}
     >
       <Plus aria-hidden className="size-4 shrink-0" />

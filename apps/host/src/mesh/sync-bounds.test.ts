@@ -99,5 +99,6 @@ describe("what one sync session holds for a peer is bounded (abuse, section 5.2)
     expect(peerA.sent.at(-1)?.t).toBe("refused");
     expect(peerA.closedWith()).toBe(4401);
     expect(peerA.session.closed).toBe(true);
+    expect(peerA.logs).toContain("mesh: close code=4401 source=sync-mesh: a mesh stream from another mesh");
   });
 });

@@ -27,6 +27,7 @@ import { useArrivalReady, workspaceSettled } from "./use-arrival-ready.ts";
 import { behindModal, useFocusSidebar } from "./use-focus-sidebar.ts";
 import { useSidebarShown, useSidebarSize } from "./layout-store.ts";
 import { findTerminal, type LayoutTab } from "./layout-model.ts";
+import type { MachineIds } from "./tab-keys.ts";
 import { readDisplay } from "../terminal/display.ts";
 import { attachAhead, openingCallsOf } from "../terminal/opening-attach.ts";
 import type { Axis } from "@doriface/protocol/layout";
@@ -77,6 +78,8 @@ const FOCUSED_TERMINAL_INPUT = '[data-focused="true"] [data-terminal] textarea';
 export interface DesktopShellProps {
   readonly connection: HcConnection;
   readonly terminals: readonly Session[];
+  /** The machines as now named, so the first-run guide finds its terminal after a rename (#1198). */
+  readonly ids: MachineIds;
   /** False until the core has listed its terminals; the count would read 0 until then. */
   readonly loaded: boolean;
   readonly layout: Layout;
@@ -103,6 +106,7 @@ export function DesktopShell(props: DesktopShellProps) {
   const {
     connection,
     terminals,
+    ids,
     loaded,
     layout,
     spaceKeys,
@@ -211,7 +215,7 @@ export function DesktopShell(props: DesktopShellProps) {
   // no live terminal (then there is nothing for the layout to bring back).
   const nothingOpen = layout.restored || (loaded && live.length === 0);
   const openTerminal = (address: string): void => {
-    guideStore.opened(address);
+    guideStore.opened(address, ids);
     if (findTerminal(layout.tabs, address) === null) {
       attachAhead(connection, openingCallsOf(connection), address, readDisplay(document.documentElement));
     }
@@ -251,6 +255,7 @@ export function DesktopShell(props: DesktopShellProps) {
         className="absolute right-4 bottom-10 z-30 m-0 w-72 shadow-lg"
         listVisible={sidebar}
         live={terminals.filter((terminal) => terminal.state === "live").map((terminal) => terminal.address)}
+        ids={ids}
         onNew={onNew}
       />
       {sidebar ? (

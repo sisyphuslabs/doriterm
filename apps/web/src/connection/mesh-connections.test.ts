@@ -51,7 +51,7 @@ class FakeConnection implements MemberConnection {
 
   start(): void {
     this.started += 1;
-    this.#state = { phase: "open", connection: undefined as never, path: "relay", connectMs: 1 };
+    this.#state = { phase: "open", connection: undefined as never, path: "relay" };
     this.#emit();
   }
 
@@ -300,7 +300,7 @@ describe("one connection per member", () => {
     expect(mesh.entries().filter((entry) => entry.state.phase === "open")).toHaveLength(2);
     // The stopped member keeps its row: it stays in entries(), saying it is down, so the list never shrinks (#942 stage 6).
     expect(mesh.entries().map((entry) => entry.target.hostId)).toEqual(["a", "b", "c"]);
-    expect(mesh.entries()[0]?.state.phase).not.toBe("open");
+    expect(mesh.entries()[0]?.state.phase).toBe("failed");
   });
 
   it("shows the selected member's state, and switching shows another without closing any", () => {

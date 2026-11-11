@@ -15,8 +15,6 @@ export const noticeText = (notice: DesktopNotice): NoticeText =>
 /** Shown notifications, held until clicked or closed: one only referenced by the OS can be collected with its click. */
 const live = new Set<Notification>();
 
-export const noticesSupported = (): boolean => Notification.isSupported();
-
 /** Shows one notification and answers whether the OS took it (notice-answer.ts); a click opens its terminal. */
 export function showNotice(
   notice: DesktopNotice,

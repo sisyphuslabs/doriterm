@@ -131,7 +131,7 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
   const show = useCallback(
     (address: string) => {
       // Opening a terminal is what the first-run guide is waiting for (#668); this stays even when no entry is pushed.
-      guideStore.opened(address);
+      guideStore.opened(address, ids);
       // A desktop keeps no history entries of its own: its New tab and its notices are not navigations, and pushing one
       // made Back step through no-op entries and a landing run close the screen behind it.
       if (!narrow) return;

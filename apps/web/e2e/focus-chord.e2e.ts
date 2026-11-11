@@ -1,10 +1,8 @@
 import type { Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 
 test.use({ serviceWorkers: "block" });
-
-/** The default binding of layout.focus:sidebar, as Playwright names it on this platform. */
-const FOCUS_CHORD = "ControlOrMeta+Shift+Period";
 
 const focusIsIn = (page: Page, selector: string) =>
   page.evaluate((within) => document.activeElement?.closest(within) !== null, selector);
@@ -27,14 +25,14 @@ test("the focus chord moves from the terminal to the sidebar and back, and Escap
   await page.keyboard.press("Escape");
   await expect.poll(() => focusedTerminal(page)).toBe(address);
 
-  await page.keyboard.press(FOCUS_CHORD);
+  await pressShortcut(page, "layout.focus:sidebar");
   await expect.poll(() => focusIsIn(page, 'aside[aria-label="Workspace"]')).toBe(true);
-  await page.keyboard.press(FOCUS_CHORD);
+  await pressShortcut(page, "layout.focus:sidebar");
   await expect.poll(() => focusedTerminal(page)).toBe(address);
 
   await page.getByRole("button", { name: "Hide sidebar" }).click();
   await terminal.getByRole("textbox").focus();
-  await page.keyboard.press(FOCUS_CHORD);
+  await pressShortcut(page, "layout.focus:sidebar");
   await expect(page.getByRole("complementary", { name: "Workspace" })).toBeVisible();
   await expect.poll(() => focusIsIn(page, 'aside[aria-label="Workspace"]')).toBe(true);
 });
@@ -46,7 +44,7 @@ test("the focus chord does nothing while a dialog is open", async ({ page }) => 
   await page.getByRole("menuitem", { name: "Rename…" }).click();
   const dialog = page.getByRole("dialog", { name: /^Rename / });
   await expect(dialog.getByRole("textbox", { name: "Name" })).toBeFocused();
-  await page.keyboard.press(FOCUS_CHORD);
+  await pressShortcut(page, "layout.focus:sidebar");
   await expect(dialog).toBeVisible();
   expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
 });
@@ -58,10 +56,10 @@ test("the focus chord does nothing while the command palette is open, not even s
   await openNewTerminal(page);
   await page.getByRole("button", { name: "Hide sidebar" }).click();
   await expect(page.getByRole("complementary", { name: "Workspace" })).toBeHidden();
-  await page.keyboard.press("ControlOrMeta+Shift+P");
+  await pressShortcut(page, "app.palette");
   const palette = page.getByRole("dialog", { name: /command/i });
   await expect(palette.getByRole("combobox")).toBeFocused();
-  await page.keyboard.press(FOCUS_CHORD);
+  await pressShortcut(page, "layout.focus:sidebar");
   await expect(palette).toBeVisible();
   await expect.poll(() => palette.evaluate((element) => element.contains(document.activeElement))).toBe(true);
   await page.keyboard.press("Escape");

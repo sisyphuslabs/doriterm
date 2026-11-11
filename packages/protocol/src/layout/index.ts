@@ -44,4 +44,4 @@ export {
 export type { Edge, PaneRef } from "./tree.ts";
 export { arrangeIds, moveInOrder, movedOrder, ORDER_DOC, readOrderDocument, storedOrder } from "./order.ts";
 export { DocWriteError, LayoutDoc } from "./sync.ts";
-export type { DocCalls, DocEdit, DocState } from "./sync.ts";
+export type { DocCalls, DocEdit, DocState, EditShown } from "./sync.ts";

@@ -22,10 +22,13 @@ import { PhoneTerminal } from "./phone-terminal.tsx";
 import { RovingLists } from "./roving-lists.tsx";
 import { usePhoneActions, type SessionVerb } from "./use-app-actions.ts";
 import { useMachinesContext } from "./use-machines.ts";
+import type { MachineIds } from "./tab-keys.ts";
 
 export interface PhoneShellProps {
   readonly connection: HcConnection;
   readonly terminals: readonly Session[];
+  /** The machines as now named, so the first-run guide finds its terminal after a rename (#1198). */
+  readonly ids: MachineIds;
   readonly open: string | null;
   /**
    * The space whose screen shows under the open terminal, or on its own when none is open; "loading" while the space the
@@ -62,7 +65,7 @@ export interface PhoneShellProps {
 /** Phones: the agents list first; a space opens its own screen, and a terminal shows full screen with extra keys. */
 export function PhoneShell(props: PhoneShellProps) {
   const { connection, terminals, open, space, panes, tabTitle, onOpen, onBack, onNew, onNewInSpace, onPalette } = props;
-  const { onSession, onSpaceBack, onCloseTab, pushed, backTo, section, onSection, sheet, onSheet } = props;
+  const { onSession, onSpaceBack, onCloseTab, pushed, backTo, section, onSection, sheet, onSheet, ids } = props;
   // The open terminal registers its dictation here, so the palette and a bound key reach it from this shell's handler.
   const dictate = useRef<(() => void) | null>(null);
   usePhoneActions(onNew, onSession, () => (dictate.current === null ? false : (dictate.current(), true)));
@@ -119,7 +122,7 @@ export function PhoneShell(props: PhoneShellProps) {
         {/* The page's one main landmark: the list, under the header (#1378). */}
         <main className="flex min-h-0 flex-1 flex-col">
           <ScrollArea slot="agents-list" className="flex-1" viewportRef={listViewport}>
-            <FirstRunGuideCard listVisible live={live} onNew={onNew} />
+            <FirstRunGuideCard listVisible live={live} ids={ids} onNew={onNew} />
             {section === "spaces" ? (
               <RovingLists>
                 <PhoneSpaceLists onOpen={onOpen} />

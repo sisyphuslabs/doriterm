@@ -21,6 +21,8 @@ import { routeHcSocket } from "./hc-socket.ts";
 import { LAYOUT_DOC, paneOf, seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
+import { pressShortcut, shortcut } from "./platform-keys.ts";
+import { tabNumberChord } from "./tab-strip.ts";
 
 /** A tab's row in the Spaces sheet, not its Close control or the space's New tab (#1463). */
 const TAB_ROW = /^(?!Close |New tab$)/;
@@ -82,19 +84,10 @@ const spaceRow = (page: Page, name: string) =>
     .getByRole("region", { name: "Spaces" })
     .getByRole("button", { name: new RegExp(`^${name}\\b`) });
 const focusedTerminal = (page: Page) => page.locator('[data-focused="true"] [data-terminal]');
-const mac = (page: Page) => page.evaluate(() => /mac/i.test(navigator.platform));
-
-/** The platform's chord for an action, as the default keymap binds it (keys/defaults.ts). */
-async function chord(page: Page, action: "new" | "close" | "right" | "down" | "select"): Promise<string> {
-  const onMac = await mac(page);
-  const chords = {
-    new: onMac ? "Meta+KeyT" : "Control+Shift+KeyT",
-    close: onMac ? "Meta+Alt+KeyW" : "Control+Shift+KeyW",
-    right: onMac ? "Meta+KeyD" : "Control+Shift+KeyO",
-    down: onMac ? "Meta+Shift+KeyD" : "Control+Shift+KeyE",
-    select: onMac ? "Meta" : "Control",
-  };
-  return chords[action];
+/** The page platform's chord for an action, as the default keymap binds it (keys/defaults.ts). */
+function chord(page: Page, action: "new" | "close" | "right" | "down"): Promise<string> {
+  const actions = { new: "tab.new", close: "tab.close", right: "pane.split:right", down: "pane.split:down" };
+  return shortcut(page, actions[action]);
 }
 
 interface Spaces {
@@ -398,18 +391,17 @@ test("7: Ctrl+Tab, Ctrl+Shift+Tab and the number chords move within the selected
   await expect(page.getByRole("tablist", { name: "Tabs" })).toBeVisible();
   await paneOf(page, shells.b1).getByRole("textbox").focus();
 
-  await page.keyboard.press("Control+Tab");
+  await pressShortcut(page, "tab.next");
   await expect(selected(page)).toHaveText(/b-two/);
-  await page.keyboard.press("Control+Tab");
+  await pressShortcut(page, "tab.next");
   await expect(selected(page)).toHaveText(/b-one/);
-  await page.keyboard.press("Control+Shift+Tab");
+  await pressShortcut(page, "tab.prev");
   await expect(selected(page)).toHaveText(/b-two/);
-  const select = await chord(page, "select");
-  await page.keyboard.press(`${select}+1`);
+  await page.keyboard.press(await tabNumberChord(page, 1));
   await expect(selected(page)).toHaveText(/b-one/);
-  await page.keyboard.press(`${select}+2`);
+  await page.keyboard.press(await tabNumberChord(page, 2));
   await expect(selected(page)).toHaveText(/b-two/);
-  await page.keyboard.press(`${select}+3`);
+  await page.keyboard.press(await tabNumberChord(page, 3));
   await expect(selected(page)).toHaveText(/b-two/);
   await expect(tabBar(page)).toHaveText([/b-one/, /b-two/]);
   await expect(tabBar(page).filter({ hasText: "b-one" })).toHaveAttribute("aria-selected", "false");
@@ -519,9 +511,9 @@ test("E: the ninth number chord selects the ninth tab, not the last", async ({ p
   await paneOf(page, shells[0] ?? "")
     .getByRole("textbox")
     .focus();
-  await page.keyboard.press(`${await chord(page, "select")}+9`);
+  await page.keyboard.press(await tabNumberChord(page, 9));
   await expect(selected(page)).toHaveText("n9");
-  await page.keyboard.press(`${await chord(page, "select")}+1`);
+  await page.keyboard.press(await tabNumberChord(page, 1));
   await expect(selected(page)).toHaveText("n1");
 });
 
