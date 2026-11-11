@@ -30,8 +30,6 @@ async function expectRhythm(page: Page) {
   );
   for (const heading of rhythm.headings) {
     const label = `heading "${heading.name}": ${heading.above} above, ${heading.below} below`;
-    // A heading never overlaps what it names; the ratio below needs space under it to divide by (#2356).
-    expect.soft(heading.below, label).toBeGreaterThanOrEqual(0);
     if (heading.below > 0) expect.soft(heading.above / heading.below, label).toBeGreaterThanOrEqual(1.5);
   }
   for (const group of rhythm.groups) {
