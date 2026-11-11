@@ -142,7 +142,8 @@ test("two devices that move tabs of one space at once both keep their move, and 
   release();
 
   // On the conflict the first device reads the other's order and makes its own move again on it, rather than writing
-  // over it (packages/protocol/src/layout/sync.ts): re-a goes one to the right of where it now stands.
+  // over it (packages/protocol/src/layout/sync.ts): re-a goes to the index the first device moved it to (1), now in the
+  // other device's order.
   await expect.poll(hostOrder, { timeout: 15_000 }).toEqual(["tb-re-c", "tb-re-a", "tb-re-b"]);
   expect(writes() - before).toBe(2);
   await Promise.all(
