@@ -90,6 +90,22 @@ export function createBridge(config: BridgeConfig, deps: BridgeDeps = {}): (requ
   const now = deps.now ?? Date.now;
   const apns = config.apns === undefined ? undefined : new ApnsSender(config.apns, fetch);
   const fcm = config.fcm === undefined ? undefined : new FcmSender(config.fcm, fetch);
+  // A limiter that fails lets the push through unlimited (#1124): an outage of the limit must not stop every notice.
+  // It is logged once per outage in each Worker isolate, not once per push: the flag lives in this handler, which every
+  // isolate builds for itself (worker.ts), so one outage logs once in each live isolate, and a limiter that comes back
+  // and fails again logs again. The next answer from the limiter ends the outage.
+  let limiterDown = false;
+  const allows = async (limiter: TokenLimiter, key: string): Promise<boolean> => {
+    try {
+      const allowed = await limiter.allows(key);
+      limiterDown = false;
+      return allowed;
+    } catch (error) {
+      if (!limiterDown) deps.log?.(`push-bridge: the rate limit failed, pushes go unlimited: ${String(error)}`);
+      limiterDown = true;
+      return true;
+    }
+  };
   return async (request) => {
     const url = new URL(request.url);
     const target = targetOf(url);
@@ -100,7 +116,7 @@ export function createBridge(config: BridgeConfig, deps: BridgeDeps = {}): (requ
       checkBody(body, request.headers.get("content-encoding"));
       await checkVapid(request.headers.get("authorization"), url.origin, now());
       // Counted only once the request is one the bridge would forward, so junk cannot spend a real host's allowance.
-      if (deps.limiter !== undefined && !(await deps.limiter.allows(await tokenKey(target.provider, target.token)))) {
+      if (deps.limiter !== undefined && !(await allows(deps.limiter, await tokenKey(target.provider, target.token)))) {
         return reply(429, "too many pushes to this device token; try again later");
       }
       const urgency = request.headers.get("urgency") ?? "normal";

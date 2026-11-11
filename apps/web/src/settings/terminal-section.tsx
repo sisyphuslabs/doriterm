@@ -9,6 +9,7 @@ import {
   type TerminalLine,
   cn,
   fieldLabelClass,
+  groupHeadingClass,
 } from "@doriface/ui";
 import { asSentence } from "../storage/sentence.ts";
 import { RotateCcw } from "lucide-react";
@@ -170,7 +171,7 @@ export function TerminalSection() {
         if (defs.length === 0) return null;
         return (
           <section key={group} aria-labelledby={`terminal-group-${group}`} className="flex flex-col">
-            <h3 id={`terminal-group-${group}`} className="pb-1 text-base font-semibold text-foreground">
+            <h3 id={`terminal-group-${group}`} className={cn("pb-1", groupHeadingClass)}>
               {GROUP_LABEL[group]}
             </h3>
             {defs.map((def) => (

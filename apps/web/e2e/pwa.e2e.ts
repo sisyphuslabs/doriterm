@@ -17,10 +17,10 @@ function isIcon(value: unknown): value is ManifestIcon {
   );
 }
 
-/** What iOS reads to open the home-screen app standalone. */
+/** What iOS reads to open the home-screen app standalone. The status bar is black to match the dark first launch (#1403). */
 const APPLE_META = [
   ["apple-mobile-web-app-capable", "yes"],
-  ["apple-mobile-web-app-status-bar-style", "default"],
+  ["apple-mobile-web-app-status-bar-style", "black"],
   ["apple-mobile-web-app-title", "Doriterm"],
 ] as const;
 

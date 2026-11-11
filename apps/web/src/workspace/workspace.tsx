@@ -415,18 +415,29 @@ export function Workspace({ connection }: WorkspaceProps) {
                         space={phoneSpace}
                         panes={phonePanes}
                         tabTitle={phoneTitle}
-                        // Back says where it goes: the space it was opened from, by name once the spaces are read ("space" until then).
-                        backTo={phone.space === null ? null : (listedSpace?.name ?? "space")}
+                        // Back says where it goes: the space it was opened from, by name once the spaces are read ("space" until then),
+                        // else the Spaces list when it was opened from there.
+                        backTo={
+                          phone.space === null
+                            ? phone.section === "spaces"
+                              ? "Spaces"
+                              : null
+                            : (listedSpace?.name ?? "space")
+                        }
                         onOpen={showOnPhone}
                         onBack={phone.back}
                         onSpaceBack={phone.backFromSpace}
                         pushed={phone.pushed}
+                        section={phone.section}
+                        onSection={phone.showSection}
                         onNew={() => newTerminal()}
                         onNewInSpace={newTabIn}
                         onCloseTab={(address) => {
                           const found = findTerminal(layout.tabs, address);
                           if (found !== null) closeTab(found.tab.key);
                         }}
+                        sheet={phone.sheet}
+                        onSheet={phone.showSheet}
                         onPalette={onPalette}
                         onSession={onSession}
                       />

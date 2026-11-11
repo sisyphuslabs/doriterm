@@ -18,6 +18,8 @@ export interface ReleaseClock {
   timer(run: () => void, ms: number): () => void;
   /** The program has a synchronized update (DECSET 2026) open, so the renderer may not paint its writes yet. */
   synchronized(): boolean;
+  /** Which synchronized update is open: a write that closes one and opens the next moves it on. */
+  generation(): number;
 }
 
 /**
@@ -26,13 +28,16 @@ export interface ReleaseClock {
  * frame, so release then, unless the program has a synchronized update open: wterm then paints nothing until the update
  * ends (or its own 1000 ms fallback fires), which changes the grid; releasing on the next frame instead would blank the
  * cell for as long as the update lasts. That wait is capped at SYNCHRONIZED_HOLD_MS plus SYNCHRONIZED_HOLD_MARGIN_MS from
- * when the update was first seen open, so a render that changes no grid node can never leave a cell held for good.
+ * when the update was first seen open, so a render that changes no grid node can never leave a cell held for good. A
+ * write that closes the update and opens the next restarts wterm's hold without painting, so when the cap falls on a
+ * newer update than the one it was armed for, it counts again from then (#2089).
  */
 export class HeldRelease {
   readonly #clock: ReleaseClock;
   readonly #release: () => void;
   #cancel: (() => void) | null = null;
   #since = 0;
+  #generation = 0;
 
   constructor(clock: ReleaseClock, release: () => void) {
     this.#clock = clock;
@@ -65,10 +70,14 @@ export class HeldRelease {
   }
 
   #capped(): void {
+    this.#generation = this.#clock.generation();
     const left = Math.max(0, this.#since + SYNCHRONIZED_HOLD_MS + SYNCHRONIZED_HOLD_MARGIN_MS - this.#clock.now());
     this.#cancel = this.#clock.timer(() => {
       this.#cancel = null;
-      this.#release();
+      if (this.#clock.synchronized() && this.#clock.generation() !== this.#generation) {
+        this.#since = this.#clock.now();
+        this.#capped();
+      } else this.#release();
     }, left);
   }
 }
