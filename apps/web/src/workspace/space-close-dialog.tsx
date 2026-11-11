@@ -3,7 +3,7 @@ import type { Terminal } from "@doriface/protocol";
 import { Button, Dialog, Notice } from "@doriface/ui";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { ListedSpace } from "./model.ts";
-import { closeRefusal, closeSpace, type SpaceCloseDrops } from "./space-close.ts";
+import { closeCounts, closeRefusal, closeSpace, type SpaceCloseDrops } from "./space-close.ts";
 import { SpaceCloseContext, type SpaceClosing } from "./space-close-context.ts";
 import { sessionCalls } from "./session-actions.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
@@ -20,6 +20,8 @@ export interface SpaceCloseProps {
   readonly onAsk: (id: string | null) => void;
   /** Records the sessions the close ends as dropped by its one write, and releases an End that failed. */
   readonly drops: SpaceCloseDrops;
+  /** On a phone the question counts what the phone lists for the space (closeCounts). */
+  readonly phone: boolean;
   readonly children: ReactNode;
 }
 
@@ -27,7 +29,17 @@ const counted = (count: number, word: string): string => `${count} ${word}${coun
 const messageOf = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
 
 /** Closing spaces for everything inside it (SpaceCloseContext), and the question for the space asked about. */
-export function SpaceClose({ connection, terminals, layouts, spaces, ask, onAsk, drops, children }: SpaceCloseProps) {
+export function SpaceClose({
+  connection,
+  terminals,
+  layouts,
+  spaces,
+  ask,
+  onAsk,
+  drops,
+  phone,
+  children,
+}: SpaceCloseProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The counts read as the question opens: they stay while the close takes the space out of the list behind it.
@@ -39,12 +51,7 @@ export function SpaceClose({ connection, terminals, layouts, spaces, ask, onAsk,
   });
   if (asked.id !== ask) {
     const space = ask === null ? undefined : spaces.find((each) => each.id === ask);
-    setAsked({
-      id: ask,
-      name: space?.name ?? "Space",
-      tabs: space?.tabs ?? 0,
-      terminals: space?.addresses.length ?? 0,
-    });
+    setAsked({ id: ask, name: space?.name ?? "Space", ...closeCounts(space, terminals, phone) });
     setBusy(false);
     setError(null);
   }

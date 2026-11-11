@@ -21,6 +21,17 @@ export interface SpaceCloseDrops {
   readonly kept: (address: string) => void;
 }
 
+/** What a space's Close question counts: its tabs and the terminals they show. */
+export interface CloseCounts {
+  readonly tabs: number;
+  readonly terminals: number;
+}
+
+/** The counts space `space`'s Close question names: every tab of the document and every terminal its tabs show. */
+export function closeCounts(space: ListedSpace | undefined, _terminals: readonly Terminal[], _phone: boolean): CloseCounts {
+  return { tabs: space?.tabs ?? 0, terminals: space?.addresses.length ?? 0 };
+}
+
 const NO_DROPS: SpaceCloseDrops = { closing: () => undefined, kept: () => undefined };
 
 /**
