@@ -30,7 +30,7 @@ const view = (name: string, state: string): MachineView => ({
 });
 
 describe("machineEntries", () => {
-  test("this machine first, then each added machine with its state and live terminals", () => {
+  test("this machine first, then each added machine with its state and the live terminal its header opens; an entry carries no count, its row counts tabs (#2122)", () => {
     const terminals = [
       terminal("t1"),
       terminal("boxb/t1"),
@@ -39,17 +39,16 @@ describe("machineEntries", () => {
       terminal("t2"),
     ];
     expect(machineEntries(STUDIO, [view("boxb", "connected"), view("lab", "unreachable")], terminals)).toEqual([
-      { id: "local", core: "studio-core", name: "studio", local: true, state: "connected", live: 2, first: "t1" },
+      { id: "local", core: "studio-core", name: "studio", local: true, state: "connected", first: "t1" },
       {
         id: "machine:boxb",
         core: "boxb-id",
         name: "boxb",
         local: false,
         state: "connected",
-        live: 2,
         first: "boxb/t1",
       },
-      { id: "machine:lab", core: "lab-id", name: "lab", local: false, state: "unreachable", live: 0, first: undefined },
+      { id: "machine:lab", core: "lab-id", name: "lab", local: false, state: "unreachable", first: undefined },
     ]);
   });
 
