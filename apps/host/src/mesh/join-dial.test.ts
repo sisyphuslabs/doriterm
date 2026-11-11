@@ -62,7 +62,8 @@ function attempt(joiner: Side, target: string, extra: Partial<JoinOptions> = {})
     log: () => {},
     ...extra,
   };
-  return { outcome: failure(joinMesh(options)), dials, asked };
+  const joined = joinMesh(options);
+  return { outcome: failure(joined), joined, dials, asked };
 }
 
 describe("J-2: code comparison replaces the fingerprint question, with an optional extra pin", () => {
@@ -174,6 +175,25 @@ describe("J-4: a join withdraws the host's own open mesh offer (#1301)", () => {
     expect(await run.outcome).toBe("this invite is this host's own: run mesh join on the machine that joins");
     expect(run.dials).toEqual([]);
     expect(new PairingStore(joiner.dir).read()?.code).toBe(offer.code);
+  });
+
+  test("a failure after the withdrawal keeps its error as the cause, with one period before the note", async () => {
+    const joiner = side("joiner");
+    new PairingStore(joiner.dir).offer(Date.now(), true);
+    const refused = new Error("the relay refused this dial.");
+    const run = attempt(joiner, linkTo(true), {
+      yes: true,
+      createSocket: () => {
+        throw refused;
+      },
+    });
+    const error: unknown = await run.joined.then(
+      () => undefined,
+      (failed: unknown) => failed,
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect(Reflect.get(Object(error), "message")).toBe(`the relay refused this dial. ${OFFER_WITHDRAWN}`);
+    expect(Reflect.get(Object(error), "cause")).toBe(refused);
   });
 
   test("a device pairing offer is left open", async () => {

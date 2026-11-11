@@ -2,7 +2,7 @@ import { devices, type Page } from "@playwright/test";
 import { endAgent, startShell } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { hcOn } from "./machine-switch.ts";
-import { fakeSoftKeyboard, key, keysBar, showKeyboard } from "./phone-key-bar.ts";
+import { fakeSoftKeyboard, key, keysBar, openShortcutPacks, showKeyboard } from "./phone-key-bar.ts";
 
 // A touch phone: the keyboard toggle has to follow the keyboard itself, not the terminal's focus (#274), and opening a
 // terminal raises no keyboard of its own — only the keyboard button does (#1375). A mouse-only window of this width
@@ -120,22 +120,24 @@ test("Show keyboard on a field focused for typing outside a tap still asks for t
     const field = picked.locator("textarea");
     await expect(picked).toContainText("reporting", { timeout: 15_000 });
 
-    // The terminal takes the focus back for typing a frame after a tap, as closing the Shortcut packs sheet does: the
-    // field is focused in text mode outside the tap's gesture, so no keyboard comes up.
-    await field.evaluate((element) => {
-      requestAnimationFrame(() => {
-        if (!(element instanceof HTMLTextAreaElement)) return;
-        element.inputMode = "text";
-        element.focus();
-      });
-    });
+    // The state comes from the app's own path (#2036): closing the Shortcut packs sheet gives the terminal the focus
+    // back for typing a frame later, outside any tap's gesture, so no keyboard comes up. The sheet opens from a held
+    // Ctrl on the keys bar, which is up only with the keyboard; the sheet takes the focus, and the keyboard goes with it.
+    await key(page, "Show keyboard").click();
+    await showKeyboard(page, 336);
+    await expectUp(page);
+    await openShortcutPacks(page);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Shortcut packs" })).toHaveCount(0);
     await expect(field).toBeFocused();
     await expect(field).toHaveAttribute("inputmode", "text");
     await expectDown(page);
-    // What the program was told so far ends in a line of its own, so the press's reports, if any, come after it.
+    // What the program was told so far ends in a line of its own, so the press's reports, if any, come after it. Read in
+    // the grid alone: the terminal also mirrors its text for assistive tech, and the two copies need not update together.
+    const grid = picked.locator(".term-grid");
     await page.keyboard.type("before\r");
-    await expect(picked).toContainText("before");
-    const outs = async (): Promise<number> => ((await picked.textContent()) ?? "").split("^[[O").length - 1;
+    await expect(grid).toContainText("before");
+    const outs = async (): Promise<number> => ((await grid.textContent()) ?? "").split("^[[O").length - 1;
     const outsBefore = await outs();
 
     // The press lets the field go and takes it again inside the tap, which is what raises a keyboard on iOS; the
@@ -146,7 +148,7 @@ test("Show keyboard on a field focused for typing outside a tap still asks for t
     await expect(field).toHaveAttribute("inputmode", "text");
     expect(await page.evaluate(() => Reflect.get(window, "fieldFocus") as string[])).toEqual(["out"]);
     await page.keyboard.type("done\r");
-    await expect(picked).toContainText("done");
+    await expect(grid).toContainText("done");
     expect(await outs()).toBe(outsBefore);
   } finally {
     endAgent("host", address);

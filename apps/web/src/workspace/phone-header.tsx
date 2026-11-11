@@ -15,7 +15,10 @@ export interface PhoneHeaderProps {
   readonly tabTitle: string | null;
   /** This machine's name, for a session on this machine: the place under the title always names the machine. */
   readonly host: string;
-  /** The space Back returns to, by name (it was opened from that space's screen); null when Back goes to the agents. */
+  /**
+   * The space Back returns to, by name (it was opened from that space's screen); "" while that space is not read yet, so
+   * Back is the chevron alone; null when Back goes to the agents.
+   */
   readonly backTo: string | null;
   readonly onBack: () => void;
   /** Opens another session, as the session sheet's "next agent that needs you" does. */
@@ -46,13 +49,13 @@ export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBac
     >
       <Button
         variant="ghost"
-        aria-label={backTo === null ? "Back to agents" : `Back to ${backTo}`}
+        aria-label={backTo === null ? "Back to agents" : backTo === "" ? "Back" : `Back to ${backTo}`}
         className="max-w-[7.5rem] min-w-11 shrink-0 gap-0.5 px-1.5 text-foreground [&>span]:min-w-0"
         onClick={onBack}
       >
         <ChevronLeft aria-hidden />
         {/* Under 360 px the chevron alone: the title keeps the row (its accessible name still says where Back goes). */}
-        <span className="min-w-0 truncate max-[359px]:hidden">{backTo ?? "Agents"}</span>
+        {backTo === "" ? null : <span className="min-w-0 truncate max-[359px]:hidden">{backTo ?? "Agents"}</span>}
       </Button>
       {/* A container: the status chip shows its word only where the title keeps a readable share of the row (#479). */}
       <div className="@container flex min-w-0 flex-1 flex-col py-1">

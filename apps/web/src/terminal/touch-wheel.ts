@@ -29,8 +29,17 @@ export function attachTouchWheel(wt: Pick<WTerm, "element" | "bridge">): () => v
   let start: { readonly x: number; readonly y: number } | null = null;
   /** Where the finger was when it last turned a notch. */
   let lastY = 0;
-  /** The node the last finger came down on, which gets every move and lift of its touch. */
-  let touched: EventTarget | null = null;
+  /**
+   * The nodes the fingers came down on: each gets every move and lift of its own touch, so every finger's are followed,
+   * not only the last one's. A pinch that drops to one finger leaves that finger's moves on its own node (#2031).
+   */
+  const touched = new Set<EventTarget>();
+  /** A single finger now down starts a swipe from where it is. */
+  const begin = (event: Event): void => {
+    const finger = isTouch(event) && event.touches.length === 1 ? event.touches[0] : undefined;
+    start = finger === undefined ? null : { x: finger.clientX, y: finger.clientY };
+    lastY = finger?.clientY ?? 0;
+  };
   const onMove = (event: Event): void => {
     const finger = isTouch(event) && event.touches.length === 1 ? event.touches[0] : undefined;
     const bridge = wt.bridge;
@@ -57,29 +66,35 @@ export function attachTouchWheel(wt: Pick<WTerm, "element" | "bridge">): () => v
     };
     for (let notch = 0; notch < Math.abs(notches); notch++) element.dispatchEvent(new WheelEvent("wheel", wheel));
   };
+  const release = (): void => {
+    for (const target of touched) {
+      target.removeEventListener("touchmove", onMove);
+      target.removeEventListener("touchend", onEnd);
+      target.removeEventListener("touchcancel", onEnd);
+    }
+    touched.clear();
+  };
+  // A lift that leaves one finger down (a pinch ending) starts a swipe from it; the last lift lets every node go.
   const onEnd = (event: Event): void => {
-    start = null;
-    if (!isTouch(event) || event.touches.length === 0) follow(null);
+    begin(event);
+    if (!isTouch(event) || event.touches.length === 0) release();
   };
   const follow = (target: EventTarget | null): void => {
-    if (target === touched) return;
-    touched?.removeEventListener("touchmove", onMove);
-    touched?.removeEventListener("touchend", onEnd);
-    touched?.removeEventListener("touchcancel", onEnd);
-    touched = target;
-    touched?.addEventListener("touchmove", onMove, { passive: false });
-    touched?.addEventListener("touchend", onEnd);
-    touched?.addEventListener("touchcancel", onEnd);
+    if (target === null || touched.has(target)) return;
+    touched.add(target);
+    target.addEventListener("touchmove", onMove, { passive: false });
+    target.addEventListener("touchend", onEnd);
+    target.addEventListener("touchcancel", onEnd);
   };
   const onStart = (event: TouchEvent): void => {
-    const finger = event.touches.length === 1 ? event.touches[0] : undefined;
-    start = finger === undefined ? null : { x: finger.clientX, y: finger.clientY };
-    lastY = finger?.clientY ?? 0;
+    // A touch that begins with no finger down before it is a gesture of its own: the last one's nodes are let go first.
+    if (event.touches.length === 1) release();
+    begin(event);
     follow(event.target);
   };
   element.addEventListener("touchstart", onStart, { passive: true });
   return () => {
     element.removeEventListener("touchstart", onStart);
-    follow(null);
+    release();
   };
 }

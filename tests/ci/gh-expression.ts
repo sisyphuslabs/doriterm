@@ -1,6 +1,6 @@
 /**
  * Evaluates the subset of GitHub Actions expressions this repository's workflows use (`${{ ... }}`: context paths,
- * string, number and boolean literals, == != ! && || and parentheses, format(), and the status functions), so a test
+ * string, number and boolean literals, == != ! && || and parentheses, format(), toJSON(), and the status functions), so a test
  * can ask what a concurrency group or an `if:` comes to for one event instead of pinning the expression's text.
  * Semantics follow GitHub's: == compares values of different types as numbers, && and || return an operand, and strings
  * compare without regard to case.
@@ -99,6 +99,9 @@ function call(name: string, args: Value[], run: Run): Value {
       ? haystack.some((item) => equal(item, needle))
       : String(haystack).toLowerCase().includes(String(needle).toLowerCase());
   }
+  // GitHub's toJSON pretty-prints; the scalars this repository compares come out as null, true, false, a number or a
+  // quoted string either way.
+  if (name === "toJSON") return JSON.stringify(args[0] ?? null, null, 2);
   if (name === "success") return status === "success";
   if (name === "failure") return status === "failure";
   if (name === "cancelled") return status === "cancelled";

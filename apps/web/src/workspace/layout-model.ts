@@ -53,9 +53,17 @@ export interface Mounts {
    * (its pane id and that mount), or none. A tab that drops out of a render and comes back keeps its decision.
    */
   readonly taken: Map<string, { readonly pane: string; readonly mount: Mount } | null>;
+  /** Per terminal (by its tab-keys.ts key, as `shown`), where the document tab that showed it last was mounted, for a loose tab that outlives it. */
+  readonly docs: Map<string, Mount>;
 }
 
-export const newMounts = (): Mounts => ({ shown: new Map(), taken: new Map() });
+export const newMounts = (): Mounts => ({ shown: new Map(), taken: new Map(), docs: new Map() });
+
+/** Where a document tab's pane is mounted after `keepMounts` decided its take-over. */
+const mountOf = (tab: LayoutTab, pane: LayoutPane): Mount => ({
+  tab: tab.mount ?? tab.key,
+  pane: pane.mount ?? pane.id,
+});
 
 /** No machine listed: what tab-keys.ts remembers a terminal by before machine.list names its machine. */
 const UNLISTED: MachineIds = { byName: new Map(), byId: new Map() };
@@ -65,10 +73,15 @@ const UNLISTED: MachineIds = { byName: new Map(), byId: new Map() };
  * alone while its tab was still being written, or a loose tab) keeps that tab's panel and pane keys, so the terminal's
  * view is not mounted again: a remount drops the keys typed into it meanwhile (#381). Decided when the document tab
  * first shows and kept while it lives; nothing else changes, since tabs and panes are still named by `key` and `id`.
+ *
+ * The other way round too: a loose tab whose terminal a document tab showed until that tab went (a write that was not
+ * saved, replaced by the document as the core holds it) keeps that tab's keys, so the view the person had open stays
+ * mounted and selected (`pick` finds it by `mount`) instead of being drawn again as a new tab.
  */
 export function keepMounts(tabs: readonly LayoutTab[], mounts: Mounts, ids: MachineIds): LayoutTab[] {
   const inUse = new Set(tabs.flatMap((tab) => (tab.transient ? [tab.key] : [])));
   for (const taken of mounts.taken.values()) if (taken !== null) inUse.add(taken.mount.tab);
+  const present = new Set(tabs.map((tab) => tab.key));
   // A view recorded while its machine was not yet listed is remembered by the `name:` key; once the machine is listed
   // the same terminal's key is `id:`, so that render looks under both (#2107).
   const recordedAs = (address: string): string | undefined =>
@@ -76,14 +89,16 @@ export function keepMounts(tabs: readonly LayoutTab[], mounts: Mounts, ids: Mach
   const kept = tabs.map((tab): LayoutTab => {
     if (tab.transient) {
       const pane = tab.panes[0];
-      if (pane?.address != null) {
-        const key = terminalKey(pane.address, ids);
-        mounts.shown.set(key, { tab: tab.key, pane: pane.id });
-        // Once its machine is listed, the `name:` record from before is stale: no later tab may take it (#2141).
-        const unlisted = terminalKey(pane.address, UNLISTED);
-        if (unlisted !== key) mounts.shown.delete(unlisted);
-      }
-      return tab;
+      if (pane?.address == null) return tab;
+      const shownAs = terminalKey(pane.address, ids);
+      const went = mounts.docs.get(shownAs);
+      const inherited = went !== undefined && !present.has(went.tab) ? went : undefined;
+      mounts.shown.set(shownAs, inherited ?? { tab: tab.key, pane: pane.id });
+      // Once its machine is listed, the `name:` record from before is stale: no later tab may take it (#2141).
+      const unlisted = terminalKey(pane.address, UNLISTED);
+      if (unlisted !== shownAs) mounts.shown.delete(unlisted);
+      if (inherited === undefined) return tab;
+      return { ...tab, mount: inherited.tab, panes: [{ ...pane, mount: inherited.pane }] };
     }
     if (!mounts.taken.has(tab.key)) {
       const pane = tab.panes.find((each) => each.address !== null && recordedAs(each.address) !== undefined);
@@ -101,6 +116,11 @@ export function keepMounts(tabs: readonly LayoutTab[], mounts: Mounts, ids: Mach
     const panes = tab.panes.map((pane) => (pane.id === taken.pane ? { ...pane, mount: taken.mount.pane } : pane));
     return { ...tab, mount: taken.mount.tab, panes };
   });
+  for (const tab of kept) {
+    if (tab.transient) continue;
+    for (const pane of tab.panes)
+      if (pane.address !== null) mounts.docs.set(terminalKey(pane.address, ids), mountOf(tab, pane));
+  }
   return kept;
 }
 

@@ -290,7 +290,15 @@ export interface TabPosition {
  * row per entry, the one its first live pane stands for.
  */
 export function liveTabs(space: ListedSpace, terminals: readonly Terminal[]): readonly (readonly string[])[] {
-  const liveAt = new Set(terminals.filter((t) => t.state === "live").map((t) => t.address));
+  return liveTabsOf(space, liveAddresses(terminals));
+}
+
+/** The addresses of the terminals that are live. */
+export const liveAddresses = (terminals: readonly Terminal[]): ReadonlySet<string> =>
+  new Set(terminals.filter((t) => t.state === "live").map((t) => t.address));
+
+/** liveTabs for a set of live addresses already built, so a pass over many spaces builds it once (#2135). */
+export function liveTabsOf(space: ListedSpace, liveAt: ReadonlySet<string>): readonly (readonly string[])[] {
   return space.tabPanes
     .map((panes) => panes.filter((address) => liveAt.has(address)))
     .filter((panes) => panes.length > 0);

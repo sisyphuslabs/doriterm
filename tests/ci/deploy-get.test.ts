@@ -69,6 +69,22 @@ test("wrangler.jsonc binds each environment to its own data, keeps no request lo
   ]);
 });
 
+test("a section that would ship request events off the Worker, by Logpush or a tail consumer, is refused (#1981)", () => {
+  const shipping = JSON.parse(JSON.stringify(wrangler));
+  shipping.env.staging.logpush = true;
+  shipping.env.staging.tail_consumers = [{ service: "doriterm-tail" }];
+  expect(bindingProblems(shipping, "staging")).toEqual(["logpush is on", "it has tail consumers (1)"]);
+  // Production is the top-level section; a named environment that sets neither key is held to the top-level values.
+  const inherited = JSON.parse(JSON.stringify(wrangler));
+  inherited.logpush = true;
+  inherited.tail_consumers = [{ service: "doriterm-tail" }];
+  expect(bindingProblems(inherited, "")).toEqual(["logpush is on", "it has tail consumers (1)"]);
+  expect(bindingProblems(inherited, "staging")).toEqual(["logpush is on", "it has tail consumers (1)"]);
+  inherited.env.staging.logpush = false;
+  inherited.env.staging.tail_consumers = [];
+  expect(bindingProblems(inherited, "staging")).toEqual([]);
+});
+
 test("a bucket with an r2.dev URL or a custom domain is public, and the live version is the one most traffic gets", () => {
   expect(exposure({ enabled: false }, { domains: [] })).toEqual([]);
   expect(exposure({ enabled: true }, { domains: [{ domain: "files.example" }] })).toEqual([

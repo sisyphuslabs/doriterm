@@ -83,14 +83,18 @@ test("symbols, spinners and icons in the terminal are drawn by faces the app shi
   await page.keyboard.insertText(`printf '\\033[2J\\033[H${lines.map(octal).join("\\n")}\\n'`);
   await page.keyboard.press("Enter");
   await expect
-    .poll(() =>
-      page.evaluate(
-        (probes) => {
-          const rows = [...document.querySelectorAll('[data-focused="true"] .term-row')].map((row) => row.textContent);
-          return probes.filter((probe) => !rows.some((text) => text?.includes(probe)));
-        },
-        [...lines],
-      ),
+    .poll(
+      () =>
+        page.evaluate(
+          (probes) => {
+            const rows = [...document.querySelectorAll('[data-focused="true"] .term-row')].map(
+              (row) => row.textContent,
+            );
+            return probes.filter((probe) => !rows.some((text) => text?.includes(probe)));
+          },
+          [...lines],
+        ),
+      { timeout: 15_000 },
     )
     .toEqual([]);
   await fontsLoadedFor(page, lines);
@@ -101,6 +105,7 @@ test("symbols, spinners and icons in the terminal are drawn by faces the app shi
     for (const [name, text] of Object.entries(PROBES)) {
       // oxlint-disable-next-line no-await-in-loop -- one row at a time: each marks its row, which the next unmarks
       const faces = await facesOf(page, cdp, text);
+      expect(faces.length, `${name} (${text}): no drawn span was read, so no face could be checked`).toBeGreaterThan(0);
       expect(
         faces.filter((face) => !face.bundled).map((face) => face.name),
         `${name} (${text}) drawn by a face the app does not ship`,

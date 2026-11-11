@@ -2,7 +2,8 @@ import type { EventFeed, HcConnection } from "@doriface/client";
 import { MESH_OFFER_DOC, parseMeshOfferDoc } from "@doriface/protocol";
 import { useEffect, useState } from "react";
 
-export const INSTALL_SCRIPT_URL = "https://github.com/sisyphuslabs/doriterm/releases/latest/download/install.sh";
+/** get.doriterm.com answers curl with the stable channel's install.sh, and GitHub's when it is not mirrored (#1969). */
+export const INSTALL_SCRIPT_URL = "https://get.doriterm.com";
 
 /** How long a host gets to answer before the dialog says it cannot make a join command (a host older than #668). */
 export const OFFER_ANSWER_MS = 15_000;

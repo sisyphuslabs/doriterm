@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, watch, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHcSession, type HcSession } from "@doriface/host/testing";
@@ -18,6 +18,25 @@ afterEach(async () => {
   dialer = undefined;
   root = undefined;
 });
+
+/** Resolves once `file` exists in `dir`, as the filesystem reports it; rejects after `withinMs`. */
+function appears(dir: string, file: string, withinMs: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const watcher = watch(dir, () => {
+      if (existsSync(join(dir, file))) finish();
+    });
+    const bound = setTimeout(() => {
+      watcher.close();
+      reject(new Error(`${file} did not appear in ${dir} within ${withinMs} ms`));
+    }, withinMs);
+    function finish(): void {
+      clearTimeout(bound);
+      watcher.close();
+      resolve();
+    }
+    if (existsSync(join(dir, file))) finish();
+  });
+}
 
 /** A dial as the dialing core makes one: hc runs the machine's `--via` command with its own connect as the argument. */
 async function dialOnce(hc: string, via: string): Promise<number> {
@@ -46,5 +65,23 @@ test("a dial that reaches an added machine after its stop is refused, so the sto
   // A line the dialing core started before it stopped can still run after the machine's stop. hc connect starts a core
   // that is not running, so a dial let through here would start the machine's core again, with nothing left to stop it.
   expect(await dialOnce(dialer.hc, viaCommand(own, spec))).not.toBe(0);
+  expect(await stopLeftUnder(join(root, "machine"))).toEqual([]);
+}, 60_000);
+test("a slow dial that passed the check before the machine stopped is refused once it wakes (#2158)", async () => {
+  dialer = createHcSession("machine-slow-dial");
+  root = mkdtempSync(join(tmpdir(), "dw-machine-"));
+  const spec = { ...DEMO_MACHINE, dir: join(root, "files") };
+  const stop = await addMachine(dialer.hc, { ...dialer.env }, join(root, "machine"), false, spec);
+  const { env: own } = JSON.parse(readFileSync(join(spec.dir, "env.json"), "utf8")) as {
+    readonly env: Readonly<Record<string, string>>;
+  };
+  // A dial on a loaded runner: past the checks, it is held before its line starts (the `slow` switch).
+  writeFileSync(join(spec.dir, "switch"), "slow");
+  const dialed = dialOnce(dialer.hc, viaCommand(own, spec));
+  await appears(spec.dir, "dialing", 10_000);
+  // The teardown runs while that dial is held: the dialing core, then the machine.
+  await dialer.dispose();
+  await stop();
+  expect(await dialed).not.toBe(0);
   expect(await stopLeftUnder(join(root, "machine"))).toEqual([]);
 }, 60_000);
