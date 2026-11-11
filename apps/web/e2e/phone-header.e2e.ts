@@ -73,7 +73,7 @@ test("on a phone the terminal header names the session and where it is, follows 
 
     // The bottom tabs bar's switch opens the spaces and their tabs (the header has none: one strip, #466); picking another
     // tab opens it and moves the position.
-    // By the switch's own name pattern, so a switch in the header under any name fails here (#2356).
+    // By the switch's name pattern: a switch in the header whose name starts with "Switch" fails here (#2356).
     await expect(header(page).getByRole("button", { name: /^Switch/ })).toHaveCount(0);
     const switcher = page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / });
     const box = await laidOutBox(switcher);

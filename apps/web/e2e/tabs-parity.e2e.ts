@@ -562,7 +562,7 @@ test.describe("10: on a phone at 390", () => {
     await expect(header.getByRole("heading", { name: "b-one", exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(header.getByRole("heading", { name: "parity-b1" })).toHaveCount(0);
     // One strip, as herdr-app: the tab's place and the switch are the bottom tabs bar's alone, not the header's.
-    // By the switch's own name pattern, so a switch under any name it has had or has now fails here (#2356).
+    // By the switch's name pattern: a switch in the header whose name starts with "Switch" fails here (#2356).
     await expect(header.getByRole("button", { name: /^Switch/ })).toHaveCount(0);
     await expect(header.locator("[data-tab-position]")).toHaveCount(0);
     const switcher = page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / });
