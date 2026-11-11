@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { HeldRelease, type ReleaseClock, SYNCHRONIZED_HOLD_MS } from "./held-release.ts";
+import { HeldRelease, type ReleaseClock, SYNCHRONIZED_HOLD_MARGIN_MS, SYNCHRONIZED_HOLD_MS } from "./held-release.ts";
 
 /** A clock whose frames and timers run only when the test says, and whose synchronized state the test sets. */
 function fakeClock() {
@@ -78,14 +78,14 @@ test("an update opened after the hold began, before its frame, is waited for too
   expect(count()).toBe(1);
 });
 
-test("the wait is capped at SYNCHRONIZED_HOLD_MS from when the hold began, with no grid change at all", () => {
+test("the wait is capped past wterm's hold from when the update was first seen, with no grid change at all", () => {
   expect(SYNCHRONIZED_HOLD_MS).toBe(1000);
   const fake = fakeClock();
   const { hold, count } = released(fake.clock);
   hold.hold();
   fake.sync(true);
   fake.frame(16);
-  fake.advance(SYNCHRONIZED_HOLD_MS - 17);
+  fake.advance(SYNCHRONIZED_HOLD_MS + SYNCHRONIZED_HOLD_MARGIN_MS - 1);
   expect(count()).toBe(0);
   fake.advance(1);
   expect(count()).toBe(1);
@@ -98,6 +98,37 @@ test("a second hold while one is armed keeps the first deadline", () => {
   hold.hold();
   fake.advance(600);
   hold.hold();
-  fake.advance(400);
+  fake.advance(400 + SYNCHRONIZED_HOLD_MARGIN_MS);
+  expect(count()).toBe(1);
+});
+
+test("an update first seen a frame after the hold is held until the renderer's own fallback has painted (#2083)", () => {
+  const fake = fakeClock();
+  const { hold, count } = released(fake.clock);
+  hold.hold();
+  // The update shows open at the next frame; the renderer applies the write that opened it a frame later still and
+  // starts its own SYNCHRONIZED_HOLD_MS fallback then, at 32 ms.
+  fake.sync(true);
+  fake.frame(16);
+  const fallback = 32 + SYNCHRONIZED_HOLD_MS;
+  fake.advance(fallback - 16 - 1);
+  expect(count()).toBe(0);
+  // The fallback paints: the grid changes, and the cell goes in the same frame as the echo appears.
+  fake.advance(1);
+  hold.rendered();
+  expect(count()).toBe(1);
+});
+
+test("on a starved frame the cap counts from when the update was seen open, not from the hold (#2083)", () => {
+  const fake = fakeClock();
+  const { hold, count } = released(fake.clock);
+  hold.hold();
+  // The next frame comes 300 ms late; the renderer applied the update's write just before it and started its fallback.
+  fake.sync(true);
+  fake.frame(300);
+  fake.advance(SYNCHRONIZED_HOLD_MS - 1);
+  expect(count()).toBe(0);
+  fake.advance(1);
+  hold.rendered();
   expect(count()).toBe(1);
 });
