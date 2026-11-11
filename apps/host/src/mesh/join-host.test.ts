@@ -234,9 +234,11 @@ describe("J-1b: a link join with no running host on the joiner", () => {
         () => {},
       );
       expect(said.startsWith(OFFER_WITHDRAWN_NOTICE)).toBe(true);
-      expect(said).toContain("start doriface-host to take part");
+      expect(said).toEndWith("start doriface-host to take part\n");
       expect(new PairingStore(dir).read()).toBeUndefined();
-      expect(records(dir)?.length).toBeGreaterThanOrEqual(2);
+      const welcome = records(a.dir)?.slice(0, 2);
+      expect(welcome).toHaveLength(2);
+      expect(records(dir)?.slice(0, 2)).toEqual(welcome);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
