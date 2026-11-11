@@ -61,7 +61,8 @@ export function viaCommand(own: Readonly<Record<string, string>>, spec: MachineS
     `m=$(cat "${join(spec.dir, "switch")}" 2>/dev/null)`,
     `[ "$m" = off ] && { echo "${spec.name} is switched off" >&2; exit 1; }`,
     `[ "$m" = login ] && { echo "Permission denied (publickey,password)." >&2; exit 255; }`,
-    `[ "$m" = slow ] && { echo $$ >> "${join(spec.dir, "dialing")}"; sleep 10; }`,
+    // A held dial checks again once it wakes: the machine may have stopped while it slept (#2158).
+    `[ "$m" = slow ] && { echo $$ >> "${join(spec.dir, "dialing")}"; sleep 10; [ -d "${spec.dir}" ] || { echo "${spec.name} is stopped" >&2; exit 1; }; }`,
   ];
   return `sh -c '${refusals.join("; ")}; echo $$ >> "${MACHINE_LINE_PID}"; exec env ${env} sh -c "$1"' sh`;
 }
