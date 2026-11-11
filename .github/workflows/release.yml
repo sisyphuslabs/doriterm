@@ -2,7 +2,9 @@ name: Release
 
 # A vX.Y.Z tag builds every artifact into a draft release, smoke-tests the uploaded files and then publishes it.
 # A manual dispatch builds the same set into a draft release and leaves it a draft, so the pipeline can be proven
-# without publishing anything. Either way the version must match apps/desktop/package.json (release-version.ts).
+# without publishing anything. A published release is then mirrored into the release bucket behind get.doriterm.com and
+# its channel moved (#1969, docs/releasing.md); a dispatch mirrors its draft into the staging bucket instead. Either way
+# the version must match apps/desktop/package.json (release-version.ts).
 # The macOS builds, and the standalone macOS host binaries install.sh downloads, are signed with a Developer ID
 # certificate and notarized with an App Store Connect API key, from the repository secrets CSC_LINK (base64 .p12),
 # CSC_KEY_PASSWORD, APPLE_API_KEY (.p8 contents), APPLE_API_KEY_ID and APPLE_API_ISSUER; the Version job fails before
@@ -473,8 +475,8 @@ jobs:
           restore-keys: bun-${{ runner.os }}-${{ runner.arch }}-
       - name: Install herdr-core
         env:
-          HC_URL: https://releases.herdr.dev/core/0.1.17/herdr-core-linux-x86_64.tar.gz
-          HC_SHA256: 82ec44043f6894bfdb716b979b87cda43fd7fa46b0104e7b7bd93e64d1a9b877
+          HC_URL: https://releases.herdr.dev/core/0.1.20/herdr-core-linux-x86_64.tar.gz
+          HC_SHA256: ac6b86890c451a37584620aaa438b71bc0d0bd430a2e7c1d7e095f052c414e74
         run: |
           mkdir -p "$RUNNER_TEMP/hc"
           curl -fsSL "$HC_URL" -o "$RUNNER_TEMP/hc.tar.gz"
@@ -732,3 +734,29 @@ jobs:
             echo "| Job status | ${{ job.status }} |"
             echo "| Release | https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # The mirror job lives in release-mirror.yml (run by hand for an already-published release); these call it.
+  mirror:
+    name: Mirror to get.doriterm.com
+    if: github.event_name == 'push'
+    needs: [version, publish]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-mirror.yml
+    with:
+      tag: ${{ needs.version.outputs.tag }}
+      target: production
+    secrets: inherit
+
+  mirror-staging:
+    name: Mirror the draft to staging.get.doriterm.com
+    if: github.event_name == 'workflow_dispatch'
+    needs: [version, smoke-linux, smoke-mac, smoke-windows]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-mirror.yml
+    with:
+      tag: ${{ needs.version.outputs.tag }}
+      target: staging
+      published: false
+    secrets: inherit

@@ -1,16 +1,19 @@
 #!/bin/sh
 # Doriterm host installer for Linux and macOS (#668).
 #
-#   curl -fsSL https://github.com/sisyphuslabs/doriterm/releases/latest/download/install.sh | sh
+#   curl -fsSL https://get.doriterm.com | sh
 #
-# One step: downloads doriface-host for this OS and CPU and checks it against the release's SHA256SUMS.txt, installs
+# One step: downloads doriface-host for this OS and CPU from get.doriterm.com (GitHub Releases when that fails), checks
+# it against the release's SHA256SUMS.txt and has it check that file's Ed25519 signature (#1969), installs
 # herdr-core when no `hc` is found, registers the host as a user service (systemd --user on Linux, a LaunchAgent on
 # macOS) so it starts at login and restarts if it stops, then waits for it and prints a pairing QR code, link and code.
 # Running it again upgrades the host in place and restarts the service; `--uninstall` removes the service and the
-# binary and keeps the host's keys and paired devices.
+# binary and keeps the host's keys and paired devices. The service updates itself from the signed stable manifest
+# (`--channel beta` for prereleases, `--no-auto-update` to leave updates to you).
 set -eu
 
-REPO_RELEASES="https://github.com/sisyphuslabs/doriterm/releases"
+REPO_RELEASES="${DORIFACE_GITHUB_RELEASES:-https://github.com/sisyphuslabs/doriterm/releases}"
+GET_ORIGIN="${DORIFACE_GET_ORIGIN:-https://get.doriterm.com}"
 # The release workflow stamps its tag here, so a published install.sh installs the release it came with.
 release="__DORIFACE_RELEASE__"
 SERVICE_LABEL="dev.omo.doriface-host"
@@ -25,7 +28,11 @@ usage: install.sh [options]
                         of printing a pairing; DORIFACE_JOIN=<link> does the same and keeps the link off this
                         script's command line, where other local users can read it
   --bin-dir <dir>       where doriface-host goes (default ~/.local/bin)
-  --from <url>          the release's download base, file:// included (default: the GitHub release)
+  --state-dir <dir>     the host's keys and paired devices (default: the one the installed service uses, else
+                        ~/.local/state/doriface-host); DORIFACE_HOST_STATE_DIR=<dir> does the same
+  --from <url>          the release's download base, file:// included (default: get.doriterm.com, then GitHub)
+  --channel <name>      stable (default) or beta: the channel the service updates itself from
+  --no-auto-update      the service never updates itself; run this script again to upgrade
   --no-service          install only; start doriface-host yourself
   --no-pair             skip printing the pairing QR code
   --uninstall           stop and remove the service and the binary; keys and paired devices stay
@@ -47,14 +54,23 @@ service=1
 pair=1
 uninstall=0
 join="${DORIFACE_JOIN:-}"
+state_dir="${DORIFACE_HOST_STATE_DIR:-}"
+auto_update=stable
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --version) [ $# -ge 2 ] || fail "--version wants a value"; version="$2"; shift 2 ;;
     --web-origin) [ $# -ge 2 ] || fail "--web-origin wants a URL"; web_origin="$2"; shift 2 ;;
     --bin-dir) [ $# -ge 2 ] || fail "--bin-dir wants a directory"; bin_dir="$2"; shift 2 ;;
+    --state-dir) [ $# -ge 2 ] || fail "--state-dir wants a directory"; state_dir="$2"; shift 2 ;;
     --from) [ $# -ge 2 ] || fail "--from wants a URL"; from="$2"; shift 2 ;;
     --join) [ $# -ge 2 ] || fail "--join wants a mesh link"; join="$2"; shift 2 ;;
+    --channel)
+      [ $# -ge 2 ] || fail "--channel wants stable or beta"
+      case "$2" in stable | beta) auto_update="$2" ;; *) fail "--channel wants stable or beta, not $2" ;; esac
+      shift 2
+      ;;
+    --no-auto-update) auto_update=off; shift ;;
     --no-service) service=0; shift ;;
     --no-pair) pair=0; shift ;;
     --uninstall) uninstall=1; shift ;;
@@ -80,11 +96,66 @@ asset="doriface-host-${os}-${arch}"
 host_bin="${bin_dir}/doriface-host"
 unit_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user"
 unit="${unit_dir}/doriface-host.service"
-# Named once and passed to the service and to every command below, so they all use the same keys and devices.
-state_dir="$(absolute "${DORIFACE_HOST_STATE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/doriface-host}")"
 plist="${HOME}/Library/LaunchAgents/${SERVICE_LABEL}.plist"
 
 have() { command -v "$1" >/dev/null 2>&1; }
+
+# The --state-dir the installed service runs with, as the unit or plist written below spells it, else nothing.
+installed_state_dir() {
+  if [ "$os" = linux ]; then
+    [ -f "$unit" ] || return 0
+    # The quoted word sd_exec wrote: \ escapes the next character, and %% and $$ stand for % and $.
+    awk '
+      /^ExecStart=/ {
+        i = index($0, " --state-dir")
+        if (i == 0) exit
+        s = substr($0, i + 12)
+        if (substr(s, 1, 1) == "=") s = substr(s, 2); else sub(/^[ \t]+/, "", s)
+        v = ""
+        if (substr(s, 1, 1) == "\"") {
+          s = substr(s, 2)
+          while (s != "" && substr(s, 1, 1) != "\"") {
+            if (substr(s, 1, 1) == "\\") s = substr(s, 2)
+            v = v substr(s, 1, 1)
+            s = substr(s, 2)
+          }
+        } else { v = s; sub(/[ \t].*/, "", v) }
+        gsub(/%%/, "%", v); gsub(/\$\$/, "$", v)
+        print v
+        exit
+      }' "$unit"
+  else
+    [ -f "$plist" ] || return 0
+    # The <string> after --state-dir in ProgramArguments; a plist saved in binary form is read through plutil.
+    { if have plutil; then plutil -convert xml1 -o - "$plist" 2>/dev/null || cat "$plist"; else cat "$plist"; fi; } | awk '
+      { doc = doc $0 "\n" }
+      END {
+        found = 0
+        while (!found && (i = index(doc, "<string>")) > 0) {
+          doc = substr(doc, i + 8)
+          j = index(doc, "</string>")
+          if (j == 0) break
+          v = substr(doc, 1, j - 1)
+          doc = substr(doc, j + 9)
+          if (want) found = 1
+          else if (substr(v, 1, 12) == "--state-dir=") { v = substr(v, 13); found = 1 }
+          else want = (v == "--state-dir")
+        }
+        if (!found) exit
+        gsub(/&lt;/, "<", v); gsub(/&gt;/, ">", v); gsub(/&quot;/, "\"", v); gsub(/&amp;/, "\\&", v)
+        print v
+      }'
+  fi
+}
+
+# Named once and passed to the service and to every command below, so they all use the same keys and devices. The
+# keys are this host's identity on the mesh, so running the installer again keeps the state dir the installed service
+# uses (#1966): only --state-dir or DORIFACE_HOST_STATE_DIR moves it, and only a fresh install takes the default.
+if [ -z "$state_dir" ]; then
+  state_dir="$(installed_state_dir)"
+  [ -z "$state_dir" ] || say "keeping the state dir the installed service uses: ${state_dir}"
+fi
+state_dir="$(absolute "${state_dir:-${XDG_STATE_HOME:-${HOME}/.local/state}/doriface-host}")"
 
 # systemd --user answers only inside a login session with a user manager (not in most containers).
 user_systemd() { have systemctl && systemctl --user show-environment >/dev/null 2>&1; }
@@ -122,8 +193,16 @@ have curl || fail "curl is needed to download doriface-host"
 case "$release" in
   v[0-9]*) [ -n "$version" ] || version="$release" ;;
 esac
+# A known version is fetched from get.doriterm.com first and from its GitHub release when that fails; --from (or
+# DORIFACE_RELEASE_BASE) names the one base to use.
+fallback=""
 if [ -z "$from" ]; then
-  if [ -z "$version" ]; then from="${REPO_RELEASES}/latest/download"; else from="${REPO_RELEASES}/download/${version}"; fi
+  if [ -z "$version" ]; then
+    from="${REPO_RELEASES}/latest/download"
+  else
+    from="${GET_ORIGIN}/v/${version#v}"
+    fallback="${REPO_RELEASES}/download/${version}"
+  fi
 fi
 
 sha256() {
@@ -140,16 +219,33 @@ work="$(mktemp -d "${TMPDIR:-/tmp}/doriface-install.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 trap 'exit 130' INT TERM
 
-say "downloading ${asset} from ${from}"
-curl -fsSL --retry 3 -o "${work}/${asset}" "${from}/${asset}" || fail "could not download ${from}/${asset}"
-curl -fsSL --retry 3 -o "${work}/SHA256SUMS.txt" "${from}/SHA256SUMS.txt" || fail "could not download ${from}/SHA256SUMS.txt"
+# The binary and the checksums always come from the same base.
+fetch_release() {
+  say "downloading ${asset} from $1"
+  curl -fsSL --retry 3 -A "doriterm-install ${DORIFACE_INSTALL_UA:-}" -o "${work}/${asset}" "$1/${asset}" &&
+    curl -fsSL --retry 3 -A "doriterm-install ${DORIFACE_INSTALL_UA:-}" -o "${work}/SHA256SUMS.txt" "$1/SHA256SUMS.txt"
+}
+if ! fetch_release "$from"; then
+  [ -n "$fallback" ] || fail "could not download ${from}/${asset}"
+  say "${from} did not answer; using ${fallback}"
+  from="$fallback"
+  fetch_release "$from" || fail "could not download ${from}/${asset}"
+fi
 expected="$(awk -v name="$asset" '{ file = $2; sub(/^\*/, "", file); if (file == name) print $1 }' "${work}/SHA256SUMS.txt")"
 [ -n "$expected" ] || fail "SHA256SUMS.txt names no ${asset}"
 actual="$(sha256 "${work}/${asset}")"
 [ "$expected" = "$actual" ] || fail "${asset} does not match SHA256SUMS.txt (expected ${expected}, got ${actual}); nothing was installed"
+chmod 755 "${work}/${asset}"
+# The binary just checked holds the release's public key; it checks the checksums' signature. Releases before #1969
+# carry no signature, so its absence is said, not fatal; a signature that does not verify is.
+if curl -fsSL --retry 3 -o "${work}/SHA256SUMS.txt.sig" "${from}/SHA256SUMS.txt.sig" 2>/dev/null; then
+  "${work}/${asset}" verify-release "${work}/SHA256SUMS.txt" "${work}/SHA256SUMS.txt.sig" ||
+    fail "SHA256SUMS.txt is not signed by a Doriterm release key; nothing was installed"
+else
+  say "this release carries no SHA256SUMS.txt.sig; checked against SHA256SUMS.txt only"
+fi
 
 mkdir -p "$bin_dir"
-chmod 755 "${work}/${asset}"
 # Same directory, then rename: a running service keeps its old binary until the restart below.
 cp "${work}/${asset}" "${host_bin}.new"
 mv -f "${host_bin}.new" "$host_bin"
@@ -188,6 +284,10 @@ if [ "$service" -eq 0 ]; then
   exit 0
 fi
 
+# A host older than #1969 has no --auto-update; it is passed only to one that lists it.
+update_args=""
+if "$host_bin" --help 2>/dev/null | grep -q -- --auto-update; then update_args="$auto_update"; fi
+
 # The service runs with this shell's PATH and SHELL, so the terminals it opens find the same tools.
 service_path="${bin_dir}:$(dirname "$hc_path"):${PATH}"
 service_shell="${SHELL:-/bin/sh}"
@@ -205,7 +305,7 @@ Description=Doriterm host gateway beside herdr-core
 After=network-online.target
 
 [Service]
-ExecStart="$(sd_exec "$host_bin")" --hc "$(sd_exec "$hc_path")" --state-dir "$(sd_exec "$state_dir")"
+ExecStart="$(sd_exec "$host_bin")" --hc "$(sd_exec "$hc_path")" --state-dir "$(sd_exec "$state_dir")"${update_args:+ --auto-update $update_args}
 Environment="PATH=$(sd "$service_path")" "SHELL=$(sd "$service_shell")"
 Restart=always
 RestartSec=2
@@ -238,7 +338,7 @@ else
     <string>--hc</string>
     <string>$(xml "$hc_path")</string>
     <string>--state-dir</string>
-    <string>$(xml "$state_dir")</string>
+    <string>$(xml "$state_dir")</string>$(if [ -n "$update_args" ]; then printf '\n    <string>--auto-update</string>\n    <string>%s</string>' "$update_args"; fi)
   </array>
   <key>EnvironmentVariables</key>
   <dict>
@@ -261,7 +361,17 @@ EOF
     [ "$waited" -le 100 ] || fail "the old ${SERVICE_LABEL} did not unload within 10 s; see what holds it with: launchctl print gui/$(id -u)/${SERVICE_LABEL}"
     sleep 0.1
   done
-  launchctl bootstrap "gui/$(id -u)" "$plist"
+  # launchd can still refuse the new agent for a moment after the old one has left `print` (5, EIO), and an agent left
+  # booted out keeps this machine off the mesh until someone loads it by hand (#1966): the bootstrap is retried for
+  # 10 s, and the install fails, saying how to load it, unless the agent is loaded at the end.
+  tries=0
+  until launchctl bootstrap "gui/$(id -u)" "$plist" 2>"${work}/bootstrap"; do
+    tries=$((tries + 1))
+    [ "$tries" -lt 100 ] || fail "launchd did not load ${SERVICE_LABEL} ($(cat "${work}/bootstrap")); load it with: launchctl bootstrap gui/$(id -u) ${plist}"
+    sleep 0.1
+  done
+  launchctl print "gui/$(id -u)/${SERVICE_LABEL}" >/dev/null 2>&1 ||
+    fail "${SERVICE_LABEL} is not loaded after its bootstrap; load it with: launchctl bootstrap gui/$(id -u) ${plist}"
   say "doriface-host runs as the LaunchAgent ${SERVICE_LABEL} (logs: ~/Library/Logs/doriface-host.log)"
 fi
 

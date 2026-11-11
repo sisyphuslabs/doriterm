@@ -37,8 +37,8 @@ jobs:
           restore-keys: bun-${{ runner.os }}-
       - name: Install herdr-core
         env:
-          HC_URL: https://releases.herdr.dev/core/0.1.17/herdr-core-linux-x86_64.tar.gz
-          HC_SHA256: 82ec44043f6894bfdb716b979b87cda43fd7fa46b0104e7b7bd93e64d1a9b877
+          HC_URL: https://releases.herdr.dev/core/0.1.20/herdr-core-linux-x86_64.tar.gz
+          HC_SHA256: ac6b86890c451a37584620aaa438b71bc0d0bd430a2e7c1d7e095f052c414e74
         run: |
           mkdir -p "$RUNNER_TEMP/hc"
           curl -fsSL "$HC_URL" -o "$RUNNER_TEMP/hc.tar.gz"
@@ -124,7 +124,9 @@ jobs:
     runs-on: ubuntu-latest
     # The relay and mesh suites (tests/relay): real hosts, hc cores and the private relay under wrangler dev, in
     # parallel with Check so neither waits on the other.
-    timeout-minutes: 25
+    # Measured on a loaded hosted runner (#2027): relay:test ~12 min, then the browser step ~13 min at one worker, of
+    # which keystroke-latency-relay's 12-case matrix is ~10.5 min. At 25 the job was cancelled with a spec still running.
+    timeout-minutes: 40
     env:
       # Pull requests from forks get no secrets; only they may skip the relay suites (see the first step).
       RELAY_TOKEN_SET: ${{ secrets.DORIFACE_RELAY_READ_TOKEN != '' }}
@@ -161,8 +163,8 @@ jobs:
       - name: Install herdr-core
         if: env.RELAY_TOKEN_SET == 'true'
         env:
-          HC_URL: https://releases.herdr.dev/core/0.1.17/herdr-core-linux-x86_64.tar.gz
-          HC_SHA256: 82ec44043f6894bfdb716b979b87cda43fd7fa46b0104e7b7bd93e64d1a9b877
+          HC_URL: https://releases.herdr.dev/core/0.1.20/herdr-core-linux-x86_64.tar.gz
+          HC_SHA256: ac6b86890c451a37584620aaa438b71bc0d0bd430a2e7c1d7e095f052c414e74
         run: |
           mkdir -p "$RUNNER_TEMP/hc"
           curl -fsSL "$HC_URL" -o "$RUNNER_TEMP/hc.tar.gz"
@@ -316,8 +318,8 @@ jobs:
           restore-keys: bun-${{ runner.os }}-
       - name: Install herdr-core
         env:
-          HC_URL: https://releases.herdr.dev/core/0.1.17/herdr-core-linux-x86_64.tar.gz
-          HC_SHA256: 82ec44043f6894bfdb716b979b87cda43fd7fa46b0104e7b7bd93e64d1a9b877
+          HC_URL: https://releases.herdr.dev/core/0.1.20/herdr-core-linux-x86_64.tar.gz
+          HC_SHA256: ac6b86890c451a37584620aaa438b71bc0d0bd430a2e7c1d7e095f052c414e74
         run: |
           mkdir -p "$RUNNER_TEMP/hc"
           curl -fsSL "$HC_URL" -o "$RUNNER_TEMP/hc.tar.gz"
@@ -463,8 +465,8 @@ jobs:
           restore-keys: bun-${{ runner.os }}-
       - name: Install herdr-core
         env:
-          HC_URL: https://releases.herdr.dev/core/0.1.17/herdr-core-linux-x86_64.tar.gz
-          HC_SHA256: 82ec44043f6894bfdb716b979b87cda43fd7fa46b0104e7b7bd93e64d1a9b877
+          HC_URL: https://releases.herdr.dev/core/0.1.20/herdr-core-linux-x86_64.tar.gz
+          HC_SHA256: ac6b86890c451a37584620aaa438b71bc0d0bd430a2e7c1d7e095f052c414e74
         run: |
           mkdir -p "$RUNNER_TEMP/hc"
           curl -fsSL "$HC_URL" -o "$RUNNER_TEMP/hc.tar.gz"
@@ -552,15 +554,15 @@ jobs:
       - name: Install herdr-core
         if: steps.scope.outputs.match == 'true'
         env:
-          HC_SHA256_AARCH64: cedbd4d4d9ba1385588198dd4d3c67d2654478f33add5b6445d4d0eb9da5fcf3
-          HC_SHA256_X86_64: e2dc3211edb1f1c77d0e73dd76c1426636d71050f34a5303916a56d363d7062b
+          HC_SHA256_AARCH64: e58985d3fef6e909f33d3c5a4426e4898c81564a557d4636591cec9e3a06af26
+          HC_SHA256_X86_64: 36c0331c3ffea0ffaada195b89a3c7496f7f3fc5bf35e4605c19c84e5c205a56
         run: |
           case "${{ runner.arch }}" in
             X64) arch=x86_64; sha="$HC_SHA256_X86_64" ;;
             *) arch=aarch64; sha="$HC_SHA256_AARCH64" ;;
           esac
           mkdir -p "$RUNNER_TEMP/hc"
-          curl -fsSL "https://releases.herdr.dev/core/0.1.17/herdr-core-macos-$arch.tar.gz" -o "$RUNNER_TEMP/hc.tar.gz"
+          curl -fsSL "https://releases.herdr.dev/core/0.1.20/herdr-core-macos-$arch.tar.gz" -o "$RUNNER_TEMP/hc.tar.gz"
           echo "$sha  $RUNNER_TEMP/hc.tar.gz" | shasum -a 256 --check --strict
           tar -xzf "$RUNNER_TEMP/hc.tar.gz" -C "$RUNNER_TEMP/hc" herdr-core
           ln -s herdr-core "$RUNNER_TEMP/hc/hc"

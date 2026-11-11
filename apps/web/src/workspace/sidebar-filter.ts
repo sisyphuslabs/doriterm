@@ -1,5 +1,5 @@
 import type { Agent, Space } from "@doriface/ui";
-import type { AgentGroup, MachineGroup } from "./sidebar-model.ts";
+import { type AgentGroup, type MachineGroup, tabsIn } from "./sidebar-model.ts";
 
 /** The query's words, lower-cased; none for a blank query. */
 const words = (query: string): readonly string[] => query.trim().toLowerCase().split(/\s+/u).filter(Boolean);
@@ -63,8 +63,8 @@ export function filterSpaces(
 
 /**
  * The machine groups under a query: a machine whose name matches keeps all its spaces; any other keeps its matching
- * spaces (its rows hide the machine, so only their names are searched) and is left out when none match. A blank query
- * gives back the same array.
+ * spaces (its rows hide the machine, so only their names are searched), its count following them, and is left out when
+ * none match. A blank query gives back the same array.
  */
 export function filterMachineGroups(
   groups: readonly MachineGroup[],
@@ -75,6 +75,6 @@ export function filterMachineGroups(
   return groups.flatMap((group) => {
     if (matchesQuery(query, [group.machine.name])) return [group];
     const spaces = filterSpaces(group.spaces, query, selected, { hideMachine: true });
-    return spaces.length === 0 ? [] : [{ ...group, spaces }];
+    return spaces.length === 0 ? [] : [{ ...group, spaces, tabs: tabsIn(spaces) }];
   });
 }

@@ -29,7 +29,6 @@ const machine = (name: string, local = false): MachineEntry => ({
   name,
   local,
   state: "connected",
-  live: 1,
   first: undefined,
 });
 
@@ -111,8 +110,8 @@ describe("filterSpaces", () => {
 
 describe("filterMachineGroups", () => {
   const groups: MachineGroup[] = [
-    { machine: machine("studio", true), spaces: [space("s1", "api"), space("s2", "web")] },
-    { machine: machine("laptop"), spaces: [space("s3", "docs", "laptop")] },
+    { machine: machine("studio", true), spaces: [space("s1", "api"), { ...space("s2", "web"), tabs: 3 }], tabs: 4 },
+    { machine: machine("laptop"), spaces: [space("s3", "docs", "laptop")], tabs: 1 },
   ];
 
   test("a cleared query gives back the very same groups", () => {
@@ -137,6 +136,15 @@ describe("filterMachineGroups", () => {
     ).toEqual([
       ["studio", ["s2"]],
       ["laptop", ["s3"]],
+    ]);
+  });
+
+  test("a machine's count follows the spaces it still lists, so it stays the sum of the rows under it (#2122)", () => {
+    expect(filterMachineGroups(groups, "web", null).map((one) => [one.machine.name, one.tabs])).toEqual([
+      ["studio", 3],
+    ]);
+    expect(filterMachineGroups(groups, "studio", null).map((one) => [one.machine.name, one.tabs])).toEqual([
+      ["studio", 4],
     ]);
   });
 });

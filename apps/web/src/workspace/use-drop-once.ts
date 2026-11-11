@@ -1,5 +1,6 @@
 import type { Terminal } from "@doriface/protocol";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { killWentThrough } from "./session-actions.ts";
 
 type Listed = Pick<Terminal, "address" | "state" | "pid" | "created_ms">;
 
@@ -26,6 +27,13 @@ export class DropOnce {
   readonly #dropped = new Map<string, Dropped>();
   #live: ReadonlyMap<string, Listed> = new Map();
 
+  /** Whether the latest End at an address killed its program (killWentThrough), read by kept. */
+  readonly #killed: (address: string) => boolean;
+
+  constructor(killed: (address: string) => boolean = killWentThrough) {
+    this.#killed = killed;
+  }
+
   /** True the first time the session at `address` is dropped, false for every later report of the same session. */
   take(address: string): boolean {
     if (this.#dropped.has(address)) return false;
@@ -34,8 +42,18 @@ export class DropOnce {
     return true;
   }
 
-  /** A close dropped this session's pane, but its End failed: the session keeps running, and its later end drops again. */
+  /** Whether this device dropped the session at `address` (take), as opposed to another device's write taking its pane. */
+  dropped(address: string): boolean {
+    return this.#dropped.has(address);
+  }
+
+  /**
+   * A close dropped this session's pane, but its End failed: the session keeps running, and its later end drops again.
+   * End also fails after a kill that worked (terminal.rm or the END label refused, #1342): that session has ended, so it
+   * keeps its mark whether or not a list has shown the end yet, and its end is not dropped a second time.
+   */
   kept(address: string): void {
+    if (this.#dropped.get(address)?.ended === true || this.#killed(address)) return;
     this.#dropped.delete(address);
   }
 
@@ -59,6 +77,8 @@ export interface DropsOnce {
   readonly closing: (addresses: readonly string[]) => void;
   /** A close's End failed and this session keeps running: its later end drops its pane again (DropOnce.kept). */
   readonly kept: (address: string) => void;
+  /** Whether this device dropped the session's pane itself (DropOnce.dropped). */
+  readonly dropped: (address: string) => boolean;
 }
 
 /**
@@ -78,5 +98,6 @@ export function useDropOnce(terminals: readonly Listed[], drop: (address: string
     for (const address of addresses) once.current.take(address);
   }, []);
   const kept = useCallback((address: string): void => once.current.kept(address), []);
-  return useMemo(() => ({ dropEnded, closing, kept }), [dropEnded, closing, kept]);
+  const dropped = useCallback((address: string): boolean => once.current.dropped(address), []);
+  return useMemo(() => ({ dropEnded, closing, kept, dropped }), [dropEnded, closing, kept, dropped]);
 }

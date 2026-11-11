@@ -37,6 +37,8 @@ export interface SpacesGroupProps {
   readonly query?: string;
   /** Shows the filter button in the header: only where the filter field is (the desktop sidebar, not the phone list). */
   readonly filterable?: boolean;
+  /** The phone's Spaces screen: its title already says "Spaces", and each row opens the space's own screen. */
+  readonly phone?: boolean;
 }
 
 const ALARM = new Set(["unreachable", "needs_login"]);
@@ -55,7 +57,10 @@ function MachineNotice({ name }: { readonly name: string }) {
   );
 }
 
-/** herdr-app's row under a machine with no spaces yet: starts the first one there. */
+/**
+ * herdr-app's row under a machine with no spaces yet: starts the first one there. It is a ghost Button's inks, so its
+ * disabled state dims with them, never a fade over its label (#1243).
+ */
 function NewSpaceThere({ disabled, onClick }: { readonly disabled: boolean; readonly onClick: () => void }) {
   return (
     <button
@@ -63,8 +68,9 @@ function NewSpaceThere({ disabled, onClick }: { readonly disabled: boolean; read
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "flex h-(--row) min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm text-muted-foreground outline-none",
-        "hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-45 disabled:hover:bg-transparent",
+        "flex h-(--row) min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm text-foreground/85 outline-none",
+        "enabled:hover:bg-hover enabled:hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring",
+        "disabled:text-muted-foreground disabled:[&_svg]:text-muted-foreground/72",
       )}
     >
       <Plus aria-hidden className="size-4 shrink-0" />
@@ -75,12 +81,15 @@ function NewSpaceThere({ disabled, onClick }: { readonly disabled: boolean; read
 
 /**
  * The spaces. With one machine they are one list whose header starts a new space; once more than one machine is
- * known, each machine is a list headed by its row (state, terminal count, New space there), in the machines' order.
+ * known, each machine is a list headed by its row (state, the tabs of its spaces, New space there), in the machines'
+ * order.
  */
-export function SpacesGroup({ onOpen, rail = false, query = "", filterable = false }: SpacesGroupProps) {
+export function SpacesGroup({ onOpen, rail = false, query = "", filterable = false, phone = false }: SpacesGroupProps) {
   const machines = useMachinesContext();
   if (!machines.machinesListed) return <SpacesLoading rail={rail} />;
-  return <SpacesLists onOpen={onOpen} rail={rail} query={query} filterable={filterable} machines={machines} />;
+  return (
+    <SpacesLists onOpen={onOpen} rail={rail} query={query} filterable={filterable} phone={phone} machines={machines} />
+  );
 }
 
 /** Holds the spaces' place, labeled, until the first machine.list answer: one row, where the first machine row goes. */
@@ -103,11 +112,13 @@ function SpacesLists({
   rail,
   query,
   filterable,
+  phone,
   machines,
 }: SpacesGroupProps & {
   readonly rail: boolean;
   readonly query: string;
   readonly filterable: boolean;
+  readonly phone: boolean;
   readonly machines: ReturnType<typeof useMachinesContext>;
 }) {
   const settings = useConnectionSettings();
@@ -133,9 +144,18 @@ function SpacesLists({
         className="contents"
         {...(reorder === undefined ? {} : { "data-reorder-keys": "", onKeyDown: reorder.onKeyDown })}
       >
-        <SpaceRow space={space} selected={space.id === selected} onSelect={select} rail={rail} hideMachine={grouped} />
+        <SpaceRow
+          space={space}
+          selected={space.id === selected}
+          onSelect={select}
+          rail={rail}
+          hideMachine={grouped}
+          chevron={phone}
+        />
       </div>
     );
+    // A phone row only opens its space: the space screen's header holds what can be done with it.
+    if (phone) return button;
     return (
       <RowWithActions
         row={button}
@@ -174,20 +194,21 @@ function SpacesLists({
     machine.local ? machines.start({}) : machines.newTerminalOn(machine.name);
   const showFilter = filterable && !rail;
   const newHere =
-    allGrouped !== undefined || local === undefined || rail ? undefined : (
+    // The phone's Spaces screen hides this header under its own title, whose + already starts one.
+    allGrouped !== undefined || local === undefined || rail || phone ? undefined : (
       <IconButton label="New space" icon={<Plus />} onClick={() => machines.start({})} />
     );
   // While this device's own link is down, the machine list it last read is not news: no row claims a live link (#476).
   const notice = useConnectionNotice();
   const linkDown = notice === null ? null : "unknown";
-  const header = (machine: MachineEntry, button: HeaderButton | undefined) => (
+  const header = (machine: MachineEntry, tabs: number, button: HeaderButton | undefined) => (
     <MachineHeader
       {...(button === undefined ? {} : { buttonProps: button })}
       name={machine.name}
       local={machine.local && ownComputer}
       state={linkDown !== null ? linkDown : machine.local && ownComputer ? "this machine" : stateLabel(machine.state)}
       alarm={linkDown === null && ALARM.has(machine.state)}
-      live={machine.live}
+      tabs={tabs}
       connected={linkDown === null && machine.state === "connected"}
       rail={rail}
       collapsed={collapsed.includes(machine.id) && !filtering}
@@ -212,7 +233,7 @@ function SpacesLists({
             ),
           }
         : {})}
-      className={rail ? "[&>header]:sr-only" : "pt-2"}
+      className={rail || phone ? "[&>header]:sr-only" : "pt-2"}
     >
       {/* While the link is down the connection notice says it once; the failed list would only repeat it (#545). */}
       {machines.listError === undefined || linkDown !== null ? null : (
@@ -225,13 +246,13 @@ function SpacesLists({
       ) : (
         <div ref={list} className="relative flex flex-col gap-6">
           {overlay}
-          {grouped.map(({ machine, spaces: own }, index) => (
+          {grouped.map(({ machine, spaces: own, tabs }, index) => (
             <MachineGroup
               key={machine.id}
               core={machine.core}
               name={machine.name}
               reorder={reorderOf(machine, index)}
-              header={(button) => header(machine, button)}
+              header={(button) => header(machine, tabs, button)}
             >
               {collapsed.includes(machine.id) && !filtering ? null : (
                 <>

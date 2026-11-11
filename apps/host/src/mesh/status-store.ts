@@ -176,7 +176,8 @@ function failClosedFor(facts: readonly FailClosed[], self: string): readonly Fai
 
 /** This host's mesh status now, or undefined while it is in no mesh: the host's `meshStatus`. */
 export function storedMeshStatus(store: MeshStore, identity: HostIdentity, hooks: MeshHooks): MeshStatus | undefined {
-  const file = store.read();
+  // A provisional first join is visible for approval, but is never a source for authorization or sync.
+  const file = store.read() ?? store.pendingFoundForStatus();
   if (file === undefined) return undefined;
   const self = base64urlEncode(identity.sign.publicKey);
   const cache = new ViewCache();

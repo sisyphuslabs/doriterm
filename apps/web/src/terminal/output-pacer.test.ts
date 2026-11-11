@@ -488,6 +488,26 @@ describe("OutputPacer holding an attach replay (D5)", () => {
     expect(holds).toEqual([true, false]);
   });
 
+  test("the quiet window starts when a window's credit goes back, so a page slow to write each window is held to the last (#2011)", () => {
+    const frames = manualFrames();
+    const timers = manualTimers();
+    const holds: boolean[] = [];
+    // Writing each 256 KiB window takes the page 300 ms (a starved page drawing a colored replay); its credit goes back
+    // as the write ends, and the core sends the next window only then.
+    const pacer = new OutputPacer(() => timers.advance(300), frames.frame, timers.now, timers.timer);
+    pacer.replay({ srtt: () => 300, hold: (held) => holds.push(held) });
+    for (let window = 0; window < 4; window += 1) {
+      pacer.push(bytes(256 * KIB));
+      // The next window comes a round trip after the credit: 600 ms after the last one arrived, past 1.5 x SRTT + 50.
+      if (window < 3) timers.advance(300);
+    }
+    expect(holds).toEqual([true]);
+    timers.advance(499);
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
+  });
+
   test("a replay is let go once 2 MiB have been written", () => {
     const { holds, pacer, written } = replaying(300);
     pacer.push(bytes(1024 * KIB));
@@ -522,6 +542,40 @@ describe("OutputPacer holding an attach replay (D5)", () => {
     pacer.push(bytes(KIB));
     frames.nextFrame();
     expect(events).toEqual(["hold", "release", "write"]);
+  });
+
+  test("a synchronized update stands the replay down: its own bracket paints it, not a second hold (#812)", () => {
+    const { frames, timers, written, holds, pacer } = replaying(100);
+    expect(holds).toEqual([true]);
+    // The core brackets its first paint: the update already holds the paint, so the replay ends as the bracket opens.
+    pacer.push(new Uint8Array([...text(OPEN), ...bytes(100 * KIB)]));
+    expect(written).toEqual([OPEN.length + 100 * KIB]);
+    expect(holds).toEqual([true, false]);
+    expect(pacer.busy).toBe(false);
+    // The open bracket is still written as it arrives, as the pacer already writes one, and no hold comes back.
+    pacer.push(bytes(FRAME_BYTES * 2));
+    expect(written).toEqual([OPEN.length + 100 * KIB, FRAME_BYTES * 2]);
+    // Once it closes, what follows waits for a frame like any other output.
+    pacer.push(new Uint8Array([...text(CLOSE), ...bytes(FRAME_BYTES)]));
+    expect(written.at(-1)).toBe(CLOSE.length);
+    while (frames.frames.length > 0) frames.nextFrame();
+    expect(written.reduce((sum, size) => sum + size, 0)).toBe(OPEN.length + 100 * KIB + FRAME_BYTES * 3 + CLOSE.length);
+    // The replay's own timers are gone: neither its quiet window nor its cap holds the paint again.
+    timers.advance(10_000);
+    expect(holds).toEqual([true, false]);
+  });
+
+  test("an update that opens and closes in one push still stands the replay down (#812)", () => {
+    const { frames, timers, written, holds, pacer } = replaying(100);
+    expect(holds).toEqual([true]);
+    // The whole bracketed first paint arrives as one chunk: the update has already closed when the batch is written.
+    pacer.push(new Uint8Array([...text(OPEN), ...bytes(100 * KIB), ...text(CLOSE)]));
+    while (frames.frames.length > 0) frames.nextFrame();
+    expect(written.reduce((sum, size) => sum + size, 0)).toBe(OPEN.length + 100 * KIB + CLOSE.length);
+    expect(holds).toEqual([true, false]);
+    expect(pacer.busy).toBe(false);
+    timers.advance(10_000);
+    expect(holds).toEqual([true, false]);
   });
 
   test("drop ends a replay in flight and lets the paint go", () => {

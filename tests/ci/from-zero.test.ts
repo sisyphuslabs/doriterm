@@ -6,6 +6,8 @@ import { CLONE_LINE, guideEnv, guideScript, guideSteps, RELAY_NOTICE, SYSTEM_PAT
 const ROOT = join(import.meta.dir, "..", "..");
 const read = (path: string): string => readFileSync(join(ROOT, path), "utf8");
 const REV = "0123456789abcdef0123456789abcdef01234567";
+const EXECUTABLE = (JSON.parse(read("apps/desktop/electron-builder.json")) as { executableName: string })
+  .executableName;
 
 test("only the blocks tagged `sh from-zero` are steps, in order", () => {
   const markdown = [
@@ -72,7 +74,7 @@ test("CONTRIBUTING.md's from-zero path installs the tools, clones, checks and ru
   for (const wanted of [
     "https://bun.sh/install",
     "bun-v1.4.4",
-    "https://releases.herdr.dev/core/0.1.17/herdr-core-linux-x86_64.tar.gz",
+    "https://releases.herdr.dev/core/0.1.20/herdr-core-linux-x86_64.tar.gz",
     "sha256sum --check",
     CLONE_LINE,
     "bun install --frozen-lockfile",
@@ -117,16 +119,21 @@ test("the From zero workflow runs the guide on a clean runner with no secrets", 
   expect(workflow.on.push?.branches).toEqual(["dev"]);
   expect(workflow.on).toHaveProperty("schedule");
   expect(workflow.on).toHaveProperty("workflow_dispatch");
-  expect(workflow.on.pull_request?.paths).toEqual(
-    expect.arrayContaining([
-      "CONTRIBUTING.md",
-      ".github/workflows/from-zero.yml",
-      "tests/ci/from-zero.ts",
-      "apps/web/package.json",
-      "apps/web/playwright.config.ts",
-      "apps/web/e2e/**",
-    ]),
-  );
+  expect(workflow.on.pull_request?.paths).toEqual([
+    "CONTRIBUTING.md",
+    ".github/workflows/from-zero.yml",
+    "tests/ci/from-zero.ts",
+    "package.json",
+    "bun.lock",
+    "bunfig.toml",
+    "tests/relay/private-relay.ts",
+    "apps/web/package.json",
+    "apps/web/playwright.config.ts",
+    "apps/web/e2e/**",
+    "apps/web/scripts/e2e-two-runs.ts",
+    "docs/getting-started.md",
+    "apps/desktop/e2e/hosted-relay-pair.e2e.ts",
+  ]);
   const job = workflow.jobs["contributor"];
   expect(job?.["runs-on"]).toBe("ubuntu-latest");
   const checkout = job?.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
@@ -175,7 +182,6 @@ test("every e2e spec gated on the private relay skips with the one shared line, 
     "keystroke-latency-relay.e2e.ts",
     "mesh-attach.e2e.ts",
     "mesh-input-hold.e2e.ts",
-    "mesh-join-browser.e2e.ts",
     "space-rename-relay.e2e.ts",
     "terminal-images-relay.e2e.ts",
     "terminal-links-relay.e2e.ts",
@@ -202,7 +208,9 @@ test("the From zero workflow checks the user guide through the hosted relay with
   expect(steps.some((step) => step.run?.includes("bun run pack"))).toBe(true);
   const smoke = steps.find((step) => step.run?.includes(HOSTED_SPEC));
   expect(smoke?.env?.["DORIFACE_HOSTED_RELAY_SMOKE"]).toBe("1");
-  expect(smoke?.env?.["DORIFACE_E2E_EXECUTABLE"]).toContain("linux-unpacked/Doriterm");
+  expect(smoke?.env?.["DORIFACE_E2E_EXECUTABLE"]).toBe(
+    "${{ github.workspace }}/apps/desktop/dist/release/linux-unpacked/" + EXECUTABLE,
+  );
   expect(workflow.on.pull_request?.paths).toEqual(
     expect.arrayContaining(["docs/getting-started.md", "apps/desktop/e2e/hosted-relay-pair.e2e.ts"]),
   );

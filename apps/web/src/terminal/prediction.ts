@@ -195,7 +195,7 @@ export class Predictor {
     this.#cull(now);
   }
 
-  /** On attach, reattach and `FULL_RESET`: nothing predicted survives, and the next epoch starts unconfirmed. */
+  /** On attach and reattach: nothing predicted survives, and the next epoch starts unconfirmed. */
   reset(): void {
     this.#predictions = [];
     this.#epoch += 1;

@@ -24,7 +24,7 @@ export function PhoneKeyRow({ host, sticky, className, style }: PhoneKeyRowProps
   return (
     // The clearance and the bottom inset sit on this box, not on the scroller: a scroller's overflowing keys paint into
     // its own padding, so padding there would keep nothing clear of the round buttons.
-    <div className={cn("shrink-0 px-2 py-1", className)} style={style}>
+    <div className={cn("shrink-0 px-2 py-0.5", className)} style={style}>
       <div
         role="toolbar"
         aria-label="Quick keys"
@@ -43,7 +43,7 @@ export function PhoneKeyRow({ host, sticky, className, style }: PhoneKeyRowProps
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => (entry.bytes === null ? sticky.press(entry.id) : sticky.send(entry.bytes))}
               className={cn(
-                "flex h-11 min-w-11 shrink-0 items-center justify-center rounded-lg border border-border bg-raised px-2.5 font-mono text-sm text-foreground select-none [&_svg]:size-4",
+                "flex h-11 min-w-11 shrink-0 items-center justify-center rounded-lg border border-border bg-raised px-2.5 font-mono text-sm text-foreground select-none [&_svg:not([data-slot=spinner])]:size-4",
                 latched && "border-primary bg-selected",
               )}
             >

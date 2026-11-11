@@ -1,8 +1,8 @@
 import { Check, CircleSlash, FileText, Send } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { cn } from "../lib/cn.ts";
 import { Button } from "./button.tsx";
-import { Input } from "./input.tsx";
+import { fieldLabelClass, Input } from "./input.tsx";
 import { Kbd } from "./kbd.tsx";
 import { StatusIndicator } from "./status.tsx";
 
@@ -184,6 +184,7 @@ function Answers({
   readonly onAnswer: ((choice: ApprovalChoice) => void) | undefined;
 }) {
   const [typing, setTyping] = useState<string | undefined>(undefined);
+  const typedId = useId();
   const [text, setText] = useState("");
   const [checked, setChecked] = useState<ReadonlySet<string>>(
     () => new Set(prompt.options.filter((option) => option.checked === true).map((option) => option.id)),
@@ -244,15 +245,22 @@ function Answers({
       )}
       {rows.map((option) =>
         option.typed && typing === option.id ? (
-          <form key={option.id} className="flex gap-2" onSubmit={(event) => submitText(event, option)}>
+          <form
+            key={option.id}
+            className="flex flex-wrap gap-x-2 gap-y-1"
+            onSubmit={(event) => submitText(event, option)}
+          >
+            {/* The row's words stay readable while the answer is typed; the placeholder alone went with the first key (#1580). */}
+            <label htmlFor={typedId} className={cn("basis-full", fieldLabelClass)}>
+              {option.label}
+            </label>
             <Input
+              id={typedId}
               autoFocus
-              aria-label={option.label}
-              placeholder={option.label}
               value={text}
               disabled={busy}
               onChange={(event) => setText(event.target.value)}
-              className="h-(--control-sm) text-sm"
+              className="h-(--control-sm) min-w-0 flex-1 basis-0 text-sm"
             />
             <Button type="submit" variant="primary" size="sm" loading={pressing(option)} disabled={busy}>
               <Send aria-hidden />

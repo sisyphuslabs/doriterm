@@ -1,4 +1,4 @@
-import { Badge, Button, Dialog, Input, Notice, cn, fieldLabelClass } from "@doriface/ui";
+import { Badge, Button, Dialog, Input, Notice, cn, fieldLabelClass, groupHeadingClass } from "@doriface/ui";
 import { asSentence } from "../storage/sentence.ts";
 import { useId, useMemo, useState } from "react";
 import { ACTIONS, actionFor, SCOPE_LABEL, type ActionDef } from "../keys/actions.ts";
@@ -62,7 +62,7 @@ function ImportPreview({ parsed, onClose }: { readonly parsed: ParsedKeybinds; r
               {line.status === "applies" ? "Applies" : line.status === "invalid" ? "Invalid" : "Unknown"}
             </Badge>
             {line.reason === undefined ? null : (
-              <span className="basis-full pl-9 font-sans text-sm text-muted-foreground">{line.reason}</span>
+              <span className="basis-full pl-9 font-sans text-prose text-muted-foreground">{line.reason}</span>
             )}
           </li>
         ))}
@@ -145,7 +145,7 @@ export function KeybindingsSection() {
         if (defs.length === 0) return null;
         return (
           <section key={scope} aria-labelledby={`keybindings-${scope}`} className="flex flex-col">
-            <h3 id={`keybindings-${scope}`} className="pb-1 text-base font-semibold text-foreground">
+            <h3 id={`keybindings-${scope}`} className={cn("pb-1", groupHeadingClass)}>
               {SCOPE_LABEL[scope]}
             </h3>
             {defs.map((action) => (
@@ -166,7 +166,7 @@ export function KeybindingsSection() {
           </section>
         );
       })}
-      {shown.length === 0 ? <p className="text-sm text-muted-foreground">No action matches “{query}”.</p> : null}
+      {shown.length === 0 ? <p className="text-prose text-muted-foreground">No action matches “{query}”.</p> : null}
       {parsed === null ? null : <ImportPreview parsed={parsed} onClose={() => setParsed(null)} />}
     </div>
   );

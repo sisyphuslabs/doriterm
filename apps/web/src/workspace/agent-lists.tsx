@@ -17,10 +17,9 @@ export interface AgentListsProps {
   readonly query?: string;
 }
 
-/** The phone's one list: the agents its screen is titled for, then the spaces (under their machines once there are more). */
+/** The phone's Agents list: the agents its screen is titled for; the spaces have their own tab. */
 export function AgentLists({ terminals, active, onOpen, rail = false, heading = true }: AgentListsProps) {
-  // Nothing until the terminal list is in: the agents then draw in their final place, and the spaces (or their loading
-  // row) below them, so nothing already drawn moves.
+  // Nothing until the terminal list is in: the agents then draw in their final place, so nothing already drawn moves.
   const { terminalsLoaded, terminalsError, retryTerminals } = useMachinesContext();
   if (!terminalsLoaded && terminalsError !== null)
     return <TerminalsLoadError cause={terminalsError} onRetry={retryTerminals} />;
@@ -28,7 +27,19 @@ export function AgentLists({ terminals, active, onOpen, rail = false, heading = 
   return (
     <div className="flex flex-col gap-4 px-2 pb-3">
       <AgentsGroup terminals={terminals} active={active} onOpen={onOpen} rail={rail} heading={heading} />
-      <SpacesGroup onOpen={onOpen} rail={rail} />
+    </div>
+  );
+}
+
+/** The phone's Spaces list: the spaces under their machines, each row opening its space's screen. */
+export function PhoneSpaceLists({ onOpen }: { readonly onOpen: (address: string) => void }) {
+  const { terminalsLoaded, terminalsError, retryTerminals } = useMachinesContext();
+  if (!terminalsLoaded && terminalsError !== null)
+    return <TerminalsLoadError cause={terminalsError} onRetry={retryTerminals} />;
+  if (!terminalsLoaded) return <div aria-busy="true" className="px-2 pb-3" />;
+  return (
+    <div className="px-2 pb-3">
+      <SpacesGroup onOpen={onOpen} phone />
     </div>
   );
 }

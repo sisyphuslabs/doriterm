@@ -95,9 +95,16 @@ describe("revocation closes outbound lines (R-13)", () => {
   test("a granted line is registered under the member, and a view without it closes the line with 4401", async () => {
     const policy = new DialPolicy({ clock: monotonicClock, random: seededRandom(2), onDue: () => undefined });
     const link = fakeLink();
-    const lines = new LineGrants({ view: () => view, policy, dial: () => Promise.resolve(link) });
+    const logs: string[] = [];
+    const lines = new LineGrants({
+      view: () => view,
+      policy,
+      dial: () => Promise.resolve(link),
+      log: (line) => void logs.push(line),
+    });
     expect((await lines.grant(b.hostId)).ok).toBe(true);
     lines.closeRevoked({ members: [member("a")], revoked: [b.signPub] });
     expect(link.closes).toEqual([4401]);
+    expect(logs).toContain("mesh: close code=4401 source=line-revocation: revoked from the mesh");
   });
 });

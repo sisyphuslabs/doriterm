@@ -6,6 +6,7 @@ import { canForwardPlainWs } from "../connection/direct-forward.ts";
 import { staysOnThisComputer } from "../connection/settings.ts";
 import { connectionStore, useConnection } from "../connection/store.ts";
 import { useOnline } from "../pwa/use-online.ts";
+import { HistoryGapLine } from "./history-gap-status.tsx";
 import { RetryButton } from "./retry-button.tsx";
 
 function useSecondsUntil(at: number | null, longest: number): number | null {
@@ -41,7 +42,11 @@ export function useConnectionNotice(): ConnectionNotice | null {
   return { label, detail: failed === null ? label : `${label}: ${failed.error.message}`, offline: false };
 }
 
-const glyph = (notice: ConnectionNotice) => (notice.offline ? <WifiOff aria-hidden /> : <Spinner />);
+const glyph = (notice: ConnectionNotice, box: "size-3.5" | "size-4") => (
+  <span className={`flex shrink-0 items-center justify-center ${box}`}>
+    {notice.offline ? <WifiOff aria-hidden /> : <Spinner />}
+  </span>
+);
 
 /** Status bar item while the workspace on screen is offline or waits for its connection; typing meanwhile is kept. */
 /** `compact`: the label only, for a phone, whose screen says the whole notice in a ConnectionLine instead. */
@@ -51,7 +56,7 @@ export function ReconnectStatus({ compact = false }: { readonly compact?: boolea
   if (compact) {
     return (
       <span role="status" className="flex min-w-0" title={notice.detail}>
-        <StatusBarItem icon={glyph(notice)}>
+        <StatusBarItem icon={glyph(notice, "size-3.5")}>
           <span className="text-foreground">{notice.label}</span>
         </StatusBarItem>
       </span>
@@ -64,7 +69,7 @@ export function ReconnectStatus({ compact = false }: { readonly compact?: boolea
       className={notice.offline ? "flex shrink-0 items-center gap-2" : "flex min-w-0"}
       title={notice.detail}
     >
-      <StatusBarItem icon={glyph(notice)}>
+      <StatusBarItem icon={glyph(notice, "size-3.5")}>
         <span className="text-foreground">{notice.offline ? notice.detail : notice.label}</span>
       </StatusBarItem>
       {notice.offline ? <RetryButton size="sm" onRetry={() => Promise.resolve(connectionStore.retryNow())} /> : null}
@@ -72,14 +77,14 @@ export function ReconnectStatus({ compact = false }: { readonly compact?: boolea
   );
 }
 
-/**
- * The bar's quiet baseline while the session is open and nothing is wrong (#1456): a change to Reconnecting or Offline
- * then reads against it. Exactly one connection item shows at a time, since this one gives way to ReconnectStatus.
- */
 /** Connected is the open session's baseline only while no notice (Reconnecting, Offline) applies. */
 export const showsConnected = (phase: string, notice: ConnectionNotice | null): boolean =>
   phase === "open" && notice === null;
 
+/**
+ * The bar's quiet baseline while the session is open and nothing is wrong (#1456): a change to Reconnecting or Offline
+ * then reads against it. Exactly one connection item shows at a time, since this one gives way to ReconnectStatus.
+ */
 export function ConnectedStatus() {
   const state = useConnection();
   const notice = useConnectionNotice();
@@ -136,17 +141,20 @@ export function ConnectionPathItem() {
   );
 }
 
-/** The phone terminal has no status bar: the same notice as one line under its header, only while there is one. */
+/**
+ * The phone terminal has no status bar: the same notice as one line under its header, only while there is one; once
+ * connected, the line says when the reconnect may have lost output (#2033), until dismissed.
+ */
 export function ConnectionLine() {
   const notice = useConnectionNotice();
-  if (notice === null) return null;
+  if (notice === null) return <HistoryGapLine />;
   return (
     <div className="flex shrink-0 items-start gap-2 border-b border-border bg-chrome px-4 py-2">
       <p
         role="status"
-        className="flex min-w-0 flex-1 items-start gap-2 text-sm text-foreground [&_svg]:mt-0.5 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground"
+        className="flex min-w-0 flex-1 items-start gap-2 text-prose text-foreground [&_svg:not([data-slot=spinner])]:mt-0.5 [&_svg:not([data-slot=spinner])]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground"
       >
-        {glyph(notice)}
+        {glyph(notice, "size-4")}
         {/* The sentence is required content (DESIGN.md 5 (e)): it wraps at narrow widths rather than losing its end. */}
         <span className="min-w-0 text-pretty break-words" title={notice.detail}>
           {notice.offline ? notice.detail : notice.label}
