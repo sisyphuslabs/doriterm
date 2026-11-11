@@ -70,4 +70,6 @@ export interface RequestContext {
   readonly env: Env;
   readonly cache: EdgeCache;
   readonly waitUntil: (promise: Promise<unknown>) => void;
+  /** An outbound fetch (GitHub's release feed); the runtime's fetch when absent, a fake in the unit suite. */
+  readonly fetcher?: (url: string) => Promise<Response>;
 }

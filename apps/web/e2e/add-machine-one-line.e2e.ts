@@ -1,7 +1,7 @@
 // #668: Add a machine is one command. The dialog asks this host for a single-use mesh offer and shows the line to run on
 // the machine to add; running what that line runs (doriface-host mesh join with its link) on a second machine admits it
-// to this host's mesh, which the host writes back and the dialog reports with no second step. The fake relay keeps one
-// uplink, so the joiner here has none and herdr cannot add it as a machine; that half is proven on the production relay.
+// to this host's mesh, which the host writes back and the dialog reports with no second step. Each host keeps its own
+// uplink on the fake relay, so clients can reach the joiner directly.
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { type FakeRelayHost, startFakeRelayHost } from "./relay-route.ts";

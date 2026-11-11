@@ -1,6 +1,8 @@
 import type { RequestContext } from "./bindings.ts";
 import { type Resolved, resolveChannel } from "./channel.ts";
 import { isCounted, recordDownload, requestFacts } from "./datapoint.ts";
+import { ADDED_LINE, FILE_LINE } from "./feed-lines.ts";
+import { neverPublished, serveGithubFeed } from "./github-feed.ts";
 import { type Channel, hostManifestKey, isReleaseFile, objectKey } from "./names.ts";
 import { text } from "./serve-release.ts";
 
@@ -15,8 +17,6 @@ export const DESKTOP_FEEDS: Readonly<Record<string, string>> = {
 export const isDesktopFeed = (file: string): boolean => Object.hasOwn(DESKTOP_FEEDS, file);
 
 const FEED_TTL = "public, max-age=60";
-const FILE_LINE = /^(\s*(?:- )?(?:url|path): )(.*)$/;
-const ADDED_LINE = /^(?:stagingPercentage|minimumVersion):/;
 
 /**
  * A stored `latest*.yml` as a channel serves it: each relative `url` and `path` becomes `<version>/<file>`, so the
@@ -61,7 +61,13 @@ export async function serveDesktopFeed(
   feed: string,
 ): Promise<Response> {
   const offered = await offeredOrRefusal(ctx, channel);
-  if (offered instanceof Response) return offered;
+  if (offered instanceof Response) {
+    // Before the channel's first mirror, GitHub's own latest feed (#2074: v0.1.17 reads only this host).
+    if (offered.status === 404 && (await neverPublished(ctx.env.RELEASES, channel))) {
+      return serveGithubFeed(request, ctx, channel, feed, DESKTOP_FEEDS[feed] ?? "");
+    }
+    return offered;
+  }
   const stored = await ctx.env.RELEASES.get(objectKey(offered.version, feed));
   if (stored === null) return text(404, `${offered.version} has no ${feed}`);
   const body = composeFeed(await stored.text(), offered);

@@ -11,6 +11,24 @@ const OUT = join(import.meta.dirname, "../../../docs/design/app");
 
 const field = (page: Page) => page.getByLabel("Type into the terminal");
 
+/**
+ * The space between the focused field's focus outline, at its outer edge, and Send's left edge, in CSS px (#1516). An
+ * outline drawn outside the field's box takes that much of the gap; one drawn inside it takes none.
+ */
+async function ringGap(page: Page): Promise<number> {
+  const [outer, send] = await Promise.all([
+    field(page).evaluate((element) => {
+      const style = getComputedStyle(element);
+      const outside =
+        style.outlineStyle === "none" ? 0 : parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
+      return element.getBoundingClientRect().right + Math.max(0, outside);
+    }),
+    key(page, "Send").boundingBox(),
+  ]);
+  if (send === null) throw new Error("Send is not laid out");
+  return send.x - outer;
+}
+
 /** The space between the field's right edge and Send's left edge, and both controls' sizes, in CSS px. */
 async function measure(page: Page): Promise<{ gap: number; send: { width: number; height: number }; field: number }> {
   const [box, send] = await Promise.all([field(page).boundingBox(), key(page, "Send").boundingBox()]);
@@ -48,11 +66,16 @@ for (const theme of ["day", "night"] as const) {
     await shot("idle");
 
     await field(page).click();
+    await expect(field(page)).toBeFocused();
+    // Focused, the ring stays inside the field, so the visible gap to Send is still the chrome's 0.5rem (#1516).
+    expect(await ringGap(page)).toBe(8);
+    await shot("idle-focused");
     await page.keyboard.type("echo one two three four five six seven eight nine ten eleven twelve thirteen");
     await expect.poll(async () => (await field(page).boundingBox())?.height ?? 0).toBeGreaterThan(44);
     const grown = await measure(page);
     expect(grown.gap).toBe(8);
     expect(grown.send).toEqual({ width: 44, height: 44 });
+    expect(await ringGap(page)).toBe(8);
     await shot("grown");
     info.annotations.push({
       type: "send-gap",

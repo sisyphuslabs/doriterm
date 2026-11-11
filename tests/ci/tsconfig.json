@@ -12,7 +12,12 @@
     "../../.github/scripts/changelog-fragments.ts",
     "../../.github/scripts/get-deploy.ts",
     "../../.github/scripts/probe-get.ts",
-    "../../.github/scripts/release-notes.ts"
+    "../../.github/scripts/release-notes.ts",
+    "../../.github/scripts/r2-store.ts",
+    "../../.github/scripts/release-records.ts",
+    "../../.github/scripts/release-mirror.ts",
+    "../../.github/scripts/release-channel.ts",
+    "../../.github/scripts/release-r2.ts"
   ],
   "exclude": ["types"],
   "references": [
@@ -21,6 +26,9 @@
     },
     {
       "path": "../../apps/web"
+    },
+    {
+      "path": "../../packages/crypto"
     }
   ]
 }

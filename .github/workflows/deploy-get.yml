@@ -70,6 +70,8 @@ jobs:
       # The pull request's own wrangler.jsonc is what deploys: anything but this environment's worker, hosts, bucket,
       # database and dataset stops here (#816), and so does a bucket anyone could read without the Worker.
       - name: Deploys to staging only
+        env:
+          PRODUCTION_WORKER: doriterm-get
         run: bun .github/scripts/deploy-target.ts apps/get/wrangler.jsonc staging doriterm-get-staging staging.get.doriterm.com
       - name: Binds its own data only
         run: bun .github/scripts/get-deploy.ts bindings apps/get/wrangler.jsonc staging

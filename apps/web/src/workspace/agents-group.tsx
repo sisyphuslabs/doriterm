@@ -12,10 +12,10 @@ import {
   type Agent,
 } from "@doriface/ui";
 import { Clock, Ellipsis, Layers, Pencil, Pin, PinOff, Power } from "lucide-react";
-import { useMemo } from "react";
+import { memo, useCallback, useMemo, useRef } from "react";
 import { useAskSession } from "./session-context.ts";
 import { filterAgentGroups } from "./sidebar-filter.ts";
-import { agentGroups, type AgentSort } from "./sidebar-model.ts";
+import { type AgentGroup, agentGroups, type AgentSort } from "./sidebar-model.ts";
 import { useAgentSort } from "./sidebar-prefs.ts";
 import { useAgentPlaces } from "./use-agent-places.ts";
 import { usePin } from "./use-pin.ts";
@@ -119,6 +119,69 @@ function AgentActions({ agent }: { readonly agent: Agent }) {
   );
 }
 
+interface AgentItemProps {
+  readonly agent: Agent;
+  readonly selected: boolean;
+  readonly compactBlocked: boolean;
+  readonly onOpen: (address: string) => void;
+  readonly rail: boolean;
+}
+
+/** One agent's row with its actions; it draws again only when that agent, its selection or the rail changed (#2086). */
+const AgentItem = memo(function AgentItem({ agent, selected, compactBlocked, onOpen, rail }: AgentItemProps) {
+  const row = (
+    <AgentRow agent={agent} selected={selected} compactBlocked={compactBlocked} onSelect={onOpen} rail={rail} />
+  );
+  // The rail has no room for the hover actions, but its right-click opens the same menu (#699).
+  return rail ? (
+    <RowWithActions row={row} actions={null} menu={<AgentMenuItems agent={agent} />} />
+  ) : (
+    <RowWithActions
+      row={row}
+      actions={<AgentActions agent={agent} />}
+      menu={<AgentMenuItems agent={agent} />}
+      coarseActions
+    />
+  );
+});
+
+/** Whether a sidebar row would draw the same for both: every field AgentRow shows (#2098). */
+export const sameAgent = (a: Agent, b: Agent): boolean =>
+  a.id === b.id &&
+  a.name === b.name &&
+  a.status === b.status &&
+  a.detail === b.detail &&
+  a.machine === b.machine &&
+  a.age === b.age &&
+  a.pinned === b.pinned &&
+  a.icon === b.icon &&
+  a.todo?.done === b.todo?.done &&
+  a.todo?.total === b.todo?.total;
+
+/**
+ * Each agent as the render before drew it while nothing it shows changed. The groups are built afresh on every terminal
+ * event; without this every row of every agent drew again for one agent's title (#2086).
+ */
+function useSteadyAgents(groups: readonly AgentGroup[]): readonly AgentGroup[] {
+  const drawn = useRef(new Map<string, Agent>());
+  return useMemo(() => {
+    const before = drawn.current;
+    const now = new Map<string, Agent>();
+    const steady = groups.map((group) =>
+      Object.assign({}, group, {
+        agents: group.agents.map((agent) => {
+          const kept = before.get(agent.id);
+          const shown = kept !== undefined && sameAgent(kept, agent) ? kept : agent;
+          now.set(agent.id, shown);
+          return shown;
+        }),
+      }),
+    );
+    drawn.current = now;
+    return steady;
+  }, [groups]);
+}
+
 /**
  * The agents, first in the sidebar: Pinned, then Needs you, Working, Idle, Done and Offline with counts (or one group
  * per space), each its own list. On the rail the rows are glyphs and the group titles are left to their labels.
@@ -128,7 +191,10 @@ export function AgentsGroup({ terminals, active, onOpen, rail = false, heading =
   const [sort] = useAgentSort();
   const todoOf = useTodoOf();
   const places = useAgentPlaces(terminals);
-  const all = useMemo(
+  const opener = useRef(onOpen);
+  opener.current = onOpen;
+  const open = useCallback((address: string) => opener.current(address), []);
+  const built = useMemo(
     () =>
       agentGroups(terminals, now, sort, places).map((group) =>
         Object.assign({}, group, {
@@ -140,6 +206,7 @@ export function AgentsGroup({ terminals, active, onOpen, rail = false, heading =
       ),
     [terminals, now, sort, places, todoOf],
   );
+  const all = useSteadyAgents(built);
   const groups = useMemo(() => filterAgentGroups(all, query, active), [all, query, active]);
   const list = (
     <div className="flex flex-col gap-6 pt-3">
@@ -151,29 +218,16 @@ export function AgentsGroup({ terminals, active, onOpen, rail = false, heading =
           {...(group.tone === undefined ? {} : { tone: group.tone })}
           {...(rail ? { className: "[&>header]:sr-only" } : {})}
         >
-          {group.agents.map((agent) => {
-            const row = (
-              <AgentRow
-                agent={agent}
-                selected={agent.id === active}
-                compactBlocked={group.compactBlocked}
-                onSelect={onOpen}
-                rail={rail}
-              />
-            );
-            // The rail has no room for the hover actions, but its right-click opens the same menu (#699).
-            return rail ? (
-              <RowWithActions key={agent.id} row={row} actions={null} menu={<AgentMenuItems agent={agent} />} />
-            ) : (
-              <RowWithActions
-                key={agent.id}
-                row={row}
-                actions={<AgentActions agent={agent} />}
-                menu={<AgentMenuItems agent={agent} />}
-                coarseActions
-              />
-            );
-          })}
+          {group.agents.map((agent) => (
+            <AgentItem
+              key={agent.id}
+              agent={agent}
+              selected={agent.id === active}
+              compactBlocked={group.compactBlocked}
+              onOpen={open}
+              rail={rail}
+            />
+          ))}
         </SidebarSection>
       ))}
     </div>
