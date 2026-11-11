@@ -28,6 +28,9 @@ const keyboardAddress = (page: Page): Promise<string | null> =>
   page.evaluate(() => document.activeElement?.closest("[data-terminal]")?.getAttribute("data-terminal") ?? null);
 
 /** Up-nudges the panes played so far, counted by a wrapper on Element.animate installed before the app loads. */
+const paneBox = (page: Page, address: string) =>
+  page.locator("section", { has: page.locator(`[data-terminal="${address}"]`) }).boundingBox();
+
 const upNudges = (page: Page): Promise<number> => page.evaluate(() => Number(Reflect.get(window, "__upNudges") ?? 0));
 
 const addressOf = async (terminal: Locator): Promise<string> => {
@@ -179,8 +182,9 @@ for (const keymap of ["mac", "other"] as const) {
     // the chosen action has no key to leave to a program, so it counts as handled and the palette closes, as it did
     // before #1600, and no pane moves.
     await onKeymap(page, keymap);
-    await terminalInFocus(page);
+    const first = await terminalInFocus(page);
     const second = await splitRight(page);
+    const placed = { first: await paneBox(page, first.address), second: await paneBox(page, second.address) };
     const dialog = page.getByRole("dialog", { name: "Command palette" });
     await pressShortcut(page, "app.palette");
     await expect(dialog).toBeVisible();
@@ -188,5 +192,8 @@ for (const keymap of ["mac", "other"] as const) {
     await page.getByRole("option", { name: /^Swap pane up/ }).click();
     await expect(dialog).toBeHidden({ timeout: 5_000 });
     await expect.poll(() => keyboardAddress(page)).toBe(second.address);
+    // A swap keeps focus on the pane it moved, so the boxes are what show that nothing swapped.
+    expect(await paneBox(page, first.address)).toEqual(placed.first);
+    expect(await paneBox(page, second.address)).toEqual(placed.second);
   });
 }
