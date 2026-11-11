@@ -1,6 +1,7 @@
 import { devices, type Locator, type Page } from "@playwright/test";
 import { endAgent, startAgent } from "./agents.ts";
-import { expect, test } from "./fixtures.ts";
+import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { shortcut } from "./platform-keys.ts";
 
 // Every heading step in use differs by at least 1.25x, and the smallest heading from its body, on every screen (#1578).
 test.use({ serviceWorkers: "block" });
@@ -61,7 +62,7 @@ for (const width of [390, 1440] as const) {
     const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
     test.use(width === 390 ? phone : { viewport: { width: 1440, height: 900 } });
 
-    for (const section of ["Keybindings", "Terminal", "Notifications"] as const) {
+    for (const section of ["Keybindings", "Terminal", "Notifications", "Machines"] as const) {
       test(`Settings > ${section} keeps its heading steps apart`, async ({ page }) => {
         await page.goto("/settings");
         const settings = settingsDialog(page);
@@ -89,4 +90,15 @@ test("a dialog's title stands apart from its description", async ({ page }) => {
   } finally {
     endAgent("host", address);
   }
+});
+
+test("the keyboard shortcuts dialog keeps its title, groups and rows apart", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  const help = await shortcut(page, "app.help");
+  await (await openNewTerminal(page)).getByRole("textbox").focus();
+  await page.keyboard.press(help);
+  const dialog = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  await expect(dialog.getByRole("heading", { name: "App" })).toBeVisible();
+  await expectScale(dialog);
 });
