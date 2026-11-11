@@ -6,6 +6,7 @@ import { canForwardPlainWs } from "../connection/direct-forward.ts";
 import { staysOnThisComputer } from "../connection/settings.ts";
 import { connectionStore, useConnection } from "../connection/store.ts";
 import { useOnline } from "../pwa/use-online.ts";
+import { HistoryGapLine } from "./history-gap-status.tsx";
 import { RetryButton } from "./retry-button.tsx";
 
 function useSecondsUntil(at: number | null, longest: number): number | null {
@@ -140,10 +141,13 @@ export function ConnectionPathItem() {
   );
 }
 
-/** The phone terminal has no status bar: the same notice as one line under its header, only while there is one. */
+/**
+ * The phone terminal has no status bar: the same notice as one line under its header, only while there is one; once
+ * connected, the line says when the reconnect may have lost output (#2033), until dismissed.
+ */
 export function ConnectionLine() {
   const notice = useConnectionNotice();
-  if (notice === null) return null;
+  if (notice === null) return <HistoryGapLine />;
   return (
     <div className="flex shrink-0 items-start gap-2 border-b border-border bg-chrome px-4 py-2">
       <p
