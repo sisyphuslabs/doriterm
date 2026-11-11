@@ -38,10 +38,7 @@ import { useTerminalFont } from "./use-terminal-font.ts";
 import { usePreedit } from "./use-preedit.ts";
 import { usePredictionOverlay } from "./use-prediction-overlay.ts";
 import { predictionSeam } from "./prediction-seam.ts";
-import { effectivePredictionMode, usePredictionMode } from "./prediction-mode.ts";
-import { useMeshMembers } from "../connection/store.ts";
-import type { ConnectionPath } from "../connection/connect.ts";
-import { desktopBridge } from "../desktop/bridge.ts";
+import { usePredictionMode } from "./prediction-mode.ts";
 import { PredictorView } from "./prediction-view.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
 import { wideGlyphScaler } from "./face-scales.ts";
@@ -167,13 +164,8 @@ export function TerminalView(props: TerminalViewProps) {
   useTerminalFont(wt, config);
   // The real predictor reads every input and write of this view (#1595); a spec's stand-in replaces it when installed.
   const seam = useMemo(() => predictionSeam(wt), [wt]);
-  const chosenMode = usePredictionMode();
-  const link = useMeshMembers().find(({ state }) => state.phase === "open" && state.connection === connection)?.state;
-  // While the link reconnects it is not open; the path it last had stands until it opens again, so the mode does not flip.
-  const lastPath = useRef<ConnectionPath | undefined>(undefined);
-  const path = link?.phase === "open" ? link.path : lastPath.current;
-  lastPath.current = path;
-  const predictMode = effectivePredictionMode(chosenMode, path, desktopBridge() !== null, address);
+  // One rule on every path: in adaptive the predictor's display gate reads its measured echo round trip (#2003).
+  const predictMode = usePredictionMode();
   const predictModeNow = useRef(predictMode);
   predictModeNow.current = predictMode;
   const [predictor, setPredictor] = useState<PredictorView | null>(null);
