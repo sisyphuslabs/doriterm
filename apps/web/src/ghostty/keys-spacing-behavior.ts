@@ -44,11 +44,12 @@ export const BEHAVIOR_KEYS: readonly KeyDef[] = [
   },
   {
     key: "copy-on-select",
+    label: "Copy on selection",
     group: "behavior",
     kind: { type: "enum", values: ["true", "false", "clipboard"] },
     repeatable: false,
-    defaults: ["true"],
-    description: "Copy selected text automatically (browsers have only the clipboard).",
+    defaults: ["false"],
+    description: "Copy exactly the selected text to the clipboard when the mouse button is released. Off by default.",
     support: LIVE,
   },
   {

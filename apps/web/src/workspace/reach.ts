@@ -3,6 +3,17 @@ import { machineOf, type Session } from "./model.ts";
 
 const AWAY = new Set(["unreachable", "needs_login"]);
 
+/** Each terminal's offline copy, so a terminal that did not change stays the same object from render to render (#2086). */
+const offlineCopies = new WeakMap<Terminal, Session>();
+
+function offline(terminal: Terminal): Session {
+  const known = offlineCopies.get(terminal);
+  if (known !== undefined) return known;
+  const copy: Session = { ...terminal, offline: true };
+  offlineCopies.set(terminal, copy);
+  return copy;
+}
+
 /**
  * Marks the live terminals of every added machine that is unreachable or needs a login as offline; a machine that is
  * only redialing (connecting) keeps them as they are, so a routine redial raises no alarm. hc sends no event when a
@@ -15,6 +26,6 @@ export function withReach(terminals: readonly Terminal[], machines: readonly Mac
   return terminals.map((terminal) => {
     const machine = machineOf(terminal.address);
     const cut = terminal.state === "live" && machine !== undefined && away.has(machine);
-    return cut ? { ...terminal, offline: true } : terminal;
+    return cut ? offline(terminal) : terminal;
   });
 }

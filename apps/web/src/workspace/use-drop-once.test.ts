@@ -11,6 +11,13 @@ test("a session is dropped once, however many signals report its end", () => {
   expect(once.take("t1")).toBe(false);
 });
 
+test("a session this device dropped is known as dropped here; one another device dropped is not (#2146)", () => {
+  const once = new DropOnce();
+  once.listed([finished("t1"), finished("t2")]);
+  expect(once.take("t1")).toBe(true);
+  expect([once.dropped("t1"), once.dropped("t2")]).toEqual([true, false]);
+});
+
 test("a list that has not heard the end yet still lists the dropped session live: no second drop (#1328)", () => {
   const once = new DropOnce();
   once.listed([live("t1"), live("t2")]);
@@ -52,6 +59,27 @@ test("a session whose close's End failed keeps running: its later end drops its 
   once.listed([live("t1")]);
   once.listed([live("t1")]);
   expect(once.take("t1")).toBe(true);
+  expect(once.take("t1")).toBe(false);
+});
+
+test("a session already listed ended keeps its mark when its close's End still rejects (#1342)", () => {
+  const once = new DropOnce();
+  once.listed([live("t1")]);
+  expect(once.take("t1")).toBe(true);
+  // The kill succeeded and the list heard the end, but terminal.rm or the END label call failed: End rejects.
+  once.listed([finished("t1")]);
+  once.kept("t1");
+  expect(once.take("t1")).toBe(false);
+});
+
+test("a session whose kill went through keeps its mark when End rejects before any list heard the end (#1342)", () => {
+  const once = new DropOnce((address) => address === "t1");
+  once.listed([live("t1")]);
+  expect(once.take("t1")).toBe(true);
+  // terminal.rm or the END label call failed after the kill; the list still shows the session live.
+  once.kept("t1");
+  once.listed([live("t1")]);
+  once.listed([]);
   expect(once.take("t1")).toBe(false);
 });
 

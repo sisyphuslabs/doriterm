@@ -1,4 +1,5 @@
 import type { Browser, Locator, Page } from "@playwright/test";
+import { AGENT_SHELL } from "./agents.ts";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
 import { expect, test } from "./fixtures.ts";
 import { seedSpaces } from "./layout-doc.ts";
@@ -25,7 +26,7 @@ const rowOf = (page: Page, title: string, name: string) => rows(section(page, ti
 
 /** A shell in this test's space: it reports a status only when told to, as an agent does when its turn changes. */
 function startShell(name: string): string {
-  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${SPACE}`, "--", "env", "PS1=$ ", "sh"]);
+  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${SPACE}`, "--", ...AGENT_SHELL]);
   const started: unknown = JSON.parse(out);
   if (typeof started !== "object" || started === null || !("address" in started)) throw new Error(out);
   return String(started.address);

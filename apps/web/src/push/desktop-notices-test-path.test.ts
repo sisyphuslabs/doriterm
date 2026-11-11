@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_PUSH_PREFS } from "@doriface/protocol";
-import { rig } from "./desktop-notices-rig.ts";
+import { done, rig, terminal } from "./desktop-notices-rig.ts";
 
 const ALL_OFF = { input: false, permission: false, done: false, error: false };
 
@@ -39,7 +39,7 @@ describe("Send test runs the checks an agent's notice passes (#796)", () => {
     );
   });
 
-  test("every event turned off, or this machine muted, fails the test instead of passing it", async () => {
+  test("every event turned off fails the test instead of passing it", async () => {
     const quiet = rig();
     await quiet.notices.turnOn();
     await quiet.notices.setPrefs({ ...DEFAULT_PUSH_PREFS, events: ALL_OFF });
@@ -48,14 +48,34 @@ describe("Send test runs the checks an agent's notice passes (#796)", () => {
     expect(quiet.notices.view.error).toBe(
       "Could not send a test notification. Every event is turned off, so no agent would notify.",
     );
+  });
 
+  test("every machine heard muted refuses, naming this host's core by its hello (#1120, #1121)", async () => {
     const muted = rig();
     await muted.notices.turnOn();
     await muted.notices.setPrefs({ ...DEFAULT_PUSH_PREFS, muted: ["local"] });
     await muted.notices.test();
     expect(muted.shown).toEqual([]);
     expect(muted.notices.view.error).toBe(
-      "Could not send a test notification. Notifications from this machine are turned off.",
+      "Could not send a test notification. Notifications from dev-box are turned off.",
     );
+
+    const all = rig({ terminals: [terminal("box/t1", done)] });
+    await all.notices.turnOn();
+    await all.notices.setPrefs({ ...DEFAULT_PUSH_PREFS, muted: ["local", "machine:box"] });
+    await all.notices.test();
+    expect(all.shown).toEqual([]);
+    expect(all.notices.view.error).toBe(
+      "Could not send a test notification. Notifications from every machine this app hears from are turned off.",
+    );
+  });
+
+  test("a heard machine that is not muted passes the test while this host's core is muted (#1120)", async () => {
+    const { notices, shown } = rig({ terminals: [terminal("box/t1", done)] });
+    await notices.turnOn();
+    await notices.setPrefs({ ...DEFAULT_PUSH_PREFS, muted: ["local"] });
+    await notices.test();
+    expect(shown).toEqual([{ kind: "test", terminal: null }]);
+    expect(notices.view).toMatchObject({ tested: true, error: null });
   });
 });

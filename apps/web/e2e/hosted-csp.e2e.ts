@@ -13,6 +13,9 @@ import { expect, openNewTerminal, test } from "./fixtures.ts";
 test.use({
   serviceWorkers: "block",
   launchOptions: { args: ["--disable-features=LocalNetworkAccessChecks"] },
+  // The pinned e2e faces (#862) arrive as an injected <style> with data: URLs, which this spec's policy does not allow:
+  // they would be a violation of the very CSP under test. The page's fonts are not this spec's subject.
+  pinnedFonts: false,
 });
 
 function hostedPolicy(): string {
@@ -76,4 +79,33 @@ test("the hosted policy reports no violation in a terminal, an image paste, Sett
   await page.goto("/pair");
   await expect(page.getByRole("heading").first()).toBeVisible();
   expect(await violations(page)).toEqual([]);
+});
+
+// #1129: the tests above block service workers; this one lets the app register its own worker (main.tsx, on any http(s)
+// page) under the policy, so worker-src is checked against the real registration. Only the first load is fulfilled
+// with the policy, and that is the load that registers: the worker controls later loads, which page.route never sees.
+test.describe("with the service worker", () => {
+  test.use({ serviceWorkers: "allow" });
+
+  test("the hosted policy lets the app register its service worker", async ({ page, baseURL }) => {
+    await serveUnderPolicy(page);
+    await page.goto("/");
+    // Settles on whichever comes first: the registration going active, or the policy refusing something. A refused
+    // registration never goes active, so waiting on the worker alone would only time out.
+    const outcome = await page.evaluate(
+      () =>
+        new Promise<string>((resolve) => {
+          const seen: unknown = Reflect.get(window, "__cspViolations");
+          if (Array.isArray(seen) && seen.length > 0) resolve(`violation: ${seen.join(", ")}`);
+          document.addEventListener("securitypolicyviolation", (event) => {
+            resolve(`violation: ${event.effectiveDirective} ${event.blockedURI}`);
+          });
+          void navigator.serviceWorker.ready
+            .then((registration) => registration.active?.scriptURL ?? "no active worker")
+            .then(resolve);
+        }),
+    );
+    expect(outcome).toBe(new URL("/sw.js", baseURL).href);
+    expect(await violations(page)).toEqual([]);
+  });
 });

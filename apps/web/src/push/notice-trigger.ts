@@ -48,6 +48,13 @@ export class NoticeTrigger {
     }
   }
 
+  /** The machines with a live terminal in the feed: where an agent's notice can come from right now. */
+  machines(): readonly (string | undefined)[] {
+    const machines = new Set<string | undefined>();
+    for (const terminal of this.#kinds.keys()) machines.add(machineOf(terminal));
+    return [...machines];
+  }
+
   /** Every terminal in a state that asks for someone, as the feed last told: live, so announced ones count too. */
   waiting(): readonly Trigger[] {
     const hits: Trigger[] = [];

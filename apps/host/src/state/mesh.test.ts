@@ -91,6 +91,43 @@ describe("H-2: the authorize index", () => {
     ).toEqual([signPubOf(founder), signPubOf(member)].toSorted());
   });
 
+  test("an index saved before the client key binding (#1476) is rebuilt at start, so a mismatched client is not indexed (#1483)", () => {
+    const dir = scratch();
+    const [founder, member] = [machine("founder"), machine("member")];
+    new MeshFixture(dir, founder).admit(founder, member);
+    const path = join(dir, "mesh.json");
+    const written = JSON.parse(readFileSync(path, "utf8")) as {
+      index: Record<string, unknown> & { members: unknown[] };
+    };
+    // As an earlier build saved it: no rules version, and a client whose device key is not its session key.
+    delete written.index["rules"];
+    written.index.members.push({
+      signPub: "sign-phone",
+      hostId: "host-phone",
+      noisePub: "noise-phone",
+      devicePub: "device-other",
+      name: "phone",
+      hcId: "hc-phone",
+      kind: "client",
+      admitter: signPubOf(founder),
+      admitId: "admit-phone",
+    });
+    writePrivateJson(path, written);
+    const store = new MeshStore(dir, { log: () => {} });
+    store.ensureIndex();
+    expect(store.authorizeIndex()?.client("device-other")).toBeUndefined();
+    expect(store.authorizeIndex()?.member(noiseOf(member))?.signPub).toBe(signPubOf(member));
+  });
+
+  test("an index saved under the current rules is kept at start, not rebuilt", () => {
+    const dir = scratch();
+    const [founder, member] = [machine("founder"), machine("member")];
+    new MeshFixture(dir, founder).admit(founder, member);
+    const before = fileOf(dir).generation;
+    new MeshStore(dir, { log: () => {} }).ensureIndex();
+    expect(fileOf(dir).generation).toBe(before);
+  });
+
   test("an index written under the 12-member cap (#806) is rebuilt at start, and its thirteenth member authorizes", () => {
     const dir = scratch();
     const founder = machine("founder");

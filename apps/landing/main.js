@@ -87,6 +87,11 @@ function postTheme(frame, choice) {
   frame.contentWindow?.postMessage({ theme: choice === "system" ? null : choice }, location.origin);
 }
 
+/** Tells a live mockup whether the reader paused motion, so its spinners hold still too; the frame follows reduced motion itself. */
+function postMotion(frame) {
+  frame.contentWindow?.postMessage({ motionPaused }, location.origin);
+}
+
 function setupLive() {
   const resize = new ResizeObserver((entries) => {
     for (const entry of entries) {
@@ -117,7 +122,11 @@ function setupLive() {
   for (const box of boxes) {
     resize.observe(box);
     const frame = box.querySelector("iframe");
-    frame.addEventListener("load", () => postTheme(frame, document.documentElement.dataset.theme ?? "system"));
+    frame.addEventListener("load", () => {
+      postTheme(frame, document.documentElement.dataset.theme ?? "system");
+      postMotion(frame);
+    });
+    motion.addEventListener("change", () => postMotion(frame));
   }
 }
 
@@ -382,6 +391,7 @@ const FLEET_MACHINES = [
 /** Each scene's targets per machine: shown, load (0-1), status line; and whether records flow. */
 const FLEET_SCENES = [
   {
+    name: "link",
     laptop: [1, 0.1, "idle"],
     mini: [1, 0.15, "idle"],
     cloud: [1, 0.1, "idle"],
@@ -389,6 +399,7 @@ const FLEET_SCENES = [
     pi: [0, 0, ""],
   },
   {
+    name: "work",
     laptop: [1, 0.35, "working"],
     mini: [1, 0.85, "OmO working"],
     cloud: [1, 0.55, "working"],
@@ -397,6 +408,7 @@ const FLEET_SCENES = [
     flow: true,
   },
   {
+    name: "join",
     laptop: [1, 0.35, "working"],
     mini: [1, 0.85, "OmO working"],
     cloud: [1, 0.55, "working"],
@@ -406,6 +418,7 @@ const FLEET_SCENES = [
     join: true,
   },
   {
+    name: "revoke",
     laptop: [1, 0.35, "working"],
     mini: [1, 0.85, "OmO working"],
     cloud: [1, 0, "revoked"],
@@ -424,6 +437,9 @@ const FLEET_ROUTES = [
   ["mini", "laptop"],
   ["pi", "mini"],
 ];
+
+/** The work scene, by name: a revoked machine works at its load here until the revoke record lands. */
+const WORK_SCENE = FLEET_SCENES.find((scene) => scene.name === "work");
 
 /**
  * The fleet: a dot-matrix view of the relay and the machines linked through it, in four scenes (link up, work,
@@ -679,9 +695,10 @@ function setupFleet() {
     }
     if (animate && targets.revoke) {
       const gone = machines.get(targets.revoke);
-      // A restart finds the machine already revoked (load 0): it works again, at the work scene's load, until the record lands.
+      // A restart finds the machine already revoked (load 0): it works again, at the work scene's load, until the record
+      // lands. The rise eases too, so a scene clicked straight from another does not pop its load bar (#1177).
       gone.cut.jump(0);
-      gone.load.jump(FLEET_SCENES[1][targets.revoke][1]);
+      gone.load.set(WORK_SCENE[targets.revoke][1], now, 300, EASE_STATE);
       gone.status = "working";
       records.push({ kind: "revoke", to: targets.revoke, start: now + 500, dur: 1700 });
       later(2200, () => {
@@ -805,3 +822,21 @@ setupWire();
 setupPipe();
 setupPairing();
 setupCopy();
+
+/** The download count under the hero's buttons, from get.doriterm.com's daily rollup (#1969); hidden until it answers. */
+async function showDownloads() {
+  const line = document.querySelector("[data-downloads]");
+  if (line === null) return;
+  try {
+    const response = await fetch("https://get.doriterm.com/stats/downloads");
+    if (!response.ok) return;
+    const stats = await response.json();
+    const count = typeof stats === "object" && stats !== null ? stats.downloads : undefined;
+    if (typeof count !== "number" || !Number.isFinite(count) || count <= 0) return;
+    line.textContent = `${count.toLocaleString("en-US")} downloads`;
+    line.hidden = false;
+  } catch {
+    // Offline, or the stats host is down: the hero simply shows no count.
+  }
+}
+showDownloads();

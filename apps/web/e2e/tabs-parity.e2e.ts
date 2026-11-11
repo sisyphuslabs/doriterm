@@ -21,9 +21,12 @@ import { routeHcSocket } from "./hc-socket.ts";
 import { LAYOUT_DOC, paneOf, seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
+import { pressShortcut, shortcut } from "./platform-keys.ts";
+import { tabNumberChord } from "./tab-strip.ts";
 
 /** A tab's row in the Spaces sheet, not its Close control or the space's New tab (#1463). */
-const TAB_ROW = /^(?!Close |New tab$)/;
+const tabRows = (page: Page, region: Locator) =>
+  region.getByRole("button").filter({ has: page.locator('[data-floor="name"]') });
 
 test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 
@@ -82,19 +85,10 @@ const spaceRow = (page: Page, name: string) =>
     .getByRole("region", { name: "Spaces" })
     .getByRole("button", { name: new RegExp(`^${name}\\b`) });
 const focusedTerminal = (page: Page) => page.locator('[data-focused="true"] [data-terminal]');
-const mac = (page: Page) => page.evaluate(() => /mac/i.test(navigator.platform));
-
-/** The platform's chord for an action, as the default keymap binds it (keys/defaults.ts). */
-async function chord(page: Page, action: "new" | "close" | "right" | "down" | "select"): Promise<string> {
-  const onMac = await mac(page);
-  const chords = {
-    new: onMac ? "Meta+KeyT" : "Control+Shift+KeyT",
-    close: onMac ? "Meta+Alt+KeyW" : "Control+Shift+KeyW",
-    right: onMac ? "Meta+KeyD" : "Control+Shift+KeyO",
-    down: onMac ? "Meta+Shift+KeyD" : "Control+Shift+KeyE",
-    select: onMac ? "Meta" : "Control",
-  };
-  return chords[action];
+/** The page platform's chord for an action, as the default keymap binds it (keys/defaults.ts). */
+function chord(page: Page, action: "new" | "close" | "right" | "down"): Promise<string> {
+  const actions = { new: "tab.new", close: "tab.close", right: "pane.split:right", down: "pane.split:down" };
+  return shortcut(page, actions[action]);
 }
 
 interface Spaces {
@@ -349,16 +343,20 @@ test("6 (B, D): only the active tab has a close button; a middle-click closes no
   await expect(tabBar(page)).toHaveText([/b-one/, /b-two/]);
   expect(live(shells.b2)).toBe(true);
 
-  // Its menu closes any tab, as herdr-app's tab menu (Rename, New tab, Close).
+  // Its menu closes any tab, as herdr-app's tab menu (Rename, New tab, Close), then pins it or closes the tabs around it
+  // (#1561).
   await tabItem(page, "b-two").click({ button: "right" });
   await expect(page.getByRole("menuitem")).toHaveText([
     /^Move tab left/,
     /^Move tab right/,
     /^Rename tab…/,
     /^New tab/,
-    /^Close tab/,
+    /^Pin tab/,
+    /^Close tab$/,
+    /^Close tabs to the right/,
+    /^Close other tabs/,
   ]);
-  await page.getByRole("menuitem", { name: "Close tab" }).click();
+  await page.getByRole("menuitem", { name: "Close tab", exact: true }).click();
   await expect(tabBar(page)).toHaveText([/b-one/], { timeout: 15_000 });
   await expect.poll(() => live(shells.b2), { timeout: 15_000 }).toBe(false);
 
@@ -394,18 +392,17 @@ test("7: Ctrl+Tab, Ctrl+Shift+Tab and the number chords move within the selected
   await expect(page.getByRole("tablist", { name: "Tabs" })).toBeVisible();
   await paneOf(page, shells.b1).getByRole("textbox").focus();
 
-  await page.keyboard.press("Control+Tab");
+  await pressShortcut(page, "tab.next");
   await expect(selected(page)).toHaveText(/b-two/);
-  await page.keyboard.press("Control+Tab");
+  await pressShortcut(page, "tab.next");
   await expect(selected(page)).toHaveText(/b-one/);
-  await page.keyboard.press("Control+Shift+Tab");
+  await pressShortcut(page, "tab.prev");
   await expect(selected(page)).toHaveText(/b-two/);
-  const select = await chord(page, "select");
-  await page.keyboard.press(`${select}+1`);
+  await page.keyboard.press(await tabNumberChord(page, 1));
   await expect(selected(page)).toHaveText(/b-one/);
-  await page.keyboard.press(`${select}+2`);
+  await page.keyboard.press(await tabNumberChord(page, 2));
   await expect(selected(page)).toHaveText(/b-two/);
-  await page.keyboard.press(`${select}+3`);
+  await page.keyboard.press(await tabNumberChord(page, 3));
   await expect(selected(page)).toHaveText(/b-two/);
   await expect(tabBar(page)).toHaveText([/b-one/, /b-two/]);
   await expect(tabBar(page).filter({ hasText: "b-one" })).toHaveAttribute("aria-selected", "false");
@@ -515,9 +512,9 @@ test("E: the ninth number chord selects the ninth tab, not the last", async ({ p
   await paneOf(page, shells[0] ?? "")
     .getByRole("textbox")
     .focus();
-  await page.keyboard.press(`${await chord(page, "select")}+9`);
+  await page.keyboard.press(await tabNumberChord(page, 9));
   await expect(selected(page)).toHaveText("n9");
-  await page.keyboard.press(`${await chord(page, "select")}+1`);
+  await page.keyboard.press(await tabNumberChord(page, 1));
   await expect(selected(page)).toHaveText("n1");
 });
 
@@ -573,9 +570,11 @@ test.describe("10: on a phone at 390", () => {
     expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(44);
 
     await switcher.click();
-    const sheet = page.getByRole("dialog", { name: "Spaces" });
+    const sheet = page.getByRole("dialog", { name: "Switch" });
     // Measured at rest: a frame of the open transition reads a row a hair under 44 (#583).
     await opened(sheet);
+    // It opens on the session's own space; every space is one segment away (mobile nav phase 4).
+    await sheet.getByRole("group", { name: "Show" }).getByRole("button", { name: "All spaces" }).click();
     // Each row is named as the strip names its tab, the terminal it opens after it (ruling A).
     const rows = [
       ["alpha", "a-one"],
@@ -591,7 +590,7 @@ test.describe("10: on a phone at 390", () => {
     );
     for (const height of heights) expect(height).toBeGreaterThanOrEqual(44);
     const beta = sheet.getByRole("region", { name: "beta" });
-    await expect(beta.getByRole("button", { name: TAB_ROW })).toHaveCount(2);
+    await expect(tabRows(page, beta)).toHaveCount(2);
     await expect(tabRow(beta, "b-one")).toContainText("parity-b1");
     await expect(tabRow(beta, "b-two")).toContainText("parity-b2");
     await expect(tabRow(beta, "parity-b1")).toHaveCount(0);
@@ -634,9 +633,10 @@ test.describe("10: on a phone at 390", () => {
 
     // Its middle opens the spaces sheet, for a tab of another space.
     await bar.getByRole("button", { name: /^Switch tab, beta, b-two/ }).tap();
-    const sheet = page.getByRole("dialog", { name: "Spaces" });
+    const sheet = page.getByRole("dialog", { name: "Switch" });
     // Measured at rest: a frame of the open transition reads a row a hair under 44 (#583).
     await opened(sheet);
+    await sheet.getByRole("group", { name: "Show" }).getByRole("button", { name: "All spaces" }).tap();
     await tabRow(sheet.getByRole("region", { name: "alpha" }), "a-two").tap();
     await expect(sheet).toBeHidden();
     await expect(header.getByRole("heading", { name: "a-two", exact: true })).toBeVisible({ timeout: 15_000 });
@@ -682,10 +682,10 @@ test.describe("10: on a phone at 390", () => {
     await expect(tabSwitch).toContainText("2/3");
 
     await tabSwitch.click();
-    await opened(page.getByRole("dialog", { name: "Spaces" }));
-    const web = page.getByRole("dialog", { name: "Spaces" }).getByRole("region", { name: "web" });
+    await opened(page.getByRole("dialog", { name: "Switch" }));
+    const web = page.getByRole("dialog", { name: "Switch" }).getByRole("region", { name: "web" });
     // One row per tab, each unnamed one read by the terminal it opens; the split tab's row opens the pane in view.
-    await expect(web.getByRole("button", { name: TAB_ROW })).toHaveCount(3);
+    await expect(tabRows(page, web)).toHaveCount(3);
     await expect(tabRow(web, "split-w1")).toHaveCount(1);
     await expect(tabRow(web, "split-w3")).toHaveCount(1);
     await expect(tabRow(web, "split-w2b")).toHaveAttribute("aria-current", "true");

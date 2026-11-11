@@ -7,6 +7,21 @@ import { headsOfRecords, meshOf, peer, Signer } from "./testing/mesh-peers.ts";
 import { sessionAtB } from "./testing/scripted.ts";
 
 describe("a join's session kept for sync (section 4.4)", () => {
+  test("retiring a revoked peer logs the close source after the linger", async () => {
+    const peerA = sessionAtB();
+    peerA.receive({ t: "hello", v: 2, mesh: peerA.meshId, heads: [], n: {} });
+    peerA.receive({ t: "done", mesh: peerA.meshId });
+    await peerA.settled();
+    peerA.session.retire("revoked from the mesh");
+    await peerA.clock.advance(LINGER_MS - 1);
+    // Keep the idle deadline later than the retirement deadline.
+    peerA.receive({ t: "done", mesh: peerA.meshId });
+    await peerA.settled();
+    await peerA.clock.advance(1);
+    expect(peerA.closedWith()).toBe(4401);
+    expect(peerA.logs).toContain("mesh: close code=4401 source=sync-retire: revoked from the mesh");
+  });
+
   test("the inviter's side says nothing until the joiner's hello, so the joiner reads its welcome undisturbed", async () => {
     const peerA = sessionAtB(undefined, { waitForHello: true });
     await peerA.settled();
