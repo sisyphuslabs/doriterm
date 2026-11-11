@@ -11,25 +11,46 @@ import type { TerminalPort } from "../terminal/terminal-port.ts";
  * keyboard (#2035). The press is that one pointer's: another one lifting meanwhile (a second finger, a tap beside a held
  * trackpad button) does not end it (#2093).
  */
+/** A pointer event as the tracker reads it. */
+type PressEvent = Pick<PointerEvent, "pointerId" | "pointerType" | "isPrimary">;
+const isPress = (event: Event): event is Event & PressEvent => "pointerId" in event && "isPrimary" in event;
+
+/**
+ * Follows the press begun in `scope` that is still down, until `signal` aborts: returns that press's pointer, or null.
+ * The first press stays held until its own lift: a pointer of another type is primary for its own type, so a touch landing
+ * beside a held mouse button does not take the press over (#2138). A new press of the same type does, since that type's
+ * last press has ended even if the page never saw it lift: a press can never be left held for good.
+ */
+export function trackHeldPress(scope: EventTarget, view: EventTarget, signal: AbortSignal): () => number | null {
+  let held: { readonly pointer: number; readonly type: string } | null = null;
+  const end = (event: Event): void => {
+    if (isPress(event) && event.pointerId === held?.pointer) held = null;
+  };
+  scope.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (!isPress(event) || !event.isPrimary) return;
+      if (held === null || held.type === event.pointerType)
+        held = { pointer: event.pointerId, type: event.pointerType };
+    },
+    { capture: true, signal },
+  );
+  view.addEventListener("pointerup", end, { capture: true, signal });
+  view.addEventListener("pointercancel", end, { capture: true, signal });
+  return () => held?.pointer ?? null;
+}
+
 export function useQuietKeyboard(port: RefObject<TerminalPort | null>, scope: HTMLElement | null, up: boolean): void {
   /** The pointer of the press begun in `scope` that is still down, or null. */
-  const pressing = useRef<number | null>(null);
+  const pressing = useRef<() => number | null>(() => null);
   useEffect(() => {
     if (scope === null) return undefined;
     const abort = new AbortController();
-    const end = (event: PointerEvent): void => {
-      if (event.pointerId === pressing.current) pressing.current = null;
+    pressing.current = trackHeldPress(scope, window, abort.signal);
+    return () => {
+      abort.abort();
+      pressing.current = () => null;
     };
-    scope.addEventListener(
-      "pointerdown",
-      (event) => {
-        if (event.isPrimary) pressing.current = event.pointerId;
-      },
-      { capture: true, signal: abort.signal },
-    );
-    window.addEventListener("pointerup", end, { capture: true, signal: abort.signal });
-    window.addEventListener("pointercancel", end, { capture: true, signal: abort.signal });
-    return () => abort.abort();
   }, [scope]);
   useEffect(() => {
     if (up) return undefined;
@@ -38,7 +59,7 @@ export function useQuietKeyboard(port: RefObject<TerminalPort | null>, scope: HT
     const quietSoon = (): void => {
       frame = requestAnimationFrame(() => port.current?.quiet());
     };
-    const held = pressing.current;
+    const held = pressing.current();
     if (held === null) quietSoon();
     else {
       const ended = (event: PointerEvent): void => {

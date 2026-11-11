@@ -28,9 +28,15 @@ const isNeutral = (name: string): boolean => NEUTRAL_NAMES.has(name.toLowerCase(
 
 /** Registry-style suffixes an `@` in prose takes; they name a package, not an account on a computer. */
 const PACKAGE_SUFFIX = /^(?:latest|next|beta|alpha|canary|stable)$/i;
-/** The domains reserved for examples (RFC 2606, RFC 6761): a placeholder uses them, and a real capture never shows one. */
-const RESERVED_EXAMPLE = /^(?:example(?:\.(?:com|org|net))?|[a-z0-9.-]+\.example)$/i;
-/** `git@<host>:owner/repo` is a clone URL: every git host's SSH user is `git`, which names no one. */
+/**
+ * The domains reserved for examples (RFC 2606, RFC 6761), subdomains included: a placeholder uses them, a real capture
+ * never shows one.
+ */
+const RESERVED_EXAMPLE = /^(?:[a-z0-9-]+\.)*(?:example|example\.(?:com|org|net))$/i;
+/**
+ * `git@<host>` where the host is a known git host: every one's SSH user is `git`, which names no one, and the
+ * `:owner/repo` tail is never checked.
+ */
 const CLONE_URL = /^git@(?:github\.com|gitlab\.com|bitbucket\.org|codeberg\.org)$/i;
 
 const ACCOUNT_AT_HOST = /\b([a-z][a-z0-9._-]*)@([a-z][a-z0-9.-]*[a-z0-9])/gi;
@@ -70,9 +76,55 @@ export function classify(ocrText: string): Verdict {
   return { ok: findings.length === 0, findings };
 }
 
-/** The text a capture shows: an SVG's own character data (OCR cannot read one), any other image's OCR. */
+/** The entity forms an SVG's character data can carry: XML's five named ones, and a numeric one in decimal or hex. */
+const SVG_ENTITY = /&(?:#(\d+)|#x([0-9a-f]+)|(amp|lt|gt|quot|apos));/gi;
+const NAMED_ENTITY: Readonly<Record<string, string>> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+
+/** An entity is one character to a reader, so it must be one character before the leak shapes are matched. */
+const decodeEntities = (text: string): string =>
+  text.replace(SVG_ENTITY, (whole: string, decimal?: string, hex?: string, named?: string): string => {
+    if (named !== undefined) return NAMED_ENTITY[named.toLowerCase()] ?? whole;
+    const codePoint = decimal === undefined ? Number.parseInt(hex ?? "", 16) : Number.parseInt(decimal, 10);
+    return codePoint > 0 && codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : whole;
+  });
+
+const SVG_Y = /(?:^|\s)y\s*=\s*["']([^"']*)["']/;
+const SVG_DY = /(?:^|\s)dy\s*=\s*["']([^"']*)["']/;
+
+/**
+ * An SVG's text as it reads on screen, one line per drawn line. A line break goes only where a `<text>` or `<tspan>`
+ * moves to a new line: a new `y`, or a nonzero `dy`. Every other tag goes with no separator, so runs drawn on the same
+ * line (a prompt split across `<tspan>`s, or across sibling `<text>`s one per colour) are one string to a reader, as a
+ * space where a tag stood would let `someone@<tspan>alpha-box</tspan>` pass as two words. Lines drawn one under
+ * another stay apart, so a minified SVG's clean lines never run together into a prompt neither shows.
+ */
+function joinSvgLines(markup: string): string {
+  let line: string | undefined;
+  return markup.replace(/<[^>]*>/g, (tag: string): string => {
+    const start = /^<(text|tspan)\b([^>]*)>$/i.exec(tag);
+    if (start === null) return "";
+    const attributes = ` ${start[2] ?? ""}`;
+    const dy = Number.parseFloat(SVG_DY.exec(attributes)?.[1] ?? "0");
+    const y = SVG_Y.exec(attributes)?.[1] ?? (start[1]?.toLowerCase() === "text" ? "0" : undefined);
+    const moved = (y !== undefined && line !== undefined && y !== line) || (Number.isFinite(dy) && dy !== 0);
+    if (y !== undefined) line = y;
+    return moved ? "\n" : "";
+  });
+}
+
+/**
+ * The text a capture shows: an SVG's own character data (OCR cannot read one), any other image's OCR.
+ * tesseract reads only the first frame of an animated GIF, so a leak shown in a later frame is out of its reach.
+ */
 export async function captureText(path: string): Promise<string> {
-  if (/\.svg$/i.test(path)) return (await Bun.file(path).text()).replace(/<[^>]*>/g, " ");
+  if (/\.svg$/i.test(path)) {
+    // A CDATA section is text as written, so it is kept, its brackets encoded so no later step takes them for a tag.
+    // Entities decode last, so an entity-encoded bracket is text and never a tag.
+    const markup = (await Bun.file(path).text()).replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_whole, data: string) =>
+      data.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
+    );
+    return decodeEntities(joinSvgLines(markup));
+  }
   const result = await $`tesseract ${path} -`
     .env({ ...process.env, OMP_THREAD_LIMIT: "1" })
     .quiet()

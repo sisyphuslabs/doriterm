@@ -1,4 +1,3 @@
-import type { HcConnection } from "@doriface/client";
 import {
   isJsonObject,
   type JsonValue,
@@ -29,12 +28,6 @@ export interface MeshCalls {
   readonly setDoc: (name: string, value: JsonValue, version: number) => Promise<unknown>;
   readonly machines: () => Promise<readonly MachineView[]>;
 }
-
-export const meshCallsOf = (connection: HcConnection): MeshCalls => ({
-  doc: (name) => connection.call("doc.get", { name }),
-  setDoc: (name, value, version) => connection.call("doc.set", { name, value, version }),
-  machines: async () => (await connection.call("machine.list")).machines,
-});
 
 function answeredIn(value: JsonValue): { nonce: string; verdict: Verdict } | undefined {
   if (!isJsonObject(value)) return undefined;

@@ -155,6 +155,23 @@ describe("keepMounts: a document tab that takes over a terminal shown alone keep
     expect(pick(tabs, { ...view, active: "gone" }).active?.key).toBe("core/tb0");
   });
 
+  test("a loose tab that outlives the document tab that showed its terminal keeps that tab's keys and its selection", () => {
+    const ids = layoutIds([here]);
+    const key = looseKey("box/t2", ids);
+    const mounts = newMounts();
+    keepMounts([docTab("core/tb0", "p0", "t1"), docTab("box/tb1", "p1", "box/t2")], mounts, ids);
+    // The document read back without box/tb1 (its write was never saved); the terminal stays here as a loose tab.
+    const tabs = keepMounts([docTab("core/tb0", "p0", "t1"), { ...shownAlone("box/t2"), key, id: key }], mounts, ids);
+    expect(tabs[1]?.mount).toBe("box/tb1");
+    expect(tabs[1]?.panes[0]?.mount).toBe("p1");
+    const view = { active: "box/tb1", focused: { "box/tb1": "p1" }, zoomed: {}, spaces: {}, seen: {} };
+    expect(pick(tabs, view).active?.key).toBe(key);
+    // Written again later (a retry that saved), the document tab takes the same keys back: the view never moves.
+    const [, written] = keepMounts([docTab("core/tb0", "p0", "t1"), docTab("box/tb7", "p7", "box/t2")], mounts, ids);
+    expect(written?.mount).toBe("box/tb1");
+    expect(written?.panes[0]?.mount).toBe("p1");
+  });
+
   test("a loose tab's view is taken over when its machine's rename and the adoption show in one render (#1775)", () => {
     const box = (name: string): MachineLayout => ({ ...here, machine: name, machineId: "id-box" });
     const before = layoutIds([here, box("build-box")]);
@@ -272,6 +289,10 @@ describe("adoptLoose (#404)", () => {
         loose("t7", "/w", { parent: "t1" }),
       ]),
     ).toBeNull();
+  });
+
+  test("a terminal that End is ending is not adopted back: its closed tab stays closed while its program goes (#2122)", () => {
+    expect(adoptLoose(saved, [loose("t6", "/w", { labels: { "herdr.end": "1" } })])).toBeNull();
   });
 
   test("a terminal labelled with a space goes to the space of that name, made when there is none (#395)", () => {

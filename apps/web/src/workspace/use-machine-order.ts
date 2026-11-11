@@ -1,6 +1,7 @@
 import type { HcConnection } from "@doriface/client";
-import { type DocCalls, LayoutDoc, ORDER_DOC, readOrderDocument, storedOrder } from "@doriface/protocol/layout";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { storedOrder } from "@doriface/protocol/layout";
+import { useCallback, useMemo } from "react";
+import { useRoster } from "../roster/use-roster.ts";
 import { arrangeMachines, moveMachine } from "./machine-order.ts";
 import type { MachineEntry } from "./machines.ts";
 
@@ -13,30 +14,21 @@ export interface MachineOrder {
    * every retry).
    */
   readonly move: (core: string, to: number) => Promise<boolean>;
-  /** A `doc` event for this core's order document: another device wrote it. */
-  readonly heard: (version: number) => void;
 }
-
-const orderCalls = (connection: HcConnection): DocCalls => ({
-  get: () => connection.call("doc.get", { name: ORDER_DOC }),
-  set: (_on, value, version) => connection.call("doc.set", { name: ORDER_DOC, value, version }),
-});
 
 /**
  * The person's machine order, kept in the connected core's own `doriface` document the way the split layout is kept in
- * herdr-app's: read on connect and on each `doc` event, every write a compare-and-set that is made again on a conflict.
+ * herdr-app's: the shared roster reads it on connect, on each `doc` event and on every gap; every write is a
+ * compare-and-set that is made again on a conflict.
  */
 export function useMachineOrder(connection: HcConnection, entries: readonly MachineEntry[]): MachineOrder {
-  const [, rerender] = useState(0);
-  const doc = useMemo(
-    () => new LayoutDoc(orderCalls(connection), null, () => rerender((count) => count + 1), readOrderDocument),
-    [connection],
-  );
-  useEffect(() => void doc.refresh(), [doc]);
-  const state = doc.state;
+  const { roster, snapshot } = useRoster(connection);
+  const state = snapshot.order;
   const read = state.phase === "ready" ? state.doc : null;
   const arranged = useMemo(() => arrangeMachines(entries, storedOrder(read)), [entries, read]);
-  const move = useCallback((core: string, to: number) => doc.edit(moveMachine(entries, core, to)), [doc, entries]);
-  const heard = useCallback((version: number): void => void doc.heard(version), [doc]);
-  return { entries: arranged, move, heard };
+  const move = useCallback(
+    (core: string, to: number) => roster.order.edit(moveMachine(entries, core, to)),
+    [roster, entries],
+  );
+  return { entries: arranged, move };
 }

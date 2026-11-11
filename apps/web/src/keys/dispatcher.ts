@@ -6,8 +6,9 @@ import { TEXT_FIELD_KEEPS } from "./text-field-keys.ts";
 import { currentPlatform, triggerFromEvent } from "./trigger.ts";
 
 /**
- * Returns true when the action ran; false lets the key reach the page. `programReceives` is false for a chord a focused
- * terminal's program can never receive (any Cmd chord), which an action that would leave its key to the program keeps.
+ * Returns true when the action ran; false lets the key reach the page. `programReceives` is false when no key would reach
+ * a focused terminal's program: a Meta chord (Cmd on macOS, the Super key elsewhere), which the terminal never encodes,
+ * or an action chosen from a list, which has no key at all. An action that would leave its key to the program keeps it.
  */
 export type ActionHandler = (action: string, programReceives?: boolean) => boolean;
 
@@ -41,7 +42,9 @@ export function runAction(id: string): boolean {
   if (action === null) return false;
   chosen = true;
   try {
-    return dispatch(action.scope, id);
+    // A chosen action has no key to leave to the program, so a pane move at a split edge counts as handled and the
+    // palette closes (#2119, #1850).
+    return dispatch(action.scope, id, false);
   } finally {
     chosen = false;
   }
@@ -126,8 +129,8 @@ export function useKeymapDispatcher(): void {
         return;
       // The tab move keys stay with a text field (they select text) and with a reorderable row (they move the row).
       if (TEXT_FIELD_KEEPS.has(id) && (inTextField(event.target) || inReorderableRow(event.target))) return;
-      // A terminal's input stops at any Cmd (Meta) chord without sending bytes, so a Cmd key an action does not take
-      // would run the browser's own shortcut instead (#1302, #1172).
+      // A terminal's input stops at any Meta chord (Cmd on macOS, the Super key elsewhere) without sending bytes, so a
+      // Meta key an action does not take would run the browser's or the desktop's own shortcut instead (#1172, #1850).
       const programReceives = !event.metaKey;
       if (dispatch(action.scope, id, programReceives)) {
         event.preventDefault();
