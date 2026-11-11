@@ -1,6 +1,7 @@
 import type { JsonObject, Terminal } from "@doriface/protocol";
 import { addTab, docSpaces, freshId, type Node, panesOf, tabsOf, terminalBlock } from "@doriface/protocol/layout";
 import { spaceKey, tabKey, type View } from "../layout/view.ts";
+import { looseTerminals } from "./adoption.ts";
 import { machineOf, SPACE_LABEL } from "./model.ts";
 import { type MachineIds, tabKey as terminalKey } from "./tab-keys.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
@@ -266,38 +267,23 @@ export function findTerminal(tabs: readonly LayoutTab[], address: string): { tab
 const holds = (folder: string, dir: string): boolean =>
   folder !== "" && (dir === folder || dir.startsWith(folder.endsWith("/") ? folder : `${folder}/`));
 
-/** Addresses by their numbers (`t9` before `t10`), for terminals started in the same millisecond. */
-const BY_ADDRESS = new Intl.Collator("en", { numeric: true });
-
 /** The space adopted terminals with no space of their own go to, as herdr-app names its fallback. */
 export const HOME_SPACE = "Home";
 
 /**
- * The document with every live terminal of its machine that no tab shows adopted as a tab of its own (#404): in the space
- * its `space` label names (made when there is none, as that label named its space before #404), else in the space
- * whose folder holds its working directory (the deepest such folder), else in the machine's Home space, made when there
- * is none. A terminal another one started (`parent`) is not a tab of its own. Tabs are added in the order the terminals
- * started, not the feed's: hc lists them by address as text, so `t10` came before `t9` (#1269). Null when every terminal
- * has a tab, so nothing is written; read inside the document's edit, so a reload or a second device adopts nothing twice.
+ * The document with every terminal of its machine that is loose (`looseTerminals`: live, no tab shows it, and it gets a
+ * tab of its own) adopted as one (#404): in the space its `space` label names (made when there is none, as that label
+ * named its space before #404), else in the space whose folder holds its working directory (the deepest such folder),
+ * else in the machine's Home space, made when there is none. Tabs are added in the order the terminals started (#1269).
+ * Null when every terminal has a tab, so nothing is written; read inside the document's edit, so a reload or a second
+ * device adopts nothing twice.
  */
 export function adoptLoose(
   doc: JsonObject | null,
   terminals: readonly Terminal[],
   makeId: (prefix: "tb" | "p" | "spc") => string = freshId,
 ): JsonObject | null {
-  const shown = new Set(
-    doc === null
-      ? []
-      : tabsOf(doc).flatMap((tab) =>
-          panesOf(tab.root).flatMap((pane) => (pane.terminal === null ? [] : [pane.terminal])),
-        ),
-  );
-  const loose = terminals
-    .filter(
-      (terminal) =>
-        terminal.state === "live" && (terminal.parent ?? null) === null && !shown.has(localOf(terminal.address)),
-    )
-    .toSorted((a, b) => a.created_ms - b.created_ms || BY_ADDRESS.compare(a.address, b.address));
+  const loose = looseTerminals(doc, terminals);
   if (loose.length === 0) return null;
   const spaces = doc === null ? [] : docSpaces(doc);
   let home = spaces.find((space) => space.name === HOME_SPACE && space.folder === "")?.id;

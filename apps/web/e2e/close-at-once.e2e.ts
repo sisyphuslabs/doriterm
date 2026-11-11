@@ -174,10 +174,12 @@ test("a tab close whose Ends fail says how many kept running, and where they wen
   // The cause reads as its own sentence, and the toast says where the sessions it kept are shown again.
   const description = toasts.getByText(/keeps? running/);
   await expect(description).toHaveText(/\.\s+They keep running outside any tab/);
-  await expect(description).toHaveText(/next load/);
+  await expect(description).toHaveText(/open as tabs again/);
 });
 
-test("a failed pane End's question says the session keeps running in no pane until the next load", async ({ page }) => {
+test("a failed pane End's question says the session keeps running in no pane and comes back as a tab", async ({
+  page,
+}) => {
   const link = await routeHcSocket(page);
   await page.goto("/");
   await openNewTerminal(page);
@@ -193,5 +195,5 @@ test("a failed pane End's question says the session keeps running in no pane unt
   const why = question.getByRole("alert");
   await expect(why).toContainText("The session did not end", { timeout: 15_000 });
   await expect(why).toHaveText(/outside any pane/);
-  await expect(why).toHaveText(/next load/);
+  await expect(why).toHaveText(/opens as a tab of its own/);
 });

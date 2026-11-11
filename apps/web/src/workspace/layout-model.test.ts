@@ -243,6 +243,10 @@ describe("adoptLoose (#404)", () => {
     ).toBeNull();
   });
 
+  test("a terminal that End is ending is not adopted back: its closed tab stays closed while its program goes (#2122)", () => {
+    expect(adoptLoose(saved, [loose("t6", "/w", { labels: { "herdr.end": "1" } })])).toBeNull();
+  });
+
   test("a terminal labelled with a space goes to the space of that name, made when there is none (#395)", () => {
     const adopted = adoptLoose(
       saved,
