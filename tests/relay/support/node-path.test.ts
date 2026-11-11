@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { delimiter, join } from "node:path";
-import { withoutBunNodeShim } from "./node-path.ts";
+import { relaySpawnEnv, withoutBunNodeShim } from "./node-path.ts";
 
 const shim = join("/tmp", "bun-node-1000-38afee6c8");
 
@@ -26,4 +26,13 @@ test("a shim directory named just bun-node, as a Bun build without a commit hash
 test("only a directory named like the shim goes: one that merely contains the words stays", () => {
   const kept = join("/opt", "my-bun-node-tools");
   expect(withoutBunNodeShim({ PATH: [shim, kept].join(delimiter) })).toEqual({ PATH: kept });
+});
+
+test("relay:dev and relay:test start their child without the shim, with the relay checkout named (#2346)", () => {
+  const env = { PATH: [shim, "/usr/bin"].join(delimiter), HOME: "/home/u" };
+  expect(relaySpawnEnv("/r/.relay", env)).toEqual({
+    PATH: "/usr/bin",
+    HOME: "/home/u",
+    DORIFACE_RELAY_DIR: "/r/.relay",
+  });
 });
