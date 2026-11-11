@@ -7,7 +7,7 @@ import { DEFAULT_SETTINGS } from "./settings.ts";
 
 /**
  * #2004: opening a host that is not on the relay must fail fast, not after the 10 s attempt deadline. The relay closes the
- * session 4404 at once; measured at 9-93 ms. The bound is 1 s: ten times the slowest measurement, so a loaded runner does
+ * session 4404 at once; measured at 9-105 ms. The bound is 1 s: about ten times the slowest measurement, so a loaded runner does
  * not flake it, and still a tenth of the 10 s a regression to waiting out the deadline would take.
  */
 const FAST_MS = 1_000;

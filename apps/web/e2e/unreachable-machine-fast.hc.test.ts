@@ -11,8 +11,9 @@ import { addMachine, DEMO_MACHINE } from "./machine.ts";
 
 /**
  * #2004: a New terminal on an added machine that is not connected must say so at once, not after a link timeout. hc
- * answers `unavailable` from its machine state; measured at 3-6 ms. The bound is 1 s: far above that on a loaded runner,
- * and a tenth of the 10 s a regression to waiting out a link timeout would take.
+ * answers `unavailable` from its machine state; measured at 0-6 ms. The bound is 1 s: far above that on a loaded runner,
+ * and a tenth of the 10 s a regression to waiting out a link timeout would take. It covers a line that closed: a line
+ * left half-open (after a sleep or a network drop), which the core has not noticed yet, is not timed here (#2004).
  */
 const FAST_MS = 1_000;
 
