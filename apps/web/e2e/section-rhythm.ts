@@ -69,7 +69,9 @@ export function sectionRhythm(): Rhythm {
           Math.min(t.box.right, own.right) - Math.max(t.box.left, own.left) > Math.min(t.box.width, own.width) * 0.25,
       );
       const before = column.filter((t) => t.box.bottom <= own.top).toSorted((a, b) => b.box.bottom - a.box.bottom)[0];
-      const after = column.filter((t) => t.box.top >= own.bottom).toSorted((a, b) => a.box.top - b.box.top)[0];
+      // What follows the heading in the document, wherever it is drawn: text that overlaps the heading measures a negative
+      // gap instead of being skipped for a line further down, so an overlap can fail the check (#2356).
+      const after = column.find((t) => el.compareDocumentPosition(t.el) & Node.DOCUMENT_POSITION_FOLLOWING);
       if (before === undefined || after === undefined) return [];
       return [{ name: nameOf(el), above: own.top - before.box.bottom, below: after.box.top - own.bottom }];
     });
