@@ -21,6 +21,7 @@ import {
   scrollTopAtRow,
   scrollTopFor,
 } from "./scrollbar.ts";
+import { HistoryGapMarks } from "./history-gap-marks.tsx";
 
 /** Herdr's thumb and rail: 4 px on a 1 px rail, 2 px in from the edge, in a lane at least 8 px wide. */
 const THUMB_WIDTH = 4;
@@ -30,7 +31,7 @@ const LANE_MIN = 8;
 const MIN_COLS = 5;
 
 /** What the overlay draws from: the scroll box, and where the grid sits inside the terminal's padding. */
-interface ScrollView {
+export interface ScrollView {
   readonly box: ScrollBox;
   readonly alt: boolean;
   readonly cols: number;
@@ -173,12 +174,14 @@ export function TerminalScrollbar({ wt, scroll }: OverlayProps) {
   const view = scroll.view;
   const drag = useRef<{ readonly pointer: number; readonly grab: number } | null>(null);
   const [dragging, setDragging] = useState(false);
-  if (view === null || view.alt || view.cols < MIN_COLS) return null;
+  if (view === null) return null;
+  const gaps = <HistoryGapMarks wt={wt} view={view} />;
+  if (view.alt || view.cols < MIN_COLS) return gaps;
   const { box } = view;
   const track = box.rows * box.rowHeight;
   const rows = scrollRows(box);
   const thumb = scrollbarThumb(rows, track, box.rowHeight);
-  if (thumb === null) return null;
+  if (thumb === null) return gaps;
   const lane = view.lane;
 
   const scrollToThumbTop = (top: number): void => {
@@ -209,28 +212,31 @@ export function TerminalScrollbar({ wt, scroll }: OverlayProps) {
   };
 
   return (
-    <div
-      aria-hidden
-      data-terminal-scrollbar
-      data-dragging={dragging ? "" : undefined}
-      className="group absolute right-0 touch-none select-none"
-      style={{ top: view.padTop, width: lane, height: track }}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerEnd}
-      onPointerCancel={onPointerEnd}
-    >
-      <span
-        data-scrollbar-rail
-        className="absolute inset-y-0 w-px bg-muted-foreground/35"
-        style={{ right: THUMB_INSET + THUMB_WIDTH / 2 - 0.5 }}
-      />
-      <span
-        data-scrollbar-thumb
-        className="absolute rounded-full bg-muted-foreground"
-        style={{ right: THUMB_INSET, width: THUMB_WIDTH, top: thumb.top, height: thumb.length }}
-      />
-    </div>
+    <>
+      {gaps}
+      <div
+        aria-hidden
+        data-terminal-scrollbar
+        data-dragging={dragging ? "" : undefined}
+        className="group absolute right-0 touch-none select-none"
+        style={{ top: view.padTop, width: lane, height: track }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerEnd}
+        onPointerCancel={onPointerEnd}
+      >
+        <span
+          data-scrollbar-rail
+          className="absolute inset-y-0 w-px bg-muted-foreground/35"
+          style={{ right: THUMB_INSET + THUMB_WIDTH / 2 - 0.5 }}
+        />
+        <span
+          data-scrollbar-thumb
+          className="absolute rounded-full bg-muted-foreground"
+          style={{ right: THUMB_INSET, width: THUMB_WIDTH, top: thumb.top, height: thumb.length }}
+        />
+      </div>
+    </>
   );
 }
 

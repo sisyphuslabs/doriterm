@@ -8,10 +8,11 @@ import { terminalConfigStore } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
 import { CursorResets } from "./cursor-reset.ts";
 import { readDisplay } from "./display.ts";
-import { type EndHolder, fromEndOf, holdFromEnd, readerInputOn } from "./hold-view-from-end.ts";
+import type { EndHolder } from "./hold-view-from-end.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
 import { HISTORY_LINES, noteViewSize, viewAttach } from "./opening-attach.ts";
 import type { OutputPacer, ReplayOptions } from "./output-pacer.ts";
+import { keepViewOnReattach } from "./reattach-view.ts";
 import { type TerminalEnd, terminalEnd } from "./terminal-end.ts";
 import { type CoreAnswer, type Settled, settled, type Unsent, unsentReason } from "./terminal-settle.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
@@ -19,17 +20,6 @@ import { TerminalStreamLostError } from "./attach-recovery.ts";
 import { useAttachRecovery } from "./use-attach-recovery.ts";
 
 const encoder = new TextEncoder();
-/**
- * Cursor home, then erase to the end of the screen (ED 0): clears the screen in use and leaves the scrollback alone. The
- * core's repaint starts with ESC[2J, which Ghostty answers over a prompt marked with OSC 133 (fish 4, shell integration)
- * by scrolling the screen into history; over a screen already blank there is nothing to scroll. Under a full-screen
- * program (vim, less, htop) this clears the alternate screen only: the repaint leaves it, and its ESC[2J scrolls the
- * primary screen behind it into history once when that screen ends at an OSC 133-marked prompt. The repaint does not draw
- * the primary screen again, so that is the only copy of the output above the program's command, and the primary screen
- * must not be erased here. Over an unmarked prompt the core's repaint erases that screen with no copy; that loss is the
- * core's, and belongs with the resume-cursor work in #2033.
- */
-const CLEAR_SCREEN = "\u001b[H\u001b[J";
 
 interface AttachSources {
   readonly connection: HcConnection;
@@ -257,23 +247,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         if (attachedBefore.current && inUse) attached.focus(true);
         // A fit while the attach was in flight had no stream to resize.
         if (ready.cols !== askedCols || ready.rows !== askedRows) attached.resize(ready.cols, ready.rows);
-        // Reattached after a reconnect: the core repaints the screen, and the history above it stays as the view holds it
-        // (#1997). The view clears its screen first, so the repaint's ESC[2J has no marked prompt to scroll into history.
-        if (attachedBefore.current) {
-          // Read the reader's place before the repaint (#1393).
-          const fromEnd = fromEndOf(ready.element);
-          // The repaint's first write would follow the output down: a reader who is away stays away until they scroll
-          // or type.
-          if (fromEnd > 0) ready.holdScrollAway();
-          pacer.drop();
-          output.reset();
-          if (keepsHistory) ready.write(CLEAR_SCREEN);
-          // The repaint lands where the reader was: at the end for one who was following, in history for one who was not.
-          endHold.current?.stop();
-          // Only the reader's own input lets go early: on the terminal or what overlays it, its scrollbar included.
-          const reader = readerInputOn(ready.element.parentElement ?? ready.element);
-          endHold.current = holdFromEnd(ready.element, pacer, fromEnd, reader);
-        }
+        if (attachedBefore.current) keepViewOnReattach(ready, pacer, output, keepsHistory, endHold);
         attachedBefore.current = true;
         paintedView.current = ready;
         // Every attach's first paint is its replay: written as it arrives with the paint held, then drawn once it has
