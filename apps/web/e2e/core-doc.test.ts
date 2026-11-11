@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { HcRpcError } from "@doriface/protocol";
 import { coreCompareAndSet } from "./core-doc.ts";
 
 const DOC = "layout.host";
@@ -15,7 +16,7 @@ function fakeCore(initial: unknown) {
     const asked = params as { readonly value?: unknown; readonly version?: number };
     if (method === "doc.get") return { value, version };
     if (method !== "doc.set") throw new Error(`unexpected ${method}`);
-    if (asked.version !== version) throw new Error(`${DOC} is at version ${version}, not ${String(asked.version)}`);
+    if (asked.version !== version) throw conflict(version, asked.version);
     value = asked.value;
     version += 1;
     writes.push(asked.value);
@@ -32,6 +33,14 @@ function fakeCore(initial: unknown) {
     read: () => ({ value, version }),
   };
 }
+
+/** The core's refusal of a stale compare-and-set: its message, and its stable kind. */
+const conflict = (at: number, asked: unknown): HcRpcError =>
+  new HcRpcError({
+    code: -32000,
+    message: `${DOC} is at version ${at}, not ${String(asked)}`,
+    data: { kind: "conflict" },
+  });
 
 const layout = (spaces: readonly unknown[]): Record<string, unknown> => ({ spaces });
 
@@ -102,6 +111,35 @@ describe("coreCompareAndSet (#896)", () => {
     expect(() => coreCompareAndSet(send, { name: DOC }, () => ({ kept: true }))).toThrow(
       "the machine is not connected",
     );
+    expect(sets).toBe(1);
+  });
+
+  test("a core that refuses every write: the fifth refusal is thrown, and there is no sixth attempt", () => {
+    const refusals: HcRpcError[] = [];
+    const send = (method: string): unknown => {
+      if (method === "doc.get") return { value: null, version: refusals.length + 1 };
+      const refusal = conflict(refusals.length + 2, refusals.length + 1);
+      refusals.push(refusal);
+      throw refusal;
+    };
+    let thrown: unknown;
+    try {
+      coreCompareAndSet(send, { name: DOC }, () => ({ kept: true }));
+    } catch (cause) {
+      thrown = cause;
+    }
+    expect(refusals).toHaveLength(5);
+    expect(thrown).toBe(refusals[4]);
+  });
+
+  test("a failure that is not a conflict is not retried, even worded like one", () => {
+    let sets = 0;
+    const send = (method: string): unknown => {
+      if (method === "doc.get") return { value: null, version: 1 };
+      sets += 1;
+      throw new HcRpcError({ code: -32603, message: `${DOC} is at version 2, not 1`, data: { kind: "internal" } });
+    };
+    expect(() => coreCompareAndSet(send, { name: DOC }, () => ({ kept: true }))).toThrow("is at version 2, not 1");
     expect(sets).toBe(1);
   });
 });
