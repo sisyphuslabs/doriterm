@@ -6,6 +6,7 @@ import { E2E_HOST_ENV } from "./config.ts";
 import { expect, openNewTerminal, terminalCount, test } from "./fixtures.ts";
 import { pressShortcut } from "./platform-keys.ts";
 import { setConfirmClose } from "./close-confirm.ts";
+import { holdFrames } from "./hold-frames.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { readSavedEnv } from "./saved-env.ts";
 
@@ -141,6 +142,52 @@ for (const [item, question] of [
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 }
+
+test("the statement that a session ended takes the keyboard before the next frame, so an Escape at once closes it (#2076)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  const address = (await terminal.getAttribute("data-terminal")) ?? "";
+  await named(page);
+  await sessionMenu(page, "End session…");
+  await expect(dialog(page, `End ${NAME}?`)).toBeVisible();
+
+  // A busy page draws late: the statement is on screen before its next frame, and a key pressed then is the statement's.
+  const release = await holdFrames(page);
+  hc("kill", address);
+  const ended = statement(page);
+  await expect(ended).toBeVisible({ timeout: 15_000 });
+  await expect(ended.getByRole("button", { name: "OK" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await release();
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+});
+
+test("a statement whose only button cannot take focus opens on itself, so the keyboard is never left behind it (#2102)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  const address = (await terminal.getAttribute("data-terminal")) ?? "";
+  await named(page);
+  await sessionMenu(page, "End session…");
+  await expect(dialog(page, `End ${NAME}?`)).toBeVisible();
+
+  // No statement ships a disabled OK today; this one gets it disabled as it is inserted, before the dialog picks where
+  // focus goes (mutation records are delivered before that choice, which waits for the layout effects).
+  await page.evaluate(() => {
+    new MutationObserver(() => {
+      for (const button of document.querySelectorAll<HTMLButtonElement>("[role='alertdialog'] button"))
+        button.disabled = true;
+    }).observe(document.body, { subtree: true, childList: true });
+  });
+  hc("kill", address);
+  const ended = statement(page);
+  await expect(ended).toBeVisible({ timeout: 15_000 });
+  await expect(ended.getByRole("button", { name: "OK" })).toBeDisabled();
+  await expect(ended).toBeFocused();
+});
 
 test("closing from Cmd+W's question ends the session with no notice that it ended", async ({ page }) => {
   await recordEndedTitles(page);

@@ -100,7 +100,6 @@ const entry = (name: string, local: boolean): MachineEntry => ({
   name,
   local,
   state: "connected",
-  live: 0,
   first: undefined,
 });
 
@@ -120,6 +119,22 @@ describe("machineGroups", () => {
       ["studio", ["local/api"]],
       ["zeta", []],
       ["box", ["machine:box/api"]],
+    ]);
+  });
+
+  test("a machine counts what the space rows under it count: the sum of their tabs, also while it is offline (#2122)", () => {
+    const listed = [
+      { id: "local/api", name: "api", tabs: 1 },
+      { id: "local/web", name: "web", tabs: 3 },
+      { id: "machine:box/api", name: "api", machine: "box", tabs: 2 },
+    ];
+    // An offline machine's rows still count the tabs of the document last read from it, so its header does too.
+    const box = { ...entry("box", false), state: "unreachable" };
+    const groups = machineGroups([entry("studio", true), entry("zeta", false), box], listed);
+    expect(groups?.map((group) => [group.machine.name, group.tabs])).toEqual([
+      ["studio", 4],
+      ["zeta", 0],
+      ["box", 2],
     ]);
   });
 });

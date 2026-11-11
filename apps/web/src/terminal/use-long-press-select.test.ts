@@ -43,6 +43,14 @@ describe("the held-press mark lives for one touch (#854)", () => {
     expect(terminal.tapCancelled).toBe(false);
   });
 
+  test("a picked press on a cell the program redraws away still cancels its own lift's tap (#2057)", () => {
+    const terminal = wiredTerminal();
+    terminal.down(1, true, true);
+    jest.advanceTimersByTime(LONG_PRESS_MS);
+    terminal.up(1);
+    expect(terminal.tapCancelled).toBe(true);
+  });
+
   test("a second finger beside the first leaves that first lift cancelled", () => {
     const terminal = wiredTerminal();
     terminal.down(1);

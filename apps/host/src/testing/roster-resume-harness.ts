@@ -20,7 +20,7 @@ export function clearRosterResumes(): void {
 }
 const log = () => {};
 
-export function fixture(options: { readonly changed?: () => void } = {}) {
+export function fixture(options: { readonly changed?: () => void; readonly log?: (line: string) => void } = {}) {
   const a = side("alpha");
   const c = side("browser");
   a.mesh.found(a.m.identity, ownOf(a));
@@ -40,7 +40,7 @@ export function fixture(options: { readonly changed?: () => void } = {}) {
     relay: { url: undefined },
     floor: () => undefined,
     formatReady: () => true,
-    log,
+    log: options.log ?? log,
   });
   stops.push(() => {
     host.pending.expireAll();

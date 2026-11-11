@@ -15,6 +15,7 @@ import {
   terminalBlock,
 } from "@doriface/protocol/layout";
 import { loadView, rememberSeen, saveView, tabKey, type Seen, type View } from "../layout/view.ts";
+import { shownIn } from "./adoption.ts";
 import {
   buildTabs,
   findTerminal,
@@ -299,11 +300,28 @@ export function useLayout(
       // asked for as a new space, starts a space of its own, never the first space of the document.
       const near = !newSpace && active !== null && !active.transient && active.machine === machine ? active : null;
       const space = { id: near?.space ?? freshId("spc"), folder: "" };
-      void layout.edit((doc) => {
-        const first = kept === null ? doc : addDocTab(doc, space, { id: kept.id, name: "", root: kept.root });
-        return addDocTab(first, space, tab, kept?.id ?? near?.id, layout.pins);
-      });
-      show(tabKey(layout.machineId, id), pane);
+      const asked = tabKey(layout.machineId, id);
+      // Where the document already shows the terminal: another device adopted it while this write waited (#2122). A
+      // second tab for it is never written; the view asked to show the new tab shows that one instead.
+      let adopted: ReturnType<typeof shownIn> = null;
+      void layout
+        .edit((doc) => {
+          adopted = shownIn(doc, localOf(address));
+          if (adopted !== null) return null;
+          const first = kept === null ? doc : addDocTab(doc, space, { id: kept.id, name: "", root: kept.root });
+          return addDocTab(first, space, tab, kept?.id ?? near?.id, layout.pins);
+        })
+        .then((saved) => {
+          const there = adopted;
+          if (saved || there === null) return saved;
+          const key = tabKey(layout.machineId, there.tab);
+          setClaimed((claim) => (claim === pane ? there.pane : claim));
+          setView((prev) =>
+            prev.active === asked ? { ...prev, active: key, focused: { ...prev.focused, [key]: there.pane } } : prev,
+          );
+          return saved;
+        });
+      show(asked, pane);
     },
     [active, keepApart, keepHere, layoutOf, show],
   );
@@ -349,14 +367,20 @@ export function useLayout(
       const container = freshId("s");
       // Whether the edit last found the pane gone; a write that failed instead was already reported by `edit`.
       let gone = false;
+      // Whether the document already shows the terminal in a tab of its own, adopted while this write waited (#2122):
+      // it stays there, since a second pane would show one terminal twice.
+      let adopted = false;
       void layout
         .edit((doc) => {
+          adopted = shownIn(doc, localOf(address)) !== null;
+          if (adopted) return null;
           const next =
             doc === null ? null : editTab(doc, tab.id, (root) => splitPane(root, from.id, axis, block, container));
           gone = next === null;
           return next;
         })
         .then((placed) => {
+          if (adopted) return placed;
           const landing = splitLanding(placed, gone);
           if (landing === "own-tab") {
             addTab(address);
