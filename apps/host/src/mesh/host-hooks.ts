@@ -1,4 +1,4 @@
-import type { Signed } from "@doriface/mesh";
+import type { Signed, View } from "@doriface/mesh";
 import type { CounterFloor } from "./merge.ts";
 import type { BudgetFacts, LineFacts, PeerFacts, PendingJoinFact } from "./status-sources.ts";
 
@@ -34,7 +34,7 @@ export interface MeshHooks {
    * Whether every member reads the format a client admission is written in. False while any member has not said so, which
    * is why the gate is asked before the record is signed and not after (design of #942).
    */
-  formatReady(records?: readonly Signed[]): boolean;
+  formatReady(records?: readonly Signed[], view?: View): boolean;
 }
 
 export const IDLE_MESH_HOOKS: MeshHooks = {
