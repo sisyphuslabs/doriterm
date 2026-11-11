@@ -10,8 +10,7 @@ export interface MachineEntry {
   /** The machine this client is connected to; its terminals have bare addresses. */
   readonly local: boolean;
   readonly state: string;
-  readonly live: number;
-  /** Its first live terminal, opened when the machine is picked. */
+  /** Its first live terminal, opened when the machine is picked. Its row counts tabs, not terminals (`machineGroups`). */
   readonly first: string | undefined;
 }
 
@@ -24,10 +23,9 @@ export const stateLabel = (state: string): string => LABELS[state] ?? state;
 export const onlyThisMachine = (entries: readonly MachineEntry[]): boolean => entries.every((machine) => machine.local);
 
 function entry(core: string, name: string, local: boolean, state: string, terminals: readonly Session[]): MachineEntry {
-  const live = terminals.filter((t) => t.state === "live" && t.offline !== true);
-  const own = live.filter((t) => machineOf(t.address) === (local ? undefined : name));
-  const id = idOfMachine(local ? undefined : name);
-  return { id, core, name, local, state, live: own.length, first: own[0]?.address };
+  const machine = local ? undefined : name;
+  const first = terminals.find((t) => t.state === "live" && t.offline !== true && machineOf(t.address) === machine);
+  return { id: idOfMachine(machine), core, name, local, state, first: first?.address };
 }
 
 /** The core the client is connected to, as its `hello` names it. */

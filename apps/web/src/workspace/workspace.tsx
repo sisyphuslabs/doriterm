@@ -21,6 +21,7 @@ import { SpaceRename } from "./space-rename-dialog.tsx";
 import { availableActions } from "./shell-actions.ts";
 import { someoneElseNeedsYou } from "./attention.ts";
 import { PhoneShell } from "./phone-shell.tsx";
+import { phoneSpaces } from "./phone-space-rows.ts";
 import type { SessionVerb } from "./use-app-actions.ts";
 import { useMachineRuns } from "./use-machine-runs.ts";
 import { PIN_LABEL, spacesInOrder } from "./sidebar-model.ts";
@@ -358,13 +359,18 @@ export function Workspace({ connection }: WorkspaceProps) {
   const selectedSpace = layout.active?.spaceKey ?? null;
   const moveSpace = useSpaceMove(layouts, failed);
   // A phone's space row opens that space's screen (#1387); the desktop's selection is not the phone's, so none is marked.
+  // Its rows count the tabs that screen lists, so a count there is the number of rows it heads (#2122); kept while
+  // those counts hold, so the context does not change on every terminal event (#2086).
   const { showSpace } = phone;
+  const counted = useSteady(
+    useMemo(() => (narrow ? phoneSpaces(spaces, sessions) : spaces), [narrow, spaces, sessions]),
+  );
   const spaceSelection = useMemo(
     () =>
       narrow
-        ? { spaces, selected: null, select: showSpace, move: moveSpace }
-        : { spaces, selected: selectedSpace, select: selectSpace, move: moveSpace },
-    [narrow, spaces, selectedSpace, selectSpace, showSpace, moveSpace],
+        ? { spaces: counted, selected: null, select: showSpace, move: moveSpace }
+        : { spaces: counted, selected: selectedSpace, select: selectSpace, move: moveSpace },
+    [narrow, counted, selectedSpace, selectSpace, showSpace, moveSpace],
   );
   // A space is known once the terminals and every layout document are read; until then its screen says it is loading.
   const spacesRead = fed.loaded && layout.restored;

@@ -1,7 +1,7 @@
 import type { Terminal } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
 import type { ListedSpace } from "./model.ts";
-import { spaceSummary, spaceTabRows } from "./phone-space-rows.ts";
+import { phoneSpaces, spaceSummary, spaceTabRows } from "./phone-space-rows.ts";
 
 const terminal = (address: string, fields: Partial<Terminal> = {}): Terminal => ({
   address,
@@ -62,6 +62,18 @@ describe("a space screen's rows", () => {
   test("a row on another machine leaves the machine to the screen's title", () => {
     const rows = spaceTabRows(space([["box/t1"]], [""]), [terminal("box/t1", { name: "plan" })], 0);
     expect(rows[0]?.machine).toBeUndefined();
+  });
+});
+
+describe("a phone's space counts (#2122)", () => {
+  test("a space counts the tabs a phone lists for it: those that show a live terminal, a split tab once", () => {
+    const listed = space([["t1", "t2"], ["t3"], ["t4"]], ["", "", ""]);
+    const terminals = [terminal("t1"), terminal("t2"), terminal("t3", { state: "finished" }), terminal("t4")];
+    // The document holds three tabs and the desktop strip shows all three; a phone's sheet and space screen list two.
+    expect(listed.tabs).toBe(3);
+    const [counted] = phoneSpaces([listed], terminals);
+    expect(counted?.tabs).toBe(2);
+    expect(counted?.tabs).toBe(spaceTabRows(listed, terminals, 0).length);
   });
 });
 

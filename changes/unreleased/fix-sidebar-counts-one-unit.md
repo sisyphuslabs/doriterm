@@ -1,0 +1,10 @@
+### Workspace
+
+- In the sidebar a machine's number is the sum of the numbers on the spaces under it: both count tabs. The machine's
+  number used to count live terminals, so sub-agents, terminals in no tab and each pane of a split tab made it differ
+  from its spaces, and an offline machine read 0 above spaces that still showed tabs. (#2122)
+
+### Phone
+
+- A space's count on a phone is the number of tabs the phone lists for it, in the spaces list and in the spaces sheet.
+  (#2122)
