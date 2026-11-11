@@ -47,9 +47,10 @@ test("Alt+Up reaches the program at the top edge of a split, and the pane does n
   // What the report is about: Alt+Left and Alt+Right were bound to pane.go, so with a neighbour that way Doriterm moved
   // focus instead of sending anything (#1302, #1942). Alt+Up was bound to agent.prev, which is why it is the easy half.
   //
-  // Since #1600 a pane key at a split edge both nudges the pane AND hands the key to the program, so "the sequence
-  // arrived" alone no longer distinguishes the two behaviours: it passes with the binding restored. Focus is what
-  // separates them - a pane move takes focus off this terminal, and nothing else in these chords may.
+  // Since #1600 a pane key at a split edge both nudges the pane AND hands the key to the program, so at an edge "the
+  // sequence arrived" cannot tell the old binding from none. So each pane key below is pressed toward a neighbour, where
+  // the old binding swallowed the key: the missing sequence is what catches it. The focus checks are a second guard - a
+  // pane move takes focus off this terminal, and nothing else in these chords may.
   const focused = first.getByRole("textbox").first();
 
   // Toward the neighbour: the old pane.go:right moved focus to the other pane.
