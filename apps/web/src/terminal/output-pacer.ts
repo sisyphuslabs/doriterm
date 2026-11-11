@@ -187,13 +187,15 @@ export class OutputPacer {
    *
    * hc marks no end of the replay: the core sends its first paint as one write, cut into frames under the stream's
    * credit window, and waits for credit after each window; credit goes back as each batch is written, and a replay is
-   * written as it arrives. So a replay still coming arrives at least a window a round trip, however slow the link: its
-   * gaps are at most a round trip, under the quiet window, whose SRTT is sampled on this connection (the attach answer
+   * written as it arrives. So a replay still coming arrives at least a window a round trip, however slow the link: from
+   * the end of the write that handed a window's credit back, the next window is at most a round trip away, under the
+   * quiet window, which restarts at each arrival and again after each write (on a page slow to write, the gap between
+   * arrivals is a round trip plus the write, #2011), and whose SRTT is sampled on this connection (the attach answer
    * itself is one sample), and every span of {@link REPLAY_CAP_MS} (a round trip or more) writes a window or more. A
    * quiet window or span whose timer runs more than its own length late is started again rather than read: the page was
-   * not running, so it could not see the next window, already queued behind the timer. A fixed
-   * deadline could not hold it: over a 300 ms relay, or on a page slow to write it, a replay of a few hundred KiB to 2
-   * MiB takes longer than any one span.
+   * not running, so it could not see the next window, already queued behind the timer. A fixed deadline could not hold
+   * it: over a 300 ms relay, or on a page slow to write it, a replay of a few hundred KiB to 2 MiB takes longer than
+   * any one span.
    */
   replay(options: ReplayOptions): void {
     if (this.#replay !== null) this.#endReplay();
