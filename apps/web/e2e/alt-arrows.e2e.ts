@@ -27,10 +27,11 @@ let reads = 0;
 const keyboardAddress = (page: Page): Promise<string | null> =>
   page.evaluate(() => document.activeElement?.closest("[data-terminal]")?.getAttribute("data-terminal") ?? null);
 
-/** Up-nudges the panes played so far, counted by a wrapper on Element.animate installed before the app loads. */
+/** The box of the pane that holds the terminal at `address`. */
 const paneBox = (page: Page, address: string) =>
   page.locator("section", { has: page.locator(`[data-terminal="${address}"]`) }).boundingBox();
 
+/** Up-nudges the panes played so far, counted by a wrapper on Element.animate installed before the app loads. */
 const upNudges = (page: Page): Promise<number> => page.evaluate(() => Number(Reflect.get(window, "__upNudges") ?? 0));
 
 const addressOf = async (terminal: Locator): Promise<string> => {
