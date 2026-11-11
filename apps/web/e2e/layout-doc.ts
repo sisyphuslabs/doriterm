@@ -1,11 +1,14 @@
 // The herdr-app layout document on the e2e core, written the way herdr-app 0.1.12 writes it: keys sorted, `type` on
 // every node, a tab's root a row whose id is the tab's.
+import { HcRpcError } from "@doriface/protocol";
 import type { Locator, Page } from "@playwright/test";
 import { getCoreDoc, setCoreDoc, updateCoreDoc } from "./core-doc.ts";
 import { LAYOUT_MACHINE_SPEC } from "./layout-seed.ts";
 import { MACHINE_NAME } from "./machine.ts";
 
 export const LAYOUT_DOC = "herdr-app";
+/** doriface's own document of pinned tab ids beside the layout (#1561); herdr-app drops unknown tab fields. */
+export const PINS_DOC = "doriface-pins";
 
 export type Tree =
   | { readonly pane: string; readonly terminal: string; readonly weight?: number }
@@ -65,10 +68,15 @@ export interface SeedSpace {
     readonly terminal: string;
     /** More terminals split beside the first, in one row. */
     readonly beside?: readonly string[];
+    /** Pinned in front of the space's other tabs (#1561). */
+    readonly pinned?: boolean;
   }[];
 }
 
-/** Saves these spaces, each tab one pane, as the core's layout or (`on`) as its added machine's (#404). */
+/**
+ * Saves these spaces, each tab one pane, as the core's layout or (`on`) as its added machine's (#404), and their pinned
+ * tabs as its pins document (none left from an earlier seed).
+ */
 export function seedSpaces(spaces: readonly SeedSpace[], on?: string): void {
   setCoreDoc(
     LAYOUT_DOC,
@@ -92,6 +100,8 @@ export function seedSpaces(spaces: readonly SeedSpace[], on?: string): void {
     },
     on,
   );
+  const pinned = spaces.flatMap((space) => space.tabs.flatMap((tab) => (tab.pinned === true ? [tab.id] : [])));
+  setCoreDoc(PINS_DOC, pinned.length === 0 ? null : { pinned_tabs: pinned }, on);
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -158,7 +168,8 @@ function clearOn(machine: string, core: "host" | "layout"): void {
   try {
     setCoreDoc(LAYOUT_DOC, null, machine, core);
   } catch (error) {
-    if (!/"kind":"(unavailable|machine_unknown|needs_login)"/.test(String(error))) throw error;
+    if (!(error instanceof HcRpcError && ["unavailable", "machine_unknown", "needs_login"].includes(error.kind)))
+      throw error;
   }
 }
 

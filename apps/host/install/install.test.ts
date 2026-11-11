@@ -32,6 +32,31 @@ const stub = (dir: string, name: string, body: string): void => {
   chmodSync(join(dir, name), 0o755);
 };
 
+/**
+ * A launchd that remembers whether the agent is loaded: bootout unloads it, print finds it only while it is loaded, and
+ * bootstrap loads it, except that the first `failures` bootstraps fail with 5 (EIO), as launchd's do for a while after
+ * an agent it is still unloading has already left `print` (#1966).
+ */
+function launchd(dir: string, log: string, failures = 0): string {
+  const state = join(dir, "launchd-state");
+  const left = join(dir, "launchd-failures");
+  writeFileSync(state, "gone");
+  writeFileSync(left, String(failures));
+  stub(
+    dir,
+    "launchctl",
+    [
+      `echo "launchctl $*" >> "${log}"`,
+      `case "$1" in`,
+      `  bootout) echo gone > "${state}" ;;`,
+      `  print) [ "$(cat "${state}")" = loaded ] || exit 113 ;;`,
+      `  bootstrap) n=$(cat "${left}"); if [ "$n" -gt 0 ]; then echo $((n - 1)) > "${left}"; echo "Bootstrap failed: 5: Input/output error" >&2; exit 5; fi; echo loaded > "${state}" ;;`,
+      `esac`,
+    ].join("\n"),
+  );
+  return state;
+}
+
 const sha256 = (bytes: string): string => new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
 
 /**
@@ -49,8 +74,8 @@ function rig(system: "Linux" | "Darwin", machine = "x86_64"): Rig {
   writeFileSync(log, "");
   stub(stubs, "uname", `[ "$1" = -s ] && echo ${system} || echo ${machine}`);
   stub(stubs, "systemctl", `echo "systemctl $*" >> "${log}"`);
-  // No agent is loaded: `print` finds nothing, as on a computer that never ran the host.
-  stub(stubs, "launchctl", `echo "launchctl $*" >> "${log}"; [ "$1" = print ] && exit 113; exit 0`);
+  // No agent is loaded yet, as on a computer that never ran the host.
+  launchd(stubs, log);
   const os = system === "Linux" ? "linux" : "mac";
   const arch = machine === "x86_64" ? "x64" : "arm64";
   const host = [
@@ -299,6 +324,29 @@ describe("install.sh on Linux", () => {
     expect(plain.calls.filter((call) => call.includes("daemon-reload"))).toEqual([]);
   });
 
+  test("an upgrade keeps the state dir the installed service names, so the host keeps its identity (#1966)", () => {
+    const r = rig("Linux");
+    // Every character the unit escapes, so the installer reads back exactly the path it wrote.
+    const custom = join(r.root, 'mesh 100% $HOME "q\\b');
+    mkdirSync(custom);
+    writeFileSync(join(custom, "identity"), "host A");
+    expect(install(r, ["--no-pair"], [], { DORIFACE_HOST_STATE_DIR: custom }).code).toBe(0);
+    const unitFile = join(r.home, ".config", "systemd", "user", "doriface-host.service");
+    const before = readFileSync(unitFile, "utf8");
+
+    const run = install(r, ["--version", "v0.1.16", "--no-pair"]);
+    expect(run.err).toBe("");
+    expect(run.code).toBe(0);
+    expect(readFileSync(unitFile, "utf8")).toBe(before);
+    expect(readFileSync(join(custom, "identity"), "utf8")).toBe("host A");
+    expect(run.calls.at(-1)).toBe("systemctl --user restart doriface-host.service");
+
+    // Asked for by name, another state dir still wins.
+    const other = join(r.root, "other");
+    expect(install(r, ["--no-pair", "--state-dir", other]).code).toBe(0);
+    expect(readFileSync(unitFile, "utf8")).toContain(`--state-dir "${other}"`);
+  });
+
   test("--uninstall stops the service and removes it and the binary", () => {
     const r = rig("Linux");
     expect(install(r, ["--no-pair"]).code).toBe(0);
@@ -348,6 +396,38 @@ describe("install.sh on macOS", () => {
     expect(run.calls.some((call) => call.startsWith("launchctl bootstrap"))).toBe(false);
   });
 
+  test("an upgrade keeps the agent's state dir and identity, and leaves the agent loaded (#1966)", () => {
+    const r = rig("Darwin", "arm64");
+    const custom = join(r.root, "mesh & <state>");
+    mkdirSync(custom);
+    writeFileSync(join(custom, "identity"), "host A");
+    expect(install(r, ["--no-pair"], [], { DORIFACE_HOST_STATE_DIR: custom }).code).toBe(0);
+    const plistFile = join(r.home, "Library", "LaunchAgents", "dev.omo.doriface-host.plist");
+    const before = readFileSync(plistFile, "utf8");
+    expect(before).toContain(`<string>${r.root}/mesh &amp; &lt;state&gt;</string>`);
+
+    // The upgrade, as #1966 ran it; launchd refuses the first bootstrap after the old agent leaves `print`.
+    const agent = launchd(r.stubs, r.log, 1);
+    writeFileSync(agent, "loaded");
+    stub(r.stubs, "sleep", `echo "sleep $*" >> "${r.log}"`);
+    const run = install(r, ["--version", "v0.1.16", "--no-pair"]);
+    expect(run.err).toBe("");
+    expect(run.code).toBe(0);
+    expect(readFileSync(plistFile, "utf8")).toBe(before);
+    expect(readFileSync(join(custom, "identity"), "utf8")).toBe("host A");
+    expect(readFileSync(agent, "utf8").trim()).toBe("loaded");
+  });
+
+  test("a bootstrap launchd keeps refusing fails the install loudly instead of leaving the agent quietly unloaded", () => {
+    const r = rig("Darwin", "arm64");
+    launchd(r.stubs, r.log, 1000);
+    stub(r.stubs, "sleep", `echo "sleep $*" >> "${r.log}"`);
+    const run = install(r, ["--no-pair"]);
+    expect(run.code).toBe(1);
+    expect(run.err).toContain("Bootstrap failed: 5: Input/output error");
+    expect(run.err).toContain("launchctl bootstrap gui/");
+  });
+
   test("registers a LaunchAgent that keeps the host running, then pairs", () => {
     const r = rig("Darwin", "arm64");
     const run = install(r);
@@ -360,6 +440,7 @@ describe("install.sh on macOS", () => {
       `launchctl bootout gui/${uid}/dev.omo.doriface-host`,
       `launchctl print gui/${uid}/dev.omo.doriface-host`,
       `launchctl bootstrap gui/${uid} ${join(r.home, "Library", "LaunchAgents", "dev.omo.doriface-host.plist")}`,
+      `launchctl print gui/${uid}/dev.omo.doriface-host`,
       `doriface-host pair --wait-host 60 --state-dir ${join(r.home, ".local", "state", "doriface-host")}`,
     ]);
     const plist = readFileSync(join(r.home, "Library", "LaunchAgents", "dev.omo.doriface-host.plist"), "utf8");

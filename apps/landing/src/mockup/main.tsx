@@ -1,26 +1,17 @@
 import { TooltipProvider } from "@doriface/ui";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { applyFrameMessage, applyTheme, holdMotion } from "./frame-message.ts";
 import { DesktopView, PhoneView } from "./views.tsx";
 
-/** The landing names its pinned theme "light" or "dark"; the app's presets for those are Day and Night. */
-const THEMES: Readonly<Record<string, string>> = { light: "day", dark: "night" };
-
-function applyTheme(choice: string | null): void {
-  const theme = choice === null ? undefined : THEMES[choice];
-  if (theme === undefined) delete document.documentElement.dataset["theme"];
-  else document.documentElement.dataset["theme"] = theme;
-}
-
 const params = new URLSearchParams(location.search);
-applyTheme(params.get("theme"));
-// Only the landing page on this same origin may re-theme the mockup.
+applyTheme(document.documentElement, params.get("theme"));
+// Only the landing page on this same origin may re-theme the mockup or pause its motion.
 addEventListener("message", (event: MessageEvent<unknown>) => {
   if (event.origin !== location.origin) return;
-  const data = event.data;
-  if (typeof data === "object" && data !== null && "theme" in data) {
-    const { theme } = data as { readonly theme: unknown };
-    applyTheme(typeof theme === "string" ? theme : null);
+  applyFrameMessage(document.documentElement, event.data);
+  if (typeof event.data === "object" && event.data !== null && "motionPaused" in event.data) {
+    holdMotion(document, document.documentElement.dataset["motion"] === "paused");
   }
 });
 // A picture of the app, not the app: nothing in it takes focus or input.

@@ -18,6 +18,8 @@ const STATES: readonly { readonly label: string; readonly state: VoiceState }[] 
     state: { kind: "ready", transcript: VOICE_TRANSCRIPT },
   },
   { label: "Error: microphone permission denied", state: { kind: "error", reason: "permission" } },
+  { label: "Windows: microphone privacy is off", state: { kind: "error", reason: "mic-windows" } },
+  { label: "Windows: no installed SAPI recognizer", state: { kind: "error", reason: "device-windows" } },
   { label: "Error: no speech heard", state: { kind: "error", reason: "no-speech" } },
   {
     label: "Unavailable: no speech recognition in this browser",
