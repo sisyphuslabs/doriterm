@@ -27,6 +27,7 @@ beforeAll(() => {
   host = new LocalHost({
     command: { file: process.execPath, args: [cli] },
     hc: () => session.hc,
+    cwd: tmpdir(),
     env: session.env,
     log: (line) => logs.push(line),
   });
@@ -75,6 +76,7 @@ describe("LocalHost against the workspace doriface-host and a real hc", () => {
     const broken = new LocalHost({
       command: { file: process.execPath, args: ["-e", "console.error('boom'); process.exit(3)"] },
       hc: () => undefined,
+      cwd: tmpdir(),
       env: process.env,
       log: () => {},
     });
@@ -96,6 +98,7 @@ describe("LocalHost against the workspace doriface-host and a real hc", () => {
     const dying = new LocalHost({
       command: { file: process.execPath, args: ["-e", child] },
       hc: () => undefined,
+      cwd: tmpdir(),
       env: process.env,
       log: (line) => {
         if (!line.startsWith("doriface-host exited")) return;
@@ -117,6 +120,7 @@ describe("the host the desktop app starts (#596)", () => {
     const started = new LocalHost({
       command: { file: process.execPath, args: [join(import.meta.dir, "fixtures", "spawn-args.fixture.ts")] },
       hc: () => undefined,
+      cwd: tmpdir(),
       env: process.env,
       log: (line) => lines.push(line),
     });
@@ -176,6 +180,7 @@ describe("LocalHost when doriface-host cannot start", () => {
       command,
       hc: () => hc,
       ...(searched === undefined ? {} : { searched: () => searched }),
+      cwd: tmpdir(),
       env: { ...process.env, DORIFACE_HOST_STATE_DIR: stateDir },
       log: () => {},
     });
