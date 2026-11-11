@@ -279,7 +279,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         link,
         (coreId) => firstLineRefusal(peer, coreId, index),
         (code, reason) => {
-          log(`mesh: closing a session: ${reason}`);
+          log(`e2ee: close code=${code} source=hc-hello peer=${peer.kind} stream=hc: ${reason}`);
           close(code, reason);
         },
       );

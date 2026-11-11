@@ -37,7 +37,9 @@ export interface HostOptions {
   readonly resumeGraceMs?: number | undefined;
   /**
    * For tests: how long the hello of an `hc connect` the host's own writers start (the end sweeper, the OS write, the
-   * git facts) may go unanswered before that connection fails (default 10 s). `Infinity` leaves those connects to stop.
+   * git facts, the mesh status publisher, the mesh offer service, the push core feed and the host's control connection,
+   * each through `openOnCore`) may go unanswered before that connection fails (default 10 s). `Infinity` leaves those
+   * connects to stop.
    */
   readonly hcHandshakeTimeoutMs?: number | undefined;
   /** Registers typed-code pairing slots; defaults to the relay uplink when there is one. */

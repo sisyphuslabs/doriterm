@@ -91,7 +91,12 @@ async function serve(
           hostId: e2ee.identity.hostId,
           devices: e2ee.devices,
           mesh: e2ee.mesh,
-          hc: { hc: options.hc, session: options.session, env: options.env },
+          hc: {
+            hc: options.hc,
+            session: options.session,
+            env: options.env,
+            handshakeTimeoutMs: options.hcHandshakeTimeoutMs,
+          },
           extraOrigins: options.pushTestOrigins,
           log: options.log,
         });

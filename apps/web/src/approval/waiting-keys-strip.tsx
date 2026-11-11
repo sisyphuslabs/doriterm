@@ -1,19 +1,17 @@
 import type { HcConnection } from "@doriface/client";
 import { Button } from "@doriface/ui";
 import { useState } from "react";
-import { WAITING_KEYS } from "./waiting-keys.ts";
+import { latestPress, WAITING_KEYS } from "./waiting-keys.ts";
 
 /**
  * The answer strip over a terminal whose agent waits on a person with no card (#1527): each tap presses exactly that key
- * in the terminal and nothing else; the strip goes once the agent stops waiting. A press that fails says so and can be
- * tapped again.
+ * in the terminal and nothing else; the strip goes once the agent stops waiting. When the latest press fails the strip
+ * says so, and it can be tapped again.
  */
 export function WaitingKeysStrip({ connection, address }: { connection: HcConnection; address: string }) {
   const [failed, setFailed] = useState(false);
-  const press = (key: string) => {
-    setFailed(false);
-    connection.call("terminal.keys", { terminal: address, keys: [key] }).catch(() => setFailed(true));
-  };
+  const [send] = useState(() => latestPress(setFailed));
+  const press = (key: string) => send(() => connection.call("terminal.keys", { terminal: address, keys: [key] }));
   return (
     <div
       role="group"
@@ -21,7 +19,7 @@ export function WaitingKeysStrip({ connection, address }: { connection: HcConnec
       data-waiting-keys={address}
       className="pointer-events-auto flex w-full max-w-2xl flex-wrap items-center gap-2 rounded-xl border border-border bg-chrome/95 p-2 shadow-lg backdrop-blur-md"
     >
-      <p className="mr-auto px-1 text-sm font-medium text-status-blocked-text">
+      <p className="mr-auto px-1 text-prose font-medium text-status-blocked-text">
         {failed ? "That key did not reach the terminal" : "Waiting for input"}
       </p>
       {WAITING_KEYS.map((each) => (

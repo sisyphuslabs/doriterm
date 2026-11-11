@@ -103,7 +103,8 @@ async function stopLeftovers(): Promise<void> {
 
 let stopping = false;
 let stopMachine: (() => Promise<void>) | undefined;
-async function shutdown(): Promise<void> {
+/** Exits 0 only when told to stop; a setup that failed or a doriface-host that stopped by itself exits non-zero (#1279). */
+async function shutdown(code = 0): Promise<void> {
   if (stopping) return;
   stopping = true;
   host.kill("SIGTERM");
@@ -118,7 +119,7 @@ async function shutdown(): Promise<void> {
   }
   rmSync(savedEnv, { force: true });
   rmSync(dir, { recursive: true, force: true });
-  process.exit(0);
+  process.exit(code);
 }
 process.once("SIGTERM", () => void shutdown());
 process.once("SIGINT", () => void shutdown());
@@ -146,7 +147,11 @@ try {
   }
 } catch (error) {
   console.error(`e2e host setup failed: ${String(error)}`);
-  await shutdown();
+  await shutdown(1);
 }
-await host.exited;
-if (!stopping) await shutdown();
+const exitCode = await host.exited;
+if (!stopping) {
+  // doriface-host has already said why on stderr (a port in use, say); its exit code is passed on.
+  console.error(`e2e host: doriface-host exited by itself (exit ${exitCode})`);
+  await shutdown(exitCode === 0 ? 1 : exitCode);
+}

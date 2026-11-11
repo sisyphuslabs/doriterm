@@ -1,5 +1,15 @@
-/** Longest a confirmed cell stays held while the program keeps a synchronized update open: wterm's own hold (1000 ms). */
+/** wterm's own hold of a synchronized update's paint (1000 ms), after which it paints the update anyway. */
 export const SYNCHRONIZED_HOLD_MS = 1000;
+
+/**
+ * How far past wterm's hold a held cell may wait for that paint. wterm starts its 1000 ms inside the write that opens the
+ * update (the same call that sets the bridge's synchronized flag), so a hold first seeing the update at its next frame
+ * counts from after it. A hold made from inside that write, by a reply the write sends, sees the update open a fraction
+ * of a millisecond before wterm starts its timer; were the cap due first, the cell would go a frame before the echo is
+ * painted, a blank frame (#2083). wterm's fallback writes the grid in its own timer task, so with the cap behind it the
+ * grid change releases the cell in the frame the echo appears.
+ */
+export const SYNCHRONIZED_HOLD_MARGIN_MS = 250;
 
 /** What the release reads and schedules with; the hook passes the browser's, a test passes fakes. */
 export interface ReleaseClock {
@@ -15,8 +25,8 @@ export interface ReleaseClock {
  * #1439). A grid change means the renderer painted: release at once. Otherwise the renderer paints a write on the next
  * frame, so release then, unless the program has a synchronized update open: wterm then paints nothing until the update
  * ends (or its own 1000 ms fallback fires), which changes the grid; releasing on the next frame instead would blank the
- * cell for as long as the update lasts. That wait is capped at SYNCHRONIZED_HOLD_MS from when the hold began, so a
- * render that changes no grid node can never leave a cell held for good.
+ * cell for as long as the update lasts. That wait is capped at SYNCHRONIZED_HOLD_MS plus SYNCHRONIZED_HOLD_MARGIN_MS from
+ * when the update was first seen open, so a render that changes no grid node can never leave a cell held for good.
  */
 export class HeldRelease {
   readonly #clock: ReleaseClock;
@@ -37,6 +47,7 @@ export class HeldRelease {
     else
       this.#cancel = this.#clock.frame(() => {
         this.#cancel = null;
+        this.#since = this.#clock.now();
         if (this.#clock.synchronized()) this.#capped();
         else this.#release();
       });
@@ -54,7 +65,7 @@ export class HeldRelease {
   }
 
   #capped(): void {
-    const left = Math.max(0, this.#since + SYNCHRONIZED_HOLD_MS - this.#clock.now());
+    const left = Math.max(0, this.#since + SYNCHRONIZED_HOLD_MS + SYNCHRONIZED_HOLD_MARGIN_MS - this.#clock.now());
     this.#cancel = this.#clock.timer(() => {
       this.#cancel = null;
       this.#release();

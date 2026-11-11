@@ -63,6 +63,9 @@ const MAC: readonly [string, string][] = [
   ["super+0", "app.zoom_reset"],
   ["super+c", "terminal.copy"],
   ["super+v", "terminal.paste"],
+  // herdr-app's Ctrl+V: the clipboard's image as a file on the terminal's machine, else ^V to the program. Elsewhere
+  // Ctrl+V stays the browser's paste, which already sends an image as a file (herdr-app-parity.ts).
+  ["ctrl+v", "terminal.paste_image"],
   ["super+a", "terminal.select_all"],
   ["super+k", "terminal.clear"],
   ["super+f", "terminal.search"],
@@ -81,8 +84,9 @@ const MAC: readonly [string, string][] = [
 ];
 
 /**
- * herdr-app's keys.json merged with Ghostty's Linux and Windows defaults. Focus moves with herdr-app's Alt+arrows and
- * Alt+H/J/K/L and Ghostty's Ctrl+Alt+arrows; with no pane that way the key reaches the terminal program.
+ * herdr-app's keys.json merged with Ghostty's Linux and Windows defaults. Panes move with Ctrl+Alt+arrows and the
+ * herdr-app vim keys, never with Alt+arrows: a Windows or Linux terminal is where a program reads those for its own
+ * answers and word moves (#1302). With no pane that way the key reaches the program.
  */
 const OTHER: readonly [string, string][] = [
   ["ctrl+shift+t", "tab.new"],
@@ -107,8 +111,6 @@ const OTHER: readonly [string, string][] = [
   ["ctrl+shift+o", "pane.split:right"],
   ["ctrl+shift+e", "pane.split:down"],
   ["ctrl+shift+x", "pane.close"],
-  ["alt+left", "pane.go:left"],
-  ["alt+right", "pane.go:right"],
   ["alt+h", "pane.go:left"],
   ["alt+j", "pane.go:down"],
   ["alt+k", "pane.go:up"],
@@ -128,8 +130,11 @@ const OTHER: readonly [string, string][] = [
   ["ctrl+alt+=", "pane.equalize"],
   ["ctrl+shift+enter", "pane.zoom"],
   ["ctrl+shift+z", "pane.zoom"],
-  ["alt+down", "agent.next"],
-  ["alt+up", "agent.prev"],
+  // Alt+Up and Alt+Down are the answer keys agents and editors read (ESC [ 1 ; 3 A/B), and a Windows or Linux
+  // terminal is where they are pressed, so Doriterm keeps its hands off them: agent navigation mirrors the
+  // macOS pair as Ctrl+Shift+] and Ctrl+Shift+[, since a bare Ctrl+[ is ESC to every terminal.
+  ["ctrl+shift+]", "agent.next"],
+  ["ctrl+shift+[", "agent.prev"],
   ["ctrl+shift+b", "layout.toggle:sidebar"],
   ["ctrl+shift+.", "layout.focus:sidebar"],
   // Ghostty takes Ctrl+Shift+F for its own search here, so the filter takes Ctrl+Alt+F.
