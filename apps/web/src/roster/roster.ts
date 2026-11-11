@@ -14,6 +14,7 @@ import type { RosterChange } from "./changes.ts";
 import { docCalls } from "./doc-calls.ts";
 import { LayoutDocs } from "./docs.ts";
 import { RosterFeed, type Schedule } from "./feed.ts";
+import { LineWatch } from "./line-watch.ts";
 import type { RosterLink } from "./link.ts";
 import { MachineRoster, type MachinesRead } from "./machines.ts";
 import { NO_TERMINALS, type TerminalsState } from "./terminals-state.ts";
@@ -82,6 +83,7 @@ export class Roster {
   readonly #unheard = new Map<string, { readonly layout?: number; readonly pins?: number }>();
   readonly #docHeard = new Set<DocHeard>();
   readonly #gaps = new Set<() => void>();
+  readonly #lines: LineWatch;
   #connection: RosterLink;
   #feed: RosterFeed | undefined;
   #snapshot: RosterSnapshot;
@@ -133,6 +135,8 @@ export class Roster {
       readOrderDocument,
     );
     this.#snapshot = { terminals: NO_TERMINALS, machines: this.machines.read, order: this.order.state, docsLanded: 0 };
+    const refresh = (): void => void this.machines.refresh();
+    this.#lines = new LineWatch(refresh, options.every ?? browser.every, options.visible ?? browser.visible);
   }
 
   get snapshot(): RosterSnapshot {
@@ -174,6 +178,11 @@ export class Roster {
 
   refreshMachines(): Promise<void> {
     return this.machines.refresh();
+  }
+
+  /** Reads machine.list every LINE_READ_MS (line-watch.ts) while a view watches an added machine's line; returns the stop. */
+  watchLines(): () => void {
+    return this.#lines.watch();
   }
 
   /** Asks the core for the terminal list and the stream again after a first answer that failed (#819). */
