@@ -203,4 +203,13 @@ describe("one terminal, one identity, however it is reached (#2288)", () => {
     expect(asked).toEqual(["rm build-box/t7"]);
     expect(pendingEnds("core-a", storage).list()).toEqual([]);
   });
+
+  test("removing an old prefixed record keeps the record the name's machine now holds for its own terminal", () => {
+    const storage = memoryStorage();
+    pendingEnds("core-a", storage).add({ address: "build-box/t7", pid: 1, created: 1, at: NOW });
+    pendingEnds("core-b", storage).add({ address: "t7", pid: 70, created: 500, at: NOW });
+    routedPendingEnds(throughA, storage).remove("build-box/t7");
+    expect(pendingEnds("core-a", storage).list()).toEqual([]);
+    expect(pendingEnds("core-b", storage).list()).toEqual([{ address: "t7", pid: 70, created: 500, at: NOW }]);
+  });
 });

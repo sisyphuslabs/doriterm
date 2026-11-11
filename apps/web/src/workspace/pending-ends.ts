@@ -23,6 +23,8 @@ export const PENDING_END_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 export interface PendingEnds {
   add(end: PendingEnd): void;
   remove(address: string): void;
+  /** Whether an End is kept for this address, whatever its age. */
+  has(address: string): boolean;
   /** The ones still young enough to resume, oldest first. */
   list(now?: number): readonly PendingEnd[];
 }
@@ -58,6 +60,7 @@ export function pendingEnds(core: string, storage: StorageLike | undefined = gua
   return {
     add: (end) => write([...read().filter((entry) => entry.address !== end.address), end]),
     remove: (address) => write(read().filter((entry) => entry.address !== address)),
+    has: (address) => read().some((entry) => entry.address === address),
     list: (now = Date.now()) =>
       read()
         .filter((entry) => now - entry.at <= PENDING_END_MAX_AGE_MS)
@@ -82,10 +85,19 @@ export function routedPendingEnds(
       if (identity === undefined) own(route.core).add(end);
       else own(identity.core).add({ ...end, address: identity.terminal });
     },
+    // A prefixed address is first an old record's, kept as written under this core: that one goes alone, so a record
+    // the name's machine keeps for its own terminal of that id (a renamed machine) is not taken with it.
     remove: (address) => {
+      if (address.includes("/") && own(route.core).has(address)) return own(route.core).remove(address);
       const identity = identityOf(address, route);
       if (identity !== undefined) own(identity.core).remove(identity.terminal);
-      if (address.includes("/")) own(route.core).remove(address);
+    },
+    has: (address) => {
+      const identity = identityOf(address, route);
+      return (
+        (address.includes("/") && own(route.core).has(address)) ||
+        (identity !== undefined && own(identity.core).has(identity.terminal))
+      );
     },
     list: (now) =>
       [route.core, ...route.machines.map((machine) => machine.id)]

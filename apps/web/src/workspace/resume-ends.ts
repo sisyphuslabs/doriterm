@@ -46,7 +46,8 @@ export function recordedEnd(ends: PendingEnds, end: PendingEnd, calls: SessionCa
 /**
  * Once per connection, finishes the Ends this browser asked of its core, or of a machine it reaches, that a closed page
  * left unfinished. It waits for the first machine list (`machines` undefined until then), so an End kept with an added
- * machine's core is found by that machine's address on this route (#2288).
+ * machine's core is found by that machine's address on this route (#2288). If that first list failed, it runs once with
+ * the connected core alone: an added machine's Ends stay kept and are finished on the next connection.
  */
 export function useResumeEnds(connection: HcConnection, machines: readonly MachineView[] | undefined): void {
   const listed = machines !== undefined;
