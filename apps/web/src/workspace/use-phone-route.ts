@@ -1,5 +1,5 @@
 import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { guideStore } from "../pair/first-run-guide.ts";
 import {
   PHONE_LIST,
@@ -35,6 +35,10 @@ export interface PhoneNavigation {
   readonly dropSpace: () => void;
   /** Whether the last move between entries went forward (a push): only then does a pushed screen slide in. */
   readonly pushed: boolean;
+  /** Whether the switch sheet is open over the open terminal (`&sheet=switch`). */
+  readonly sheet: boolean;
+  /** Opens the switch sheet (one entry over its terminal) or closes it (Back off that entry). */
+  readonly showSheet: (open: boolean) => void;
 }
 
 /**
@@ -58,7 +62,13 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
   const navigate = useNavigate();
   const router = useRouter();
   const search = useRouterState({
-    select: (state) => state.location.search as { readonly v?: unknown; readonly s?: unknown; readonly t?: unknown },
+    select: (state) =>
+      state.location.search as {
+        readonly v?: unknown;
+        readonly s?: unknown;
+        readonly t?: unknown;
+        readonly sheet?: unknown;
+      },
   });
   const path = useRouterState({ select: (state) => state.location.pathname });
   const index = useRouterState({ select: (state) => state.location.state[ENTRY_INDEX] });
@@ -85,6 +95,26 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     (next: PhoneRoute, replace: boolean) => void navigate({ href: phoneHref(next), replace }),
     [navigate],
   );
+  const back = useCallback(() => {
+    if (landed !== null && index > landed) router.history.back();
+    else go(phoneParent(listed), true);
+  }, [go, index, listed, router]);
+  // The sheet's entry is left by a Back, once: what it switches to is shown when that Back has landed on its terminal.
+  const sheetClosing = useRef(false);
+  const afterSheet = useRef<string | null>(null);
+  const sheetOn = narrow && path === "/" && listed.sheet;
+  const showSheet = useCallback(
+    (opening: boolean) => {
+      if (opening) {
+        if (!listed.sheet && listed.terminal !== null) go({ ...listed, sheet: true }, false);
+        return;
+      }
+      if (!listed.sheet || sheetClosing.current) return;
+      sheetClosing.current = true;
+      back();
+    },
+    [back, go, listed],
+  );
   const show = useCallback(
     (address: string) => {
       // Opening a terminal is what the first-run guide is waiting for (#668); this stays even when no entry is pushed.
@@ -92,13 +122,26 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
       // A desktop keeps no history entries of its own: its New tab and its notices are not navigations, and pushing one
       // made Back step through no-op entries and a landing run close the screen behind it.
       if (!narrow) return;
+      // From the sheet: its entry goes first, so the switch replaces the terminal's own entry, not the sheet's.
+      if (sheetOn) {
+        afterSheet.current = address;
+        showSheet(false);
+        return;
+      }
       // Switching inside an open terminal replaces its entry, so one Back still leaves the terminal for where it came from.
       go({ ...listed, terminal: tabKey(address, ids) }, listed.terminal !== null);
     },
-    [go, ids, listed, narrow],
+    [go, ids, listed, narrow, sheetOn, showSheet],
   );
+  useEffect(() => {
+    if (sheetOn) return;
+    sheetClosing.current = false;
+    const next = afterSheet.current;
+    afterSheet.current = null;
+    if (next !== null) show(next);
+  }, [sheetOn, show]);
   const showSpace = useCallback(
-    (spaceKey: string) => go({ section: listed.section, space: spaceKey, terminal: null }, false),
+    (spaceKey: string) => go({ section: listed.section, space: spaceKey, terminal: null, sheet: false }, false),
     [go, listed.section],
   );
   const showSection = useCallback(
@@ -116,17 +159,13 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
       if (section === "agents") return go(PHONE_LIST, true);
       // From the agents, Spaces is entered (one entry); within Spaces, its tab goes back to its own list in place.
       if (listed.section !== "spaces") spacesOverAgents = index + 1;
-      return go({ section: "spaces", space: null, terminal: null }, listed.section === "spaces");
+      return go({ section: "spaces", space: null, terminal: null, sheet: false }, listed.section === "spaces");
     },
     [go, index, listed, router],
   );
-  const back = useCallback(() => {
-    if (landed !== null && index > landed) router.history.back();
-    else go(phoneParent(listed), true);
-  }, [go, index, listed, router]);
   const backFromSpace = useCallback(() => {
     if (listed.terminal === null) back();
-    else go({ ...listed, space: null, terminal: null }, true);
+    else go({ ...listed, space: null, terminal: null, sheet: false }, true);
   }, [back, go, listed]);
   const dropSpace = useCallback(() => {
     if (path === "/" && listed.space !== null) go({ ...listed, space: null }, true);
@@ -143,5 +182,7 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     backFromSpace,
     dropSpace,
     pushed: forward.current,
+    sheet: sheetOn,
+    showSheet,
   };
 }

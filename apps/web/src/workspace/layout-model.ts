@@ -56,6 +56,9 @@ export interface Mounts {
 
 export const newMounts = (): Mounts => ({ shown: new Map(), taken: new Map() });
 
+/** No machine listed: what tab-keys.ts remembers a terminal by before machine.list names its machine. */
+const UNLISTED: MachineIds = { byName: new Map(), byId: new Map() };
+
 /**
  * A document tab that takes over a terminal this screen showed in a tab of no document (the first live terminal shown
  * alone while its tab was still being written, or a loose tab) keeps that tab's panel and pane keys, so the terminal's
@@ -65,6 +68,10 @@ export const newMounts = (): Mounts => ({ shown: new Map(), taken: new Map() });
 export function keepMounts(tabs: readonly LayoutTab[], mounts: Mounts, ids: MachineIds): LayoutTab[] {
   const inUse = new Set(tabs.flatMap((tab) => (tab.transient ? [tab.key] : [])));
   for (const taken of mounts.taken.values()) if (taken !== null) inUse.add(taken.mount.tab);
+  // A view recorded while its machine was not yet listed is remembered by the `name:` key; once the machine is listed
+  // the same terminal's key is `id:`, so that render looks under both (#2107).
+  const recordedAs = (address: string): string | undefined =>
+    [terminalKey(address, ids), terminalKey(address, UNLISTED)].find((key) => mounts.shown.has(key));
   const kept = tabs.map((tab): LayoutTab => {
     if (tab.transient) {
       const pane = tab.panes[0];
@@ -72,8 +79,8 @@ export function keepMounts(tabs: readonly LayoutTab[], mounts: Mounts, ids: Mach
       return tab;
     }
     if (!mounts.taken.has(tab.key)) {
-      const pane = tab.panes.find((each) => each.address !== null && mounts.shown.has(terminalKey(each.address, ids)));
-      const shownAs = pane?.address == null ? undefined : terminalKey(pane.address, ids);
+      const pane = tab.panes.find((each) => each.address !== null && recordedAs(each.address) !== undefined);
+      const shownAs = pane?.address == null ? undefined : recordedAs(pane.address);
       const mount = shownAs === undefined ? undefined : mounts.shown.get(shownAs);
       const free = mount !== undefined && !inUse.has(mount.tab);
       mounts.taken.set(tab.key, pane !== undefined && mount !== undefined && free ? { pane: pane.id, mount } : null);

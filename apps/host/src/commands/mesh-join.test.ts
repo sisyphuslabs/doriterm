@@ -20,6 +20,17 @@ async function joinWith(
   answer: Record<string, unknown> = { meshId: "m1" },
   out: (text: string) => void = () => {},
 ): Promise<readonly ControlRequest[]> {
+  const { asked, error } = await tryJoin(args, answer, out);
+  if (error !== undefined) throw error;
+  return asked;
+}
+
+/** As `joinWith`, but a failed join returns its error beside what the host was asked by then. */
+async function tryJoin(
+  args: readonly string[],
+  answer: Record<string, unknown> = { meshId: "m1" },
+  out: (text: string) => void = () => {},
+): Promise<{ asked: readonly ControlRequest[]; error: unknown }> {
   const dir = mkdtempSync(join(tmpdir(), "dh-mesh-join-"));
   dirs.push(dir);
   const asked: ControlRequest[] = [];
@@ -29,10 +40,12 @@ async function joinWith(
   });
   try {
     await meshJoinCommand(["join", ...args.map((arg) => arg.replace("<dir>", dir)), "--state-dir", dir], out, () => {});
+    return { asked, error: undefined };
+  } catch (error) {
+    return { asked, error };
   } finally {
     control.stop();
   }
-  return asked;
 }
 
 test("mesh join tells its caller when the running host withdrew its own mesh invite to join", async () => {
@@ -64,6 +77,32 @@ test("mesh join refuses a link and --from-file together, and an empty file, befo
   const empty = join(mkdtempSync(join(tmpdir(), "dh-join-link-")), "link");
   dirs.push(join(empty, ".."));
   writeFileSync(empty, "\n");
-  await expect(joinWith([LINK, "--from-file", empty, "--yes"])).rejects.toThrow();
-  await expect(joinWith(["--from-file", empty, "--yes"])).rejects.toThrow();
+  const both = await tryJoin([LINK, "--from-file", empty, "--yes"]);
+  expect(both.error).toBeInstanceOf(Error);
+  expect((both.error as Error).message).toBe("mesh join takes a link or code, or --from-file, not both");
+  expect(both.asked).toEqual([]);
+  const none = await tryJoin(["--from-file", empty, "--yes"]);
+  expect(none.error).toBeInstanceOf(Error);
+  expect((none.error as Error).message).toBe(`${empty} holds no mesh pairing link or code`);
+  expect(none.asked).toEqual([]);
+});
+
+test("mesh join --from-file skips blank lines before the link, as the trimmed whole file did (#1726 review)", async () => {
+  const file = join(mkdtempSync(join(tmpdir(), "dh-join-link-")), "link");
+  dirs.push(join(file, ".."));
+  writeFileSync(file, `\n  \n${LINK}\n`, { mode: 0o600 });
+  const asked = await joinWith(["--from-file", file, "--yes"]);
+  expect(
+    asked.filter((request) => request.op === "mesh-join").map((request) => Reflect.get(request, "target")),
+  ).toEqual([LINK]);
+});
+
+test("mesh join --from-file joins with the file's first line, whatever follows it (#1200)", async () => {
+  const file = join(mkdtempSync(join(tmpdir(), "dh-join-link-")), "link");
+  dirs.push(join(file, ".."));
+  writeFileSync(file, `${LINK}\nwritten by a script after the link\n`, { mode: 0o600 });
+  const asked = await joinWith(["--from-file", file, "--yes"]);
+  expect(
+    asked.filter((request) => request.op === "mesh-join").map((request) => Reflect.get(request, "target")),
+  ).toEqual([LINK]);
 });

@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, openNewTerminal, terminalCount, test } from "./fixtures.ts";
+import { holdFrames } from "./hold-frames.ts";
 import { pagePlatform, shortcut } from "./platform-keys.ts";
 
 test.use({ serviceWorkers: "block" });
@@ -64,28 +65,6 @@ test("shortcuts opened from the palette return focus to the terminal when closed
   await expect(dialog).toHaveCount(0);
   await expect.poll(() => focusedTerminal(page)).toBe(address);
 });
-
-/**
- * Holds the page's animation frames, as a page too busy to draw holds them, until the returned release runs every one
- * still wanted. Anything the page puts off to its next frame waits; what it does at once does not.
- */
-async function holdFrames(page: Page): Promise<() => Promise<void>> {
-  await page.evaluate(() => {
-    const request = window.requestAnimationFrame.bind(window);
-    const cancel = window.cancelAnimationFrame.bind(window);
-    const held = new Map<number, FrameRequestCallback>();
-    let next = -1;
-    window.requestAnimationFrame = (callback) => (held.set(next, callback), next--);
-    window.cancelAnimationFrame = (id) => void (held.delete(id) || cancel(id));
-    Reflect.set(window, "__releaseFrames", () => {
-      window.requestAnimationFrame = request;
-      window.cancelAnimationFrame = cancel;
-      for (const callback of held.values()) request(callback);
-      held.clear();
-    });
-  });
-  return () => page.evaluate(() => Reflect.get(window, "__releaseFrames")());
-}
 
 test("shortcuts opened from the palette take the keyboard before the next frame, so an Escape at once closes them (#2046)", async ({
   page,
