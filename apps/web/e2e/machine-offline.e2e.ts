@@ -10,8 +10,9 @@ import {
   OFFLINE_TEST_TIMEOUT_MS,
 } from "./machine-switch.ts";
 
-/** hc's redial backoff after a few refused dials, plus one machine.list read. */
-const REDIAL_BOUND_MS = 45_000;
+/** How long the PAGE may take to show a machine again after its line came back: hc's redial backoff after a few refused
+ * dials, plus one machine.list read. A page-side bound, unlike machine-switch.ts's REDIAL_BOUND_MS on the core itself. */
+const PAGE_REDIAL_BOUND_MS = 45_000;
 
 const statusCount = (page: Page) => page.getByRole("contentinfo").getByText(/^\d+ terminals?\b/);
 
@@ -51,7 +52,7 @@ test.describe("a machine whose line drops while its terminals keep running", () 
     switchTo("drop");
     await expect(page.getByRole("region", { name: "Offline" })).toBeVisible({ timeout: OFFLINE_BOUND_MS });
     switchOn();
-    await expect(agentRow(working, "crunch", true)).toBeVisible({ timeout: REDIAL_BOUND_MS });
+    await expect(agentRow(working, "crunch", true)).toBeVisible({ timeout: PAGE_REDIAL_BOUND_MS });
     await expect(page.getByRole("region", { name: "Offline" })).toHaveCount(0);
     await expect(machineRow(page)).toContainText(/connected\s*1/);
     expect(await page.evaluate(() => "sameDocument" in window)).toBe(true);
