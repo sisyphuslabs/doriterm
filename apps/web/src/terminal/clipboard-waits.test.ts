@@ -2,10 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { ClipboardWaits, type WaitNotices } from "./clipboard-waits.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
 
-/** The notices shown and closed, by id, and a view's writes. */
+/**
+ * The notices shown and closed, by id, and a view's writes. Every close is recorded, an id-less one included: the toast
+ * manager reads close() with no id as "close every toast", so a view must never make one. The empty cases below are
+ * toStrictEqual, because toEqual reads [undefined] as [] and would hide exactly that call (#2357).
+ */
 function view() {
   const shown: string[] = [];
-  const closed: string[] = [];
+  const closed: (string | undefined)[] = [];
   const notices: WaitNotices = {
     add: () => {
       const id = `n${shown.length + 1}`;
@@ -13,7 +17,7 @@ function view() {
       return id;
     },
     close: (id) => {
-      if (id !== undefined) closed.push(id);
+      closed.push(id);
     },
   };
   const sent: TerminalInput[] = [];
@@ -37,7 +41,7 @@ describe("ClipboardWaits: Paste image's notice and late answers, per view (#1938
     second.waiting?.(true);
     expect(one.shown).toEqual(["n1"]);
     first.waiting?.(false);
-    expect(one.closed).toEqual([]);
+    expect(one.closed).toStrictEqual([]);
     second.waiting?.(false);
     expect(one.closed).toEqual(["n1"]);
   });
@@ -75,6 +79,6 @@ describe("ClipboardWaits: Paste image's notice and late answers, per view (#1938
   test("ending with nothing waiting closes nothing", () => {
     const one = view();
     one.waits.end();
-    expect(one.closed).toEqual([]);
+    expect(one.closed).toStrictEqual([]);
   });
 });
