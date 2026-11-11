@@ -145,6 +145,8 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
   const upAfterSheet = useRef(false);
   /** Set while a Back off a space pops down to the space's own landing entry, which the list then replaces (#2200). */
   const listAfterPop = useRef(false);
+  /** Set from a Back off a space that pops until the pop lands, so a second tap does not pop again (#2229). */
+  const popping = useRef(false);
   const sheetOn = narrow && path === "/" && listed.sheet;
   const showSheet = useCallback(
     (opening: boolean) => {
@@ -215,22 +217,30 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
   );
   const backFromSpace = useCallback(() => {
     if (listed.terminal === null) return back();
+    // One Back at a time: a second tap before the first pop lands would pop again, below the list (#2229).
+    if (popping.current) return;
     // Shown under a terminal that went away: the terminal's entry (and its sheet's) sit over the space's, which this page
     // pushed over the list when it is above the landing entry, so Back pops all of them; else the list replaces it.
     const over = listed.sheet ? 3 : 2;
-    if (landed !== null && index - over >= landed) router.history.go(-over);
-    else if (landed !== null && index - over + 1 >= landed) {
-      // The space's own entry is the one this page landed on (a cold open or a reload there): pop down to it, then the
-      // list replaces it, so no Back meets the space again (#2200).
+    const spaceHref = phoneHref({ ...listed, terminal: null, sheet: false });
+    if (landed !== null && index - over >= landed) {
+      popping.current = true;
+      router.history.go(-over);
+    } else if ((landed !== null && index - over + 1 >= landed) || (!listed.sheet && under === spaceHref)) {
+      // The space's own entry is under this one but not known to be pushed over the list (a cold open, or a reload on the
+      // space or on this terminal): pop down to it, then Back from there, which pops to the list when the space's entry
+      // records it, else replaces the space with it - so no Back meets the space, or a copy of the list, again (#2200).
+      popping.current = true;
       listAfterPop.current = true;
       router.history.go(1 - over);
     } else go({ ...listed, space: null, terminal: null, sheet: false }, true);
-  }, [back, go, index, listed, router]);
+  }, [back, go, index, listed, router, under]);
   useEffect(() => {
+    popping.current = false;
     if (!listAfterPop.current || listed.terminal !== null) return;
     listAfterPop.current = false;
-    go({ ...listed, space: null, terminal: null, sheet: false }, true);
-  }, [go, listed]);
+    back();
+  }, [back, listed]);
   // A cold start on the bare list (the home screen's icon) picks up where the phone was; an address that names a place, a
   // tapped notice, or a page that has already moved, wins. From then on every place the list route reaches is kept.
   const place = phoneHref({ ...listed, sheet: false });
