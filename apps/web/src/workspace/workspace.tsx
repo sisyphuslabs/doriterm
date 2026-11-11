@@ -146,13 +146,22 @@ export function Workspace({ connection }: WorkspaceProps) {
   );
   // A session that ends is dropped from the layout once; a refused drop keeps the pane, showing the ended session.
   const { dropEnded, closing: closingSessions, kept } = useDropOnce(terminals, layout.dropPane);
-  // A pane is asked about only on what hc said: a machine held connected through a redial may have no terminals listed.
-  useDeadPanes(connection, layout.tabs, fed.loaded ? terminals : null, heardMachines, machineReads, dropEnded);
-  useAdoptLoose(layouts, fed.loaded ? terminals : null, failed);
+  useAdoptLoose(connection, layouts, fed.loaded ? terminals : null, failed);
   const narrow = useNarrow();
   const ids = useMemo(() => machineIds(views), [views]);
   const phone = usePhoneRoute(narrow, ids);
   const { open: phoneOpen, show: showOnPhone } = phone;
+  const phoneTab = phoneOpen === null ? null : findTerminal(layout.tabs, phoneOpen);
+  const phonePanes = phoneTab?.tab.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? [];
+  // The panes on screen: the open tab's on a phone, the selected tab's on a desktop. A terminal that ended in one of
+  // them is its view's to say ("This session ended"); every other pane goes once its terminal is over (#2122).
+  const onScreen = narrow
+    ? phonePanes
+    : (layout.active?.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? []);
+  // As a view's end does: an End of the session drops its pane only once it has removed the terminal (see afterEnd).
+  const dropDead = useCallback((address: string) => afterEnd(address, () => dropEnded(address)), [dropEnded]);
+  // A pane is asked about only on what hc said: a machine held connected through a redial may have no terminals listed.
+  useDeadPanes(connection, layout.tabs, fed.loaded ? terminals : null, heardMachines, machineReads, dropDead, onScreen);
   const [palette, setPalette] = useState(false);
   const [ask, setAsk] = useState<SessionAsk | null>(null);
   const [spaceAsk, setSpaceAsk] = useState<string | null>(null);
@@ -279,8 +288,6 @@ export function Workspace({ connection }: WorkspaceProps) {
   const [firstClosing] = closingTabs;
   const closingSetTab =
     firstClosing === undefined ? undefined : { ...firstClosing, panes: closingTabs.flatMap((tab) => tab.panes) };
-  const phoneTab = phoneOpen === null ? null : findTerminal(layout.tabs, phoneOpen);
-  const phonePanes = phoneTab?.tab.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? [];
   const phoneTitle = phoneTab === null ? null : phoneTabTitle(phoneTab.tab.name);
   usePushPresence(inView);
   useNoticeOpen(connectionStore.settings.mode === "relay" ? connectionStore.settings.hostId : undefined, opened);
