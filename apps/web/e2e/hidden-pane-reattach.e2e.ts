@@ -107,6 +107,27 @@ test("a pane out of view whose stream the core ends waits to re-attach until it 
   await expect.poll(() => attachLog(page)).toEqual([hidden, shown, hidden]);
 });
 
+test("a pane that mounts out of view, as a background tab after a reload, does not attach until it is shown (#1187)", async ({
+  page,
+}) => {
+  test.setTimeout(150_000);
+  const { hidden, shown } = await twoTabs(page);
+  await page.reload();
+  const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
+  await expect(tabs).toHaveCount(2);
+  // The tab on screen is the one selected before the reload; the other mounts hidden.
+  const onScreen = page.locator(`[data-terminal="${shown}"]`);
+  await expect(onScreen).toBeVisible();
+  await expect(onScreen).toHaveAttribute("data-ready", "true");
+  await expect.poll(() => attachLog(page)).toEqual([shown]);
+  // The hidden pane is mounted and its renderer ready, yet it has opened no stream.
+  await expect(page.locator(`[data-terminal="${hidden}"]`)).toHaveAttribute("data-ready", "true");
+  expect(await attachLog(page)).toEqual([shown]);
+
+  await tabs.first().click();
+  await expect.poll(() => attachLog(page)).toEqual([shown, hidden]);
+});
+
 test("a program that ends while its pane is out of view and holds no stream is found when the pane is shown (#906)", async ({
   page,
 }) => {

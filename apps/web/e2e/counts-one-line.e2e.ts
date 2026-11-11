@@ -27,7 +27,8 @@ test("ten terminals in one space keep the machine's and the space's counts on on
   page,
 }) => {
   for (let index = 0; index < 10; index += 1) started.push(startShell("host", `count-${index}`));
-  await page.goto("/");
+  // The machines and their spaces are the phone's Spaces tab (mobile nav phase 3).
+  await page.goto("/?v=spaces");
   const terminals = page.getByLabel(/^\d{2,} terminals$/).first();
   const tabs = page.getByLabel(/^\d{2,} tabs$/).first();
   await terminals.scrollIntoViewIfNeeded({ timeout: 30_000 });

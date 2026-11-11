@@ -10,7 +10,9 @@ name: From zero
 #
 # user-guide checks docs/getting-started.md the same way: a packed desktop app pairs a fresh browser through the
 # production relay and the hosted web app, as the release smoke does with the AppImage it publishes. It tests dev's app
-# against the deployed web app, so a protocol change merged to dev before the web deploy shows here first.
+# against the deployed web app, so a protocol change merged to dev before the web deploy shows here first. Like the
+# release smoke, it depends on relay-doriface.omo.dev and doriface.omo.dev being up and has no retries, so an outage of
+# either fails this job until it is re-run.
 on:
   push:
     branches: [dev]
@@ -60,15 +62,15 @@ jobs:
         run: bun tests/ci/from-zero.ts CONTRIBUTING.md
         env:
           FROM_ZERO_REV: ${{ github.sha }}
-      # The guide clones into its own temp tree, so a failing e2e case leaves its trace and report there and nowhere the
-      # workspace's own artifact steps would find them (#1343).
+      # The guide clones into its own temp tree, so a failing e2e case leaves its trace there and nowhere the workspace's
+      # own artifact steps would find it (#1343). No HTML report is kept: Playwright writes one only when CI is set, and
+      # the guide's environment does not pass CI (#1353).
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: from-zero-contributor-e2e
           path: |
             ${{ runner.temp }}/from-zero-*/work-*/doriterm/apps/web/test-results
-            ${{ runner.temp }}/from-zero-*/work-*/doriterm/apps/web/playwright-report
           if-no-files-found: ignore
           retention-days: 3
 
@@ -85,8 +87,8 @@ jobs:
           bun-version: 1.4.4
       - name: Install herdr-core
         env:
-          HC_URL: https://releases.herdr.dev/core/0.1.17/herdr-core-linux-x86_64.tar.gz
-          HC_SHA256: 82ec44043f6894bfdb716b979b87cda43fd7fa46b0104e7b7bd93e64d1a9b877
+          HC_URL: https://releases.herdr.dev/core/0.1.20/herdr-core-linux-x86_64.tar.gz
+          HC_SHA256: ac6b86890c451a37584620aaa438b71bc0d0bd430a2e7c1d7e095f052c414e74
         run: |
           mkdir -p "$RUNNER_TEMP/hc"
           curl -fsSL "$HC_URL" -o "$RUNNER_TEMP/hc.tar.gz"

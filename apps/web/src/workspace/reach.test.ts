@@ -25,6 +25,16 @@ const machine = (name: string, state: string): MachineView => ({
   version: "0.1.17",
 });
 
+test("an offline terminal that did not change is the same object on the next render, so its pane does not draw again (#2086)", () => {
+  const terminals = [terminal("t1"), terminal("build/t1")];
+  const away = [machine("build", "unreachable")];
+  const first = withReach(terminals, away);
+  const next = withReach([...terminals], away);
+  expect(next[1]?.offline).toBe(true);
+  expect(next[1]).toBe(first[1]);
+  expect(next[0]).toBe(terminals[0]);
+});
+
 test("only the live terminals of a machine that is not connected leave Working for Offline", () => {
   const terminals = [terminal("t1"), terminal("build/t1"), terminal("build/t2", "finished"), terminal("rack/t1")];
   const reached = withReach(terminals, [machine("build", "unreachable"), machine("rack", "connected")]);

@@ -34,6 +34,7 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-disabled-glyph: var(--disabled-glyph);
   --color-dim: var(--dim);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
@@ -86,6 +87,8 @@
   --text-xs--line-height: 1.125rem;
   --text-sm: var(--type-sm);
   --text-sm--line-height: 1.25rem;
+  --text-prose: var(--type-prose);
+  --text-prose--line-height: 1.25rem;
   --text-base: var(--type-base);
   --text-base--line-height: 1.375rem;
   --text-lg: var(--type-lg);
@@ -94,6 +97,9 @@
   --text-xl--line-height: 1.75rem;
   --text-2xl: var(--type-2xl);
   --text-2xl--line-height: 2.25rem;
+
+  /* Reading prose (max-w-measure): 65-75 characters a line, in em so it follows the paragraph's own size. */
+  --container-measure: 34.5em;
 
   --radius-xs: 4px;
   --radius-sm: 6px;
@@ -112,17 +118,20 @@
   --font-ui:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   /* Bundled faces first (terminal-fonts.css), so symbols and icons draw the same everywhere; then the platform's mono,
-     Hangul and emoji faces by name, so a phone never falls back to a face that has no Hangul (#949). */
+     Hangul and emoji faces by name, so a phone never falls back to a face that has no Hangul (#949). The Powerline
+     subset sits after JetBrains Mono, which draws Latin and seven of the eight separators itself (#1403). */
   --font-term:
-    "JetBrains Mono Variable", "JetBrains Mono", "Symbols Nerd Font Mono", "Doriterm Noto Symbols 2",
-    "Doriterm Noto Symbols", "Doriterm Noto Math", ui-monospace, "SF Mono", Menlo, Consolas, "Apple SD Gothic Neo",
-    "Noto Sans Mono CJK KR", "Noto Sans CJK KR", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji",
-    "Noto Color Emoji", "Segoe UI Emoji", monospace;
+    "JetBrains Mono Variable", "JetBrains Mono", "Doriterm Powerline", "Symbols Nerd Font Mono",
+    "Doriterm Noto Symbols 2", "Doriterm Noto Symbols", "Doriterm Noto Math", ui-monospace, "SF Mono", Menlo, Consolas,
+    "Apple SD Gothic Neo", "Noto Sans Mono CJK KR", "Noto Sans CJK KR", "Noto Sans KR", "Malgun Gothic",
+    "Apple Color Emoji", "Noto Color Emoji", "Segoe UI Emoji", monospace;
 
   /* Pointer-precise sizes (desktop). Coarse pointers override below. */
   --type-2xs: 0.6875rem;
   --type-xs: 0.75rem;
   --type-sm: 0.8125rem;
+  /* Reading prose (explanations, hints, notices) holds the 14 px floor; dense rows and tabs stay at sm. */
+  --type-prose: 0.875rem;
   --type-base: 0.875rem;
   --type-lg: 1rem;
   --type-xl: 1.25rem;
@@ -163,6 +172,7 @@
     --type-2xs: 0.75rem;
     --type-xs: 0.8125rem;
     --type-sm: 0.9375rem;
+    --type-prose: 0.9375rem;
     --type-base: 1.0625rem;
     --type-lg: 1.125rem;
     --type-xl: 1.375rem;

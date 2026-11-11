@@ -1,5 +1,7 @@
 import type { Page } from "@playwright/test";
+import { AGENT_SHELL } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
@@ -15,7 +17,7 @@ const states = (page: Page) => dialog(page).getByRole("group", { name: "Show age
 const option = (page: Page, name: string) => dialog(page).getByRole("option").filter({ hasText: name });
 
 function startShell(name: string): string {
-  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${SPACE}`, "--", "env", "PS1=$ ", "sh"]);
+  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${SPACE}`, "--", ...AGENT_SHELL]);
   const started: unknown = JSON.parse(out);
   if (typeof started !== "object" || started === null || !("address" in started)) throw new Error(out);
   return String(started.address);
@@ -27,7 +29,7 @@ function report(address: string, state: string): void {
 }
 
 async function openPalette(page: Page): Promise<void> {
-  await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+  await pressShortcut(page, "app.palette");
   await expect(dialog(page)).toBeVisible();
 }
 
@@ -90,6 +92,49 @@ test("the palette filters its agents by state, and draws no filter while they sh
     expect(box.left).toBeGreaterThanOrEqual(frame?.x ?? 0);
     expect(box.right).toBeLessThanOrEqual((frame?.x ?? 0) + (frame?.width ?? 0));
   }
+  await page.keyboard.press("Escape");
+  report(asks, "working");
+});
+
+test("a state picked with the pointer hands typing back to the search field; one picked from the keyboard keeps the row (#1479)", async ({
+  page,
+}) => {
+  const run = Date.now().toString(36);
+  const asks = startShell(`pick-asks-${run}`);
+  const calm = startShell(`pick-calm-${run}`);
+  seedSpaces([
+    {
+      folder: "",
+      id: "spc-pal1479",
+      name: SPACE,
+      tabs: [
+        { id: "tb-pick-asks", name: "asks", terminal: asks },
+        { id: "tb-pick-calm", name: "calm", terminal: calm },
+      ],
+    },
+  ]);
+  await page.goto("/");
+  await expect(page.getByRole("tablist", { name: "Tabs" }).getByRole("tab")).toHaveCount(2, { timeout: 20_000 });
+  report(asks, "blocked");
+  await expect(page.getByRole("contentinfo")).toContainText("needs you", { timeout: 15_000 });
+  await openPalette(page);
+  const combobox = dialog(page).getByRole("combobox", { name: "Command" });
+  const needsYou = states(page).getByRole("button", { name: /^Needs you \d+$/ });
+  const all = states(page).getByRole("button", { name: /^All \d+$/ });
+
+  await needsYou.click();
+  await expect(needsYou).toHaveAttribute("aria-pressed", "true");
+  await expect(combobox).toBeFocused();
+  await page.keyboard.type("pick-asks");
+  await expect(combobox).toHaveValue("pick-asks");
+  await expect(option(page, `pick-asks-${run}`)).toBeVisible();
+  await combobox.fill("");
+
+  await all.focus();
+  await page.keyboard.press("Enter");
+  await expect(all).toHaveAttribute("aria-pressed", "true");
+  await expect(all).toBeFocused();
+  await expect(option(page, `pick-calm-${run}`)).toBeVisible();
   await page.keyboard.press("Escape");
   report(asks, "working");
 });

@@ -82,11 +82,11 @@ test("a waiting service worker lights the Settings dot, and Reload to update app
 test.describe("on the phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-  test("a waiting service worker lights the dot on the header's Settings gear (#422)", async ({ page, baseURL }) => {
+  test("a waiting service worker lights the dot on the tab bar's Settings (#422)", async ({ page, baseURL }) => {
     const site = await deployableSite(baseURL ?? "");
     try {
       await page.goto(site.url);
-      const settings = page.getByRole("banner").getByRole("link", { name: /^Settings\b/ });
+      const settings = page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: /^Settings\b/ });
       await expect(settings).toHaveAccessibleName("Settings", { timeout: 20_000 });
       await expect(settings.locator('[data-slot="settings-dot"]')).toHaveCount(0);
       await expect.poll(() => registration(page), { timeout: 20_000 }).toEqual({ controlled: true, waiting: false });

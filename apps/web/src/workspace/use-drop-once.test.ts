@@ -55,6 +55,27 @@ test("a session whose close's End failed keeps running: its later end drops its 
   expect(once.take("t1")).toBe(false);
 });
 
+test("a session already listed ended keeps its mark when its close's End still rejects (#1342)", () => {
+  const once = new DropOnce();
+  once.listed([live("t1")]);
+  expect(once.take("t1")).toBe(true);
+  // The kill succeeded and the list heard the end, but terminal.rm or the END label call failed: End rejects.
+  once.listed([finished("t1")]);
+  once.kept("t1");
+  expect(once.take("t1")).toBe(false);
+});
+
+test("a session whose kill went through keeps its mark when End rejects before any list heard the end (#1342)", () => {
+  const once = new DropOnce((address) => address === "t1");
+  once.listed([live("t1")]);
+  expect(once.take("t1")).toBe(true);
+  // terminal.rm or the END label call failed after the kill; the list still shows the session live.
+  once.kept("t1");
+  once.listed([live("t1")]);
+  once.listed([]);
+  expect(once.take("t1")).toBe(false);
+});
+
 test("a drop of an address not listed live takes the next live listing there as a new session", () => {
   const once = new DropOnce();
   once.listed([]);

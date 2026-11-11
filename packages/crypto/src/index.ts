@@ -69,6 +69,7 @@ export {
   type Hello,
   type Stream,
 } from "./payloads.ts";
+export { parseReleaseSecret, RELEASE_PUBLIC_KEYS, releasePublicKey, signRelease, verifyRelease } from "./release.ts";
 export { relayChallengeMessage, relayOriginOf, signRelayChallenge, verifyRelayAnswer } from "./relay-auth.ts";
 export {
   HANDSHAKE_TIMEOUT_MS,

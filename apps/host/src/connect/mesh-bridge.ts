@@ -5,6 +5,9 @@ import type { Output } from "./pipe.ts";
 
 export const LINE_SOCKET_NAME = "line.sock";
 
+/** How often a bridge checks that the process that started it is still there. */
+export const CALLER_CHECK_MS = 250;
+
 export interface MeshBridgeOptions {
   readonly stateDir: string;
   readonly hostId: string;
@@ -22,10 +25,45 @@ function parseAnswer(line: string): Answer {
   return { ok: false, reason };
 }
 
-/** Connects to line.sock and reads the one-line answer; leftover bytes after it are the line's first bytes. */
-function request(path: string, hostId: string): Promise<{ socket: Socket; answer: Answer; rest: Buffer }> {
+/** The process that started this bridge, watched so its bridge cannot outlive it. */
+interface Caller {
+  /** Resolves once this bridge's parent is gone (a stopped herdr core, a closed shell). */
+  readonly gone: Promise<void>;
+  stop(): void;
+}
+
+/**
+ * A via child is herdr's, and a core that stops or is killed leaves it orphaned: the bridge then waits for a `line.sock`
+ * answer that may never come, long after the core (and its test) are gone. The kernel reparents the child, so the
+ * bridge sees it in `process.ppid` and gives up instead of becoming a leftover.
+ */
+function watchCaller(): Caller {
+  const started = process.ppid;
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const timer = setInterval(() => {
+    if (process.ppid === started) return;
+    clearInterval(timer);
+    resolve();
+  }, CALLER_CHECK_MS);
+  timer.unref();
+  return { gone: promise, stop: () => clearInterval(timer) };
+}
+
+type Requested = { readonly socket: Socket; readonly answer: Answer; readonly rest: Buffer } | "gone";
+
+/**
+ * Connects to line.sock and reads the one-line answer; leftover bytes after it are the line's first bytes.
+ * `callerGone` ends the request: a bridge whose caller is gone must not wait for an answer that may never come.
+ */
+function request(path: string, hostId: string, callerGone: Promise<void>): Promise<Requested> {
   return new Promise((resolve, reject) => {
     const socket = createConnection(path);
+    let settled = false;
+    const settle = (finish: () => void): void => {
+      if (settled) return;
+      settled = true;
+      finish();
+    };
     let buffered = Buffer.alloc(0);
     const onData = (chunk: Buffer): void => {
       buffered = Buffer.concat([buffered, chunk]);
@@ -34,19 +72,22 @@ function request(path: string, hostId: string): Promise<{ socket: Socket; answer
       socket.off("data", onData);
       socket.pause();
       try {
-        resolve({
-          socket,
-          answer: parseAnswer(buffered.subarray(0, end).toString("utf8")),
-          rest: buffered.subarray(end + 1),
-        });
+        const answer = parseAnswer(buffered.subarray(0, end).toString("utf8"));
+        settle(() => resolve({ socket, answer, rest: buffered.subarray(end + 1) }));
       } catch (error) {
-        reject(error);
+        settle(() => reject(error));
       }
     };
     socket.once("connect", () => socket.write(`${JSON.stringify({ v: 1, hostId })}\n`));
     socket.on("data", onData);
-    socket.once("error", reject);
-    socket.once("close", () => reject(new Error("the host closed line.sock before answering")));
+    socket.once("error", (error) => settle(() => reject(error)));
+    socket.once("close", () => settle(() => reject(new Error("the host closed line.sock before answering"))));
+    void callerGone.then(() =>
+      settle(() => {
+        socket.destroy();
+        resolve("gone");
+      }),
+    );
   });
 }
 
@@ -57,41 +98,59 @@ const notRunning = (error: unknown): boolean =>
  * `doriface-host connect --mesh <hostId>` (section 7.2): asks the running host for a line to a member over
  * `<state dir>/line.sock`, then pipes stdin and stdout through it byte for byte. The host dials with its own Noise key;
  * this process holds no key. Every refusal is one line on stderr and exit 1.
+ *
+ * The bridge lives exactly as long as its caller: the herdr core that spawned it, or the shell that ran it. When that
+ * process is gone, so is the bridge, whether it was waiting for the answer or piping an open line.
  */
 export async function meshBridge(options: MeshBridgeOptions): Promise<number> {
-  let opened: Awaited<ReturnType<typeof request>>;
+  const caller = watchCaller();
   try {
-    opened = await request(join(options.stateDir, LINE_SOCKET_NAME), options.hostId);
-  } catch (error) {
-    options.log(notRunning(error) ? "doriface-host is not running" : `line.sock: ${String(error)}`);
-    return 1;
-  }
-  const { socket, answer, rest } = opened;
-  if (!answer.ok) {
-    options.log(answer.reason);
-    socket.destroy();
-    return 1;
-  }
-  const ended = Promise.withResolvers<number>();
-  if (rest.byteLength > 0) options.output.write(rest);
-  socket.on("data", (bytes: Buffer) => {
-    if (!options.output.write(bytes)) {
-      socket.pause();
-      void options.output.drained().then(() => socket.resume());
+    let opened: Requested;
+    try {
+      opened = await request(join(options.stateDir, LINE_SOCKET_NAME), options.hostId, caller.gone);
+    } catch (error) {
+      options.log(notRunning(error) ? "doriface-host is not running" : `line.sock: ${String(error)}`);
+      return 1;
     }
-  });
-  socket.once("close", () => ended.resolve(0));
-  socket.once("error", (error) => {
-    options.log(`the line ended: ${error.message}`);
-    ended.resolve(1);
-  });
-  socket.resume();
-  void (async () => {
-    for await (const chunk of options.input)
-      if (!socket.write(chunk)) await new Promise((r) => socket.once("drain", r));
-    socket.end();
-  })();
-  const code = await ended.promise;
-  await options.output.drained();
-  return code;
+    if (opened === "gone") {
+      options.log("the process that started this bridge is gone");
+      return 1;
+    }
+    const { socket, answer, rest } = opened;
+    if (!answer.ok) {
+      options.log(answer.reason);
+      socket.destroy();
+      return 1;
+    }
+    const ended = Promise.withResolvers<number>();
+    if (rest.byteLength > 0) options.output.write(rest);
+    socket.on("data", (bytes: Buffer) => {
+      if (!options.output.write(bytes)) {
+        socket.pause();
+        void options.output.drained().then(() => socket.resume());
+      }
+    });
+    socket.once("close", () => ended.resolve(0));
+    socket.once("error", (error) => {
+      options.log(`the line ended: ${error.message}`);
+      ended.resolve(1);
+    });
+    socket.resume();
+    void (async () => {
+      for await (const chunk of options.input)
+        if (!socket.write(chunk)) await new Promise((r) => socket.once("drain", r));
+      socket.end();
+    })();
+    const code = await Promise.race([
+      ended.promise,
+      caller.gone.then(() => {
+        socket.destroy();
+        return 1;
+      }),
+    ]);
+    await options.output.drained();
+    return code;
+  } finally {
+    caller.stop();
+  }
 }

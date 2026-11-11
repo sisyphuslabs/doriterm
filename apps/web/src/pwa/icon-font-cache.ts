@@ -1,7 +1,8 @@
 /**
  * The Nerd Font icon face (1.2 MB) is left out of the precache: the service worker fetches it the first time a page
  * draws an icon and keeps it in its own cache. Its name carries its contents' hash, so a release that changes it adds a
- * new name; the worker of each build drops the copies its build does not use (#967).
+ * new name; the worker of each build drops the copies its build does not use (#967), unless its list names no icon
+ * font at all, when it keeps what is there (#1167).
  */
 export const ICON_FONT_CACHE = "doriterm-fonts-v1";
 
@@ -26,10 +27,27 @@ export function splitIconFonts(
   return { precache, iconFonts };
 }
 
+/**
+ * Whether the icon font at `url` is this build's own copy, the only kind the worker stores. An earlier release's name,
+ * still asked for by a page left open on the old build, is answered from the network and not kept (#1166). A build that
+ * names no icon font has lost it from its list (see `pruneIconFonts`), so it keeps what it fetches rather than fetching
+ * the font again for every page.
+ */
+export function keepsIconFont(url: URL, iconFonts: ReadonlySet<string>): boolean {
+  return iconFonts.size === 0 || iconFonts.has(url.pathname);
+}
+
+/**
+ * Deletes the copies the build does not use and keeps its own. A build that names no icon font may have lost it from
+ * its precache list (a size limit or a glob change), not decided to keep none, so it deletes nothing: the copy that is
+ * there survives the release instead of being downloaded again. `null` reports that skip, so the worker can say so
+ * (#1167).
+ */
 export async function pruneIconFonts(
   cache: Pick<Cache, "keys" | "delete">,
   iconFonts: ReadonlySet<string>,
-): Promise<number> {
+): Promise<number | null> {
+  if (iconFonts.size === 0) return null;
   const stale = (await cache.keys()).filter((request) => !iconFonts.has(new URL(request.url).pathname));
   await Promise.all(stale.map((request) => cache.delete(request)));
   return stale.length;

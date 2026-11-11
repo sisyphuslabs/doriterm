@@ -3,6 +3,15 @@ import { execFileSync } from "node:child_process";
 import { MACHINE_NAME } from "./machine.ts";
 import { hcOn } from "./machine-switch.ts";
 
+/**
+ * The argv of a stand-in agent a spec types into: it prints a `$ ` prompt and runs each line it is sent, so a typed
+ * `printf` reports a status over OSC 7501 and a typed `echo` prints, as in a shell. It runs under `sh -c` rather than
+ * being the terminal's interactive shell, because hc 0.1.20 clears a terminal's status whenever its own interactive
+ * shell is back in the foreground (an agent exited to the shell, herdr-core #166): a report typed into a plain `sh`
+ * would be gone again on hc's next foreground check, while an agent's status stays until it reports another (#2133).
+ */
+export const AGENT_SHELL = ["sh", "-c", `while printf '$ ' && IFS= read -r line; do eval "$line"; done`] as const;
+
 /** A program that reports `state` over OSC 7501 and then waits, started straight on one core. */
 export function startAgent(core: "host" | "machine", name: string, state: string, space = "api"): string {
   const report = `printf '\\033]7501;state=${state}\\033\\\\'; exec sleep 600`;
