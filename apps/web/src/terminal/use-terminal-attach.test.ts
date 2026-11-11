@@ -3,7 +3,7 @@ import { OutputPacer, REPLAY_CAP_MS } from "./output-pacer.ts";
 import { replayOnAttach } from "./use-terminal-attach.ts";
 
 /** A pacer on frames and timers that move only when the test says so, recording each hold of the paint. */
-function attaching() {
+function attaching(fresh = false) {
   let now = 0;
   const due: { at: number; run: () => void }[] = [];
   const timer = (run: () => void, ms: number): (() => void) => {
@@ -32,7 +32,7 @@ function attaching() {
     () => now,
     timer,
   );
-  replayOnAttach(pacer, { srtt: () => 300, hold: (held) => holds.push(held) });
+  replayOnAttach(pacer, { srtt: () => 300, hold: (held) => holds.push(held) }, fresh);
   return { pacer, holds, advance };
 }
 
@@ -57,5 +57,12 @@ describe("an attach's replay hold (D5)", () => {
     expect(holds).toEqual([true]);
     advance(1);
     expect(holds).toEqual([true, false]);
+  });
+
+  test("a terminal this page just started is not held: it has no history, so its first prompt is drawn as it arrives (#1928)", () => {
+    const { pacer, holds, advance } = attaching(true);
+    pacer.push(new Uint8Array(1024));
+    advance(REPLAY_CAP_MS * 2);
+    expect(holds).toEqual([]);
   });
 });
