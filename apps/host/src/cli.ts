@@ -33,10 +33,10 @@ const USAGE = `usage: doriface-host [options]
   --token <token>       the client token (default $DORIFACE_HOST_TOKEN, else 32 random bytes)
   --print-token         print the token on stdout once listening
   --unsafe-listen       allow a non-loopback --listen (plaintext: anyone who can reach it gets a shell)
-  --lan-listen <h:p>    also serve the end-to-end encrypted /v1/e2ee (only) here; any address is fine
+  --lan-listen <h:p>    for tests: also serve the end-to-end encrypted /v1/e2ee (only) here; no shipped client dials it (#2070)
   --state-dir <dir>     host keys and paired devices (default $DORIFACE_HOST_STATE_DIR, else $XDG_STATE_HOME/doriface-host)
   --relay <url>         the relay this host keeps an encrypted-only uplink to (default ${DEFAULT_RELAY_URL})
-  --no-relay            keep no relay uplink: reach this host only directly
+  --no-relay            for tests: keep no relay uplink, so only this computer and a --lan-listen test reach the host
   --push-test-origin <origin>  for tests: also post web push notices to this push service origin (port 0: any port)
   --version             print this host's version
   -h, --help            show this help`;

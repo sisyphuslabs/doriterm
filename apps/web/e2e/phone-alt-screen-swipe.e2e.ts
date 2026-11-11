@@ -27,20 +27,57 @@ function cellUnder(terminal: Locator, point: TouchPoint): Promise<string> {
   }, point);
 }
 
-/** Counts each touchmove that reaches the window, and how many of them the page had cancelled by then. */
-async function countTouchMoves(page: Page): Promise<() => Promise<{ moves: number; cancelled: number }>> {
+/** How many wheel notches up (64) and down (65) the program has echoed, every one counted. */
+async function notches(terminal: Locator): Promise<{ up: number; down: number }> {
+  const text = await terminal.evaluate((root) => root.textContent ?? "");
+  const count = (button: string): number => text.split(`^[[<${button};`).length - 1;
+  return { up: count("64"), down: count("65") };
+}
+
+/** The height of one grid row, which is how far a finger travels for one notch. */
+function rowHeight(terminal: Locator): Promise<number> {
+  return terminal.evaluate((root) => {
+    const row = root.querySelector(".term-row:not(.term-scrollback-row)");
+    if (row === null) throw new Error("the terminal has no grid row");
+    return row.getBoundingClientRect().height;
+  });
+}
+
+interface SwipeCounts {
+  readonly moves: number;
+  readonly cancelled: number;
+  readonly pointerCancels: number;
+}
+
+/**
+ * Counts every touchmove of the swipes, and how many of them the page cancelled. The moves are taken on the node each
+ * finger came down on, where the browser sends all of them, rather than on the window: a node the program redraws away
+ * mid-swipe still gets its moves, but they no longer bubble (#2054). Each is read once its dispatch is over. Also
+ * counts pointercancel, which the browser sends when it takes a swipe as its own pan.
+ */
+async function countTouchMoves(page: Page): Promise<() => Promise<SwipeCounts>> {
   await page.evaluate(() => {
-    const counts = { moves: 0, cancelled: 0 };
+    const moves: Event[] = [];
+    const counts = { moves, pointerCancels: 0 };
     Object.assign(window, { swipeCounts: counts });
-    window.addEventListener("touchmove", (event) => {
-      counts.moves++;
-      if (event.defaultPrevented) counts.cancelled++;
-    });
+    const record = (event: Event): void => {
+      moves.push(event);
+    };
+    const listen = { capture: true, passive: true };
+    window.addEventListener(
+      "touchstart",
+      (event) => event.target?.addEventListener("touchmove", record, listen),
+      listen,
+    );
+    window.addEventListener("pointercancel", () => counts.pointerCancels++, listen);
   });
   return () =>
-    page.evaluate(() => ({
-      ...(window as unknown as { swipeCounts: { moves: number; cancelled: number } }).swipeCounts,
-    }));
+    page.evaluate(() => {
+      const { moves, pointerCancels } = (
+        window as unknown as { swipeCounts: { moves: Event[]; pointerCancels: number } }
+      ).swipeCounts;
+      return { moves: moves.length, cancelled: moves.filter((move) => move.defaultPrevented).length, pointerCancels };
+    });
 }
 
 async function swipe(touch: Touch, from: TouchPoint, to: TouchPoint): Promise<void> {
@@ -77,12 +114,17 @@ test("on the alternate screen a swipe scrolls the program that tracks the mouse,
   const fromTop = await cellUnder(terminal, top);
   const fromBottom = await cellUnder(terminal, bottom);
   await expect.poll(() => reportedCells(terminal)).toEqual([`64 ${fromTop}`, `65 ${fromBottom}`]);
+  // The first swipe began on the row the program echoes into, so the cell under the finger was redrawn mid-swipe; it
+  // still turned the wheel all the way, as the second did (#2054).
+  const travel = Math.trunc((bottom.y - top.y) / (await rowHeight(terminal)));
+  await expect.poll(() => notches(terminal)).toEqual({ up: travel, down: travel });
 
   // The grid has nothing to scroll here: a move left to the browser would pan the page, and a phone's pull-to-refresh
   // reloads the app.
-  const { moves, cancelled } = await counted();
+  const { moves, cancelled, pointerCancels } = await counted();
   expect(moves).toBeGreaterThan(0);
   expect(cancelled).toBe(moves);
+  expect(pointerCancels).toBe(0);
 
   await page.keyboard.press("Control+C");
   await page.keyboard.type("printf '\\033[?1000l\\033[?1006l\\033[?1049l'; stty sane\r");
