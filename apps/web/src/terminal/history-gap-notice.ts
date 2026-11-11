@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 /**
  * Why a terminal's history may be missing output (#2033): `reconnect` when the connection dropped while its view was
@@ -35,6 +35,20 @@ export function dismissHistoryGap(address: string): void {
 /** The view was attached anew, with its history played back: nothing it shows is missing any more. */
 export const clearHistoryGap = dismissHistoryGap;
 
+/**
+ * Keeps the notes of the terminals the feed lists live (`live`, by address) and drops the rest: a terminal that ended or
+ * was closed while noted takes its note with it, so an address used again later starts with none (#2292).
+ */
+export function keepHistoryGapsOf(live: ReadonlySet<string>): void {
+  let dropped = false;
+  for (const address of gaps.keys()) {
+    if (live.has(address)) continue;
+    gaps.delete(address);
+    dropped = true;
+  }
+  if (dropped) changed();
+}
+
 export const historyGapFor = (address: string | null): HistoryGapCause | null =>
   address === null ? null : (gaps.get(address) ?? null);
 
@@ -45,3 +59,13 @@ const subscribe = (listener: () => void): (() => void) => {
 
 export const useHistoryGap = (address: string | null): HistoryGapCause | null =>
   useSyncExternalStore(subscribe, () => historyGapFor(address));
+
+/** Drops the notes of the terminals the loaded feed no longer lists live: the workspace's hook for keepHistoryGapsOf. */
+export function useForgetEndedHistoryGaps(
+  loaded: boolean,
+  terminals: readonly { readonly address: string; readonly state: string }[],
+): void {
+  useEffect(() => {
+    if (loaded) keepHistoryGapsOf(new Set(terminals.flatMap((each) => (each.state === "live" ? [each.address] : []))));
+  }, [loaded, terminals]);
+}
