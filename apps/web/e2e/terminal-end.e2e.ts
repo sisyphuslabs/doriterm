@@ -72,9 +72,11 @@ test("keys typed offline for a kept program that is lost and restarted meanwhile
   await expect.poll(() => pidOf(address), { timeout: 30_000 }).not.toBe(shellPid);
   await expect.poll(() => pidOf(address), { timeout: 30_000 }).not.toBeNull();
   socket.restore();
-  await expect(page.getByText("Typed input was not sent because the program restarted")).toBeVisible({
-    timeout: 20_000,
-  });
+  // The keys are dropped either way, and the person is told: by the reattach, which finds another program there, or
+  // first by the 10 s bound on what waits for a link that is down, when the restart and the reconnect take longer (#2266).
+  const notSent =
+    /Typed input was not sent because (the program restarted|this terminal could not be reached for 10 s)/;
+  await expect(page.getByText(notSent)).toBeVisible({ timeout: 20_000 });
 
   const restarted = page.locator(`[data-terminal="${address}"]:not([data-before-restart])`);
   await expect(restarted).toContainText("$", { timeout: 20_000 });

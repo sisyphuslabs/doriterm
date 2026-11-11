@@ -163,6 +163,8 @@ export interface LongPressTerminal {
   down(pointerId?: number, primary?: boolean, onRedrawnCell?: boolean): void;
   /** The finger lifts as pointerup on the window, then that touch's own end on the node it landed on. */
   up(pointerId?: number, primary?: boolean): void;
+  /** The finger moves: the browser sends the touchmove to the node it landed on. Whether that move was cancelled. */
+  move(pointerId?: number): boolean;
   /** Whether an element listener answers `type` that this pointer dispatched, once the hook's effect is mounted. */
   readonly handled: (type: string) => boolean;
   /** Whether the last `up` was cancelled, so the tap's own mouse events never arrive. */
@@ -205,6 +207,12 @@ export function longPressTerminal(): LongPressTerminal {
       const target = onRedrawnCell ? new FakeTarget() : element;
       landed.set(pointerId, target);
       element.dispatch("touchstart", new FakeTouch(landed.size, target));
+    },
+    move(pointerId = 1): boolean {
+      const target = landed.get(pointerId) ?? element;
+      const touch = new FakeTouch(landed.size, target);
+      target.dispatch("touchmove", touch);
+      return touch.defaultPrevented;
     },
     up(pointerId = 1, primary = true): void {
       window.dispatch("pointerup", new FakePointer(pointerId, primary, 25, 10));

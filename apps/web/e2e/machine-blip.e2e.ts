@@ -7,13 +7,14 @@ import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import {
   blip,
-  hcOn,
   machineRow,
+  machineState,
   linesDialed,
   OFFLINE_BOUND_MS,
   reconnect,
   redialedSince,
   slowDials,
+  switchOn,
   switchTo,
   OFFLINE_TEST_TIMEOUT_MS,
 } from "./machine-switch.ts";
@@ -59,15 +60,6 @@ async function recordFlips(page: Page, terminal: string): Promise<void> {
 const flips = (page: Page): Promise<string[]> =>
   page.evaluate(() => [...new Set((window as unknown as { flips: string[] }).flips)]);
 
-const machineState = (): string => {
-  const listed: unknown = JSON.parse(hcOn("host", ["machine", "ls"]));
-  const machines = Reflect.get(Object(listed), "machines");
-  const one = Array.isArray(machines)
-    ? machines.find((m: unknown) => Reflect.get(Object(m), "name") === MACHINE_NAME)
-    : undefined;
-  return String(Reflect.get(Object(one), "state"));
-};
-
 test.describe("a machine whose line blips (#904)", () => {
   let address = "";
   test.beforeEach(() => {
@@ -96,6 +88,9 @@ test.describe("a machine whose line blips (#904)", () => {
     const dialed = linesDialed();
     await blip(0);
     await expect.poll(() => redialedSince(dialed), { timeout: 30_000 }).toBe(true);
+    // redialedSince is a moment's reading, and the switch stays slow until the next blip writes it: put it back to fast
+    // now, so a dial hc starts after the poll passed cannot sleep and land past the refusal below (#2065).
+    switchOn();
     await expect.poll(machineState, { timeout: 15_000 }).toBe("connected");
 
     // A relay uplink drop at its worst: every line ends, and the host refuses this one for its settle and one probe.

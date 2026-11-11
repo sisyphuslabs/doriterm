@@ -115,6 +115,15 @@ export function hcSpawnError(hc: string, error: unknown): StartupError {
   return new StartupError("startup-failed", `cannot run ${hc}: ${reason}`, { path: hc }, { cause: error });
 }
 
+/**
+ * `hc --version` checks still running. A process that exits while one runs (a start its caller gave up on) stops it on
+ * the way out, so no version check outlives the process that asked for it (#2066).
+ */
+const versionChecks = new Set<Subprocess>();
+process.on("exit", () => {
+  for (const proc of versionChecks) proc.kill();
+});
+
 /** Runs `hc --version` and returns the bare version, e.g. "0.1.17". */
 export async function readHcVersion(hc: string): Promise<string> {
   let proc: Subprocess<"ignore", "pipe", "pipe">;
@@ -123,11 +132,19 @@ export async function readHcVersion(hc: string): Promise<string> {
   } catch (error) {
     throw hcSpawnError(hc, error);
   }
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
+  versionChecks.add(proc);
+  let out: string;
+  let err: string;
+  let code: number;
+  try {
+    [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+  } finally {
+    versionChecks.delete(proc);
+  }
   const version = /^hc (\S+)/.exec(out.trim())?.[1];
   if (code !== 0 || version === undefined) {
     throw new StartupError("hc-version-failed", `\`${hc} --version\` failed (exit ${code}): ${(out + err).trim()}`, {

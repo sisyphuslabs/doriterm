@@ -129,6 +129,7 @@ function Spaces({ machines, rail }: Pick<Options, "machines" | "rail">) {
               tabs={machine.spaces.reduce((sum, space) => sum + space.tabs, 0)}
               connected={machine.state !== "offline"}
               rail={r}
+              onToggle={() => {}}
               onNewSpace={() => {}}
               {...(machine.state === "offline" ? {} : { onOpen: () => {} })}
             />

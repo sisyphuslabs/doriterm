@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RequestContext } from "./bindings.ts";
 import { githubFeed } from "./github-feed.ts";
@@ -55,6 +54,32 @@ test("once a channel has a pointer, or every version it named is yanked, GitHub 
   expect(g.asked).toEqual([]);
 });
 
+test("a feed read that R2 fails, all of it or one object, answers GitHub's latest feed, not 503 (#2123)", async () => {
+  const fails = ["all", "releases/v0.1.17/.yanked", "releases/v0.1.17/latest-mac.yml"];
+  const answers = await Promise.all(
+    fails.map(async (fail) => {
+      const g = withGitHub({ "latest-mac.yml": macFeed("0.1.18") });
+      mirror(g.bucket, "0.1.17", { "latest-mac.yml": macFeed("0.1.17") });
+      point(g.bucket, "stable", { version: "0.1.17" });
+      if (fail === "all") g.bucket.failWith = new Error("R2 down");
+      else g.bucket.failKey = fail;
+      const response = await g.get("/desktop/stable/latest-mac.yml");
+      const offersDmg = (await response.text()).includes(
+        `url: ${RELEASES}/download/v0.1.18/Doriterm-0.1.18-arm64.dmg\n`,
+      );
+      return [fail, response.status, response.headers.get("X-Doriterm-Source"), offersDmg];
+    }),
+  );
+  expect(answers).toEqual(fails.map((fail) => [fail, 200, "github", true]));
+});
+
+test("a channel with no pointer whose never-published check R2 fails also answers GitHub's feed (#2213 review)", async () => {
+  const g = withGitHub({ "latest-mac.yml": macFeed("0.1.18") });
+  g.bucket.failKey = "head channels/stable.json";
+  const response = await g.get("/desktop/stable/latest-mac.yml");
+  expect([response.status, response.headers.get("X-Doriterm-Source")]).toEqual([200, "github"]);
+});
+
 test("a GitHub feed that names no single version or a file outside the release is refused, not passed on", async () => {
   expect(githubFeed("files:\n  - url: a.zip\n")).toBeNull();
   expect(githubFeed("version: 0.1.18\nversion: 0.1.19\npath: a.zip\n")).toBeNull();
@@ -94,9 +119,12 @@ test("a feed as release.yml publishes it is accepted whole, every file pointed a
   expect(composed).toContain("releaseDate: 2026-11-09T11:00:39.288Z\n");
 });
 
-test("no file the Worker runs uses a Bun API, which the Workers runtime does not have", () => {
-  const dir = import.meta.dir;
-  const runtime = readdirSync(dir).filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"));
-  expect(runtime.length).toBeGreaterThan(8);
-  expect(runtime.filter((name) => /\bBun\./.test(readFileSync(join(dir, name), "utf8")))).toEqual([]);
+test("no file the Worker runs uses a Bun API, which the Workers runtime does not have", async () => {
+  // Everything wrangler bundles from the entry point, at any depth (#1981): a browser build refuses an import of "bun"
+  // or "bun:*", and the bundle must not name the Bun global.
+  const built = await Bun.build({ entrypoints: [join(import.meta.dir, "index.ts")], target: "browser", throw: false });
+  expect(built.logs.map(String)).toEqual([]);
+  const code = (await built.outputs[0]?.text()) ?? "";
+  expect(code.length).toBeGreaterThan(10_000);
+  expect(code.match(/\bBun\b/g) ?? []).toEqual([]);
 });

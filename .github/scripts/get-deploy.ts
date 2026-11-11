@@ -3,7 +3,7 @@
  * The checks .github/workflows/deploy-get.yml runs around `wrangler deploy` for apps/get (get.doriterm.com, #1969).
  *
  *   bindings <wrangler.jsonc> <env or "">  the section deploys this environment's own bucket, database and dataset, never
- *                                          the other environment's, with observability off
+ *                                          the other environment's, with observability, Logpush and tail consumers off
  *   private <bucket>                       the bucket has no r2.dev URL and no custom domain (Cloudflare API)
  *   live <worker>                          prints the version the Worker serves now, or "none", for a rollback
  *
@@ -56,6 +56,12 @@ export function bindingProblems(config: unknown, env: string): string[] {
   exact("the Analytics Engine dataset", names(section["analytics_engine_datasets"], "dataset"), want.dataset);
   if (vars["ANALYTICS_DATASET"] !== want.dataset) problems.push(`ANALYTICS_DATASET is not ${want.dataset}`);
   if (record(section["observability"])["enabled"] !== false) problems.push("observability is not off");
+  // Either would ship request events off the Worker (#1981); a named environment that sets neither is held to the
+  // top-level values.
+  const top = record(config);
+  if ((section["logpush"] ?? top["logpush"]) === true) problems.push("logpush is on");
+  const tails = list(section["tail_consumers"] ?? top["tail_consumers"]);
+  if (tails.length > 0) problems.push(`it has tail consumers (${tails.length})`);
   for (const key of ["account_id", "ACCOUNT_ID", "ANALYTICS_TOKEN"]) {
     if (key in section || key in vars || key in record(config)) problems.push(`${key} is written in the file`);
   }

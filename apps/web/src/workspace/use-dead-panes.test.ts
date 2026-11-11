@@ -5,6 +5,8 @@ import {
   absentPanes,
   absentRemotePanes,
   endedForGood,
+  endedInView,
+  goneFromView,
   type Missing,
   settledPanes,
   stepMissing,
@@ -111,6 +113,34 @@ test("only a program that exited or was killed is over for good; a lost holder, 
   expect(endedForGood({ state: "finished" })).toBe(false);
   // A kept terminal whose program was lost stays live with the loss as its reason, until its shell comes back.
   expect(endedForGood({ state: "live", reason: "killed" })).toBe(false);
+});
+
+test("the panes in view whose terminal the feed lists as over are the ones their views say ended (#2146)", () => {
+  const terminals = [listed("t1", "live"), listed("t2", "finished"), listed("t3", "finished")];
+  expect([...endedInView(terminals, ["t1", "t2", "t9"])]).toEqual(["t2"]);
+});
+
+test("a pane left to its view that no tab shows any more went on another device, which had it out of view (#2146)", () => {
+  const tabs = [tab("a", ["t1"]), tab("b", ["t2", null])];
+  const left = new Map<string, string | null>([
+    ["t1", null],
+    ["t2", null],
+    ["t3", null],
+  ]);
+  expect(goneFromView(left, tabs, () => true)).toEqual(["t3"]);
+  expect(goneFromView(new Map(), tabs, () => true)).toEqual([]);
+});
+
+/** This core's document and rack's are still written; box was removed, so its document went with it. */
+const writtenOn = (name: string | null): boolean => name === null || name === "rack";
+
+test("a pane that went with its machine or with its layout document did not go on another device (#2231)", () => {
+  const left = new Map<string, string | null>([
+    ["t3", null],
+    ["box/t4", "box"],
+    ["rack/t5", "rack"],
+  ]);
+  expect(goneFromView(left, [], writtenOn)).toEqual(["t3", "rack/t5"]);
 });
 
 test("an absent remote pane is asked about only once a later machine.list read still finds it absent on that machine", () => {

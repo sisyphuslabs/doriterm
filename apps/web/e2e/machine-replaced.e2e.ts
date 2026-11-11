@@ -5,6 +5,7 @@ import { DEMO_MACHINE, MACHINE_ENV, MACHINE_NAME, viaCommand } from "./machine.t
 import { hcOn, STATE_BOUND_MS } from "./machine-switch.ts";
 import { getCoreDoc, machineCore } from "./core-doc.ts";
 import { readSavedEnv } from "./saved-env.ts";
+import { selectedPane } from "./tab-strip.ts";
 
 // The mesh reconciler replaces a machine added earlier for a member's core (over ssh, or with a via) with its mesh line
 // (#710): `machine.rm` of the old entry, then `machine.add` of the line for the same core, under the member's mesh name.
@@ -23,9 +24,6 @@ function replaceWithLine(name: string): void {
   hcOn("host", ["machine", "add", "--via", vias().replacement, "--name", name]);
 }
 
-const inSelectedTab = (page: Page, address: string) =>
-  page.locator(`[role="tabpanel"]:not([hidden]) [data-terminal="${address}"]`);
-
 test.describe("a machine replaced by its mesh line, with its terminal open", () => {
   let remote = "";
   let current = MACHINE_NAME;
@@ -42,7 +40,7 @@ test.describe("a machine replaced by its mesh line, with its terminal open", () 
   async function openRemote(page: Page): Promise<number> {
     await page.goto("/");
     await agentRow(page, "e2e", true).click();
-    const terminal = inSelectedTab(page, `${MACHINE_NAME}/${remote}`);
+    const terminal = selectedPane(page, `${MACHINE_NAME}/${remote}`);
     await expect(terminal).toBeVisible({ timeout: 20_000 });
     return page.getByRole("tablist", { name: "Tabs" }).getByRole("tab").count();
   }
@@ -60,7 +58,7 @@ test.describe("a machine replaced by its mesh line, with its terminal open", () 
       current = name;
       expect(machineCore(name)).toBe(id);
 
-      const moved = inSelectedTab(page, `${name}/${remote}`);
+      const moved = selectedPane(page, `${name}/${remote}`);
       await expect(moved).toBeVisible({ timeout: STATE_BOUND_MS });
       await expect(page.getByRole("tablist", { name: "Tabs" }).getByRole("tab")).toHaveCount(open);
       await moved.click();
@@ -69,7 +67,7 @@ test.describe("a machine replaced by its mesh line, with its terminal open", () 
       expect(getCoreDoc("herdr-app", name)).toEqual(layout);
 
       await page.reload();
-      await expect(inSelectedTab(page, `${name}/${remote}`)).toBeVisible({ timeout: STATE_BOUND_MS });
+      await expect(selectedPane(page, `${name}/${remote}`)).toBeVisible({ timeout: STATE_BOUND_MS });
     });
   }
 });

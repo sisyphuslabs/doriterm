@@ -9,6 +9,8 @@ import type { Session } from "./attention.ts";
 export function useAgentPlaces(terminals: readonly Session[]): AgentPlaces {
   const places = useRef<AgentPlaces>(new Map());
   const [tick, wake] = useReducer((count: number) => count + 1, 0);
+  // Written during render on purpose: placeAgents is deterministic and only moves places forward, so a render React
+  // throws away leaves nothing wrong behind, and an effect would show each move one render late (#1963).
   const placed = placeAgents(places.current, terminals, Date.now());
   places.current = placed.places;
   const { due } = placed;

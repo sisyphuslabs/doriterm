@@ -447,7 +447,7 @@ describe("OutputPacer holding an attach replay (D5)", () => {
     expect(written).toHaveLength(7);
   });
 
-  test("a replay that wrote a credit window in each 1500 ms span is let go at the first span that writes less", () => {
+  test("a replay that wrote a credit window in each 1500 ms span is let go at the first span that writes a trickle", () => {
     const { timers, holds, pacer } = replaying(300);
     for (let at = 0; at < 3000; at += 250) {
       pacer.push(bytes(64 * KIB));
@@ -459,6 +459,69 @@ describe("OutputPacer holding an attach replay (D5)", () => {
       pacer.push(bytes(KIB));
       timers.advance(at + 400 > 4500 ? 4499 - at : 400);
     }
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
+  });
+
+  test("a replay that comes slower than a window a span, as on a page slow to take each window in, is held to its last frame (#2271)", () => {
+    const { timers, holds, written, pacer } = replaying(300);
+    // 16 KiB every 125 ms is 128 KiB/s: each 1500 ms span writes 192 KiB, under a credit window, for 1.5 MiB.
+    for (let frame = 0; frame < 96; frame += 1) {
+      pacer.push(bytes(16 * KIB));
+      timers.advance(frame === 95 ? 0 : 125);
+    }
+    expect(holds).toEqual([true]);
+    timers.advance(499);
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
+    expect(written).toHaveLength(96);
+  });
+
+  test("a span that caught part of a window does not end the hold while the span before wrote a window (#2271)", () => {
+    const { timers, holds, pacer } = replaying(300);
+    // A window's worth in the first span, 96 KiB in the second (the rest of the next window falls after its end), then
+    // the replay goes on.
+    for (let at = 0; at < 1500; at += 250) {
+      pacer.push(bytes(48 * KIB));
+      timers.advance(250);
+    }
+    for (let at = 1500; at < 3000; at += 250) {
+      pacer.push(bytes(16 * KIB));
+      timers.advance(250);
+    }
+    expect(holds).toEqual([true]);
+    for (let at = 3000; at < 4500; at += 250) {
+      pacer.push(bytes(48 * KIB));
+      timers.advance(250);
+    }
+    expect(holds).toEqual([true]);
+  });
+
+  test("a first span that writes under half a credit window, though more than a trickle, lets the replay go (#2271)", () => {
+    const { timers, holds, pacer } = replaying(300);
+    // 96 KiB over the first span, in frames under the quiet window: more than a trickle, under half a window.
+    for (let at = 0; at < 1500; at += 250) {
+      pacer.push(bytes(16 * KIB));
+      timers.advance(at + 250 >= 1500 ? 249 : 250);
+    }
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
+  });
+
+  test("two spans that write under a credit window between them, each more than a trickle, let the replay go (#2271)", () => {
+    const { timers, holds, pacer } = replaying(300);
+    // 132 KiB, then 96 KiB: each more than a trickle, 228 KiB together, under a window.
+    for (const [from, frame] of [
+      [0, 22],
+      [1500, 16],
+    ] as const)
+      for (let at = from; at < from + 1500; at += 250) {
+        pacer.push(bytes(frame * KIB));
+        timers.advance(at + 250 >= 3000 ? 249 : 250);
+      }
     expect(holds).toEqual([true]);
     timers.advance(1);
     expect(holds).toEqual([true, false]);
@@ -482,6 +545,26 @@ describe("OutputPacer holding an attach replay (D5)", () => {
     timers.advance(500);
     expect(holds).toEqual([true]);
     pacer.push(bytes(256 * KIB));
+    timers.advance(499);
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
+  });
+
+  test("the quiet window starts when a window's credit goes back, so a page slow to write each window is held to the last (#2011)", () => {
+    const frames = manualFrames();
+    const timers = manualTimers();
+    const holds: boolean[] = [];
+    // Writing each 256 KiB window takes the page 300 ms (a starved page drawing a colored replay); its credit goes back
+    // as the write ends, and the core sends the next window only then.
+    const pacer = new OutputPacer(() => timers.advance(300), frames.frame, timers.now, timers.timer);
+    pacer.replay({ srtt: () => 300, hold: (held) => holds.push(held) });
+    for (let window = 0; window < 4; window += 1) {
+      pacer.push(bytes(256 * KIB));
+      // The next window comes a round trip after the credit: 600 ms after the last one arrived, past 1.5 x SRTT + 50.
+      if (window < 3) timers.advance(300);
+    }
+    expect(holds).toEqual([true]);
     timers.advance(499);
     expect(holds).toEqual([true]);
     timers.advance(1);

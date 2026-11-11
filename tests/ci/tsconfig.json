@@ -25,6 +25,9 @@
       "path": "../../apps/get"
     },
     {
+      "path": "../../apps/web"
+    },
+    {
       "path": "../../packages/crypto"
     }
   ]

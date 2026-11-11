@@ -822,3 +822,21 @@ setupWire();
 setupPipe();
 setupPairing();
 setupCopy();
+
+/** The download count under the hero's buttons, from get.doriterm.com's daily rollup (#1969); hidden until it answers. */
+async function showDownloads() {
+  const line = document.querySelector("[data-downloads]");
+  if (line === null) return;
+  try {
+    const response = await fetch("https://get.doriterm.com/stats/downloads");
+    if (!response.ok) return;
+    const stats = await response.json();
+    const count = typeof stats === "object" && stats !== null ? stats.downloads : undefined;
+    if (typeof count !== "number" || !Number.isFinite(count) || count <= 0) return;
+    line.textContent = `${count.toLocaleString("en-US")} downloads`;
+    line.hidden = false;
+  } catch {
+    // Offline, or the stats host is down: the hero simply shows no count.
+  }
+}
+showDownloads();

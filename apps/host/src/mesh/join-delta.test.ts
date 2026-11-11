@@ -196,7 +196,8 @@ describe("a session that ends during approval admits nothing", () => {
     });
     expect(await invited).toContain("unexpected card line");
     expect(inviterEnd.closeCode).toBe(CloseCode.CryptoFailure);
-    expect(types(a)).toEqual(["found"]);
+    // A refused first join founds nothing: no mesh file at all, so no admit either (#1428).
+    expect(a.mesh.read()).toBeUndefined();
     expect(pending.list()).toEqual([]);
   });
 

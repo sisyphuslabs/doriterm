@@ -66,3 +66,43 @@ test("saving an Advanced field keeps the machine another row selected while the 
   expect(after.hostId).toBe("b");
   expect(after.token).toBe("fresh");
 });
+
+/**
+ * Leaves the token field: once as the form opened, then after typing the empty value. Returns each edit the form saved.
+ * The form's store holds token "old" while the app's own store holds none, so a comparison against the app's store, not
+ * the one the form was given, saves on the first leave and skips the second (#2023).
+ */
+function leaveTokenTwice(): Partial<ConnectionSettings>[] {
+  const store = formStore(OPENED);
+  const edits: Partial<ConnectionSettings>[] = [];
+  const recording = {
+    get settings() {
+      return store.settings;
+    },
+    edit(fields: Partial<ConnectionSettings>) {
+      edits.push(fields);
+      store.edit(fields);
+    },
+  };
+  function Probe() {
+    const form = useConnectionForm(recording);
+    const [step, setStep] = useState(0);
+    if (step === 0) {
+      form.leave("token");
+      setStep(1);
+    } else if (step === 1) {
+      form.type("token", "");
+      setStep(2);
+    } else if (step === 2) {
+      form.leave("token");
+      setStep(3);
+    }
+    return null;
+  }
+  renderToStaticMarkup(<Probe />);
+  return edits;
+}
+
+test("leaving a field saves it only when it differs from the settings of the store the form was given (#2023)", () => {
+  expect(leaveTokenTwice()).toEqual([{ token: "" }]);
+});

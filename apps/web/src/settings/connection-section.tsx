@@ -28,6 +28,8 @@ export interface ConnectionForm {
    * roster move on their own while the form is open (#1006).
    */
   commit<K extends keyof ConnectionSettings>(field: K, value: ConnectionSettings[K]): void;
+  /** A field the person leaves: saved only if what was typed differs from that store's settings now (#2023). */
+  leave<K extends keyof ConnectionSettings>(field: K): void;
 }
 
 /** The Advanced form's state, apart from its markup, so a test can mount it and save a field after another pick (#1169). */
@@ -36,12 +38,16 @@ export function useConnectionForm(store: ConnectionFormStore = connectionStore):
   const change = <K extends keyof ConnectionSettings>(field: K, value: ConnectionSettings[K]): void => {
     setDraft((prev) => ({ ...prev, [field]: value }));
   };
+  const commit = <K extends keyof ConnectionSettings>(field: K, value: ConnectionSettings[K]): void => {
+    change(field, value);
+    store.edit({ [field]: value } as Partial<ConnectionSettings>);
+  };
   return {
     draft,
     type: change,
-    commit: (field, value) => {
-      change(field, value);
-      store.edit({ [field]: value } as Partial<ConnectionSettings>);
+    commit,
+    leave: (field) => {
+      if (draft[field] !== store.settings[field]) commit(field, draft[field]);
     },
   };
 }
@@ -72,9 +78,7 @@ export function ConnectionSection() {
           value={draft[id]}
           className="w-full sm:w-64"
           onValueChange={(value: string) => form.type(id, value)}
-          onBlur={() => {
-            if (draft[id] !== connectionStore.settings[id]) form.commit(id, draft[id]);
-          }}
+          onBlur={() => form.leave(id)}
           onKeyDown={(event) => {
             if (event.key === "Enter") form.commit(id, draft[id]);
           }}

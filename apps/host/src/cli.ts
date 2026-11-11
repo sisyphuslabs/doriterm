@@ -14,6 +14,18 @@ import { MESH_USAGE, meshCommand } from "./commands/mesh.ts";
 import { PAIR_USAGE, pairCommand } from "./commands/pair.ts";
 import { HcInstallError, installHc } from "./hc-install.ts";
 import { HOST_VERSION, startHost } from "./host.ts";
+import {
+  notUpdatable,
+  parseChannel,
+  UPDATE_USAGE,
+  updatableBinary,
+  updateCommand,
+  updateOrigin,
+  verifyReleaseCommand,
+} from "./commands/update.ts";
+import { updaterId } from "./self-update/rollout.ts";
+import { scheduleSelfUpdate } from "./self-update/schedule.ts";
+import { selfUpdate } from "./self-update/self-update.ts";
 import { assertListenAllowed, parseListen } from "./listen.ts";
 import { asStartupError, STARTUP_EXIT_CODES, StartupError, startupErrorLine } from "./startup-error.ts";
 import { defaultStateDir } from "./state/files.ts";
@@ -25,6 +37,7 @@ const USAGE = `usage: doriface-host [options]
        doriface-host connect <hostId | pairing link | code>
        doriface-host mesh pair | mesh join <mesh link | code> | mesh join --from-file <file>
        doriface-host mesh status [--json] | mesh revoke [--compromised] <member> | mesh rename <member> <name> | mesh leave
+       doriface-host update [--channel stable|beta] | verify-release <SHA256SUMS.txt> <SHA256SUMS.txt.sig>
 
   --listen <host:port>  where to listen (default 127.0.0.1:7766; loopback only)
   --hc <path>           the herdr-core binary (default hc)
@@ -37,6 +50,8 @@ const USAGE = `usage: doriface-host [options]
   --state-dir <dir>     host keys and paired devices (default $DORIFACE_HOST_STATE_DIR, else $XDG_STATE_HOME/doriface-host)
   --relay <url>         the relay this host keeps an encrypted-only uplink to (default ${DEFAULT_RELAY_URL})
   --no-relay            for tests: keep no relay uplink, so only this computer and a --lan-listen test reach the host
+  --auto-update <ch>    stable or beta: update this binary from get.doriterm.com's signed manifest and exit for the
+                        service manager to restart it; off (the default) leaves updates to you
   --push-test-origin <origin>  for tests: also post web push notices to this push service origin (port 0: any port)
   --version             print this host's version
   -h, --help            show this help`;
@@ -65,6 +80,14 @@ async function main(args: readonly string[]): Promise<void> {
   }
   if (command === "mesh") {
     process.exitCode = await meshCommand(rest, out);
+    return;
+  }
+  if (command === "update") {
+    process.exitCode = await updateCommand(rest, out);
+    return;
+  }
+  if (command === "verify-release") {
+    process.exitCode = await verifyReleaseCommand(rest, out);
     return;
   }
   return serve(args);
@@ -127,6 +150,7 @@ async function serve(args: readonly string[]): Promise<void> {
       "no-relay": { type: "boolean", default: false },
       "push-test-origin": { type: "string", multiple: true },
       "install-hc": { type: "boolean", default: false },
+      "auto-update": { type: "string", default: "off" },
       version: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
@@ -141,6 +165,8 @@ async function serve(args: readonly string[]): Promise<void> {
   }
   if (values["install-hc"]) return installHerdrCore();
   if (!URL.canParse(values.relay)) throw new Error(`--relay wants a URL, got ${JSON.stringify(values.relay)}`);
+  const autoUpdate = values["auto-update"] === "off" ? undefined : parseChannel(values["auto-update"], "--auto-update");
+  const origin = updateOrigin(process.env);
   const given = values.token ?? process.env["DORIFACE_HOST_TOKEN"] ?? "";
   const token = given === "" ? generateToken() : assertValidToken(given);
   const listen = parseListen(values.listen);
@@ -183,6 +209,25 @@ async function serve(args: readonly string[]): Promise<void> {
   };
   process.once("SIGINT", () => shutdown("SIGINT"));
   process.once("SIGTERM", () => shutdown("SIGTERM"));
+
+  // The host a desktop app starts from its own resources is replaced with the app and passes no --auto-update.
+  const binary = updatableBinary(process.execPath);
+  if (autoUpdate !== undefined && binary === undefined) log(`--auto-update: ${notUpdatable(process.execPath)}`);
+  if (autoUpdate !== undefined && binary !== undefined) {
+    const stateDir = values["state-dir"] ?? defaultStateDir();
+    scheduleSelfUpdate({
+      check: () =>
+        selfUpdate({
+          channel: autoUpdate,
+          origin,
+          currentVersion: HOST_VERSION,
+          binary,
+          updaterId: updaterId(stateDir),
+        }),
+      onUpdated: () => shutdown("self-update"),
+      log,
+    });
+  }
 }
 
 main(Bun.argv.slice(2)).catch((error: unknown) => {
@@ -205,6 +250,8 @@ main(Bun.argv.slice(2)).catch((error: unknown) => {
     fingerprint: FINGERPRINT_USAGE,
     connect: CONNECT_USAGE,
     mesh: `${MESH_JOIN_USAGE}\n${MESH_USAGE}`,
+    update: UPDATE_USAGE,
+    "verify-release": UPDATE_USAGE,
   };
   const usage = usages[Bun.argv[2] ?? ""] ?? USAGE;
   process.stderr.write(`doriface-host: ${error instanceof Error ? error.message : String(error)}\n\n${usage}\n`);
