@@ -18,7 +18,10 @@ const uplinkTimeoutMs = process.env["UPLINK_MS"] === undefined ? undefined : Num
 process.once("SIGTERM", () => process.stdout.write("SIGNALLED\n"));
 if (stage === "pair") {
   // The stub pair CLI writes this file once it runs; that is when start-up is held at the pair step.
-  const mark = process.env["PAIR_MARK"] ?? "";
+  const mark = process.env["PAIR_MARK"];
+  // Without it the watch below would watch "." and the test would hang to its timeout instead of failing here (#2220).
+  if (mark === undefined || mark === "")
+    throw new Error("STAGE=pair needs PAIR_MARK, the file the stub pair CLI writes");
   const watcher = watch(dirname(mark), () => {
     if (!existsSync(mark)) return;
     watcher.close();
@@ -30,6 +33,15 @@ try {
   await startRelayedHost("startup-sigterm", {
     ...(hostRelayUrl === undefined ? {} : { hostRelayUrl }),
     ...(pairCli === undefined ? {} : { pairCli }),
+    // STAGE=relay-start: a relay start that never finishes, held from the first step of start-up (#2220).
+    ...(stage === "relay-start"
+      ? {
+          startRelay: () => {
+            process.stdout.write("STAGE relay-start\n");
+            return new Promise<never>(() => {});
+          },
+        }
+      : {}),
     ...(uplinkTimeoutMs === undefined ? {} : { uplinkTimeoutMs }),
     started: async (part) => {
       if (stage === "uplink") {
