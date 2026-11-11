@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -206,13 +205,9 @@ describe("an SVG's own text is checked, since OCR cannot read one", () => {
     expect(await captureSvg("<text>&amp; &lt; &gt; &quot; &apos;</text>")).toContain("& < > \" '");
   });
 });
-const tesseract = ((): string | undefined => {
-  try {
-    return execFileSync("sh", ["-lc", "command -v tesseract"], { encoding: "utf8" }).trim();
-  } catch {
-    return undefined;
-  }
-})();
+// Found the way captureText runs it, by name on this process's PATH: a tesseract reachable only from a login shell
+// would be run by nothing here, so the suite skips instead of failing (#2183).
+const tesseract = Bun.which("tesseract") ?? undefined;
 
 describe.skipIf(tesseract === undefined)("the committed captures raise no false alarm", () => {
   const samples = [
@@ -226,7 +221,7 @@ describe.skipIf(tesseract === undefined)("the committed captures raise no false 
   test("every sampled capture passes, so a clean image is never blocked", async () => {
     expect(samples.length).toBeGreaterThan(0);
     for (const sample of samples) {
-      // oxlint-disable-next-line no-await-in-loop -- one capture at a time, as the workflow's limit of one per core does
+      // oxlint-disable-next-line no-await-in-loop -- the test reads one capture at a time, each on one thread
       const text = await captureText(join(REPO, sample));
       expect({ sample, findings: classify(text).findings }).toEqual({ sample, findings: [] });
     }
