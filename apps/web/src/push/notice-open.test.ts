@@ -1,7 +1,7 @@
 import type { PluginListenerHandle } from "@capacitor/core";
 import { afterEach, describe, expect, test } from "bun:test";
 import type { NativePushPlugin, NoticeTap } from "../native/shell.ts";
-import { forgetLaunchNotice, hasLaunchNotice, listenForAppNotices } from "./notice-open.ts";
+import { forgetNotices, hasLaunchNotice, listenForAppNotices } from "./notice-open.ts";
 
 /** An app's push plugin whose launch tap answers when the test says so. */
 function launchingPlugin(): { readonly plugin: NativePushPlugin; readonly answer: (tap: NoticeTap | null) => void } {
@@ -22,7 +22,7 @@ function launchingPlugin(): { readonly plugin: NativePushPlugin; readonly answer
 
 const hadLocation = "location" in globalThis;
 afterEach(() => {
-  forgetLaunchNotice();
+  forgetNotices();
   if (!hadLocation) Reflect.deleteProperty(globalThis, "location");
 });
 

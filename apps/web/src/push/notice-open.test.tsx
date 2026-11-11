@@ -6,7 +6,7 @@ import type { NativePushPlugin, NoticeTap } from "../native/shell.ts";
 import { placeStart } from "../workspace/phone-place.ts";
 import { pushChannel } from "./push-channel.ts";
 import {
-  forgetLaunchNotice,
+  forgetNotices,
   hasLaunchNotice,
   hasPendingNotice,
   listenForAppNotices,
@@ -33,6 +33,9 @@ let worker: EventTarget;
 let root: Root;
 
 beforeEach(() => {
+  // Each case starts with no notice from the last one, in this file or another, so its own tap is what it sees.
+  expect(hasPendingNotice()).toBe(false);
+  expect(hasLaunchNotice()).toBe(false);
   worker = new EventTarget();
   Object.defineProperty(navigator, "serviceWorker", { value: worker, configurable: true });
   Object.assign(globalThis, {
@@ -45,7 +48,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await act(async () => root.unmount());
-  forgetLaunchNotice();
+  forgetNotices();
   mock.restore();
   Reflect.deleteProperty(navigator, "serviceWorker");
   for (const key of ["IS_REACT_ACT_ENVIRONMENT", "window", "location"]) Reflect.deleteProperty(globalThis, key);

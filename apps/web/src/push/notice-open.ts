@@ -42,9 +42,13 @@ let launchPending = false;
  */
 let launchNotice = false;
 export const hasLaunchNotice = (): boolean => launchNotice;
-/** Forgets that answer. A page decides its start once, so only a test, whose module state outlives one case, needs it. */
-export const forgetLaunchNotice = (): void => {
+/**
+ * Forgets the launch answer and any notice still waiting for its pane. A page decides its start once and its pane takes
+ * the notice, so only a test, whose module state outlives one case, needs it.
+ */
+export const forgetNotices = (): void => {
   launchNotice = false;
+  set(null);
 };
 const setLaunchPending = (next: boolean): void => {
   launchPending = next;
