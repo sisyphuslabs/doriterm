@@ -24,8 +24,8 @@ export const REPLAY_MAX_BYTES = 2 * 1024 * 1024;
 /** The shortest quiet after the last replay bytes that ends a replay (D5). */
 export const REPLAY_QUIET_FLOOR_MS = 100;
 /**
- * How long a synchronized update may go with no bytes before its paint is let go and the rest of it is paced: wterm's
- * own hold of one (@wterm/dom's `SYNCHRONIZED_OUTPUT_TIMEOUT_MS`, which output-pacer.test.ts reads from the installed
+ * The least a synchronized update may go with no bytes before its paint is let go and the rest of it is paced (the floor
+ * of its quiet window, max(this, 1.5 x SRTT + 50), #2306): wterm's own hold of one (@wterm/dom's `SYNCHRONIZED_OUTPUT_TIMEOUT_MS`, which output-pacer.test.ts reads from the installed
  * package), so an update a program left open is drawn a second after its last bytes, as wterm would (#853).
  */
 export const SYNCHRONIZED_UNPACED_MS = 1000;
@@ -102,8 +102,8 @@ type Budget = "arrived" | number;
  * Code) would outlast the terminal's hold and be drawn top to bottom (#757). Its bytes are written the moment they
  * arrive, uncapped, and the terminal's paint is held (`holdSynchronized`) while they keep coming, past wterm's own
  * one-second hold, which a page too slow to take a whole redraw in would otherwise outlast (#2040). The hold ends when
- * the update closes, so it is drawn whole; when no bytes of it have come for {@link SYNCHRONIZED_UNPACED_MS}, as an
- * update a program left open (#853); or at {@link SYNCHRONIZED_HOLD_CAP_MS}. What is left of an update past its hold is
+ * the update closes, so it is drawn whole; when no bytes of it have come for max({@link SYNCHRONIZED_UNPACED_MS},
+ * 1.5 x SRTT + 50) ms, as an update a program left open (#853, #2306); or at {@link SYNCHRONIZED_HOLD_CAP_MS}. What is left of an update past its hold is
  * paced.
  *
  * Coming back to the app is drawn in one paint, not replayed (D5): while the app is hidden no frame runs, so the queue

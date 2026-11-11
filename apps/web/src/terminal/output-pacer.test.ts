@@ -264,6 +264,22 @@ describe("OutputPacer in a synchronized update (#757)", () => {
     expect(holds).toEqual([true, false]);
   });
 
+  test("on a fast link an update left open is still let go the terminal's hold after its last bytes, not sooner (#853, #2306)", () => {
+    const { frames, timers, holds, pacer } = holdingUpdates();
+    // A 300 ms round trip makes 1.5 x SRTT + 50 = 500 ms: the 1 s hold is the floor.
+    pacer.replay({ srtt: () => 300, hold: () => undefined });
+    pacer.push(bytes(64));
+    timers.advance(1500);
+    frames.nextFrame();
+    pacer.push(text(OPEN));
+    frames.nextFrame();
+    pacer.push(bytes(FRAME_BYTES));
+    timers.advance(SYNCHRONIZED_UNPACED_MS - 1);
+    expect(holds).toEqual([true]);
+    timers.advance(1);
+    expect(holds).toEqual([true, false]);
+  });
+
   test("an update that keeps arriving is let go at the hold's cap, so a program that never closes one is still drawn (#2040)", () => {
     const { frames, timers, holds, pacer } = holdingUpdates();
     pacer.push(text(OPEN));
