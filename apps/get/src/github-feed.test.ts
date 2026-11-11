@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { RequestContext } from "./bindings.ts";
 import { githubFeed } from "./github-feed.ts";
 import { route } from "./index.ts";
@@ -58,12 +60,13 @@ test("a GitHub feed that names no single version or a file outside the release i
   expect(githubFeed("version: 0.1.18\nversion: 0.1.19\npath: a.zip\n")).toBeNull();
   expect(githubFeed("version: 0.1.18\npath: https://evil.example/a.zip\n")).toBeNull();
   expect(githubFeed("version: 0.1.18\npath: ../a.zip\n")).toBeNull();
-  // Shapes the line rewrite does not see are caught when the result is read back as YAML (#2109 review).
+  // Only electron-builder's own line shapes are accepted, so no other YAML form can carry a URL (#2109 review).
   for (const hostile of [
     "version: 0.1.18\nfiles: [{url: 'https://evil.example/a.zip', sha512: a}]\npath: a.zip\n",
     "version: 0.1.18\nfiles:\n  - url:\thttps://evil.example/a.zip\npath: a.zip\n",
     'version: 0.1.18\nfiles:\n  - "url": https://evil.example/a.zip\npath: a.zip\n',
     "version: 0.1.18\nfiles: oops\npath: a.zip\n",
+    "version: 0.1.18\nreleaseNotes: |\n  url: https://evil.example/a.zip\npath: a.zip\n",
   ]) {
     expect([hostile, githubFeed(hostile)]).toEqual([hostile, null]);
   }
@@ -74,4 +77,26 @@ test("a GitHub feed that names no single version or a file outside the release i
   expect((await g.get("/desktop/stable/latest-mac.yml")).status).toBe(502);
   const bad = withGitHub({ "latest-mac.yml": "<html>rate limited</html>" });
   expect((await bad.get("/desktop/stable/latest-mac.yml")).status).toBe(502);
+});
+
+// v0.1.16's latest-linux.yml exactly as GitHub Releases serves it.
+const V0_1_16_LINUX =
+  "version: 0.1.16\nfiles:\n  - url: Doriterm-0.1.16-x86_64.AppImage\n    sha512: rQCNuqLIVRwhUYhJNVt39FikqAH4N1cOLdw2Xs3G7gmfnIWEcIU7YYRgLy3hF1LVk+SZzmBE5utPdn/ZkjkK/w==\n    size: 169689710\n    blockMapSize: 178290\n  - url: Doriterm_0.1.16_amd64.deb\n    sha512: zJi/1foIZ/bkl6sMZpbz5Cz73O9+l0C1RVoAltHdyi1T71D8EjX5bFKkXy4eklzHql9FnGFtP5zrM+lPIuu9xg==\n    size: 146340548\npath: Doriterm-0.1.16-x86_64.AppImage\nsha512: rQCNuqLIVRwhUYhJNVt39FikqAH4N1cOLdw2Xs3G7gmfnIWEcIU7YYRgLy3hF1LVk+SZzmBE5utPdn/ZkjkK/w==\nreleaseDate: 2026-11-09T11:00:39.288Z\n";
+
+test("a feed as release.yml publishes it is accepted whole, every file pointed at its GitHub download", () => {
+  const composed = githubFeed(V0_1_16_LINUX);
+  expect(composed?.match(/(?:url|path): \S+/g)).toEqual([
+    `url: ${RELEASES}/download/v0.1.16/Doriterm-0.1.16-x86_64.AppImage`,
+    `url: ${RELEASES}/download/v0.1.16/Doriterm_0.1.16_amd64.deb`,
+    `path: ${RELEASES}/download/v0.1.16/Doriterm-0.1.16-x86_64.AppImage`,
+  ]);
+  expect(composed).toContain("blockMapSize: 178290\n");
+  expect(composed).toContain("releaseDate: 2026-11-09T11:00:39.288Z\n");
+});
+
+test("no file the Worker runs uses a Bun API, which the Workers runtime does not have", () => {
+  const dir = import.meta.dir;
+  const runtime = readdirSync(dir).filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"));
+  expect(runtime.length).toBeGreaterThan(8);
+  expect(runtime.filter((name) => /\bBun\./.test(readFileSync(join(dir, name), "utf8")))).toEqual([]);
 });

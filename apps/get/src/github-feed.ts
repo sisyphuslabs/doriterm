@@ -6,19 +6,37 @@ import { text } from "./serve-release.ts";
 
 const FEED_TTL_SECONDS = 60;
 
-const field = (value: unknown, name: string): unknown =>
-  typeof value === "object" && value !== null ? Reflect.get(value, name) : undefined;
+/** The line shapes of an electron-builder update feed; FILE_LINE's url and path lines among them. */
+const FEED_LINE = new RegExp(
+  [
+    /^version: \S+$/,
+    /^files:$/,
+    /^ {2}- url: [A-Za-z0-9_][A-Za-z0-9._-]*$/,
+    /^ {4}sha512: [A-Za-z0-9+/]+={0,2}$/,
+    /^ {4}(?:size|blockMapSize): \d+$/,
+    /^path: [A-Za-z0-9_][A-Za-z0-9._-]*$/,
+    /^sha512: [A-Za-z0-9+/]+={0,2}$/,
+    /^releaseDate: '?[0-9T:.Z-]+'?$/,
+    /^(?:stagingPercentage|minimumVersion): \S+$/,
+  ]
+    .map((pattern) => `(?:${pattern.source})`)
+    .join("|"),
+);
 
 /**
  * GitHub's latest release feed as get.doriterm.com serves it before a channel's first mirror (#1969): every file it
  * names becomes its absolute GitHub Releases URL, which electron-updater's generic provider downloads as given. The
- * feed must name one version and only plain release file names, else it is refused (null). No stagingPercentage is
+ * feed must consist only of the line shapes electron-builder writes, name one version and only plain release file
+ * names, else it is refused (null). No stagingPercentage is
  * added, so it is offered to every install, as GitHub's own feed is. v0.1.17 shipped reading only this host, so this
  * is what lets those installs update before anything is mirrored.
  */
 export function githubFeed(stored: string): string | null {
   const lines = stored.replaceAll("\r\n", "\n").split("\n");
-  const versions = lines.flatMap((line) => /^version: (\S+)\s*$/.exec(line)?.slice(1) ?? []);
+  // Every line has one of the shapes electron-builder writes (latest*.yml since v0.1.0), nothing else: no YAML
+  // parser is needed (the Workers runtime has none), and a flow-style list, a quoted key or a tab cannot match.
+  if (!lines.every((line) => line === "" || FEED_LINE.test(line))) return null;
+  const versions = lines.flatMap((line) => /^version: (\S+)$/.exec(line)?.slice(1) ?? []);
   const [version] = versions;
   if (versions.length !== 1 || version === undefined || !isVersion(version)) return null;
   const out: string[] = [];
@@ -30,37 +48,11 @@ export function githubFeed(stored: string): string | null {
       continue;
     }
     const [, prefix = "", value = ""] = file;
-    if (!isReleaseFile(value.trim())) return null;
-    out.push(`${prefix}${githubAssetUrl(version, value.trim())}`);
+    if (!isReleaseFile(value)) return null;
+    out.push(`${prefix}${githubAssetUrl(version, value)}`);
   }
   while (out.at(-1) === "") out.pop();
-  const composed = `${out.join("\n")}\n`;
-  return namesOnly(composed, version) ? composed : null;
-}
-
-/**
- * The composed feed read back as YAML, as electron-updater reads it: its version, and every file URL it would download,
- * must be this release's on GitHub. Any entry the line rewrite missed (flow style, a quoted key, a tab) fails here.
- */
-function namesOnly(composed: string, version: string): boolean {
-  let parsed: unknown;
-  try {
-    parsed = Bun.YAML.parse(composed);
-  } catch (error) {
-    if (error instanceof Error) return false;
-    throw error;
-  }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return false;
-  if (String(field(parsed, "version")) !== version) return false;
-  const files: unknown = field(parsed, "files") ?? [];
-  if (!Array.isArray(files)) return false;
-  const urls = [...files.map((file: unknown) => field(file, "url")), field(parsed, "path")].filter(
-    (u) => u !== undefined,
-  );
-  const prefix = githubAssetUrl(version, "");
-  return urls.every(
-    (url) => typeof url === "string" && url.startsWith(prefix) && isReleaseFile(url.slice(prefix.length)),
-  );
+  return `${out.join("\n")}\n`;
 }
 
 /**
