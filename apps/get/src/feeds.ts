@@ -90,8 +90,13 @@ export async function serveDesktopFeed(
   // read fails, so an installed app still sees the release (#2123).
   if (mirrored === "unavailable") return github();
   if (mirrored === null) {
-    if (await neverPublished(ctx.env.RELEASES, channel)) return github();
-    return text(404, `the ${channel} channel has no release yet`);
+    let unpublished = true;
+    try {
+      unpublished = await neverPublished(ctx.env.RELEASES, channel);
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+    }
+    return unpublished ? github() : text(404, `the ${channel} channel has no release yet`);
   }
   const { offered, stored } = mirrored;
   if (stored === null) return text(404, `${offered.version} has no ${feed}`);

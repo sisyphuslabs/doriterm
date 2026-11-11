@@ -18,7 +18,7 @@ import type {
 export class FakeBucket implements ReleaseBucket {
   readonly objects = new Map<string, Uint8Array<ArrayBuffer>>();
   failWith: Error | null = null;
-  /** Fails only the reads of this key: a partial R2 outage. */
+  /** Fails only the reads of this key, or only one operation on it ("head <key>"): a partial R2 outage. */
   failKey: string | null = null;
   /** Every key read, in order, with the operation. */
   readonly reads: string[] = [];
@@ -34,7 +34,7 @@ export class FakeBucket implements ReleaseBucket {
   private read(op: string, key: string): Uint8Array<ArrayBuffer> | undefined {
     this.reads.push(`${op} ${key}`);
     if (this.failWith !== null) throw this.failWith;
-    if (key === this.failKey) throw new Error(`R2 failed reading ${key}`);
+    if (key === this.failKey || `${op} ${key}` === this.failKey) throw new Error(`R2 failed reading ${key}`);
     return this.objects.get(key);
   }
 

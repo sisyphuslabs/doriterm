@@ -1,7 +1,8 @@
 /** The two lines the Worker adds to a feed itself. */
 export const ADDED_LINE = /^(?:stagingPercentage|minimumVersion):/;
 
-const FILES_KEY = /^files\s*:/;
+const PLAIN_KEY = /^[A-Za-z][A-Za-z0-9]*:(?:\s|$)/;
+const FILES_KEY = /^files:/;
 const FILES_HEADER = /^files:\s*$/;
 const BLOCK_SCALAR = /:\s*[|>][-+0-9]*\s*$/;
 const FILES_ITEM = /^( {2}- url: )(.*)$/;
@@ -20,8 +21,9 @@ export type Placed =
 
 /**
  * Each line placed in the feed's structure, or null for any structure electron-builder does not write, since a YAML
- * parser could still read a file from it: a top-level list item, a `files` key in another spelling, an indented line
- * under a key that is neither `files:` nor a block scalar, or a `url` or `path` key anywhere else.
+ * parser could still read a file from it: a top-level line that is not a plain `key:` (a list item, or a key quoted,
+ * escaped, tagged, anchored or explicit), `files` with a value on its line, an indented line under a key that is neither
+ * `files:` nor a block scalar, or a `url` or `path` key anywhere else.
  */
 export function placeLines(lines: readonly string[]): Placed[] | null {
   let block: "none" | "files" | "scalar" | "plain" = "none";
@@ -33,7 +35,7 @@ export function placeLines(lines: readonly string[]): Placed[] | null {
       continue;
     }
     if (!/^\s/.test(line)) {
-      if (line.startsWith("-")) return null;
+      if (!PLAIN_KEY.test(line)) return null;
       if (FILES_KEY.test(line) && !FILES_HEADER.test(line)) return null;
       block = FILES_HEADER.test(line) ? "files" : BLOCK_SCALAR.test(line) ? "scalar" : "plain";
       inItem = false;

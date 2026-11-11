@@ -73,6 +73,13 @@ test("a feed read that R2 fails, all of it or one object, answers GitHub's lates
   expect(answers).toEqual(fails.map((fail) => [fail, 200, "github", true]));
 });
 
+test("a channel with no pointer whose never-published check R2 fails also answers GitHub's feed (#2213 review)", async () => {
+  const g = withGitHub({ "latest-mac.yml": macFeed("0.1.18") });
+  g.bucket.failKey = "head channels/stable.json";
+  const response = await g.get("/desktop/stable/latest-mac.yml");
+  expect([response.status, response.headers.get("X-Doriterm-Source")]).toEqual([200, "github"]);
+});
+
 test("a GitHub feed that names no single version or a file outside the release is refused, not passed on", async () => {
   expect(githubFeed("files:\n  - url: a.zip\n")).toBeNull();
   expect(githubFeed("version: 0.1.18\nversion: 0.1.19\npath: a.zip\n")).toBeNull();

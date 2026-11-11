@@ -35,6 +35,12 @@ test("any other YAML spelling of a file line is refused, never passed through un
     `version: 0.1.18\nupdate:\n  url: ${EVIL}\npath: a.zip\n`,
     `version: 0.1.18\npath : ${EVIL}\n`,
     `version: 0.1.18\n"path": ${EVIL}\n`,
+    `version: 0.1.18\n"files": [{url: ${EVIL}, sha512: abc}]\npath: a.zip\n`,
+    `version: 0.1.18\n'files': [{url: ${EVIL}}]\npath: a.zip\n`,
+    `version: 0.1.18\n"\\x66iles": [{url: ${EVIL}}]\npath: a.zip\n`,
+    `version: 0.1.18\n!!str files: [{url: ${EVIL}}]\npath: a.zip\n`,
+    `version: 0.1.18\n? files\n: [{url: ${EVIL}}]\npath: a.zip\n`,
+    `version: 0.1.18\n&a files: [{url: ${EVIL}}]\npath: a.zip\n`,
   ]) {
     expect([hostile, composeFeed(hostile, RESOLVED)]).toEqual([hostile, null]);
   }
