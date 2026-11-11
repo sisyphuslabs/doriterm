@@ -137,6 +137,32 @@ describe("a phone's space counts (#2122)", () => {
   });
 });
 
+describe("phoneSpaces builds the set of live terminals once (#2135)", () => {
+  test("each terminal's state is read once however many spaces it counts, and the counts are the same", () => {
+    let reads = 0;
+    /** A terminal that counts how often its state is read. */
+    const watched = (address: string, state: Terminal["state"]): Terminal => {
+      const each = terminal(address);
+      Object.defineProperty(each, "state", {
+        get: () => {
+          reads += 1;
+          return state;
+        },
+      });
+      return each;
+    };
+    const terminals = [watched("t1", "live"), watched("t2", "finished"), watched("t3", "live"), watched("t4", "live")];
+    const spaces = [
+      { ...space([["t1"], ["t2"]], ["", ""]), id: "space:local/a" },
+      { ...space([["t3", "t2"]], [""]), id: "space:local/b" },
+      { ...space([["t4"], ["t5"]], ["", ""]), id: "space:local/c" },
+    ];
+    const counted = phoneSpaces(spaces, terminals);
+    expect(reads).toBe(terminals.length);
+    expect(counted.map((each) => each.tabs)).toEqual([1, 1, 1]);
+  });
+});
+
 describe("a space screen's subtitle", () => {
   test("says where it runs, its running tabs and how many need the person", () => {
     const blocked = { id: "a", name: "deploy", status: "blocked" } as const;
