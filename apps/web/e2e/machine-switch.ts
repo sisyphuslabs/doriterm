@@ -19,6 +19,16 @@ export const OFFLINE_TEST_TIMEOUT_MS = OFFLINE_BOUND_MS + 120_000;
 export const machineRow = (page: Page) => page.getByRole("button", { name: new RegExp(`^${MACHINE_NAME}\\b`) });
 export const newOn = (page: Page) => page.getByRole("button", { name: `New space on ${MACHINE_NAME}` });
 
+/** The added machine's state as the e2e core lists it (`hc machine ls`): a layout-free read, the same on every screen. */
+export const machineState = (): string => {
+  const listed: unknown = JSON.parse(hcOn("host", ["machine", "ls"]));
+  const machines = Reflect.get(Object(listed), "machines");
+  const one = Array.isArray(machines)
+    ? machines.find((m: unknown) => Reflect.get(Object(m), "name") === MACHINE_NAME)
+    : undefined;
+  return String(Reflect.get(Object(one), "state"));
+};
+
 /** Runs hc against the e2e core (`host`) or the added machine's own core (`machine`); returns its stdout. */
 export function hcOn(core: "host" | "machine", args: readonly string[], input?: string): string {
   const { hc, env } = readSavedEnv(core === "host" ? E2E_HOST_ENV : MACHINE_ENV);
