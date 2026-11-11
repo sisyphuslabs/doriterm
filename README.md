@@ -189,8 +189,8 @@ Other machines join the same way, through the same relay:
 hc machine add --via 'doriface-host connect <B hostId>' --name b   # B's terminals appear as b/t1, b/t2, …
 ```
 
-Every one of those paths goes through the relay, and the host also serves the contract's direct path — `/v1/e2ee` is mounted on
-the main listener and on `--lan-listen` when that is given — though no shipped client dials it. On the same machine the host
+Every one of those paths goes through the relay: the direct path is off by decision (#2070), so no client dials a host's address,
+and the host's `--lan-listen` exists for tests only. On the same machine the host
 serves a token-gated, loopback-only `ws://127.0.0.1:7766/v1/hc`, which is how the desktop app talks to its own local host. The
 host never parses what `hc` says — it pipes the stream — so the client SDK speaks herdr-core's protocol itself and a future
 native app can reuse it. The full design is in [docs/architecture.md](docs/architecture.md), and the wire contract every package
