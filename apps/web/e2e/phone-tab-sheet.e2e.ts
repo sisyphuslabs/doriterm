@@ -3,6 +3,7 @@ import { agentRow } from "./agents.ts";
 import { expect, laidOutBox, opened, test } from "./fixtures.ts";
 import { seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
+import { stateOn } from "./ended-terminal.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
@@ -128,5 +129,38 @@ test("closing the phone's only tab from the sheet leaves the screen for the list
   // Nothing is left to show in that space, so the phone goes up to the list it came from.
   await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
   await expect(page.locator("[data-terminal]")).toHaveCount(0);
+  await expect.poll(() => new URL(page.url()).searchParams.get("t")).toBeNull();
+});
+
+test("the shown pane ending under the sheet takes the phone up to the list, not back to the ended pane (#1478 review)", async ({
+  page,
+}) => {
+  const run = Date.now().toString(36);
+  const space = `tse-${run}`;
+  const shown = `tse-a-${run}`;
+  const [first, second] = [startShellIn(space, shown), startShellIn(space, `tse-b-${run}`)];
+  // One tab, split: the phone shows its first pane, and the tab is the space's only one.
+  seedSpaces([
+    {
+      id: "spc-tse",
+      name: space,
+      folder: "",
+      tabs: [{ id: "tb-tse-0", name: "t1", terminal: first, beside: [second] }],
+    },
+  ]);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+  await agentRow(page, shown, false).click();
+  await expect(header(page).getByRole("heading", { name: "t1", exact: true })).toBeVisible({ timeout: 15_000 });
+
+  await switcher(page).click();
+  await opened(sheet(page));
+  // The shown pane ends while the sheet is over it. Without the sheet this End takes the phone up to the list; with it, one
+  // Back only closes the sheet and leaves the phone on the ended pane.
+  hcOn("host", ["kill", first]);
+  await expect.poll(() => stateOn("host", first), { timeout: 15_000 }).toBe("finished");
+
+  await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+  await expect(sheet(page)).toHaveCount(0);
   await expect.poll(() => new URL(page.url()).searchParams.get("t")).toBeNull();
 });
