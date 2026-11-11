@@ -106,6 +106,7 @@ function Root() {
       {/* Under the dialog the workspace stays in view but out of reach: inert, and hidden from assistive tech, so only
           the dialog is read (aria-modal). */}
       <div
+        data-workspace
         className={sheet ? "invisible contents [&_*]:invisible!" : "contents"}
         inert={settings}
         aria-hidden={settings || undefined}
