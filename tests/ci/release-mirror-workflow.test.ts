@@ -40,6 +40,7 @@ test("release.yml mirrors a published release to production after Publish, and a
   expect(production?.needs).toEqual(["version", "publish"]);
   expect(production?.uses).toBe("./.github/workflows/release-mirror.yml");
   expect(production?.with).toEqual({ tag: "${{ needs.version.outputs.tag }}", target: "production" });
+  expect(staging?.if).toBe("github.event_name == 'workflow_dispatch'");
   expect(staging?.uses).toBe("./.github/workflows/release-mirror.yml");
   expect(staging?.with).toEqual({ tag: "${{ needs.version.outputs.tag }}", target: "staging", published: false });
   for (const job of [production, staging]) {
@@ -66,23 +67,22 @@ test("the mirror job checks the tag, then downloads, mirrors, signs and probes i
   expect(evaluate("${{ inputs.published != false }}", { contexts: { inputs: { published: null } } })).toBe(false);
 });
 
-test("a release is never public unsigned: the draft's staging mirror attaches the signature, and Publish waits for it (#2297)", () => {
-  const { publish, "mirror-staging": staging } = release.jobs;
-  expect(publish?.needs).toContain("mirror-staging");
-  // A tag push runs Publish, so the staging mirror it waits for must run on a push too, not only by hand.
-  const runsOn = (event: string) =>
-    staging?.if === undefined ||
-    evaluate(`\${{ ${staging.if} }}`, { contexts: { github: { event_name: event } } }) === true;
-  expect([runsOn("push"), runsOn("workflow_dispatch")]).toEqual([true, true]);
-  const attach = mirror?.steps?.find((step) => step.name === "Attach the checksums signature")?.if ?? "";
-  const attaches = (target: string, published: Value) =>
-    evaluate(`\${{ ${attach} }}`, { contexts: { inputs: { target, published } } });
-  // release.yml's draft call and production call attach it; a staging run by hand (no published input) does not.
-  expect([attaches("staging", false), attaches("production", true), attaches("staging", null)]).toEqual([
-    true,
-    true,
-    false,
-  ]);
+test("a release is never public unsigned: a sign job signs the draft, and Publish waits for it and checks it (#2297)", () => {
+  const { publish, sign, "mirror-staging": staging } = release.jobs;
+  // Supersedes #2300's first shape, which signed in the staging mirror: a tag after a dispatch of the same version, or a
+  // backport, made that mirror fail and held Publish for ever.
+  expect(publish?.needs).toContain("sign");
+  expect(publish?.needs).not.toContain("mirror-staging");
+  const steps = (publish?.steps ?? []).map((step) => step.name ?? "");
+  const guard = steps.indexOf("The draft carries its signature");
+  expect([guard >= 0, guard < steps.indexOf("Publish the draft")]).toEqual([true, true]);
+  expect(publish?.steps?.[guard]?.run).toContain("grep -qx SHA256SUMS.txt.sig");
+  expect([sign?.if, sign?.environment]).toEqual(["github.event_name == 'push'", "release-mirror-staging"]);
+  expect(runs(sign).join("\n")).toContain("release-r2.ts sign --dir");
+  expect(staging?.if).toBe("github.event_name == 'workflow_dispatch'");
+  expect(mirror?.steps?.find((step) => step.name === "Attach the checksums signature")?.if).toBe(
+    "inputs.target == 'production'",
+  );
 });
 
 test("run by hand it mirrors a published release from dev only, in the environment of its target", () => {
@@ -97,8 +97,13 @@ test("run by hand it mirrors a published release from dev only, in the environme
   for (const run of runs(mirror)) expect(run).not.toMatch(/\$\{\{\s*inputs\./);
 });
 
-test("the R2 key pair and the signing key reach only the mirror job and the channel job", () => {
-  expect(holders(release)).toEqual([]);
+test("the R2 key pair and the signing key reach only the mirror job, the channel job and release.yml's sign job", () => {
+  // The sign job holds the signing key alone, in its step, and no R2 key (#2297).
+  expect(holders(release)).toEqual(["sign"]);
+  const sign = release.jobs["sign"];
+  const names = [sign, ...(sign?.steps ?? [])].flatMap((scope) => Object.keys(scope?.env ?? {}));
+  expect(names.filter((name) => /^(R2_|RELEASE_SIGNING_KEY)/.test(name))).toEqual(["RELEASE_SIGNING_KEY"]);
+  expect(Object.keys(sign?.env ?? {})).not.toContain("RELEASE_SIGNING_KEY");
   expect(holders(mirrorFlow)).toEqual(["mirror"]);
   expect(holders(channel)).toEqual(["channel"]);
 });
