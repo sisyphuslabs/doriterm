@@ -141,12 +141,14 @@ test("a close still writing keeps its question: Cancel waits, Escape does nothin
   // The layout write is held, as a slow host would hold it: the close is in flight, not finished.
   const release = socket.hold("doc.set");
   socket.staleWrites(true);
+  // The page wrote the layout once already, adopting the space's terminal as it loaded (the row shows once that write is
+  // saved): only the writes after Close are the close's (#2043).
+  const writes = (): number => socket.sent().filter((frame) => frame.includes('"method":"doc.set"')).length;
+  const loaded = writes();
   await question.getByRole("button", { name: "Close" }).click();
   await expect(question.getByRole("button", { name: "Close" })).toHaveAttribute("aria-busy", "true");
   // The held write comes after the close ended its program: nothing is left for the cleanup to stop.
-  await expect
-    .poll(() => socket.sent().filter((frame) => frame.includes('"method":"doc.set"')).length, { timeout: 15_000 })
-    .toBe(1);
+  await expect.poll(() => writes() - loaded, { timeout: 15_000 }).toBe(1);
   started.splice(0);
   await expect(question.getByRole("button", { name: "Cancel" })).toBeDisabled();
   await page.keyboard.press("Escape");
