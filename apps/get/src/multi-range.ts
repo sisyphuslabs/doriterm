@@ -80,6 +80,7 @@ export function multipartBody(
   let headSent = false;
   let at = 0;
   let progressed = false;
+  let cancelled: { readonly reason: unknown } | null = null;
 
   /** Enqueues what the chunk in hand allows; "read" when it needs the next chunk, "group" for the next group. */
   const drain = (controller: ReadableStreamDefaultController<Uint8Array>): "read" | "group" | "done" => {
@@ -116,15 +117,22 @@ export function multipartBody(
       return;
     }
     if (state === "done") {
+      reader?.releaseLock();
       controller.enqueue(framing.tail);
       controller.close();
       return;
     }
     if (state === "group") {
+      // A finished group's R2 body is let go before the next opens (#2264).
+      reader?.releaseLock();
+      reader = null;
       group += 1;
       const next = groups[group];
       if (next === undefined) throw new Error("no range group left to read");
-      reader = (await read(next)).getReader();
+      const source = await read(next);
+      // The client went away while this body was opening: nothing will read it.
+      if (cancelled !== null) return void (await source.cancel(cancelled.reason));
+      reader = source.getReader();
       chunk = new Uint8Array(0);
       chunkStart = next.offset;
       partInGroup = 0;
@@ -140,6 +148,9 @@ export function multipartBody(
 
   return new ReadableStream<Uint8Array>({
     pull: (controller) => step(controller),
-    cancel: (reason) => reader?.cancel(reason),
+    cancel: (reason) => {
+      cancelled = { reason };
+      return reader?.cancel(reason);
+    },
   });
 }
