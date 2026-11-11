@@ -50,6 +50,7 @@ export class MeshRuntime {
       policy: this.policy,
       dial: options.dialLine,
       clock,
+      log,
     });
     this.reconciler = new Reconciler({
       machines: options.machines,
