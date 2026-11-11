@@ -28,11 +28,8 @@ export function statusLine(status: DesktopUpdateStatus | null): string {
   }
 }
 
-/**
- * The desktop app's Update channel (#1969): stable by default, beta for prereleases. The control waits for the shell's
- * saved channel and goes back when the shell did not keep a change; the description is the updater's status.
- */
-export function UpdateChannelRow({ setting }: { readonly setting: UpdateSetting }) {
+/** The shell's saved channel and the updater's status, subscribed while mounted and stopped on unmount (#2252). */
+export function useUpdateState(setting: UpdateSetting) {
   const [channel, setChannel] = useState<UpdateChannel | null>(null);
   const [status, setStatus] = useState<DesktopUpdateStatus | null>(null);
   useEffect(() => {
@@ -47,6 +44,15 @@ export function UpdateChannelRow({ setting }: { readonly setting: UpdateSetting 
       stop();
     };
   }, [setting]);
+  return { channel, setChannel, status };
+}
+
+/**
+ * The desktop app's Update channel (#1969): stable by default, beta for prereleases. The control waits for the shell's
+ * saved channel and goes back when the shell did not keep a change; the description is the updater's status.
+ */
+export function UpdateChannelRow({ setting }: { readonly setting: UpdateSetting }) {
+  const { channel, setChannel, status } = useUpdateState(setting);
   const change = (next: UpdateChannel): void => {
     const was = channel;
     setChannel(next);

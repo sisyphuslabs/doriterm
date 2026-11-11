@@ -12,7 +12,7 @@ const ipcRenderer = {
     listeners.get(channel)?.delete(listener);
     return ipcRenderer;
   },
-  invoke: async () => null,
+  invoke: (): Promise<unknown> => Promise.resolve(null),
 };
 const held = (): number => [...listeners.values()].reduce((sum, set) => sum + set.size, 0);
 let exposed: DorifaceBridge | undefined;
@@ -25,6 +25,20 @@ mock.module("electron", () => ({
   },
 }));
 await import("../src/preload/preload.ts");
+
+test("a first status that answers after stop reaches no listener (#2252)", async () => {
+  if (exposed === undefined) throw new Error("the preload exposes its bridge");
+  const first = Promise.withResolvers<unknown>();
+  ipcRenderer.invoke = () => first.promise;
+  const heard: unknown[] = [];
+  const stop = exposed.onUpdateStatus((status) => heard.push(status));
+  stop();
+  first.resolve({ state: "current" });
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(heard).toEqual([]);
+  ipcRenderer.invoke = () => Promise.resolve(null);
+});
 
 test("each onUpdateStatus answers the function that removes its ipc listener again (#1982)", () => {
   if (exposed === undefined) throw new Error("the preload exposes its bridge");
