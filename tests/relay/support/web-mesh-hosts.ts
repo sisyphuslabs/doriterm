@@ -14,13 +14,19 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { FakeRelay } from "../../../apps/host/src/testing/fake-relay.ts";
 import { approveOnInviter, browserInviteUrl } from "./compared-browser.ts";
 import { startMesh } from "./mesh/mesh.ts";
 import { type Member, meshIdOf, statusOf } from "./mesh/status.ts";
 
 const OFFER = /^https:\/\/web\.example\/pair#\S+$/m;
 const home = mkdtempSync(join(tmpdir(), "on-b-"));
-const mesh = await startMesh({ names: ["a", "b"], coreNames: { a: "studio", b: "build-box" } });
+const fake = process.env["DORIFACE_RELAY_DIR"] === undefined ? new FakeRelay() : undefined;
+const mesh = await startMesh({
+  names: ["a", "b"],
+  coreNames: { a: "studio", b: "build-box" },
+  ...(fake === undefined ? {} : { relayUrl: fake.url }),
+});
 let stopping = false;
 const stop = (): void => {
   if (stopping) return;
@@ -28,6 +34,7 @@ const stop = (): void => {
   void (async () => {
     try {
       const receipt = await mesh.dispose();
+      await fake?.stop();
       rmSync(home, { recursive: true, force: true });
       const left = [...receipt.alive.map((own) => `${own.kind} ${own.pid}`), ...receipt.listening.map(String)];
       if (left.length > 0) process.stderr.write(`mesh-hosts: left running: ${left.join(", ")}\n`);
@@ -63,7 +70,7 @@ const shell = Bun.spawn([b.session.hc, "run", "--bg", "--name", "on-b", "--cwd",
 });
 if ((await shell.exited) !== 0) throw new Error(`hc run on b failed: ${await new Response(shell.stderr).text()}`);
 
-const relayUrl = a.tap?.url ?? "";
+const relayUrl = a.tap?.url ?? fake?.url ?? "";
 process.stdout.write(`READY ${JSON.stringify({ relayUrl, machine, bHostId: b.hostId })}\n`);
 
 /** A fresh offer's `#` fragment, from the line the CLI printed for it. */
@@ -125,6 +132,10 @@ const answers: Readonly<Record<string, (arg: string) => Promise<string>>> = {
   STATUS: async () => `MEMBERS ${JSON.stringify(await membersOfBoth())}`,
   STOP: stopB,
   START: startB,
+  STOP_INVITER: async () => {
+    await a.stop();
+    return "STOPPED inviter";
+  },
 };
 
 async function answer(ask: string): Promise<void> {
