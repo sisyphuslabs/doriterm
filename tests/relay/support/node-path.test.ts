@@ -6,7 +6,10 @@ const shim = join("/tmp", "bun-node-1000-38afee6c8");
 
 test("wrangler's PATH leaves out the directory bunx --bun puts first, whose node is bun (#2327)", () => {
   const env = { PATH: [shim, "/home/u/.local/bin", "/usr/bin"].join(delimiter), HOME: "/home/u" };
-  expect(withoutBunNodeShim(env)).toEqual({ PATH: ["/home/u/.local/bin", "/usr/bin"].join(delimiter), HOME: "/home/u" });
+  expect(withoutBunNodeShim(env)).toEqual({
+    PATH: ["/home/u/.local/bin", "/usr/bin"].join(delimiter),
+    HOME: "/home/u",
+  });
 });
 
 test("a PATH without the shim, or no PATH at all, is passed on as it is", () => {
