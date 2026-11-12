@@ -49,11 +49,6 @@ export function docEdit(
 }
 
 /**
- * The herdr-app document of this core and of every connected added machine, as the shared roster holds them: read
- * again on each `doc` event and on every gap in the feed. A machine that is not connected shows the last document
- * read from it and takes no edits.
- */
-/**
  * Why a machine's layout takes no edits now, in the words its refusal shows; null when an edit may go ahead. `why` is
  * the reason when the machine has no live document at all.
  */
@@ -68,6 +63,11 @@ export function readOnlyOf(state: DocState | undefined, why: string): string | n
   return null;
 }
 
+/**
+ * The herdr-app document of this core and of every connected added machine, as the shared roster holds them: read
+ * again on each `doc` event and on every gap in the feed. A machine that is not connected shows the last document
+ * read from it and takes no edits.
+ */
 export function useLayoutDocs(
   connection: HcConnection,
   machines: readonly MachineView[],
