@@ -1,6 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import { generateX25519 } from "@doriface/crypto";
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, test } from "bun:test";
 import { type RelayedHost, startRelayedHost } from "./support/relayed-host.ts";
 import { socketFrom, testIp } from "./support/probe.ts";
 import { setUpOnce } from "./support/set-up-once.ts";
@@ -40,21 +40,45 @@ function host(): RelayedHost {
   return relayed;
 }
 
-async function liveConnects(): Promise<Set<number>> {
-  const ps = Bun.spawn(["ps", "-axo", "pid=,args="], { stdout: "pipe", stderr: "inherit" });
+/** Every running `hc connect` on this suite's hc session, by pid, with its parent's pid. */
+async function liveConnects(): Promise<Map<number, number>> {
+  const ps = Bun.spawn(["ps", "-axo", "pid=,ppid=,args="], { stdout: "pipe", stderr: "inherit" });
   const [text, code] = await Promise.all([new Response(ps.stdout).text(), ps.exited]);
   if (code !== 0) throw new Error(`ps exited ${code}`);
   const session = `connect --session ${host().session.name}`;
-  return new Set(
+  return new Map(
     text
       .split("\n")
       .filter((line) => line.trimEnd().endsWith(session))
-      .map((line) => Number.parseInt(line.trim(), 10)),
+      .map((line) => {
+        const [pid = "", ppid = ""] = line.trim().split(/\s+/, 2);
+        return [Number.parseInt(pid, 10), Number.parseInt(ppid, 10)] as const;
+      }),
   );
 }
 
-async function newSince(before: ReadonlySet<number>): Promise<Set<number>> {
-  return new Set([...(await liveConnects())].filter((pid) => !before.has(pid)));
+async function newSince(before: ReadonlyMap<number, number>): Promise<Set<number>> {
+  return new Set([...(await liveConnects()).keys()].filter((pid) => !before.has(pid)));
+}
+
+const startsWith = (bytes: Uint8Array, prefix: Uint8Array): boolean =>
+  bytes.byteLength >= prefix.byteLength && prefix.every((byte, index) => bytes[index] === byte);
+
+/**
+ * The session's own `hc connect`: of those started since `before`, the tapped one that read everything the session
+ * sent, and the real hc under it. The host starts `hc connect` children of its own on the same hc session too (a fresh
+ * one for its git facts every few seconds); one that starts while the session opens reads other bytes, ends on its own,
+ * and must not be taken for the session's (#2397).
+ */
+async function childOf(before: ReadonlyMap<number, number>, sent: Uint8Array): Promise<Set<number>> {
+  const live = await liveConnects();
+  const fresh = [...live.keys()].filter((pid) => !before.has(pid));
+  const tap = host()
+    .taps()
+    .find((each) => fresh.includes(Number(each.pid)) && startsWith(each.read, sent));
+  if (tap === undefined) throw new Error("no hc connect started since the session opened has read what it sent");
+  const tapped = Number(tap.pid);
+  return new Set(fresh.filter((pid) => pid === tapped || live.get(pid) === tapped));
 }
 
 async function allGone(pids: ReadonlySet<number>, after: string): Promise<void> {
@@ -94,11 +118,9 @@ async function keptThenEnded(child: ReadonlySet<number>, detached: Promise<void>
 
 async function openSession(): Promise<{ readonly connection: HcConnection; readonly child: Set<number> }> {
   const before = await liveConnects();
-  const connection = await host().connect(phone);
+  const { connection, link } = await host().connectRecorded(phone);
   await connection.call("machine.list");
-  const child = await newSince(before);
-  expect(child.size).toBeGreaterThan(0);
-  return { connection, child };
+  return { connection, child: await childOf(before, link.sent) };
 }
 
 setUpOnce(async () => {
