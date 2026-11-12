@@ -1,24 +1,20 @@
-import { type SecureLink, SessionKind } from "@doriface/crypto";
 import { describe, expect, test } from "bun:test";
 import { ByteQueue } from "../link.ts";
-import { plaintextLink, type Wire } from "./links.ts";
+import { type PlaintextSession, plaintextLink, type Wire } from "./links.ts";
 
 /** A decrypted session whose records the test emits by hand. */
-function fakeSecure(): SecureLink & { readonly emit: (bytes: Uint8Array) => void } {
+function fakeSecure(): PlaintextSession & { readonly emit: (bytes: Uint8Array) => void } {
   let data: ((bytes: Uint8Array) => void) | undefined;
   return {
-    kind: SessionKind.Session,
-    remoteStatic: new Uint8Array(32),
-    handshakeHash: new Uint8Array(32),
-    peerName: undefined,
-    lanUrls: [],
-    stream: undefined,
+    link: undefined,
     send() {},
     onData(listener) {
       data = listener;
       return () => {};
     },
     onClose: () => () => {},
+    onLink: () => () => {},
+    attached: () => Promise.resolve(),
     close() {},
     emit: (bytes) => data?.(bytes),
   };
