@@ -14,6 +14,8 @@ export interface MachineLayout {
   readonly machineId: string | null;
   readonly doc: JsonObject | null;
   readonly loaded: boolean;
+  /** Why its last read failed, while nothing has been read from it since; null when the last read landed (#2443). */
+  readonly unread: string | null;
   /** Why edits are refused now, or null when they are taken. */
   readonly readOnly: string | null;
   readonly edit: (change: DocEdit, shown?: EditShown) => Promise<boolean>;
@@ -37,6 +39,23 @@ const NOT_CONNECTED = "the machine is not connected";
 export function noEditsWhy(id: string | null, shown: readonly MachineView[]): string {
   const view = shown.find((machine) => machine.id === id);
   return view?.state === "connected" || view?.state === "reconnecting" ? "the machine is reconnecting" : NOT_CONNECTED;
+}
+
+/**
+ * Whether the saved screen is back: every machine's layout is read, or is one this screen does not wait for (a machine
+ * that is not connected). A layout whose read failed with nothing read from it before is not taken as an empty
+ * workspace: until a read lands the person is told why, never shown "no tabs" (#2443).
+ */
+export function restoredFrom(layouts: readonly MachineLayout[], machinesListed: boolean): boolean {
+  return (
+    machinesListed &&
+    layouts.every((layout) => layout.loaded || layout.readOnly !== LAYOUT_LOADING)
+  );
+}
+
+/** Why this screen has no layout to show yet: the first unread machine's failed read, else null (#2443). */
+export function unreadReason(layouts: readonly MachineLayout[]): string | null {
+  return layouts.find((layout) => layout.unread !== null && !layout.loaded)?.unread ?? null;
 }
 
 /** A machine's edits: through its live document, or refused with `why` when it has none. */
@@ -83,6 +102,7 @@ export function useLayoutDocs(
       machineId,
       doc: state?.phase === "ready" ? state.doc : (kept ?? null),
       loaded: state?.phase === "ready" || kept !== undefined,
+      unread: state?.phase === "unavailable" ? state.reason : null,
       readOnly,
       edit: docEdit(live, why),
       pins: storedPins(roster.pins.kept(machineId) ?? null),

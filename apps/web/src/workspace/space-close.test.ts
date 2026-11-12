@@ -57,6 +57,7 @@ function machineLayout(machine: string | null, doc: JsonObject, readOnly: string
     machineId: machine === null ? null : `id-${machine}`,
     doc,
     loaded: true,
+    unread: null,
     readOnly,
     edit: (change: DocEdit) => {
       const next = change(state.doc);
