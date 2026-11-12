@@ -66,6 +66,29 @@ test.describe("opening a session on a machine that went offline", () => {
     await expect(kept).toContainText("got-back", { timeout: 15_000 });
   });
 
+  test("a view attached while its machine was online reaches the program again after the machine was offline", async ({
+    page,
+  }) => {
+    test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
+    await page.goto("/");
+    await agentRow(page, "crunch", true).click();
+    const pane = page.locator('[data-focused="true"]');
+    const view = pane.locator(`[data-terminal="${MACHINE_NAME}/${address}"]`);
+    await expect(view).toContainText(READY, { timeout: 20_000 });
+    await view.evaluate((element) => element.setAttribute("data-attached-online", ""));
+    switchTo("drop");
+    const bar = page.getByRole("contentinfo");
+    await expect(bar.getByRole("status").filter({ hasText: OFFLINE })).toBeVisible({ timeout: OFFLINE_BOUND_MS });
+    switchOn();
+    await bar.getByRole("button", { name: "Try again" }).click();
+    await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
+    const kept = pane.locator(`[data-terminal="${MACHINE_NAME}/${address}"][data-attached-online]`);
+    await kept.getByRole("textbox").focus();
+    await page.keyboard.type("again");
+    await page.keyboard.press("Enter");
+    await expect(kept).toContainText("got-again", { timeout: 15_000 });
+  });
+
   test("a phone says it in the line under the header and offers no terminal keys, as there is nothing to type into", async ({
     page,
   }) => {

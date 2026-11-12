@@ -1,3 +1,4 @@
+import type { MachineView } from "@doriface/protocol";
 import type { HcConnection } from "@doriface/client";
 import { StatusBarItem } from "@doriface/ui";
 import { Unplug } from "lucide-react";
@@ -84,4 +85,10 @@ export function MachineLine({ connection, address }: { readonly connection: HcCo
       ) : null}
     </div>
   );
+}
+
+/** The short title for a machine whose terminals read offline, as machineCause gives it: offline, or a login it needs. */
+export function offlineTitle(name: string, views: readonly MachineView[]): string {
+  const view = views.find((entry) => entry.name === name);
+  return (view === undefined ? undefined : machineCause(view)?.title) ?? `${name} is offline`;
 }
