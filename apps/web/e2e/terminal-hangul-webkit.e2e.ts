@@ -116,7 +116,7 @@ for (const keyboard of ["iphone", "ipad"] satisfies Keyboard[]) {
       ["ㄱ", "ㄱ"],
       ["ㅏ", "가"],
     ]);
-    await keyThenSyllable(field, keyboard, RETURN, GA_AFTER_GA);
+    expect(await keyThenSyllable(field, keyboard, RETURN, GA_AFTER_GA)).toBe(true);
     await expect(terminal).toContainText(/(^|\s)eab080:end(\s|$)/, { timeout: 10_000 });
     await page.keyboard.press("Enter");
     await expect(terminal).toContainText(/(^|\s)eab080:end2/, { timeout: 10_000 });
