@@ -17,7 +17,7 @@ test.afterEach(() => {
  * Every column between two neighbouring controls, on the line through both centres, that a pointer there would reach
  * neither of. Sampled every quarter of a CSS pixel: a high-density screen has three device pixels in one of these, so a
  * sliver narrower than a pixel is still a place a pointer lands on neither control. A control a pointer cannot reach at
- * its own centre is reported by what is there instead. Its NEIGHBOUR there is a COVER: the neighbour's hit layer takes the
+ * its own centre is reported by what is there instead. Its NEIGHBOUR there, or any other control of its own role, is a COVER: the neighbour's hit layer takes the
  * tap meant for it, which is the very seam this proves, and fails in every case (#1912). Anything else there is
  * UNREACHABLE: in a list that scrolls (the Settings section tabs) that is a tab under the paging cue, not on screen to
  * tap, and only such a case skips it; anywhere else it fails too.
@@ -31,9 +31,16 @@ const unowned = async (left: Locator, right: Locator) =>
       const y = (Math.max(ra.top, rb.top) + Math.min(ra.bottom, rb.bottom)) / 2;
       const reached = (el: Element, box: DOMRect) =>
         el.contains(document.elementFromPoint(box.left + box.width / 2, y));
-      const covered = (box: DOMRect, neighbour: Element) =>
-        neighbour.contains(document.elementFromPoint(box.left + box.width / 2, y));
-      if (covered(ra, b) || covered(rb, a)) return ["covered"];
+      // Taken by its neighbour, or by any other control of its own role (a tab two places over): a cover either way.
+      const covered = (el: Element, box: DOMRect, neighbour: Element) => {
+        const hit = document.elementFromPoint(box.left + box.width / 2, y);
+        if (hit === null || el.contains(hit)) return false;
+        if (neighbour.contains(hit)) return true;
+        const role = el.getAttribute("role");
+        const owner = role === null ? null : hit.closest(`[role="${role}"]`);
+        return owner !== null && owner !== el;
+      };
+      if (covered(a, ra, b) || covered(b, rb, a)) return ["covered"];
       if (!reached(a, ra) || !reached(b, rb)) return ["unreachable"];
       const step = 0.25;
       const from = ra.right - 1;
