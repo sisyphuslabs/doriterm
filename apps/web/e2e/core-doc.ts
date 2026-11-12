@@ -72,11 +72,19 @@ export function coreDoc(name: string): unknown {
  * `next` is called once per attempt with that attempt's read, so an update derived from the document is recomputed from the
  * document the core reports NOW instead of clobbering a write that landed in between.
  */
+/** How the retry waits: the real clock and a blocking pause, or a clock a test moves. */
+export interface CasWait {
+  readonly now: () => number;
+  readonly pause: (ms: number) => void;
+}
+
 export function coreCompareAndSet(
   send: (method: string, params: unknown) => unknown,
   where: Readonly<Record<string, unknown>>,
   next: (current: unknown) => unknown,
+  wait?: CasWait,
 ): void {
+  void wait;
   for (let attempt = 0; ; attempt += 1) {
     const read = send("doc.get", where);
     const reply = typeof read === "object" && read !== null ? (read as Record<string, unknown>) : {};
