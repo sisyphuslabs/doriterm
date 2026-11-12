@@ -12,6 +12,17 @@ import { MeshBody } from "./mesh-section.tsx";
 export const onlineInviters = (entries: readonly MemberEntry[]) =>
   sortedMachines(entries).filter((entry) => entry.state.phase === "open");
 
+/** The machines the invite dialog lists, decided away from React so the rule can be tested. */
+export function inviteChoices(entries: readonly MemberEntry[]): readonly MemberEntry[] {
+  return onlineInviters(entries);
+}
+
+/** The machine the invite dialog is on, decided away from React so the rule can be tested. */
+export function inviteMachine(entries: readonly MemberEntry[], chosen: string | undefined): MemberEntry | undefined {
+  const online = onlineInviters(entries);
+  return online.find((entry) => entry.target.hostId === chosen) ?? online[0];
+}
+
 export function InviteMachineChoice({
   entries,
   selected,
@@ -118,7 +129,7 @@ export function BrowserInvite({ install = false }: { readonly install?: boolean 
   const online = onlineInviters(entries);
   const [open, setOpen] = useState(false);
   const [chosen, setChosen] = useState<string>();
-  const selected = online.find((entry) => entry.target.hostId === chosen) ?? online[0];
+  const selected = inviteMachine(entries, chosen);
   const title = install ? "Join in the home-screen app" : "Add a browser or phone";
   return (
     <>
@@ -143,7 +154,11 @@ export function BrowserInvite({ install = false }: { readonly install?: boolean 
       >
         {open && selected !== undefined && selected.state.phase === "open" ? (
           <div className="flex flex-col gap-4">
-            <InviteMachineChoice entries={online} selected={selected.target.hostId} onSelect={setChosen} />
+            <InviteMachineChoice
+              entries={inviteChoices(entries)}
+              selected={selected.target.hostId}
+              onSelect={setChosen}
+            />
             <InviteAnswer key={selected.target.hostId} connection={selected.state.connection} install={install} />
           </div>
         ) : (
