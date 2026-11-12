@@ -1,5 +1,5 @@
 import { devices, type Page } from "@playwright/test";
-import { agentRow, startShell } from "./agents.ts";
+import { AGENT_SHELL, agentRow, startShell } from "./agents.ts";
 import { removeTerminal } from "./ended-terminal.ts";
 import { expect, opened, test } from "./fixtures.ts";
 import { seedSpaces } from "./layout-doc.ts";
@@ -24,7 +24,7 @@ endOwnTerminals();
 const header = (page: Page) => page.getByRole("banner");
 
 function startShellIn(space: string, name: string): string {
-  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${space}`, "--", "env", "PS1=$ ", "sh"]);
+  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${space}`, "--", ...AGENT_SHELL]);
   const started: unknown = JSON.parse(out);
   if (typeof started !== "object" || started === null || !("address" in started)) throw new Error(out);
   return String(started.address);
@@ -87,10 +87,13 @@ test("the phone header's ... is one sheet: where the session lives, the next age
 test("the session sheet offers Find in terminal only while its machine is online (#1482)", async ({ page }) => {
   test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
   const local = startShell("machine", "find-offline");
-  const go = test.info().outputPath("go");
   try {
     await page.goto("/");
+    // The phone lists machines on its Spaces tab (#1398); the agent row is back on Agents.
+    const sections = page.getByRole("navigation", { name: "Sections" });
+    await sections.getByRole("button", { name: "Spaces", exact: true }).click();
     await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
+    await sections.getByRole("button", { name: /^Agents\b/ }).click();
     await agentRow(page, "find-offline", true).click();
     const terminal = page.locator(`[data-terminal="${MACHINE_NAME}/${local}"]`);
     await expect(terminal).toContainText("$", { timeout: 15_000 });
@@ -125,7 +128,7 @@ test("the session sheet offers Find in terminal only while its machine is online
     await expect(find).toBeVisible();
   } finally {
     reconnect();
-    removeTerminal("machine", local, go);
+    removeTerminal("machine", local);
   }
 });
 

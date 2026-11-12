@@ -41,6 +41,10 @@ export interface RenameRequest {
   readonly name: string;
 }
 
+/** What revoke, rename and leave answer while this host's first join is pending: its mesh is not founded yet (#1635). */
+export const FIRST_JOIN_PENDING =
+  "this host's mesh is founded only once its first join is admitted: approve or deny the pending join, then run this again";
+
 const INVALID_NAME =
   'is not a valid mesh name: 1 to 32 of a-z, 0-9, "-", "_" and ".", starting with a letter or digit, ' +
   "and not shaped like a terminal id such as t7";
@@ -62,7 +66,7 @@ export class MeshCommands {
   }
 
   async revoke(request: RevokeRequest): Promise<RevokeReply | null> {
-    const meshId = this.deps.store.read()?.meshId;
+    const meshId = this.#meshId();
     if (meshId === undefined) return null;
     const { reply, record } = this.deps.store.transact((tx) => {
       const view = this.#member(tx);
@@ -89,7 +93,7 @@ export class MeshCommands {
   }
 
   async rename(request: RenameRequest): Promise<RenameReply | null> {
-    const meshId = this.deps.store.read()?.meshId;
+    const meshId = this.#meshId();
     if (meshId === undefined) return null;
     if (!checkName(request.name)) throw new Error(`"${request.name}" ${INVALID_NAME}`);
     const { reply, record } = this.deps.store.transact((tx) => {
@@ -115,6 +119,14 @@ export class MeshCommands {
     return reply;
   }
 
+  /** This host's mesh id; undefined while it is in no mesh. A pending first join is not "no mesh", so it is named. */
+  #meshId(): string | undefined {
+    const meshId = this.deps.store.read()?.meshId;
+    if (meshId === undefined && this.deps.store.pendingFoundForStatus() !== undefined)
+      throw new Error(FIRST_JOIN_PENDING);
+    return meshId;
+  }
+
   leavePreview(): { readonly clients: readonly MemberRef[] } {
     return { clients: this.#clientsOf([this.#self]) };
   }
@@ -127,7 +139,7 @@ export class MeshCommands {
   }
 
   async leave(expect?: readonly string[]): Promise<LeaveReply | null> {
-    const meshId = this.deps.store.read()?.meshId;
+    const meshId = this.#meshId();
     if (meshId === undefined) return null;
     const { view, record } = this.deps.store.transact((tx) => {
       const clients = this.leavePreview().clients.map((client) => client.hostId);

@@ -125,11 +125,13 @@ function Spaces({ machines, rail }: Pick<Options, "machines" | "rail">) {
               local={machine.local}
               state={machine.state}
               alarm={machine.alarm === true}
-              live={machine.live}
+              // The sum of the counts on the rows under it, also while the machine is offline.
+              tabs={machine.spaces.reduce((sum, space) => sum + space.tabs, 0)}
               connected={machine.state !== "offline"}
               rail={r}
+              onToggle={() => {}}
               onNewSpace={() => {}}
-              {...(machine.live > 0 ? { onOpen: () => {} } : {})}
+              {...(machine.state === "offline" ? {} : { onOpen: () => {} })}
             />
             {machine.spaces.map((space) => (
               <SpaceRow key={space.id} space={space} rail={r} hideMachine />

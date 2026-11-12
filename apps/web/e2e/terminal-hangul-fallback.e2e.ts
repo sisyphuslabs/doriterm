@@ -191,6 +191,64 @@ test("a syllable composed as conjoining jamo spans its two cells: the vowel and 
   await expectComposingCells(page, await hangulTerminal(page), "\u1112\u1161\u11ab", 2);
 });
 
+// Characters at the edges of the width table's ranges: a Yijing hexagram (which the grid draws over two cells, as
+// Unicode 16 made them wide), a CJK ideograph, emoji with text presentation (one cell) and emoji with emoji presentation
+// (two cells), text-presentation emoji with VS16, which asks for the picture (two cells), and a letter with VS16, which
+// no width table widens: VS16 after a base that is no emoji asks for a picture that does not exist (#1913). The test
+// reads each one's width from the grid and checks the composing box spans the same.
+const WIDTH_PROBES = [
+  "\u{4DC0}",
+  "\u{4E00}",
+  "\u{1F300}",
+  "\u{1F321}",
+  "\u{1F32C}",
+  "\u{1F680}",
+  "\u{1F321}\uFE0F",
+  "\u{1F5A5}\uFE0F",
+  "\u{1F336}\uFE0F",
+  "\u{1F54A}\uFE0F",
+];
+
+test("the composing box spans the cells the grid gives each character, wide or not (#1285)", async ({ page }) => {
+  const terminal = await hangulTerminal(page);
+  await page.keyboard.type(
+    `printf '\\033[2J\\033[H${WIDTH_PROBES.map((probe) => `[${octalOf(probe)}]`).join("\\n")}\\n'`,
+  );
+  await page.keyboard.press("Enter");
+  const rows = terminal.locator(".term-row");
+  for (const probe of WIDTH_PROBES) {
+    // oxlint-disable-next-line no-await-in-loop -- each probe's row is read once the shell has printed it
+    await expect(rows.filter({ hasText: `[${probe}]` })).toHaveCount(1, { timeout: 30_000 });
+  }
+  const gridCells = await terminal.evaluate(
+    (root, probes) =>
+      probes.map((probe) => {
+        const row = [...root.querySelectorAll(".term-row")].find((each) => each.textContent?.includes(`[${probe}]`));
+        const wide = [...(row?.querySelectorAll(".term-wide") ?? [])].some((each) => each.textContent === probe);
+        return wide ? 2 : 1;
+      }),
+    WIDTH_PROBES,
+  );
+  for (const [index, probe] of WIDTH_PROBES.entries()) {
+    // oxlint-disable-next-line no-await-in-loop -- one composition at a time in the one field
+    await expectComposingCells(page, terminal, probe, gridCells[index] ?? 0);
+  }
+});
+
+test("a letter with VS16 composes in the one cell the grid draws it in: no emoji picture to widen for (#1913)", async ({
+  page,
+}) => {
+  const terminal = await hangulTerminal(page);
+  const letter = "a\uFE0F";
+  await page.keyboard.type(`printf '\\033[2J\\033[H[${octalOf(letter)}]\\n'`);
+  await page.keyboard.press("Enter");
+  const row = terminal.locator(".term-row").filter({ hasText: /^\[a/ });
+  await expect(row).toHaveCount(1, { timeout: 30_000 });
+  // The grid draws the letter in one cell: no cell of its row is a wide one.
+  expect(await row.locator(".term-wide").count()).toBe(0);
+  await expectComposingCells(page, terminal, letter, 1);
+});
+
 test("with cells narrowed by adjust-cell-width, the composing box still spans the cells the grid gives (#1245)", async ({
   page,
 }) => {

@@ -2,7 +2,10 @@ name: Release
 
 # A vX.Y.Z tag builds every artifact into a draft release, smoke-tests the uploaded files and then publishes it.
 # A manual dispatch builds the same set into a draft release and leaves it a draft, so the pipeline can be proven
-# without publishing anything. Either way the version must match apps/desktop/package.json (release-version.ts).
+# without publishing anything. A tag's draft has its SHA256SUMS.txt signed before Publish, which refuses a draft without
+# the signature (#2297). A published release is then mirrored into the release bucket behind get.doriterm.com and its
+# channel moved (#1969, docs/releasing.md); a dispatch mirrors its draft into the staging bucket instead. Either way
+# the version must match apps/desktop/package.json (release-version.ts).
 # The macOS builds, and the standalone macOS host binaries install.sh downloads, are signed with a Developer ID
 # certificate and notarized with an App Store Connect API key, from the repository secrets CSC_LINK (base64 .p12),
 # CSC_KEY_PASSWORD, APPLE_API_KEY (.p8 contents), APPLE_API_KEY_ID and APPLE_API_ISSUER; the Version job fails before
@@ -473,8 +476,8 @@ jobs:
           restore-keys: bun-${{ runner.os }}-${{ runner.arch }}-
       - name: Install herdr-core
         env:
-          HC_URL: https://releases.herdr.dev/core/0.1.17/herdr-core-linux-x86_64.tar.gz
-          HC_SHA256: 82ec44043f6894bfdb716b979b87cda43fd7fa46b0104e7b7bd93e64d1a9b877
+          HC_URL: https://releases.herdr.dev/core/0.1.20/herdr-core-linux-x86_64.tar.gz
+          HC_SHA256: ac6b86890c451a37584620aaa438b71bc0d0bd430a2e7c1d7e095f052c414e74
         run: |
           mkdir -p "$RUNNER_TEMP/hc"
           curl -fsSL "$HC_URL" -o "$RUNNER_TEMP/hc.tar.gz"
@@ -706,10 +709,44 @@ jobs:
             echo "| Checks | checksum, silent per-user install, packaged host fingerprint twice (same identity), app version, launch |"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Signs the draft's SHA256SUMS.txt before Publish, apart from any mirror, so neither a staging bucket that already holds
+  # this version nor a channel that offers a newer one can keep a release unsigned (#2297). The key lives only in the
+  # release-mirror environments (staging's allows release tags); Ed25519 is deterministic, so the production mirror's
+  # signature is the same bytes.
+  sign:
+    name: Sign the draft's checksums
+    if: github.event_name == 'push'
+    needs: [version, smoke-linux, smoke-mac, smoke-windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release-mirror-staging
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - name: Download the draft's checksums
+        run: gh release download "$TAG" --pattern SHA256SUMS.txt --dir "$RUNNER_TEMP/sign"
+      - name: Sign them
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: bun .github/scripts/release-r2.ts sign --dir "$RUNNER_TEMP/sign"
+      - name: Attach the signature to the draft
+        run: gh release upload "$TAG" "$RUNNER_TEMP/sign/SHA256SUMS.txt.sig" --clobber
+
   publish:
     name: Publish
     if: github.event_name == 'push'
-    needs: [version, smoke-linux, smoke-mac, smoke-windows]
+    # The sign job puts SHA256SUMS.txt.sig on the draft, and the first step refuses without it: a release is never public
+    # unsigned (#2297).
+    needs: [version, smoke-linux, smoke-mac, smoke-windows, sign]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -719,6 +756,12 @@ jobs:
       GH_REPO: ${{ github.repository }}
       TAG: ${{ needs.version.outputs.tag }}
     steps:
+      - name: The draft carries its signature
+        run: |
+          if ! gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx SHA256SUMS.txt.sig; then
+            echo "::error title=Publish::$TAG has no SHA256SUMS.txt.sig, so it stays a draft; re-run the Sign job"
+            exit 1
+          fi
       - name: Publish the draft
         run: gh release edit "$TAG" --draft=false
       - name: Workflow summary
@@ -732,3 +775,29 @@ jobs:
             echo "| Job status | ${{ job.status }} |"
             echo "| Release | https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # The mirror job lives in release-mirror.yml (run by hand for an already-published release); these call it.
+  mirror:
+    name: Mirror to get.doriterm.com
+    if: github.event_name == 'push'
+    needs: [version, publish]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-mirror.yml
+    with:
+      tag: ${{ needs.version.outputs.tag }}
+      target: production
+    secrets: inherit
+
+  mirror-staging:
+    name: Mirror the draft to staging.get.doriterm.com
+    if: github.event_name == 'workflow_dispatch'
+    needs: [version, smoke-linux, smoke-mac, smoke-windows]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-mirror.yml
+    with:
+      tag: ${{ needs.version.outputs.tag }}
+      target: staging
+      published: false
+    secrets: inherit

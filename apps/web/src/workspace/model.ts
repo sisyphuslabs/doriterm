@@ -290,10 +290,26 @@ export interface TabPosition {
  * row per entry, the one its first live pane stands for.
  */
 export function liveTabs(space: ListedSpace, terminals: readonly Terminal[]): readonly (readonly string[])[] {
-  const liveAt = new Set(terminals.filter((t) => t.state === "live").map((t) => t.address));
+  return liveTabsOf(space, liveAddresses(terminals));
+}
+
+/** The addresses of the terminals that are live. */
+export const liveAddresses = (terminals: readonly Terminal[]): ReadonlySet<string> =>
+  new Set(terminals.filter((t) => t.state === "live").map((t) => t.address));
+
+/** liveTabs for a set of live addresses already built, so a pass over many spaces builds it once (#2135). */
+export function liveTabsOf(space: ListedSpace, liveAt: ReadonlySet<string>): readonly (readonly string[])[] {
   return space.tabPanes
     .map((panes) => panes.filter((address) => liveAt.has(address)))
     .filter((panes) => panes.length > 0);
+}
+
+/**
+ * The listed space whose tabs show `address`: the first one, in list order, when two spaces list it. Every place that names
+ * or steps through a terminal's space resolves it here, so they all agree on the same space.
+ */
+export function spaceOfAddress(spaces: readonly ListedSpace[], address: string): ListedSpace | undefined {
+  return spaces.find((each) => each.addresses.includes(address));
 }
 
 /** Where a terminal sits in the listed space whose tabs show it; none when it is finished or in no space's tab. */
@@ -302,7 +318,7 @@ export function tabPosition(
   terminals: readonly Terminal[],
   address: string,
 ): TabPosition | undefined {
-  const space = spaces.find((each) => each.addresses.includes(address));
+  const space = spaceOfAddress(spaces, address);
   if (space === undefined) return undefined;
   const live = liveTabs(space, terminals);
   const index = live.findIndex((panes) => panes.includes(address));

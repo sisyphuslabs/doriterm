@@ -1,6 +1,6 @@
 import { cn, DirectionPad, ExtraKeysBar, KeyboardButton, Menu, MenuItem } from "@doriface/ui";
 import { TextSelect } from "lucide-react";
-import { type RefObject, useCallback, useState } from "react";
+import { type RefObject, useCallback, useRef, useState } from "react";
 import { activeEntries, specialEntries } from "../keybar/entries.ts";
 import { toExtra } from "../keybar/render.tsx";
 import { useKeyBarSettings } from "../keybar/store.ts";
@@ -123,6 +123,11 @@ export function PhoneKeys(props: PhoneKeysProps) {
     [onBarHeight],
   );
   const barRef = useHeightReport(reportHeight);
+  // Set as the menu closes: the focus went somewhere on its own (the terminal took it, or a pick opens another session).
+  const settled = useRef(false);
+  // The same answer as a boolean prop: Base UI keeps a focus that moved elsewhere during the close only for a boolean
+  // finalFocus, never for a function's answer (#2174).
+  const [returnFocus, setReturnFocus] = useState(false);
   const settings = useKeyBarSettings();
   const own = specialEntries(settings, host);
   const packed = activeEntries(settings);
@@ -151,7 +156,7 @@ export function PhoneKeys(props: PhoneKeysProps) {
             {...(onKeys === undefined ? {} : { label: "Show keys" })}
             // The field is let go as the press lands, a task before the click asks for the keyboard: on iOS a field a
             // tap focused, let go and taken back inside one click, raises nothing (#1940).
-            onPressStart={(button) => port.current?.letGo(button)}
+            onPressStart={(button, pointerId) => port.current?.letGo(button, pointerId)}
             onPress={() => {
               onKeys?.(true);
               port.current?.focus();
@@ -197,10 +202,18 @@ export function PhoneKeys(props: PhoneKeysProps) {
             trigger={trigger}
             align="end"
             // The terminal takes the focus back itself, in the tap that closes the menu: a phone raises its keyboard only
-            // for a focus made inside the tap, so the menu hands the focus to nothing (not its trigger) as it closes.
-            finalFocus={false}
+            // for a focus made inside the tap, so the menu hands the focus to nothing (not its trigger) as it closes. A
+            // pick of another session leaves the focus to that one (#1985); with no terminal field to take it, the trigger
+            // gets it back (#1986).
+            finalFocus={returnFocus}
             onOpenChange={(shown) => {
-              if (!shown) port.current?.focus();
+              if (shown) settled.current = false;
+              else if (!settled.current) {
+                const before = document.activeElement;
+                port.current?.focus();
+                settled.current = document.activeElement !== before;
+              }
+              setReturnFocus(!shown && !settled.current);
               onMenu(shown);
             }}
           >
@@ -208,7 +221,10 @@ export function PhoneKeys(props: PhoneKeysProps) {
               <MenuItem
                 key={entry.address}
                 aria-current={entry.address === current ? "true" : undefined}
-                onClick={() => onOpen(entry.address)}
+                onClick={() => {
+                  if (entry.address !== current) settled.current = true;
+                  onOpen(entry.address);
+                }}
               >
                 {terminalTitle(entry)}
                 {machineOf(entry.address) === undefined ? null : (

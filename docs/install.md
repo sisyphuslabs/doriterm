@@ -6,7 +6,7 @@ The fastest way is to hand the [doriterm-setup skill](../skills/doriterm-setup/S
 
 ## What you need
 
-- Linux with systemd, or macOS. On Windows, install the [desktop app](https://github.com/sisyphuslabs/doriterm/releases/latest), which carries its own host.
+- Linux with systemd, or macOS. On Windows, install the [desktop app](https://get.doriterm.com), which carries its own host.
 - `git` and [Bun](https://bun.sh) 1.4.4 or newer (`curl -fsSL https://bun.sh/install | bash`).
 - herdr-core is installed for you (into `~/.local/bin/hc`) when it is missing or older than the version the host needs.
 

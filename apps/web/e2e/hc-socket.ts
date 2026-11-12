@@ -1,5 +1,6 @@
 import type { Page, WebSocketRoute } from "@playwright/test";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
+import { MACHINE_NAME } from "./machine.ts";
 
 /** A gateway on the LAN rather than on this computer: a lost network concerns it. */
 export const LAN_HC_URL = `ws://studio.lan:${E2E_HOST_PORT}/v1/hc`;
@@ -38,6 +39,8 @@ export interface HcSocket {
   readonly sent: () => readonly string[];
   /** Holds every later frame from the host `ms`, in order, as a relay round trip does. */
   readonly delay: (ms: number) => void;
+  /** Hands later frames from the host over at most `bytesPerSecond`, as a slow link does; Infinity lifts the limit. */
+  readonly throttle: (bytesPerSecond: number) => void;
   /** Closes every open connection; while `down` is true the page's reconnects are refused. */
   readonly drop: (down: boolean) => Promise<void>;
   readonly restore: () => void;
@@ -120,6 +123,7 @@ export async function routeHcSocket(
   let opened = 0;
   let refused = 0;
   let delay = 0;
+  let rate = Number.POSITIVE_INFINITY;
   let lastDue = 0;
   let hostMessages = 0;
   let held: readonly string[] = [];
@@ -199,11 +203,11 @@ export async function routeHcSocket(
           hold.parked.push(() => deliverOne(frame, text));
           continue;
         }
-        lastDue = Math.max(Date.now() + delay, lastDue);
+        lastDue = Math.max(Date.now() + delay, lastDue) + (frame.length / rate) * 1000;
         const wait = Math.max(0, lastDue - Date.now());
         if (wait > 0 || draining || typeof frame === "string") {
-          // A lagged frame goes on the ordered queue, and so does any frame behind one still queued (a delay just
-          // lowered to 0), so nothing overtakes it. Text is never joined to binary.
+          // A lagged frame (delayed or throttled) goes on the ordered queue, and so does any frame behind one still
+          // queued (a delay just lowered to 0), so nothing overtakes it. Text is never joined to binary.
           pass();
           queued.push({ at: lastDue, deliver: () => deliverOne(frame, text) });
           if (!draining) drain();
@@ -222,6 +226,7 @@ export async function routeHcSocket(
     refused: () => refused,
     sent: () => sent,
     delay: (ms) => void (delay = ms),
+    throttle: (bytesPerSecond) => void (rate = bytesPerSecond),
     drop: async (stayDown) => {
       down = stayDown;
       const closing = [...live].map((socket) => socket.close({ code: 1011, reason: "relay blip" }));
@@ -251,6 +256,62 @@ export async function routeHcSocket(
         held = [];
         for (const send of parked.splice(0)) send(fail);
       };
+    },
+  };
+}
+
+/** A WebSocket message as text: JSON-RPC sits in it as plain UTF-8 after each frame header. */
+export const frameText = (message: string | Buffer): string =>
+  typeof message === "string" ? message : message.toString("latin1");
+
+/**
+ * Holds the core's answer to the page's first read of the added machine's layout until `release`, so a terminal opened
+ * meanwhile finds that layout still loading and gets a tab of this screen's own (#459). `requested` resolves once the
+ * page has sent that read: the page reads a machine's layout only after the feed reports it connected.
+ */
+export async function holdMachineLayout(page: Page): Promise<{
+  readonly requested: (timeoutMs: number) => Promise<void>;
+  readonly release: () => void;
+}> {
+  const held: (() => void)[] = [];
+  let holding = true;
+  let asked: RegExp | undefined;
+  const sent = Promise.withResolvers<void>();
+  await page.routeWebSocket(/\/v1\/hc/, (socket) => {
+    const server = socket.connectToServer();
+    socket.onMessage((message) => {
+      const text = frameText(message);
+      const id = /"id":(\d+),"method":"doc\.get"/.exec(text)?.[1];
+      if (holding && asked === undefined && id !== undefined && text.includes(`"on":"${MACHINE_NAME}"`)) {
+        asked = new RegExp(`"id":${id}[,}]`);
+        sent.resolve();
+      }
+      server.send(message);
+    });
+    server.onMessage((message) => {
+      if (holding && asked?.test(frameText(message)) === true) held.push(() => socket.send(message));
+      else socket.send(message);
+    });
+  });
+  return {
+    requested: async (timeoutMs) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`the page did not request the machine's layout within ${timeoutMs} ms`)),
+          timeoutMs,
+        );
+      });
+      try {
+        await Promise.race([sent.promise, late]);
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+    release: () => {
+      if (asked === undefined) throw new Error("the page never requested the machine's layout");
+      holding = false;
+      for (const send of held.splice(0)) send();
     },
   };
 }

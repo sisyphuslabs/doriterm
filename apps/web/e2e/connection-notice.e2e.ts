@@ -195,8 +195,9 @@ test.describe("phone", () => {
     }) => {
       await page.setViewportSize({ width: 390, height: 844 });
       await pairAcrossTheNetwork(page, host);
-      await page.goto("/");
-      await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+      // The machines are the phone's Spaces tab (mobile nav phase 3).
+      await page.goto("/?v=spaces");
+      await expect(page.getByRole("heading", { level: 1, name: "Spaces" })).toBeVisible({ timeout: 20_000 });
       await expect(onlineDot(page).first()).toBeVisible({ timeout: 20_000 });
       await context.setOffline(true);
       const sentence = page.getByText(NEXT_STEP).filter({ visible: true }).first();

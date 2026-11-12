@@ -71,10 +71,16 @@ export interface PairingClaim {
 
 export type ClaimRefusal = { readonly refused: number; readonly reason: string };
 
+/**
+ * Why a join on a device offer is refused: the one refusal of a typed-code join that keeps 4401, so the joiner pairs as a
+ * device with the same code instead (#1492, `accept.ts`).
+ */
+export const JOIN_ON_DEVICE_OFFER = "a machine join on a device pairing offer";
+
 /** A device pairing on a mesh offer, or a join on a device offer: refused before any answer, and not counted. */
 const kindRefusal = (mesh: boolean): ClaimRefusal => ({
   refused: CloseCode.UnknownDevice,
-  reason: mesh ? "a machine join on a device pairing offer" : "a device pairing on a mesh offer",
+  reason: mesh ? JOIN_ON_DEVICE_OFFER : "a device pairing on a mesh offer",
 });
 
 /**
@@ -153,6 +159,19 @@ export class PairingStore {
     return this.#claim(pending, { mode: "link", linkSecret: pending.linkSecret }, false);
   }
 
+  /**
+   * Withdraws a mesh offer, live or expired, because this host is joining another mesh (#1301); a device offer stays.
+   * True when one was withdrawn: a claim already taken on it is never spent, so it cannot admit anyone later.
+   */
+  withdrawMesh(): boolean {
+    return this.#locked(() => {
+      const pending = this.read();
+      if (pending?.mesh !== true) return false;
+      this.#removeIfHeld(pending);
+      return true;
+    });
+  }
+
   /** Deletes the offer once it expired, so its relay slot is released. */
   expire(now = Date.now()): void {
     const pending = this.read();
@@ -206,6 +225,7 @@ export class PairingStore {
       retiredCode,
       complete: (at = Date.now()) =>
         this.#locked(() => {
+          if (pending.mesh && this.read()?.linkSecret.toHex() !== pending.linkSecret.toHex()) return false;
           const first = guard.use(at);
           if (first || guard.state === "expired") this.#removeIfHeld(pending);
           return first;

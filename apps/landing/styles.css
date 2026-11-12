@@ -831,6 +831,12 @@ pre kbd {
   margin-top: var(--space-6);
 }
 
+.hero__downloads {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+
 .hero__makers {
   margin: var(--space-4) 0 0;
   font-size: var(--text-sm);

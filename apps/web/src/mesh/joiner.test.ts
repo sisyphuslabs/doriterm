@@ -1,6 +1,5 @@
 import { base64urlEncode, CloseCode, generateEd25519, generateX25519, hostIdOf, rawStaticKey } from "@doriface/crypto";
 import { memoryLinkPair } from "@doriface/crypto/testing";
-import { parseRecord } from "@doriface/mesh";
 import { INVITER_EXPECTS, meshInviteOf, MeshLines } from "@doriface/mesh/join";
 import { afterEach, describe, expect, test } from "bun:test";
 import { type InviteDeps, serveJoin } from "../../../host/src/mesh/invite.ts";
@@ -109,7 +108,8 @@ describe("a browser's join, refused", () => {
     expect(await failure(joined)).toContain("the join was denied on the inviting member");
     expect(await joiner.membership.read()).toBeUndefined();
     expect(inviterEnd.closeCode).toBe(CloseCode.UnknownDevice);
-    expect((a.mesh.read()?.records ?? []).map((record) => parseRecord(record)?.type)).toEqual(["found"]);
+    // A denied first join founds nothing: the inviting host keeps no mesh file (#1428).
+    expect(a.mesh.read()).toBeUndefined();
   });
 
   test("an inviter whose cohort does not read the client format refuses, and the browser stores nothing", async () => {

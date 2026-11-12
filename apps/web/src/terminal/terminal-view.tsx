@@ -38,10 +38,7 @@ import { useTerminalFont } from "./use-terminal-font.ts";
 import { usePreedit } from "./use-preedit.ts";
 import { usePredictionOverlay } from "./use-prediction-overlay.ts";
 import { predictionSeam } from "./prediction-seam.ts";
-import { effectivePredictionMode, usePredictionMode } from "./prediction-mode.ts";
-import { useMeshMembers } from "../connection/store.ts";
-import type { ConnectionPath } from "../connection/connect.ts";
-import { desktopBridge } from "../desktop/bridge.ts";
+import { usePredictionMode } from "./prediction-mode.ts";
 import { PredictorView } from "./prediction-view.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
 import { wideGlyphScaler } from "./face-scales.ts";
@@ -50,7 +47,7 @@ import { SelectionMenu } from "./selection-menu.tsx";
 import { useTerminalCore } from "./use-terminal-core.ts";
 import { useTerminalInput } from "./use-terminal-input.ts";
 import { usePaneVisibility } from "./use-pane-visibility.ts";
-import { useTerminalAttach } from "./use-terminal-attach.ts";
+import { type PaintHold, useTerminalAttach } from "./use-terminal-attach.ts";
 import { useMachineLine } from "./use-machine-line.ts";
 import { useKeyboardClaim } from "./use-keyboard-claim.ts";
 
@@ -89,19 +86,30 @@ export function TerminalView(props: TerminalViewProps) {
   const [finding, setFinding] = useState<number | null>(null);
   const openFind = useCallback(() => setFinding((count) => (count ?? 0) + 1), []);
   const handle = useRef<TerminalHandle | null>(null);
-  /** Counts the writes reaching the renderer, so a find reads the cells again only after new output. */
+  /**
+   * Counts the changes to the core's cells: each write that reaches it (output held behind a Kitty PNG decode counts when
+   * it is written, not when it arrived) and each resize, which reflows the scrollback. A find reads the cells again only
+   * when it moves (#1207).
+   */
   const written = useRef(0);
   const stream = useRef<TerminalStream | null>(null);
   // The program's output reaches the core through this: Kitty images sent as PNG are decoded to RGBA on the way.
-  const output = useMemo(() => new KittyPngTranscoder((bytes) => handle.current?.write(bytes)), []);
+  const output = useMemo(
+    () =>
+      new KittyPngTranscoder((bytes) => {
+        handle.current?.write(bytes);
+        written.current += 1;
+        // Output held behind a decode is written after its frame: the overlays read the grid again for it.
+        outputShown.current();
+      }),
+    [],
+  );
   // Output is written once a frame and credited only then, so a flood cannot starve clicks and keys (#560).
   const pacer = useMemo(
     () =>
       new OutputPacer((bytes) => {
         output.push(bytes);
-        written.current += 1;
         warmup.current?.note(bytes);
-        outputShown.current();
       }),
     [output],
   );
@@ -156,13 +164,8 @@ export function TerminalView(props: TerminalViewProps) {
   useTerminalFont(wt, config);
   // The real predictor reads every input and write of this view (#1595); a spec's stand-in replaces it when installed.
   const seam = useMemo(() => predictionSeam(wt), [wt]);
-  const chosenMode = usePredictionMode();
-  const link = useMeshMembers().find(({ state }) => state.phase === "open" && state.connection === connection)?.state;
-  // While the link reconnects it is not open; the path it last had stands until it opens again, so the mode does not flip.
-  const lastPath = useRef<ConnectionPath | undefined>(undefined);
-  const path = link?.phase === "open" ? link.path : lastPath.current;
-  lastPath.current = path;
-  const predictMode = effectivePredictionMode(chosenMode, path, desktopBridge() !== null, address);
+  // One rule on every path: in adaptive the predictor's display gate reads its measured echo round trip (#2003).
+  const predictMode = usePredictionMode();
   const predictModeNow = useRef(predictMode);
   predictModeNow.current = predictMode;
   const [predictor, setPredictor] = useState<PredictorView | null>(null);
@@ -180,7 +183,18 @@ export function TerminalView(props: TerminalViewProps) {
     };
   }, [wt, seam, linkReady]);
   useEffect(() => predictor?.refresh(), [predictor, predictMode]);
-  const predictedCursor = usePredictionOverlay(wt, seam ?? predictor);
+  // A reattach replay holds the paint until it has settled (D5), and a synchronized update until it has come in (#2040);
+  // the paint is held while either holds it, and the prop carries that through the view's renders.
+  const [paintHeld, setPaintHeld] = useState(false);
+  const paintHolds = useRef<Record<PaintHold, boolean>>({ replay: false, update: false });
+  const holdPaint = useCallback((hold: PaintHold, held: boolean): boolean => {
+    paintHolds.current = { ...paintHolds.current, [hold]: held };
+    const paused = paintHolds.current.replay || paintHolds.current.update;
+    setPaintHeld(paused);
+    return paused;
+  }, []);
+  const paintHeldNow = useCallback((): boolean => paintHolds.current.replay || paintHolds.current.update, []);
+  const predictedCursor = usePredictionOverlay(wt, seam ?? predictor, paintHeldNow);
   usePreedit(wt, predictedCursor);
   // Wide characters in the output are laid out in idle time, so scrolling back to them is not the first time (#286).
   const warmup = useRef<GlyphWarmup | null>(null);
@@ -206,8 +220,6 @@ export function TerminalView(props: TerminalViewProps) {
     setSelectAt(null);
     if (!browsing) handle.current?.focus();
   }, [browsing]);
-  // A reattach replay holds the paint until it has settled (D5); the prop carries the hold through the view's renders.
-  const [replayHeld, setReplayHeld] = useState(false);
   const attachment = useTerminalAttach({
     connection,
     address,
@@ -216,7 +228,6 @@ export function TerminalView(props: TerminalViewProps) {
     shown,
     wt,
     setWt,
-    handle,
     stream,
     pending,
     pacer,
@@ -226,7 +237,7 @@ export function TerminalView(props: TerminalViewProps) {
     onEnd,
     onEnded,
     onStream: streamStarted,
-    holdPaint: setReplayHeld,
+    holdPaint,
   });
 
   if (error !== null) return <p className="p-4 text-prose text-destructive">{error}</p>;
@@ -263,7 +274,7 @@ export function TerminalView(props: TerminalViewProps) {
         ref={handle}
         core={core}
         autoResize
-        renderingPaused={replayHeld}
+        renderingPaused={paintHeld}
         {...(options.cursorBlink === undefined ? {} : { cursorBlink: options.cursorBlink })}
         aria-label={label}
         data-slot="terminal-viewport"
@@ -273,12 +284,17 @@ export function TerminalView(props: TerminalViewProps) {
         onReady={(ready) => {
           // The renderer no longer focuses itself as it starts (patches/@wterm%2Fdom@0.5.9.patch); the view decides.
           focusWhenFree(ready);
-          attachment.attach(ready);
+          // It attaches once it is shown (useTerminalAttach): a pane that mounts out of view opens no stream yet.
+          setWt(ready);
         }}
         onData={(data) => {
           if (!isRegainingReport(handle, data)) typedInto(data);
         }}
-        onResize={(cols, rows) => stream.current?.resize(cols, rows)}
+        onResize={(cols, rows) => {
+          // The core reflows its rows to the new width, with no output: the cells a find read have moved.
+          written.current += 1;
+          stream.current?.resize(cols, rows);
+        }}
         onFocus={(event) => {
           // The field taken again for the soft keyboard never left the terminal, as far as the program knows (#1519).
           if (regainingFocus(event.target)) return;

@@ -77,13 +77,21 @@ test("a space row shows its branch, ahead and uncommitted changes, or detached, 
     await page.goto("/");
     const spaces = page.getByRole("region", { name: "Spaces" });
     const row = (space: string) => rows(spaces).filter({ hasText: space });
-    // The host writes the facts on a cadence and the page reads them on one, so the first read can take a while.
-    await expect(row("git-feature").locator("[data-git]")).toHaveText("feat/rows* ↑1", { timeout: 45_000 });
+    // Both rows must be ready together, within the budget the feature row already had. A feature-only tick says
+    // nothing about detached: a slow git read can omit it until a later document (#1209).
+    await expect
+      .poll(
+        () =>
+          Promise.all(
+            ["git-feature", "git-detached"].map((space) => row(space).locator("[data-git]").allTextContents()),
+          ),
+        { timeout: 45_000 },
+      )
+      .toEqual([["feat/rows* ↑1"], ["detached"]]);
     await expect(row("git-feature").locator("[data-git]")).toHaveAttribute(
       "title",
       "On feat/rows, 1 commit ahead, uncommitted changes",
     );
-    await expect(row("git-detached").locator("[data-git]")).toHaveText("detached");
     await expect(row("git-clean")).toBeVisible();
     await expect(row("git-clean").locator("[data-git]")).toHaveCount(0);
   } finally {

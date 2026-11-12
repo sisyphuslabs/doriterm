@@ -216,8 +216,11 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
 
 export interface KeyboardButtonProps {
   readonly onPress?: () => void;
-  /** The press as it lands (pointerdown), a task before `onPress`: what has to be let go before the click runs. */
-  readonly onPressStart?: (button: HTMLButtonElement) => void;
+  /**
+   * The press as it lands (pointerdown), a task before `onPress`: what has to be let go before the click runs. Only a
+   * primary press, the one that clicks, starts one; `pointerId` is its pointer (#2048).
+   */
+  readonly onPressStart?: (button: HTMLButtonElement, pointerId: number) => void;
   readonly className?: string;
   /** Show keyboard by default; Show keys where the button opens the keys bar itself (no soft keyboard to raise). */
   readonly label?: string;
@@ -240,7 +243,16 @@ export function KeyboardButton({
       type="button"
       aria-label={label}
       aria-pressed={pressed}
-      onPointerDown={onPressStart === undefined ? undefined : (event) => onPressStart(event.currentTarget)}
+      onPointerDown={
+        onPressStart === undefined
+          ? undefined
+          : (event) => {
+              // A secondary press (a trackpad right-click) ends in contextmenu or auxclick and a second finger clicks
+              // nothing, so neither brings the click that ends what a press start let go (#2048).
+              if (event.button !== 0 || !event.isPrimary) return;
+              onPressStart(event.currentTarget, event.pointerId);
+            }
+      }
       // The keyboard button leaves the focus on the terminal it asks the keyboard for, as the keys do: a press that took
       // the focus would tell the program the terminal lost it (#1519). Another round control is left as it was.
       onMouseDown={icon === undefined ? keepFocus : undefined}

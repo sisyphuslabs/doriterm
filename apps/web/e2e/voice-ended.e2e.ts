@@ -26,8 +26,13 @@ const keyBar = (page: Page) =>
 
 /** Opens a shell on the added machine from the phone list, once the machine reads connected. */
 async function openOnMachine(page: Page, name: string, address: string) {
-  await page.goto("/");
+  // The machine reads connected on the Spaces tab (mobile nav phase 3); its agent opens from the Agents tab.
+  await page.goto("/?v=spaces");
   await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
+  await page
+    .getByRole("navigation", { name: "Sections" })
+    .getByRole("button", { name: /^Agents\b/ })
+    .click();
   await agentRow(page, name, true).click();
   const terminal = page.locator(`[data-terminal="${MACHINE_NAME}/${address}"]`);
   await expect(terminal).toContainText("$", { timeout: 15_000 });
@@ -54,7 +59,7 @@ test("a dictation under way ends when its machine drops: the recognizer is abort
     await expect.poll(() => speech.aborts()).toBe(1);
   } finally {
     reconnect();
-    removeTerminal("machine", address, test.info().outputPath("go"));
+    removeTerminal("machine", address);
   }
 });
 
@@ -94,6 +99,6 @@ test("the ended view offers no dictation: no mic, no strip, no keys bar, and a b
     expect(await speech.started()).toEqual([]);
   } finally {
     reconnect();
-    removeTerminal("machine", address, test.info().outputPath("go"));
+    removeTerminal("machine", address);
   }
 });

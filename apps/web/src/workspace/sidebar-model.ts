@@ -19,7 +19,11 @@ export interface AgentGroup {
   /** Needs you's rows use the "!" mark, since the header already says it. */
   readonly compactBlocked: boolean;
   readonly agents: readonly Agent[];
-  /** The header's count: the rows the group shows. Pinned agents are counted in Pinned, where they are listed. */
+  /**
+   * The header's count: the rows the group shows, by their place, so a row held in Working through its wait counts
+   * there (#1963). Pinned agents are counted in Pinned, where they are listed. The palette's status filter counts live
+   * states instead, as the rows it filters by are.
+   */
   readonly count: number;
 }
 
@@ -114,21 +118,28 @@ export function assignColors(
 export interface MachineGroup {
   readonly machine: MachineEntry;
   readonly spaces: readonly Space[];
+  /** The header's count: the tabs of the spaces the group lists, so it is the sum of the counts on the rows under it. */
+  readonly tabs: number;
 }
+
+/** The tabs of these spaces together: what a machine's header counts for the spaces listed under it (#2122). */
+export const tabsIn = (spaces: readonly Space[]): number => spaces.reduce((sum, space) => sum + space.tabs, 0);
 
 /**
  * Spaces under their machine, in the machines' own order (this one first, then as the person ordered them), once more
- * than one machine is known; with one machine there is nothing to group and this returns undefined.
+ * than one machine is known; with one machine there is nothing to group and this returns undefined. A machine counts
+ * its spaces' tabs, never its terminals: a sub-agent, a terminal in no tab and a split tab's other panes are in no row
+ * under it, and an offline machine's rows still count the tabs last read from it.
  */
 export function machineGroups(
   machines: readonly MachineEntry[],
   spaces: readonly Space[],
 ): readonly MachineGroup[] | undefined {
   if (machines.length < 2) return undefined;
-  return machines.map((machine) => ({
-    machine,
-    spaces: spaces.filter((space) => (space.machine ?? undefined) === (machine.local ? undefined : machine.name)),
-  }));
+  return machines.map((machine) => {
+    const own = spaces.filter((space) => (space.machine ?? undefined) === (machine.local ? undefined : machine.name));
+    return { machine, spaces: own, tabs: tabsIn(own) };
+  });
 }
 
 /**

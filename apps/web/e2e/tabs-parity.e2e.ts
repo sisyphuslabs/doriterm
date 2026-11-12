@@ -25,7 +25,8 @@ import { pressShortcut, shortcut } from "./platform-keys.ts";
 import { tabNumberChord } from "./tab-strip.ts";
 
 /** A tab's row in the Spaces sheet, not its Close control or the space's New tab (#1463). */
-const TAB_ROW = /^(?!Close |New tab$)/;
+const tabRows = (page: Page, region: Locator) =>
+  region.getByRole("button").filter({ has: page.locator('[data-floor="name"]') });
 
 test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 
@@ -561,7 +562,8 @@ test.describe("10: on a phone at 390", () => {
     await expect(header.getByRole("heading", { name: "b-one", exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(header.getByRole("heading", { name: "parity-b1" })).toHaveCount(0);
     // One strip, as herdr-app: the tab's place and the switch are the bottom tabs bar's alone, not the header's.
-    await expect(header.getByRole("button", { name: "Switch space or tab" })).toHaveCount(0);
+    // By the switch's name pattern: a switch in the header whose name starts with "Switch" fails here (#2356).
+    await expect(header.getByRole("button", { name: /^Switch/ })).toHaveCount(0);
     await expect(header.locator("[data-tab-position]")).toHaveCount(0);
     const switcher = page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / });
     await expect(switcher).toContainText("1/2");
@@ -569,9 +571,11 @@ test.describe("10: on a phone at 390", () => {
     expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(44);
 
     await switcher.click();
-    const sheet = page.getByRole("dialog", { name: "Spaces" });
+    const sheet = page.getByRole("dialog", { name: "Switch" });
     // Measured at rest: a frame of the open transition reads a row a hair under 44 (#583).
     await opened(sheet);
+    // It opens on the session's own space; every space is one segment away (mobile nav phase 4).
+    await sheet.getByRole("group", { name: "Show" }).getByRole("button", { name: "All spaces" }).click();
     // Each row is named as the strip names its tab, the terminal it opens after it (ruling A).
     const rows = [
       ["alpha", "a-one"],
@@ -587,7 +591,7 @@ test.describe("10: on a phone at 390", () => {
     );
     for (const height of heights) expect(height).toBeGreaterThanOrEqual(44);
     const beta = sheet.getByRole("region", { name: "beta" });
-    await expect(beta.getByRole("button", { name: TAB_ROW })).toHaveCount(2);
+    await expect(tabRows(page, beta)).toHaveCount(2);
     await expect(tabRow(beta, "b-one")).toContainText("parity-b1");
     await expect(tabRow(beta, "b-two")).toContainText("parity-b2");
     await expect(tabRow(beta, "parity-b1")).toHaveCount(0);
@@ -630,9 +634,10 @@ test.describe("10: on a phone at 390", () => {
 
     // Its middle opens the spaces sheet, for a tab of another space.
     await bar.getByRole("button", { name: /^Switch tab, beta, b-two/ }).tap();
-    const sheet = page.getByRole("dialog", { name: "Spaces" });
+    const sheet = page.getByRole("dialog", { name: "Switch" });
     // Measured at rest: a frame of the open transition reads a row a hair under 44 (#583).
     await opened(sheet);
+    await sheet.getByRole("group", { name: "Show" }).getByRole("button", { name: "All spaces" }).tap();
     await tabRow(sheet.getByRole("region", { name: "alpha" }), "a-two").tap();
     await expect(sheet).toBeHidden();
     await expect(header.getByRole("heading", { name: "a-two", exact: true })).toBeVisible({ timeout: 15_000 });
@@ -678,10 +683,10 @@ test.describe("10: on a phone at 390", () => {
     await expect(tabSwitch).toContainText("2/3");
 
     await tabSwitch.click();
-    await opened(page.getByRole("dialog", { name: "Spaces" }));
-    const web = page.getByRole("dialog", { name: "Spaces" }).getByRole("region", { name: "web" });
+    await opened(page.getByRole("dialog", { name: "Switch" }));
+    const web = page.getByRole("dialog", { name: "Switch" }).getByRole("region", { name: "web" });
     // One row per tab, each unnamed one read by the terminal it opens; the split tab's row opens the pane in view.
-    await expect(web.getByRole("button", { name: TAB_ROW })).toHaveCount(3);
+    await expect(tabRows(page, web)).toHaveCount(3);
     await expect(tabRow(web, "split-w1")).toHaveCount(1);
     await expect(tabRow(web, "split-w3")).toHaveCount(1);
     await expect(tabRow(web, "split-w2b")).toHaveAttribute("aria-current", "true");

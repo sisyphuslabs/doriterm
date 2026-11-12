@@ -1,4 +1,15 @@
-import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, session, shell, systemPreferences } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  Menu,
+  nativeTheme,
+  Notification,
+  screen,
+  session,
+  shell,
+  systemPreferences,
+} from "electron";
 import { installHc } from "@doriface/host/hc-install";
 import electronUpdater from "electron-updater";
 import { existsSync } from "node:fs";
@@ -21,9 +32,10 @@ import { findHc, hostCommand, type HostContext, saveHc, savedHc, usualHcDirs } f
 import { registerIpc } from "./ipc.ts";
 import { LocalHost } from "./local-host.ts";
 import { menuTemplate } from "./menu.ts";
-import { noticesSupported, showNotice } from "./notice.ts";
+import { showNotice } from "./notice.ts";
 import { readNoticeAuthorization } from "./notice-authorization.ts";
 import { loadNoticeAuthorization } from "./notice-addon.ts";
+import { NoticeRequest, noticesSupported } from "./notice-request.ts";
 import { requestPairOffer } from "./pair-offer.ts";
 import { requestPairedDevices, revokePairedDevice } from "./devices.ts";
 import { loadSpeech, speechAddonPath } from "./speech.ts";
@@ -51,6 +63,7 @@ const noticeAuthorization =
   platform === "darwin"
     ? loadNoticeAuthorization(speechAddonPath(app.isPackaged, process.resourcesPath, app.getAppPath()))
     : undefined;
+const noticeRequest = new NoticeRequest(noticeAuthorization);
 const webPreferences = secureWebPreferences(
   join(import.meta.dirname, "preload.cjs"),
   app.getVersion(),
@@ -203,6 +216,8 @@ function ready(): void {
     command: hostCommand(context),
     hc: () => findHc(context, usualHcDirs(context), savedHc(savedFile("hc.json"))),
     searched: () => usualHcDirs(context),
+    // A new terminal with no directory opens in the home folder, not where the app was launched from (#2047).
+    cwd: context.home,
     env: process.env,
     log: (line) => console.log(line),
   });
@@ -304,10 +319,16 @@ function ready(): void {
       saveHc(savedFile("hc.json"), installed.path);
       return installed;
     },
-    noticesSupported,
-    noticePermission: () => readNoticeAuthorization(systemPreferences, noticeAuthorization),
-    // A click brings the window back (or makes it, on macOS with none left) and opens the pane in it.
-    showNotice: (notice) => showNotice(notice, (terminal) => sendToPage(Channel.noticeClicked, terminal)),
+    noticesSupported: () => noticesSupported(platform, Notification),
+    noticePermission: () =>
+      readNoticeAuthorization(systemPreferences, noticeAuthorization, () => noticeRequest.pending),
+    // A click brings the window back (or makes it, on macOS with none left) and opens the pane in it. The first notice is
+    // when the OS is asked for permission; the app's own request beside Electron's is how it knows the prompt is still
+    // unanswered (#1958). The notice does not wait for that answer.
+    showNotice: (notice) => {
+      void noticeRequest.ask();
+      return showNotice(notice, (terminal) => sendToPage(Channel.noticeClicked, terminal));
+    },
     setDirectTarget: (directUrl) => forwarder?.setTarget(directUrl) ?? false,
     forwardDirect: async (windowId) => (await forwarder?.issue(windowId)) ?? { refused: "no forwarder" },
     cancelDirectForward: (url) => forwarder?.cancel(url) ?? false,

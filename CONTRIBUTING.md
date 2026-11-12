@@ -18,12 +18,12 @@ export PATH="$HOME/.bun/bin:$PATH"
 bun --version
 ```
 
-Install herdr-core 0.1.17 as `hc`, checking the archive first:
+Install herdr-core 0.1.20 as `hc`, checking the archive first:
 
 ```sh from-zero
 mkdir -p "$HOME/.local/bin"
-curl -fsSL https://releases.herdr.dev/core/0.1.17/herdr-core-linux-x86_64.tar.gz -o herdr-core.tar.gz
-echo "82ec44043f6894bfdb716b979b87cda43fd7fa46b0104e7b7bd93e64d1a9b877  herdr-core.tar.gz" | sha256sum --check --strict
+curl -fsSL https://releases.herdr.dev/core/0.1.20/herdr-core-linux-x86_64.tar.gz -o herdr-core.tar.gz
+echo "ac6b86890c451a37584620aaa438b71bc0d0bd430a2e7c1d7e095f052c414e74  herdr-core.tar.gz" | sha256sum --check --strict
 tar -xzf herdr-core.tar.gz -C "$HOME/.local/bin" herdr-core
 ln -sf herdr-core "$HOME/.local/bin/hc"
 export PATH="$HOME/.local/bin:$PATH"
@@ -48,8 +48,9 @@ private relay, so this prints one line saying they were skipped and why:
 bun run check
 ```
 
-Run the browser suite against a real `hc`. `playwright install --with-deps` installs Chromium's system libraries with `sudo apt-get` each time it runs. The few specs that
-need the private relay are skipped, each with the same one-line reason:
+Run the browser suite against a real `hc`. `playwright install --with-deps` installs Chromium's system libraries with
+`sudo apt-get` each time it runs. The few specs that need the private relay are skipped, each with the same one-line
+reason:
 
 ```sh from-zero
 cd apps/web

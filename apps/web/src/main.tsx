@@ -79,7 +79,7 @@ if (!native && (location.protocol === "https:" || location.protocol === "http:")
 } else {
   void removeServiceWorkers();
   if (native) {
-    listenForAppNotices(toWorkspace);
+    void listenForAppNotices(toWorkspace);
     followConnection();
     // The app's status and navigation bars take the theme in view, as the desktop window does.
     paintBars();

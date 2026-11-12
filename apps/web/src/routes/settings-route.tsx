@@ -62,7 +62,7 @@ function Group({
 }) {
   return (
     <section className="flex flex-col">
-      <h2 id={id} className="pb-1 text-lg font-semibold text-foreground md:text-xl">
+      <h2 id={id} className="pb-1 text-xl font-semibold text-foreground">
         {title}
       </h2>
       {children}
@@ -192,7 +192,7 @@ export function SettingsRoute() {
       <Tabs value={section} onValueChange={(value: SectionId) => setSection(value)} className="md:hidden">
         <div {...titlebar} className="flex items-center gap-1 pt-3 pr-2 pb-1 pl-[var(--titlebar-inset-start,0.5rem)]">
           {back}
-          <h1 className="text-xl font-semibold text-foreground">Settings</h1>
+          <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
           {/* In the title row, so the phone header keeps its height and the sections below do not move (#1460). */}
           <div className="ml-2 min-w-0 flex-1">
             <SearchSettings query={query} onQuery={onQuery} onKeyDown={onSearchKey} inputRef={field} inline />
@@ -209,7 +209,7 @@ export function SettingsRoute() {
       </Tabs>
       <nav
         aria-label="Settings"
-        className="hidden w-56 shrink-0 flex-col gap-px overflow-y-auto border-r border-sidebar-border bg-sidebar px-2 pb-2 md:flex"
+        className="hidden w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-2 pb-2 md:flex"
       >
         <div
           {...titlebar}
@@ -219,27 +219,34 @@ export function SettingsRoute() {
           )}
         >
           {back}
-          <h1 className="text-lg font-semibold text-foreground">Settings</h1>
+          <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
         </div>
-        <div className="mb-1">
+        <div className="shrink-0">
           <SearchSettings query={query} onQuery={onQuery} onKeyDown={onSearchKey} inputRef={field} />
         </div>
-        {nothing}
-        {shown.map((entry) => (
-          <Button
-            key={entry.id}
-            variant="ghost"
-            aria-current={entry.id === section ? "page" : undefined}
-            onClick={() => setSection(entry.id)}
-            className={cn(
-              "justify-start gap-2.5 px-2 text-sm [&_svg:not([data-slot=spinner])]:size-3.5",
-              entry.id === section && "bg-selected text-foreground",
-            )}
-          >
-            {entry.icon}
-            {entry.label}
-          </Button>
-        ))}
+        {/* The sections scroll on their own, so a short window never takes the title row, which drags the window (#1915).
+            The viewport's padding, taken back by the margins, is room for each button's focus ring, which the scroller
+            would otherwise cut; scroll-padding keeps that room when the keyboard scrolls a button into view. */}
+        <ScrollArea slot="settings-sections" className="-mx-2 -mb-1 flex-1" viewportClassName="scroll-py-1 px-2 py-1">
+          <div className="flex flex-col gap-px">
+            {nothing}
+            {shown.map((entry) => (
+              <Button
+                key={entry.id}
+                variant="ghost"
+                aria-current={entry.id === section ? "page" : undefined}
+                onClick={() => setSection(entry.id)}
+                className={cn(
+                  "shrink-0 justify-start gap-2.5 px-2 text-sm [&_svg:not([data-slot=spinner])]:size-3.5",
+                  entry.id === section && "bg-selected text-foreground",
+                )}
+              >
+                {entry.icon}
+                {entry.label}
+              </Button>
+            ))}
+          </div>
+        </ScrollArea>
       </nav>
       <ScrollArea slot="settings-body" className="flex-1">
         <div ref={body} className="flex max-w-2xl flex-col gap-8 px-4 py-6 md:px-8">

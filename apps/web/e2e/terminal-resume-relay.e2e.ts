@@ -4,7 +4,7 @@
 //
 // The relay runs under wrangler dev, so this spec runs only in the Relay e2e CI job or inside this container, never
 // directly on a fleet host:
-// docker run --rm -v "$PWD":/repo -w /repo -e RELAY_REPO -e DORIFACE_RELAY_READ_TOKEN -e CI=1 mcr.microsoft.com/playwright:v1.64.1-noble bash -lc 'curl -fsSL https://bun.sh/install | bash -s bun-v1.4.4 && export PATH=$HOME/.bun/bin:$PATH && mkdir -p ~/.local/bin && curl -fsSL https://releases.herdr.dev/core/0.1.17/herdr-core-linux-x86_64.tar.gz -o hc.tgz && echo "82ec44043f6894bfdb716b979b87cda43fd7fa46b0104e7b7bd93e64d1a9b877  hc.tgz" | sha256sum --check --strict && tar -xzf hc.tgz -C ~/.local/bin herdr-core && ln -sf herdr-core ~/.local/bin/hc && export PATH=~/.local/bin:$PATH && bun install --frozen-lockfile && git config --global credential.https://github.com.helper "!f() { test \"$1\" = get && printf \"username=x-access-token\\npassword=%s\\n\" \"$DORIFACE_RELAY_READ_TOKEN\"; }; f" && bun run relay:fetch && cd apps/web && bunx playwright install chromium && DORIFACE_RELAY_DIR=/repo/.relay bun run test:e2e e2e/terminal-resume-relay.e2e.ts --workers=1'
+// docker run --rm -v "$PWD":/repo -w /repo -e RELAY_REPO -e DORIFACE_RELAY_READ_TOKEN -e CI=1 mcr.microsoft.com/playwright:v1.64.1-noble bash -lc 'curl -fsSL https://bun.sh/install | bash -s bun-v1.4.4 && export PATH=$HOME/.bun/bin:$PATH && mkdir -p ~/.local/bin && curl -fsSL https://releases.herdr.dev/core/0.1.20/herdr-core-linux-x86_64.tar.gz -o hc.tgz && echo "ac6b86890c451a37584620aaa438b71bc0d0bd430a2e7c1d7e095f052c414e74  hc.tgz" | sha256sum --check --strict && tar -xzf hc.tgz -C ~/.local/bin herdr-core && ln -sf herdr-core ~/.local/bin/hc && export PATH=~/.local/bin:$PATH && bun install --frozen-lockfile && git config --global credential.https://github.com.helper "!f() { test \"$1\" = get && printf \"username=x-access-token\\npassword=%s\\n\" \"$DORIFACE_RELAY_READ_TOKEN\"; }; f" && bun run relay:fetch && cd apps/web && bunx playwright install chromium && DORIFACE_RELAY_DIR=/repo/.relay bun run test:e2e e2e/terminal-resume-relay.e2e.ts --workers=1'
 import { expect, test } from "@playwright/test";
 import { PHONE } from "./phone-key-bar.ts";
 import { PRIVATE_RELAY_SKIP } from "./private-relay.ts";
@@ -32,7 +32,7 @@ const FLOOD_END = "relay-flood-end";
  * follows the flood would put that title back before the page could be asked for this one (#2016). So the command first
  * sets a prompt that leaves the title alone.
  */
-const FLOOD = `PS1='$ ' PROMPT_COMMAND=; for i in $(seq 1 ${LAST}); do echo relay-line-$i; done; printf '\\033]2;${FLOOD_END}\\007'`;
+const FLOOD = `PS1='$ '; unset PROMPT_COMMAND; for i in $(seq 1 ${LAST}); do echo relay-line-$i; done; printf '\\033]2;${FLOOD_END}\\007'`;
 /** The page's relay client sockets, as delayRelaySockets routes them. */
 const CLIENT_SOCKET = "/v1/client/";
 
@@ -82,7 +82,10 @@ for (const device of ["desktop", "phone"] as const) {
       expect(frames.filter((last) => last !== LAST)).toEqual([]);
     });
 
-    test("over the relay, a reconnect's replay is painted once it has settled: the screen never climbs back (D5, #1040)", async ({
+    // Contract v1.11 (#1995): a relay drop no longer re-attaches and replays; the session is carried on over a new socket,
+    // so no terminal attaches again and the screen does not change at all (the D5 replay path stays for a session that
+    // cannot be carried on, and terminal-resume-catchup.e2e.ts paints it).
+    test("over the relay, a reconnect carries the session on: nothing re-attaches and the screen never changes (D5, #1040, #1995)", async ({
       page,
     }) => {
       await page.addInitScript(() => {
@@ -95,25 +98,25 @@ for (const device of ["desktop", "phone"] as const) {
       await page.keyboard.press("Enter");
       await expect(terminal).toContainText(`relay-line-${LAST}`, { timeout: 60_000 });
 
+      const attaches = (): Promise<number> =>
+        page.evaluate(() => (Reflect.get(window, "__dorifaceAttachLog") as unknown[]).length);
+      const attachedBefore = await attaches();
+      expect(attachedBefore).toBeGreaterThanOrEqual(1);
       await startLastLineSampler(terminal, "nothing");
       const before = link.opened();
       await link.drop();
       await expect.poll(() => link.opened(), { timeout: 60_000 }).toBeGreaterThan(before);
-      await expect
-        .poll(() => page.evaluate(() => (Reflect.get(window, "__dorifaceAttachLog") as unknown[]).length), {
-          timeout: 60_000,
-        })
-        .toBeGreaterThanOrEqual(2);
-      // Output after the replay marks the replay as delivered and painted.
+      // Typed on the dropped link, it waits for the session to be carried on and then reaches the same shell.
       await page.keyboard.type("echo done-$((1+1))");
       await page.keyboard.press("Enter");
       await expect(terminal).toContainText("done-2", { timeout: 30_000 });
       const frames = await sampledFrames(page);
 
+      expect(await attaches()).toBe(attachedBefore);
       expect(frames.length).toBeGreaterThan(0);
       expect(frames.at(-1)).toBe(LAST);
-      // The old screen stays until the replay is drawn whole: at most one change, never an empty or climbing screen.
-      expect(transitions(frames)).toBeLessThanOrEqual(1);
+      // Nothing was replayed, so the screen never changed: no empty, climbing or repainted frame.
+      expect(transitions(frames)).toBe(0);
       expect(frames.filter((last) => last !== LAST)).toEqual([]);
     });
   });

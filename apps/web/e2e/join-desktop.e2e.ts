@@ -119,6 +119,34 @@ test("typing a mesh code looks its host up from the third character on, and Cont
   }
 });
 
+test("a typed mesh code the host replaced says it was used or replaced, with no fingerprint step (#1492)", async ({
+  browser,
+}) => {
+  test.setTimeout(180_000);
+  const host = await startFakeRelayHost({ machine: true });
+  const context = await browser.newContext({ serviceWorkers: "block" });
+  try {
+    const { code } = await host.meshOffer();
+    const page = await desktopPage(context, host);
+    await page.goto("/pair");
+    await inviteScreen(page);
+    await page.getByLabel("Invite link or code").fill(code);
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    const join = page.getByRole("button", { name: "Join", exact: true });
+    await expect(join).toBeVisible();
+    // The code was looked up; the host now replaces its offer, so the join reaches a host whose offer is another one.
+    await host.meshOffer();
+    await join.click();
+    await expect(page.getByText("The host refused this invite: it was used already or replaced.")).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(page.getByRole("figure").filter(FINGERPRINT)).toHaveCount(0);
+  } finally {
+    await context.close();
+    await host.stop();
+  }
+});
+
 test("the pair route joins a mesh with a typed code and both confirmations", async ({ browser }, info) => {
   test.setTimeout(180_000);
   const host = await startFakeRelayHost({ machine: true });

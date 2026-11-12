@@ -81,6 +81,32 @@ test("a close the person confirmed leaves with its question, while its kill is s
   await running(page, before - 1);
 });
 
+test("a confirmed close whose End fails brings its question back to say why", async ({ page }) => {
+  const link = await routeHcSocket(page);
+  await page.goto("/");
+  await openNewTerminal(page);
+  const terminal = await openNewTerminal(page);
+  const address = (await terminal.getAttribute("data-terminal")) ?? "";
+  await runSleep(page, terminal);
+  const { before } = await terminalCount(page);
+  kept.push(address);
+  const release = link.hold("terminal.kill");
+  await terminal.getByRole("textbox").focus();
+  await pressShortcut(page, "pane.close");
+  const ask = page.getByRole("dialog", { name: /^Close .+\?$/ });
+  await ask.getByRole("button", { name: "Close" }).click();
+  await expect(pane(page, address)).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  // The kill reaches the core as a call it refuses: End fails, and the session runs on.
+  release(true);
+  await expect(ask.getByRole("alert")).toContainText("The session did not end", { timeout: 15_000 });
+  await expect(ask.getByRole("button", { name: "Close" })).toBeEnabled();
+  // Left with Cancel, the session it did not end is still running.
+  await ask.getByRole("button", { name: "Cancel" }).click();
+  await expect(ask).toHaveCount(0);
+  await running(page, before);
+});
+
 test("closing a tab of two panes takes the tab away while its kills are still on the way, and a failed End says so", async ({
   page,
 }) => {
@@ -148,10 +174,12 @@ test("a tab close whose Ends fail says how many kept running, and where they wen
   // The cause reads as its own sentence, and the toast says where the sessions it kept are shown again.
   const description = toasts.getByText(/keeps? running/);
   await expect(description).toHaveText(/\.\s+They keep running outside any tab/);
-  await expect(description).toHaveText(/next load/);
+  await expect(description).toHaveText(/open as tabs again/);
 });
 
-test("a failed pane End's question says the session keeps running in no pane until the next load", async ({ page }) => {
+test("a failed pane End's question says the session keeps running in no pane and comes back as a tab", async ({
+  page,
+}) => {
   const link = await routeHcSocket(page);
   await page.goto("/");
   await openNewTerminal(page);
@@ -167,5 +195,5 @@ test("a failed pane End's question says the session keeps running in no pane unt
   const why = question.getByRole("alert");
   await expect(why).toContainText("The session did not end", { timeout: 15_000 });
   await expect(why).toHaveText(/outside any pane/);
-  await expect(why).toHaveText(/next load/);
+  await expect(why).toHaveText(/opens as a tab of its own/);
 });

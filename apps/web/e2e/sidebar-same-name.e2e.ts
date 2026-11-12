@@ -50,8 +50,13 @@ test("two spaces with the same name on one machine are two rows, told apart, and
   await expect(twins).toHaveCount(2, { timeout: 20_000 });
   await expect(twins.filter({ hasText: "home" })).toHaveCount(1);
   await expect(twins.filter({ hasText: "data" })).toHaveCount(1);
-  // This machine's row counts its terminals: one in each space, so 2, as many as the rows under it.
-  await expect(spaces.getByLabel(/^\d+ terminals$/).first()).toHaveText("2");
+  // This machine's row counts the tabs of the spaces under it: one in each, so 2 (#2122).
+  await expect(
+    spaces
+      .locator("[data-machine-header]")
+      .first()
+      .getByLabel(/^\d+ tabs$/),
+  ).toHaveText("2");
   await twins.filter({ hasText: "data" }).click();
   await expect(twins.filter({ hasText: "data" })).toHaveAttribute("aria-current", /.+/);
   await expect(twins.filter({ hasText: "home" })).not.toHaveAttribute("aria-current", /.+/);

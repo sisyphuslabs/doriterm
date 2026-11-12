@@ -189,7 +189,7 @@ export function desktopActions(
   }: AppActionTargets,
   openSettings: () => void,
 ): ActionHandler {
-  return (action) => {
+  return (action, programReceives = true) => {
     // An action chosen from the palette or the Shell menu is one the person asked for, so the size it steps is all
     // it needs; the browser keeps a key pressed on a screen that shows nothing (#1162).
     if (actionChosen() && isTextSize(action)) return stepTerminalFont(action);
@@ -241,9 +241,9 @@ export function desktopActions(
         onSplit(argument === "right" ? "row" : "column");
         return true;
       case "pane.go":
-        return isDirection(argument) && layout.go(argument);
+        return isDirection(argument) && layout.go(argument, programReceives);
       case "pane.swap":
-        return isDirection(argument) && layout.swap(argument);
+        return isDirection(argument) && layout.swap(argument, programReceives);
       case "pane.resize":
         return isDirection(argument) && layout.resizeFocused(argument);
       case "pane.equalize":
