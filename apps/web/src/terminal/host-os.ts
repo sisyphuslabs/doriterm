@@ -52,7 +52,9 @@ export function useHostPlatform(
     };
   }, [connection, machine, key, hostId]);
   const name = machine ?? connection?.hello.core.name ?? "";
-  if (connection === null && hostId !== undefined && hostId !== "")
+  const os = read?.key === key ? read.os : undefined;
+  // No OS from the host (no line, a line that has dropped, or a read still on its way): what it reported last time stands.
+  if (os === undefined && hostId !== undefined && hostId !== "")
     return offlinePlatform(guardedLocalStorage(), hostId, name);
-  return platformOf(read?.key === key ? read.os : undefined, name);
+  return platformOf(os, name);
 }

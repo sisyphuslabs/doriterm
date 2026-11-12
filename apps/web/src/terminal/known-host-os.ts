@@ -1,4 +1,5 @@
 import type { HostOs } from "@doriface/protocol";
+import type { ConnectionSettings } from "../connection/settings.ts";
 import type { StorageLike } from "../storage/guarded.ts";
 import { type HostPlatform, platformOf } from "./keys.ts";
 
@@ -34,3 +35,10 @@ export function rememberHostOs(storage: StorageLike, hostId: string, os: HostOs)
   if (known[hostId] === os) return;
   storage.setItem(KEY, JSON.stringify({ ...known, [hostId]: os }));
 }
+
+/**
+ * The host id a remembered OS is kept under: the paired host's, and only over the relay. In loopback mode the line goes
+ * to this computer's own host, so a hostId left from relay mode would file that host's OS under another host's id.
+ */
+export const rememberedHostId = (settings: Pick<ConnectionSettings, "mode" | "hostId">): string | undefined =>
+  settings.mode === "relay" && settings.hostId !== "" ? settings.hostId : undefined;

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { StorageLike } from "../storage/guarded.ts";
-import { offlinePlatform, rememberHostOs } from "./known-host-os.ts";
+import { offlinePlatform, rememberedHostId, rememberHostOs } from "./known-host-os.ts";
 
 const memory = (): StorageLike => {
   const items = new Map<string, string>();
@@ -39,4 +39,10 @@ test("a host never reached falls back to the guess from its name", () => {
   const storage = memory();
   expect(offlinePlatform(storage, "host-a", "Ana-MacBook")).toBe("mac");
   expect(offlinePlatform(storage, "host-a", "m942-a")).toBe("other");
+});
+
+test("an OS is remembered under a host id only over the relay, never for loopback's own host", () => {
+  expect(rememberedHostId({ mode: "relay", hostId: "host-a" })).toBe("host-a");
+  expect(rememberedHostId({ mode: "loopback", hostId: "host-a" })).toBeUndefined();
+  expect(rememberedHostId({ mode: "relay", hostId: "" })).toBeUndefined();
 });
