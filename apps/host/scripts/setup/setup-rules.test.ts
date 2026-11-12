@@ -136,7 +136,7 @@ describe("ensureService's restart rules (#821)", () => {
     ]);
   });
 
-  test("lingering is turned on without asking for a password, so a run from a terminal cannot stop at a prompt", async () => {
+  test("lingering is turned on with the same command as the installer", async () => {
     const root = home();
     const paths = setupPaths("linux", root, {}, tools(root));
     const { context, commands } = linuxContext(root, (command) =>
@@ -146,6 +146,21 @@ describe("ensureService's restart rules (#821)", () => {
     expect(commands.filter((command) => command.includes("enable-linger"))).toEqual([
       `loginctl --no-ask-password enable-linger ${userInfo().username}`,
     ]);
+  });
+
+  test("where lingering cannot be turned on, the warning names the command an admin's account can run", async () => {
+    const root = home();
+    const paths = setupPaths("linux", root, {}, tools(root));
+    const { context } = linuxContext(root, (command) =>
+      command[0] === "loginctl" && command.includes("show-user") ? { stdout: "no\n" } : undefined,
+    );
+    const warnings: string[] = [];
+    const report: SetupContext["report"] = (step, status, detail) => {
+      if (step === "linger" && status === "warn") warnings.push(detail);
+    };
+    await ensureService({ ...context, report }, paths, false);
+    expect(warnings).toHaveLength(1);
+    expect(warnings.join("\n")).toContain(`sudo loginctl enable-linger ${userInfo().username}`);
   });
 
   test("a re-run that changes nothing on a running service reloads and restarts nothing", async () => {
