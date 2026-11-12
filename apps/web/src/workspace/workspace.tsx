@@ -48,7 +48,9 @@ import { useAttention } from "./use-attention.ts";
 import { orderNotSaved } from "./machine-order.ts";
 import { useMachineOrder } from "./use-machine-order.ts";
 import { useTerminals } from "./use-terminals.ts";
+import { useForgetEndedHistoryGaps } from "../terminal/history-gap-notice.ts";
 import { useResumeEnds } from "./resume-ends.ts";
+import { useRedrawNotice } from "./use-redraw-notice.ts";
 import { useSteady } from "./steady.ts";
 import { useStableCallback } from "./use-stable-callback.ts";
 import { useNoticeOpen } from "../push/notice-open.ts";
@@ -64,6 +66,8 @@ export interface WorkspaceProps {
 export function Workspace({ connection }: WorkspaceProps) {
   const fed = useTerminals(connection);
   useResumeEnds(connection);
+  useRedrawNotice(connection);
+  useForgetEndedHistoryGaps(fed.loaded, fed.terminals);
   const {
     entries: listed,
     terminals,
@@ -149,15 +153,15 @@ export function Workspace({ connection }: WorkspaceProps) {
     : (layout.active?.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? []);
   // As a view's end does: an End of the session drops its pane only once it has removed the terminal (see afterEnd).
   const dropDead = useCallback((address: string) => afterEnd(address, () => dropEnded(address)), [dropEnded]);
-  // An ended pane this screen showed went from its tab with no drop of its own: another device, which had it out of
-  // view, took it (#2146). The person looking at it is told why, here only.
+  // An ended pane this screen showed went from its tab with no drop of its own while its document stayed: another
+  // device, which had it out of view, took it (#2146, #2231). The person looking at it is told why, here only.
   const endedElsewhere = useCallback(
     (address: string): void => {
       if (dropped(address)) return;
       toasts.add({
         type: "info",
         title: "This session ended",
-        description: "Another device closed its tab once its program had finished.",
+        description: "Another device removed its pane once its program had finished.",
       });
     },
     [dropped, toasts],
@@ -172,6 +176,7 @@ export function Workspace({ connection }: WorkspaceProps) {
     dropDead,
     onScreen,
     endedElsewhere,
+    layouts,
   );
   const [palette, setPalette] = useState(false);
   const [ask, setAsk] = useState<SessionAsk | null>(null);

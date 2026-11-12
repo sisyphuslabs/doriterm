@@ -1,4 +1,4 @@
-import { CloseCode, generateX25519, rawStaticKey } from "@doriface/crypto";
+import { CloseCode, generateX25519, pairingSlotOf, rawStaticKey } from "@doriface/crypto";
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { signCard } from "@doriface/mesh";
 import { cardBody } from "../state/mesh.ts";
 import { deviceOf, type Machine, machine, MeshFixture, signPubOf } from "../testing/mesh-history.ts";
-import { linkOf, pairingHost, type PairingHost, runSession } from "../testing/pairing-harness.ts";
+import { codeOf, linkOf, pairingHost, type PairingHost, runSession } from "../testing/pairing-harness.ts";
 import { spendMeshOffer } from "./accept.ts";
 
 const dirs: string[] = [];
@@ -35,6 +35,12 @@ function meshed(meshOffer = false): Meshed {
 }
 
 const keyOf = (m: Machine) => rawStaticKey(m.identity.noise);
+
+/** A newer mesh offer on another slot than the one the session was opened for (a draw may repeat a slot). */
+function replaceOffer(host: PairingHost): void {
+  const opened = pairingSlotOf(host.offer.code);
+  while (pairingSlotOf(host.pairing.offer(Date.now(), true).code) === opened);
+}
 
 async function outcome(run: ReturnType<typeof runSession>) {
   const secure = await run.host;
@@ -132,6 +138,31 @@ describe("H-1: pairing kinds against the offer's kind", () => {
     expect(await outcome(run)).toEqual({ code: CloseCode.UnknownDevice, sent: 0 });
     expect(host.deps.devices.list()).toEqual([]);
   });
+
+  test("a typed-code machine join on a device offer is refused 4401 unanswered: the joiner pairs as a device instead", async () => {
+    const { host } = meshed(false);
+    const run = runSession(host, host.relay, codeOf(host, "laptop"), { stream: "mesh" });
+    expect(await outcome(run)).toEqual({ code: CloseCode.UnknownDevice, sent: 0 });
+    expect(host.pairing.read()?.codeAttempts).toBe(0);
+  });
+
+  test.each([
+    ["replaced by a newer mesh offer", replaceOffer],
+    ["expired", (host: PairingHost) => host.pairing.offer(Date.now() - 24 * 60 * 60 * 1000, true)],
+    ["gone, with no offer pending", (host: PairingHost) => host.pairing.expire(Number.MAX_SAFE_INTEGER)],
+  ])(
+    "a typed-code machine join on a mesh offer %s is refused 4411, not as a device offer (#1492)",
+    async (_, change) => {
+      const { host } = meshed(true);
+      change(host);
+      const run = runSession(host, host.relay, codeOf(host, "laptop"), { stream: "mesh" });
+      expect(await outcome(run)).toEqual({ code: CloseCode.MeshCodeRefused, sent: 0 });
+      // The refusal is on the host's record, as a 4401 refusal was before the remap (review of #1733).
+      expect(
+        host.logs.some((line) => line.startsWith("e2ee: close code=4411 source=handshake kind=2 stream=mesh: ")),
+      ).toBe(true);
+    },
+  );
 
   test("a mesh handshake reserves its offer until the first card spends it once, and stores no device", async () => {
     const { host } = meshed(true);

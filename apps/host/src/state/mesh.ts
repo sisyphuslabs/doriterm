@@ -66,9 +66,7 @@ export class MeshStore {
 
   read(): MeshFile | undefined {
     const value = readJson(this.#path);
-    const file = value === undefined ? undefined : parseMeshFile(value);
-    if (file !== undefined && this.#candidate?.file.meshId === file.meshId) this.#candidate.committed = true;
-    return file;
+    return value === undefined ? undefined : parseMeshFile(value);
   }
 
   /** Best-effort local observation, at most once per client per five minutes; never waits for a busy state lock. */
@@ -137,6 +135,7 @@ export class MeshStore {
 
   /** Shares a founding candidate while the first admission decisions are outstanding, without persisting it. */
   prepareFound(identity: HostIdentity, card: OwnCard): { candidate: MeshCandidate; release: () => void } {
+    this.#observeCommitted(this.read());
     let candidate = this.#candidate;
     if (candidate === undefined || candidate.committed) {
       const body = cardBody(identity, card, "-", "-");
@@ -183,6 +182,7 @@ export class MeshStore {
   transact<T>(fn: (tx: MeshTx) => T, rollback?: () => void, initial?: MeshCandidate): T {
     return this.#locked(() => {
       const stored = this.read();
+      this.#observeCommitted(stored);
       if (initial !== undefined && (stored === undefined ? initial.committed : stored.meshId !== initial.file.meshId)) {
         throw new JoinRefused("the mesh changed while the join was pending");
       }
@@ -237,11 +237,16 @@ export class MeshStore {
     });
   }
 
+  /** A file holding the candidate's mesh means it was committed, by this store or another one (#1635). */
+  #observeCommitted(file: MeshFile | undefined): void {
+    if (file !== undefined && this.#candidate?.file.meshId === file.meshId) this.#candidate.committed = true;
+  }
+
   #create(meshId: string, records: readonly Signed[], selfN: number): boolean {
     const file: MeshFile = newMeshFile(meshId, records, selfN);
     const indexed = this.#indexed(file);
     if (!createPrivateJson(this.#path, meshFileJson(indexed), this.#options.durable ?? true)) return false;
-    if (this.#candidate?.file.meshId === meshId) this.#candidate.committed = true;
+    this.#observeCommitted(indexed);
     this.#cleanup(indexed);
     return true;
   }

@@ -1,4 +1,4 @@
-import type { ByteLink, SecureLink, Unsubscribe } from "@doriface/crypto";
+import type { ByteLink, SecureSession, Unsubscribe } from "@doriface/crypto";
 import { ByteQueue, type DataHandler, type Link } from "../link.ts";
 import type { WsLink } from "../ws-link.ts";
 
@@ -67,11 +67,23 @@ export interface Wire {
   readWhen(gate: () => Promise<void> | undefined): void;
 }
 
+/** What `plaintextLink` needs of a session: its plaintext both ways, and the wire it runs on as that changes. */
+export type PlaintextSession = Pick<
+  SecureSession,
+  "send" | "onData" | "onClose" | "close" | "onLink" | "attached" | "link"
+>;
+
+/** Whether a session's link is one of the host's wires, with the backpressure `plaintextLink` needs. */
+const isWire = (link: ByteLink | undefined): link is ByteLink & Wire =>
+  link !== undefined && "flushed" in link && "readWhen" in link;
+
 /**
  * The decrypted session as the host's Link, so `bridge` pipes it to `hc connect` exactly like `/v1/hc`. While
- * `hc connect` is still taking an earlier chunk, the socket stops reading, so decrypted data cannot pile up.
+ * `hc connect` is still taking an earlier chunk, the socket stops reading, so decrypted data cannot pile up. The
+ * session may change wires (a resume, contract v1.11): each new one gets the same read gate, and a write made while the
+ * session has no wire waits for the next one, so `hc connect`'s output stops at the session's ring instead of piling up.
  */
-export function plaintextLink(secure: SecureLink, wire: Wire): Link {
+export function plaintextLink(secure: PlaintextSession, wire: Wire): Link {
   let backlog: PromiseWithResolvers<void> | undefined;
   const release = (): void => {
     backlog?.resolve();
@@ -84,12 +96,18 @@ export function plaintextLink(secure: SecureLink, wire: Wire): Link {
     onDrained: release,
     onError: () => secure.close(1011, "internal error"),
   });
-  wire.readWhen(() => backlog?.promise);
+  const gate = (): Promise<void> | undefined => backlog?.promise;
+  wire.readWhen(gate);
+  secure.onLink((link) => {
+    if (isWire(link)) link.readWhen(gate);
+  });
   secure.onData((bytes) => inbox.push(bytes));
   return {
     async send(bytes) {
       secure.send(bytes);
-      await wire.flushed();
+      await secure.attached();
+      const current = secure.link;
+      await (isWire(current) ? current : wire).flushed();
     },
     onData(handler: DataHandler) {
       inbox.setHandler(handler);

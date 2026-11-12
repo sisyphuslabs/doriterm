@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { RELEASE_PUBLIC_KEYS, releasePublicKey, verifyRelease } from "../../packages/crypto/src/release.ts";
-import { type MirrorPlan, mirrorRelease } from "../../.github/scripts/release-mirror.ts";
+import { type MirrorPlan, mirrorRelease, signChecksums } from "../../.github/scripts/release-mirror.ts";
 import { type FakeRelease, fakeRelease, MemoryBucket } from "./support/release-bucket.ts";
 
 // Any 32 bytes are an Ed25519 seed.
@@ -133,4 +133,18 @@ test("an object already in the bucket with other bytes is never replaced, and a 
   await expect(mirrorRelease(racing, plan("0.1.17"), quiet)).rejects.toThrow("moved while this run held it");
   expect(racing.text("channels/stable.json")).toBe('{"moved":true}');
   expect(racing.text("channels/stable.host-manifest.json")).toBe(manifest);
+});
+
+test("release.yml's sign job writes the same signature the mirror attaches, and refuses an untrusted key (#2297)", async () => {
+  const release = fakeRelease("0.1.18");
+  releases.push(release);
+  const signature = await signChecksums(release.dir, key, trusted);
+  const sums = await Bun.file(`${release.dir}/SHA256SUMS.txt`).bytes();
+  expect(verifyRelease(sums, new TextDecoder().decode(signature), trusted)).toBe(true);
+  expect(await Bun.file(`${release.dir}/SHA256SUMS.txt.sig`).text()).toBe(new TextDecoder().decode(signature));
+  const bucket = new MemoryBucket();
+  await mirrorRelease(bucket, plan("0.1.18"), quiet);
+  expect(await (await bucket.worker("/v/0.1.18/SHA256SUMS.txt.sig")).text()).toBe(new TextDecoder().decode(signature));
+  const other = crypto.getRandomValues(new Uint8Array(32));
+  expect(signChecksums(release.dir, other, trusted)).rejects.toThrow("not one of RELEASE_PUBLIC_KEYS");
 });

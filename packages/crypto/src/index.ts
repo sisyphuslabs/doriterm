@@ -80,7 +80,19 @@ export {
   type ResponderOptions,
   type SecureLinkOptions,
 } from "./secure-link.ts";
-export type { SecureLink, SessionInfo } from "./secured-link.ts";
+export type { SecureLink, SecureSession, SessionInfo } from "./secured-link.ts";
+export { RECORD_RING_BYTES } from "./record-ring.ts";
+export {
+  encodeResumeRequest,
+  isResumeRequest,
+  RESUME_ANSWER_TIMEOUT_MS,
+  RESUME_KIND,
+  RESUME_REQUEST_LENGTH,
+  resumeKeys,
+  resumeRequestId,
+  type RecordCounters,
+  type ResumeKeys,
+} from "./resume.ts";
 export {
   generateWebCryptoStaticKey,
   rawStaticKey,

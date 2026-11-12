@@ -19,7 +19,11 @@ export interface AgentGroup {
   /** Needs you's rows use the "!" mark, since the header already says it. */
   readonly compactBlocked: boolean;
   readonly agents: readonly Agent[];
-  /** The header's count: the rows the group shows. Pinned agents are counted in Pinned, where they are listed. */
+  /**
+   * The header's count: the rows the group shows, by their place, so a row held in Working through its wait counts
+   * there (#1963). Pinned agents are counted in Pinned, where they are listed. The palette's status filter counts live
+   * states instead, as the rows it filters by are.
+   */
   readonly count: number;
 }
 

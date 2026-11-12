@@ -13,11 +13,33 @@ export const STATE_BOUND_MS = 25_000;
 /** How long a machine whose line dropped may read connected before it reads offline: the page's grace (#904), plus as above. */
 export const OFFLINE_BOUND_MS = OFFLINE_GRACE_MS + STATE_BOUND_MS;
 
+/** How long the core may take to report a machine connected again: an earlier spec may have dropped its line, and hc
+ * redials it within 30 s; plus slack. A wait on the core itself, not on the page, so STATE_BOUND_MS is not its bound. */
+export const REDIAL_BOUND_MS = 45_000;
+
 /** A test that waits a machine out to offline and back: the bound above, plus its setup and its reconnect. */
 export const OFFLINE_TEST_TIMEOUT_MS = OFFLINE_BOUND_MS + 120_000;
 
 export const machineRow = (page: Page) => page.getByRole("button", { name: new RegExp(`^${MACHINE_NAME}\\b`) });
 export const newOn = (page: Page) => page.getByRole("button", { name: `New space on ${MACHINE_NAME}` });
+
+/**
+ * A machine's state as the e2e core lists it (`hc machine ls`): a layout-free read, the same on every screen. Undefined
+ * when the core does not list that machine; a reply with no machine list throws.
+ */
+export function machineStateOf(name: string): string | undefined {
+  const listed: unknown = JSON.parse(hcOn("host", ["machine", "ls", "--json"]));
+  const machines = typeof listed === "object" && listed !== null ? Reflect.get(listed, "machines") : undefined;
+  if (!Array.isArray(machines)) throw new Error("hc machine ls printed no machine list");
+  const found: unknown = machines.find(
+    (machine: unknown) => typeof machine === "object" && machine !== null && Reflect.get(machine, "name") === name,
+  );
+  const state = typeof found === "object" && found !== null ? Reflect.get(found, "state") : undefined;
+  return typeof state === "string" ? state : undefined;
+}
+
+/** The added machine's state, as machineStateOf reads it. */
+export const machineState = (): string | undefined => machineStateOf(MACHINE_NAME);
 
 /** Runs hc against the e2e core (`host`) or the added machine's own core (`machine`); returns its stdout. */
 export function hcOn(core: "host" | "machine", args: readonly string[], input?: string): string {

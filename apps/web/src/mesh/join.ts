@@ -39,6 +39,7 @@ const REASONS: Readonly<Record<OfferSecret["mode"], Readonly<Record<number, stri
   code: {
     [CloseCode.CryptoFailure]: "The code doesn't match this host. Check it and try again.",
     [CloseCode.UnknownDevice]: USED,
+    [CloseCode.MeshCodeRefused]: USED,
     [CloseCode.HostOffline]: OFFLINE,
     [CloseCode.PairSlotUnknown]: "No host is inviting with this code. It may have expired.",
     [CloseCode.RateLimited]: `Too many attempts for this code. ${AGAIN}`,
@@ -72,7 +73,9 @@ export class DeviceCodeOffer extends Error {
 /**
  * Why the inviter's handshake failed. A typed code does not say which offer it opens, and a host refuses a mesh join on
  * a device pairing offer with UnknownDevice before it counts the attempt (`kindRefusal`, `claimCode`), so that refusal
- * hands the same code to the device pairing. A code that was used or replaced is refused there in that flow's words.
+ * hands the same code to the device pairing. A host refuses every other typed-code join (used, expired or replaced)
+ * with MeshCodeRefused, which keeps the join's own words (#1492). An older host sends UnknownDevice for those too, and
+ * the device pairing then refuses the code in its own words.
  */
 export function dialRefusalOf(offer: PairingOffer, error: unknown): Error | undefined {
   if (offer.secret.mode === "code" && error instanceof Error && closeCodeOf(error) === CloseCode.UnknownDevice) {

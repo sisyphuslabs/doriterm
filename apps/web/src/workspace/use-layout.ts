@@ -315,7 +315,11 @@ export function useLayout(
       const tab: JsonObject = { id, name: "", root: rootOf(id, [terminalBlock(pane, localOf(address))]) };
       const kept =
         fate === "with-new" && active !== null
-          ? { terminal: localOf(active.panes[0]?.address ?? ""), tab: written(active) }
+          ? {
+              terminal: localOf(active.panes[0]?.address ?? ""),
+              tab: written(active),
+              follows: !newSpace && into === undefined,
+            }
           : null;
       // herdr-app's add_tab: right after the selected tab of the selected space; a terminal of another machine, or one
       // asked for as a new space, starts a space of its own, never the first space of the document.

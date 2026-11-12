@@ -5,6 +5,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RelayProofs } from "@doriface/relay-client";
+import { viewOf } from "@doriface/mesh";
 import { MeshStore } from "../state/mesh.ts";
 import { CLIENT_ADMISSION_FORMAT } from "./format-readiness.ts";
 import { HostSync } from "./host-sync.ts";
@@ -227,6 +228,39 @@ describe("the format a client's admission needs, asked before sync runs (#1415)"
     expect(sync.formatReady()).toBe(false);
     gossip?.heard(c.signPub, [], {}, [CLIENT_ADMISSION_FORMAT - 1, CLIENT_ADMISSION_FORMAT]);
     expect(sync.formatReady()).toBe(true);
+    sync.stop();
+  });
+
+  test("an admission reads the roster from the records it is written over, not gossip's last view (#1436)", async () => {
+    const [a, b, c, d] = [peer("a"), peer("b"), peer("c"), peer("d")];
+    const { clock, sync } = hostSyncOver(b, storeOf(b, meshOf([a, b, c]).records));
+    sync.changed();
+    await clock.advance(1);
+    const gossip = sync.gossip;
+    if (gossip === undefined) throw new Error("sync did not start");
+    gossip.heard(a.signPub, [], {}, [CLIENT_ADMISSION_FORMAT]);
+    gossip.heard(c.signPub, [], {}, [CLIENT_ADMISSION_FORMAT]);
+    expect(sync.formatReady()).toBe(true);
+    // A machine admitted on this host a moment ago: on disk, but not yet in gossip's view, and it has not answered.
+    const onDisk = meshOf([a, b, c, d]).records;
+    expect(sync.formatReady(onDisk)).toBe(false);
+    sync.stop();
+  });
+
+  test("an admission's roster comes from the view the transaction holds, not a second evaluation of its records (#2263)", async () => {
+    const [a, b, c, d] = [peer("a"), peer("b"), peer("c"), peer("d")];
+    const { clock, sync } = hostSyncOver(b, storeOf(b, meshOf([a, b, c]).records));
+    sync.changed();
+    await clock.advance(1);
+    const gossip = sync.gossip;
+    if (gossip === undefined) throw new Error("sync did not start");
+    gossip.heard(a.signPub, [], {}, [CLIENT_ADMISSION_FORMAT]);
+    gossip.heard(c.signPub, [], {}, [CLIENT_ADMISSION_FORMAT]);
+    const records = meshOf([a, b, c, d]).records;
+    // Evaluated afresh, the records hold d, which has not answered. The view handed in is from before d joined, so it
+    // reads ready only if the check takes that view instead of evaluating the records again.
+    expect(sync.formatReady(records)).toBe(false);
+    expect(sync.formatReady(records, viewOf(meshOf([a, b, c]).records))).toBe(true);
     sync.stop();
   });
 });

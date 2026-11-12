@@ -41,6 +41,44 @@ export const HERDR_APP_DIFFERENCES: Readonly<Record<Platform, readonly HerdrDiff
   ],
 };
 
+/** An Alt chord family a default binds to a Doriterm action, though a program reads Alt+<key> as a Meta key. */
+export interface AltKept {
+  /** The family's default triggers, in Doriterm's trigger spelling. */
+  readonly trigger: RegExp;
+  /** The actions those triggers may carry. */
+  readonly action: RegExp;
+  readonly reason: string;
+}
+
+/**
+ * Every family of Alt chords a default keymap gives to a Doriterm action; any other Alt chord is the program's (#1302,
+ * #1942). Each family is herdr-app's own default and acts from a focused terminal as herdr-app's does (#1925); a person
+ * whose program needs one of these keys unbinds that row in Settings > Keyboard. `program-keys.test.ts` holds the
+ * defaults to this list both ways.
+ */
+export const ALT_KEPT: Readonly<Record<Platform, readonly AltKept[]>> = {
+  mac: [],
+  other: [
+    {
+      trigger: /^alt\+(shift\+)?[hjkl]$/,
+      action: /^pane\.(go|swap):(left|down|up|right)$/,
+      reason: "herdr-app's vim pane keys (keys.json alt-h/j/k/l and alt-shift-h/j/k/l), carried over from Ghostty",
+    },
+    {
+      trigger: /^alt\+[1-9]$/,
+      action: /^space\.select:[1-9]$/,
+      reason:
+        "herdr-app's space number chords (keys.json alt-1..9); they act from a focused terminal as in herdr-app (#1925), so a program that wants Alt+<digit> (readline's numeric argument) needs the row unbound",
+    },
+    {
+      trigger: /^alt\+[[\]]$/,
+      action: /^tab\.(prev|next)$/,
+      reason:
+        "herdr-app's tab cycle (keys.json alt-[ and alt-]), and a browser tab's stand-in for Ctrl+Tab, which the browser keeps for itself; Alt+[ is ESC [, the start of every CSI sequence, so few programs can read it",
+    },
+  ],
+};
+
 const numbered = (prefix: string, fallback: string): Record<string, string> =>
   Object.fromEntries(Array.from({ length: 9 }, (_, index) => [`${prefix}${index + 1}`, fallback]));
 

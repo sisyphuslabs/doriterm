@@ -153,14 +153,19 @@ const bridge: DorifaceBridge = {
     return installing === true;
   },
   onUpdateStatus(listener) {
+    let stopped = false;
     const changed = (_event: unknown, status: unknown): void => {
       if (isUpdateStatus(status)) listener(status);
     };
     ipcRenderer.on(Channel.updateStatus, changed);
+    // The first status can answer after stop; it reaches no listener then (#2252).
     void ipcRenderer
       .invoke(Channel.updateStatus)
-      .then((status: unknown) => listener(isUpdateStatus(status) ? status : null));
-    return () => void ipcRenderer.removeListener(Channel.updateStatus, changed);
+      .then((status: unknown) => stopped || listener(isUpdateStatus(status) ? status : null));
+    return () => {
+      stopped = true;
+      ipcRenderer.removeListener(Channel.updateStatus, changed);
+    };
   },
   async updateChannel() {
     const channel: unknown = await ipcRenderer.invoke(Channel.updateChannel);
