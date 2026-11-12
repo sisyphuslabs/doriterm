@@ -42,6 +42,13 @@ const conflict = (at: number, asked: unknown): HcRpcError =>
     data: { kind: "conflict" },
   });
 
+/** A clock the test moves: each pause advances it, so a time bound is reached without waiting (#2409). */
+const testClock = () => {
+  let now = 0;
+  const paused: number[] = [];
+  return { paused, wait: { now: () => now, pause: (ms: number) => void (paused.push(ms), (now += ms)) } };
+};
+
 const layout = (spaces: readonly unknown[]): Record<string, unknown> => ({ spaces });
 
 describe("coreCompareAndSet (#896)", () => {
@@ -113,13 +120,6 @@ describe("coreCompareAndSet (#896)", () => {
     );
     expect(sets).toBe(1);
   });
-
-  /** A clock the test moves: each pause advances it, so a time bound is reached without waiting (#2409). */
-  const testClock = () => {
-    let now = 0;
-    const paused: number[] = [];
-    return { paused, wait: { now: () => now, pause: (ms: number) => void (paused.push(ms), (now += ms)) } };
-  };
 
   test("a core that refuses every write still fails, and within its time bound: it never hangs (#2409)", () => {
     const refusals: HcRpcError[] = [];
