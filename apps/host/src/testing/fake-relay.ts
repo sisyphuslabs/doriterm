@@ -179,8 +179,8 @@ export class FakeRelay {
     this.#sendOrThrow(bytes);
   }
 
-  dropUplink(code: number, hostId = this.#defaultHost): void {
-    this.#hosts.get(hostId)?.close(code, "dropped by the test");
+  dropUplink(code: number, reason = "dropped by the test", hostId = this.#defaultHost): void {
+    this.#hosts.get(hostId)?.close(code, reason);
   }
 
   async stop(): Promise<void> {
