@@ -37,14 +37,36 @@ async function atLastLine(terminal: Locator, timeout = 30_000): Promise<void> {
   );
 }
 
+/** A WebSocket frame's payload as text (an hc frame's JSON reads as latin1). */
+const frameText = (payload: string | Buffer): string =>
+  typeof payload === "string" ? payload : payload.toString("latin1");
+
+/** The page's hc frames as text, in order: from a socket routed through the spec, or only watched as they pass. */
+type HcFrames = Pick<HcSocket, "sent" | "received">;
+
+/**
+ * Watches the page's WebSocket frames as they pass, without sitting in the stream: routing the socket through the test
+ * process (routeHcSocket) copies the whole attach replay on its way to the page, which a loaded runner is too slow for
+ * (#2396).
+ */
+function watchHcFrames(page: Page): HcFrames {
+  const sent: string[] = [];
+  const received: string[] = [];
+  page.on("websocket", (socket) => {
+    socket.on("framesent", ({ payload }) => sent.push(frameText(payload)));
+    socket.on("framereceived", ({ payload }) => received.push(frameText(payload)));
+  });
+  return { sent: () => sent, received: () => received };
+}
+
 /** The RPC ids of the page's `terminal.attach` requests for this terminal, in the order it sent them. */
-function attachIds(socket: HcSocket, address: string): number[] {
+function attachIds(socket: HcFrames, address: string): number[] {
   const request = new RegExp(`"id":(\\d+),"method":"terminal\\.attach","params":\\{"terminal":"${address}"`, "g");
   return socket.sent().flatMap((text) => [...text.matchAll(request)].map((match) => Number(match[1])));
 }
 
 /** Whether hc has answered the request with this RPC id: a JSON-RPC response (a result or an error) carrying that id. */
-function answered(socket: HcSocket, id: number): boolean {
+function answered(socket: HcFrames, id: number): boolean {
   const ofId = new RegExp(`"id":${id}[,}]`);
   return socket
     .received()
@@ -74,7 +96,7 @@ const timeoutFor = (waits: number, rest = 30_000): number =>
  * from the click counted the time before the attach was even sent, which a starved renderer can spend all of.
  */
 async function paintedAfterAttach(
-  socket: HcSocket,
+  socket: HcFrames,
   address: string,
   terminal: Locator,
   before: number,
@@ -164,7 +186,7 @@ test.describe("on a phone", () => {
       const address = String((JSON.parse(out) as { address: string }).address);
       started.push(address);
       seedLayout([{ id: "tb-812", name: "agent", root: [{ pane: "p1", terminal: address }] }]);
-      const socket = await routeHcSocket(page);
+      const socket = watchHcFrames(page);
       await page.goto("/");
       await page
         .getByRole("button", { name: /first-paint-agent/ })
