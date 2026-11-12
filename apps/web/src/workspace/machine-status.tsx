@@ -75,7 +75,7 @@ export function MachineLine({ connection, address }: { readonly connection: HcCo
     <div className={PHONE_LINE}>
       <p
         role="status"
-        className={`${PHONE_LINE_TEXT} [&_svg]:mt-0.5 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground`}
+        className={`${PHONE_LINE_TEXT} [&_svg:not([data-slot=spinner])]:mt-0.5 [&_svg:not([data-slot=spinner])]:size-4 [&_svg:not([data-slot=spinner])]:shrink-0 [&_svg:not([data-slot=spinner])]:text-muted-foreground`}
       >
         <Unplug aria-hidden />
         <span className="min-w-0 text-pretty break-words">{notice.text}</span>
