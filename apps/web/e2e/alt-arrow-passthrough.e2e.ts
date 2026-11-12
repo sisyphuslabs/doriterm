@@ -44,27 +44,38 @@ test("Alt+Up reaches the program at the top edge of a split, and the pane does n
   await page.keyboard.press("Enter");
   await expect(first).toContainText("cat -v", { timeout: 20_000 });
 
-  // The chords that actually swallowed a key here were Alt+Left and Alt+Right: they were bound to pane.go, so with a
-  // neighbour that way Doriterm moved focus instead of sending anything (#1302, #1942). Alt+Up was bound to agent.prev,
-  // which is why it is the easier half of the proof.
-  // Toward the neighbour: the old pane.go:right binding consumed it.
+  // What the report is about: Alt+Left and Alt+Right were bound to pane.go, so with a neighbour that way Doriterm moved
+  // focus instead of sending anything (#1302, #1942). Alt+Up was bound to agent.prev, which is why it is the easy half.
+  //
+  // Since #1600 a pane key at a split edge both nudges the pane AND hands the key to the program, so at an edge "the
+  // sequence arrived" cannot tell the old binding from none. So each pane key below is pressed toward a neighbour, where
+  // the old binding swallowed the key: the missing sequence is what catches it. The focus checks are a second guard - a
+  // pane move takes focus off this terminal, and nothing else in these chords may.
+  const focused = first.getByRole("textbox").first();
+
+  // Toward the neighbour: the old pane.go:right moved focus to the other pane.
   await page.keyboard.press("Alt+ArrowRight");
-  await expect(first, "the program receives Alt+Right rather than a pane move").toContainText("[1;3C", {
-    timeout: 20_000,
-  });
+  await expect(first, "the program receives Alt+Right").toContainText("[1;3C", { timeout: 20_000 });
+  await expect(focused, "Alt+Right left focus on this terminal").toBeFocused();
   await expect(panes, "Alt+Right opened or closed no pane").toHaveCount(2);
 
-  // The easy half: Alt+Up was agent.prev, not a pane key.
+  // The easy half: Alt+Up was agent.prev, not a pane key, so the sequence alone catches its regression.
   await page.keyboard.press("Alt+ArrowUp");
-  await expect(first, "the program receives Alt+Up rather than an agent move").toContainText("[1;3A", {
-    timeout: 20_000,
-  });
+  await expect(first, "the program receives Alt+Up").toContainText("[1;3A", { timeout: 20_000 });
+  await expect(focused, "Alt+Up left focus alone").toBeFocused();
   await expect(panes, "Alt+Up opened or closed no pane").toHaveCount(2);
 
-  // Away from the neighbour: the old pane.go:left binding bumped the pane and swallowed this.
+  // Alt+Left needs a pane with a neighbour on its LEFT, not the edge: #1600 hands a pane key to the program only when
+  // there is no pane that way, so at the edge the old pane.go:left binding and no binding at all look identical. The
+  // second pane is the one where the old binding swallowed the key.
+  const second = panes.nth(1);
+  await second.getByRole("textbox").first().focus();
+  await page.keyboard.type("cat -v");
+  await page.keyboard.press("Enter");
+  await expect(second).toContainText("cat -v", { timeout: 20_000 });
+
   await page.keyboard.press("Alt+ArrowLeft");
-  await expect(first, "the program receives Alt+Left rather than a bump").toContainText("[1;3D", {
-    timeout: 20_000,
-  });
+  await expect(second, "the program receives Alt+Left").toContainText("[1;3D", { timeout: 20_000 });
+  await expect(second.getByRole("textbox").first(), "Alt+Left did not walk focus into the left pane").toBeFocused();
   await expect(panes, "Alt+Left opened or closed no pane").toHaveCount(2);
 });

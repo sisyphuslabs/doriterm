@@ -59,7 +59,7 @@ test("a dictation under way ends when its machine drops: the recognizer is abort
     await expect.poll(() => speech.aborts()).toBe(1);
   } finally {
     reconnect();
-    removeTerminal("machine", address, test.info().outputPath("go"));
+    removeTerminal("machine", address);
   }
 });
 
@@ -99,6 +99,6 @@ test("the ended view offers no dictation: no mic, no strip, no keys bar, and a b
     expect(await speech.started()).toEqual([]);
   } finally {
     reconnect();
-    removeTerminal("machine", address, test.info().outputPath("go"));
+    removeTerminal("machine", address);
   }
 });

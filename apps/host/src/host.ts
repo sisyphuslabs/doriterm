@@ -199,6 +199,7 @@ async function serve(
     hcVersion,
     log: options.log,
     directIdleMs: options.directIdleMs,
+    resumeGraceMs: options.resumeGraceMs,
     openPipe: () => {
       void ends.ensure();
       info ??= publishHostInfo(core, options.platform ?? process.platform, options.log);

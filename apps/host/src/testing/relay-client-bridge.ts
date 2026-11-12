@@ -5,7 +5,7 @@ interface Client {
   readonly hostId: string;
   readonly pairSlot: string | undefined;
   send?: (bytes: Uint8Array) => void;
-  close?: () => void;
+  close?: (code: number) => void;
 }
 
 /** The client side of a FakeRelay: each `/v1/client/<hostId>[?pair=<slot>]` socket becomes one session on the uplink. */
@@ -34,12 +34,13 @@ export class RelayClientBridge {
           session.onData((bytes) => ws.send(bytes));
           void session.closed.then((code) => ws.close(code, ""));
           ws.data.send = (bytes) => session.send(bytes);
-          ws.data.close = () => session.close();
+          ws.data.close = (code) => session.close(code);
         },
         message: (ws, message) => {
           if (typeof message !== "string") ws.data.send?.(message);
         },
-        close: (ws) => ws.data.close?.(),
+        // The client's own close code reaches the host, as the real relay passes it on: a drop stays a drop there.
+        close: (ws, code) => ws.data.close?.(code),
       },
     });
     this.url = `http://127.0.0.1:${this.#server.port ?? 0}`;

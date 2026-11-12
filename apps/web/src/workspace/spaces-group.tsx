@@ -44,7 +44,7 @@ export interface SpacesGroupProps {
 const ALARM = new Set(["unreachable", "needs_login"]);
 
 /** A machine's problem under its header, including why creation is unavailable during its reconnect grace. */
-function MachineNotice({ name }: { readonly name: string }) {
+export function MachineNotice({ name }: { readonly name: string }) {
   const { views, retry } = useMachinesContext();
   const view = views.find((one) => one.name === name);
   const cause = view === undefined || view.state === "connecting" ? undefined : machineCause(view);
@@ -52,7 +52,7 @@ function MachineNotice({ name }: { readonly name: string }) {
   return (
     <Notice tone="warning" className="mx-1 mt-1" title={cause.title}>
       {cause.detail}
-      <RetryButton size="sm" className="mt-2 flex" onRetry={() => retry(name)} />
+      {cause.retryless === true ? null : <RetryButton size="sm" className="mt-2 flex" onRetry={() => retry(name)} />}
     </Notice>
   );
 }
@@ -70,7 +70,7 @@ function NewSpaceThere({ disabled, onClick }: { readonly disabled: boolean; read
       className={cn(
         "flex h-(--row) min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm text-foreground/85 outline-none",
         "enabled:hover:bg-hover enabled:hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring",
-        "disabled:text-muted-foreground disabled:[&_svg]:text-muted-foreground/72",
+        "disabled:text-muted-foreground disabled:[&_svg]:text-disabled-glyph",
       )}
     >
       <Plus aria-hidden className="size-4 shrink-0" />

@@ -23,7 +23,6 @@ test("on a phone, a session that ended while its machine was offline shows as en
 }) => {
   test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
   const local = startShell("machine", "ended-phone");
-  const go = test.info().outputPath("go");
   try {
     // The keys bar shows on a touch phone only while the soft keyboard is up.
     await fakeSoftKeyboard(page);
@@ -59,6 +58,6 @@ test("on a phone, a session that ended while its machine was offline shows as en
     await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 15_000 });
   } finally {
     reconnect();
-    removeTerminal("machine", local, go);
+    removeTerminal("machine", local);
   }
 });
