@@ -118,10 +118,10 @@ test("the reconnect note belongs to the terminal that lost output, not to one op
 /**
  * The phone says the note in the line under the terminal's header, where it says "Reconnecting": the line hands over
  * from one to the other at the same height, so the terminal is not fitted again while the repaint lands (#2257). The
- * line sits outside the terminal, and Dismiss takes it away. The note only ever takes over from Reconnecting: the
- * connection cannot come back while the device is offline, so the line says Reconnecting between Offline and the note.
- * Reconnecting is one line at every phone width, so the hand-over keeps its height below 390 px too, where the Offline
- * sentence wraps (DESIGN.md 5 (e)) and the line changes height only as Offline gives way to Reconnecting (#2406).
+ * line sits outside the terminal, and Dismiss takes it away. After a reconnect the note takes over from Reconnecting,
+ * which is one line at every phone width, so the hand-over keeps its height below 390 px too, where the Offline sentence
+ * wraps (DESIGN.md 5 (e)) and the line changes height as Offline gives way to Reconnecting (#2406). A note already
+ * showing, or one raised while Offline shows, appears as Offline clears, with no repaint in flight.
  */
 for (const width of [390, 320]) {
   test.describe(`on a phone ${width} px wide`, () => {
