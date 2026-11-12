@@ -30,10 +30,10 @@ async function pairWithDirectAddress(page: Page, host: FakeRelayHost): Promise<v
 }
 
 /**
- * The shell's forwarder, stubbed: `forward` is what each forward answers. The targets the page set are kept on the
- * window, so the spec can tell the forwarder was asked for the saved address.
+ * The shell's forwarder, stubbed: `forward` is what each forward answers. The targets the page sets are kept on the
+ * window, so the spec can tell whether the forwarder was ever handed an address.
  */
-async function withForwarder(page: Page, forward: { readonly url: string } | { readonly refused: string }) {
+async function withForwarder(page: Page, forward: { readonly url: string }) {
   await page.addInitScript((answer) => {
     const targets: string[] = [];
     Reflect.set(window, "__directTargets", targets);
@@ -47,7 +47,7 @@ async function withForwarder(page: Page, forward: { readonly url: string } | { r
     });
   }, forward);
   // The direct race's 300 ms is the page's own clock: on a busy machine the socket alone can take longer, and the page
-  // rightly takes the relay. Here only the forwarded attempt's answer decides which path the bar names (#780).
+  // rightly takes the relay. An unbounded budget means a direct attempt, if one ever ran, would surely show (#780).
   await page.addInitScript(() => Reflect.set(window, "__dorifaceDirectBudgetMs", Number.POSITIVE_INFINITY));
 }
 
