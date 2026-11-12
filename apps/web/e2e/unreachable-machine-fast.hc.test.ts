@@ -70,7 +70,8 @@ test("a New terminal on an added machine that is not connected fails from its st
     };
     // A dial hc started just before the stop passed its "is the machine there" check already, and its hc connect starts
     // the stopped core again (#2142): the machine reads connected once more. Stop that core too and wait again, a few
-    // times at most (#2389).
+    // times at most (#2389). A workaround for #2428: the loop goes once an in-flight dial can no longer restart a stopped
+    // machine.
     const down = async (stops: number): Promise<string | undefined> => {
       const now = await settled(performance.now() + 10_000);
       if (settledOffline(now) || stops === 0) return now;
