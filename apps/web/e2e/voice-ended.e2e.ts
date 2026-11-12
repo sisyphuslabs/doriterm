@@ -52,7 +52,11 @@ test("a dictation under way ends when its machine drops: the recognizer is abort
     await expect(strip(page)).toHaveAttribute("data-voice-strip", "listening");
 
     switchTo("drop");
-    await expect(terminal).toHaveCount(0, { timeout: OFFLINE_BOUND_MS });
+    // #2003 (DORITERM-11): the view stays mounted and the status line says the machine is offline.
+    await expect(page.getByRole("status").filter({ hasText: `${MACHINE_NAME} is offline` })).toBeVisible({
+      timeout: OFFLINE_BOUND_MS,
+    });
+    await expect(terminal).toHaveCount(1);
     await expect(page.getByText(`${MACHINE_NAME} is offline`)).toBeVisible();
     await expect(strip(page)).toHaveCount(0);
     await expect(mic(page)).toHaveCount(0);
@@ -84,7 +88,11 @@ test("the ended view offers no dictation: no mic, no strip, no keys bar, and a b
 
     const terminal = await openOnMachine(page, "voice-ended", address);
     switchTo("drop");
-    await expect(terminal).toHaveCount(0, { timeout: OFFLINE_BOUND_MS });
+    // #2003 (DORITERM-11): the view stays mounted and the status line says the machine is offline.
+    await expect(page.getByRole("status").filter({ hasText: `${MACHINE_NAME} is offline` })).toBeVisible({
+      timeout: OFFLINE_BOUND_MS,
+    });
+    await expect(terminal).toHaveCount(1);
     hcOn("machine", ["kill", address]);
     await expect.poll(() => stateOn("machine", address), { timeout: 15_000 }).toBe("finished");
     reconnect();
