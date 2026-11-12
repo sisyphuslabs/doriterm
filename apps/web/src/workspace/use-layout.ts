@@ -38,7 +38,7 @@ import type { TabMove } from "./tab-order.ts";
 import type { Leaving } from "./use-drop-pane.ts";
 import { useTabClose } from "./use-tab-close.ts";
 import { useTabMoves } from "./use-tab-moves.ts";
-import { type MachineLayout, restoredFrom } from "./use-layout-docs.ts";
+import { type MachineLayout, restoredFrom, unreadReason } from "./use-layout-docs.ts";
 
 export interface Layout extends PaneMoves {
   /** Every tab of every machine's document, and this screen's own. */
@@ -98,6 +98,8 @@ export interface Layout extends PaneMoves {
    * documents hold, so a tab showing up now is an arrival, not the restored screen.
    */
   readonly restored: boolean;
+  /** Why the saved tabs are not on screen: a read that failed and has not landed since, else null (#2443). */
+  readonly unread: string | null;
 }
 
 export interface PaneTarget {
@@ -543,5 +545,6 @@ export function useLayout(
     closeSetOf,
     lastMove,
     restored: restoredFrom(layouts, machinesListed),
+    unread: unreadReason(layouts),
   };
 }

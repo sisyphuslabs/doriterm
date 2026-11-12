@@ -23,7 +23,12 @@ test("a layout whose first read failed is not a restored, empty screen: the pers
 
 test("a failed re-read of a layout already read keeps that screen, and a machine that is not connected is not waited for", () => {
   const keptAfterFailedReread = layout({ loaded: true, unread: FAILED, readOnly: FAILED });
-  const notConnected = layout({ machine: "bee", machineId: "bee-id", loaded: false, readOnly: "the machine is not connected" });
+  const notConnected = layout({
+    machine: "bee",
+    machineId: "bee-id",
+    loaded: false,
+    readOnly: "the machine is not connected",
+  });
 
   expect(restoredFrom([keptAfterFailedReread, notConnected], true)).toBe(true);
   expect(unreadReason([keptAfterFailedReread, notConnected])).toBeNull();

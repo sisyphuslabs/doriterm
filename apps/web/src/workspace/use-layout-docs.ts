@@ -49,7 +49,7 @@ export function noEditsWhy(id: string | null, shown: readonly MachineView[]): st
 export function restoredFrom(layouts: readonly MachineLayout[], machinesListed: boolean): boolean {
   return (
     machinesListed &&
-    layouts.every((layout) => layout.loaded || layout.readOnly !== LAYOUT_LOADING)
+    layouts.every((layout) => layout.loaded || (layout.readOnly !== LAYOUT_LOADING && layout.unread === null))
   );
 }
 
