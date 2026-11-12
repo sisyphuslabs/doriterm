@@ -92,3 +92,9 @@ export function offlineTitle(name: string, views: readonly MachineView[]): strin
   const view = views.find((entry) => entry.name === name);
   return (view === undefined ? undefined : machineCause(view)?.title) ?? `${name} is offline`;
 }
+
+/** A split pane's header note for its machine while offline: the title machineCause gives (#2375 review). */
+export function PaneOfflineNote({ machine }: { readonly machine: string }) {
+  const { views } = useMachinesContext();
+  return <span className="shrink-0 text-muted-foreground">· {offlineTitle(machine, views)}</span>;
+}

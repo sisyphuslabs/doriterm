@@ -9,9 +9,8 @@ import { RegionBoundary } from "../crash/region-boundary.tsx";
 import type { TerminalEnd } from "../terminal/terminal-end.ts";
 import type { TerminalPort } from "../terminal/terminal-port.ts";
 import { TerminalView } from "../terminal/terminal-view.tsx";
-import { offlineTitle } from "./machine-status.tsx";
+import { PaneOfflineNote } from "./machine-status.tsx";
 import { machineOf, type Session, terminalTitle } from "./model.ts";
-import { useMachinesContext } from "./use-machines.ts";
 import { picksPane } from "./pane-focus.ts";
 import { SessionMenuItems } from "./session-menu.tsx";
 
@@ -111,7 +110,6 @@ export function Pane(props: PaneProps) {
   } = props;
   const title = terminalTitle(terminal);
   const machine = machineOf(terminal.address);
-  const { views } = useMachinesContext();
   return (
     <section
       aria-label={`${title} terminal`}
@@ -147,9 +145,7 @@ export function Pane(props: PaneProps) {
               <h2 title={title} className="min-w-0 truncate">
                 {title}
               </h2>
-              {terminal.offline === true && machine !== undefined ? (
-                <span className="shrink-0 text-muted-foreground">· {offlineTitle(machine, views)}</span>
-              ) : null}
+              {terminal.offline === true && machine !== undefined ? <PaneOfflineNote machine={machine} /> : null}
               <PaneButtons zoomed={zoomed} onSplit={onSplit} onZoom={onZoom} onClose={onClose} />
             </header>
           }

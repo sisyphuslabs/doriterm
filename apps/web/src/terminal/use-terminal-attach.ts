@@ -329,10 +329,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     ended,
     unopened,
     clearUnopened: () => setUnopened(null),
-    waitForMachine: () => {
-      setUnopened(null);
-      setLostStreams(afterMachineWait);
-    },
+    waitForMachine: machineWait(setUnopened, setLostStreams),
     onEndNow,
   };
 }
@@ -351,3 +348,17 @@ export function attachDue(mark: AttachMark, view: unknown, connection: unknown, 
 
 /** The lost-stream count after a failed open is cleared to wait for its machine (#2003). */
 export const afterMachineWait = (lostStreams: number): number => lostStreams + 1;
+
+/**
+ * The call that clears a failed open to wait for its machine: no failure is shown, and the lost-stream count moves on, so
+ * the attach effect attaches the same renderer once the machine is back (#2003, #2375 review).
+ */
+export function machineWait(
+  setUnopened: (reason: string | null) => void,
+  setLostStreams: (next: (count: number) => number) => void,
+): () => void {
+  return () => {
+    setUnopened(null);
+    setLostStreams(afterMachineWait);
+  };
+}

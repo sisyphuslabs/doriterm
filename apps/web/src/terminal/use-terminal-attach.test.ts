@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { OutputPacer, REPLAY_CAP_MS } from "./output-pacer.ts";
-import { afterMachineWait, attachDue, replayOnAttach } from "./use-terminal-attach.ts";
+import { afterMachineWait, attachDue, machineWait, replayOnAttach } from "./use-terminal-attach.ts";
 
 /** A pacer on frames and timers that move only when the test says so, recording each hold of the paint. */
 function attaching(fresh = false) {
@@ -75,4 +75,16 @@ describe("a failed open cleared to wait for its machine (#2003, #2375 review)", 
     expect(attachDue(failed, view, connection, 0)).toBe(false);
     expect(attachDue(failed, view, connection, afterMachineWait(0))).toBe(true);
   });
+});
+
+test("waiting for the machine clears the failure and moves the lost-stream count on (#2375 review)", () => {
+  const unopened: (string | null)[] = [];
+  let lost = 0;
+  machineWait(
+    (reason) => unopened.push(reason),
+    (next) => {
+      lost = next(lost);
+    },
+  )();
+  expect({ unopened, lost }).toEqual({ unopened: [null], lost: 1 });
 });
