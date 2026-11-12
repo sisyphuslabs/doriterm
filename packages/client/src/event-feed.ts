@@ -9,7 +9,7 @@ import {
   type HcSnapshot,
   type JsonRpcNotification,
 } from "@doriface/protocol";
-import { HcProtocolError } from "./errors.ts";
+import { HcLinkSilentError, HcProtocolError } from "./errors.ts";
 import { Listeners, type Unsubscribe } from "./listeners.ts";
 import type { StreamWire } from "./terminal-stream.ts";
 import type { ChannelHandler } from "./wire.ts";
@@ -184,7 +184,17 @@ export class EventFeed implements ChannelHandler {
   #armHeartbeat(): void {
     if (this.#timer !== undefined) clearTimeout(this.#timer);
     if (this.#heartbeatTimeoutMs <= 0) return;
-    this.#timer = setTimeout(() => this.#end({ reason: "heartbeat_timeout" }, true), this.#heartbeatTimeoutMs);
+    this.#timer = setTimeout(() => this.#silent(), this.#heartbeatTimeoutMs);
+  }
+
+  /**
+   * The beats stopped. A link that can carry the session on over a new socket takes the loss and the feed waits for
+   * the beats to come back with it (the core kept beating into the host, which holds them for the resume); any other
+   * link is gone, so the feed closes and its owner reconnects.
+   */
+  #silent(): void {
+    if (this.#wire.lost?.(new HcLinkSilentError(this.#heartbeatTimeoutMs)) === true) return this.#armHeartbeat();
+    this.#end({ reason: "heartbeat_timeout" }, true);
   }
 
   #end(info: FeedClose, sendClose: boolean): void {
