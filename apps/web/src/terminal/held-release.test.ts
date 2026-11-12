@@ -6,6 +6,7 @@ function fakeClock() {
   let now = 0;
   let synchronized = false;
   let generation = 0;
+  let paintHeld = false;
   let frames: (() => void)[] = [];
   let timers: { at: number; run: () => void }[] = [];
   const clock: ReleaseClock = {
@@ -21,10 +22,13 @@ function fakeClock() {
     },
     synchronized: () => synchronized,
     generation: () => generation,
+    paintHeld: () => paintHeld,
   };
   return {
     clock,
     sync: (on: boolean) => void (synchronized = on),
+    /** The view holds the terminal's paint: a replay settling or an update still coming in (#2040). */
+    holdPaint: (on: boolean) => void (paintHeld = on),
     /** One write closes the open update and opens the next: wterm restarts its own hold from it. */
     reopen: () => void (generation += 1),
     frame: (ms = 16) => {
@@ -191,5 +195,32 @@ test("a cap that falls after the newer update has closed lets the cell go (#2089
   fake.advance(300);
   fake.sync(false);
   fake.advance(SYNCHRONIZED_HOLD_MS + SYNCHRONIZED_HOLD_MARGIN_MS - 900);
+  expect(count()).toBe(1);
+});
+
+test("while the terminal's paint is held, a held cell waits past wterm's hold until the paint is let go and the grid changes (#2040)", () => {
+  const fake = fakeClock();
+  const { hold, count } = released(fake.clock);
+  fake.sync(true);
+  fake.holdPaint(true);
+  hold.hold();
+  // The update is still coming in on a starved page: wterm's own hold has run out, but nothing is painted yet.
+  fake.advance(SYNCHRONIZED_HOLD_MS + SYNCHRONIZED_HOLD_MARGIN_MS);
+  fake.advance(SYNCHRONIZED_HOLD_MS + SYNCHRONIZED_HOLD_MARGIN_MS);
+  expect(count()).toBe(0);
+  fake.holdPaint(false);
+  hold.rendered();
+  expect(count()).toBe(1);
+});
+
+test("a cell held while a replay holds the paint, outside any update, waits for the paint rather than the next frame (#2040)", () => {
+  const fake = fakeClock();
+  const { hold, count } = released(fake.clock);
+  fake.holdPaint(true);
+  hold.hold();
+  fake.frame();
+  expect(count()).toBe(0);
+  fake.holdPaint(false);
+  fake.advance(SYNCHRONIZED_HOLD_MS + SYNCHRONIZED_HOLD_MARGIN_MS);
   expect(count()).toBe(1);
 });

@@ -2,10 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { ClipboardWaits, type WaitNotices } from "./clipboard-waits.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
 
-/** The notices shown and closed, by id, and a view's writes. */
+/**
+ * The notices shown and closed, by id, and a view's writes. Every close is recorded, an id-less one included: the toast
+ * manager reads close() with no id as "close every toast", so a view must never make one. Every closed assertion below
+ * is toStrictEqual, because toEqual reads an undefined entry as absent ([undefined] as [], ["n1", undefined] as
+ * ["n1"]) and would hide exactly that call (#2359).
+ */
 function view() {
   const shown: string[] = [];
-  const closed: string[] = [];
+  const closed: (string | undefined)[] = [];
   const notices: WaitNotices = {
     add: () => {
       const id = `n${shown.length + 1}`;
@@ -13,7 +18,7 @@ function view() {
       return id;
     },
     close: (id) => {
-      if (id !== undefined) closed.push(id);
+      closed.push(id);
     },
   };
   const sent: TerminalInput[] = [];
@@ -37,9 +42,9 @@ describe("ClipboardWaits: Paste image's notice and late answers, per view (#1938
     second.waiting?.(true);
     expect(one.shown).toEqual(["n1"]);
     first.waiting?.(false);
-    expect(one.closed).toEqual([]);
+    expect(one.closed).toStrictEqual([]);
     second.waiting?.(false);
-    expect(one.closed).toEqual(["n1"]);
+    expect(one.closed).toStrictEqual(["n1"]);
   });
 
   test("a view gone or left closes the notice, and the late ^V or image path is dropped", () => {
@@ -49,14 +54,14 @@ describe("ClipboardWaits: Paste image's notice and late answers, per view (#1938
     waiting.waiting?.(true);
     image.waiting?.(true);
     one.waits.end();
-    expect(one.closed).toEqual(["n1"]);
+    expect(one.closed).toStrictEqual(["n1"]);
     waiting.waiting?.(false);
     waiting.send("\u0016");
     image.waiting?.(false);
     image.pasteFiles([new File(["x"], "image.png", { type: "image/png" })]);
     expect(one.sent).toEqual([]);
     expect(one.pasted).toEqual([]);
-    expect(one.closed).toEqual(["n1"]);
+    expect(one.closed).toStrictEqual(["n1"]);
   });
 
   test("a press after the view comes back is heard as usual, with a notice of its own", () => {
@@ -69,12 +74,12 @@ describe("ClipboardWaits: Paste image's notice and late answers, per view (#1938
     again.waiting?.(false);
     again.send("\u0016");
     expect(one.sent).toEqual(["\u0016"]);
-    expect(one.closed).toEqual(["n1", "n2"]);
+    expect(one.closed).toStrictEqual(["n1", "n2"]);
   });
 
   test("ending with nothing waiting closes nothing", () => {
     const one = view();
     one.waits.end();
-    expect(one.closed).toEqual([]);
+    expect(one.closed).toStrictEqual([]);
   });
 });

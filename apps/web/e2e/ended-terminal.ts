@@ -12,9 +12,12 @@ export function stateOn(core: "host" | "machine", address: string): string {
   }
 }
 
-/** Ends the program (the file it waits for) and removes the terminal, so no later spec counts it. */
-export function removeTerminal(core: "host" | "machine", address: string, go: string): void {
-  writeFileSync(go, "");
+/**
+ * Removes the terminal, so no later spec counts it; `go` is the file a program started with {@link waitFor} waits for,
+ * created first so that program ends. A plain shell has no such file and passes none.
+ */
+export function removeTerminal(core: "host" | "machine", address: string, go?: string): void {
+  if (go !== undefined) writeFileSync(go, "");
   if (stateOn(core, address) === "gone") return;
   if (stateOn(core, address) === "live") hcOn(core, ["kill", address]);
   hcOn(core, ["rm", address]);

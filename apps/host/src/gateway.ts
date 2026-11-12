@@ -1,4 +1,4 @@
-import { base64urlEncode, CloseCode, type SecureLink, SessionKind } from "@doriface/crypto";
+import { base64urlEncode, CloseCode, isResumeRequest, type SecureLink, SessionKind } from "@doriface/crypto";
 import { requireWithin } from "@doriface/policy";
 import type { WebSocketHandler } from "bun";
 import { type Context, Hono, type Next } from "hono";
@@ -13,6 +13,8 @@ import { meshPeer } from "./e2ee/authorize.ts";
 import { firstLineRefusal, gateHello } from "./e2ee/first-line.ts";
 import { type E2eeWire, plaintextLink, WsByteLink } from "./e2ee/links.ts";
 import { helloOnly } from "./e2ee/pairing-session.ts";
+import { PeekedWire } from "./e2ee/peeked-wire.ts";
+import { ResumableSessions } from "./e2ee/resumes.ts";
 import { type SpeculativeHello, withoutFirstLine } from "./e2ee/speculative-hello.ts";
 import type { LiveSessions } from "./e2ee/sessions.ts";
 import type { Link } from "./link.ts";
@@ -45,6 +47,8 @@ export interface GatewayOptions {
   readonly speculative?: Pick<SpeculativeHello, "answer" | "settle"> | undefined;
   /** For tests: the direct-path idle close (default {@link DIRECT_IDLE_MS}). */
   readonly directIdleMs?: number | undefined;
+  /** For tests: how long a detached hc session waits for its client's resume (default RESUME_GRACE_MS). */
+  readonly resumeGraceMs?: number | undefined;
   /** Serves a device's push stream (`stream:"push"`, and `/v1/push` on loopback); without it both are refused. */
   readonly push?: ((link: PushLink, owner: string) => void) | undefined;
   /**
@@ -100,6 +104,7 @@ export function createGateway(options: GatewayOptions): Gateway {
   const e2eeEvents = new WeakSet<WSEvents>();
   const pushEvents = new WeakSet<WSEvents>();
   const { log, e2ee } = options;
+  const resumes = new ResumableSessions(log, options.resumeGraceMs);
 
   const app = new Hono();
   const lanApp = new Hono();
@@ -184,8 +189,21 @@ export function createGateway(options: GatewayOptions): Gateway {
     void bridge(link, attachAfterRun(pipe), (error) => log(`connection closed: ${String(error)}`));
   };
 
-  const serveE2ee = async (wire: E2eeWire, transport: E2eeTransport): Promise<void> => {
+  const serveE2ee = async (raw: E2eeWire, transport: E2eeTransport): Promise<void> => {
     if (e2ee === undefined) throw new Error("end-to-end encryption needs a state dir");
+    // The first message says which this is: a client coming back to a session it still holds (contract v1.11), or a
+    // handshake for a new one. A resume is answered from the session it names; anything else runs the handshake.
+    const wire = new PeekedWire(raw);
+    let first: Uint8Array;
+    try {
+      first = await wire.first;
+    } catch {
+      return;
+    }
+    if (isResumeRequest(first)) {
+      if (!resumes.accept(wire, first, wire.drain())) wire.close(CloseCode.ResumeRefused, "cannot resume this session");
+      return;
+    }
     const secure = await acceptE2ee(wire, { ...e2ee, speculative: options.speculative }, transport);
     if (secure === undefined) return;
     e2ee.meshPresence?.(secure);
@@ -200,9 +218,11 @@ export function createGateway(options: GatewayOptions): Gateway {
     const room =
       secure.kind === SessionKind.Session ? undefined : requireWithin(e2ee.policy, "sessions", e2ee.sessions.count());
     if (!e2ee.sessions.admitHc(secure, e2ee.policy)) return;
-    const gate = hcGate(secure);
+    const gate = hcGateFor(base64urlEncode(secure.remoteStatic), (code, reason) => secure.close(code, reason));
     if (gate === undefined) return;
     e2ee.mesh?.recordClientSession(base64urlEncode(secure.remoteStatic));
+    // An hc session outlives its socket: a client whose link drops comes back to it instead of attaching anew.
+    resumes.register(secure);
     const link = gate(plaintextLink(secure, wire));
     const answered = options.speculative?.settle(secure) === "answered";
     const hc = answered ? withoutFirstLine(link) : link;
@@ -236,26 +256,31 @@ export function createGateway(options: GatewayOptions): Gateway {
 
   /**
    * Section 7.6: the gate for a session's hc lines, whose hellos may announce only a member's own `core.id`, and
-   * never a member's on a device session. Undefined when the mesh state cannot be read: the session is closed 1011
-   * before its plaintext is read, so nothing of it reaches an `hc connect`, and none is started.
+   * never a member's on a device session. The same gate on every transport: a client of this computer over the plain
+   * loopback socket (`key` undefined) is a device here too, so the transport grants nothing a paired device is not
+   * granted. Undefined when the mesh state cannot be read: the session is closed 1011 before its plaintext is read, so
+   * nothing of it reaches an `hc connect`, and none is started.
    */
-  const hcGate = (secure: SecureLink): ((link: Link) => Link) | undefined => {
+  const hcGateFor = (
+    key: string | undefined,
+    close: (code: number, reason: string) => void,
+  ): ((link: Link) => Link) | undefined => {
     let index: AuthorizeIndex | undefined;
     try {
       index = e2ee?.mesh?.authorizeIndex();
     } catch (error) {
       log(`cannot read the mesh state: ${String(error)}`);
-      secure.close(1011, "cannot read the mesh state");
+      close(1011, "cannot read the mesh state");
       return undefined;
     }
-    const peer = meshPeer(index, base64urlEncode(secure.remoteStatic)) ?? { kind: "device" as const };
+    const peer = (key === undefined ? undefined : meshPeer(index, key)) ?? { kind: "device" as const };
     return (link) =>
       gateHello(
         link,
         (coreId) => firstLineRefusal(peer, coreId, index),
         (code, reason) => {
           log(`e2ee: close code=${code} source=hc-hello peer=${peer.kind} stream=hc: ${reason}`);
-          secure.close(code, reason);
+          close(code, reason);
         },
       );
   };
@@ -280,7 +305,10 @@ export function createGateway(options: GatewayOptions): Gateway {
         });
         return;
       }
-      pipeTo(link, (code, reason) => link.close(code, reason));
+      const close = (code: number, reason: string): void => link.close(code, reason);
+      const gate = hcGateFor(undefined, close);
+      if (gate === undefined) return;
+      pipeTo(gate(link), close);
     },
     message(ws, message) {
       links.get(ws.data.events)?.receive(message);
@@ -295,6 +323,8 @@ export function createGateway(options: GatewayOptions): Gateway {
 
   const closeAll = async (): Promise<void> => {
     for (const link of sockets) link.close(1001, "host shutting down");
+    // A session kept for a resume has no socket to close; its hc connect would otherwise outlive the host by the window.
+    resumes.closeDetached(1001, "host shutting down");
     await Promise.all(children);
   };
 
