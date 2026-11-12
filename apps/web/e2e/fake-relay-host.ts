@@ -204,6 +204,11 @@ try {
         webOrigin,
       );
       say({ link: artifact.url, code: offer.code });
+    } else if (line.startsWith("rename-self ")) {
+      // As `doriface-host mesh rename` does: this host's own member takes a mesh name its hc core does not have (#1902).
+      const name = line.slice("rename-self ".length);
+      await requestControl(stateDir, { op: "mesh-rename", member: loadHostIdentity(stateDir).hostId, name });
+      say({ renamed: name });
     } else if (line === "members") {
       const status = await requestControl(stateDir, { op: "mesh-status" });
       // A host in no mesh answers null: since #1635 a first join that is refused or never completed leaves no mesh at all.

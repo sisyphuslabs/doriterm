@@ -15,6 +15,7 @@ import { desktopBridge } from "../desktop/bridge.ts";
 import { useConnectionSettings } from "../connection/store.ts";
 import { useBrowserMembership } from "../mesh/membership-state.ts";
 import { MembershipMachines } from "./membership-device.tsx";
+import { machineName } from "../connection/attached-name.ts";
 
 const NO_TERMINALS: readonly Terminal[] = [];
 
@@ -83,7 +84,7 @@ function MachineRows({ connection }: { readonly connection: HcConnection }) {
         <li>
           <SettingRow
             className="border-b-0"
-            title={title(<Monitor aria-hidden />, connection.hello.core.name)}
+            title={title(<Monitor aria-hidden />, machineName(connection))}
             description={ownComputer ? "This machine" : "Online · Relay"}
             control={null}
           />

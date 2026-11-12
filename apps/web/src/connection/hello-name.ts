@@ -11,14 +11,21 @@ export function helloName(connection: HcConnection): string {
 }
 
 /**
- * The name the workspace shows for the machine whose core this client is attached to (#1902).
+ * The name the workspace shows for the machine whose core this client is attached to (#1902). A browser that joined a
+ * mesh names every machine by its mesh member name, the one Settings > Machines and every other machine's row use, so
+ * the machine it happens to be attached through is named the same way: hc's own name for itself is its OS hostname,
+ * which would give that one machine a second name, and a different machine that name after it re-attaches elsewhere.
+ * `shownHostId` is the member whose connection the workspace shows. Anywhere else (a paired host, which is no member,
+ * or a member the roster does not hold or has not named yet) the name the core answered with is the only one there is.
  */
 export function attachedMachineName(
   connection: HcConnection,
   settings: Pick<ConnectionSettings, "viewMember" | "members">,
   shownHostId: string | undefined,
 ): string {
-  void settings;
-  void shownHostId;
+  if (settings.viewMember === true && shownHostId !== undefined) {
+    const name = settings.members.find((member) => member.hostId === shownHostId)?.hostName ?? "";
+    if (name !== "") return name;
+  }
   return helloName(connection);
 }

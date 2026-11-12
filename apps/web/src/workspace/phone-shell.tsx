@@ -23,6 +23,7 @@ import { RovingLists } from "./roving-lists.tsx";
 import { usePhoneActions, type SessionVerb } from "./use-app-actions.ts";
 import { useMachinesContext } from "./use-machines.ts";
 import type { MachineIds } from "./tab-keys.ts";
+import { machineName } from "../connection/attached-name.ts";
 
 export interface PhoneShellProps {
   readonly connection: HcConnection;
@@ -107,7 +108,7 @@ export function PhoneShell(props: PhoneShellProps) {
       <PhoneSpace
         space={space}
         terminals={terminals}
-        host={connection.hello.core.name}
+        host={machineName(connection)}
         arrive={pushed}
         from={section}
         onOpen={onOpen}
@@ -140,7 +141,7 @@ export function PhoneShell(props: PhoneShellProps) {
             ) : machines.terminalsLoaded ? (
               <>
                 {empty ? (
-                  <PhoneEmpty host={connection.hello.core.name} onNew={onNew} onAddMachine={machines.openAddMachine} />
+                  <PhoneEmpty host={machineName(connection)} onNew={onNew} onAddMachine={machines.openAddMachine} />
                 ) : null}
                 {empty && onlyThisMachine(machines.entries) ? null : (
                   <RovingLists>
@@ -164,7 +165,7 @@ export function PhoneShell(props: PhoneShellProps) {
             start={
               <>
                 <StatusBarItem icon={<Monitor aria-hidden />}>
-                  {`${connection.hello.core.name} · ${connectionStore.settings.mode === "relay" ? "relay" : "loopback"}`}
+                  {`${machineName(connection)} · ${connectionStore.settings.mode === "relay" ? "relay" : "loopback"}`}
                 </StatusBarItem>
                 <ConnectionPathItem />
                 <ReconnectStatus compact />

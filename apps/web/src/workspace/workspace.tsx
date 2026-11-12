@@ -57,6 +57,7 @@ import { useNoticeOpen } from "../push/notice-open.ts";
 import { usePushPresence } from "../push/use-push-presence.ts";
 import { PromptAnswerBanner } from "../push/prompt-answer-banner.tsx";
 import { CATCHER_ATTRIBUTES, type DropReason, useTypeAhead } from "./use-type-ahead.ts";
+import { machineName } from "../connection/attached-name.ts";
 
 export interface WorkspaceProps {
   readonly connection: HcConnection;
@@ -113,7 +114,7 @@ export function Workspace({ connection }: WorkspaceProps) {
         type: "error",
         title: "The layout was not saved",
         description: connection.closed
-          ? `Reconnecting to ${connection.hello.core.name}; make the change again once it is back.`
+          ? `Reconnecting to ${machineName(connection)}; make the change again once it is back.`
           : message,
       }),
     [connection, toasts],
@@ -597,7 +598,7 @@ export function Workspace({ connection }: WorkspaceProps) {
               <Palette
                 terminals={sessions}
                 spaces={spaces}
-                host={connection.hello.core.name}
+                host={machineName(connection)}
                 route={connectionStore.settings.mode === "relay" ? "relay" : "loopback"}
                 actions={availableActions(
                   narrow ? "phone" : "desktop",

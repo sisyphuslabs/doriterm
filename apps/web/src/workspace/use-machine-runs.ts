@@ -8,6 +8,7 @@ import { machineOf } from "./model.ts";
 import { failureNotice, startTerminal } from "./start-on.ts";
 import { withoutClaim } from "./use-layout.ts";
 import type { TypeAhead } from "./use-type-ahead.ts";
+import { machineName } from "../connection/attached-name.ts";
 
 export interface MachineRuns {
   readonly newTerminalOn: (machine: string) => void;
@@ -62,7 +63,7 @@ export function useMachineRuns(
   openedNow.current = opened;
   const start = useCallback(
     (params: TerminalRunParams, place: (address: string) => void = openedNow.current, failed?: () => void): void => {
-      const core = connection.hello.core.name;
+      const core = machineName(connection);
       const hold = typeAhead.hold();
       const display = readDisplay(document.documentElement);
       const opening = openingTerminal(params);
