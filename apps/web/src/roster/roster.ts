@@ -3,20 +3,20 @@ import type { HcEvent } from "@doriface/protocol";
 import {
   type DocState,
   LAYOUT_DOC,
-  LayoutDoc,
+  type LayoutDoc,
   ORDER_DOC,
   PINS_DOC,
-  readOrderDocument,
   readPinsDocument,
 } from "@doriface/protocol/layout";
 import { machineKey } from "../workspace/machines.ts";
 import type { RosterChange } from "./changes.ts";
 import { docCalls } from "./doc-calls.ts";
 import { LayoutDocs } from "./docs.ts";
-import { RosterFeed, type Schedule } from "./feed.ts";
+import { RosterFeed, type Schedule, timers } from "./feed.ts";
 import { LineWatch } from "./line-watch.ts";
 import type { RosterLink } from "./link.ts";
 import { MachineRoster, type MachinesRead } from "./machines.ts";
+import { orderDoc } from "./order-doc.ts";
 import { NO_TERMINALS, type TerminalsState } from "./terminals-state.ts";
 
 /**
@@ -95,6 +95,9 @@ export class Roster {
     this.#connection = connection;
     this.#options = options;
     const call: RosterLink["call"] = (method, ...args) => this.#connection.call(method, ...args);
+    // A failed document read is read again only while the roster is in use on an open connection (Reread).
+    const reading = (): boolean => this.#listeners.size > 0 && !this.#connection.closed;
+    const schedule = options.schedule ?? timers;
     this.machines = new MachineRoster(
       () => call("machine.list"),
       (read, changes) => {
@@ -114,6 +117,7 @@ export class Roster {
         this.#emit();
         for (const change of changes) for (const listener of this.#changes) listener(change);
       },
+      { reading, schedule },
     );
     this.pins = new LayoutDocs(
       docCalls({ call }, () => this.machines.read.views, PINS_DOC),
@@ -121,19 +125,16 @@ export class Roster {
         this.#snapshot = { ...this.#snapshot, docsLanded: this.#snapshot.docsLanded + 1 };
         this.#emit();
       },
-      readPinsDocument,
+      { read: readPinsDocument, reading, schedule },
     );
-    this.order = new LayoutDoc(
-      {
-        get: () => call("doc.get", { name: ORDER_DOC }),
-        set: (_on, value, version) => call("doc.set", { name: ORDER_DOC, value, version }),
-      },
-      null,
+    this.order = orderDoc(
+      call,
       (state) => {
         this.#snapshot = { ...this.#snapshot, order: state };
         this.#emit();
       },
-      readOrderDocument,
+      reading,
+      schedule,
     );
     this.#snapshot = { terminals: NO_TERMINALS, machines: this.machines.read, order: this.order.state, docsLanded: 0 };
     const lineRead = (): Promise<void> => (this.#connection.closed ? Promise.resolve() : this.machines.refresh(true));
