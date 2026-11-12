@@ -11,9 +11,17 @@ const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
 /** What the screen says about the connection, wherever it says it. */
 const notice = (page: Page, text: RegExp) => page.getByRole("status").filter({ hasText: text });
 
+const OFFLINE = /Offline/;
+const NEXT_STEP = "Reconnects when the network is back";
+const onlineDot = (page: Page) => page.locator('[data-machine-dot="online"]');
+
+const RECONNECTING = /Reconnecting/;
+
 /**
  * The phone line's glyph (spinner or offline icon) sits on the sentence's first line, centred on it as the text is (#1961):
- * a box as tall as a line, not a 16 px box at the top of a 20 px line.
+ * a box as tall as a line, not a 16 px box at the top of a 20 px line. The bound is 1 px: the centres measure 0.5 px apart
+ * (half-pixel rounding), and a spinning glyph's box drifts by a few millionths, so a 0.5 px bound fails by chance. The old
+ * mt-0.5 nudge this guards against moved the glyph 2 px.
  */
 async function glyphCentredOnFirstLine(line: Locator): Promise<void> {
   const centres = await line.evaluate((status) => {
@@ -27,13 +35,8 @@ async function glyphCentredOnFirstLine(line: Locator): Promise<void> {
       : { glyph: glyph.top + glyph.height / 2, text: first.top + first.height / 2 };
   });
   expect(centres).not.toBeNull();
-  expect(Math.abs((centres?.glyph ?? 0) - (centres?.text ?? 0))).toBeLessThanOrEqual(0.5);
+  expect(Math.abs((centres?.glyph ?? 0) - (centres?.text ?? 0))).toBeLessThanOrEqual(1);
 }
-const OFFLINE = /Offline/;
-const NEXT_STEP = "Reconnects when the network is back";
-const onlineDot = (page: Page) => page.locator('[data-machine-dot="online"]');
-
-const RECONNECTING = /Reconnecting/;
 
 /** What the OS says about the network, as the page sees it; a link to 127.0.0.1 keeps its own state either way. */
 const osOnline = (page: Page, online: boolean) =>
