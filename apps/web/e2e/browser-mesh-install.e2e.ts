@@ -164,7 +164,8 @@ test("an invitation substituted between the tab and app is rejected without admi
     await expect(installed.getByText("Not joined", { exact: true })).toBeVisible();
     expect(await savedMembership(tab)).toBeNull();
     expect(await savedMembership(installed)).toBeNull();
-    expect(await substitute.memberIds()).toEqual([replacementId]);
+    // A refused first join leaves the inviter in no mesh at all, not a mesh of itself (#1635, #1428).
+    expect(await substitute.memberIds()).toEqual([]);
   } finally {
     await safari.close();
     await app.close();
@@ -181,7 +182,6 @@ test("an installed app refuses an automatic machine invite without sending a cli
   const app = await phoneContext(browser, baseURL, "app");
   try {
     const offer = await host.meshOffer(true);
-    const own = new URLSearchParams(new URL(offer.link).hash.slice(1)).get("h");
     const page = await app.newPage();
     await routeOnlyRelay(page, host);
     await page.goto(offer.link);
@@ -190,7 +190,8 @@ test("an installed app refuses an automatic machine invite without sending a cli
     await expect(page.getByText(/This machine needs an update, or this is an Add a machine invite/)).toBeVisible();
     await expect(page.getByText(/needs an update/)).toBeVisible();
     expect(await savedMembership(page)).toBeNull();
-    expect(await host.memberIds()).toEqual([own]);
+    // A refused first join leaves the host in no mesh at all, not a mesh of itself (#1635, #1428).
+    expect(await host.memberIds()).toEqual([]);
   } finally {
     await app.close();
     await host.stop();

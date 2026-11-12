@@ -1,12 +1,13 @@
 import { HcConnection, HcHandshakeTimeoutError, HELLO_REQUEST_LINE } from "@doriface/client";
 import type { ByteLink } from "@doriface/client";
-import { base64urlDecode, CloseCode, type SecureLink, secureLink, SecureLinkError } from "@doriface/crypto";
+import { base64urlDecode, CloseCode, type SecureSession, secureLink, SecureLinkError } from "@doriface/crypto";
 import { connectRelayClient } from "@doriface/relay-client";
 import { directDial, type PageAccess, pageAccess, parseDirectAddress } from "./direct-address.ts";
-import { attemptDirect, DIRECT_BUDGET_MS, DirectFailure, type DirectReason } from "./direct-attempt.ts";
+import { attemptDirect, DIRECT_BUDGET_MS, DirectFailure, type DirectReason, openDirectLink } from "./direct-attempt.ts";
 import { directBudgetProbe } from "./direct-budget-probe.ts";
 import { canForwardPlainWs, openForwardedLink } from "./direct-forward.ts";
 import { BROWSER_DEPS, deviceKeyFor, type RelayDeps } from "./relay-deps.ts";
+import type { ResumableSession } from "./session-resume.ts";
 import type { ConnectionSettings } from "./settings.ts";
 import { loopbackOnly } from "./loopback-address.ts";
 import { openWebSocketLink } from "./ws-link.ts";
@@ -30,6 +31,11 @@ export interface OpenConnection {
   readonly connection: HcConnection;
   readonly path: ConnectionPath;
   readonly directReason?: DirectReason | undefined;
+  /**
+   * The encrypted session under the connection and how to dial its path again, so a dropped socket is carried on
+   * instead of the session being opened anew (contract v1.11). Absent on the loopback path, which has no session.
+   */
+  readonly session?: ResumableSession | undefined;
 }
 
 export interface OpenOptions {
@@ -122,18 +128,21 @@ async function openOnPath(
     return { connection: await HcConnection.open(link, signal === undefined ? {} : { signal }), path: "loopback" };
   }
   const direct = await openDirect(settings, signal, deps, options);
-  if ("connection" in direct) return { connection: direct.connection, path: "direct" };
+  if ("connection" in direct) return { connection: direct.connection, path: "direct", session: direct.session };
   signal?.throwIfAborted();
   const relayed = await openRelaySession(settings, deps, signal);
   const connection = await HcConnection.open(relayed, { helloSent: true, ...(signal === undefined ? {} : { signal }) });
   return {
     connection,
     path: "relay",
+    session: { secure: relayed, redial: (again) => dialRelay(settings, again) },
     ...(direct.reason === undefined ? {} : { directReason: direct.reason }),
   };
 }
 
-type DirectOutcome = { readonly connection: HcConnection } | { readonly reason: DirectReason | undefined };
+type DirectOutcome =
+  | { readonly connection: HcConnection; readonly session: ResumableSession }
+  | { readonly reason: DirectReason | undefined };
 
 /**
  * One direct attempt at a saved address. Every failure is a value here: the caller dials the relay next, so an address
@@ -166,7 +175,9 @@ async function openDirect(
       secure: (link) => openSessionOn(link, settings, deps),
     });
     const connection = await provedSession(secured, budgetMs - (performance.now() - startedAt), signal);
-    return { connection };
+    const redial = (again: AbortSignal): Promise<ByteLink> =>
+      open === undefined ? openDirectLink(dial.url, again) : open(dial.url, again);
+    return { connection, session: { secure: secured, redial } };
   } catch (error) {
     return { reason: directFailureReason(error) };
   }
@@ -185,7 +196,11 @@ export function helloFailureReason(error: unknown): DirectReason {
  * The framed hello is the rest of the proof: it runs on what is left of the direct budget, so a host that answers the
  * Noise handshake and then stalls cannot hold the session instead of the relay (#640).
  */
-async function provedSession(link: SecureLink, leftMs: number, signal: AbortSignal | undefined): Promise<HcConnection> {
+async function provedSession(
+  link: SecureSession,
+  leftMs: number,
+  signal: AbortSignal | undefined,
+): Promise<HcConnection> {
   const left = Math.max(0, leftMs);
   try {
     return await HcConnection.open(link, {
@@ -207,17 +222,20 @@ function directFailureReason(error: unknown): DirectReason {
   return error instanceof DirectFailure ? error.reason : "could-not-connect";
 }
 
-async function openRelaySession(
-  settings: ConnectionSettings,
-  deps: RelayDeps,
-  signal: AbortSignal | undefined,
-): Promise<SecureLink> {
-  const link = await connectRelayClient({
+/** One relay socket to the host: the session's first, and each one a resume carries it on over. */
+const dialRelay = (settings: ConnectionSettings, signal: AbortSignal | undefined): Promise<ByteLink> =>
+  connectRelayClient({
     relayUrl: settings.relayUrl,
     hostId: settings.hostId,
     ...(signal === undefined ? {} : { signal }),
   });
-  return openSessionOn(link, settings, deps);
+
+async function openRelaySession(
+  settings: ConnectionSettings,
+  deps: RelayDeps,
+  signal: AbortSignal | undefined,
+): Promise<SecureSession> {
+  return openSessionOn(await dialRelay(settings, signal), settings, deps);
 }
 
 const HELLO_LINE = new TextEncoder().encode(HELLO_REQUEST_LINE);
@@ -226,7 +244,7 @@ const HELLO_LINE = new TextEncoder().encode(HELLO_REQUEST_LINE);
  * The session both paths run after their socket is open: Noise IK as the initiator, pinned to the paired host key. hc's
  * hello rides in message 1, so its answer can come back with message 2 instead of a round trip later (#1271).
  */
-async function openSessionOn(link: ByteLink, settings: ConnectionSettings, deps: RelayDeps): Promise<SecureLink> {
+async function openSessionOn(link: ByteLink, settings: ConnectionSettings, deps: RelayDeps): Promise<SecureSession> {
   const staticKey = await deviceKeyFor(link, deps);
   try {
     return await secureLink(link, {

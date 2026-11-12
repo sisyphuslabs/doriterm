@@ -9,6 +9,7 @@ import {
   rawStaticKey,
   type SecureLink,
   secureLink,
+  type SecureSession,
   SessionKind,
 } from "@doriface/crypto";
 import { HELLO_REQUEST_LINE } from "@doriface/client";
@@ -91,7 +92,7 @@ export async function acceptE2ee(
   link: ByteLink,
   deps: E2eeDeps,
   transport: E2eeTransport,
-): Promise<SecureLink | undefined> {
+): Promise<SecureSession | undefined> {
   let claim: PairingClaim | undefined;
   let deviceName = "";
   const pairSession = transport.kind === "relay" && transport.openSlot !== undefined;
@@ -165,7 +166,7 @@ export async function acceptE2ee(
       pairingRoom(hello.remoteStatic, mesh) ?? claimWith(() => deps.pairing.claimCode(openSlot, Date.now(), mesh));
     return mesh ? typedJoinVerdict(verdict) : verdict;
   };
-  let secure: SecureLink;
+  let secure: SecureSession;
   try {
     secure = await secureLink(link, {
       role: "responder",

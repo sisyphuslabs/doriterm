@@ -16,7 +16,7 @@ export const DISABLED_STEP = 1.7;
  * `muted`, but never below 3:1 on the surface. A theme whose muted text is too close to the surface for both keeps the
  * floor.
  */
-function disabledGlyph(muted: Rgb, surface: Rgb): string {
+export function disabledGlyph(muted: Rgb, surface: Rgb): string {
   let kept = muted;
   for (let step = 1; step <= 100; step += 1) {
     const candidate = mix(muted, surface, step / 100);

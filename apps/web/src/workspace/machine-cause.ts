@@ -1,9 +1,11 @@
-import type { MachineView } from "@doriface/protocol";
+import { HC_VERSION_FLOOR, meetsHcFloor, type MachineView } from "@doriface/protocol";
 
-/** What to tell a person about an added machine that is not connected: what happened, then why and what to do. */
+/** What to tell a person about an added machine that needs them: what happened, then why and what to do. */
 export interface MachineCause {
   readonly title: string;
   readonly detail: string;
+  /** A dial now cannot help (its core must be updated there first), so no Retry is offered beside it. */
+  readonly retryless?: true;
 }
 
 const KEEPS_TRYING = "Doriterm keeps trying to reach it.";
@@ -60,10 +62,31 @@ function knownCause(name: string, why: string): string | undefined {
   return value === undefined ? undefined : BY_CODE[value]?.(name);
 }
 
-/** Plain words for a machine's state and hc's `why`; undefined while it is connected. */
-export function machineCause(view: Pick<MachineView, "name" | "state" | "why">): MachineCause | undefined {
+/**
+ * An added machine whose herdr-core is below the floor the connected core is held to (#2285): its terminals would fail at
+ * their first call. The words are the connected host's (`hostFailure`, connection/host-failure.ts) with the machine
+ * named, so either side reads the same. A version hc has not reported, or one with no number, is not judged.
+ */
+function coreTooOld(name: string, version: string | undefined): MachineCause | undefined {
+  const bare = version?.replace(/^hc /, "");
+  if (bare === undefined || !/^\d+\.\d+/.test(bare) || meetsHcFloor(bare)) return undefined;
+  return {
+    title: `${name} needs an hc update`,
+    detail: `${name}'s herdr-core is ${bare}, and Doriterm needs ${HC_VERSION_FLOOR} or newer. Run hc update on that computer.`,
+    retryless: true,
+  };
+}
+
+/**
+ * Plain words for a machine's state and hc's `why`; undefined while it is connected, unless its core is too old to use.
+ * The version is hc's "when last seen", so it is judged only while the line is up: on a machine that is not connected it
+ * may be stale, and the line's own cause (a login, a pairing, a host not running) is the one the person can act on.
+ */
+export function machineCause(
+  view: Pick<MachineView, "name" | "state" | "why"> & { readonly version?: string | undefined },
+): MachineCause | undefined {
   const { name, state } = view;
-  if (state === "connected") return undefined;
+  if (state === "connected") return coreTooOld(name, view.version);
   if (state === "reconnecting") {
     return { title: `Reconnecting to ${name}`, detail: `${name} is reconnecting; try again once it is back.` };
   }

@@ -89,6 +89,33 @@ test("each lone jamo an input method commits with no Korean key reaches the prog
   await expect(read).toHaveCount(2);
 });
 
+// Keys that type nothing: a modifier, a lock and the Hangul/English toggle a Korean keyboard has (Lang1 on Windows and
+// macOS layouts). A lone jamo waiting for the key that would make it a syllable's first is still committed text when
+// one of these goes down inside its wait (#1913).
+const SILENT_KEYS = [
+  { key: "Shift", code: "ShiftLeft", windowsVirtualKeyCode: 16, modifiers: 8 },
+  { key: "CapsLock", code: "CapsLock", windowsVirtualKeyCode: 20, modifiers: 0 },
+  { key: "HangulMode", code: "Lang1", windowsVirtualKeyCode: 21, modifiers: 0 },
+  // The same toggle where the browser and input method name no key for it: only its code says what it is.
+  { key: "Unidentified", code: "Lang1", windowsVirtualKeyCode: 21, modifiers: 0 },
+] as const;
+
+for (const silent of SILENT_KEYS)
+  test(`${silent.key} (${silent.code}) pressed while a lone jamo waits for its key does not hold the jamo: it types nothing (#1913)`, async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const terminal = await openNewTerminal(page);
+    const cdp = await openRawReader(page, terminal);
+    // Both commands are sent before either is awaited, so the key reaches the field in the same task batch as the
+    // insertion, well inside the 100 ms the jamo waits.
+    await Promise.all([
+      cdp.send("Input.insertText", { text: "\u{314B}" }),
+      cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...silent }),
+    ]);
+    await expectRead(terminal, cdp, "e3 85 8b");
+  });
+
 test("a Korean key whose keyup a blur took does not hold the next committed syllable (#1246)", async ({ page }) => {
   await page.goto("/");
   const terminal = await openNewTerminal(page);
