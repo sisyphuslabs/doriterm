@@ -19,6 +19,8 @@ export interface StreamWire {
   /** A channel's CLOSE, which a closed or dead link just skips. */
   sendClose(channel: number): void;
   unregister(channel: number): void;
+  /** The link went silent: true when it takes the loss and the connection stays (see ByteLink.lost). */
+  lost?(reason: Error): boolean;
 }
 
 export interface TerminalSize {
