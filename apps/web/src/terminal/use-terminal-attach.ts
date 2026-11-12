@@ -315,11 +315,26 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
   useEffect(() => {
     if (wt === null || !shown) return;
     // A renderer not attached yet (the first, or one mounted again by Try again) attaches here too, once shown.
-    const attached = attachedView.current === wt && attachedTo.current === connection;
-    if (attached && reattachedFor.current === lostStreams) return;
+    const mark = { view: attachedView.current, connection: attachedTo.current, reattachedFor: reattachedFor.current };
+    if (!attachDue(mark, wt, connection, lostStreams)) return;
     reattachedFor.current = lostStreams;
     attach(wt);
   }, [wt, connection, shown, lostStreams]);
 
   return { opening, restarting, ended, unopened, clearUnopened: () => setUnopened(null), onEndNow };
 }
+
+/** What the attach effect last did: the renderer and connection it attached, and the lost-stream count it saw. */
+export interface AttachMark {
+  readonly view: unknown;
+  readonly connection: unknown;
+  readonly reattachedFor: number;
+}
+
+/** Whether a shown view attaches now: a renderer or connection it has not attached, or a stream lost since. */
+export function attachDue(mark: AttachMark, view: unknown, connection: unknown, lostStreams: number): boolean {
+  return !(mark.view === view && mark.connection === connection && mark.reattachedFor === lostStreams);
+}
+
+/** The lost-stream count after a failed open is cleared to wait for its machine (#2003). */
+export const afterMachineWait = (lostStreams: number): number => lostStreams;

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { OutputPacer, REPLAY_CAP_MS } from "./output-pacer.ts";
-import { replayOnAttach } from "./use-terminal-attach.ts";
+import { afterMachineWait, attachDue, replayOnAttach } from "./use-terminal-attach.ts";
 
 /** A pacer on frames and timers that move only when the test says so, recording each hold of the paint. */
 function attaching(fresh = false) {
@@ -64,5 +64,15 @@ describe("an attach's replay hold (D5)", () => {
     pacer.push(new Uint8Array(1024));
     advance(REPLAY_CAP_MS * 2);
     expect(holds).toEqual([]);
+  });
+});
+
+describe("a failed open cleared to wait for its machine (#2003, #2375 review)", () => {
+  test("the same renderer attaches again once the machine is back, though it was marked attached", () => {
+    const view = {};
+    const connection = {};
+    const failed = { view, connection, reattachedFor: 0 };
+    expect(attachDue(failed, view, connection, 0)).toBe(false);
+    expect(attachDue(failed, view, connection, afterMachineWait(0))).toBe(true);
   });
 });
