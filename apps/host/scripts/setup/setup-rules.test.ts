@@ -136,6 +136,18 @@ describe("ensureService's restart rules (#821)", () => {
     ]);
   });
 
+  test("lingering is turned on without asking for a password, so a run from a terminal cannot stop at a prompt", async () => {
+    const root = home();
+    const paths = setupPaths("linux", root, {}, tools(root));
+    const { context, commands } = linuxContext(root, (command) =>
+      command[0] === "loginctl" && command.includes("show-user") ? { stdout: "no\n" } : undefined,
+    );
+    await ensureService(context, paths, false);
+    expect(commands.filter((command) => command.includes("enable-linger"))).toEqual([
+      `loginctl --no-ask-password enable-linger ${userInfo().username}`,
+    ]);
+  });
+
   test("a re-run that changes nothing on a running service reloads and restarts nothing", async () => {
     const root = home();
     const paths = setupPaths("linux", root, {}, tools(root));

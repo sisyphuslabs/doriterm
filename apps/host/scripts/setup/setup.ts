@@ -358,13 +358,17 @@ async function macRunning(context: SetupContext, target: string): Promise<boolea
   return ran.code === 0 && /^\s*state = running$/m.test(ran.stdout);
 }
 
-/** Without linger, systemd stops the user's services at logout and starts them only at the next login. */
+/**
+ * Without linger, systemd stops the user's services at logout and starts them only at the next login. It is turned on
+ * with `--no-ask-password`: where the system wants an admin for it, a run from a terminal would otherwise stop at a
+ * password prompt, and this tool never asks for one (it reports the command for an admin instead).
+ */
 async function ensureLinger(context: SetupContext): Promise<void> {
   const user = userInfo().username;
   const read = async (): Promise<string> =>
     (await context.run(["loginctl", "show-user", user, "-p", "Linger", "--value"])).stdout.trim();
   if ((await read()) === "yes") return context.report("linger", "unchanged", `linger on for ${user}`);
-  await context.run(["loginctl", "enable-linger", user]);
+  await context.run(["loginctl", "--no-ask-password", "enable-linger", user]);
   if ((await read()) === "yes") return context.report("linger", "changed", `linger on for ${user}`);
   context.report(
     "linger",
