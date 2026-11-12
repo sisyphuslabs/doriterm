@@ -1,7 +1,7 @@
 import type { PluginListenerHandle } from "@capacitor/core";
 import { afterEach, describe, expect, test } from "bun:test";
 import type { NativePushPlugin, NoticeTap } from "../native/shell.ts";
-import { hasLaunchNotice, listenForAppNotices } from "./notice-open.ts";
+import { forgetNotices, hasLaunchNotice, listenForAppNotices } from "./notice-open.ts";
 
 /** An app's push plugin whose launch tap answers when the test says so. */
 function launchingPlugin(): { readonly plugin: NativePushPlugin; readonly answer: (tap: NoticeTap | null) => void } {
@@ -22,6 +22,7 @@ function launchingPlugin(): { readonly plugin: NativePushPlugin; readonly answer
 
 const hadLocation = "location" in globalThis;
 afterEach(() => {
+  forgetNotices();
   if (!hadLocation) Reflect.deleteProperty(globalThis, "location");
 });
 
@@ -30,10 +31,11 @@ describe("the notice that launched an app (#1494)", () => {
     // openTapped reads the page's origin; a test has no page.
     if (!hadLocation) Reflect.set(globalThis, "location", { origin: "https://app.test" });
     const { plugin, answer } = launchingPlugin();
-    listenForAppNotices(() => undefined, plugin);
+    const listened = listenForAppNotices(() => undefined, plugin);
     expect(hasLaunchNotice()).toBe(false);
-    answer({ url: `/?notice=${"a".repeat(22)}&host=host-1` });
-    await Bun.sleep(0);
+    // The app answers in a later task, so only awaiting the launch chain itself sees the answer.
+    setTimeout(() => answer({ url: `/?notice=${"a".repeat(22)}&host=host-1` }));
+    await listened;
     // useNoticeOpen takes the pending notice as soon as a render runs; the start decision reads this instead.
     expect(hasLaunchNotice()).toBe(true);
   });

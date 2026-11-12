@@ -14,7 +14,14 @@ import type { KittyPngTranscoder } from "./kitty-png.ts";
 import { HISTORY_LINES, noteViewSize, viewAttach } from "./opening-attach.ts";
 import type { OutputPacer, ReplayOptions } from "./output-pacer.ts";
 import { type TerminalEnd, terminalEnd } from "./terminal-end.ts";
-import { type CoreAnswer, type Settled, settled, type Unsent, unsentReason } from "./terminal-settle.ts";
+import {
+  type CoreAnswer,
+  restartOnReattach,
+  type Settled,
+  settled,
+  type Unsent,
+  unsentReason,
+} from "./terminal-settle.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
 import { droppedStreamCause, TerminalStreamLostError } from "./attach-recovery.ts";
 import { useAttachRecovery } from "./use-attach-recovery.ts";
@@ -253,9 +260,15 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         if (!owns()) return void attached.close();
         setOpening(false);
         // The program restarted while the line was down: what was typed for it must not reach the new one.
-        if (attachedBefore.current && attached.terminal.pid !== program.current) {
+        const restart = restartOnReattach(
+          attachedBefore.current,
+          attached.terminal.pid,
+          program.current,
+          pending.current,
+        );
+        if (restart.close) {
           void attached.close();
-          if (pending.current.splice(0).length > 0) reportUnsent("restarted");
+          if (restart.unsent !== null) reportUnsent(restart.unsent);
           return undefined;
         }
         recovery.succeeded();

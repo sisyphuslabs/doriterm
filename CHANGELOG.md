@@ -146,8 +146,8 @@ still update from the GitHub release.
 - On the pairing screen Cmd/Ctrl with =, - or 0 no longer changes a terminal font size nobody can see there; in a
   browser the keys zoom the page again, and the desktop app still sizes its terminal text. (#1162)
 - The space number keys (Ctrl+1-9 on a Mac, Alt+1-9 on Windows and Linux) switch spaces while you type in a terminal too.
-  The terminal program no longer gets those keys; Ctrl+Space, Esc and Ctrl+\ still send the same control bytes, and
-  Settings > Keybindings can rebind Go to space N. (#1934)
+  The terminal program no longer gets those keys; Ctrl+Space, Esc, Ctrl+\, Ctrl+], Ctrl+^, Ctrl+_ (or Ctrl+/) and
+  Backspace still send the control bytes Ctrl+2-8 sent, and Settings > Keybindings can rebind Go to space N. (#1934)
 - With the keyboard in a terminal, herdr-app's space shortcuts now act as they do in herdr-app: Ctrl+1-9 on a Mac and
   Alt+1-9 on Linux and Windows switch spaces. On a Mac, Ctrl+V pastes an image on the clipboard as a file on the
   terminal's machine where the browser lets the page read the clipboard (the desktop app does not); otherwise it sends
