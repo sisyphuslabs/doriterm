@@ -189,6 +189,29 @@ test("a statement whose only button cannot take focus opens on itself, so the ke
   await expect(ended).toBeFocused();
 });
 
+test("a session menu still closing when its session ends gives no focus back behind the statement (#2362)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  const address = (await terminal.getAttribute("data-terminal")) ?? "";
+  await named(page);
+  // A busy page can still be closing the menu when the session ends: its pane, and the menu with it, then go after the
+  // statement has taken the keyboard. A long exit holds the menu up so that order happens every time.
+  await page.addStyleTag({
+    content: "[role='menu'][data-ending-style] { transition: opacity 10s linear !important; opacity: 0 !important; }",
+  });
+  await sessionMenu(page, "End session…");
+  await expect(dialog(page, `End ${NAME}?`)).toBeVisible();
+  await expect(page.getByRole("menu", { includeHidden: true })).toHaveCount(1);
+
+  hc("kill", address);
+  const ended = statement(page);
+  await expect(ended).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("menu", { includeHidden: true })).toHaveCount(0);
+  await expect(ended.getByRole("button", { name: "OK" })).toBeFocused();
+});
+
 test("closing from Cmd+W's question ends the session with no notice that it ended", async ({ page }) => {
   await recordEndedTitles(page);
   await setConfirmClose(page, "always");
