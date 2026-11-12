@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { relaySpawnEnv, withoutBunNodeShim } from "./node-path.ts";
 
@@ -35,4 +37,32 @@ test("relay:dev and relay:test start their child without the shim, with the rela
     HOME: "/home/u",
     DORIFACE_RELAY_DIR: "/r/.relay",
   });
+});
+
+test("relay:dev starts wrangler through relaySpawnEnv: the real command line drops the shim (#2346 review)", async () => {
+  const root = mkdtempSync(join(tmpdir(), "relay-dev-env-"));
+  try {
+    const relay = join(root, "relay");
+    const bin = join(relay, "node_modules", ".bin");
+    mkdirSync(bin, { recursive: true });
+    const seen = join(root, "seen.txt");
+    // A stand-in wrangler that records the PATH and relay dir it was started with.
+    writeFileSync(join(bin, "wrangler"), `#!/bin/sh\nprintf '%s\\n%s\\n' "$PATH" "$DORIFACE_RELAY_DIR" > "${seen}"\n`);
+    chmodSync(join(bin, "wrangler"), 0o755);
+    const fakeShim = join(root, "bun-node-1000-feedface");
+    mkdirSync(fakeShim);
+    const script = join(import.meta.dir, "..", "private-relay.ts");
+    const proc = Bun.spawn([process.execPath, script, "dev"], {
+      env: { ...process.env, PATH: [fakeShim, process.env["PATH"] ?? ""].join(delimiter), DORIFACE_RELAY_DIR: relay },
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    expect(await proc.exited).toBe(0);
+    const [path, dir] = (await Bun.file(seen).text()).split("\n");
+    expect(dir).toBe(relay);
+    expect(path?.split(delimiter)).not.toContain(fakeShim);
+    expect(path?.split(delimiter).length).toBeGreaterThan(0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
