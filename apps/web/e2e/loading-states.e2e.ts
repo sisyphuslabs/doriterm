@@ -122,7 +122,7 @@ test.describe("loading feedback waits before it spins (#1498)", () => {
     expect(await title.boundingBox()).toEqual(resting);
     // The slot is as large as the failed screen's icon (size-8), so turning to "Cannot reach your host" does not move the
     // title either (#1961).
-    const slot = page.locator('[data-slot="spinner"]').locator("xpath=ancestor::span[1]");
+    const slot = page.locator('[data-slot="icon-box"]');
     expect((await slot.boundingBox())?.height).toBe(32);
   });
 
