@@ -255,7 +255,9 @@ test.describe("phone", () => {
         : { glyph: glyph.top + glyph.height / 2, text: first.top + first.height / 2 };
     });
     expect(centres).not.toBeNull();
-    expect(Math.abs((centres?.glyph ?? 0) - (centres?.text ?? 0))).toBeLessThanOrEqual(0.5);
+    // 1 px, not 0.5: the centres measure 0.5 px apart (half-pixel rounding) and a spinning glyph's box drifts by a few
+    // millionths, so a 0.5 px bound fails by chance. The old mt-0.5 nudge this guards against moved the glyph 2 px.
+    expect(Math.abs((centres?.glyph ?? 0) - (centres?.text ?? 0))).toBeLessThanOrEqual(1);
     // The terminal stays on screen under the notice.
     await expect(page.locator("[data-terminal]")).toBeVisible();
     socket.restore();
