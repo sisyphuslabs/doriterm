@@ -30,3 +30,13 @@ describe("the machines list keeps a row per member (#942 stage 6)", () => {
     expect(html.match(/<li[ >]/gu)).toHaveLength(2);
   });
 });
+
+test("a member whose session is being carried on reads Reconnecting, as the status bar does, not Connected (#2424)", () => {
+  const resuming = {
+    target: { hostId: "c", hostName: "c" },
+    state: { phase: "open", resuming: true },
+  } as unknown as MemberEntry;
+  const html = renderToStaticMarkup(<MemberConnections members={[member("a", "open"), resuming]} selectedHostId="a" />);
+  expect(html).toContain("Reconnecting");
+  expect(html.match(/Connected/gu)).toHaveLength(1);
+});
