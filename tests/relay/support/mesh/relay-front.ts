@@ -6,6 +6,7 @@ import { testIp } from "../probe.ts";
 import { within } from "../watch.ts";
 import { adoptProcessGroup, stopProcessGroup } from "../process-group.ts";
 import { makeTap, type Tap } from "./tap.ts";
+import { withoutBunNodeShim } from "../node-path.ts";
 
 export type { Tap } from "./tap.ts";
 
@@ -114,7 +115,7 @@ export async function startMeshRelay(): Promise<MeshRelay> {
         // A group of its own, adopted: an interrupt of the test runner ends wrangler and every workerd it started.
         detached: true,
         env: {
-          ...process.env,
+          ...withoutBunNodeShim(process.env),
           WRANGLER_SEND_METRICS: "false",
           XDG_CONFIG_HOME: join(scratch, "config"),
           WRANGLER_LOG_PATH: join(scratch, "logs"),

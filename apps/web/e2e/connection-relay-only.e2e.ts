@@ -38,7 +38,6 @@ test("Settings > This device has no Direct address and shows the relay with no f
   await expect(page.getByRole("textbox", { name: "Direct address" })).toHaveCount(0);
   await expect(page.getByText("Direct address")).toHaveCount(0);
   await expect(page.getByText(DIRECT)).toHaveCount(0);
-  await expect(page.getByRole("textbox", { name: "Relay address" })).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: /relay/i })).toHaveCount(0);
 });
 

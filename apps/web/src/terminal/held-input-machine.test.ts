@@ -25,24 +25,24 @@ function machineInput(machine: string | undefined) {
   return { held, took, dropped, line, unwatch };
 }
 
-test("keys typed while the machine's line is down wait, then reach the stream once, Ctrl+C first (#1489)", () => {
+test("keys typed while the machine's line is down wait, then reach the stream once, in the order typed (#1489, #2303)", () => {
   jest.useFakeTimers();
   const { held, took, dropped, line } = machineInput("rack");
   line("connected");
   held.send("a");
   line("connecting");
-  for (const key of ["o", "m", new Uint8Array([0x03]), "\u0003", "o"]) held.send(key);
+  for (const key of ["cmd", "\r", "\u0003", "o", new Uint8Array([0x03])]) held.send(key);
   line("unreachable");
   expect(took).toEqual(["a"]);
 
   line("connected");
-  expect(took).toEqual(["a", new Uint8Array([0x03]), "\u0003", "o", "m", "o"]);
+  expect(took).toEqual(["a", "cmd", "\r", "\u0003", "o", new Uint8Array([0x03])]);
   expect(held.pending).toEqual([]);
   // Nothing is held any more, so the drop that was due never comes and nothing is written twice.
   jest.advanceTimersByTime(HOLD_MS);
   line("connected");
   held.send("k");
-  expect(took).toEqual(["a", new Uint8Array([0x03]), "\u0003", "o", "m", "o", "k"]);
+  expect(took).toEqual(["a", "cmd", "\r", "\u0003", "o", new Uint8Array([0x03]), "k"]);
   expect(dropped).toEqual([]);
 });
 

@@ -197,7 +197,7 @@ export function NotificationsSection() {
                 : "Checks that this device gets them."
           }
           control={
-            <Button disabled={off} onClick={() => void settings.test()}>
+            <Button disabled={off} loading={controls.running === "test"} onClick={() => void settings.test()}>
               Send test
             </Button>
           }
