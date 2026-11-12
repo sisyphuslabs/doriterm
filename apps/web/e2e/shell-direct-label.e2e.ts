@@ -75,12 +75,15 @@ test.describe("the desktop shell's connection path label (#1435)", () => {
     await expect(path).toHaveAttribute("data-connection-path", "relay", { timeout: 30_000 });
     await expect(path).toHaveText("Relay");
     await expect(path).toHaveAttribute("title", "Relay: every session goes through the relay.");
-    // The shell was told no target at all, so the saved address never left the page (main.tsx), and no socket went to the
+    // The saved address never left the page: the forwarder was handed no address, and no socket went to the
     // direct listener. That the relay carried it the label already says: it shows only for a session open over the relay.
     // (The relay's /v1/client/ sockets are served by page.routeWebSocket, which emits no page "websocket" event, so they
     // cannot be counted here.)
     const targets = await directTargets(page);
-    expect(Array.isArray(targets) && targets.length > 0 && targets.every((target) => target === "")).toBe(true);
+    // Never handed an address: nothing dials it (connect.ts gates openForwardedLink, the only setTarget with one), so the
+    // stub records no target, or only main.tsx's "" where the full desktop bridge is present.
+    expect(Array.isArray(targets)).toBe(true);
+    expect((Array.isArray(targets) ? targets : []).filter((target) => target !== "")).toEqual([]);
     expect(sockets).not.toContain(host.directUrl);
   });
 });
