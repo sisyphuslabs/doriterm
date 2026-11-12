@@ -19,6 +19,22 @@ import { addMachine, DEMO_MACHINE } from "./machine.ts";
  */
 const FAST_MS = 10_000;
 
+/**
+ * Whether hc's machine state says the line is down and stays down: `unreachable` (its dial was refused) or
+ * `needs_login`. Not "anything but connected": `connecting` is hc redialing, and a run asked then waits on that dial,
+ * which may still win (#2389). An absent row is not an answer either.
+ */
+export const settledOffline = (state: string | undefined): boolean =>
+  state === "unreachable" || state === "needs_login";
+
+test("only a refused or login-blocked line counts as down; a redial in progress does not (#2389)", () => {
+  expect(settledOffline("unreachable")).toBe(true);
+  expect(settledOffline("needs_login")).toBe(true);
+  expect(settledOffline("connecting")).toBe(false);
+  expect(settledOffline("connected")).toBe(false);
+  expect(settledOffline(undefined)).toBe(false);
+});
+
 let dialer: HcSession | undefined;
 let root: string | undefined;
 afterEach(async () => {
@@ -41,17 +57,19 @@ test("a New terminal on an added machine that is not connected fails from its st
   await stop();
   const core = await HcConnection.open(spawnHcLink({ hc: dialer.hc, session: dialer.name, env: dialer.env }));
   try {
-    // The core learns the line is gone from its own read of it, a moment after the stop; until then a run still starts
-    // there. Wait for the core's own machine state to leave "connected" (a state, not a delay), then time one New terminal.
+    // The core learns the line is gone from its own read of it, a moment after the stop, and redials (`connecting`); a
+    // run asked during that redial waits on it. Wait for the core's own state to SETTLE as down (a state, not a delay),
+    // then time one New terminal (#2389).
     const gone = async (deadline: number): Promise<void> => {
       const { machines } = await core.call("machine.list");
       const state = machines.find((machine) => machine.name === spec.name)?.state;
-      if (state !== "connected") return;
-      if (performance.now() > deadline) throw new Error(`${spec.name} still reads connected after its stop`);
+      if (settledOffline(state)) return;
+      if (performance.now() > deadline)
+        throw new Error(`${spec.name} reads ${state ?? "absent"}, not down, after its stop`);
       await Bun.sleep(10);
       return gone(deadline);
     };
-    await gone(performance.now() + 10_000);
+    await gone(performance.now() + 30_000);
     const startedAt = performance.now();
     const started = await startTerminal(
       (params) => core.call("terminal.run", params),
