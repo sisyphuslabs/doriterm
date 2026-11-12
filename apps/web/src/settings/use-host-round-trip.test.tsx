@@ -61,6 +61,21 @@ test("a replaced connection shows no round trip until the new connection has ans
   expect(shown.at(-1)).toBeNumber();
 });
 
+test("a connection that pauses and comes back shows no round trip until it has answered again", async () => {
+  shown.length = 0;
+  const live = connectionAnsweredBy();
+  await act(async () => root.render(<Probe connection={live.connection} />));
+  await act(async () => live.answer());
+  expect(shown.at(-1)).toBeNumber();
+
+  await act(async () => root.render(<Probe connection={null} />));
+  await act(async () => root.render(<Probe connection={live.connection} />));
+  expect(shown.at(-1)).toBeUndefined();
+
+  await act(async () => live.answer());
+  expect(shown.at(-1)).toBeNumber();
+});
+
 test("a disconnected machine shows no round trip, not the last one measured", async () => {
   shown.length = 0;
   const live = connectionAnsweredBy();
