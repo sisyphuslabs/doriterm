@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // install.sh as release.yml publishes it: stamped with its tag, so it installs that release (#1969).
-const STAMPED = readFileSync(join(import.meta.dir, "install.sh"), "utf8").replaceAll("__DORIFACE_RELEASE__", "v0.1.17");
+const SCRIPT = readFileSync(join(import.meta.dir, "install.sh"), "utf8");
 const sha256 = (text: string): string => new Bun.CryptoHasher("sha256").update(text).digest("hex");
 
 const roots: string[] = [];
@@ -16,13 +16,16 @@ interface Options {
   readonly signature?: "valid" | "invalid" | "none";
   /** Whether the binary lists --auto-update in its --help (a host from before #1969 does not). */
   readonly autoUpdate?: boolean;
+  /** The release the script is stamped with (default v0.1.17, from before releases were signed). */
+  readonly release?: string;
 }
 
 function rig(options: Options) {
   const root = mkdtempSync(join(tmpdir(), "df-install-get-"));
   roots.push(root);
-  const [home, stubs, get, github] = ["home", "stubs", "get/v/0.1.17", "github/download/v0.1.17"].map((d) =>
-    join(root, d),
+  const release = options.release ?? "v0.1.17";
+  const [home, stubs, get, github] = ["home", "stubs", `get/v/${release.slice(1)}`, `github/download/${release}`].map(
+    (d) => join(root, d),
   );
   const log = join(root, "calls.log");
   for (const dir of [home, stubs]) mkdirSync(dir ?? "", { recursive: true });
@@ -33,6 +36,8 @@ function rig(options: Options) {
   };
   stub("uname", '[ "$1" = -s ] && echo Linux || echo x86_64');
   stub("systemctl", `echo "systemctl $*" >> "${log}"`);
+  // The user lingers already, so the installer never reaches the real loginctl to turn it on.
+  stub("loginctl", "echo yes");
   stub("hc", "echo 0.1.17");
   const host = [
     "#!/bin/sh",
@@ -53,7 +58,7 @@ function rig(options: Options) {
       writeFileSync(join(base, "SHA256SUMS.txt.sig"), options.signature ?? "valid");
   }
   const script = join(root, "install.sh");
-  writeFileSync(script, STAMPED);
+  writeFileSync(script, SCRIPT.replaceAll("__DORIFACE_RELEASE__", release));
   const run = (...args: string[]) => {
     const proc = Bun.spawnSync(["/bin/sh", script, "--no-pair", ...args], {
       env: {
@@ -108,6 +113,24 @@ test("a signature that does not verify installs nothing; a release with no signa
   const unsigned = rig({ on: ["get"], signature: "none" }).run();
   expect(unsigned.code).toBe(0);
   expect(unsigned.out).toContain("this release carries no SHA256SUMS.txt.sig");
+});
+
+test("a release from v0.1.18 on, when releases are signed, installs nothing without its signature (#1983)", () => {
+  for (const release of ["v0.1.18", "v0.2.0", "v1.0.0-beta.1"]) {
+    const unsigned = rig({ on: ["get"], signature: "none", release }).run();
+    expect([release, unsigned.code, unsigned.installed]).toEqual([release, 1, false]);
+    expect(unsigned.out).toContain(
+      `${release} is signed, but no SHA256SUMS.txt.sig came with it; nothing was installed`,
+    );
+    expect(rig({ on: ["get"], release }).run().code).toBe(0);
+  }
+});
+
+test("a stamped v0.1.18+ install.sh given --from still names its release, so a missing signature installs nothing (#2297)", () => {
+  const r = rig({ on: ["get"], signature: "none", release: "v0.1.18" });
+  const unsigned = r.run("--from", `file://${join(r.root, "get", "v", "0.1.18")}`);
+  expect([unsigned.code, unsigned.installed]).toEqual([1, false]);
+  expect(unsigned.out).toContain("v0.1.18 is signed, but no SHA256SUMS.txt.sig came with it; nothing was installed");
 });
 
 test("--channel beta and --no-auto-update reach the service, and a host without --auto-update gets no flag", () => {

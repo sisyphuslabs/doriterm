@@ -1,11 +1,11 @@
 import { base64urlEncode } from "@doriface/crypto";
 import { memoryLinkPair } from "@doriface/crypto/testing";
-import { signCard } from "@doriface/mesh";
+import { parseRecord, type Signed, signCard, type View } from "@doriface/mesh";
 import { joinCode, joinCommit, MeshLines } from "@doriface/mesh/join";
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { cardBody } from "../state/mesh.ts";
 import { failure, inviteDeps, removeSides, side } from "../testing/join-harness.ts";
-import { noiseOf } from "../testing/mesh-history.ts";
+import { machine, MeshFixture, noiseOf } from "../testing/mesh-history.ts";
 import { serveJoin } from "./invite.ts";
 import { PendingJoins } from "./pending-joins.ts";
 import { finishJoin, JoinResumes } from "./join-resumes.ts";
@@ -14,15 +14,20 @@ afterEach(removeSides);
 const h = new Uint8Array(32).fill(11);
 const Nj = new Uint8Array(32).fill(12);
 
-async function begin(auto = false, kind: "client" | "machine" = "client", sas = true) {
-  const a = side("alpha");
+async function begin(
+  auto = false,
+  kind: "client" | "machine" = "client",
+  sas = true,
+  formatReady: (records?: readonly Signed[], view?: View) => boolean = () => true,
+  a = side("alpha"),
+) {
   const c = side("browser");
   const pending = new PendingJoins();
   if (auto) pending.setAuto(Date.now() + 60_000);
   const resumes = new JoinResumes();
   const [hostEnd, clientEnd] = memoryLinkPair(true);
   const client = new MeshLines(clientEnd, ["offer", "reveal", "records", "done", "refused"]);
-  const deps = { ...inviteDeps(a, pending), handshakeHash: h, resumes, formatReady: () => true };
+  const deps = { ...inviteDeps(a, pending), handshakeHash: h, resumes, formatReady };
   const served = failure(serveJoin(new MeshLines(hostEnd, ["card", "refused"]), c.m.identity.noise.publicKey, deps));
   const offer = await client.next();
   if (offer.t !== "offer") throw new Error("no offer");
@@ -154,4 +159,70 @@ test("an approved join that reaches its transaction after expiry signs nothing",
     clock.mockRestore();
     run.resumes.clear();
   }
+});
+
+/** Ready while the roster holds no machine that has not answered: here, any admitted machine has not (#1436). */
+const readyFor = (records?: readonly Signed[]): boolean =>
+  (records ?? []).every((record) => parseRecord(record)?.type !== "admit");
+
+test("a client approved after a machine was admitted meanwhile is refused by the roster it is written over (#1436)", async () => {
+  const a = side("alpha");
+  const fixture = new MeshFixture(a.dir, a.m);
+  const run = await begin(false, "client", true, readyFor, a);
+  await run.client.next();
+  const asked = await run.pending.next();
+  fixture.admit(a.m, machine("mid"));
+  run.pending.decide(asked.nonce, true, asked.code);
+  run.client.send({ t: "confirm" });
+  expect(await run.served).toContain("format");
+  const types = (a.mesh.read()?.records ?? []).map((record) => parseRecord(record)?.type);
+  expect(types).toEqual(["found", "admit"]);
+  run.resumes.clear();
+});
+
+test("a machine admission does not ask the in-transaction client format check (#2263)", async () => {
+  const asked: number[] = [];
+  const run = await begin(true, "machine", true, (records?: readonly Signed[]) => {
+    if (records !== undefined) asked.push(records.length);
+    return true;
+  });
+  expect(await run.served).toBe("resolved");
+  expect(run.a.mesh.read()?.records.map((record) => parseRecord(record)?.type)).toEqual(["found", "admit"]);
+  expect(asked).toEqual([]);
+  run.resumes.clear();
+});
+
+test("a client admission hands its transaction's own view to the in-transaction format check (#2263)", async () => {
+  const views: (View | undefined)[] = [];
+  const txViews: View[] = [];
+  const a = side("alpha");
+  const transact = a.mesh.transact.bind(a.mesh);
+  spyOn(a.mesh, "transact").mockImplementation((fn, rollback, initial) =>
+    transact(
+      (tx) => {
+        txViews.push(tx.view());
+        return fn(tx);
+      },
+      rollback,
+      initial,
+    ),
+  );
+  const run = await begin(
+    false,
+    "client",
+    true,
+    (records?: readonly Signed[], view?: View) => {
+      if (records !== undefined) views.push(view);
+      return true;
+    },
+    a,
+  );
+  await run.client.next();
+  const asked = await run.pending.next();
+  run.pending.decide(asked.nonce, true, asked.code);
+  run.client.send({ t: "confirm" });
+  expect(await run.served).toBe("resolved");
+  expect(views).toHaveLength(1);
+  expect(views[0]).toBe(txViews.at(-1));
+  run.resumes.clear();
 });

@@ -33,6 +33,8 @@ export function SpaceNameInput({ space, onClose }: SpaceNameInputProps) {
   return (
     // A terminal its first click opened must not take the keyboard from the field as it starts (mayTakeFocus).
     <div data-holds-keyboard className="flex flex-col gap-1">
+      {/* The label is visible on purpose (#1497 C7, #1514): it takes a line, so starting a rename moves the rows below
+          it down by that line. Accepted over hiding it or reserving the line in every row (#1915). */}
       <label id={`${inputId}-label`} htmlFor={inputId} className={cn("px-2", fieldLabelClass)}>
         Rename space {space.name}
       </label>

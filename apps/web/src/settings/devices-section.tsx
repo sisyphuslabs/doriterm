@@ -18,6 +18,9 @@ import { MembershipDeviceSection } from "./membership-device.tsx";
 function describe(state: ConnectionState): ReactNode {
   switch (state.phase) {
     case "open":
+      // A session being carried on is not connected: say why the host is not back, once a dial has said (#496).
+      if (state.resuming === true)
+        return state.resumeFailure === undefined ? "Reconnecting" : hostFailure(state.resumeFailure);
       return "Connected";
     case "connecting":
       return "Connecting";

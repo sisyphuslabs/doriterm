@@ -10,6 +10,11 @@ export interface ByteLink {
   onData(listener: (bytes: Uint8Array) => void): Unsubscribe;
   onClose(listener: (error: Error | undefined) => void): Unsubscribe;
   close(): void;
+  /**
+   * The connection found the link silent or gone. A link that can carry on over a new socket (a resumable session)
+   * takes the loss and returns true: the connection stays open and waits. Absent or false, the connection closes.
+   */
+  lost?(reason: Error): boolean;
 }
 
 export class LinkClosedError extends Error {

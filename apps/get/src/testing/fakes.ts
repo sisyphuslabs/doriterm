@@ -22,6 +22,8 @@ export class FakeBucket implements ReleaseBucket {
   failKey: string | null = null;
   /** Every key read, in order, with the operation. */
   readonly reads: string[] = [];
+  /** The bytes every `get` has returned, ranges included. */
+  bytesRead = 0;
 
   put(key: string, body: string | Uint8Array<ArrayBuffer>): void {
     this.objects.set(key, typeof body === "string" ? new TextEncoder().encode(body) : body);
@@ -53,6 +55,7 @@ export class FakeBucket implements ReleaseBucket {
     const range = options?.range;
     if (range !== undefined && range.offset + range.length > bytes.byteLength) throw new Error("range out of bounds");
     const slice = range === undefined ? bytes : bytes.slice(range.offset, range.offset + range.length);
+    this.bytesRead += slice.byteLength;
     return {
       ...this.meta(key, bytes.byteLength),
       body: new Response(slice).body ?? new ReadableStream(),
