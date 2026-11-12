@@ -271,6 +271,7 @@ test("a pane whose program ends while its layout write is refused stays, says so
   socket.staleWrites(true);
   await page.keyboard.type("exit\r");
   await expect(page.getByText("The layout was not saved")).toBeVisible({ timeout: 15_000 });
+  await expectRefusedAsConflict(page);
   // The layout kept the pane, which now says its session ended; focus stays on it, not on the pane before it.
   const kept = page.getByRole("region", { name: "resize-right terminal" });
   await expect(kept.getByRole("heading", { name: "This session ended" })).toBeVisible();
@@ -303,6 +304,7 @@ test("the last pane of the tab in view ending while its layout write is refused 
   socket.staleWrites(true);
   await page.keyboard.type("exit\r");
   await expect(page.getByText("The layout was not saved")).toBeVisible({ timeout: 15_000 });
+  await expectRefusedAsConflict(page);
   // The tab switch was part of the drop: the refused write puts the tab back in view, with focus on the pane it kept.
   await expect(page.getByRole("tab", { selected: true })).toHaveText(/solo/);
   const kept = page.getByRole("region", { name: "resize-solo terminal" });
@@ -310,6 +312,16 @@ test("the last pane of the tab in view ending while its layout write is refused 
   await expect(kept).toHaveAttribute("data-focused", "true");
   expect(savedTab("tb-solo")).toBe(saved);
 });
+
+/**
+ * The notice is the refused write's own: the layout kept changing. A write that never went out (the layout reported as
+ * unable to take changes, #2436) shows the same title with another reason, and must not pass as the refusal.
+ */
+async function expectRefusedAsConflict(page: Page): Promise<void> {
+  await expect(
+    page.getByText("The layout kept changing on another device, so this change was not saved").first(),
+  ).toBeVisible();
+}
 
 /**
  * How many "The layout was not saved" notices the page has shown from now on, closed ones included: a notice closes
@@ -409,6 +421,7 @@ test("a background pane whose program ends while its layout write is refused lea
   socket.staleWrites(true);
   hcOn("host", ["kill", right]);
   await expect(page.getByText("The layout was not saved")).toBeVisible({ timeout: 15_000 });
+  await expectRefusedAsConflict(page);
   // The page undoes a refused drop as soon as the refusal arrives; a later update from the core renders after that.
   hcOn("host", ["label", left, "herdr.name=after-the-refusal"]);
   await expect(page.locator('[data-focused="true"]')).toHaveAttribute("aria-label", "after-the-refusal terminal", {
@@ -427,6 +440,7 @@ test("a pane a refused write kept goes back to its place in the focus history, n
   socket.staleWrites(true);
   hcOn("host", ["kill", c]);
   await expect(page.getByText("The layout was not saved")).toBeVisible({ timeout: 15_000 });
+  await expectRefusedAsConflict(page);
   socket.staleWrites(false);
   await paneOf(page, a).getByRole("textbox").focus();
   await page.keyboard.type("exit\r");

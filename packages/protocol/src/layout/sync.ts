@@ -144,6 +144,10 @@ export class LayoutDoc {
   }
 
   async #attempt(change: DocEdit, shown: EditShown, left: number): Promise<boolean> {
+    // A re-read that failed once (a dropped link, a doc.get past its deadline on a loaded host) leaves the document
+    // unavailable until something reads it again. An edit the person asked for reads it again itself rather than being
+    // refused for that past failure: it writes if the read succeeds, and says the read's own reason if it fails (#2436).
+    if (this.#state.phase === "unavailable") await this.refresh();
     const state = this.#state;
     if (left === 0) {
       throw new DocWriteError(

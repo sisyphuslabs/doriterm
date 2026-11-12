@@ -63,7 +63,9 @@ export function readOnlyOf(state: DocState | undefined, why: string): string | n
   if (state.phase === "unreadable")
     return `this layout has ${state.reason}, which this version of Doriterm cannot edit`;
   if (state.phase === "loading") return LAYOUT_LOADING;
-  return state.reason;
+  // "unavailable" is only how the last read ended: the edit itself reads the document again, then writes, or rejects with
+  // the read's own reason (LayoutDoc, #2436). Refusing here instead parked pane drops silently until a later read.
+  return null;
 }
 
 export function useLayoutDocs(
