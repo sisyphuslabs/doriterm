@@ -18,10 +18,12 @@ interface Handler {
   localSent: string;
   localPreedit: string;
   koreanKeyEdit: boolean;
+  unkeyedLetterTimer: unknown;
   textarea: { value: string };
   editLocalRun(value: string): void;
   handleInput(e: object): void;
   handleKeyDown(e: object): void;
+  handleKeyUp(e: object): void;
 }
 
 function handler(kittyFlags = 0, overrides: object = {}): { run: Handler; sent: string[] } {
@@ -169,3 +171,41 @@ test("Return after a syllable an on-screen keyboard keyed is left to the field (
   edit(run, "\u{AC00}\n");
   expect(sent).toEqual(["\u{AC00}", "\r"]);
 });
+
+/**
+ * One key of an iPhone or iPad keyboard as hangul-edits.ts plays it: the keydown naming the jamo, the editor's edits
+ * (a changed syllable is taken back with a deleteContentBackward, then the whole result inserted), then the keyup.
+ */
+function keyedJamo(run: Handler, jamo: string, keyCode: number, edits: readonly string[]): void {
+  run.handleKeyDown(keyDown(jamo, false, keyCode).event);
+  for (const value of edits) {
+    run.textarea.value = value;
+    run.handleInput({ inputType: value === "" ? "deleteContentBackward" : "insertText" });
+  }
+  run.handleKeyUp(keyDown(jamo, false, keyCode).event);
+}
+
+// The keyboard changes ㄱ into 가 by taking ㄱ back (the field is empty for a moment) and inserting 가: the syllable is
+// still the keyed keyboard's, so the space or Return that follows is its edit (terminal-hangul-webkit.e2e.ts, #1508).
+test.each([
+  ["iphone", "a space", 0, 0, " ", "\u{AC00} ", " "],
+  ["iphone", "Return", 0, 0, "Enter", "\u{AC00}\n", "\r"],
+  ["ipad", "a space", 82, 75, " ", "\u{AC00} ", " "],
+  ["ipad", "Return", 82, 75, "Enter", "\u{AC00}\n", "\r"],
+] as const)(
+  "%s: %s after a syllable whose jamo was taken back and replaced is left to the field (#1944 iphone/ipad e2e)",
+  (_kb, _n, consonantCode, vowelCode, key, field, seq) => {
+    const { run, sent } = handler();
+    keyedJamo(run, "\u{3131}", consonantCode, ["\u{3131}"]);
+    keyedJamo(run, "\u{314F}", vowelCode, ["", "\u{AC00}"]);
+    // No timer is left to end the syllable while the page waits between keys: only a jamo no key came with waits.
+    expect(run.localPreedit).toBe("\u{AC00}");
+    expect(run.unkeyedLetterTimer).toBe(0);
+    const { event, cancelled } = keyDown(key, false);
+    run.handleKeyDown(event);
+    expect(cancelled()).toBe(false);
+    expect(sent).toEqual([]);
+    edit(run, field);
+    expect(sent).toEqual(["\u{AC00}", seq]);
+  },
+);
