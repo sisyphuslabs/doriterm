@@ -15,6 +15,12 @@ export interface LocalHostOptions {
   readonly hc: () => string | undefined;
   /** The folders `hc` searches after PATH, named by an `hc-binary-missing` failure. */
   readonly searched?: () => readonly string[];
+  /**
+   * The folder doriface-host starts in, and so the folder of an `hc` core it starts: a new terminal with no directory
+   * opens there. The app's own folder is wherever its launcher started it, such as a Windows shortcut's install folder
+   * (#2047).
+   */
+  readonly cwd: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly log: (line: string) => void;
   readonly readyTimeoutMs?: number | undefined;
@@ -70,7 +76,7 @@ export class LocalHost {
   }
 
   #spawn(): Promise<LocalHostEndpoint> {
-    const { command, hc, env, log } = this.#options;
+    const { command, hc, cwd, env, log } = this.#options;
     const token = randomBytes(32).toString("base64url");
     const binary = hc();
     const args = [
@@ -82,6 +88,7 @@ export class LocalHost {
       ...(binary === undefined ? [] : ["--hc", binary]),
     ];
     const child = spawn(command.file, args, {
+      cwd,
       env: { ...env, DORIFACE_HOST_TOKEN: token },
       stdio: ["ignore", "ignore", "pipe"],
       windowsHide: true,

@@ -10,6 +10,7 @@ import type { MeshHooks } from "./host-hooks.ts";
 import type { PendingJoinFact } from "./status-sources.ts";
 import { HostMesh } from "./host-mesh.ts";
 import { HostSync } from "./host-sync.ts";
+import type { HcTarget } from "./hc-machines.ts";
 import { meshProgram } from "./program.ts";
 import { storedMeshStatus } from "./status-store.ts";
 import { syncHooks } from "./sync-hooks.ts";
@@ -22,11 +23,7 @@ export interface MeshDepsOptions {
   readonly sessions: LiveSessions;
   /** The plan this host runs under: the mesh and its joins read it. */
   readonly policy: PlanPolicy;
-  readonly hc: {
-    readonly hc: string;
-    readonly session?: string | undefined;
-    readonly env?: Readonly<Record<string, string | undefined>> | undefined;
-  };
+  readonly hc: HcTarget;
   readonly relay: {
     readonly url: string | undefined;
     readonly createSocket?: CreateSocket | undefined;
@@ -62,7 +59,7 @@ export function meshDeps(options: MeshDepsOptions) {
     sync: (s) => sync.adopt(s),
     changed: () => sync.changed(),
     floor: () => hooks.floor(),
-    formatReady: () => hooks.formatReady(),
+    formatReady: (records, view) => hooks.formatReady(records, view),
     log,
   });
   const pending = (): readonly PendingJoinFact[] =>

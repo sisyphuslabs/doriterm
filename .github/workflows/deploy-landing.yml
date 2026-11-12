@@ -73,6 +73,8 @@ jobs:
           if-no-files-found: error
       # The pull request's own wrangler.jsonc is what deploys: anything but the staging worker and host stops here (#816).
       - name: Staging deploys to staging only
+        env:
+          PRODUCTION_WORKER: doriterm-landing
         run: bun .github/scripts/deploy-target.ts apps/landing/wrangler.jsonc staging doriterm-landing-staging staging.doriterm.com
       - name: Deploy staging
         working-directory: apps/landing

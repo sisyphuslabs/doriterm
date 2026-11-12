@@ -13,6 +13,50 @@ import { SettingsRoute } from "./routes/settings-route.tsx";
 import { SettingsDialog, SettingsInDialog, useSettingsSheet } from "./settings/settings-dialog.tsx";
 import { WorkspaceRoute } from "./routes/workspace-route.tsx";
 
+/** Where the settings body was scrolled to when its frame was taken out of the page, and which element scrolled. */
+interface KeptScroll {
+  readonly viewport: HTMLElement;
+  readonly top: number;
+}
+
+/**
+ * Where Settings shows: the sheet or the dialog. Settings renders into one frame of its own, which moves here, so a
+ * resize across the breakpoint moves it instead of mounting it again: the open section, a key recording and anything
+ * else under way survive the switch (#859). Focus inside it is put back after the move, and so is the settings body's
+ * scroll offset (#1161).
+ */
+function SettingsSlot({
+  frame,
+  refocus,
+  scroll,
+}: {
+  readonly frame: HTMLElement;
+  readonly refocus: RefObject<HTMLElement | null>;
+  readonly scroll: RefObject<KeptScroll | null>;
+}) {
+  const slot = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    slot.current?.append(frame);
+    const kept = scroll.current;
+    scroll.current = null;
+    // Taking the frame out of the page drops the offset of whatever scrolls in it, so the reader's place is put back
+    // before the frame is painted in its other home (#1161). A viewport from an earlier Settings is gone with it, and
+    // a fresh one starts at the top as it always has.
+    if (kept !== null && frame.contains(kept.viewport)) kept.viewport.scrollTop = kept.top;
+    const held = refocus.current;
+    refocus.current = null;
+    if (held !== null && frame.contains(held) && document.activeElement !== held) held.focus({ preventScroll: true });
+    return () => {
+      const active = document.activeElement;
+      refocus.current = active instanceof HTMLElement && frame.contains(active) ? active : null;
+      // Read before the frame leaves the page: once it is out, its viewport has forgotten where it was (#1161).
+      const viewport = frame.querySelector<HTMLElement>('[data-slot="settings-body"]');
+      scroll.current = viewport === null ? null : { viewport, top: viewport.scrollTop };
+    };
+  }, [frame, refocus, scroll]);
+  return <div ref={slot} className="contents" />;
+}
+
 /**
  * The workspace stays mounted under Settings, inert, so leaving Settings shows its terminals as they were: no pane
  * attaches again and replays its history (seconds over the relay), the scroll stays where it was, and the keyboard goes
@@ -20,32 +64,6 @@ import { WorkspaceRoute } from "./routes/workspace-route.tsx";
  * is a dialog over the workspace, which stays in view and keeps drawing; on a phone, or a screen too short for the dialog,
  * it is a full-screen sheet and the workspace under it is hidden.
  */
-/**
- * Where Settings shows: the sheet or the dialog. Settings renders into one frame of its own, which moves here, so a
- * resize across the breakpoint moves it instead of mounting it again: the open section, a key recording and anything
- * else under way survive the switch (#859). Focus inside it is put back after the move.
- */
-function SettingsSlot({
-  frame,
-  refocus,
-}: {
-  readonly frame: HTMLElement;
-  readonly refocus: RefObject<HTMLElement | null>;
-}) {
-  const slot = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    slot.current?.append(frame);
-    const held = refocus.current;
-    refocus.current = null;
-    if (held !== null && frame.contains(held) && document.activeElement !== held) held.focus({ preventScroll: true });
-    return () => {
-      const active = document.activeElement;
-      refocus.current = active instanceof HTMLElement && frame.contains(active) ? active : null;
-    };
-  }, [frame, refocus]);
-  return <div ref={slot} className="contents" />;
-}
-
 function Root() {
   const path = useRouterState({ select: (state) => state.location.pathname });
   const settings = path === "/settings";
@@ -53,6 +71,7 @@ function Root() {
   const sheet = settings && asSheet;
   const [frame] = useState(() => Object.assign(document.createElement("div"), { className: "h-full" }));
   const refocus = useRef<HTMLElement | null>(null);
+  const scroll = useRef<KeptScroll | null>(null);
   useEffect(() => {
     if (settings) return;
     // Back at the workspace while a reconnect waits out its back-off: try now, not up to 10 s on (#403).
@@ -76,7 +95,7 @@ function Root() {
           data-settings-sheet
           className="fixed inset-0 bg-background"
         >
-          <SettingsSlot frame={frame} refocus={refocus} />
+          <SettingsSlot frame={frame} refocus={refocus} scroll={scroll} />
         </div>
       ) : null}
       {/* The view on screen is #root's first child: the desktop window waits for `#root > *` to paint, and the
@@ -87,6 +106,7 @@ function Root() {
       {/* Under the dialog the workspace stays in view but out of reach: inert, and hidden from assistive tech, so only
           the dialog is read (aria-modal). */}
       <div
+        data-workspace
         className={sheet ? "invisible contents [&_*]:invisible!" : "contents"}
         inert={settings}
         aria-hidden={settings || undefined}
@@ -101,7 +121,7 @@ function Root() {
           the body comes after #root and paints over the dialog. */}
       {settings && !asSheet ? (
         <SettingsDialog>
-          <SettingsSlot frame={frame} refocus={refocus} />
+          <SettingsSlot frame={frame} refocus={refocus} scroll={scroll} />
         </SettingsDialog>
       ) : null}
       {settings

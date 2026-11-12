@@ -55,3 +55,7 @@ test("a pan by the keyboard's height zeroes the inset but not the keyboard's hei
   expect(keyboardHeight(844, panned)).toBe(336);
   expect(keyboardHeight(844, { height: 844, offsetTop: 0, scale: 1 })).toBe(0);
 });
+
+test("a pinch zoom is no keyboard's height either", () => {
+  expect(keyboardHeight(844, { height: 422, offsetTop: 0, scale: 2 })).toBe(0);
+});

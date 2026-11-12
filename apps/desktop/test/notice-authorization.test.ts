@@ -48,6 +48,15 @@ describe("the OS's notification authorization, read from systemPreferences", () 
     expect(await readNoticeAuthorization(shell, addon)).toBe("authorized");
   });
 
+  test("denied while the app's own request is unanswered is no refusal yet (#1958); without one, denied stands", async () => {
+    const denied = { noticeAuthorization: async () => "denied" };
+    expect(await readNoticeAuthorization({}, denied, () => true)).toBe("not-determined");
+    expect(await readNoticeAuthorization({}, denied, () => false)).toBe("denied");
+    expect(await readNoticeAuthorization({}, denied)).toBe("denied");
+    const granted = { noticeAuthorization: async () => "granted" };
+    expect(await readNoticeAuthorization({}, granted, () => true)).toBe("authorized");
+  });
+
   test("a native read that fails falls back to reflection or unknown", async () => {
     const addon = {
       noticeAuthorization: async () => {

@@ -7,6 +7,7 @@ import { expect, test } from "./fixtures.ts";
 import { seedLayout } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 import { fakeSoftKeyboard, PHONE, showKeyboard } from "./phone-key-bar.ts";
+import { expectFollowed, sampleWhile } from "./transcript-follow.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
@@ -57,6 +58,20 @@ const terminalOf = (page: Page, address: string): Locator => page.locator(`[data
 const fromBottom = (terminal: Locator): Promise<number> =>
   terminal.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop);
 
+/**
+ * How much slower than the host each case's page runs once the transcript is drawn: also 6x, a page too starved to take
+ * a whole redraw in within wterm's one-second hold of it, so the pacer must hold the paint until it closes (#2040).
+ */
+const SLOWDOWNS = [1, 6] as const;
+
+/** Slows the page's CPU `slowdown` times, as a busy phone or a starved tab runs. */
+async function slowPage(page: Page, slowdown: number): Promise<void> {
+  if (slowdown > 1)
+    await (await page.context().newCDPSession(page)).send("Emulation.setCPUThrottlingRate", { rate: slowdown });
+}
+
+const slower = (slowdown: number): string => (slowdown > 1 ? `, on a page ${slowdown}x slower` : "");
+
 /** The view at the bottom, its screen showing the transcript's last line. */
 async function atLastLine(terminal: Locator): Promise<void> {
   await expect(terminal.locator(".term-row:not(.term-scrollback-row)").last()).toContainText(
@@ -66,195 +81,117 @@ async function atLastLine(terminal: Locator): Promise<void> {
   await expect.poll(() => fromBottom(terminal)).toBeLessThan(5);
 }
 
-interface Sample {
-  readonly away: number;
-  /** The newest transcript line the screen shows (the rest of a reflowed line shows none); 0 for none. */
-  readonly newest: number;
-  /**
-   * The oldest transcript line inside the scroll element's visible box, scrollback rows included; 0 for none. A view
-   * that jumps into the history shows old lines here, while the screen's rows (`newest`) stay mounted wherever it is.
-   */
-  readonly top: number;
-  /** Rows on the screen, the view's height in lines. */
-  readonly screen: number;
-  /**
-   * Rows inside the scroll element's visible box, scrollback rows included: more than `screen` when the sample is read
-   * after a layout change and before the grid is fitted to it.
-   */
-  readonly inView: number;
-}
-
-/**
- * Samples the view after every paint until `change` is done: how far it is from the bottom, and the newest line its
- * screen shows. Each sample is what the user saw: read after the frame's ResizeObserver callbacks and paint, not in its
- * animation-frame callback, before a layout change has been fitted. The terminal is found by its address on each frame, as a layout
- * change can mount it anew; a frame without it records nothing.
- */
-async function sampleWhile(page: Page, address: string, change: () => Promise<void>): Promise<Sample[]> {
-  const samples = page.evaluate(
-    (selector) =>
-      new Promise<Sample[]>((resolve) => {
-        const seen: Sample[] = [];
-        const record = (): void => {
-          const element = document.querySelector(selector);
-          if (element !== null) {
-            const rows = [...element.querySelectorAll(".term-row:not(.term-scrollback-row)")];
-            // The visible box is the content box: both edges start below the border.
-            const edge = element.getBoundingClientRect().top + element.clientTop;
-            const bottom = edge + element.clientHeight;
-            const inView = [...element.querySelectorAll(".term-row")].filter((row) => {
-              const rect = row.getBoundingClientRect();
-              return rect.bottom > edge + 1 && rect.top < bottom - 1;
-            });
-            const visible = inView
-              .map((row) => Number(/row (\d{5})/.exec(row.textContent ?? "")?.[1] ?? 0))
-              .filter((number) => number > 0);
-            seen.push({
-              away: element.scrollHeight - element.clientHeight - element.scrollTop,
-              newest: Math.max(0, ...rows.map((row) => Number(/row (\d{5})/.exec(row.textContent ?? "")?.[1] ?? 0))),
-              top: visible.length === 0 ? 0 : Math.min(...visible),
-              screen: rows.length,
-              inView: inView.length,
-            });
-          }
-          if (document.documentElement.hasAttribute("data-e2e-stop-sampling")) {
-            document.documentElement.removeAttribute("data-e2e-stop-sampling");
-            resolve(seen);
-          } else afterPaint();
-        };
-        // A message posted in a frame's callback is delivered once that frame is painted.
-        const channel = new MessageChannel();
-        channel.port1.addEventListener("message", record);
-        channel.port1.start();
-        const afterPaint = (): void => void requestAnimationFrame(() => channel.port2.postMessage(null));
-        record();
-      }),
-    `[data-terminal="${address}"]`,
-  );
-  try {
-    await change();
-  } finally {
-    // A change that fails still stops the sampler, so its own error is reported instead of a timeout here.
-    await page.evaluate(() => document.documentElement.setAttribute("data-e2e-stop-sampling", ""));
-  }
-  return samples;
-}
-
-/**
- * Every sampled frame showed the transcript's end, and none scrolled back through it: the lines in view are all within
- * two views of the end, a view being the screen's rows or the rows the visible box holds, whichever is more. `atBottom` also requires each frame at the scroll element's very bottom; a layout change that
- * React commits in its own task can be read after it lands and before the frame's ResizeObserver fits the grid to it, a
- * state the browser never paints, so that is checked only where no such change happens.
- */
-function expectFollowed(samples: readonly Sample[], { atBottom = true } = {}): void {
-  const off = samples.filter(
-    (sample) =>
-      sample.newest !== LINES ||
-      sample.top <= LINES - 2 * Math.max(sample.screen, sample.inView) ||
-      (atBottom && sample.away >= 5),
-  );
-  expect(samples.length).toBeGreaterThan(0);
-  expect(off.slice(0, 5), `${off.length} of ${samples.length} frames left the transcript's end`).toEqual([]);
-}
-
-test("a following terminal stays on its last line through window resizes that redraw an agent's transcript", async ({
-  page,
-}) => {
-  const dir = mkdtempSync(join(tmpdir(), "doriface-resize-scroll-"));
-  try {
-    const agent = startAgent(dir);
-    seedLayout([{ id: "tb-757", name: "agent", root: [{ pane: "p1", terminal: agent.address }] }]);
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/");
-    const terminal = terminalOf(page, agent.address);
-    await atLastLine(terminal);
-    const resize = async (width: number): Promise<void> => {
-      const drawn = agent.frames();
-      const samples = await sampleWhile(page, agent.address, async () => {
-        await page.setViewportSize({ width, height: 800 });
-        await expect.poll(agent.frames, { timeout: 30_000 }).toBeGreaterThan(drawn);
-        await atLastLine(terminal);
-      });
-      expectFollowed(samples);
-    };
-    await resize(960);
-    await resize(1280);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("a following terminal stays on its last line while a split divider is dragged", async ({ page }) => {
-  const dir = mkdtempSync(join(tmpdir(), "doriface-resize-scroll-"));
-  try {
-    const agent = startAgent(dir);
-    const shell = startShell("host", "resize-757-side");
-    started.push(shell);
-    seedLayout([
-      {
-        id: "tb-757",
-        name: "split",
-        root: [
-          { pane: "p1", terminal: agent.address, weight: 0.6 },
-          { pane: "p2", terminal: shell, weight: 0.4 },
-        ],
-      },
-    ]);
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/");
-    const terminal = terminalOf(page, agent.address);
-    await atLastLine(terminal);
-    const divider = page.locator('[role="separator"][data-container="tb-757"]');
-    const line = await divider.boundingBox();
-    if (line === null) throw new Error("no divider box");
-    const [x, y] = [line.x + line.width / 2, line.y + line.height / 2];
-    const drawn = agent.frames();
-    const samples = await sampleWhile(page, agent.address, async () => {
-      await page.mouse.move(x, y);
-      await page.mouse.down();
-      await page.mouse.move(x - 240, y, { steps: 8 });
-      await page.mouse.up();
-      await expect.poll(agent.frames, { timeout: 30_000 }).toBeGreaterThan(drawn);
-      await atLastLine(terminal);
-    });
-    expectFollowed(samples);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test.describe("on a phone", () => {
-  test.use({ ...PHONE });
-
-  test("a following terminal stays on its last line as the soft keyboard opens and closes", async ({ page }) => {
+for (const slowdown of SLOWDOWNS)
+  test(`a following terminal stays on its last line, in every frame, through window resizes that redraw an agent's transcript${slower(slowdown)}`, async ({
+    page,
+  }) => {
+    test.slow(slowdown > 1);
     const dir = mkdtempSync(join(tmpdir(), "doriface-resize-scroll-"));
     try {
       const agent = startAgent(dir);
       seedLayout([{ id: "tb-757", name: "agent", root: [{ pane: "p1", terminal: agent.address }] }]);
-      await fakeSoftKeyboard(page, { raiseOnFocus: false });
+      await page.setViewportSize({ width: 1280, height: 800 });
       await page.goto("/");
-      await page
-        .getByRole("button", { name: /resize-agent/ })
-        .first()
-        .click();
       const terminal = terminalOf(page, agent.address);
       await atLastLine(terminal);
-      // The keyboard takes rows from the grid, as on a phone: the agent redraws for the new height.
-      const keyboard = async (px: number): Promise<void> => {
+      await slowPage(page, slowdown);
+      const resize = async (width: number): Promise<void> => {
         const drawn = agent.frames();
         const samples = await sampleWhile(page, agent.address, async () => {
-          await showKeyboard(page, px);
+          await page.setViewportSize({ width, height: 800 });
           await expect.poll(agent.frames, { timeout: 30_000 }).toBeGreaterThan(drawn);
           await atLastLine(terminal);
         });
-        expectFollowed(samples, { atBottom: false });
+        expectFollowed(samples, LINES);
       };
-      await keyboard(336);
-      await keyboard(0);
+      await resize(960);
+      await resize(1280);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+for (const slowdown of SLOWDOWNS)
+  test(`a following terminal stays on its last line, in every frame, while a split divider is dragged${slower(slowdown)}`, async ({
+    page,
+  }) => {
+    test.slow(slowdown > 1);
+    const dir = mkdtempSync(join(tmpdir(), "doriface-resize-scroll-"));
+    try {
+      const agent = startAgent(dir);
+      const shell = startShell("host", "resize-757-side");
+      started.push(shell);
+      seedLayout([
+        {
+          id: "tb-757",
+          name: "split",
+          root: [
+            { pane: "p1", terminal: agent.address, weight: 0.6 },
+            { pane: "p2", terminal: shell, weight: 0.4 },
+          ],
+        },
+      ]);
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await page.goto("/");
+      const terminal = terminalOf(page, agent.address);
+      await atLastLine(terminal);
+      await slowPage(page, slowdown);
+      const divider = page.locator('[role="separator"][data-container="tb-757"]');
+      const line = await divider.boundingBox();
+      if (line === null) throw new Error("no divider box");
+      const [x, y] = [line.x + line.width / 2, line.y + line.height / 2];
+      const drawn = agent.frames();
+      const samples = await sampleWhile(page, agent.address, async () => {
+        await page.mouse.move(x, y);
+        await page.mouse.down();
+        await page.mouse.move(x - 240, y, { steps: 8 });
+        await page.mouse.up();
+        await expect.poll(agent.frames, { timeout: 30_000 }).toBeGreaterThan(drawn);
+        await atLastLine(terminal);
+      });
+      expectFollowed(samples, LINES);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+test.describe("on a phone", () => {
+  test.use({ ...PHONE });
+
+  for (const slowdown of SLOWDOWNS)
+    test(`a following terminal stays on its last line, in every frame, as the soft keyboard opens and closes${slower(slowdown)}`, async ({
+      page,
+    }) => {
+      test.slow(slowdown > 1);
+      const dir = mkdtempSync(join(tmpdir(), "doriface-resize-scroll-"));
+      try {
+        const agent = startAgent(dir);
+        seedLayout([{ id: "tb-757", name: "agent", root: [{ pane: "p1", terminal: agent.address }] }]);
+        await fakeSoftKeyboard(page, { raiseOnFocus: false });
+        await page.goto("/");
+        await page
+          .getByRole("button", { name: /resize-agent/ })
+          .first()
+          .click();
+        const terminal = terminalOf(page, agent.address);
+        await atLastLine(terminal);
+        await slowPage(page, slowdown);
+        // The keyboard takes rows from the grid, as on a phone: the agent redraws for the new height.
+        const keyboard = async (px: number): Promise<void> => {
+          const drawn = agent.frames();
+          const samples = await sampleWhile(page, agent.address, async () => {
+            await showKeyboard(page, px);
+            await expect.poll(agent.frames, { timeout: 30_000 }).toBeGreaterThan(drawn);
+            await atLastLine(terminal);
+          });
+          expectFollowed(samples, LINES, { atBottom: false });
+        };
+        await keyboard(336);
+        await keyboard(0);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
 });
 
 /** The text of the first row in view (the top one the scroll box shows), trimmed. */

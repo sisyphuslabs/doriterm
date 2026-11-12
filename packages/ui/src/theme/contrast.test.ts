@@ -1,9 +1,39 @@
 import { describe, expect, test } from "bun:test";
 import { BUILTIN_PALETTES } from "./builtins.ts";
-import { contrast, parseRgba } from "./color.ts";
-import { themeVariables } from "./css.ts";
+import { contrast, mix, parseRgba, type Rgb } from "./color.ts";
+import { DISABLED_STEP, disabledGlyph, themeVariables } from "./css.ts";
 import { AA_GRAPHIC, AA_TEXT, flatten, worstContrast } from "./guard.ts";
 import { resolveTheme } from "./resolve.ts";
+
+/**
+ * Whether a disabled glyph can be the full DISABLED_STEP from `muted` and still hold 3:1 on `surface`, on the path the
+ * disabled ink is picked from: `muted` moved toward the surface in 1% steps (css.ts). `contrast(muted, surface) >= 5.1`
+ * is the same question for a continuous path, and a palette just above it can have no 1% stop that holds both (#1896).
+ */
+function stepReachable(muted: Rgb, surface: Rgb): boolean {
+  for (let step = 1; step <= 100; step += 1) {
+    const candidate = mix(muted, surface, step / 100);
+    if (contrast(candidate, surface) < AA_GRAPHIC) return false;
+    if (contrast(candidate, muted) >= DISABLED_STEP) return true;
+  }
+  return false;
+}
+
+/** The disabled glyph's two requirements: always 3:1 on its surface, and the full step wherever the path reaches it. */
+function expectDisabledGlyph(disabled: Rgb, muted: Rgb, surface: Rgb): void {
+  expect(contrast(disabled, surface)).toBeGreaterThanOrEqual(AA_GRAPHIC);
+  if (stepReachable(muted, surface)) expect(contrast(disabled, muted)).toBeGreaterThanOrEqual(DISABLED_STEP);
+}
+
+test("a muted glyph just above 5.1:1 whose 1% path holds no stop with both keeps the 3:1 floor (#1896)", () => {
+  const muted = 0x7e7e7e;
+  const surface = 0x000000;
+  expect(contrast(muted, surface)).toBeGreaterThanOrEqual(AA_GRAPHIC * DISABLED_STEP);
+  expect(stepReachable(muted, surface)).toBe(false);
+  const disabled = parseRgba(disabledGlyph(muted, surface))?.rgb;
+  if (disabled === undefined) throw new Error("no disabled glyph");
+  expectDisabledGlyph(disabled, muted, surface);
+});
 
 test("contrast follows WCAG 2.2", () => {
   expect(contrast(0x000000, 0xffffff)).toBeCloseTo(21, 5);
@@ -36,6 +66,14 @@ describe.each(Object.entries(BUILTIN_PALETTES))("%s meets WCAG 2.2 AA", (_, pale
       expect(worstContrast(role(name), surfaces)).toBeGreaterThanOrEqual(AA_GRAPHIC);
     },
   );
+
+  test("--disabled-glyph holds 3:1 on its raised stepper and steps 1.7 from --muted-foreground where that leaves room", () => {
+    const raised = opaque[4];
+    const muted = parseRgba(role("muted-foreground"))?.rgb;
+    const disabled = parseRgba(role("disabled-glyph"))?.rgb;
+    if (raised === undefined || muted === undefined || disabled === undefined) throw new Error("missing role");
+    expectDisabledGlyph(disabled, muted, raised);
+  });
 
   test("primary button label", () => {
     expect(worstContrast(role("primary-foreground"), [flatten(role("primary"), base)])).toBeGreaterThanOrEqual(AA_TEXT);

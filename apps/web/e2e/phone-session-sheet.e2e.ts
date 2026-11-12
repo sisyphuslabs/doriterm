@@ -1,8 +1,18 @@
 import { devices, type Page } from "@playwright/test";
-import { agentRow } from "./agents.ts";
+import { AGENT_SHELL, agentRow, startShell } from "./agents.ts";
+import { removeTerminal } from "./ended-terminal.ts";
 import { expect, opened, test } from "./fixtures.ts";
 import { seedSpaces } from "./layout-doc.ts";
-import { hcOn } from "./machine-switch.ts";
+import { MACHINE_NAME } from "./machine.ts";
+import {
+  hcOn,
+  machineRow,
+  reconnect,
+  STATE_BOUND_MS,
+  switchTo,
+  OFFLINE_BOUND_MS,
+  OFFLINE_TEST_TIMEOUT_MS,
+} from "./machine-switch.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
@@ -14,7 +24,7 @@ endOwnTerminals();
 const header = (page: Page) => page.getByRole("banner");
 
 function startShellIn(space: string, name: string): string {
-  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${space}`, "--", "env", "PS1=$ ", "sh"]);
+  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", `space=${space}`, "--", ...AGENT_SHELL]);
   const started: unknown = JSON.parse(out);
   if (typeof started !== "object" || started === null || !("address" in started)) throw new Error(out);
   return String(started.address);
@@ -72,4 +82,69 @@ test("the phone header's ... is one sheet: where the session lives, the next age
     timeout: 15_000,
   });
   report(started[1] ?? "", "working");
+});
+
+test("the session sheet offers Find in terminal only while its machine is online (#1482)", async ({ page }) => {
+  test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
+  const local = startShell("machine", "find-offline");
+  try {
+    await page.goto("/");
+    // The phone lists machines on its Spaces tab (#1398); the agent row is back on Agents.
+    const sections = page.getByRole("navigation", { name: "Sections" });
+    await sections.getByRole("button", { name: "Spaces", exact: true }).click();
+    await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
+    await sections.getByRole("button", { name: /^Agents\b/ }).click();
+    await agentRow(page, "find-offline", true).click();
+    const terminal = page.locator(`[data-terminal="${MACHINE_NAME}/${local}"]`);
+    await expect(terminal).toContainText("$", { timeout: 15_000 });
+
+    const actions = header(page).getByRole("button", { name: "Session actions for find-offline", exact: true });
+    const sheet = page.getByRole("dialog", { name: "find-offline" });
+    const find = sheet.getByRole("button", { name: "Find in terminal", exact: true });
+    await actions.click();
+    await opened(sheet);
+    await expect(find).toBeVisible();
+    await sheet.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(sheet).toBeHidden();
+
+    // Offline, the screen draws MachineOffline in place of the terminal, so no view can take terminal.search.
+    switchTo("drop");
+    await expect(page.getByRole("heading", { name: `${MACHINE_NAME} is offline` })).toBeVisible({
+      timeout: OFFLINE_BOUND_MS,
+    });
+    await actions.click();
+    await opened(sheet);
+    await expect(find).toHaveCount(0);
+    // The rest of the sheet still reaches the core, so it does not lose its rows with the terminal.
+    await expect(sheet.getByRole("button", { name: "Rename…", exact: true })).toBeVisible();
+    await sheet.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(sheet).toBeHidden();
+
+    // Back online, the terminal is drawn again and the row returns with it.
+    reconnect();
+    await expect(terminal).toContainText("$", { timeout: OFFLINE_BOUND_MS });
+    await actions.click();
+    await opened(sheet);
+    await expect(find).toBeVisible();
+  } finally {
+    reconnect();
+    removeTerminal("machine", local);
+  }
+});
+
+test("a named tab's sheet and its trigger carry the name the header's heading reads (#1502)", async ({ page }) => {
+  const run = Date.now().toString(36);
+  const space = `pssn-${run}`;
+  const shell = `pssn-shell-${run}`;
+  const tab = `pssn-tab-${run}`;
+  const address = startShellIn(space, shell);
+  seedSpaces([{ id: "spc-pssn", name: space, folder: "", tabs: [{ id: "tb-pssn", name: tab, terminal: address }] }]);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+  await agentRow(page, shell, false).click();
+  await expect(header(page).getByRole("heading", { name: tab, exact: true })).toBeVisible({ timeout: 15_000 });
+  const actions = header(page).getByRole("button", { name: `Session actions for ${tab}`, exact: true });
+  await expect(actions).toBeVisible();
+  await actions.click();
+  await opened(page.getByRole("dialog", { name: tab, exact: true }));
 });

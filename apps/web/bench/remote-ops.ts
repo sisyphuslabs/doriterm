@@ -25,6 +25,7 @@ import { pairWithHost } from "../src/pair/handshake.ts";
 import { slotOf } from "../src/pair/code.ts";
 import { lookupCode } from "../src/pair/lookup.ts";
 import { endSession, sessionCalls } from "../src/workspace/session-actions.ts";
+import { onLink } from "./remote-ops-link.ts";
 import { echo, firstOutput, inTurn, quiet } from "./remote-ops-stream.ts";
 
 const { values, positionals } = parseArgs({
@@ -77,7 +78,7 @@ async function pairOnce(): Promise<ConnectionSettings> {
   const parsed = await timed("pair.lookup", () => lookupCode(code ?? "", relayUrl));
   if (!parsed.ok) throw new Error(`lookup: ${parsed.reason}`);
   const { offer } = parsed;
-  paired = await timed("pair.session", () => pairWithHost(offer, "remote-ops-bench", deps));
+  paired = (await timed("pair.session", () => pairWithHost(offer, "remote-ops-bench", deps))).connection;
   note("pair.total", now() - started);
   return {
     ...DEFAULT_SETTINGS,
@@ -102,7 +103,7 @@ async function stagedConnect(settings: ConnectionSettings): Promise<void> {
   const link = await timed("connect.socket", () =>
     connectRelayClient({ relayUrl, hostId: settings.hostId, bestOf: 1 }),
   );
-  try {
+  await onLink(link, async () => {
     const secure = await timed("connect.noise", () =>
       secureLink(link, {
         role: "initiator",
@@ -114,9 +115,7 @@ async function stagedConnect(settings: ConnectionSettings): Promise<void> {
     const connection = await timed("connect.hello", () => HcConnection.open(secure));
     note("connect.staged", now() - started);
     connection.close();
-  } finally {
-    link.close();
-  }
+  });
 }
 
 /** What the workspace asks for as it opens: the terminal list, the event feed and the machine list, in parallel. */
@@ -195,17 +194,19 @@ async function stagedPair(): Promise<void> {
   const link = await timed("pair.socket", () =>
     connectRelayClient({ relayUrl, hostId: offer.hostId, pairSlot: slotOf(code ?? "") }),
   );
-  const secure = await timed("pair.noise", () =>
-    secureLink(link, {
-      role: "initiator",
-      hostId: offer.hostId,
-      staticKey: device,
-      remoteStatic: offer.noiseStaticPub,
-      pairing: { mode: "code", code: code ?? "", name: "remote-ops-bench" },
-    }),
-  );
-  const connection = await timed("pair.hello", () => HcConnection.open(secure));
-  connection.close();
+  await onLink(link, async () => {
+    const secure = await timed("pair.noise", () =>
+      secureLink(link, {
+        role: "initiator",
+        hostId: offer.hostId,
+        staticKey: device,
+        remoteStatic: offer.noiseStaticPub,
+        pairing: { mode: "code", code: code ?? "", name: "remote-ops-bench" },
+      }),
+    );
+    const connection = await timed("pair.hello", () => HcConnection.open(secure));
+    connection.close();
+  });
 }
 
 const startedAt = new Date().toISOString();

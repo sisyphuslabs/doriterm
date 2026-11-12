@@ -18,6 +18,9 @@ import { MembershipDeviceSection } from "./membership-device.tsx";
 function describe(state: ConnectionState): ReactNode {
   switch (state.phase) {
     case "open":
+      // A session being carried on is not connected: say why the host is not back, once a dial has said (#496).
+      if (state.resuming === true)
+        return state.resumeFailure === undefined ? "Reconnecting" : hostFailure(state.resumeFailure);
       return "Connected";
     case "connecting":
       return "Connecting";
@@ -41,7 +44,7 @@ function describe(state: ConnectionState): ReactNode {
 
 function label(icon: ReactNode, text: string, prefix = "") {
   return (
-    <span className="flex items-start gap-2 [&_svg]:size-4 [&_svg]:text-muted-foreground">
+    <span className="flex items-start gap-2 [&_svg:not([data-slot=spinner])]:size-4 [&_svg]:text-muted-foreground">
       {/* One line tall, so the icon centres on the text's first line however many lines the text takes. */}
       <span className="flex h-[1lh] shrink-0 items-center">{icon}</span>
       <span className="min-w-0">
@@ -168,7 +171,7 @@ function PairedDevicesSection() {
               ))
             : null}
           {note === null ? null : (
-            <p role="status" className="text-sm text-muted-foreground">
+            <p role="status" className="text-prose text-muted-foreground">
               {note}
             </p>
           )}

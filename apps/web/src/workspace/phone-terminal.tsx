@@ -28,6 +28,7 @@ import {
 } from "./phone-keys.tsx";
 import { ConnectionLine } from "./reconnect-status.tsx";
 import { afterEnd } from "./session-actions.ts";
+import { useQuietKeyboard } from "./use-quiet-keyboard.ts";
 import { useStickyKeys } from "./use-sticky-keys.ts";
 
 export interface PhoneTerminalProps {
@@ -42,20 +43,19 @@ export interface PhoneTerminalProps {
   readonly backTo: string | null;
   readonly onOpen: (address: string) => void;
   readonly onBack: () => void;
-  /** The Spaces sheet's tab controls: close the tab that shows an address, start a tab in a space (#1463). */
+  /**
+   * This session ended and took its tab with it. It leaves the screen only when the phone is still on it: a close from
+   * the Spaces sheet has already moved the phone to the tab in its place, and a late End must not drag it back up (#1478).
+   */
+  readonly onEnded: (address: string) => void;
+  /** The sheet's tab controls: close the tab that shows an address, start a tab in a space (#1463). */
   readonly onCloseTab: (address: string) => void;
   readonly onNewInSpace: (space: string) => void;
+  /** Whether the switch sheet is open over this terminal, and its opening and closing (the route holds it). */
+  readonly sheet: boolean;
+  readonly onSheet: (open: boolean) => void;
   /** Where this terminal registers its dictation for the shell's palette row and bound key; null while it takes none. */
   readonly dictate: RefObject<(() => void) | null>;
-  /**
-   * This page asked for this terminal's pane (a session picked from the keys bar): its view takes the keyboard as it
-   * opens. Unset, opening a terminal on a phone leaves the soft keyboard down (#1375).
-   */
-  readonly claimed: boolean;
-  /** A session picked from the keys bar, which is the person asking for its keyboard as it opens. */
-  readonly onPick: (address: string) => void;
-  /** The keyboard a pick asked for is up: the ask is answered, so a later re-attach takes none of its own (#1375). */
-  readonly onClaimed: () => void;
 }
 
 /** One session full screen on a phone, its terminal kept clear of the soft keyboard and the keys bar riding on it. */
@@ -69,11 +69,12 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
     backTo,
     onOpen,
     onBack,
+    onEnded,
     onCloseTab,
     onNewInSpace,
     dictate,
   } = props;
-  const { claimed, onPick, onClaimed } = props;
+  const { sheet, onSheet } = props;
   const port = useRef<TerminalPort | null>(null);
   const onPort = useCallback((next: TerminalPort | null) => {
     port.current = next;
@@ -82,17 +83,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   const keyboard = useSoftKeyboard(scope);
   // A mouse-only device has no soft keyboard to ride on: its keys bar is opened and closed by hand (#287).
   const mouseOnly = useMouseOnly();
-  // The keyboard is down again — closed by its own key, by the keys' Hide, or by the focus moving away — so the field asks
-  // for none until the keys ask again, and the next press in the terminal raises nothing (#1375). A press that lets the
-  // field go and takes it back in the same gesture is no dismissal: this waits a frame for the focus to come back.
-  useEffect(() => {
-    if (claimed && keyboard.up) onClaimed();
-  }, [claimed, keyboard.up]);
-  useEffect(() => {
-    if (keyboard.up) return undefined;
-    const frame = requestAnimationFrame(() => port.current?.quiet());
-    return () => cancelAnimationFrame(frame);
-  }, [keyboard.up]);
+  useQuietKeyboard(port, scope, keyboard.up);
   const [keysShown, setKeysShown] = useState(false);
   // Read-only browsing (browse-mode.ts) belongs to the terminal it was turned on for: opening another ends it.
   const [browsingOn, setBrowsingOn] = useState<string | null>(null);
@@ -139,12 +130,13 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   // A touch phone's keys while its keyboard is down (#1526); a mouse-only window opens its keys bar by hand instead.
   const keyRow = !keysOpen && !mouseOnly && !dictating && !browsing && !offline && !ended;
   // The terminal's jump button stays clear of what floats over its bottom right: the keyboard button, or the arrow pad.
-  // Over the tabs bar the keyboard button floats beside the bar, not over the terminal.
+  // Over the tabs bar the keyboard button floats beside the bar, and beside the key row it sits level with the row:
+  // either way under the terminal, not over it (#1555).
   const keysControls =
     offline || ended || dictating
       ? null
       : !keysOpen
-        ? tabsBar
+        ? tabsBar || keyRow
           ? null
           : KEYBOARD_BUTTON_CLEARANCE
         : pad
@@ -167,7 +159,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
         onOpen={onOpen}
         action={untyped ? null : <DictateButton voice={voice} target={title} ref={mic} />}
       />
-      <ConnectionLine />
+      <ConnectionLine address={terminal.address} />
       <PaneSwitcher panes={panes} open={terminal.address} onOpen={onOpen} />
       {/* The page's one main landmark: the terminal, under its header (#1378). */}
       <main
@@ -196,7 +188,9 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
               pid={terminal.pid ?? null}
               live={terminal.state === "live"}
               focused
-              claimed={claimed}
+              // Opening a terminal, a session picked from the keys bar included, leaves the soft keyboard down: only the
+              // keyboard button raises it (#1375).
+              claimed={false}
               // A soft keyboard is the phone's to ask for, so opening a terminal leaves it down (#1375); a narrow window
               // driven by a mouse has none to raise, and keeps taking the focus as it starts (#287).
               softKeyboard={!mouseOnly}
@@ -206,7 +200,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
               browsing={browsing}
               onPort={onPort}
               // An End of this session leaves the screen only once it has removed the terminal (see afterEnd).
-              onEnd={(address, end) => (closesTab(end) ? afterEnd(address, onBack) : undefined)}
+              onEnd={(address, end) => (closesTab(end) ? afterEnd(address, () => onEnded(address)) : undefined)}
               // The header already has Back; this one closes the ended session.
               closeLabel="Close"
               {...(keysControls === null ? {} : { jumpClearance: keysControls })}
@@ -248,6 +242,8 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
           clearance={roundButtonsClearance(mouseOnly ? 1 : 2)}
           onCloseTab={onCloseTab}
           onNewInSpace={onNewInSpace}
+          sheet={sheet}
+          onSheet={onSheet}
         />
       ) : null}
       {dictating ? (
@@ -274,7 +270,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
             sticky={sticky}
             terminals={terminals}
             current={terminal.address}
-            onOpen={onPick}
+            onOpen={onOpen}
             onMenu={setMenu}
             pad={pad}
             onPad={setPad}

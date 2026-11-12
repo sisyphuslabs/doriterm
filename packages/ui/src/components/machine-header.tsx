@@ -11,11 +11,14 @@ export interface MachineHeaderProps {
   readonly state: string;
   /** Says the state in the blocked ink: offline or needs login. */
   readonly alarm?: boolean;
-  /** Live terminals on it. */
-  readonly live: number;
+  /** The tabs of the spaces listed under it: the sum of their rows' counts. */
+  readonly tabs: number;
   /** Its spaces are folded away under the header. */
   readonly collapsed?: boolean;
-  /** Folds or unfolds its spaces; without it there is no chevron. */
+  /**
+   * Folds or unfolds its spaces. Without it there is no chevron, but its slot stays reserved (as while a filter takes
+   * the toggle away, #850), so the header's other parts do not move by its width (#1158).
+   */
   readonly onToggle?: () => void;
   readonly selected?: boolean;
   /** Opens its first terminal; left out when it has none (the header stays a stop for its action). */
@@ -30,7 +33,7 @@ export interface MachineHeaderProps {
 }
 
 /**
- * The head of one machine's spaces, shown once more than one machine is known: icon, name, state, terminal count, then
+ * The head of one machine's spaces, shown once more than one machine is known: icon, name, state, tab count, then
  * herdr-app's New space on <name>, status dot and fold chevron. The row is the group's first stop; the actions follow it
  * with ArrowRight.
  */
@@ -39,7 +42,7 @@ export function MachineHeader({
   local,
   state,
   alarm = false,
-  live,
+  tabs,
   collapsed = false,
   onToggle,
   selected = false,
@@ -51,8 +54,9 @@ export function MachineHeader({
   buttonProps,
 }: MachineHeaderProps) {
   const Icon = local ? Monitor : Server;
-  // With no terminal to open only the icon dims: the name and count stay as legible as the state label.
-  const quiet = onOpen === undefined && "opacity-45";
+  // With no terminal to open only the icon dims, in a disabled ghost icon's ink (3:1), never a fade (#1243): the name
+  // and count stay as legible as the state label.
+  const quiet = onOpen === undefined && "text-muted-foreground/72";
   return (
     <div className={cn("group flex h-(--row) min-w-0 items-center rounded-md", selected && "bg-selected", className)}>
       <button
@@ -85,12 +89,8 @@ export function MachineHeader({
               {state}
             </span>
             {/* At least one digit wide, so single digits keep their column, and as wide as more digits need (#878). */}
-            <span
-              data-numeric
-              aria-label={`${live} terminals`}
-              className="min-w-4 shrink-0 text-right whitespace-nowrap"
-            >
-              {live}
+            <span data-numeric aria-label={`${tabs} tabs`} className="min-w-4 shrink-0 text-right whitespace-nowrap">
+              {tabs}
             </span>
           </>
         )}
@@ -115,7 +115,11 @@ export function MachineHeader({
           )}
         />
       )}
-      {rail || onToggle === undefined ? null : (
+      {rail ? null : onToggle === undefined ? (
+        // A filter takes the toggle away (#850); its slot stays reserved so New space and the dot beside it do not move
+        // by its width (#1158).
+        <span aria-hidden className="mr-1 size-6 shrink-0" />
+      ) : (
         <IconButton
           label={`${collapsed ? "Expand" : "Collapse"} ${name}`}
           aria-expanded={!collapsed}

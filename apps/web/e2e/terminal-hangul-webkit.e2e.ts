@@ -30,7 +30,9 @@ async function openReader(page: Page): Promise<{ readonly terminal: Locator; rea
 /** Ends the line with the keyboard's Return and waits for the bytes the shell read. */
 async function expectRead(page: Page, terminal: Locator, hex: string): Promise<void> {
   await page.keyboard.press("Enter");
-  await expect(terminal).toContainText(new RegExp(`(^|\\s)${hex.replaceAll(" ", "")}:end`), { timeout: 10_000 });
+  await expect(terminal).toContainText(new RegExp(`(^|\\s)${hex.replaceAll(" ", "")}:end`), {
+    timeout: 10_000,
+  });
 }
 
 for (const keyboard of ["iphone", "ipad"] satisfies Keyboard[]) {
@@ -74,7 +76,12 @@ for (const keyboard of ["iphone", "ipad"] satisfies Keyboard[]) {
     await field.evaluate((element) => {
       if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
       const down = element.dispatchEvent(
-        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Backspace", keyCode: 8 }),
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "Backspace",
+          keyCode: 8,
+        }),
       );
       if (!down) return;
       const end = element.selectionEnd;
@@ -95,7 +102,7 @@ for (const keyboard of ["iphone", "ipad"] satisfies Keyboard[]) {
       ["ㅏ", "가"],
     ]);
     // A keyboard whose space never landed still holds 가: ㄱ joins it as 각, and ㅏ brings 가 back as 가가 over the space.
-    await keyThenSyllable(field, keyboard, SPACE, GA_AFTER_GA);
+    expect(await keyThenSyllable(field, keyboard, SPACE, GA_AFTER_GA)).toBe(true);
     await expectRead(page, terminal, "ea b0 80 20 ea b0 80");
   });
 
@@ -131,7 +138,11 @@ test("a paste the browser delivers only as input, while a syllable is still bein
   // A browser that leaves clipboardData empty inserts the paste into the field itself.
   await field.evaluate((element) => {
     if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
-    const paste = new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: new DataTransfer() });
+    const paste = new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: new DataTransfer(),
+    });
     if (!element.dispatchEvent(paste)) return;
     element.setRangeText("xyz", element.selectionStart, element.selectionEnd, "end");
     element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertFromPaste", data: "xyz" }));
@@ -163,7 +174,13 @@ test("iPad: Cmd+Backspace with a syllable still being typed kills the line with 
   await typeHangul(field, "ipad", HANGEUL.slice(0, 3));
   await field.evaluate((element) => {
     element.dispatchEvent(
-      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Backspace", keyCode: 8, metaKey: true }),
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: "Backspace",
+        keyCode: 8,
+        metaKey: true,
+      }),
     );
   });
   // The kill took x and the syllable: nothing of either reaches the program after it.
@@ -177,4 +194,37 @@ test("Safari on a Mac: replacement edits without composition events reach the pr
   await safariReplace(field, ["ㄱ", "그", "글"]);
   await page.keyboard.type(" ");
   await expectRead(page, terminal, "ed 95 9c ea b8 80 20");
+});
+
+test("Safari on a Mac: a first jamo held longer than the lone-jamo wait still reaches the program only as its syllable (#1244)", async ({
+  page,
+}) => {
+  const terminal = await openPhoneTerminal(page);
+  // Raw mode, three bytes a row as they arrive: a jamo sent alone, and the erase that would take it back, reach the
+  // program and show, where a line read would hide them behind the erase. dd ends at each third byte so od prints
+  // then: the uutils od of ubuntu-26.04 keeps what it reads until more comes (#1952, as terminal-ime-commit's reader).
+  await page.keyboard.type(
+    "stty -icanon -echo min 1 time 0; echo RE''ADY; while :; do dd bs=1 count=3 2>/dev/null | od -An -tx1; done\r",
+  );
+  await expect(terminal.locator(".term-row").filter({ hasText: /^READY/ })).toHaveCount(1);
+  const field = terminal.getByRole("textbox");
+  // Safari's keydown comes after each edit; edits 150 ms apart outlast the 100 ms a lone jamo waits for a key.
+  await safariReplace(field, ["ㅎ", "하", "한"], 150);
+  await safariReplace(field, ["ㄱ", "그", "글"], 150);
+  // A key after the last syllable sends it.
+  await page.keyboard.type("x");
+  const rows = terminal.locator(".term-row");
+  const read = async (): Promise<string> => {
+    const text = await rows.allTextContents();
+    return text
+      .slice(text.findIndex((row) => row.startsWith("READY")) + 1)
+      .join(" ")
+      .replaceAll(/\s+/g, " ")
+      .trim();
+  };
+  await expect.poll(read, { timeout: 10_000 }).toContain("ea b8 80");
+  const bytes = await read();
+  expect(bytes, "no lone jamo reaches the program").not.toMatch(/e3 8[45] [0-9a-f]{2}/);
+  expect(bytes, "no erase reaches the program").not.toMatch(/\b7f\b/);
+  expect(bytes).toMatch(/^ed 95 9c ea b8 80\b/);
 });

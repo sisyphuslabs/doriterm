@@ -1,4 +1,4 @@
-import { hex, mix, parseRgba, type Rgb } from "./color.ts";
+import { contrast, hex, mix, parseRgba, type Rgb } from "./color.ts";
 import { AA_GRAPHIC, AA_TEXT, ensureContrast, flatten } from "./guard.ts";
 import type { ResolvedTheme } from "./resolve.ts";
 
@@ -8,6 +8,24 @@ export type CssVariables = Readonly<Record<string, string>>;
 const STATUSES = ["working", "blocked", "done", "idle", "unknown"] as const;
 /** The chip behind a status label: the status colour at 15% (herdr-app's `+ "26"`). */
 const CHIP_ALPHA = 0x26 / 255;
+/** How far a disabled glyph steps from the same glyph enabled: the Button spec's visible step (#1241). */
+export const DISABLED_STEP = 1.7;
+
+/**
+ * A glyph drawn in `muted` on `surface`, disabled: moved toward the surface in 1% steps until it is `DISABLED_STEP` from
+ * `muted`, but never below 3:1 on the surface. A theme whose muted text is too close to the surface for both keeps the
+ * floor.
+ */
+export function disabledGlyph(muted: Rgb, surface: Rgb): string {
+  let kept = muted;
+  for (let step = 1; step <= 100; step += 1) {
+    const candidate = mix(muted, surface, step / 100);
+    if (contrast(candidate, surface) < AA_GRAPHIC) break;
+    kept = candidate;
+    if (contrast(candidate, muted) >= DISABLED_STEP) break;
+  }
+  return hex(kept);
+}
 
 function rgb(value: string): Rgb {
   const parsed = parseRgba(value);
@@ -38,6 +56,7 @@ export function themeVariables(theme: ResolvedTheme): CssVariables {
   /** Ghostty draws faint text at faint-opacity 0.5; the guard lifts it to AA on the terminal background. */
   const faint = ensureContrast(hex(mix(termBg, termFg, 0.5)), [termBg], AA_TEXT, termFg);
   const edge = ensureContrast(hex(mix(base, ink, 0.3)), surfaces, AA_GRAPHIC, ink);
+  const muted = text(r.muted);
   const vars: Record<string, string> = {
     background: r.canvas,
     foreground: r.foreground,
@@ -56,7 +75,8 @@ export function themeVariables(theme: ResolvedTheme): CssVariables {
     secondary: r.raised,
     "secondary-foreground": r.foreground,
     muted: r.raised,
-    "muted-foreground": text(r.muted),
+    "muted-foreground": muted,
+    "disabled-glyph": disabledGlyph(rgb(muted), flatten(r.raised, base)),
     dim: r.dim,
     accent: r.hover,
     "accent-foreground": r.foreground,

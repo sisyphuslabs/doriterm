@@ -7,10 +7,14 @@ import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import {
   blip,
-  hcOn,
   machineRow,
+  machineState,
+  linesDialed,
   OFFLINE_BOUND_MS,
   reconnect,
+  redialedSince,
+  slowDials,
+  switchOn,
   switchTo,
   OFFLINE_TEST_TIMEOUT_MS,
 } from "./machine-switch.ts";
@@ -24,7 +28,7 @@ const HOST_WORST_REFUSAL_MS = 20_000 + 30_000;
 
 /**
  * Records, from now on, every moment the page shows the machine or its tab as anything but up: the machine's row in any
- * state but connected, an Offline agents group, or the tab's terminal view gone. A MutationObserver sees each change as
+ * state but connected or reconnecting, an Offline agents group, or the tab's terminal view gone. A MutationObserver sees each change as
  * it renders, so a flip shorter than any poll is recorded too.
  */
 async function recordFlips(page: Page, terminal: string): Promise<void> {
@@ -33,7 +37,7 @@ async function recordFlips(page: Page, terminal: string): Promise<void> {
       const flips: string[] = [];
       const check = (): void => {
         const row = document.querySelector(`[data-machine-header="${name}"]`)?.getAttribute("title") ?? "no row";
-        if (row !== `${name}, connected`) flips.push(`row: ${row}`);
+        if (row !== `${name}, connected` && row !== `${name}, reconnecting`) flips.push(`row: ${row}`);
         for (const group of document.querySelectorAll("section[aria-labelledby]")) {
           const title = document.getElementById(group.getAttribute("aria-labelledby") ?? "")?.textContent ?? "";
           if (title.trim().startsWith("Offline")) flips.push(`group: ${title.trim()}`);
@@ -56,15 +60,6 @@ async function recordFlips(page: Page, terminal: string): Promise<void> {
 const flips = (page: Page): Promise<string[]> =>
   page.evaluate(() => [...new Set((window as unknown as { flips: string[] }).flips)]);
 
-const machineState = (): string => {
-  const listed: unknown = JSON.parse(hcOn("host", ["machine", "ls"]));
-  const machines = Reflect.get(Object(listed), "machines");
-  const one = Array.isArray(machines)
-    ? machines.find((m: unknown) => Reflect.get(Object(m), "name") === MACHINE_NAME)
-    : undefined;
-  return String(Reflect.get(Object(one), "state"));
-};
-
 test.describe("a machine whose line blips (#904)", () => {
   let address = "";
   test.beforeEach(() => {
@@ -86,8 +81,16 @@ test.describe("a machine whose line blips (#904)", () => {
     await expect(page.locator(`[data-terminal="${terminal}"]`)).toBeVisible({ timeout: 15_000 });
     await recordFlips(page, terminal);
 
-    // A line that hc redials at once: the drop alone.
+    // A line that hc redials at once: the drop alone, over a dial as slow as a loaded runner's. The next blip must find
+    // hc's redial landed and no dial still on its way: one still dialing then gets past the refusal and lands anyway.
+    // hc's state is no sign of it: it reads connected all through a drop it redials (#1518).
+    slowDials();
+    const dialed = linesDialed();
     await blip(0);
+    await expect.poll(() => redialedSince(dialed), { timeout: 30_000 }).toBe(true);
+    // redialedSince is a moment's reading, and the switch stays slow until the next blip writes it: put it back to fast
+    // now, so a dial hc starts after the poll passed cannot sleep and land past the refusal below (#2065).
+    switchOn();
     await expect.poll(machineState, { timeout: 15_000 }).toBe("connected");
 
     // A relay uplink drop at its worst: every line ends, and the host refuses this one for its settle and one probe.

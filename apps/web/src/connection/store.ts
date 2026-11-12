@@ -7,6 +7,7 @@ import type { DirectReason } from "./direct-attempt.ts";
 import { helloName } from "./hello-name.ts";
 import { isFinal } from "./host-failure.ts";
 import { MeshConnections, type MemberEntry } from "./mesh-connections.ts";
+import { type ResumeWiring, wireResume } from "./resume-wiring.ts";
 import {
   type ConnectionSettings,
   isConfigured,
@@ -17,7 +18,7 @@ import {
   saveSettings,
   staysOnThisComputer,
 } from "./settings.ts";
-import { resumeOnWake } from "./wake.ts";
+import { resumeOnWake, unprovenLinks } from "./wake.ts";
 import { WakeProbe, type WakeProbing } from "./wake-probe.ts";
 
 /**
@@ -39,6 +40,13 @@ export type ConnectionState =
       readonly connectMs?: number | undefined;
       /** A wake is asking this link to prove itself (#1370): input typed meanwhile waits rather than going into it. */
       readonly proving?: boolean | undefined;
+      /**
+       * The session's socket dropped and the session is being carried on over a new one (contract v1.11): the workspace
+       * stays as it is, and input typed meanwhile waits for the new socket.
+       */
+      readonly resuming?: boolean | undefined;
+      /** While resuming: why the last dial to carry the session on failed (a host gone answers 4404). */
+      readonly resumeFailure?: Error | undefined;
     }
   /** This computer's host did not start: nothing is tried until a start succeeds. */
   | { readonly phase: "host-failed"; readonly failure: HostStartFailure }
@@ -88,29 +96,40 @@ export class ConnectionStore {
   #current = 0;
   /** A wake already asked for this tick: several page events must cost one attempt, not three. */
   #wakeQueued = false;
-  /** Why the store closed a connection itself, kept with that connection so no other drop can take it. */
-  #closedFor: { readonly connection: HcConnection; readonly reason: Error } | null = null;
+  /**
+   * Why the store closed its connection itself. {@link stop} clears it, and is its one guard: every path that opens
+   * another connection runs it first, so no other connection's drop can take this reason (#2044).
+   */
+  #closedFor: Error | null = null;
   readonly #budget = new AttemptBudget();
   readonly #connect: typeof connect;
   readonly #save: Saver;
   /** A wake's check on the open link: a socket the page slept on can be half-open (#653), and input must not go into it. */
   readonly #wake: WakeProbe;
+  /** The open connection's session resume, when its path has a session to carry on (contract v1.11). */
+  #resume: ResumeWiring | null = null;
+  readonly #links: typeof unprovenLinks;
+  readonly #now: () => number;
 
   /**
    * `save` is how this store records a change to its settings. A store that owns the saved settings writes them itself; one that
    * is a single member of a mesh (`mesh-connections.ts`) passes a no-op, because its settings are a slice of a roster another
-   * object owns, and writing that slice back would replace the roster with it.
+   * object owns, and writing that slice back would replace the roster with it. `now` times an attempt's open (`connectMs`): a
+   * monotonic clock, like the round trip beside it, so a wall clock stepped mid-attempt (NTP, sleep) cannot skew it (#1234).
    */
   constructor(
     settings: ConnectionSettings,
     open: typeof connect = connect,
     save: Saver = saveSettings,
     probing: WakeProbing = {},
+    now: () => number = () => performance.now(),
   ) {
     this.#settings = lockRelay(settings);
     this.#connect = open;
     this.#save = save;
     this.#wake = new WakeProbe(probing);
+    this.#links = probing.links ?? unprovenLinks;
+    this.#now = now;
   }
 
   get settings(): ConnectionSettings {
@@ -175,6 +194,8 @@ export class ConnectionStore {
 
   stop(): void {
     this.#wake.stop();
+    this.#resume?.stop();
+    this.#resume = null;
     this.#closedFor = null;
     clearTimeout(this.#timer);
     clearTimeout(this.#stableTimer);
@@ -194,14 +215,14 @@ export class ConnectionStore {
     const relayFirst = this.#relayFirst;
     this.#relayFirst = false;
     this.#set({ phase: "connecting", attempt, stale: this.#stale });
-    const started = Date.now();
+    const started = this.#now();
     try {
       const opened: OpenConnection = await this.#budget.bounded(
         this.#connect(this.#settings, abort.signal, undefined, relayFirst ? { skipDirect: true } : {}),
         abort,
       );
       if (abort.signal.aborted) return opened.connection.close();
-      this.#opened(opened, abort, attempt, Date.now() - started);
+      this.#opened(opened, abort, attempt, this.#now() - started);
     } catch (error) {
       if (this.#abort !== abort) return;
       if (error instanceof AttemptTimeoutError) {
@@ -233,11 +254,26 @@ export class ConnectionStore {
   #opened(opened: OpenConnection, abort: AbortController, attempt: number, connectMs?: number): void {
     const { connection } = opened;
     this.#rememberName(connection);
+    this.#resume = wireResume(opened, {
+      resuming: (on) => {
+        const state = this.#state;
+        if (state.phase === "open" && state.connection === connection)
+          this.#set({ ...state, resuming: on, resumeFailure: undefined });
+      },
+      failed: (error) => {
+        const state = this.#state;
+        if (state.phase === "open" && state.connection === connection && state.resuming === true)
+          this.#set({ ...state, resumeFailure: error });
+      },
+      links: this.#links,
+    });
     connection.onClose((error) => {
       if (this.#abort !== abort) return;
+      this.#resume?.stop();
+      this.#resume = null;
       if (opened.path === "direct") this.#relayFirst = true;
       this.#stale = connection;
-      const closedFor = this.#closedFor?.connection === connection ? this.#closedFor.reason : undefined;
+      const closedFor = this.#closedFor;
       this.#closedFor = null;
       const reason = error ?? closedFor ?? new Error("the host closed the connection");
       this.#retry(reason, this.#stable ? 0 : attempt + 1);
@@ -395,6 +431,8 @@ export class ConnectionStore {
    */
   retryNow(): void {
     if (this.#state.phase === "connecting") return this.#restart();
+    // A session being carried on dials again now; one that is not is checked.
+    if (this.#state.phase === "open" && this.#resume?.resumer.active === true) return this.#resume.resumer.now();
     if (this.#state.phase === "open") return this.#probe(this.#state.connection);
     const attempt = this.#pending;
     if (attempt === null || this.#state.phase !== "failed") return;
@@ -432,7 +470,9 @@ export class ConnectionStore {
       },
       (reason) => {
         if (this.#state.phase !== "open" || this.#state.connection !== connection) return;
-        this.#closedFor = { connection, reason };
+        // A session that can be carried on takes the loss and dials again; any other link is closed and reconnected.
+        if (this.#resume?.lost(reason) === true) return;
+        this.#closedFor = reason;
         connection.close();
       },
     );

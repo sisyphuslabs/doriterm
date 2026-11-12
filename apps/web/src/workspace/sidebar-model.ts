@@ -1,5 +1,6 @@
 import type { Agent, AvatarColor, Space } from "@doriface/ui";
 import { AVATAR_COLORS } from "@doriface/ui";
+import type { AgentPlaces } from "./agent-places.ts";
 import type { MachineEntry } from "./machines.ts";
 import { groupAgents, type Session } from "./model.ts";
 
@@ -18,7 +19,11 @@ export interface AgentGroup {
   /** Needs you's rows use the "!" mark, since the header already says it. */
   readonly compactBlocked: boolean;
   readonly agents: readonly Agent[];
-  /** The header's count: the rows the group shows. Pinned agents are counted in Pinned, where they are listed. */
+  /**
+   * The header's count: the rows the group shows, by their place, so a row held in Working through its wait counts
+   * there (#1963). Pinned agents are counted in Pinned, where they are listed. The palette's status filter counts live
+   * states instead, as the rows it filters by are.
+   */
   readonly count: number;
 }
 
@@ -34,12 +39,24 @@ const RANK: Readonly<Record<string, number>> = { blocked: 0, working: 1, idle: 2
 
 /**
  * The agents list, pinned agents first in their own group, then by status (Needs you, Working, Idle, Done, Offline)
- * or by space (each space's agents most urgent first). Empty groups are left out.
+ * or by space (each space's agents most urgent first). Empty groups are left out. A row is listed by its `places` entry
+ * where it has one (`placeAgents`), so a turn between Working and Idle moves it only once it has held (#1949).
  */
-export function agentGroups(terminals: readonly Session[], nowMs: number, sort: AgentSort): AgentGroup[] {
+export function agentGroups(
+  terminals: readonly Session[],
+  nowMs: number,
+  sort: AgentSort,
+  places: AgentPlaces = new Map(),
+): AgentGroup[] {
   const pinnedIds = new Set(terminals.filter(isPinned).map((terminal) => terminal.address));
   const groups = groupAgents(terminals, nowMs);
-  const all = STATUS_GROUPS.flatMap(({ key }) => groups[key]);
+  const offline = new Set(groups.offline.map((agent) => agent.id));
+  const placed = (agent: Agent): string =>
+    offline.has(agent.id) ? "offline" : (places.get(agent.id)?.status ?? agent.status);
+  const order = new Map(terminals.map((terminal, index) => [terminal.address, index]));
+  const all = STATUS_GROUPS.flatMap(({ key }) => groups[key]).toSorted(
+    (a, b) => (RANK[placed(a)] ?? 4) - (RANK[placed(b)] ?? 4) || (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0),
+  );
   for (const agent of all) if (pinnedIds.has(agent.id)) Object.assign(agent, { pinned: true });
   const pinned = all.filter((agent) => agent.pinned === true);
   const rest = all.filter((agent) => agent.pinned !== true);
@@ -51,7 +68,7 @@ export function agentGroups(terminals: readonly Session[], nowMs: number, sort: 
     return [
       ...head,
       ...STATUS_GROUPS.flatMap((group) => {
-        const agents = rest.filter((agent) => groups[group.key].some((one) => one.id === agent.id));
+        const agents = rest.filter((agent) => placed(agent) === group.key);
         return agents.length === 0
           ? []
           : [{ ...group, compactBlocked: group.key === "blocked", agents, count: agents.length }];
@@ -72,7 +89,7 @@ export function agentGroups(terminals: readonly Session[], nowMs: number, sort: 
       title,
       compactBlocked: false,
       count: agents.length,
-      agents: agents.toSorted((a, b) => (RANK[a.status] ?? 4) - (RANK[b.status] ?? 4)),
+      agents: agents.toSorted((a, b) => (RANK[placed(a)] ?? 4) - (RANK[placed(b)] ?? 4)),
     })),
   ];
 }
@@ -101,21 +118,28 @@ export function assignColors(
 export interface MachineGroup {
   readonly machine: MachineEntry;
   readonly spaces: readonly Space[];
+  /** The header's count: the tabs of the spaces the group lists, so it is the sum of the counts on the rows under it. */
+  readonly tabs: number;
 }
+
+/** The tabs of these spaces together: what a machine's header counts for the spaces listed under it (#2122). */
+export const tabsIn = (spaces: readonly Space[]): number => spaces.reduce((sum, space) => sum + space.tabs, 0);
 
 /**
  * Spaces under their machine, in the machines' own order (this one first, then as the person ordered them), once more
- * than one machine is known; with one machine there is nothing to group and this returns undefined.
+ * than one machine is known; with one machine there is nothing to group and this returns undefined. A machine counts
+ * its spaces' tabs, never its terminals: a sub-agent, a terminal in no tab and a split tab's other panes are in no row
+ * under it, and an offline machine's rows still count the tabs last read from it.
  */
 export function machineGroups(
   machines: readonly MachineEntry[],
   spaces: readonly Space[],
 ): readonly MachineGroup[] | undefined {
   if (machines.length < 2) return undefined;
-  return machines.map((machine) => ({
-    machine,
-    spaces: spaces.filter((space) => (space.machine ?? undefined) === (machine.local ? undefined : machine.name)),
-  }));
+  return machines.map((machine) => {
+    const own = spaces.filter((space) => (space.machine ?? undefined) === (machine.local ? undefined : machine.name));
+    return { machine, spaces: own, tabs: tabsIn(own) };
+  });
 }
 
 /**

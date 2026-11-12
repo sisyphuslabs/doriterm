@@ -11,20 +11,30 @@ export const CATCHUP_FRAME_BYTES = CREDIT_WINDOW_BYTES;
 /** How often output is written while the app is hidden, when no animation frame runs (D5). */
 export const HIDDEN_DRAIN_MS = 50;
 /**
- * An attach replay's paint is held past each span this long only if the span wrote at least one credit window: a replay
- * still coming does, at a window a round trip, while output that trickles (a prompt, a spinner) never goes quiet (D5).
+ * An attach replay's paint is held past each span this long only if the span and the one before it wrote at least one
+ * credit window between them: a replay still coming does, at a window a round trip or, on a page slow to take each
+ * window in, about a window a span, cut anywhere by the span's ends (#2271). Output that trickles (a prompt, a spinner)
+ * never goes quiet, and writes less than {@link REPLAY_TRICKLE_BYTES} a span (D5).
  */
 export const REPLAY_CAP_MS = 1500;
+/** A {@link REPLAY_CAP_MS} span that wrote less than this is a trickle, not a replay: it lets the replay go (D5, #2271). */
+export const REPLAY_TRICKLE_BYTES = CREDIT_WINDOW_BYTES / 4;
 /** An attach replay's paint is held for at most this much written output (D5). */
 export const REPLAY_MAX_BYTES = 2 * 1024 * 1024;
 /** The shortest quiet after the last replay bytes that ends a replay (D5). */
 export const REPLAY_QUIET_FLOOR_MS = 100;
 /**
- * How long a synchronized update is written unpaced, as wterm holds its paint for one (@wterm/dom's
- * `SYNCHRONIZED_OUTPUT_TIMEOUT_MS`, which output-pacer.test.ts reads from the installed package): past it the terminal
- * draws anyway, so the output is paced again.
+ * The least a synchronized update may go with no bytes before its paint is let go and the rest of it is paced (the
+ * floor of its quiet window, max(this, 1.5 x SRTT + 50), #2306): wterm's own hold of one (@wterm/dom's
+ * `SYNCHRONIZED_OUTPUT_TIMEOUT_MS`, which output-pacer.test.ts reads from the installed package), so an update a
+ * program left open is drawn a second after its last bytes, as wterm would (#853).
  */
 export const SYNCHRONIZED_UNPACED_MS = 1000;
+/**
+ * The longest a synchronized update still arriving holds the paint (#2040): a program that writes inside an update it
+ * never closes is drawn after this. A whole transcript's redraw on a page starved 6x took up to 13.4 s to come in.
+ */
+export const SYNCHRONIZED_HOLD_CAP_MS = 20_000;
 
 /** Milliseconds from some fixed point, for how long an update has been open. */
 export type Clock = () => number;
@@ -64,11 +74,13 @@ interface Replay {
   written: number;
   /** What had been written when the current {@link REPLAY_CAP_MS} span began. */
   spanFrom: number;
+  /** What the span before the current one wrote, or null in the first span. */
+  lastSpan: number | null;
   quiet: () => void;
   cap: () => void;
 }
 
-/** Coming back to the app or reattaching: how much its catch-up frames may write, and have written. */
+/** Coming back to the app or attaching: how much its catch-up frames may write, and have written. */
 interface CatchUp {
   readonly budget: number;
   written: number;
@@ -81,20 +93,28 @@ type Budget = "arrived" | number;
  * Paces a terminal's output to its paints (#560). Output that arrives is queued and written once a frame, as one batch
  * of at most FRAME_BYTES, and its credit goes back only then: the stream's window then throttles the program to what the
  * page draws, so a flood never fills the main thread and clicks and keys keep their turn. Out of view (a hidden tab),
- * nothing is written: output waits, uncredited, and is written once the terminal shows. Bytes keep their order, and a
- * batch may end inside a character or a sequence: the VT parses a stream.
+ * nothing is written: output waits, uncredited, so at most the stream's credit window of it, and is written all at once
+ * when the terminal shows, before its first paint: a tab switched to shows its screen as it is now, never a fast-forward
+ * of what it missed climbing up from older output (#1588). Bytes keep their order, and a batch may end inside a
+ * character or a sequence: the VT parses a stream.
  *
  * A synchronized update (DECSET 2026) is the exception: the terminal draws nothing of it until it ends, so pacing it
  * would only spread one frame over many paints, and a program redrawing its whole transcript on a resize (pi-tui, Claude
  * Code) would outlast the terminal's hold and be drawn top to bottom (#757). Its bytes are written the moment they
- * arrive, uncapped, until it ends or has been open {@link SYNCHRONIZED_UNPACED_MS}.
+ * arrive, uncapped, and the terminal's paint is held (`holdSynchronized`) while they keep coming, past wterm's own
+ * one-second hold, which a page too slow to take a whole redraw in would otherwise outlast (#2040). The hold ends when
+ * the update closes, so it is drawn whole; when no bytes of it have come for max({@link SYNCHRONIZED_UNPACED_MS},
+ * 1.5 x SRTT + 50) ms, as an update a program left open (#853, #2306); or at {@link SYNCHRONIZED_HOLD_CAP_MS}. What
+ * is left of an update past its hold is paced.
  *
  * Coming back to the app is drawn in one paint, not replayed (D5): while the app is hidden no frame runs, so the queue
  * is written whole every {@link HIDDEN_DRAIN_MS} and credited, and what is left when it shows is written at once.
- * Catching up, after the app comes back or a reattach replay starts, a backlog deeper than {@link CATCHUP_THRESHOLD} at a
- * frame is written in that frame, up to {@link CATCHUP_FRAME_BYTES}, until the queue is under it or one credit window
- * (or the backlog at its start, if larger) is written; a flood otherwise stays paced at {@link FRAME_BYTES}. An attach
- * replay is written as it arrives while the view holds its paint, until the replay goes quiet.
+ * Catching up, after the app comes back or an attach replay starts, a backlog deeper than
+ * {@link CATCHUP_THRESHOLD} at a frame is written in that frame, up to {@link CATCHUP_FRAME_BYTES}, until the queue
+ * is under it or one credit window (or the backlog at its start, if larger) is written; a flood otherwise stays paced
+ * at {@link FRAME_BYTES}. An attach replay is written as it arrives while the view holds its paint, until the replay
+ * goes quiet; a synchronized update met inside it stands the replay down, since the update holds the paint itself,
+ * even one that opens and closes within the same chunk (#812).
  */
 export class OutputPacer {
   readonly #write: (bytes: Uint8Array) => void;
@@ -109,6 +129,12 @@ export class OutputPacer {
   #update = new SynchronizedUpdate();
   /** When the update open in the written output opened, by {@link Clock}; null when none is open. */
   #openedAt: number | null = null;
+  /** Holds the terminal's paint (true) and lets it go (false) for a synchronized update. */
+  #holdSynchronized: (held: boolean) => void = () => undefined;
+  /** The open update whose paint is held while its bytes still arrive; null when none is. */
+  #held: { quiet: () => void; cap: () => void } | null = null;
+  /** The link's smoothed round trip, from the last attach's replay options; an attach without one leaves it unknown. */
+  #srtt: () => number | undefined = () => undefined;
   #replay: Replay | null = null;
   #catchUp: CatchUp | null = null;
   readonly #written = new Set<() => void>();
@@ -129,12 +155,24 @@ export class OutputPacer {
     if (bytes.byteLength === 0) return;
     this.#queue.push({ bytes, credit });
     if (this.#replay !== null) this.#quietFrom(this.#replay);
+    if (this.#held !== null) this.#heldQuietFrom(this.#held);
     if (this.#visible && this.#unpaced()) {
       this.#cancel?.();
       this.#cancel = null;
       this.#flush("arrived");
     }
     this.#schedule();
+  }
+
+  /**
+   * How a synchronized update holds the terminal's paint. wterm holds one for a second and then draws it, partly
+   * written, on a page too slow to take it in (#2040); this holds it while its bytes keep coming, each within
+   * max({@link SYNCHRONIZED_UNPACED_MS}, 1.5 x SRTT + 50) ms of the last: over a link whose round trip nears a second,
+   * a redraw spanning several credit windows waits a round trip for each, and is not let go between two of them
+   * (#2306). The floor keeps an update left open on a fast link drawn a second after its last bytes (#853).
+   */
+  holdSynchronized(hold: (held: boolean) => void): void {
+    this.#holdSynchronized = hold;
   }
 
   /** Whether output is still waiting to be written: queued bytes, a frame or drain booked, or a replay held. */
@@ -150,12 +188,13 @@ export class OutputPacer {
     };
   }
 
-  /** Out of view: nothing is written. Back in view: what waited is written from the next frame. */
+  /** Out of view: nothing is written. Back in view: what waited is written now, in one batch; later output is paced. */
   setVisible(visible: boolean): void {
     if (visible === this.#visible) return;
     this.#visible = visible;
     this.#cancel?.();
     this.#cancel = null;
+    if (visible && !this.#hidden) this.#flush(Infinity);
     this.#schedule();
   }
 
@@ -177,20 +216,34 @@ export class OutputPacer {
   /**
    * An attach replay begins: its output is written as it arrives, uncapped, while `hold` holds the terminal's paint, so
    * the replay is drawn once, whole, and the screen before it stays until then. The hold ends at the first of: no
-   * output for max({@link REPLAY_QUIET_FLOOR_MS}, 1.5 x SRTT + 50) ms, a {@link REPLAY_CAP_MS} span that wrote less than
-   * {@link CREDIT_WINDOW_BYTES}, or {@link REPLAY_MAX_BYTES} written.
+   * output arriving or written for max({@link REPLAY_QUIET_FLOOR_MS}, 1.5 x SRTT + 50) ms, a {@link REPLAY_CAP_MS} span
+   * that wrote a trickle or, with the span before it, less than {@link CREDIT_WINDOW_BYTES}, or
+   * {@link REPLAY_MAX_BYTES} written.
    *
    * hc marks no end of the replay: the core sends its first paint as one write, cut into frames under the stream's
    * credit window, and waits for credit after each window; credit goes back as each batch is written, and a replay is
-   * written as it arrives. So a replay still coming arrives at least a window a round trip, however slow the link: its
-   * gaps are at most a round trip, under the quiet window, whose SRTT is sampled on this connection (the attach answer
-   * itself is one sample), and every span of {@link REPLAY_CAP_MS} (a round trip or more) writes a window or more. A fixed
-   * deadline could not hold it: over a 300 ms relay, or on a page slow to write it, a replay of a few hundred KiB to 2
-   * MiB takes longer than any one span.
+   * written as it arrives. So a replay still coming arrives at least a window a round trip, however slow the link: from
+   * the end of the write that handed a window's credit back, the next window is at most a round trip away, under the
+   * quiet window, which restarts at each arrival and again after each write (on a page slow to write, the gap between
+   * arrivals is a round trip plus the write, #2011), and whose SRTT is sampled on this connection (the attach answer
+   * itself is one sample), and every two spans of {@link REPLAY_CAP_MS} (a round trip or more) write a window or more:
+   * on a page slow to take each window in, a window can take about a span, and a span's ends can cut it anywhere, so
+   * one span alone can catch part of one (#2271). A quiet window or span whose timer runs more than its own length late
+   * is started again rather than read: the page was not running, so it could not see the next window, already queued
+   * behind the timer. A fixed deadline could not hold it: over a 300 ms relay, or on a page slow to write it, a replay
+   * of a few hundred KiB to 2 MiB takes longer than any one span.
    */
   replay(options: ReplayOptions): void {
     if (this.#replay !== null) this.#endReplay();
-    const replay: Replay = { options, written: 0, spanFrom: 0, quiet: () => undefined, cap: () => undefined };
+    this.#srtt = options.srtt;
+    const replay: Replay = {
+      options,
+      written: 0,
+      spanFrom: 0,
+      lastSpan: null,
+      quiet: () => undefined,
+      cap: () => undefined,
+    };
     this.#spanFrom(replay);
     this.#replay = replay;
     this.#startCatchUp();
@@ -211,7 +264,38 @@ export class OutputPacer {
     this.#update = new SynchronizedUpdate();
     this.#openedAt = null;
     this.#catchUp = null;
+    this.#endHeld();
     this.#endReplay();
+  }
+
+  /** An update opened in the written output: its paint is held until it closes, goes quiet, or hits the cap. */
+  #startHeld(): void {
+    if (this.#held !== null) return;
+    const held: { quiet: () => void; cap: () => void } = { quiet: () => undefined, cap: () => undefined };
+    this.#held = held;
+    this.#holdSynchronized(true);
+    this.#heldQuietFrom(held);
+    held.cap = this.#timer(() => this.#endHeld(), SYNCHRONIZED_HOLD_CAP_MS);
+  }
+
+  #heldQuietFrom(held: { quiet: () => void }): void {
+    held.quiet();
+    held.quiet = this.#onTime(
+      Math.max(SYNCHRONIZED_UNPACED_MS, 1.5 * (this.#srtt() ?? 0) + 50),
+      () => this.#endHeld(),
+      () => this.#heldQuietFrom(held),
+    );
+  }
+
+  /** Lets the update's paint go: it closed (drawn whole), went quiet, or hit the cap (what is left of it is paced). */
+  #endHeld(): void {
+    const held = this.#held;
+    if (held === null) return;
+    this.#held = null;
+    held.quiet();
+    held.cap();
+    this.#holdSynchronized(false);
+    this.#schedule();
   }
 
   #startCatchUp(): void {
@@ -230,16 +314,40 @@ export class OutputPacer {
   #quietFrom(replay: Replay): void {
     replay.quiet();
     const quiet = Math.max(REPLAY_QUIET_FLOOR_MS, 1.5 * (replay.options.srtt() ?? 0) + 50);
-    replay.quiet = this.#timer(() => this.#endReplay(), quiet);
+    replay.quiet = this.#onTime(
+      quiet,
+      () => this.#endReplay(),
+      () => this.#quietFrom(replay),
+    );
   }
 
-  /** Starts a {@link REPLAY_CAP_MS} span; at its end the replay is let go unless the span wrote a credit window. */
+  /**
+   * Runs `then` `ms` from now, or `again` when the timer runs more than `ms` late: a page that ran nothing for that long
+   * (a starved tab, a phone waking) saw no output in it, which says nothing about whether the replay stopped coming.
+   */
+  #onTime(ms: number, then: () => void, again: () => void): () => void {
+    const due = this.#clock() + ms;
+    return this.#timer(() => (this.#clock() - due > ms ? again() : then()), ms);
+  }
+
+  /**
+   * Starts a {@link REPLAY_CAP_MS} span; at its end the replay is let go if the span wrote a trickle, or if it and the span
+   * before it wrote less than a credit window between them. The first span, with none before it, needs half a window.
+   */
   #spanFrom(replay: Replay): void {
     replay.spanFrom = replay.written;
-    replay.cap = this.#timer(() => {
-      if (replay.written - replay.spanFrom < CREDIT_WINDOW_BYTES) this.#endReplay();
-      else this.#spanFrom(replay);
-    }, REPLAY_CAP_MS);
+    replay.cap = this.#onTime(
+      REPLAY_CAP_MS,
+      () => {
+        const span = replay.written - replay.spanFrom;
+        if (span < REPLAY_TRICKLE_BYTES || span + (replay.lastSpan ?? span) < CREDIT_WINDOW_BYTES) this.#endReplay();
+        else {
+          replay.lastSpan = span;
+          this.#spanFrom(replay);
+        }
+      },
+      () => this.#spanFrom(replay),
+    );
   }
 
   #endReplay(): void {
@@ -257,10 +365,9 @@ export class OutputPacer {
     this.#schedule();
   }
 
-  /** Inside a synchronized update not yet open past its time, or an attach replay: written as it arrives. */
+  /** Inside a synchronized update whose paint is held, or an attach replay: written as it arrives. */
   #unpaced(): boolean {
-    if (this.#replay !== null) return true;
-    return this.#openedAt !== null && this.#clock() - this.#openedAt < SYNCHRONIZED_UNPACED_MS;
+    return this.#replay !== null || this.#held !== null;
   }
 
   #schedule(): void {
@@ -297,6 +404,8 @@ export class OutputPacer {
     const credits: [(bytes: number) => void, number][] = [];
     const limit = budget === "arrived" ? 0 : budget;
     let size = 0;
+    // Whether this batch opens, continues or ends inside a synchronized update: the update holds the paint for it.
+    let synchronized = this.#update.open;
     while (this.#queue.length > 0) {
       const unpaced = this.#unpaced();
       if (!unpaced && size >= limit) break;
@@ -305,8 +414,19 @@ export class OutputPacer {
       const room = unpaced ? head.bytes.byteLength : Math.min(head.bytes.byteLength, limit - size);
       // Read up to where an open update ends: what follows it is paced again.
       const take = this.#update.advance(head.bytes.subarray(0, room));
-      if (!this.#update.open) this.#openedAt = null;
-      else if (this.#openedAt === null) this.#openedAt = this.#clock();
+      // An update that opened and closed within this chunk still bracketed what it held.
+      if (this.#update.opened) synchronized = true;
+      if (!this.#update.open) {
+        this.#openedAt = null;
+        // Closed (in this chunk or an earlier one): it is drawn whole, and what follows it is paced.
+        this.#endHeld();
+      } else {
+        synchronized = true;
+        if (this.#openedAt === null) {
+          this.#openedAt = this.#clock();
+          this.#startHeld();
+        }
+      }
       parts.push(take === head.bytes.byteLength ? head.bytes : head.bytes.subarray(0, take));
       credits.push([head.credit, take]);
       size += take;
@@ -318,10 +438,18 @@ export class OutputPacer {
     this.#write(batch);
     for (const [credit, bytes] of credits) credit(bytes);
     for (const listener of this.#written) listener();
+    // The core sends the next window of an update once this one's credit is back, after the write (#2011).
+    if (this.#held !== null) this.#heldQuietFrom(this.#held);
     const replay = this.#replay;
     if (replay === null) return size;
     replay.written += size;
-    if (replay.written >= REPLAY_MAX_BYTES) this.#endReplay();
+    // A synchronized update holds the paint for what it brackets itself, so a replay that met one stands down instead
+    // of holding a second time: the update's bracket draws the replay (#812). Its hold began in the loop above, before
+    // the replay's ends, so the paint is never let go between them (#2040).
+    if (synchronized || replay.written >= REPLAY_MAX_BYTES) this.#endReplay();
+    // The core sends the next window only once this one's credit is back, which is now, after the write: the quiet
+    // window starts here too, or a page slow to write a window would spend the window's slack on the write (#2011).
+    else this.#quietFrom(replay);
     return size;
   }
 }

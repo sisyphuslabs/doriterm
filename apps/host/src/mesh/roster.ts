@@ -1,10 +1,11 @@
 import { base64urlEncode, CloseCode, type HostIdentity } from "@doriface/crypto";
-import { type CardBody, hashOf, type Signed, verifyCard } from "@doriface/mesh";
+import { type CardBody, hashOf, type Signed, type View, verifyCard } from "@doriface/mesh";
 import { byDeadline, JoinRefused, type MeshLines, recordLines } from "@doriface/mesh/join";
 import { type PlanPolicy, requireWithin } from "@doriface/policy";
 import type { DeviceStore } from "../state/devices.ts";
 import type { MeshStore } from "../state/mesh.ts";
 import { clientDeviceCount, isRejoin } from "./admission.ts";
+import { announceChange } from "./announce.ts";
 import { admissionRefusal } from "./format-readiness.ts";
 import { checkFloor, type CounterFloor } from "./merge.ts";
 import { RosterAdmits, type RosterAdmit, sweepRoster } from "./roster-admits.ts";
@@ -16,7 +17,7 @@ export interface RosterDeps {
   readonly mesh: MeshStore;
   readonly devices: DeviceStore;
   readonly policy: PlanPolicy;
-  readonly formatReady: () => boolean;
+  readonly formatReady: (records?: readonly Signed[], view?: View) => boolean;
   readonly floor: () => CounterFloor | undefined;
   readonly log: (line: string) => void;
   readonly changed?: (() => void) | undefined;
@@ -31,7 +32,7 @@ function admitRoster(deps: RosterDeps, card: CardBody, signed: Signed): void {
     (tx) => {
       const index = deps.mesh.authorizeIndex();
       if (index?.client(card.noisePub)?.signPub === card.signPub) return tx.records;
-      const refusal = admissionRefusal("client", deps.formatReady());
+      const refusal = admissionRefusal("client", deps.formatReady(tx.records, tx.view()));
       if (refusal !== undefined) throw new JoinRefused(refusal);
       if (isRejoin(index, card, tx.records)) return tx.records;
       const paired = deps.devices.list();
@@ -63,7 +64,7 @@ function admitRoster(deps: RosterDeps, card: CardBody, signed: Signed): void {
       if (marked) marker.writeHeld(before);
     },
   );
-  deps.changed?.();
+  announceChange(deps);
 }
 
 /** One roster session, bound to its authenticated device key and fresh offer nonce. */
@@ -136,9 +137,10 @@ export async function serveRoster(lines: MeshLines, remoteStatic: Uint8Array, de
     lines.close(1000, "the roster is current");
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
+    deps.log(`mesh: close code=4401 source=roster: ${reason}`);
     lines.refuse(CloseCode.UnknownDevice, reason);
     throw error;
   } finally {
-    if (changed) deps.changed?.();
+    if (changed) announceChange(deps);
   }
 }

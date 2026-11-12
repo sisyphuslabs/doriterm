@@ -3,14 +3,17 @@ import {
   DEFAULT_PUSH_PREFS,
   type HcEvent,
   NOTICE_EVENTS,
+  type NoticeContext,
+  noticeContextOf,
   noticeMachineId,
   parsePushClientLine,
   type PushPrefs,
+  readScreenPrompt,
 } from "@doriface/protocol";
 import { type ConnectionState, connectionStore } from "../connection/store.ts";
 import { type NoticeBridge, noticeBridge, permissionOf } from "./notice-bridge.ts";
 import { NoticeTrigger, type Trigger, wanted } from "./notice-trigger.ts";
-import type { PushView } from "./push-settings.ts";
+import type { NoticeStep, PushView } from "./push-settings.ts";
 import { guardedLocalStorage } from "../storage/guarded.ts";
 
 export const DESKTOP_NOTICES_KEY = "doriface.desktop-notices";
@@ -45,6 +48,8 @@ export interface DesktopNoticesOptions {
   readonly bridge: NoticeBridge;
   readonly storage: NoticeStorage;
   readonly connection: Pick<typeof connectionStore, "state" | "subscribe">;
+  /** The connected host as people name it, for a notice about one of its own terminals; empty when it has none. */
+  readonly hostName?: () => string;
   readonly now?: () => number;
   readonly schedule?: Schedule;
 }
@@ -64,6 +69,30 @@ const timers: Schedule = (step, ms) => {
 
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
+/** How long a notification waits to be told what its terminal is before it shows without it. */
+export const DESCRIBE_TIMEOUT_MS = 2_000;
+
+/**
+ * What a notification can say about its terminal (#1908), read off this app's own connection: the terminal record,
+ * and for a question or a permission the dialog on its screen now.
+ */
+export async function describeHit(
+  connection: Pick<HcConnection, "call">,
+  hit: Trigger,
+  hostName: string,
+): Promise<NoticeContext> {
+  const options = { timeoutMs: DESCRIBE_TIMEOUT_MS };
+  const asks = hit.kind === "input" || hit.kind === "permission";
+  const [terminal, screen] = await Promise.all([
+    connection.call("terminal.get", { terminal: hit.terminal }, options),
+    asks
+      ? connection.call("terminal.read", { terminal: hit.terminal, lines: 0 }, options).then((read) => read.text)
+      : undefined,
+  ]);
+  const prompt = screen === undefined ? undefined : readScreenPrompt(terminal.status?.app ?? "", screen);
+  return noticeContextOf(terminal, hit.machine ?? hostName, prompt);
+}
+
 /**
  * Settings > Notifications in the desktop app: native notifications from this app's own event feed, on the same
  * triggers, kinds and machine mutes as web push. They come while the app runs, its window in the background or hidden.
@@ -80,6 +109,8 @@ export class DesktopNotices {
   #attempts = 0;
   #pendingRetry: (() => void) | null = null;
   #refusalReportedAt: number | null = null;
+  /** Notices show in the order the feed told them, each after the one before, whatever their lookups take. */
+  #shows: Promise<void> = Promise.resolve();
 
   constructor(options: DesktopNoticesOptions) {
     this.#options = options;
@@ -87,7 +118,7 @@ export class DesktopNotices {
     this.#view = {
       support: "supported",
       permission: null,
-      busy: false,
+      busy: null,
       error: null,
       tested: false,
       retry: null,
@@ -109,7 +140,7 @@ export class DesktopNotices {
 
   /** Reads what this system can show and whether it allows this app to; never asks, the OS does at the first notice. */
   async load(): Promise<void> {
-    await this.#run("read the notification settings", async () => {
+    await this.#run("check-again", "read the notification settings", async () => {
       const [supported, authorization] = await Promise.all([
         this.#options.bridge.supported(),
         this.#options.bridge.permission(),
@@ -131,9 +162,9 @@ export class DesktopNotices {
     this.#count();
   }
 
-  /** Shows a test notice only past the gates an agent's notice on this machine passes, so a pass means one would show. */
+  /** Shows a test notice only past the gates an agent's notice passes, so a pass means one would show. */
   async test(): Promise<void> {
-    await this.#run("send a test notification", async () => {
+    await this.#run("test", "send a test notification", async () => {
       await this.#opening;
       const refusal = this.#testRefusal();
       if (refusal !== undefined) throw new Error(refusal);
@@ -153,8 +184,20 @@ export class DesktopNotices {
     }
     if (!NOTICE_EVENTS.some((kind) => prefs.events[kind]))
       return "Every event is turned off, so no agent would notify.";
-    if (prefs.muted.includes(noticeMachineId(undefined))) return "Notifications from this machine are turned off.";
-    return undefined;
+    // `local` is the connected host's core, not the computer this app runs on (#1121): it is heard beside every added
+    // machine the feed reports, and only every one of them muted leaves no agent notice that would show (#1120).
+    const machines = new Set<string | undefined>([undefined, ...this.#trigger.machines()]);
+    if (![...machines].every((machine) => prefs.muted.includes(noticeMachineId(machine)))) return undefined;
+    // Only machines running a terminal right now are counted, so the refusal says so: one added later still notifies (#1893).
+    return machines.size === 1
+      ? `Notifications from ${this.#hostName()} are turned off, and no other machine is running a terminal right now.`
+      : "Notifications from every machine running a terminal right now are turned off.";
+  }
+
+  /** The connected host's core as its hello names it: the machine `local` stands for. */
+  #hostName(): string {
+    const state = this.#options.connection.state;
+    return state.phase === "open" ? state.connection.hello.core.name : "the host";
   }
 
   /** The pane this window shows focused and visible, or null: no notification comes about it. */
@@ -170,12 +213,22 @@ export class DesktopNotices {
     const hit = this.#trigger.event(event, this.#now());
     this.#count();
     if (hit === undefined || !this.#view.on || !wanted(hit, this.#view.prefs, this.#shown)) return;
-    void this.#show(hit);
+    const connection = this.#connection;
+    const described =
+      connection === null
+        ? Promise.resolve(undefined)
+        : describeHit(connection, hit, this.#options.hostName?.() ?? "").catch(() => undefined);
+    this.#shows = this.#shows.then(async () => this.#show(hit, await described));
   }
 
-  async #show(hit: Trigger): Promise<void> {
+  /** A notice whose terminal could not be read in time shows all the same, with the fixed text. */
+  async #show(hit: Trigger, context: NoticeContext | undefined): Promise<void> {
     try {
-      const answer = await this.#options.bridge.show({ kind: hit.kind, terminal: hit.terminal });
+      const answer = await this.#options.bridge.show({
+        kind: hit.kind,
+        terminal: hit.terminal,
+        ...(context === undefined ? {} : { context }),
+      });
       if (!answer.accepted) this.#refused(answer.reason);
     } catch (error) {
       this.#refused(message(error));
@@ -264,13 +317,13 @@ export class DesktopNotices {
     this.#follow();
   }
 
-  async #run(what: string, step: () => Promise<void>): Promise<void> {
-    this.#set({ busy: true, error: null });
+  async #run(busy: NoticeStep, what: string, step: () => Promise<void>): Promise<void> {
+    this.#set({ busy, error: null });
     try {
       await step();
-      this.#set({ busy: false });
+      this.#set({ busy: null });
     } catch (error) {
-      this.#set({ busy: false, error: `Could not ${what}. ${message(error)}` });
+      this.#set({ busy: null, error: `Could not ${what}. ${message(error)}` });
     }
   }
 
@@ -284,4 +337,11 @@ const bridge = noticeBridge();
 
 /** The desktop app's notifications; null in a browser, where web push does this. */
 export const desktopNotices: DesktopNotices | null =
-  bridge === null ? null : new DesktopNotices({ bridge, storage: guardedLocalStorage(), connection: connectionStore });
+  bridge === null
+    ? null
+    : new DesktopNotices({
+        bridge,
+        storage: guardedLocalStorage(),
+        connection: connectionStore,
+        hostName: () => connectionStore.settings.hostName,
+      });

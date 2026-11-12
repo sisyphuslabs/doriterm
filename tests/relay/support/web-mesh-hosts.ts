@@ -10,17 +10,24 @@
 // `MEMBERS {"meshId": ..., "a": [...], "b": [...]}`, the members each machine's `mesh status --json` lists. `STOP`
 // stops b's host process and answers `STOPPED` once a's core lists b as not connected; `START` starts it again on the
 // same state (its shell lives on in b's core), dials it from a at once instead of at hc's next redial, and answers
-// `STARTED` once a lists it connected. It stops every process it started on SIGTERM or SIGINT.
+// `STARTED` once a lists it connected. `JOIN`, under MESH_JOIN=skip, joins b to a's mesh then and answers `JOINED <machine>`
+// once a lists it connected (relay-two-devices.e2e.ts adds a machine while two devices are open). It stops every process it started on SIGTERM or SIGINT.
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { FakeRelay } from "../../../apps/host/src/testing/fake-relay.ts";
 import { approveOnInviter, browserInviteUrl } from "./compared-browser.ts";
 import { startMesh } from "./mesh/mesh.ts";
 import { type Member, meshIdOf, statusOf } from "./mesh/status.ts";
 
 const OFFER = /^https:\/\/web\.example\/pair#\S+$/m;
 const home = mkdtempSync(join(tmpdir(), "on-b-"));
-const mesh = await startMesh({ names: ["a", "b"], coreNames: { a: "studio", b: "build-box" } });
+const fake = process.env["DORIFACE_RELAY_DIR"] === undefined ? new FakeRelay() : undefined;
+const mesh = await startMesh({
+  names: ["a", "b"],
+  coreNames: { a: "studio", b: "build-box" },
+  ...(fake === undefined ? {} : { relayUrl: fake.url }),
+});
 let stopping = false;
 const stop = (): void => {
   if (stopping) return;
@@ -28,6 +35,7 @@ const stop = (): void => {
   void (async () => {
     try {
       const receipt = await mesh.dispose();
+      await fake?.stop();
       rmSync(home, { recursive: true, force: true });
       const left = [...receipt.alive.map((own) => `${own.kind} ${own.pid}`), ...receipt.listening.map(String)];
       if (left.length > 0) process.stderr.write(`mesh-hosts: left running: ${left.join(", ")}\n`);
@@ -63,7 +71,7 @@ const shell = Bun.spawn([b.session.hc, "run", "--bg", "--name", "on-b", "--cwd",
 });
 if ((await shell.exited) !== 0) throw new Error(`hc run on b failed: ${await new Response(shell.stderr).text()}`);
 
-const relayUrl = a.tap?.url ?? "";
+const relayUrl = a.tap?.url ?? fake?.url ?? "";
 process.stdout.write(`READY ${JSON.stringify({ relayUrl, machine, bHostId: b.hostId })}\n`);
 
 /** A fresh offer's `#` fragment, from the line the CLI printed for it. */
@@ -117,6 +125,13 @@ const startB = async (): Promise<string> => {
   return "STARTED";
 };
 
+/** Under MESH_JOIN=skip: b joins a's mesh now, while a spec's pages are open, and is answered once a lists it connected. */
+const joinB = async (): Promise<string> => {
+  await mesh.join("a", "b");
+  await mesh.until("b connected as a machine on a's core", async () => (await machineOfB()) !== undefined, 120_000);
+  return `JOINED ${(await machineOfB()) ?? "b"}`;
+};
+
 /** Each ask's one answer line, given what follows the ask's first word. */
 const answers: Readonly<Record<string, (arg: string) => Promise<string>>> = {
   PAIR: async () => `LINK ${await pairingFragment()}`,
@@ -125,6 +140,11 @@ const answers: Readonly<Record<string, (arg: string) => Promise<string>>> = {
   STATUS: async () => `MEMBERS ${JSON.stringify(await membersOfBoth())}`,
   STOP: stopB,
   START: startB,
+  JOIN: joinB,
+  STOP_INVITER: async () => {
+    await a.stop();
+    return "STOPPED inviter";
+  },
 };
 
 async function answer(ask: string): Promise<void> {

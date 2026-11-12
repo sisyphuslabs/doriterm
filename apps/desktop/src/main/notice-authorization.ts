@@ -20,12 +20,19 @@ function authorizationOf(status: unknown): NoticeAuthorization {
 
 /**
  * Read the app's macOS authorization without asking for permission. The native addon answers asynchronously on every
- * read (including Check again); absent that addon, retain the reflected shell API and unknown fallback.
+ * read (including Check again); absent that addon, retain the reflected shell API and unknown fallback. macOS can read
+ * denied while the app's own request is on screen unanswered (#1958): that is no refusal yet, so it reads undecided.
  */
 export async function readNoticeAuthorization(
   preferences: object,
   addon?: NoticeAuthorizationAddon,
+  requestPending: () => boolean = () => false,
 ): Promise<NoticeAuthorization> {
+  const authorization = await readStanding(preferences, addon);
+  return authorization === "denied" && requestPending() ? "not-determined" : authorization;
+}
+
+async function readStanding(preferences: object, addon?: NoticeAuthorizationAddon): Promise<NoticeAuthorization> {
   if (addon !== undefined) {
     try {
       return authorizationOf(await addon.noticeAuthorization());

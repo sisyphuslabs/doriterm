@@ -20,6 +20,7 @@ const NO_TERMINALS: readonly Terminal[] = [];
 
 const STATE_WORDS: Readonly<Record<string, string>> = {
   connected: "Connected",
+  reconnecting: "Reconnecting",
   connecting: "Connecting",
   needs_login: "Needs a login",
   unreachable: "Offline",
@@ -27,7 +28,7 @@ const STATE_WORDS: Readonly<Record<string, string>> = {
 
 function title(icon: ReactNode, name: string) {
   return (
-    <span className="flex min-w-0 items-center gap-2 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground">
+    <span className="flex min-w-0 items-center gap-2 [&_svg:not([data-slot=spinner])]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground">
       {icon}
       <span title={name} className="truncate">
         {name}
@@ -45,7 +46,7 @@ function lastSeen(view: MachineView, now: number): string | undefined {
 /** States that need the person: they get the attention hue and Try again; connecting is a routine redial. */
 const PROBLEMS = new Set(["unreachable", "needs_login"]);
 
-function AddedMachine(props: { view: MachineView; now: number; onRetry: () => Promise<void> }) {
+export function AddedMachine(props: { view: MachineView; now: number; onRetry: () => Promise<void> }) {
   const { view, now, onRetry } = props;
   const cause = machineCause(view);
   const seen = lastSeen(view, now);
@@ -64,7 +65,7 @@ function AddedMachine(props: { view: MachineView; now: number; onRetry: () => Pr
             {cause === undefined ? null : <span className="block">{cause.detail}</span>}
           </>
         }
-        control={problem ? <RetryButton size="sm" onRetry={onRetry} /> : null}
+        control={problem && cause?.retryless !== true ? <RetryButton size="sm" onRetry={onRetry} /> : null}
       />
     </li>
   );

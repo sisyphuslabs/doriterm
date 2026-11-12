@@ -45,6 +45,8 @@ export interface JoinOptions {
   readonly createSocket?: CreateSocket | undefined;
   /** This host's relay passes (contract v1.6): the pairing dial to the inviter carries a proof. */
   readonly proofs?: RelayProofs | undefined;
+  /** The join withdrew this host's own mesh offer: the running host expires its pending joins and frees its slot. */
+  readonly offerWithdrawn?: (() => void) | undefined;
   readonly log: (line: string) => void;
 }
 
@@ -54,6 +56,8 @@ export interface Joined {
   /** The session the join ran on; it stays open as a sync session. */
   readonly secure: SecureLink;
   readonly lines: MeshLines;
+  /** The join withdrew this host's own open mesh offer (#1301), which its caller is told. */
+  readonly withdrewOffer: boolean;
 }
 
 interface Inviter {
@@ -63,6 +67,10 @@ interface Inviter {
   readonly pairing: PairingSecret;
   readonly pairSlot?: string;
 }
+
+/** Added to a join's failure once the join withdrew this host's own mesh offer, so its caller knows the offer is gone. */
+export const OFFER_WITHDRAWN =
+  "This host's own mesh invite was withdrawn for this join: run mesh pair to open a new one";
 
 const joinTargetOf = (target: ConnectTarget): JoinTarget =>
   target.kind === "link" ? { kind: "link", mesh: target.link.mesh === true } : { kind: target.kind };
@@ -74,10 +82,6 @@ const joinTargetOf = (target: ConnectTarget): JoinTarget =>
 async function refuseEarly(options: JoinOptions): Promise<MeshInvite> {
   const mesh = new MeshStore(options.stateDir, { log: options.log }).read();
   if (mesh !== undefined) throw new JoinRefused(`this host is in mesh ${mesh.meshId} already: run mesh leave first`);
-  const offer = new PairingStore(options.stateDir).read();
-  if (offer?.mesh === true && Date.now() < offer.expiresAt) {
-    throw new JoinRefused("this host has an open mesh offer: a host cannot be invited and inviting at once");
-  }
   if (!checkName(options.name)) throw new JoinRefused(`"${options.name}" is not a valid mesh name`);
   const { target } = options;
   const invite = meshInviteOf(joinTargetOf(target));
@@ -113,10 +117,34 @@ async function inviterOf(options: JoinOptions): Promise<Inviter> {
 /**
  * Joins a mesh by pairing with one member (section 4.2): refusals first, then the pairing handshake as initiator with
  * this host's own Noise key and `stream: "mesh"`, then the join exchange. Stores the welcome only once it checked out.
+ * A host cannot invite into its own mesh while it joins another, so a join that passed its refusals withdraws this
+ * host's own open mesh offer before it dials (#1301).
  */
 export async function joinMesh(options: JoinOptions): Promise<Joined> {
   const invite = await refuseEarly(options);
   const inviter = await inviterOf(options);
+  if (inviter.hostId === options.identity.hostId) {
+    throw new JoinRefused("this invite is this host's own: run mesh join on the machine that joins");
+  }
+  const withdrewOffer = new PairingStore(options.stateDir).withdrawMesh();
+  if (!withdrewOffer) return { ...(await dialAndJoin(options, invite, inviter)), withdrewOffer };
+  options.log("mesh: withdrew this host's own mesh offer to join another mesh");
+  options.offerWithdrawn?.();
+  try {
+    return { ...(await dialAndJoin(options, invite, inviter)), withdrewOffer };
+  } catch (error) {
+    // The offer stays withdrawn: reopening it would hand out an invite the person may no longer want (#2136).
+    const reason = (error instanceof Error ? error.message : String(error)).replace(/\.$/, "");
+    throw new JoinRefused(`${reason}. ${OFFER_WITHDRAWN}`, { cause: error });
+  }
+}
+
+/** The pairing handshake with the inviting member, then the join exchange; stores the welcome once it checked out. */
+async function dialAndJoin(
+  options: JoinOptions,
+  invite: MeshInvite,
+  inviter: Inviter,
+): Promise<Omit<Joined, "withdrewOffer">> {
   const dialInviter = async () => {
     const link = await connectRelayClient({
       relayUrl: inviter.relayUrl,

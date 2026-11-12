@@ -56,7 +56,7 @@ export interface TerminalFindProps {
   readonly wt: WTerm;
   readonly address: string;
   readonly scroll: TerminalScroll;
-  /** Counts the output written to the terminal; the search reads the cells again only when it moves. */
+  /** Counts the changes to the terminal's cells (writes and resizes); the search reads them again only when it moves. */
   readonly written: RefObject<number>;
   /** Goes up each time the find bar is asked for, so asking again while it is open selects the query again. */
   readonly opened: number;
@@ -71,7 +71,7 @@ export interface TerminalFindProps {
 export function TerminalFind({ wt, address, scroll, written, opened, onClose }: TerminalFindProps) {
   const [query, setQuery] = useState(() => queries.get(address) ?? "");
   const box = scroll.view?.box ?? null;
-  // Each published frame (a scroll or a write) draws again; only new output or a new query searches again.
+  // Each published frame (a scroll or a write) draws again; only changed cells or a new query search again.
   const cache = useRef(new MatchCache());
   const matches = box === null ? [] : cache.current.get(written.current, query, (next) => search(wt, next));
   const [current, setCurrent] = useState<number | null>(() =>

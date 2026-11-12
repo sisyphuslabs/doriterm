@@ -1,3 +1,4 @@
+import type { Signed, View } from "@doriface/mesh";
 import {
   base64urlEncode,
   CloseCode,
@@ -38,7 +39,7 @@ export interface HostMeshOptions {
   /** The plan this host runs under: a join is refused while the mesh already fills the plan's `machines` limit. */
   readonly policy: PlanPolicy;
   /** Whether every member reads the format a client admission is written in; see `MeshHooks.formatReady`. */
-  readonly formatReady?: (() => boolean) | undefined;
+  readonly formatReady?: ((records?: readonly Signed[], view?: View) => boolean) | undefined;
   readonly hc: HcCoreOptions;
   readonly relay: {
     readonly url: string | undefined;
@@ -100,7 +101,9 @@ export class HostMesh {
           return this.#resume(lines, key, line.nonce);
         })
         .catch((error: unknown) => {
-          lines.refuse(CloseCode.UnknownDevice, error instanceof Error ? error.message : String(error));
+          const reason = error instanceof Error ? error.message : String(error);
+          this.#options.log(`mesh: close code=4401 source=join-resume: ${reason}`);
+          lines.refuse(CloseCode.UnknownDevice, reason);
         });
       return;
     }
@@ -136,7 +139,7 @@ export class HostMesh {
       floor,
       log,
       devices: new DeviceStore(stateDir),
-      formatReady: () => this.#options.formatReady?.() === true,
+      formatReady: (records, view) => this.#options.formatReady?.(records, view) === true,
       changed: this.#options.changed,
       resume: (lines, key, nonce) => this.#resume(lines, key, nonce),
     };
@@ -160,6 +163,15 @@ export class HostMesh {
     this.pending.expireAll();
     this.resumes.clear();
     return this.#options.slots.open(false);
+  }
+
+  /** A `mesh join` withdrew this host's mesh offer: its pending joins expire with it and its relay slot is released. */
+  offerWithdrawn(): void {
+    this.pending.expireAll();
+    this.pending.setAuto(0);
+    this.resumes.clear();
+    this.#offerExpiresAt = 0;
+    this.#options.slots.sync();
   }
 
   /** Serves a session on the mesh stream: a join on a mesh offer, or a member's sync session for the sync hook. */
@@ -197,7 +209,7 @@ export class HostMesh {
   async join(
     request: MeshJoinRequest,
     confirm?: (code: string) => Promise<boolean>,
-  ): Promise<{ readonly meshId: string; readonly hostId: string }> {
+  ): Promise<{ readonly meshId: string; readonly hostId: string; readonly withdrewOffer: boolean }> {
     const { stateDir, identity, relay, log } = this.#options;
     const own = await this.#own(request.name);
     const joined = await joinMesh({
@@ -214,10 +226,11 @@ export class HostMesh {
       defaultRelayUrl: relay.url ?? DEFAULT_RELAY_URL,
       createSocket: relay.createSocket,
       proofs: relay.proofs,
+      offerWithdrawn: () => this.offerWithdrawn(),
       log,
     });
     this.#keep(joined.secure);
-    return { meshId: joined.meshId, hostId: joined.hostId };
+    return { meshId: joined.meshId, hostId: joined.hostId, withdrewOffer: joined.withdrewOffer };
   }
 
   /** The session a join ran on stays open as a sync session, registered so a revoke closes it. */

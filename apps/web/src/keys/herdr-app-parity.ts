@@ -10,10 +10,12 @@ export interface HerdrDifference {
 }
 
 const APP_MENU = "the desktop app's macOS app menu carries it (a standard menu role); a browser keeps it for itself";
-const NO_IMAGE_PASTE =
-  "Ctrl+V is left to the terminal's own key handling; a pasted image already reaches the terminal's machine through the paste itself (#742), and Paste image can be bound in Settings > Keybindings";
 const NO_MODS = "Doriterm has no mods, so there is no picker mod to open";
 const NO_LAYOUTS = "Doriterm has no layout files to switch between";
+const PROGRAM_KEYS =
+  "#1302: the program's keys — an agent reads Alt+arrows for its answers and a shell for its word moves";
+const CTRL_V_PASTES =
+  "Ctrl+V stays the browser's paste, as before: an image on the clipboard reaches the terminal's machine as a file through the paste itself (#742), which needs no clipboard permission (the desktop app grants none), and text is pasted as text where herdr-app sends ^V";
 
 /**
  * Every herdr-app default (herdr-app/keys*.json) that doriface binds differently. `herdr-app-parity.test.ts` holds this
@@ -26,12 +28,54 @@ export const HERDR_APP_DIFFERENCES: Readonly<Record<Platform, readonly HerdrDiff
     { chord: "cmd-alt-h", doriface: null, reason: APP_MENU },
     { chord: "cmd-shift-l", doriface: null, reason: NO_LAYOUTS },
     { chord: "cmd-p", doriface: null, reason: NO_MODS },
-    { chord: "ctrl-v", doriface: null, reason: NO_IMAGE_PASTE },
   ],
   other: [
+    // #1302: Alt+arrows belong to the program below (answers, word moves, Meta keys), so doriterm binds none of them.
+    { chord: "alt-left", doriface: null, reason: PROGRAM_KEYS },
+    { chord: "alt-right", doriface: null, reason: PROGRAM_KEYS },
+    { chord: "alt-up", doriface: null, reason: PROGRAM_KEYS },
+    { chord: "alt-down", doriface: null, reason: PROGRAM_KEYS },
     { chord: "ctrl-shift-k", doriface: null, reason: NO_MODS },
     { chord: "ctrl-shift-l", doriface: null, reason: NO_LAYOUTS },
-    { chord: "ctrl-v", doriface: null, reason: NO_IMAGE_PASTE },
+    { chord: "ctrl-v", doriface: null, reason: CTRL_V_PASTES },
+  ],
+};
+
+/** An Alt chord family a default binds to a Doriterm action, though a program reads Alt+<key> as a Meta key. */
+export interface AltKept {
+  /** The family's default triggers, in Doriterm's trigger spelling. */
+  readonly trigger: RegExp;
+  /** The actions those triggers may carry. */
+  readonly action: RegExp;
+  readonly reason: string;
+}
+
+/**
+ * Every family of Alt chords a default keymap gives to a Doriterm action; any other Alt chord is the program's (#1302,
+ * #1942). Each family is herdr-app's own default and acts from a focused terminal as herdr-app's does (#1925); a person
+ * whose program needs one of these keys unbinds that row in Settings > Keyboard. `program-keys.test.ts` holds the
+ * defaults to this list both ways.
+ */
+export const ALT_KEPT: Readonly<Record<Platform, readonly AltKept[]>> = {
+  mac: [],
+  other: [
+    {
+      trigger: /^alt\+(shift\+)?[hjkl]$/,
+      action: /^pane\.(go|swap):(left|down|up|right)$/,
+      reason: "herdr-app's vim pane keys (keys.json alt-h/j/k/l and alt-shift-h/j/k/l), carried over from Ghostty",
+    },
+    {
+      trigger: /^alt\+[1-9]$/,
+      action: /^space\.select:[1-9]$/,
+      reason:
+        "herdr-app's space number chords (keys.json alt-1..9); they act from a focused terminal as in herdr-app (#1925), so a program that wants Alt+<digit> (readline's numeric argument) needs the row unbound",
+    },
+    {
+      trigger: /^alt\+[[\]]$/,
+      action: /^tab\.(prev|next)$/,
+      reason:
+        "herdr-app's tab cycle (keys.json alt-[ and alt-]), and a browser tab's stand-in for Ctrl+Tab, which the browser keeps for itself; Alt+[ is ESC [, the start of every CSI sequence, so few programs can read it",
+    },
   ],
 };
 

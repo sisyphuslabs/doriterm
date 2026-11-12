@@ -18,6 +18,7 @@ import { createInterface } from "node:readline";
 import { addMachine, DEMO_MACHINE } from "./machine.ts";
 import { shellEnv } from "./shell-env.ts";
 import { requestControl } from "../../host/src/control.ts";
+import { DeviceStore } from "../../host/src/state/devices.ts";
 import { pendingFromWire } from "../../host/src/state/pairing.ts";
 import { loadHostIdentity } from "../../host/src/state/host-keys.ts";
 import { pairingArtifact } from "../../host/src/pair-link.ts";
@@ -86,10 +87,11 @@ async function joinWith(link: string): Promise<string> {
     session: session.name,
     env: { ...session.env, ...shellEnv(dir) },
     stateDir: dir,
-    // No uplink: the fake relay keeps one host's uplink at a time, and a second one would take the inviting host's.
+    relay: { url: relay.url },
     log: () => {},
   });
   joiner = { host: joinerHost, hc: session, dir };
+  await relay.answers.next();
   // The command the installer runs, against this running host. The link names the production relay the page dials;
   // this joiner reaches the inviting host through the bridge instead.
   const args = ["mesh", "join", "--wait-host", "30", "--yes", "--name", "joiner", "--relay", bridge.url];
@@ -204,12 +206,19 @@ try {
       say({ link: artifact.url, code: offer.code });
     } else if (line === "members") {
       const status = await requestControl(stateDir, { op: "mesh-status" });
+      // A host in no mesh answers null: since #1635 a first join that is refused or never completed leaves no mesh at all.
+      if (status === null) {
+        say({ members: [] });
+        continue;
+      }
       if (!isJsonObject(status) || !Array.isArray(status["members"])) throw new Error("no current mesh status");
       const members = status["members"].map((member) => {
         if (!isJsonObject(member) || typeof member["hostId"] !== "string") throw new Error("invalid member identity");
         return member["hostId"];
       });
       say({ members });
+    } else if (line === "devices") {
+      say({ devices: new DeviceStore(stateDir).list() });
     } else if (line === "pending") {
       say({ pending: await requestControl(stateDir, { op: "mesh-pending" }) });
     } else if (line.startsWith("answer ")) {

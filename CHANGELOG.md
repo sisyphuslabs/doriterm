@@ -2,6 +2,328 @@
 
 ## Unreleased
 
+## v0.1.18 - 2026-11-11
+
+Installs of v0.1.17 update to this release on their own: v0.1.17 looks for updates only at get.doriterm.com, which
+now answers and passes on the GitHub release's update feed (#1975, #2109). From this release on, the desktop app takes
+its updates from the GitHub release directly again (#2074).
+
+### Terminal
+
+- A tab in the background after a reload no longer opens its terminal until you show it, as a tab that reconnects
+  already did, so it does not fetch a screen nobody is looking at. (#1721)
+- While you type ahead of a slow echo, a typed space no longer drops out of the predicted text for a frame before its
+  echo is drawn, so the predicted line and its underline stay unbroken. (#1970)
+- On a phone, a swipe inside a full-screen program keeps scrolling that program to its end when the program redraws the
+  spot under the finger mid-swipe. Before, the browser took the rest of the swipe as a page pan, and the program missed
+  those scroll steps. (#2055)
+- On a phone, Show keyboard no longer leaves the terminal's field waiting for a click that never comes: a right-click on
+  the button (an iPad trackpad) starts no press, a second finger lifting during a tap no longer ends it early, and a
+  terminal that closes mid-press stops listening for that press. (#2067)
+- A character you type into a program that holds its screen update open (a synchronized update it never closes) no
+  longer blinks out for one frame about a second later, just before the program's own output is drawn. (#2085)
+
+### Workspace
+
+- Closing a space whose layout the host refuses says so once, instead of once per pane in it.
+- A closed tab whose session ended but whose cleanup then failed no longer comes back to drop its pane a second time,
+  with a second refused-layout notice. (#1693)
+- Spinners stay in step when reduced motion is switched on or off while they spin: the gentle pulse that replaces the
+  turn starts on the same shared clock as every other spinner. (#1836)
+- A terminal opened while an added machine's layout was still loading stays the tab in view when that machine is
+  renamed at the same moment its layout saves the terminal's tab. Before, the workspace could jump to another
+  machine's space and leave the renamed terminal hidden. (#1775)
+
+### Keys
+
+- Alt+arrows reach the program on Windows and Linux again: they are the keys an agent reads for its answers and a shell for its word moves, so agent navigation moved to Ctrl+Shift+] and Ctrl+Shift+[. (#1898)
+- A dialog takes the keyboard as soon as it opens. On a busy machine, Escape pressed right after Keyboard shortcuts
+  appeared from the command palette could reach the terminal behind it and leave the dialog open. (#2046)
+
+### Machine mesh
+
+- When the host closes a session with 4401 ("not authorized"), its log now says which check closed it and why, as one
+  line `close code=4401 source=...`, so a peer's "closed by host" can be traced to the revocation, refusal or gate
+  that sent it. (#1703)
+
+### Desktop updates
+
+- The desktop app takes its updates from the GitHub release again, as it did before v0.1.17, rather than from
+  get.doriterm.com. (#2074)
+- The Update channel row in Settings > This device, its Check now button and the Check for Updates menu item that
+  v0.1.17 added are removed for now, and installs on the Beta channel return to stable releases. (#2074)
+- Doriterm 0.1.17, which looks for updates only at get.doriterm.com, can update itself to the next release once that
+  host answers, without a manual download: until a release is copied there, the host passes on GitHub's own update
+  feed. (#2109)
+
+### Host install
+
+- `doriface-host --help` no longer offers "reach this host only directly" as a way to run the host: the direct
+  path is off (#2070), so `--no-relay` and `--lan-listen` are labelled as the test knobs they are. Both keep
+  working exactly as before. (#2075)
+
+### Website
+
+- get.doriterm.com serves each release from Doriterm's own storage: a stable link per platform such as
+  get.doriterm.com/dl/mac-arm64.dmg, the update feeds the desktop app and the host read, and a public download count at
+  get.doriterm.com/stats/downloads, with GitHub Releases behind every file until a release is copied there. (#1975)
+
+### Documentation
+
+- The transport contract, the architecture notes and the README say that the direct path is off by decision and
+  that every session goes through the relay, instead of describing it as a path no client happened to dial. (#2075)
+
+## v0.1.17 - 2026-11-11
+
+Highlights: tabs can be pinned, and a tab's menu closes the tabs to its right or every other tab, with pins and order
+synced to every device (#1621). The space shortcuts work from inside a terminal, as in herdr-app: Ctrl+1-9 on a Mac,
+Alt+1-9 on Windows and Linux (#1934, #1938). On a phone, the keyboard button and Show keyboard raise the keyboard on
+iOS every time, a Korean syllable still being typed is no longer dropped, a space after a Korean syllable stays, and a
+swipe inside a full-screen program scrolls the program rather than the page (#1937, #1940, #1690, #1508, #1998). After
+a reconnect the first keystroke is no longer doubled and the screen no longer climbs partway through the replay (#1936,
+#1947). The desktop app gains an Update channel setting and takes its updates from get.doriterm.com (#1978); that feed
+is not served yet, so this build's Check now reports a failed check until it is, while installs of v0.1.16 and earlier
+still update from the GitHub release.
+
+### Terminal
+
+- Selecting earlier output keeps it in view even when the program requests focus reports. (#1568)
+- On an iPhone or iPad, a space typed right after a Korean syllable reaches the keyboard as typed, so the next syllable
+  starts fresh instead of joining the one before it and erasing the space. (#1508)
+- Settings has a Copy on selection toggle, off by default, to copy exactly the selected text when the mouse button is released. (#1608)
+- Find marks and link underlines cover wide characters fully, and find counts a wrapped line once even when its last row is empty. (#1614)
+- A New tab whose terminal opened is no longer reported as one that could not open when the link drops before the
+  answer arrives, so pressing New tab again while reconnecting shows one notice, not two (#1616).
+- An agent waiting on you shows its Enter, Esc and arrow keys over the terminal whenever no card comes, Claude Code and
+  Codex included; a key that failed to reach the terminal is reported only until the next press, and screen
+  readers announce the keys appearing. (#1743)
+- Typing drawn ahead of the host's echo is underlined only while the link is slow or glitching, no longer always (#1439).
+- The desktop app draws nothing ahead of its own computer's echo unless "Show typing before the host echoes it" is set to
+  always (#1439).
+- Switching to a tab shows its screen as it is now in one paint; output it missed while out of view, or the history it
+  loads the first time it is opened, no longer scrolls past from older lines first. (#1588)
+- A key typed while the connection was coming back is sent once, not twice (the first keystroke after a host restart no longer arrives doubled, and a space in Korean input is no longer repeated). (#1936)
+- Reconnecting on a slow or busy device no longer lets the screen climb partway through the replay: a timer that fired late
+  because the page stalled no longer ends the replay's hold (#1439).
+- On a phone, a swipe inside a full-screen program (herdr, vim and anything else on the alternate screen) scrolls that
+  program the way a mouse wheel does, instead of moving the page, where pull-to-refresh could reload the app. (#1998)
+
+### Workspace
+
+- A space name you are editing in the sidebar no longer vanishes while you type when another device opened at the same
+  time: new terminals the two devices both placed into a space are listed only as the host saved them. (#1577)
+- A split whose terminal finishes starting after you pick another tab no longer switches back to the split's tab. (#1594)
+- A tab closed and then the page closed before its sessions' Ends left it keeps those Ends recorded, so the next load
+  finishes them instead of adopting the sessions back as a new tab.
+- A tab or pane close whose End fails says how many sessions kept running, and where they show again (a tab on the next
+  load), in whole sentences.
+- Keyboard shortcuts stay closed when you leave the workspace and return. (#1607)
+- Tabs can be pinned from a tab's menu: a pinned tab leads its space as its icon alone, with no close button, and keeps
+  its name as its tooltip. Pins, tab order and names sync to every device, and dragging keeps pinned tabs in front.
+  Pinned tabs stay in view when the other tabs scroll.
+  The phone's tab lists mark pinned tabs. (#1621)
+- A tab's menu has Close tabs to the right and Close other tabs; neither closes a pinned tab, and both ask once when
+  something runs in the tabs they close. (#1621)
+- Starting a sidebar filter keeps a machine header's New space button, status dot and terminal count in place instead of
+  shifting them 28 px right. (#1158)
+- A space row keeps its branch, ahead/behind and uncommitted state when one `git status` is slow, instead of losing
+  them for a few seconds; a folder that stops being a repository still loses them at once. (#1691)
+- The getting-started guide's last step, seeing your terminal in the agents list, now completes even if its machine was
+  renamed after you started the terminal. (#1712)
+- A machine's New space there row stays readable while the machine is offline instead of fading out, and a machine
+  header with no terminal to open dims its icon without making it hard to see, in day and night. (#1753)
+- An unpinned agent's Pin to top action is drawn the same size as the More action beside it. (#1785)
+- A space's name in the sidebar starts on the same column as the Spaces title and the agent names below it, instead of
+  2 px to the right. (#1789)
+- The agents list holds still while an agent waits on its watches. A turn between Working and Idle moves the agent's row
+  only once it has held 15 seconds, so a watch that wakes the agent every few seconds no longer makes the rows below
+  jump. The row's status icon still changes at once, and Needs you and Done still move the row at once. (#1954)
+- Pinning the first tab, or unpinning the last pinned one, no longer makes the tab fade and scale in again as if it had just
+  opened. (#2022)
+
+### Keys
+
+- On the pairing screen Cmd/Ctrl with =, - or 0 no longer changes a terminal font size nobody can see there; in a
+  browser the keys zoom the page again, and the desktop app still sizes its terminal text. (#1162)
+- The space number keys (Ctrl+1-9 on a Mac, Alt+1-9 on Windows and Linux) switch spaces while you type in a terminal too.
+  The terminal program no longer gets those keys; Ctrl+Space, Esc, Ctrl+\, Ctrl+], Ctrl+^, Ctrl+_ (or Ctrl+/) and
+  Backspace still send the control bytes Ctrl+2-8 sent, and Settings > Keybindings can rebind Go to space N. (#1934)
+- With the keyboard in a terminal, herdr-app's space shortcuts now act as they do in herdr-app: Ctrl+1-9 on a Mac and
+  Alt+1-9 on Linux and Windows switch spaces. On a Mac, Ctrl+V pastes an image on the clipboard as a file on the
+  terminal's machine where the browser lets the page read the clipboard (the desktop app does not); otherwise it sends
+  Ctrl+V to the program, and keys typed while the clipboard is read follow it. When the browser asks the person before
+  the page may read the clipboard, keys typed after 1.5 seconds go through at once, so typing never stalls, and a notice
+  waits for the answer: the image is pasted once the paste is allowed, or Ctrl+V is sent then if the clipboard holds no
+  image or the paste is not allowed, never both. A syllable being typed with an input method when that answer comes
+  stays as it is. Several presses share one notice, and leaving the tab closes it and drops the answer. On Linux and
+  Windows Ctrl+V pastes as before, an image as a file and text as text. Other plain Ctrl+letter keys still go to the program. (#1925)
+
+### Machine mesh
+
+- A host that reports a line state, a stuck reason, a revoke reason or a replaced machine's kind this app does not know
+  yet is still shown, with that value as unknown, instead of the whole mesh reading as unreadable. A dial gate of a kind
+  this app does not know is not shown, and a pending join of a kind it does not know is not offered for approval,
+  because approving it would grant something the app cannot name. (#1586)
+- When removing an earlier entry for a member gets no answer from herdr, `mesh status` still names that entry once the
+  member's mesh line is added. (#1649)
+- While herdr-core keeps failing, the host log says so once per failure instead of every 10 seconds. (#1697)
+- Running install.sh again to upgrade a host keeps the state dir its service already uses, so the machine keeps its
+  identity and stays on the mesh, and on macOS the installer retries loading the host's LaunchAgent and fails with the
+  command to load it by hand instead of leaving it stopped; `--state-dir` picks another state dir. (#1967)
+
+### Joining a mesh
+
+- The Add a machine command hands the installer the mesh link in `DORIFACE_JOIN`, which only you (and root) can read,
+  instead of on the installer's command line, where other local users could read it while the install runs. (#1650)
+- `doriface-host --help` lists `mesh join --from-file <file>`, the way to join without the link or code on the
+  command line, and so does the README. (#1679)
+
+### Pairing from a phone
+
+- Typing a pairing link into the code field by hand no longer looks up a pairing slot for its first letters, so it
+  cannot spend a code's lookups. (#1694)
+
+### Phone
+
+- The command palette's field keeps its 18px text on a phone instead of shrinking to 17px; a smaller field is still
+  raised to 16px, so tapping one does not zoom the page. (#1401)
+- A session's actions sheet no longer offers Find in terminal while its machine is offline: there is no terminal on
+  screen to search, so the row only closed the sheet. It returns with the machine. (#1482)
+- Show keyboard on a terminal that already has the focus raises the keyboard without telling the program the terminal
+  lost the focus, and a Korean syllable still being typed is sent instead of dropped. (#1690)
+- The session sheet behind a phone header's "..." leaves out the directory line when a terminal reports no directory,
+  and a named tab's sheet carries the tab's name as the header does. (#1717)
+- With the keyboard up, the terminal's last rows are clear of the two-row keys bar from the first frame. (#1744)
+- Show keyboard raises the soft keyboard after a tap in the terminal, too: the press lets the terminal's field go as it
+  lands, so the keyboard it asks for comes from a fresh focus, which iOS no longer swallows. (#1940)
+- The keyboard button raises the soft keyboard in the tap itself, and closing Switch session keeps the keyboard up: the
+  terminal takes the focus inside the closing tap instead of a frame later. A session picked from Switch session now
+  opens with the keyboard down, like any other; only the keyboard button raises it. (#1937)
+
+### Web app
+
+- A browser's page translation no longer breaks the window: Doriterm now asks translators to leave the page alone,
+  because it draws its own text and a terminal's output must not be translated. (#1157)
+- The installed web app keeps its icon font across an update even when a release leaves it out of its download
+  list, and no longer stores an older release's icon font that a tab still open on that release asks for. (#1659)
+- The web app says which release it is: `manifest.webmanifest` now carries a `version` field, so
+  `curl https://app.doriterm.com/manifest.webmanifest` shows the version being served. (#1719)
+
+### Desktop updates
+
+- The desktop app takes its updates from get.doriterm.com, and Settings > This device has an Update channel row: Stable
+  by default, or Beta for prereleases, with Check now. New releases reach installs in stages. (#1978)
+- The update row names what went wrong instead of leaving it to a log: a check that failed, a download that stopped
+  making progress, or a build too old to update itself. Check for Updates is in the app menu (Help on Windows and
+  Linux). (#1978)
+
+### Settings
+
+- Connecting a machine and your mesh are one screen: Settings > Machines lists your machines, then Connect a machine,
+  then In your mesh. The separate Connect a machine entry is gone, and an older link to it opens Machines there. (#1582)
+- Opening Settings closes Keyboard shortcuts and the command palette, so Escape and the close shortcuts work immediately. (#1609)
+- Resizing the window across the size where Settings becomes a full-screen sheet keeps your place in the settings body.
+  (#1676)
+- The host row's connect time is measured on a steady clock, so a system clock that jumps while the app connects (a
+  time sync, a manual change, waking from sleep) no longer shows a wrong connect time. (#1711)
+- A number stepper's button at its limit now looks clearly unavailable beside the other one, as far as each theme's
+  contrast floor allows (a few light themes get slightly less of a step), while its sign stays readable. (#1715)
+
+### Notifications
+
+- A notification now says which agent is waiting and where: its title is the agent and its machine
+  (`claude-code@build-box`), and its body names the space and terminal, what happened, and the question or command it
+  waits on. Web push asks your host for this over the encrypted push stream, so the push itself still carries only an
+  id; the desktop app reads it off its own connection. A notice your host cannot name keeps the old sentence. (#1908)
+
+### Connection and offline wording
+
+- Spaces no longer calls a machine connected while its line is down and redialling. The machine reads reconnecting,
+  a Reconnecting notice shows under it, and New space waits until the line returns, while its terminals and layouts
+  stay on screen (#918).
+
+### Host install
+
+- The macOS host binary that install.sh downloads is signed with a Developer ID and notarized, so
+  Gatekeeper accepts it. Releases until now shipped it with only an ad-hoc signature. (#1992)
+
+### Windows
+
+- The Windows app can dictate into a terminal through Windows' own on-device speech recognition (SAPI) when its
+  dictation component is part of the build; the audio never leaves this computer and no online speech service is
+  used. A build without that component keeps the mic crossed out and says the Windows app can't dictate. When
+  Settings > Privacy & security > Microphone is off, the mic strip says so and Try again works once it is on; a
+  language without an installed Windows recognizer says so instead of falling back online. (#1699)
+- A machine whose herdr-core will not run mesh lines says so in the host log, instead of blaming the machine's name.
+  (#1745)
+
+### Website
+
+- The landing page's Pause animations button now also stops the spinners in the app previews at the top of the page,
+  and they stay still after a reload. (#1179)
+
+### Documentation
+
+- The transport contract now says plainly how the mesh status a host publishes can grow: a field added within a version
+  is optional, and a reader treats it as not said when a host built before it leaves it out. (#1574)
+
+### Reliability
+
+- The desktop app's pairing tests go through the current Join a mesh screen again, so a pairing
+  regression is caught before a release instead of hiding behind two known failures. (#1571)
+- The browser test suite no longer fails a whole run when another connection on the machine briefly
+  takes one of its local ports. (#1575)
+- The browser test for a layout change cut off by a dropped connection no longer fails at random. (#1590)
+- The browser tests draw text with fonts shipped in the repository, so their text-measurement checks give
+  the same answer on every machine. (#1615)
+- A connection attempt that is cancelled after its socket has opened now closes that socket, instead of leaving it open
+  until the host drops it. (#1681)
+- When a relay test's machine core does not start in time, the failure now says whether the core is still running
+  or exited, whether its socket exists, and what the core printed, instead of only that it timed out. (#1768)
+
+### Corrections to earlier release notes
+
+- v0.1.7 also shipped this, missing from the v0.1.7 section of CHANGELOG.md: the command palette lists Filter the
+  sidebar with its key, and choosing it opens the filter with the keyboard in it. (#848)
+- v0.1.7 also shipped this, missing from the v0.1.7 section of CHANGELOG.md: while a machine is held as connected
+  through a redial, a tab opened, closed or moved on it says the machine is reconnecting, matching its row, instead of
+  calling it not connected. (#918)
+- v0.1.7 also shipped this, missing from the v0.1.7 section of CHANGELOG.md: on a phone, Settings > Machines opens on
+  the machines and Add a machine: the explanation of what each state means sits under the list instead of filling the
+  first screen. (#1007, #1008)
+- v0.1.7 also shipped this, missing from the v0.1.7 section of CHANGELOG.md: Settings, This device, shows how long this
+  device took to open its session with the host, beside the round trip it already measures, so a slow link can be told
+  from a slow host. Both numbers are measured on the live connection and are left out when there is none. (#637)
+- v0.1.7 also shipped this, missing from the v0.1.7 section of CHANGELOG.md: the setup tool's `--listen default` and
+  `--session default` put a host that was installed with its own listener or hc session back on the defaults; before, a
+  re-run could only replace them. (#821)
+- The v0.1.6 notes list Pairing and Settings twice each; each pair is one section. In them, "Settings is one place per
+  question" also comes from #1005, and the disabled field, stepper, switch and menu item line also covers the colour
+  swatch. (#772, #1005, #1034)
+
+### Interface
+
+- On desktop, explanations and status lines in Settings, pairing hints, the keybinding note, the voice explanation and notices are now 14 px instead of 13 px, as are the connection status line, the reconnecting banner and empty theme results. (#1510)
+- Every text field now keeps a visible label: the command palette search, renaming a space in the sidebar, the Settings, keybinding, terminal and theme searches, the sidebar filter, the terminal's find bar, and the voice transcript. Placeholders only show an example. (#1514)
+- Explanations on the first-run, pairing and Settings screens wrap at a comfortable 65-75 characters a line on a
+  computer, and the phone's first-run text uses the full width of the screen. (#1529)
+- A click or tap between two neighbouring tabs, a tab and its Close button, Settings' section tabs, or the choices of a
+  segmented control now always reaches one of them, instead of landing on nothing. (#1530)
+- The working spinner is the same size everywhere it appears. Two screens drew their own larger copy and an empty state
+  resized whatever icon it was given, so the same spinner came out at 12, 16 and 32 pixels. A screen that wants a larger
+  loading presence now scales the space around the spinner, and a test fails if a call site sizes one again. (#1569)
+
+### Pairing
+
+- A pairing code the relay refused while you typed it is looked up once: pressing Pair shows that refusal instead of
+  asking again, and only pressing Pair again asks the relay once more. (#1316)
+
+### Desktop installation
+
+- Windows setup gains a CPU-architecture check before installation, and the README and release downloads distinguish
+  Intel/AMD x64 from Windows on ARM. The x64 setup remains allowed on ARM64 through emulation; native ARM64 is recommended.
+  Installer runtime verification still needs Windows QA. (#1631)
+
 ## v0.1.16 - 2026-11-09
 
 Highlights: coming back to the app, or reconnecting, no longer replays the old output line by line; the terminal shows

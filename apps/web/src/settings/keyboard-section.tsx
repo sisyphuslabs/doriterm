@@ -81,7 +81,7 @@ export function KeyboardSection() {
   return (
     <section aria-label="Keyboard" className="flex flex-col gap-4">
       <header className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-foreground md:text-xl">Keyboard</h2>
+        <h2 className="text-xl font-semibold text-foreground">Keyboard</h2>
         <Button size="sm" variant="ghost" disabled={readOnly} onClick={() => setEditing(!editing)}>
           {editing ? "Done" : "Edit"}
         </Button>

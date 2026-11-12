@@ -31,11 +31,15 @@ export const ADD_RESERVATION_MS = 30_000;
 export interface LineGrantsOptions {
   readonly view: () => MeshView;
   readonly policy: DialPolicy;
-  /** Dials the member's hc stream with this host's Noise key (section 7.2), LAN first when one is known. */
+  /**
+   * Dials the member's hc stream with this host's Noise key (section 7.2), over the relay: the dialer has no LAN or other
+   * direct path, and the owner's decision (#2070) keeps every session on the relay, the mesh line included (#2284).
+   */
   readonly dial: (member: MemberEntry) => Promise<ByteLink>;
   readonly waitMs?: number;
   /** Times the reservations out; the policy's own clock in the running host. */
   readonly clock?: Clock;
+  readonly log?: (line: string) => void;
 }
 
 const seconds = (ms: number): number => Math.max(1, Math.ceil(ms / 1000));
@@ -98,6 +102,7 @@ export class LineGrants {
       // A revocation that landed while this dial was in flight already ran closeRevoked, which could not see this line.
       const now = this.#member(hostId);
       if (!("signPub" in now) || now.signPub !== member.signPub) {
+        this.#options.log?.(`mesh: close code=4401 source=line-grant-race: ${REVOKED}`);
         link.close(4401, REVOKED);
         return "signPub" in now ? { ok: false, code: 4401, reason: "not a member of this mesh" } : now;
       }
@@ -180,7 +185,10 @@ export class LineGrants {
     const current = new Set(view.members.map((member) => member.signPub));
     for (const [key, links] of this.#open) {
       if (current.has(key)) continue;
-      for (const link of links) link.close(4401, REVOKED);
+      for (const link of links) {
+        this.#options.log?.(`mesh: close code=4401 source=line-revocation: ${REVOKED}`);
+        link.close(4401, REVOKED);
+      }
     }
   }
 

@@ -9,10 +9,11 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 
 const SCRIPT = join(import.meta.dir, "install.sh");
+const USER = userInfo().username;
 
 interface Rig {
   readonly root: string;
@@ -32,6 +33,52 @@ const stub = (dir: string, name: string, body: string): void => {
   chmodSync(join(dir, name), 0o755);
 };
 
+/**
+ * A launchd that remembers whether the agent is loaded: bootout unloads it, print finds it only while it is loaded, and
+ * bootstrap loads it, except that the first `failures` bootstraps fail with 5 (EIO), as launchd's do for a while after
+ * an agent it is still unloading has already left `print` (#1966).
+ */
+function launchd(dir: string, log: string, failures = 0): string {
+  const state = join(dir, "launchd-state");
+  const left = join(dir, "launchd-failures");
+  writeFileSync(state, "gone");
+  writeFileSync(left, String(failures));
+  stub(
+    dir,
+    "launchctl",
+    [
+      `echo "launchctl $*" >> "${log}"`,
+      `case "$1" in`,
+      `  bootout) echo gone > "${state}" ;;`,
+      `  print) [ "$(cat "${state}")" = loaded ] || exit 113 ;;`,
+      `  bootstrap) n=$(cat "${left}"); if [ "$n" -gt 0 ]; then echo $((n - 1)) > "${left}"; echo "Bootstrap failed: 5: Input/output error" >&2; exit 5; fi; echo loaded > "${state}" ;;`,
+      `esac`,
+    ].join("\n"),
+  );
+  return state;
+}
+
+/**
+ * A logind that remembers whether the user lingers: `show-user` answers it, and `enable-linger` turns it on when the
+ * system grants that to the user, or fails as it does where an admin has to do it.
+ */
+function lingering(dir: string, log: string, linger: "yes" | "no", enable: "granted" | "refused"): void {
+  const state = join(dir, "linger-state");
+  writeFileSync(state, linger);
+  stub(
+    dir,
+    "loginctl",
+    [
+      `case "$*" in`,
+      `  *show-user*) cat "${state}" ;;`,
+      `  *enable-linger*) echo "loginctl $*" >> "${log}"; ${enable === "granted" ? `printf yes > "${state}"` : "exit 1"} ;;`,
+      `esac`,
+    ].join("\n"),
+  );
+}
+
+const enabledLinger = (calls: readonly string[]): string[] => calls.filter((call) => call.startsWith("loginctl"));
+
 const sha256 = (bytes: string): string => new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
 
 /**
@@ -49,8 +96,10 @@ function rig(system: "Linux" | "Darwin", machine = "x86_64"): Rig {
   writeFileSync(log, "");
   stub(stubs, "uname", `[ "$1" = -s ] && echo ${system} || echo ${machine}`);
   stub(stubs, "systemctl", `echo "systemctl $*" >> "${log}"`);
-  // No agent is loaded: `print` finds nothing, as on a computer that never ran the host.
-  stub(stubs, "launchctl", `echo "launchctl $*" >> "${log}"; [ "$1" = print ] && exit 113; exit 0`);
+  // The user lingers already, so no test reaches the real loginctl and changes the machine it runs on.
+  lingering(stubs, log, "yes", "granted");
+  // No agent is loaded yet, as on a computer that never ran the host.
+  launchd(stubs, log);
   const os = system === "Linux" ? "linux" : "mac";
   const arch = machine === "x86_64" ? "x64" : "arm64";
   const host = [
@@ -121,6 +170,7 @@ describe("install.sh on Linux", () => {
     expect(run.calls).toEqual([
       "systemctl --user show-environment",
       "doriface-host --install-hc",
+      "doriface-host --help",
       "systemctl --user daemon-reload",
       "systemctl --user enable doriface-host.service",
       "systemctl --user restart doriface-host.service",
@@ -263,14 +313,31 @@ describe("install.sh on Linux", () => {
     expect(run.out).toContain("using herdr-core at");
   });
 
-  test("says how to keep the service after logout when the user does not linger, and stays quiet when it does", () => {
+  test("turns lingering on for a user who does not linger, so the service starts at boot without a login", () => {
     const r = rig("Linux");
-    stub(r.stubs, "loginctl", 'echo "$LINGER_ANSWER"');
-    const lingering = install(r, ["--no-pair"], [], { LINGER_ANSWER: "yes" });
-    expect(lingering.out).not.toContain("enable-linger");
-    const not = install(r, ["--no-pair"], [], { LINGER_ANSWER: "no" });
-    expect(not.code).toBe(0);
-    expect(not.out).toContain("loginctl enable-linger");
+    lingering(r.stubs, r.log, "no", "granted");
+    const run = install(r, ["--no-pair"]);
+    expect(run.code).toBe(0);
+    expect(enabledLinger(run.calls)).toEqual([`loginctl --no-ask-password enable-linger ${USER}`]);
+    expect(run.out).toContain("it starts at boot");
+    expect(run.out).not.toContain("sudo");
+  });
+
+  test("where only an admin may turn lingering on, installs anyway and names the one command to run", () => {
+    const r = rig("Linux");
+    lingering(r.stubs, r.log, "no", "refused");
+    const run = install(r, ["--no-pair"]);
+    expect(run.code).toBe(0);
+    expect(run.calls).toContain("systemctl --user restart doriface-host.service");
+    expect(run.out).toContain(`sudo loginctl enable-linger ${USER}`);
+    expect(run.out).not.toContain("it starts at boot");
+  });
+
+  test("leaves a user who lingers already alone", () => {
+    const r = rig("Linux");
+    const run = install(r, ["--no-pair"]);
+    expect(enabledLinger(run.calls)).toEqual([]);
+    expect(run.out).not.toContain("linger");
   });
 
   test("a download that does not match SHA256SUMS.txt installs nothing and starts nothing", () => {
@@ -296,6 +363,29 @@ describe("install.sh on Linux", () => {
     expect(existsSync(join(r.home, ".local", "bin", "doriface-host"))).toBe(true);
     expect(plain.out).toContain("start the host with:");
     expect(plain.calls.filter((call) => call.includes("daemon-reload"))).toEqual([]);
+  });
+
+  test("an upgrade keeps the state dir the installed service names, so the host keeps its identity (#1966)", () => {
+    const r = rig("Linux");
+    // Every character the unit escapes, so the installer reads back exactly the path it wrote.
+    const custom = join(r.root, 'mesh 100% $HOME "q\\b');
+    mkdirSync(custom);
+    writeFileSync(join(custom, "identity"), "host A");
+    expect(install(r, ["--no-pair"], [], { DORIFACE_HOST_STATE_DIR: custom }).code).toBe(0);
+    const unitFile = join(r.home, ".config", "systemd", "user", "doriface-host.service");
+    const before = readFileSync(unitFile, "utf8");
+
+    const run = install(r, ["--version", "v0.1.16", "--no-pair"]);
+    expect(run.err).toBe("");
+    expect(run.code).toBe(0);
+    expect(readFileSync(unitFile, "utf8")).toBe(before);
+    expect(readFileSync(join(custom, "identity"), "utf8")).toBe("host A");
+    expect(run.calls.at(-1)).toBe("systemctl --user restart doriface-host.service");
+
+    // Asked for by name, another state dir still wins.
+    const other = join(r.root, "other");
+    expect(install(r, ["--no-pair", "--state-dir", other]).code).toBe(0);
+    expect(readFileSync(unitFile, "utf8")).toContain(`--state-dir "${other}"`);
   });
 
   test("--uninstall stops the service and removes it and the binary", () => {
@@ -335,6 +425,8 @@ describe("install.sh on macOS", () => {
     expect(readFileSync(state, "utf8").trim()).toBe("loaded");
   });
 
+  // About 200 stub processes (101 `launchctl print`, 100 `sleep`): nothing is slept, but on a busy host the spawns alone
+  // can pass bun's default 5 s, so the test gets a bound sized to them (#2006).
   test("an old agent that never unloads stops the install after 10 s and never bootstraps the new one (#834)", () => {
     const r = rig("Darwin", "arm64");
     stub(r.stubs, "launchctl", `echo "launchctl $*" >> "${r.log}"; exit 0`);
@@ -345,7 +437,41 @@ describe("install.sh on macOS", () => {
     expect(run.calls.filter((call) => call.startsWith("launchctl print"))).toHaveLength(101);
     expect(run.calls.filter((call) => call === "sleep 0.1")).toHaveLength(100);
     expect(run.calls.some((call) => call.startsWith("launchctl bootstrap"))).toBe(false);
+  }, 30_000);
+
+  test("an upgrade keeps the agent's state dir and identity, and leaves the agent loaded (#1966)", () => {
+    const r = rig("Darwin", "arm64");
+    const custom = join(r.root, "mesh & <state>");
+    mkdirSync(custom);
+    writeFileSync(join(custom, "identity"), "host A");
+    expect(install(r, ["--no-pair"], [], { DORIFACE_HOST_STATE_DIR: custom }).code).toBe(0);
+    const plistFile = join(r.home, "Library", "LaunchAgents", "dev.omo.doriface-host.plist");
+    const before = readFileSync(plistFile, "utf8");
+    expect(before).toContain(`<string>${r.root}/mesh &amp; &lt;state&gt;</string>`);
+
+    // The upgrade, as #1966 ran it; launchd refuses the first bootstrap after the old agent leaves `print`.
+    const agent = launchd(r.stubs, r.log, 1);
+    writeFileSync(agent, "loaded");
+    stub(r.stubs, "sleep", `echo "sleep $*" >> "${r.log}"`);
+    const run = install(r, ["--version", "v0.1.16", "--no-pair"]);
+    expect(run.err).toBe("");
+    expect(run.code).toBe(0);
+    expect(readFileSync(plistFile, "utf8")).toBe(before);
+    expect(readFileSync(join(custom, "identity"), "utf8")).toBe("host A");
+    expect(readFileSync(agent, "utf8").trim()).toBe("loaded");
   });
+
+  // As many stub processes as the never-unloads test (100 bootstrap attempts through the launchd stub, each running its
+  // own `cat`, and 99 `sleep`), so the same bound (#2006).
+  test("a bootstrap launchd keeps refusing fails the install loudly instead of leaving the agent quietly unloaded", () => {
+    const r = rig("Darwin", "arm64");
+    launchd(r.stubs, r.log, 1000);
+    stub(r.stubs, "sleep", `echo "sleep $*" >> "${r.log}"`);
+    const run = install(r, ["--no-pair"]);
+    expect(run.code).toBe(1);
+    expect(run.err).toContain("Bootstrap failed: 5: Input/output error");
+    expect(run.err).toContain("launchctl bootstrap gui/");
+  }, 30_000);
 
   test("registers a LaunchAgent that keeps the host running, then pairs", () => {
     const r = rig("Darwin", "arm64");
@@ -355,9 +481,11 @@ describe("install.sh on macOS", () => {
     const uid = Bun.spawnSync(["id", "-u"]).stdout.toString().trim();
     expect(run.calls).toEqual([
       "doriface-host --install-hc",
+      "doriface-host --help",
       `launchctl bootout gui/${uid}/dev.omo.doriface-host`,
       `launchctl print gui/${uid}/dev.omo.doriface-host`,
       `launchctl bootstrap gui/${uid} ${join(r.home, "Library", "LaunchAgents", "dev.omo.doriface-host.plist")}`,
+      `launchctl print gui/${uid}/dev.omo.doriface-host`,
       `doriface-host pair --wait-host 60 --state-dir ${join(r.home, ".local", "state", "doriface-host")}`,
     ]);
     const plist = readFileSync(join(r.home, "Library", "LaunchAgents", "dev.omo.doriface-host.plist"), "utf8");
