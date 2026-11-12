@@ -60,16 +60,25 @@ test("a New terminal on an added machine that is not connected fails from its st
     // The core learns the line is gone from its own read of it, a moment after the stop, and redials (`connecting`); a
     // run asked during that redial waits on it. Wait for the core's own state to SETTLE as down (a state, not a delay),
     // then time one New terminal (#2389).
-    const gone = async (deadline: number): Promise<void> => {
-      const { machines } = await core.call("machine.list");
-      const state = machines.find((machine) => machine.name === spec.name)?.state;
-      if (settledOffline(state)) return;
-      if (performance.now() > deadline)
-        throw new Error(`${spec.name} reads ${state ?? "absent"}, not down, after its stop`);
+    const state = async (): Promise<string | undefined> =>
+      (await core.call("machine.list")).machines.find((machine) => machine.name === spec.name)?.state;
+    const settled = async (deadline: number): Promise<string | undefined> => {
+      const now = await state();
+      if (settledOffline(now) || performance.now() > deadline) return now;
       await Bun.sleep(10);
-      return gone(deadline);
+      return settled(deadline);
     };
-    await gone(performance.now() + 30_000);
+    // A dial hc started just before the stop passed its "is the machine there" check already, and its hc connect starts
+    // the stopped core again (#2142): the machine reads connected once more. Stop that core too and wait again, a few
+    // times at most (#2389).
+    const down = async (stops: number): Promise<string | undefined> => {
+      const now = await settled(performance.now() + 10_000);
+      if (settledOffline(now) || stops === 0) return now;
+      await stop();
+      return down(stops - 1);
+    };
+    const last = await down(3);
+    if (!settledOffline(last)) throw new Error(`${spec.name} reads ${last ?? "absent"}, not down, after its stop`);
     const startedAt = performance.now();
     const started = await startTerminal(
       (params) => core.call("terminal.run", params),
