@@ -1,4 +1,4 @@
-import { devices, type Page } from "@playwright/test";
+import { devices, type Locator, type Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { type FakeRelayHost, startFakeRelayHost } from "./relay-route.ts";
@@ -10,11 +10,34 @@ const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
 
 /** What the screen says about the connection, wherever it says it. */
 const notice = (page: Page, text: RegExp) => page.getByRole("status").filter({ hasText: text });
+
 const OFFLINE = /Offline/;
 const NEXT_STEP = "Reconnects when the network is back";
 const onlineDot = (page: Page) => page.locator('[data-machine-dot="online"]');
 
 const RECONNECTING = /Reconnecting/;
+
+/**
+ * The phone line's glyph (spinner or offline icon) sits on the sentence's first line, centred on it as the text is (#1961):
+ * a box as tall as a line, not a 16 px box at the top of a 20 px line. The bound is 1 px: the centres measure 0.5 px apart
+ * (half-pixel rounding), and a spinning glyph's box drifts by a few millionths, so a 0.5 px bound fails by chance. What
+ * it catches: the old size-4 box put the reconnecting spinner 1.5 px off, and the offline glyph's old mt-0.5 nudge (which
+ * never applied to the spinner) moved it 2 px.
+ */
+async function glyphCentredOnFirstLine(line: Locator): Promise<void> {
+  const centres = await line.evaluate((status) => {
+    const glyph = status.querySelector("svg")?.getBoundingClientRect();
+    const words = status.querySelector("span[title]");
+    const range = document.createRange();
+    if (words?.firstChild) range.selectNodeContents(words.firstChild);
+    const first = range.getClientRects()[0];
+    return glyph === undefined || first === undefined
+      ? null
+      : { glyph: glyph.top + glyph.height / 2, text: first.top + first.height / 2 };
+  });
+  expect(centres).not.toBeNull();
+  expect(Math.abs((centres?.glyph ?? 0) - (centres?.text ?? 0))).toBeLessThanOrEqual(1);
+}
 
 /** What the OS says about the network, as the page sees it; a link to 127.0.0.1 keeps its own state either way. */
 const osOnline = (page: Page, online: boolean) =>
@@ -185,6 +208,7 @@ test.describe("phone", () => {
       await openPhoneTerminal(page);
       await context.setOffline(true);
       await expect(notice(page, OFFLINE)).toBeVisible({ timeout: 2_000 });
+      await glyphCentredOnFirstLine(notice(page, OFFLINE));
       await context.setOffline(false);
       await expect(notice(page, OFFLINE)).toHaveCount(0, { timeout: 2_000 });
     });
@@ -241,23 +265,7 @@ test.describe("phone", () => {
     await openPhoneTerminal(page);
     await socket.drop(true);
     await expect(notice(page, RECONNECTING)).toBeVisible({ timeout: 5_000 });
-    // The glyph sits on the sentence's first line, centred on it as the text is (#1961): a box as tall as a line, not a
-    // 16 px box at the top of a 20 px line.
-    const line = notice(page, RECONNECTING);
-    const centres = await line.evaluate((status) => {
-      const glyph = status.querySelector("svg")?.getBoundingClientRect();
-      const words = status.querySelector("span[title]");
-      const range = document.createRange();
-      if (words?.firstChild) range.selectNodeContents(words.firstChild);
-      const first = range.getClientRects()[0];
-      return glyph === undefined || first === undefined
-        ? null
-        : { glyph: glyph.top + glyph.height / 2, text: first.top + first.height / 2 };
-    });
-    expect(centres).not.toBeNull();
-    // 1 px, not 0.5: the centres measure 0.5 px apart (half-pixel rounding) and a spinning glyph's box drifts by a few
-    // millionths, so a 0.5 px bound fails by chance. The old mt-0.5 nudge this guards against moved the glyph 2 px.
-    expect(Math.abs((centres?.glyph ?? 0) - (centres?.text ?? 0))).toBeLessThanOrEqual(1);
+    await glyphCentredOnFirstLine(notice(page, RECONNECTING));
     // The terminal stays on screen under the notice.
     await expect(page.locator("[data-terminal]")).toBeVisible();
     socket.restore();
