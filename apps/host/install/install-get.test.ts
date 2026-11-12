@@ -36,6 +36,8 @@ function rig(options: Options) {
   };
   stub("uname", '[ "$1" = -s ] && echo Linux || echo x86_64');
   stub("systemctl", `echo "systemctl $*" >> "${log}"`);
+  // The user lingers already, so the installer never reaches the real loginctl to turn it on.
+  stub("loginctl", "echo yes");
   stub("hc", "echo 0.1.17");
   const host = [
     "#!/bin/sh",

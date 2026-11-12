@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { relayDir } from "../private-relay.ts";
 import { adoptProcessGroup, STOP_BOUND_MS, stopProcessGroup } from "./process-group.ts";
 import { liveWithEnvironment } from "./processes.ts";
+import { withoutBunNodeShim } from "./node-path.ts";
 
 const READY = /Ready on (http:\/\/\S+)/;
 const START_TIMEOUT_MS = 90_000;
@@ -148,7 +149,7 @@ async function startOnce(
         stdout: "pipe",
         stderr: "pipe",
         env: {
-          ...process.env,
+          ...withoutBunNodeShim(process.env),
           WRANGLER_SEND_METRICS: "false",
           XDG_CONFIG_HOME: join(scratch, "config"),
           WRANGLER_LOG_PATH: logPath,

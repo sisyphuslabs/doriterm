@@ -9,10 +9,11 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 
 const SCRIPT = join(import.meta.dir, "install.sh");
+const USER = userInfo().username;
 
 interface Rig {
   readonly root: string;
@@ -57,6 +58,27 @@ function launchd(dir: string, log: string, failures = 0): string {
   return state;
 }
 
+/**
+ * A logind that remembers whether the user lingers: `show-user` answers it, and `enable-linger` turns it on when the
+ * system grants that to the user, or fails as it does where an admin has to do it.
+ */
+function lingering(dir: string, log: string, linger: "yes" | "no", enable: "granted" | "refused"): void {
+  const state = join(dir, "linger-state");
+  writeFileSync(state, linger);
+  stub(
+    dir,
+    "loginctl",
+    [
+      `case "$*" in`,
+      `  *show-user*) cat "${state}" ;;`,
+      `  *enable-linger*) echo "loginctl $*" >> "${log}"; ${enable === "granted" ? `printf yes > "${state}"` : "exit 1"} ;;`,
+      `esac`,
+    ].join("\n"),
+  );
+}
+
+const enabledLinger = (calls: readonly string[]): string[] => calls.filter((call) => call.startsWith("loginctl"));
+
 const sha256 = (bytes: string): string => new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
 
 /**
@@ -74,6 +96,8 @@ function rig(system: "Linux" | "Darwin", machine = "x86_64"): Rig {
   writeFileSync(log, "");
   stub(stubs, "uname", `[ "$1" = -s ] && echo ${system} || echo ${machine}`);
   stub(stubs, "systemctl", `echo "systemctl $*" >> "${log}"`);
+  // The user lingers already, so no test reaches the real loginctl and changes the machine it runs on.
+  lingering(stubs, log, "yes", "granted");
   // No agent is loaded yet, as on a computer that never ran the host.
   launchd(stubs, log);
   const os = system === "Linux" ? "linux" : "mac";
@@ -289,14 +313,31 @@ describe("install.sh on Linux", () => {
     expect(run.out).toContain("using herdr-core at");
   });
 
-  test("says how to keep the service after logout when the user does not linger, and stays quiet when it does", () => {
+  test("turns lingering on for a user who does not linger, so the service starts at boot without a login", () => {
     const r = rig("Linux");
-    stub(r.stubs, "loginctl", 'echo "$LINGER_ANSWER"');
-    const lingering = install(r, ["--no-pair"], [], { LINGER_ANSWER: "yes" });
-    expect(lingering.out).not.toContain("enable-linger");
-    const not = install(r, ["--no-pair"], [], { LINGER_ANSWER: "no" });
-    expect(not.code).toBe(0);
-    expect(not.out).toContain("loginctl enable-linger");
+    lingering(r.stubs, r.log, "no", "granted");
+    const run = install(r, ["--no-pair"]);
+    expect(run.code).toBe(0);
+    expect(enabledLinger(run.calls)).toEqual([`loginctl --no-ask-password enable-linger ${USER}`]);
+    expect(run.out).toContain("it starts at boot");
+    expect(run.out).not.toContain("sudo");
+  });
+
+  test("where only an admin may turn lingering on, installs anyway and names the one command to run", () => {
+    const r = rig("Linux");
+    lingering(r.stubs, r.log, "no", "refused");
+    const run = install(r, ["--no-pair"]);
+    expect(run.code).toBe(0);
+    expect(run.calls).toContain("systemctl --user restart doriface-host.service");
+    expect(run.out).toContain(`sudo loginctl enable-linger ${USER}`);
+    expect(run.out).not.toContain("it starts at boot");
+  });
+
+  test("leaves a user who lingers already alone", () => {
+    const r = rig("Linux");
+    const run = install(r, ["--no-pair"]);
+    expect(enabledLinger(run.calls)).toEqual([]);
+    expect(run.out).not.toContain("linger");
   });
 
   test("a download that does not match SHA256SUMS.txt installs nothing and starts nothing", () => {

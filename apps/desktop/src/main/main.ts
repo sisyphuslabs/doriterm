@@ -216,6 +216,8 @@ function ready(): void {
     command: hostCommand(context),
     hc: () => findHc(context, usualHcDirs(context), savedHc(savedFile("hc.json"))),
     searched: () => usualHcDirs(context),
+    // A new terminal with no directory opens in the home folder, not where the app was launched from (#2047).
+    cwd: context.home,
     env: process.env,
     log: (line) => console.log(line),
   });

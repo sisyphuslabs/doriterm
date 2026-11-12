@@ -9,7 +9,7 @@ import { SessionKind } from "./kinds.ts";
 import { type ByteLink, CloseCode, closeCodeOf, SecureLinkError } from "./link.ts";
 import type { Handshake } from "./noise/handshake.ts";
 import { PayloadError, type Stream } from "./payloads.ts";
-import { MAX_HELD_BYTES, type SecureLink, SecuredLink, type SessionInfo } from "./secured-link.ts";
+import { MAX_HELD_BYTES, type SecureLink, SecuredLink, type SecureSession, type SessionInfo } from "./secured-link.ts";
 import type { StaticKey } from "./static-key.ts";
 import { REKEY_INTERVAL, Transport } from "./transport.ts";
 
@@ -86,8 +86,8 @@ const failure = (code: number, message: string, cause?: unknown): SecureLinkErro
  * never gets that far. Any failure closes `link` with its code (4400 crypto, 4401 refused, 4408 timeout) and rejects
  * with a {@link SecureLinkError}.
  */
-export function secureLink(link: ByteLink, options: SecureLinkOptions): Promise<SecureLink> {
-  const settled = Promise.withResolvers<SecureLink>();
+export function secureLink(link: ByteLink, options: SecureLinkOptions): Promise<SecureSession> {
+  const settled = Promise.withResolvers<SecureSession>();
   const rekeyInterval = options.rekeyInterval ?? REKEY_INTERVAL;
   const inbox: Uint8Array[] = [];
   let inboxBytes = 0;
@@ -160,7 +160,8 @@ export function secureLink(link: ByteLink, options: SecureLinkOptions): Promise<
     void drain();
   });
   link.onClose((error) => {
-    if (session !== undefined) session.linkClosed(error);
+    // The session judges the close itself: a link it has since left is a former one, and a dropped one may detach it.
+    if (session !== undefined) session.linkClosed(error, link);
     else fail(failure(closeCodeOf(error) ?? CloseCode.CryptoFailure, "link closed during the handshake", error));
   });
 
