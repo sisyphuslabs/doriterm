@@ -144,7 +144,10 @@ test.describe("a desktop browser whose machine stops", () => {
       await expect(machines).toContainText("Online · Relay", { timeout: 20_000 });
 
       await host.stop();
-      await expect(page.getByRole("status").filter({ hasText: "Reconnecting" })).toBeVisible({ timeout: 15_000 });
+      // At this size Settings is a dialog over the workspace: the status bar under it is still drawn, but hidden from
+      // the accessibility tree while the dialog is open, so it is found by the workspace's mark instead of by role.
+      const bar = page.locator('[data-workspace] [role="status"]').filter({ hasText: "Reconnecting…" });
+      await expect(bar).toBeVisible({ timeout: 15_000 });
       await expect(machines).toContainText("Reconnecting · Relay");
       await expect(machines).not.toContainText("Online");
     } finally {
