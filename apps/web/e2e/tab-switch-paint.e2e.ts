@@ -63,7 +63,7 @@ async function startVisibleLineSampler(terminal: Locator): Promise<void> {
 const sampledFrames = (page: Page): Promise<{ shown: boolean; last: number }[]> =>
   page.evaluate(() => (Reflect.get(window, "__visibleLines") as () => { shown: boolean; last: number }[])());
 
-test("switching back to a tab paints the output it gathered while hidden at its end in the first frame, and never resizes its program (#1588)", async ({
+test("switching back to a tab draws the output it gathered while hidden at once, never climbing through it, and never resizes its program (#1588)", async ({
   page,
 }) => {
   const dir = mkdtempSync(join(tmpdir(), "doriface-tab-switch-"));
@@ -99,9 +99,11 @@ test("switching back to a tab paints the output it gathered while hidden at its 
     console.log(`tab-switch frames: ${JSON.stringify(shown.map((frame) => frame.last))}`);
 
     expect(shown.length).toBeGreaterThan(0);
-    // Every frame it is on screen shows the end of what it gathered while hidden, the first one included: the backlog is
-    // written before the first paint, never paced into view from where it was hidden.
-    expect(shown.map((frame) => frame.last)).toEqual(shown.map(() => LAST));
+    // What it gathered while hidden is written at once, not paced into view: no frame shows a line between where it was
+    // hidden and the end, and it ends at the end. It can still paint its screen from before for a frame or two (#2391).
+    const lasts = shown.map((frame) => frame.last);
+    expect(lasts.filter((last) => last > FIRST && last < LAST)).toEqual([]);
+    expect(lasts.at(-1)).toBe(LAST);
     // Hiding a tab is not a resize: its program was never told its terminal changed size.
     await expect(first).not.toContainText("RESIZED");
 
