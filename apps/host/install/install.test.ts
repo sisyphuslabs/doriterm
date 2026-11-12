@@ -9,11 +9,12 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir, userInfo } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const SCRIPT = join(import.meta.dir, "install.sh");
-const USER = userInfo().username;
+/** The name `id -un` gives in every rig: the installer asks the system who the user is, never the environment. */
+const USER = "dori-user";
 
 interface Rig {
   readonly root: string;
@@ -95,6 +96,8 @@ function rig(system: "Linux" | "Darwin", machine = "x86_64"): Rig {
   for (const dir of [home, release, stubs]) mkdirSync(dir, { recursive: true });
   writeFileSync(log, "");
   stub(stubs, "uname", `[ "$1" = -s ] && echo ${system} || echo ${machine}`);
+  // Who the user is comes from this stub, so no case depends on the account or the environment that runs the tests.
+  stub(stubs, "id", `if [ "$*" = -un ]; then echo ${USER}; else exec /usr/bin/id "$@"; fi`);
   stub(stubs, "systemctl", `echo "systemctl $*" >> "${log}"`);
   // The user lingers already, so no test reaches the real loginctl and changes the machine it runs on.
   lingering(stubs, log, "yes", "granted");
@@ -316,7 +319,8 @@ describe("install.sh on Linux", () => {
   test("turns lingering on for a user who does not linger, so the service starts at boot without a login", () => {
     const r = rig("Linux");
     lingering(r.stubs, r.log, "no", "granted");
-    const run = install(r, ["--no-pair"]);
+    // USER names someone else here: the installer must name the user the system reports.
+    const run = install(r, ["--no-pair"], [], { USER: "someone-else" });
     expect(run.code).toBe(0);
     expect(enabledLinger(run.calls)).toEqual([`loginctl --no-ask-password enable-linger ${USER}`]);
     expect(run.out).toContain("it starts at boot");
