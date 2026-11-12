@@ -37,4 +37,19 @@ export function unsentReason(answer: CoreAnswer, program: number | null): Unsent
   return (answer.terminal.pid ?? null) === program ? null : "restarted";
 }
 
+/**
+ * A reattach after a drop that finds another program running in the terminal (it restarted while the line was down):
+ * the new stream is closed, since the new program has its own view, and what was typed for the old one is dropped,
+ * never written to the new one, and said not sent (#2303). A first attach, or the same program, changes nothing.
+ */
+export function restartOnReattach(
+  reattach: boolean,
+  pid: number | null | undefined,
+  program: number | null,
+  pending: unknown[],
+): { readonly close: boolean; readonly unsent: Unsent } {
+  if (!reattach || pid === program) return { close: false, unsent: null };
+  return { close: true, unsent: pending.splice(0).length > 0 ? "restarted" : null };
+}
+
 const unknownToCore = (error: unknown): boolean => error instanceof HcRpcError && error.kind === "not_found";
