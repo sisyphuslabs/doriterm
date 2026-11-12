@@ -17,19 +17,23 @@ test.afterEach(() => {
  * Every column between two neighbouring controls, on the line through both centres, that a pointer there would reach
  * neither of. Sampled every quarter of a CSS pixel: a high-density screen has three device pixels in one of these, so a
  * sliver narrower than a pixel is still a place a pointer lands on neither control. A control a pointer cannot reach at
- * its own centre is reported as UNREACHABLE: in a list that scrolls (the Settings section tabs) that is a tab under the
- * paging cue, not on screen to tap, and the case skips it; anywhere else it is a control covered by its neighbour's hit
- * layer, which is the very seam this proves (#1912).
+ * its own centre is reported by what is there instead. Its NEIGHBOUR there is a COVER: the neighbour's hit layer takes the
+ * tap meant for it, which is the very seam this proves, and fails in every case (#1912). Anything else there is
+ * UNREACHABLE: in a list that scrolls (the Settings section tabs) that is a tab under the paging cue, not on screen to
+ * tap, and only such a case skips it; anywhere else it fails too.
  */
 const UNREACHABLE = "unreachable";
 const unowned = async (left: Locator, right: Locator) =>
   left.evaluate(
-    (a, b): (number | "unreachable")[] => {
+    (a, b): (number | "unreachable" | "covered")[] => {
       const ra = a.getBoundingClientRect();
       const rb = b.getBoundingClientRect();
       const y = (Math.max(ra.top, rb.top) + Math.min(ra.bottom, rb.bottom)) / 2;
       const reached = (el: Element, box: DOMRect) =>
         el.contains(document.elementFromPoint(box.left + box.width / 2, y));
+      const covered = (box: DOMRect, neighbour: Element) =>
+        neighbour.contains(document.elementFromPoint(box.left + box.width / 2, y));
+      if (covered(ra, b) || covered(rb, a)) return ["covered"];
       if (!reached(a, ra) || !reached(b, rb)) return ["unreachable"];
       const step = 0.25;
       const from = ra.right - 1;
@@ -121,10 +125,14 @@ for (const { name, width, scrolls, pairs } of cases) {
           columns: await unowned(left, right),
         })),
       );
+      let measured = 0;
       for (const { label, columns } of seams) {
         if (scrolls === true && columns.includes(UNREACHABLE)) continue;
+        measured += 1;
         expect.soft(columns, label).toEqual([]);
       }
+      // A case whose every pair was skipped would pass having measured nothing.
+      expect(measured, "pairs measured").toBeGreaterThan(0);
     });
   });
 }
