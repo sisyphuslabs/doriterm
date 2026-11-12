@@ -1,5 +1,5 @@
 import type { HcConnection } from "@doriface/client";
-import type { Terminal } from "@doriface/protocol";
+import type { MachineView, Terminal } from "@doriface/protocol";
 import { Button, Dialog, Notice } from "@doriface/ui";
 import { useEffect, useRef, useState } from "react";
 import { useTerminalConfig } from "../ghostty/config-store.ts";
@@ -11,10 +11,11 @@ import { routedPendingEnds } from "./pending-ends.ts";
 import { recordedEnd } from "./resume-ends.ts";
 import { endSession, renameSession, sessionCalls, takeBackEnd } from "./session-actions.ts";
 import type { SessionAsk } from "./session-context.ts";
-import { useMachinesContext } from "./use-machines.ts";
 
 export interface SessionDialogsProps {
   readonly connection: HcConnection;
+  /** The machines as last listed, read when End runs (#2314): a prop, so this dialog never re-renders on a machines update of its own (#2076). */
+  readonly views: readonly MachineView[];
   readonly terminals: readonly Terminal[];
   readonly ask: SessionAsk | null;
   readonly onDone: () => void;
@@ -40,7 +41,7 @@ const ENDED = {
  * question into a statement that it ended, with only OK: the question never disappears on its own, and nothing is
  * answered for the user. A question asked about a session that had already ended needs no answer and closes.
  */
-export function SessionDialogs({ connection, terminals, ask, onDone, onDrop, onKept }: SessionDialogsProps) {
+export function SessionDialogs({ connection, views, terminals, ask, onDone, onDrop, onKept }: SessionDialogsProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The question open now: an action settles into the question that started it, never into a later one.
@@ -93,7 +94,6 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onDrop, onK
       },
     );
   };
-  const { views } = useMachinesContext();
   // Kept in local storage until it settles, so a page closed before End's calls leave it has the next page finish it.
   const end = (): void => {
     if (ask === null) return;

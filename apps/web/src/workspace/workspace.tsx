@@ -546,6 +546,7 @@ export function Workspace({ connection }: WorkspaceProps) {
             />
             <SessionDialogs
               connection={connection}
+              views={views}
               terminals={terminals}
               ask={ask}
               onDone={done}
@@ -561,6 +562,7 @@ export function Workspace({ connection }: WorkspaceProps) {
               <CloseTabDialog
                 key={closing.key}
                 connection={connection}
+                views={views}
                 terminals={terminals}
                 tab={closing}
                 {...(lastOfSpace(closing)
@@ -582,6 +584,7 @@ export function Workspace({ connection }: WorkspaceProps) {
               <CloseTabDialog
                 key={closingSet.join(" ")}
                 connection={connection}
+                views={views}
                 terminals={terminals}
                 tab={closingSetTab}
                 tabs={closingTabs.length}
