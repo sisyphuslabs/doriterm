@@ -20,8 +20,9 @@ const RECONNECTING = /Reconnecting/;
 /**
  * The phone line's glyph (spinner or offline icon) sits on the sentence's first line, centred on it as the text is (#1961):
  * a box as tall as a line, not a 16 px box at the top of a 20 px line. The bound is 1 px: the centres measure 0.5 px apart
- * (half-pixel rounding), and a spinning glyph's box drifts by a few millionths, so a 0.5 px bound fails by chance. The old
- * mt-0.5 nudge this guards against moved the glyph 2 px.
+ * (half-pixel rounding), and a spinning glyph's box drifts by a few millionths, so a 0.5 px bound fails by chance. What
+ * it catches: the old size-4 box put the reconnecting spinner 1.5 px off, and the offline glyph's old mt-0.5 nudge (which
+ * never applied to the spinner) moved it 2 px.
  */
 async function glyphCentredOnFirstLine(line: Locator): Promise<void> {
   const centres = await line.evaluate((status) => {
