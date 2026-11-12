@@ -8,14 +8,14 @@ export interface SessionMenuProps {
 }
 
 /**
- * Whether a session menu gives focus back as it goes: not while a dialog an item opened is up (Rename…, End's question,
+ * Whether a session menu gives focus back as it goes: not while a modal dialog an item opened is up (Rename…, End's question,
  * or the statement that replaces that question when the session ends). A menu still closing when its session ends
  * decides as the question is swapped for the statement, when neither has focus, and hands it over a moment later: by
  * then behind the statement, on whatever is still on the page (#590, #2362). So it asks whether a dialog is up, not
- * whether one has focus.
+ * whether one has focus. Only a modal one counts: a toast is a dialog too (#2380).
  */
 export function menuReturnsFocus(): boolean {
-  return document.querySelector('[role="dialog"], [role="alertdialog"]') === null;
+  return document.querySelector('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]') === null;
 }
 
 /** What can be done with a terminal's session: its "..." menu and a split pane header's right-click hold the same items. */

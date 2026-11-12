@@ -189,6 +189,25 @@ test("a statement whose only button cannot take focus opens on itself, so the ke
   await expect(ended).toBeFocused();
 });
 
+test("a session menu closed with only a toast up gives focus back to its trigger (#2380)", async ({ page }) => {
+  await page.goto("/");
+  await openNewTerminal(page);
+  // A toast is a dialog that is not modal: what is on the page while it shows still takes focus back.
+  await page.evaluate(() => {
+    const toast = document.createElement("div");
+    toast.setAttribute("role", "dialog");
+    toast.setAttribute("aria-modal", "false");
+    toast.textContent = "A toast";
+    document.body.append(toast);
+  });
+  const trigger = page.getByRole("button", { name: "Session actions" });
+  await trigger.click();
+  await expect(page.getByRole("menu")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
 test("a session menu still closing when its session ends gives no focus back behind the statement (#2362)", async ({
   page,
 }) => {
