@@ -360,12 +360,14 @@ async function macRunning(context: SetupContext, target: string): Promise<boolea
 
 /**
  * Without linger, systemd stops the user's services at logout and starts them only at the next login. It is turned on
- * with the installer's command. `--no-ask-password` stops loginctl from starting a password agent on a terminal; this
- * tool's commands get no terminal to read from, so none starts here with or without it, and the flag keeps that true
- * should that change. Where the system wants an admin for lingering, the tool reports the command for one.
+ * with the installer's command, for the user `id -un` names: Bun's `userInfo().username` is the literal "unknown"
+ * whenever USER is unset, loginctl knows no such user, and lingering would stay off. `--no-ask-password` stops
+ * loginctl from starting a password agent on a terminal; this tool's commands get no terminal to read from, so none
+ * starts here with or without it, and the flag keeps that true should that change. Where the system wants an admin
+ * for lingering, the tool reports the command for one.
  */
 async function ensureLinger(context: SetupContext): Promise<void> {
-  const user = userInfo().username;
+  const user = (await context.run(["id", "-un"])).stdout.trim();
   const read = async (): Promise<string> =>
     (await context.run(["loginctl", "show-user", user, "-p", "Linger", "--value"])).stdout.trim();
   if ((await read()) === "yes") return context.report("linger", "unchanged", `linger on for ${user}`);
