@@ -23,7 +23,7 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa8db58b52 100644
+index 78a86ffd96eec03222777f40e9db6a0561684c3f..4dbf6e6b7d5f8d33ce86c8f78ccb7b5e1033df9c 100644
 --- a/dist/input.js
 +++ b/dist/input.js
 @@ -67,9 +67,58 @@ const FIXED_KEYS = {
@@ -85,7 +85,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
  function isAltGraphTextInput(event, pressedModifiers) {
      if (event.metaKey ||
          !(event.getModifierState("AltGraph") ||
-@@ -86,6 +135,18 @@ export class InputHandler {
+@@ -86,6 +135,21 @@ export class InputHandler {
          this.composing = false;
          this.compositionWidth = 0;
          this.recentCompositionCommit = null;
@@ -99,12 +99,15 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
 +        // inside a syllable): only then may a finished syllable go on being typed. A syllable an input method commits
 +        // with no composition and no such key is committed text, and is sent as it arrives (#1104).
 +        this.koreanKeyEdit = false;
++        // Whether the run's jamo came each with its own keydown before the edit (an iPhone or iPad keyboard), whose
++        // syllable ends only when its space or Return lands in the field.
++        this.localKeyed = false;
 +        // Pending while a lone jamo inserted with no key waits for the key that would make it a syllable's first (#1244).
 +        this.unkeyedLetterTimer = 0;
          // The first native deletion mirrors the Backspace already sent on keydown.
          this.suppressNextTouchDeleteInput = false;
          this.mouseButtons = 0;
-@@ -153,10 +214,13 @@ export class InputHandler {
+@@ -153,10 +217,13 @@ export class InputHandler {
              this.positionTextarea();
              this.element.classList.add("focused");
              if (this.getBridge()?.focusEvents?.())
@@ -119,7 +122,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
              this.focused = false;
              this.composing = false;
              this.recentCompositionCommit = null;
-@@ -169,7 +233,7 @@ export class InputHandler {
+@@ -169,7 +236,7 @@ export class InputHandler {
              this.pressedModifiers.clear();
              this.deliveredKeys.clear();
              if (this.getBridge()?.focusEvents?.())
@@ -128,7 +131,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
          };
          this._onMouseDown = (event) => {
              this.tabExitArmed = false;
-@@ -224,10 +288,12 @@ export class InputHandler {
+@@ -224,10 +291,12 @@ export class InputHandler {
          this.textarea.focus({ preventScroll: true });
      }
      syncInputPosition() {
@@ -142,7 +145,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
          this.accessibility.destroy();
          this.textarea.removeEventListener("keydown", this._onKeyDown);
          this.textarea.removeEventListener("keyup", this._onKeyUp);
-@@ -253,13 +319,40 @@ export class InputHandler {
+@@ -253,13 +322,46 @@ export class InputHandler {
          if (physicalModifier) {
              this.pressedModifiers.add(e.code);
          }
@@ -168,12 +171,18 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
 +        // An iPhone or iPad Korean keyboard names the jamo in its keydown and then composes it in the field: the field
 +        // must get it, or the next jamo has nothing to join. Backspace inside a syllable still being typed takes back a
 +        // jamo of it, which is the field's edit too.
-+        // A space or Return while a syllable is open is the field's edit too, so the keyboard sees its key land and
-+        // finishes the syllable; the run it ends is then sent whole from the field, the key encoded as the key it is.
++        // A space or Return while such a keyboard's syllable is open is the field's edit too, so the keyboard sees its key
++        // land and finishes the syllable; the run it ends is then sent whole from the field, the key encoded as the key it
++        // is. Safari on a Mac keys no jamo before its edit (its keydown reads 229, after the edit) and ends the syllable
++        // itself before the key: there the key is the key, its keydown sending the syllable and then the key.
++        const hangulKey = isHangulKey(e);
++        if (hangulKey)
++            this.localKeyed = true;
 +        this.koreanKeyEdit =
-+            isHangulKey(e) ||
++            hangulKey ||
 +                (this.localPreedit !== "" &&
-+                    ((e.key === "Backspace" && !e.ctrlKey && !e.metaKey && !e.altKey) || endsSyllableInField(e)));
++                    ((e.key === "Backspace" && !e.ctrlKey && !e.metaKey && !e.altKey) ||
++                        (this.localKeyed && endsSyllableInField(e))));
 +        if (this.koreanKeyEdit) {
 +            this.tabExitArmed = false;
 +            this.suppressedKeyUps.add(keyId);
@@ -185,7 +194,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
          const bridge = this.getBridge();
          const kittyFlags = bridge?.kittyKeyboardFlags?.() ?? 0;
          const kittyOwnsModifier = physicalModifier && Boolean(kittyFlags & KITTY_REPORT_ALL);
-@@ -345,6 +438,9 @@ export class InputHandler {
+@@ -345,6 +447,9 @@ export class InputHandler {
              this.suppressedKeyUps.add(keyId);
              if (e.key === "Backspace") {
                  e.preventDefault();
@@ -195,7 +204,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
                  this.selectionActions?.clearSelection();
                  this.onData("\x15");
              }
-@@ -371,6 +467,8 @@ export class InputHandler {
+@@ -371,6 +476,8 @@ export class InputHandler {
          if (kittyFlags !== 0) {
              const seq = encodeKittyKey(e, kittyFlags, e.repeat ? "repeat" : "press", this.pressedModifiers, bridge?.cursorKeysApp?.() ?? false);
              if (seq) {
@@ -204,7 +213,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
                  if (!physicalModifier)
                      this.selectionActions?.clearSelection();
                  if (nativeTouchDelete)
-@@ -385,6 +483,7 @@ export class InputHandler {
+@@ -385,6 +492,7 @@ export class InputHandler {
          }
          const seq = this.keyToSequence(e);
          if (seq) {
@@ -212,7 +221,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
              this.selectionActions?.clearSelection();
              if (nativeTouchDelete)
                  this.suppressNextTouchDeleteInput = true;
-@@ -395,6 +494,7 @@ export class InputHandler {
+@@ -395,6 +503,7 @@ export class InputHandler {
          }
      }
      handleKeyUp(e) {
@@ -220,7 +229,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
          const keyId = e.code || e.key;
          this.pressedModifiers.delete(e.code);
          const delivered = this.deliveredKeys.delete(keyId);
-@@ -421,6 +521,9 @@ export class InputHandler {
+@@ -421,6 +530,9 @@ export class InputHandler {
          this.recentCompositionCommit = null;
          this.suppressNextTouchDeleteInput = false;
          const text = e.clipboardData?.getData("text");
@@ -230,7 +239,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
          // Some mobile browsers leave clipboardData empty but insert the paste
          // into the textarea. Let that input event carry the text instead.
          if (!text)
-@@ -462,6 +565,8 @@ export class InputHandler {
+@@ -462,6 +574,8 @@ export class InputHandler {
      }
      handleCompositionStart() {
          this.tabExitArmed = false;
@@ -239,7 +248,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
          this.prepareComposition();
          this.composing = true;
          this.recentCompositionCommit = null;
-@@ -472,11 +577,22 @@ export class InputHandler {
+@@ -472,11 +586,22 @@ export class InputHandler {
          this.positionTextarea();
          const s = this.textarea.style;
          s.opacity = "1";
@@ -265,7 +274,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
          this.composing = false;
          this.hideComposition();
          this.resetInputValue();
-@@ -485,6 +601,44 @@ export class InputHandler {
+@@ -485,6 +610,44 @@ export class InputHandler {
              this.onData(e.data);
          }
      }
@@ -310,7 +319,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
      hideComposition() {
          this.compositionWidth = 0;
          const s = this.textarea.style;
-@@ -502,7 +656,7 @@ export class InputHandler {
+@@ -502,7 +665,7 @@ export class InputHandler {
          if (!bridge || !cellSize || !firstRow || !bridge.getCursor) {
              this.textarea.style.left = "0px";
              this.textarea.style.top = "0px";
@@ -319,7 +328,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
                  this.textarea.style.width = `${Math.max(1, this.compositionWidth)}px`;
                  this.textarea.style.height = `${cellSize?.rowHeight ?? 17}px`;
              }
-@@ -519,7 +673,7 @@ export class InputHandler {
+@@ -519,7 +682,7 @@ export class InputHandler {
          const s = this.textarea.style;
          s.left = `${rowRect.left - hostRect.left - this.element.clientLeft + this.element.scrollLeft + col * charWidth}px`;
          s.top = `${rowRect.top - hostRect.top - this.element.clientTop + this.element.scrollTop + row * rowHeight}px`;
@@ -328,7 +337,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
              s.width = `${Math.min((bridge.getCols() - col) * charWidth, Math.max(charWidth, this.compositionWidth))}px`;
              s.height = `${rowHeight}px`;
          }
-@@ -528,14 +682,96 @@ export class InputHandler {
+@@ -528,14 +691,97 @@ export class InputHandler {
          const charWidth = this.getCellSize()?.charWidth;
          if (!charWidth || charWidth <= 0)
              return;
@@ -376,6 +385,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
 +        this.clearUnkeyedLetter();
 +        this.localSent = "";
 +        this.localPreedit = "";
++        this.localKeyed = false;
 +        this.hideComposition();
 +        this.resetInputValue();
 +    }
@@ -430,7 +440,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
      resetInputValue() {
          this.textarea.value = this.touchPrimary ? TOUCH_INPUT_PLACEHOLDER : "";
          if (this.touchPrimary)
-@@ -556,6 +792,7 @@ export class InputHandler {
+@@ -556,6 +802,7 @@ export class InputHandler {
      }
      handleInput(event) {
          this.tabExitArmed = false;
@@ -438,7 +448,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
          if (this.composing) {
              this.sizeComposition();
              return;
-@@ -565,6 +802,36 @@ export class InputHandler {
+@@ -565,6 +812,36 @@ export class InputHandler {
          const value = this.touchPrimary && rawValue.startsWith(TOUCH_INPUT_PLACEHOLDER)
              ? rawValue.slice(TOUCH_INPUT_PLACEHOLDER.length)
              : rawValue;
@@ -475,7 +485,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
          this.resetInputValue();
          const recent = this.recentCompositionCommit;
          this.recentCompositionCommit = null;
-@@ -821,7 +1088,7 @@ export class InputHandler {
+@@ -821,7 +1098,7 @@ export class InputHandler {
                  return other;
          }
          if (e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -484,7 +494,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..37cc48673e642921a4c81a1718d625aa
              if (control !== null)
                  return control;
              if (e.key === "Backspace")
-@@ -855,6 +1122,24 @@ export class InputHandler {
+@@ -855,6 +1132,24 @@ export class InputHandler {
          return null;
      }
  }

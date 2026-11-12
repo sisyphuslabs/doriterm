@@ -18,7 +18,9 @@ interface Handler {
   localSent: string;
   localPreedit: string;
   koreanKeyEdit: boolean;
+  textarea: { value: string };
   editLocalRun(value: string): void;
+  handleInput(e: object): void;
   handleKeyDown(e: object): void;
 }
 
@@ -29,6 +31,8 @@ function handler(kittyFlags = 0, overrides: object = {}): { run: Handler; sent: 
     localSent: "",
     localPreedit: "",
     koreanKeyEdit: false,
+    localKeyed: false,
+    recentCompositionCommit: null,
     composing: false,
     touchPrimary: false,
     unkeyedLetterTimer: 0,
@@ -45,7 +49,14 @@ function handler(kittyFlags = 0, overrides: object = {}): { run: Handler; sent: 
   return { run, sent };
 }
 
-function keyDown(key: string, shiftKey: boolean): { event: object; cancelled: () => boolean } {
+function keyDown(
+  key: string,
+  shiftKey: boolean,
+  keyCode = key === " " ? 32 : 13,
+): {
+  event: object;
+  cancelled: () => boolean;
+} {
   let cancelled = false;
   const event = {
     key,
@@ -55,7 +66,7 @@ function keyDown(key: string, shiftKey: boolean): { event: object; cancelled: ()
     altKey: false,
     metaKey: false,
     isComposing: false,
-    keyCode: key === " " ? 32 : 13,
+    keyCode,
     repeat: false,
     getModifierState: () => false,
     preventDefault: () => {
@@ -116,3 +127,45 @@ test.each([
     expect(run.koreanKeyEdit).toBe(false);
   },
 );
+
+/** The field holding `value` after an edit, as handleInput reads it. */
+function edit(run: Handler, value: string): void {
+  run.textarea.value = value;
+  run.handleInput({ inputType: "insertText" });
+}
+
+// Safari on macOS, as recorded (korean-ime-recorded.ts): each jamo's edit, then its keydown reading 229; the input method
+// has ended the syllable before the space or Return's own keydown, which carries no edit of the field after it (#1944).
+test.each([
+  ["Return", "Enter", "\r"],
+  ["a space", " ", " "],
+] as const)(
+  "%s after a syllable Safari on a Mac typed is the key: the syllable, then the key (#1944)",
+  (_n, key, seq) => {
+    const { run, sent } = handler();
+    edit(run, "\u{3131}");
+    run.handleKeyDown(keyDown("\u{3131}", false, 229).event);
+    edit(run, "\u{AC00}");
+    run.handleKeyDown(keyDown("\u{314F}", false, 229).event);
+    const { event, cancelled } = keyDown(key, false);
+    run.handleKeyDown(event);
+    expect(sent).toEqual(["\u{AC00}", seq]);
+    expect(cancelled()).toBe(true);
+  },
+);
+
+// An iPhone or iPad keyboard names each jamo in a keydown before its edit, and ends its syllable only when its own key
+// lands in the field: that key stays the field's edit.
+test("Return after a syllable an on-screen keyboard keyed is left to the field (#1944)", () => {
+  const { run, sent } = handler();
+  run.handleKeyDown(keyDown("\u{3131}", false, 0).event);
+  edit(run, "\u{3131}");
+  run.handleKeyDown(keyDown("\u{314F}", false, 0).event);
+  edit(run, "\u{AC00}");
+  const { event, cancelled } = keyDown("Enter", false);
+  run.handleKeyDown(event);
+  expect(sent).toEqual([]);
+  expect(cancelled()).toBe(false);
+  edit(run, "\u{AC00}\n");
+  expect(sent).toEqual(["\u{AC00}", "\r"]);
+});
