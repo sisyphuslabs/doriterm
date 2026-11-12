@@ -94,10 +94,21 @@ test("a process carrying a run's mark is found by it and stopped", async () => {
   const run = newRun();
   try {
     // Bun, not /bin/sleep: macOS hides the environment of Apple platform binaries from ps -E (the next test's case).
-    const marked = Bun.spawn([process.execPath, "-e", "setTimeout(() => {}, 60_000)"], {
+    const script = `
+      import { closeSync } from "node:fs";
+      console.log(process.pid);
+      closeSync(1);
+      setTimeout(() => {}, 60_000);
+    `;
+    const marked = Bun.spawn([process.execPath, "-e", script], {
       env: { ...process.env, [RUN_MARK]: run.mark },
-      stdio: ["ignore", "ignore", "ignore"],
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "ignore",
     });
+    // A process that was only just spawned has not finished its exec, and until it has, its environment reads as
+    // empty: a scan then does not see the mark (#2404). Its own first line says it is past that.
+    expect(Number((await new Response(marked.stdout).text()).trim())).toBe(marked.pid);
     expect((await runProcesses(run)).map((found) => found.pid)).toContain(marked.pid);
     expect((await stopRunProcesses(run)).map((found) => found.pid)).toContain(marked.pid);
     await marked.exited;

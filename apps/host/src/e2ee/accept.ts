@@ -174,8 +174,11 @@ export async function acceptE2ee(
       staticKey: rawStaticKey(deps.identity.noise),
       authorize: (hello) => {
         const verdict = authorize(hello);
-        if (!verdict.accept && verdict.closeCode === CloseCode.UnknownDevice) {
-          deps.log(handshakeRefusalLine(hello, verdict.reason));
+        if (
+          !verdict.accept &&
+          (verdict.closeCode === CloseCode.UnknownDevice || verdict.closeCode === CloseCode.MeshCodeRefused)
+        ) {
+          deps.log(handshakeRefusalLine(hello, verdict.reason, verdict.closeCode));
         }
         return verdict;
       },

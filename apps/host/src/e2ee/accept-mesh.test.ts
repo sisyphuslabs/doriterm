@@ -157,6 +157,10 @@ describe("H-1: pairing kinds against the offer's kind", () => {
       change(host);
       const run = runSession(host, host.relay, codeOf(host, "laptop"), { stream: "mesh" });
       expect(await outcome(run)).toEqual({ code: CloseCode.MeshCodeRefused, sent: 0 });
+      // The refusal is on the host's record, as a 4401 refusal was before the remap (review of #1733).
+      expect(
+        host.logs.some((line) => line.startsWith("e2ee: close code=4411 source=handshake kind=2 stream=mesh: ")),
+      ).toBe(true);
     },
   );
 
