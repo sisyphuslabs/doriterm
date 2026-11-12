@@ -1,8 +1,30 @@
 // A disabled Input, NumberStepper, Switch and menu item dim with their own tokens, never with a fade over the whole
 // control, so their text stays at 4.5:1 and the parts that carry meaning at 3:1, in both themes (#1034), and each is
 // still a visible step from the same control enabled.
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { measure } from "./painted-contrast.ts";
+
+/**
+ * A disabled button's glyph measured against the same button with its disabled marks lifted, which paints the enabled
+ * glyph, as a control at its bound sits beside its enabled neighbour: the step is the Button spec's 1.7 (#1241).
+ */
+async function disabledGlyph(page: Page, button: Locator): ReturnType<typeof measure> {
+  const marks = await button.evaluate((element) =>
+    ["disabled", "data-disabled", "aria-disabled"].flatMap((name) => {
+      const value = element.getAttribute(name);
+      return value === null ? [] : [[name, value] as const];
+    }),
+  );
+  await button.evaluate((element, names) => {
+    for (const [name] of names) element.removeAttribute(name);
+  }, marks);
+  const enabled = await measure(page, button, { svg: true });
+  await button.evaluate((element, names) => {
+    for (const [name, value] of names) element.setAttribute(name, value);
+  }, marks);
+  return measure(page, button, { svg: true, enabled: enabled.ink });
+}
 
 const BROKEN_STORAGE = `IDBFactory.prototype.open = () => { throw new DOMException("IndexedDB is not available here", "InvalidStateError"); };`;
 
@@ -51,24 +73,16 @@ for (const theme of ["day", "night"] as const) {
 
       const increase = page.getByRole("button", { name: "Increase font-size" });
       await expect(increase).toBeDisabled();
-      // The same button with its disabled marks lifted paints the enabled glyph, as a stepper at its bound sits beside
-      // its enabled other button: the disabled one is a visible step from it, the Button spec's 1.7 (#1241).
-      const marks = await increase.evaluate((element) =>
-        ["disabled", "data-disabled", "aria-disabled"].flatMap((name) => {
-          const value = element.getAttribute(name);
-          return value === null ? [] : [[name, value] as const];
-        }),
-      );
-      await increase.evaluate((element, names) => {
-        for (const [name] of names) element.removeAttribute(name);
-      }, marks);
-      const enabledGlyph = await measure(page, increase, { svg: true });
-      await increase.evaluate((element, names) => {
-        for (const [name, value] of names) element.setAttribute(name, value);
-      }, marks);
-      const glyph = await measure(page, increase, { svg: true, enabled: enabledGlyph.ink });
+      const glyph = await disabledGlyph(page, increase);
       expect(glyph.ratio, glyph.label).toBeGreaterThanOrEqual(3);
       expect(glyph.step, glyph.label).toBeGreaterThanOrEqual(1.7);
+
+      // A ghost icon button (IconButton's default), disabled with the settings: its icon paints --disabled-glyph (#1897).
+      const add = page.getByRole("button", { name: /^Add / }).first();
+      await expect(add).toBeDisabled();
+      const icon = await disabledGlyph(page, add);
+      expect(icon.ratio, icon.label).toBeGreaterThanOrEqual(3);
+      expect(icon.step, icon.label).toBeGreaterThanOrEqual(1.7);
       const value = await measure(page, page.getByRole("textbox", { name: "font-size", exact: true }), {
         part: { selector: "", paint: "color" },
       });

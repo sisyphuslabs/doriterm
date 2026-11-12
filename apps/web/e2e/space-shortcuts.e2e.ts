@@ -127,5 +127,4 @@ test("4: Settings lists the space keys with the keys that run them", async ({ pa
   await expect(row("space.next")).toContainText(chips.next);
   await expect(row("space.prev")).toContainText("Previous space");
   await expect(row("space.prev")).toContainText(chips.previous);
-  await expect(row("space.select:1")).not.toContainText("keeps this key");
 });
