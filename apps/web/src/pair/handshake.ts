@@ -44,6 +44,13 @@ function pairingOption(secret: OfferSecret, name: string): PairingSecret {
     : { mode: "link", linkSecret: secret.linkSecret, name };
 }
 
+/** The pairing session once the host answered on it: a full hc session, with what a later drop needs to carry it on. */
+export interface PairedSession {
+  readonly connection: HcConnection;
+  /** The session under the connection and how to dial its host again (contract v1.11): an ordinary relay session. */
+  readonly session: NonNullable<OpenConnection["session"]>;
+}
+
 /**
  * Runs the pairing session through the relay: a typed code on a `?pair=<slot>` session, a link on an ordinary one.
  * It resolves only after the host answered `hello` on that session, which the host does only once it stored this
@@ -53,7 +60,7 @@ export async function pairWithHost(
   offer: PairingOffer,
   name: string,
   deps: RelayDeps = BROWSER_DEPS,
-): Promise<HcConnection> {
+): Promise<PairedSession> {
   const { secret } = offer;
   const pairing = pairingOption(secret, name);
   const link = await connectRelayClient({
@@ -73,7 +80,11 @@ export async function pairWithHost(
       remoteStatic: offer.noiseStaticPub,
       pairing,
     });
-    return await HcConnection.open(secure);
+    const connection = await HcConnection.open(secure);
+    // Carried on over an ordinary session: the pairing is done, and a slot is for a pairing handshake only.
+    const redial = (signal: AbortSignal): ReturnType<typeof connectRelayClient> =>
+      connectRelayClient({ relayUrl: offer.relayUrl, hostId: offer.hostId, signal });
+    return { connection, session: { secure, redial } };
   } catch (error) {
     const reason = pairingFailureReason(secret.mode, error instanceof Error ? closeCodeOf(error) : undefined);
     throw reason === undefined ? error : new PairingFailedError(reason, { cause: error });
@@ -94,7 +105,7 @@ export async function pairAndRemember(
   save: (host: RememberedHost) => void,
   deps: RelayDeps = BROWSER_DEPS,
 ): Promise<void> {
-  (await pairWithHost(offer, name, deps)).close();
+  (await pairWithHost(offer, name, deps)).connection.close();
   save(rememberedOf(offer));
 }
 
@@ -120,6 +131,9 @@ export async function pairAndOpen(
   connections: PairedConnections,
   deps: RelayDeps = BROWSER_DEPS,
 ): Promise<void> {
-  const connection = await pairWithHost(offer, name, deps);
-  connections.pair({ ...connections.settings, mode: "relay", ...rememberedOf(offer) }, { connection, path: "relay" });
+  const { connection, session } = await pairWithHost(offer, name, deps);
+  connections.pair(
+    { ...connections.settings, mode: "relay", ...rememberedOf(offer) },
+    { connection, path: "relay", session },
+  );
 }
