@@ -6,6 +6,7 @@ import { endAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { seedLayout } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
+import { type HcSocket, routeHcSocket } from "./hc-socket.ts";
 import { PHONE } from "./phone-key-bar.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -29,11 +30,59 @@ exec sleep 600
 `;
 
 /** The view's last screen row shows the transcript's end: the attach replay has finished painting. */
-async function atLastLine(terminal: Locator): Promise<void> {
+async function atLastLine(terminal: Locator, timeout = 30_000): Promise<void> {
   await expect(terminal.locator(".term-row:not(.term-scrollback-row)").last()).toContainText(
     `line ${String(LINES).padStart(5, "0")}`,
-    { timeout: 30_000 },
+    { timeout },
   );
+}
+
+/** The RPC ids of the page's `terminal.attach` requests for this terminal, in the order it sent them. */
+function attachIds(socket: HcSocket, address: string): number[] {
+  return socket.sent().flatMap((text) => {
+    if (!text.includes('"method":"terminal.attach"') || !text.includes(`"terminal":"${address}"`)) return [];
+    const id = /"id":(\d+)/.exec(text)?.[1];
+    return id === undefined ? [] : [Number(id)];
+  });
+}
+
+/** Whether hc has answered the request with this RPC id. */
+function answered(socket: HcSocket, id: number): boolean {
+  return socket.received().some((text) => text.includes(`"id":${id},`) || text.includes(`"id":${id}}`));
+}
+
+interface PaintBounds {
+  readonly attach: number;
+  readonly answer: number;
+  readonly paint: number;
+}
+
+const PAINT_BOUNDS: PaintBounds = { attach: 30_000, answer: 30_000, paint: 30_000 };
+
+/**
+ * Waits for the attach the page sends after `before` of them, then for hc's answer to it, then for its replay to paint
+ * the transcript's end: each step on its own bound, so a loaded page that is slow to attach is waited on, while an
+ * attach that is never sent or never answered still fails within the sum of the bounds (#2390). One wall-clock wait
+ * from the click counted the time before the attach was even sent, which a starved renderer can spend all of.
+ */
+async function paintedAfterAttach(
+  socket: HcSocket,
+  address: string,
+  terminal: Locator,
+  before: number,
+  bounds: PaintBounds = PAINT_BOUNDS,
+): Promise<void> {
+  await expect
+    .poll(() => attachIds(socket, address).length, {
+      message: "the page sends terminal.attach",
+      timeout: bounds.attach,
+    })
+    .toBeGreaterThan(before);
+  const id = attachIds(socket, address)[before] ?? -1;
+  await expect
+    .poll(() => answered(socket, id), { message: `hc answers terminal.attach #${id}`, timeout: bounds.answer })
+    .toBe(true);
+  await atLastLine(terminal, bounds.paint);
 }
 
 /**
@@ -78,6 +127,19 @@ async function sampleBottomWhile(page: Page, address: string, change: () => Prom
   return samples;
 }
 
+/** Starts the transcript, opens its tab with the page's hc socket routed through the spec, and returns both. */
+async function openTranscript(page: Page, started: string[], dir: string) {
+  const script = join(dir, "agent.sh");
+  writeFileSync(script, AGENT);
+  const out = hcOn("host", ["run", "--bg", "--name", "first-paint-agent", "--", "bash", script]);
+  const address = String((JSON.parse(out) as { address: string }).address);
+  started.push(address);
+  seedLayout([{ id: "tb-812", name: "agent", root: [{ pane: "p1", terminal: address }] }]);
+  const socket = await routeHcSocket(page);
+  await page.goto("/");
+  return { address, socket, terminal: page.locator(`[data-terminal="${address}"]`) };
+}
+
 test.describe("on a phone", () => {
   test.use({ ...PHONE });
 
@@ -93,21 +155,24 @@ test.describe("on a phone", () => {
       const address = String((JSON.parse(out) as { address: string }).address);
       started.push(address);
       seedLayout([{ id: "tb-812", name: "agent", root: [{ pane: "p1", terminal: address }] }]);
+      const socket = await routeHcSocket(page);
       await page.goto("/");
       await page
         .getByRole("button", { name: /first-paint-agent/ })
         .first()
         .click();
       const terminal = page.locator(`[data-terminal="${address}"]`);
-      await atLastLine(terminal);
+      await paintedAfterAttach(socket, address, terminal, 0);
 
       // Each crossing of the breakpoint mounts the view anew and attaches again, so the core's first paint replays the
       // last 2,000 lines: the bottom of the view must never walk through them (#812).
       const samples = await sampleBottomWhile(page, address, async () => {
+        const landscape = attachIds(socket, address).length;
         await page.setViewportSize({ width: 844, height: 390 });
-        await atLastLine(terminal);
+        await paintedAfterAttach(socket, address, terminal, landscape);
+        const portrait = attachIds(socket, address).length;
         await page.setViewportSize({ width: 390, height: 844 });
-        await atLastLine(terminal);
+        await paintedAfterAttach(socket, address, terminal, portrait);
       });
 
       const earlier = samples.filter((line) => line > 0 && line < LINES);
@@ -115,6 +180,51 @@ test.describe("on a phone", () => {
       expect(samples.filter((line) => line === LINES).length, "a frame showed the transcript's end").toBeGreaterThan(0);
       expect(earlier.slice(0, 10), `${earlier.length} of ${samples.length} frames ended on an earlier line`).toEqual(
         [],
+      );
+    } finally {
+      for (const address of started) endAgent("host", address);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a first attach that goes out after 30 s is still waited on, step by step (#2390)", async ({ page }) => {
+    test.setTimeout(150_000);
+    const dir = mkdtempSync(join(tmpdir(), "doriface-first-paint-"));
+    const started: string[] = [];
+    try {
+      const { address, socket, terminal } = await openTranscript(page, started, dir);
+      // A starved renderer can spend the whole old 30 s budget before it even sends its attach. Holding the attach
+      // for longer than that reproduces it every time; time is the behaviour under test here.
+      const release = socket.hold("terminal.attach");
+      await page
+        .getByRole("button", { name: /first-paint-agent/ })
+        .first()
+        .click();
+      await page.waitForTimeout(31_000);
+      release();
+      await paintedAfterAttach(socket, address, terminal, 0);
+    } finally {
+      for (const address of started) endAgent("host", address);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an attach that is never answered still fails within its bound, not after the test's whole timeout (#2390)", async ({
+    page,
+  }) => {
+    const dir = mkdtempSync(join(tmpdir(), "doriface-first-paint-"));
+    const started: string[] = [];
+    try {
+      const { address, socket, terminal } = await openTranscript(page, started, dir);
+      socket.hold("terminal.attach");
+      await page
+        .getByRole("button", { name: /first-paint-agent/ })
+        .first()
+        .click();
+      const bounds = { attach: 3_000, answer: 3_000, paint: 3_000 };
+      // The held attach is still counted as sent, so the wait goes on to hc's answer, which never comes.
+      await expect(paintedAfterAttach(socket, address, terminal, 0, bounds)).rejects.toThrow(
+        /hc answers terminal\.attach/,
       );
     } finally {
       for (const address of started) endAgent("host", address);
