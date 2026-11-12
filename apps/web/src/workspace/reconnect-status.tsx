@@ -46,7 +46,7 @@ export function useConnectionNotice(): ConnectionNotice | null {
   return { label, detail: failed === null ? label : `${label}: ${failed.error.message}`, offline: false };
 }
 
-const glyph = (notice: ConnectionNotice, box: "size-3.5" | "size-4") => (
+const glyph = (notice: ConnectionNotice, box: "size-3.5" | "h-[1lh] w-4") => (
   <span className={`flex shrink-0 items-center justify-center ${box}`}>
     {notice.offline ? <WifiOff aria-hidden /> : <Spinner />}
   </span>
@@ -157,9 +157,10 @@ export function ConnectionLine({ address }: { readonly address?: string }) {
     <div className={PHONE_LINE}>
       <p
         role="status"
-        className={`${PHONE_LINE_TEXT} [&_svg:not([data-slot=spinner])]:mt-0.5 [&_svg:not([data-slot=spinner])]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground`}
+        className={`${PHONE_LINE_TEXT} [&_svg:not([data-slot=spinner])]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground`}
       >
-        {glyph(notice, "size-4")}
+        {/* A box as tall as one line (#1961), so the glyph centres on the first line as the words do. */}
+        {glyph(notice, "h-[1lh] w-4")}
         {/* The sentence is required content (DESIGN.md 5 (e)): it wraps at narrow widths rather than losing its end. */}
         <span className="min-w-0 text-pretty break-words" title={notice.detail}>
           {notice.offline ? notice.detail : notice.label}

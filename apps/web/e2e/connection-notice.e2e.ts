@@ -241,6 +241,21 @@ test.describe("phone", () => {
     await openPhoneTerminal(page);
     await socket.drop(true);
     await expect(notice(page, RECONNECTING)).toBeVisible({ timeout: 5_000 });
+    // The glyph sits on the sentence's first line, centred on it as the text is (#1961): a box as tall as a line, not a
+    // 16 px box at the top of a 20 px line.
+    const line = notice(page, RECONNECTING);
+    const centres = await line.evaluate((status) => {
+      const glyph = status.querySelector("svg")?.getBoundingClientRect();
+      const words = status.querySelector("span[title]");
+      const range = document.createRange();
+      if (words?.firstChild) range.selectNodeContents(words.firstChild);
+      const first = range.getClientRects()[0];
+      return glyph === undefined || first === undefined
+        ? null
+        : { glyph: glyph.top + glyph.height / 2, text: first.top + first.height / 2 };
+    });
+    expect(centres).not.toBeNull();
+    expect(Math.abs((centres?.glyph ?? 0) - (centres?.text ?? 0))).toBeLessThanOrEqual(0.5);
     // The terminal stays on screen under the notice.
     await expect(page.locator("[data-terminal]")).toBeVisible();
     socket.restore();
