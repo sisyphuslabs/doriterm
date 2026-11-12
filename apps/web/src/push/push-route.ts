@@ -4,7 +4,7 @@ import { connectRelayClient } from "@doriface/relay-client";
 import { directDial, pageAccess, parseDirectAddress } from "../connection/direct-address.ts";
 import { attemptDirect } from "../connection/direct-attempt.ts";
 import { canForwardPlainWs } from "../connection/direct-forward.ts";
-import { directPathAvailable } from "../connection/direct-switch.ts";
+import { DIRECT_PATH_ENABLED, directPathAvailable } from "../connection/direct-switch.ts";
 import { BROWSER_DEPS, type RelayDeps } from "../connection/relay-deps.ts";
 import type { ConnectionSettings } from "../connection/settings.ts";
 import { loopbackOnly } from "../connection/loopback-address.ts";
@@ -152,7 +152,8 @@ async function openDirectPush(
 ): Promise<ByteLink | undefined> {
   // #2070: the direct path is off, so the push stream is the relay's. #1381 §8: a browser's push goes over the relay
   // too, and a service worker has no forwarder; only the desktop shell may dial the address its settings hold.
-  if (!(options.directPath === true ? canForwardPlainWs() : directPathAvailable())) return undefined;
+  // The test-only override decides the switch here as it does in connect(): either way, only the forwarder may dial.
+  if (!((options.directPath ?? DIRECT_PATH_ENABLED) && canForwardPlainWs())) return undefined;
   const address = parseDirectAddress(route.directUrl ?? "");
   if (!address.usable) return undefined;
   const dial = directDial(address, pageAccess());
