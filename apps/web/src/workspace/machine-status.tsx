@@ -4,12 +4,11 @@ import { Unplug } from "lucide-react";
 import { useMachineLine } from "../terminal/use-machine-line.ts";
 import { machineCause } from "./machine-cause.ts";
 import { machineOf } from "./model.ts";
+import { AWAY } from "./reach.ts";
 import { PHONE_LINE, PHONE_LINE_TEXT } from "./phone-line.ts";
 import { useConnectionNotice } from "./reconnect-status.tsx";
 import { RetryButton } from "./retry-button.tsx";
 import { useMachinesContext } from "./use-machines.ts";
-
-const AWAY = new Set(["unreachable", "needs_login"]);
 
 /** What to say about a terminal's added machine while it is not usable: the same words wherever it is shown. */
 export interface MachineNotice {

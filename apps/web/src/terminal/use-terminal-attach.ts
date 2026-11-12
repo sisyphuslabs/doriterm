@@ -90,6 +90,8 @@ export interface Attachment {
   /** Why attaching failed, in plain words; null once Try again clears it. */
   readonly unopened: string | null;
   readonly clearUnopened: () => void;
+  /** Clears a failed open to wait for its machine: the same renderer attaches again once it is shown (#2003). */
+  readonly waitForMachine: () => void;
   /** The view's onEnd as it is now: an end acts on the tabs as they are by then. */
   readonly onEndNow: RefObject<((address: string, end: TerminalEnd) => void) | undefined>;
 }
@@ -321,7 +323,18 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     attach(wt);
   }, [wt, connection, shown, lostStreams]);
 
-  return { opening, restarting, ended, unopened, clearUnopened: () => setUnopened(null), onEndNow };
+  return {
+    opening,
+    restarting,
+    ended,
+    unopened,
+    clearUnopened: () => setUnopened(null),
+    waitForMachine: () => {
+      setUnopened(null);
+      setLostStreams(afterMachineWait);
+    },
+    onEndNow,
+  };
 }
 
 /** What the attach effect last did: the renderer and connection it attached, and the lost-stream count it saw. */
@@ -337,4 +350,4 @@ export function attachDue(mark: AttachMark, view: unknown, connection: unknown, 
 }
 
 /** The lost-stream count after a failed open is cleared to wait for its machine (#2003). */
-export const afterMachineWait = (lostStreams: number): number => lostStreams;
+export const afterMachineWait = (lostStreams: number): number => lostStreams + 1;

@@ -244,10 +244,10 @@ export function TerminalView(props: TerminalViewProps) {
   // An open that failed as the machine went offline is a wait, not a failure: it is cleared as soon as the machine reads
   // offline, so the view stays mounted and its attach effect opens it once the machine is back. Clearing it only on the
   // return would show the failure for one render and remount the view (#2003).
-  const { unopened, clearUnopened } = attachment;
+  const { unopened, waitForMachine } = attachment;
   useEffect(() => {
-    if (!reachable && unopened !== null) clearUnopened();
-  }, [reachable, unopened, clearUnopened]);
+    if (!reachable && unopened !== null) waitForMachine();
+  }, [reachable, unopened, waitForMachine]);
 
   if (error !== null) return <p className="p-4 text-prose text-destructive">{error}</p>;
   if (attachment.restarting) {
@@ -267,7 +267,7 @@ export function TerminalView(props: TerminalViewProps) {
     );
   }
   // An open that failed while the machine is offline is a wait, said in the status line: the view stays and opens
-  // again by itself once the machine is back (retryWhenReachable, #2003).
+  // again by itself once the machine is back (#2003).
   if (attachment.unopened !== null && reachable) {
     // Try again mounts a new terminal: until it attaches it is starting, so in a pane that is not focused its start-time
     // focus goes back where it was, as on the first start (#163).
