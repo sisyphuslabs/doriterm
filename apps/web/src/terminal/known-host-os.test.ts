@@ -29,6 +29,12 @@ test("a host that last reported Linux is not taken for a Mac by its name", () =>
   expect(offlinePlatform(storage, "host-a", "Ana-MacBook")).toBe("other");
 });
 
+test("every OS a host can report is kept, a Windows host included", () => {
+  const storage = memory();
+  rememberHostOs(storage, "host-w", "win32");
+  expect(offlinePlatform(storage, "host-w", "MacBook-named-box")).toBe("other");
+});
+
 test("a host never reached falls back to the guess from its name", () => {
   const storage = memory();
   expect(offlinePlatform(storage, "host-a", "Ana-MacBook")).toBe("mac");

@@ -33,6 +33,7 @@ function useBarHost() {
     live,
     live === null && settings.hostName !== "" ? settings.hostName : undefined,
     state.phase !== "open",
+    settings.hostId,
   );
 }
 
