@@ -1,6 +1,6 @@
 // The chord the app binds to an action on the platform the page runs as (#862): Meta for super on macOS, Control for
 // ctrl elsewhere, read from the app's own default keymap so a spec presses what a person on that platform would.
-import type { Page } from "@playwright/test";
+import { type Page, test } from "@playwright/test";
 import { defaultKeymap } from "../src/keys/defaults.ts";
 import type { Platform } from "../src/keys/trigger.ts";
 
@@ -115,11 +115,22 @@ export async function pressShortcut(page: Page, action: string): Promise<void> {
 /**
  * Presses `trigger` as the browser delivers it, a keydown carrying its own editing command (`paste`), which runs unless
  * the page cancels the keydown. Playwright's keyboard.press sends no editing command in Chromium on Linux (#510), so
- * there the keydown goes through CDP. CDP exists only in Chromium; Firefox and WebKit run the chord's editing command
- * for a pressed key themselves, so outside Chromium it is pressed as any key is (#1909).
+ * in Chromium the keydown goes through CDP with the command named. CDP exists only in Chromium (#1909). Outside it a
+ * pressed chord runs the editing command the HOST binds to it, so it is pressed only when its modifier is the host's own
+ * (Cmd on a Mac host, Ctrl elsewhere); a page run as another platform there (E2E_PAGE_PLATFORM=mac on Linux) would
+ * press a chord that runs nothing, so the test is skipped with that reason rather than pass a step that did not happen.
  */
 export async function pressWithCommand(page: Page, trigger: string, command: string): Promise<void> {
-  if (page.context().browser()?.browserType().name() !== "chromium") {
+  // The project's browser, as its device names it (Desktop Chrome sets defaultBrowserType, not browserName); a persistent
+  // context has no browser() to ask.
+  const { browserName, defaultBrowserType } = test.info().project.use;
+  const browser = browserName ?? defaultBrowserType ?? "chromium";
+  if (browser !== "chromium") {
+    const hostModifier = process.platform === "darwin" ? "super" : "ctrl";
+    test.skip(
+      !parts(trigger).mods.includes(hostModifier),
+      `${trigger} runs no ${command} in ${browser} on this host: only CDP names the command, and CDP is Chromium's`,
+    );
     await page.keyboard.press(chordOf(trigger));
     return;
   }
