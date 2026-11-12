@@ -1,6 +1,8 @@
 import { Button, SettingRow } from "@doriface/ui";
 import { Monitor, Server } from "lucide-react";
+import type { HcConnection } from "@doriface/client";
 import type { MemberEntry } from "../connection/mesh-connections.ts";
+import type { ConnectionState } from "../connection/store.ts";
 import { formatAge } from "../workspace/model.ts";
 import { useHostRoundTrip } from "./use-host-round-trip.ts";
 
@@ -61,8 +63,13 @@ function stateOf(entry: MemberEntry): string {
   }
 }
 
+/** The session a round trip may be measured on: an open one, not one being carried on over a new socket (#2000). */
+export function measuredConnection(state: ConnectionState): HcConnection | null {
+  return state.phase === "open" && state.resuming !== true ? state.connection : null;
+}
+
 function MachineDescription({ entry, local }: { readonly entry: MemberEntry; readonly local: boolean }) {
-  const roundTrip = useHostRoundTrip(entry.state.phase === "open" ? entry.state.connection : null);
+  const roundTrip = useHostRoundTrip(measuredConnection(entry.state));
   return (
     <>
       {local ? <span className="block">This machine</span> : null}
