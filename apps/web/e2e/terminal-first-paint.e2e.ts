@@ -6,7 +6,7 @@ import { endAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { seedLayout } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
-import { type HcSocket, routeHcSocket } from "./hc-socket.ts";
+import { frameText, type HcSocket, routeHcSocket } from "./hc-socket.ts";
 import { PHONE } from "./phone-key-bar.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -37,10 +37,6 @@ async function atLastLine(terminal: Locator, timeout = 30_000): Promise<void> {
   );
 }
 
-/** A WebSocket frame's payload as text (an hc frame's JSON reads as latin1). */
-const frameText = (payload: string | Buffer): string =>
-  typeof payload === "string" ? payload : payload.toString("latin1");
-
 /** The page's hc frames as text, in order: from a socket routed through the spec, or only watched as they pass. */
 type HcFrames = Pick<HcSocket, "sent" | "received">;
 
@@ -67,10 +63,10 @@ function attachIds(socket: HcFrames, address: string): number[] {
 
 /** Whether hc has answered the request with this RPC id: a JSON-RPC response (a result or an error) carrying that id. */
 function answered(socket: HcFrames, id: number): boolean {
-  const ofId = new RegExp(`"id":${id}[,}]`);
-  return socket
-    .received()
-    .some((text) => text.includes('"jsonrpc":"2.0"') && /"(result|error)":/.test(text) && ofId.test(text));
+  // hc puts a response's own id first ({"id":N,"jsonrpc":"2.0","result"|"error":...}), one frame each, so neither an id
+  // nested in another call's result nor fields of separate frames in one message can stand in for this answer.
+  const response = new RegExp(`\\{"id":${id},"jsonrpc":"2\\.0","(result|error)":`);
+  return socket.received().some((text) => response.test(text));
 }
 
 interface PaintBounds {
@@ -157,15 +153,32 @@ async function sampleBottomWhile(page: Page, address: string, change: () => Prom
   return samples;
 }
 
-/** Starts the transcript, opens its tab with the page's hc socket routed through the spec, and returns both. */
-async function openTranscript(page: Page, started: string[], dir: string) {
+/** Starts the transcript on the host core and lays it out in a tab of its own, returning its address. */
+function startTranscript(started: string[], dir: string): string {
   const script = join(dir, "agent.sh");
   writeFileSync(script, AGENT);
   const out = hcOn("host", ["run", "--bg", "--name", "first-paint-agent", "--", "bash", script]);
   const address = String((JSON.parse(out) as { address: string }).address);
   started.push(address);
   seedLayout([{ id: "tb-812", name: "agent", root: [{ pane: "p1", terminal: address }] }]);
+  return address;
+}
+
+/** Opens the page with the transcript's hc socket routed through the spec, which a test needs to hold a request. */
+async function openRouted(page: Page, started: string[], dir: string) {
+  const address = startTranscript(started, dir);
   const socket = await routeHcSocket(page);
+  await page.goto("/");
+  return { address, socket, terminal: page.locator(`[data-terminal="${address}"]`) };
+}
+
+/**
+ * Opens the page with the transcript's hc frames only watched as they pass: routing puts the test process in the
+ * stream, which a loaded runner is too slow to carry the attach replay through (#2396).
+ */
+async function openWatched(page: Page, started: string[], dir: string) {
+  const address = startTranscript(started, dir);
+  const socket = watchHcFrames(page);
   await page.goto("/");
   return { address, socket, terminal: page.locator(`[data-terminal="${address}"]`) };
 }
@@ -180,19 +193,11 @@ test.describe("on a phone", () => {
     const dir = mkdtempSync(join(tmpdir(), "doriface-first-paint-"));
     const started: string[] = [];
     try {
-      const script = join(dir, "agent.sh");
-      writeFileSync(script, AGENT);
-      const out = hcOn("host", ["run", "--bg", "--name", "first-paint-agent", "--", "bash", script]);
-      const address = String((JSON.parse(out) as { address: string }).address);
-      started.push(address);
-      seedLayout([{ id: "tb-812", name: "agent", root: [{ pane: "p1", terminal: address }] }]);
-      const socket = watchHcFrames(page);
-      await page.goto("/");
+      const { address, socket, terminal } = await openWatched(page, started, dir);
       await page
         .getByRole("button", { name: /first-paint-agent/ })
         .first()
         .click();
-      const terminal = page.locator(`[data-terminal="${address}"]`);
       await paintedAfterAttach(socket, address, terminal, 0);
 
       // Each crossing of the breakpoint mounts the view anew and attaches again, so the core's first paint replays the
@@ -224,17 +229,20 @@ test.describe("on a phone", () => {
     const dir = mkdtempSync(join(tmpdir(), "doriface-first-paint-"));
     const started: string[] = [];
     try {
-      const { address, socket, terminal } = await openTranscript(page, started, dir);
+      const { address, socket, terminal } = await openRouted(page, started, dir);
       socket.hold("terminal.attach");
       await page
         .getByRole("button", { name: /first-paint-agent/ })
         .first()
         .click();
-      const bounds = { attach: 3_000, answer: 3_000, paint: 3_000 };
-      // The held attach is still counted as sent, so the wait goes on to hc's answer, which never comes.
+      const bounds = { ...PAINT_BOUNDS, answer: 3_000 };
+      // The held attach is still counted as sent, so the wait goes on to hc's answer, which never comes: the wait fails
+      // at that step's bound, well before the old single wait's 30 s.
+      const startedAt = Date.now();
       await expect(paintedAfterAttach(socket, address, terminal, 0, bounds)).rejects.toThrow(
         /hc answers terminal\.attach/,
       );
+      expect(Date.now() - startedAt).toBeLessThan(15_000);
     } finally {
       for (const address of started) endAgent("host", address);
       rmSync(dir, { recursive: true, force: true });
