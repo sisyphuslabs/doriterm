@@ -244,6 +244,24 @@ test("closing a pane in the middle gives its space to its neighbour and focus to
 test("a pane whose program ends while its layout write is refused stays, says so, and keeps focus", async ({
   page,
 }) => {
+  await paneEndsWhileRefused(page, 0);
+});
+
+test("a pane whose program ends while its layout write is refused says so however slowly the host answers (#2436)", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await paneEndsWhileRefused(page, 1_200);
+});
+
+/** LayoutDoc's CONFLICT_RETRIES: the compare-and-sets one edit makes before it gives up (as split-write-fails.e2e.ts). */
+const ATTEMPTS = 8;
+
+/**
+ * Two panes, the right one focused, whose program exits while every layout write is refused: the pane stays, says its
+ * session ended, keeps focus, and the refusal is said. `hostDelayMs` holds every frame from the host that long.
+ */
+async function paneEndsWhileRefused(page: Page, hostDelayMs: number): Promise<void> {
   const [one = "", two = ""] = ["left", "right"].map(shell);
   seedLayout([
     {
@@ -255,7 +273,18 @@ test("a pane whose program ends while its layout write is refused stays, says so
       ],
     },
   ]);
-  const socket = await routeHcSocket(page);
+  // The refusal is the edit's last compare-and-set answered as a conflict, after every retry: the spec waits for that
+  // answer itself, however long the host takes, instead of guessing how long the retries' round trips last (#2436).
+  let counting = false;
+  let refused = 0;
+  const refusal = Promise.withResolvers<void>();
+  const socket = await routeHcSocket(page, {
+    received: (frame) => {
+      if (!counting || !frame.includes('"kind":"conflict"')) return;
+      refused += 1;
+      if (refused === ATTEMPTS) refusal.resolve();
+    },
+  });
   await page.goto("/");
   const focused = page.locator('[data-focused="true"] [data-terminal]');
   // Focus goes through both panes, so `two` has `one` before it to hand focus back to (the first pane may hold focus
@@ -268,9 +297,14 @@ test("a pane whose program ends while its layout write is refused stays, says so
   const saved = savedTab("tb-pair");
 
   // A program that exits drops its pane with no question asked, so nothing but the drop moves focus.
+  // A slow host answers every frame late, as a loaded runner does: the refusal takes its retries' whole round trips.
+  socket.delay(hostDelayMs);
+  counting = true;
   socket.staleWrites(true);
   await page.keyboard.type("exit\r");
-  await expect(page.getByText("The layout was not saved")).toBeVisible({ timeout: 15_000 });
+  await refusal.promise;
+  // The notice follows the last refusal at once, and stays up five seconds: no wait on the round trips is left in it.
+  await expect(page.getByText("The layout was not saved")).toBeVisible();
   await expectRefusedAsConflict(page);
   // The layout kept the pane, which now says its session ended; focus stays on it, not on the pane before it.
   const kept = page.getByRole("region", { name: "resize-right terminal" });
@@ -278,7 +312,7 @@ test("a pane whose program ends while its layout write is refused stays, says so
   await expect(kept).toHaveAttribute("data-focused", "true");
   await expect(page.getByRole("region", { name: "resize-left terminal" })).toHaveAttribute("data-focused", "false");
   expect(savedTab("tb-pair")).toBe(saved);
-});
+}
 
 /** Two one-pane tabs, `other` first, with the second, `solo`, in view and its pane focused; returns their shells. */
 async function soloInView(page: Page): Promise<{ solo: string; other: string }> {
