@@ -16,7 +16,7 @@ import { NoTerminal } from "./no-terminal.tsx";
 import { QuietBusy } from "../terminal/quiet-busy.tsx";
 import { usePaneSends } from "./pane-sends.ts";
 import { panelId, SplitPanes } from "./split-panes.tsx";
-import { RenameDialog } from "./rename-dialog.tsx";
+import { useTabRename } from "./tab-rename.tsx";
 import { DesktopStatusBar } from "./desktop-status-bar.tsx";
 import { SessionMenu } from "./session-menu.tsx";
 import { Sidebar } from "./sidebar.tsx";
@@ -156,17 +156,9 @@ export function DesktopShell(props: DesktopShellProps) {
   }, []);
   const showsEnded = (terminal: { readonly address: string; readonly pid?: number | null }): boolean =>
     endedViews.has(viewKey(terminal.address, terminal.pid ?? null));
-  // The tab whose Rename question is open, and how its write went.
-  const [renaming, setRenaming] = useState<{ key: string; busy: boolean; error: string | null } | null>(null);
-  const { renameTab } = layout;
-  const submitRename = (key: string, name: string): void => {
-    setRenaming({ key, busy: true, error: null });
-    renameTab(key, name.trim()).then(
-      () => setRenaming(null),
-      (cause: unknown) =>
-        setRenaming({ key, busy: false, error: cause instanceof Error ? cause.message : String(cause) }),
-    );
-  };
+  const byAddress = new Map(terminals.map((terminal) => [terminal.address, terminal]));
+  const tabList: WorkspaceTab[] = layout.shown.map((tab, position) => tabEntry(tab, position, byAddress));
+  const tabRename = useTabRename(layout, tabList);
   useAppActions({
     terminals,
     layout,
@@ -177,7 +169,7 @@ export function DesktopShell(props: DesktopShellProps) {
     onSplit,
     onCloseTab,
     onClosePane,
-    onRenameTab: (key) => setRenaming({ key, busy: false, error: null }),
+    onRenameTab: tabRename.open,
     onToggleSidebar: () => setSidebar((shown) => !shown),
     onFocusSidebar: focusSidebar,
     onFilterSidebar: filterSidebar,
@@ -191,17 +183,6 @@ export function DesktopShell(props: DesktopShellProps) {
     },
     focusedTab,
   });
-  const byAddress = new Map(terminals.map((terminal) => [terminal.address, terminal]));
-  const tabList: WorkspaceTab[] = layout.shown.map((tab, position) => tabEntry(tab, position, byAddress));
-  const renamed = renaming === null ? undefined : layout.tabs.find((tab) => tab.key === renaming.key);
-  const shownTitle = renamed === undefined ? "" : (tabList.find((tab) => tab.id === renamed.key)?.title ?? "");
-  // A number alone names nothing, so it reads "tab 2"; an agent's title (#1541) or a name reads as itself.
-  const renamedTitle =
-    renamed === undefined || renamed.name !== ""
-      ? (renamed?.name ?? "tab")
-      : /^\d*$/.test(shownTitle)
-        ? `tab ${shownTitle}`.trim()
-        : shownTitle;
   const focusedMachine =
     (focusedAddress === null ? undefined : machineOf(focusedAddress)) ?? connection.hello.core.name;
   const focusedTerminal = focusedAddress === null ? undefined : byAddress.get(focusedAddress);
@@ -321,7 +302,7 @@ export function DesktopShell(props: DesktopShellProps) {
               onSpace={onNewSpace}
             />
           }
-          onRename={(key) => setRenaming({ key, busy: false, error: null })}
+          onRename={tabRename.open}
           onMove={layout.moveTab}
           moveKeys={{
             ...(moveLeftKeys === undefined ? {} : { left: moveLeftKeys }),
@@ -349,18 +330,7 @@ export function DesktopShell(props: DesktopShellProps) {
             </>
           }
         />
-        {renaming === null || renamed === undefined ? null : (
-          <RenameDialog
-            key={renaming.key}
-            title={renamedTitle}
-            value={renamed.name}
-            busy={renaming.busy}
-            error={renaming.error}
-            description="Every device shows the new name. Leave it empty to call the tab by its agent, or by its number, again."
-            onRename={(name) => submitRename(renaming.key, name)}
-            onCancel={() => setRenaming(null)}
-          />
-        )}
+        {tabRename.dialog}
         {/* The page's one main landmark: the panes, between the tab strip and the status bar (#1378). */}
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           {layout.tabs.length > 0 ? null : nothingOpen ? (

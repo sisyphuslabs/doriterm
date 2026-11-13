@@ -74,6 +74,7 @@ export function SpaceRename({ connection, terminals, layouts, spaces, ask, onAsk
           title={asked.name}
           busy={busy}
           error={error}
+          refused={renaming.refusal(ask)}
           description="Every device of this machine shows the new name."
           onRename={(name) => submit(ask, name)}
           onCancel={() => onAsk(null)}

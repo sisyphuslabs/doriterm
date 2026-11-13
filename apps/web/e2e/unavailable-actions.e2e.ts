@@ -25,6 +25,11 @@ const spaceRowIn = (page: Page) => group(page).getByRole("button", { name: new R
 
 const ACTIONS = [/^Close space/, /^Rename space/];
 
+/** The seeded space's one tab, in the strip once the space is in view. */
+const tabIn = (page: Page) =>
+  page.getByRole("tablist", { name: "Tabs" }).getByRole("tab", { name: new RegExp(`\\b${SPACE}\\b`) });
+const tabRename = (page: Page) => page.getByRole("dialog", { name: `Rename ${SPACE}` });
+
 /** Opens the "..." menu of the first space listed under the added machine. */
 async function openSpaceMenu(page: Page): Promise<void> {
   await expect(page.getByRole("menu")).toHaveCount(0);
@@ -66,9 +71,25 @@ test("a space on a machine that went offline offers Close and Rename disabled, a
       ),
     );
     await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    // The space's tab can still be asked to rename (its name is in view), but the question waits: Rename disabled, why
+    // and what comes next in one neutral line, and no error, since nothing was written (Q's QA shot, #2455).
+    await spaceRowIn(page).click();
+    await tabIn(page).dblclick();
+    const question = tabRename(page);
+    await expect(question).toBeVisible();
+    await expect(question.getByRole("button", { name: "Rename" })).toBeDisabled();
+    await expect(question.getByText(/comes back by itself once the machine can take it/)).toBeVisible();
+    await expect(question.locator(".text-destructive")).toHaveCount(0);
   } finally {
     reconnect();
   }
+  // The question left open comes back by itself once the machine is back (the modal question hides the sidebar's row):
+  // Rename enabled, its waiting line gone.
+  await expect(tabRename(page).getByRole("button", { name: "Rename" })).toBeEnabled({ timeout: STATE_BOUND_MS });
+  await expect(tabRename(page).getByText(/comes back by itself/)).toHaveCount(0);
+  await tabRename(page).getByRole("button", { name: "Cancel" }).click();
+  await expect(tabRename(page)).toHaveCount(0);
   await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
   await expect(newOn(page)).toBeEnabled();
   await openSpaceMenu(page);

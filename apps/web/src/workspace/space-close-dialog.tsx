@@ -3,6 +3,7 @@ import type { Terminal } from "@doriface/protocol";
 import { Button, Dialog, Notice } from "@doriface/ui";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { ListedSpace } from "./model.ts";
+import { NotNowLine } from "./not-now-line.tsx";
 import { closeCounts, closeRefusal, closeSpace, type SpaceCloseDrops } from "./space-close.ts";
 import { SpaceCloseContext, type SpaceClosing } from "./space-close-context.ts";
 import { sessionCalls } from "./session-actions.ts";
@@ -107,7 +108,7 @@ export function SpaceClose({
               {error}
             </Notice>
           ) : refused !== null ? (
-            <p className="text-sm text-muted-foreground">{refused}</p>
+            <NotNowLine action="Close" why={refused} />
           ) : undefined}
         </Dialog>
       )}
