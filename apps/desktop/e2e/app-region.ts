@@ -38,18 +38,20 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
     let block: Element | null = element;
     while (block !== null) {
       const own = getComputedStyle(block);
+      // An element with display: contents has no box at all, and transforms do not apply to an inline box.
       const hasBox = own.display !== "contents";
       const transformed =
-        own.transform !== "none" ||
-        own.translate !== "none" ||
-        own.scale !== "none" ||
-        own.rotate !== "none" ||
-        own.perspective !== "none" ||
-        own.filter !== "none" ||
-        own.backdropFilter !== "none" ||
-        /\b(layout|paint|strict|content)\b/.test(own.contain) ||
-        own.containerType !== "normal" ||
-        /\b(transform|translate|scale|rotate|perspective|filter|backdrop-filter|contain)\b/.test(own.willChange);
+        own.display !== "inline" &&
+        (own.transform !== "none" ||
+          own.translate !== "none" ||
+          own.scale !== "none" ||
+          own.rotate !== "none" ||
+          own.perspective !== "none" ||
+          own.filter !== "none" ||
+          own.backdropFilter !== "none" ||
+          /\b(layout|paint|strict|content)\b/.test(own.contain) ||
+          /\b(size|inline-size)\b/.test(own.containerType) ||
+          /\b(transform|translate|scale|rotate|perspective|filter|backdrop-filter|contain)\b/.test(own.willChange));
       if (hasBox && (transformed || (style.position === "absolute" && own.position !== "static"))) break;
       block = block.parentElement;
     }
@@ -57,10 +59,16 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
     if (block === null) {
       if (style.position === "absolute") origin = { left: -window.scrollX, top: -window.scrollY };
     } else {
-      const own = getComputedStyle(block);
-      const matrix = new DOMMatrixReadOnly(own.transform === "none" ? undefined : own.transform);
-      const translationOnly = matrix.a === 1 && matrix.b === 0 && matrix.c === 0 && matrix.d === 1;
-      if (!translationOnly || own.scale !== "none" || own.rotate !== "none") throw unreadable;
+      // The block's padding box is read in page coordinates, which hold only while neither it nor anything above it is
+      // scaled, rotated, skewed or seen through a perspective.
+      for (let above: Element | null = block; above !== null; above = above.parentElement) {
+        const own = getComputedStyle(above);
+        const matrix = new DOMMatrixReadOnly(own.transform === "none" ? undefined : own.transform);
+        const translationOnly = matrix.is2D && matrix.a === 1 && matrix.b === 0 && matrix.c === 0 && matrix.d === 1;
+        if (!translationOnly || own.scale !== "none" || own.rotate !== "none" || own.perspective !== "none") {
+          throw unreadable;
+        }
+      }
       const box = block.getBoundingClientRect();
       origin = { left: box.left + block.clientLeft, top: box.top + block.clientTop };
     }
