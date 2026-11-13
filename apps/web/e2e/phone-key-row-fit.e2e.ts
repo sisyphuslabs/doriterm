@@ -41,7 +41,9 @@ test("with no tabs bar the jump button sits at the terminal's corner: the round 
     await expect(page.getByLabel("Tabs in this space")).toHaveCount(0, { timeout: 10_000 });
     const terminal = page.locator("[data-terminal]");
     hcOn("host", ["send", "--force", shell, "seq 1 200"]);
-    await expect(terminal).toContainText("200", { timeout: 15_000 });
+    // The typed command already holds "200": wait for the output's last line on a row of its own, so the scroll below
+    // happens once the 200 lines are there and the view has something to scroll back through (#2477).
+    await expect(terminal.locator(".term-row").filter({ hasText: /^\s*200\s*$/ })).toHaveCount(1, { timeout: 15_000 });
     const viewport = page.locator("[data-slot=terminal-viewport]");
     await viewport.evaluate((el) => {
       el.scrollTop = 0;

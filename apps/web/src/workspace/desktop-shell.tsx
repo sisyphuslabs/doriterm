@@ -219,7 +219,7 @@ export function DesktopShell(props: DesktopShellProps) {
     if (findTerminal(layout.tabs, address) === null) {
       attachAhead(connection, openingCallsOf(connection), address, readDisplay(document.documentElement));
     }
-    layout.openTerminal(address);
+    layout.placeTerminal(address);
   };
   useArrivalReady(
     workspaceSettled(loaded, { open: layout.tabs.map((tab) => tab.key), restored: layout.restored }, live.length),
