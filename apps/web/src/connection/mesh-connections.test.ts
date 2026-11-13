@@ -254,8 +254,9 @@ describe("one connection per member", () => {
     expect([other?.started, other?.stopped, other?.state.phase]).toEqual([1, 0, "open"]);
   });
 
-  it("tells listeners the selection moved when a machine fails over", () => {
-    const { mesh, made } = running(settingsWith([member("a"), member("b")], "a"));
+  it("tells listeners the selection moved when a machine not reached yet fails over", () => {
+    const { mesh, made } = harness(settingsWith([member("a"), member("b")], "a"));
+    made[1]?.start();
     let told = 0;
     mesh.subscribe(() => {
       told += 1;

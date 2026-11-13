@@ -101,7 +101,8 @@ test.describe("the terminal in view when its machine drops (#2464)", () => {
     const status = page.getByRole("status").filter({ hasText: `Reconnecting to ${MACHINE_NAME}` });
     await expect(status.first()).toBeVisible({ timeout: STATE_BOUND_MS });
     await expect(terminal).toBeVisible();
-    for (const shown of await status.all()) expect(await overlap(shown, terminal)).toBe(false);
+    const overlaps = await Promise.all((await status.all()).map((shown) => overlap(shown, terminal)));
+    expect(overlaps).not.toContain(true);
     await back;
     reconnect();
     await expect.poll(machineState, { timeout: STATE_BOUND_MS }).toBe("connected");
