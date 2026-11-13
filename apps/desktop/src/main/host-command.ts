@@ -41,6 +41,14 @@ export function hostCommand(context: HostContext): HostCommand {
   };
 }
 
+/**
+ * The host script or binary a command runs: the first argument when the command is an interpreter plus a script
+ * (a checkout runs `bun host/src/cli.ts`), the file itself otherwise (a packaged app's bundled binary).
+ */
+export function hostCliOf(command: HostCommand): string {
+  return command.args.length > 0 ? (command.args[0] ?? command.file) : command.file;
+}
+
 /** Where herdr-core usually lands when PATH does not say. */
 export function usualHcDirs(context: HostContext): readonly string[] {
   const home = [join(context.home, ".local", "bin"), join(context.home, ".cargo", "bin")];

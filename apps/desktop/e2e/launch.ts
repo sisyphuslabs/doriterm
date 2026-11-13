@@ -35,21 +35,6 @@ const HOST_RIG = join(appDir, "e2e", "host-rig.ts");
 const HOST_WRAPPER = join(RUN_DIR, "host-wrapper", "host.ts");
 const HOST_RECORDS = join(RUN_DIR, "host-wrapper", "records.jsonl");
 
-/**
- * The host the wrapper starts: the one bundled beside the packaged app in a packaged run, so the packaged CI job and
- * the release AppImage step keep testing the host binary that ships; the checkout's source host otherwise.
- */
-function hostCliForRun(): string {
-  const executable = process.env["DORIFACE_E2E_EXECUTABLE"];
-  if (executable === undefined || executable === "") return HOST_CLI;
-  return join(
-    dirname(executable),
-    "resources",
-    "bin",
-    process.platform === "win32" ? "doriface-host.exe" : "doriface-host",
-  );
-}
-
 interface HostRigAnswer {
   readonly relay: string;
   readonly hostCli: string;
@@ -67,7 +52,7 @@ let hostRig: Promise<HostRig> | undefined;
 
 /** The stand-in relay and the guard wrapper for the ordinary launches, in their own Bun process (the runner is Node). */
 function startHostRig(): Promise<HostRig> {
-  const child = spawn(process.env["BUN_BIN"] ?? "bun", [HOST_RIG, hostCliForRun(), HOST_WRAPPER, HOST_RECORDS], {
+  const child = spawn(process.env["BUN_BIN"] ?? "bun", [HOST_RIG, HOST_CLI, HOST_WRAPPER, HOST_RECORDS], {
     cwd: appDir,
     stdio: ["pipe", "pipe", "inherit"],
   });
@@ -109,9 +94,6 @@ export async function guardedEnv(env: Record<string, string> = {}): Promise<Reco
   const guarded = { ...env };
   for (const [key, value] of Object.entries(rig.env)) {
     if (guarded[key] === undefined || guarded[key] === "") guarded[key] = value;
-  }
-  if (guarded["DORIFACE_E2E_HOST_CLI"] === undefined || guarded["DORIFACE_E2E_HOST_CLI"] === "") {
-    guarded["DORIFACE_E2E_HOST_CLI"] = hostCliForRun();
   }
   return guarded;
 }

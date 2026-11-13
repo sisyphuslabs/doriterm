@@ -34,7 +34,7 @@ export function hostWrapperSource(options: HostWrapperOptions): string {
     "  console.error(`e2e host wrapper: refusing to start the host on the release relay ${STAND_IN} (#2399)`);",
     "  process.exit(2);",
     "}",
-    'const cli = process.env["DORIFACE_E2E_HOST_CLI"] ?? HOST_CLI;',
+    'const cli = process.env["DORIFACE_E2E_HOST_CLI"] ?? process.env["DORIFACE_HOST_RESOLVED"] ?? HOST_CLI;',
     'if (cli === "") {',
     '  console.error("e2e host wrapper: no host CLI to start (DORIFACE_E2E_HOST_CLI is empty)");',
     "  process.exit(2);",

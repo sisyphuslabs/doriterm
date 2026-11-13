@@ -55,6 +55,7 @@ const specEnv = (): Record<string, string> =>
 
 const startThroughWrapper = async (
   env: Record<string, string>,
+  { hostPrintsArgs = true }: { hostPrintsArgs?: boolean } = {},
 ): Promise<{ readonly lines: readonly string[]; readonly args: readonly string[] }> => {
   const command = hostCommand({
     packaged: false,
@@ -78,8 +79,15 @@ const startThroughWrapper = async (
     await host.stop();
   }
   const printed = lines.find((line) => line.includes("SPAWN-ARGS "));
-  if (printed === undefined) throw new Error(`the host printed no arguments: ${lines.join("\n")}`);
-  return { lines, args: JSON.parse(printed.slice(printed.indexOf("SPAWN-ARGS ") + "SPAWN-ARGS ".length)) as string[] };
+  if (hostPrintsArgs && printed === undefined) throw new Error(`the host printed no arguments: ${lines.join("\n")}`);
+  const argsLine = printed ?? "";
+  return {
+    lines,
+    args:
+      argsLine === ""
+        ? []
+        : (JSON.parse(argsLine.slice(argsLine.indexOf("SPAWN-ARGS ") + "SPAWN-ARGS ".length)) as string[]),
+  };
 };
 
 describe("an e2e app launch never starts its host against the release relay (#2399)", () => {
@@ -178,11 +186,23 @@ describe("an e2e app launch never starts its host against the release relay (#23
       expect(command.file).toBe(join(layout.resourcesPath, "bin", "doriface-host"));
     }
     // The app passes that resolution to the wrapper, and the wrapper starts exactly it - nothing else.
-    const resolvedFixture = join(import.meta.dir, "fixtures", "spawn-args.fixture.ts");
+    const resolvedHost = join(mkdtempSync(join(tmpdir(), "dd-guard-")), "resolved-host.ts");
+    writeFileSync(
+      resolvedHost,
+      'console.error("RESOLVED-HOST-RAN");\nprocess.stderr.write("listening on ws://127.0.0.1:1/v1/hc\\n");\nsetInterval(() => {}, 1 << 30);',
+    );
     const env = await guardedEnv(specEnv());
     delete env["DORIFACE_E2E_HOST_CLI"];
-    const { args } = await startThroughWrapper({ ...env, DORIFACE_HOST_RESOLVED: resolvedFixture });
-    expect(args[0], "the wrapper did not start the host the app resolved").toBe(resolvedFixture);
+    const { lines } = await startThroughWrapper(
+      { ...env, DORIFACE_HOST_RESOLVED: resolvedHost },
+      {
+        hostPrintsArgs: false,
+      },
+    );
+    expect(
+      lines.some((line) => line.includes("RESOLVED-HOST-RAN")),
+      "the wrapper did not start the host the app resolved",
+    ).toBe(true);
   });
 
   test("the wrapper refuses to start the host on the release relay", async () => {
