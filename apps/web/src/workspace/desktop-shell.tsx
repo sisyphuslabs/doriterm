@@ -309,6 +309,7 @@ export function DesktopShell(props: DesktopShellProps) {
           }
           onCloseSet={(key, which) => onCloseTabs(layout.closeSetOf(key, which))}
           onNew={onNew}
+          newDisabled={(layout.active?.readOnly ?? null) !== null}
           newMenu={
             <NewTabMenu
               connection={connection}

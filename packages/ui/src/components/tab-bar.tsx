@@ -26,6 +26,8 @@ export interface TabBarProps {
   /** "Close tabs to the right" and "Close other tabs" from a tab's menu; neither closes a pinned tab (#1561). */
   readonly onCloseSet?: (id: string, which: "right" | "others") => void;
   readonly onNew?: () => void;
+  /** New tab cannot start a terminal now (the space's machine is not reachable): it stays in place, disabled. */
+  readonly newDisabled?: boolean;
   /** herdr-app's new menu: given, the strip's New tab button opens it (#466 item 7); else the button is `onNew`. */
   readonly newMenu?: ReactNode;
   /** Asks for a tab's name: a double-click on it, as herdr-app's strip, and Rename tab in its menu. */
@@ -57,6 +59,7 @@ export function TabBar({
   onPin,
   onCloseSet,
   onNew,
+  newDisabled = false,
   newMenu,
   onRename,
   onMove,
@@ -225,12 +228,18 @@ export function TabBar({
           label="New tab"
           {...(newTabKeys === undefined ? {} : { keys: newTabKeys })}
           icon={<Plus />}
+          disabled={newDisabled}
           onClick={onNew}
         />
       ) : (
         <Menu
           trigger={
-            <IconButton label="New tab" {...(newTabKeys === undefined ? {} : { keys: newTabKeys })} icon={<Plus />} />
+            <IconButton
+              label="New tab"
+              {...(newTabKeys === undefined ? {} : { keys: newTabKeys })}
+              icon={<Plus />}
+              disabled={newDisabled}
+            />
           }
           className="w-[250px]"
           onOpenChange={(open) => {

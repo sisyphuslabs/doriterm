@@ -475,6 +475,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                         section={phone.section}
                         onSection={phone.showSection}
                         onNew={() => newTerminal()}
+                        newDisabled={(layout.active?.readOnly ?? null) !== null}
                         onNewInSpace={newTabIn}
                         onCloseTab={(address) => {
                           const found = findTerminal(layout.tabs, address);

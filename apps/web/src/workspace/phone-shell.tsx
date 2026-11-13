@@ -53,6 +53,8 @@ export interface PhoneShellProps {
   /** The space screen's Back, to the list. */
   readonly onSpaceBack: () => void;
   readonly onNew: () => void;
+  /** The new tab's machine is not reachable now: its + stays in place, disabled. */
+  readonly newDisabled: boolean;
   /** Starts a new tab in the space with this key and opens it. */
   readonly onNewInSpace: (key: string) => void;
   /** Closes the tab that shows this terminal, as the desktop strip's close does. */
@@ -126,7 +128,7 @@ export function PhoneShell(props: PhoneShellProps) {
           <h1 className="flex-1 text-xl font-semibold text-foreground">{section === "agents" ? "Agents" : "Spaces"}</h1>
           <IconButton label="Command palette" icon={<Search />} size="md" onClick={onPalette} />
           {machines.terminalsLoaded && section === "agents" ? <PhoneSortMenu terminals={terminals} /> : null}
-          <IconButton label={NEW_TAB.label} icon={<Plus />} size="md" onClick={onNew} />
+          <IconButton label={NEW_TAB.label} icon={<Plus />} size="md" disabled={props.newDisabled} onClick={onNew} />
         </header>
         <ConnectionLine />
         {/* The page's one main landmark: the list, under the header (#1378). */}
