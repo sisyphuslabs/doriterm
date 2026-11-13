@@ -242,6 +242,7 @@ export function TabBar({
             />
           }
           className="w-[250px]"
+          disabled={newDisabled}
           onOpenChange={(open) => {
             if (!open) return;
             chose.current = false;
