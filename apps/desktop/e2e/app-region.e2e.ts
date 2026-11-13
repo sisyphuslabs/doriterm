@@ -21,12 +21,15 @@ const PAGE = `<!doctype html><style>
   #slid button::after { content: ""; position: absolute; left: 50px; top: 0; width: 20px; height: 40px; -webkit-app-region: no-drag; }
 </style><div id="strip"><button id="tab">tab</button></div><div id="moved"><button>moved</button></div><div id="slid"><button>slid</button></div>`;
 
-/** The same layer under an ancestor this cannot read: scaled, so its padding box is not where the layer is measured. */
+/**
+ * The same layer under a scaled ancestor, as the app's rows are while their entrance animation runs (#2366): #grown is
+ * scaled 2x from its top-left corner, so the layer at left 0, top 50, 20x20 covers x 0..40, y 100..140 on screen.
+ */
 const SCALED = `<!doctype html><style>
   body { margin: 0; }
-  #grown { scale: 2; width: 100px; height: 40px; }
+  #grown { scale: 2; transform-origin: 0 0; width: 100px; height: 40px; }
   #grown button { display: block; -webkit-app-region: no-drag; }
-  #grown button::after { content: ""; position: absolute; left: 0; top: 0; width: 20px; height: 20px; }
+  #grown button::after { content: ""; position: absolute; left: 0; top: 50px; width: 20px; height: 20px; }
 </style><div id="grown"><button>grown</button></div>`;
 
 test("a static button's absolute hit layer is read against its nearest positioned or transformed ancestor (#2366)", async () => {
@@ -46,9 +49,26 @@ test("a static button's absolute hit layer is read against its nearest positione
     expect(await page.evaluate(appRegionAt, { x: 360, y: 320 })).toBe("no-drag");
     expect(await page.evaluate(appRegionAt, { x: 320, y: 320 })).toBe("drag");
     await page.setContent(SCALED);
-    await expect(page.evaluate(appRegionAt, { x: 10, y: 10 })).rejects.toThrow("no readable box");
-    // A scale above the containing block moves the block too, so it is refused as well.
-    await page.setContent(SCALED.replace("#grown { scale: 2;", "body { scale: 2; } #grown { position: relative;"));
+    // The page lists no region of its own, so a point beside the layer reads none; read unscaled, the layer would sit at
+    // x 0..20, y 50..70 instead.
+    expect(await page.evaluate(appRegionAt, { x: 30, y: 130 })).toBe("no-drag");
+    expect(await page.evaluate(appRegionAt, { x: 50, y: 130 })).toBe("none");
+    expect(await page.evaluate(appRegionAt, { x: 10, y: 60 })).toBe("none");
+    // A scale written as a transform, the way the entrance animation writes it, and one above the containing block
+    // place the layer the same way.
+    await page.setContent(SCALED.replace("scale: 2;", "transform: scale(2);"));
+    expect(await page.evaluate(appRegionAt, { x: 30, y: 130 })).toBe("no-drag");
+    expect(await page.evaluate(appRegionAt, { x: 50, y: 130 })).toBe("none");
+    await page.setContent(
+      SCALED.replace("body { margin: 0; }", "body { margin: 0; scale: 2; transform-origin: 0 0; }").replace(
+        "#grown { scale: 2; transform-origin: 0 0;",
+        "#grown { position: relative;",
+      ),
+    );
+    expect(await page.evaluate(appRegionAt, { x: 30, y: 130 })).toBe("no-drag");
+    expect(await page.evaluate(appRegionAt, { x: 50, y: 130 })).toBe("none");
+    // A rotation has no such product, so it is refused.
+    await page.setContent(SCALED.replace("scale: 2;", "rotate: 10deg;"));
     await expect(page.evaluate(appRegionAt, { x: 10, y: 10 })).rejects.toThrow("no readable box");
   } finally {
     await app.close();
