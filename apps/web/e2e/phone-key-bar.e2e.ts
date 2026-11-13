@@ -57,7 +57,9 @@ for (const width of [390, 320]) {
   });
 }
 
-test("the bar rides on the soft keyboard; with the keyboard down it stays under the terminal (#2499)", async ({ page }) => {
+test("the bar rides on the soft keyboard; with the keyboard down it stays under the terminal (#2499)", async ({
+  page,
+}) => {
   await openPhoneTerminal(page);
   const bar = keysBar(page);
   await expect(bar).toBeVisible();

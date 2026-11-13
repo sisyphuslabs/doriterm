@@ -68,7 +68,9 @@ async function panel(page: Page): Promise<Panel> {
       const send = [...bar.querySelectorAll("button")].find((button) => button.ariaLabel === "Send");
       const keysTop = bar.querySelector("[data-slot=terminal-keys-scroll]")?.getBoundingClientRect().top ?? 0;
       return {
-        typeAbove: [field, send].every((el) => el !== null && el !== undefined && el.getBoundingClientRect().bottom <= keysTop + 1),
+        typeAbove: [field, send].every(
+          (el) => el !== null && el !== undefined && el.getBoundingClientRect().bottom <= keysTop + 1,
+        ),
         typeRow: [field, send].map((el) => (el === null || el === undefined ? "missing" : look(el))),
         structure,
         order: controls.map((el) => (el.tagName.toLowerCase() === "button" ? name(el) : el.tagName.toLowerCase())),
