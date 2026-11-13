@@ -103,6 +103,7 @@ describe("the counters and the revoke hint in status (sections 8.6 and 10.1)", (
       },
       flushOpen: () => false,
       attach: () => undefined,
+      revoked: () => false,
       log: () => undefined,
     });
     const m = peer("m");
@@ -135,6 +136,7 @@ describe("the counters and the revoke hint in status (sections 8.6 and 10.1)", (
       dial: () => Promise.reject(new SecureLinkError(4401, "revoked mesh member")),
       flushOpen: () => open.shift() ?? true,
       attach: () => undefined,
+      revoked: () => false,
       log: () => undefined,
     });
     const m = peer("m");

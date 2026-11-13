@@ -174,6 +174,9 @@ export class LineGrants {
       const reason = `${member.name}: the relay is rate limiting this host (4429); next try in ${next} s`;
       return { ok: false, code: 4429, reason };
     }
+    if (grant.reason === "refused") {
+      return { ok: false, code: 4404, reason: `${member.name} refused this host's handshake; next try in ${next} s` };
+    }
     return {
       ok: false,
       code: 4404,
