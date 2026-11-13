@@ -23,6 +23,8 @@ const MAX_REQUEST_BYTES = 4096;
 
 interface ConnectionState {
   buffer: string;
+  /** Decodes the connection's bytes as one stream, so a character split across two chunks arrives whole. */
+  readonly decoder: TextDecoder;
   readonly closed: AbortController;
   started: boolean;
   answer: ((line: string) => void) | undefined;
@@ -90,6 +92,7 @@ export function listenControl(stateDir: string, handle: ControlHandler): Control
       open(socket) {
         socket.data = {
           buffer: "",
+          decoder: new TextDecoder(),
           closed: new AbortController(),
           started: false,
           answer: undefined,
@@ -103,7 +106,7 @@ export function listenControl(stateDir: string, handle: ControlHandler): Control
         socket.data.closed.abort(new Error("the control connection closed"));
       },
       data(socket, chunk) {
-        socket.data.buffer += chunk.toString();
+        socket.data.buffer += socket.data.decoder.decode(chunk, { stream: true });
         const lines = socket.data.buffer.split("\n");
         socket.data.buffer = lines.pop() ?? "";
         if (socket.data.buffer.length > MAX_REQUEST_BYTES || lines.some((line) => line.length > MAX_REQUEST_BYTES)) {
@@ -172,6 +175,7 @@ export async function requestControl(
 ): Promise<unknown> {
   const { promise, resolve, reject } = Promise.withResolvers<string>();
   let text = "";
+  const decoder = new TextDecoder();
   let asked = false;
   const out: Outgoing = { queue: [], ending: false };
   try {
@@ -185,7 +189,7 @@ export async function requestControl(
           flushOut(socket, out);
         },
         data(socket, chunk) {
-          text += chunk.toString();
+          text += decoder.decode(chunk, { stream: true });
           const end = text.indexOf("\n");
           if (end === -1 || asked || request.op !== "mesh-join") return;
           try {
@@ -207,7 +211,7 @@ export async function requestControl(
           }
         },
         close() {
-          resolve(text);
+          resolve(text + decoder.decode());
         },
         error(_, error) {
           reject(error);

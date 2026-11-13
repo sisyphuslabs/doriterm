@@ -146,6 +146,14 @@ describe("control socket", () => {
     expect(await requestControl(dir, { op: "mesh-status" })).toBe(payload);
   });
 
+  // A reply that arrives in several chunks splits multi-byte characters (a Korean machine name) across chunk edges; each
+  // chunk decoded on its own turned the halves into U+FFFD (#2450 review).
+  test("a reply of multi-byte characters past the send buffer reaches the client unchanged", async () => {
+    const payload = `a${"\uAC00".repeat(700_001)}`;
+    listeners.push(listenControl(dir, () => Promise.resolve(payload)));
+    expect(await requestControl(dir, { op: "mesh-status" })).toBe(payload);
+  });
+
   test("a live socket is reported as live, a stale or missing one is not", async () => {
     expect(await controlIsLive(dir)).toBe(false);
     const listener = listenControl(dir, () => Promise.resolve(undefined));
