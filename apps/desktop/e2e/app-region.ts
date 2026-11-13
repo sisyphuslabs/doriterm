@@ -40,8 +40,8 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
       const own = getComputedStyle(block);
       // An element with display: contents has no box at all.
       const hasBox = own.display !== "contents";
-      // A filter makes any element a containing block; the other properties do not apply to an inline box.
-      const filtered = own.filter !== "none" || own.backdropFilter !== "none";
+      // A filter makes any element but the root a containing block; the other properties do not apply to an inline box.
+      const filtered = block !== document.documentElement && (own.filter !== "none" || own.backdropFilter !== "none");
       const transformed =
         filtered ||
         (own.display !== "inline" &&
@@ -71,8 +71,10 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
         }
       }
       // The padding box starts inside the border; clientLeft and clientTop read 0 for an inline box, so the border is read.
-      const box = block.getBoundingClientRect();
+      // An inline that wraps over lines starts where its first line box does.
       const border = getComputedStyle(block);
+      const box =
+        (border.display === "inline" ? block.getClientRects()[0] : undefined) ?? block.getBoundingClientRect();
       origin = {
         left: box.left + Number.parseFloat(border.borderLeftWidth),
         top: box.top + Number.parseFloat(border.borderTopWidth),
