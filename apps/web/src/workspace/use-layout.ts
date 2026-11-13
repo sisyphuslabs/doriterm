@@ -310,7 +310,12 @@ export function useLayout(
   );
 
   const addTab = useCallback(
-    (address: string, newSpace = false, into?: string, placed?: (doc: JsonObject | null) => NewSpace): void => {
+    (
+      address: string,
+      newSpace = false,
+      into?: string,
+      placed?: (doc: JsonObject | null, makeId: (prefix: "spc") => string) => NewSpace,
+    ): void => {
       const machine = machineOf(address) ?? null;
       const layout = layoutOf(machine);
       const writable = layout !== undefined && layout.readOnly === null;
@@ -338,7 +343,8 @@ export function useLayout(
           ? undefined
           : docSpaces(layout.doc).find((each) => spaceKey(layout.machineId, each.id) === into);
       const named = docSpace?.id ?? null;
-      const guess = placed?.(layout.doc);
+      // Only an existing space is worth a guess before the write: a space the write would make gets its id there.
+      const guess = placed?.(layout.doc, () => "");
       const near =
         !newSpace &&
         active !== null &&
@@ -356,7 +362,7 @@ export function useLayout(
       void layout
         .edit((doc) => {
           // A placed tab's space is decided on the document this write lands on, as adoption decides it (#2467).
-          const where = placed === undefined ? space : placed(doc);
+          const where = placed === undefined ? space : placed(doc, freshId);
           const after = where.id === space.id ? near?.id : undefined;
           const write = newTabWrite(doc, localOf(address), tab, where, after, kept, layout.pins);
           adopted = write.instead;
@@ -394,7 +400,7 @@ export function useLayout(
       const terminal = terminals.find((each) => each.address === address);
       const layout = layoutOf(machineOf(address) ?? null);
       if (terminal === undefined || layout === undefined) return addTab(address);
-      return addTab(address, false, undefined, (doc) => placeOf(doc, terminal, freshId));
+      return addTab(address, false, undefined, (doc, makeId) => placeOf(doc, terminal, makeId));
     },
     [addTab, layoutOf, show, tabs, terminals],
   );

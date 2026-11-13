@@ -84,6 +84,28 @@ test("an agent opened from the Agents list before it has a tab goes to the space
   await expect.poll(() => spacesShowing(address), { timeout: 20_000 }).toEqual(["lanes"]);
 });
 
+test("a space of that name another client saves while the click's write waits is the one the tab joins", async ({
+  page,
+}) => {
+  const link = await routeHcSocket(page);
+  await page.goto("/");
+  await openNewTerminal(page);
+  await expect(tabs(page)).toHaveCount(1, { timeout: 20_000 });
+  const release = link.hold("doc.set");
+  const address = startOutside("host", "raced-lane", "lanes");
+  await agentRow(page, "raced-lane", false).click();
+  await expect(spaceRow(page, "lanes")).toBeVisible({ timeout: 20_000 });
+  updateCoreDoc(LAYOUT_DOC, (current) => {
+    const doc = structuredClone(current) as { spaces: object[] };
+    doc.spaces.push({ folder: "", id: "spc-made-elsewhere", name: "lanes", tabs: [] });
+    return doc;
+  });
+  release();
+  await expect.poll(() => spacesShowing(address), { timeout: 20_000 }).toEqual(["lanes"]);
+  const doc = getCoreDoc(LAYOUT_DOC) as { spaces: readonly { id: string; name: string }[] };
+  expect(doc.spaces.filter((space) => space.name === "lanes").map((space) => space.id)).toEqual(["spc-made-elsewhere"]);
+});
+
 test("a tab name another client saves shows without a reload", async ({ page }) => {
   await page.goto("/");
   await openNewTerminal(page);
