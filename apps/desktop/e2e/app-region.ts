@@ -19,8 +19,9 @@
  * absolute pseudo-element one that is positioned, and for both an absolute and a fixed one one that is transformed
  * (`transform`, `translate`, `scale`, `rotate`, `perspective`), filtered (`filter`, `backdrop-filter`), contained
  * (`contain` layout or paint, a `container-type`) or will change one of those; else the initial containing block for
- * an absolute one and the viewport for a fixed one. A block scaled or rotated has no padding box this can read, and
- * any other pseudo-element with an app-region has no readable box either: both throw instead of being skipped.
+ * an absolute one and the viewport for a fixed one. A scale on the block or above it scales the layer's offsets and size;
+ * a block rotated, skewed or seen through a perspective has no padding box this can read, and any other pseudo-element
+ * with an app-region has no readable box either: both throw instead of being skipped.
  */
 export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }): "drag" | "no-drag" | "none" {
   let at: "drag" | "no-drag" | "none" = "none";
@@ -57,18 +58,24 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
       block = block.parentElement;
     }
     let origin = { left: 0, top: 0 };
+    let scale = { x: 1, y: 1 };
     if (block === null) {
       if (style.position === "absolute") origin = { left: -window.scrollX, top: -window.scrollY };
     } else {
-      // The block's padding box is read in page coordinates, which hold only while neither it nor anything above it is
-      // scaled, rotated, skewed or seen through a perspective.
+      // The layer's offsets are in the block's own units: a scale on the block or above it (an entrance animation runs
+      // the app's rows from 0.97 to 1, #2366) shrinks them by the product of those scales. A rotation, a skew or a
+      // perspective has no such product, so it throws.
+      let sx = 1;
+      let sy = 1;
       for (let above: Element | null = block; above !== null; above = above.parentElement) {
         const own = getComputedStyle(above);
         const matrix = new DOMMatrixReadOnly(own.transform === "none" ? undefined : own.transform);
-        const translationOnly = matrix.is2D && matrix.a === 1 && matrix.b === 0 && matrix.c === 0 && matrix.d === 1;
-        if (!translationOnly || own.scale !== "none" || own.rotate !== "none" || own.perspective !== "none") {
-          throw unreadable;
-        }
+        const axisAligned = matrix.is2D && matrix.b === 0 && matrix.c === 0 && matrix.a > 0 && matrix.d > 0;
+        if (!axisAligned || own.rotate !== "none" || own.perspective !== "none") throw unreadable;
+        const [scaleX = 1, scaleY = scaleX] = own.scale === "none" ? [] : own.scale.split(" ").map(Number);
+        if (!(scaleX > 0 && scaleY > 0)) throw unreadable;
+        sx *= matrix.a * scaleX;
+        sy *= matrix.d * scaleY;
       }
       // The padding box starts inside the border; clientLeft and clientTop read 0 for an inline box, so the border is read.
       // An inline that wraps over lines starts where its first line box does; a right-to-left or vertical one starts at
@@ -78,20 +85,22 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
       if (border.display === "inline" && !horizontalLtr) throw unreadable;
       const box =
         (border.display === "inline" ? block.getClientRects()[0] : undefined) ?? block.getBoundingClientRect();
-      // An absolute layer in a scrolled container moves with its content; a fixed one stays put.
+      // An absolute layer in a scrolled container moves with its content, by the block's scroll offset in its own units;
+      // a fixed one stays put.
       const scrolled = style.position === "absolute";
       origin = {
-        left: box.left + Number.parseFloat(border.borderLeftWidth) - (scrolled ? block.scrollLeft : 0),
-        top: box.top + Number.parseFloat(border.borderTopWidth) - (scrolled ? block.scrollTop : 0),
+        left: box.left + (Number.parseFloat(border.borderLeftWidth) - (scrolled ? block.scrollLeft : 0)) * sx,
+        top: box.top + (Number.parseFloat(border.borderTopWidth) - (scrolled ? block.scrollTop : 0)) * sy,
       };
+      scale = { x: sx, y: sy };
     }
-    const left = origin.left + Number.parseFloat(style.left);
-    const top = origin.top + Number.parseFloat(style.top);
+    const left = origin.left + Number.parseFloat(style.left) * scale.x;
+    const top = origin.top + Number.parseFloat(style.top) * scale.y;
     apply(mode, {
       left,
       top,
-      right: left + Number.parseFloat(style.width),
-      bottom: top + Number.parseFloat(style.height),
+      right: left + Number.parseFloat(style.width) * scale.x,
+      bottom: top + Number.parseFloat(style.height) * scale.y,
     });
   };
   const visit = (element: Element): void => {

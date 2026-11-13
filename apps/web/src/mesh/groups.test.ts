@@ -44,8 +44,10 @@ describe("meshGroups", () => {
     expect(names(groups.offline)).toEqual(["laptop", "tablet"]);
   });
 
-  test("a member a fail-closed conflict removed shows under the removal, not again as revoked", () => {
-    expect(names(meshGroups(status, NOW.getTime()).revoked)).toEqual(["kiosk"]);
+  test("revoked keys are counted, never listed as machines; one a fail-closed removal shows is not counted again", () => {
+    const groups = meshGroups(status, NOW.getTime());
+    expect(groups.revokedCount).toBe(1);
+    expect(Object.keys(groups)).not.toContain("revoked");
   });
 
   test("an over-cap member is offline even with its line up", () => {
