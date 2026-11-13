@@ -216,9 +216,12 @@ test("a session menu still closing when its session ends gives no focus back beh
   const address = (await terminal.getAttribute("data-terminal")) ?? "";
   await named(page);
   // A busy page can still be closing the menu when the session ends: its pane, and the menu with it, then go after the
-  // statement has taken the keyboard. A long exit holds the menu up so that order happens every time.
+  // statement has taken the keyboard. A long exit holds the menu up so that order happens every time. It is an animation,
+  // not a transition: a transition starts from the opacity the menu has, and a menu still fading in (from 0) has next to
+  // none to fade out, so the exit was over at once now and then and the menu went before the session ended.
   await page.addStyleTag({
-    content: "[role='menu'][data-ending-style] { transition: opacity 10s linear !important; opacity: 0 !important; }",
+    content:
+      "@keyframes hold-menu-exit { from { opacity: 1; } to { opacity: 0; } } [role='menu'][data-ending-style] { animation: hold-menu-exit 10s linear !important; }",
   });
   await sessionMenu(page, "End session…");
   await expect(dialog(page, `End ${NAME}?`)).toBeVisible();
