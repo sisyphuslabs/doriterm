@@ -90,6 +90,8 @@ export interface Attachment {
   /** Why attaching failed, in plain words; null once Try again clears it. */
   readonly unopened: string | null;
   readonly clearUnopened: () => void;
+  /** Clears a failed open to wait for its machine: the same renderer attaches again once it is shown (#2003). */
+  readonly waitForMachine: () => void;
   /** The view's onEnd as it is now: an end acts on the tabs as they are by then. */
   readonly onEndNow: RefObject<((address: string, end: TerminalEnd) => void) | undefined>;
 }
@@ -315,11 +317,48 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
   useEffect(() => {
     if (wt === null || !shown) return;
     // A renderer not attached yet (the first, or one mounted again by Try again) attaches here too, once shown.
-    const attached = attachedView.current === wt && attachedTo.current === connection;
-    if (attached && reattachedFor.current === lostStreams) return;
+    const mark = { view: attachedView.current, connection: attachedTo.current, reattachedFor: reattachedFor.current };
+    if (!attachDue(mark, wt, connection, lostStreams)) return;
     reattachedFor.current = lostStreams;
     attach(wt);
   }, [wt, connection, shown, lostStreams]);
 
-  return { opening, restarting, ended, unopened, clearUnopened: () => setUnopened(null), onEndNow };
+  return {
+    opening,
+    restarting,
+    ended,
+    unopened,
+    clearUnopened: () => setUnopened(null),
+    waitForMachine: machineWait(setUnopened, setLostStreams),
+    onEndNow,
+  };
+}
+
+/** What the attach effect last did: the renderer and connection it attached, and the lost-stream count it saw. */
+export interface AttachMark {
+  readonly view: unknown;
+  readonly connection: unknown;
+  readonly reattachedFor: number;
+}
+
+/** Whether a shown view attaches now: a renderer or connection it has not attached, or a stream lost since. */
+export function attachDue(mark: AttachMark, view: unknown, connection: unknown, lostStreams: number): boolean {
+  return !(mark.view === view && mark.connection === connection && mark.reattachedFor === lostStreams);
+}
+
+/** The lost-stream count after a failed open is cleared to wait for its machine (#2003). */
+export const afterMachineWait = (lostStreams: number): number => lostStreams + 1;
+
+/**
+ * The call that clears a failed open to wait for its machine: no failure is shown, and the lost-stream count moves on, so
+ * the attach effect attaches the same renderer once the machine is back (#2003, #2375 review).
+ */
+export function machineWait(
+  setUnopened: (reason: string | null) => void,
+  setLostStreams: (next: (count: number) => number) => void,
+): () => void {
+  return () => {
+    setUnopened(null);
+    setLostStreams(afterMachineWait);
+  };
 }

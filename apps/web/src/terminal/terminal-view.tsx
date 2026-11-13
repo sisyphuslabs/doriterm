@@ -73,7 +73,7 @@ export function TerminalView(props: TerminalViewProps) {
     softKeyboard = false,
     typesComposition = false,
   } = props;
-  const { browsing = false } = props;
+  const { browsing = false, reachable = true } = props;
   const config = useTerminalConfig();
   const options = useMemo(() => rendererOptions(config), [config]);
   const dark = useDarkScheme();
@@ -209,7 +209,8 @@ export function TerminalView(props: TerminalViewProps) {
   }, [wt]);
   const shown = usePaneVisibility(wt, pacer);
   useTerminalActions(wt, input, focused, shown, openFind);
-  const away = useMachineLine(connection, address, shown);
+  // Keeps its machine's line read while shown, which held input relies on (#1489, #2056); the status line says it.
+  useMachineLine(connection, address, shown);
   useFocusAfterSelect(wt, options.trimCopy);
   useLongPressSelect(wt, setSelectAt);
   useTouchWheel(wt);
@@ -225,7 +226,8 @@ export function TerminalView(props: TerminalViewProps) {
     address,
     pid,
     live,
-    shown,
+    // A view whose machine is offline waits to attach, instead of failing; one attached before keeps its stream (#2003).
+    shown: shown && reachable,
     wt,
     setWt,
     stream,
@@ -239,6 +241,13 @@ export function TerminalView(props: TerminalViewProps) {
     onStream: streamStarted,
     holdPaint,
   });
+  // An open that failed as the machine went offline is a wait, not a failure: it is cleared as soon as the machine reads
+  // offline, so the view stays mounted and its attach effect opens it once the machine is back. Clearing it only on the
+  // return would show the failure for one render and remount the view (#2003).
+  const { unopened, waitForMachine } = attachment;
+  useEffect(() => {
+    if (!reachable && unopened !== null) waitForMachine();
+  }, [reachable, unopened, waitForMachine]);
 
   if (error !== null) return <p className="p-4 text-prose text-destructive">{error}</p>;
   if (attachment.restarting) {
@@ -257,7 +266,9 @@ export function TerminalView(props: TerminalViewProps) {
       />
     );
   }
-  if (attachment.unopened !== null) {
+  // An open that failed while the machine is offline is a wait, said in the status line: the view stays and opens
+  // again by itself once the machine is back (#2003).
+  if (attachment.unopened !== null && reachable) {
     // Try again mounts a new terminal: until it attaches it is starting, so in a pane that is not focused its start-time
     // focus goes back where it was, as on the first start (#163).
     const retry = (): void => {
@@ -311,15 +322,6 @@ export function TerminalView(props: TerminalViewProps) {
       {attachment.opening ? (
         <QuietBusy label="Opening terminal" text="Opening…" className="absolute inset-0 z-10 bg-term-bg" />
       ) : null}
-      {away === null ? null : (
-        // Keys typed now wait for the machine (HeldInput, #1489); the line overlays the top row and takes no room.
-        <p
-          role="status"
-          className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-muted/95 px-3 py-1 text-center text-prose text-muted-foreground"
-        >
-          Reconnecting to {away}. Your typing will be sent.
-        </p>
-      )}
       {wt === null ? null : (
         <>
           <TerminalScrollbar wt={wt} scroll={scroll} />

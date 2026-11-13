@@ -182,7 +182,16 @@ test("the desktop's ended view offers no dictation: no mic, no strip, and a boun
     const terminal = page.locator(`[data-terminal="${MACHINE_NAME}/${remote}"]`);
     await expect(terminal).toContainText("$", { timeout: 15_000 });
     switchTo("drop");
-    await expect(terminal).toHaveCount(0, { timeout: OFFLINE_BOUND_MS });
+    // #2003 (DORITERM-11): the view stays mounted and the status line says the machine is offline.
+    await expect(
+      page
+        .getByRole("contentinfo")
+        .getByRole("status")
+        .filter({ hasText: `${MACHINE_NAME} is offline` }),
+    ).toBeVisible({
+      timeout: OFFLINE_BOUND_MS,
+    });
+    await expect(terminal).toHaveCount(1);
     hcOn("machine", ["kill", remote]);
     await expect.poll(() => stateOn("machine", remote), { timeout: 15_000 }).toBe("finished");
     reconnect();

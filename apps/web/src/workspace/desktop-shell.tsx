@@ -392,6 +392,7 @@ export function DesktopShell(props: DesktopShellProps) {
           />
         </main>
         <DesktopStatusBar
+          connection={connection}
           terminals={terminals}
           live={live}
           loaded={loaded}

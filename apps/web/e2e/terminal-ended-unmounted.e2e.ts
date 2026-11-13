@@ -176,9 +176,18 @@ test("a terminal on an added machine whose program ends while the machine is off
     await expect(terminal).toContainText("armed-9", { timeout: 15_000 });
     await savedPane(local, MACHINE_NAME);
 
-    // The line to the machine drops; its core and the program keep running, and the pane shows the machine offline.
+    // The line to the machine drops; its core and the program keep running, and the status line says the machine is offline.
     switchTo("drop");
-    await expect(terminal).toHaveCount(0, { timeout: OFFLINE_BOUND_MS });
+    // #2003 (DORITERM-11): the view stays mounted and the status line says the machine is offline.
+    await expect(
+      page
+        .getByRole("contentinfo")
+        .getByRole("status")
+        .filter({ hasText: `${MACHINE_NAME} is offline` }),
+    ).toBeVisible({
+      timeout: OFFLINE_BOUND_MS,
+    });
+    await expect(terminal).toHaveCount(1);
     writeFileSync(go, "");
     await expect.poll(() => stateOn("machine", local), { timeout: 15_000 }).toBe("finished");
     reconnect();

@@ -1,7 +1,8 @@
 import type { MachineView, Terminal } from "@doriface/protocol";
 import { machineOf, type Session } from "./model.ts";
 
-const AWAY = new Set(["unreachable", "needs_login"]);
+/** The machine states whose terminals read offline: the status line and the panes read this one set. */
+export const AWAY: ReadonlySet<string> = new Set(["unreachable", "needs_login"]);
 
 /** Each terminal's offline copy, so a terminal that did not change stays the same object from render to render (#2086). */
 const offlineCopies = new WeakMap<Terminal, Session>();

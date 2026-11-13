@@ -362,7 +362,15 @@ export const SHOTS: readonly Shot[] = [
       const terminal = page.locator(`[data-terminal="${MACHINE_NAME}/${ended}"]`);
       await expect(terminal).toContainText("$", { timeout: 15_000 });
       switchTo("drop");
-      await expect(terminal).toHaveCount(0, { timeout: OFFLINE_BOUND_MS });
+      // #2003 (DORITERM-11): the view stays mounted and the status line says the machine is offline.
+      await expect(
+        (width === "1440" ? page.getByRole("contentinfo") : page)
+          .getByRole("status")
+          .filter({ hasText: `${MACHINE_NAME} is offline` }),
+      ).toBeVisible({
+        timeout: OFFLINE_BOUND_MS,
+      });
+      await expect(terminal).toHaveCount(1);
       hcOn("machine", ["kill", ended]);
       reconnect();
       // The phone's terminal screen has no machine list to wait on.

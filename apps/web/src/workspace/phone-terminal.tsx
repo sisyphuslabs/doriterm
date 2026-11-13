@@ -11,7 +11,7 @@ import { TerminalView } from "../terminal/terminal-view.tsx";
 import { DictateButton } from "../voice/dictate-button.tsx";
 import { useDictation } from "../voice/use-dictation.ts";
 import { VoiceDock } from "../voice/voice-dock.tsx";
-import { MachineOffline } from "./machine-offline.tsx";
+import { MachineLine } from "./machine-status.tsx";
 import { machineOf, type Session, terminalTitle } from "./model.ts";
 import { PackSheet } from "./pack-sheet.tsx";
 import { PhoneHeader } from "./phone-header.tsx";
@@ -160,6 +160,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
         action={untyped ? null : <DictateButton voice={voice} target={title} ref={mic} />}
       />
       <ConnectionLine address={terminal.address} />
+      <MachineLine connection={connection} address={terminal.address} />
       <PaneSwitcher panes={panes} open={terminal.address} onOpen={onOpen} />
       {/* The page's one main landmark: the terminal, under its header (#1378). */}
       <main
@@ -178,35 +179,33 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
           detail="The program keeps running on the host."
         >
           {offline ? null : <ApprovalOverlay connection={connection} terminal={terminal} />}
-          {offline ? (
-            <MachineOffline machine={machine} />
-          ) : (
-            <TerminalView
-              key={viewKey}
-              connection={connection}
-              address={terminal.address}
-              pid={terminal.pid ?? null}
-              live={terminal.state === "live"}
-              focused
-              // Opening a terminal, a session picked from the keys bar included, leaves the soft keyboard down: only the
-              // keyboard button raises it (#1375).
-              claimed={false}
-              // A soft keyboard is the phone's to ask for, so opening a terminal leaves it down (#1375); a narrow window
-              // driven by a mouse has none to raise, and keeps taking the focus as it starts (#287).
-              softKeyboard={!mouseOnly}
-              label={`${title} output`}
-              transformInput={sticky.transform}
-              typesComposition={sticky.latched.size > 0}
-              browsing={browsing}
-              onPort={onPort}
-              // An End of this session leaves the screen only once it has removed the terminal (see afterEnd).
-              onEnd={(address, end) => (closesTab(end) ? afterEnd(address, () => onEnded(address)) : undefined)}
-              // The header already has Back; this one closes the ended session.
-              closeLabel="Close"
-              {...(keysControls === null ? {} : { jumpClearance: keysControls })}
-              onEnded={() => setEndedView(viewKey)}
-            />
-          )}
+          {/* An offline machine is said in the line under the header (MachineLine); its view stays (#2003). */}
+          <TerminalView
+            key={viewKey}
+            reachable={!offline}
+            connection={connection}
+            address={terminal.address}
+            pid={terminal.pid ?? null}
+            live={terminal.state === "live"}
+            focused
+            // Opening a terminal, a session picked from the keys bar included, leaves the soft keyboard down: only the
+            // keyboard button raises it (#1375).
+            claimed={false}
+            // A soft keyboard is the phone's to ask for, so opening a terminal leaves it down (#1375); a narrow window
+            // driven by a mouse has none to raise, and keeps taking the focus as it starts (#287).
+            softKeyboard={!mouseOnly}
+            label={`${title} output`}
+            transformInput={sticky.transform}
+            typesComposition={sticky.latched.size > 0}
+            browsing={browsing}
+            onPort={onPort}
+            // An End of this session leaves the screen only once it has removed the terminal (see afterEnd).
+            onEnd={(address, end) => (closesTab(end) ? afterEnd(address, () => onEnded(address)) : undefined)}
+            // The header already has Back; this one closes the ended session.
+            closeLabel="Close"
+            {...(keysControls === null ? {} : { jumpClearance: keysControls })}
+            onEnded={() => setEndedView(viewKey)}
+          />
         </RegionBoundary>
         {browsing ? (
           <p

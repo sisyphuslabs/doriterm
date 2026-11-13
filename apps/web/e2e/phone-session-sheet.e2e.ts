@@ -107,9 +107,9 @@ test("the session sheet offers Find in terminal only while its machine is online
     await sheet.getByRole("button", { name: "Done", exact: true }).click();
     await expect(sheet).toBeHidden();
 
-    // Offline, the screen draws MachineOffline in place of the terminal, so no view can take terminal.search.
+    // Offline, the line under the header says so and the view waits for its machine, so it takes no terminal.search.
     switchTo("drop");
-    await expect(page.getByRole("heading", { name: `${MACHINE_NAME} is offline` })).toBeVisible({
+    await expect(page.getByRole("status").filter({ hasText: `${MACHINE_NAME} is offline` })).toBeVisible({
       timeout: OFFLINE_BOUND_MS,
     });
     await actions.click();

@@ -5,8 +5,11 @@ import { agentStatus, nextNeedingYou } from "./attention.ts";
 import { machineOf, type Session, spaceName } from "./model.ts";
 import { HistoryGapStatus } from "./history-gap-status.tsx";
 import { ConnectedStatus, ConnectionPathItem, ReconnectStatus, useConnectionNotice } from "./reconnect-status.tsx";
+import { MachineStatus } from "./machine-status.tsx";
+import type { HcConnection } from "@doriface/client";
 
 export interface DesktopStatusBarProps {
+  readonly connection: HcConnection;
   readonly terminals: readonly Session[];
   /** The live terminals on reachable machines: what the bar counts. */
   readonly live: readonly Session[];
@@ -23,7 +26,8 @@ export interface DesktopStatusBarProps {
 
 /** The desktop's footer: where the focused terminal is, how many there are and who needs you, and the palette. */
 export function DesktopStatusBar(props: DesktopStatusBarProps) {
-  const { terminals, live, loaded, focusedAddress, focusedTerminal, focusedMachine, onOpen, onPalette } = props;
+  const { connection, terminals, live, loaded, focusedAddress, focusedTerminal, focusedMachine, onOpen, onPalette } =
+    props;
   const paletteKeys = useActionKeys("app.palette");
   const blocked = live.filter((terminal) => agentStatus(terminal) === "blocked").length;
   const next = nextNeedingYou(terminals, focusedAddress);
@@ -72,6 +76,7 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
             </span>
           ) : null}
           <ReconnectStatus />
+          <MachineStatus connection={connection} address={focusedAddress} />
           <ConnectedStatus />
           {reconnecting ? null : <HistoryGapStatus address={focusedAddress} />}
           <ConnectionPathItem />

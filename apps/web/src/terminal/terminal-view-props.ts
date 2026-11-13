@@ -39,6 +39,8 @@ export interface TerminalViewProps {
    * soft keyboard comes up, and a held finger's menu offers Copy alone.
    */
   readonly browsing?: boolean;
+  /** False while the terminal's machine is offline: a view not attached yet waits to attach until it is back (#2003). */
+  readonly reachable?: boolean;
   /** The view's port for keys pressed outside it (the phone's keys bar); null once it unmounts. */
   readonly onPort?: (port: TerminalPort | null) => void;
   /** Every time the stream ends, with why; see TerminalEnd. */

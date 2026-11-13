@@ -41,9 +41,13 @@ test("on a phone, a session that ended while its machine was offline shows as en
     await key(page, "Show keyboard").click();
     await expect(keys).toBeVisible();
 
-    // The line to the machine drops and the view unmounts; the program ends meanwhile, then the machine is back.
+    // The line to the machine drops and the view stays; the program ends meanwhile, then the machine is back.
     switchTo("drop");
-    await expect(terminal).toHaveCount(0, { timeout: OFFLINE_BOUND_MS });
+    // #2003 (DORITERM-11): the view stays mounted and the status line says the machine is offline.
+    await expect(page.getByRole("status").filter({ hasText: `${MACHINE_NAME} is offline` })).toBeVisible({
+      timeout: OFFLINE_BOUND_MS,
+    });
+    await expect(terminal).toHaveCount(1);
     hcOn("machine", ["kill", local]);
     await expect.poll(() => stateOn("machine", local), { timeout: 15_000 }).toBe("finished");
     reconnect();
