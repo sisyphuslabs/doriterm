@@ -14,9 +14,10 @@ import { join } from "node:path";
 
 const SCRIPT = join(import.meta.dir, "install.sh");
 
-// Every case runs the real install.sh in a subprocess, which takes seconds on a loaded host: bun's 5 s default timed
-// these out with no assertion failing (#2487). The macOS cases that wait on launchd keep their own 30 s.
-setDefaultTimeout(30_000);
+// Each case runs the real installer, about 50 stub processes (counted with strace: the lingering cases spawn 50 and 46).
+// A loaded macOS runner spent about 100 ms per spawn, so one case took 5.1 s and passed bun's 5 s default by nothing
+// it did wrong (#2487). 15 s is three times that measured worst case; the two ~340-spawn cases keep their 30 s (#2006).
+setDefaultTimeout(15_000);
 // The name install.sh uses (`id -un`); userInfo() reads $USER first and answers "unknown" where it is unset (#2476).
 const USER = Bun.spawnSync(["id", "-un"]).stdout.toString().trim();
 
