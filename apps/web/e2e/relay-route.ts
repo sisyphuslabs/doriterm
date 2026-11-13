@@ -29,8 +29,18 @@ export interface FakeRelayHost {
   /** The host's LAN listener, the address a person sets as the Direct address (#446); empty unless `direct` was asked. */
   readonly directUrl: string;
   /** Call before the page dials the relay: its `/v1/client/...` sockets go to the fake relay's client bridge. */
-  readonly route: (page: Page) => Promise<void>;
+  readonly route: (page: Page, observer?: RelayObserver) => Promise<void>;
   readonly stop: () => Promise<void>;
+}
+
+/**
+ * A spec's view of the page's relay sockets as they are routed: every binary message each way, and each socket as it
+ * opens, with a way to drop it as a relay blip does (the page's end closes with `code`, the relay's end is closed).
+ */
+export interface RelayObserver {
+  readonly toRelay?: (bytes: number) => void;
+  readonly fromRelay?: (bytes: number) => void;
+  readonly opened?: (socket: { readonly drop: (code: number, reason: string) => void }) => void;
 }
 
 /**
@@ -43,6 +53,7 @@ export async function routeRelaySockets(
   toRelay: string,
   pairUrl: string = toRelay,
   advertisedRelay?: string,
+  observer: RelayObserver = {},
 ): Promise<void> {
   const base = toRelay.replace(/\/+$/, "");
   const addresses = advertisedRelay === undefined ? [FAKE_RELAY] : [FAKE_RELAY, relayWebSocketUrl(advertisedRelay)];
@@ -72,19 +83,34 @@ export async function routeRelaySockets(
     const relay = new WebSocket(`${base}${target.pathname}${target.search}`);
     relay.binaryType = "arraybuffer";
     const early: (string | Uint8Array<ArrayBuffer>)[] = [];
+    let dropped = false;
     relay.addEventListener("open", () => {
       for (const frame of early.splice(0)) relay.send(frame);
     });
     socket.onMessage((message) => {
+      if (dropped) return;
       const frame = typeof message === "string" ? message : Uint8Array.from(message);
+      if (typeof frame !== "string") observer.toRelay?.(frame.byteLength);
       if (relay.readyState === WebSocket.OPEN) relay.send(frame);
       else early.push(frame);
     });
-    relay.addEventListener("message", (event: MessageEvent<string | ArrayBuffer>) =>
-      socket.send(typeof event.data === "string" ? event.data : Buffer.from(event.data)),
-    );
-    relay.addEventListener("close", (event) => void socket.close({ code: event.code, reason: event.reason }));
+    relay.addEventListener("message", (event: MessageEvent<string | ArrayBuffer>) => {
+      if (dropped) return;
+      if (typeof event.data !== "string") observer.fromRelay?.(event.data.byteLength);
+      socket.send(typeof event.data === "string" ? event.data : Buffer.from(event.data));
+    });
+    relay.addEventListener("close", (event) => {
+      if (!dropped) void socket.close({ code: event.code, reason: event.reason });
+    });
     socket.onClose(() => relay.close());
+    observer.opened?.({
+      drop: (code, reason) => {
+        if (dropped) return;
+        dropped = true;
+        void socket.close({ code, reason });
+        relay.close();
+      },
+    });
   });
 }
 
@@ -312,6 +338,14 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
     };
     return {
       directUrl: typeof directUrl === "string" ? directUrl : "",
+      route: (page, observer) =>
+        routeRelaySockets(
+          page,
+          bridge,
+          pairUrl,
+          typeof advertisedRelay === "string" ? advertisedRelay : undefined,
+          observer,
+        ),
       pairingOffer: readOffer,
       pairingLink: async () => (await readOffer()).link,
       meshOffer: (auto = false) => readOffer(auto ? "mesh-link-auto" : "mesh-link"),
@@ -356,8 +390,6 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
         if (typeof joined !== "string") throw new Error("the fake relay host printed no joined machine");
         return joined;
       },
-      route: (page) =>
-        routeRelaySockets(page, bridge, pairUrl, typeof advertisedRelay === "string" ? advertisedRelay : undefined),
       stop,
     };
   } catch (error) {

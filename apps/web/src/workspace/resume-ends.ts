@@ -1,7 +1,7 @@
 import type { HcConnection } from "@doriface/client";
-import type { Terminal } from "@doriface/protocol";
-import { useEffect } from "react";
-import { type PendingEnd, pendingEnds, type PendingEnds, resumeOf } from "./pending-ends.ts";
+import type { MachineView, Terminal } from "@doriface/protocol";
+import { useEffect, useRef } from "react";
+import { type PendingEnd, type PendingEnds, resumeOf, routedPendingEnds } from "./pending-ends.ts";
 import { endSession, isGone, sessionCalls, type SessionCalls } from "./session-actions.ts";
 
 /**
@@ -20,9 +20,9 @@ export async function resumeEnds(
       const step = resumeOf(end, await get(end.address));
       if (step === "end") await endSession(calls, end.address);
       else if (step === "remove") await calls.rm({ terminal: end.address });
-      ends.remove(end.address);
+      ends.remove(end.address, end);
     } catch (cause) {
-      if (isGone(cause)) ends.remove(end.address);
+      if (isGone(cause)) ends.remove(end.address, end);
       else console.error(`finish the End of ${end.address} later: ${String(cause)}`);
     }
   };
@@ -40,15 +40,24 @@ export async function resumeEnds(
  */
 export function recordedEnd(ends: PendingEnds, end: PendingEnd, calls: SessionCalls): Promise<void> {
   ends.add(end);
-  return endSession(calls, end.address).finally(() => ends.remove(end.address));
+  return endSession(calls, end.address).finally(() => ends.remove(end.address, end));
 }
 
-/** Once per connection, finishes the Ends this browser asked of its core that a closed page left unfinished. */
-export function useResumeEnds(connection: HcConnection): void {
+/**
+ * Once per connection, finishes the Ends this browser asked of its core, or of a machine it reaches, that a closed page
+ * left unfinished. It waits for the first machine list (`machines` undefined until then), so an End kept with an added
+ * machine's core is found by that machine's address on this route (#2288). If that first list failed, it runs once with
+ * the connected core alone: an added machine's Ends stay kept and are finished on the next connection.
+ */
+export function useResumeEnds(connection: HcConnection, machines: readonly MachineView[] | undefined): void {
+  const listed = machines !== undefined;
+  const route = useRef(machines);
+  route.current = machines;
   useEffect(() => {
+    if (!listed) return undefined;
     let current = true;
     void resumeEnds(
-      pendingEnds(connection.hello.core.id),
+      routedPendingEnds({ core: connection.hello.core.id, machines: route.current ?? [] }),
       (address) => connection.call("terminal.get", { terminal: address }),
       sessionCalls(connection),
       () => current && !connection.closed,
@@ -56,5 +65,5 @@ export function useResumeEnds(connection: HcConnection): void {
     return () => {
       current = false;
     };
-  }, [connection]);
+  }, [connection, listed]);
 }

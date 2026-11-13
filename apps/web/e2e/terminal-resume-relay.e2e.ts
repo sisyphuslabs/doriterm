@@ -82,7 +82,10 @@ for (const device of ["desktop", "phone"] as const) {
       expect(frames.filter((last) => last !== LAST)).toEqual([]);
     });
 
-    test("over the relay, a reconnect's replay is painted once it has settled: the screen never climbs back (D5, #1040)", async ({
+    // Contract v1.11 (#1995): a relay drop no longer re-attaches and replays; the session is carried on over a new socket,
+    // so no terminal attaches again and the screen does not change at all (the D5 replay path stays for a session that
+    // cannot be carried on, and terminal-resume-catchup.e2e.ts paints it).
+    test("over the relay, a reconnect carries the session on: nothing re-attaches and the screen never changes (D5, #1040, #1995)", async ({
       page,
     }) => {
       await page.addInitScript(() => {
@@ -95,25 +98,25 @@ for (const device of ["desktop", "phone"] as const) {
       await page.keyboard.press("Enter");
       await expect(terminal).toContainText(`relay-line-${LAST}`, { timeout: 60_000 });
 
+      const attaches = (): Promise<number> =>
+        page.evaluate(() => (Reflect.get(window, "__dorifaceAttachLog") as unknown[]).length);
+      const attachedBefore = await attaches();
+      expect(attachedBefore).toBeGreaterThanOrEqual(1);
       await startLastLineSampler(terminal, "nothing");
       const before = link.opened();
       await link.drop();
       await expect.poll(() => link.opened(), { timeout: 60_000 }).toBeGreaterThan(before);
-      await expect
-        .poll(() => page.evaluate(() => (Reflect.get(window, "__dorifaceAttachLog") as unknown[]).length), {
-          timeout: 60_000,
-        })
-        .toBeGreaterThanOrEqual(2);
-      // Output after the replay marks the replay as delivered and painted.
+      // Typed on the dropped link, it waits for the session to be carried on and then reaches the same shell.
       await page.keyboard.type("echo done-$((1+1))");
       await page.keyboard.press("Enter");
       await expect(terminal).toContainText("done-2", { timeout: 30_000 });
       const frames = await sampledFrames(page);
 
+      expect(await attaches()).toBe(attachedBefore);
       expect(frames.length).toBeGreaterThan(0);
       expect(frames.at(-1)).toBe(LAST);
-      // The old screen stays until the replay is drawn whole: at most one change, never an empty or climbing screen.
-      expect(transitions(frames)).toBeLessThanOrEqual(1);
+      // Nothing was replayed, so the screen never changed: no empty, climbing or repainted frame.
+      expect(transitions(frames)).toBe(0);
       expect(frames.filter((last) => last !== LAST)).toEqual([]);
     });
   });

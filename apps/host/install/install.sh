@@ -6,7 +6,8 @@
 # One step: downloads doriface-host for this OS and CPU from get.doriterm.com (GitHub Releases when that fails), checks
 # it against the release's SHA256SUMS.txt and has it check that file's Ed25519 signature (#1969), installs
 # herdr-core when no `hc` is found, registers the host as a user service (systemd --user on Linux, a LaunchAgent on
-# macOS) so it starts at login and restarts if it stops, then waits for it and prints a pairing QR code, link and code.
+# macOS) so it starts at login and restarts if it stops, turns lingering on for the user on Linux so that it also
+# starts at boot, then waits for it and prints a pairing QR code, link and code.
 # Running it again upgrades the host in place and restarts the service; `--uninstall` removes the service and the
 # binary and keeps the host's keys and paired devices. The service updates itself from the signed stable manifest
 # (`--channel beta` for prereleases, `--no-auto-update` to leave updates to you).
@@ -330,8 +331,17 @@ EOF
   systemctl --user enable doriface-host.service >/dev/null
   systemctl --user restart doriface-host.service
   say "doriface-host runs as the systemd user service doriface-host.service (logs: journalctl --user -u doriface-host)"
-  if have loginctl && [ "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" != yes ]; then
-    say "it stops when you log out; to keep it running after logout and start it at boot, run: loginctl enable-linger $(id -un)"
+  # Without linger systemd runs a user's services only while that user is logged in: the host would stop at logout and
+  # stay down after a reboot until the next login. A user may turn it on for themself; where the system wants an admin
+  # for it, the installer says so and never asks for a password or runs sudo.
+  lingers() { [ "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" = yes ]; }
+  if have loginctl && ! lingers; then
+    loginctl --no-ask-password enable-linger "$(id -un)" >/dev/null 2>&1 || true
+    if lingers; then
+      say "it starts at boot and keeps running after you log out (lingering is now on for $(id -un))"
+    else
+      say "it stops when you log out and does not start at boot, because lingering could not be turned on here; an admin can turn it on with: sudo loginctl enable-linger $(id -un)"
+    fi
   fi
 else
   xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }

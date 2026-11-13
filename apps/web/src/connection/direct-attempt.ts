@@ -34,11 +34,11 @@ export class DirectFailure extends Error {
   }
 }
 
-export interface DirectAttemptOptions {
+export interface DirectAttemptOptions<S extends SecureLink = SecureLink> {
   /** The normalised `ws(s)://host:port/v1/e2ee` this attempt dials. */
   readonly url: string;
   /** The same pinned session the relay path runs: Noise IK over this socket, stream `hc` (#446 §1). */
-  readonly secure: (link: ByteLink) => Promise<SecureLink>;
+  readonly secure: (link: ByteLink) => Promise<S>;
   readonly budgetMs?: number | undefined;
   /** The caller's own cancellation (a settings change, `stop()`); it behaves like the budget running out. */
   readonly signal?: AbortSignal | undefined;
@@ -77,7 +77,7 @@ function reasonOf(error: unknown, expired: boolean): DirectReason {
  * The handshake proves the pinned host key, so an answer is a session, not an open socket. At the deadline the socket is
  * closed and the attempt fails with `no-answer`; a result that arrives later is never selected (#446 §2).
  */
-export async function attemptDirect(options: DirectAttemptOptions): Promise<SecureLink> {
+export async function attemptDirect<S extends SecureLink>(options: DirectAttemptOptions<S>): Promise<S> {
   const budget = options.budgetMs ?? DIRECT_BUDGET_MS;
   const controller = new AbortController();
   let expired = false;

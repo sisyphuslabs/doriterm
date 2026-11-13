@@ -63,9 +63,16 @@ export function sessionPeer(
   return devicePeer(devices, key);
 }
 
-/** The one line a host logs when its handshake refuses a session with 4401: the session's kind and stream, and why. */
-export const handshakeRefusalLine = (hello: Pick<ClientHello, "kind" | "stream">, reason: string | undefined): string =>
-  `e2ee: close code=4401 source=handshake kind=${hello.kind} stream=${hello.stream ?? "hc"}: ${reason}`;
+/**
+ * The one line a host logs when its handshake refuses a session (4401, or 4411 for a refused typed-code mesh join):
+ * the close code, the session's kind and stream, and why.
+ */
+export const handshakeRefusalLine = (
+  hello: Pick<ClientHello, "kind" | "stream">,
+  reason: string | undefined,
+  closeCode: number = CloseCode.UnknownDevice,
+): string =>
+  `e2ee: close code=${closeCode} source=handshake kind=${hello.kind} stream=${hello.stream ?? "hc"}: ${reason}`;
 
 export const authorizationOf = (peer: Peer): Authorization =>
   peer.kind === "refused" ? refuse(peer.reason) : { accept: true };

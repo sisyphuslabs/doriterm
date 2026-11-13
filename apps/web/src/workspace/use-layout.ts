@@ -5,6 +5,7 @@ import {
   docSpaces,
   type DocEdit,
   freshId,
+  type NewSpace,
   type Node,
   renameTab as renameDocTab,
   closeSet,
@@ -31,6 +32,7 @@ import {
   newMounts,
 } from "./layout-model.ts";
 import { machineOf } from "./model.ts";
+import { placeOf } from "./placement.ts";
 import { tabAddress, tabKey as terminalKey } from "./tab-keys.ts";
 import { usePaneMoves, type PaneMoves } from "./use-pane-moves.ts";
 import { splitLanding } from "./split-landing.ts";
@@ -58,6 +60,11 @@ export interface Layout extends PaneMoves {
    * (a `spaceKey` of the terminal's machine) the new tab goes into that space, also one with no tab to select.
    */
   readonly openTerminal: (address: string, newSpace?: boolean, space?: string) => void;
+  /**
+   * Focuses the pane that shows the terminal, or opens it in a new tab in the space adoption would put it in (`placeOf`:
+   * its labels, else its folder, else Home), so an agent picked from a list before its adoption lands where it belongs.
+   */
+  readonly placeTerminal: (address: string) => void;
   /** Puts a terminal started for a pane (the focused one unless `target` names another) beside it, and focuses it. */
   readonly split: (axis: Axis, address: string, target?: PaneTarget, pane?: string) => void;
   /** Takes the terminal's pane out of its tab, and the tab when it was the last pane; the terminal is untouched. */
@@ -303,11 +310,18 @@ export function useLayout(
   );
 
   const addTab = useCallback(
-    (address: string, newSpace = false, into?: string): void => {
+    (
+      address: string,
+      newSpace = false,
+      into?: string,
+      placed?: (doc: JsonObject | null, makeId: (prefix: "spc") => string) => NewSpace,
+    ): void => {
       const machine = machineOf(address) ?? null;
       const layout = layoutOf(machine);
       const writable = layout !== undefined && layout.readOnly === null;
-      const fate = keepTransient(active, address, writable);
+      // A tab placed by its terminal's labels never takes the transient tab with it: that one keeps a space of its own.
+      const transient = keepTransient(active, address, writable);
+      const fate = placed !== undefined && transient !== null ? "apart" : transient;
       if (fate === "apart" && active !== null) keepApart(active);
       if (layout === undefined || layout.readOnly !== null) return keepHere(address);
       const id = freshId("tb");
@@ -329,22 +343,28 @@ export function useLayout(
           ? undefined
           : docSpaces(layout.doc).find((each) => spaceKey(layout.machineId, each.id) === into);
       const named = docSpace?.id ?? null;
+      // Only an existing space is worth a guess before the write: a space the write would make gets its id there.
+      const guess = placed?.(layout.doc, () => "");
       const near =
         !newSpace &&
         active !== null &&
         !active.transient &&
         active.machine === machine &&
-        (named === null || active.spaceKey === into)
+        (named === null || active.spaceKey === into) &&
+        (guess === undefined || active.space === guess.id)
           ? active
           : null;
-      const space = { id: named ?? near?.space ?? freshId("spc"), folder: "" };
+      const space = guess ?? { id: named ?? near?.space ?? freshId("spc"), folder: "" };
       const asked = tabKey(layout.machineId, id);
       // Where the document already shows the terminal: another device adopted it while this write waited (#2122). A
       // second tab for it is never written; the view asked to show the new tab shows that one instead.
       let adopted: PaneAt | null = null;
       void layout
         .edit((doc) => {
-          const write = newTabWrite(doc, localOf(address), tab, space, near?.id, kept, layout.pins);
+          // A placed tab's space is decided on the document this write lands on, as adoption decides it (#2467).
+          const where = placed === undefined ? space : placed(doc, freshId);
+          const after = where.id === space.id ? near?.id : undefined;
+          const write = newTabWrite(doc, localOf(address), tab, where, after, kept, layout.pins);
           adopted = write.instead;
           return write.doc;
         })
@@ -372,6 +392,17 @@ export function useLayout(
       else show(found.tab.key, found.pane.id);
     },
     [addTab, show, tabs],
+  );
+  const placeTerminal = useCallback(
+    (address: string): void => {
+      const found = findTerminal(tabs, address);
+      if (found !== null) return show(found.tab.key, found.pane.id);
+      const terminal = terminals.find((each) => each.address === address);
+      const layout = layoutOf(machineOf(address) ?? null);
+      if (terminal === undefined || layout === undefined) return addTab(address);
+      return addTab(address, false, undefined, (doc, makeId) => placeOf(doc, terminal, makeId));
+    },
+    [addTab, layoutOf, show, tabs, terminals],
   );
   const selectSpace = useCallback(
     (key: string): void => {
@@ -529,6 +560,7 @@ export function useLayout(
     selectTab,
     focusPane,
     openTerminal,
+    placeTerminal,
     split,
     dropPane,
     closeTab,

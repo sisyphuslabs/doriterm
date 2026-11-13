@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { HcRpcError, type Terminal } from "@doriface/protocol";
-import { PENDING_END_MAX_AGE_MS, pendingEnds, resumeOf } from "./pending-ends.ts";
+import { PENDING_END_MAX_AGE_MS, pendingEnds, resumeOf, routedPendingEnds } from "./pending-ends.ts";
+import { addressOf, identityOf } from "./terminal-identity.ts";
 import { recordedEnd, resumeEnds } from "./resume-ends.ts";
 import type { SessionCalls } from "./session-actions.ts";
 
@@ -153,5 +154,87 @@ describe("resuming pending Ends", () => {
     await expect(failed).rejects.toThrow("connection is closed");
     // Left after "The session did not end", the session is the person's to keep: no later page may end it.
     expect(ends.list()).toEqual([]);
+  });
+});
+
+describe("one terminal, one identity, however it is reached (#2288)", () => {
+  // Young enough to resume: list() reads its age against the clock.
+  const NOW = Date.now();
+  // Core A lists machine B as "build-box"; reached as its own connection, B is the route's core.
+  const throughA = { core: "core-a", machines: [{ name: "build-box", id: "core-b" }] };
+  const directB = { core: "core-b", machines: [] };
+
+  test("the same terminal resolves to one identity both ways, and back to each route's address", () => {
+    const viaA = identityOf("build-box/t7", throughA);
+    expect(viaA).toEqual({ core: "core-b", terminal: "t7" });
+    expect(identityOf("t7", directB)).toEqual(viaA);
+    expect(viaA === undefined ? undefined : addressOf(viaA, directB)).toBe("t7");
+    expect(addressOf({ core: "core-b", terminal: "t7" }, throughA)).toBe("build-box/t7");
+    expect(identityOf("t3", throughA)).toEqual({ core: "core-a", terminal: "t3" });
+    expect(identityOf("other/t1", throughA)).toBeUndefined();
+  });
+
+  test("an End asked through A resumes when B is reached directly", async () => {
+    const storage = memoryStorage();
+    routedPendingEnds(throughA, storage).add({ address: "build-box/t7", pid: 70, created: 500, at: NOW });
+    const { asked, calls } = recorder();
+    await resumeEnds(routedPendingEnds(directB, storage), () => Promise.resolve(facts("live", 70)), calls);
+    expect(asked).toEqual(["label t7", "kill t7", "rm t7"]);
+    expect(routedPendingEnds(throughA, storage).list()).toEqual([]);
+  });
+
+  test("an End asked directly on B resumes when B is reached through A", async () => {
+    const storage = memoryStorage();
+    routedPendingEnds(directB, storage).add({ address: "t7", pid: 70, created: 500, at: NOW });
+    expect(routedPendingEnds(throughA, storage).list()).toEqual([
+      { address: "build-box/t7", pid: 70, created: 500, at: NOW },
+    ]);
+    const { asked, calls } = recorder();
+    await resumeEnds(routedPendingEnds(throughA, storage), () => Promise.resolve(facts("finished", 70)), calls);
+    expect(asked).toEqual(["rm build-box/t7"]);
+    expect(routedPendingEnds(directB, storage).list()).toEqual([]);
+  });
+
+  test("a record kept the old way, with a machine prefix under the core it was asked through, still resumes there", async () => {
+    const storage = memoryStorage();
+    pendingEnds("core-a", storage).add({ address: "build-box/t7", pid: 70, created: 500, at: NOW });
+    const { asked, calls } = recorder();
+    await resumeEnds(routedPendingEnds(throughA, storage), () => Promise.resolve(facts("finished", 70)), calls);
+    expect(asked).toEqual(["rm build-box/t7"]);
+    expect(pendingEnds("core-a", storage).list()).toEqual([]);
+  });
+
+  test("an End asked again where an old record sits takes that record over, so the terminal has one and it settles", () => {
+    const storage = memoryStorage();
+    pendingEnds("core-a", storage).add({ address: "build-box/t7", pid: 1, created: 1, at: NOW });
+    const ends = routedPendingEnds(throughA, storage);
+    ends.add({ address: "build-box/t7", pid: 70, created: 500, at: NOW });
+    expect(pendingEnds("core-a", storage).list()).toEqual([]);
+    expect(ends.list()).toEqual([{ address: "build-box/t7", pid: 70, created: 500, at: NOW }]);
+    // What recordedEnd does when its End settles, either way: nothing of that terminal is left behind (#1278).
+    ends.remove("build-box/t7");
+    expect(ends.list()).toEqual([]);
+    expect(pendingEnds("core-b", storage).list()).toEqual([]);
+  });
+
+  test("removing an old record does not take the one the name's machine now holds for its own terminal", () => {
+    const storage = memoryStorage();
+    pendingEnds("core-a", storage).add({ address: "build-box/t7", pid: 1, created: 1, at: NOW });
+    pendingEnds("core-b", storage).add({ address: "t7", pid: 70, created: 500, at: NOW });
+    routedPendingEnds(throughA, storage).remove("build-box/t7", { pid: 1, created: 1 });
+    expect(pendingEnds("core-a", storage).list()).toEqual([]);
+    expect(pendingEnds("core-b", storage).list()).toEqual([{ address: "t7", pid: 70, created: 500, at: NOW }]);
+  });
+
+  test("an End that settles while an older tab wrote the old way for the same terminal leaves neither record (#1278)", () => {
+    const storage = memoryStorage();
+    const ends = routedPendingEnds(throughA, storage);
+    const end = { address: "build-box/t7", pid: 70, created: 500, at: NOW };
+    ends.add(end);
+    // An older tab of this browser, before #2288, records the same terminal under the core it asked through.
+    pendingEnds("core-a", storage).add(end);
+    ends.remove(end.address, end);
+    expect(pendingEnds("core-a", storage).list()).toEqual([]);
+    expect(pendingEnds("core-b", storage).list()).toEqual([]);
   });
 });

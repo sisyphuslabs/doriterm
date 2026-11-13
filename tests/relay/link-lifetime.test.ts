@@ -7,8 +7,13 @@ import { setUpOnce } from "./support/set-up-once.ts";
 
 // #424: the host ends a session's `hc connect` child two ways (it closes the child's stdin and sends SIGTERM), so a
 // child is left behind only when both are skipped.
+// #1995 (contract v1.11): a link that drops with no close handshake no longer ends the session. The host keeps it, child
+// and all, for its client to resume on a new socket, and ends it as before only once that window has passed with no
+// resume. The host here keeps a short window, so one test sees the child survive the drop and then end.
 
 const END_BOUND_MS = 5_000;
+/** How long this suite's host keeps a dropped session: long enough to be seen kept, short enough to be seen ending. */
+const RESUME_GRACE_MS = 2_000;
 /** A pid that is not this process's child has no exit event, so its exit is read by scanning again after this. */
 const ROUND_MS = 50;
 const CYCLES = 100;
@@ -67,6 +72,26 @@ async function allGone(pids: ReadonlySet<number>, after: string): Promise<void> 
   return round();
 }
 
+/** Every pid is still running: what a dropped session's child does while the host keeps the session for a resume. */
+async function allLive(pids: ReadonlySet<number>, during: string): Promise<void> {
+  const live = await liveConnects();
+  const ended = [...pids].filter((pid) => !live.has(pid));
+  if (ended.length > 0) throw new Error(`during ${during}, hc connect ${ended.join(", ")} ended instead of being kept`);
+}
+
+/**
+ * Both halves of the resume contract after `drop`: the host logs that it kept the session (`detached`, armed before the
+ * drop), the child is still running then and halfway through the window, and once the window has passed the child is
+ * gone, as a dropped session's was before #1995.
+ */
+async function keptThenEnded(child: ReadonlySet<number>, detached: Promise<void>, drop: string): Promise<void> {
+  await detached;
+  await allLive(child, `${drop}, with the session kept for a resume`);
+  await Bun.sleep(RESUME_GRACE_MS / 2);
+  await allLive(child, `${drop}, halfway through the resume window`);
+  await allGone(child, `${drop} and the resume window passed`);
+}
+
 async function openSession(): Promise<{ readonly connection: HcConnection; readonly child: Set<number> }> {
   const before = await liveConnects();
   const connection = await host().connect(phone);
@@ -78,6 +103,7 @@ async function openSession(): Promise<{ readonly connection: HcConnection; reado
 
 setUpOnce(async () => {
   relayed = await startRelayedHost("relay-lifetime", {
+    resumeGraceMs: RESUME_GRACE_MS,
     onLog: (line) => {
       for (const waiter of logWaiters.filter((each) => line.startsWith(each.prefix))) {
         logWaiters.splice(logWaiters.indexOf(waiter), 1);
@@ -120,13 +146,14 @@ describe("a client session's hc connect child (#424)", () => {
   );
 
   test(
-    "ends when the client's socket drops with no close handshake",
+    "survives the client's socket dropping with no close handshake, and ends once the resume window passes",
     async () => {
       const { child } = await openSession();
       const ws = sockets.client.at(-1) as (WebSocket & { terminate?: () => void }) | undefined;
       if (ws?.terminate === undefined) throw new Error("this runtime's WebSocket has no terminate()");
+      const detached = nextHostLog("session detached");
       ws.terminate();
-      await allGone(child, "a dropped client socket");
+      await keptThenEnded(child, detached, "a dropped client socket");
     },
     TEST_MS,
   );
@@ -145,14 +172,15 @@ describe("a client session's hc connect child (#424)", () => {
   }, 120_000);
 
   test(
-    "ends when the host's relay uplink drops",
+    "survives the host's relay uplink dropping, and ends once the resume window passes",
     async () => {
       const { child } = await openSession();
       const uplink = sockets.host.at(-1);
       if (uplink === undefined) throw new Error("the host opened no uplink socket");
+      const detached = nextHostLog("session detached");
       const answeredAgain = nextHostLog("relay: connected");
       uplink.close(4000, "test: uplink dropped");
-      await allGone(child, "a dropped uplink");
+      await keptThenEnded(child, detached, "a dropped uplink");
       // The next test opens a session through the relay, which refuses it while the host is offline (4404).
       await answeredAgain;
     },

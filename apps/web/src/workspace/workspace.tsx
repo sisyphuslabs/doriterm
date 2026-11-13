@@ -50,6 +50,7 @@ import { useMachineOrder } from "./use-machine-order.ts";
 import { useTerminals } from "./use-terminals.ts";
 import { useForgetEndedHistoryGaps } from "../terminal/history-gap-notice.ts";
 import { useResumeEnds } from "./resume-ends.ts";
+import { useRedrawNotice } from "./use-redraw-notice.ts";
 import { useSteady } from "./steady.ts";
 import { useStableCallback } from "./use-stable-callback.ts";
 import { useNoticeOpen } from "../push/notice-open.ts";
@@ -64,7 +65,7 @@ export interface WorkspaceProps {
 /** The live terminals of one core: the desktop shell from `md` up, the phone navigation below. */
 export function Workspace({ connection }: WorkspaceProps) {
   const fed = useTerminals(connection);
-  useResumeEnds(connection);
+  useRedrawNotice(connection);
   useForgetEndedHistoryGaps(fed.loaded, fed.terminals);
   const {
     entries: listed,
@@ -353,6 +354,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   const terminalsError = fed.loaded ? null : fed.error;
   const retryTerminals = fed.retry;
   const machinesListed = machineReads > 0 || listError !== undefined;
+  useResumeEnds(connection, machinesListed ? views : undefined);
   // The sidebar's runs are its New space buttons: each terminal they start is the first tab of a new space (#404).
   const inNewSpace = useCallback(
     (address: string): void => {
@@ -544,6 +546,7 @@ export function Workspace({ connection }: WorkspaceProps) {
             />
             <SessionDialogs
               connection={connection}
+              views={views}
               terminals={terminals}
               ask={ask}
               onDone={done}
@@ -559,6 +562,7 @@ export function Workspace({ connection }: WorkspaceProps) {
               <CloseTabDialog
                 key={closing.key}
                 connection={connection}
+                views={views}
                 terminals={terminals}
                 tab={closing}
                 {...(lastOfSpace(closing)
@@ -580,6 +584,7 @@ export function Workspace({ connection }: WorkspaceProps) {
               <CloseTabDialog
                 key={closingSet.join(" ")}
                 connection={connection}
+                views={views}
                 terminals={terminals}
                 tab={closingSetTab}
                 tabs={closingTabs.length}

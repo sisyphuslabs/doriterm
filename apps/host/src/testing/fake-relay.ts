@@ -118,8 +118,9 @@ export class FakeRelay {
           this.#sendOrThrow(ws.data.challenge, ws.data.hostId);
         },
         message: (ws, message) => this.#receive(ws, message),
-        close: (ws) => {
-          if (!ws.data.uplink) return ws.data.client?.close();
+        // A client socket's own close code reaches the host, as the real relay passes it on: a drop stays a drop there.
+        close: (ws, code) => {
+          if (!ws.data.uplink) return ws.data.client?.close(code);
           if (this.#hosts.get(ws.data.hostId) === ws) this.#hosts.delete(ws.data.hostId);
           for (const session of ws.data.sessions.values()) session.closed.resolve(4404);
           ws.data.sessions.clear();
@@ -165,10 +166,11 @@ export class FakeRelay {
           active = false;
         };
       },
-      close: () => {
-        send(encodeClose(sessionId, 1000));
+      // The relay passes the client's close code on to the host (contract: a normal close is 1000, a drop is not).
+      close: (code = 1000) => {
+        send(encodeClose(sessionId, code));
         host?.data.sessions.delete(sessionId);
-        session.closed.resolve(1000);
+        session.closed.resolve(code);
       },
     };
   }
@@ -177,8 +179,8 @@ export class FakeRelay {
     this.#sendOrThrow(bytes);
   }
 
-  dropUplink(code: number, hostId = this.#defaultHost): void {
-    this.#hosts.get(hostId)?.close(code, "dropped by the test");
+  dropUplink(code: number, reason = "dropped by the test", hostId = this.#defaultHost): void {
+    this.#hosts.get(hostId)?.close(code, reason);
   }
 
   async stop(): Promise<void> {
