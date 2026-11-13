@@ -7,9 +7,7 @@ import { fakeSoftKeyboard, keysBar, PHONE } from "./phone-key-bar.ts";
 // The keys under a touch phone's terminal with its keyboard down (#1546, #2499), as the review of #1546 asked (#1555).
 test.use({ serviceWorkers: "block", ...PHONE });
 
-test("over the tabs bar the keys panel sits on the bar, the terminal right above it (#2499)", async ({
-  page,
-}) => {
+test("over the tabs bar the keys panel sits on the bar, the terminal right above it (#2499)", async ({ page }) => {
   await fakeSoftKeyboard(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");

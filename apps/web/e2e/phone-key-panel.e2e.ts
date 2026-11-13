@@ -25,57 +25,60 @@ interface Panel {
 
 async function panel(page: Page): Promise<Panel> {
   await expect(keysBar(page)).toBeVisible();
-  return keysBar(page).evaluate((bar, toggles) => {
-    const name = (el: Element): string => {
-      const label = el.getAttribute("aria-label") ?? "";
-      return toggles.includes(label) ? "keyboard toggle" : label;
-    };
-    const structure: string[] = [];
-    const walk = (el: Element, depth: number): void => {
-      structure.push(
-        `${depth} ${el.tagName.toLowerCase()} ${el.getAttribute("role") ?? ""} ${el.getAttribute("data-slot") ?? ""}`,
-      );
-      if (el.tagName.toLowerCase() === "svg") return;
-      for (const child of el.children) walk(child, depth + 1);
-    };
-    walk(bar, 0);
-    const controls = [...bar.querySelectorAll("button, textarea, input")];
-    const keys = [...bar.querySelectorAll("[data-slot=terminal-keys-scroll] button")];
-    const toggle = [...bar.querySelectorAll("button")].find((button) => toggles.includes(button.ariaLabel ?? ""));
-    const look = (el: Element): string => {
-      const css = getComputedStyle(el);
-      const box = el.getBoundingClientRect();
-      return [
-        name(el),
-        `${Math.round(box.width)}x${Math.round(box.height)}`,
-        css.backgroundColor,
-        css.color,
-        css.borderTopWidth,
-        css.borderTopColor,
-        css.borderRadius,
-        css.fontFamily,
-        css.fontSize,
-        css.fontWeight,
-        css.paddingLeft,
-        css.paddingRight,
-        css.boxShadow,
-      ].join(" | ");
-    };
-    const scroller = bar.querySelector("[data-slot=terminal-keys-scroll]");
-    const round = (el: Element | null): string => {
-      const box = el?.getBoundingClientRect();
-      return box === undefined ? "none" : `${Math.round(box.width)}x${Math.round(box.height)}`;
-    };
-    const field = bar.querySelector("textarea");
-    const send = [...bar.querySelectorAll("button")].find((button) => button.ariaLabel === "Send");
-    return {
-      typeRow: [field, send].map((el) => (el === null || el === undefined ? "missing" : look(el))),
-      structure,
-      order: controls.map((el) => (el.tagName.toLowerCase() === "button" ? name(el) : el.tagName.toLowerCase())),
-      styles: [...keys, ...(toggle === undefined ? [] : [toggle])].map(look),
-      size: `panel ${round(bar)}, keys ${round(scroller)}`,
-    };
-  }, [...TOGGLES]);
+  return keysBar(page).evaluate(
+    (bar, toggles) => {
+      const name = (el: Element): string => {
+        const label = el.getAttribute("aria-label") ?? "";
+        return toggles.includes(label) ? "keyboard toggle" : label;
+      };
+      const structure: string[] = [];
+      const walk = (el: Element, depth: number): void => {
+        structure.push(
+          `${depth} ${el.tagName.toLowerCase()} ${el.getAttribute("role") ?? ""} ${el.getAttribute("data-slot") ?? ""}`,
+        );
+        if (el.tagName.toLowerCase() === "svg") return;
+        for (const child of el.children) walk(child, depth + 1);
+      };
+      walk(bar, 0);
+      const controls = [...bar.querySelectorAll("button, textarea, input")];
+      const keys = [...bar.querySelectorAll("[data-slot=terminal-keys-scroll] button")];
+      const toggle = [...bar.querySelectorAll("button")].find((button) => toggles.includes(button.ariaLabel ?? ""));
+      const look = (el: Element): string => {
+        const css = getComputedStyle(el);
+        const box = el.getBoundingClientRect();
+        return [
+          name(el),
+          `${Math.round(box.width)}x${Math.round(box.height)}`,
+          css.backgroundColor,
+          css.color,
+          css.borderTopWidth,
+          css.borderTopColor,
+          css.borderRadius,
+          css.fontFamily,
+          css.fontSize,
+          css.fontWeight,
+          css.paddingLeft,
+          css.paddingRight,
+          css.boxShadow,
+        ].join(" | ");
+      };
+      const field = bar.querySelector("textarea");
+      const send = [...bar.querySelectorAll("button")].find((button) => button.ariaLabel === "Send");
+      return {
+        typeRow: [field, send].map((el) => (el === null || el === undefined ? "missing" : look(el))),
+        structure,
+        order: controls.map((el) => (el.tagName.toLowerCase() === "button" ? name(el) : el.tagName.toLowerCase())),
+        styles: [...keys, ...(toggle === undefined ? [] : [toggle])].map(look),
+        size: [bar, bar.querySelector("[data-slot=terminal-keys-scroll]")]
+          .map((el) => {
+            const box = el?.getBoundingClientRect();
+            return box === undefined ? "none" : `${Math.round(box.width)}x${Math.round(box.height)}`;
+          })
+          .join(", "),
+      };
+    },
+    [...TOGGLES],
+  );
 }
 
 test("at 390 the keys are one panel with the keyboard down and up: the same structure, order and look (#2499)", async ({
@@ -95,7 +98,11 @@ test("at 390 the keys are one panel with the keyboard down and up: the same stru
   const down = await panel(page);
   const tabs = page.getByRole("navigation", { name: "Tabs in this space" });
   await expect(tabs).toBeVisible();
-  const [screen, bar, below] = await Promise.all([terminal.boundingBox(), keysBar(page).boundingBox(), tabs.boundingBox()]);
+  const [screen, bar, below] = await Promise.all([
+    terminal.boundingBox(),
+    keysBar(page).boundingBox(),
+    tabs.boundingBox(),
+  ]);
   if (screen === null || bar === null || below === null) throw new Error("a box is missing");
   expect(screen.y + screen.height).toBeLessThanOrEqual(bar.y + 1);
   expect(bar.y + bar.height).toBeLessThanOrEqual(below.y + 1);

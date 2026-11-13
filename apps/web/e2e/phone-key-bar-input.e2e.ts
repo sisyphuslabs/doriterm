@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { E2E_HOST_ENV } from "./config.ts";
 import { expect, test } from "./fixtures.ts";
-import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
+import { key, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 import { readSavedEnv } from "./saved-env.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE });

@@ -17,14 +17,8 @@ import { PackSheet } from "./pack-sheet.tsx";
 import { PhoneHeader } from "./phone-header.tsx";
 import { PaneSwitcher } from "./phone-pane-switcher.tsx";
 import { PhoneTabSwitcher, useSpaceTabs } from "./phone-tab-switcher.tsx";
-import {
-  DIRECTION_PAD_CLEARANCE,
-  KEYBOARD_BUTTON_CLEARANCE,
-  KEYS_BAR_HEIGHT,
-  keysBottom,
-  PhoneKeys,
-  ROUND_BUTTON_CLEARANCE,
-} from "./phone-keys.tsx";
+import { KEYS_BAR_HEIGHT, keysBottom, PhoneKeys, ROUND_BUTTON_CLEARANCE } from "./phone-keys.tsx";
+import { keysPlacement } from "./phone-keys-placement.ts";
 import { ConnectionLine } from "./reconnect-status.tsx";
 import { afterEnd } from "./session-actions.ts";
 import { useQuietKeyboard } from "./use-quiet-keyboard.ts";
@@ -123,38 +117,15 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
     if (untyped) voice.dictation.close();
   }, [untyped, voice.dictation]);
   const dictating = voice.state.kind !== "idle" && !untyped;
-  // The packs panel takes the screen for a moment, so the bar stays under it as it does under the session menu: closing
-  // the panel puts the person back on the terminal's keyboard.
   const riding = keyboard.up || (mouseOnly && keysShown);
-  const keysOpen = !ended && !dictating && !browsing && (riding || ((menu || packs) && heldUp));
   const hold = (open: boolean): void => {
     if (open) setHeldUp(riding);
   };
-  // The tabs bar takes the bottom while nothing rides there: the keys bar, with the soft keyboard, and dictation do.
   const tabs = useSpaceTabs(terminals, terminal.address);
-  const tabsBar = !keysOpen && !dictating && tabs.some((tab) => tab.includes(terminal.address));
-  // A touch phone's keys while its keyboard is down (#1526): the same panel as on the keyboard, under the terminal
-  // (#2499). Over the tabs bar it needs no room below; without one, Read-only takes a row of its own under it. A
-  // mouse-only window opens its keys bar by hand instead.
-  const docked =
-    keysOpen || mouseOnly || dictating || browsing || offline || ended
-      ? null
-      : tabsBar
-        ? "0px"
-        : KEYBOARD_BUTTON_CLEARANCE;
-  // The terminal's jump button stays clear of what floats over its bottom right: the round button, or the arrow pad.
-  // Over the tabs bar the round button floats beside the bar, and under the docked keys it has a row of its own: either
-  // way under the terminal, not over it (#1555).
-  const keysControls =
-    offline || ended || dictating
-      ? null
-      : keysOpen || docked !== null
-        ? pad
-          ? DIRECTION_PAD_CLEARANCE
-          : null
-        : tabsBar
-          ? null
-          : KEYBOARD_BUTTON_CLEARANCE;
+  const inTab = tabs.some((tab) => tab.includes(terminal.address));
+  const held = (menu || packs) && heldUp;
+  const placed = keysPlacement({ riding, held, mouseOnly, ended, dictating, browsing, offline, inTab, pad });
+  const { keysOpen, tabsBar, docked, jumpClearance: keysControls } = placed;
 
   return (
     // isolate: the keys float above the terminal (z-10) but stay under a dialog and its backdrop, which portal to the body.

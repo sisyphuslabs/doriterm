@@ -24,7 +24,8 @@ export const KEYS_BAR_HEIGHT = "6.875rem";
 export const KEYBOARD_BUTTON_CLEARANCE = "calc(max(1rem, calc(var(--safe-bottom) + 0.5rem)) + 3rem)";
 
 /** The round button's corner: Read-only on a touch phone, the keyboard button on a mouse-only one. */
-const CORNER = "absolute right-[max(1rem,calc(var(--safe-right)+0.5rem))] bottom-[max(1rem,calc(var(--safe-bottom)+0.5rem))] z-10";
+const CORNER =
+  "absolute right-[max(1rem,calc(var(--safe-right)+0.5rem))] bottom-[max(1rem,calc(var(--safe-bottom)+0.5rem))] z-10";
 
 /**
  * How far in from its right edge a bar level with the round button (the tabs bar) keeps clear of it: the corner's inset
@@ -145,9 +146,9 @@ export function PhoneKeys(props: PhoneKeysProps) {
       ref={barRef}
       // Two rows, typing or not (#1551): the Type field and Send across the top, the keys under them.
       inputActive
-    keyboardDown={!open}
-    onShowKeyboard={raise}
-    onShowKeyboardStart={letGo}
+      keyboardDown={!open}
+      onShowKeyboard={raise}
+      onShowKeyboardStart={letGo}
       keys={own.map(toExtra)}
       packKeys={packed.map(toExtra)}
       latched={[...sticky.latched]}
@@ -210,12 +211,7 @@ export function PhoneKeys(props: PhoneKeysProps) {
     <>
       {visible ? (
         <div className={place.className} style={place.style}>
-          {pad ? (
-            <DirectionPad
-              onKey={sticky.press}
-              className="absolute right-3 bottom-full z-10 mb-2"
-            />
-          ) : null}
+          {pad ? <DirectionPad onKey={sticky.press} className="absolute right-3 bottom-full z-10 mb-2" /> : null}
           {panel}
         </div>
       ) : null}
