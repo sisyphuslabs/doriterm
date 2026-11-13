@@ -1,4 +1,4 @@
-import { cn, DirectionPad, ExtraKeysBar, KeyboardButton, Menu, MenuItem } from "@doriface/ui";
+import { DirectionPad, ExtraKeysBar, KeyboardButton, Menu, MenuItem } from "@doriface/ui";
 import { TextSelect } from "lucide-react";
 import { type CSSProperties, type RefObject, useCallback, useRef, useState } from "react";
 import { activeEntries, specialEntries } from "../keybar/entries.ts";

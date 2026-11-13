@@ -68,10 +68,9 @@ export function PhoneTabSwitcher(props: {
             {/*
               The space goes first when the bar is narrow: the header already names it, and the tab's own name is what the
               stepper is for. The accessible name keeps it. At 390 px the bar leaves this button 390 - 6 (left padding) -
-              ROUND_BUTTON_CLEARANCE 72 - 2 x 44 (Previous, Next) - 2 x 4 (gaps) = 216 px, over 13rem, so it keeps the space
-              (the keys panel carries the keyboard's toggle, so one round button is beside the bar, #2499); at 320 px it is
-              146 px and drops it. A change to the round button or the steppers moves these numbers:
-              phone-session-title.e2e.ts pins the 390 end.
+              ROUND_BUTTON_CLEARANCE 72 - 2 x 44 (Previous, Next) - 2 x 4 (gaps) = 216 px, and its content box, less its own
+              padding, is under 13rem. A change to the round button or the steppers moves these numbers:
+              phone-session-title.e2e.ts pins the touch end.
             */}
             {space === undefined ? null : (
               <span title={space} className="min-w-0 shrink-[2] truncate font-semibold @max-[13rem]:hidden">

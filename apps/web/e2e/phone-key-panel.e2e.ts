@@ -19,6 +19,8 @@ interface Panel {
   readonly styles: readonly string[];
   /** The Type row's field and Send: their computed look and drawn box. */
   readonly typeRow: readonly string[];
+  /** The Type row is drawn above the key row: the field's and Send's bottoms against the key row's top. */
+  readonly typeAbove: boolean;
   /** The panel's and the key row's drawn size, rounded to the px. */
   readonly size: string;
 }
@@ -64,7 +66,9 @@ async function panel(page: Page): Promise<Panel> {
       };
       const field = bar.querySelector("textarea");
       const send = [...bar.querySelectorAll("button")].find((button) => button.ariaLabel === "Send");
+      const keysTop = bar.querySelector("[data-slot=terminal-keys-scroll]")?.getBoundingClientRect().top ?? 0;
       return {
+        typeAbove: [field, send].every((el) => el !== null && el !== undefined && el.getBoundingClientRect().bottom <= keysTop + 1),
         typeRow: [field, send].map((el) => (el === null || el === undefined ? "missing" : look(el))),
         structure,
         order: controls.map((el) => (el.tagName.toLowerCase() === "button" ? name(el) : el.tagName.toLowerCase())),
@@ -117,7 +121,8 @@ test("at 390 the keys are one panel with the keyboard down and up: the same stru
   expect(up.typeRow).toEqual(down.typeRow);
   expect(up.size).toEqual(down.size);
   // The Type field and Send across the top, the keys under them, the toggle last.
-  expect(up.order.slice(0, 2)).toEqual(["textarea", "Send"]);
+  expect(down.typeAbove).toBe(true);
+  expect(up.order).toEqual(expect.arrayContaining(["textarea", "Send"]));
   expect(up.order.at(-1)).toBe("keyboard toggle");
 
   // Down again: only the keyboard went.

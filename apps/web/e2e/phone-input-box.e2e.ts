@@ -169,8 +169,10 @@ test("what is typed in the field is still there after the keyboard closes and op
   await openPhoneTerminal(page);
   await field(page).click();
   await page.keyboard.type("git commit -m 초안");
+  // The field stays on screen with the keyboard down (#2499), holding what was typed.
   await key(page, "Hide keyboard").click();
-  await expect(field(page)).toHaveCount(0);
+  await expect(key(page, "Hide keyboard")).toHaveCount(0);
+  await expect(field(page)).toHaveValue("git commit -m 초안");
   await key(page, "Show keyboard").click();
   await expect(field(page)).toHaveValue("git commit -m 초안");
 });
