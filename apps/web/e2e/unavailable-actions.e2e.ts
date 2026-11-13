@@ -144,8 +144,13 @@ test("on a phone, an offline machine's space offers New tab disabled with why, a
 function seedMachineSpace(name: string, terminal?: string): void {
   const address =
     terminal ??
-    String(Reflect.get(JSON.parse(hcOn("machine", ["run", "--bg", "--name", name, "--", "env", "PS1=$ ", "sh"])), "address"));
-  seedSpaces([{ id: `spc-${name}`, name, folder: "/tmp", tabs: [{ id: `tb-${name}`, name, terminal: address }] }], MACHINE_NAME);
+    String(
+      Reflect.get(JSON.parse(hcOn("machine", ["run", "--bg", "--name", name, "--", "env", "PS1=$ ", "sh"])), "address"),
+    );
+  seedSpaces(
+    [{ id: `spc-${name}`, name, folder: "/tmp", tabs: [{ id: `tb-${name}`, name, terminal: address }] }],
+    MACHINE_NAME,
+  );
 }
 
 test("a Close question left open as its machine drops waits with Close disabled and why, and the New tab key asks nothing while it is down", async ({
