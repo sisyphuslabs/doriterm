@@ -145,13 +145,13 @@ export function MeshBody({
               <MemberRow key={member.hostId} member={member} nameOf={nameOf} now={now} />
             ))}
           </MeshGroup>
+          {groups.revokedCount === 0 ? null : (
+            <p data-mesh-revoked className="text-prose text-muted-foreground tabular-nums">
+              {groups.revokedCount} removed {groups.revokedCount === 1 ? "machine" : "machines"}
+            </p>
+          )}
         </>
       ) : null}
-      {groups.revokedCount === 0 ? null : (
-        <p data-mesh-revoked className="text-muted-foreground tabular-nums">
-          {groups.revokedCount} removed {groups.revokedCount === 1 ? "machine" : "machines"}
-        </p>
-      )}
       <MeshGroup id="expired" title="Expired join requests" count={groups.expired.length}>
         {groups.expired.map((join) => (
           <ExpiredJoinRow key={join.nonce} join={join} self={self} now={now} />
