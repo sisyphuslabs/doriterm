@@ -2,6 +2,7 @@
 // refused (Q, doriterm qa). A space on a machine that went offline can be neither closed nor renamed until it is back.
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { routeHcSocket } from "./hc-socket.ts";
 import { seedSpaces } from "./layout-doc.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import {
@@ -14,6 +15,7 @@ import {
   STATE_BOUND_MS,
   switchTo,
 } from "./machine-switch.ts";
+import { pressShortcut } from "./platform-keys.ts";
 
 /** The added machine's own list of spaces in the sidebar, under its header. */
 const group = (page: Page) => page.getByRole("region", { name: MACHINE_NAME });
@@ -136,4 +138,80 @@ test("on a phone, an offline machine's space offers New tab disabled with why, a
   }
   await expect(newTab).toBeEnabled({ timeout: STATE_BOUND_MS });
   await expect(page.getByText(/comes back by itself/)).toHaveCount(0);
+});
+
+/** Seeds space `name` into the added machine's own layout, one tab on a terminal there; an absent terminal leaves it empty. */
+function seedMachineSpace(name: string, terminal?: string): void {
+  const address =
+    terminal ??
+    String(Reflect.get(JSON.parse(hcOn("machine", ["run", "--bg", "--name", name, "--", "env", "PS1=$ ", "sh"])), "address"));
+  seedSpaces([{ id: `spc-${name}`, name, folder: "/tmp", tabs: [{ id: `tb-${name}`, name, terminal: address }] }], MACHINE_NAME);
+}
+
+test("a Close question left open as its machine drops waits with Close disabled and why, and the New tab key asks nothing while it is down", async ({
+  page,
+}) => {
+  test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
+  const name = "close-waits";
+  seedMachineSpace(name);
+  const socket = await routeHcSocket(page);
+  await page.goto("/");
+  await expect(machineRow(page)).toContainText("connected", { timeout: 20_000 });
+  const row = group(page).getByRole("button", { name: new RegExp(`^${name}\\b`) });
+  await expect(row).toBeVisible({ timeout: 20_000 });
+  // The space's tab is the one in view, so New tab and its key aim at the machine about to drop.
+  await row.click();
+  await row.hover();
+  await page.getByRole("button", { name: `More for ${name}` }).click();
+  await page.getByRole("menuitem", { name: /^Close space/ }).click();
+  const question = page.getByRole("dialog", { name: "Close space?" });
+  const close = question.getByRole("button", { name: "Close" });
+  await expect(close).toBeEnabled();
+  try {
+    switchTo("drop");
+    await expect(close).toBeDisabled({ timeout: OFFLINE_BOUND_MS });
+    await expect(question.getByText(/Close comes back by itself once the machine can take it/)).toBeVisible();
+    await expect(question.getByText("The space was not closed")).toHaveCount(0);
+    await question.getByRole("button", { name: "Cancel" }).click();
+    await expect(question).toHaveCount(0);
+    // The key does what the disabled button does: nothing. Keys are handled in order, so once the palette (asked for
+    // after it) is open, a New tab the key started has already sent its run to the core.
+    const runs = (): number => socket.sent().filter((frame) => frame.includes('"method":"terminal.run"')).length;
+    const before = runs();
+    await pressShortcut(page, "tab.new");
+    await pressShortcut(page, "app.palette");
+    await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
+    expect(runs(), "the New tab key asks the core nothing while New tab is disabled").toBe(before);
+    await expect(page.getByRole("heading", { name: "Could not open a new tab" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+  } finally {
+    reconnect();
+  }
+  await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
+});
+
+test("on a phone, an offline machine's empty space offers New tab here and Close space disabled with why", async ({
+  page,
+}) => {
+  test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const name = "nothing-running";
+  // A tab on a terminal that does not run: the space screen shows its empty state.
+  seedMachineSpace(name, "t99999");
+  await page.goto("/?v=spaces");
+  await page.getByText(name).first().click({ timeout: 20_000 });
+  await expect(page.getByText(`Nothing is running in ${name}`)).toBeVisible({ timeout: 20_000 });
+  const newHere = page.getByRole("button", { name: "New tab here" });
+  const closeSpace = page.getByRole("button", { name: "Close space" });
+  await expect(newHere).toBeEnabled();
+  try {
+    switchTo("drop");
+    await expect(newHere).toBeDisabled({ timeout: OFFLINE_BOUND_MS });
+    await expect(closeSpace).toBeDisabled();
+    await expect(page.getByText(/New tab here and Close space come back by themselves/)).toBeVisible();
+  } finally {
+    reconnect();
+  }
+  await expect(newHere).toBeEnabled({ timeout: STATE_BOUND_MS });
+  await expect(closeSpace).toBeEnabled();
 });

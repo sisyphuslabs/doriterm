@@ -141,14 +141,10 @@ export function Workspace({ connection }: WorkspaceProps) {
   useAdoptLoose(connection, layouts, fed.loaded ? terminals : null, failed);
   const narrow = useNarrow();
   const ids = useMemo(() => machineIds(views), [views]);
-  // New tab starts its terminal on the machine of the tab in view: offered disabled while that machine is past its
-  // reconnect grace, or its layout takes no edits, never offered and then refused (#2455).
-  const activeMachine = layout.active?.machine ?? null;
-  const activeView =
-    activeMachine === null ? undefined : views.find((v) => v.name === activeMachine || v.id === activeMachine);
-  const newDisabled =
-    (layout.active?.readOnly ?? null) !== null ||
-    (activeView !== undefined && activeView.state !== "connected" && activeView.state !== "reconnecting");
+  // New tab starts its terminal on the machine of the tab in view: offered disabled while that tab's layout takes no
+  // edits (use-layout-docs.ts, which also reads a machine past its reconnect grace), never offered and then refused
+  // (#2455).
+  const newDisabled = (layout.active?.readOnly ?? null) !== null;
   const phone = usePhoneRoute(narrow, ids);
   const { open: phoneOpen, show: showOnPhone } = phone;
   const phoneTab = phoneOpen === null ? null : findTerminal(layout.tabs, phoneOpen);
@@ -243,6 +239,11 @@ export function Workspace({ connection }: WorkspaceProps) {
         opened(address);
       },
     );
+  };
+  // Every New tab of the shells, its button and its key alike: while it is offered disabled the key does nothing either,
+  // rather than asking the core and reporting the refusal (#2466 review).
+  const newTab = (): void => {
+    if (!newDisabled) newTerminal();
   };
   // The latest `opened`, into a named space: a tab started from a space screen goes after that space's selected tab once
   // it is the selected one (addTab's `near`), and into that space even when it has no tab to select.
@@ -482,7 +483,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                         pushed={phone.pushed}
                         section={phone.section}
                         onSection={phone.showSection}
-                        onNew={() => newTerminal()}
+                        onNew={newTab}
                         newDisabled={newDisabled}
                         onNewInSpace={newTabIn}
                         onCloseTab={(address) => {
@@ -519,7 +520,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                         layout={layout}
                         spaceKeys={spaceKeys}
                         onSelectSpace={selectSpace}
-                        onNew={() => newTerminal()}
+                        onNew={newTab}
                         newDisabled={newDisabled}
                         onNewAgent={(template) => newTerminal(template)}
                         onNewSpace={() => runs.start({}, inNewSpace)}
