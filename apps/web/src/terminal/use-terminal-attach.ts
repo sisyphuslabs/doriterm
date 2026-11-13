@@ -10,6 +10,7 @@ import { clearHistoryGap, noteHistoryGap } from "./history-gap-notice.ts";
 import { type EndHolder, fromEndOf, holdFromEnd, readerInputOn } from "./hold-view-from-end.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
 import { openFailure } from "./open-failure.ts";
+import { afterLeaving, noteLeaving } from "./leaving-attach.ts";
 import { HISTORY_LINES, noteViewSize, viewAttach } from "./opening-attach.ts";
 import type { OutputPacer, ReplayOptions } from "./output-pacer.ts";
 import { type TerminalEnd, terminalEnd } from "./terminal-end.ts";
@@ -114,9 +115,14 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
 
   const unmounted = useRef(false);
   const unsent = useRef<() => void>(() => undefined);
+  /** The last attach sent, settled once answered (and closed, when its view has gone by then). */
+  const answering = useRef<{ connection: HcConnection; address: string; answered: Promise<unknown> } | null>(null);
   useEffect(
     () => () => {
       unmounted.current = true;
+      // An attach still unanswered has no stream to close yet: the next view of this terminal waits for it (#2475).
+      const left = answering.current;
+      if (stream.current === null && left !== null) noteLeaving(left.connection, left.address, left.answered);
       void stream.current?.close();
       unsent.current();
     },
@@ -215,9 +221,12 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     if (!attachedBefore.current) setOpening(true);
     const attachOwn = () =>
       connection.attach({ terminal: address, cols, rows, history, display, ...resumed }, { autoCredit: false });
-    viewAttach(connection, address, !attachedBefore.current, { cols, rows, display }, attachOwn).then(
+    const asked = afterLeaving(connection, address).then(() =>
+      viewAttach(connection, address, !attachedBefore.current, { cols, rows, display }, attachOwn),
+    );
+    const answered = asked.then<unknown, void>(
       ({ stream: attached, cols: askedCols, rows: askedRows, fresh }) => {
-        if (unmounted.current) return void attached.close();
+        if (unmounted.current) return attached.close();
         setOpening(false);
         // The program restarted while the line was down: what was typed for it must not reach the new one.
         const restart = restartOnReattach(
@@ -310,6 +319,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         settle({ cause });
       },
     );
+    answering.current = { connection, address, answered };
   };
 
   useEffect(() => {
