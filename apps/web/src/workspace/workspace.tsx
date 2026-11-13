@@ -50,6 +50,7 @@ import { useMachineOrder } from "./use-machine-order.ts";
 import { useTerminals } from "./use-terminals.ts";
 import { useForgetEndedHistoryGaps } from "../terminal/history-gap-notice.ts";
 import { useResumeEnds } from "./resume-ends.ts";
+import { useRedrawNotice } from "./use-redraw-notice.ts";
 import { useSteady } from "./steady.ts";
 import { useStableCallback } from "./use-stable-callback.ts";
 import { useNoticeOpen } from "../push/notice-open.ts";
@@ -65,6 +66,7 @@ export interface WorkspaceProps {
 export function Workspace({ connection }: WorkspaceProps) {
   const fed = useTerminals(connection);
   useResumeEnds(connection);
+  useRedrawNotice(connection);
   useForgetEndedHistoryGaps(fed.loaded, fed.terminals);
   const {
     entries: listed,

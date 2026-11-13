@@ -1,20 +1,24 @@
 import { devices, type Page } from "@playwright/test";
 import { endAgent, startAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
-import { drawnUnderSettings } from "./under-settings.ts";
+import { drawnUnderSettings, workspaceInert } from "./under-settings.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
 test.use({ ...phone, serviceWorkers: "block" });
 
-/** A row's pin mark, its More, and its Pin or Unpin, by attribute: the workspace under Settings is aria-hidden. */
+/**
+ * A row's pin mark, its More, its Pin or Unpin, and a blocked row's "Needs you" chip, which has no label of its own
+ * (#1885). By attribute and text, because the workspace under Settings is aria-hidden.
+ */
 const ROW_CONTROLS = [
   '[aria-label="Pinned"]',
   '[aria-label^="More for "]',
   '[aria-label^="Pin "]',
   '[aria-label^="Unpin "]',
+  'span:text-is("Needs you")',
 ];
 
-/** Every row control the workspace lays out: its centre where it is now, and whether it is drawn there. */
+/** Every row control the workspace lays out: its label and its centre where it is now. */
 const rowControls = (page: Page) =>
   page.locator(ROW_CONTROLS.join(", ")).evaluateAll((elements) =>
     elements.flatMap((element) => {
@@ -22,10 +26,9 @@ const rowControls = (page: Page) =>
       if (box.width === 0 || box.height === 0) return [];
       return [
         {
-          label: element.getAttribute("aria-label") ?? "",
+          label: element.getAttribute("aria-label") ?? element.textContent ?? "",
           x: box.x + box.width / 2,
           y: box.y + box.height / 2,
-          drawn: getComputedStyle(element).visibility !== "hidden",
         },
       ];
     }),
@@ -67,14 +70,15 @@ for (const scheme of ["light", "dark"] as const) {
         .click();
       await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible();
 
+      // The workspace is out of reach, which is what makes the sweep below mean anything (#1885).
+      expect(await workspaceInert(page)).toBe(true);
       await expect.poll(() => drawnUnderSettings(page)).toEqual([]);
-      // Measured with Settings open, where the rows are laid out under it: none of their controls is drawn, and a tap at
-      // each lands in Settings.
+      // Measured with Settings open, where the rows are laid out under it: every control is still there, and a tap at
+      // each lands in Settings rather than the row. Whether one is drawn is the sweep's job, above.
       const controls = await rowControls(page);
       expect(controls.map((control) => control.label)).toEqual(
-        expect.arrayContaining(["Pinned", "Pinned", ...names.map((name) => `More for ${name}`)]),
+        expect.arrayContaining(["Pinned", "Pinned", "Needs you", ...names.map((name) => `More for ${name}`)]),
       );
-      expect(controls.filter((control) => control.drawn).map((control) => control.label)).toEqual([]);
       expect(await tapsReachSettings(page, controls)).toEqual(controls.map(() => true));
     } finally {
       for (const address of addresses) endAgent("host", address);

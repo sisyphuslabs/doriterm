@@ -50,14 +50,14 @@ describe("Send test runs the checks an agent's notice passes (#796)", () => {
     );
   });
 
-  test("every machine heard muted refuses, naming this host's core by its hello (#1120, #1121)", async () => {
+  test("every machine heard muted refuses, naming this host's core by its hello and saying only machines running a terminal count (#1120, #1121, #1893)", async () => {
     const muted = rig();
     await muted.notices.turnOn();
     await muted.notices.setPrefs({ ...DEFAULT_PUSH_PREFS, muted: ["local"] });
     await muted.notices.test();
     expect(muted.shown).toEqual([]);
     expect(muted.notices.view.error).toBe(
-      "Could not send a test notification. Notifications from dev-box are turned off.",
+      "Could not send a test notification. Notifications from dev-box are turned off, and no other machine is running a terminal right now.",
     );
 
     const all = rig({ terminals: [terminal("box/t1", done)] });
@@ -66,7 +66,7 @@ describe("Send test runs the checks an agent's notice passes (#796)", () => {
     await all.notices.test();
     expect(all.shown).toEqual([]);
     expect(all.notices.view.error).toBe(
-      "Could not send a test notification. Notifications from every machine this app hears from are turned off.",
+      "Could not send a test notification. Notifications from every machine running a terminal right now are turned off.",
     );
   });
 

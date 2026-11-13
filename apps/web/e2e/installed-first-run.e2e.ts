@@ -40,6 +40,8 @@ test.describe("an iPhone Home Screen app with nothing in its storage", () => {
     await runInstalled(page);
     await page.goto("/");
 
+    // The workspace is there first, so the absences below are of a first run, not of a page that drew nothing (#2356).
+    await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("heading", JOIN)).toHaveCount(0);
     await expect(page.getByText(WHY)).toHaveCount(0);
   });

@@ -163,7 +163,7 @@ try {
   if (!parsed.ok) throw new Error(`lookup: ${parsed.reason}`);
   const device = rawStaticKey(generateX25519());
   const deps: RelayDeps = { loadDeviceKey: async () => device };
-  (await pairWithHost(parsed.offer, "relay-rtt", deps)).close();
+  (await pairWithHost(parsed.offer, "relay-rtt", deps)).connection.close();
   const key = base64urlEncode(parsed.offer.noiseStaticPub);
   const settings = {
     ...DEFAULT_SETTINGS,

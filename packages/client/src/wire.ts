@@ -121,6 +121,11 @@ export class Wire {
     this.#link.close();
   }
 
+  /** Hands a silence to the link: true when it can carry the connection on and took the loss. */
+  lost(reason: Error): boolean {
+    return this.#closeState === undefined && this.#link.lost?.(reason) === true;
+  }
+
   #receive(chunk: Uint8Array): void {
     if (this.#closeState !== undefined) return;
     try {

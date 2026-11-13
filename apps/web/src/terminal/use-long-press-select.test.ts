@@ -88,3 +88,43 @@ describe("a picked drag keeps every finger's moves (#2096)", () => {
     expect(terminal.move(2)).toBe(false);
   });
 });
+
+/** Every event the hook listens for, each sent once by a press held, moved and lifted, then cancelled. */
+const GESTURE = ["pointerdown", "touchstart", "pointermove", "touchmove", "pointerup", "touchend", "pointercancel"];
+/** What a press sends after its finger is down: what an unwiring in the middle of the press must leave unanswered. */
+const AFTER_DOWN = GESTURE.filter((type) => type !== "pointerdown" && type !== "touchstart");
+
+/** A terminal the hook is wired to, unwired `before` the press, `during` it (after the finger is down) or `never`. */
+function pressed(unwire: "before" | "during" | "never"): LongPressTerminal {
+  jest.useFakeTimers();
+  const terminal = longPressTerminal();
+  mounted.push(terminal);
+  const detach = attachLongPressSelect(terminal.wt as unknown as Pick<WTerm, "element">, () => undefined);
+  if (unwire === "before") detach();
+  terminal.down(1);
+  if (unwire === "during") detach();
+  if (unwire === "never") unmounts.push(detach);
+  jest.advanceTimersByTime(LONG_PRESS_MS);
+  terminal.pointerMove(1);
+  terminal.move(1);
+  terminal.up(1);
+  terminal.pointerCancel(1);
+  return terminal;
+}
+
+describe("unwiring takes every listener away (#1901)", () => {
+  test("while wired, the hook answers every event of the press, on the element, the document and the window", () => {
+    const terminal = pressed("never");
+    expect(GESTURE.filter((type) => terminal.handled(type))).toEqual(GESTURE);
+  });
+
+  test("unwired before the press, nothing answers any of it", () => {
+    const terminal = pressed("before");
+    expect(GESTURE.filter((type) => terminal.handled(type))).toEqual([]);
+  });
+
+  test("unwired in the middle of a press, the rest of it goes unanswered, the touch it was following included", () => {
+    const terminal = pressed("during");
+    expect(AFTER_DOWN.filter((type) => terminal.handled(type))).toEqual([]);
+  });
+});

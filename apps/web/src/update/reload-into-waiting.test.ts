@@ -95,6 +95,8 @@ describe("Reload to update (#418)", () => {
   test("a worker that left installed (activating) is not reloaded into early", async () => {
     const p = page(world("activating"));
     await reloadIntoWaitingWorker(p.deps);
+    // The swap wait is booked, so the 0 below is the worker still activating, not a page that never waited (#2354).
+    expect(p.timers.map((timer) => timer.ms)).toEqual([SWAP_MS]);
     p.timers[0]?.run();
     expect(p.reloads).toBe(0);
   });
@@ -102,6 +104,8 @@ describe("Reload to update (#418)", () => {
   test("the next page is done once it is controlled and no worker waits", async () => {
     const w = world("installed");
     await reloadIntoWaitingWorker(page(w).deps);
+    // The first page left the Reload to update marked, so an empty store below is this page clearing it (#2354).
+    expect(w.store.size).toBe(1);
     w.waiting = null;
     const next = page(w);
     await resumeUpdate(next.deps);

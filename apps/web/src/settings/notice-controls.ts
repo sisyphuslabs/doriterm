@@ -9,14 +9,20 @@ export interface NoticeControls {
   readonly turnOnDisabled: boolean;
   /** Send test, the event switches and the machine switches. */
   readonly editable: boolean;
-  /** The action whose work is still running, which is the only button that spins (#1152). */
-  readonly running: NoticeAction | null;
+  /**
+   * The button whose work is still running, which is the only one that spins (#1152): one of the actions, or Send test,
+   * which waits for the agents' feed to open (#1893).
+   */
+  readonly running: NoticeAction | "test" | null;
 }
 
 export function noticeControls(view: Pick<PushView, "on" | "busy" | "permission">, desktop: boolean): NoticeControls {
   const blocked = view.permission === "denied";
   const editable = view.on && view.busy === null;
-  const running = view.busy === "check-again" || view.busy === "turn-on" || view.busy === "turn-off" ? view.busy : null;
+  const running =
+    view.busy === "check-again" || view.busy === "turn-on" || view.busy === "turn-off" || view.busy === "test"
+      ? view.busy
+      : null;
   // Nothing can be shown while the OS refuses: the remedy, and a way to turn them off, are all that is left to do.
   if (desktop && blocked) {
     return {

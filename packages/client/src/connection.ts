@@ -181,6 +181,10 @@ export class HcConnection {
     if (this.#wire.isClosed) return Promise.reject(new HcConnectionClosedError("connection is closed"));
     const signal = options.signal;
     if (signal?.aborted === true) return Promise.reject(signal.reason);
+    // A test hook, as the attach log is: a spec sets globalThis.__dorifaceRpcLog and reads which calls a page made and
+    // when. Inert in the product, where nothing sets it.
+    const rpcLog: unknown = Reflect.get(globalThis, "__dorifaceRpcLog");
+    if (Array.isArray(rpcLog)) rpcLog.push(method);
     const sentAt = this.#rtt.mark();
     const { id, promise } = this.#wire.calls.start(
       (result) => {

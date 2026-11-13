@@ -188,9 +188,10 @@ export class DesktopNotices {
     // machine the feed reports, and only every one of them muted leaves no agent notice that would show (#1120).
     const machines = new Set<string | undefined>([undefined, ...this.#trigger.machines()]);
     if (![...machines].every((machine) => prefs.muted.includes(noticeMachineId(machine)))) return undefined;
+    // Only machines running a terminal right now are counted, so the refusal says so: one added later still notifies (#1893).
     return machines.size === 1
-      ? `Notifications from ${this.#hostName()} are turned off.`
-      : "Notifications from every machine this app hears from are turned off.";
+      ? `Notifications from ${this.#hostName()} are turned off, and no other machine is running a terminal right now.`
+      : "Notifications from every machine running a terminal right now are turned off.";
   }
 
   /** The connected host's core as its hello names it: the machine `local` stands for. */

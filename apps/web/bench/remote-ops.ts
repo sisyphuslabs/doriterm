@@ -78,7 +78,7 @@ async function pairOnce(): Promise<ConnectionSettings> {
   const parsed = await timed("pair.lookup", () => lookupCode(code ?? "", relayUrl));
   if (!parsed.ok) throw new Error(`lookup: ${parsed.reason}`);
   const { offer } = parsed;
-  paired = await timed("pair.session", () => pairWithHost(offer, "remote-ops-bench", deps));
+  paired = (await timed("pair.session", () => pairWithHost(offer, "remote-ops-bench", deps))).connection;
   note("pair.total", now() - started);
   return {
     ...DEFAULT_SETTINGS,

@@ -72,8 +72,8 @@ test.describe("1440 day reading paragraphs", () => {
       await shot.run(page, "1440");
       await page.mouse.move(0, 0);
       await page.evaluate(() => document.fonts.ready);
-      const small = await page.evaluate(() => {
-        return [...document.querySelectorAll("body p, body p *")]
+      const { measured, small } = await page.evaluate(() => {
+        const reading = [...document.querySelectorAll("body p, body p *")]
           .filter((el) => [...el.childNodes].some((node) => node.nodeType === 3 && node.textContent?.trim()))
           .filter(
             (el) => !el.closest("h1,h2,h3,h4,h5,h6,[role=heading],code,pre,kbd,samp,.term-row,.font-mono,figcaption"),
@@ -92,9 +92,11 @@ test.describe("1440 day reading paragraphs", () => {
             }
             return true;
           })
-          .map((el) => ({ text: (el.textContent ?? "").trim().slice(0, 60), size: getComputedStyle(el).fontSize }))
-          .filter((entry) => parseFloat(entry.size) < 14);
+          .map((el) => ({ text: (el.textContent ?? "").trim().slice(0, 60), size: getComputedStyle(el).fontSize }));
+        return { measured: reading.length, small: reading.filter((entry) => parseFloat(entry.size) < 14) };
       });
+      // The screen has reading text to measure, so an empty list below means it is all large enough (#2356).
+      expect(measured, `${name} has reading paragraphs to measure`).toBeGreaterThan(0);
       expect(small).toEqual([]);
     });
   }
