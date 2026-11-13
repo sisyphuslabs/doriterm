@@ -58,14 +58,21 @@ test.describe("an offline machine with a long name", () => {
     switchTo("drop");
     await expect(row).toContainText("Offline", { timeout: OFFLINE_BOUND_MS });
     const setting = row.locator("[data-setting-row]");
-    expect(await setting.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
-    const text = await setting.locator(":scope > div").first().boundingBox();
-    for (const name of ["Try again", `Remove ${LONG}\u2026`]) {
-      const button = await row.getByRole("button", { name, exact: true }).boundingBox();
-      expect(button, name).not.toBeNull();
-      if (button === null || text === null) continue;
-      expect(button.x + button.width, name).toBeLessThanOrEqual(390);
-      expect(button.y, name).toBeGreaterThanOrEqual(text.y + text.height);
+    const [box, text, ...buttons] = await Promise.all([
+      setting.boundingBox(),
+      setting.locator(":scope > div").first().boundingBox(),
+      row.getByRole("button", { name: "Try again", exact: true }).boundingBox(),
+      row.getByRole("button", { name: `Remove ${LONG}\u2026`, exact: true }).boundingBox(),
+    ]);
+    expect(box).not.toBeNull();
+    expect(text).not.toBeNull();
+    expect(box === null ? Number.NaN : box.x + box.width).toBeLessThanOrEqual(390);
+    for (const button of buttons) {
+      expect(button).not.toBeNull();
+      if (button === null || box === null || text === null) continue;
+      expect(button.x).toBeGreaterThanOrEqual(box.x);
+      expect(button.x + button.width).toBeLessThanOrEqual(box.x + box.width);
+      expect(button.y).toBeGreaterThanOrEqual(text.y + text.height);
     }
   });
 });

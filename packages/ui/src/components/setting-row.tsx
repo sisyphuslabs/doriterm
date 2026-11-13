@@ -37,8 +37,7 @@ export function SettingRow(props: SettingRowProps) {
   const { title, description, configKey, disabledReason, inline = false, id, className } = props;
   const disabled = disabledReason !== undefined;
   const reasonId = useId();
-  const control =
-    props.disabledReason === undefined ? props.control : props.control({ "aria-describedby": reasonId });
+  const control = props.disabledReason === undefined ? props.control : props.control({ "aria-describedby": reasonId });
   return (
     <div
       data-setting-row=""
