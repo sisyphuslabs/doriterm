@@ -64,17 +64,28 @@ export class MemberGates {
     this.#reached.add(member);
   }
 
-  /** A dial to `member` was refused (4404) or failed. */
-  missed(member: string): void {
+  /**
+   * A dial to `member` was refused (4404) or failed. `grace` is false when the refusal itself says the member will not
+   * take this host back in seconds (a 4401: it refuses this host as revoked), so it is gated offline at once (#2507).
+   */
+  missed(member: string, grace = true): void {
     const now = this.#clock.now();
     const gate = this.#gates.get(member);
     const first = this.#firstMiss.get(member) ?? now;
     this.#firstMiss.set(member, first);
     const graceEnd = first + this.#limits.reconnectGraceMs;
-    const reconnecting = gate === undefined ? this.#reached.has(member) : gate.cause === "reconnecting";
-    if (reconnecting && now < graceEnd) {
-      const nextAt = gate === undefined ? Math.min(now + this.#limits.reconnectRetryMs, graceEnd) : graceEnd;
-      this.#set(member, { cause: "reconnecting", misses: (gate?.misses ?? 0) + 1, nextAt, lastMissAt: now });
+    // A 4429 says nothing about the member, so a rate-limit gate leaves the decision to whether it was reached (#2507).
+    const reconnecting =
+      gate === undefined || gate.cause === "rate-limited" ? this.#reached.has(member) : gate.cause === "reconnecting";
+    if (grace && reconnecting && now < graceEnd) {
+      const retrying = gate?.cause === "reconnecting";
+      // A refusal before the pending retry keeps that retry: two dials refused at once still retry 2 s after (#2507).
+      const nextAt = !retrying
+        ? Math.min(now + this.#limits.reconnectRetryMs, graceEnd)
+        : now < gate.nextAt
+          ? gate.nextAt
+          : graceEnd;
+      this.#set(member, { cause: "reconnecting", misses: (retrying ? gate.misses : 0) + 1, nextAt, lastMissAt: now });
       return;
     }
     this.#reached.delete(member);

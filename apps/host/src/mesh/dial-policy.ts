@@ -201,13 +201,14 @@ export class DialPolicy {
   }
 
   /**
-   * What a dial ended with: connected, the relay rate limited it (4429), it failed (4404, or any error without a
-   * close code: a timeout or a dropped connection), which gates the member until presence or its probe (a member that
-   * was reached is first reconnecting for 5 s, #2448), or the relay
-   * refused this host's pass (4412, contract v1.6), which says nothing about the member: no gate, no halving, and the
-   * member is due again once a new pass arrives, or after the first probe wait (30 s) if none does.
+   * What a dial ended with: connected, the relay rate limited it (4429), it failed (4404, or any error without a close
+   * code: a timeout or a dropped connection), which gates the member until presence or its probe (a member that was
+   * reached is first reconnecting for 5 s, #2448), it refused this host as revoked (4401), which gates it the same way
+   * with no reconnect grace, or the relay refused this host's pass (4412, contract v1.6), which says nothing about the
+   * member: no gate, no halving, and the member is due again once a new pass arrives, or after the first probe wait
+   * (30 s) if none does.
    */
-  report(member: string, outcome: "connected" | 4404 | 4412 | 4429): void {
+  report(member: string, outcome: "connected" | 4401 | 4404 | 4412 | 4429): void {
     const now = this.#clock.now();
     if (outcome === "connected") {
       this.#members.reached(member);
@@ -226,7 +227,7 @@ export class DialPolicy {
       this.#members.rateLimited(member);
       return;
     }
-    this.#members.missed(member);
+    this.#members.missed(member, outcome !== 4401);
   }
 
   /** This host has a new relay pass: members whose dials met a refused pass are due now. */
