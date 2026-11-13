@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import {
   chmodSync,
   existsSync,
@@ -13,6 +13,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const SCRIPT = join(import.meta.dir, "install.sh");
+
+// Every case runs the real install.sh in a subprocess, which takes seconds on a loaded host: bun's 5 s default timed
+// these out with no assertion failing (#2487). The macOS cases that wait on launchd keep their own 30 s.
+setDefaultTimeout(30_000);
 // The name install.sh uses (`id -un`); userInfo() reads $USER first and answers "unknown" where it is unset (#2476).
 const USER = Bun.spawnSync(["id", "-un"]).stdout.toString().trim();
 
