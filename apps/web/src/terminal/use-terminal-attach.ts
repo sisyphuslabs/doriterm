@@ -10,7 +10,7 @@ import { clearHistoryGap, noteHistoryGap } from "./history-gap-notice.ts";
 import { type EndHolder, fromEndOf, holdFromEnd, readerInputOn } from "./hold-view-from-end.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
 import { openFailure } from "./open-failure.ts";
-import { afterLeaving, noteLeaving } from "./leaving-attach.ts";
+import { afterLeaving, dropOpeningAttach, noteLeaving } from "./leaving-attach.ts";
 import { HISTORY_LINES, noteViewSize, viewAttach } from "./opening-attach.ts";
 import type { OutputPacer, ReplayOptions } from "./output-pacer.ts";
 import { type TerminalEnd, terminalEnd } from "./terminal-end.ts";
@@ -221,11 +221,19 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     if (!attachedBefore.current) setOpening(true);
     const attachOwn = () =>
       connection.attach({ terminal: address, cols, rows, history, display, ...resumed }, { autoCredit: false });
-    const asked = afterLeaving(connection, address).then(() =>
-      viewAttach(connection, address, !attachedBefore.current, { cols, rows, display }, attachOwn),
-    );
+    // A view gone while it waited sends no attach of its own, which would only resize the pty to its size (#2496
+    // review). An attach sent ahead with the terminal's run is still taken and closed: left open, it holds the core's
+    // viewer at the gone view's size, the very bug above.
+    const asked = afterLeaving(connection, address).then(() => {
+      if (!unmounted.current)
+        return viewAttach(connection, address, !attachedBefore.current, { cols, rows, display }, attachOwn);
+      if (!attachedBefore.current) dropOpeningAttach(connection, address);
+      return null;
+    });
     const answered = asked.then<unknown, void>(
-      ({ stream: attached, cols: askedCols, rows: askedRows, fresh }) => {
+      (opened) => {
+        if (opened === null) return;
+        const { stream: attached, cols: askedCols, rows: askedRows, fresh } = opened;
         if (unmounted.current) return attached.close();
         setOpening(false);
         // The program restarted while the line was down: what was typed for it must not reach the new one.

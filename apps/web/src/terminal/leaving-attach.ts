@@ -1,3 +1,5 @@
+import { takeOpeningAttach } from "./opening-attach.ts";
+
 /**
  * Attaches whose view went away before the core answered them, by connection and terminal (#2475). Until its answer
  * names the stream, the page cannot close it, so the core still holds that view as a viewer, at that view's size. An
@@ -22,4 +24,15 @@ export function noteLeaving(connection: object, address: string, settled: Promis
 /** Settles once every attach to `address` that a gone view left on `connection` is answered and closed. */
 export function afterLeaving(connection: object, address: string): Promise<unknown> {
   return leaving.get(connection)?.get(address) ?? Promise.resolve();
+}
+
+/**
+ * Closes the attach sent ahead with `address`'s run, for a view that went before using it: left open, it would hold the
+ * core's viewer at that view's size, the bug above (#2496 review).
+ */
+export function dropOpeningAttach(connection: object, address: string): void {
+  void takeOpeningAttach(connection, address)?.stream.then(
+    (left) => left.close(),
+    () => undefined,
+  );
 }
