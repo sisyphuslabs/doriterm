@@ -2,7 +2,14 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { controlIsLive, controlSocketPath, type ControlListener, listenControl, requestControl } from "./control.ts";
+import {
+  controlIsLive,
+  controlSocketPath,
+  type ControlListener,
+  listenControl,
+  replyDeadlineMs,
+  requestControl,
+} from "./control.ts";
 import { parseRequest } from "./control-requests.ts";
 
 let dir: string;
@@ -144,6 +151,35 @@ describe("control socket", () => {
     const payload = "x".repeat(2_000_000);
     listeners.push(listenControl(dir, () => Promise.resolve(payload)));
     expect(await requestControl(dir, { op: "mesh-status" })).toBe(payload);
+  });
+
+  // A host whose handler never settles used to hang the CLI with no output at all (#2387): now it says so and fails.
+  test("a request the running host never answers fails with a message once its deadline passes", async () => {
+    listeners.push(listenControl(dir, () => new Promise(() => undefined)));
+    await expect(requestControl(dir, { op: "mesh-status" }, undefined, 50)).rejects.toThrow(
+      "the running host did not answer mesh-status within 0.05 s",
+    );
+  });
+
+  test("only the requests that wait on a person have no deadline", () => {
+    const ops = [
+      "pair",
+      "devices-changed",
+      "mesh-changed",
+      "mesh-status",
+      "mesh-revoke",
+      "mesh-rename",
+      "mesh-leave",
+      "mesh-pair",
+      "mesh-pending",
+      "mesh-approve",
+      "mesh-join",
+    ] as const;
+    const unbounded = ops.filter((op) => replyDeadlineMs(op) === undefined);
+    expect(unbounded).toEqual(["mesh-pending", "mesh-join"]);
+    // Revoke, rename and leave wait up to 30 s for the members to confirm (PUSH_WITHIN_MS), so they get more than that.
+    for (const op of ["mesh-revoke", "mesh-rename", "mesh-leave"] as const)
+      expect(replyDeadlineMs(op)).toBeGreaterThan(30_000);
   });
 
   test("a live socket is reported as live, a stale or missing one is not", async () => {

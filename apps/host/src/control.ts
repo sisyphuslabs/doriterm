@@ -164,18 +164,40 @@ export function listenControl(stateDir: string, handle: ControlHandler): Control
   };
 }
 
+/**
+ * How long the CLI waits for the running host's reply before it says the host did not answer (#2387). A request that
+ * waits on a person has none: `mesh-join` asks the user to confirm a code, and `mesh-pending` waits for a joiner, which
+ * its caller already bounds by the invitation's expiry. Revoke, rename and leave wait up to 30 s for the members to
+ * confirm (PUSH_WITHIN_MS in mesh/commands.ts), so they get twice that.
+ */
+export function replyDeadlineMs(op: ControlRequest["op"]): number | undefined {
+  switch (op) {
+    case "mesh-join":
+    case "mesh-pending":
+      return undefined;
+    case "mesh-revoke":
+    case "mesh-rename":
+    case "mesh-leave":
+      return 60_000;
+    default:
+      return 15_000;
+  }
+}
+
 /** Sends one request to the running host; resolves undefined when no host listens on this state dir. */
 export async function requestControl(
   stateDir: string,
   request: ControlRequest,
   confirm?: (code: string) => Promise<boolean>,
+  deadlineMs = replyDeadlineMs(request.op),
 ): Promise<unknown> {
   const { promise, resolve, reject } = Promise.withResolvers<string>();
   let text = "";
   let asked = false;
   const out: Outgoing = { queue: [], ending: false };
+  let connection: Socket<undefined>;
   try {
-    await Bun.connect({
+    connection = await Bun.connect({
       unix: controlSocketPath(stateDir),
       socket: {
         open(socket) {
@@ -217,7 +239,14 @@ export async function requestControl(
   } catch {
     return undefined;
   }
-  const answer: unknown = JSON.parse(await promise);
+  const timer =
+    deadlineMs === undefined
+      ? undefined
+      : setTimeout(() => {
+          reject(new Error(`the running host did not answer ${request.op} within ${deadlineMs / 1000} s`));
+          connection.end();
+        }, deadlineMs);
+  const answer: unknown = JSON.parse(await promise.finally(() => clearTimeout(timer)));
   if (typeof answer !== "object" || answer === null || !("ok" in answer)) throw new Error("bad control reply");
   if (answer.ok !== true)
     throw new Error(`the running host refused: ${"error" in answer ? String(answer.error) : "?"}`);
