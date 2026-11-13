@@ -71,8 +71,10 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
         }
       }
       // The padding box starts inside the border; clientLeft and clientTop read 0 for an inline box, so the border is read.
-      // An inline that wraps over lines starts where its first line box does.
+      // An inline that wraps over lines starts where its first line box does; a right-to-left one starts at that box's
+      // right edge, which this does not read.
       const border = getComputedStyle(block);
+      if (border.display === "inline" && border.direction === "rtl") throw unreadable;
       const box =
         (border.display === "inline" ? block.getClientRects()[0] : undefined) ?? block.getBoundingClientRect();
       origin = {
