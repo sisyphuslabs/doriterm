@@ -37,6 +37,8 @@ export function SettingRow(props: SettingRowProps) {
   const { title, description, configKey, disabledReason, inline = false, id, className } = props;
   const disabled = disabledReason !== undefined;
   const reasonId = useId();
+  const control =
+    props.disabledReason === undefined ? props.control : props.control({ "aria-describedby": reasonId });
   return (
     <div
       data-setting-row=""
@@ -62,14 +64,17 @@ export function SettingRow(props: SettingRowProps) {
           </p>
         ) : null}
       </div>
-      <div
-        className={cn(
-          "flex max-w-full shrink-0 items-center gap-2",
-          !inline && "max-sm:w-full max-sm:[&>*]:flex-1 sm:[&>*]:flex-none",
-        )}
-      >
-        {props.disabledReason === undefined ? props.control : props.control({ "aria-describedby": reasonId })}
-      </div>
+      {/* A row with nothing to do has no control slot: an empty one would still take its own line under 480 px. */}
+      {control === null || control === undefined ? null : (
+        <div
+          className={cn(
+            "flex max-w-full shrink-0 items-center gap-2",
+            !inline && "max-sm:w-full max-sm:[&>*]:flex-1 sm:[&>*]:flex-none",
+          )}
+        >
+          {control}
+        </div>
+      )}
     </div>
   );
 }

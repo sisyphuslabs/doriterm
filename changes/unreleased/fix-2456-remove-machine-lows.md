@@ -1,0 +1,4 @@
+### Settings
+
+- On a phone, a settings row with nothing to do, such as this machine in Settings, Machines, no longer leaves an empty
+  line under its text. (#2456)
