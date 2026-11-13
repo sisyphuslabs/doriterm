@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
@@ -201,7 +201,9 @@ test("a relay blip with nothing new is one request and one answer: no attach, th
     // the runner is; a fixed sleep let it land before the drop under load (#2482).
     gateDir = mkdtempSync(join(tmpdir(), "resume-"));
     const go = join(gateDir, "go");
-    await page.keyboard.type(`until [ -e '${go}' ]; do sleep 0.1; done; seq -f 'late-%g' 1 20`);
+    // It also marks when its last line is written, so the relay comes back only after all of it was missed (#2484).
+    const done = join(gateDir, "done");
+    await page.keyboard.type(`until [ -e '${go}' ]; do sleep 0.1; done; seq -f 'late-%g' 1 20; : > '${done}'`);
     await page.keyboard.press("Enter");
     await expect(terminal).toContainText("seq -f 'late-%g' 1 20");
     // Typing follows the output to the end; the reader then goes back up, and must be left there by what arrives.
@@ -218,6 +220,7 @@ test("a relay blip with nothing new is one request and one answer: no attach, th
     sockets.down = true;
     sockets.drop();
     writeFileSync(go, "");
+    await expect.poll(() => existsSync(done), { timeout: 30_000 }).toBe(true);
     await page.waitForTimeout(2_500);
     sockets.down = false;
     await expect(terminal).toContainText("late-20", { timeout: 30_000 });
