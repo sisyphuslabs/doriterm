@@ -27,6 +27,8 @@ const AT_ONCE_MS = 5_000;
 
 const group = (page: Page) =>
   page.getByRole("region", { name: "Spaces" }).getByRole("region", { name: MACHINE_NAME, exact: true });
+/** The header's handle: the menu opens on it, also while the header has no terminal to open (aria-disabled). */
+const headerHandle = (page: Page) => page.locator("[data-machine-row]", { has: machineRow(page) });
 const settingsRow = (page: Page) =>
   page.getByRole("list", { name: "Machines" }).getByRole("listitem").filter({ hasText: MACHINE_NAME });
 
@@ -78,7 +80,7 @@ test.describe("removing a machine added by hand", () => {
   test("its header menu offers Remove, and Cancel keeps the machine", async ({ page }) => {
     await page.goto("/");
     await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
-    await machineRow(page).click({ button: "right" });
+    await headerHandle(page).click({ button: "right" });
     await page.getByRole("menuitem", { name: `Remove ${MACHINE_NAME}…` }).click();
     const dialog = page.getByRole("dialog", { name: QUESTION });
     await expect(dialog).toContainText(SAYS);
