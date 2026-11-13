@@ -14,11 +14,43 @@
  * Runs in the page (pass it to `page.evaluate`). The layout tree follows the DOM except for pseudo-elements, which are
  * read in their place (::before before an element's children, ::after after them). app-region is inherited, so a
  * button's hit-area pseudo-element lists its own region too. A pseudo-element's box is read from its used insets and
- * size against its containing block, which this knows only for a fixed one (the viewport) or an absolute one whose
- * element is positioned (that element's padding box); any other with an app-region throws instead of being skipped.
+ * size against its containing block: the viewport for a fixed one; for an absolute one, the padding box of the nearest
+ * box from its own element up that is positioned, transformed (transform or translate, rotate, scale), filtered, given
+ * perspective, content-visibility or paint/layout containment (a static button's hit layer is placed by the tab item
+ * around it, #1530, #2366), else the page. A containing block this cannot read (an inline box's) throws, as does a
+ * pseudo-element with an app-region that is neither absolute nor fixed, instead of being skipped.
  */
 export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }): "drag" | "no-drag" | "none" {
   let at: "drag" | "no-drag" | "none" = "none";
+  // An absolute box's containing block (CSS 2 10.1, CSS Transforms): the nearest box, from the pseudo-element's own
+  // element up, that is positioned or that a transform, filter, perspective or paint/layout containment makes one;
+  // null for the page. An inline box there places it by its fragments, which this does not read.
+  // oxlint-disable-next-line unicorn/consistent-function-scoping -- page.evaluate sends only this function's source
+  const containingBlock = (from: Element): Element | null | "unreadable" => {
+    for (
+      let node: Element | null = from;
+      node !== null && node !== document.documentElement;
+      node = node.parentElement
+    ) {
+      const style = getComputedStyle(node);
+      const contain = style.contain;
+      const establishes =
+        style.position !== "static" ||
+        style.transform !== "none" ||
+        style.translate !== "none" ||
+        style.rotate !== "none" ||
+        style.scale !== "none" ||
+        style.filter !== "none" ||
+        style.backdropFilter !== "none" ||
+        /auto|hidden/.test(style.contentVisibility) ||
+        style.perspective !== "none" ||
+        /paint|layout|strict|content/.test(contain) ||
+        /transform|translate|rotate|scale|perspective|filter/.test(style.willChange);
+      if (!establishes) continue;
+      return style.display === "inline" ? "unreadable" : node;
+    }
+    return null;
+  };
   const apply = (mode: string, box: { left: number; top: number; right: number; bottom: number }): void => {
     if (mode !== "drag" && mode !== "no-drag") return;
     if (x >= box.left && x < box.right && y >= box.top && y < box.bottom) at = mode;
@@ -29,9 +61,20 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
     if (style.content === "none" || style.content === "normal" || (mode !== "drag" && mode !== "no-drag")) return;
     if (style.visibility !== "visible" || style.display === "none") return;
     let origin = { left: 0, top: 0 };
-    if (style.position === "absolute" && getComputedStyle(element).position !== "static") {
-      const box = element.getBoundingClientRect();
-      origin = { left: box.left + element.clientLeft, top: box.top + element.clientTop };
+    if (style.position === "absolute") {
+      const block = containingBlock(element);
+      if (block === "unreadable")
+        throw new Error(`${element.tagName}${which} has app-region ${mode} and no readable box`);
+      if (block === null) {
+        origin = { left: -window.scrollX, top: -window.scrollY };
+      } else {
+        const box = block.getBoundingClientRect();
+        // A scrolled containing block moves what it places by its scroll offset.
+        origin = {
+          left: box.left + block.clientLeft - block.scrollLeft,
+          top: box.top + block.clientTop - block.scrollTop,
+        };
+      }
     } else if (style.position !== "fixed") {
       throw new Error(`${element.tagName}${which} has app-region ${mode} and no readable box`);
     }

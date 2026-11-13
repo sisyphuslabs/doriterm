@@ -15,7 +15,7 @@ const hideWindows = join(appDir, "e2e", "hide-windows.cjs");
  * composited until that is done, so neither ready-to-show nor a page.screenshot capture can happen; on a cold CI runner
  * that took from seconds to over 30 s (#80).
  */
-const platformArgs: readonly string[] = process.platform === "linux" ? ["--disable-gpu"] : [];
+export const platformArgs: readonly string[] = process.platform === "linux" ? ["--disable-gpu"] : [];
 
 /**
  * The command-line arguments every e2e launch passes, followed by `extra`: from this checkout they start the app with
