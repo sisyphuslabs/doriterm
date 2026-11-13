@@ -244,6 +244,21 @@ test("closing a pane in the middle gives its space to its neighbour and focus to
 test("a pane whose program ends while its layout write is refused stays, says so, and keeps focus", async ({
   page,
 }) => {
+  await paneEndsWhileRefused(page, 0);
+});
+
+test("a pane whose program ends while its layout write is refused says so however slowly the host answers (#2436)", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await paneEndsWhileRefused(page, 1_200);
+});
+
+/**
+ * Two panes, the right one focused, whose program exits while every layout write is refused: the pane stays, says its
+ * session ended, keeps focus, and the refusal is said. `hostDelayMs` holds every frame from the host that long.
+ */
+async function paneEndsWhileRefused(page: Page, hostDelayMs: number): Promise<void> {
   const [one = "", two = ""] = ["left", "right"].map(shell);
   seedLayout([
     {
@@ -268,6 +283,8 @@ test("a pane whose program ends while its layout write is refused stays, says so
   const saved = savedTab("tb-pair");
 
   // A program that exits drops its pane with no question asked, so nothing but the drop moves focus.
+  // A slow host answers every frame late, as a loaded runner does: the refusal takes its retries' whole round trips.
+  socket.delay(hostDelayMs);
   socket.staleWrites(true);
   await page.keyboard.type("exit\r");
   await expect(page.getByText("The layout was not saved")).toBeVisible({ timeout: 15_000 });
@@ -278,7 +295,7 @@ test("a pane whose program ends while its layout write is refused stays, says so
   await expect(kept).toHaveAttribute("data-focused", "true");
   await expect(page.getByRole("region", { name: "resize-left terminal" })).toHaveAttribute("data-focused", "false");
   expect(savedTab("tb-pair")).toBe(saved);
-});
+}
 
 /** Two one-pane tabs, `other` first, with the second, `solo`, in view and its pane focused; returns their shells. */
 async function soloInView(page: Page): Promise<{ solo: string; other: string }> {
