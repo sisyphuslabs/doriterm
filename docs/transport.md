@@ -318,7 +318,7 @@ membership(S, eff):
 ### What the relay learns from a mesh
 
 - Which hostIds open sessions to which, from which addresses, and when; not the records, names or rules, and nothing it can forge, replay or splice.
-- What the reference relay keeps of that: for the current month, which proven hosts are in the same pool (not which pairs connected, or when), as salted pseudonyms deleted with the month's salt on day 7 of the following month, and the daily pool counts it sends to its operator's product analytics (see Relay passes).
+- What the reference relay keeps of that: for each month, until day 7 of the following month, which proven hosts are in the same pool (not which pairs connected, or when), as salted pseudonyms deleted with that month's salt, and the daily pool counts it sends to its operator's product analytics (see Relay passes).
 
 ## Push stream
 
