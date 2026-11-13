@@ -42,13 +42,20 @@ export const test = base.extend<
   // rest of the worker unless the test closes it, and a test that fails first does not. Its page stays connected to the
   // worker's core and keeps its layout as a device would: a pane whose program ends out of that page's view is dropped
   // for every device (#2122), so a later test's ended pane went before its own page could show it (#2412), and a close
-  // whose write the test refused went through from there instead (#2383). Every test therefore starts with no context
-  // an earlier one left, from any spec, and closes every context it opened.
+  // whose write the test refused went through from there instead (#2383). Every test therefore closes the contexts it
+  // opened, and only those: one a file's beforeAll shares across its tests was there before the test and stays open.
+  // Specs that import `test` from @playwright/test run in other workers (this file adds a worker fixture), so they
+  // never share a core with these.
   ownPages: [
     async ({ browser }, use) => {
-      await Promise.all(browser.contexts().map((left) => left.close()));
+      const before = new Set(browser.contexts());
       await use(undefined);
-      await Promise.all(browser.contexts().map((own) => own.close()));
+      await Promise.all(
+        browser
+          .contexts()
+          .filter((context) => !before.has(context))
+          .map((own) => own.close()),
+      );
     },
     { auto: true },
   ],

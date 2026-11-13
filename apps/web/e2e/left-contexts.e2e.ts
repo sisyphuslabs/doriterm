@@ -1,5 +1,6 @@
 // A context a test opened and did not close must not outlive it: its page stays connected to the worker's core and
 // edits the shared layout as another device would (#2383, #2412). See ownPages in fixtures.ts.
+import type { BrowserContext } from "@playwright/test";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
 import { expect, test } from "./fixtures.ts";
 
@@ -28,4 +29,28 @@ test("a test that opens a second device and leaves it open", async ({ browser })
 test("the next test starts with no page an earlier test left", async ({ page, browser }) => {
   await page.goto("about:blank");
   expect(browser.contexts()).toEqual([page.context()]);
+});
+
+test.describe("a context the file's beforeAll shares", () => {
+  let shared: BrowserContext | undefined;
+  test.beforeAll(async ({ browser }) => {
+    shared = await browser.newContext({ serviceWorkers: "block" });
+  });
+  test.afterAll(async () => {
+    await shared?.close();
+  });
+  const opensPage = async (): Promise<void> => {
+    if (shared === undefined) throw new Error("beforeAll made no context");
+    const opened = await shared.newPage();
+    await opened.goto("about:blank");
+    await opened.close();
+  };
+
+  test("is open in its first test", async () => {
+    await opensPage();
+  });
+
+  test("is still open in the next, since no test opened it", async () => {
+    await opensPage();
+  });
 });
