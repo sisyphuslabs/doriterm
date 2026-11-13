@@ -111,6 +111,18 @@ export function MachineLineStatus({ machine }: { readonly machine: string }) {
   );
 }
 
+/** The status bar item while the focused terminal's machine is offline; its pane offers Try again in place. */
+export function MachineOfflineStatus({ machine }: { readonly machine: string }) {
+  const notice: ConnectionNotice = { label: `${machine} is offline`, detail: `${machine} is offline`, offline: true };
+  return (
+    <span role="status" data-machine-offline className="flex min-w-0" title={notice.detail}>
+      <StatusBarItem icon={glyph(notice, "size-3.5")}>
+        <span className="text-foreground">{notice.label}</span>
+      </StatusBarItem>
+    </span>
+  );
+}
+
 /** Connected is the open session's baseline only while no notice (Reconnecting, Offline) applies. */
 export const showsConnected = (phase: string, notice: ConnectionNotice | null): boolean =>
   phase === "open" && notice === null;

@@ -121,10 +121,15 @@ test.describe("the terminal in view when its machine drops (#2464)", () => {
     const status = page.getByRole("status").filter({ hasText: `Reconnecting to ${MACHINE_NAME}` });
     await expect(status.first()).toBeVisible({ timeout: STATE_BOUND_MS });
     await capture(page, "reconnecting-desktop");
+    await expect(page.getByRole("contentinfo")).not.toContainText("Connected");
     const pane = page.locator('[data-focused="true"]');
     await expect(pane.getByText(`${MACHINE_NAME} is offline`)).toBeVisible({ timeout: OFFLINE_BOUND_MS });
     await expect(pane.getByRole("button")).toHaveCount(1);
     await expect(pane.getByRole("button", { name: "Try again" })).toBeVisible();
+    // The page's own link is up, but beside the machine's name the bar speaks for the machine: it is offline.
+    const bar = page.getByRole("contentinfo");
+    await expect(bar).toContainText(`${MACHINE_NAME} is offline`);
+    await expect(bar).not.toContainText("Connected");
     await capture(page, "offline-desktop");
 
     expect(await swaps(page)).toEqual([]);

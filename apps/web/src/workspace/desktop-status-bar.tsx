@@ -10,6 +10,7 @@ import {
   ConnectedStatus,
   ConnectionPathItem,
   MachineLineStatus,
+  MachineOfflineStatus,
   ReconnectStatus,
   useConnectionNotice,
 } from "./reconnect-status.tsx";
@@ -40,6 +41,8 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
   // Until the connection is back nothing is known to be missing yet: the bar says it reconnects, as the phone line does.
   const reconnecting = useConnectionNotice() !== null;
   const watched = focusedTerminal?.offline === true ? null : focusedAddress;
+  // The focused terminal's machine past its grace: the bar says so, never the page's own Connected beside its name.
+  const offline = focusedTerminal?.offline === true && focusedAddress !== null ? machineOf(focusedAddress) : undefined;
   const away = useMachineLine(connection, watched ?? "", watched !== null);
   return (
     <StatusBar
@@ -86,8 +89,9 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
           <ReconnectStatus />
           {/* Past its grace the pane says the machine is offline in place, so the bar no longer says it reconnects. */}
           {reconnecting || away === null ? null : <MachineLineStatus machine={away} />}
-          {/* One connection item at a time: a machine line that is down takes Connected's place. */}
-          {away === null ? <ConnectedStatus /> : null}
+          {offline === undefined ? null : <MachineOfflineStatus machine={offline} />}
+          {/* One connection item at a time: the focused terminal's machine, when it is down, takes Connected's place. */}
+          {away === null && offline === undefined ? <ConnectedStatus /> : null}
           {reconnecting ? null : <HistoryGapStatus address={focusedAddress} />}
           <ConnectionPathItem />
         </>
