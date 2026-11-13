@@ -1,4 +1,5 @@
 import { type Clock, type Random, uniform } from "./clock.ts";
+import { type Gate, MemberGates } from "./member-gates.ts";
 
 /** Section 8.2's constants, production values. */
 export const DIAL_LIMITS = {
@@ -10,6 +11,8 @@ export const DIAL_LIMITS = {
   /** A revoked member that answers but refuses the handshake waits this long for its revoke, doubling (#2449). */
   refusedFirstMs: 3_600_000,
   refusedMaxMs: 21_600_000,
+  reconnectRetryMs: 2_000,
+  reconnectGraceMs: 5_000,
   presenceJitterMs: 2_000,
   addJitterMs: 5_000,
   settleMinMs: 10_000,
@@ -30,23 +33,12 @@ export type DueReason = "presence" | "probe" | "added" | "settle" | "budget" | "
 
 export type Grant =
   | { readonly ok: true; readonly chargedAt: number | undefined }
+  | { readonly ok: false; readonly reason: "reconnecting"; readonly nextInMs: number }
   | { readonly ok: false; readonly reason: "offline"; readonly misses: number; readonly nextInMs: number }
   | { readonly ok: false; readonly reason: "rate-limited"; readonly nextInMs: number }
   | { readonly ok: false; readonly reason: "refused"; readonly nextInMs: number }
   | { readonly ok: false; readonly reason: "settling"; readonly nextInMs: number }
   | { readonly ok: false; readonly reason: "budget" };
-
-export interface Gate {
-  /**
-   * A 4404 (or a failed dial) says the member is offline; a 4429 says the relay limited this host; `refused` says a
-   * revoked member answered but refused the handshake, so its owed revoke cannot be delivered until it returns.
-   */
-  readonly cause: "offline" | "rate-limited" | "refused";
-  readonly misses: number;
-  readonly nextAt: number;
-  /** When the last dial that set this gate failed: return from this host's own outage drops gates set during it. */
-  readonly lastMissAt: number;
-}
 
 interface Waiter {
   readonly priority: number;
@@ -76,9 +68,7 @@ export class DialPolicy {
   readonly #limits: DialLimits;
   readonly #charged: number[] = [];
   readonly #waiters: Waiter[] = [];
-  readonly #gates = new Map<string, Gate>();
-  /** Each member's first miss since it was last reached: the evidence section 8.6's 7-day unreachable flag reads. */
-  readonly #firstMiss = new Map<string, number>();
+  readonly #members: MemberGates;
   readonly #present = new Set<string>();
   /** Members a dial refused for the budget, with the tokens each needs at once (2 for a machine.add, 1 for a line). */
   readonly #budgetRefused = new Map<string, number>();
@@ -98,6 +88,7 @@ export class DialPolicy {
     this.#random = options.random;
     this.#onDue = options.onDue;
     this.#limits = options.limits ?? DIAL_LIMITS;
+    this.#members = new MemberGates(options.clock, this.#limits, (member) => this.#onDue(member, "probe"));
   }
 
   get budget(): number {
@@ -106,7 +97,7 @@ export class DialPolicy {
   }
 
   gate(member: string): Gate | undefined {
-    return this.#gates.get(member);
+    return this.#members.get(member);
   }
 
   /** Dials waiting for a budget token: status `budget.waiting`. */
@@ -121,7 +112,7 @@ export class DialPolicy {
 
   /** Since when `member` has failed every dial, while that was not this host's own outage. */
   unreachableSince(member: string): number | undefined {
-    return this.#firstMiss.get(member);
+    return this.#members.unreachableSince(member);
   }
 
   /**
@@ -159,11 +150,12 @@ export class DialPolicy {
   /** Why `member` may not be dialed for `purpose` now (its gate, or the settle after an outage), if it may not. */
   #refusal(member: string, purpose: DialPurpose): Grant | undefined {
     const now = this.#clock.now();
-    const gate = this.#gates.get(member);
+    const gate = this.#members.get(member);
     const probeDue = gate !== undefined && now >= gate.nextAt;
     if (gate !== undefined && purpose !== "sweep" && !probeDue) {
       const nextInMs = gate.nextAt - now;
       if (gate.cause === "rate-limited") return { ok: false, reason: "rate-limited", nextInMs };
+      if (gate.cause === "reconnecting") return { ok: false, reason: "reconnecting", nextInMs };
       if (gate.cause === "refused") return { ok: false, reason: "refused", nextInMs };
       return { ok: false, reason: "offline", misses: gate.misses, nextInMs };
     }
@@ -215,7 +207,8 @@ export class DialPolicy {
 
   /**
    * What a dial ended with: connected, the relay rate limited it (4429), it failed (4404, or any error without a
-   * close code: a timeout or a dropped connection), which gates the member until presence or its probe, or the relay
+   * close code: a timeout or a dropped connection), which gates the member until presence or its probe (a member that
+   * was reached is first reconnecting for 5 s, #2448), or the relay
    * refused this host's pass (4412, contract v1.6), which says nothing about the member: no gate, no halving, and the
    * member is due again once a new pass arrives, or after the first probe wait (30 s) if none does. `refused`: a
    * revoked member answered and refused the handshake, gated on its own long backoff until presence (#2449).
@@ -223,14 +216,11 @@ export class DialPolicy {
   report(member: string, outcome: "connected" | 4404 | 4412 | 4429 | "refused"): void {
     const now = this.#clock.now();
     if (outcome === "connected") {
-      this.#reached(member);
+      this.#members.reached(member);
       return;
     }
     if (outcome === "refused") {
-      const previous = this.#gates.get(member);
-      const refusals = previous?.cause === "refused" ? previous.misses : 0;
-      const wait = Math.min(this.#limits.refusedFirstMs * 2 ** refusals, this.#limits.refusedMaxMs);
-      this.#setGate(member, { cause: "refused", misses: refusals + 1, nextAt: now + wait, lastMissAt: now });
+      this.#members.refused(member);
       return;
     }
     if (outcome === 4412) {
@@ -241,20 +231,12 @@ export class DialPolicy {
       this.#passRefused.set(member, fallback);
       return;
     }
-    const misses = this.#gates.get(member)?.misses ?? 0;
     if (outcome === 4429) {
       this.#halvedUntil = now + this.#limits.halvedForMs;
-      this.#setGate(member, {
-        cause: "rate-limited",
-        misses,
-        nextAt: now + this.#limits.probeFirstMs,
-        lastMissAt: now,
-      });
+      this.#members.rateLimited(member);
       return;
     }
-    if (!this.#firstMiss.has(member)) this.#firstMiss.set(member, now);
-    const wait = Math.min(this.#limits.probeFirstMs * 2 ** misses, this.#limits.probeMaxMs);
-    this.#setGate(member, { cause: "offline", misses: misses + 1, nextAt: now + wait, lastMissAt: now });
+    this.#members.missed(member);
   }
 
   /** This host has a new relay pass: members whose dials met a refused pass are due now. */
@@ -269,7 +251,7 @@ export class DialPolicy {
 
   /** Any authenticated session from `member` proves it is online: ungate it and dial after 0-2 s. */
   presence(member: string): void {
-    this.#reached(member);
+    this.#members.reached(member);
     this.#present.add(member);
     this.#clock.after(uniform(this.#random, 0, this.#limits.presenceJitterMs), () => this.#onDue(member, "presence"));
   }
@@ -289,22 +271,9 @@ export class DialPolicy {
     const delay = uniform(this.#random, this.#limits.settleMinMs, this.#limits.settleMaxMs);
     this.#settleUntil = this.#clock.now() + delay;
     this.#present.clear();
-    for (const [member, gate] of this.#gates) if (gate.lastMissAt >= downSince) this.#gates.delete(member);
-    for (const [member, at] of this.#firstMiss) if (at >= downSince) this.#firstMiss.delete(member);
+    this.#members.forgetSince(downSince);
     this.#clock.after(delay, () => {
       for (const member of members()) if (!this.#present.has(member)) this.#onDue(member, "settle");
-    });
-  }
-
-  #reached(member: string): void {
-    this.#gates.delete(member);
-    this.#firstMiss.delete(member);
-  }
-
-  #setGate(member: string, gate: Gate): void {
-    this.#gates.set(member, gate);
-    this.#clock.after(gate.nextAt - this.#clock.now(), () => {
-      if (this.#gates.get(member) === gate) this.#onDue(member, "probe");
     });
   }
 

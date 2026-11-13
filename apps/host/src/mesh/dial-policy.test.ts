@@ -15,6 +15,10 @@ function policy(): { clock: FakeClock; dials: DialPolicy; due: { member: string;
 
 const granted = (grant: Grant | undefined): boolean => grant?.ok === true;
 
+/** When each probe came due. */
+const probes = (due: readonly { reason: DueReason; at: number }[]): readonly number[] =>
+  due.filter((entry) => entry.reason === "probe").map((entry) => entry.at);
+
 /** Takes `count` tokens at once: each acquire is charged synchronously while the window has room. */
 const fill = async (dials: DialPolicy, count: number): Promise<readonly Grant[]> =>
   Promise.all(Array.from({ length: count }, (_, i) => dials.acquire(`m${i}`, "push")));
@@ -114,6 +118,62 @@ describe("gating after 4404 (S-5)", () => {
     expect(presence?.at).toBeGreaterThanOrEqual(0);
     expect(presence?.at).toBeLessThan(2_000);
     expect(granted(await dials.acquire("m", "push"))).toBe(true);
+  });
+});
+
+describe("a reached member that refuses a dial is reconnecting before it is offline (#2448)", () => {
+  test("it is dialed again 2 s and 5 s after the first refusal, and gated offline only when that dial fails too", async () => {
+    const { clock, dials, due } = policy();
+    dials.report("m", "connected");
+    dials.report("m", 4404);
+    expect(dials.gate("m")?.cause).toBe("reconnecting");
+    expect(await dials.acquire("m", "push")).toEqual({ ok: false, reason: "reconnecting", nextInMs: 2_000 });
+    await clock.advance(2_000);
+    expect(granted(await dials.acquire("m", "probe"))).toBe(true);
+    dials.report("m", 4404);
+    expect(dials.gate("m")?.cause).toBe("reconnecting");
+    await clock.advance(3_000);
+    expect(probes(due)).toEqual([2_000, 5_000]);
+    expect(granted(await dials.acquire("m", "probe"))).toBe(true);
+    dials.report("m", 4404);
+    expect(dials.gate("m")).toMatchObject({ cause: "offline", misses: 1, nextAt: 35_000 });
+  });
+
+  test("a member that answers a retry is reached again: no gate, and no first miss left behind", async () => {
+    const { clock, dials } = policy();
+    dials.report("m", "connected");
+    dials.report("m", 4404);
+    await clock.advance(2_000);
+    dials.report("m", "connected");
+    expect(dials.gate("m")).toBeUndefined();
+    expect(dials.unreachableSince("m")).toBeUndefined();
+    expect(granted(await dials.acquire("m", "push"))).toBe(true);
+  });
+
+  test("a member that was never reached is gated offline at its first refusal, so a start spends no dials on retries", () => {
+    const { dials } = policy();
+    dials.report("m", 4404);
+    expect(dials.gate("m")).toMatchObject({ cause: "offline", misses: 1, nextAt: 30_000 });
+  });
+
+  test("a member gated offline that is reached and then refuses gets the grace again", async () => {
+    const { clock, dials } = policy();
+    dials.report("m", 4404);
+    await clock.advance(30_000);
+    dials.report("m", "connected");
+    dials.report("m", 4404);
+    expect(dials.gate("m")).toMatchObject({ cause: "reconnecting", nextAt: 32_000 });
+  });
+
+  test("a rate limit met inside the grace does not count the grace's refusals as misses", async () => {
+    const { clock, dials } = policy();
+    dials.report("m", "connected");
+    dials.report("m", 4404);
+    dials.report("m", 4429);
+    expect(dials.gate("m")).toMatchObject({ cause: "rate-limited", misses: 0 });
+    await clock.advance(30_000);
+    dials.report("m", 4404);
+    expect(dials.gate("m")).toMatchObject({ cause: "offline", misses: 1, nextAt: 60_000 });
   });
 });
 

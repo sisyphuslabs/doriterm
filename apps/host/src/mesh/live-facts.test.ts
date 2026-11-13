@@ -51,7 +51,8 @@ describe("a member's presence in status (section 8.6: an authenticated session f
     expect(liveFactsOf(partsOf(a), clock).peers.get(b.member.signPub)?.presence).toBe(true);
     mesh.offline("b");
     a.write("ack");
-    await clock.advance(3_000);
+    // A member that was reached is reconnecting for 5 s (#2448): its refusals show once the dial at 5 s failed too.
+    await clock.advance(6_000);
     const facts = liveFactsOf(partsOf(a), clock).peers.get(b.member.signPub);
     expect(facts?.gate?.refusals).toBe(1);
     expect(facts?.presence).toBe(false);
@@ -74,6 +75,14 @@ describe("the gate in status (section 8.2)", () => {
     const facts = liveFactsOf(partsOf(a), clock);
     expect(facts.peers.get(b.member.signPub)?.gate).toBeNull();
     expect(facts.budget.halvedUntil).toBeInstanceOf(Date);
+  });
+
+  test("a member that refuses one dial after it was reached is reconnecting: not shown as offline (#2448)", () => {
+    const { clock, a, b } = pair();
+    a.policy.report(b.member.signPub, "connected");
+    a.policy.report(b.member.signPub, 4404);
+    const facts = liveFactsOf(partsOf(a), clock);
+    expect(facts.peers.get(b.member.signPub)?.gate).toBeNull();
   });
 });
 
