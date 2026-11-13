@@ -241,7 +241,7 @@ test("a relay blip with nothing new is one request and one answer: no attach, th
     expect(missed.sent.filter((bytes) => bytes === REQUEST_BYTES).length).toBeGreaterThanOrEqual(1);
     for (const bytes of missed.received) expect(bytes).toBeLessThan(13_000);
   } finally {
-    await host.stop();
     if (gateDir !== undefined) rmSync(gateDir, { recursive: true, force: true });
+    await host.stop();
   }
 });
