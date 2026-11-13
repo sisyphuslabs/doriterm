@@ -18,6 +18,9 @@ const group = (page: Page) => page.getByRole("region", { name: MACHINE_NAME });
 
 const ACTIONS = [/^Close space/, /^Rename space/];
 
+const PHONE = { width: 390, height: 844 };
+const DESKTOP = { width: 1280, height: 800 };
+
 /** The tab strip's New tab, which starts a terminal on the machine of the space in view. */
 const newTab = (page: Page) => page.getByRole("button", { name: "New tab" }).first();
 
@@ -42,6 +45,12 @@ test("a space on a machine that went offline offers Close and Rename disabled, a
     switchTo("off");
     await expect(machineRow(page)).toContainText("offline", { timeout: OFFLINE_BOUND_MS });
     await expect(newTab(page)).toBeDisabled();
+    // The phone's + starts the same terminal: at a phone's width it is offered disabled as well.
+    await page.setViewportSize(PHONE);
+    const phonePlus = page.getByRole("button", { name: "New tab" }).first();
+    await expect(phonePlus).toBeVisible();
+    await expect(phonePlus).toBeDisabled();
+    await page.setViewportSize(DESKTOP);
     await openSpaceMenu(page);
     await Promise.all(
       ACTIONS.map((action) =>
