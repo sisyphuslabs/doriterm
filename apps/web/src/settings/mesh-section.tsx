@@ -6,7 +6,7 @@ import type { ConnectionSettings } from "../connection/settings.ts";
 import { connectionStore, useConnection } from "../connection/store.ts";
 import { ExpiredJoinRow, MeshBanners, PendingRow, RemovedRows } from "../mesh/attention.tsx";
 import { disagreement, meshGroups } from "../mesh/groups.ts";
-import { MemberRow, RevokedRow } from "../mesh/mesh-rows.tsx";
+import { MemberRow } from "../mesh/mesh-rows.tsx";
 import { useMesh } from "../mesh/use-mesh.ts";
 import { useNow } from "../workspace/use-now.ts";
 
@@ -147,11 +147,12 @@ export function MeshBody({
           </MeshGroup>
         </>
       ) : null}
-      <MeshGroup id="revoked" title="Revoked" count={groups.revoked.length}>
-        {groups.revoked.map((entry) => (
-          <RevokedRow key={entry.hostId} entry={entry} nameOf={nameOf} />
-        ))}
-      </MeshGroup>
+      {groups.revokedCount === 0 ? null : (
+        <p data-mesh-revoked className="text-muted-foreground tabular-nums">
+          {groups.revokedCount} removed {groups.revokedCount === 1 ? "machine" : "machines"}: doriface-host mesh status
+          lists {groups.revokedCount === 1 ? "it" : "them"}.
+        </p>
+      )}
       <MeshGroup id="expired" title="Expired join requests" count={groups.expired.length}>
         {groups.expired.map((join) => (
           <ExpiredJoinRow key={join.nonce} join={join} self={self} now={now} />
