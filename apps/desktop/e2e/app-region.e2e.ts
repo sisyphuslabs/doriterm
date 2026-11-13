@@ -16,10 +16,21 @@ const PAGE = `<!doctype html><style>
   #moved { margin-top: 160px; transform: translateX(300px); width: 100px; height: 40px; }
   #moved button { display: block; width: 40px; height: 40px; -webkit-app-region: drag; }
   #moved button::after { content: ""; position: absolute; left: 50px; top: 0; width: 20px; height: 40px; -webkit-app-region: no-drag; }
-</style><div id="strip"><button id="tab">tab</button></div><div id="moved"><button>moved</button></div>`;
+  #slid { margin-top: 20px; translate: 300px 0; width: 100px; height: 40px; }
+  #slid button { display: block; width: 40px; height: 40px; -webkit-app-region: drag; }
+  #slid button::after { content: ""; position: absolute; left: 50px; top: 0; width: 20px; height: 40px; -webkit-app-region: no-drag; }
+</style><div id="strip"><button id="tab">tab</button></div><div id="moved"><button>moved</button></div><div id="slid"><button>slid</button></div>`;
+
+/** The same layer under an ancestor this cannot read: scaled, so its padding box is not where the layer is measured. */
+const SCALED = `<!doctype html><style>
+  body { margin: 0; }
+  #grown { scale: 2; width: 100px; height: 40px; }
+  #grown button { display: block; -webkit-app-region: no-drag; }
+  #grown button::after { content: ""; position: absolute; left: 0; top: 0; width: 20px; height: 20px; }
+</style><div id="grown"><button>grown</button></div>`;
 
 test("a static button's absolute hit layer is read against its nearest positioned or transformed ancestor (#2366)", async () => {
-  const app = await electron.launch({ args: [BROWSER_APP] });
+  const app = await electron.launch({ args: [BROWSER_APP, "--disable-gpu"] });
   try {
     const page = await app.firstWindow();
     await page.setContent(PAGE);
@@ -31,6 +42,11 @@ test("a static button's absolute hit layer is read against its nearest positione
     // button's layer at x 350..370.
     expect(await page.evaluate(appRegionAt, { x: 360, y: 260 })).toBe("no-drag");
     expect(await page.evaluate(appRegionAt, { x: 320, y: 260 })).toBe("drag");
+    // `translate` on its own, as Tailwind writes it, places the layer the same way: #slid sits at y 300..340.
+    expect(await page.evaluate(appRegionAt, { x: 360, y: 320 })).toBe("no-drag");
+    expect(await page.evaluate(appRegionAt, { x: 320, y: 320 })).toBe("drag");
+    await page.setContent(SCALED);
+    await expect(page.evaluate(appRegionAt, { x: 10, y: 10 })).rejects.toThrow("no readable box");
   } finally {
     await app.close();
   }

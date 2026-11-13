@@ -14,10 +14,13 @@
  * Runs in the page (pass it to `page.evaluate`). The layout tree follows the DOM except for pseudo-elements, which are
  * read in their place (::before before an element's children, ::after after them). app-region is inherited, so a
  * button's hit-area pseudo-element lists its own region too. A pseudo-element's box is read from its used insets and
- * size against its containing block: the viewport for a fixed one; for an absolute one, the padding box of the nearest
- * element, itself or an ancestor, that is positioned or transformed, else the initial containing block (#2366: a static
- * button's absolute hit layer is placed by its positioned ancestor). Any other with an app-region throws instead of
- * being skipped.
+ * size against its containing block (#2366: a static button's absolute hit layer is placed by its positioned ancestor).
+ * That is the padding box of the nearest element, itself or an ancestor with a box, that establishes one: for an
+ * absolute pseudo-element one that is positioned, and for both an absolute and a fixed one one that is transformed
+ * (`transform`, `translate`, `scale`, `rotate`, `perspective`), filtered (`filter`, `backdrop-filter`), contained
+ * (`contain` layout or paint, a `container-type`) or will change one of those; else the initial containing block for
+ * an absolute one and the viewport for a fixed one. A block scaled or rotated has no padding box this can read, and
+ * any other pseudo-element with an app-region has no readable box either: both throw instead of being skipped.
  */
 export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }): "drag" | "no-drag" | "none" {
   let at: "drag" | "no-drag" | "none" = "none";
@@ -30,22 +33,36 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
     const mode = style.getPropertyValue("-webkit-app-region");
     if (style.content === "none" || style.content === "normal" || (mode !== "drag" && mode !== "no-drag")) return;
     if (style.visibility !== "visible" || style.display === "none") return;
+    const unreadable = new Error(`${element.tagName}${which} has app-region ${mode} and no readable box`);
+    if (style.position !== "absolute" && style.position !== "fixed") throw unreadable;
+    let block: Element | null = element;
+    while (block !== null) {
+      const own = getComputedStyle(block);
+      const hasBox = own.display !== "contents";
+      const transformed =
+        own.transform !== "none" ||
+        own.translate !== "none" ||
+        own.scale !== "none" ||
+        own.rotate !== "none" ||
+        own.perspective !== "none" ||
+        own.filter !== "none" ||
+        own.backdropFilter !== "none" ||
+        /\b(layout|paint|strict|content)\b/.test(own.contain) ||
+        own.containerType !== "normal" ||
+        /\b(transform|translate|scale|rotate|perspective|filter|backdrop-filter|contain)\b/.test(own.willChange);
+      if (hasBox && (transformed || (style.position === "absolute" && own.position !== "static"))) break;
+      block = block.parentElement;
+    }
     let origin = { left: 0, top: 0 };
-    if (style.position === "absolute") {
-      let block: Element | null = element;
-      while (block !== null) {
-        const own = getComputedStyle(block);
-        if (own.position !== "static" || own.transform !== "none") break;
-        block = block.parentElement;
-      }
-      if (block === null) {
-        origin = { left: -window.scrollX, top: -window.scrollY };
-      } else {
-        const box = block.getBoundingClientRect();
-        origin = { left: box.left + block.clientLeft, top: box.top + block.clientTop };
-      }
-    } else if (style.position !== "fixed") {
-      throw new Error(`${element.tagName}${which} has app-region ${mode} and no readable box`);
+    if (block === null) {
+      if (style.position === "absolute") origin = { left: -window.scrollX, top: -window.scrollY };
+    } else {
+      const own = getComputedStyle(block);
+      const matrix = new DOMMatrixReadOnly(own.transform === "none" ? undefined : own.transform);
+      const translationOnly = matrix.a === 1 && matrix.b === 0 && matrix.c === 0 && matrix.d === 1;
+      if (!translationOnly || own.scale !== "none" || own.rotate !== "none") throw unreadable;
+      const box = block.getBoundingClientRect();
+      origin = { left: box.left + block.clientLeft, top: box.top + block.clientTop };
     }
     const left = origin.left + Number.parseFloat(style.left);
     const top = origin.top + Number.parseFloat(style.top);
