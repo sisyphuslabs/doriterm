@@ -2,9 +2,9 @@
 // that contract: the launch helper the specs spread into electron.launch() hands the app's host a wrapper that dials
 // a relay the run owns, so a spec cannot leave the host on the release relay and open a Room on it.
 // apps/desktop/test/local-host.test.ts keeps the other side: a real (non-e2e) launch dials the release relay.
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { DEFAULT_RELAY_URL } from "@doriface/crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeHostWrapper } from "../e2e/host-wrapper.ts";
@@ -53,6 +53,35 @@ const specEnv = (): Record<string, string> =>
     ),
   );
 
+const startThroughWrapper = async (
+  env: Record<string, string>,
+): Promise<{ readonly lines: readonly string[]; readonly args: readonly string[] }> => {
+  const command = hostCommand({
+    packaged: false,
+    resourcesPath: "",
+    appPath: join(import.meta.dir, "..", "src"),
+    platform: process.platform,
+    home: tmpdir(),
+    env,
+  });
+  const lines: string[] = [];
+  const host = new LocalHost({
+    command,
+    hc: () => undefined,
+    cwd: tmpdir(),
+    env,
+    log: (line) => lines.push(line),
+  });
+  try {
+    await host.start();
+  } finally {
+    await host.stop();
+  }
+  const printed = lines.find((line) => line.includes("SPAWN-ARGS "));
+  if (printed === undefined) throw new Error(`the host printed no arguments: ${lines.join("\n")}`);
+  return { lines, args: JSON.parse(printed.slice(printed.indexOf("SPAWN-ARGS ") + "SPAWN-ARGS ".length)) as string[] };
+};
+
 describe("an e2e app launch never starts its host against the release relay (#2399)", () => {
   test("the launch helper's env starts the app's host on a relay the run owns", async () => {
     const env = await guardedEnv(specEnv());
@@ -61,34 +90,7 @@ describe("an e2e app launch never starts its host against the release relay (#23
       `the launch env leaves the app's host on --relay ${DEFAULT_RELAY_URL}: every e2e launch opens a Room on the production relay (#2399)`,
     ).not.toBe("");
 
-    const command = hostCommand({
-      packaged: false,
-      resourcesPath: "",
-      appPath: join(import.meta.dir, "..", "src"),
-      platform: process.platform,
-      home: tmpdir(),
-      env,
-    });
-    const hostBin = env["DORIFACE_HOST_BIN"];
-    if (hostBin === undefined) throw new Error("the guard env did not name the wrapper host binary");
-    expect(command.file).toBe(hostBin); // the app spawns the wrapper, not the bare CLI
-
-    const lines: string[] = [];
-    const host = new LocalHost({
-      command,
-      hc: () => undefined,
-      cwd: tmpdir(),
-      env,
-      log: (line) => lines.push(line),
-    });
-    try {
-      await host.start();
-    } finally {
-      await host.stop();
-    }
-    const printed = lines.find((line) => line.includes("SPAWN-ARGS "));
-    if (printed === undefined) throw new Error(`the host printed no arguments: ${lines.join("\n")}`);
-    const args: string[] = JSON.parse(printed.slice(printed.indexOf("SPAWN-ARGS ") + "SPAWN-ARGS ".length));
+    const { args } = await startThroughWrapper(env);
     const valueOf = (flag: string): string | undefined => args[args.indexOf(flag) + 1];
     expect(valueOf("--relay"), "the host the e2e launch started was given no relay").toBeDefined();
     expect(valueOf("--relay"), "the host the e2e launch started dials the release relay (#2399)").not.toBe(
@@ -137,20 +139,50 @@ describe("an e2e app launch never starts its host against the release relay (#23
     expect(env["DORIFACE_HOST_BIN"]).toBeUndefined();
   });
 
-  test("a packaged run starts the bundled host, not the checkout's source (#2457 review)", async () => {
-    // The packaged CI job and the release AppImage step must keep testing the host binary that ships: in packaged
-    // mode the wrapper's host is the one beside the app, never the checkout's host/src/cli.ts.
+  test("the guard does not guess the packaged host; the app hands the wrapper its own resolution (#2457 review HIGH)", async () => {
+    // No code outside the app re-derives the bundled host's path - every packaged layout (the Linux --dir output, the
+    // macOS .app bundle, an AppImage's mounted payload) is resolved by hostCommand from the app's own context.
     const saved = process.env["DORIFACE_E2E_EXECUTABLE"];
     process.env["DORIFACE_E2E_EXECUTABLE"] = join(tmpdir(), "guard-packaged", "Doriterm");
     try {
       const withoutOwnHostCli = { ...specEnv() };
       delete withoutOwnHostCli["DORIFACE_E2E_HOST_CLI"];
       const env = await guardedEnv(withoutOwnHostCli);
-      expect(env["DORIFACE_E2E_HOST_CLI"] ?? "").toMatch(/resources[\\/]bin[\\/]doriface-host(\.exe)?$/);
+      expect(
+        env["DORIFACE_E2E_HOST_CLI"],
+        "the guard guessed a packaged host path itself; the wrapper must take the app's resolution instead",
+      ).toBeUndefined();
     } finally {
       if (saved === undefined) delete process.env["DORIFACE_E2E_EXECUTABLE"];
       else process.env["DORIFACE_E2E_EXECUTABLE"] = saved;
     }
+  });
+
+  test("the wrapper starts the host the app resolved, on every packaged layout (#2457 review HIGH)", async () => {
+    // What the app would exec, per layout, from the product's own resolution:
+    const layouts = [
+      { platform: "linux" as const, resourcesPath: "/ci/dist/release/linux-unpacked/resources" },
+      { platform: "darwin" as const, resourcesPath: "/ci/dist/release/mac/Doriterm.app/Contents/Resources" },
+      // An AppImage mounts its payload before the app starts; by then it is just the app's resources folder.
+      { platform: "linux" as const, resourcesPath: "/tmp/.mount_Doriterm/resources" },
+    ];
+    for (const layout of layouts) {
+      const command = hostCommand({
+        packaged: true,
+        resourcesPath: layout.resourcesPath,
+        appPath: "",
+        platform: layout.platform,
+        home: tmpdir(),
+        env: {},
+      });
+      expect(command.file).toBe(join(layout.resourcesPath, "bin", "doriface-host"));
+    }
+    // The app passes that resolution to the wrapper, and the wrapper starts exactly it - nothing else.
+    const resolvedFixture = join(import.meta.dir, "fixtures", "spawn-args.fixture.ts");
+    const env = await guardedEnv(specEnv());
+    delete env["DORIFACE_E2E_HOST_CLI"];
+    const { args } = await startThroughWrapper({ ...env, DORIFACE_HOST_RESOLVED: resolvedFixture });
+    expect(args[0], "the wrapper did not start the host the app resolved").toBe(resolvedFixture);
   });
 
   test("the wrapper refuses to start the host on the release relay", async () => {
@@ -174,5 +206,67 @@ describe("an e2e app launch never starts its host against the release relay (#23
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the run teardown proves the guard (#2457 review)", () => {
+  let teardown: () => Promise<void>;
+  let runDir: string;
+
+  beforeAll(async () => {
+    teardown = (await import("../e2e/leftover-cores.ts")).default;
+  });
+
+  beforeEach(() => {
+    runDir = mkdtempSync(join(tmpdir(), "dd-teardown-"));
+    process.env["DORIFACE_E2E_RUN_DIR"] = runDir;
+  });
+
+  afterEach(() => {
+    rmSync(runDir, { recursive: true, force: true });
+    process.env["DORIFACE_E2E_RUN_DIR"] = ownRunDir;
+  });
+
+  const rigEngaged = (): string => {
+    const wrapperDir = join(runDir, "host-wrapper");
+    mkdirSync(wrapperDir, { recursive: true });
+    return join(wrapperDir, "records.jsonl");
+  };
+
+  test("fails a run that engaged the guard but recorded no launch", async () => {
+    rigEngaged();
+    await expect(teardown()).rejects.toThrow(/recorded no guarded launch/);
+  });
+
+  test("fails a run whose records are empty, not only missing", async () => {
+    writeFileSync(rigEngaged(), "");
+    await expect(teardown()).rejects.toThrow(/recorded no guarded launch/);
+  });
+
+  test("fails naming any launch started off the run's relay, and still sweeps the run dir", async () => {
+    writeFileSync(
+      rigEngaged(),
+      `${JSON.stringify({ givenRelay: DEFAULT_RELAY_URL, startedOn: DEFAULT_RELAY_URL, pid: 1, at: 1 })}\n`,
+    );
+    const marker = join(runDir, "marker");
+    writeFileSync(marker, "left behind by a spec");
+    await expect(teardown()).rejects.toThrow(/outside this run's relay/);
+    expect(existsSync(marker), "the teardown returned before sweeping the run dir").toBe(false);
+  });
+
+  test("passes a run whose every launch started on the run's relay, and sweeps", async () => {
+    writeFileSync(
+      rigEngaged(),
+      `${JSON.stringify({ givenRelay: DEFAULT_RELAY_URL, startedOn: "http://127.0.0.1:35655", pid: 1, at: 1 })}\n`,
+    );
+    const marker = join(runDir, "marker");
+    writeFileSync(marker, "left behind by a spec");
+    await teardown();
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  test("passes a run that never engaged the guard (an opt-out-only run)", async () => {
+    mkdirSync(join(runDir, "scratch"), { recursive: true });
+    await teardown();
   });
 });
