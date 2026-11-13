@@ -8,7 +8,7 @@ import { apartWrite, newTabWrite, type PaneAt } from "./pane-writes.ts";
 import { placeOf } from "./placement.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
 
-export const rootOf = (id: string, children: readonly Node[]): Node => ({ children: [...children], id, type: "row" });
+const rootOf = (id: string, children: readonly Node[]): Node => ({ children: [...children], id, type: "row" });
 
 /** The transient tab's terminal as a tab for the document, with fresh ids. */
 export function written(tab: LayoutTab): { id: string; pane: string; root: Node } {
