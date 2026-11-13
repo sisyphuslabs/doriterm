@@ -33,8 +33,9 @@ test("the mesh panel groups every machine of the host's status document", async 
   await expect(group(page, "offline")).toContainText("laptop");
   await expect(group(page, "offline")).toContainText("tablet");
   await expect(group(page, "offline")).toContainText("doriface-host mesh revoke laptop");
-  await expect(group(page, "revoked")).toContainText("kiosk");
-  await expect(group(page, "revoked")).not.toContainText("spare");
+  // A revoked key is gone for the person: no group of machine rows, one line with the count (spare shows under its removal).
+  await expect(group(page, "revoked")).toHaveCount(0);
+  await expect(page.locator("[data-mesh-revoked]")).toHaveText(/^1 removed machine:/);
   await expect(page.locator('[data-mesh-group^="removed-"]')).toContainText("spare");
   await expect(page.locator('[data-mesh-banner="notice"]')).toHaveCount(1);
   await expect(page.locator('[data-mesh-banner="notice"]')).toContainText("tablet");
