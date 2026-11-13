@@ -8,6 +8,7 @@ import { machineEntries, type MachineEntry } from "./machines.ts";
 import type { Session } from "./model.ts";
 import { withReach } from "./reach.ts";
 import { useSteady } from "./steady.ts";
+import { machineName } from "../connection/attached-name.ts";
 
 export { MACHINE_REFRESH_MS };
 
@@ -92,7 +93,8 @@ export function useMachines(connection: HcConnection, terminals: readonly Termin
     return () => clearTimeout(timer);
   }, [ends]);
   const views = useMemo(() => graceViews(read.views, read.held, now), [read, now]);
-  const { id: coreId, name: coreName } = connection.hello.core;
+  const coreId = connection.hello.core.id;
+  const coreName = machineName(connection);
   const reached = useMemo(() => withReach(terminals, views), [terminals, views]);
   const entries = useSteady(
     useMemo(() => machineEntries({ id: coreId, name: coreName }, views, reached), [coreId, coreName, views, reached]),

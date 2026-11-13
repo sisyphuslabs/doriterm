@@ -14,6 +14,7 @@ import { useHostRoundTrip } from "./use-host-round-trip.ts";
 import { desktopBridge } from "../desktop/bridge.ts";
 import { useBrowserMembership } from "../mesh/membership-state.ts";
 import { MembershipDeviceSection } from "./membership-device.tsx";
+import { machineName } from "../connection/attached-name.ts";
 
 function describe(state: ConnectionState): ReactNode {
   switch (state.phase) {
@@ -88,7 +89,7 @@ function PairedDevicesSection() {
   const view = pairedDevicesView(paired, devices !== null);
   // The host names itself as it answers; that name is kept beside the paired host, so the row still names it once the
   // link drops or the page is loaded again while it is down (#496). The id is only left when no name was ever learned.
-  const name = state.phase === "open" ? state.connection.hello.core.name : settings.hostName;
+  const name = state.phase === "open" ? machineName(state.connection) : settings.hostName;
   const host = name !== "" ? name : settings.mode === "relay" ? settings.hostId || "No host" : settings.loopbackUrl;
   useEffect(() => {
     if (devices === null) return;

@@ -30,6 +30,7 @@ import { ConnectionLine } from "./reconnect-status.tsx";
 import { afterEnd } from "./session-actions.ts";
 import { useQuietKeyboard } from "./use-quiet-keyboard.ts";
 import { useStickyKeys } from "./use-sticky-keys.ts";
+import { machineName } from "../connection/attached-name.ts";
 
 export interface PhoneTerminalProps {
   readonly connection: HcConnection;
@@ -152,7 +153,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
       <PhoneHeader
         terminal={terminal}
         terminals={terminals}
-        host={connection.hello.core.name}
+        host={machineName(connection)}
         tabTitle={tabTitle}
         backTo={backTo}
         onBack={onBack}

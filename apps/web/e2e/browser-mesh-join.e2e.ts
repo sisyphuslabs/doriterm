@@ -125,3 +125,46 @@ test("a home-screen join resumes the same code after its page closes for approva
     await host.stop();
   }
 });
+
+test("a joined browser names the machine it is attached to by its mesh member name, not its hc name (#1902)", async ({
+  browser,
+  baseURL,
+}) => {
+  const host = await startFakeRelayHost({ terminal: true });
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    ...(baseURL === undefined ? {} : { baseURL }),
+    serviceWorkers: "block",
+  });
+  try {
+    const page = await context.newPage();
+    await routeOnlyRelay(page, host);
+    const offer = await host.meshOffer();
+    await page.goto(offer.link);
+    await page.getByLabel("This browser's name").fill("desktop-browser");
+    await page.getByRole("button", { name: "Join", exact: true }).click();
+    const pending = await host.pendingJoin();
+    await expect(page.getByLabel("Join code")).toHaveText(pending.code);
+    await page.getByRole("button", { name: "The codes match", exact: true }).click();
+    await host.answerJoin(pending.nonce, pending.code, true);
+    await expect(page.getByRole("list", { name: "Machines", exact: true })).toContainText("Online", {
+      timeout: 25_000,
+    });
+    // The join founded the mesh; now the host's own member takes a mesh name its hc core does not have, as
+    // `doriface-host mesh rename` gives it: hc still answers as "studio".
+    await host.renameSelf("studio-mesh");
+    await page.reload();
+    await expect(page.getByRole("list", { name: "Machines", exact: true })).toContainText("studio-mesh", {
+      timeout: 25_000,
+    });
+    await page.goto("/");
+    await expect(page.getByText("existing", { exact: true }).first()).toBeVisible({ timeout: 20_000 });
+    // One machine, one name: the workspace names it as Settings > Machines does, never by what its hc calls itself.
+    const status = page.getByRole("contentinfo");
+    await expect(status).toContainText("Machine: studio-mesh", { timeout: 20_000 });
+    await expect(status).not.toContainText(/Machine: studio(?!-mesh)/);
+  } finally {
+    await context.close();
+    await host.stop();
+  }
+});

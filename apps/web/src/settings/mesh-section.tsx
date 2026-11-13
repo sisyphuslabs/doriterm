@@ -9,6 +9,7 @@ import { disagreement, meshGroups } from "../mesh/groups.ts";
 import { MemberRow, RevokedRow } from "../mesh/mesh-rows.tsx";
 import { useMesh } from "../mesh/use-mesh.ts";
 import { useNow } from "../workspace/use-now.ts";
+import { machineName } from "../connection/attached-name.ts";
 
 interface MeshGroupProps {
   readonly id: string;
@@ -71,7 +72,7 @@ export function MeshBody({
   const pairedHost = usePairedHost();
   const { read, answer } = useMesh(connection);
   const now = useNow();
-  const host = connection.hello.core.name;
+  const host = machineName(connection);
   switch (read.phase) {
     case "loading":
       return <Skeleton className="h-16 rounded-md" />;

@@ -8,6 +8,7 @@ import { pushSettings, type PushView } from "../push/push-settings.ts";
 import { idOfMachine } from "../workspace/model.ts";
 import { useMachines } from "../workspace/use-machines.ts";
 import { noticeControls } from "./notice-controls.ts";
+import { machineName } from "../connection/attached-name.ts";
 
 const NO_TERMINALS: readonly Terminal[] = [];
 
@@ -89,7 +90,7 @@ function MachineMutes({
 }) {
   const { views } = useMachines(connection, NO_TERMINALS);
   const machines = [
-    { id: idOfMachine(undefined), name: connection.hello.core.name },
+    { id: idOfMachine(undefined), name: machineName(connection) },
     ...views.map((view) => ({ id: idOfMachine(view.name), name: view.name })),
   ];
   const setMuted = (id: string, heard: boolean): void => {

@@ -33,6 +33,7 @@ import { attachAhead, openingCallsOf } from "../terminal/opening-attach.ts";
 import type { Axis } from "@doriface/protocol/layout";
 import type { Layout, PaneTarget } from "./use-layout.ts";
 import type { TerminalEnd } from "../terminal/terminal-end.ts";
+import { machineName } from "../connection/attached-name.ts";
 
 /** A tab's glyph: the state that most needs the person among its panes, as the sidebar sections rank them. */
 const URGENCY: readonly AgentStatus[] = ["blocked", "done", "working", "idle", "unknown"];
@@ -200,8 +201,7 @@ export function DesktopShell(props: DesktopShellProps) {
       : /^\d*$/.test(shownTitle)
         ? `tab ${shownTitle}`.trim()
         : shownTitle;
-  const focusedMachine =
-    (focusedAddress === null ? undefined : machineOf(focusedAddress)) ?? connection.hello.core.name;
+  const focusedMachine = (focusedAddress === null ? undefined : machineOf(focusedAddress)) ?? machineName(connection);
   const focusedTerminal = focusedAddress === null ? undefined : byAddress.get(focusedAddress);
   // As on the phone: a focused terminal that is gone, whose machine is offline, or whose view showed it had ended has
   // nothing to type into, so a dictation under way ends (its recognizer aborted) and no mic or bound key starts one (#254, #258).
