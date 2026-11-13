@@ -1,12 +1,4 @@
-import {
-  IconButton,
-  MachineHeader,
-  RowWithActions,
-  SidebarSection,
-  SpaceRow,
-  cn,
-  type Space,
-} from "@doriface/ui";
+import { IconButton, MachineHeader, RowWithActions, SidebarSection, SpaceRow, cn, type Space } from "@doriface/ui";
 import { Plus } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { desktopBridge } from "../desktop/bridge.ts";

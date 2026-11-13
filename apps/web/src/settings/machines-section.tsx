@@ -106,13 +106,7 @@ function MachineRows({ connection }: { readonly connection: HcConnection }) {
           />
         </li>
         {views.map((view) => (
-          <AddedMachine
-            key={view.id}
-            view={view}
-            now={now}
-            onRetry={() => retry(view.name)}
-            onRemove={remove}
-          />
+          <AddedMachine key={view.id} view={view} now={now} onRetry={() => retry(view.name)} onRemove={remove} />
         ))}
       </ul>
       {listError === undefined ? null : <MachinesListError cause={listError} />}
