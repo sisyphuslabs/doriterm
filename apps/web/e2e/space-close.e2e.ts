@@ -3,10 +3,10 @@
 import type { Browser, Page } from "@playwright/test";
 import { endAgent } from "./agents.ts";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
-import { getCoreDoc } from "./core-doc.ts";
+import { getCoreDoc, setCoreDoc } from "./core-doc.ts";
 import { expect, terminalCount, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
-import { paneOf, seedSpaces } from "./layout-doc.ts";
+import { LAYOUT_DOC, paneOf, seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -26,6 +26,27 @@ async function openSpaceMenu(page: Page, name: string): Promise<void> {
 }
 
 const started: string[] = [];
+
+/** hc's own answer to a call about a terminal it does not have, as one frame for the page (shape of a real reply). */
+function notFoundFrame(id: number, terminal: string): Buffer {
+  const payload = Buffer.from(
+    `${JSON.stringify({ error: { code: -32000, data: { hint: "see hc ls --all", kind: "not_found" }, message: `no terminal "${terminal}"` }, id, jsonrpc: "2.0" })}\n`,
+  );
+  const header = Buffer.alloc(9);
+  header.writeUInt32LE(payload.byteLength, 5);
+  return Buffer.concat([header, payload]);
+}
+
+/** The page's held calls of these methods about these terminals, by request id. */
+function heldCalls(sent: readonly string[], methods: readonly string[], terminals: readonly string[]) {
+  const calls = new Map<number, string>();
+  for (const text of sent)
+    for (const match of text.matchAll(/"id":(\d+),"method":"([a-z.]+)","params":\{[^}]*"terminal":"([^"]+)"/g)) {
+      const [, id = "", method = "", terminal = ""] = match;
+      if (methods.includes(method) && terminals.includes(terminal)) calls.set(Number(id), terminal);
+    }
+  return calls;
+}
 
 /** A plain shell in space `space`, started straight on the e2e core. */
 function startIn(space: string, name: string): string {
@@ -178,19 +199,6 @@ test("a space closed while its layout write is refused says so once, not once pe
   await expect(paneOf(page, one)).toBeVisible({ timeout: 20_000 });
   await expect(paneOf(page, two)).toBeVisible({ timeout: 20_000 });
   const said = await refusalNotices(page);
-  /** Whether hc has answered the page's terminal.get for this session with not_found (the dead-pane check). */
-  const toldGone = (address: string): boolean => {
-    const asks = socket
-      .sent()
-      .filter((text) => text.includes('"method":"terminal.get"') && text.includes(`"terminal":"${address}"`));
-    const ids = asks.flatMap((text) => /"id":(\d+)/.exec(text)?.[1] ?? []);
-    return socket
-      .received()
-      .some(
-        (text) =>
-          text.includes("not_found") && ids.some((id) => text.includes(`"id":${id},`) || text.includes(`"id":${id}}`)),
-      );
-  };
 
   // Every layout write is refused, as when another device keeps changing the document.
   socket.staleWrites(true);
@@ -200,12 +208,30 @@ test("a space closed while its layout write is refused says so once, not once pe
   await item.click();
   const question = ask(page);
   await expect(question).toContainText(`${name} \u2014 1 tab, 2 terminals`);
+  // Removing a terminal can have the core take its pane, and so the emptied tab and space, out of the layout (#2383):
+  // then the close finds nothing left to remove, and rightly says nothing. This case is the refused write, so the core
+  // never sees the removals: the page's terminal.rm and terminal.get for both are held and answered not_found here, as
+  // hc answers for a removed terminal, and the space stays in the document.
+  socket.hold("terminal.rm", "terminal.get");
+  const answered = new Set<number>();
+  const answer = (): number => {
+    for (const [id, terminal] of heldCalls(socket.sent(), ["terminal.rm", "terminal.get"], [one, two])) {
+      if (answered.has(id)) continue;
+      answered.add(id);
+      socket.sendFromHost(notFoundFrame(id, terminal));
+    }
+    return new Set(heldCalls(socket.sent(), ["terminal.get"], [one, two]).values()).size;
+  };
+  const conflicts = (): number => socket.received().filter((text) => text.includes('"kind":"conflict"')).length;
+  const before = conflicts();
   await question.getByRole("button", { name: "Close" }).click();
   // The close ends both programs first, and the feed then has the page ask about each pane it finds absent, answered
   // not_found: both drops it could report are queued behind the close's own write.
-  await expect.poll(() => [one, two].every(toldGone), { timeout: 20_000 }).toBe(true);
-  started.splice(0);
-  await expect(question.getByText("The space was not closed")).toBeVisible({ timeout: 20_000 });
+  await expect.poll(answer, { timeout: 20_000 }).toBe(2);
+  // The close's write is refused once per retry (CONFLICT_RETRIES, 8) before it gives up: that, not a guess at a slow
+  // host's speed, is what the notice waits behind.
+  await expect.poll(() => (answer(), conflicts() - before), { timeout: 60_000 }).toBeGreaterThanOrEqual(8);
+  await expect(question.getByText("The space was not closed")).toBeVisible();
   await expect(
     question.getByText("The layout kept changing on another device, so this change was not saved"),
   ).toBeVisible();
@@ -219,11 +245,48 @@ test("a space closed while its layout write is refused says so once, not once pe
   await page.getByRole("menuitem", { name: "Rename space\u2026" }).click();
   const rename = page.getByRole("dialog", { name: `Rename ${name}` });
   await rename.getByRole("textbox", { name: "Name" }).fill(`${name}-later`);
+  const renaming = conflicts();
   await rename.getByRole("button", { name: "Rename" }).click();
+  await expect.poll(() => conflicts() - renaming, { timeout: 60_000 }).toBeGreaterThanOrEqual(8);
   await expect(
     rename.getByText("The layout kept changing on another device, so this change was not saved"),
-  ).toBeVisible({ timeout: 20_000 });
+  ).toBeVisible();
   expect(await said()).toBe(1);
+});
+
+test("a space already gone from the layout when the close's write lands closes its question, saying nothing (#2383)", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const name = `cl2383-${test.info().repeatEachIndex}`;
+  const one = startIn(name, "cl2383-one");
+  seedSpaces([{ id: `spc-${name}`, name, folder: "/tmp", tabs: [{ id: `tb-${name}`, name, terminal: one }] }]);
+  const socket = await routeHcSocket(page);
+  await page.goto("/");
+  await expect(spaceRow(page, name)).toBeVisible({ timeout: 20_000 });
+  await expect(paneOf(page, one)).toBeVisible({ timeout: 20_000 });
+  const said = await refusalNotices(page);
+  // Removing a terminal can have the core take its pane out of the layout, and with it the emptied tab and space
+  // (#2383: measured on a hosted run). The close's first write is refused; by the time it re-reads, the space is gone.
+  socket.staleWrites(true);
+  await openSpaceMenu(page, name);
+  await page.getByRole("menuitem", { name: "Close space\u2026" }).click();
+  const question = ask(page);
+  await expect(question).toContainText(`${name} \u2014 1 tab, 1 terminal`);
+  // The re-read after that refusal is held, so the test decides what it finds: the layout without this space, as the
+  // core leaves it once the close's own removals have emptied it.
+  const release = socket.hold("doc.get");
+  await question.getByRole("button", { name: "Close" }).click();
+  await expect
+    .poll(() => socket.received().filter((text) => text.includes('"kind":"conflict"')).length, { timeout: 30_000 })
+    .toBeGreaterThanOrEqual(1);
+  setCoreDoc(LAYOUT_DOC, { spaces: [] });
+  release();
+  // Nothing was refused that still matters: the space is already out of the layout, so the question closes and the
+  // workspace says nothing about a write that no longer applies.
+  await expect(question).toHaveCount(0, { timeout: 20_000 });
+  expect(await said()).toBe(0);
+  started.splice(0);
 });
 
 test("a close still writing keeps its question: Cancel waits, Escape does nothing, and a refused write says why there (#1498)", async ({
