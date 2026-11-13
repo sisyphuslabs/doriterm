@@ -13,7 +13,9 @@ export function orderDoc(
   reading: () => boolean,
   schedule: Schedule,
 ): LayoutDoc {
-  const doc: LayoutDoc = new LayoutDoc(
+  const holder: { doc?: LayoutDoc } = {};
+  const reread = new Reread(() => void holder.doc?.refresh(), reading, schedule);
+  const doc = new LayoutDoc(
     {
       get: () => call("doc.get", { name: ORDER_DOC }),
       set: (_on, value, version) => call("doc.set", { name: ORDER_DOC, value, version }),
@@ -26,6 +28,6 @@ export function orderDoc(
     },
     readOrderDocument,
   );
-  const reread = new Reread(() => void doc.refresh(), reading, schedule);
+  holder.doc = doc;
   return doc;
 }
