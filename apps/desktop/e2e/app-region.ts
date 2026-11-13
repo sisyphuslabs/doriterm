@@ -14,8 +14,10 @@
  * Runs in the page (pass it to `page.evaluate`). The layout tree follows the DOM except for pseudo-elements, which are
  * read in their place (::before before an element's children, ::after after them). app-region is inherited, so a
  * button's hit-area pseudo-element lists its own region too. A pseudo-element's box is read from its used insets and
- * size against its containing block, which this knows only for a fixed one (the viewport) or an absolute one whose
- * element is positioned (that element's padding box); any other with an app-region throws instead of being skipped.
+ * size against its containing block: the viewport for a fixed one; for an absolute one, the padding box of the nearest
+ * element, itself or an ancestor, that is positioned or transformed, else the initial containing block (#2366: a static
+ * button's absolute hit layer is placed by its positioned ancestor). Any other with an app-region throws instead of
+ * being skipped.
  */
 export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }): "drag" | "no-drag" | "none" {
   let at: "drag" | "no-drag" | "none" = "none";
@@ -29,9 +31,19 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
     if (style.content === "none" || style.content === "normal" || (mode !== "drag" && mode !== "no-drag")) return;
     if (style.visibility !== "visible" || style.display === "none") return;
     let origin = { left: 0, top: 0 };
-    if (style.position === "absolute" && getComputedStyle(element).position !== "static") {
-      const box = element.getBoundingClientRect();
-      origin = { left: box.left + element.clientLeft, top: box.top + element.clientTop };
+    if (style.position === "absolute") {
+      let block: Element | null = element;
+      while (block !== null) {
+        const own = getComputedStyle(block);
+        if (own.position !== "static" || own.transform !== "none") break;
+        block = block.parentElement;
+      }
+      if (block === null) {
+        origin = { left: -window.scrollX, top: -window.scrollY };
+      } else {
+        const box = block.getBoundingClientRect();
+        origin = { left: box.left + block.clientLeft, top: box.top + block.clientTop };
+      }
     } else if (style.position !== "fixed") {
       throw new Error(`${element.tagName}${which} has app-region ${mode} and no readable box`);
     }
