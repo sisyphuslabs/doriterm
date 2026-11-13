@@ -74,18 +74,22 @@ export interface RemoveMachineButtonProps extends Pick<ButtonProps, "size" | "cl
   readonly onRemove: (machine: string) => Promise<void>;
 }
 
-/** Remove <machine>… beside a machine's Try again, with its own confirmation. */
+/**
+ * Remove <machine>… beside a machine's Try again, with its own confirmation. It sits under the machine's name, so it reads
+ * Remove… and keeps the name in its accessible name: a long name would push it past a phone's width (#2456).
+ */
 export function RemoveMachineButton({ name, onRemove, size, className }: RemoveMachineButtonProps) {
   const [asking, setAsking] = useState(false);
   return (
     <>
       <Button
         variant="ghost"
+        aria-label={removeLabel(name)}
         onClick={() => setAsking(true)}
         {...(size === undefined ? {} : { size })}
         {...(className === undefined ? {} : { className })}
       >
-        {removeLabel(name)}
+        Remove…
       </Button>
       <RemoveMachineDialog name={asking ? name : null} onClose={() => setAsking(false)} onRemove={onRemove} />
     </>

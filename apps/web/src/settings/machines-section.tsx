@@ -66,7 +66,6 @@ export function AddedMachine({ view, now, onRetry, onRemove }: AddedMachineProps
     <li>
       <SettingRow
         className="border-b-0"
-        inline
         title={title(<Server aria-hidden />, view.name)}
         description={
           <>
