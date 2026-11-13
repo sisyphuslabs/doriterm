@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { type FakeRelayHost, type RelayObserver, startFakeRelayHost } from "./relay-route.ts";
@@ -22,6 +25,8 @@ interface Traffic {
 
 interface Sockets {
   readonly traffic: Traffic;
+  /** Where the traffic counts stood as each socket opened, in order: a socket's messages are the ones after its mark. */
+  readonly opened: { readonly toRelay: number; readonly fromRelay: number }[];
   /** Closes every socket the page has open, as a relay blip does; sockets opened while `down` are dropped at once. */
   readonly drop: () => void;
   down: boolean;
@@ -32,6 +37,7 @@ function observe(): { readonly observer: RelayObserver; readonly sockets: Socket
   const open = new Set<{ readonly drop: (code: number, reason: string) => void }>();
   const sockets: Sockets = {
     traffic,
+    opened: [],
     down: false,
     drop: () => {
       for (const socket of open) socket.drop(4008, "blip");
@@ -43,6 +49,7 @@ function observe(): { readonly observer: RelayObserver; readonly sockets: Socket
     fromRelay: (bytes) => traffic.fromRelay.push(bytes),
     opened: (socket) => {
       if (sockets.down) return socket.drop(4008, "still down");
+      sockets.opened.push({ toRelay: traffic.toRelay.length, fromRelay: traffic.fromRelay.length });
       open.add(socket);
     },
   };
@@ -116,6 +123,7 @@ test("a relay blip with nothing new is one request and one answer: no attach, th
   const rpcs = () => page.evaluate(() => (Reflect.get(globalThis, "__dorifaceRpcLog") as string[]).length);
   const { observer, sockets } = observe();
   const host = await startFakeRelayHost({ terminal: true });
+  let gateDir: string | undefined;
   try {
     await host.route(page, observer);
     const terminal = await pairAndOpen(page, host);
@@ -136,23 +144,36 @@ test("a relay blip with nothing new is one request and one answer: no attach, th
     const before = await snapshot(terminal);
     expect(before.attaches).toBeGreaterThanOrEqual(1);
     expect(before.scrollTop).toBeGreaterThan(0);
-    const sentBefore = sockets.traffic.toRelay.length;
-    const receivedBefore = sockets.traffic.fromRelay.length;
+    // The page keeps talking on the old socket until it drops (a heartbeat, a key exchange), so the resume is measured
+    // on the socket that opens after the blip, from the counts as it opened (#2482).
     const rpcsBefore = await rpcs();
 
     await sampleFrames(page);
     const droppedAt = Date.now();
+    // Marked with no await between it and the drop, so no socket can open in the gap.
+    const socketsBefore = sockets.opened.length;
     sockets.drop();
     // The resume: one request out, one answer back, on the new socket.
-    await expect.poll(() => sockets.traffic.fromRelay.length, { timeout: 20_000 }).toBeGreaterThan(receivedBefore);
+    const resumed = () => sockets.opened[socketsBefore];
+    await expect
+      .poll(
+        () => {
+          const mark = resumed();
+          return mark === undefined ? 0 : sockets.traffic.fromRelay.length - mark.fromRelay;
+        },
+        { timeout: 20_000 },
+      )
+      .toBeGreaterThan(0);
     await expect(page.getByRole("status").filter({ hasText: "Reconnecting" })).toBeHidden({ timeout: 20_000 });
     const resumedAfterMs = Date.now() - droppedAt;
     // Anything a replay would add arrives within a settle; a heartbeat may land too, far under a replay's size.
     await page.waitForTimeout(1_000);
     const frames = await framesSampled(page);
     const after = await snapshot(terminal);
-    const sent = sockets.traffic.toRelay.slice(sentBefore);
-    const received = sockets.traffic.fromRelay.slice(receivedBefore);
+    const mark = resumed();
+    if (mark === undefined) throw new Error("no socket opened after the blip");
+    const sent = sockets.traffic.toRelay.slice(mark.toRelay);
+    const received = sockets.traffic.fromRelay.slice(mark.fromRelay);
     const calls = await page.evaluate(
       (from) => (Reflect.get(globalThis, "__dorifaceRpcLog") as string[]).slice(from),
       rpcsBefore,
@@ -176,7 +197,11 @@ test("a relay blip with nothing new is one request and one answer: no attach, th
 
     // Output the host makes while the socket is down comes as the records the page missed, appended once, with the
     // reader left where they were.
-    await page.keyboard.type("sleep 1.5; seq -f 'late-%g' 1 20");
+    // The output waits for a file the test makes once the socket is down, so it is made during the outage however slow
+    // the runner is; a fixed sleep let it land before the drop under load (#2482).
+    gateDir = mkdtempSync(join(tmpdir(), "resume-"));
+    const go = join(gateDir, "go");
+    await page.keyboard.type(`until [ -e '${go}' ]; do sleep 0.1; done; seq -f 'late-%g' 1 20`);
     await page.keyboard.press("Enter");
     await expect(terminal).toContainText("seq -f 'late-%g' 1 20");
     // Typing follows the output to the end; the reader then goes back up, and must be left there by what arrives.
@@ -187,10 +212,12 @@ test("a relay blip with nothing new is one request and one answer: no attach, th
       .poll(() => terminal.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop))
       .toBeGreaterThan(100);
     const idle = await snapshot(terminal);
-    const sentIdle = sockets.traffic.toRelay.length;
-    const receivedIdle = sockets.traffic.fromRelay.length;
+    // As in the idle case, the missed output is read on the socket the page resumes on: sockets refused while the
+    // relay is down never mark, so the first mark after this one is that socket's.
+    const socketsIdle = sockets.opened.length;
     sockets.down = true;
     sockets.drop();
+    writeFileSync(go, "");
     await page.waitForTimeout(2_500);
     sockets.down = false;
     await expect(terminal).toContainText("late-20", { timeout: 30_000 });
@@ -198,11 +225,13 @@ test("a relay blip with nothing new is one request and one answer: no attach, th
     await page.waitForTimeout(500);
     const caughtUp = await snapshot(terminal);
     const text = (await terminal.textContent()) ?? "";
+    const back = sockets.opened[socketsIdle];
+    if (back === undefined) throw new Error("no socket opened after the outage");
     const missed = {
       idle,
       caughtUp,
-      sent: sockets.traffic.toRelay.slice(sentIdle),
-      received: sockets.traffic.fromRelay.slice(receivedIdle),
+      sent: sockets.traffic.toRelay.slice(back.toRelay),
+      received: sockets.traffic.fromRelay.slice(back.fromRelay),
     };
     test.info().annotations.push({ type: "measured-missed", description: JSON.stringify(missed) });
     console.log(`reconnect with missed output: ${JSON.stringify(missed)}`);
@@ -216,6 +245,7 @@ test("a relay blip with nothing new is one request and one answer: no attach, th
     expect(missed.sent.filter((bytes) => bytes === REQUEST_BYTES).length).toBeGreaterThanOrEqual(1);
     for (const bytes of missed.received) expect(bytes).toBeLessThan(13_000);
   } finally {
+    if (gateDir !== undefined) rmSync(gateDir, { recursive: true, force: true });
     await host.stop();
   }
 });
