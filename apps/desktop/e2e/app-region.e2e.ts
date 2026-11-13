@@ -85,6 +85,12 @@ test("a static button's absolute hit layer is read against its nearest positione
     expect(await page.evaluate(appRegionAt, { x: 80, y: 275 })).toBe("no-drag");
     expect(await page.evaluate(appRegionAt, { x: 90, y: 250 })).toBe("none");
     expect(await page.evaluate(appRegionAt, { x: 55, y: 285 })).toBe("none");
+    // The inner scale written as a transform, as the app's arrival writes it, compounds with the outer scale the same way.
+    await page.setContent(NESTED.replace("#grown { scale: 2;", "#grown { transform: scale(2);"));
+    expect(await page.evaluate(appRegionAt, { x: 30, y: 225 })).toBe("no-drag");
+    expect(await page.evaluate(appRegionAt, { x: 80, y: 275 })).toBe("no-drag");
+    expect(await page.evaluate(appRegionAt, { x: 90, y: 250 })).toBe("none");
+    expect(await page.evaluate(appRegionAt, { x: 55, y: 285 })).toBe("none");
     // A rotation has no such product, so it is refused.
     await page.setContent(SCALED.replace("scale: 2;", "rotate: 10deg;"));
     await expect(page.evaluate(appRegionAt, { x: 10, y: 10 })).rejects.toThrow("no readable box");
