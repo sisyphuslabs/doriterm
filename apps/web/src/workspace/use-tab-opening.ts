@@ -5,7 +5,7 @@ import { spaceKey, tabKey } from "../layout/view.ts";
 import { findTerminal, keepTransient, localOf, type LayoutTab } from "./layout-model.ts";
 import { machineOf } from "./model.ts";
 import { apartWrite, newTabWrite, type PaneAt } from "./pane-writes.ts";
-import { placeOf } from "./placement.ts";
+import { afterIn, placedFate, placeOf } from "./placement.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
 
 const rootOf = (id: string, children: readonly Node[]): Node => ({ children: [...children], id, type: "row" });
@@ -82,9 +82,7 @@ export function useTabOpening({
       const machine = machineOf(address) ?? null;
       const layout = layoutOf(machine);
       const writable = layout !== undefined && layout.readOnly === null;
-      // A tab placed by its terminal's labels never takes the transient tab with it: that one keeps a space of its own.
-      const transient = keepTransient(active, address, writable);
-      const fate = placed !== undefined && transient !== null ? "apart" : transient;
+      const fate = placedFate(keepTransient(active, address, writable), placed !== undefined);
       if (fate === "apart" && active !== null) keepApart(active);
       if (layout === undefined || layout.readOnly !== null) return keepHere(address);
       const id = freshId("tb");
@@ -126,7 +124,7 @@ export function useTabOpening({
         .edit((doc) => {
           // A placed tab's space is decided on the document this write lands on, as adoption decides it (#2467).
           const where = placed === undefined ? space : placed(doc, freshId);
-          const after = where.id === space.id ? near?.id : undefined;
+          const after = afterIn(where.id, space.id, near?.id);
           const write = newTabWrite(doc, localOf(address), tab, where, after, kept, layout.pins);
           adopted = write.instead;
           return write.doc;
