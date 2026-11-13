@@ -1,8 +1,9 @@
 import type { JsonObject, Terminal } from "@doriface/protocol";
-import { addTab, docSpaces, freshId, type Node, panesOf, tabsOf, terminalBlock } from "@doriface/protocol/layout";
+import { addTab, freshId, type Node, panesOf, tabsOf, terminalBlock } from "@doriface/protocol/layout";
 import { spaceKey, tabKey, type View } from "../layout/view.ts";
 import { looseTerminals } from "./adoption.ts";
-import { machineOf, SPACE_LABEL } from "./model.ts";
+import { machineOf } from "./model.ts";
+import { placeOf } from "./placement.ts";
 import { type MachineIds, tabKey as terminalKey } from "./tab-keys.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
 
@@ -296,18 +297,10 @@ export function findTerminal(tabs: readonly LayoutTab[], address: string): { tab
   return null;
 }
 
-/** Whether a space's folder holds the directory: the folder itself, or one inside it. */
-const holds = (folder: string, dir: string): boolean =>
-  folder !== "" && (dir === folder || dir.startsWith(folder.endsWith("/") ? folder : `${folder}/`));
-
-/** The space adopted terminals with no space of their own go to, as herdr-app names its fallback. */
-export const HOME_SPACE = "Home";
-
 /**
  * The document with every terminal of its machine that is loose (`looseTerminals`: live, no tab shows it, and it gets a
- * tab of its own) adopted as one (#404): in the space its `space` label names (made when there is none, as that label
- * named its space before #404), else in the space whose folder holds its working directory (the deepest such folder),
- * else in the machine's Home space, made when there is none. Tabs are added in the order the terminals started (#1269).
+ * tab of its own) adopted as one (#404), each in the space `placeOf` names. Tabs are added in the order the terminals
+ * started (#1269).
  * Null when every terminal has a tab, so nothing is written; read inside the document's edit, so a reload or a second
  * device adopts nothing twice.
  */
@@ -318,30 +311,15 @@ export function adoptLoose(
 ): JsonObject | null {
   const loose = looseTerminals(doc, terminals);
   if (loose.length === 0) return null;
-  const spaces = doc === null ? [] : docSpaces(doc);
-  let home = spaces.find((space) => space.name === HOME_SPACE && space.folder === "")?.id;
   let next = doc;
   for (const terminal of loose) {
-    const dir = terminal.foreground?.cwd ?? terminal.cwd;
-    const owner = spaces
-      .filter((space) => holds(space.folder, dir))
-      .toSorted((a, b) => b.folder.length - a.folder.length)[0];
     const id = makeId("tb");
     const tab: JsonObject = {
       id,
       name: "",
       root: { children: [terminalBlock(makeId("p"), localOf(terminal.address))], id, type: "row" },
     };
-    const label = terminal.labels[SPACE_LABEL] ?? "";
-    if (label !== "") {
-      const named = next === null ? undefined : docSpaces(next).find((space) => space.name === label);
-      next = addTab(next, { id: named?.id ?? makeId("spc"), folder: named?.folder ?? "", name: label }, tab);
-    } else if (owner !== undefined) {
-      next = addTab(next, { id: owner.id, folder: owner.folder }, tab);
-    } else {
-      home ??= makeId("spc");
-      next = addTab(next, { id: home, folder: "", name: HOME_SPACE }, tab);
-    }
+    next = addTab(next, placeOf(next, terminal, makeId), tab);
   }
   return next;
 }
