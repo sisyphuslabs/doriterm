@@ -117,13 +117,14 @@ test("an unfocused split pane keeps its pty size through a reattach until it is 
 
   const opened = link.opened();
   await link.drop(true);
+  // The status bar says the link is down. Each pane also says Reconnecting while it re-attaches, so two panes say it at once.
   const reconnecting = page.getByRole("status").filter({ hasText: "Reconnecting" });
-  await expect(reconnecting).toBeVisible();
+  await expect(page.getByRole("contentinfo").getByRole("status").filter({ hasText: "Reconnecting" })).toBeVisible();
   await page.setViewportSize({ width: 900, height: 600 });
   await expect.poll(() => gridSize(unfocused)).not.toBe(before);
   link.restore();
   await expect.poll(link.opened, { timeout: 15_000 }).toBeGreaterThan(opened);
-  await expect(reconnecting).toBeHidden({ timeout: 15_000 });
+  await expect(reconnecting).toHaveCount(0, { timeout: 15_000 });
 
   // resumed: true defers a background viewer's size, so another device in use keeps its own; the pane in use applies.
   const focusedAddress = (await focused.getAttribute("data-terminal")) ?? "";

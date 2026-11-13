@@ -294,8 +294,8 @@ test("a reconnect under a full-screen program keeps the output behind it, once (
 });
 
 /**
- * Try again after a refused reattach mounts a new, empty view: it has no history to keep, so it asks for the history as
- * a first attach does instead of the screen alone.
+ * Try again after a refused reattach keeps the view the core painted (#1566): it asks for the screen alone, and the
+ * history the view holds is all still there, from its oldest line.
  */
 test("Try again after a refused reattach brings the history back into its new view (#1997)", async ({ page }) => {
   const link = await routeHcSocket(page);
@@ -314,6 +314,12 @@ test("Try again after a refused reattach brings the history back into its new vi
 
   await expect(terminal).toHaveAttribute("data-ready", "true", { timeout: 15_000 });
   await expect(terminal).toContainText("line-300", { timeout: 15_000 });
+  // Output after the reattach comes behind its paint on the same stream: once it shows, the paint has been drawn and the
+  // hold that keeps the view at its end through the repaint has let go.
+  await terminal.getByRole("textbox").focus();
+  await page.keyboard.type("echo done-$((1+1))");
+  await page.keyboard.press("Enter");
+  await expect(terminal).toContainText("done-2", { timeout: 30_000 });
   await expect.poll(() => historyRows(terminal, row.height), { timeout: 15_000 }).toBeGreaterThan(historyBefore - 6);
   expect(await oldestLine(terminal)).toBe(oldestBefore);
 });

@@ -1,4 +1,5 @@
 import type { Page, WebSocketRoute } from "@playwright/test";
+import { encodeFailure, parseJsonRpc } from "@doriface/protocol";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
 import { MACHINE_NAME } from "./machine.ts";
 
@@ -69,6 +70,8 @@ export interface HcSocket {
    * each one as a conflict, as when another device keeps changing the layout: the page's retries run out.
    */
   readonly staleWrites: (on: boolean) => void;
+  /** Refuse the next count attaches with a real RPC failure, leaving other calls and the program untouched. */
+  readonly refuseAttaches: (kind: string, count: number) => void;
 }
 
 interface HostHold {
@@ -128,6 +131,7 @@ export async function routeHcSocket(
   let hostMessages = 0;
   let held: readonly string[] = [];
   let stale = false;
+  let refusal = { kind: "", left: 0 };
   const parked: ((fail: boolean) => void)[] = [];
   const received: string[] = [];
   const hostHolds = new Set<HostHold>();
@@ -148,6 +152,19 @@ export async function routeHcSocket(
       const text = typeof frame === "string" ? frame : frame.toString("latin1");
       sent.push(text);
       observe?.sent?.(text);
+      if (refusal.left > 0 && typeof frame !== "string" && text.includes('"method":"terminal.attach"')) {
+        const request = parseJsonRpc(frame.subarray(HEADER_BYTES).toString("utf8"));
+        if (request.kind === "request") {
+          refusal.left -= 1;
+          const payload = Buffer.from(
+            encodeFailure(request.id, { code: -32000, message: refusal.kind, data: { kind: refusal.kind } }),
+          );
+          const header = Buffer.from(frame.subarray(0, HEADER_BYTES));
+          header.writeUInt32LE(payload.byteLength, 5);
+          socket.send(Buffer.concat([header, payload]));
+          return;
+        }
+      }
       const method = held.find((name) => text.includes(`"method":"${name}"`));
       if (method === undefined) host.send(frame);
       else
@@ -250,6 +267,9 @@ export async function routeHcSocket(
       for (const socket of live) socket.send(frame);
     },
     staleWrites: (on) => void (stale = on),
+    refuseAttaches: (kind, count) => {
+      refusal = { kind, left: count };
+    },
     hold: (...methods) => {
       held = methods;
       return (fail = false) => {

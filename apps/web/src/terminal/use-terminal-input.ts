@@ -43,6 +43,7 @@ interface InputSources {
   readonly address: string;
   readonly transformInput: ((data: string) => string) | undefined;
   readonly typesComposition: boolean;
+  readonly onInteract: () => void;
   /** Told of every input before it is sent or queued, in the order it reaches the program: the predictor (#1595). */
   readonly predict?: RefObject<((data: TerminalInput) => void) | null>;
 }
@@ -71,6 +72,8 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
   latestAddress.current = address;
   const latestToasts = useRef(toasts);
   latestToasts.current = toasts;
+  const interact = useRef(sources.onInteract);
+  interact.current = sources.onInteract;
   // Every human-input write goes through send, so keys pressed during a reconnect or a wake replay in the order pressed.
   const [held] = useState(
     () =>
@@ -91,6 +94,7 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
   latestPredict.current = predict;
   const [order] = useState(() =>
     inputOrder((data) => {
+      interact.current();
       latestPredict.current?.current?.(data);
       held.send(data);
     }),

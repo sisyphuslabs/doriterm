@@ -207,7 +207,11 @@ export class ConnectionStore {
     if (this.#state.phase === "open") this.#state.connection.close();
   }
 
-  async #attempt(attempt: number): Promise<void> {
+  /**
+   * `due`, when given, is an interaction's early try of the waiting attempt (see {@link nudge}): failing, it keeps that
+   * attempt and the time it was due, so the ladder does not climb on a dial the back-off did not make.
+   */
+  async #attempt(attempt: number, due?: number): Promise<void> {
     this.#current = attempt;
     if (this.#offline()) return this.#hold(attempt);
     const abort = new AbortController();
@@ -225,13 +229,14 @@ export class ConnectionStore {
       this.#opened(opened, abort, attempt, this.#now() - started);
     } catch (error) {
       if (this.#abort !== abort) return;
+      const next = due === undefined ? attempt + 1 : attempt;
       if (error instanceof AttemptTimeoutError) {
         this.#budget.timedOut();
-        this.#retry(error, attempt + 1);
+        this.#retry(error, next, due);
         return;
       }
       if (abort.signal.aborted) return;
-      this.#retry(error instanceof Error ? error : new Error(String(error)), attempt + 1);
+      this.#retry(error instanceof Error ? error : new Error(String(error)), next, due);
     }
   }
 
@@ -350,9 +355,8 @@ export class ConnectionStore {
     this.#wait(attempt);
   }
 
-  /** Arms `attempt` for its own delay without dialing anything. */
-  #wait(attempt: number): void {
-    const delay = BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)] ?? 10_000;
+  /** Arms `attempt` for its own delay, or for `delay` when given, without dialing anything. */
+  #wait(attempt: number, delay: number = BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)] ?? 10_000): void {
     clearTimeout(this.#timer);
     this.#pending = attempt;
     this.#timer = setTimeout(() => {
@@ -373,7 +377,8 @@ export class ConnectionStore {
     this.#save(this.#settings);
   }
 
-  #retry(error: Error, attempt: number): void {
+  /** `due`, when given, is when `attempt` comes (Date.now() epoch ms) instead of after its own delay from now. */
+  #retry(error: Error, attempt: number, due?: number): void {
     this.#disarmStable();
     const settling =
       this.#settings.viewMember === true &&
@@ -389,7 +394,10 @@ export class ConnectionStore {
     // user is reading, and never in loopback mode, where the address is this computer's own gateway rather than a member
     // (review of #994).
     if (this.#settings.mode !== "loopback") this.#rotateMember();
-    const delay = BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)] ?? 10_000;
+    const delay =
+      due === undefined
+        ? (BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)] ?? 10_000)
+        : Math.max(0, due - Date.now());
     this.#set({
       phase: "failed",
       error: settling ? new Error("Settling: waiting for this machine to learn this browser's membership.") : error,
@@ -398,13 +406,13 @@ export class ConnectionStore {
       retryAt: Date.now() + delay,
       stale: this.#stale,
     });
-    this.#wait(attempt);
+    this.#wait(attempt, delay);
   }
 
   /** A retry: for a loopback link in the desktop app, this computer's host first, then the link to where it is now. */
-  async #again(attempt: number): Promise<void> {
+  async #again(attempt: number, due?: number): Promise<void> {
     const starter = this.#localHost;
-    if (starter === null || this.#settings.mode !== "loopback") return this.#attempt(attempt);
+    if (starter === null || this.#settings.mode !== "loopback") return this.#attempt(attempt, due);
     const asked = this.#settings;
     const abort = new AbortController();
     this.#abort = abort;
@@ -422,7 +430,7 @@ export class ConnectionStore {
       this.#settings = { ...asked, loopbackUrl: where.url, token: where.token };
       this.#save(this.#settings);
     }
-    return this.#attempt(attempt);
+    return this.#attempt(attempt, due);
   }
 
   /**
@@ -439,6 +447,20 @@ export class ConnectionStore {
     clearTimeout(this.#timer);
     this.#pending = null;
     void this.#again(attempt);
+  }
+
+  /**
+   * Typing into a pane whose link is waiting tries the waiting attempt at once (#2256). That early dial is not the back-off's:
+   * refused, it leaves the attempt and the time it is due as they were, so typing can only make reconnecting sooner, never
+   * later. Nothing is dialed while an attempt is already out or while there is no network to try on.
+   */
+  nudge(): void {
+    const state = this.#state;
+    const attempt = this.#pending;
+    if (state.phase !== "failed" || state.retryAt === null || attempt === null || this.#offline()) return;
+    clearTimeout(this.#timer);
+    this.#pending = null;
+    void this.#again(attempt, state.retryAt);
   }
 
   /**
