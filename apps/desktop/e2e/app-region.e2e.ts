@@ -62,7 +62,9 @@ test("a static button's absolute hit layer is read against its nearest positione
     expect(await page.evaluate(appRegionAt, { x: 105, y: 25 })).toBe("no-drag");
     expect(await page.evaluate(appRegionAt, { x: 105, y: 75 })).toBe("drag");
     // Under a 2x scale the scroll offset is in the container's own units: the layer sits at x 200..240, y 40..60.
-    await page.setContent(SCROLLED.replace("body { margin: 0; }", "body { margin: 0; scale: 2; transform-origin: 0 0; }"));
+    await page.setContent(
+      SCROLLED.replace("body { margin: 0; }", "body { margin: 0; scale: 2; transform-origin: 0 0; }"),
+    );
     await page.evaluate(() => document.getElementById("box")?.scrollTo(0, 50));
     expect(await page.evaluate(appRegionAt, { x: 210, y: 50 })).toBe("no-drag");
     expect(await page.evaluate(appRegionAt, { x: 210, y: 150 })).toBe("drag");
