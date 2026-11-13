@@ -44,7 +44,7 @@ test("a fresh browser pairs with the desktop app through the hosted relay and ty
   const env = Object.fromEntries(
     Object.entries({ ...process.env, ...hc.env }).filter((entry): entry is [string, string] => entry[1] !== undefined),
   );
-  app = await electron.launch({ ...launchOptions([`--user-data-dir=${profile}`]), env });
+  app = await electron.launch(await launchOptions([`--user-data-dir=${profile}`], { env }));
   const page = await app.firstWindow();
   const started = page.getByRole("button", { name: "Use this computer" });
   const workspace = page

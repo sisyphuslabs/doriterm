@@ -23,10 +23,7 @@ test.beforeAll(async () => {
   // Made here, not at import, so --list and other specs' runs leave no scratch session behind.
   const session = scratchHcSession();
   hc = session;
-  launched = await electron.launch({
-    ...launchOptions(),
-    env: launchEnv(session),
-  });
+  launched = await electron.launch(await launchOptions([], { env: launchEnv(session) }));
 });
 
 test.afterAll(async () => {

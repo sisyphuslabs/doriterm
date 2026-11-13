@@ -22,7 +22,7 @@ test("the workspace keeps style-src strict and still hides Base UI's native scro
       PS1: "$ ",
     }).filter((entry): entry is [string, string] => entry[1] !== undefined),
   );
-  const app = await electron.launch({ ...launchOptions([`--user-data-dir=${profile}`]), env });
+  const app = await electron.launch(await launchOptions([`--user-data-dir=${profile}`], { env }));
   try {
     const page = await app.firstWindow();
     console.log("stage window");

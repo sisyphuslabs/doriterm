@@ -110,7 +110,7 @@ test("with no hc anywhere, Install herdr-core refuses a damaged download, then i
       ENV: "",
     }).filter((entry): entry is [string, string] => entry[1] !== undefined),
   );
-  const app = await electron.launch({ ...launchOptions([`--user-data-dir=${join(dir, "profile")}`]), env });
+  const app = await electron.launch(await launchOptions([`--user-data-dir=${join(dir, "profile")}`], { env }));
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Use this computer" }).click();
