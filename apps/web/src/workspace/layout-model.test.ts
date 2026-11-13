@@ -329,6 +329,13 @@ describe("adoptLoose (#404)", () => {
     ]);
   });
 
+  test("a Home space made in this adoption for a terminal labelled Home is the one unlabelled terminals join", () => {
+    const adopted = adoptLoose(null, [loose("t1", "/a", { labels: { space: HOME_SPACE } }), loose("t2", "/b")], ids());
+    expect(adopted === null ? null : docSpaces(adopted).map((space) => [space.name, space.tabs.length])).toEqual([
+      [HOME_SPACE, 2],
+    ]);
+  });
+
   test("tabs follow the order the terminals started, not hc's text order of their addresses (#1269)", () => {
     const listed = [loose("t10", "/a", { created_ms: 20 }), loose("t9", "/a", { created_ms: 10 })];
     expect(where(adoptLoose(null, listed, ids()))).toEqual([

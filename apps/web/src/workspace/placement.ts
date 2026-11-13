@@ -16,7 +16,7 @@ const holds = (folder: string, dir: string): boolean =>
  * The space a terminal no tab shows goes to, in its machine's document (#404): the space its `herdr.space` label names
  * when the document has it, as herdr-app adopts; else the space its `space` label names (made when there is none);
  * else the space whose folder holds its working directory (the deepest such folder); else the Home space, made when
- * there is none.
+ * there is none. `makeId` is called only when a new space is made, so callers that number ids keep their order.
  */
 export function placeOf(doc: JsonObject | null, terminal: Terminal, makeId: (prefix: "spc") => string): NewSpace {
   const spaces = doc === null ? [] : docSpaces(doc);

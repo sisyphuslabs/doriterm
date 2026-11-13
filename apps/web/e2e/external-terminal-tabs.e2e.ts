@@ -1,8 +1,10 @@
 // Terminals another client starts while the app is open (`hc run --bg` from another terminal, a script, an agent) get
 // a tab of their own, in the space their label names, on this core and on an added machine, without anyone clicking
 // them. A change another client saves to the layout shows without a reload.
+import type { Page } from "@playwright/test";
 import { agentRow, endAgent, startAgent } from "./agents.ts";
 import { getCoreDoc, updateCoreDoc } from "./core-doc.ts";
+import { routeHcSocket } from "./hc-socket.ts";
 import { tabs } from "./tab-strip.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { LAYOUT_DOC } from "./layout-doc.ts";
@@ -30,6 +32,13 @@ interface DocSpace {
   readonly name: string;
   readonly tabs: readonly DocTab[];
 }
+
+/** The sidebar row of the space with that name. */
+const spaceRow = (page: Page, name: string) =>
+  page
+    .getByRole("complementary", { name: "Workspace" })
+    .getByRole("region", { name: "Spaces" })
+    .getByRole("button", { name: new RegExp(`^${name}\\b`) });
 
 /** The names of the spaces whose tabs show the terminal, in the saved layout of its core. */
 function spacesShowing(address: string, on?: string): string[] {
@@ -59,11 +68,19 @@ test("an agent started outside the app on an added machine gets one tab in its l
 });
 
 test("an agent opened from the Agents list before it has a tab goes to the space its label names", async ({ page }) => {
+  const link = await routeHcSocket(page);
   await page.goto("/");
   await openNewTerminal(page);
+  await expect(tabs(page)).toHaveCount(1, { timeout: 20_000 });
+  // Every layout write is held, so an adoption, which shows only once saved, cannot place the agent: what the page shows
+  // is the click's own placement.
+  const release = link.hold("doc.set");
   const address = startOutside("host", "clicked-lane", "lanes");
   await agentRow(page, "clicked-lane", false).click();
   await expect(page.locator(`[data-terminal="${address}"]`)).toBeVisible({ timeout: 20_000 });
+  await expect(spaceRow(page, "lanes")).toBeVisible({ timeout: 20_000 });
+  await expect(tabs(page)).toHaveCount(1);
+  release();
   await expect.poll(() => spacesShowing(address), { timeout: 20_000 }).toEqual(["lanes"]);
 });
 

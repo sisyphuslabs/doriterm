@@ -310,11 +310,13 @@ export function useLayout(
   );
 
   const addTab = useCallback(
-    (address: string, newSpace = false, into?: string, placed?: NewSpace): void => {
+    (address: string, newSpace = false, into?: string, placed?: (doc: JsonObject | null) => NewSpace): void => {
       const machine = machineOf(address) ?? null;
       const layout = layoutOf(machine);
       const writable = layout !== undefined && layout.readOnly === null;
-      const fate = keepTransient(active, address, writable);
+      // A tab placed by its terminal's labels never takes the transient tab with it: that one keeps a space of its own.
+      const transient = keepTransient(active, address, writable);
+      const fate = placed !== undefined && transient !== null ? "apart" : transient;
       if (fate === "apart" && active !== null) keepApart(active);
       if (layout === undefined || layout.readOnly !== null) return keepHere(address);
       const id = freshId("tb");
@@ -325,7 +327,7 @@ export function useLayout(
           ? {
               terminal: localOf(active.panes[0]?.address ?? ""),
               tab: written(active),
-              follows: !newSpace && into === undefined && placed === undefined,
+              follows: !newSpace && into === undefined,
             }
           : null;
       // herdr-app's add_tab: right after the selected tab of the selected space; a terminal of another machine, or one
@@ -336,23 +338,27 @@ export function useLayout(
           ? undefined
           : docSpaces(layout.doc).find((each) => spaceKey(layout.machineId, each.id) === into);
       const named = docSpace?.id ?? null;
+      const guess = placed?.(layout.doc);
       const near =
         !newSpace &&
         active !== null &&
         !active.transient &&
         active.machine === machine &&
         (named === null || active.spaceKey === into) &&
-        (placed === undefined || active.space === placed.id)
+        (guess === undefined || active.space === guess.id)
           ? active
           : null;
-      const space = placed ?? { id: named ?? near?.space ?? freshId("spc"), folder: "" };
+      const space = guess ?? { id: named ?? near?.space ?? freshId("spc"), folder: "" };
       const asked = tabKey(layout.machineId, id);
       // Where the document already shows the terminal: another device adopted it while this write waited (#2122). A
       // second tab for it is never written; the view asked to show the new tab shows that one instead.
       let adopted: PaneAt | null = null;
       void layout
         .edit((doc) => {
-          const write = newTabWrite(doc, localOf(address), tab, space, near?.id, kept, layout.pins);
+          // A placed tab's space is decided on the document this write lands on, as adoption decides it (#2467).
+          const where = placed === undefined ? space : placed(doc);
+          const after = where.id === space.id ? near?.id : undefined;
+          const write = newTabWrite(doc, localOf(address), tab, where, after, kept, layout.pins);
           adopted = write.instead;
           return write.doc;
         })
@@ -388,7 +394,7 @@ export function useLayout(
       const terminal = terminals.find((each) => each.address === address);
       const layout = layoutOf(machineOf(address) ?? null);
       if (terminal === undefined || layout === undefined) return addTab(address);
-      return addTab(address, false, undefined, placeOf(layout.doc, terminal, freshId));
+      return addTab(address, false, undefined, (doc) => placeOf(doc, terminal, freshId));
     },
     [addTab, layoutOf, show, tabs, terminals],
   );
