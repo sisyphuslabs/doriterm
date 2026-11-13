@@ -63,7 +63,7 @@ async function startVisibleLineSampler(terminal: Locator): Promise<void> {
 const sampledFrames = (page: Page): Promise<{ shown: boolean; last: number }[]> =>
   page.evaluate(() => (Reflect.get(window, "__visibleLines") as () => { shown: boolean; last: number }[])());
 
-test("switching back to a tab draws the output it gathered while hidden at once, never climbing through it, and never resizes its program (#1588)", async ({
+test("switching back to a tab paints the output it gathered while hidden from its first frame, and never resizes its program (#1588, #2391)", async ({
   page,
 }) => {
   const dir = mkdtempSync(join(tmpdir(), "doriface-tab-switch-"));
@@ -84,6 +84,10 @@ test("switching back to a tab draws the output it gathered while hidden at once,
     await expect(first).toBeHidden();
     // While it is out of view its program prints the rest of its history: a backlog of many frames' worth, which the tab
     // holds until it shows (#1588).
+    // The pane learns it is hidden from an observer a frame or so after it is: two frames on, its pacer holds output.
+    await page.evaluate(
+      () => new Promise<void>((settle) => requestAnimationFrame(() => requestAnimationFrame(() => settle()))),
+    );
     writeFileSync(go, "");
     await expect.poll(() => existsSync(done), { timeout: 30_000 }).toBe(true);
 
@@ -99,11 +103,9 @@ test("switching back to a tab draws the output it gathered while hidden at once,
     console.log(`tab-switch frames: ${JSON.stringify(shown.map((frame) => frame.last))}`);
 
     expect(shown.length).toBeGreaterThan(0);
-    // What it gathered while hidden is written at once, not paced into view: no frame shows a line between where it was
-    // hidden and the end, and it ends at the end. It can still paint its screen from before for a frame or two (#2391).
-    const lasts = shown.map((frame) => frame.last);
-    expect(lasts.filter((last) => last > FIRST && last < LAST)).toEqual([]);
-    expect(lasts.at(-1)).toBe(LAST);
+    // Every frame it is on screen shows the end of what it gathered while hidden, the first one included: neither its
+    // screen from before it was hidden (#2391) nor a climb through the backlog (#1588).
+    expect(shown.map((frame) => frame.last)).toEqual(shown.map(() => LAST));
     // Hiding a tab is not a resize: its program was never told its terminal changed size.
     await expect(first).not.toContainText("RESIZED");
 
