@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { HcRpcError, type JsonValue, type MachineView } from "@doriface/protocol";
 import { LayoutDoc } from "@doriface/protocol/layout";
-import { docCalls, docEdit, noEditsWhy } from "./use-layout-docs.ts";
+import { docCalls, docEdit, noEditsWhy, readOnlyOf } from "./use-layout-docs.ts";
 
 const noChange = (): null => null;
 
@@ -141,4 +141,16 @@ test("a machine held through a redial refuses its edits as reconnecting, as its 
 test("a machine that reads offline, or is not listed, is not connected", () => {
   expect(noEditsWhy("m1", [listed("m1", "unreachable")])).toBe("the machine is not connected");
   expect(noEditsWhy("m1", [])).toBe("the machine is not connected");
+});
+
+test("a layout whose last read failed still takes an edit: the edit reads it again and says why if that fails too (#2436)", () => {
+  // The cached phase is only the last read's outcome; refusing on it would park a pane drop silently, or refuse a close,
+  // until some later event happened to read the document again.
+  expect(readOnlyOf({ phase: "unavailable", reason: "doc.get timed out" }, "unused")).toBeNull();
+  expect(readOnlyOf({ phase: "ready", doc: null, version: 1 }, "unused")).toBeNull();
+  expect(readOnlyOf({ phase: "loading" }, "unused")).not.toBeNull();
+  expect(readOnlyOf({ phase: "unreadable", reason: "a newer format", version: 2 }, "unused")).toContain(
+    "a newer format",
+  );
+  expect(readOnlyOf(undefined, "the machine is not connected")).toBe("the machine is not connected");
 });

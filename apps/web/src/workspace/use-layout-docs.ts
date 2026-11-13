@@ -1,6 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import type { JsonObject, MachineView } from "@doriface/protocol";
-import { type DocEdit, type EditShown, type LayoutDoc, storedPins } from "@doriface/protocol/layout";
+import { type DocEdit, type DocState, type EditShown, type LayoutDoc, storedPins } from "@doriface/protocol/layout";
 import { docCalls } from "../roster/doc-calls.ts";
 import { useRoster } from "../roster/use-roster.ts";
 
@@ -53,6 +53,21 @@ export function docEdit(
  * again on each `doc` event and on every gap in the feed. A machine that is not connected shows the last document
  * read from it and takes no edits.
  */
+/**
+ * Why a machine's layout takes no edits now, in the words its refusal shows; null when an edit may go ahead. `why` is
+ * the reason when the machine has no live document at all.
+ */
+export function readOnlyOf(state: DocState | undefined, why: string): string | null {
+  if (state === undefined) return why;
+  if (state.phase === "ready") return null;
+  if (state.phase === "unreadable")
+    return `this layout has ${state.reason}, which this version of Doriterm cannot edit`;
+  if (state.phase === "loading") return LAYOUT_LOADING;
+  // "unavailable" is only how the last read ended: the edit itself reads the document again, then writes, or rejects with
+  // the read's own reason (LayoutDoc, #2436). Refusing here instead parked pane drops silently until a later read.
+  return null;
+}
+
 export function useLayoutDocs(
   connection: HcConnection,
   machines: readonly MachineView[],
@@ -68,16 +83,7 @@ export function useLayoutDocs(
     const state = live?.state;
     const kept = roster.docs.kept(machineId);
     const why = machineId === null ? LAYOUT_LOADING : noEditsWhy(machineId, shown);
-    const readOnly =
-      state === undefined
-        ? why
-        : state.phase === "ready"
-          ? null
-          : state.phase === "unreadable"
-            ? `this layout has ${state.reason}, which this version of Doriterm cannot edit`
-            : state.phase === "loading"
-              ? LAYOUT_LOADING
-              : state.reason;
+    const readOnly = readOnlyOf(state, why);
     return {
       machine,
       machineId,
