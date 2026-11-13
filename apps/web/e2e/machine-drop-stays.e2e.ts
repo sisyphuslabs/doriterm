@@ -61,16 +61,9 @@ async function overlap(a: Locator, b: Locator): Promise<boolean> {
   );
 }
 
-/** The page as it is now at the desktop window and at a 390 px phone, for the pull request's before and after. */
-async function capture(page: Page, name: string): Promise<void> {
-  await page.screenshot({ path: test.info().outputPath(`${name}-desktop.png`) });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await agentRow(page, "sh", true).click();
-  await page.waitForURL(/[?&]t=/);
-  await page.screenshot({ path: test.info().outputPath(`${name}-phone.png`) });
-  await page.goBack();
-  await page.setViewportSize({ width: 1280, height: 720 });
-}
+/** The page as it is now, for the pull request's before and after. */
+const capture = (page: Page, name: string): Promise<Buffer> =>
+  page.screenshot({ path: test.info().outputPath(`${name}.png`) });
 
 /** A local tab to swap to, then a shell on the added machine in its own space, in view: its address. */
 async function remoteInView(page: Page): Promise<string> {
@@ -127,14 +120,35 @@ test.describe("the terminal in view when its machine drops (#2464)", () => {
     await expect.poll(machineState, { timeout: 5_000 }).toBe("unreachable");
     const status = page.getByRole("status").filter({ hasText: `Reconnecting to ${MACHINE_NAME}` });
     await expect(status.first()).toBeVisible({ timeout: STATE_BOUND_MS });
-    await capture(page, "reconnecting");
+    await capture(page, "reconnecting-desktop");
     const pane = page.locator('[data-focused="true"]');
     await expect(pane.getByText(`${MACHINE_NAME} is offline`)).toBeVisible({ timeout: OFFLINE_BOUND_MS });
     await expect(pane.getByRole("button")).toHaveCount(1);
     await expect(pane.getByRole("button", { name: "Try again" })).toBeVisible();
-    await capture(page, "offline");
+    await capture(page, "offline-desktop");
 
     expect(await swaps(page)).toEqual([]);
     await expect(selectedTab(page)).toHaveAttribute("data-tab-id", tab ?? "");
+  });
+
+  test("on a phone, the open terminal says Reconnecting under its header, then offline in place", async ({ page }) => {
+    test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
+    remote = await remoteInView(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await agentRow(page, "sh", true).click();
+    const terminal = page.locator(`[data-terminal="${remote}"]`);
+    await expect(terminal).toBeVisible({ timeout: 15_000 });
+
+    switchTo("drop");
+    const status = page.getByRole("status").filter({ hasText: `Reconnecting to ${MACHINE_NAME}` });
+    await expect(status.first()).toBeVisible({ timeout: STATE_BOUND_MS });
+    await expect(terminal).toBeVisible();
+    await capture(page, "reconnecting-phone");
+    const overlaps = await Promise.all((await status.all()).map((shown) => overlap(shown, terminal)));
+    expect(overlaps).not.toContain(true);
+    await expect(page.getByText(`${MACHINE_NAME} is offline`)).toBeVisible({ timeout: OFFLINE_BOUND_MS });
+    await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(1);
+    await expect(status).toHaveCount(0);
+    await capture(page, "offline-phone");
   });
 });
