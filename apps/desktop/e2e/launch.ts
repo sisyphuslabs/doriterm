@@ -35,6 +35,21 @@ const HOST_RIG = join(appDir, "e2e", "host-rig.ts");
 const HOST_WRAPPER = join(RUN_DIR, "host-wrapper", "host.ts");
 const HOST_RECORDS = join(RUN_DIR, "host-wrapper", "records.jsonl");
 
+/**
+ * The host the wrapper starts: the one bundled beside the packaged app in a packaged run, so the packaged CI job and
+ * the release AppImage step keep testing the host binary that ships; the checkout's source host otherwise.
+ */
+function hostCliForRun(): string {
+  const executable = process.env["DORIFACE_E2E_EXECUTABLE"];
+  if (executable === undefined || executable === "") return HOST_CLI;
+  return join(
+    dirname(executable),
+    "resources",
+    "bin",
+    process.platform === "win32" ? "doriface-host.exe" : "doriface-host",
+  );
+}
+
 interface HostRigAnswer {
   readonly relay: string;
   readonly hostCli: string;
@@ -52,7 +67,7 @@ let hostRig: Promise<HostRig> | undefined;
 
 /** The stand-in relay and the guard wrapper for the ordinary launches, in their own Bun process (the runner is Node). */
 function startHostRig(): Promise<HostRig> {
-  const child = spawn(process.env["BUN_BIN"] ?? "bun", [HOST_RIG, HOST_CLI, HOST_WRAPPER, HOST_RECORDS], {
+  const child = spawn(process.env["BUN_BIN"] ?? "bun", [HOST_RIG, hostCliForRun(), HOST_WRAPPER, HOST_RECORDS], {
     cwd: appDir,
     stdio: ["pipe", "pipe", "inherit"],
   });
@@ -70,7 +85,6 @@ function startHostRig(): Promise<HostRig> {
   return answer.then((rig) => ({
     env: {
       DORIFACE_HOST_BIN: rig.wrapper,
-      DORIFACE_E2E_HOST_CLI: rig.hostCli,
       DORIFACE_E2E_RELAY: rig.relay,
       DORIFACE_E2E_HOST_RECORDS: rig.records,
     },
@@ -86,15 +100,18 @@ function startHostRig(): Promise<HostRig> {
 /**
  * The environment every e2e app launch takes (#2399): the app's host starts on a relay this run owns, never the
  * release relay, so a launch cannot open a Room on the production relay. Entries already set (a pairing rig's own
- * wrapper, or a spec's own host) are kept; the one launch that must dial the release relay, the hosted-relay
- * production smoke, passes through untouched.
+ * wrapper, or a spec's own host CLI) are kept. The one opt-out is the production smoke itself, in its own env:
+ * `DORIFACE_E2E_RELAY_GUARD=off` passes that launch through untouched - never a runner-wide variable.
  */
 export async function guardedEnv(env: Record<string, string> = {}): Promise<Record<string, string>> {
-  if (env["DORIFACE_HOSTED_RELAY_SMOKE"] === "1") return env;
+  if (env["DORIFACE_E2E_RELAY_GUARD"] === "off") return env;
   const rig = await (hostRig ??= startHostRig());
   const guarded = { ...env };
   for (const [key, value] of Object.entries(rig.env)) {
     if (guarded[key] === undefined || guarded[key] === "") guarded[key] = value;
+  }
+  if (guarded["DORIFACE_E2E_HOST_CLI"] === undefined || guarded["DORIFACE_E2E_HOST_CLI"] === "") {
+    guarded["DORIFACE_E2E_HOST_CLI"] = hostCliForRun();
   }
   return guarded;
 }
@@ -112,26 +129,32 @@ export async function stopHostRig(): Promise<void> {
 }
 
 /**
- * What every electron.launch() takes besides `env`. The packaged app always starts through attach-after-first-load:
- * attached directly, Playwright can land while the first navigation is in flight and then waits forever (#13).
- * `env` is guarded (#2399): the app's host starts on a relay this run owns, never the release relay.
+ * What every electron.launch() takes. The packaged app always starts through attach-after-first-load: attached
+ * directly, Playwright can land while the first navigation is in flight and then waits forever (#13). `env` defaults
+ * to the filtered `process.env`, so a launch that passes no env of its own is still guarded (#2399): every launch's
+ * host starts on a relay this run owns, never the release relay.
  */
 export async function launchOptions(
   extra: readonly string[] = [],
   { env, gpu = false }: { env?: Record<string, string>; gpu?: boolean } = {},
 ): Promise<
-  | { readonly args: string[]; readonly env?: Record<string, string> }
+  | { readonly args: string[]; readonly env: Record<string, string> }
   | {
       readonly executablePath: string;
       readonly args: string[];
-      readonly env?: Record<string, string>;
+      readonly env: Record<string, string>;
     }
 > {
   const args = appArgs(extra, { gpu });
-  const guarded = env === undefined ? {} : { env: await guardedEnv(env) };
+  const guarded = await guardedEnv(
+    env ??
+      Object.fromEntries(
+        Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+      ),
+  );
   return packagedExecutable === undefined
-    ? { args, ...guarded }
-    : { executablePath: attachAfterFirstLoad, args, ...guarded };
+    ? { args, env: guarded }
+    : { executablePath: attachAfterFirstLoad, args, env: guarded };
 }
 
 /** Opens a terminal through the strip's New tab menu, or the empty workspace's direct New terminal button. */

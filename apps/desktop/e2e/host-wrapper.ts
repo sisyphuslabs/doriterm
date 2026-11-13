@@ -54,7 +54,7 @@ export function hostWrapperSource(options: HostWrapperOptions): string {
     "  RECORDS,",
     "  `${JSON.stringify({ givenRelay: given ?? null, startedOn: STAND_IN, pid: process.pid, at: Date.now() })}\n`,",
     ");",
-    'const child = Bun.spawn([Bun.which("bun") ?? "bun", cli, "--relay", STAND_IN, ...passed], {',
+    'const child = Bun.spawn([...(cli.endsWith(".ts") ? [Bun.which("bun") ?? "bun"] : []), cli, "--relay", STAND_IN, ...passed], {',
     '  stdin: "ignore",',
     '  stdout: "ignore",',
     '  stderr: "inherit",',

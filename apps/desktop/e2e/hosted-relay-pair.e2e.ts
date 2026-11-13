@@ -42,7 +42,9 @@ test("a fresh browser pairs with the desktop app through the hosted relay and ty
   hc = scratchHcSession();
   profile = mkdtempSync(join(tmpdir(), "dd-hosted-pair-"));
   const env = Object.fromEntries(
-    Object.entries({ ...process.env, ...hc.env }).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    Object.entries({ ...process.env, ...hc.env, DORIFACE_E2E_RELAY_GUARD: "off" }).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined,
+    ),
   );
   app = await electron.launch(await launchOptions([`--user-data-dir=${profile}`], { env }));
   const page = await app.firstWindow();

@@ -24,11 +24,12 @@ let launchOptions: (
   extra?: readonly string[],
   options?: { env?: Record<string, string>; gpu?: boolean },
 ) => Promise<
-  { readonly args: string[]; readonly env: Record<string, string> } | {
-    readonly executablePath: string;
-    readonly args: string[];
-    readonly env: Record<string, string>;
-  }
+  | { readonly args: string[]; readonly env: Record<string, string> }
+  | {
+      readonly executablePath: string;
+      readonly args: string[];
+      readonly env: Record<string, string>;
+    }
 >;
 let stopHostRig: () => Promise<void>;
 
@@ -142,7 +143,9 @@ describe("an e2e app launch never starts its host against the release relay (#23
     const saved = process.env["DORIFACE_E2E_EXECUTABLE"];
     process.env["DORIFACE_E2E_EXECUTABLE"] = join(tmpdir(), "guard-packaged", "Doriterm");
     try {
-      const env = await guardedEnv(specEnv());
+      const withoutOwnHostCli = { ...specEnv() };
+      delete withoutOwnHostCli["DORIFACE_E2E_HOST_CLI"];
+      const env = await guardedEnv(withoutOwnHostCli);
       expect(env["DORIFACE_E2E_HOST_CLI"] ?? "").toMatch(/resources[\\/]bin[\\/]doriface-host(\.exe)?$/);
     } finally {
       if (saved === undefined) delete process.env["DORIFACE_E2E_EXECUTABLE"];
