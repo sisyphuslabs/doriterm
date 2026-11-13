@@ -88,7 +88,17 @@ export function WorkspaceRoute() {
           </Notice>
         ) : null}
         {state.phase === "connecting" ? (
-          <EmptyState icon={<DelayedSpinner />} title="Connecting to your host" description="Opening the session." />
+          <EmptyState
+            // The spinner keeps its one size (it is never resized per site); the slot around it is the failed screen's icon
+            // box (size-8), so turning to "Cannot reach your host" keeps the title still (#1961).
+            icon={
+              <span data-slot="icon-box" className="flex size-8 items-center justify-center">
+                <DelayedSpinner />
+              </span>
+            }
+            title="Connecting to your host"
+            description="Opening the session."
+          />
         ) : state.phase === "failed" ? (
           <EmptyState
             icon={<PlugZap aria-hidden className="size-5" />}

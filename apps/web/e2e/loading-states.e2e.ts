@@ -120,6 +120,10 @@ test.describe("loading feedback waits before it spins (#1498)", () => {
     await expect(page.locator('[data-slot="spinner"]')).toBeVisible();
     // The icon's box was kept while it waited, so the words did not move when it arrived.
     expect(await title.boundingBox()).toEqual(resting);
+    // The slot is as large as the failed screen's icon (size-8), so turning to "Cannot reach your host" does not move the
+    // title either (#1961).
+    const slot = page.locator('[data-slot="icon-box"]');
+    expect((await slot.boundingBox())?.height).toBe(32);
   });
 
   test("while the workspace's code loads, a status fills the screen at once and a spinner comes only after a second", async ({
