@@ -146,11 +146,12 @@ test("a relay blip with nothing new is one request and one answer: no attach, th
     expect(before.scrollTop).toBeGreaterThan(0);
     // The page keeps talking on the old socket until it drops (a heartbeat, a key exchange), so the resume is measured
     // on the socket that opens after the blip, from the counts as it opened (#2482).
-    const socketsBefore = sockets.opened.length;
     const rpcsBefore = await rpcs();
 
     await sampleFrames(page);
     const droppedAt = Date.now();
+    // Marked with no await between it and the drop, so no socket can open in the gap.
+    const socketsBefore = sockets.opened.length;
     sockets.drop();
     // The resume: one request out, one answer back, on the new socket.
     const resumed = () => sockets.opened[socketsBefore];
@@ -211,8 +212,9 @@ test("a relay blip with nothing new is one request and one answer: no attach, th
       .poll(() => terminal.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop))
       .toBeGreaterThan(100);
     const idle = await snapshot(terminal);
-    const sentIdle = sockets.traffic.toRelay.length;
-    const receivedIdle = sockets.traffic.fromRelay.length;
+    // As in the idle case, the missed output is read on the socket the page resumes on: sockets refused while the
+    // relay is down never mark, so the first mark after this one is that socket's.
+    const socketsIdle = sockets.opened.length;
     sockets.down = true;
     sockets.drop();
     writeFileSync(go, "");
@@ -223,11 +225,13 @@ test("a relay blip with nothing new is one request and one answer: no attach, th
     await page.waitForTimeout(500);
     const caughtUp = await snapshot(terminal);
     const text = (await terminal.textContent()) ?? "";
+    const back = sockets.opened[socketsIdle];
+    if (back === undefined) throw new Error("no socket opened after the outage");
     const missed = {
       idle,
       caughtUp,
-      sent: sockets.traffic.toRelay.slice(sentIdle),
-      received: sockets.traffic.fromRelay.slice(receivedIdle),
+      sent: sockets.traffic.toRelay.slice(back.toRelay),
+      received: sockets.traffic.fromRelay.slice(back.fromRelay),
     };
     test.info().annotations.push({ type: "measured-missed", description: JSON.stringify(missed) });
     console.log(`reconnect with missed output: ${JSON.stringify(missed)}`);
