@@ -189,6 +189,51 @@ test("a statement whose only button cannot take focus opens on itself, so the ke
   await expect(ended).toBeFocused();
 });
 
+test("a session menu closed with only a toast up gives focus back to its trigger (#2380)", async ({ page }) => {
+  await page.goto("/");
+  await openNewTerminal(page);
+  // A toast is a dialog that is not modal: what is on the page while it shows still takes focus back.
+  await page.evaluate(() => {
+    const toast = document.createElement("div");
+    toast.setAttribute("role", "dialog");
+    toast.setAttribute("aria-modal", "false");
+    toast.textContent = "A toast";
+    document.body.append(toast);
+  });
+  const trigger = page.getByRole("button", { name: "Session actions" });
+  await trigger.click();
+  await expect(page.getByRole("menu")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
+test("a session menu still closing when its session ends gives no focus back behind the statement (#2362)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  const address = (await terminal.getAttribute("data-terminal")) ?? "";
+  await named(page);
+  // A busy page can still be closing the menu when the session ends: its pane, and the menu with it, then go after the
+  // statement has taken the keyboard. A long exit holds the menu up so that order happens every time. It is an animation,
+  // not a transition: a transition starts from the opacity the menu has, and a menu still fading in (from 0) has next to
+  // none to fade out, so the exit was over at once now and then and the menu went before the session ended.
+  await page.addStyleTag({
+    content:
+      "@keyframes hold-menu-exit { from { opacity: 1; } to { opacity: 0; } } [role='menu'][data-ending-style] { animation: hold-menu-exit 10s linear !important; }",
+  });
+  await sessionMenu(page, "End session…");
+  await expect(dialog(page, `End ${NAME}?`)).toBeVisible();
+  await expect(page.getByRole("menu", { includeHidden: true })).toHaveCount(1);
+
+  hc("kill", address);
+  const ended = statement(page);
+  await expect(ended).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("menu", { includeHidden: true })).toHaveCount(0);
+  await expect(ended.getByRole("button", { name: "OK" })).toBeFocused();
+});
+
 test("closing from Cmd+W's question ends the session with no notice that it ended", async ({ page }) => {
   await recordEndedTitles(page);
   await setConfirmClose(page, "always");
