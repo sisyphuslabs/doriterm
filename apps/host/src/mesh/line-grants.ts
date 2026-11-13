@@ -174,6 +174,8 @@ export class LineGrants {
       const reason = `${member.name}: the relay is rate limiting this host (4429); next try in ${next} s`;
       return { ok: false, code: 4429, reason };
     }
+    if (grant.reason === "reconnecting")
+      return { ok: false, code: 4404, reason: `${member.name} is reconnecting; next try in ${next} s` };
     return {
       ok: false,
       code: 4404,

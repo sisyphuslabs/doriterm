@@ -10,7 +10,7 @@ import { clearHistoryGap, noteHistoryGap } from "./history-gap-notice.ts";
 import { type EndHolder, fromEndOf, holdFromEnd, readerInputOn } from "./hold-view-from-end.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
 import { openFailure } from "./open-failure.ts";
-import { afterLeaving, dropOpeningAttach, noteLeaving } from "./leaving-attach.ts";
+import { afterLeaving, leaveUnopened, noteLeaving } from "./leaving-attach.ts";
 import { HISTORY_LINES, noteViewSize, viewAttach } from "./opening-attach.ts";
 import type { OutputPacer, ReplayOptions } from "./output-pacer.ts";
 import { type TerminalEnd, terminalEnd } from "./terminal-end.ts";
@@ -227,8 +227,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     const asked = afterLeaving(connection, address).then(() => {
       if (!unmounted.current)
         return viewAttach(connection, address, !attachedBefore.current, { cols, rows, display }, attachOwn);
-      if (!attachedBefore.current) dropOpeningAttach(connection, address);
-      return null;
+      return leaveUnopened(connection, address, !attachedBefore.current);
     });
     const answered = asked.then<unknown, void>(
       (opened) => {
