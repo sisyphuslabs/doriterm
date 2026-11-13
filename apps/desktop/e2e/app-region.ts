@@ -78,9 +78,11 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
       if (border.display === "inline" && !horizontalLtr) throw unreadable;
       const box =
         (border.display === "inline" ? block.getClientRects()[0] : undefined) ?? block.getBoundingClientRect();
+      // An absolute layer in a scrolled container moves with its content; a fixed one stays put.
+      const scrolled = style.position === "absolute";
       origin = {
-        left: box.left + Number.parseFloat(border.borderLeftWidth),
-        top: box.top + Number.parseFloat(border.borderTopWidth),
+        left: box.left + Number.parseFloat(border.borderLeftWidth) - (scrolled ? block.scrollLeft : 0),
+        top: box.top + Number.parseFloat(border.borderTopWidth) - (scrolled ? block.scrollTop : 0),
       };
     }
     const left = origin.left + Number.parseFloat(style.left);

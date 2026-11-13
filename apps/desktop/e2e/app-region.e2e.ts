@@ -21,6 +21,14 @@ const PAGE = `<!doctype html><style>
   #slid button::after { content: ""; position: absolute; left: 50px; top: 0; width: 20px; height: 40px; -webkit-app-region: no-drag; }
 </style><div id="strip"><button id="tab">tab</button></div><div id="moved"><button>moved</button></div><div id="slid"><button>slid</button></div>`;
 
+/** A positioned scroll container whose layer is read after it scrolls. */
+const SCROLLED = `<!doctype html><style>
+  body { margin: 0; }
+  #box { position: relative; overflow: auto; width: 200px; height: 100px; -webkit-app-region: drag; }
+  #box button { display: block; width: 40px; height: 300px; -webkit-app-region: drag; }
+  #box button::after { content: ""; position: absolute; left: 100px; top: 70px; width: 20px; height: 10px; -webkit-app-region: no-drag; }
+</style><div id="box"><button>tall</button></div>`;
+
 /** The same layer under an ancestor this cannot read: scaled, so its padding box is not where the layer is measured. */
 const SCALED = `<!doctype html><style>
   body { margin: 0; }
@@ -45,6 +53,11 @@ test("a static button's absolute hit layer is read against its nearest positione
     // `translate` on its own, as Tailwind writes it, places the layer the same way: #slid sits at y 300..340.
     expect(await page.evaluate(appRegionAt, { x: 360, y: 320 })).toBe("no-drag");
     expect(await page.evaluate(appRegionAt, { x: 320, y: 320 })).toBe("drag");
+    // A layer in a scrolled container moves with its content: scrolled by 50, a layer at top 70 sits at y 20..30.
+    await page.setContent(SCROLLED);
+    await page.evaluate(() => document.getElementById("box")?.scrollTo(0, 50));
+    expect(await page.evaluate(appRegionAt, { x: 105, y: 25 })).toBe("no-drag");
+    expect(await page.evaluate(appRegionAt, { x: 105, y: 75 })).toBe("drag");
     await page.setContent(SCALED);
     await expect(page.evaluate(appRegionAt, { x: 10, y: 10 })).rejects.toThrow("no readable box");
     // A scale above the containing block moves the block too, so it is refused as well.
