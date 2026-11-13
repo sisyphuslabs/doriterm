@@ -39,3 +39,12 @@ export function dropOpeningAttach(connection: object, address: string): Promise<
     () => undefined,
   );
 }
+
+/**
+ * What a view that went while it waited does instead of attaching: on its first attach it closes the attach sent ahead
+ * with the run and settles only once the core has closed it, so the attach this view leaves behind covers that close
+ * (#2500 review). A view that had attached before has nothing ahead of it to close.
+ */
+export function leaveUnopened(connection: object, address: string, first: boolean): Promise<null> {
+  return first ? dropOpeningAttach(connection, address).then(() => null) : Promise.resolve(null);
+}
