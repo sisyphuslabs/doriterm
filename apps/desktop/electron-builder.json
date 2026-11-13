@@ -16,6 +16,7 @@
   "forceCodeSigning": false,
   "afterSign": "./scripts/notarize-mac.mjs",
   "publish": [{ "provider": "generic", "url": "https://get.doriterm.com/desktop/stable" }],
+  "detectUpdateChannel": false,
   "protocols": [{ "name": "Doriterm link", "schemes": ["doriface"] }],
   "mac": {
     "category": "public.app-category.developer-tools",
