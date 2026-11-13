@@ -33,8 +33,9 @@ async function recordSwaps(page: Page, address: string): Promise<void> {
     const tab = first?.getAttribute("data-tab-id") ?? "none";
     const check = (): void => {
       const now = document.querySelector('[role="tab"][aria-selected="true"]')?.closest("[data-tab-id]");
-      const id = now?.getAttribute("data-tab-id") ?? "none";
-      if (id !== tab) swaps.push(`tab: ${id}`);
+      // The phone shows no tab strip: only a strip that selects another tab is a swap.
+      const id = now?.getAttribute("data-tab-id");
+      if (id != null && id !== tab) swaps.push(`tab: ${id}`);
       const shown = document.querySelector('[data-focused="true"] [data-terminal]')?.getAttribute("data-terminal");
       if (shown != null && shown !== kept) swaps.push(`terminal: ${shown}`);
     };
@@ -57,6 +58,14 @@ async function overlap(a: Locator, b: Locator): Promise<boolean> {
   return (
     one.x < two.x + two.width && two.x < one.x + one.width && one.y < two.y + two.height && two.y < one.y + one.height
   );
+}
+
+/** The page as it is now at the desktop window and at a 390 px phone, for the pull request's before and after. */
+async function capture(page: Page, name: string): Promise<void> {
+  await page.screenshot({ path: test.info().outputPath(`${name}-desktop.png`) });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: test.info().outputPath(`${name}-phone.png`) });
+  await page.setViewportSize({ width: 1280, height: 720 });
 }
 
 /** A local tab to swap to, then a shell on the added machine in its own space, in view: its address. */
@@ -111,10 +120,14 @@ test.describe("the terminal in view when its machine drops (#2464)", () => {
 
     switchTo("drop");
     await expect.poll(machineState, { timeout: 5_000 }).toBe("unreachable");
+    const status = page.getByRole("status").filter({ hasText: `Reconnecting to ${MACHINE_NAME}` });
+    await expect(status.first()).toBeVisible({ timeout: STATE_BOUND_MS });
+    await capture(page, "reconnecting");
     const pane = page.locator('[data-focused="true"]');
     await expect(pane.getByText(`${MACHINE_NAME} is offline`)).toBeVisible({ timeout: OFFLINE_BOUND_MS });
     await expect(pane.getByRole("button")).toHaveCount(1);
     await expect(pane.getByRole("button", { name: "Try again" })).toBeVisible();
+    await capture(page, "offline");
 
     expect(await swaps(page)).toEqual([]);
     await expect(selectedTab(page)).toHaveAttribute("data-tab-id", tab ?? "");

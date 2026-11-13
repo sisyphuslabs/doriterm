@@ -43,7 +43,8 @@ export function useConnectionNotice(): ConnectionNotice | null {
   // The session's socket dropped and the session is carried on over a new one: the workspace stays as it is meanwhile.
   // A dial that failed meanwhile says why and what to do, in the words Settings uses (#2426), never a socket's message.
   if (state.phase === "open" && state.resuming === true) {
-    const why = state.resumeFailure === undefined ? "the session carries on where it was." : hostFailure(state.resumeFailure);
+    const why =
+      state.resumeFailure === undefined ? "the session carries on where it was." : hostFailure(state.resumeFailure);
     return { label: "Reconnecting…", detail: `Reconnecting: ${why}`, offline: false };
   }
   if (state.phase === "open" || state.phase === "unconfigured" || state.phase === "host-failed" || state.stale === null)
