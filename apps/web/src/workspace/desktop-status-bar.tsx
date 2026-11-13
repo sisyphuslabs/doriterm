@@ -1,12 +1,20 @@
+import type { HcConnection } from "@doriface/client";
 import { Button, Kbd, StatusBar, StatusBarItem } from "@doriface/ui";
 import { Monitor } from "lucide-react";
 import { useActionKeys } from "../keys/use-action-keys.ts";
 import { agentStatus, nextNeedingYou } from "./attention.ts";
 import { machineOf, type Session, spaceName } from "./model.ts";
 import { HistoryGapStatus } from "./history-gap-status.tsx";
-import { ConnectedStatus, ConnectionPathItem, ReconnectStatus, useConnectionNotice } from "./reconnect-status.tsx";
+import {
+  ConnectedStatus,
+  ConnectionPathItem,
+  MachineLineStatus,
+  ReconnectStatus,
+  useConnectionNotice,
+} from "./reconnect-status.tsx";
 
 export interface DesktopStatusBarProps {
+  readonly connection: HcConnection;
   readonly terminals: readonly Session[];
   /** The live terminals on reachable machines: what the bar counts. */
   readonly live: readonly Session[];
@@ -23,7 +31,8 @@ export interface DesktopStatusBarProps {
 
 /** The desktop's footer: where the focused terminal is, how many there are and who needs you, and the palette. */
 export function DesktopStatusBar(props: DesktopStatusBarProps) {
-  const { terminals, live, loaded, focusedAddress, focusedTerminal, focusedMachine, onOpen, onPalette } = props;
+  const { connection, terminals, live, loaded, focusedAddress, focusedTerminal, focusedMachine, onOpen, onPalette } =
+    props;
   const paletteKeys = useActionKeys("app.palette");
   const blocked = live.filter((terminal) => agentStatus(terminal) === "blocked").length;
   const next = nextNeedingYou(terminals, focusedAddress);
@@ -72,6 +81,13 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
             </span>
           ) : null}
           <ReconnectStatus />
+          {/* Past its grace the pane says the machine is offline in place, so the bar no longer says it reconnects. */}
+          {reconnecting ? null : (
+            <MachineLineStatus
+              connection={connection}
+              address={focusedTerminal?.offline === true ? null : focusedAddress}
+            />
+          )}
           <ConnectedStatus />
           {reconnecting ? null : <HistoryGapStatus address={focusedAddress} />}
           <ConnectionPathItem />

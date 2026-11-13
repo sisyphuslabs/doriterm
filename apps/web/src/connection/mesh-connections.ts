@@ -358,11 +358,12 @@ export class MeshConnections {
    * the member's own store, so it is folded back into the roster and saved here, the one place the roster is written.
    */
   /**
-   * A member reported a change. The name it answers with is folded into the roster, and the shown machine moves off a dead one.
+   * A member reported a change. The name it answers with is folded into the roster, and the shown machine moves off one this
+   * app has not reached since it started.
    *
-   * The fallback is the base's failover, kept: a store holds a one-member roster, so the rotation inside `ConnectionStore` cannot
-   * run for it, and without this the workspace would stay on the machine that just stopped while the others were open (review of
-   * #994).
+   * A store holds a one-member roster, so the rotation inside `ConnectionStore` cannot run for it: without this a start whose
+   * saved machine is down would show nothing while the others were open (review of #994). A machine that was reached is the
+   * one the person is looking at, so its drop never moves them to another: its workspace stays, saying it reconnects (#2464).
    */
   #onMember(hostId: string, store: MemberConnection): void {
     if (store.state.phase === "open") this.#lastSeen.set(hostId, Date.now());
@@ -377,6 +378,8 @@ export class MeshConnections {
     if (current === undefined) return;
     const phase = current.state.phase;
     if (phase === "open" || phase === "connecting") return;
+    const shown = [...this.#stores.entries()].find(([, store]) => store === current)?.[0];
+    if (shown !== undefined && this.#lastSeen.has(shown)) return;
     const live = [...this.#stores.entries()].find(([, store]) => store.state.phase === "open");
     if (live === undefined) return;
     const [hostId] = live;
