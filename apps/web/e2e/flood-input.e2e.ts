@@ -175,6 +175,20 @@ test("credit goes back only for output the page has drawn, so the 256 KiB window
   await terminal.getByRole("textbox").focus();
   await page.keyboard.type(`${FLOOD}\r`);
   await expect(terminal).toContainText("flood-", { timeout: 15_000 });
+  // Credit for drawn output goes out a frame or more after the text shows, so frames stopped right here could leave the
+  // flood's credit at 0 (#2493; runs here froze with as little as 264 bytes credited). Wait for the page to have credited
+  // the flooding stream first. The stream is read inside the wait: just after the first line, setup traffic on another
+  // channel can still lead, and that channel never gets credit.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          (stream) => (Reflect.get(window, "creditSent") as Map<number, number>).get(stream) ?? 0,
+          flow(link).channel,
+        ),
+      { message: "the page credits the flood it drew", timeout: 60_000 },
+    )
+    .toBeGreaterThan(0);
   // The page stops drawing: no animation frame runs from here. A frame asked for now runs after every frame asked for
   // before it, so once it has run, the page has written, and credited, all it will until frames come back.
   await page.evaluate(async () => {
