@@ -70,7 +70,7 @@ function NewSpaceThere({ disabled, onClick }: { readonly disabled: boolean; read
       className={cn(
         "flex h-(--row) min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm text-foreground/85 outline-none",
         "enabled:hover:bg-hover enabled:hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring",
-        "disabled:text-muted-foreground disabled:[&_svg]:text-disabled-glyph",
+        "disabled:text-disabled-ink disabled:[&_svg]:text-disabled-glyph",
       )}
     >
       <Plus aria-hidden className="size-4 shrink-0" />

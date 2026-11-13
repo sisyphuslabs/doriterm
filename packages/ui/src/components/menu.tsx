@@ -201,7 +201,7 @@ export function MenuItem({ icon, keys, destructive = false, children, ...props }
         "flex min-h-(--row) cursor-default items-center gap-2.5 rounded-md px-2 py-1 text-sm outline-none select-none",
         "data-highlighted:bg-hover [&_svg:not([data-slot=spinner])]:size-3.5 [&_svg]:text-muted-foreground",
         destructive && "text-destructive [&_svg]:text-destructive",
-        "data-disabled:text-muted-foreground data-disabled:[&_svg]:text-muted-foreground",
+        "data-disabled:text-disabled-ink data-disabled:[&_svg]:text-disabled-ink",
       )}
     >
       {icon}

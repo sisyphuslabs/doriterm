@@ -1,0 +1,5 @@
+### Web app
+
+- A disabled button or row with no fill of its own (a ghost or secondary button, "New space there", a menu item) now
+  draws its label about twice as faint as when it is enabled, so an unavailable action reads as unavailable at a
+  glance in the night theme too. It still holds 4.5:1 on every surface. (#2510)

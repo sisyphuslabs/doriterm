@@ -27,6 +27,21 @@ export function disabledGlyph(muted: Rgb, surface: Rgb): string {
   return hex(kept);
 }
 
+/**
+ * A label drawn in `muted` with no fill of its own, disabled (a ghost Button, a sidebar row, a menu item): moved toward
+ * `toward` in 1% steps as far as it keeps 4.5:1 on every surface it can sit on, so it reads as unavailable at a glance and
+ * stays legible (#2510). `muted` itself is the floor for a theme that leaves no room.
+ */
+export function disabledInk(muted: Rgb, toward: Rgb, surfaces: readonly Rgb[]): string {
+  let kept = muted;
+  for (let step = 1; step <= 100; step += 1) {
+    const candidate = mix(muted, toward, step / 100);
+    if (surfaces.some((surface) => contrast(candidate, surface) < AA_TEXT)) break;
+    kept = candidate;
+  }
+  return hex(kept);
+}
+
 function rgb(value: string): Rgb {
   const parsed = parseRgba(value);
   if (parsed === undefined) throw new TypeError(`${value} is not a colour`);
@@ -77,6 +92,13 @@ export function themeVariables(theme: ResolvedTheme): CssVariables {
     muted: r.raised,
     "muted-foreground": muted,
     "disabled-glyph": disabledGlyph(rgb(muted), flatten(r.raised, base)),
+    "disabled-ink": disabledInk(rgb(muted), flatten(r.raised, base), [
+      base,
+      canvas,
+      chrome,
+      popover,
+      flatten(r.raised, base),
+    ]),
     dim: r.dim,
     accent: r.hover,
     "accent-foreground": r.foreground,

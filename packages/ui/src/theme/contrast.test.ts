@@ -75,6 +75,10 @@ describe.each(Object.entries(BUILTIN_PALETTES))("%s meets WCAG 2.2 AA", (_, pale
     expectDisabledGlyph(disabled, muted, raised);
   });
 
+  test("--disabled-ink holds 4.5:1 on every surface a label with no fill sits on (#2510)", () => {
+    expect(worstContrast(role("disabled-ink"), opaque)).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
   test("primary button label", () => {
     expect(worstContrast(role("primary-foreground"), [flatten(role("primary"), base)])).toBeGreaterThanOrEqual(AA_TEXT);
   });
