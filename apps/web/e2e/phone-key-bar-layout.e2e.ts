@@ -14,7 +14,7 @@ const LANDSCAPE = { width: 667, height: 375 };
 const KEYBOARD = 336;
 const LANDSCAPE_KEYBOARD = 190;
 
-test("entering split screen with the terminal focused is no keyboard: no key bar, and leaving it keeps the focus", async ({
+test("entering split screen with the terminal focused is no keyboard: the keys stay down, and leaving it keeps the focus", async ({
   page,
 }) => {
   await page.clock.install();
@@ -25,7 +25,7 @@ test("entering split screen with the terminal focused is no keyboard: no key bar
   await page.clock.runFor(KEYBOARD_REQUEST_MS + 1000);
   await page.setViewportSize({ width: PORTRAIT.width, height: 420 });
   await expect(key(page, "Show keyboard")).toBeVisible();
-  await expect(keysBar(page)).toHaveCount(0);
+  await expect(key(page, "Hide keyboard")).toHaveCount(0);
 
   await page.setViewportSize(PORTRAIT);
   await expect(key(page, "Show keyboard")).toBeVisible();
@@ -35,7 +35,7 @@ test("entering split screen with the terminal focused is no keyboard: no key bar
   await page.setViewportSize({ width: PORTRAIT.width, height: 420 });
   await key(page, "Show keyboard").click();
   await page.setViewportSize({ width: PORTRAIT.width, height: 420 - 200 });
-  await expect(keysBar(page)).toBeVisible();
+  await expect(key(page, "Hide keyboard")).toBeVisible();
 });
 
 test("rotating with the keyboard up keeps the key bar up, until the keyboard closes", async ({ page }) => {
@@ -51,9 +51,11 @@ test("rotating with the keyboard up keeps the key bar up, until the keyboard clo
   await expect(bar).toBeVisible();
   await expect(input).toBeFocused();
 
-  // It closes by its own key: the page grows back, the bar goes, and the terminal lets go of the focus.
+  // It closes by its own key: the page grows back, the bar stays with only the keyboard gone (#2499), and the terminal
+  // lets go of the focus.
   await page.setViewportSize(LANDSCAPE);
-  await expect(bar).toHaveCount(0);
+  await expect(bar).toBeVisible();
+  await expect(key(page, "Hide keyboard")).toHaveCount(0);
   await expect(key(page, "Show keyboard")).toBeVisible();
   await expect(input).not.toBeFocused();
 });

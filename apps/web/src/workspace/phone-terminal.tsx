@@ -15,7 +15,6 @@ import { MachineOffline } from "./machine-offline.tsx";
 import { machineOf, type Session, terminalTitle } from "./model.ts";
 import { PackSheet } from "./pack-sheet.tsx";
 import { PhoneHeader } from "./phone-header.tsx";
-import { PhoneKeyRow } from "./phone-key-row.tsx";
 import { PaneSwitcher } from "./phone-pane-switcher.tsx";
 import { PhoneTabSwitcher, useSpaceTabs } from "./phone-tab-switcher.tsx";
 import {
@@ -24,7 +23,7 @@ import {
   KEYS_BAR_HEIGHT,
   keysBottom,
   PhoneKeys,
-  roundButtonsClearance,
+  ROUND_BUTTON_CLEARANCE,
 } from "./phone-keys.tsx";
 import { ConnectionLine } from "./reconnect-status.tsx";
 import { afterEnd } from "./session-actions.ts";
@@ -88,6 +87,9 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   // Read-only browsing (browse-mode.ts) belongs to the terminal it was turned on for: opening another ends it.
   const [browsingOn, setBrowsingOn] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
+  // Whether the keys rode on the keyboard as the session menu or the packs panel opened: either takes the focus, and with
+  // it the keyboard, and the keys stay where they were under it.
+  const [heldUp, setHeldUp] = useState(false);
   const [pad, setPad] = useState(false);
   // The keys bar as drawn, which grows while its field has a row of its own; the terminal keeps clear of all of it.
   const [barHeight, setBarHeight] = useState(0);
@@ -123,25 +125,36 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   const dictating = voice.state.kind !== "idle" && !untyped;
   // The packs panel takes the screen for a moment, so the bar stays under it as it does under the session menu: closing
   // the panel puts the person back on the terminal's keyboard.
-  const keysOpen = !ended && !dictating && !browsing && (keyboard.up || menu || packs || (mouseOnly && keysShown));
+  const riding = keyboard.up || (mouseOnly && keysShown);
+  const keysOpen = !ended && !dictating && !browsing && (riding || ((menu || packs) && heldUp));
+  const hold = (open: boolean): void => {
+    if (open) setHeldUp(riding);
+  };
   // The tabs bar takes the bottom while nothing rides there: the keys bar, with the soft keyboard, and dictation do.
   const tabs = useSpaceTabs(terminals, terminal.address);
   const tabsBar = !keysOpen && !dictating && tabs.some((tab) => tab.includes(terminal.address));
-  // A touch phone's keys while its keyboard is down (#1526); a mouse-only window opens its keys bar by hand instead.
-  const keyRow = !keysOpen && !mouseOnly && !dictating && !browsing && !offline && !ended;
-  // The terminal's jump button stays clear of what floats over its bottom right: the keyboard button, or the arrow pad.
-  // Over the tabs bar the keyboard button floats beside the bar, and beside the key row it sits level with the row:
-  // either way under the terminal, not over it (#1555).
+  // A touch phone's keys while its keyboard is down (#1526): the same panel as on the keyboard, under the terminal
+  // (#2499). Over the tabs bar it needs no room below; without one, Read-only takes a row of its own under it. A
+  // mouse-only window opens its keys bar by hand instead.
+  const docked =
+    keysOpen || mouseOnly || dictating || browsing || offline || ended
+      ? null
+      : tabsBar
+        ? "0px"
+        : KEYBOARD_BUTTON_CLEARANCE;
+  // The terminal's jump button stays clear of what floats over its bottom right: the round button, or the arrow pad.
+  // Over the tabs bar the round button floats beside the bar, and under the docked keys it has a row of its own: either
+  // way under the terminal, not over it (#1555).
   const keysControls =
     offline || ended || dictating
       ? null
-      : !keysOpen
-        ? tabsBar || keyRow
-          ? null
-          : KEYBOARD_BUTTON_CLEARANCE
-        : pad
+      : keysOpen || docked !== null
+        ? pad
           ? DIRECTION_PAD_CLEARANCE
-          : null;
+          : null
+        : tabsBar
+          ? null
+          : KEYBOARD_BUTTON_CLEARANCE;
 
   return (
     // isolate: the keys float above the terminal (z-10) but stay under a dialog and its backdrop, which portal to the body.
@@ -217,35 +230,6 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
           </p>
         ) : null}
       </main>
-      {keyRow ? (
-        // Under the terminal, so the terminal fits above it; level with the round buttons it keeps clear of them.
-        <PhoneKeyRow
-          host={host}
-          sticky={sticky}
-          {...(tabsBar
-            ? {}
-            : {
-                // Level with the round buttons (3rem at the corner's inset) and clear of them on the right.
-                style: { paddingRight: roundButtonsClearance(2) },
-                className: "pt-0 pb-[max(1rem,calc(var(--safe-bottom)+0.5rem))]",
-              })}
-        />
-      ) : null}
-      {tabsBar ? (
-        <PhoneTabSwitcher
-          terminals={terminals}
-          tabs={tabs}
-          active={terminal.address}
-          title={tabTitle ?? title}
-          onOpen={onOpen}
-          // A touch device's Read-only button takes the slot left of the keyboard button's; a mouse-only one has none.
-          clearance={roundButtonsClearance(mouseOnly ? 1 : 2)}
-          onCloseTab={onCloseTab}
-          onNewInSpace={onNewInSpace}
-          sheet={sheet}
-          onSheet={onSheet}
-        />
-      ) : null}
       {dictating ? (
         // Dictation takes the keys' place, riding on the soft keyboard when it is up; the transcript is typed past the
         // sticky modifiers, as written.
@@ -261,26 +245,46 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
           {...(keyboard.inset > 0 ? { style: { marginBottom: `${keyboard.inset}px` } } : {})}
         />
       ) : offline || ended ? null : (
-        <>
-          <PhoneKeys
-            port={port}
-            open={keysOpen}
-            inset={keyboard.inset}
-            host={host}
-            sticky={sticky}
-            terminals={terminals}
-            current={terminal.address}
-            onOpen={onOpen}
-            onMenu={setMenu}
-            pad={pad}
-            onPad={setPad}
-            onBarHeight={setBarHeight}
-            onPacks={() => setPacks(true)}
-            browsing={browsing}
-            {...(mouseOnly ? { onKeys: setKeysShown } : { onBrowse: setBrowsing })}
-          />
-        </>
+        // Before the tabs bar: docked, the keys sit under the terminal and over the bar (#2499).
+        <PhoneKeys
+          port={port}
+          open={keysOpen}
+          docked={docked}
+          inset={keyboard.inset}
+          host={host}
+          sticky={sticky}
+          terminals={terminals}
+          current={terminal.address}
+          onOpen={onOpen}
+          onMenu={(open) => {
+            hold(open);
+            setMenu(open);
+          }}
+          pad={pad}
+          onPad={setPad}
+          onBarHeight={setBarHeight}
+          onPacks={() => {
+            hold(true);
+            setPacks(true);
+          }}
+          browsing={browsing}
+          {...(mouseOnly ? { onKeys: setKeysShown } : { onBrowse: setBrowsing })}
+        />
       )}
+      {tabsBar ? (
+        <PhoneTabSwitcher
+          terminals={terminals}
+          tabs={tabs}
+          active={terminal.address}
+          title={tabTitle ?? title}
+          onOpen={onOpen}
+          clearance={ROUND_BUTTON_CLEARANCE}
+          onCloseTab={onCloseTab}
+          onNewInSpace={onNewInSpace}
+          sheet={sheet}
+          onSheet={onSheet}
+        />
+      ) : null}
       {offline || ended ? null : (
         <PackSheet
           open={packs}

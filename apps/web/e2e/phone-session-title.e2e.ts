@@ -67,9 +67,9 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await expect(switcher(page)).toHaveAccessibleName("Switch tab, website, deploy, tab 1 of 2");
         await expect(switcher(page).getByText("deploy", { exact: true })).toBeVisible();
         await expect(switcher(page).getByText("1/2", { exact: true })).toBeVisible();
-        // Beside both round buttons (Read-only and the keyboard) the bar is too narrow for the space too: the header names
-        // it, so the tab's own name keeps the room and is never cut.
-        await expect(switcher(page).getByText("website ·", { exact: true })).toBeHidden();
+        // Beside the one round button (Read-only: the keys panel carries the keyboard's toggle, #2499) the bar has room for
+        // the space too, and the tab's own name is still never cut.
+        await expect(switcher(page).getByText("website ·", { exact: true })).toBeVisible();
         const name = switcher(page).getByText("deploy", { exact: true });
         await expect.poll(() => name.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 

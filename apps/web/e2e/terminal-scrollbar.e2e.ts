@@ -335,9 +335,9 @@ test.describe("on a phone", () => {
     await expect.poll(async () => (await measure(terminal)).max - (await measure(terminal)).scrollTop).toBeLessThan(5);
     await expect(jump(terminal)).toHaveCount(0);
 
-    // With the soft keyboard down only the round keyboard button floats there, and the jump button stays clear of it.
+    // With the soft keyboard down the keys sit under the terminal (#2499), and the jump button stays clear of them.
     await key(page, "Hide keyboard").click();
-    await expect(keysBar(page)).toBeHidden();
+    await expect(key(page, "Hide keyboard")).toHaveCount(0);
     // Growing the pane back fits the grid again, and that fit scrolls a view at the bottom back to the bottom on its
     // own frame: scroll after it, or it takes the scroll back and the jump button never shows.
     await settledGrid(page, terminal);

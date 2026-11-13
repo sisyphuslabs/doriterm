@@ -24,7 +24,7 @@ export function PhoneTabSwitcher(props: {
   /** The open tab's name, else its terminal's title. */
   readonly title: string;
   readonly onOpen: (address: string) => void;
-  /** How much of its right end the round buttons take (roundButtonsClearance); its controls stay clear of it. */
+  /** How much of its right end the round button takes (ROUND_BUTTON_CLEARANCE); its controls stay clear of it. */
   readonly clearance: string;
   /** Whether the switch sheet is open, and its opening and closing (the route holds it). */
   readonly sheet: boolean;
@@ -66,11 +66,12 @@ export function PhoneTabSwitcher(props: {
             className="@container h-12 min-w-0 flex-1 text-foreground [&>span]:min-w-0"
           >
             {/*
-              The space goes first when the bar is narrow (both round buttons beside it): the header already names it, and
-              the tab's own name is what the stepper is for. The accessible name keeps it. At 390 px the bar leaves this
-              button 390 - 6 (left padding) - roundButtonsClearance(2) 128 - 2 x 44 (Previous, Next) - 2 x 4 (gaps) = 160 px,
-              under 13rem; with one round button (a mouse-only device, clearance 72) it is 216 px and keeps the space. A
-              change to the round buttons or the steppers moves these numbers: phone-session-title.e2e.ts pins the touch end.
+              The space goes first when the bar is narrow: the header already names it, and the tab's own name is what the
+              stepper is for. The accessible name keeps it. At 390 px the bar leaves this button 390 - 6 (left padding) -
+              ROUND_BUTTON_CLEARANCE 72 - 2 x 44 (Previous, Next) - 2 x 4 (gaps) = 216 px, over 13rem, so it keeps the space
+              (the keys panel carries the keyboard's toggle, so one round button is beside the bar, #2499); at 320 px it is
+              146 px and drops it. A change to the round button or the steppers moves these numbers:
+              phone-session-title.e2e.ts pins the 390 end.
             */}
             {space === undefined ? null : (
               <span title={space} className="min-w-0 shrink-[2] truncate font-semibold @max-[13rem]:hidden">

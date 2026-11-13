@@ -68,9 +68,11 @@ test("the field stays inside the keys bar, and the keyboard's own key takes both
   expect((box?.y ?? 0) + (box?.height ?? Infinity)).toBeLessThanOrEqual((bar?.y ?? 0) + (bar?.height ?? 0));
   expect((term?.y ?? 0) + (term?.height ?? 0)).toBeLessThanOrEqual((bar?.y ?? 0) + 1);
 
+  // Putting the keyboard down keeps the panel, the field's row included (#2499).
   await key(page, "Hide keyboard").click();
-  await expect(field(page)).toHaveCount(0);
-  await expect(keysBar(page)).toHaveCount(0);
+  await expect(key(page, "Hide keyboard")).toHaveCount(0);
+  await expect(keysBar(page)).toBeVisible();
+  await expect(field(page)).toBeVisible();
   await key(page, "Show keyboard").click();
   await expect(keysBar(page)).toBeVisible();
   await expect(field(page)).toBeVisible();

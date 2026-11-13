@@ -17,6 +17,8 @@ interface Panel {
   readonly order: readonly string[];
   /** Each key's computed look, in the same order. */
   readonly styles: readonly string[];
+  /** The Type row's field and Send: their computed look and drawn box. */
+  readonly typeRow: readonly string[];
   /** The panel's and the key row's drawn size, rounded to the px. */
   readonly size: string;
 }
@@ -64,7 +66,10 @@ async function panel(page: Page): Promise<Panel> {
       const box = el?.getBoundingClientRect();
       return box === undefined ? "none" : `${Math.round(box.width)}x${Math.round(box.height)}`;
     };
+    const field = bar.querySelector("textarea");
+    const send = [...bar.querySelectorAll("button")].find((button) => button.ariaLabel === "Send");
     return {
+      typeRow: [field, send].map((el) => (el === null || el === undefined ? "missing" : look(el))),
       structure,
       order: controls.map((el) => (el.tagName.toLowerCase() === "button" ? name(el) : el.tagName.toLowerCase())),
       styles: [...keys, ...(toggle === undefined ? [] : [toggle])].map(look),
@@ -102,6 +107,7 @@ test("at 390 the keys are one panel with the keyboard down and up: the same stru
   expect(up.structure).toEqual(down.structure);
   expect(up.order).toEqual(down.order);
   expect(up.styles).toEqual(down.styles);
+  expect(up.typeRow).toEqual(down.typeRow);
   expect(up.size).toEqual(down.size);
   // The Type field and Send across the top, the keys under them, the toggle last.
   expect(up.order.slice(0, 2)).toEqual(["textarea", "Send"]);
