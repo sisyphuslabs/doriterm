@@ -7,6 +7,7 @@ import { type ReactNode, useState } from "react";
 import { useConnection } from "../connection/store.ts";
 import { AddMachineDialog } from "../workspace/add-machine-dialog.tsx";
 import { machineCause } from "../workspace/machine-cause.ts";
+import { RemoveMachineButton, removable } from "../workspace/remove-machine.tsx";
 import { RetryButton } from "../workspace/retry-button.tsx";
 import { formatAge } from "../workspace/model.ts";
 import { useMachines } from "../workspace/use-machines.ts";
@@ -46,12 +47,21 @@ function lastSeen(view: MachineView, now: number): string | undefined {
 /** States that need the person: they get the attention hue and Try again; connecting is a routine redial. */
 const PROBLEMS = new Set(["unreachable", "needs_login"]);
 
-export function AddedMachine(props: { view: MachineView; now: number; onRetry: () => Promise<void> }) {
-  const { view, now, onRetry } = props;
+export interface AddedMachineProps {
+  readonly view: MachineView;
+  readonly now: number;
+  readonly onRetry: () => Promise<void>;
+  /** Removes it; offered for a machine added by hand, never a mesh member (#2456). */
+  readonly onRemove: (machine: string) => Promise<void>;
+}
+
+export function AddedMachine({ view, now, onRetry, onRemove }: AddedMachineProps) {
   const cause = machineCause(view);
   const seen = lastSeen(view, now);
   const word = STATE_WORDS[view.state] ?? "Not connected";
   const problem = PROBLEMS.has(view.state);
+  const retry = problem && cause?.retryless !== true;
+  const remove = removable(view);
   return (
     <li>
       <SettingRow
@@ -65,7 +75,14 @@ export function AddedMachine(props: { view: MachineView; now: number; onRetry: (
             {cause === undefined ? null : <span className="block">{cause.detail}</span>}
           </>
         }
-        control={problem && cause?.retryless !== true ? <RetryButton size="sm" onRetry={onRetry} /> : null}
+        control={
+          retry || remove ? (
+            <span className="flex flex-wrap justify-end gap-2">
+              {retry ? <RetryButton size="sm" onRetry={onRetry} /> : null}
+              {remove ? <RemoveMachineButton size="sm" name={view.name} onRemove={onRemove} /> : null}
+            </span>
+          ) : null
+        }
       />
     </li>
   );
@@ -74,7 +91,7 @@ export function AddedMachine(props: { view: MachineView; now: number; onRetry: (
 function MachineRows({ connection }: { readonly connection: HcConnection }) {
   const settings = useConnectionSettings();
   const ownComputer = desktopBridge() !== null && settings.mode === "loopback";
-  const { views, retry, listError, entries } = useMachines(connection, NO_TERMINALS);
+  const { views, retry, remove, listError, entries } = useMachines(connection, NO_TERMINALS);
   const now = useNow();
   const [adding, setAdding] = useState(false);
   return (
@@ -89,7 +106,13 @@ function MachineRows({ connection }: { readonly connection: HcConnection }) {
           />
         </li>
         {views.map((view) => (
-          <AddedMachine key={view.id} view={view} now={now} onRetry={() => retry(view.name)} />
+          <AddedMachine
+            key={view.id}
+            view={view}
+            now={now}
+            onRetry={() => retry(view.name)}
+            onRemove={remove}
+          />
         ))}
       </ul>
       {listError === undefined ? null : <MachinesListError cause={listError} />}

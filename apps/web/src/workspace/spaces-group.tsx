@@ -1,7 +1,6 @@
 import {
   IconButton,
   MachineHeader,
-  Notice,
   RowWithActions,
   SidebarSection,
   SpaceRow,
@@ -13,12 +12,12 @@ import { useMemo, useRef, useState } from "react";
 import { desktopBridge } from "../desktop/bridge.ts";
 import { useConnectionSettings } from "../connection/store.ts";
 import { SpaceActions, SpaceMenuItems } from "./space-actions.tsx";
-import { machineCause } from "./machine-cause.ts";
 import { type HeaderButton, MachineGroup } from "./machine-group.tsx";
+import { MachineNotice } from "./machine-notice.tsx";
 import { stateLabel, type MachineEntry } from "./machines.ts";
 import { MachinesListError } from "./machines-list-error.tsx";
 import { useConnectionNotice } from "./reconnect-status.tsx";
-import { RetryButton } from "./retry-button.tsx";
+import { removable } from "./remove-machine.tsx";
 import { SpaceList, type SpaceReorder } from "./space-list.tsx";
 import { SpaceNameInput } from "./space-name-input.tsx";
 import { filterMachineGroups, filterSpaces } from "./sidebar-filter.ts";
@@ -42,20 +41,6 @@ export interface SpacesGroupProps {
 }
 
 const ALARM = new Set(["unreachable", "needs_login"]);
-
-/** A machine's problem under its header, including why creation is unavailable during its reconnect grace. */
-export function MachineNotice({ name }: { readonly name: string }) {
-  const { views, retry } = useMachinesContext();
-  const view = views.find((one) => one.name === name);
-  const cause = view === undefined || view.state === "connecting" ? undefined : machineCause(view);
-  if (cause === undefined) return null;
-  return (
-    <Notice tone="warning" className="mx-1 mt-1" title={cause.title}>
-      {cause.detail}
-      {cause.retryless === true ? null : <RetryButton size="sm" className="mt-2 flex" onRetry={() => retry(name)} />}
-    </Notice>
-  );
-}
 
 /**
  * herdr-app's row under a machine with no spaces yet: starts the first one there. It is a ghost Button's inks, so its
@@ -253,6 +238,11 @@ function SpacesLists({
               name={machine.name}
               reorder={reorderOf(machine, index)}
               header={(button) => header(machine, tabs, button)}
+              onRemove={
+                !machine.local && removable(machines.views.find((view) => view.id === machine.core))
+                  ? machines.remove
+                  : undefined
+              }
             >
               {collapsed.includes(machine.id) && !filtering ? null : (
                 <>
