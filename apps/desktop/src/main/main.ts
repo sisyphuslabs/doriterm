@@ -28,7 +28,7 @@ import { openDeepLink, routeDeepLinksTo, takePairingLink } from "./deep-link.ts"
 import { DictationHost } from "./dictation.ts";
 import { DirectForwarder } from "./direct-forward.ts";
 import { applyDevCsp, hardenContents, lockPermissions } from "./harden.ts";
-import { findHc, hostCliOf, hostCommand, type HostContext, saveHc, savedHc, usualHcDirs } from "./host-command.ts";
+import { findHc, hostChildEnv, hostCommand, type HostContext, saveHc, savedHc, usualHcDirs } from "./host-command.ts";
 import { registerIpc } from "./ipc.ts";
 import { LocalHost } from "./local-host.ts";
 import { menuTemplate } from "./menu.ts";
@@ -212,25 +212,13 @@ const revealWindow = () => (app.isReady() ? showWindow().webContents : undefined
 
 function ready(): void {
   const context = hostContext();
-  // An e2e run replaces the host binary with its guard wrapper (#2399); the host that would really run - the one
-  // bundled beside this app, or the checkout's source - is still what the wrapper must start, so the app hands
-  // its own resolution over instead of anyone re-deriving the path.
-  const hostOverride = context.env["DORIFACE_HOST_BIN"];
   const localHost = new LocalHost({
     command: hostCommand(context),
     hc: () => findHc(context, usualHcDirs(context), savedHc(savedFile("hc.json"))),
     searched: () => usualHcDirs(context),
     // A new terminal with no directory opens in the home folder, not where the app was launched from (#2047).
     cwd: context.home,
-    env:
-      hostOverride === undefined || hostOverride === ""
-        ? process.env
-        : {
-            ...process.env,
-            DORIFACE_HOST_RESOLVED: hostCliOf(
-              hostCommand({ ...context, env: { ...context.env, DORIFACE_HOST_BIN: undefined } }),
-            ),
-          },
+    env: hostChildEnv(context),
     log: (line) => console.log(line),
   });
   app.on("will-quit", () => void localHost.stop());
