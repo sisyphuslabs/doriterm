@@ -99,3 +99,41 @@ test("a space on a machine that went offline offers Close and Rename disabled, a
     ),
   );
 });
+
+test("on a phone, an offline machine's space offers New tab disabled with why, and it comes back when the machine reconnects", async ({
+  page,
+}) => {
+  test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const phoneSpace = "on-the-phone";
+  const started: unknown = JSON.parse(
+    hcOn("machine", ["run", "--bg", "--name", "unavailable-phone", "--", "env", "PS1=$ ", "sh"]),
+  );
+  const local = typeof started === "object" && started !== null ? String(Reflect.get(started, "address")) : "";
+  seedSpaces(
+    [
+      {
+        id: `spc-${phoneSpace}`,
+        name: phoneSpace,
+        folder: "/tmp",
+        tabs: [{ id: `tb-${phoneSpace}`, name: phoneSpace, terminal: local }],
+      },
+    ],
+    MACHINE_NAME,
+  );
+  await page.goto("/?v=spaces");
+  await page.getByText(phoneSpace).first().click({ timeout: 20_000 });
+  await expect(page.getByRole("heading", { level: 1, name: phoneSpace })).toBeVisible({ timeout: 10_000 });
+  // The space screen's own New tab, at the bottom within thumb reach: a path of its own, apart from the strip's +.
+  const newTab = page.getByRole("button", { name: `New tab in ${phoneSpace}` });
+  await expect(newTab).toBeEnabled({ timeout: 20_000 });
+  try {
+    switchTo("drop");
+    await expect(newTab).toBeDisabled({ timeout: OFFLINE_BOUND_MS });
+    await expect(page.getByText(/New tab comes back by itself once the machine can take it/)).toBeVisible();
+  } finally {
+    reconnect();
+  }
+  await expect(newTab).toBeEnabled({ timeout: STATE_BOUND_MS });
+  await expect(page.getByText(/comes back by itself/)).toHaveCount(0);
+});
