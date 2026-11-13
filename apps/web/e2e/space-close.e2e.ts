@@ -215,6 +215,8 @@ test("a space closed while its layout write is refused says so once, not once pe
   // This isolated page's writes are all refused. Ending the programs must therefore leave the shared layout intact:
   // another device's dead-pane edits (#2122) would change its version and invalidate this refusal scenario (#2504).
   const version = layoutVersion();
+  // A reply without a version reads NaN, and NaN equals itself under toBe: the checks below would then check nothing.
+  expect(Number.isFinite(version), "the layout document reports its version").toBe(true);
   await question.getByRole("button", { name: "Close" }).click();
   // The close ends both programs first, and the feed then has the page ask about each pane it finds absent, answered
   // not_found: both drops it could report are queued behind the close's own write.
