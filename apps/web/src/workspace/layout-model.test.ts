@@ -5,7 +5,6 @@ import {
   adoptLoose,
   afterClosing,
   buildTabs,
-  HOME_SPACE,
   keepMounts,
   keepTransient,
   layoutIds,
@@ -15,6 +14,7 @@ import {
   TRANSIENT,
   type LayoutTab,
 } from "./layout-model.ts";
+import { HOME_SPACE } from "./placement.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
 
 const here: MachineLayout = {
@@ -310,6 +310,29 @@ describe("adoptLoose (#404)", () => {
       ["", 0],
       ["api-x", 2],
       [HOME_SPACE, 1],
+    ]);
+  });
+
+  test("a terminal labelled with herdr-app's space id goes to that space when the document has it, else by its space name", () => {
+    const adopted = adoptLoose(
+      saved,
+      [
+        loose("t2", "/tmp", { labels: { "herdr.space": "spc-api", space: "other" } }),
+        loose("t3", "/tmp", { labels: { "herdr.space": "spc-gone", space: "other" } }),
+      ],
+      ids(),
+    );
+    expect(adopted === null ? null : docSpaces(adopted).map((space) => [space.name, space.tabs.length])).toEqual([
+      ["", 1],
+      ["", 1],
+      ["other", 1],
+    ]);
+  });
+
+  test("a Home space made in this adoption for a terminal labelled Home is the one unlabelled terminals join", () => {
+    const adopted = adoptLoose(null, [loose("t1", "/a", { labels: { space: HOME_SPACE } }), loose("t2", "/b")], ids());
+    expect(adopted === null ? null : docSpaces(adopted).map((space) => [space.name, space.tabs.length])).toEqual([
+      [HOME_SPACE, 2],
     ]);
   });
 
