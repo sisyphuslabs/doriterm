@@ -44,6 +44,7 @@ export const layout: Layout = {
   selectTab: noop,
   focusPane: noop,
   openTerminal: noop,
+  placeTerminal: noop,
   split: noop,
   dropPane: noop,
   closeTab: noop,
