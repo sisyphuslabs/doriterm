@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { afterLeaving, noteLeaving } from "./leaving-attach.ts";
+import { afterLeaving, dropOpeningAttach, noteLeaving } from "./leaving-attach.ts";
+import { attachAhead } from "./opening-attach.ts";
 
 /** A promise the test settles by hand, so each step's order is the test's, not the clock's. */
 function held<T = void>() {
@@ -74,5 +75,30 @@ describe("an attach left by a gone view (#2475)", () => {
     gone.resolve();
     await settled(afterLeaving(connection, "t1"));
     expect(await settled(afterLeaving(connection, "t1"))).toBe(true);
+  });
+
+  test("a gone view's early attach is closed, and the wait lasts until the core has closed it (#2496 review)", async () => {
+    const connection = {};
+    const opened = held<{ close: () => Promise<void> }>();
+    const closing = held();
+    let closes = 0;
+    attachAhead(connection, { attach: () => opened.promise as never }, "t1", {} as never);
+    const dropped = dropOpeningAttach(connection, "t1");
+    noteLeaving(connection, "t1", dropped);
+    const waiting = afterLeaving(connection, "t1");
+    opened.resolve({
+      close: () => {
+        closes += 1;
+        return closing.promise;
+      },
+    });
+    expect(await settled(waiting)).toBe(false);
+    expect(closes).toBe(1);
+    closing.resolve();
+    expect(await settled(waiting)).toBe(true);
+  });
+
+  test("a terminal with no early attach is not held by dropping it", async () => {
+    expect(await settled(dropOpeningAttach({}, "t9"))).toBe(true);
   });
 });

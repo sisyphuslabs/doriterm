@@ -227,8 +227,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     const asked = afterLeaving(connection, address).then(() => {
       if (!unmounted.current)
         return viewAttach(connection, address, !attachedBefore.current, { cols, rows, display }, attachOwn);
-      if (!attachedBefore.current) dropOpeningAttach(connection, address);
-      return null;
+      return attachedBefore.current ? null : dropOpeningAttach(connection, address).then(() => null);
     });
     const answered = asked.then<unknown, void>(
       (opened) => {

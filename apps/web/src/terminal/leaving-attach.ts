@@ -28,10 +28,13 @@ export function afterLeaving(connection: object, address: string): Promise<unkno
 
 /**
  * Closes the attach sent ahead with `address`'s run, for a view that went before using it: left open, it would hold the
- * core's viewer at that view's size, the bug above (#2496 review).
+ * core's viewer at that view's size, the bug above (#2496 review). Settles once the core has closed it, so the next
+ * view's wait holds until then.
  */
-export function dropOpeningAttach(connection: object, address: string): void {
-  void takeOpeningAttach(connection, address)?.stream.then(
+export function dropOpeningAttach(connection: object, address: string): Promise<unknown> {
+  const early = takeOpeningAttach(connection, address);
+  if (early === undefined) return Promise.resolve();
+  return early.stream.then(
     (left) => left.close(),
     () => undefined,
   );
