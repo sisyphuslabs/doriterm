@@ -43,11 +43,15 @@ export interface SpacesGroupProps {
 
 const ALARM = new Set(["unreachable", "needs_login"]);
 
-/** A machine's problem under its header, including why creation is unavailable during its reconnect grace. */
+/**
+ * A machine's problem under its header. A routine redial raises no alarm (#1686, #2464): inside its reconnect grace the
+ * header alone reads reconnecting; the notice with why and Try again comes once the grace is over and it reads offline.
+ */
 export function MachineNotice({ name }: { readonly name: string }) {
   const { views, retry } = useMachinesContext();
   const view = views.find((one) => one.name === name);
-  const cause = view === undefined || view.state === "connecting" ? undefined : machineCause(view);
+  const cause =
+    view === undefined || view.state === "connecting" || view.state === "reconnecting" ? undefined : machineCause(view);
   if (cause === undefined) return null;
   return (
     <Notice tone="warning" className="mx-1 mt-1" title={cause.title}>

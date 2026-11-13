@@ -122,6 +122,8 @@ test.describe("the terminal in view when its machine drops (#2464)", () => {
     await expect(status.first()).toBeVisible({ timeout: STATE_BOUND_MS });
     await capture(page, "reconnecting-desktop");
     await expect(page.getByRole("contentinfo")).not.toContainText("Connected");
+    // Inside the grace nothing is offered that cannot help yet: no warning, no Try again anywhere (#1686).
+    await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(0);
     const pane = page.locator('[data-focused="true"]');
     await expect(pane.getByText(`${MACHINE_NAME} is offline`)).toBeVisible({ timeout: OFFLINE_BOUND_MS });
     await expect(pane.getByRole("button")).toHaveCount(1);

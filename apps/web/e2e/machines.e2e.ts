@@ -22,7 +22,9 @@ test.describe("machines added with hc machine add", () => {
       switchTo("drop");
       await expect(machineRow(page)).toContainText("reconnecting", { timeout: STATE_BOUND_MS });
       await expect(newOn(page)).toBeDisabled();
-      await expect(page.getByText(`Reconnecting to ${MACHINE_NAME}`, { exact: true })).toBeVisible();
+      // A redial inside its grace raises no alarm: the header reads reconnecting, with no notice and no Try again (#1686).
+      await expect(page.getByText(`Reconnecting to ${MACHINE_NAME}`, { exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(0);
       await page.screenshot({ path: testInfo.outputPath("spaces-reconnecting.png") });
       await page.getByRole("link", { name: "Settings", exact: true }).click();
       await page.getByRole("button", { name: "Machines", exact: true }).click();
