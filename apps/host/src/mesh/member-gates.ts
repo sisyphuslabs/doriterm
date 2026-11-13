@@ -15,7 +15,7 @@ export interface Gate {
    * this host.
    */
   readonly cause: "reconnecting" | "offline" | "rate-limited";
-  /** Refusals in a row: inside the grace while reconnecting, probes missed once offline. */
+  /** Dials refused in a row: the first refusal and its retries while reconnecting, probes missed once offline. */
   readonly misses: number;
   readonly nextAt: number;
   /** When the last dial that set this gate failed: return from this host's own outage drops gates set during it. */
@@ -64,17 +64,23 @@ export class MemberGates {
     this.#reached.add(member);
   }
 
-  /** A dial to `member` was refused (4404) or failed. */
+  /**
+   * A dial to `member` was refused (4404) or failed. While the member is reconnecting, only the retry it was given
+   * moves it on: a refusal that comes before that retry is due is from a dial that was already under way.
+   */
   missed(member: string): void {
     const now = this.#clock.now();
     const gate = this.#gates.get(member);
+    const retry = gate?.cause === "reconnecting" ? gate : undefined;
+    if (retry !== undefined && now < retry.nextAt) return;
     const first = this.#firstMiss.get(member) ?? now;
     this.#firstMiss.set(member, first);
     const graceEnd = first + this.#limits.reconnectGraceMs;
-    const reconnecting = gate === undefined ? this.#reached.has(member) : gate.cause === "reconnecting";
-    if (reconnecting && now < graceEnd) {
-      const nextAt = gate === undefined ? Math.min(now + this.#limits.reconnectRetryMs, graceEnd) : graceEnd;
-      this.#set(member, { cause: "reconnecting", misses: (gate?.misses ?? 0) + 1, nextAt, lastMissAt: now });
+    // A member gated offline has left the reached set, so only a member still reached starts a grace here: one
+    // with no gate, or one a rate limit gated meanwhile.
+    if ((retry !== undefined || this.#reached.has(member)) && now < graceEnd) {
+      const nextAt = retry === undefined ? Math.min(now + this.#limits.reconnectRetryMs, graceEnd) : graceEnd;
+      this.#set(member, { cause: "reconnecting", misses: (retry?.misses ?? 0) + 1, nextAt, lastMissAt: now });
       return;
     }
     this.#reached.delete(member);
