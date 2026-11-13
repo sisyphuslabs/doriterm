@@ -38,20 +38,21 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
     let block: Element | null = element;
     while (block !== null) {
       const own = getComputedStyle(block);
-      // An element with display: contents has no box at all, and transforms do not apply to an inline box.
+      // An element with display: contents has no box at all.
       const hasBox = own.display !== "contents";
+      // A filter makes any element a containing block; the other properties do not apply to an inline box.
+      const filtered = own.filter !== "none" || own.backdropFilter !== "none";
       const transformed =
-        own.display !== "inline" &&
-        (own.transform !== "none" ||
-          own.translate !== "none" ||
-          own.scale !== "none" ||
-          own.rotate !== "none" ||
-          own.perspective !== "none" ||
-          own.filter !== "none" ||
-          own.backdropFilter !== "none" ||
-          /\b(layout|paint|strict|content)\b/.test(own.contain) ||
-          /\b(size|inline-size)\b/.test(own.containerType) ||
-          /\b(transform|translate|scale|rotate|perspective|filter|backdrop-filter|contain)\b/.test(own.willChange));
+        filtered ||
+        (own.display !== "inline" &&
+          (own.transform !== "none" ||
+            own.translate !== "none" ||
+            own.scale !== "none" ||
+            own.rotate !== "none" ||
+            own.perspective !== "none" ||
+            /\b(layout|paint|strict|content)\b/.test(own.contain) ||
+            /\b(size|inline-size)\b/.test(own.containerType) ||
+            /\b(transform|translate|scale|rotate|perspective|filter|backdrop-filter|contain)\b/.test(own.willChange)));
       if (hasBox && (transformed || (style.position === "absolute" && own.position !== "static"))) break;
       block = block.parentElement;
     }
@@ -69,8 +70,13 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
           throw unreadable;
         }
       }
+      // The padding box starts inside the border; clientLeft and clientTop read 0 for an inline box, so the border is read.
       const box = block.getBoundingClientRect();
-      origin = { left: box.left + block.clientLeft, top: box.top + block.clientTop };
+      const border = getComputedStyle(block);
+      origin = {
+        left: box.left + Number.parseFloat(border.borderLeftWidth),
+        top: box.top + Number.parseFloat(border.borderTopWidth),
+      };
     }
     const left = origin.left + Number.parseFloat(style.left);
     const top = origin.top + Number.parseFloat(style.top);

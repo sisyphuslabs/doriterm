@@ -48,7 +48,7 @@ test("a static button's absolute hit layer is read against its nearest positione
     await page.setContent(SCALED);
     await expect(page.evaluate(appRegionAt, { x: 10, y: 10 })).rejects.toThrow("no readable box");
     // A scale above the containing block moves the block too, so it is refused as well.
-    await page.setContent(SCALED.replace("#grown {", "body { scale: 2; } #grown { position: relative; scale: none;"));
+    await page.setContent(SCALED.replace("#grown { scale: 2;", "body { scale: 2; } #grown { position: relative;"));
     await expect(page.evaluate(appRegionAt, { x: 10, y: 10 })).rejects.toThrow("no readable box");
   } finally {
     await app.close();
