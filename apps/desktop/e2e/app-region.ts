@@ -74,8 +74,8 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
       // An inline that wraps over lines starts where its first line box does; a right-to-left or vertical one starts at
       // another corner, which this does not read.
       const border = getComputedStyle(block);
-      const ltr = border.direction !== "rtl" && border.writingMode === "horizontal-tb";
-      if (border.display === "inline" && !ltr) throw unreadable;
+      const horizontalLtr = border.direction !== "rtl" && border.writingMode === "horizontal-tb";
+      if (border.display === "inline" && !horizontalLtr) throw unreadable;
       const box =
         (border.display === "inline" ? block.getClientRects()[0] : undefined) ?? block.getBoundingClientRect();
       origin = {
