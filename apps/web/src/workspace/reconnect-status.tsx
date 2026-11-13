@@ -99,17 +99,9 @@ export function ReconnectStatus({ compact = false }: { readonly compact?: boolea
   );
 }
 
-/** The status bar item while the focused terminal's machine line is down; nothing while it is up or no terminal is focused. */
-export function MachineLineStatus({
-  connection,
-  address,
-}: {
-  readonly connection: HcConnection;
-  readonly address: string | null;
-}) {
-  const away = useMachineLine(connection, address ?? "", address !== null);
-  if (away === null) return null;
-  const notice = machineNotice(away);
+/** The status bar item while the focused terminal's machine line is down (useMachineLine names that machine). */
+export function MachineLineStatus({ machine }: { readonly machine: string }) {
+  const notice = machineNotice(machine);
   return (
     <span role="status" className="flex min-w-0" title={notice.detail}>
       <StatusBarItem icon={glyph(notice, "size-3.5")}>

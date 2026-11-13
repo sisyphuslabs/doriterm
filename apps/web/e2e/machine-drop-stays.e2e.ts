@@ -2,6 +2,7 @@
 // beside the terminal, never over its output, and comes back by itself; a machine that stays gone reads offline in the
 // same place with one way on. A drop never moves the person to another tab.
 import type { Locator, Page } from "@playwright/test";
+import { agentRow } from "./agents.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import {
@@ -64,7 +65,10 @@ async function overlap(a: Locator, b: Locator): Promise<boolean> {
 async function capture(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: test.info().outputPath(`${name}-desktop.png`) });
   await page.setViewportSize({ width: 390, height: 844 });
+  await agentRow(page, "sh", true).click();
+  await page.waitForURL(/[?&]t=/);
   await page.screenshot({ path: test.info().outputPath(`${name}-phone.png`) });
+  await page.goBack();
   await page.setViewportSize({ width: 1280, height: 720 });
 }
 
