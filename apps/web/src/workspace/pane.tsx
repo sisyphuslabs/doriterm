@@ -3,9 +3,10 @@ import { cn, ContextMenu, IconButton, skipMenuHandler, skipTouchMenu } from "@do
 import { Columns2, Maximize2, Minimize2, Rows2, X } from "lucide-react";
 import type { Axis } from "@doriface/protocol/layout";
 import { useActionKeys } from "../keys/use-action-keys.ts";
-import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { memo, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { ApprovalOverlay } from "../approval/approval-overlay.tsx";
 import { RegionBoundary } from "../crash/region-boundary.tsx";
+import { useTerminal } from "../roster/use-terminal.ts";
 import type { TerminalEnd } from "../terminal/terminal-end.ts";
 import type { TerminalPort } from "../terminal/terminal-port.ts";
 import { TerminalView } from "../terminal/terminal-view.tsx";
@@ -41,8 +42,8 @@ export interface PaneProps {
   readonly onGrab?: ((event: ReactPointerEvent<HTMLElement>) => void) | undefined;
 }
 
-/** herdr-app's pane header buttons, each with its shortcut in the tooltip. */
-function PaneButtons({
+/** herdr-app's pane header buttons, each with its shortcut in the tooltip; a title change leaves them as drawn (#2607). */
+const PaneButtons = memo(function PaneButtons({
   zoomed,
   onSplit,
   onZoom,
@@ -86,7 +87,7 @@ function PaneButtons({
       />
     </span>
   );
-}
+});
 
 /**
  * A terminal card. A tab's only pane has no title bar: its tab names it, the status bar says where it runs, and the
@@ -113,7 +114,8 @@ export function Pane(props: PaneProps) {
     onGrab,
   } = props;
   const sessionMenuFocus = useSessionMenuFocus();
-  const title = terminalTitle(terminal);
+  // The title as it stands: the list this pane came from changes only with the terminals' shape (#2607).
+  const title = terminalTitle(useTerminal(connection, terminal.address) ?? terminal);
   const machine = machineOf(terminal.address);
   // Watched for every pane on screen, so a drop is noticed within a line read, focused or not; a pane in a hidden tab or
   // behind a zoom has the roster read nothing for it (#2505 review). Past the grace the pane body says the machine is

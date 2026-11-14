@@ -4,6 +4,7 @@ import { type ReactNode, useRef } from "react";
 import { useFittedLines } from "./fit-lines.ts";
 import { agentStatus } from "./attention.ts";
 import { machineOf, type Session, spaceName, spaceOfAddress, terminalTitle } from "./model.ts";
+import { useShown } from "./use-shown.ts";
 import { useSpaceSelection } from "./space-selection.ts";
 import { PhoneSessionSheet } from "./phone-session-sheet.tsx";
 
@@ -34,7 +35,8 @@ export interface PhoneHeaderProps {
  */
 export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBack, onOpen, action }: PhoneHeaderProps) {
   // The tab's own name, else the terminal's title: an agent's or a program's name, never the tab's place among its space's.
-  const title = tabTitle ?? terminalTitle(terminal);
+  const [now = terminal] = useShown([terminal]);
+  const title = tabTitle ?? terminalTitle(now);
   const heading = useRef<HTMLHeadingElement>(null);
   const titleLines = useFittedLines(heading, title);
   const machine = machineOf(terminal.address);

@@ -82,7 +82,9 @@ for (const type of ["foreground", "title"] as const) {
     const address = await first.getAttribute("data-terminal");
     expect(address).not.toBeNull();
     for (let i = 0; i < 2; i += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- each split adds to the pane the last one made
       await page.getByRole("button", { name: "Split right", exact: true }).first().click();
+      // oxlint-disable-next-line no-await-in-loop -- as above
       await expect(page.locator("[data-terminal]")).toHaveCount(i + 2);
     }
     await expect(page.locator("[data-terminal]")).toHaveCount(3);
@@ -125,6 +127,7 @@ for (const type of ["foreground", "title"] as const) {
           ),
         );
       }
+      // oxlint-disable-next-line no-await-in-loop -- each event is painted before the next one is sent
       await expect.poll(() => page.evaluate(() => Reflect.get(window, "__terminalPainted").length)).toBe(i + 1);
     }
     const evidence = await page.evaluate(() => ({
@@ -135,6 +138,8 @@ for (const type of ["foreground", "title"] as const) {
     console.log(`${type} render evidence ${JSON.stringify(evidence)}`);
     expect(evidence.painted).toEqual(Array.from({ length: 6 }, () => true));
     expect(evidence.runs.length).toBeGreaterThanOrEqual(6);
-    expect(Math.max(...evidence.runs)).toBeLessThanOrEqual(40);
+    // What shows the terminal runs and nothing else: its pane (about 23 components) and its sidebar row with the row's
+    // labelled actions (about 39), against about 550 when the whole shell ran (#2607).
+    expect(Math.max(...evidence.runs)).toBeLessThanOrEqual(80);
   });
 }

@@ -13,6 +13,7 @@ import { useDictation } from "../voice/use-dictation.ts";
 import { VoiceDock } from "../voice/voice-dock.tsx";
 import { MachineOffline } from "./machine-offline.tsx";
 import { machineOf, type Session, terminalTitle } from "./model.ts";
+import { useShown } from "./use-shown.ts";
 import { PackSheet } from "./pack-sheet.tsx";
 import { PhoneHeader } from "./phone-header.tsx";
 import { PaneSwitcher } from "./phone-pane-switcher.tsx";
@@ -94,7 +95,8 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   // The view that showed its program had already ended; the keys have nothing to send to under it.
   const [endedView, setEndedView] = useState<string | null>(null);
   const ended = endedView === viewKey;
-  const title = terminalTitle(terminal);
+  const [now = terminal] = useShown([terminal]);
+  const title = terminalTitle(now);
   const machine = machineOf(terminal.address);
   const offline = terminal.offline === true && machine !== undefined;
   const browsing = browsingOn === terminal.address && !ended && !offline;

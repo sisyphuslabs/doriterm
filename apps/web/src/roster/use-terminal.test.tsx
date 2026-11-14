@@ -3,15 +3,12 @@ import type { HcConnection } from "@doriface/client";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { FakeCore, terminal } from "./fake-core.test-support.ts";
-import { useRoster } from "./use-roster.ts";
+import { useTerminal } from "./use-terminal.ts";
 
-// The existing per-address read, before the subscription is narrowed to that address.
-function useTerminal(connection: HcConnection, address: string) {
-  return useRoster(connection).snapshot.terminals.terminals.find((entry) => entry.address === address);
-}
+function NoFrame() {}
 
 test("a terminal reader renders only for its own foreground event (#2607)", async () => {
-  const view = { HTMLIFrameElement: function NoFrame() {}, document: { activeElement: null } };
+  const view = { HTMLIFrameElement: NoFrame, document: { activeElement: null } };
   const container = {
     nodeType: 1,
     nodeName: "DIV",
