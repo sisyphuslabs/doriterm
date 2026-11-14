@@ -11,6 +11,12 @@ import {
 } from "@doriface/relay-client";
 import type { PairingSlotRegistrar } from "../pairing-slots.ts";
 
+/** The wait before a redial as the host log states it: a stable uplink's quick redial is under a second (#2498). */
+export function reconnectWait(ms: number): string {
+  if (ms === 0) return "reconnecting now";
+  return ms < 1000 ? `reconnecting in ${ms} ms` : `reconnecting in ${Math.ceil(ms / 1000)} s`;
+}
+
 export interface HostUplinkOptions {
   readonly relayUrl: string;
   readonly identity: HostIdentity;
@@ -117,9 +123,7 @@ export class HostUplink implements PairingSlotRegistrar {
       case "answered":
         return log(`relay: connected to ${relayUrl}`);
       case "waiting":
-        return log(
-          `relay: uplink closed (${closeOf(state.code, state.reason)}); reconnecting in ${state.retryInMs < 1000 ? `${state.retryInMs} ms` : `${Math.ceil(state.retryInMs / 1000)} s`}`,
-        );
+        return log(`relay: uplink closed (${closeOf(state.code, state.reason)}); ${reconnectWait(state.retryInMs)}`);
       case "stopped":
         if (state.code !== 1000)
           log(`relay: uplink stopped (${state.code}): ${FINAL_REASONS[state.code] ?? "gave up"}`);
