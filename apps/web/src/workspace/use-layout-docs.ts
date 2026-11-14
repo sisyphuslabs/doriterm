@@ -68,8 +68,13 @@ export function useLayoutDocs(
     const state = live?.state;
     const kept = roster.docs.kept(machineId);
     const why = machineId === null ? LAYOUT_LOADING : noEditsWhy(machineId, shown);
+    // A machine past its reconnect grace takes no edits even while its last document is still held: every action on
+    // it is offered disabled at once, not refused after the click (#2455).
+    // The page's own reading first (it holds a redialing machine as reconnecting through the grace), else hc's.
+    const machineState = view === null ? undefined : (shown.find((one) => one.id === machineId)?.state ?? view.state);
+    const gone = machineState !== undefined && machineState !== "connected" && machineState !== "reconnecting";
     const readOnly =
-      state === undefined
+      gone || state === undefined
         ? why
         : state.phase === "ready"
           ? null

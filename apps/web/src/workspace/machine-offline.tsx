@@ -1,6 +1,7 @@
 import { EmptyState, cn } from "@doriface/ui";
 import { Unplug } from "lucide-react";
 import { machineCause } from "./machine-cause.ts";
+import { RemoveMachineButton, removable } from "./remove-machine.tsx";
 import { RetryButton } from "./retry-button.tsx";
 import { useMachinesContext } from "./use-machines.ts";
 
@@ -9,9 +10,12 @@ export interface MachineOfflineProps {
   readonly className?: string;
 }
 
-/** Shown instead of a terminal whose machine cannot be reached: why, in plain words, and a way to dial it now. */
+/**
+ * Shown instead of a terminal whose machine cannot be reached: why, in plain words, a way to dial it now and, for a
+ * machine added by hand, a way to remove it (#2456).
+ */
 export function MachineOffline({ machine, className }: MachineOfflineProps) {
-  const { views, retry } = useMachinesContext();
+  const { views, retry, remove } = useMachinesContext();
   const view = views.find((entry) => entry.name === machine);
   const cause = view === undefined ? undefined : machineCause(view);
   return (
@@ -20,7 +24,12 @@ export function MachineOffline({ machine, className }: MachineOfflineProps) {
         icon={<Unplug aria-hidden />}
         title={cause?.title ?? `${machine} is offline`}
         description={cause?.detail ?? `${machine} can't be reached right now.`}
-        actions={<RetryButton onRetry={() => retry(machine)} />}
+        actions={
+          <>
+            <RetryButton onRetry={() => retry(machine)} />
+            {removable(view) ? <RemoveMachineButton name={machine} onRemove={remove} /> : null}
+          </>
+        }
       />
     </div>
   );
