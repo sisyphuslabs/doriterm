@@ -2,7 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { hcOn } from "./machine-switch.ts";
 import { reportedRows, reportRowOf, startMouseTracking, stopMouseTracking } from "./mouse-tracking.ts";
-import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
+import { key, keysBar, openPhoneTerminal, PHONE, settledGrid } from "./phone-key-bar.ts";
 import { pointOnRowStart, rowEnd } from "./terminal-points.ts";
 import { Touch } from "./touch.ts";
 
@@ -49,8 +49,13 @@ async function scrollEnd(viewport: Locator): Promise<() => Promise<number>> {
   };
 }
 
-/** The program hears a tap on `row` (the browser turns a tap into the mouse events the renderer reports). */
+/**
+ * The program hears a tap on `row` (the browser turns a tap into the mouse events the renderer reports). The tap is
+ * aimed once the grid is the size the core holds: leaving browse mode brings the keys panel back under the terminal,
+ * which shrinks it, and a point read before that fit lands on rows that have since moved (#2499).
+ */
 async function tapReaches(touch: Touch, terminal: Locator, row: string): Promise<void> {
+  await settledGrid(terminal.page(), terminal);
   const before = (await reportedRows(terminal)).length;
   await touch.tap(await pointOnRowStart(terminal, row));
   await expect.poll(() => reportedRows(terminal).then((rows) => rows.length)).toBeGreaterThan(before);

@@ -6,10 +6,12 @@ import { terminalConfigStore } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
 import { CursorResets } from "./cursor-reset.ts";
 import { readDisplay } from "./display.ts";
+import { reattachClear, useRepaintingCore } from "./reattach-clear.ts";
 import { clearHistoryGap, noteHistoryGap } from "./history-gap-notice.ts";
 import { type EndHolder, fromEndOf, holdFromEnd, readerInputOn } from "./hold-view-from-end.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
 import { openFailure } from "./open-failure.ts";
+import { afterLeaving, leaveUnopened, noteLeaving } from "./leaving-attach.ts";
 import { HISTORY_LINES, noteViewSize, viewAttach } from "./opening-attach.ts";
 import type { OutputPacer, ReplayOptions } from "./output-pacer.ts";
 import { type TerminalEnd, terminalEnd } from "./terminal-end.ts";
@@ -28,17 +30,6 @@ const encoder = new TextEncoder();
 
 /** What holds a terminal's paint: an attach replay settling (D5), or a synchronized update still coming in (#2040). */
 export type PaintHold = "replay" | "update";
-/**
- * Cursor home, then erase to the end of the screen (ED 0): clears the screen in use and leaves the scrollback alone. The
- * core's repaint starts with ESC[2J, which Ghostty answers over a prompt marked with OSC 133 (fish 4, shell integration)
- * by scrolling the screen into history; over a screen already blank there is nothing to scroll. Under a full-screen
- * program (vim, less, htop) this clears the alternate screen only: the repaint leaves it, and its ESC[2J scrolls the
- * primary screen behind it into history once when that screen ends at an OSC 133-marked prompt. The repaint does not draw
- * the primary screen again, so that is the only copy of the output above the program's command, and the primary screen
- * must not be erased here. Over an unmarked prompt the core's repaint erases that screen with no copy; that loss is the
- * core's, and belongs with the resume-cursor work in #2033.
- */
-const CLEAR_SCREEN = "\u001b[H\u001b[J";
 
 interface AttachSources {
   readonly connection: HcConnection;
@@ -99,6 +90,9 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
   const { connection, address, pid, live, shown, wt, setWt, stream, pending, pacer, output } = sources;
   const { isFocused, focusWhenFree, onEnd, onEnded, onStream, holdPaint } = sources;
   const toasts = useToastManager();
+  // Read when a reattach is answered: the core's version as it is then, not when the effect last ran.
+  const repaintingCore = useRef<string | undefined>(undefined);
+  repaintingCore.current = useRepaintingCore(connection, address);
   const [restarting, setRestarting] = useState(false);
   const [ended, setEnded] = useState(false);
   /** Counts the streams the core ended with the program still running; each is re-attached by the effect below. */
@@ -114,9 +108,14 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
 
   const unmounted = useRef(false);
   const unsent = useRef<() => void>(() => undefined);
+  /** The last attach sent, settled once answered (and closed, when its view has gone by then). */
+  const answering = useRef<{ connection: HcConnection; address: string; answered: Promise<unknown> } | null>(null);
   useEffect(
     () => () => {
       unmounted.current = true;
+      // An attach still unanswered has no stream to close yet: the next view of this terminal waits for it (#2475).
+      const left = answering.current;
+      if (stream.current === null && left !== null) noteLeaving(left.connection, left.address, left.answered);
       void stream.current?.close();
       unsent.current();
     },
@@ -215,9 +214,19 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     if (!attachedBefore.current) setOpening(true);
     const attachOwn = () =>
       connection.attach({ terminal: address, cols, rows, history, display, ...resumed }, { autoCredit: false });
-    viewAttach(connection, address, !attachedBefore.current, { cols, rows, display }, attachOwn).then(
-      ({ stream: attached, cols: askedCols, rows: askedRows, fresh }) => {
-        if (unmounted.current) return void attached.close();
+    // A view gone while it waited sends no attach of its own, which would only resize the pty to its size (#2496
+    // review). An attach sent ahead with the terminal's run is still taken and closed: left open, it holds the core's
+    // viewer at the gone view's size, the very bug above.
+    const asked = afterLeaving(connection, address).then(() => {
+      if (!unmounted.current)
+        return viewAttach(connection, address, !attachedBefore.current, { cols, rows, display }, attachOwn);
+      return leaveUnopened(connection, address, !attachedBefore.current);
+    });
+    const answered = asked.then<unknown, void>(
+      (opened) => {
+        if (opened === null) return;
+        const { stream: attached, cols: askedCols, rows: askedRows, fresh } = opened;
+        if (unmounted.current) return attached.close();
         setOpening(false);
         // The program restarted while the line was down: what was typed for it must not reach the new one.
         const restart = restartOnReattach(
@@ -253,7 +262,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           // already noted as the line went down (below).
           if (keepsHistory) {
             noteHistoryGap(address, sameConnection ? "stream" : "reconnect");
-            ready.write(CLEAR_SCREEN);
+            ready.write(reattachClear(repaintingCore.current));
           }
           // The repaint lands where the reader was: at the end for one who was following, in history for one who was not.
           endHold.current?.stop();
@@ -310,6 +319,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         settle({ cause });
       },
     );
+    answering.current = { connection, address, answered };
   };
 
   useEffect(() => {

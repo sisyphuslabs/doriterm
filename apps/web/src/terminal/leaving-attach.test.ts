@@ -1,0 +1,123 @@
+import { describe, expect, test } from "bun:test";
+import { afterLeaving, dropOpeningAttach, leaveUnopened, noteLeaving } from "./leaving-attach.ts";
+import { attachAhead } from "./opening-attach.ts";
+
+/** A promise the test settles by hand, so each step's order is the test's, not the clock's. */
+function held<T = void>() {
+  let resolve!: (value: T) => void;
+  let reject!: (cause: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+/** Whether `promise` has settled once every queued reaction has run. */
+async function settled(promise: Promise<unknown>): Promise<boolean> {
+  let done = false;
+  void promise.then(
+    () => (done = true),
+    () => (done = true),
+  );
+  await new Promise<void>((next) => setImmediate(next));
+  return done;
+}
+
+describe("an attach left by a gone view (#2475)", () => {
+  test("a terminal no gone view left an attach on is not held", async () => {
+    expect(await settled(afterLeaving({}, "t1"))).toBe(true);
+  });
+
+  test("the next view waits until the gone view's attach is answered", async () => {
+    const connection = {};
+    const gone = held();
+    noteLeaving(connection, "t1", gone.promise);
+    const waiting = afterLeaving(connection, "t1");
+    expect(await settled(waiting)).toBe(false);
+    gone.resolve();
+    expect(await settled(waiting)).toBe(true);
+  });
+
+  test("an attach that fails releases the wait too, so the next view never hangs on it", async () => {
+    const connection = {};
+    const gone = held();
+    noteLeaving(connection, "t1", gone.promise);
+    const waiting = afterLeaving(connection, "t1");
+    gone.reject(new Error("refused"));
+    expect(await settled(waiting)).toBe(true);
+  });
+
+  test("two gone views in a row: the wait holds until both are answered", async () => {
+    const connection = {};
+    const first = held();
+    const second = held();
+    noteLeaving(connection, "t1", first.promise);
+    noteLeaving(connection, "t1", second.promise);
+    const waiting = afterLeaving(connection, "t1");
+    second.resolve();
+    expect(await settled(waiting)).toBe(false);
+    first.resolve();
+    expect(await settled(waiting)).toBe(true);
+  });
+
+  test("other terminals and other connections are not held by it", async () => {
+    const connection = {};
+    noteLeaving(connection, "t1", held().promise);
+    expect(await settled(afterLeaving(connection, "t2"))).toBe(true);
+    expect(await settled(afterLeaving({}, "t1"))).toBe(true);
+  });
+
+  test("once answered, the entry is cleared and a later view is not held", async () => {
+    const connection = {};
+    const gone = held();
+    noteLeaving(connection, "t1", gone.promise);
+    gone.resolve();
+    await settled(afterLeaving(connection, "t1"));
+    expect(await settled(afterLeaving(connection, "t1"))).toBe(true);
+  });
+
+  test("a gone view's early attach is closed, and the wait lasts until the core has closed it (#2496 review)", async () => {
+    const connection = {};
+    const opened = held<{ close: () => Promise<void> }>();
+    const closing = held();
+    let closes = 0;
+    attachAhead(connection, { attach: () => opened.promise as never }, "t1", {} as never);
+    const dropped = dropOpeningAttach(connection, "t1");
+    noteLeaving(connection, "t1", dropped);
+    const waiting = afterLeaving(connection, "t1");
+    opened.resolve({
+      close: () => {
+        closes += 1;
+        return closing.promise;
+      },
+    });
+    expect(await settled(waiting)).toBe(false);
+    expect(closes).toBe(1);
+    closing.resolve();
+    expect(await settled(waiting)).toBe(true);
+  });
+
+  test("a terminal with no early attach is not held by dropping it", async () => {
+    expect(await settled(dropOpeningAttach({}, "t9"))).toBe(true);
+  });
+
+  test("a first view gone while it waited settles only after the core closed its early attach (#2500 review)", async () => {
+    const connection = {};
+    const opened = held<{ close: () => Promise<void> }>();
+    const closing = held();
+    attachAhead(connection, { attach: () => opened.promise as never }, "t1", {} as never);
+    const left = leaveUnopened(connection, "t1", true);
+    opened.resolve({ close: () => closing.promise });
+    expect(await settled(left)).toBe(false);
+    closing.resolve();
+    expect(await settled(left)).toBe(true);
+  });
+
+  test("a view that had attached before leaves at once and does not take an early attach", async () => {
+    const connection = {};
+    attachAhead(connection, { attach: () => held().promise as never }, "t1", {} as never);
+    expect(await settled(leaveUnopened(connection, "t1", false))).toBe(true);
+    expect(await settled(dropOpeningAttach(connection, "t1"))).toBe(false);
+  });
+});

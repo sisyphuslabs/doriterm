@@ -14,8 +14,14 @@
  * Runs in the page (pass it to `page.evaluate`). The layout tree follows the DOM except for pseudo-elements, which are
  * read in their place (::before before an element's children, ::after after them). app-region is inherited, so a
  * button's hit-area pseudo-element lists its own region too. A pseudo-element's box is read from its used insets and
- * size against its containing block, which this knows only for a fixed one (the viewport) or an absolute one whose
- * element is positioned (that element's padding box); any other with an app-region throws instead of being skipped.
+ * size against its containing block (#2366: a static button's absolute hit layer is placed by its positioned ancestor).
+ * That is the padding box of the nearest element, itself or an ancestor with a box, that establishes one: for an
+ * absolute pseudo-element one that is positioned, and for both an absolute and a fixed one one that is transformed
+ * (`transform`, `translate`, `scale`, `rotate`, `perspective`), filtered (`filter`, `backdrop-filter`), contained
+ * (`contain` layout or paint, a `container-type`) or will change one of those; else the initial containing block for
+ * an absolute one and the viewport for a fixed one. A scale on the block or above it scales the layer's offsets and size;
+ * a block rotated, skewed or seen through a perspective has no padding box this can read, and any other pseudo-element
+ * with an app-region has no readable box either: both throw instead of being skipped.
  */
 export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }): "drag" | "no-drag" | "none" {
   let at: "drag" | "no-drag" | "none" = "none";
@@ -28,20 +34,70 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
     const mode = style.getPropertyValue("-webkit-app-region");
     if (style.content === "none" || style.content === "normal" || (mode !== "drag" && mode !== "no-drag")) return;
     if (style.visibility !== "visible" || style.display === "none") return;
-    let origin = { left: 0, top: 0 };
-    if (style.position === "absolute" && getComputedStyle(element).position !== "static") {
-      const box = element.getBoundingClientRect();
-      origin = { left: box.left + element.clientLeft, top: box.top + element.clientTop };
-    } else if (style.position !== "fixed") {
-      throw new Error(`${element.tagName}${which} has app-region ${mode} and no readable box`);
+    const unreadable = new Error(`${element.tagName}${which} has app-region ${mode} and no readable box`);
+    if (style.position !== "absolute" && style.position !== "fixed") throw unreadable;
+    let block: Element | null = element;
+    while (block !== null) {
+      const own = getComputedStyle(block);
+      // An element with display: contents has no box at all.
+      const hasBox = own.display !== "contents";
+      // A filter makes any element but the root a containing block; the other properties do not apply to an inline box.
+      const filtered = block !== document.documentElement && (own.filter !== "none" || own.backdropFilter !== "none");
+      const transformed =
+        filtered ||
+        (own.display !== "inline" &&
+          (own.transform !== "none" ||
+            own.translate !== "none" ||
+            own.scale !== "none" ||
+            own.rotate !== "none" ||
+            own.perspective !== "none" ||
+            /\b(layout|paint|strict|content)\b/.test(own.contain) ||
+            /\b(size|inline-size)\b/.test(own.containerType) ||
+            /\b(transform|translate|scale|rotate|perspective|filter|backdrop-filter|contain)\b/.test(own.willChange)));
+      if (hasBox && (transformed || (style.position === "absolute" && own.position !== "static"))) break;
+      block = block.parentElement;
     }
-    const left = origin.left + Number.parseFloat(style.left);
-    const top = origin.top + Number.parseFloat(style.top);
+    let origin = { left: 0, top: 0 };
+    let scale = { x: 1, y: 1 };
+    if (block === null) {
+      if (style.position === "absolute") origin = { left: -window.scrollX, top: -window.scrollY };
+    } else {
+      // The layer's offsets are in the block's own units: a scale on the block or above it (an entrance animation runs
+      // the app's rows from 0.97 to 1, #2366) shrinks them by the product of those scales. A rotation, a skew or a
+      // perspective has no such product, so it throws.
+      let sx = 1;
+      let sy = 1;
+      for (let above: Element | null = block; above !== null; above = above.parentElement) {
+        const own = getComputedStyle(above);
+        const matrix = new DOMMatrixReadOnly(own.transform === "none" ? undefined : own.transform);
+        const axisAligned = matrix.is2D && matrix.b === 0 && matrix.c === 0 && matrix.a > 0 && matrix.d > 0;
+        if (!axisAligned || own.rotate !== "none" || own.perspective !== "none") throw unreadable;
+        const [scaleX = 1, scaleY = scaleX] = own.scale === "none" ? [] : own.scale.split(" ").map(Number);
+        if (!(scaleX > 0 && scaleY > 0)) throw unreadable;
+        sx *= matrix.a * scaleX;
+        sy *= matrix.d * scaleY;
+      }
+      // The padding box starts inside the border; clientLeft and clientTop read 0 for an inline box, so the border is read.
+      // An inline that wraps over lines starts where its first line box does; a right-to-left or vertical one starts at
+      // another corner, which this does not read.
+      const border = getComputedStyle(block);
+      const horizontalLtr = border.direction !== "rtl" && border.writingMode === "horizontal-tb";
+      if (border.display === "inline" && !horizontalLtr) throw unreadable;
+      const box =
+        (border.display === "inline" ? block.getClientRects()[0] : undefined) ?? block.getBoundingClientRect();
+      origin = {
+        left: box.left + Number.parseFloat(border.borderLeftWidth) * sx,
+        top: box.top + Number.parseFloat(border.borderTopWidth) * sy,
+      };
+      scale = { x: sx, y: sy };
+    }
+    const left = origin.left + Number.parseFloat(style.left) * scale.x;
+    const top = origin.top + Number.parseFloat(style.top) * scale.y;
     apply(mode, {
       left,
       top,
-      right: left + Number.parseFloat(style.width),
-      bottom: top + Number.parseFloat(style.height),
+      right: left + Number.parseFloat(style.width) * scale.x,
+      bottom: top + Number.parseFloat(style.height) * scale.y,
     });
   };
   const visit = (element: Element): void => {

@@ -4,19 +4,11 @@ import { type SetStateAction, useCallback } from "react";
 import { spaceKey, tabKey } from "../layout/view.ts";
 import { findTerminal, keepTransient, localOf, type LayoutTab } from "./layout-model.ts";
 import { machineOf } from "./model.ts";
-import { apartWrite, newTabWrite, type PaneAt } from "./pane-writes.ts";
+import { apartWrite, newTabWrite, type PaneAt, written } from "./pane-writes.ts";
 import { afterIn, placedFate, placeOf } from "./placement.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
 
 const rootOf = (id: string, children: readonly Node[]): Node => ({ children: [...children], id, type: "row" });
-
-/** The transient tab's terminal as a tab for the document, with fresh ids. */
-export function written(tab: LayoutTab): { id: string; pane: string; root: Node } {
-  const id = freshId("tb");
-  const pane = freshId("p");
-  const address = tab.panes[0]?.address ?? "";
-  return { id, pane, root: rootOf(id, [terminalBlock(pane, localOf(address))]) };
-}
 
 /** What useLayout hands the tab-opening callbacks: its view of the layouts and how it shows a pane. */
 export interface TabOpeningDeps {
@@ -69,7 +61,7 @@ export function useTabOpening({
       const space = { id: freshId("spc"), folder: "" };
       void own.edit((doc) => apartWrite(doc, localOf(address), kept, space));
     },
-    [layoutOf],
+    [layoutOf, setLoose],
   );
 
   const addTab = useCallback(
