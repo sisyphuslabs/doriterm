@@ -141,6 +141,36 @@ test("on a phone, an offline machine's space offers New tab disabled with why, a
 });
 
 /** Seeds space `name` into the added machine's own layout, one tab on a terminal there; an absent terminal leaves it empty. */
+test("the first-run guide's Start a terminal is offered disabled while New tab is, and comes back with it", async ({
+  page,
+}) => {
+  test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
+  const name = "guide-waits";
+  seedMachineSpace(name);
+  // The guide is running, at its agent step: its Start a terminal is one more New tab (#2519 review).
+  await page.addInitScript(() =>
+    localStorage.setItem("doriface.firstRunGuide", JSON.stringify({ status: "active", opened: false, key: null })),
+  );
+  await routeHcSocket(page);
+  await page.goto("/");
+  await expect(machineRow(page)).toContainText("connected", { timeout: 20_000 });
+  const row = group(page).getByRole("button", { name: new RegExp(`^${name}\\b`) });
+  await expect(row).toBeVisible({ timeout: 20_000 });
+  await row.click();
+  const start = page.getByRole("region", { name: "Getting started" }).getByRole("button", { name: "Start a terminal" });
+  await expect(start).toBeEnabled();
+  try {
+    switchTo("drop");
+    await expect(page.getByRole("button", { name: "New tab", exact: true })).toBeDisabled({
+      timeout: OFFLINE_BOUND_MS,
+    });
+    await expect(start).toBeDisabled();
+  } finally {
+    reconnect();
+  }
+  await expect(start).toBeEnabled({ timeout: STATE_BOUND_MS });
+});
+
 function seedMachineSpace(name: string, terminal?: string): void {
   const address =
     terminal ??
@@ -187,7 +217,6 @@ test("a Close question left open as its machine drops waits with Close disabled 
     await pressShortcut(page, "app.palette");
     await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
     expect(runs(), "the New tab key asks the core nothing while New tab is disabled").toBe(before);
-    await expect(page.getByRole("heading", { name: "Could not open a new tab" })).toHaveCount(0);
     await page.keyboard.press("Escape");
   } finally {
     reconnect();

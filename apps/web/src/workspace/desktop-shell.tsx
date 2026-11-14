@@ -240,6 +240,7 @@ export function DesktopShell(props: DesktopShellProps) {
         live={terminals.filter((terminal) => terminal.state === "live").map((terminal) => terminal.address)}
         ids={ids}
         onNew={onNew}
+        newDisabled={props.newDisabled}
       />
       {sidebar ? (
         <Sidebar terminals={terminals} active={focusedAddress} onOpen={openTerminal} onPalette={onPalette} />
