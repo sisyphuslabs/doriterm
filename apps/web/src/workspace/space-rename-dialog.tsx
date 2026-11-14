@@ -42,6 +42,8 @@ export function SpaceRename({ connection, terminals, layouts, spaces, ask, onAsk
       spaceNameProblem(latest.current.spaces, id, name) ?? renameRefusal(latest.current.layouts, id);
     return {
       ask: onAsk,
+      // From this render's layouts, so the menu's Rename follows the machine going and coming back.
+      refusal: (id) => renameRefusal(layouts, id),
       problem,
       rename: async (id, name) => {
         const refused = problem(id, name);
@@ -50,7 +52,7 @@ export function SpaceRename({ connection, terminals, layouts, spaces, ask, onAsk
         await renameSpace(sessionCalls(connection), now.layouts, now.spaces, now.terminals, id, name);
       },
     };
-  }, [connection, onAsk]);
+  }, [connection, onAsk, layouts]);
   const submit = (id: string, name: string): void => {
     const problem = renaming.problem(id, name);
     if (problem !== null) return setError(problem);
@@ -72,6 +74,7 @@ export function SpaceRename({ connection, terminals, layouts, spaces, ask, onAsk
           title={asked.name}
           busy={busy}
           error={error}
+          refused={renaming.refusal(ask)}
           description="Every device of this machine shows the new name."
           onRename={(name) => submit(ask, name)}
           onCancel={() => onAsk(null)}
