@@ -1,7 +1,7 @@
 // #2537: what a device keeps for itself (the tab it had open, a space's colour) is the same whichever host the page goes
 // through. The second route is the e2e host's added machine with a gateway of its own (second-route.ts).
 import type { Page } from "@playwright/test";
-import { endAgent, startAgent } from "./agents.ts";
+import { startAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { seedSpaces } from "./layout-doc.ts";
 import { FIRST_URL, routeThrough, type SecondRoute, startSecondRoute } from "./second-route.ts";
@@ -9,14 +9,12 @@ import { FIRST_URL, routeThrough, type SecondRoute, startSecondRoute } from "./s
 test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 
 let second: SecondRoute | undefined;
-const started: string[] = [];
 
 test.beforeAll(async () => {
   second = await startSecondRoute();
 });
 
 test.afterAll(async () => {
-  for (const address of started) endAgent("host", address);
   seedSpaces([]);
   await second?.stop();
 });
@@ -34,7 +32,7 @@ test("the tab a device had open and a space's colour are the same after its rout
 }) => {
   const one = startAgent("host", "va-one", "idle", "vaone");
   const two = startAgent("host", "va-two", "idle", "vatwo");
-  started.push(one, two);
+  // The fixture's terminal guard ends the two agents once the test is over.
   seedSpaces([
     { id: "spc-vaone", name: "vaone", folder: "", tabs: [{ id: "tb-vaone", name: "one", terminal: one }] },
     { id: "spc-vatwo", name: "vatwo", folder: "", tabs: [{ id: "tb-vatwo", name: "two", terminal: two }] },
