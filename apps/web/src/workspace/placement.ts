@@ -47,3 +47,19 @@ export function guessedSpace(
 ): NewSpace | undefined {
   return placed?.(doc, () => "");
 }
+
+/**
+ * What a new tab does with the transient tab in view (`keepTransient`'s answer): a tab its terminal's labels place never
+ * takes the transient tab with it (#2468), so that one keeps a space of its own ("apart") instead of riding along.
+ */
+export function placedFate(transient: "with-new" | "apart" | null, placed: boolean): "with-new" | "apart" | null {
+  return placed && transient !== null ? "apart" : transient;
+}
+
+/**
+ * The tab a new tab goes after: the one in view (`near`) only when the space the write landed in is the space guessed
+ * before it; a space another client made meanwhile, or one the write itself made, takes the tab at its end (#2468).
+ */
+export function afterIn(landed: string, guessed: string, near: string | undefined): string | undefined {
+  return landed === guessed ? near : undefined;
+}
