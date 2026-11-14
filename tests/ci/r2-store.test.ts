@@ -23,6 +23,30 @@ test("the signature matches AWS's own SigV4 example for a ranged GET", () => {
   );
 });
 
+test("a pointer read for a replace gets the stored object's strong ETag, so the replace over it is accepted", async () => {
+  // Cloudflare's edge compresses a JSON object for a client that accepts gzip and then answers with a weak ETag, which
+  // never matches If-Match; the stored object's own ETag comes back only for an identity read.
+  const stored = '"5f1c"';
+  const store = new R2Store({
+    endpoint: "https://acct.r2.cloudflarestorage.com",
+    bucket: "doriterm-releases",
+    accessKeyId: "id",
+    secretAccessKey: "secret",
+    fetcher: async (_url, init) => {
+      const headers = new Headers(init.headers);
+      if (init.method === "GET") {
+        const identity = headers.get("accept-encoding") === "identity";
+        return new Response("{}", { status: 200, headers: { etag: identity ? stored : `W/${stored}` } });
+      }
+      return new Response(null, { status: headers.get("if-match") === stored ? 200 : 412 });
+    },
+  });
+  const pointer = await store.get("channels/stable.json");
+  expect(pointer?.etag).toBe(stored);
+  const body = new TextEncoder().encode("{}");
+  expect(await store.put("channels/stable.json", body, { replace: pointer?.etag ?? "" }, "application/json")).toBe(true);
+});
+
 test("a write signs its body's hash and its condition, and a 412 or a 404 is an answer, not an error", async () => {
   const sent: { url: string; method: string; headers: Headers }[] = [];
   const statuses = [200, 412, 200, 404, 500];
