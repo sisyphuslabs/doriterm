@@ -17,7 +17,7 @@ export function rpcFrame(id: number, method: string): Uint8Array {
 export function resolveHcBin(): string {
   const bin = process.env["HC_BIN"] || Bun.which("hc");
   if (bin === null || bin === undefined || bin === "") {
-    throw new Error("herdr-core is required: set HC_BIN to an hc 0.1.20 binary or put hc on PATH");
+    throw new Error("herdr-core is required: set HC_BIN to an hc 0.1.21 binary or put hc on PATH");
   }
   return bin;
 }
