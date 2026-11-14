@@ -14,7 +14,6 @@ import { hcOn } from "./machine-switch.ts";
 import { readSavedEnv } from "./saved-env.ts";
 
 test.use({ serviceWorkers: "block" });
-test.describe.configure({ mode: "serial" });
 
 const ORDER_DOC = "doriface";
 /** The e2e host's core: its hello names it so, and the second core adds it under that name. */
@@ -60,6 +59,8 @@ test.beforeAll(async () => {
   const env = Object.entries(first.env)
     .map(([key, value]) => `${key}="${value}"`)
     .join(" ");
+  // A worker that restarts after a failed test runs this again: the machine an earlier run added goes first.
+  if (hcOn("machine", ["machine", "ls"]).includes(FIRST)) hcOn("machine", ["machine", "rm", FIRST]);
   hcOn("machine", ["machine", "add", "--via", `sh -c 'exec env ${env} sh -c "$1"' sh`, "--name", FIRST]);
   const port = await freePort();
   gateway = spawn(
