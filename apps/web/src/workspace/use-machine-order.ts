@@ -17,9 +17,9 @@ export interface MachineOrder {
 }
 
 /**
- * The person's machine order, kept in the connected core's own `doriface` document the way the split layout is kept in
- * herdr-app's: the shared roster reads it on connect, on each `doc` event and on every gap; every write is a
- * compare-and-set that is made again on a conflict.
+ * The person's machine order, one for every device (#2531): kept in every machine's `doriface` document and read from all
+ * of them as one (`SharedOrder`), on connect, on each `doc` event and on every gap; every write is a stamped
+ * compare-and-set on each core, made again on a conflict.
  */
 export function useMachineOrder(connection: HcConnection, entries: readonly MachineEntry[]): MachineOrder {
   const { roster, snapshot } = useRoster(connection);

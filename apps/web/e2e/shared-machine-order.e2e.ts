@@ -36,7 +36,6 @@ const order = async (page: Page): Promise<readonly string[]> =>
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer();
-    server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       const address = server.address();
       server.close(() =>
@@ -95,9 +94,8 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   const running = gateway;
   if (running !== undefined && running.exitCode === null) {
-    const exited = new Promise((resolve) => running.once("exit", resolve));
     running.kill("SIGTERM");
-    await exited;
+    await expect.poll(() => running.exitCode ?? running.signalCode, { timeout: 30_000 }).not.toBeNull();
   }
   hcOn("machine", ["machine", "rm", FIRST]);
   clearOrders();

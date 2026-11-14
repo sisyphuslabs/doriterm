@@ -11,9 +11,10 @@ import {
 import { SharedOrder } from "./shared-order.ts";
 
 /** One `doriface` document per core, as hc keeps them: a version each, and a write at an old version refused. */
+const key = (on: string | null): string => on ?? "routing";
+
 function cores(initial: Readonly<Record<string, JsonValue>>) {
   const docs = new Map(Object.entries(initial).map(([on, value]) => [on, { value, version: 1 }]));
-  const key = (on: string | null): string => on ?? "routing";
   const calls: DocCalls = {
     get: async (on) => docs.get(key(on)) ?? { value: null, version: 0 },
     set: async (on, value, version) => {

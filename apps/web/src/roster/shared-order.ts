@@ -55,7 +55,12 @@ export class SharedOrder {
 
   /** Holds a copy per wanted machine, as LayoutDocs does; after a gap (`reread`) the held ones are read again. */
   sync(ids: ReadonlySet<string | null>, reread: boolean): void {
-    for (const id of this.#live.keys()) if (!ids.has(id)) this.#live.delete(id);
+    let dropped = false;
+    for (const id of this.#live.keys()) {
+      if (ids.has(id)) continue;
+      this.#live.delete(id);
+      dropped = true;
+    }
     for (const id of ids) {
       const held = this.#live.get(id);
       if (held !== undefined) {
@@ -66,7 +71,8 @@ export class SharedOrder {
       this.#live.set(id, doc);
       void doc.refresh();
     }
-    this.#landed();
+    // A machine read that leaves the copies as they were changes nothing, and tells no one (#2184).
+    if (dropped) this.#landed();
   }
 
   heard(id: string | null, version: number): void {
