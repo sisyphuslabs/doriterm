@@ -63,7 +63,7 @@ const open = (calls: DocCalls, device = "d1") => {
     device,
     () => (clock += 1),
   );
-  shared.sync(new Set<string | null>([null, "box"]), false);
+  shared.sync(new Set<string | null>([null, "box"]), false, true);
   return shared;
 };
 
@@ -130,5 +130,25 @@ describe("the shared machine order, read from every core as one (#2531)", () => 
     await settled();
     await expect(shared.edit(moveInOrder(LIVE, "box", 0))).rejects.toThrow("not a list of machine ids");
     expect(held.order("box")).toBeNull();
+  });
+
+  test("before machine.list answers, the routing core's order alone is not merged and written over the others (#2534 review)", async () => {
+    const held = cores({
+      routing: { machine_order: ["routing", "box"] },
+      box: { machine_order: ["lab", "box", "routing"] },
+    });
+    const shared = new SharedOrder(
+      held.calls,
+      () => undefined,
+      "d1",
+      () => (clock += 1),
+    );
+    shared.sync(new Set<string | null>([null]), false);
+    await settled();
+    expect(orderRank(held.doc("routing"))).toBeNull();
+    shared.sync(new Set<string | null>([null, "box"]), false, true);
+    await settled();
+    expect(ordered(shared.state)).toEqual(["routing", "box", "lab"]);
+    expect(held.order("box")).toEqual(["routing", "box", "lab"]);
   });
 });

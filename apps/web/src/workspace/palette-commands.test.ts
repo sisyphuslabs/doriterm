@@ -22,7 +22,7 @@ const source = (terminals: readonly Terminal[], shell: Shell = "desktop") => ({
   actions: availableActions(shell, false),
   terminals,
   host: "studio",
-  route: "relay",
+  machines: ["box", "studio"],
   platform: "mac" as const,
   keymap: resolveKeymap("mac", new Map()),
 });
@@ -63,7 +63,13 @@ describe("paletteCommands", () => {
       },
     ]);
     expect(commands.find((command) => command.id === "tab.new")?.keys).toEqual(["⌘", "T"]);
-    expect(commands.find((command) => command.group === "Hosts")).toMatchObject({ label: "studio", hint: "relay" });
+    // Every machine is a host row, in the person's order, and none carries the route (#2534 review).
+    expect(
+      commands.filter((command) => command.group === "Hosts").map((command) => [command.label, command.hint]),
+    ).toEqual([
+      ["box", undefined],
+      ["studio", undefined],
+    ]);
   });
 
   test("names the first space an address is listed in, as the sidebar does, when two list it (#1486)", () => {

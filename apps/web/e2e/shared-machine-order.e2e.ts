@@ -3,7 +3,7 @@
 // route moves to the other host keeps the order it had. The second host is the e2e host's added machine, given its own
 // doriface-host gateway here and the e2e host's core as an added machine of its own, so each core lists the other.
 import type { Browser, Page } from "@playwright/test";
-import { machineCore, setCoreDoc } from "./core-doc.ts";
+import { coreDocOn, machineCore, setCoreDoc } from "./core-doc.ts";
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import { FIRST, FIRST_URL, routeThrough, SECOND_OWN, type SecondRoute, startSecondRoute } from "./second-route.ts";
@@ -22,6 +22,16 @@ const order = async (page: Page): Promise<readonly string[]> =>
   (await rows(page).evaluateAll((els) => els.map((el) => el.querySelector("span[title]")?.getAttribute("title")))).map(
     machineOf,
   );
+
+/** The order a core holds, as which machine each id is. */
+function storedOn(core: "host" | "machine"): readonly string[] | null {
+  const doc = coreDocOn(ORDER_DOC, core);
+  const ids =
+    typeof doc === "object" && doc !== null ? Reflect.get(Reflect.get(doc, "value") ?? {}, "machine_order") : undefined;
+  if (!Array.isArray(ids)) return null;
+  const first = machineCore(FIRST, "machine");
+  return ids.map((id) => (id === first ? "first" : "second"));
+}
 
 function clearOrders(): void {
   setCoreDoc(ORDER_DOC, null);
@@ -56,6 +66,9 @@ test("before anyone arranges them, two devices routed through different hosts li
 }) => {
   const [one, two] = await Promise.all([device(browser, FIRST_URL), device(browser, secondUrl)]);
   await expect.poll(async () => order(one)).toEqual(await order(two));
+  // The default is saved once, so both cores hold the one order however each route would name the machines.
+  await expect.poll(() => storedOn("host")).toEqual(await order(one));
+  await expect.poll(() => storedOn("machine")).toEqual(await order(one));
 });
 
 test("an order arranged on one device is the order on the other device, which routes through the other host", async ({

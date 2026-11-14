@@ -67,6 +67,11 @@ export function coreDoc(name: string): unknown {
   return call(coreEnv(), "doc.get", { name });
 }
 
+/** A document on core `which` as `doc.get` returns it. */
+export function coreDocOn(name: string, which: Core): unknown {
+  return call(coreEnv(which), "doc.get", { name });
+}
+
 /**
  * Compare-and-set against the version the core reports, retrying a lost race on a fresh read: the app writes these documents
  * too, so a write can land between the read and its set and the core refuses it as a `conflict` (#896). Bounded to five

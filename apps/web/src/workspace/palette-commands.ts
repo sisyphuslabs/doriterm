@@ -19,8 +19,10 @@ const GENERAL: ReadonlySet<string> = new Set(["app.help", "app.settings"]);
 
 export interface PaletteSource {
   readonly terminals: readonly Terminal[];
+  /** The core the page goes through: the machine its bare addresses are on, for where an agent runs. */
   readonly host: string;
-  readonly route: string;
+  /** Every machine, in the person's order: the Hosts group lists them all as peers (#2534 review). */
+  readonly machines: readonly string[];
   readonly keymap: Keymap;
   readonly platform: Platform;
   /** The app actions this shell handles now, from availableActions. */
@@ -62,7 +64,7 @@ export function paletteCommands(source: PaletteSource): Command[] {
   return [
     ...agents,
     ...source.actions.filter((action) => !GENERAL.has(action.id)).map((action) => command(source, action, "Actions")),
-    { id: `${HOST}${source.host}`, label: source.host, group: "Hosts", hint: source.route },
+    ...source.machines.map((name): Command => ({ id: `${HOST}${name}`, label: name, group: "Hosts" })),
     ...source.actions.filter((action) => GENERAL.has(action.id)).map((action) => command(source, action, "General")),
   ];
 }

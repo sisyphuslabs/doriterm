@@ -108,12 +108,15 @@ test.describe("machine order", () => {
 
   test("a drag that Escape cancels leaves the order as it was and writes nothing", async ({ page }) => {
     const local = await openWorkspace(page);
+    // The default order is saved once every copy is read (#2534 review): the drag must leave that write as it was.
+    await expect.poll(() => getCoreDoc(ORDER_DOC)).toMatchObject({ machine_order: expect.any(Array) });
+    const before = getCoreDoc(ORDER_DOC);
     await dragRow(page, local, -40, false);
     await page.keyboard.press("Escape");
     await page.mouse.up();
     await expect(page.locator("[data-drag-id][data-dragging]")).toHaveCount(0);
     await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
-    expect(getCoreDoc(ORDER_DOC)).toBeNull();
+    expect(getCoreDoc(ORDER_DOC)).toEqual(before);
   });
 
   test("the move keys move the focused row, focus stays on it, and the order survives a reload", async ({ page }) => {

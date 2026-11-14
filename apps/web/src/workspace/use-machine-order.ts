@@ -1,6 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import { storedOrder } from "@doriface/protocol/layout";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useRoster } from "../roster/use-roster.ts";
 import { arrangeMachines, moveMachine } from "./machine-order.ts";
 import type { MachineEntry } from "./machines.ts";
@@ -30,5 +30,17 @@ export function useMachineOrder(connection: HcConnection, entries: readonly Mach
     (core: string, to: number) => roster.order.edit(moveMachine(entries, core, to)),
     [roster, entries],
   );
+  // Before anyone arranges them, every machine is listed by the name this route gives it, and another route names them
+  // otherwise (#2534 review). So once every copy is read and none holds an order, this default is saved as the order,
+  // and every device lists the machines alike from then on. A copy that refuses the write leaves it unsaved, unshown.
+  const settled = roster.order.settled;
+  const unordered = state.phase === "ready" && storedOrder(read) === null;
+  useEffect(() => {
+    if (!settled || !unordered || entries.length < 2) return;
+    const order = entries.map((entry) => entry.core);
+    void roster.order
+      .edit((doc) => (storedOrder(doc) === null ? { ...doc, machine_order: order } : null))
+      .catch(() => undefined);
+  }, [settled, unordered, entries, roster]);
   return { entries: arranged, move };
 }

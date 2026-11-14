@@ -35,6 +35,9 @@ export class SharedOrder {
   /** The rank each copy is being brought up to, so a copy is not written twice for one write. */
   readonly #raising = new Map<string | null, OrderRank>();
   #state: DocState = { phase: "loading" };
+  /** Whether machine.list has answered: until then the copies held are the routing core's only, not every machine's. */
+  #listed = false;
+  #wasSettled = false;
 
   constructor(
     calls: DocCalls,
@@ -48,13 +51,26 @@ export class SharedOrder {
     this.#now = now;
   }
 
+  /**
+   * Whether every machine's copy is held and read, and none refuses a write: only then is "no order anywhere" a fact
+   * rather than copies still on their way.
+   */
+  get settled(): boolean {
+    const copies = [...this.#live.values()].map((doc) => doc.state.phase);
+    return this.#listed && copies.length > 0 && copies.every((phase) => phase === "ready");
+  }
+
   /** The order as one document: ready with the winning copy (or the merged per-core orders) once any copy is read. */
   get state(): DocState {
     return this.#state;
   }
 
-  /** Holds a copy per wanted machine, as LayoutDocs does; after a gap (`reread`) the held ones are read again. */
-  sync(ids: ReadonlySet<string | null>, reread: boolean): void {
+  /**
+   * Holds a copy per wanted machine, as LayoutDocs does; after a gap (`reread`) the held ones are read again. `listed`:
+   * the ids come from a machine.list answer, so every machine's copy is wanted, not the routing core's alone (#2534 review).
+   */
+  sync(ids: ReadonlySet<string | null>, reread: boolean, listed = false): void {
+    if (listed) this.#listed = true;
     let dropped = false;
     for (const id of this.#live.keys()) {
       if (ids.has(id)) continue;
@@ -134,9 +150,12 @@ export class SharedOrder {
       doc.state.phase === "ready" ? [{ id, state: doc.state }] : [],
     );
     const next = this.#merged(ready);
-    // Readers are told only when the order they read changes: a copy dropped or read again with the same order is not news.
-    const same = JSON.stringify(next) === JSON.stringify(this.#state);
+    // Readers are told only when the order they read changes, or when it becomes settled: a copy dropped or read again
+    // with the same order is not news.
+    const settled = this.settled;
+    const same = JSON.stringify(next) === JSON.stringify(this.#state) && settled === this.#wasSettled;
     this.#state = next;
+    this.#wasSettled = settled;
     if (!same) this.#changed(next);
     this.#bringUp(ready);
   }
@@ -169,7 +188,9 @@ export class SharedOrder {
     let target = state.doc;
     let rank = orderRank(target);
     if (rank === null) {
-      if ([...this.#live.values()].some((doc) => doc.state.phase === "loading")) return;
+      // The per-core orders are merged once: only when every machine's copy is held and read, never on the routing
+      // core's alone, or the others' orders would count as behind and be overwritten unmerged.
+      if (!this.#listed || [...this.#live.values()].some((doc) => doc.state.phase === "loading")) return;
       rank = this.#rankAfter(null);
       target = stampOrder(target, rank);
     }

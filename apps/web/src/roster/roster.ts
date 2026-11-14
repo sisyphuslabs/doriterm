@@ -94,7 +94,7 @@ export class Roster {
         this.#snapshot = { ...this.#snapshot, machines: read };
         this.docs.sync(this.#wanted(), false);
         this.pins.sync(this.#wanted(), false);
-        this.order.sync(this.#wanted(), false);
+        this.order.sync(this.#wanted(), false, read.listed > 0);
         this.#replayUnheard();
         this.#emit();
         for (const change of changes) for (const listener of this.#changes) listener(change);
@@ -263,7 +263,7 @@ export class Roster {
     this.#unheard.clear();
     this.docs.sync(this.#wanted(), true);
     this.pins.sync(this.#wanted(), true);
-    this.order.sync(this.#wanted(), true);
+    this.order.sync(this.#wanted(), true, this.machines.read.listed > 0);
     void this.machines.refresh();
     for (const listener of this.#gaps) listener();
   }
