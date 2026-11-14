@@ -5,7 +5,7 @@ import { spaceKey, tabKey } from "../layout/view.ts";
 import { findTerminal, keepTransient, localOf, type LayoutTab } from "./layout-model.ts";
 import { machineOf } from "./model.ts";
 import { apartWrite, newTabWrite, type PaneAt, terminalRow, written } from "./pane-writes.ts";
-import { placeOf } from "./placement.ts";
+import { guessedSpace, placeOf } from "./placement.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
 
 /** What useLayout hands the tab-opening callbacks: its view of the layouts and how it shows a pane. */
@@ -97,7 +97,7 @@ export function useTabOpening({
           : docSpaces(layout.doc).find((each) => spaceKey(layout.machineId, each.id) === into);
       const named = docSpace?.id ?? null;
       // Only an existing space is worth a guess before the write: a space the write would make gets its id there.
-      const guess = placed?.(layout.doc, () => "");
+      const guess = guessedSpace(placed, layout.doc);
       const near =
         !newSpace &&
         active !== null &&
