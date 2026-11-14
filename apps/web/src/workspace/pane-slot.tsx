@@ -27,6 +27,8 @@ export interface PaneSlotProps {
   readonly terminal: Session | undefined;
   readonly split: boolean;
   readonly focused: boolean;
+  /** On screen: its tab is the selected one and no zoom hides it. */
+  readonly shown: boolean;
   /** This screen asked for this pane: its terminal takes the keyboard as it starts (#332). */
   readonly claimed: boolean;
   readonly zoomed: boolean;
@@ -37,7 +39,8 @@ export interface PaneSlotProps {
 }
 
 function PaneSlot(props: PaneSlotProps) {
-  const { connection, tab, pane, mod, terminal, split, focused, claimed, zoomed, actions, sends, dock, onGrab } = props;
+  const { connection, tab, pane, mod, terminal, split, focused, shown, claimed, zoomed, actions, sends, dock, onGrab } =
+    props;
   const onFocus = useCallback(() => actions.focus(tab, pane), [actions, tab, pane]);
   const onSplit = useCallback((axis: Axis) => actions.split(axis, tab, pane), [actions, tab, pane]);
   const onZoom = useCallback(() => actions.zoom(tab, pane), [actions, tab, pane]);
@@ -49,6 +52,7 @@ function PaneSlot(props: PaneSlotProps) {
         connection={connection}
         terminal={terminal}
         focused={focused}
+        shown={shown}
         claimed={claimed}
         split={split}
         onFocus={onFocus}

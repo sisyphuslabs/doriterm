@@ -254,8 +254,9 @@ describe("one connection per member", () => {
     expect([other?.started, other?.stopped, other?.state.phase]).toEqual([1, 0, "open"]);
   });
 
-  it("tells listeners the selection moved when a machine fails over", () => {
-    const { mesh, made } = running(settingsWith([member("a"), member("b")], "a"));
+  it("tells listeners the selection moved when a machine not reached yet fails over", () => {
+    const { mesh, made } = harness(settingsWith([member("a"), member("b")], "a"));
+    made[1]?.start();
     let told = 0;
     mesh.subscribe(() => {
       told += 1;
@@ -372,9 +373,17 @@ describe("one connection per member", () => {
     expect(mesh.entries()).toHaveLength(1);
   });
 
-  it("moves the shown machine off one that stopped, to a member that is still open", () => {
+  it("keeps the shown machine when it drops after it was reached, though another member is open (#2464)", () => {
     const { mesh, made } = running(settingsWith([member("a"), member("b")], "a"));
     expect(mesh.settings.hostId).toBe("a");
+    made[0]?.fail();
+    expect(mesh.settings.hostId).toBe("a");
+    expect(mesh.state.phase).toBe("failed");
+  });
+
+  it("moves the shown machine off one not reached since the start, to a member that is open", () => {
+    const { mesh, made } = harness(settingsWith([member("a"), member("b")], "a"));
+    made[1]?.start();
     made[0]?.fail();
     expect(mesh.settings.hostId).toBe("b");
     expect(mesh.state.phase).toBe("open");

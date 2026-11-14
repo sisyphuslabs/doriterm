@@ -158,6 +158,7 @@ export function SplitPanes(props: SplitPanesProps) {
                     grow={grow}
                     bump={bump}
                     hidden={placed === undefined}
+                    shown={selected && placed !== undefined}
                     connection={connection}
                     tab={tab.key}
                     pane={pane.id}

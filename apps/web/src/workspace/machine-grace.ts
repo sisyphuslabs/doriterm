@@ -19,6 +19,13 @@ import type { MachineView } from "@doriface/protocol";
  */
 export const OFFLINE_GRACE_MS = 75_000;
 
+/**
+ * How long a drop may last before the page says why beside one way to try now (#2464): the host's own grace (#2448). The
+ * host link and a machine line share it, so either drop offers its action at the same time; a machine line keeps its
+ * longer OFFLINE_GRACE_MS before it reads offline, since a relay blip takes that long to come back by itself (#904).
+ */
+export const ACTION_GRACE_MS = 5_000;
+
 const DOWN = new Set(["connecting", "unreachable"]);
 
 /** Since when (this page's clock) each machine, by its permanent id, has read down while held as connected. */

@@ -44,7 +44,7 @@ body:
     attributes:
       label: Version and platform
       description: The release (or commit) of the app or web client, the OS, and the `hc` version if a host is involved.
-      placeholder: Doriterm 0.1.2, macOS 26.1, Apple silicon, hc 0.1.20
+      placeholder: Doriterm 0.1.2, macOS 26.1, Apple silicon, hc 0.1.21
     validations:
       required: true
 

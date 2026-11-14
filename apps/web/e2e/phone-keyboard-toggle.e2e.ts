@@ -19,8 +19,8 @@ async function openTerminal(page: Page) {
 }
 
 async function expectDown(page: Page): Promise<void> {
-  await expect(key(page, "Show keyboard")).toBeVisible();
-  await expect(keysBar(page)).toHaveCount(0);
+  // The keys stay on screen with the keyboard down; their toggle reads Show keyboard (#2499).
+  await expect(keysBar(page).getByRole("button", { name: "Show keyboard", exact: true })).toBeVisible();
   await expect(key(page, "Hide keyboard")).toHaveCount(0);
 }
 
