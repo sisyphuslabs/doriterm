@@ -32,6 +32,19 @@ const SCALED = `<!doctype html><style>
   #grown button::after { content: ""; position: absolute; left: 0; top: 50px; width: 20px; height: 20px; }
 </style><div id="grown"><button>grown</button></div>`;
 
+/**
+ * Two scales multiplied, the inner one about its centre as the app's entrance animation scales a row: #wrap (at 100,
+ * 100) is scaled 1.5 from its corner and #grown 2 about its centre, so #grown's padding box starts at x 25, y 70 and
+ * its layer, at left 0, top 50, 20x20 in #grown's units, covers x 25..85, y 220..280.
+ */
+const NESTED = `<!doctype html><style>
+  body { margin: 0; }
+  #wrap { margin: 100px 0 0 100px; width: 100px; scale: 1.5; transform-origin: 0 0; }
+  #grown { scale: 2; width: 100px; height: 40px; }
+  #grown button { display: block; -webkit-app-region: no-drag; }
+  #grown button::after { content: ""; position: absolute; left: 0; top: 50px; width: 20px; height: 20px; }
+</style><div id="wrap"><div id="grown"><button>grown</button></div></div>`;
+
 test("a static button's absolute hit layer is read against its nearest positioned or transformed ancestor (#2366)", async () => {
   const app = await electron.launch({ args: [BROWSER_APP, "--disable-gpu"] });
   try {
@@ -67,6 +80,17 @@ test("a static button's absolute hit layer is read against its nearest positione
     );
     expect(await page.evaluate(appRegionAt, { x: 30, y: 130 })).toBe("no-drag");
     expect(await page.evaluate(appRegionAt, { x: 50, y: 130 })).toBe("none");
+    await page.setContent(NESTED);
+    expect(await page.evaluate(appRegionAt, { x: 30, y: 225 })).toBe("no-drag");
+    expect(await page.evaluate(appRegionAt, { x: 80, y: 275 })).toBe("no-drag");
+    expect(await page.evaluate(appRegionAt, { x: 90, y: 250 })).toBe("none");
+    expect(await page.evaluate(appRegionAt, { x: 55, y: 285 })).toBe("none");
+    // The inner scale written as a transform, as the app's arrival writes it, compounds with the outer scale the same way.
+    await page.setContent(NESTED.replace("#grown { scale: 2;", "#grown { transform: scale(2);"));
+    expect(await page.evaluate(appRegionAt, { x: 30, y: 225 })).toBe("no-drag");
+    expect(await page.evaluate(appRegionAt, { x: 80, y: 275 })).toBe("no-drag");
+    expect(await page.evaluate(appRegionAt, { x: 90, y: 250 })).toBe("none");
+    expect(await page.evaluate(appRegionAt, { x: 55, y: 285 })).toBe("none");
     // A rotation has no such product, so it is refused.
     await page.setContent(SCALED.replace("scale: 2;", "rotate: 10deg;"));
     await expect(page.evaluate(appRegionAt, { x: 10, y: 10 })).rejects.toThrow("no readable box");
