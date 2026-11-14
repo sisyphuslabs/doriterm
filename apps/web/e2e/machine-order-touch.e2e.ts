@@ -6,9 +6,13 @@ import { machineRow } from "./machine-switch.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
-test.beforeEach(() => setCoreDoc("doriface", null));
-// The order is the core's, shared by every spec on this worker: leave none behind for the next one.
-test.afterEach(() => setCoreDoc("doriface", null));
+/** The order is kept on both cores (#2531), shared by every spec on this worker: none is left for the next one. */
+function clearOrders(): void {
+  setCoreDoc("doriface", null);
+  setCoreDoc("doriface", null, undefined, "machine");
+}
+test.beforeEach(clearOrders);
+test.afterEach(clearOrders);
 
 const rows = (page: Page) => page.locator("[data-machine-row]");
 const list = (page: Page) => page.getByRole("heading", { name: "Spaces" }).locator("xpath=ancestor::section");
@@ -73,17 +77,18 @@ test.describe("touch (#161)", () => {
     await page.clock.install();
     await page.goto("/");
     await expect(machineRow(page)).toContainText("connected", { timeout: 30_000 });
-    const local = await rows(page).first().locator("span[title]").getAttribute("title");
+    // By name (#2531), the added machine (`build-box`) is listed above this core.
+    const local = await rows(page).nth(1).locator("span[title]").getAttribute("title");
     if (local === null) throw new Error("no local machine row");
-    await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
+    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
     const past = async () => (await centre(page.locator("[data-drag-id]").nth(1))).bottom - 4;
 
     await touch(page, rows(page).nth(0), await past(), false);
     await expect(list(page).locator("[data-lifted]")).toHaveCount(0);
-    expect(await order(page)).toEqual([local, MACHINE_NAME]);
+    expect(await order(page)).toEqual([MACHINE_NAME, local]);
 
     await touch(page, rows(page).nth(0), await past(), true);
-    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
+    await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
 
     await touch(page, rows(page).nth(0), null, true);
     await expect(page.getByRole("menuitem", { name: "Move down" })).toBeVisible();
@@ -91,6 +96,6 @@ test.describe("touch (#161)", () => {
     await expect(page.getByRole("menu")).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
-    expect(await order(page)).toEqual([MACHINE_NAME, local]);
+    expect(await order(page)).toEqual([local, MACHINE_NAME]);
   });
 });

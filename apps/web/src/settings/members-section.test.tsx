@@ -25,7 +25,7 @@ describe("the machines list keeps a row per member (#942 stage 6)", () => {
   });
 
   test("two members draw one list, named for a screen reader beside the Machines list under it (#1170)", () => {
-    const html = renderToStaticMarkup(<MemberConnections members={twoMembers} selectedHostId="a" />);
+    const html = renderToStaticMarkup(<MemberConnections members={twoMembers} />);
     expect(html).toContain('aria-label="Connections"');
     expect(html.match(/<li[ >]/gu)).toHaveLength(2);
   });

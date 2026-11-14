@@ -129,7 +129,8 @@ function PairedDevicesSection() {
         control={null}
       />
       <SettingRow
-        title={label(<Server aria-hidden />, host, desktopBridge() === null ? "Connected through " : "")}
+        // The host this browser was paired with, by its pairing: never as the host its traffic goes through (#2531).
+        title={label(<Server aria-hidden />, host, desktopBridge() === null ? "Paired with " : "")}
         description={
           <>
             {describe(state)}

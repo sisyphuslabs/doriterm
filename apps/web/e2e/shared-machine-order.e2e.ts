@@ -161,11 +161,14 @@ test("a device whose route moves to the other host keeps the order, and no machi
 }) => {
   const one = await device(browser, FIRST_URL);
   const before = await order(one);
-  await moveFirstRowDown(one);
-  const arranged = before.toReversed();
-  await expect.poll(async () => order(one)).toEqual(arranged);
   const rerouted = await routeThrough(await one.context().newPage(), secondUrl);
+  await expect.poll(async () => order(rerouted)).toEqual(before);
+  // Arranged on the new route, then back on the first one: still the one order.
+  await moveFirstRowDown(rerouted);
+  const arranged = before.toReversed();
   await expect.poll(async () => order(rerouted)).toEqual(arranged);
+  const back = await routeThrough(await one.context().newPage(), FIRST_URL);
+  await expect.poll(async () => order(back)).toEqual(arranged);
 });
 
 test("orders each host kept before the shared one become one order, the opening device's host's", async ({

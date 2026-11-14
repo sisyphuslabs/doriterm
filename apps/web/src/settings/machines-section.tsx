@@ -10,6 +10,7 @@ import { machineCause } from "../workspace/machine-cause.ts";
 import { RemoveMachineButton, removable } from "../workspace/remove-machine.tsx";
 import { RetryButton } from "../workspace/retry-button.tsx";
 import { formatAge } from "../workspace/model.ts";
+import { useMachineOrder } from "../workspace/use-machine-order.ts";
 import { useMachines } from "../workspace/use-machines.ts";
 import { useNow } from "../workspace/use-now.ts";
 import { desktopBridge } from "../desktop/bridge.ts";
@@ -91,22 +92,30 @@ function MachineRows({ connection }: { readonly connection: HcConnection }) {
   const settings = useConnectionSettings();
   const ownComputer = desktopBridge() !== null && settings.mode === "loopback";
   const { views, retry, remove, listError, entries } = useMachines(connection, NO_TERMINALS);
+  const arranged = useMachineOrder(connection, entries).entries;
   const now = useNow();
   const [adding, setAdding] = useState(false);
   return (
     <div className="flex flex-col gap-3">
       <ul aria-label="Machines" className="flex flex-col divide-y divide-border">
-        <li>
-          <SettingRow
-            className="border-b-0"
-            title={title(<Monitor aria-hidden />, connection.hello.core.name)}
-            description={ownComputer ? "This machine" : "Online · Relay"}
-            control={null}
-          />
-        </li>
-        {views.map((view) => (
-          <AddedMachine key={view.id} view={view} now={now} onRetry={() => retry(view.name)} onRemove={remove} />
-        ))}
+        {arranged.map((entry) => {
+          // The machine the page reaches is one row among the others, in the person's order (#2531).
+          const view = views.find((each) => each.id === entry.core);
+          if (!entry.local && view !== undefined) {
+            return <AddedMachine key={entry.id} view={view} now={now} onRetry={() => retry(view.name)} onRemove={remove} />;
+          }
+          return (
+            <li key={entry.id}>
+              <SettingRow
+                className="border-b-0"
+                inline
+                title={title(ownComputer ? <Monitor aria-hidden /> : <Server aria-hidden />, entry.name)}
+                description={ownComputer ? "This machine" : STATE_WORDS["connected"]}
+                control={null}
+              />
+            </li>
+          );
+        })}
       </ul>
       {listError === undefined ? null : <MachinesListError cause={listError} />}
       <div>
@@ -120,7 +129,7 @@ function MachineRows({ connection }: { readonly connection: HcConnection }) {
   );
 }
 
-/** Every machine this host reaches, this one first: its state, and when it was last seen and why when it is offline. */
+/** Every machine, in the person's order: its state, and when it was last seen and why when it is offline. */
 export function MachinesSection() {
   const state = useConnection();
   const mesh = useBrowserMembership();

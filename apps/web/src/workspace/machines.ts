@@ -41,6 +41,10 @@ export interface ThisCore {
 export const orderMachines = (machines: readonly MachineView[]): MachineView[] =>
   machines.toSorted((a, b) => byName.compare(a.name, b.name));
 
+/**
+ * Every machine in the default order: by name, the core this page happens to reach included. Which host carries the
+ * traffic is not the person's arrangement, so it is never put first (#2531); the person's own order is applied on top.
+ */
 export function machineEntries(
   core: ThisCore,
   machines: readonly MachineView[],
@@ -49,7 +53,7 @@ export function machineEntries(
   return [
     entry(core.id, core.name, true, "connected", terminals),
     ...machines.map((machine) => entry(machine.id, machine.name, false, machine.state, terminals)),
-  ];
+  ].toSorted((a, b) => byName.compare(a.name, b.name));
 }
 
 /**

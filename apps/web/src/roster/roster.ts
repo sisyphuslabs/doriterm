@@ -1,14 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import type { HcEvent } from "@doriface/protocol";
-import {
-  type DocState,
-  LAYOUT_DOC,
-  LayoutDoc,
-  ORDER_DOC,
-  PINS_DOC,
-  readOrderDocument,
-  readPinsDocument,
-} from "@doriface/protocol/layout";
+import { type DocState, LAYOUT_DOC, ORDER_DOC, PINS_DOC, readPinsDocument } from "@doriface/protocol/layout";
 import { machineKey } from "../workspace/machines.ts";
 import type { RosterChange } from "./changes.ts";
 import { docCalls } from "./doc-calls.ts";
@@ -17,6 +9,7 @@ import { RosterFeed, type Schedule } from "./feed.ts";
 import { LineWatch } from "./line-watch.ts";
 import type { RosterLink } from "./link.ts";
 import { MachineRoster, type MachinesRead } from "./machines.ts";
+import { SharedOrder } from "./shared-order.ts";
 import { NO_TERMINALS, type TerminalsState } from "./terminals-state.ts";
 
 /**
@@ -31,7 +24,7 @@ export const MACHINE_REFRESH_MS = 10_000;
 export interface RosterSnapshot {
   readonly terminals: TerminalsState;
   readonly machines: MachinesRead;
-  /** This core's machine order document (`doriface`). */
+  /** The person's machine order, read from every machine's `doriface` document as one (#2531). */
   readonly order: DocState;
   /** Counts layout documents landing: readers take each document's state from `roster.docs` as they render. */
   readonly docsLanded: number;
@@ -76,7 +69,7 @@ export class Roster {
   readonly machines: MachineRoster;
   readonly docs: LayoutDocs;
   readonly pins: LayoutDocs;
-  readonly order: LayoutDoc;
+  readonly order: SharedOrder;
   readonly #options: RosterOptions;
   readonly #listeners = new Set<() => void>();
   readonly #changes = new Set<(change: RosterChange) => void>();
@@ -101,6 +94,7 @@ export class Roster {
         this.#snapshot = { ...this.#snapshot, machines: read };
         this.docs.sync(this.#wanted(), false);
         this.pins.sync(this.#wanted(), false);
+        this.order.sync(this.#wanted(), false);
         this.#replayUnheard();
         this.#emit();
         for (const change of changes) for (const listener of this.#changes) listener(change);
@@ -123,17 +117,12 @@ export class Roster {
       },
       readPinsDocument,
     );
-    this.order = new LayoutDoc(
-      {
-        get: () => call("doc.get", { name: ORDER_DOC }),
-        set: (_on, value, version) => call("doc.set", { name: ORDER_DOC, value, version }),
-      },
-      null,
+    this.order = new SharedOrder(
+      docCalls({ call }, () => this.machines.read.views, ORDER_DOC),
       (state) => {
         this.#snapshot = { ...this.#snapshot, order: state };
         this.#emit();
       },
-      readOrderDocument,
     );
     this.#snapshot = { terminals: NO_TERMINALS, machines: this.machines.read, order: this.order.state, docsLanded: 0 };
     const lineRead = (): Promise<void> => (this.#connection.closed ? Promise.resolve() : this.machines.refresh(true));
@@ -241,10 +230,10 @@ export class Roster {
     const machine = event.machine ?? null;
     const { name, version } = event.data;
     for (const listener of this.#docHeard) listener(machine, name, version);
-    if (name === ORDER_DOC && machine === null) void this.order.heard(version);
+    const id = machine === null ? null : this.machines.read.views.find((view) => view.name === machine)?.id;
+    if (name === ORDER_DOC && id !== undefined) return this.order.heard(id, version);
     if (name !== LAYOUT_DOC && name !== PINS_DOC) return;
     const docs = name === PINS_DOC ? this.pins : this.docs;
-    const id = machine === null ? null : this.machines.read.views.find((view) => view.name === machine)?.id;
     if (id !== undefined && docs.live(id) !== undefined) return docs.heard(id, version);
     // The list is behind this event: the machine is unlisted, listed under an old name, or not connected yet, so no
     // document of its is held. Keep what was heard by the name hc used and read the list again; the answer replays it.
@@ -274,7 +263,7 @@ export class Roster {
     this.#unheard.clear();
     this.docs.sync(this.#wanted(), true);
     this.pins.sync(this.#wanted(), true);
-    void this.order.refresh();
+    this.order.sync(this.#wanted(), true);
     void this.machines.refresh();
     for (const listener of this.#gaps) listener();
   }
