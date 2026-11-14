@@ -131,14 +131,19 @@ describe("the uplink and relay passes (contract v1.6)", () => {
     })();
     expect(attempts[0]?.url.searchParams.has("proof")).toBe(true);
     expect(attempts[1]?.url.searchParams.has("proof")).toBe(false);
-    expect(waiting.find((state) => state.state === "waiting")).toEqual({ state: "waiting", code: 4412, retryInMs: 0 });
+    expect(waiting.find((state) => state.state === "waiting")).toEqual({
+      state: "waiting",
+      code: 4412,
+      reason: "relay pass refused",
+      retryInMs: 0,
+    });
   });
 
   test("a 4429 on an attempt without a proof waits the 30-60 s registration backoff", async () => {
     const { book, secretKey } = await hostWithBook();
     script = ["limit-4429"];
     const states = await start(secretKey, book, 2);
-    expect(states[1]).toEqual({ state: "waiting", code: 4429, retryInMs: 30_000 });
+    expect(states[1]).toEqual({ state: "waiting", code: 4429, reason: "rate limited", retryInMs: 30_000 });
   });
 
   test("a 4412 on an attempt without a proof is an ordinary failure: the usual backoff, nothing marked", async () => {
@@ -147,7 +152,7 @@ describe("the uplink and relay passes (contract v1.6)", () => {
     const wanted: string[] = [];
     book.onWant((origin) => wanted.push(origin));
     const states = await start(secretKey, book, 2);
-    expect(states[1]).toEqual({ state: "waiting", code: 4412, retryInMs: 250 });
+    expect(states[1]).toEqual({ state: "waiting", code: 4412, reason: "relay pass refused", retryInMs: 250 });
     expect(wanted).toEqual([]);
   });
 });

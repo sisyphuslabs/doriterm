@@ -35,6 +35,14 @@ const FINAL_REASONS: Readonly<Record<number, string>> = {
   4409: "another doriface-host with this identity took over the uplink",
 };
 
+/**
+ * A close as the log shows it: the code, and the relay's reason beside it when it gave one (`4408: idle`), which tells
+ * an idle timeout from a relay that ran too far ahead of this host. The reason is the relay's text, so only its
+ * printable ASCII reaches the log.
+ */
+const closeOf = (code: number, reason: string): string =>
+  reason === "" ? String(code) : `${code}: ${reason.replaceAll(/[^\x20-\x7e]/g, "?")}`;
+
 const REFUSALS: Readonly<Record<SessionRefusal["reason"], string>> = {
   pending_cap: "8 sessions were already waiting for the host's answer",
   active_cap: "32 sessions were already active",
@@ -109,7 +117,9 @@ export class HostUplink implements PairingSlotRegistrar {
       case "answered":
         return log(`relay: connected to ${relayUrl}`);
       case "waiting":
-        return log(`relay: uplink closed (${state.code}); reconnecting in ${Math.ceil(state.retryInMs / 1000)} s`);
+        return log(
+          `relay: uplink closed (${closeOf(state.code, state.reason)}); reconnecting in ${Math.ceil(state.retryInMs / 1000)} s`,
+        );
       case "stopped":
         if (state.code !== 1000)
           log(`relay: uplink stopped (${state.code}): ${FINAL_REASONS[state.code] ?? "gave up"}`);

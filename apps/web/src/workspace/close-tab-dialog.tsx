@@ -1,5 +1,5 @@
 import type { HcConnection } from "@doriface/client";
-import type { Terminal } from "@doriface/protocol";
+import type { MachineView, Terminal } from "@doriface/protocol";
 import { Button, Dialog, useToastManager } from "@doriface/ui";
 import { useEffect, useRef, useState } from "react";
 import { useTerminalConfig } from "../ghostty/config-store.ts";
@@ -7,12 +7,14 @@ import { single } from "../ghostty/config.ts";
 import { terminalInput } from "./focus-targets.ts";
 import type { LayoutTab } from "./layout-model.ts";
 import { asksBeforeClosing } from "./model.ts";
-import { pendingEnds } from "./pending-ends.ts";
+import { routedPendingEnds } from "./pending-ends.ts";
 import { recordedEnd } from "./resume-ends.ts";
 import { sessionCalls } from "./session-actions.ts";
 
 export interface CloseTabDialogProps {
   readonly connection: HcConnection;
+  /** The machines as last listed, read when End runs (#2314): a prop, so this dialog never re-renders on a machines update of its own (#2076). */
+  readonly views: readonly MachineView[];
   readonly terminals: readonly Terminal[];
   readonly tab: LayoutTab;
   /** The space whose last tab this is: closing it closes the space, as herdr-app's `tab.close`, and always asks first. */
@@ -55,6 +57,7 @@ function endsFailed(failed: number, cause: unknown): { readonly title: string; r
  */
 export function CloseTabDialog({
   connection,
+  views,
   terminals,
   tab,
   space,
@@ -78,7 +81,7 @@ export function CloseTabDialog({
     const calls = sessionCalls(connection);
     // Kept in local storage until each End settles, so a page closed before the tab's Ends leave it has the next page
     // finish them (#1278): the tab is gone at once, and its sessions must not be adopted back as a new one.
-    const ends = pendingEnds(connection.hello.core.id);
+    const ends = routedPendingEnds({ core: connection.hello.core.id, machines: views });
     const ending = Promise.allSettled(
       live.map((terminal) =>
         recordedEnd(

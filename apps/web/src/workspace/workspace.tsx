@@ -65,7 +65,6 @@ export interface WorkspaceProps {
 /** The live terminals of one core: the desktop shell from `md` up, the phone navigation below. */
 export function Workspace({ connection }: WorkspaceProps) {
   const fed = useTerminals(connection);
-  useResumeEnds(connection);
   useRedrawNotice(connection);
   useForgetEndedHistoryGaps(fed.loaded, fed.terminals);
   const {
@@ -355,6 +354,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   const terminalsError = fed.loaded ? null : fed.error;
   const retryTerminals = fed.retry;
   const machinesListed = machineReads > 0 || listError !== undefined;
+  useResumeEnds(connection, machinesListed ? views : undefined);
   // The sidebar's runs are its New space buttons: each terminal they start is the first tab of a new space (#404).
   const inNewSpace = useCallback(
     (address: string): void => {
@@ -546,6 +546,7 @@ export function Workspace({ connection }: WorkspaceProps) {
             />
             <SessionDialogs
               connection={connection}
+              views={views}
               terminals={terminals}
               ask={ask}
               onDone={done}
@@ -561,6 +562,7 @@ export function Workspace({ connection }: WorkspaceProps) {
               <CloseTabDialog
                 key={closing.key}
                 connection={connection}
+                views={views}
                 terminals={terminals}
                 tab={closing}
                 {...(lastOfSpace(closing)
@@ -582,6 +584,7 @@ export function Workspace({ connection }: WorkspaceProps) {
               <CloseTabDialog
                 key={closingSet.join(" ")}
                 connection={connection}
+                views={views}
                 terminals={terminals}
                 tab={closingSetTab}
                 tabs={closingTabs.length}

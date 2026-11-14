@@ -33,7 +33,8 @@ export type UplinkState =
   | { readonly state: "connecting"; readonly attempt: number }
   /** The challenge answer is sent; the relay closes with 4403 if it is wrong. */
   | { readonly state: "answered" }
-  | { readonly state: "waiting"; readonly code: number; readonly retryInMs: number }
+  /** The uplink closed and redials; `reason` is the close frame's text, empty when the socket died without one. */
+  | { readonly state: "waiting"; readonly code: number; readonly reason: string; readonly retryInMs: number }
   | { readonly state: "stopped"; readonly code: number };
 
 /**
@@ -220,7 +221,7 @@ export class Uplink {
       this.#passes?.challenged();
       this.#answer(ws, bytes).catch(() => closeSocket(ws, CloseCode.InternalError, "signing failed"));
     });
-    ws.addEventListener("close", (event: CloseEvent) => this.#lost(ws, event.code));
+    ws.addEventListener("close", (event: CloseEvent) => this.#lost(ws, event.code, event.reason));
   }
 
   async #answer(ws: WebSocket, challenge: Uint8Array): Promise<void> {
@@ -293,7 +294,7 @@ export class Uplink {
     return active;
   }
 
-  #lost(ws: WebSocket, code: number): void {
+  #lost(ws: WebSocket, code: number, reason: string): void {
     if (ws !== this.#socket) return;
     this.#socket = undefined;
     this.#pairSlots.failAll(`the uplink closed with ${code} before the relay answered`);
@@ -302,7 +303,7 @@ export class Uplink {
     if (stable) this.#attempt = 0;
     const retryInMs = this.#passes?.reconnectDelay(code) ?? backoffDelay(this.#attempt, this.#options.random);
     this.#attempt += 1;
-    this.#options.onState?.({ state: "waiting", code, retryInMs });
+    this.#options.onState?.({ state: "waiting", code, reason, retryInMs });
     this.#timer = setTimeout(() => this.#connect(), retryInMs);
     // Last, so a session's throwing close listener cannot cancel the reconnect.
     this.#endSessions(code);
