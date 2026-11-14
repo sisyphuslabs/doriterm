@@ -114,8 +114,8 @@ describe("space names", () => {
   });
 
   test("a layout that takes no edits refuses with its reason", () => {
-    const { layouts, id } = setup("the machine is not connected");
-    expect(renameRefusal(layouts, id("api"))).toBe("The layout cannot take changes now: the machine is not connected");
+    const { layouts, id } = setup("the machine is offline");
+    expect(renameRefusal(layouts, id("api"))).toBe("The layout cannot take changes now: the machine is offline");
     expect(renameRefusal(layouts, id("web", "box"))).toBeNull();
   });
 });
