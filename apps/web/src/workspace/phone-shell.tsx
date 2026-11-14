@@ -55,6 +55,8 @@ export interface PhoneShellProps {
   readonly onNew: () => void;
   /** The new tab's machine is not reachable now: its + stays in place, disabled. */
   readonly newDisabled: boolean;
+  /** Why New tab is disabled, or null while it is offered. */
+  readonly newWhy: string | null;
   /** Starts a new tab in the space with this key and opens it. */
   readonly onNewInSpace: (key: string) => void;
   /** Closes the tab that shows this terminal, as the desktop strip's close does. */
@@ -134,7 +136,14 @@ export function PhoneShell(props: PhoneShellProps) {
         {/* The page's one main landmark: the list, under the header (#1378). */}
         <main className="flex min-h-0 flex-1 flex-col">
           <ScrollArea slot="agents-list" className="flex-1" viewportRef={listViewport}>
-            <FirstRunGuideCard listVisible live={live} ids={ids} onNew={onNew} />
+            <FirstRunGuideCard
+              listVisible
+              live={live}
+              ids={ids}
+              onNew={onNew}
+              newDisabled={props.newDisabled}
+              newWhy={props.newWhy}
+            />
             {section === "spaces" ? (
               <RovingLists>
                 <PhoneSpaceLists onOpen={onOpen} />
@@ -142,7 +151,13 @@ export function PhoneShell(props: PhoneShellProps) {
             ) : machines.terminalsLoaded ? (
               <>
                 {empty ? (
-                  <PhoneEmpty host={connection.hello.core.name} onNew={onNew} onAddMachine={machines.openAddMachine} />
+                  <PhoneEmpty
+                    host={connection.hello.core.name}
+                    onNew={onNew}
+                    newDisabled={props.newDisabled}
+                    newWhy={props.newWhy}
+                    onAddMachine={machines.openAddMachine}
+                  />
                 ) : null}
                 {empty && onlyThisMachine(machines.entries) ? null : (
                   <RovingLists>

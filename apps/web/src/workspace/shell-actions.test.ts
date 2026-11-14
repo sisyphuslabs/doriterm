@@ -259,14 +259,38 @@ describe("space keys, as herdr-app binds them", () => {
 });
 
 describe("a layout that takes no edits", () => {
-  test("lists New tab, Rename tab and Rename space as unavailable, with why, so none is offered and then refused", () => {
+  test("lists Rename tab and Rename space as unavailable, with why, and New tab too while its machine is offline, so none is offered and then refused", () => {
     const why = "The layout cannot take changes now: the machine is not connected";
     for (const shell of ["desktop", "phone"] as const) {
-      const blocked = availableActions(shell, true, why).filter(({ id }) =>
+      const blocked = availableActions(shell, true, why, undefined, false, why).filter(({ id }) =>
         ["tab.new", "tab.rename", "space.rename"].includes(id),
       );
       expect(blocked.map(({ id }) => id)).toContain("tab.new");
       expect(blocked.filter(({ unavailable }) => unavailable !== why)).toEqual([]);
     }
+  });
+});
+
+describe("New tab waits only on an offline machine (#2569, #2574 review)", () => {
+  test("a reachable machine whose layout is loading lists New tab available while Rename and Split still wait", () => {
+    for (const shell of ["desktop", "phone"] as const) {
+      const actions = availableActions(shell, true, "the layout is loading", undefined, false, null);
+      expect(actions.find(({ id }) => id === "tab.new")).toEqual({ id: "tab.new" });
+      expect(actions.find(({ id }) => id === "space.rename")?.unavailable).toBe("the layout is loading");
+    }
+  });
+  test("an offline machine lists New tab unavailable with its own why", () => {
+    const actions = availableActions(
+      "desktop",
+      true,
+      "the machine is not connected",
+      undefined,
+      false,
+      "the machine is not connected",
+    );
+    expect(actions.find(({ id }) => id === "tab.new")).toEqual({
+      id: "tab.new",
+      unavailable: "the machine is not connected",
+    });
   });
 });

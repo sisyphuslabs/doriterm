@@ -78,10 +78,12 @@ function canMove(id: string, { keys, active }: Strip): boolean {
 
 /**
  * Splitting needs a terminal in view whose layout takes edits, and renaming its space a layout that takes edits; until
- * then each is listed as unavailable, with why.
+ * then each is listed as unavailable, with why. New tab waits only while its machine is offline (`newWhy`): a reachable
+ * machine whose layout takes no edits still starts a terminal (#2569).
  */
-function unavailable(id: string, inView: boolean, readOnly: string | null): string | undefined {
-  if (id === "space.rename" || id === "tab.rename" || id === "tab.new") return readOnly ?? undefined;
+function unavailable(id: string, inView: boolean, readOnly: string | null, newWhy: string | null): string | undefined {
+  if (id === "tab.new") return newWhy ?? undefined;
+  if (id === "space.rename" || id === "tab.rename") return readOnly ?? undefined;
   if (!id.startsWith("pane.split:")) return undefined;
   return inView ? (readOnly ?? undefined) : "No terminal to split";
 }
@@ -98,13 +100,15 @@ export function availableActions(
   readOnly: string | null = null,
   strip: Strip = NO_STRIP,
   waiting = false,
+  /** Why New tab waits (its machine is offline), or null while it is offered. */
+  newWhy: string | null = null,
 ): readonly ShellAction[] {
   return SHELL_ACTIONS[shell]
     .filter((id) => inView || !SESSION_ACTIONS.has(id))
     .filter((id) => id !== "agent.waiting" || waiting)
     .filter((id) => !id.startsWith("tab.move:") || canMove(id, strip))
     .map((id) => {
-      const reason = unavailable(id, inView, readOnly);
+      const reason = unavailable(id, inView, readOnly, newWhy);
       return reason === undefined ? { id } : { id, unavailable: reason };
     });
 }

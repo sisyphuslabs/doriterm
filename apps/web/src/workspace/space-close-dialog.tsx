@@ -4,7 +4,7 @@ import { Button, Dialog, Notice } from "@doriface/ui";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { ListedSpace } from "./model.ts";
 import { NotNowLine } from "./not-now-line.tsx";
-import { closeCounts, closeRefusal, closeSpace, type SpaceCloseDrops } from "./space-close.ts";
+import { closeCounts, closeRefusal, closeSpace, type SpaceCloseDrops, newTabRefusal } from "./space-close.ts";
 import { SpaceCloseContext, type SpaceClosing } from "./space-close-context.ts";
 import { sessionCalls } from "./session-actions.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
@@ -61,7 +61,7 @@ export function SpaceClose({
   latest.current = { terminals, layouts, spaces };
   // From this render's layouts, so the menu's Close follows the machine going and coming back.
   const closing = useMemo<SpaceClosing>(
-    () => ({ ask: onAsk, refusal: (id) => closeRefusal(layouts, id) }),
+    () => ({ ask: onAsk, refusal: (id) => closeRefusal(layouts, id), newRefusal: (id) => newTabRefusal(layouts, id) }),
     [onAsk, layouts],
   );
   // A question opened before the machine went away cannot close it now: Close waits, disabled, and comes back by itself.
