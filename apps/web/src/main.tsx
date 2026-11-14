@@ -8,6 +8,7 @@ import { checkBaseline } from "./baseline.ts";
 import { CrashProbe } from "./crash/crash-probe.ts";
 import { CrashScreen } from "./crash/crash-screen.tsx";
 import { RenderBoundary } from "./crash/render-boundary.tsx";
+import { DIRECT_PATH_ENABLED } from "./connection/direct-switch.ts";
 import { connectionStore } from "./connection/store.ts";
 import {
   closeDesktopWindow,
@@ -125,10 +126,12 @@ if (desktopBridge() !== null) {
   // A clicked notification opens its pane in the workspace, from Settings too.
   listenForDesktopNotices(toWorkspace);
   reportMenuKeys();
-  // The shell may forward bytes to this page's saved Direct address and nothing else (#449).
+  // The shell may forward bytes to this page's saved Direct address and nothing else (#449). With the direct path off
+  // (#2070) it is told no target at all, so a saved address is not even handed to the shell.
   const forwarder = directForwardBridge();
   if (forwarder !== null) {
-    const reportTarget = (): void => void forwarder.setTarget(connectionStore.settings.directUrl);
+    const reportTarget = (): void =>
+      void forwarder.setTarget(DIRECT_PATH_ENABLED ? connectionStore.settings.directUrl : "");
     reportTarget();
     connectionStore.subscribe(reportTarget);
   }

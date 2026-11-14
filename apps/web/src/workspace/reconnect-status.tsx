@@ -2,7 +2,7 @@ import { Spinner, StatusBarItem } from "@doriface/ui";
 import { Cable, Globe, WifiOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { DirectReason } from "../connection/direct-attempt.ts";
-import { canForwardPlainWs } from "../connection/direct-forward.ts";
+import { directPathAvailable } from "../connection/direct-switch.ts";
 import { staysOnThisComputer } from "../connection/settings.ts";
 import { connectionStore, useConnection } from "../connection/store.ts";
 import { useOnline } from "../pwa/use-online.ts";
@@ -111,21 +111,17 @@ const DIRECT_REASONS: Record<DirectReason, string> = {
 };
 
 /**
- * The transport the open session runs on. A browser reaches every member over the relay (#1381 §8), so its label says
- * Relay on every session; the Direct label and its reasons (#446) are the desktop shell's, whose paired host still races
- * direct and whose forwarder is the only thing that may dial one. A phone shows it in its own bar, whose screen has no
- * tooltip.
+ * The transport the open session runs on. The relay carries every session (#2070), so the label says Relay; the Direct
+ * label and its reasons (#446) are the desktop shell's with the direct path switched on, whose paired host then races
+ * direct and whose forwarder is the only thing that may dial one (#1381 §8). A phone shows it in its own bar, whose
+ * screen has no tooltip.
  */
 export function ConnectionPathItem() {
   const state = useConnection();
   if (state.phase !== "open" || connectionStore.settings.mode !== "relay") return null;
-  if (!canForwardPlainWs()) {
+  if (!directPathAvailable()) {
     return (
-      <span
-        data-connection-path="relay"
-        className="flex shrink-0"
-        title="Relay: every session from a browser goes through the relay."
-      >
+      <span data-connection-path="relay" className="flex shrink-0" title="Relay: every session goes through the relay.">
         <StatusBarItem icon={<Globe aria-hidden />}>Relay</StatusBarItem>
       </span>
     );

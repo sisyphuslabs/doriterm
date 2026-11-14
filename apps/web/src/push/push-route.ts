@@ -4,6 +4,7 @@ import { connectRelayClient } from "@doriface/relay-client";
 import { directDial, pageAccess, parseDirectAddress } from "../connection/direct-address.ts";
 import { attemptDirect } from "../connection/direct-attempt.ts";
 import { canForwardPlainWs } from "../connection/direct-forward.ts";
+import { DIRECT_PATH_ENABLED, directPathAvailable } from "../connection/direct-switch.ts";
 import { BROWSER_DEPS, type RelayDeps } from "../connection/relay-deps.ts";
 import type { ConnectionSettings } from "../connection/settings.ts";
 import { loopbackOnly } from "../connection/loopback-address.ts";
@@ -14,7 +15,8 @@ import { parsePushClientLine, type PushPrefs } from "@doriface/protocol";
 /**
  * How to reach the host's push stream. The service worker cannot read localStorage, where the connection settings
  * live, so turning notifications on copies this much of them into the IndexedDB store that holds the device key.
- * A relay route carries the direct address only in the desktop shell: a browser's push is the relay's (#1381 §8).
+ * A relay route carries the direct address only in the desktop shell with the direct path switched on (#2070): a
+ * browser's push is the relay's (#1381 §8).
  */
 export type PushRoute =
   | {
@@ -29,14 +31,14 @@ export type PushRoute =
 const KEY = "push-route";
 
 /** The loopback client's push stream sits beside its hc stream: `/v1/hc` -> `/v1/push`. */
-export function routeOf(settings: ConnectionSettings, desktopShell: boolean = canForwardPlainWs()): PushRoute {
+export function routeOf(settings: ConnectionSettings, directPath: boolean = directPathAvailable()): PushRoute {
   if (settings.mode === "relay") {
     return {
       mode: "relay",
       relayUrl: settings.relayUrl,
       hostId: settings.hostId,
       hostKey: settings.hostKey,
-      ...(desktopShell ? { directUrl: settings.directUrl } : {}),
+      ...(directPath ? { directUrl: settings.directUrl } : {}),
     };
   }
   const url = new URL(settings.loopbackUrl);
@@ -68,7 +70,7 @@ export async function loadPushRoute(store: KeyValueStore = deviceStore): Promise
   return parseRoute(await store.get(KEY));
 }
 
-/** The route with no direct address: a browser never dials one, so a browser's stored route never names one. */
+/** The route with no direct address: a page with no direct path never dials one, so its stored route never names one. */
 const relayOnly = (route: PushRoute): PushRoute =>
   route.mode === "relay" && route.directUrl !== undefined
     ? { mode: "relay", relayUrl: route.relayUrl, hostId: route.hostId, hostKey: route.hostKey }
@@ -77,8 +79,8 @@ const relayOnly = (route: PushRoute): PushRoute =>
 export const savePushRoute = (
   route: PushRoute | null,
   store: KeyValueStore = deviceStore,
-  desktopShell: boolean = canForwardPlainWs(),
-): Promise<void> => store.put(KEY, route === null || desktopShell ? route : relayOnly(route));
+  directPath: boolean = directPathAvailable(),
+): Promise<void> => store.put(KEY, route === null || directPath ? route : relayOnly(route));
 
 const PREFS_KEY = "push-prefs";
 
@@ -106,12 +108,14 @@ export interface PushLinkOptions {
   readonly budgetMs?: number | undefined;
   /** For tests: where the device key comes from; the browser's stored key otherwise (as `connect` takes it). */
   readonly deps?: RelayDeps | undefined;
+  /** Runs the direct race though the switch is off (`DIRECT_PATH_ENABLED`): for tests of the mechanism only. */
+  readonly directPath?: boolean | undefined;
 }
 
 /**
- * Opens the push stream: the same E2EE session (`stream:"push"`) the main connection uses. The desktop shell runs the
- * same direct-first race as the page (#446 §3); a browser goes straight to the relay (#1381 §8), and a service worker,
- * which has no shell bridge, always does.
+ * Opens the push stream: the same E2EE session (`stream:"push"`) the main connection uses. The relay carries it
+ * (#2070); with the direct path switched on, the desktop shell runs the same direct-first race as the page (#446 §3).
+ * A browser goes straight to the relay either way (#1381 §8), and so does a service worker, which has no shell bridge.
  */
 export async function openPushLink(route: PushRoute, options: PushLinkOptions = {}): Promise<ByteLink> {
   if (route.mode === "loopback") {
@@ -146,9 +150,10 @@ async function openDirectPush(
   options: PushLinkOptions,
   deps: RelayDeps,
 ): Promise<ByteLink | undefined> {
-  // #1381 §8: a browser's push goes over the relay too. A service worker has no forwarder, so its push always relays;
-  // only the desktop shell may dial the address its settings hold.
-  if (!canForwardPlainWs()) return undefined;
+  // #2070: the direct path is off, so the push stream is the relay's. #1381 §8: a browser's push goes over the relay
+  // too, and a service worker has no forwarder; only the desktop shell may dial the address its settings hold.
+  // The test-only override decides the switch here as it does in connect(): either way, only the forwarder may dial.
+  if (!((options.directPath ?? DIRECT_PATH_ENABLED) && canForwardPlainWs())) return undefined;
   const address = parseDirectAddress(route.directUrl ?? "");
   if (!address.usable) return undefined;
   const dial = directDial(address, pageAccess());

@@ -12,9 +12,9 @@ import { pairAndRemember, type RememberedHost } from "../pair/handshake.ts";
 import type { KeyValueStore } from "../storage/idb.ts";
 import { loadPushRoute, openPushLink, type PushRoute, routeOf, savePushRoute } from "./push-route.ts";
 
-// #1381 §8: a browser's push stream is the relay's too. Only the desktop shell may dial a saved direct address for it,
-// and a service worker has no shell bridge at all; a route an older build stored keeps its address, which a browser
-// ignores.
+// #2070: the direct path is off, so the push stream is the relay's everywhere. #1381 §8: a browser's was already;
+// only the desktop shell could dial a saved direct address for it, and a service worker has no shell bridge at all. A
+// route an older build stored keeps its address, which nothing dials; the shell's race stays behind the switch.
 
 const CLI = join(import.meta.dir, "..", "..", "..", "host", "src", "cli.ts");
 const DIRECT = "ws://192.0.2.10:7767/v1/e2ee";
@@ -155,37 +155,32 @@ describe("a browser's push stream is the relay's (#1381 §8)", () => {
     }
   }, 30_000);
 
-  test("the route this app builds leaves the direct address out in a browser and keeps it in the shell", () => {
-    const browser = routeOf(settingsWith(DIRECT));
-    expect(browser).toEqual({ mode: "relay", relayUrl: bridge.url, hostId: saved.hostId, hostKey: saved.hostKey });
+  test("the route this app builds leaves the direct address out, in a browser and in the shell alike (#2070)", () => {
+    const relayOnly: PushRoute = { mode: "relay", relayUrl: bridge.url, hostId: saved.hostId, hostKey: saved.hostKey };
+    expect(routeOf(settingsWith(DIRECT))).toEqual(relayOnly);
 
     const shell = installShellForwarder();
     try {
-      expect(routeOf(settingsWith(DIRECT))).toEqual({
-        mode: "relay",
-        relayUrl: bridge.url,
-        hostId: saved.hostId,
-        hostKey: saved.hostKey,
-        directUrl: DIRECT,
-      });
+      expect(routeOf(settingsWith(DIRECT))).toEqual(relayOnly);
+      // Only with the direct path switched on does the shell's route keep the address.
+      expect(routeOf(settingsWith(DIRECT), true)).toEqual({ ...relayOnly, directUrl: DIRECT });
     } finally {
       shell.restore();
     }
   });
 
-  test("a saved route leaves the direct address out in a browser and keeps it in the shell", async () => {
+  test("a saved route leaves the direct address out, in a browser and in the shell alike (#2070)", async () => {
     const store = memoryStore();
+    const relayOnly: PushRoute = { mode: "relay", relayUrl: bridge.url, hostId: saved.hostId, hostKey: saved.hostKey };
     await savePushRoute(relayRoute(DIRECT), store);
-    expect(await loadPushRoute(store)).toEqual({
-      mode: "relay",
-      relayUrl: bridge.url,
-      hostId: saved.hostId,
-      hostKey: saved.hostKey,
-    });
+    expect(await loadPushRoute(store)).toEqual(relayOnly);
 
     const shell = installShellForwarder();
     try {
       await savePushRoute(relayRoute(DIRECT), store);
+      expect(await loadPushRoute(store)).toEqual(relayOnly);
+      // Only with the direct path switched on does the shell's saved route keep the address.
+      await savePushRoute(relayRoute(DIRECT), store, true);
       expect(await loadPushRoute(store)).toMatchObject({ directUrl: DIRECT });
     } finally {
       shell.restore();
@@ -193,12 +188,27 @@ describe("a browser's push stream is the relay's (#1381 §8)", () => {
   });
 });
 
-describe("the desktop shell keeps its direct push race (#446)", () => {
-  test("with the forwarder present the push session opens on the host's own listener, and the relay is not dialled", async () => {
+describe("the desktop shell's direct push race stays behind the switch (#446, #2070)", () => {
+  test("with the forwarder present and the switch off, the push session is the relay's and no socket goes to the address", async () => {
+    const shell = installShellForwarder();
+    const canary = dialCanary();
+    try {
+      const before = relayDials();
+      const link = await openPushLink(relayRoute(canary.url), { deps });
+      expect(canary.opened()).toBe(0);
+      expect(relayDials()).toBe(before + 1);
+      link.close();
+    } finally {
+      canary.stop();
+      shell.restore();
+    }
+  }, 30_000);
+
+  test("switched on for this test, the push session opens on the host's own listener, and the relay is not dialled", async () => {
     const shell = installShellForwarder();
     try {
       const before = relayDials();
-      const link = await openPushLink(relayRoute(lanUrl), { deps });
+      const link = await openPushLink(relayRoute(lanUrl), { deps, directPath: true });
       expect(relayDials()).toBe(before);
       link.close();
     } finally {

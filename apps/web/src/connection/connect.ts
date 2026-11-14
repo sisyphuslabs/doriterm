@@ -6,6 +6,7 @@ import { directDial, type PageAccess, pageAccess, parseDirectAddress } from "./d
 import { attemptDirect, DIRECT_BUDGET_MS, DirectFailure, type DirectReason, openDirectLink } from "./direct-attempt.ts";
 import { directBudgetProbe } from "./direct-budget-probe.ts";
 import { canForwardPlainWs, openForwardedLink } from "./direct-forward.ts";
+import { DIRECT_PATH_ENABLED } from "./direct-switch.ts";
 import { BROWSER_DEPS, deviceKeyFor, type RelayDeps } from "./relay-deps.ts";
 import type { ResumableSession } from "./session-resume.ts";
 import type { ConnectionSettings } from "./settings.ts";
@@ -45,6 +46,8 @@ export interface OpenOptions {
   readonly budgetMs?: number | undefined;
   /** This attempt dials the relay at once: the one before it was a direct link that dropped (#446 §4). */
   readonly skipDirect?: boolean | undefined;
+  /** Runs the direct race though the switch is off (`DIRECT_PATH_ENABLED`): for tests of the mechanism only. */
+  readonly directPath?: boolean | undefined;
   /**
    * How long the whole attempt may take before it fails and everything it opened is closed (#653). The store grows this
    * after an attempt times out, so a slower path still gets a chance while a dead one cannot hold the UI.
@@ -56,10 +59,11 @@ export interface OpenOptions {
 const thisPage = (): PageAccess => ({ ...pageAccess(), forwardsPlainWs: canForwardPlainWs() });
 
 /**
- * Opens a framed herdr-core connection with the given settings. In relay mode the desktop shell tries a saved direct
- * address first with the same pinned Noise session; the relay carries the session when direct does not answer within the
- * budget, or fails for any reason, so a broken direct address never costs the connection (#446 §2). A browser has no
- * direct path: its sessions are the relay's (#1381 §8).
+ * Opens a framed herdr-core connection with the given settings. In relay mode the relay carries the session (#2070).
+ * With the direct path switched on, the desktop shell tries a saved direct address first with the same pinned Noise
+ * session; the relay carries the session when direct does not answer within the budget, or fails for any reason, so a
+ * broken direct address never costs the connection (#446 §2). A browser has no direct path either way: its sessions are
+ * the relay's (#1381 §8).
  */
 export async function connect(
   settings: ConnectionSettings,
@@ -154,6 +158,9 @@ async function openDirect(
   deps: RelayDeps,
   options: OpenOptions,
 ): Promise<DirectOutcome> {
+  // #2070: the direct path is off. connect() goes to the relay, and the address a file holds is left unused; no reason
+  // is set, as no attempt was made.
+  if (!(options.directPath ?? DIRECT_PATH_ENABLED)) return { reason: undefined };
   // #1381 §8: a browser reaches every member over the relay. Only the desktop shell's forwarder may dial a saved
   // address, so everywhere else connect() goes to the relay and the address an older file holds is left unused.
   if (!canForwardPlainWs()) return { reason: undefined };

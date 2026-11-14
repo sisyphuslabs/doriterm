@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { installShellForwarder } from "../connection/direct-forward.test-support.ts";
 import { hostRouteOf } from "./host-route.ts";
 
 const base = {
@@ -18,11 +19,24 @@ describe("how this app reaches its host", () => {
     });
   });
 
-  test("a known direct address is named beside the relay, never claimed for it, in the shell that can dial it (#446)", () => {
+  test("a known direct address is named beside the relay, never claimed for it, where the direct path is on (#446)", () => {
     const route = hostRouteOf({ ...base, hostId: "a-paired-host", directUrl: "https://192.0.2.10:7766" }, true);
     expect(route.route).toBe("relay");
     expect(route.label).toContain("or direct to 192.0.2.10:7766 when it answers");
     expect(route.label).toContain("end-to-end encrypted");
+  });
+
+  test("the desktop shell names only the relay while the direct path is off, whatever address the file holds (#2070)", () => {
+    const shell = installShellForwarder();
+    try {
+      expect(hostRouteOf({ ...base, hostId: "a-paired-host", directUrl: "https://192.0.2.10:7766" })).toEqual({
+        route: "relay",
+        address: "relay.example.dev",
+        label: "Through the relay relay.example.dev · end-to-end encrypted",
+      });
+    } finally {
+      shell.restore();
+    }
   });
 
   test("a browser names only the relay, whatever direct address a file left behind (#1381 §8)", () => {

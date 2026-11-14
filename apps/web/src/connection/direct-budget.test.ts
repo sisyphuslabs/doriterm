@@ -88,7 +88,8 @@ const settingsWith = (directUrl: string): typeof DEFAULT_SETTINGS => ({
 
 test("the desktop shell's host that proves its key and then stalls the hello is not a session: the relay carries it inside the budget (#640)", async () => {
   const started = performance.now();
-  const opened = await connect(settingsWith(lanUrl), undefined, deps, { budgetMs: 300 });
+  // The direct path is off (#2070): the mechanism is tested with the switch on for this test alone.
+  const opened = await connect(settingsWith(lanUrl), undefined, deps, { budgetMs: 300, directPath: true });
   const elapsed = performance.now() - started;
   expect(opened.path).toBe("relay");
   expect(opened.directReason).toBe("no-answer");

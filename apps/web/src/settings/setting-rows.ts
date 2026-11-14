@@ -33,7 +33,7 @@ const ROWS: readonly SettingHit[] = [
   row("device", "Add to Home Screen", "As an app on this phone", ["install", "home screen", "app"]),
   row("device", "Getting started", "The first-run guide", ["guide", "tour"]),
   row("device", "Relay", "The relay this app connects through", ["relay", "self-hosted"]),
-  row("device", "Connect through", "Relay, direct or loopback", ["direct", "loopback", "route"]),
+  row("device", "Connect through", "Relay or loopback", ["loopback", "route"]),
   row("machines", "Open an invite on your host", "One command on the host", ["invite", "pair", "join"]),
   row("machines", "Join from the other computer", "With the invite", ["join", "pair"]),
   row("machines", "A phone that uses one host only", "Pair a phone", ["phone", "pair", "qr"]),

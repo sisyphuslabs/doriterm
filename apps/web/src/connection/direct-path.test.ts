@@ -7,9 +7,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type PairingOffer, parsePairingFragment } from "../pair/fragment.ts";
 import { pairAndRemember, type RememberedHost } from "../pair/handshake.ts";
-import { connect, type OpenConnection } from "./connect.ts";
+import { connect, type OpenConnection, type OpenOptions } from "./connect.ts";
 import { installShellForwarder, type ShellForwarder } from "./direct-forward.test-support.ts";
 import { DEFAULT_SETTINGS } from "./settings.ts";
+
+// The direct path is off (#2070): these are the mechanism's tests, run with the switch on for the test alone, so the
+// path a later decision may turn back on stays proven. relay-only.test.ts proves the default.
+const ON: OpenOptions = { directPath: true };
 
 const CLI = join(import.meta.dir, "..", "..", "..", "host", "src", "cli.ts");
 const stateDir = mkdtempSync(join(tmpdir(), "dw-direct-path-"));
@@ -115,10 +119,10 @@ function settingsWith(directUrl: string): typeof DEFAULT_SETTINGS {
   return { ...DEFAULT_SETTINGS, ...saved, mode: "relay", relayUrl: bridge.url, directUrl };
 }
 
-describe("the desktop shell uses a saved direct address with the relay as its fallback (#446, #1381 §8)", () => {
+describe("with the direct path switched on, the desktop shell uses a saved direct address with the relay as its fallback (#446, #1381 §8, #2070)", () => {
   test("an address that answers carries the session, and the relay is never dialed", async () => {
     const before = relayDials();
-    const opened: OpenConnection = await connect(settingsWith(lanUrl), undefined, deps);
+    const opened: OpenConnection = await connect(settingsWith(lanUrl), undefined, deps, ON);
     expect(opened.path).toBe("direct");
     expect(opened.connection.hello.framed).toBe(true);
     expect(relayDials()).toBe(before);
@@ -127,7 +131,7 @@ describe("the desktop shell uses a saved direct address with the relay as its fa
 
   test("an address that nothing answers reaches the host through the relay at once", async () => {
     const url = `ws://127.0.0.1:${await closedPort()}/v1/e2ee`;
-    const opened = await connect(settingsWith(url), undefined, deps);
+    const opened = await connect(settingsWith(url), undefined, deps, ON);
     expect(opened.path).toBe("relay");
     expect(opened.connection.hello.framed).toBe(true);
     opened.connection.close();
@@ -137,7 +141,7 @@ describe("the desktop shell uses a saved direct address with the relay as its fa
     const silent = silentListener();
     const started = performance.now();
     try {
-      const opened = await connect(settingsWith(silent.url), undefined, deps);
+      const opened = await connect(settingsWith(silent.url), undefined, deps, ON);
       const elapsed = performance.now() - started;
       expect(opened.path).toBe("relay");
       expect(opened.directReason).toBe("no-answer");
@@ -149,7 +153,7 @@ describe("the desktop shell uses a saved direct address with the relay as its fa
   }, 30_000);
 
   test("a host that cannot prove the pinned key is refused, and the relay carries the session", async () => {
-    const opened = await connect(settingsWith(otherLanUrl), undefined, deps);
+    const opened = await connect(settingsWith(otherLanUrl), undefined, deps, ON);
     expect(opened.path).toBe("relay");
     expect(opened.directReason).toBe("authentication-failed");
     opened.connection.close();
@@ -157,6 +161,7 @@ describe("the desktop shell uses a saved direct address with the relay as its fa
 
   test("an address a secure page may not open is never dialed: the relay carries the session", async () => {
     const opened = await connect(settingsWith("ws://192.0.2.10:7767"), undefined, deps, {
+      ...ON,
       page: { secureContext: true, forwardsPlainWs: false },
     });
     expect(opened.path).toBe("relay");
@@ -165,7 +170,7 @@ describe("the desktop shell uses a saved direct address with the relay as its fa
   }, 30_000);
 
   test("an address naming another path is never dialed: the relay carries the session", async () => {
-    const opened = await connect(settingsWith("ws://192.0.2.10:7767/v1/hc"), undefined, deps);
+    const opened = await connect(settingsWith("ws://192.0.2.10:7767/v1/hc"), undefined, deps, ON);
     expect(opened.path).toBe("relay");
     expect(opened.directReason).toBe("unusable-address");
     opened.connection.close();
@@ -173,14 +178,14 @@ describe("the desktop shell uses a saved direct address with the relay as its fa
 
   test("an attempt that must go to the relay does not race the address again", async () => {
     const before = relayDials();
-    const opened = await connect(settingsWith(lanUrl), undefined, deps, { skipDirect: true });
+    const opened = await connect(settingsWith(lanUrl), undefined, deps, { ...ON, skipDirect: true });
     expect(opened.path).toBe("relay");
     expect(relayDials()).toBe(before + 1);
     opened.connection.close();
   }, 30_000);
 
   test("no direct address set dials the relay, as before", async () => {
-    const opened = await connect(settingsWith(""), undefined, deps);
+    const opened = await connect(settingsWith(""), undefined, deps, ON);
     expect(opened.path).toBe("relay");
     expect(opened.directReason).toBeUndefined();
     opened.connection.close();
