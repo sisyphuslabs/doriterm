@@ -84,8 +84,8 @@ test("a static button's absolute hit layer is read against its nearest positione
     // A fixed layer under a transformed scroll container is that container's, so it scrolls with its content too.
     await page.setContent(
       SCROLLED.replace("position: relative; overflow: auto;", "transform: translateX(0); overflow: auto;").replace(
-        "#box button::after { content: \"\"; position: absolute;",
-        "#box button::after { content: \"\"; position: fixed;",
+        '#box button::after { content: ""; position: absolute;',
+        '#box button::after { content: ""; position: fixed;',
       ),
     );
     await page.evaluate(() => document.getElementById("box")?.scrollTo(0, 50));
