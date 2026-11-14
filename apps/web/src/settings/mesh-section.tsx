@@ -147,7 +147,8 @@ export function MeshBody({
           </MeshGroup>
           {groups.revokedCount === 0 ? null : (
             <p data-mesh-revoked className="text-prose text-muted-foreground tabular-nums">
-              {groups.revokedCount} removed {groups.revokedCount === 1 ? "machine" : "machines"}
+              {groups.revokedCount} removed {groups.revokedCount === 1 ? "machine" : "machines"}: doriface-host mesh
+              status lists {groups.revokedCount === 1 ? "it" : "them"}.
             </p>
           )}
         </>
