@@ -109,6 +109,28 @@ async function seedsListed(hc: string, env: Record<string, string | undefined>, 
   }
 }
 
+/** Whether a process with that pid is running (one owned by another user counts: it is there). */
+export function running(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return Reflect.get(Object(error), "code") === "EPERM";
+  }
+}
+
+/** The `pid` of the reply with `id` in hc connect's output (one JSON-RPC reply per line); undefined when it has none. */
+export function replyPid(output: string, id: number): number | undefined {
+  for (const line of output.split("\n")) {
+    if (line.trim() === "") continue;
+    const reply: unknown = JSON.parse(line);
+    if (Reflect.get(Object(reply), "id") !== id) continue;
+    const pid: unknown = Reflect.get(Object(Reflect.get(Object(reply), "result")), "pid");
+    return typeof pid === "number" ? pid : undefined;
+  }
+  return undefined;
+}
+
 /** Starts the second core (with its demo terminals when `withSeeds`) and adds it; resolves with its stop. */
 export async function addMachine(
   hc: string,
