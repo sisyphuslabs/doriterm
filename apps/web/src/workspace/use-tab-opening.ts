@@ -1,14 +1,12 @@
 import type { JsonObject, Terminal } from "@doriface/protocol";
-import { docSpaces, freshId, type NewSpace, type Node, terminalBlock } from "@doriface/protocol/layout";
+import { docSpaces, freshId, type NewSpace } from "@doriface/protocol/layout";
 import { type SetStateAction, useCallback } from "react";
 import { spaceKey, tabKey } from "../layout/view.ts";
 import { findTerminal, keepTransient, localOf, type LayoutTab } from "./layout-model.ts";
 import { machineOf } from "./model.ts";
-import { apartWrite, newTabWrite, type PaneAt, written } from "./pane-writes.ts";
+import { apartWrite, newTabWrite, type PaneAt, terminalRow, written } from "./pane-writes.ts";
 import { placeOf } from "./placement.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
-
-const rootOf = (id: string, children: readonly Node[]): Node => ({ children: [...children], id, type: "row" });
 
 /** What useLayout hands the tab-opening callbacks: its view of the layouts and how it shows a pane. */
 export interface TabOpeningDeps {
@@ -81,7 +79,7 @@ export function useTabOpening({
       if (layout === undefined || layout.readOnly !== null) return keepHere(address);
       const id = freshId("tb");
       const pane = freshId("p");
-      const tab: JsonObject = { id, name: "", root: rootOf(id, [terminalBlock(pane, localOf(address))]) };
+      const tab: JsonObject = { id, name: "", root: terminalRow(id, pane, localOf(address)) };
       const kept =
         fate === "with-new" && active !== null
           ? {
