@@ -151,16 +151,18 @@ export function replyPid(output: string, id: number): number | undefined {
  */
 async function exitOf(pid: number, withinMs: number): Promise<void> {
   if (await gone(pid, withinMs)) return;
-  // Killed before the throw, so a teardown that stops at the error leaves no core behind it (#2527 review). A core
-  // that exited between the last look and the kill needs none; any other refusal is named with the timeout.
+  // Killed before the throw, so a teardown that stops at the error leaves no core behind it (#2527 review).
   try {
     process.kill(pid, "SIGKILL");
   } catch (error) {
-    if (Reflect.get(Object(error), "code") !== "ESRCH") {
-      throw new Error(`the machine's core (pid ${pid}) did not exit within ${withinMs} ms and could not be killed`, {
-        cause: error,
-      });
-    }
+    // Gone between the last look and the kill: it exited on its own, just past the bound, which is still a miss.
+    const late = Reflect.get(Object(error), "code") === "ESRCH";
+    throw new Error(
+      late
+        ? `the machine's core (pid ${pid}) exited late, after the ${withinMs} ms bound`
+        : `the machine's core (pid ${pid}) did not exit within ${withinMs} ms and could not be killed`,
+      { cause: error },
+    );
   }
   // The stop settles only once the core is gone, on this path too (#2525): the kill is waited out, briefly.
   if (!(await gone(pid, KILLED_EXIT_BOUND_MS))) {
