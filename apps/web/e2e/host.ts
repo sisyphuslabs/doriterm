@@ -27,7 +27,7 @@ const layout = process.argv[2] === "layout";
 const port = layout ? E2E_LAYOUT_PORT : E2E_HOST_PORT;
 
 const hc = process.env["HC_BIN"] || Bun.which("hc");
-if (hc === null || hc === undefined || hc === "") throw new Error("set HC_BIN to an hc 0.1.20 binary");
+if (hc === null || hc === undefined || hc === "") throw new Error("set HC_BIN to an hc 0.1.21 binary");
 // Resolved, since a process is seen holding resolved paths (macOS: /var and /tmp are links into /private).
 const dir = realpathSync(mkdtempSync(join(tmpdir(), "dw-")));
 const session = `web-e2e-${layout ? "layout-" : ""}${crypto.randomUUID().slice(0, 8)}`;
@@ -110,7 +110,12 @@ async function shutdown(code = 0): Promise<void> {
   host.kill("SIGTERM");
   await host.exited;
   await stopCore();
-  await stopMachine?.();
+  try {
+    await stopMachine?.();
+  } catch (error) {
+    // The rest of the teardown still runs: the leftovers check, the stopped word and the run dir's removal (#2527 review).
+    console.error(error);
+  }
   if (layout) {
     await stopLeftovers();
     // The run's teardown waits for this rather than for a fixed time: the host's own word that its cores are stopped,
