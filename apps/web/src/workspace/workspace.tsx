@@ -419,7 +419,8 @@ export function Workspace({ connection }: WorkspaceProps) {
   const counted = useSteady(
     useMemo(() => (narrow ? phoneSpaces(spaces, sessions) : spaces), [narrow, spaces, sessions]),
   );
-  const readCores = useMemo(() => readCoresOf(layouts, connection.hello.core.id), [layouts, connection]);
+  // Kept while the list holds, as `counted` is: layouts is a new array every render (#2585 review).
+  const readCores = useSteady(useMemo(() => readCoresOf(layouts, connection.hello.core.id), [layouts, connection]));
   const spaceSelection = useMemo(
     () =>
       narrow

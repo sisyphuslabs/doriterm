@@ -130,6 +130,17 @@ export function revivedColors(
   return back.length === 0 ? shown : { ...shown, ...Object.fromEntries(back) };
 }
 
+/** Saves each listed space's given-back colour that the store does not hold yet, and forgets it as pruned. */
+export function saveRevived(ids: readonly string[], core: string, shown: Readonly<Record<string, AvatarColor>>): void {
+  const now = colorsOn(sidebarPrefs.value.colors, core);
+  const back = Object.fromEntries(
+    ids.flatMap((id) => (now[id] === undefined && shown[id] !== undefined ? [[id, shown[id]]] : [])),
+  );
+  if (Object.keys(back).length === 0) return;
+  for (const id of Object.keys(back)) pruned.delete(storedSpaceKey(id, core));
+  sidebarPrefs.update({ colors: { ...sidebarPrefs.value.colors, ...storedColors(back, core) } });
+}
+
 /** Each listed space's colour; a new space gets one (and the choice is saved) the first time it is listed. */
 export function useSpaceColors(
   ids: readonly string[],
@@ -160,7 +171,10 @@ export function useSpaceColors(
       if (again !== null) sidebarPrefs.update({ colors: again });
     });
   }
-  const shown = revivedColors(colorsOn(migrated ?? saved, core), ids, core, pruned);
+  const base = colorsOn(migrated ?? saved, core);
+  const shown = revivedColors(base, ids, core, pruned);
+  // A colour given back is saved again, so it outlives this session as well (#2585 review).
+  if (shown !== base && core !== "") queueMicrotask(() => saveRevived(ids, core, shown));
   if (ids.every((id) => shown[id] !== undefined)) return shown;
   // Until the page knows the host it goes through, nothing can be saved by permanent id.
   if (core === "") return assignColors(shown, ids);

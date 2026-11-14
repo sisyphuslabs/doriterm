@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { revivedColors } from "./sidebar-prefs.ts";
+import { revivedColors, saveRevived, sidebarPrefs } from "./sidebar-prefs.ts";
 import { type MachineLayout, readCoresOf } from "./use-layout-docs.ts";
 
 const layout = (machineId: string | null, readOnly: string | null): MachineLayout => ({
@@ -28,4 +28,12 @@ test("a space brought back after its colour was pruned this session gets that co
   expect(revivedColors({}, ["space:m/s1", "space:s2"], "c", recent)).toEqual({ "space:m/s1": "teal" });
   const kept = { "space:m/s1": "blue" } as const;
   expect(revivedColors(kept, ["space:m/s1"], "c", recent)).toBe(kept);
+});
+
+test("a colour given back is saved, so a reload keeps it too (#2585 review)", () => {
+  sidebarPrefs.update({ colors: {} });
+  saveRevived(["space:m/s1", "space:s2"], "c", { "space:m/s1": "teal" });
+  expect(sidebarPrefs.value.colors).toEqual({ "space:m/s1": "teal" });
+  saveRevived(["space:m/s1"], "c", { "space:m/s1": "blue" });
+  expect(sidebarPrefs.value.colors).toEqual({ "space:m/s1": "teal" });
 });
