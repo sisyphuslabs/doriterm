@@ -1,11 +1,14 @@
 import { Button, cn } from "@doriface/ui";
 import { Check } from "lucide-react";
+import { NotNowLine } from "../workspace/not-now-line.tsx";
 import { type GuideFacts, guideStore, guideSteps, useGuide } from "./first-run-guide.ts";
 
 export interface FirstRunGuideCardProps extends GuideFacts {
   readonly onNew: () => void;
   /** New tab is offered disabled (#2455), so its Start a terminal is too, never pressed and silently dropped (#2574 review). */
   readonly newDisabled?: boolean;
+  /** Why it is disabled, shown beside it (visual QA: a disabled control says why). */
+  readonly newWhy?: string | null;
   readonly className?: string;
 }
 
@@ -13,7 +16,13 @@ export interface FirstRunGuideCardProps extends GuideFacts {
  * The first-run steps on a newly paired device (#668), while the guide runs: each step's state, a Start a terminal button
  * for the current agent step, Skip, and Done once every step is done. Renders nothing otherwise.
  */
-export function FirstRunGuideCard({ onNew, newDisabled = false, className, ...facts }: FirstRunGuideCardProps) {
+export function FirstRunGuideCard({
+  onNew,
+  newDisabled = false,
+  newWhy = null,
+  className,
+  ...facts
+}: FirstRunGuideCardProps) {
   const guide = useGuide();
   if (guide.status !== "active") return null;
   const steps = guideSteps(guide, facts);
@@ -75,6 +84,9 @@ export function FirstRunGuideCard({ onNew, newDisabled = false, className, ...fa
           </>
         )}
       </div>
+      {agentCurrent && !finished && newDisabled && newWhy !== null ? (
+        <NotNowLine action="Start a terminal" why={newWhy} />
+      ) : null}
     </section>
   );
 }

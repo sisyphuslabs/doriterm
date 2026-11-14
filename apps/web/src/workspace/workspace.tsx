@@ -145,6 +145,8 @@ export function Workspace({ connection }: WorkspaceProps) {
   // New tab starts on the machine of the tab in view and waits only while that machine is past its reconnect grace.
   // A reachable machine whose layout takes no edits still starts a terminal, kept on this screen by keepHere (#2569).
   const newDisabled = layout.active?.offline ?? false;
+  // Why, beside every control that starts one: the tab's own refusal, the one source every reason line reads.
+  const newWhy = newDisabled ? (layout.active?.readOnly ?? "the machine is not connected") : null;
   const phone = usePhoneRoute(narrow, ids);
   const { open: phoneOpen, show: showOnPhone } = phone;
   const phoneTab = phoneOpen === null ? null : findTerminal(layout.tabs, phoneOpen);
@@ -483,6 +485,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                         onSection={phone.showSection}
                         onNew={() => newTerminal()}
                         newDisabled={newDisabled}
+                        newWhy={newWhy}
                         onNewInSpace={newTabIn}
                         onCloseTab={(address) => {
                           const found = findTerminal(layout.tabs, address);
@@ -520,6 +523,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                         onSelectSpace={selectSpace}
                         onNew={() => newTerminal()}
                         newDisabled={newDisabled}
+                        newWhy={newWhy}
                         onNewAgent={(template) => newTerminal(template)}
                         onNewSpace={() => runs.start({}, inNewSpace)}
                         onSplit={split}
