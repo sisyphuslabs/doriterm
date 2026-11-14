@@ -6,6 +6,14 @@ import { useMachinesContext } from "../workspace/use-machines.ts";
 /** The first herdr-core whose reattach repaint draws the primary screen again behind a full-screen program (#2514). */
 export const REPAINTS_PRIMARY_FROM = "0.1.21";
 
+const NUMBER = "(?:0|[1-9]\\d*)";
+/** A pre-release identifier: a number with no leading zero, or alphanumerics with at least one letter or hyphen. */
+const PRE = `(?:${NUMBER}|\\d*[A-Za-z-][0-9A-Za-z-]*)`;
+/** Semver 2.0: release, pre-release identifiers, build metadata identifiers. */
+const SEMVER = new RegExp(
+  `^(${NUMBER}\\.${NUMBER}\\.${NUMBER})(-${PRE}(?:\\.${PRE})*)?(\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$`,
+);
+
 /**
  * What a reattached view writes before the core's repaint, so the repaint lands on a blank screen and the history stays
  * as the view holds it (#1997). Cursor home, then erase to the end (ED 0), clears the screen in use: the repaint's ESC[2J
@@ -20,19 +28,17 @@ export const REPAINTS_PRIMARY_FROM = "0.1.21";
  * pre-release may predate the change); a build past a tag, as git describe names it (`0.1.21-4-gabc1234`), holds that
  * release and counts as it, while a bare `-4` is a pre-release, which git describe never prints. Build metadata
  * (`+build.1`) does not change the version under semver, so it is read past. Any other suffix (a `-dirty` build, an
- * uppercase hash) counts like a pre-release: only past 0.1.21. An unknown or malformed version, leading zeros included,
- * is read as an older core, which keeps the output rather than erasing its only copy.
+ * uppercase hash) counts like a pre-release: only past 0.1.21. An unknown or malformed version (semver 2.0's grammar:
+ * no leading zeros in a number, no empty identifier) is read as an older core, which keeps the output rather than
+ * erasing its only copy.
  */
 export function reattachClear(coreVersion: string | undefined): string {
   const version = coreVersion?.replace(/^hc /, "");
-  const match =
-    version === undefined
-      ? null
-      : /^((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/.exec(version);
+  const match = version === undefined ? null : SEMVER.exec(version);
   const release = match?.[1];
   const order = release === undefined ? -1 : compareHcVersions(release, REPAINTS_PRIMARY_FROM);
   const suffix = match?.[2];
-  const asRelease = suffix === undefined || /^-\d+-g[0-9a-f]+$/.test(suffix);
+  const asRelease = suffix === undefined || /^-(?:0|[1-9]\d*)-g[0-9a-f]+$/.test(suffix);
   const repaintsPrimary = asRelease ? order >= 0 : order > 0;
   return repaintsPrimary ? "\u001b[?1049l\u001b[H\u001b[J" : "\u001b[H\u001b[J";
 }

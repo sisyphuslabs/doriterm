@@ -50,6 +50,11 @@ test("a version with leading zeros is malformed and keeps the output (#2526 revi
   expect(reattachClear("00.1.21")).toBe(SCREEN_ONLY);
   expect(reattachClear("0.1.0")).toBe(SCREEN_ONLY);
   expect(reattachClear("0.10.0")).toBe(PRIMARY_TOO);
+  expect(reattachClear("0.1.21-04-gabc1234")).toBe(SCREEN_ONLY);
+  expect(reattachClear("0.1.22-01")).toBe(SCREEN_ONLY);
+  expect(reattachClear("0.1.22-a..b")).toBe(SCREEN_ONLY);
+  expect(reattachClear("0.1.22+")).toBe(SCREEN_ONLY);
+  expect(reattachClear("0.1.22-rc.1")).toBe(PRIMARY_TOO);
 });
 
 test("a terminal on an added machine is repainted by that machine's core, as machine.list reports it (#2516 review)", () => {
