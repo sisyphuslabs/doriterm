@@ -39,4 +39,12 @@ describe("which write of the shared machine order a copy holds (#2531)", () => {
     ]);
     expect(mergedOrders([null, {}])).toBeNull();
   });
+
+  test("two copies an older client moved on top of the same write rank by their order, the same on every device (#2534 review)", () => {
+    const base = stampOrder({ machine_order: ["a", "b", "c"] }, rank(3, 7, "d2"));
+    const one = orderRank({ ...base, machine_order: ["c", "a", "b"] });
+    const two = orderRank({ ...base, machine_order: ["b", "c", "a"] });
+    expect(laterRank(one, two)).toBe(!laterRank(two, one));
+    expect(laterRank(one, two) || laterRank(two, one)).toBe(true);
+  });
 });

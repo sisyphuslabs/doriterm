@@ -91,6 +91,11 @@ export class SharedOrder {
     if (dropped) this.#landed();
   }
 
+  /** Whether a copy of `id`'s order is held, so a doc event for it can be read now rather than kept for later. */
+  holds(id: string | null): boolean {
+    return this.#live.has(id);
+  }
+
   heard(id: string | null, version: number): void {
     void this.#live.get(id)?.heard(version);
   }
@@ -190,7 +195,8 @@ export class SharedOrder {
     if (rank === null) {
       // The per-core orders are merged once: only when every machine's copy is held and read, never on the routing
       // core's alone, or the others' orders would count as behind and be overwritten unmerged.
-      if (!this.#listed || [...this.#live.values()].some((doc) => doc.state.phase === "loading")) return;
+      // A copy whose read failed is not read either: merging without it would overwrite its order unmerged (#2534 review).
+      if (!this.#listed || [...this.#live.values()].some((doc) => doc.state.phase !== "ready")) return;
       rank = this.#rankAfter(null);
       target = stampOrder(target, rank);
     }

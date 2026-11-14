@@ -74,7 +74,7 @@ export class Roster {
   readonly #listeners = new Set<() => void>();
   readonly #changes = new Set<(change: RosterChange) => void>();
   /** Doc events heard for a machine the last list did not hold a document for, by the name hc used: versions. */
-  readonly #unheard = new Map<string, { readonly layout?: number; readonly pins?: number }>();
+  readonly #unheard = new Map<string, { readonly layout?: number; readonly pins?: number; readonly order?: number }>();
   readonly #docHeard = new Set<DocHeard>();
   readonly #gaps = new Set<() => void>();
   readonly #lines: LineWatch;
@@ -231,15 +231,16 @@ export class Roster {
     const { name, version } = event.data;
     for (const listener of this.#docHeard) listener(machine, name, version);
     const id = machine === null ? null : this.machines.read.views.find((view) => view.name === machine)?.id;
-    if (name === ORDER_DOC && id !== undefined) return this.order.heard(id, version);
-    if (name !== LAYOUT_DOC && name !== PINS_DOC) return;
+    if (name === ORDER_DOC && id !== undefined && this.order.holds(id)) return this.order.heard(id, version);
+    if (name !== LAYOUT_DOC && name !== PINS_DOC && name !== ORDER_DOC) return;
     const docs = name === PINS_DOC ? this.pins : this.docs;
-    if (id !== undefined && docs.live(id) !== undefined) return docs.heard(id, version);
+    if (name !== ORDER_DOC && id !== undefined && docs.live(id) !== undefined) return docs.heard(id, version);
     // The list is behind this event: the machine is unlisted, listed under an old name, or not connected yet, so no
     // document of its is held. Keep what was heard by the name hc used and read the list again; the answer replays it.
     if (machine === null) return;
     const heard = this.#unheard.get(machine) ?? {};
-    this.#unheard.set(machine, name === PINS_DOC ? { ...heard, pins: version } : { ...heard, layout: version });
+    const kind = name === PINS_DOC ? "pins" : name === ORDER_DOC ? "order" : "layout";
+    this.#unheard.set(machine, { ...heard, [kind]: version });
     void this.machines.refresh();
   }
 
@@ -252,7 +253,13 @@ export class Roster {
       const pins = this.pins.live(id);
       if (heard.layout !== undefined && layout !== undefined) void layout.heard(heard.layout);
       if (heard.pins !== undefined && pins !== undefined) void pins.heard(heard.pins);
-      if ((heard.layout === undefined || layout !== undefined) && (heard.pins === undefined || pins !== undefined)) {
+      const order = this.order.holds(id);
+      if (heard.order !== undefined && order) this.order.heard(id, heard.order);
+      if (
+        (heard.layout === undefined || layout !== undefined) &&
+        (heard.pins === undefined || pins !== undefined) &&
+        (heard.order === undefined || order)
+      ) {
         this.#unheard.delete(name);
       }
     }

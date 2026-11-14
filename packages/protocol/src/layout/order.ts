@@ -84,7 +84,10 @@ export function orderRank(doc: JsonObject | null): OrderRank | null {
   const { n, at, by, order } = stamp;
   if (typeof n !== "number" || typeof at !== "number" || typeof by !== "string" || !Array.isArray(order)) return null;
   const written = order.filter((id): id is string => typeof id === "string");
-  return sameIds(written, storedOrder(doc) ?? []) ? { n, at, by } : { n: n + 1, at: 0, by: "" };
+  if (sameIds(written, storedOrder(doc) ?? [])) return { n, at, by };
+  // Two copies moved this way on top of the same write tie on n and at; the order itself breaks the tie, so every
+  // device picks the same one whichever copy it reads first (#2534 review).
+  return { n: n + 1, at: 0, by: `moved:${(storedOrder(doc) ?? []).join(",")}` };
 }
 
 /** `doc` as the write `rank` makes it: its order, stamped with the rank and the order it was written with. */

@@ -13,10 +13,13 @@ import { SharedOrder } from "./shared-order.ts";
 /** One `doriface` document per core, as hc keeps them: a version each, and a write at an old version refused. */
 const key = (on: string | null): string => on ?? "routing";
 
-function cores(initial: Readonly<Record<string, JsonValue>>) {
+function cores(initial: Readonly<Record<string, JsonValue>>, failing: Set<string> = new Set()) {
   const docs = new Map(Object.entries(initial).map(([on, value]) => [on, { value, version: 1 }]));
   const calls: DocCalls = {
-    get: async (on) => docs.get(key(on)) ?? { value: null, version: 0 },
+    get: async (on) => {
+      if (failing.has(key(on))) throw new Error("doc.get failed");
+      return docs.get(key(on)) ?? { value: null, version: 0 };
+    },
     set: async (on, value, version) => {
       const held = docs.get(key(on)) ?? { value: null, version: 0 };
       if (held.version !== version)
@@ -150,5 +153,21 @@ describe("the shared machine order, read from every core as one (#2531)", () => 
     await settled();
     expect(ordered(shared.state)).toEqual(["routing", "box", "lab"]);
     expect(held.order("box")).toEqual(["routing", "box", "lab"]);
+  });
+
+  test("a copy whose read failed holds the one-time merge back until it is read, so its order is merged, not overwritten (#2534 review)", async () => {
+    const failing = new Set(["box"]);
+    const held = cores(
+      { routing: { machine_order: ["routing", "box"] }, box: { machine_order: ["lab", "box", "routing"] } },
+      failing,
+    );
+    const shared = open(held.calls);
+    await settled();
+    expect(orderRank(held.doc("routing"))).toBeNull();
+    failing.delete("box");
+    shared.sync(new Set<string | null>([null, "box"]), true, true);
+    await settled();
+    expect(held.order("box")).toEqual(["routing", "box", "lab"]);
+    expect(held.order("routing")).toEqual(["routing", "box", "lab"]);
   });
 });

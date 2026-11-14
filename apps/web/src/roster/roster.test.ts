@@ -1,4 +1,4 @@
-import { LAYOUT_DOC, PINS_DOC, storedPins } from "@doriface/protocol/layout";
+import { LAYOUT_DOC, ORDER_DOC, PINS_DOC, storedPins } from "@doriface/protocol/layout";
 import { describe, expect, test } from "bun:test";
 import type { RosterChange } from "./changes.ts";
 import { FakeCore, machine, space, terminal } from "./fake-core.test-support.ts";
@@ -274,6 +274,28 @@ describe("a doc event is never lost to a machine list that is behind it (#1876 r
       roster,
       () => spaceIds(roster, "rohan-id")?.includes("r2") === true,
       "the layout the renamed event announced",
+    );
+    stop();
+  });
+
+  test("an order event under a machine's new name reads that machine's order again once the list carries the name (#2534 review)", async () => {
+    const core = new FakeCore();
+    core.machines = [machine("rohan")];
+    core.setDoc(ORDER_DOC, { machine_order: ["rohan-id"] }, "rohan", true);
+    const { roster, stop } = rosterOn(core);
+    await settled(roster);
+
+    core.machines = [{ ...machine("rivendell"), id: "rohan-id" }];
+    core.setDoc(ORDER_DOC, { machine_order: ["rohan-id"] }, "rivendell", true);
+    core.setDoc(ORDER_DOC, { machine_order: ["rohan-id", "core"] }, "rivendell");
+
+    await until(
+      roster,
+      () => {
+        const state = roster.snapshot.order;
+        return state.phase === "ready" && JSON.stringify(state.doc).includes('"core"');
+      },
+      "the order the renamed event announced",
     );
     stop();
   });
