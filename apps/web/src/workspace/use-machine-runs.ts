@@ -1,5 +1,5 @@
 import type { HcConnection } from "@doriface/client";
-import type { Terminal, TerminalRunParams } from "@doriface/protocol";
+import type { MachineView, Terminal, TerminalRunParams } from "@doriface/protocol";
 import { useToastManager } from "@doriface/ui";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { readDisplay } from "../terminal/display.ts";
@@ -24,7 +24,7 @@ export interface MachineRuns {
  * moment it is asked for until it is placed, the keyboard is the new terminal's (`typeAhead`).
  *
  * A run whose answer the link lost may have started all the same: the feed lists its terminal, and its tab may already
- * be open. `terminals` is that feed; a live terminal with the opening's name on its machine means the start succeeded,
+ * be open. `shown.terminals` is that feed; a live terminal with the opening's name on its machine means the start succeeded,
  * and the press that really failed while reconnecting is the one that reports (#1343).
  */
 export function useMachineRuns(
@@ -32,14 +32,14 @@ export function useMachineRuns(
   opened: (address: string) => void,
   refresh: () => void,
   typeAhead: TypeAhead,
-  terminals: readonly Terminal[],
+  shown: { readonly terminals: readonly Terminal[]; readonly views: readonly MachineView[] },
 ): MachineRuns {
   const toasts = useToastManager();
   // Read when a run answers, not when it was asked: the feed may list its terminal in between.
-  const fed = useRef<readonly Terminal[]>(terminals);
-  fed.current = terminals;
+  const fed = useRef(shown);
+  fed.current = shown;
   const live = useCallback((opening: Opening): string | null => {
-    const found = fed.current.find(
+    const found = fed.current.terminals.find(
       (terminal) =>
         terminal.state === "live" &&
         terminal.name === opening.name &&
@@ -75,7 +75,7 @@ export function useMachineRuns(
       void startTerminal(
         (run) => runWithAttach(connection, openingCallsOf(connection), run, display, opening),
         params,
-        core,
+        { name: core, shown: () => fed.current.views },
       ).then((started) => {
         if (!mounted.current) return undefined;
         if (started.ok) return placed(started.address);

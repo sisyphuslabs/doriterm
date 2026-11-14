@@ -12,6 +12,10 @@ import { hostFailure } from "../connection/host-failure.ts";
 import { machineCause } from "./machine-cause.ts";
 
 const unreachable = (why: string) => machineCause({ name: "box", state: "unreachable", why });
+test("a reconnecting machine's notice title names its shown state (#2600 L1)", () => {
+  expect(machineCause({ name: "box", state: "reconnecting", why: null })?.title).toBe("box is reconnecting");
+});
+
 const fallback = unreachable("")?.detail;
 /** hc's `why` for a failed via: `cannot reach <via command>: <the line it printed>` (measured on hc 0.1.20). */
 const viaWhy = (via: string, line: string): string => `cannot reach ${via}: ${line}`;

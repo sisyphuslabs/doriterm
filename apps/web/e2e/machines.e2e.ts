@@ -33,7 +33,7 @@ test.describe("machines added with hc machine add", () => {
       switchTo("drop");
       await expect(machineRow(page)).toContainText("reconnecting", { timeout: STATE_BOUND_MS });
       await expect(newOn(page)).toBeDisabled();
-      await expect(page.getByText(`Reconnecting to ${MACHINE_NAME}`, { exact: true })).toBeVisible();
+      await expect(page.getByText(`${MACHINE_NAME} is reconnecting`, { exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath("spaces-reconnecting.png") });
       await page.getByRole("link", { name: "Settings", exact: true }).click();
       await page.getByRole("button", { name: "Machines", exact: true }).click();

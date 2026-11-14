@@ -154,7 +154,7 @@ describe("a new terminal's attach goes with its run (#1351)", () => {
     const started = startTerminal(
       (run) => runWithAttach(connection, openingCallsOf(connection), run, DISPLAY),
       { on: "build-box" },
-      "example-host",
+      { name: "example-host", shown: () => [] },
     );
     const run = await core.request("terminal.run");
     const attach = await core.request("terminal.attach");

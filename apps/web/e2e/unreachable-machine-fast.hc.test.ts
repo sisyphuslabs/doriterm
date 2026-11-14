@@ -56,12 +56,12 @@ test("a New terminal on an added machine that is not connected fails from its st
     const started = await startTerminal(
       (params) => core.call("terminal.run", params),
       { argv: ["true"], on: spec.name },
-      "this-machine",
+      { name: "this-machine", shown: () => [] },
     );
     const elapsed = performance.now() - startedAt;
     expect(started).toEqual({
       ok: false,
-      failure: { machine: spec.name, kind: "unavailable", message: `${spec.name} is not connected` },
+      failure: { machine: spec.name, kind: "unavailable", message: `${spec.name} is offline` },
     });
     expect(elapsed).toBeLessThan(FAST_MS);
   } finally {
