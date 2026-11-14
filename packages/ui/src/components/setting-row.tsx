@@ -32,6 +32,15 @@ interface DisabledSettingRow extends SettingRowBase {
 
 export type SettingRowProps = EnabledSettingRow | DisabledSettingRow;
 
+/**
+ * Whether React renders `node` as nothing: no node, a boolean (`cond && <X/>`, `cond || <X/>`), an empty string, or a list
+ * of only such values (#2520, #2571 reviews).
+ */
+function rendersNothing(node: ReactNode): boolean {
+  if (node === null || node === undefined || typeof node === "boolean" || node === "") return true;
+  return Array.isArray(node) && node.every((child: ReactNode) => rendersNothing(child));
+}
+
 /** A settings line: what it is on the left, the control on the right; stacks under 480 px unless inline. */
 export function SettingRow(props: SettingRowProps) {
   const { title, description, configKey, disabledReason, inline = false, id, className } = props;
@@ -63,9 +72,8 @@ export function SettingRow(props: SettingRowProps) {
           </p>
         ) : null}
       </div>
-      {/* A row with nothing to do (no control, or `cond && <X/>` that is false or "") has no control slot: an empty one would
-          still take its own line under 480 px. */}
-      {control === null || control === undefined || control === false || control === "" ? null : (
+      {/* A row with nothing to do has no control slot: an empty one would still take its own line under 480 px. */}
+      {rendersNothing(control) ? null : (
         <div
           className={cn(
             "flex max-w-full shrink-0 items-center gap-2",
