@@ -1,5 +1,5 @@
 import type { HcConnection } from "@doriface/client";
-import { IconButton, ScrollArea, StatusBar, StatusBarItem } from "@doriface/ui";
+import { IconButton, StatusBar, StatusBarItem } from "@doriface/ui";
 import { Monitor, Plus, Search } from "lucide-react";
 import { useRef } from "react";
 import { connectionStore } from "../connection/store.ts";
@@ -10,7 +10,7 @@ import { onlyThisMachine } from "./machines.ts";
 import type { ListedSpace, Session } from "./model.ts";
 import { PhoneSpace, PhoneSpaceLoading } from "./phone-space.tsx";
 import { useArrivalReady } from "./use-arrival-ready.ts";
-import { useKeptScroll } from "./kept-scroll.ts";
+import { useKeptDocumentScroll } from "./kept-scroll.ts";
 import { ConnectionLine, ConnectionPathItem, ReconnectStatus } from "./reconnect-status.tsx";
 import type { PhoneSection } from "./phone-route.ts";
 import { PhoneTabBar } from "./phone-tab-bar.tsx";
@@ -92,7 +92,7 @@ export function PhoneShell(props: PhoneShellProps) {
   useArrivalReady(machines.terminalsLoaded);
   // The list is unmounted while a terminal is open; Back brings it back where it was, not at the top (#1553).
   // Agents and Spaces scroll in the same frame: each keeps its own place, by its section (#1553).
-  const listViewport = useKeptScroll(section, machines.terminalsLoaded && terminal === undefined && space === null);
+  useKeptDocumentScroll(section, machines.terminalsLoaded && terminal === undefined && space === null);
   // A space's rows are its live terminals: until the terminals are listed (or when that failed) the screen says so,
   // never "Nothing is running".
   if (terminal === undefined && (space === "loading" || (space !== null && !machines.terminalsLoaded)))
@@ -120,8 +120,11 @@ export function PhoneShell(props: PhoneShellProps) {
   }
   if (terminal === undefined) {
     return (
-      <div className="flex h-dvh min-h-0 min-w-0 flex-col bg-sidebar pr-(--safe-right) pl-(--safe-left)">
-        <header
+      // The list scrolls the document, so a tap on iOS's status bar takes it to the top (#2533); the header and the bars
+      // under the list stay put by sticking to the viewport's edges.
+      <div className="flex min-h-dvh min-w-0 flex-col bg-sidebar pr-(--safe-right) pl-(--safe-left)">
+        <div data-pinned="top" className="sticky top-0 z-10 bg-sidebar">
+          <header
           data-titlebar
           className="flex h-[calc(3rem+var(--safe-top))] shrink-0 items-center gap-1 pt-(--safe-top) pr-4 pl-[var(--titlebar-inset-start,1rem)]"
         >
@@ -129,11 +132,11 @@ export function PhoneShell(props: PhoneShellProps) {
           <IconButton label="Command palette" icon={<Search />} size="md" onClick={onPalette} />
           {machines.terminalsLoaded && section === "agents" ? <PhoneSortMenu terminals={terminals} /> : null}
           <IconButton label={NEW_TAB.label} icon={<Plus />} size="md" disabled={props.newDisabled} onClick={onNew} />
-        </header>
-        <ConnectionLine />
+          </header>
+          <ConnectionLine />
+        </div>
         {/* The page's one main landmark: the list, under the header (#1378). */}
-        <main className="flex min-h-0 flex-1 flex-col">
-          <ScrollArea slot="agents-list" className="flex-1" viewportRef={listViewport}>
+        <main data-slot="agents-list" className="flex min-w-0 flex-1 flex-col">
             <FirstRunGuideCard listVisible live={live} ids={ids} onNew={onNew} />
             {section === "spaces" ? (
               <RovingLists>
@@ -155,12 +158,12 @@ export function PhoneShell(props: PhoneShellProps) {
             ) : (
               <PhoneListLoading />
             )}
-          </ScrollArea>
         </main>
         {/*
           The machines' list carries how this device reaches them: the core, the path (Relay or Direct) and a reconnect in
           progress. The agents list leaves that to the connection line under its header.
         */}
+        <div data-pinned="bottom" className="sticky bottom-0 z-10 bg-sidebar">
         {section === "spaces" ? (
           <StatusBar
             start={
@@ -175,6 +178,7 @@ export function PhoneShell(props: PhoneShellProps) {
           />
         ) : null}
         <PhoneTabBar section={section} terminals={terminals} onSection={onSection} />
+        </div>
       </div>
     );
   }
