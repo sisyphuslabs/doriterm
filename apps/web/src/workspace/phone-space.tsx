@@ -38,9 +38,9 @@ export function PhoneSpace({ space, terminals, host, arrive, from, onOpen, onBac
   const rows = spaceTabRows(space, terminals, now);
   // A space whose layout takes no edits (its machine is offline) can take no new tab and no close: both wait, disabled,
   // with why, and come back by themselves (#2455). A space no longer in the layout refuses only Close, and that is no
-  // machine wait, so New tab says nothing about one (#2466 review).
+  // machine wait, so New tab says nothing about one (#2466 review); Close is still offered disabled with why.
   const waiting = closing.editWait(space.id);
-  const closeRefused = closing.refusal(space.id) !== null;
+  const closeRefusal = closing.refusal(space.id);
   // Back from a terminal opened here mounts this screen anew: its tabs come back where they were (#1553).
   const tabsViewport = useKeptScroll(`space:${space.id}`, rows.length > 0);
   return (
@@ -70,19 +70,21 @@ export function PhoneSpace({ space, terminals, host, arrive, from, onOpen, onBac
           icon={<SquareTerminal aria-hidden />}
           title={`Nothing is running in ${space.name}`}
           description={
-            waiting === null
-              ? "Its last tab ended. Start a shell or an agent here, or close the space."
-              : notNowText(
+            waiting !== null
+              ? notNowText(
                   waiting,
                   "New tab here and Close space come back by themselves once the machine can take them.",
                 )
+              : closeRefusal !== null
+                ? `${closeRefusal} Its last tab ended. Start a shell or an agent here.`
+                : "Its last tab ended. Start a shell or an agent here, or close the space."
           }
           actions={
             <>
               <Button variant="primary" disabled={waiting !== null} onClick={onNew}>
                 New tab here
               </Button>
-              <Button disabled={closeRefused} onClick={() => closing.ask(space.id)}>
+              <Button disabled={closeRefusal !== null} onClick={() => closing.ask(space.id)}>
                 Close space
               </Button>
             </>

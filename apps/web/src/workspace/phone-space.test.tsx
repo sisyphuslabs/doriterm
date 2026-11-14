@@ -45,11 +45,11 @@ function disabled(html: string, text: string): boolean | undefined {
 }
 
 describe("a phone's space screen (#2455)", () => {
-  test("a space gone from the layout refuses Close only: New tab is offered, with no machine wait (#2466 review)", () => {
+  test("a space gone from the layout refuses Close only, saying why: New tab is offered (#2466 review)", () => {
     const html = screen({ refusal: () => GONE, editWait: () => null });
     expect(disabled(html, "New tab here")).toBe(false);
     expect(disabled(html, "Close space")).toBe(true);
-    expect(html).not.toContain(GONE);
+    expect(html).toContain(GONE);
   });
 
   test("a space whose machine cannot take edits waits on both, saying why", () => {
