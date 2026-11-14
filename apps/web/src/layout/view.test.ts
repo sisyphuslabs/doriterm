@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { seenOn, storedSeen } from "./view-keys.ts";
 import { loadView, NO_VIEW, rememberSeen, saveView, type View, VIEW_KEY } from "./view.ts";
 
 /** A storage holding one raw value as the device's view, as a page would have left it. */
 const holding = (raw: string | null): Pick<Storage, "getItem"> => ({
   getItem: (key) => (key === VIEW_KEY ? raw : null),
 });
-const loaded = (value: unknown): View => loadView("c", holding(JSON.stringify(value)));
+const loaded = (value: unknown): View => loadView("c", holding(JSON.stringify(value)), []);
 
 describe("loadView", () => {
   test("reads the active tab, the focused and zoomed panes, each space's tab and the finishes it has seen", () => {
@@ -65,30 +66,66 @@ const memory = () => {
 };
 
 describe("one view per device, whichever host the page goes through (#2537)", () => {
+  // Through core c, its tab tb-1 is bare and machine m's tb-2 is keyed by m's id; seen marks stay by machine id.
   const view: View = {
     active: "tb-1",
     focused: { "tb-1": "p1", "m/tb-2": "p2" },
     zoomed: {},
     spaces: { "space:s1": "tb-1", "space:m/s2": "m/tb-2" },
-    seen: { t1: "41", "box/t2": "77" },
+    seen: { "@c/t1": "41", "@m/t2": "77" },
   };
-  test("saved going through core c and read going through core m, every tab, space and focus is the same one", () => {
+  // What each core calls the other: c lists m as "box", m lists c as "studio".
+  const viaC = { byName: new Map([["box", "m"]]), byId: new Map([["m", "box"]]) };
+  const viaM = { byName: new Map([["studio", "c"]]), byId: new Map([["c", "studio"]]) };
+
+  test("saved going through core c and read going through core m, every tab, space, focus and seen mark is the same one", () => {
     const { storage } = memory();
     expect(saveView("c", view, storage)).toBeNull();
-    expect(loadView("m", storage)).toEqual({
+    const there = loadView("m", storage, []);
+    expect(there).toEqual({
       active: "c/tb-1",
       focused: { "c/tb-1": "p1", "tb-2": "p2" },
       zoomed: {},
       spaces: { "space:c/s1": "c/tb-1", "space:s2": "tb-2" },
-      seen: { "@c/t1": "41", "box/t2": "77" },
+      seen: view.seen,
     });
-    expect(loadView("c", storage)).toEqual(view);
+    expect(seenOn(there.seen, "m", viaM)).toEqual({ "studio/t1": "41", t2: "77" });
+    expect(loadView("c", storage, [])).toEqual(view);
+    expect(seenOn(view.seen, "c", viaC)).toEqual({ t1: "41", "box/t2": "77" });
   });
 
-  test("a device with only the per-host view saved before starts from the one it kept for this host", () => {
-    const old = { getItem: (key: string) => (key === "doriface.view.c" ? JSON.stringify(view) : null) };
-    expect(loadView("c", old)).toEqual(view);
-    expect(loadView("m", old)).toEqual(NO_VIEW);
+  test("a mark made through one core is the same mark through the other", () => {
+    const kept = storedSeen({ t1: "41", "box/t2": "77" }, "c", viaC);
+    expect(kept).toEqual({ "@c/t1": "41", "@m/t2": "77" });
+    expect(storedSeen(seenOn(kept, "m", viaM), "m", viaM)).toEqual(kept);
+  });
+
+  test("a device with only per-host views saved before starts from all of them, the current host's winning", () => {
+    const c = {
+      active: "tb-1",
+      focused: { "tb-1": "p1" },
+      zoomed: {},
+      spaces: { "space:s1": "tb-1" },
+      seen: { t1: "41" },
+    };
+    const m = {
+      active: "tb-9",
+      focused: { "tb-9": "p9" },
+      zoomed: {},
+      spaces: { "space:s9": "tb-9" },
+      seen: { t9: "5" },
+    };
+    const old = {
+      getItem: (key: string) =>
+        key === "doriface.view.c" ? JSON.stringify(c) : key === "doriface.view.m" ? JSON.stringify(m) : null,
+    };
+    expect(loadView("c", old, ["c", "m"])).toEqual({
+      active: "tb-1",
+      focused: { "m/tb-9": "p9", "tb-1": "p1" },
+      zoomed: {},
+      spaces: { "space:m/s9": "m/tb-9", "space:s1": "tb-1" },
+      seen: { "@m/t9": "5", "@c/t1": "41" },
+    });
   });
 });
 

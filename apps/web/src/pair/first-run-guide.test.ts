@@ -116,3 +116,21 @@ describe("first-run guide", () => {
     expect(states(guideSteps(store.value, other)).at(-1)).toBe("list:current");
   });
 });
+
+test("the terminal the guide waits for is the same one after the route moves to another host (#2537)", () => {
+  const store = new GuideStore(memory());
+  store.start();
+  // Opened through core c, where it is the bare t7; through core m it is studio/t7 (m lists c as studio).
+  store.opened("t7", machineIds([], "c"));
+  const viaM = machineIds([{ id: "c", name: "studio" } as MachineView], "m");
+  expect(states(guideSteps(store.value, { listVisible: true, live: ["studio/t7"], ids: viaM }))).toEqual([
+    "pair:done",
+    "agent:done",
+    "list:done",
+  ]);
+  expect(states(guideSteps(store.value, { listVisible: true, live: ["t7"], ids: viaM }))).toEqual([
+    "pair:done",
+    "agent:done",
+    "list:current",
+  ]);
+});
