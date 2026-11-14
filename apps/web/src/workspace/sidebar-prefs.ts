@@ -110,6 +110,26 @@ export function prunedColors(
   return gone.length === 0 ? saved : Object.fromEntries(Object.entries(saved).filter(([key]) => !gone.includes(key)));
 }
 
+/**
+ * Colours pruned in this session, by stored key: a space shown gone at once and then brought back (its close's write
+ * failed) gets the colour it had, not a new one (#2585 review).
+ */
+const pruned = new Map<string, AvatarColor>();
+
+/** `shown` with each listed space that has no colour given back the one pruned from it this session, if any. */
+export function revivedColors(
+  shown: Readonly<Record<string, AvatarColor>>,
+  ids: readonly string[],
+  core: string,
+  recent: ReadonlyMap<string, AvatarColor>,
+): Readonly<Record<string, AvatarColor>> {
+  const back = ids.flatMap((id) => {
+    const color = shown[id] === undefined ? recent.get(storedSpaceKey(id, core)) : undefined;
+    return color === undefined ? [] : [[id, color] as const];
+  });
+  return back.length === 0 ? shown : { ...shown, ...Object.fromEntries(back) };
+}
+
 /** Each listed space's colour; a new space gets one (and the choice is saved) the first time it is listed. */
 export function useSpaceColors(
   ids: readonly string[],
@@ -125,8 +145,11 @@ export function useSpaceColors(
     );
     if (prunedColors(saved, read) !== saved) {
       queueMicrotask(() => {
-        const now = prunedColors(sidebarPrefs.value.colors, read);
-        if (now !== sidebarPrefs.value.colors) sidebarPrefs.update({ colors: { ...now } });
+        const was = sidebarPrefs.value.colors;
+        const now = prunedColors(was, read);
+        if (now === was) return;
+        for (const [key, color] of Object.entries(was)) if (now[key] === undefined) pruned.set(key, color);
+        sidebarPrefs.update({ colors: { ...now } });
       });
     }
   }
@@ -137,7 +160,7 @@ export function useSpaceColors(
       if (again !== null) sidebarPrefs.update({ colors: again });
     });
   }
-  const shown = colorsOn(migrated ?? saved, core);
+  const shown = revivedColors(colorsOn(migrated ?? saved, core), ids, core, pruned);
   if (ids.every((id) => shown[id] !== undefined)) return shown;
   // Until the page knows the host it goes through, nothing can be saved by permanent id.
   if (core === "") return assignColors(shown, ids);

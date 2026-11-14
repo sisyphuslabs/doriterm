@@ -36,7 +36,7 @@ import { chainedSplit, SplitChain } from "./split-chain.ts";
 import { afterEnd } from "./session-actions.ts";
 import { useDeadPanes } from "./use-dead-panes.ts";
 import { useDropOnce } from "./use-drop-once.ts";
-import { useLayoutDocs } from "./use-layout-docs.ts";
+import { readCoresOf, useLayoutDocs } from "./use-layout-docs.ts";
 import { GitFactsContext, useGitFacts } from "./git-facts.ts";
 import { TodoProgressContext, useTodoProgress } from "./todo-progress.ts";
 import { layoutSpaces, liveTabs, phoneTabTitle, spaceOfAddress } from "./model.ts";
@@ -419,13 +419,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   const counted = useSteady(
     useMemo(() => (narrow ? phoneSpaces(spaces, sessions) : spaces), [narrow, spaces, sessions]),
   );
-  const readCores = useMemo(
-    () =>
-      layouts.flatMap((one) =>
-        one.readOnly !== null ? [] : [one.machineId ?? connection.hello.core.id].filter((id) => id !== ""),
-      ),
-    [layouts, connection],
-  );
+  const readCores = useMemo(() => readCoresOf(layouts, connection.hello.core.id), [layouts, connection]);
   const spaceSelection = useMemo(
     () =>
       narrow
