@@ -134,7 +134,7 @@ export function PhoneShell(props: PhoneShellProps) {
         {/* The page's one main landmark: the list, under the header (#1378). */}
         <main className="flex min-h-0 flex-1 flex-col">
           <ScrollArea slot="agents-list" className="flex-1" viewportRef={listViewport}>
-            <FirstRunGuideCard listVisible live={live} ids={ids} onNew={onNew} />
+            <FirstRunGuideCard listVisible live={live} ids={ids} onNew={onNew} newDisabled={props.newDisabled} />
             {section === "spaces" ? (
               <RovingLists>
                 <PhoneSpaceLists onOpen={onOpen} />
@@ -142,7 +142,12 @@ export function PhoneShell(props: PhoneShellProps) {
             ) : machines.terminalsLoaded ? (
               <>
                 {empty ? (
-                  <PhoneEmpty host={connection.hello.core.name} onNew={onNew} onAddMachine={machines.openAddMachine} />
+                  <PhoneEmpty
+                    host={connection.hello.core.name}
+                    onNew={onNew}
+                    newDisabled={props.newDisabled}
+                    onAddMachine={machines.openAddMachine}
+                  />
                 ) : null}
                 {empty && onlyThisMachine(machines.entries) ? null : (
                   <RovingLists>
