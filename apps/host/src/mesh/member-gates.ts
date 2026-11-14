@@ -116,7 +116,12 @@ export class MemberGates {
     const refusals = this.#refusals.get(member) ?? 0;
     this.#refusals.set(member, refusals + 1);
     this.#reached.delete(member);
-    this.#set(member, { cause: "refused", misses: refusals + 1, nextAt: now + this.#refusedWait(refusals), lastMissAt: now });
+    this.#set(member, {
+      cause: "refused",
+      misses: refusals + 1,
+      nextAt: now + this.#refusedWait(refusals),
+      lastMissAt: now,
+    });
   }
 
   /** The long backoff's wait after `refusals` earlier refused handshakes: 1 h, doubling to the 6 h cap. */

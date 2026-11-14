@@ -204,5 +204,7 @@ test("a machine is gone, and its actions disabled, only once it reads past its g
   // The grace holds a line hc is redialing as reconnecting, so it is not gone until the grace ends.
   const held = graceViews([machine("rack", "unreachable")], new Map([["id-rack", 0]]), 1_000);
   expect(machineGone(held[0]?.state)).toBe(false);
-  expect(machineGone(graceViews([machine("rack", "unreachable")], new Map([["id-rack", 0]]), OFFLINE_GRACE_MS)[0]?.state)).toBe(true);
+  expect(
+    machineGone(graceViews([machine("rack", "unreachable")], new Map([["id-rack", 0]]), OFFLINE_GRACE_MS)[0]?.state),
+  ).toBe(true);
 });
