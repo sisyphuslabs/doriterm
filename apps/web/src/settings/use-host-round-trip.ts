@@ -9,13 +9,20 @@ const EVERY_MS = 15_000;
  * A measured round trip, never a guess and never a stale one: a failed call reports no number rather than the last one.
  */
 export function useHostRoundTrip(connection: HcConnection | null): number | undefined {
-  const [ms, setMs] = useState<number | undefined>(undefined);
+  const [sample, setSample] = useState<{
+    readonly connection: HcConnection;
+    readonly ms: number | undefined;
+  }>();
   useEffect(() => {
-    if (connection === null) return setMs(undefined);
+    if (connection === null) {
+      // A session that pauses keeps its connection object; what was measured before the pause is not shown again.
+      setSample(undefined);
+      return;
+    }
     let cancelled = false;
     const measure = async (): Promise<void> => {
       const measured = await measureRoundTrip(connection);
-      if (!cancelled) setMs(measured);
+      if (!cancelled) setSample({ connection, ms: measured });
     };
     void measure();
     const timer = setInterval(() => void measure(), EVERY_MS);
@@ -24,5 +31,5 @@ export function useHostRoundTrip(connection: HcConnection | null): number | unde
       clearInterval(timer);
     };
   }, [connection]);
-  return ms;
+  return sample?.connection === connection ? sample?.ms : undefined;
 }
