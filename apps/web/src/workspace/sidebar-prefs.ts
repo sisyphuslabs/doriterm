@@ -93,9 +93,77 @@ export function colorsByCore(
   return Object.fromEntries(Object.entries(saved).map(([key, color]) => [storedSpaceKey(key, core), color]));
 }
 
+/**
+ * The saved colours without those of spaces deleted from a machine whose layout is read now: `read` maps such a
+ * machine's permanent id to the stored keys of the spaces it lists. A machine not read now (offline, or not reached)
+ * keeps every colour (#2583). The same record comes back when nothing is dropped.
+ */
+export function prunedColors(
+  saved: Readonly<Record<string, AvatarColor>>,
+  read: ReadonlyMap<string, readonly string[]>,
+): Readonly<Record<string, AvatarColor>> {
+  const gone = Object.keys(saved).filter((key) => {
+    const machine = key.startsWith("space:") ? key.slice("space:".length).split("/")[0] : undefined;
+    const listed = machine === undefined ? undefined : read.get(machine);
+    return listed !== undefined && key.includes("/") && !listed.includes(key);
+  });
+  return gone.length === 0 ? saved : Object.fromEntries(Object.entries(saved).filter(([key]) => !gone.includes(key)));
+}
+
+/**
+ * Colours pruned in this session, by stored key: a space shown gone at once and then brought back (its close's write
+ * failed) gets the colour it had, not a new one (#2585 review).
+ */
+const pruned = new Map<string, AvatarColor>();
+
+/** `shown` with each listed space that has no colour given back the one pruned from it this session, if any. */
+export function revivedColors(
+  shown: Readonly<Record<string, AvatarColor>>,
+  ids: readonly string[],
+  core: string,
+  recent: ReadonlyMap<string, AvatarColor>,
+): Readonly<Record<string, AvatarColor>> {
+  const back = ids.flatMap((id) => {
+    const color = shown[id] === undefined ? recent.get(storedSpaceKey(id, core)) : undefined;
+    return color === undefined ? [] : [[id, color] as const];
+  });
+  return back.length === 0 ? shown : { ...shown, ...Object.fromEntries(back) };
+}
+
+/** Saves each listed space's given-back colour that the store does not hold yet, and forgets it as pruned. */
+export function saveRevived(ids: readonly string[], core: string, shown: Readonly<Record<string, AvatarColor>>): void {
+  const now = colorsOn(sidebarPrefs.value.colors, core);
+  const back = Object.fromEntries(
+    ids.flatMap((id) => (now[id] === undefined && shown[id] !== undefined ? [[id, shown[id]]] : [])),
+  );
+  if (Object.keys(back).length === 0) return;
+  for (const id of Object.keys(back)) pruned.delete(storedSpaceKey(id, core));
+  sidebarPrefs.update({ colors: { ...sidebarPrefs.value.colors, ...storedColors(back, core) } });
+}
+
 /** Each listed space's colour; a new space gets one (and the choice is saved) the first time it is listed. */
-export function useSpaceColors(ids: readonly string[], core: string): Readonly<Record<string, AvatarColor>> {
+export function useSpaceColors(
+  ids: readonly string[],
+  core: string,
+  readCores: readonly string[] = [],
+): Readonly<Record<string, AvatarColor>> {
   const saved = useSyncExternalStore(sidebarPrefs.subscribe, () => sidebarPrefs.value.colors);
+  // Spaces gone from a machine whose layout is read now lose their colour, once, by permanent id (#2583).
+  if (core !== "" && readCores.length > 0) {
+    const stored = ids.map((id) => storedSpaceKey(id, core));
+    const read = new Map(
+      readCores.map((machine) => [machine, stored.filter((key) => key.startsWith(`space:${machine}/`))]),
+    );
+    if (prunedColors(saved, read) !== saved) {
+      queueMicrotask(() => {
+        const was = sidebarPrefs.value.colors;
+        const now = prunedColors(was, read);
+        if (now === was) return;
+        for (const [key, color] of Object.entries(was)) if (now[key] === undefined) pruned.set(key, color);
+        sidebarPrefs.update({ colors: { ...now } });
+      });
+    }
+  }
   const migrated = colorsByCore(saved, core);
   if (migrated !== null) {
     queueMicrotask(() => {
@@ -103,7 +171,10 @@ export function useSpaceColors(ids: readonly string[], core: string): Readonly<R
       if (again !== null) sidebarPrefs.update({ colors: again });
     });
   }
-  const shown = colorsOn(migrated ?? saved, core);
+  const base = colorsOn(migrated ?? saved, core);
+  const shown = revivedColors(base, ids, core, pruned);
+  // A colour given back is saved again, so it outlives this session as well (#2585 review).
+  if (shown !== base && core !== "") queueMicrotask(() => saveRevived(ids, core, shown));
   if (ids.every((id) => shown[id] !== undefined)) return shown;
   // Until the page knows the host it goes through, nothing can be saved by permanent id.
   if (core === "") return assignColors(shown, ids);

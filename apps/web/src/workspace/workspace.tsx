@@ -36,7 +36,7 @@ import { chainedSplit, SplitChain } from "./split-chain.ts";
 import { afterEnd } from "./session-actions.ts";
 import { useDeadPanes } from "./use-dead-panes.ts";
 import { useDropOnce } from "./use-drop-once.ts";
-import { useLayoutDocs } from "./use-layout-docs.ts";
+import { readCoresOf, useLayoutDocs } from "./use-layout-docs.ts";
 import { GitFactsContext, useGitFacts } from "./git-facts.ts";
 import { TodoProgressContext, useTodoProgress } from "./todo-progress.ts";
 import { layoutSpaces, liveTabs, phoneTabTitle, spaceOfAddress } from "./model.ts";
@@ -419,12 +419,14 @@ export function Workspace({ connection }: WorkspaceProps) {
   const counted = useSteady(
     useMemo(() => (narrow ? phoneSpaces(spaces, sessions) : spaces), [narrow, spaces, sessions]),
   );
+  // Kept while the list holds, as `counted` is: layouts is a new array every render (#2585 review).
+  const readCores = useSteady(useMemo(() => readCoresOf(layouts, connection.hello.core.id), [layouts, connection]));
   const spaceSelection = useMemo(
     () =>
       narrow
-        ? { spaces: counted, selected: null, select: showSpace, move: moveSpace }
-        : { spaces: counted, selected: selectedSpace, select: selectSpace, move: moveSpace },
-    [narrow, counted, selectedSpace, selectSpace, showSpace, moveSpace],
+        ? { spaces: counted, selected: null, select: showSpace, move: moveSpace, readCores }
+        : { spaces: counted, selected: selectedSpace, select: selectSpace, move: moveSpace, readCores },
+    [narrow, counted, selectedSpace, selectSpace, showSpace, moveSpace, readCores],
   );
   // A space is known once the terminals and every layout document are read; until then its screen says it is loading.
   const spacesRead = fed.loaded && layout.restored;
