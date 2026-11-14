@@ -266,7 +266,7 @@ This table describes `dev`. [Download the latest release](https://get.doriterm.c
 
 ## Development
 
-Requires [Bun](https://bun.sh) 1.4.4 or newer, and [herdr-core](https://github.com/herdrdev/herdr-core) (`hc`) 0.1.20 on
+Requires [Bun](https://bun.sh) 1.4.4 or newer, and [herdr-core](https://github.com/herdrdev/herdr-core) (`hc`) 0.1.21 on
 `PATH` to run the host, the desktop app, `bun run check` and the end-to-end tests. Starting on a machine with neither,
 follow [CONTRIBUTING.md, "From zero"](CONTRIBUTING.md#from-zero): every step is public, and the `From zero` workflow
 runs it as written on a clean runner with no secrets.
