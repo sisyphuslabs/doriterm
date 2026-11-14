@@ -139,9 +139,10 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     const now = ids.core ?? "";
     routedFor.current = now;
     if (was === now || was === "" || now === "" || path !== "/") return;
-    const space = route.space === null ? null : spaceKeyOn(storedSpaceKey(route.space, was), now);
-    const terminal = route.terminal === null ? null : terminalKeyOn(storedTerminalKey(route.terminal, was), now);
-    if (space !== route.space || terminal !== route.terminal) go({ ...route, space, terminal }, true);
+    const rekeyedSpace = route.space === null ? null : spaceKeyOn(storedSpaceKey(route.space, was), now);
+    const rekeyedTerminal = route.terminal === null ? null : terminalKeyOn(storedTerminalKey(route.terminal, was), now);
+    if (rekeyedSpace !== route.space || rekeyedTerminal !== route.terminal)
+      go({ ...route, space: rekeyedSpace, terminal: rekeyedTerminal }, true);
   }, [go, ids.core, path, route]);
   const back = useCallback(() => {
     // Popping is right when this page pushed the entry in this load, and also when the entry under this one is the very
