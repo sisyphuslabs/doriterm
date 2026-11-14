@@ -1,5 +1,5 @@
 import { DirectionPad, ExtraKeysBar, KeyboardButton, Menu, MenuItem } from "@doriface/ui";
-import { LockOpen, Plus, TextSelect, X } from "lucide-react";
+import { Plus, TextSelect, X } from "lucide-react";
 import { type CSSProperties, type RefObject, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { activeEntries, specialEntries } from "../keybar/entries.ts";
@@ -266,14 +266,8 @@ export function PhoneKeys(props: PhoneKeysProps) {
       {visible ? (
         <div data-keys-place className={place.className} style={place.style}>
           {pad && !chat ? (
-            // The pad floats over the row, centred on its own button, with the grabber and lock it moves by (#2604).
-            <div className="absolute bottom-full z-10 mb-2 flex flex-col items-center gap-1" style={padAt}>
-              <div aria-hidden className="flex items-center gap-2 text-muted-foreground">
-                <span className="h-1 w-10 rounded-full bg-muted-foreground/60" />
-                <LockOpen className="size-3.5" />
-              </div>
-              <DirectionPad onKey={sticky.press} />
-            </div>
+            // The pad floats over the row, centred on its own button (#2604).
+            <DirectionPad onKey={sticky.press} className="absolute bottom-full z-10 mb-2" style={padAt} />
           ) : null}
           {chat ? composer : panel}
         </div>

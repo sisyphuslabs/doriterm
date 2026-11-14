@@ -1,4 +1,12 @@
-import { ClipboardPaste, Keyboard, KeyboardOff, List, MessageCircle, Move, TextCursorInput } from "lucide-react";
+import {
+  ClipboardPaste,
+  GamepadDirectional,
+  Keyboard,
+  KeyboardOff,
+  List,
+  MessageCircle,
+  TextCursorInput,
+} from "lucide-react";
 import type { CSSProperties, ReactElement, ReactNode, Ref } from "react";
 import { cn } from "../lib/cn.ts";
 import { DEFAULT_EXTRA_KEYS } from "./extra-keys-defaults.tsx";
@@ -177,7 +185,7 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
               onClick={props.onPad}
               className={cn(key, padOpen ? latchedKey : idleKey)}
             >
-              <Move />
+              <GamepadDirectional />
             </button>
             {props.renderSessions === undefined ? sessions : props.renderSessions(sessions)}
             {props.onChat === undefined ? null : (
