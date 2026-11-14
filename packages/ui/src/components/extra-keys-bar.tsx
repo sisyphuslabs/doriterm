@@ -10,19 +10,11 @@ import {
   List,
   TextCursorInput,
 } from "lucide-react";
-import {
-  type CSSProperties,
-  type ReactElement,
-  type ReactNode,
-  type Ref,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import type { CSSProperties, ReactElement, ReactNode, Ref } from "react";
 import { cn } from "../lib/cn.ts";
 import { DEFAULT_EXTRA_KEYS } from "./extra-keys-defaults.tsx";
 import { idleKey, keepFocus, KeyButton, keyTarget as key, latchedKey } from "./extra-key-button.tsx";
+import { useKeyRow } from "./extra-keys-scroll.ts";
 
 export { keepFocus };
 
@@ -38,36 +30,6 @@ export interface ExtraKey {
 const divider = (height: string): ReactElement => (
   <span aria-hidden className={cn("mx-1 w-px shrink-0 bg-border", height)} />
 );
-
-type Fade = "none" | "start" | "end" | "both";
-
-function fadeOf(el: HTMLElement): Fade {
-  const start = el.scrollLeft > 1;
-  const end = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
-  return start && end ? "both" : start ? "start" : end ? "end" : "none";
-}
-
-function useEdgeFade(): [Fade, (el: HTMLDivElement | null) => void] {
-  const [fade, setFade] = useState<Fade>("none");
-  const node = useRef<HTMLDivElement | null>(null);
-  const ref = useCallback((el: HTMLDivElement | null) => {
-    node.current = el;
-    if (el !== null) setFade(fadeOf(el));
-  }, []);
-  useEffect(() => {
-    const el = node.current;
-    if (el === null) return undefined;
-    const update = (): void => setFade(fadeOf(el));
-    el.addEventListener("scroll", update, { passive: true });
-    const observer = new ResizeObserver(update);
-    observer.observe(el);
-    return () => {
-      el.removeEventListener("scroll", update);
-      observer.disconnect();
-    };
-  }, []);
-  return [fade, ref];
-}
 
 export type ArrowId = "left" | "up" | "down" | "right";
 
@@ -149,7 +111,7 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
     keyboardDown = false,
   } = props;
   const { onShowKeyboardStart } = props;
-  const [fade, scroller] = useEdgeFade();
+  const keyRow = useKeyRow();
   const textKey = (entry: ExtraKey) => (
     <KeyButton
       key={entry.id}
@@ -183,42 +145,45 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
             : "flex h-[3.25rem] items-center rounded-full",
         )}
       >
-        <div
-          ref={scroller}
-          data-slot="terminal-keys-scroll"
-          data-fade={fade}
-          className={cn(
-            inputActive && "col-start-1 row-start-2 h-11",
-            "flex min-w-0 flex-1 items-center overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-            "data-[fade=end]:[mask-image:linear-gradient(to_right,black_calc(100%-0.75rem),transparent)]",
-            "data-[fade=start]:[mask-image:linear-gradient(to_left,black_calc(100%-0.75rem),transparent)]",
-            "data-[fade=both]:[mask-image:linear-gradient(to_right,transparent,black_0.75rem,black_calc(100%-0.75rem),transparent)]",
-          )}
-        >
-          {packKeys.map(textKey)}
-          {packKeys.length > 0 ? divider("h-5") : null}
-          {keys.map(textKey)}
-          {divider("h-5")}
-          <button
-            type="button"
-            aria-label="Arrow keys"
-            aria-pressed={padOpen}
-            onMouseDown={keepFocus}
-            onClick={props.onPad}
-            className={cn(key, padOpen ? latchedKey : idleKey)}
+        <div ref={keyRow.slot} className={cn("flex min-w-0 flex-1", inputActive && "col-start-1 row-start-2")}>
+          <div
+            ref={keyRow.row}
+            data-slot="terminal-keys-scroll"
+            data-fade={keyRow.fade}
+            style={keyRow.style}
+            className={cn(
+              inputActive && "h-11",
+              "flex min-w-0 items-center overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+              "data-[fade=end]:[mask-image:linear-gradient(to_right,black_calc(100%-0.75rem),transparent)]",
+              "data-[fade=start]:[mask-image:linear-gradient(to_left,black_calc(100%-0.75rem),transparent)]",
+              "data-[fade=both]:[mask-image:linear-gradient(to_right,transparent,black_0.75rem,black_calc(100%-0.75rem),transparent)]",
+            )}
           >
-            <GamepadDirectional />
-          </button>
-          {props.renderSessions === undefined ? sessions : props.renderSessions(sessions)}
-          <button
-            type="button"
-            aria-label="Paste"
-            onMouseDown={keepFocus}
-            onClick={props.onPaste}
-            className={cn(key, idleKey)}
-          >
-            <ClipboardPaste />
-          </button>
+            {packKeys.map(textKey)}
+            {packKeys.length > 0 ? divider("h-5") : null}
+            {keys.map(textKey)}
+            {divider("h-5")}
+            <button
+              type="button"
+              aria-label="Arrow keys"
+              aria-pressed={padOpen}
+              onMouseDown={keepFocus}
+              onClick={props.onPad}
+              className={cn(key, padOpen ? latchedKey : idleKey)}
+            >
+              <GamepadDirectional />
+            </button>
+            {props.renderSessions === undefined ? sessions : props.renderSessions(sessions)}
+            <button
+              type="button"
+              aria-label="Paste"
+              onMouseDown={keepFocus}
+              onClick={props.onPaste}
+              className={cn(key, idleKey)}
+            >
+              <ClipboardPaste />
+            </button>
+          </div>
         </div>
         {inputActive ? null : divider("h-6")}
         <div className={inputActive ? "contents" : "flex shrink-0 items-center"}>
