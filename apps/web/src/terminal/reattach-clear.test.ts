@@ -28,7 +28,8 @@ test("a pre-release of a version past 0.1.21 repaints the primary screen like it
 });
 
 test("a build past a tag, named by git describe, counts as that release (#2526 review)", () => {
-  expect(reattachClear("0.1.21-4")).toBe(PRIMARY_TOO);
+  // A bare -N is a semver pre-release, which may predate the change: the output is kept.
+  expect(reattachClear("0.1.21-4")).toBe(SCREEN_ONLY);
   expect(reattachClear("hc 0.1.21-4-gabc1234")).toBe(PRIMARY_TOO);
   expect(reattachClear("0.1.20-9")).toBe(SCREEN_ONLY);
   expect(reattachClear("0.1.20-9-gabc1234")).toBe(SCREEN_ONLY);
