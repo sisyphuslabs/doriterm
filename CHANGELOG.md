@@ -2,6 +2,317 @@
 
 ## Unreleased
 
+## v0.1.19 - 2026-11-14
+
+### Terminal
+
+- Powerline separators are drawn by a bundled face, so a prompt that uses one no longer fetches the 1.2 MB icon font, and no device shows a tofu box for it. (#1605)
+- A single Korean letter an input method inserts as plain text, with no composition and no Korean key, reaches the program at once instead of waiting for the next key. Safari on a Mac still keeps the first letter of a syllable it is building. (#1244)
+- A Korean key whose release is lost when the terminal loses focus no longer holds the next syllable an input method commits. (#1246)
+- The composing box spans one cell for a symbol the grid draws in one cell, such as a text-style emoji, and two for an emoji drawn as a picture. (#1285)
+- Find in a terminal follows the text when the window is resized or when text arrives after an image: its marks and its
+  count no longer point at where the text was before. (#1720)
+- A phone turned to landscape and back no longer scrolls the terminal's history past the bottom of the view: the
+  transcript's end is shown at once. (#1926)
+- A connection that drops and comes back no longer replays the terminal: the session carries on over the new socket (transport contract v1.11, session resume), so the screen, the scrollback and the reader's place stay exactly as they were, and only what the host printed meanwhile arrives. A reconnect that cannot carry the session on (the host no longer holds it, or a minute has passed) opens a new one as before and says so once. While it is being carried on, Settings says the host is reconnecting rather than connected, and why once a dial has failed (a host that stopped reads as not connected right now). (#1995)
+- Reconnecting no longer plays the terminal's history back from 2,000 lines up: the screen is redrawn and the history
+  the view already holds stays, so a slow link no longer scrolls through all of it (#1997).
+- Known gap: output that scrolled off the screen while the connection was down is not added to the scrollback, and
+  nothing marks where it is missing; the screen itself is current. Bringing it back needs a resume point in the core's
+  attach (#2033).
+- On a phone or tablet, a ctrl-click on Show keyboard (macOS or iPadOS with a trackpad) opens a context menu and never
+  clicks, so it now gives the terminal's field back instead of leaving it waiting for the next click anywhere. (#2097)
+- A character you type stays drawn while a program closes one held screen update and opens the next in the same
+  write, instead of blinking out a second after the first one opened. (#2110)
+- On a phone, a second finger's long-press elsewhere during a Show keyboard tap no longer ends that tap's press early.
+  (#2149)
+- A terminal you just opened shows its first prompt as soon as it arrives, instead of after a short wait meant for
+  terminals with history to draw. Over the relay that wait was half a second or more. A terminal opened from the list
+  still lands whole, without walking its history past you. (#1928)
+- Reconnecting over a slow link on a busy device no longer lets the screen climb partway through the replay: the wait
+  for the next part of the replay now counts from when the device has taken in the last part, not from when it arrived
+  (#2011).
+- After a reconnect, the status bar (on a phone, the line under the terminal's header) says that output from while the
+  connection was down may be missing from the terminal's history, until you dismiss it: Doriterm cannot yet fetch what
+  scrolled off the screen meanwhile. (#2253)
+- In the desktop app, typing on its own computer's terminals is predicted by the same rule as everywhere else: drawn
+  ahead only while the echo is measured slow, so a stalled local host no longer leaves keys undrawn for a moment.
+- The note that output from while disconnected may be missing now belongs to the terminal that lost it: it shows for
+  that terminal only, and no longer under a phone's list or space header. On a phone it takes the place of
+  "Reconnecting…" without the terminal resizing again. (#2279)
+- Opening a terminal with a long history over a slow link on a slow device draws it once, whole, instead of drawing part of it and then climbing to the end. (#2271)
+- On a desktop the note that output may be missing now shows only once the connection is back, not beside "Reconnecting…", and a terminal that ends or is closed takes its note with it. (#2301)
+- On a slow device, an agent that redraws its whole transcript after a resize (pi-tui, Claude Code) is drawn once, at the end, instead of climbing toward it over several seconds. (#2040)
+- Over a slow link, a full-screen redraw is no longer drawn half-finished between two of its parts: the terminal waits for the next part as long as the connection's round trip needs. (#2306)
+- A Korean letter typed on its own reaches the program even when a modifier key is pressed right after it, instead of waiting for the next key. (#1913)
+- A letter followed by a variation selector composes in the one cell it is drawn in, not two. (#1913)
+- A phone turned to landscape and back before the landscape view had opened the terminal shows its whole screen again,
+  instead of the landscape view's rows with blank rows below them. (#2475)
+- With herdr-core 0.1.21 or newer, a reconnect while a full-screen program (vim, less, htop) runs no longer leaves the
+  lines above the program's command twice in the history once the program exits. (#2516)
+
+### Workspace
+
+- In the command palette, picking a state with the mouse or a tap hands typing back to the search field; a state
+  picked from the keyboard keeps focus on the row. (#1479)
+- The palette's line under the results keeps the end of a long directory in view and clips its start, so on a phone
+  the deepest folder still shows. (#1475)
+- A closed session whose cleanup fails after the program was ended keeps its pane closed, even before the list hears the
+  end, instead of dropping it a second time with a second notice. (#1773)
+- A space opened on another device, and a machine added to the core, show up on every device as they happen, with
+  nothing to click: one feed per core carries hc's document and `missed` signals to one shared roster, every surface
+  reads from it, and a dropped connection or a gap in the feed reads the machines and every layout document again
+  instead of waiting for the next click or the next timer. (#1876)
+- An explanation in an empty or ended screen, such as the one for a session that ended while the page wasn't showing it,
+  now has room for its full 65-75 character line on a computer. (#1964)
+- With many terminals open, the app no longer keeps the computer busy while it sits idle: a terminal's title or
+  status changing (an agent's spinner) now redraws that terminal's own pane, sidebar row and tab, instead of every
+  pane, row and tab in the window. Before, a window with a few hundred terminals could hold one to two CPU cores busy
+  after a long day. (#2086)
+- In the sidebar a machine's number is the sum of the numbers on the spaces under it: both count tabs. The machine's
+  number used to count live terminals, so sub-agents, terminals in no tab and each pane of a split tab made it differ
+  from its spaces, and an offline machine read 0 above spaces that still showed tabs. (#2129)
+- A terminal started outside the app (by `hc run`, an agent or another client) gets its tab a few seconds after it
+  starts, on every open device, and no longer waits for a reload. So a space's tab count rises when a terminal starts.
+  (#2130)
+- A tab that is not in view closes once its terminal has exited or was killed, also when it was never opened since the
+  page loaded, so the tab and its space's count no longer stay behind. The tab in view still says "This session ended".
+  (#2130)
+- A session whose End failed comes back as a tab within a few seconds instead of at the next load, and a tab closed on
+  purpose does not come back while its program is still ending. (#2130)
+- A terminal opened before its added machine had shown up in the machine list stays the tab in view when that machine
+  is listed at the same moment its layout saves the terminal's tab. Before, the workspace could jump to another tab.
+  (#2107)
+- A tab you are looking at that says "This session ended" no longer disappears without a word when another device, where
+  that tab is out of view, closes it: a short notice says another device closed it once its program had finished. (#2199)
+- A split whose new terminal another device had already given its own tab now takes you to that tab, instead of leaving
+  you on a pane that never appeared; and a terminal a tab already shows is never written into the layout a second time.
+  (#2199)
+- When another device removes a session's pane after its program finished, the notice now says it removed the pane,
+  which also holds for a split tab, and the notice shows only for that: a pane that went with its machine or its
+  layout document is not blamed on another device. (#2247)
+- A new tab opened while the tab it was kept beside was saved elsewhere now goes right after that tab, in its space,
+  instead of into a new space of its own. (#2247)
+- When a session ends while you are being asked whether to end it, the notice that it ended now keeps the keyboard; it sometimes lost it to the New tab button behind it. (#2362)
+- An agent opened from the Agents list or by the next-agent keys before it has a tab opens in the space its labels
+  name, the one it would be adopted into, instead of the space in view, and a terminal labelled with herdr-app's
+  `herdr.space` goes to that space. (#2468)
+- A machine you added can be removed from the app: Remove… sits beside Try again on its offline notice and on its row in
+  Settings, Machines, and Remove <machine>… is in its header's menu. One question confirms it, and the machine leaves
+  every list on every device; anything running there keeps running. A mesh member keeps its copy-the-revoke-command
+  instead. (#2503)
+
+### Keys
+
+- At the edge of a split, a pane-move or pane-swap key with no pane that way now reaches the program after the pane's
+  nudge, as it already did in a lone pane; a Cmd chord, which a program never receives, stays taken so the browser's own
+  shortcut does not act. (#1172)
+- The notice that a session already ended takes the keyboard as soon as it appears, like every other dialog. Before, on a busy
+  machine, an Escape pressed right away could reach the terminal behind it. (#2076)
+- A notice with a single button that cannot be pressed now takes the keyboard itself, so keys never go to the screen behind it.
+  (#2102)
+- Choosing "Swap pane" from the command palette at the edge of a split closes the palette again, as it did before #1600.
+  (#2119, #1850)
+
+### Machine mesh
+
+- Add a machine reports a completed join even when a busy host replaces its document events with a fresh snapshot. (#1955)
+- An added machine whose herdr-core is too old for Doriterm now says so in Settings > Machines and under the machine in
+  the sidebar, with the same "Run hc update on that computer" the connected host shows, instead of failing at the first
+  call on its terminals. (#2285)
+- Add a machine says the machine joined even when the connection dropped or its event feed ended while the join went through, instead of waiting until it gives up. (#2313)
+- A session you ended while the page was closing is still finished the next time you open Doriterm, whether you reach
+  its machine directly or through another machine in the mesh. Before, an End asked one way was only finished when the
+  machine was reached the same way again. (#2288)
+- `doriface-host mesh status` answers on macOS again. A reply larger than the control socket could take at once (about
+  8 KB on macOS, so any mesh with a few members) was cut short, and the command waited for it until killed, printing
+  nothing. The host now sends the whole reply before closing the connection.
+- A machine whose relay connection drops for a second is no longer treated as offline for half a minute by the other
+  machines: they try it again after 2 and 5 seconds, and call it offline only if it still does not answer. (#2452)
+- A machine you remove from the mesh leaves Settings > Machines at once, on every device. Before, it stayed listed under
+  Revoked; now one quiet line says how many machines were removed. (#2453)
+- A host that owes a removed machine its revoke no longer dials that machine every 5 minutes, logging each try, when
+  the machine answers but refuses the handshake. It now waits an hour, doubling up to 6 hours, logs it once, and
+  delivers the revoke as soon as the machine comes back. (#2454)
+- An action a machine cannot take while it is offline is now offered disabled instead of offered and then refused: a
+  space on that machine shows Close space and Rename space disabled in its menu, and a Close question already open waits
+  with its reason instead of offering Close again; New tab is disabled while the tab in view is on that machine, and a
+  phone's space screen offers its New tab disabled with the reason while its machine is offline. They
+  come back by themselves when the machine reconnects. A short drop still reads as reconnecting and keeps them. (#2466)
+- A Rename question for a tab or a space whose machine cannot take the new name now keeps Rename disabled and says why,
+  and that Rename comes back by itself, in one neutral line, instead of showing an error before anything was tried.
+  (#2466)
+
+### Joining a mesh
+
+- Declining or expiring a first mesh join leaves the host ready for another invite, without creating an empty mesh. Pending comparisons remain visible until the decision is made. (#1635)
+- `mesh join --from-file` joins with the file's first non-blank line, so a link file with blank lines before the link
+  or anything after it still works. (#1726)
+- A typed mesh invite code that was used, expired or replaced now says the host refused the invite and to run
+  `doriface-host mesh pair` again, instead of opening the device pairing's fingerprint step. A code from
+  `doriface-host pair` still pairs the browser as a device. (#1733)
+- A machine with an open mesh invite of its own can now join another mesh: `mesh join` withdraws that invite (its
+  pending joins expire and its code stops working) instead of refusing with "a host cannot be invited and inviting at
+  once". A device pairing invite stays open.
+- `mesh join` now says when it withdrew this machine's own open mesh invite to join, and a join that fails after that
+  says the invite is gone and to run `mesh pair` to open a new one. Before, only the host log said so.
+- While a machine's first mesh join is still waiting for approval, `mesh rename`, `mesh leave` and `mesh revoke` now say
+  that the mesh is founded once the join is admitted, instead of "this host is in no mesh".
+
+### Phone
+
+- The phone's lists now have a bottom tab bar: Agents, with how many agents need you, Spaces and Settings. Spaces is
+  its own screen, the spaces under their machines, and a space opened from it goes back to it. The Agents list no longer
+  ends with the spaces, and its status line at the bottom is gone (a connection problem still shows under the header);
+  the Spaces screen keeps the status line, with this machine and its connection.
+- The switch sheet (the tab bar's middle) now opens on the session's own space, with Needs you and All spaces one tap
+  away and New tab in that space at its foot. Back closes the sheet and leaves the session as it was.
+- Opening the app from the home screen picks up where you were: the list, the space or the session you had open. A link
+  or a tapped notification still opens what it names.
+- A space's Rename and Close are in the "..." at the top of its own screen. On a phone the spaces list no longer has a
+  menu per row, so spaces are reordered there by dragging.
+- Closing the tab you are looking at from the Spaces sheet moves you to the tab that takes its place, or back to the
+  list when it was the space's last. (#1638)
+- After a reload, Back from a session no longer leaves a second copy of the list under it, so Back from the list
+  leaves the app the first time. (#1648)
+- After a reload on the Spaces list, the Agents tab goes back down to the agents again instead of stacking a second
+  Agents list over them, so one Back leaves the list.
+- A space's screen that comes back because the session open over it went away no longer slides in, and its Back
+  returns to the list without leaving the space behind for the system Back to reopen. (#1732)
+- New tab in a space with no tabs puts the tab in that space, not in the space selected before. (#1732)
+- A session opened by link before its space has loaded shows Back as the arrow alone until the space's name is known,
+  instead of a placeholder word. (#1732)
+- The Type field's focus ring is drawn inside the field, so it no longer eats into the gap before Send. (#1737)
+- A press held in the terminal while typing no longer puts the keyboard down for good: as the press lifts, the
+  keyboard comes back with the Type field and Send. Before, a press held past a frame left the keys bar closed until
+  Show keyboard was pressed again. (#2092)
+- A long-press selection drag over a row the program keeps redrawing (a prompt, a clock, a progress line) stays a
+  selection drag: the browser no longer takes it as a scroll, and lifting the finger no longer also taps the terminal.
+  (#2095)
+- A space's count in a phone's Spaces list is the number of tabs the phone lists for it. (#2129)
+- While a press is held in the terminal, another pointer lifting (a second finger, or a tap beside a held trackpad
+  button) no longer ends that press early, so the keyboard comes back when the held press lifts. (#2134)
+- A tap from another kind of pointer while a press is held in the terminal (a finger beside a held trackpad button) no
+  longer takes that press over, so the keyboard still comes back when the held press lifts. (#2156)
+- During a long-press selection drag, a second finger that lands and moves on its own no longer lets the browser take
+  the gesture as a pinch and cancel the selection. (#2159)
+- Picking a different session from Switch session no longer focuses the terminal you are leaving. That briefly raised the
+  keyboard on a field about to go away. (#1985)
+- Closing Switch session when no terminal can take the focus puts it back on the Switch session button instead of
+  losing it. (#1986)
+- A press held in the terminal whose lift the page never saw (the button let go over another app) no longer leaves the
+  keyboard waiting for good: it ends once that pointer moves unpressed or the page loses the focus. (#2176)
+- Closing Switch session no longer takes the focus away from a terminal that took it while the menu was closing. (#2174)
+- A space's Close question on a phone counts what its space row counts: the tabs that show a running terminal and
+  those terminals, so a row that reads 1 tab no longer asks to close 2.
+- Back from a space the phone opened on (or reloaded on), shown again because its terminal went away, now leaves the
+  space for the list for good: the system Back no longer brings the space back. (#2215)
+- On the alternate screen (vim, herdr), lifting one finger after a pinch and dragging the other scrolls the program, as a
+  one-finger swipe does, instead of panning or reloading the page. (#2216)
+- The key row under the terminal is 4 px shorter when the tabs bar shows. With no tabs bar, the Jump to bottom button sits at the terminal's corner again instead of 4 rem higher. (#1555)
+- Back from a space shown again because its terminal went away lands on the list itself, also after a reload on the space
+  or on the terminal, and a quick double tap on it no longer steps back twice. (#2235)
+- The keys look the same with the keyboard down as with it up: one panel, the Type field and Send above the keys, and
+  the keyboard's own button at the end of the row. Putting the keyboard down only puts the keyboard down. (#2506)
+
+### Web app
+
+- A fresh install opens in the dark Night theme, and the installed app's splash screen and title bar are dark with it. (#1605)
+
+### Desktop updates
+
+- The desktop app takes its updates from get.doriterm.com again, now that it serves every release from Doriterm's own
+  storage with a signed checksum list: Settings > This device > Update channel picks Stable or Beta, Check for Updates is
+  in the app menu, and new releases reach installs in stages. (#2123)
+- A computer that chose Beta in Doriterm 0.1.17 follows Beta again: the choice was kept while 0.1.18 updated from
+  GitHub. Pick Stable under Update channel to leave it. (#2123)
+- An update downloads only the parts of the app that changed, instead of the whole app every time. (#2238)
+- When an update fails to download, Settings says so ("The update download failed: ...") instead of showing the bare error. (#2245)
+
+### Settings
+
+- The list of this app's own machine connections is named for screen readers, so it can be told apart from the
+  Machines list under it. (#1170)
+- Settings > Mesh's warning that the mesh status disagrees with this device follows a switch between relay and loopback
+  mode, or another machine being shown, while the page is open. (#1132, #2196)
+- In a window too short for the section list, Settings keeps its title row in place and scrolls only the sections, so the window can still be dragged by that row. (#1915)
+- A device revoked from this computer's terminal (`doriface-host devices revoke`) is disconnected at once, including any
+  session or notification stream it already had open, as a revoke from Settings > Connections already did.
+
+### Notifications
+
+- Settings > Notifications spins only the button whose work is still running, so Check again and Turn off no longer
+  both show the spinner at once. (#1152)
+- Send test passes while this host's core is muted if a machine the app hears from is not muted, and when it refuses, it
+  names the connected host's core instead of "this machine". (#1120, #1121)
+- On macOS, opening Settings > Notifications no longer makes the system ask whether to allow Doriterm's notifications:
+  it asks when the first notification is shown. While that question is still unanswered, the section shows Turn on
+  instead of Blocked by this computer. (#1958)
+- When the push bridge's per-device rate limit itself fails, notices to phones are forwarded without the limit instead
+  of all being refused; only pushes over the limit are turned away. (#2112)
+- Send test now spins while it waits, and when it refuses because notifications are off, it says only machines running a terminal right now were counted. (#1893)
+
+### Connection and offline wording
+
+- An added machine reached over the mesh that cannot connect now says why, in the same words as one reached with
+  doriface-host connect: not running there, not answering in time, too many attempts, or no longer in the mesh (which
+  is no longer said to be retried). Before, most of these read as "isn't answering".
+- Keys typed while a terminal's connection is down, or while it is still opening, now wait the way keys for a
+  reconnecting machine already did: up to 10 seconds after the connection is known to be down and 4 KB. Beyond that
+  they are dropped, and the terminal says they were not sent, instead of arriving minutes later. A paste larger than 4
+  KB made while the terminal cannot take it is dropped at once with the same notice; paste it again once the terminal
+  is back.
+- Keys typed while a terminal or its machine is reconnecting now arrive in the order you typed them, Ctrl+C included.
+  Before, a Ctrl+C typed to cancel a command went first, so the command still ran once the connection came back.
+  The 10 seconds they wait now also covers a machine coming back while the terminal's own connection is still down,
+  instead of starting again. (#2307)
+
+### Host install
+
+- Each release's SHA256SUMS.txt comes with SHA256SUMS.txt.sig, an Ed25519 signature by Doriterm's release key, and every
+  release is copied to get.doriterm.com once it is published. (#1977)
+- `curl -fsSL https://get.doriterm.com | sh` installs the host, downloading from get.doriterm.com and from GitHub
+  Releases when that fails, and the downloaded binary checks the release's signed checksums before anything is installed. (#1979)
+- A host installed this way updates itself: it checks the signed manifest for its channel five minutes after it starts
+  and every six hours, and restarts into a new version; terminals keep running in herdr-core. `install.sh --channel beta`
+  follows prereleases and `--no-auto-update` leaves updates to you; `doriface-host update` checks once. (#1979)
+- Installing v0.1.18 or later with install.sh stops when the release's signature file is missing, instead of
+  installing on the checksum alone. (#2291)
+- On Linux, install.sh turns lingering on for your user, so the host starts at boot and keeps running after you log
+  out, instead of only telling you the command. Where the system lets only an admin do that, it says so and names
+  the one command to run. (#2311)
+
+### Website
+
+- Every download link, the README's table, the getting-started guide, the landing page's Download for desktop and the
+  host's one-line install, now points at get.doriterm.com, and the landing page and README show the download count. (#1980)
+- When every version a channel offered is withdrawn, get.doriterm.com's download links and installer answer "unavailable"
+  instead of sending you to GitHub's latest release, which could be the withdrawn one. (#2213)
+
+### Reliability
+
+- The host's log says why the relay closed its uplink, beside the close code (`uplink closed (4408: idle)`), so a
+  host that stopped answering for 90 seconds reads apart from a relay that ran too far ahead of it. (#2312)
+- A host whose relay uplink had been up for 30 seconds or more redials within a quarter second when the uplink drops,
+  instead of first waiting 250-500 ms, so the short drop the relay's platform causes now and then is shorter. The
+  redial is spread over that quarter second so hosts dropped together do not all redial at once; a rate-limited close,
+  or a redial that fails too, waits the usual backoff. The log says "reconnecting in 180 ms" for such a redial. (#2498)
+
+### Corrections to earlier release notes
+
+- The v0.1.17 notes credit #1937 with the keyboard button raising the soft keyboard in the tap itself; that button was
+  already doing so. What #1937 changed: closing Switch session keeps the keyboard up, because the terminal takes the
+  focus inside the closing tap, and a session picked from Switch session opens with the keyboard down. (#1937)
+
+### Host
+
+- A refused typed-code mesh join (a used, expired or replaced invite, closed with 4411) is logged on the host like any other handshake refusal, with its close code. (#2319)
+
+### Terminal workspace
+
+- A session menu that finishes closing after its question was cancelled leaves the keyboard in the terminal or control
+  you focused meanwhile, so typing a command cannot reopen the menu or its Rename dialog. (#2521)
+
 ## v0.1.18 - 2026-11-11
 
 Installs of v0.1.17 update to this release on their own: v0.1.17 looks for updates only at get.doriterm.com, which

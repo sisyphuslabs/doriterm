@@ -143,7 +143,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
         onOpen={onOpen}
         action={untyped ? null : <DictateButton voice={voice} target={title} ref={mic} />}
       />
-      <ConnectionLine address={terminal.address} />
+      <ConnectionLine address={terminal.address} {...(offline ? {} : { connection })} />
       <PaneSwitcher panes={panes} open={terminal.address} onOpen={onOpen} />
       {/* The page's one main landmark: the terminal, under its header (#1378). */}
       <main
