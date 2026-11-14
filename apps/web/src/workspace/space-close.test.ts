@@ -4,7 +4,7 @@ import { docSpaces, type DocEdit } from "@doriface/protocol/layout";
 import { layoutSpaces, type ListedSpace } from "./model.ts";
 import { phoneSpaces } from "./phone-space-rows.ts";
 import type { SessionCalls } from "./session-actions.ts";
-import { closeCounts, closeRefusal, closeSpace } from "./space-close.ts";
+import { closeCounts, closeRefusal, closeSpace, newTabRefusal } from "./space-close.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
 
 const terminal = (fields: Partial<Terminal>): Terminal => ({
@@ -210,5 +210,19 @@ describe("what a space's Close question counts (#2135)", () => {
   test("a space no list holds counts nothing", () => {
     expect(closeCounts(undefined, TERMINALS, true)).toEqual({ tabs: 0, terminals: 0 });
     expect(closeCounts(undefined, TERMINALS, false)).toEqual({ tabs: 0, terminals: 0 });
+  });
+});
+
+describe("New tab in a space waits only while its machine is offline (#2569, #2574 review)", () => {
+  const loading = machineLayout("box", THERE, "the layout is loading").layout;
+  const id = layoutSpaces([loading], TERMINALS).find((each: ListedSpace) => each.machine === "box")?.id ?? "";
+  test("a reachable machine whose layout is loading takes a new tab, though the space cannot be closed", () => {
+    expect(id).not.toBe("");
+    expect(closeRefusal([loading], id)).toBe("The layout cannot take changes now: the layout is loading");
+    expect(newTabRefusal([loading], id)).toBeNull();
+  });
+  test("an offline machine's space waits for New tab too, with why", () => {
+    const offline = { ...loading, readOnly: "the machine is not connected", offline: true };
+    expect(newTabRefusal([offline], id)).toBe("The layout cannot take changes now: the machine is not connected");
   });
 });
