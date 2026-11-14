@@ -110,7 +110,12 @@ async function shutdown(code = 0): Promise<void> {
   host.kill("SIGTERM");
   await host.exited;
   await stopCore();
-  await stopMachine?.();
+  try {
+    await stopMachine?.();
+  } catch (error) {
+    // The rest of the teardown still runs: the leftovers check, the stopped word and the run dir's removal (#2527 review).
+    console.error(error);
+  }
   if (layout) {
     await stopLeftovers();
     // The run's teardown waits for this rather than for a fixed time: the host's own word that its cores are stopped,
