@@ -68,7 +68,9 @@ test("a stable uplink's quick redial is logged as the whole line, its wait under
     const ws = await answered.promise;
     setSystemTime(new Date(Date.now() + 30_000));
     ws.terminate();
-    expect(await closed.promise).toMatch(/^relay: uplink closed \(1006\); reconnecting (now|in [1-9][0-9]{0,2} ms)$/);
+    expect(await closed.promise).toMatch(
+      /^relay: uplink closed \(1006\); reconnecting (now|in ([1-9][0-9]?|1[0-9]{2}|2[0-4][0-9]) ms)$/,
+    );
   } finally {
     setSystemTime();
     await uplink.stop();
