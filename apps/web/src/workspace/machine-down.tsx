@@ -59,7 +59,7 @@ export function MachineDownHelp({
   if (phone) {
     return (
       <div className={PHONE_LINE} data-machine-down>
-        <p className={PHONE_LINE_TEXT}>
+        <p role="status" className={PHONE_LINE_TEXT}>
           <span className="min-w-0 text-pretty break-words">{why}</span>
         </p>
         <RetryButton size="sm" className="-my-1 shrink-0" onRetry={tryNow} />
@@ -68,7 +68,7 @@ export function MachineDownHelp({
   }
   return (
     <span data-machine-down className="flex shrink-0 items-center gap-2">
-      <span className="text-xs whitespace-nowrap text-foreground" title={why} aria-label={why}>
+      <span role="status" className="text-xs whitespace-nowrap text-foreground" title={why} aria-label={why}>
         {firstSentence(why)}
       </span>
       <RetryButton size="sm" onRetry={tryNow} />
