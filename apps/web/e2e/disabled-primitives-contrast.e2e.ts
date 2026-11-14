@@ -3,7 +3,7 @@
 // still a visible step from the same control enabled.
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
-import { measure, tokenStep } from "./painted-contrast.ts";
+import { measure, screenGlyph, tokenStep } from "./painted-contrast.ts";
 
 /**
  * A disabled button's glyph measured against the same button with its disabled marks lifted, which paints the enabled
@@ -96,6 +96,27 @@ for (const theme of ["day", "night"] as const) {
         toggles.map((toggle) => measure(page, toggle, { part: { selector: "span", paint: "background" } })),
       );
       for (const thumb of thumbs) expect(thumb.ratio, thumb.label).toBeGreaterThanOrEqual(3);
+    });
+
+    test("the disabled stepper's glyphs hold 3:1 as painted at 1x, not only by their colour", async ({ page }) => {
+      await page.addInitScript({ content: BROKEN_STORAGE });
+      await page.goto("/settings");
+      await page
+        .getByRole("tab", { name: "Terminal" })
+        .or(page.getByRole("button", { name: "Terminal" }))
+        .first()
+        .click();
+      await expect(page.getByRole("alert").filter({ hasText: "Terminal settings could not be read" })).toBeVisible();
+      expect(await page.evaluate(() => devicePixelRatio)).toBe(1);
+      // A 14 px glyph drawn with a 1.17 px stroke on half pixels painted 1.79:1 here though its colour held 3.5:1 (#2513).
+      for (const name of ["Decrease font-size", "Increase font-size"]) {
+        const button = page.getByRole("button", { name });
+        // oxlint-disable-next-line no-await-in-loop -- one button scrolled into view and read at a time
+        await expect(button).toBeDisabled();
+        // oxlint-disable-next-line no-await-in-loop -- as above
+        const glyph = await screenGlyph(page, button, theme === "night");
+        expect(glyph.ratio, `${name}: ${glyph.label}`).toBeGreaterThanOrEqual(3);
+      }
     });
 
     test("a disabled menu item's label stays legible on the menu", async ({ page }) => {

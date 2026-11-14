@@ -1,6 +1,6 @@
 // How a control's ink composites onto its fill, as the browser paints it, for the disabled-contrast specs (#1031, #1034).
 import type { Locator, Page } from "@playwright/test";
-import { contrast as tokenContrast, parseRgb } from "@doriface/ui/theme";
+import { contrast as tokenContrast, hex as tokenHex, luminance as tokenLuminance, parseRgb } from "@doriface/ui/theme";
 
 export type Rgb = [number, number, number];
 
@@ -149,6 +149,45 @@ export async function measure(page: Page, button: Locator, ask: Ask = {}): Promi
 
 /** Every surface a filled Button sits on: the page, a card or panel, the sidebar, a raised control, a dialog or menu. */
 export const SURFACES = ["background", "surface", "chrome", "raised", "popover"] as const;
+
+/** Whether pixel `a` is lighter than `b`, both 0xrrggbb. */
+const lighter = (a: number, b: number): boolean => tokenLuminance(a) > tokenLuminance(b);
+
+/**
+ * A control's glyph as the screen shows it: an element screenshot read pixel by pixel, the fill being its most common
+ * colour and the ink its darkest pixel on a light theme or its lightest on a dark one. A thin stroke on a half pixel is
+ * antialiased lighter than its colour, which the computed style cannot see (#2513, visual QA).
+ */
+export async function screenGlyph(
+  page: Page,
+  control: Locator,
+  dark: boolean,
+): Promise<{ label: string; ratio: number }> {
+  await page.mouse.move(0, 0);
+  const shot = (await control.screenshot()).toString("base64");
+  const pixels = await page.evaluate(async (data) => {
+    const image = new Image();
+    image.src = `data:image/png;base64,${data}`;
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const paint = canvas.getContext("2d", { willReadFrequently: true });
+    if (paint === null) throw new Error("no 2d canvas");
+    paint.drawImage(image, 0, 0);
+    const { data: rgba } = paint.getImageData(0, 0, image.width, image.height);
+    const out: number[] = [];
+    for (let at = 0; at < rgba.length; at += 4) {
+      out.push(((rgba[at] ?? 0) << 16) | ((rgba[at + 1] ?? 0) << 8) | (rgba[at + 2] ?? 0));
+    }
+    return out;
+  }, shot);
+  const counts = new Map<number, number>();
+  for (const pixel of pixels) counts.set(pixel, (counts.get(pixel) ?? 0) + 1);
+  const [fill = 0] = [...counts.entries()].toSorted((a, b) => b[1] - a[1])[0] ?? [];
+  const ink = pixels.reduce((best, pixel) => ((dark ? lighter(pixel, best) : lighter(best, pixel)) ? pixel : best));
+  return { label: `${tokenHex(ink)} on ${tokenHex(fill)} as painted`, ratio: tokenContrast(ink, fill) };
+}
 
 /** How far the tokens dim a disabled glyph from the enabled one: --muted-foreground against --disabled-glyph, as themed. */
 export async function tokenStep(page: Page): Promise<number> {
