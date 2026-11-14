@@ -146,3 +146,12 @@ describe("a sync dial's close code reaches the dial policy (section 8.2, contrac
     expect(offline.policy.gate(m.signPub)?.misses).toBe(1);
   });
 });
+
+describe("a live member's 4401 reaches the dial policy as itself (#2517)", () => {
+  test("a reached member that refuses this host as revoked is gated offline with no reconnect grace", async () => {
+    const { policy, dialer } = dialerRefusedWith(4401);
+    policy.report(m.signPub, "connected");
+    expect(await dialer.sync(m, "push")).toBe(false);
+    expect(policy.gate(m.signPub)).toMatchObject({ cause: "offline", misses: 1 });
+  });
+});

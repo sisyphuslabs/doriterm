@@ -15,8 +15,8 @@ export interface Gate {
   /**
    * A refused dial (4404, or a dial that failed) to a member that was reached says it is reconnecting, and offline
    * once that has lasted the grace; to a member never reached it says offline at once. A 4429 says the relay limited
-   * this host. `refused` says a revoked member answered but refused the handshake, so its owed revoke cannot be
-   * delivered until it returns.
+   * this host. `refused` says a revoked member answered but refused the handshake, so its owed revoke waits for a later
+   * try, when the gate's own backoff is due, that finds it taking this host again.
    */
   readonly cause: "reconnecting" | "offline" | "rate-limited" | "refused";
   /** In a row: refusals in the grace while reconnecting, refused handshakes while refused, probes missed offline. */
@@ -105,7 +105,10 @@ export class MemberGates {
     this.#set(member, { cause: "rate-limited", misses, nextAt: now + this.#limits.probeFirstMs, lastMissAt: now });
   }
 
-  /** A revoked member answered and refused the handshake: gated on its own long backoff until presence (#2449). */
+  /**
+   * A revoked member answered and refused the handshake: gated on its own backoff, 1 h doubling to 6 h, and tried again
+   * when that is due, since a revoked member shows no presence; presence, should it come, clears it (#2449).
+   */
   refused(member: string): void {
     const now = this.#clock.now();
     const gate = this.#gates.get(member);

@@ -246,3 +246,13 @@ describe("a line refused for the budget (section 8.2, H-D1)", () => {
     ]);
   });
 });
+
+describe("a revoked member that refuses the handshake (#2449)", () => {
+  test("its refused gate is cleared by presence, should it show any (#2517 review)", () => {
+    const { dials } = policy();
+    dials.report("m", "refused");
+    expect(dials.gate("m")?.cause).toBe("refused");
+    dials.presence("m");
+    expect(dials.gate("m")).toBeUndefined();
+  });
+});
