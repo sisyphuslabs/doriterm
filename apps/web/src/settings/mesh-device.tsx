@@ -49,7 +49,8 @@ export function sortedMachines(entries: readonly MemberEntry[]): readonly Member
 function stateOf(entry: MemberEntry): string {
   switch (entry.state.phase) {
     case "open":
-      return "Online";
+      // A session being carried on over a new socket is not online yet: the row says what the status bar says (#2421).
+      return entry.state.resuming === true ? "Reconnecting" : "Online";
     case "connecting":
       return "Connecting";
     case "failed":

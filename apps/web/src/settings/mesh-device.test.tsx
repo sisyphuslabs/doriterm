@@ -54,3 +54,20 @@ test("one settling member changes only its own row", () => {
   expect(html.match(/Settling/g)).toHaveLength(1);
   expect(html).toContain("Beta");
 });
+
+type OpenState = Extract<MemberEntry["state"], { readonly phase: "open" }>;
+
+const openMember = (hostName: string, resuming: boolean): MemberEntry => ({
+  target: { hostId: hostName.toLowerCase(), hostName, hostKey: "", directUrl: "" },
+  state: { phase: "open", connection: {} as OpenState["connection"], path: "relay", resuming },
+});
+
+const rowOf = (entry: MemberEntry): string =>
+  renderToStaticMarkup(<MeshMachineList entries={[entry]} ownComputer={undefined} retry={() => {}} />);
+
+test("a member whose session is being carried on reads Reconnecting, as the status bar does, not Online (#2421)", () => {
+  const carriedOn = rowOf(openMember("Gamma", true));
+  expect(carriedOn).toContain("Reconnecting · Relay");
+  expect(carriedOn).not.toContain("Online");
+  expect(rowOf(openMember("Delta", false))).toContain("Online · Relay");
+});
