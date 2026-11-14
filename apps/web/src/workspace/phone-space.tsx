@@ -117,21 +117,28 @@ export function PhoneSpace({ space, terminals, host, arrive, from, onOpen, onBac
 }
 
 /**
- * A space the address names before the spaces are read (a cold open of `?s=`): its screen, saying what it waits for, or,
- * when the terminals could not be listed, why, with Try again (as the list says it).
+ * A space or a terminal the address names before the terminals are read (a cold open of `?s=` or `?t=`, #2532): its
+ * screen, saying what it waits for, or, when the terminals could not be listed, why, with Try again (as the list says it).
  */
 export function PhoneSpaceLoading(props: {
   readonly error: string | null;
   readonly onRetry: () => void;
   readonly from: PhoneSection;
   readonly onBack: () => void;
+  readonly terminal?: boolean;
 }) {
+  const [title, label] =
+    props.terminal === true ? ["Terminal", "Opening the terminal"] : ["Space", "Loading the space"];
   return (
-    <SpaceFrame arrive={false} from={props.from} onBack={props.onBack} title={<h1 className="sr-only">Space</h1>}>
+    <SpaceFrame arrive={false} from={props.from} onBack={props.onBack} title={<h1 className="sr-only">{title}</h1>}>
       {props.error === null ? (
-        <QuietBusy label="Loading the space" text="Loading the space…" className="h-full" />
+        <QuietBusy label={label} text={`${label}…`} className="h-full" />
       ) : (
-        <TerminalsLoadError cause={props.error} onRetry={props.onRetry} />
+        <TerminalsLoadError
+          cause={props.error}
+          onRetry={props.onRetry}
+          title={props.terminal === true ? "Could not open the terminal" : "Could not load the space"}
+        />
       )}
     </SpaceFrame>
   );

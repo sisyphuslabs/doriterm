@@ -28,8 +28,11 @@ export interface FakeRelayHost {
   readonly answerJoin: (nonce: string, code: string, approve: boolean) => Promise<void>;
   /** The host's LAN listener, the address a person sets as the Direct address (#446); empty unless `direct` was asked. */
   readonly directUrl: string;
-  /** Call before the page dials the relay: its `/v1/client/...` sockets go to the fake relay's client bridge. */
-  readonly route: (page: Page, observer?: RelayObserver) => Promise<void>;
+  /**
+   * Call before the page dials the relay: its `/v1/client/...` sockets go to the fake relay's client bridge; with `hostId`,
+   * only the sockets to that host, so a page paired with two hosts reaches each on its own relay.
+   */
+  readonly route: (page: Page, observer?: RelayObserver, hostId?: string) => Promise<void>;
   readonly stop: () => Promise<void>;
 }
 
@@ -54,6 +57,7 @@ export async function routeRelaySockets(
   pairUrl: string = toRelay,
   advertisedRelay?: string,
   observer: RelayObserver = {},
+  hostId = "",
 ): Promise<void> {
   const base = toRelay.replace(/\/+$/, "");
   const addresses = advertisedRelay === undefined ? [FAKE_RELAY] : [FAKE_RELAY, relayWebSocketUrl(advertisedRelay)];
@@ -78,7 +82,7 @@ export async function routeRelaySockets(
   });
   const relayPattern = addresses.map((address) => address.replaceAll(".", "\\.")).join("|");
   // Any port: a session's second and third sockets dial the relay's other HTTPS ports (#1418).
-  await page.routeWebSocket(new RegExp(`^(?:${relayPattern})(:\\d+)?/v1/client/`), (socket) => {
+  await page.routeWebSocket(new RegExp(`^(?:${relayPattern})(:\\d+)?/v1/client/${hostId}`), (socket) => {
     const target = new URL(socket.url());
     const relay = new WebSocket(`${base}${target.pathname}${target.search}`);
     relay.binaryType = "arraybuffer";
@@ -338,13 +342,14 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
     };
     return {
       directUrl: typeof directUrl === "string" ? directUrl : "",
-      route: (page, observer) =>
+      route: (page, observer, hostId) =>
         routeRelaySockets(
           page,
           bridge,
           pairUrl,
           typeof advertisedRelay === "string" ? advertisedRelay : undefined,
           observer,
+          hostId,
         ),
       pairingOffer: readOffer,
       pairingLink: async () => (await readOffer()).link,
