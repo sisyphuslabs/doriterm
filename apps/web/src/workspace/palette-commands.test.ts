@@ -104,6 +104,7 @@ describe("paletteCommands", () => {
       "New tab",
       "Larger terminal text",
       "Smaller terminal text",
+      "box",
       "studio",
       "Keyboard shortcuts",
       "Open settings",
