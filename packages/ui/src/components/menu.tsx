@@ -6,6 +6,7 @@ import {
   type MouseEvent,
   type ReactElement,
   type ReactNode,
+  type RefObject,
   type SyntheticEvent,
   useLayoutEffect,
   useRef,
@@ -26,8 +27,12 @@ export interface MenuProps {
   readonly fixedSide?: boolean;
   /** Where focus goes once it closes (Base UI's finalFocus); by default back to the trigger. */
   readonly finalFocus?: ComponentProps<typeof BaseMenu.Popup>["finalFocus"];
+  /** Set to the popup element while it is mounted, for a finalFocus that must tell its own popup from another menu. */
+  readonly popupRef?: RefObject<HTMLDivElement | null>;
   /** false: the page stays live while it is open, so what an item starts can take the keyboard at once. */
   readonly modal?: boolean;
+  /** The trigger cannot open the menu now: Base UI's trigger owns the button's disabled state, so it is set here. */
+  readonly disabled?: boolean;
 }
 
 /**
@@ -51,7 +56,9 @@ export function Menu(props: MenuProps) {
     onOpenChange,
     fixedSide = false,
     finalFocus,
+    popupRef,
     modal,
+    disabled = false,
   } = props;
   const popup = useRef<HTMLDivElement | null>(null);
   return (
@@ -61,7 +68,7 @@ export function Menu(props: MenuProps) {
       {...(onOpenChange === undefined ? {} : { onOpenChange: (open: boolean) => onOpenChange(open) })}
       onOpenChangeComplete={(open) => open && revealCurrent(popup.current)}
     >
-      <BaseMenu.Trigger render={trigger} />
+      <BaseMenu.Trigger render={trigger} disabled={disabled} />
       <BaseMenu.Portal>
         <BaseMenu.Positioner
           {...(fixedSide ? { collisionAvoidance: { side: "none" } } : {})}
@@ -70,7 +77,10 @@ export function Menu(props: MenuProps) {
           positionMethod="fixed"
         >
           <BaseMenu.Popup
-            ref={popup}
+            ref={(element) => {
+              popup.current = element;
+              if (popupRef !== undefined) popupRef.current = element;
+            }}
             {...(finalFocus === undefined ? {} : { finalFocus })}
             className={cn(overlaySurface, "min-w-48 p-1", bounded, className)}
           >
@@ -91,6 +101,8 @@ export interface ContextMenuProps {
   readonly onOpenChange?: (open: boolean) => void;
   /** Where focus goes when the menu closes (Base UI's finalFocus); its default otherwise. */
   readonly finalFocus?: ComponentProps<typeof BaseContextMenu.Popup>["finalFocus"];
+  /** Set to the popup element while it is mounted, for a finalFocus that must tell its own popup from another menu. */
+  readonly popupRef?: RefObject<HTMLDivElement | null>;
 }
 
 /**
@@ -111,7 +123,7 @@ export function skipTouchMenu(event: MouseEvent): void {
   if (press instanceof PointerEvent && press.pointerType === "touch") skipMenuHandler(event);
 }
 
-export function ContextMenu({ trigger, children, open, onOpenChange, finalFocus }: ContextMenuProps) {
+export function ContextMenu({ trigger, children, open, onOpenChange, finalFocus, popupRef }: ContextMenuProps) {
   return (
     <BaseContextMenu.Root
       {...(open === undefined ? {} : { open })}
@@ -121,6 +133,7 @@ export function ContextMenu({ trigger, children, open, onOpenChange, finalFocus 
       <BaseContextMenu.Portal>
         <BaseContextMenu.Positioner positionMethod="fixed">
           <BaseContextMenu.Popup
+            {...(popupRef === undefined ? {} : { ref: popupRef })}
             {...(finalFocus === undefined ? {} : { finalFocus })}
             className={cn(overlaySurface, "min-w-48 p-1", bounded)}
           >

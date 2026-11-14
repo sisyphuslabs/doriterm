@@ -11,6 +11,7 @@ import { useSpaceClosing } from "./space-close-context.ts";
 import { SpaceMenuItems } from "./space-actions.tsx";
 import { useNow } from "./use-now.ts";
 import { useKeptScroll } from "./kept-scroll.ts";
+import { NotNowLine, notNowText } from "./not-now-line.tsx";
 
 export interface PhoneSpaceProps {
   readonly space: ListedSpace;
@@ -35,6 +36,9 @@ export function PhoneSpace({ space, terminals, host, arrive, from, onOpen, onBac
   const now = useNow();
   const closing = useSpaceClosing();
   const rows = spaceTabRows(space, terminals, now);
+  // A space whose layout takes no edits (its machine is offline) can take no new tab and no close: both wait, disabled,
+  // with why, and come back by themselves (#2455).
+  const waiting = closing.refusal(space.id);
   // Back from a terminal opened here mounts this screen anew: its tabs come back where they were (#1553).
   const tabsViewport = useKeptScroll(`space:${space.id}`, rows.length > 0);
   return (
@@ -63,13 +67,22 @@ export function PhoneSpace({ space, terminals, host, arrive, from, onOpen, onBac
           className="my-auto"
           icon={<SquareTerminal aria-hidden />}
           title={`Nothing is running in ${space.name}`}
-          description="Its last tab ended. Start a shell or an agent here, or close the space."
+          description={
+            waiting === null
+              ? "Its last tab ended. Start a shell or an agent here, or close the space."
+              : notNowText(
+                  waiting,
+                  "New tab here and Close space come back by themselves once the machine can take them.",
+                )
+          }
           actions={
             <>
-              <Button variant="primary" onClick={onNew}>
+              <Button variant="primary" disabled={waiting !== null} onClick={onNew}>
                 New tab here
               </Button>
-              <Button onClick={() => closing.ask(space.id)}>Close space</Button>
+              <Button disabled={waiting !== null} onClick={() => closing.ask(space.id)}>
+                Close space
+              </Button>
             </>
           }
         />
@@ -84,8 +97,15 @@ export function PhoneSpace({ space, terminals, host, arrive, from, onOpen, onBac
               </SidebarSection>
             </div>
           </ScrollArea>
-          <div className="shrink-0 px-4 pt-2 pb-[max(1rem,calc(var(--safe-bottom)+0.5rem))]">
-            <Button variant="primary" size="lg" className="w-full [&>span]:min-w-0" onClick={onNew}>
+          <div className="flex shrink-0 flex-col gap-2 px-4 pt-2 pb-[max(1rem,calc(var(--safe-bottom)+0.5rem))]">
+            {waiting === null ? null : <NotNowLine action="New tab" why={waiting} />}
+            <Button
+              variant="primary"
+              size="lg"
+              className="w-full [&>span]:min-w-0"
+              disabled={waiting !== null}
+              onClick={onNew}
+            >
               <Plus aria-hidden />
               <span className="min-w-0 truncate">{`New tab in ${space.name}`}</span>
             </Button>

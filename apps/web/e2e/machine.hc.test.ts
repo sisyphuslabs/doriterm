@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHcSession, type HcSession } from "@doriface/host/testing";
 import { stopLeftUnder } from "@doriface/host/testing/run-dir";
-import { addMachine, DEMO_MACHINE, viaCommand } from "./machine.ts";
+import { addMachine, DEMO_MACHINE, replyPid, running, viaCommand } from "./machine.ts";
 
 let dialer: HcSession | undefined;
 let root: string | undefined;
@@ -50,6 +50,40 @@ async function dialOnce(hc: string, via: string): Promise<number> {
   void line.stdin.end();
   return line.exited;
 }
+
+/** The pid of the core `env` reaches, as its server.status names it. */
+async function corePid(hc: string, env: Readonly<Record<string, string | undefined>>): Promise<number | undefined> {
+  const status = Bun.spawn([hc, "connect"], { env, stdin: "pipe", stdout: "pipe", stderr: "ignore" });
+  const replies = new Response(status.stdout).text();
+  status.stdin.write('{"jsonrpc":"2.0","id":1,"method":"server.status"}\n');
+  await status.stdin.flush();
+  void status.stdin.end();
+  await status.exited;
+  return replyPid(await replies, 1);
+}
+
+test("a line of hc connect's output that is not JSON is no reply, so the pid is still read from the reply after it", () => {
+  const output = 'error: socket path is too long\n{"jsonrpc":"2.0","id":1,"result":{"pid":4242}}\n';
+  expect(replyPid(output, 1)).toBe(4242);
+  expect(replyPid('{"error":"socket path is too long"}\n', 1)).toBeUndefined();
+});
+
+test("the machine's stop resolves once its core has exited, not once it has answered (#2525)", async () => {
+  dialer = createHcSession("machine-stop-exit");
+  root = mkdtempSync(join(tmpdir(), "dw-machine-"));
+  const spec = { ...DEMO_MACHINE, dir: join(root, "files") };
+  const stop = await addMachine(dialer.hc, { ...dialer.env }, join(root, "machine"), false, spec);
+  const { env: own } = JSON.parse(readFileSync(join(spec.dir, "env.json"), "utf8")) as {
+    readonly env: Readonly<Record<string, string>>;
+  };
+  const pid = await corePid(dialer.hc, { ...dialer.env, ...own });
+  expect(pid).toBeNumber();
+  // The teardown's order (fake-relay-host.ts): the dialing core first, so nothing dials the machine back up after it.
+  await dialer.dispose();
+  await stop();
+  // Read the moment the stop resolves: a core still on its way out is what a check or a late dial would then meet.
+  expect(pid === undefined ? true : running(pid)).toBe(false);
+}, 60_000);
 
 test("a dial that reaches an added machine after its stop is refused, so the stop leaves no core behind (#2142)", async () => {
   dialer = createHcSession("machine-late-dial");

@@ -8,6 +8,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
@@ -23,6 +24,16 @@ export function defaultStateDir(env: Readonly<Record<string, string | undefined>
   if (explicit !== undefined && explicit !== "") return explicit;
   const xdg = env["XDG_STATE_HOME"];
   return join(xdg !== undefined && xdg !== "" ? xdg : join(homedir(), ".local", "state"), "doriface-host");
+}
+
+/**
+ * Identifies one written file, or undefined when there is none: every write renames a new file into place, so its inode
+ * and times change. A reader whose stamp still matches can trust what it read last. It assumes no two writes land in
+ * one file-time tick with the same reused inode and the same size (a revoke and a same-size re-pair within ~1-4 ms).
+ */
+export function fileStamp(path: string): string | undefined {
+  const stat = statSync(path, { bigint: true, throwIfNoEntry: false });
+  return stat === undefined ? undefined : `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
 }
 
 /** Creates the state dir owner-only (0700); an existing dir is tightened to 0700 too. */
