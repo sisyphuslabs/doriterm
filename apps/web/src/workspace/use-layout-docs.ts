@@ -41,6 +41,17 @@ export function noEditsWhy(id: string | null, shown: readonly MachineView[]): st
   return view?.state === "connected" || view?.state === "reconnecting" ? "the machine is reconnecting" : NOT_CONNECTED;
 }
 
+/**
+ * Whether a machine is past its reconnect grace (#2455): only its connection decides, never its layout, so a reachable
+ * machine whose layout is loading or unreadable is not offline (#2569). The page's own reading first (it holds a
+ * redialing machine as reconnecting through the grace), else hc's. This core (null) is never offline here.
+ */
+export function machineOffline(view: MachineView | null, shown: readonly MachineView[]): boolean {
+  if (view === null) return false;
+  const state = shown.find((one) => one.id === view.id)?.state ?? view.state;
+  return state !== "connected" && state !== "reconnecting";
+}
+
 /** A machine's edits: through its live document, or refused with `why` when it has none. */
 export function docEdit(
   live: Pick<LayoutDoc, "edit"> | undefined,
@@ -72,9 +83,7 @@ export function useLayoutDocs(
     const why = machineId === null ? LAYOUT_LOADING : noEditsWhy(machineId, shown);
     // A machine past its reconnect grace takes no edits even while its last document is still held: every action on
     // it is offered disabled at once, not refused after the click (#2455).
-    // The page's own reading first (it holds a redialing machine as reconnecting through the grace), else hc's.
-    const machineState = view === null ? undefined : (shown.find((one) => one.id === machineId)?.state ?? view.state);
-    const gone = machineState !== undefined && machineState !== "connected" && machineState !== "reconnecting";
+    const gone = machineOffline(view, shown);
     const readOnly =
       gone || state === undefined
         ? why

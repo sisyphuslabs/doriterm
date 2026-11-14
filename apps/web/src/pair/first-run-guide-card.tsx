@@ -4,6 +4,8 @@ import { type GuideFacts, guideStore, guideSteps, useGuide } from "./first-run-g
 
 export interface FirstRunGuideCardProps extends GuideFacts {
   readonly onNew: () => void;
+  /** New tab is offered disabled (#2455), so its Start a terminal is too, never pressed and silently dropped (#2574 review). */
+  readonly newDisabled?: boolean;
   readonly className?: string;
 }
 
@@ -11,7 +13,7 @@ export interface FirstRunGuideCardProps extends GuideFacts {
  * The first-run steps on a newly paired device (#668), while the guide runs: each step's state, a Start a terminal button
  * for the current agent step, Skip, and Done once every step is done. Renders nothing otherwise.
  */
-export function FirstRunGuideCard({ onNew, className, ...facts }: FirstRunGuideCardProps) {
+export function FirstRunGuideCard({ onNew, newDisabled = false, className, ...facts }: FirstRunGuideCardProps) {
   const guide = useGuide();
   if (guide.status !== "active") return null;
   const steps = guideSteps(guide, facts);
@@ -63,7 +65,7 @@ export function FirstRunGuideCard({ onNew, className, ...facts }: FirstRunGuideC
         ) : (
           <>
             {agentCurrent ? (
-              <Button variant="primary" onClick={onNew}>
+              <Button variant="primary" disabled={newDisabled} onClick={onNew}>
                 Start a terminal
               </Button>
             ) : null}

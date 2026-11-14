@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { HcRpcError, type JsonValue, type MachineView } from "@doriface/protocol";
 import { LayoutDoc } from "@doriface/protocol/layout";
-import { docCalls, docEdit, noEditsWhy } from "./use-layout-docs.ts";
+import { docCalls, docEdit, machineOffline, noEditsWhy } from "./use-layout-docs.ts";
 
 const noChange = (): null => null;
 
@@ -141,4 +141,15 @@ test("a machine held through a redial refuses its edits as reconnecting, as its 
 test("a machine that reads offline, or is not listed, is not connected", () => {
   expect(noEditsWhy("m1", [listed("m1", "unreachable")])).toBe("the machine is not connected");
   expect(noEditsWhy("m1", [])).toBe("the machine is not connected");
+});
+
+test("a machine is offline only by its connection, never by its layout: a reachable one with a frozen layout still takes New tab (#2569)", () => {
+  const up = machine("mini");
+  expect(machineOffline(null, [])).toBe(false);
+  expect(machineOffline(up, [up])).toBe(false);
+  expect(machineOffline({ ...up, state: "reconnecting" }, [])).toBe(false);
+  expect(machineOffline({ ...up, state: "disconnected" }, [])).toBe(true);
+  // The page holds a redialing machine as reconnecting through its grace, whatever hc says.
+  expect(machineOffline({ ...up, state: "disconnected" }, [{ ...up, state: "reconnecting" }])).toBe(false);
+  expect(machineOffline(up, [{ ...up, state: "disconnected" }])).toBe(true);
 });
