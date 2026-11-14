@@ -24,6 +24,7 @@ import {
 import { PHONE } from "./phone-key-bar.ts";
 import { PRIVATE_RELAY_SKIP } from "./private-relay.ts";
 import { pairAndOpenTerminal, type RelayHost, startRelayHost } from "./relay-terminal.ts";
+import { LATENCY_MODES, LATENCY_RTTS, latencyCaseTitle } from "./keystroke-latency-cases.ts";
 
 test.skip(process.env["DORIFACE_RELAY_DIR"] === undefined, PRIVATE_RELAY_SKIP);
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -125,11 +126,9 @@ for (const device of ["desktop", "phone"] as const) {
   test.describe(device, () => {
     test.use(device === "phone" ? PHONE : {});
 
-    for (const rtt of [0, 150, 300] as const) {
-      for (const mode of ["never", "adaptive"] as const) {
-        test(`over the relay at rtt ${rtt} ms, predictions ${mode}: keystroke-to-glyph and to-echo latency`, async ({
-          page,
-        }) => {
+    for (const rtt of LATENCY_RTTS) {
+      for (const mode of LATENCY_MODES) {
+        test(latencyCaseTitle(rtt, mode), async ({ page }) => {
           // The prediction preference's own key (apps/web/src/terminal/prediction-mode.ts); a build without the predictor
           // draws no predictions in either mode.
           await page.addInitScript((chosen) => {
