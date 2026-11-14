@@ -171,6 +171,10 @@ addEventListener("hashchange", () => capturePairingLink());
 export const router = createRouter({
   routeTree: root.addChildren(routes),
   defaultErrorComponent: ({ error, reset }) => <CrashScreen error={error} onRetry={reset} />,
+  // The workspace and Settings keep their own scroll: the workspace stays mounted under Settings, and on a phone each
+  // list and Settings put the page's offset back themselves (#2533). The router neither resets nor restores the window
+  // between them; any other screen gets its offset back on Back and starts at the top otherwise.
+  scrollRestoration: ({ location }) => location.pathname !== "/" && location.pathname !== "/settings",
 });
 
 declare module "@tanstack/react-router" {
