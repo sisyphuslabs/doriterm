@@ -75,6 +75,7 @@ export function Workspace({ connection }: WorkspaceProps) {
     views,
     heard: heardMachines,
     retry,
+    remove,
     listed: machineReads,
   } = useMachines(connection, fed.terminals);
   // Opened and re-read on what hc said: a document read while its line was down is read again once the line is back.
@@ -141,6 +142,14 @@ export function Workspace({ connection }: WorkspaceProps) {
   useAdoptLoose(connection, layouts, fed.loaded ? terminals : null, failed);
   const narrow = useNarrow();
   const ids = useMemo(() => machineIds(views), [views]);
+  // New tab starts its terminal on the machine of the tab in view: offered disabled while that machine is past its
+  // reconnect grace, or its layout takes no edits, never offered and then refused (#2455).
+  const activeMachine = layout.active?.machine ?? null;
+  const activeView =
+    activeMachine === null ? undefined : views.find((v) => v.name === activeMachine || v.id === activeMachine);
+  const newDisabled =
+    (layout.active?.readOnly ?? null) !== null ||
+    (activeView !== undefined && activeView.state !== "connected" && activeView.state !== "reconnecting");
   const phone = usePhoneRoute(narrow, ids);
   const { open: phoneOpen, show: showOnPhone } = phone;
   const phoneTab = phoneOpen === null ? null : findTerminal(layout.tabs, phoneOpen);
@@ -378,6 +387,7 @@ export function Workspace({ connection }: WorkspaceProps) {
       openAddMachine,
       views,
       retry,
+      remove,
       moveMachine,
       start: (params: TerminalRunParams) => runs.start(params, inNewSpaceNow.current),
       newTerminalOn: (machine: string) => runs.start({ on: machine }, inNewSpaceNow.current),
@@ -392,6 +402,7 @@ export function Workspace({ connection }: WorkspaceProps) {
       openAddMachine,
       views,
       retry,
+      remove,
       moveMachine,
       runs,
     ],
@@ -475,6 +486,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                         section={phone.section}
                         onSection={phone.showSection}
                         onNew={() => newTerminal()}
+                        newDisabled={newDisabled}
                         onNewInSpace={newTabIn}
                         onCloseTab={(address) => {
                           const found = findTerminal(layout.tabs, address);
@@ -511,6 +523,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                         spaceKeys={spaceKeys}
                         onSelectSpace={selectSpace}
                         onNew={() => newTerminal()}
+                        newDisabled={newDisabled}
                         onNewAgent={(template) => newTerminal(template)}
                         onNewSpace={() => runs.start({}, inNewSpace)}
                         onSplit={split}

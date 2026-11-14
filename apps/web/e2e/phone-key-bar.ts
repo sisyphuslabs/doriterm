@@ -107,6 +107,9 @@ export async function openPhoneTerminal(
   const terminal = page.locator("[data-terminal]");
   await expect(terminal).toContainText("$", { timeout: 15_000 });
   await key(page, "Show keyboard").click();
+  // A keyboard that rises for the focus is up once the keys' toggle says so: the keys are on screen either way (#2499).
+  const raises = keyboard === "overlay" || (keyboard !== "resize" && keyboard.raiseOnFocus);
+  if (raises) await expect(key(page, "Hide keyboard")).toBeVisible();
   return terminal;
 }
 
