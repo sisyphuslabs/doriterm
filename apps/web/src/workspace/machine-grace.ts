@@ -81,6 +81,14 @@ export function graceViews(list: readonly MachineView[], held: Held, now: number
   });
 }
 
+/**
+ * Whether a machine is gone as the page shows it: past its reconnect grace, neither connected nor reconnecting. Every
+ * action that needs it is then offered disabled at once, not refused after the click (#2455). A machine the page does
+ * not list (`undefined`) is not gone.
+ */
+export const machineGone = (state: MachineView["state"] | undefined): boolean =>
+  state !== undefined && state !== "connected" && state !== "reconnecting";
+
 /** When the next held machine's grace ends (this page's clock), so the page can show it offline then; none if none. */
 export function graceEnds(held: Held, now: number): number | undefined {
   const ends = [...held.values()].map((since) => since + OFFLINE_GRACE_MS).filter((end) => end > now);

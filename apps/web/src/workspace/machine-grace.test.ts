@@ -1,6 +1,6 @@
 import { HcRpcError, type MachineView } from "@doriface/protocol";
 import { expect, test } from "bun:test";
-import { graceEnds, graceViews, OFFLINE_GRACE_MS, stepHeld, type Held } from "./machine-grace.ts";
+import { graceEnds, graceViews, machineGone, OFFLINE_GRACE_MS, stepHeld, type Held } from "./machine-grace.ts";
 import { machineEntries } from "./machines.ts";
 import { withReach } from "./reach.ts";
 import { startTerminal } from "./start-on.ts";
@@ -194,4 +194,15 @@ test("a held machine's live terminals stay live in its grace and read offline on
   const held = stepHeld(NONE, { views: [machine("rack", "connected")], at: 0 }, dropped, 0);
   expect(withReach([live], graceViews(dropped, held, OFFLINE_GRACE_MS - 1))[0]?.offline).toBeUndefined();
   expect(withReach([live], graceViews(dropped, held, OFFLINE_GRACE_MS))[0]?.offline).toBe(true);
+});
+
+test("a machine is gone, and its actions disabled, only once it reads past its grace (#2455, #2466 review)", () => {
+  expect(["connected", "reconnecting"].map(machineGone)).toEqual([false, false]);
+  expect(["connecting", "unreachable", "needs_login"].map(machineGone)).toEqual([true, true, true]);
+  // A machine the page does not list says nothing about any action.
+  expect(machineGone(undefined)).toBe(false);
+  // The grace holds a line hc is redialing as reconnecting, so it is not gone until the grace ends.
+  const held = graceViews([machine("rack", "unreachable")], new Map([["id-rack", 0]]), 1_000);
+  expect(machineGone(held[0]?.state)).toBe(false);
+  expect(machineGone(graceViews([machine("rack", "unreachable")], new Map([["id-rack", 0]]), OFFLINE_GRACE_MS)[0]?.state)).toBe(true);
 });

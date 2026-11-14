@@ -3,6 +3,7 @@ import type { JsonObject, MachineView } from "@doriface/protocol";
 import { type DocEdit, type EditShown, type LayoutDoc, storedPins } from "@doriface/protocol/layout";
 import { docCalls } from "../roster/doc-calls.ts";
 import { useRoster } from "../roster/use-roster.ts";
+import { machineGone } from "./machine-grace.ts";
 
 export { docCalls };
 
@@ -72,7 +73,7 @@ export function useLayoutDocs(
     // it is offered disabled at once, not refused after the click (#2455).
     // The page's own reading first (it holds a redialing machine as reconnecting through the grace), else hc's.
     const machineState = view === null ? undefined : (shown.find((one) => one.id === machineId)?.state ?? view.state);
-    const gone = machineState !== undefined && machineState !== "connected" && machineState !== "reconnecting";
+    const gone = machineGone(machineState);
     const readOnly =
       gone || state === undefined
         ? why

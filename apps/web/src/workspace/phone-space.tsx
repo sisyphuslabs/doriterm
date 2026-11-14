@@ -37,8 +37,10 @@ export function PhoneSpace({ space, terminals, host, arrive, from, onOpen, onBac
   const closing = useSpaceClosing();
   const rows = spaceTabRows(space, terminals, now);
   // A space whose layout takes no edits (its machine is offline) can take no new tab and no close: both wait, disabled,
-  // with why, and come back by themselves (#2455).
-  const waiting = closing.refusal(space.id);
+  // with why, and come back by themselves (#2455). A space no longer in the layout refuses only Close, and that is no
+  // machine wait, so New tab says nothing about one (#2466 review).
+  const waiting = closing.editWait(space.id);
+  const closeRefused = closing.refusal(space.id) !== null;
   // Back from a terminal opened here mounts this screen anew: its tabs come back where they were (#1553).
   const tabsViewport = useKeptScroll(`space:${space.id}`, rows.length > 0);
   return (
@@ -80,7 +82,7 @@ export function PhoneSpace({ space, terminals, host, arrive, from, onOpen, onBac
               <Button variant="primary" disabled={waiting !== null} onClick={onNew}>
                 New tab here
               </Button>
-              <Button disabled={waiting !== null} onClick={() => closing.ask(space.id)}>
+              <Button disabled={closeRefused} onClick={() => closing.ask(space.id)}>
                 Close space
               </Button>
             </>
