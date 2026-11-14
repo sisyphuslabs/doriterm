@@ -3,17 +3,20 @@
 import { execFileSync } from "node:child_process";
 import { HcRpcError, parseJsonRpc } from "@doriface/protocol";
 import { E2E_HOST_ENV, E2E_LAYOUT_ENV } from "./config.ts";
+import { MACHINE_ENV } from "./machine.ts";
 import { readSavedEnv, type SavedEnv } from "./saved-env.ts";
 
 interface CoreEnv extends SavedEnv {
   readonly session: string;
 }
 
-/** Which e2e core: the main host's, or the layout spec's (E2E_LAYOUT_ENV). */
-export type Core = "host" | "layout";
+/** Which e2e core: the main host's, the layout spec's (E2E_LAYOUT_ENV), or the main host's added machine (MACHINE_ENV). */
+export type Core = "host" | "layout" | "machine";
+
+const ENV_FILES: Readonly<Record<Core, string>> = { host: E2E_HOST_ENV, layout: E2E_LAYOUT_ENV, machine: MACHINE_ENV };
 
 function coreEnv(core: Core = "host"): CoreEnv {
-  const file = core === "host" ? E2E_HOST_ENV : E2E_LAYOUT_ENV;
+  const file = ENV_FILES[core];
   const saved = readSavedEnv(file);
   const session = saved.env["HC_SESSION"];
   if (session === undefined) throw new Error(`${file} names no HC_SESSION`);
@@ -43,9 +46,9 @@ function call(core: CoreEnv, method: string, params: unknown): unknown {
   throw new Error(`${method}: no reply`);
 }
 
-/** An added machine's permanent core id, as the e2e host's core lists it (`machine.list`): the id a machine order names. */
-export function machineCore(name: string): string {
-  const listed = call(coreEnv(), "machine.list", {});
+/** An added machine's permanent core id, as the e2e host's core (or `which`) lists it (`machine.list`): the id a machine order names. */
+export function machineCore(name: string, which: Core = "host"): string {
+  const listed = call(coreEnv(which), "machine.list", {});
   const machines = typeof listed === "object" && listed !== null && "machines" in listed ? listed.machines : undefined;
   const found = Array.isArray(machines)
     ? machines.find(
