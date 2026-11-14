@@ -284,3 +284,46 @@ test.describe("the phone's empty terminal list", () => {
     await expect(page.getByText(/^Start a shell on /)).toBeVisible();
   });
 });
+
+test.describe("the phone's switch sheet", () => {
+  const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
+  test.use({ ...phone, serviceWorkers: "block" });
+
+  test("both New tab actions wait with why while the space's machine is offline, and return after reconnect", async ({
+    page,
+  }) => {
+    test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
+    const name = "switch-waits";
+    seedMachineSpace(name);
+    await routeHcSocket(page);
+    await page.goto("/?v=spaces");
+    await page.getByText(name, { exact: true }).click({ timeout: STATE_BOUND_MS });
+    await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+    await page.getByRole("region", { name: "Tabs", exact: true }).getByRole("button", { name: new RegExp(name) }).click();
+    await page.getByRole("button", { name: /^Switch tab, / }).click({ timeout: STATE_BOUND_MS });
+    const sheet = page.getByRole("dialog", { name: "Switch", exact: true });
+    await sheet.getByRole("group", { name: "Show" }).getByRole("button", { name: "All spaces", exact: true }).click();
+    const inSpace = sheet.getByRole("button", { name: `New tab in ${name}`, exact: true });
+    const perSpace = sheet
+      .getByRole("region", { name: `${MACHINE_NAME} · ${name}`, exact: true })
+      .getByRole("button", { name: "New tab", exact: true });
+    const reason = sheet.getByText(
+      /the machine is not connected\. New tab comes back by itself once the machine can take it/,
+    );
+    await expect(inSpace).toBeEnabled();
+    await expect(perSpace).toBeEnabled();
+    try {
+      switchTo("drop");
+      await Promise.all([
+        expect(inSpace).toBeDisabled({ timeout: OFFLINE_BOUND_MS }),
+        expect(perSpace).toBeDisabled({ timeout: OFFLINE_BOUND_MS }),
+        expect(reason).toBeVisible({ timeout: OFFLINE_BOUND_MS }),
+      ]);
+    } finally {
+      reconnect();
+    }
+    await expect(inSpace).toBeEnabled({ timeout: STATE_BOUND_MS });
+    await expect(perSpace).toBeEnabled({ timeout: STATE_BOUND_MS });
+    await expect(reason).toHaveCount(0);
+  });
+});
