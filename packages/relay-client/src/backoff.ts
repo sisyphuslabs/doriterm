@@ -8,9 +8,9 @@ export function backoffDelay(attempt: number, random: () => number = Math.random
 }
 
 /**
- * The delay before redialing a closed uplink. One that had been stable redials in 0-249 ms, below the backoff floor, jittered so
- * hosts dropped together do not redial in the same tick (#2498); a rate-limited close, or an uplink that was not
- * stable, waits `backoffDelay(step)`.
+ * The delay before redialing a closed uplink. One that had been stable redials in 0-249 ms, below the backoff floor,
+ * jittered so hosts dropped together do not redial in the same tick (#2498); a rate-limited close, or an uplink that
+ * was not stable, waits `backoffDelay(step)`.
  */
 export function redialDelay(
   stable: boolean,
