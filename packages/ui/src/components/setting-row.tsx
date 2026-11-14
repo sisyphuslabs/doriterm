@@ -63,8 +63,9 @@ export function SettingRow(props: SettingRowProps) {
           </p>
         ) : null}
       </div>
-      {/* A row with nothing to do has no control slot: an empty one would still take its own line under 480 px. */}
-      {control === null || control === undefined ? null : (
+      {/* A row with nothing to do (no control, or `cond && <X/>` that is false or "") has no control slot: an empty one would
+          still take its own line under 480 px. */}
+      {control === null || control === undefined || control === false || control === "" ? null : (
         <div
           className={cn(
             "flex max-w-full shrink-0 items-center gap-2",
