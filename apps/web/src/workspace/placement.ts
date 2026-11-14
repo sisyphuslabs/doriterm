@@ -38,6 +38,17 @@ export function placeOf(doc: JsonObject | null, terminal: Terminal, makeId: (pre
 }
 
 /**
+ * The space a placed tab is guessed to land in before its write: an existing space keeps its id, and a space the write
+ * would make gets the empty id, which no real space has, so the guess never matches a space the write itself makes.
+ */
+export function guessedSpace(
+  placed: ((doc: JsonObject | null, makeId: (prefix: "spc") => string) => NewSpace) | undefined,
+  doc: JsonObject | null,
+): NewSpace | undefined {
+  return placed?.(doc, () => "");
+}
+
+/**
  * What a new tab does with the transient tab in view (`keepTransient`'s answer): a tab its terminal's labels place never
  * takes the transient tab with it (#2468), so that one keeps a space of its own ("apart") instead of riding along.
  */
