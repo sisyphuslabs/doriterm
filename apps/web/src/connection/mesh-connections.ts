@@ -5,6 +5,7 @@ import type { LocalHostStarter } from "./store.ts";
 import type { ConnectionSettings, MemberTarget, Saver } from "./settings.ts";
 import { normalizeSettings, saveSettings } from "./settings.ts";
 import { failOverTo, placeInAddress } from "./failover.ts";
+import { firstAnswer } from "./first-answer.ts";
 
 /**
  * What the mesh needs from one member's connection. `ConnectionStore` satisfies it structurally; declaring it here keeps this
@@ -379,9 +380,12 @@ export class MeshConnections {
   #failOver(): void {
     const current = this.selected;
     if (current === undefined) return;
-    const hostId = failOverTo(this.#stores, current, (id) => this.#lastSeen.has(id), this.#holdsPlace());
+    const reached = (id: string): boolean => this.#lastSeen.has(id);
+    const holds = this.#holdsPlace();
+    const hostId =
+      failOverTo(this.#stores, current, reached, holds) ?? firstAnswer(this.#stores, current, reached, holds);
     if (hostId === undefined || !this.#targets.has(hostId) || hostId === this.settings.hostId) return;
-    // Shown, never saved: the machine the person chose stays the one a later start opens (#2532).
+    // Shown, never saved: which machine carries the traffic is never a saved choice (#2531, #2532).
     this.#selection = hostId;
   }
 
