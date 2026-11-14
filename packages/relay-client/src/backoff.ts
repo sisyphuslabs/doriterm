@@ -8,9 +8,16 @@ export function backoffDelay(attempt: number, random: () => number = Math.random
 }
 
 /**
- * The delay before redialing a closed uplink. One that had been stable was ended by a relay-side restart (#2498), so it
- * redials at once; any other waits `backoffDelay(attempt)`.
+ * The delay before redialing a closed uplink. One that had been stable redials within one backoff floor, jittered so
+ * hosts dropped together do not redial in the same tick (#2498); a rate-limited close, or an uplink that was not
+ * stable, waits `backoffDelay(step)`.
  */
-export function redialDelay(stable: boolean, attempt: number, random: () => number = Math.random): number {
-  return stable ? 0 : backoffDelay(attempt, random);
+export function redialDelay(
+  stable: boolean,
+  rateLimited: boolean,
+  step: number,
+  random: () => number = Math.random,
+): number {
+  if (stable && !rateLimited) return Math.round(random() * BACKOFF_MIN_MS);
+  return backoffDelay(step, random);
 }

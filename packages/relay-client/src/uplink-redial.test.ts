@@ -68,29 +68,64 @@ const waitings = (states: UplinkState[]): UplinkState[] => states.filter((state)
 
 /** Ends the relay side of the one kept socket without a close frame, as a platform restart does: the host sees 1006. */
 function restartRelay(): void {
+  keptSocket().terminate();
+}
+
+function keptSocket(): ServerWebSocket<{ readonly step: Step }> {
   const ws = kept.shift();
   if (ws === undefined) throw new Error("no relay socket to end");
-  ws.terminate();
+  return ws;
+}
+
+const retries = (states: UplinkState[]): number[] =>
+  waitings(states).map((state) => (state.state === "waiting" ? state.retryInMs : -1));
+
+/** A stable uplink: answered, then 30 s later by the clock the uplink reads. */
+async function stableUplink(
+  random: () => number,
+): Promise<(done: (states: UplinkState[]) => boolean) => Promise<UplinkState[]>> {
+  const until = await start(random);
+  await until((states) => states.some((state) => state.state === "answered"));
+  setSystemTime(new Date(Date.now() + 30_000));
+  return until;
 }
 
 describe("the uplink's redial after the relay ends it (#2498)", () => {
-  test("an uplink that had been up for 30 s redials at once after a 1006", async () => {
-    const until = await start(() => 1);
-    await until((states) => states.some((state) => state.state === "answered"));
-    setSystemTime(new Date(Date.now() + 30_000));
+  test("an uplink that had been up for 30 s redials within one backoff floor after a 1006, not after the first backoff step", async () => {
+    const until = await stableUplink(() => 1);
     restartRelay();
     const states = await until((seen) => waitings(seen).length === 1);
-    expect(waitings(states)).toEqual([{ state: "waiting", code: 1006, reason: "", retryInMs: 0 }]);
+    expect(waitings(states)).toEqual([{ state: "waiting", code: 1006, reason: "", retryInMs: 250 }]);
   });
 
-  test("when the at-once redial fails too, the next one waits the first backoff step, not a later one", async () => {
-    const until = await start(() => 1);
-    await until((states) => states.some((state) => state.state === "answered"));
-    setSystemTime(new Date(Date.now() + 30_000));
+  test("hosts dropped in the same second spread their quick redials over the backoff floor instead of one tick", async () => {
+    const until = await stableUplink(() => 0.2);
+    restartRelay();
+    expect(retries(await until((seen) => waitings(seen).length === 1))).toEqual([50]);
+  });
+
+  test("when the quick redial fails too, the next one waits the first backoff step, not a later one", async () => {
+    const until = await stableUplink(() => 1);
     steps = ["drop-at-once"];
     restartRelay();
-    const states = await until((seen) => waitings(seen).length === 2);
-    expect(waitings(states).map((state) => (state.state === "waiting" ? state.retryInMs : -1))).toEqual([0, 500]);
+    expect(retries(await until((seen) => waitings(seen).length === 2))).toEqual([250, 500]);
+  });
+
+  test("a stable uplink the relay rate-limits (4429) waits the backoff, never a quick redial", async () => {
+    const until = await stableUplink(() => 1);
+    keptSocket().close(4429, "rate limited");
+    const states = await until((seen) => waitings(seen).length === 1);
+    expect(waitings(states)).toEqual([{ state: "waiting", code: 4429, reason: "rate limited", retryInMs: 500 }]);
+  });
+
+  test("the redial after a stable uplink drops is a reconnect (attempt 1), not a fresh start", async () => {
+    const until = await stableUplink(() => 1);
+    restartRelay();
+    const states = await until((seen) => seen.filter((state) => state.state === "connecting").length === 2);
+    expect(states.filter((state) => state.state === "connecting")).toEqual([
+      { state: "connecting", attempt: 0 },
+      { state: "connecting", attempt: 1 },
+    ]);
   });
 
   test("an uplink that dropped within 30 s of its answer waits the backoff, so a flapping relay is not redialed hot", async () => {

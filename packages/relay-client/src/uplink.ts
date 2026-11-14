@@ -75,7 +75,7 @@ const FINAL_CODES: ReadonlySet<number> = new Set([CloseCode.RelayAuthFailed, Clo
 const CONNECTING = 0;
 /** How long a pair-slot request waits for the relay's reply; a host's stop waits this long to release its slot. */
 export const PAIR_SLOT_REPLY_TIMEOUT_MS = 10_000;
-/** An uplink that stayed up this long after answering redials at once, then backs off from the bottom again. */
+/** An uplink that stayed up this long after answering redials within one backoff floor, then backs off from the bottom. */
 const STABLE_MS = 30_000;
 
 /** The host's one connection to the relay, carrying every client session multiplexed by sessionId. */
@@ -94,6 +94,8 @@ export class Uplink {
   #stopPings: (() => void) | undefined;
   #timer: ReturnType<typeof setTimeout> | undefined;
   #attempt = 0;
+  /** The backoff step for the next failure; a stable uplink's quick redial does not use one up. */
+  #step = 0;
   #answeredAt: number | undefined;
   #pairSlot: string | undefined;
   /** Whether this connection already told onUnsignedPairSlot. */
@@ -300,9 +302,15 @@ export class Uplink {
     this.#pairSlots.failAll(`the uplink closed with ${code} before the relay answered`);
     if (FINAL_CODES.has(code)) return this.#finish(code);
     const stable = this.#answeredAt !== undefined && Date.now() - this.#answeredAt >= STABLE_MS;
-    if (stable) this.#attempt = 0;
-    const retryInMs = this.#passes?.reconnectDelay(code) ?? redialDelay(stable, this.#attempt, this.#options.random);
-    if (!stable) this.#attempt += 1;
+    if (stable) {
+      this.#attempt = 0;
+      this.#step = 0;
+    }
+    const rateLimited = code === CloseCode.RateLimited;
+    const retryInMs =
+      this.#passes?.reconnectDelay(code) ?? redialDelay(stable, rateLimited, this.#step, this.#options.random);
+    this.#attempt += 1;
+    if (!stable || rateLimited) this.#step += 1;
     this.#options.onState?.({ state: "waiting", code, reason, retryInMs });
     this.#timer = setTimeout(() => this.#connect(), retryInMs);
     // Last, so a session's throwing close listener cannot cancel the reconnect.
