@@ -1,5 +1,6 @@
 import { isJsonObject } from "@doriface/protocol";
 import { browserStorage, guardedLocalStorage } from "../storage/guarded.ts";
+import type { MachineIds } from "../workspace/tab-keys.ts";
 import { storedSeen, storedView, viewOn } from "./view-keys.ts";
 
 /** A terminal's address to the moment of a finish this screen has shown: herdr-app's seen attention (`view.json`). */
@@ -66,10 +67,17 @@ export function perHostViews(storage?: Pick<Storage, "getItem" | "key" | "length
   return cores;
 }
 
-/** An old per-host view in the stored form: its bare keys, seen marks included, are the core it was saved through. */
-function fromPerHost(view: View, core: string): View {
+const NO_IDS: MachineIds = { byName: new Map(), byId: new Map() };
+
+/**
+ * Another core's old per-host view in the stored form: its bare keys, seen marks included, are the core it was saved
+ * through. Its `<name>/t2` marks name machines as that core named them, which this route cannot know, so they are
+ * dropped rather than kept by a name another route gives another machine (#2588).
+ */
+export function fromPerHost(view: View, core: string): View {
   const stored = storedView(view, core);
-  return { ...stored, seen: storedSeen(view.seen, core, { byName: new Map(), byId: new Map() }) };
+  const kept = storedSeen(view.seen, core, NO_IDS);
+  return { ...stored, seen: Object.fromEntries(Object.entries(kept).filter(([key]) => key.startsWith("@"))) };
 }
 
 /**
@@ -87,7 +95,9 @@ export function loadView(
   const merged = [...oldCores.filter((old) => old !== core), core].reduce<View>((into, old) => {
     const view = parsedView(storage.getItem(perHostKey(old)));
     if (view === null) return into;
-    const kept = fromPerHost(view, old);
+    // This host's own marks name machines as this route does, so they are kept and upgraded once the list names them.
+    const kept =
+      old === core ? { ...storedView(view, old), seen: storedSeen(view.seen, old, NO_IDS) } : fromPerHost(view, old);
     return {
       active: old === core ? kept.active : into.active,
       focused: { ...into.focused, ...kept.focused },
