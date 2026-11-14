@@ -166,6 +166,11 @@ test("the first-run guide's Start a terminal is offered disabled while New tab i
       timeout: OFFLINE_BOUND_MS,
     });
     await expect(start).toBeDisabled();
+    // Disabled and explained: the card says why, in the words every reason line uses.
+    const guideCard = page.getByRole("region", { name: "Getting started" });
+    await expect(
+      guideCard.getByText(/Start a terminal comes back by itself once the machine can take it/),
+    ).toBeVisible();
   } finally {
     reconnect();
   }
@@ -263,6 +268,7 @@ test.describe("the phone's empty terminal list", () => {
       switchTo("drop");
       await expect(newTab).toBeDisabled({ timeout: OFFLINE_BOUND_MS });
       await expect(newTerminal).toBeDisabled();
+      await expect(page.getByText(/New terminal comes back by itself once the machine can take it/)).toBeVisible();
     } finally {
       reconnect();
     }
