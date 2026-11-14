@@ -23,7 +23,7 @@ import {
   type Seen,
   type View,
 } from "../layout/view.ts";
-import { seenOn, storedSeen } from "../layout/view-keys.ts";
+import { seenOn, storedSeen, storedView, viewOn } from "../layout/view-keys.ts";
 import { apartWrite, newTabWrite, type PaneAt, splitWrite, transientSplitWrite, viewInstead } from "./pane-writes.ts";
 import {
   buildTabs,
@@ -185,7 +185,16 @@ export function useLayout(
   tellUnsaved.current = unsaved;
   const refused = useRef(false);
   const dropped = useRef(false);
+  // The route can move mid-session (a drop that reconnects through another host): the view in memory is keyed for the
+  // core it was loaded through, so it is re-keyed for the new one before anything is saved under it (#2538 review).
+  const keyedFor = useRef(core);
   useEffect(() => {
+    if (keyedFor.current !== core) {
+      const was = keyedFor.current;
+      keyedFor.current = core;
+      setView((prev) => viewOn(storedView(prev, was), core));
+      return;
+    }
     const reason = saveView(core, view);
     if (reason === null) {
       // The per-host views read at load are dropped once the one view has been saved (#2537).

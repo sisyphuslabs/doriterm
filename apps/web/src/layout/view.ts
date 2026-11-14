@@ -51,11 +51,11 @@ function parsedView(text: string | null): View | null {
 }
 
 /** The per-host views saved before #2537 (`doriface.view.<core id>`), by the core each was saved through. */
-export function perHostViews(
-  storage: Pick<Storage, "getItem" | "key" | "length"> | undefined = Reflect.get(globalThis, "localStorage"),
-): readonly string[] {
+export function perHostViews(storage?: Pick<Storage, "getItem" | "key" | "length">): readonly string[] {
   const cores: string[] = [];
   try {
+    // Read inside the try: a browser that refuses storage throws from the getter itself (#553).
+    storage ??= Reflect.get(globalThis, "localStorage") as Pick<Storage, "getItem" | "key" | "length"> | undefined;
     for (let at = 0; at < (storage?.length ?? 0); at += 1) {
       const key = storage?.key(at);
       if (key?.startsWith(`${VIEW_KEY}.`) === true) cores.push(key.slice(VIEW_KEY.length + 1));

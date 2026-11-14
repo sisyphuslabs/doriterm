@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { seenOn, storedSeen } from "./view-keys.ts";
-import { loadView, NO_VIEW, rememberSeen, saveView, type View, VIEW_KEY } from "./view.ts";
+import { seenOn, storedSeen, storedView, viewOn } from "./view-keys.ts";
+import { loadView, NO_VIEW, perHostViews, rememberSeen, saveView, type View, VIEW_KEY } from "./view.ts";
 
 /** A storage holding one raw value as the device's view, as a page would have left it. */
 const holding = (raw: string | null): Pick<Storage, "getItem"> => ({
@@ -150,4 +150,29 @@ describe("saveView", () => {
     };
     expect(saveView("c", { ...NO_VIEW, active: "a" }, full)).toBe("the quota has been exceeded");
   });
+});
+
+test("a view re-keyed when the route moves mid-session saves the same device view as before the move (#2538 review)", () => {
+  const throughC: View = { ...NO_VIEW, active: "tb-1", focused: { "tb-1": "p1", "m/tb-2": "p2" } };
+  const before = memory();
+  saveView("c", throughC, before.storage);
+  const after = memory();
+  saveView("m", viewOn(storedView(throughC, "c"), "m"), after.storage);
+  expect(after.saved.get(VIEW_KEY)).toBe(before.saved.get(VIEW_KEY));
+});
+
+test("a storage whose getter refuses leaves no old per-host views to read, and does not throw (#553, #2538 review)", () => {
+  const had = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    get: () => {
+      throw new DOMException("denied", "SecurityError");
+    },
+  });
+  try {
+    expect(perHostViews()).toEqual([]);
+  } finally {
+    if (had === undefined) Reflect.deleteProperty(globalThis, "localStorage");
+    else Object.defineProperty(globalThis, "localStorage", had);
+  }
 });
