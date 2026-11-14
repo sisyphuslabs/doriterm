@@ -150,7 +150,10 @@ test.describe("on a phone", () => {
     await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible({ timeout: 15_000 });
     await expect(settingsSheet(page)).toBeVisible();
     await expect(settingsDialog(page)).toHaveAttribute("data-settings-sheet");
-    expect(await settingsSheet(page).boundingBox()).toEqual({ x: 0, y: 0, width: 390, height: 844 });
+    // At least the screen: on a phone the sheet scrolls the document, so it runs as long as its section (#2533).
+    const box = await settingsSheet(page).boundingBox();
+    expect({ x: box?.x, y: box?.y, width: box?.width }).toEqual({ x: 0, y: 0, width: 390 });
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(844);
     await expect(workspace(page)).toBeHidden();
   });
 
@@ -224,8 +227,9 @@ test.describe("Settings across the md breakpoint, and its zoom keys (#859)", () 
 
     await page.setViewportSize({ width: 700, height: 800 });
     await expect(settingsSheet(page)).toBeVisible();
-    // The frame moves, and the reader stays where they were reading rather than at the first row of the section.
-    await expect.poll(() => body.evaluate((el) => el.scrollTop)).toBe(600);
+    // The frame moves, and the reader stays where they were reading rather than at the first row of the section. At this
+    // width the sheet is the phone's, which the document scrolls (#2533), so the place is the document's offset.
+    await expect.poll(() => page.evaluate(() => Math.round(window.scrollY))).toBe(600);
   });
 
   test("a resize between dialog and sheet does not save a half-typed connection address (#1160)", async ({ page }) => {

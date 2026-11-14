@@ -171,9 +171,6 @@ export function SettingsRoute() {
   // tabs stick to the top, and it opens at its own top rather than where the list under it was scrolled.
   const narrow = useNarrow();
   const documentScroll = !dialog && narrow;
-  useLayoutEffect(() => {
-    if (documentScroll) window.scrollTo({ top: 0, behavior: "instant" });
-  }, [documentScroll]);
   // The full-screen sheet takes focus as it opens, as the dialog does, unless something in it already has it (#1495).
   const view = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -375,19 +372,17 @@ export function SettingsRoute() {
 }
 
 /**
- * The sections' body: a scroller of its own in the dialog and on a short wide screen, and in the page's flow on a phone,
- * where the document scrolls it (#2533). Either way it is the `settings-body` slot.
+ * The sections' body, the `settings-body` slot: a scroller of its own in the dialog and on a short wide screen, and on a
+ * phone a box in the page's flow that the document scrolls (#2533). It is the same element either way, so a resize across
+ * the breakpoint keeps the fields in it, their focus and what is half-typed in them (#859, #1160).
  */
 function SettingsBody({ documentScroll, children }: { readonly documentScroll: boolean; readonly children: ReactNode }) {
-  if (documentScroll) {
-    return (
-      <div data-slot="settings-body" className="flex-1">
-        {children}
-      </div>
-    );
-  }
   return (
-    <ScrollArea slot="settings-body" className="flex-1">
+    <ScrollArea
+      slot="settings-body"
+      className={cn("flex-1", documentScroll && "overflow-visible")}
+      {...(documentScroll ? { viewportClassName: "h-auto! overflow-visible!" } : {})}
+    >
       {children}
     </ScrollArea>
   );

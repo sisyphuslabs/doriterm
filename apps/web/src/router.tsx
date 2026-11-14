@@ -30,10 +30,13 @@ function SettingsSlot({
   frame,
   refocus,
   scroll,
+  documentScroll = false,
 }: {
   readonly frame: HTMLElement;
   readonly refocus: RefObject<HTMLElement | null>;
   readonly scroll: RefObject<KeptScroll | null>;
+  /** The phone's sheet, which the document scrolls rather than its body (#2533). */
+  readonly documentScroll?: boolean;
 }) {
   const slot = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -42,8 +45,11 @@ function SettingsSlot({
     scroll.current = null;
     // Taking the frame out of the page drops the offset of whatever scrolls in it, so the reader's place is put back
     // before the frame is painted in its other home (#1161). A viewport from an earlier Settings is gone with it, and
-    // a fresh one starts at the top as it always has.
-    if (kept !== null && frame.contains(kept.viewport)) kept.viewport.scrollTop = kept.top;
+    // a fresh one starts at the top as it always has. On a phone the document is what scrolls, and it opens at its top
+    // rather than where the list under it was.
+    const top = kept !== null && frame.contains(kept.viewport) ? kept.top : 0;
+    if (documentScroll) window.scrollTo({ top, behavior: "instant" });
+    else if (kept !== null && frame.contains(kept.viewport)) kept.viewport.scrollTop = kept.top;
     const held = refocus.current;
     refocus.current = null;
     if (held !== null && frame.contains(held) && document.activeElement !== held) held.focus({ preventScroll: true });
@@ -52,9 +58,10 @@ function SettingsSlot({
       refocus.current = active instanceof HTMLElement && frame.contains(active) ? active : null;
       // Read before the frame leaves the page: once it is out, its viewport has forgotten where it was (#1161).
       const viewport = frame.querySelector<HTMLElement>('[data-slot="settings-body"]');
-      scroll.current = viewport === null ? null : { viewport, top: viewport.scrollTop };
+      const top = documentScroll ? Math.round(window.scrollY) : (viewport?.scrollTop ?? 0);
+      scroll.current = viewport === null ? null : { viewport, top };
     };
-  }, [frame, refocus, scroll]);
+  }, [frame, refocus, scroll, documentScroll]);
   return <div ref={slot} className="contents" />;
 }
 
@@ -100,7 +107,7 @@ function Root() {
           data-settings-sheet
           className={phoneSheet ? "relative min-h-dvh bg-background" : "fixed inset-0 bg-background"}
         >
-          <SettingsSlot frame={frame} refocus={refocus} scroll={scroll} />
+          <SettingsSlot frame={frame} refocus={refocus} scroll={scroll} documentScroll={phoneSheet} />
         </div>
       ) : null}
       {/* The view on screen is #root's first child: the desktop window waits for `#root > *` to paint, and the
