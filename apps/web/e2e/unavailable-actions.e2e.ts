@@ -42,8 +42,9 @@ async function openSpaceMenu(page: Page): Promise<void> {
 
 test("a space on a machine that went offline offers Close and Rename disabled, and both come back when it reconnects", async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
+  await page.setViewportSize({ width: 1440, height: 900 });
   // A terminal on the added machine, in a space its own layout document holds: Q's case, a space owned by the machine.
   const started: unknown = JSON.parse(
     hcOn("machine", ["run", "--bg", "--name", "unavailable", "--", "env", "PS1=$ ", "sh"]),
@@ -79,8 +80,14 @@ test("a space on a machine that went offline offers Close and Rename disabled, a
     const question = tabRename(page);
     await expect(question).toBeVisible();
     await expect(question.getByRole("button", { name: "Rename" })).toBeDisabled();
-    await expect(question.getByText(/comes back by itself once the machine can take it/)).toBeVisible();
+    await expect(
+      question.getByText(
+        "The layout cannot take changes now: the machine is offline. Rename comes back by itself once the machine can take it.",
+        { exact: true },
+      ),
+    ).toBeVisible();
     await expect(question.locator(".text-destructive")).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("offline-rename-1440.png") });
   } finally {
     reconnect();
   }
@@ -102,7 +109,7 @@ test("a space on a machine that went offline offers Close and Rename disabled, a
 
 test("on a phone, an offline machine's space offers New tab disabled with why, and it comes back when the machine reconnects", async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
   await page.setViewportSize({ width: 390, height: 844 });
   const phoneSpace = "on-the-phone";
@@ -130,7 +137,14 @@ test("on a phone, an offline machine's space offers New tab disabled with why, a
   try {
     switchTo("drop");
     await expect(newTab).toBeDisabled({ timeout: OFFLINE_BOUND_MS });
-    await expect(page.getByText(/New tab comes back by itself once the machine can take it/)).toBeVisible();
+    // The button can wait during the grace too; the offline reason is due only once that grace has ended.
+    await expect(
+      page.getByText(
+        "The layout cannot take changes now: the machine is offline. New tab comes back by itself once the machine can take it.",
+        { exact: true },
+      ),
+    ).toBeVisible({ timeout: OFFLINE_BOUND_MS });
+    await page.screenshot({ path: testInfo.outputPath("offline-space-390.png") });
   } finally {
     reconnect();
   }

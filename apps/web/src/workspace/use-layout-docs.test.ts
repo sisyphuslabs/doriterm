@@ -1,12 +1,15 @@
 import { expect, test } from "bun:test";
 import { HcRpcError, type JsonValue, type MachineView } from "@doriface/protocol";
 import { LayoutDoc } from "@doriface/protocol/layout";
+import { graceViews, OFFLINE_GRACE_MS } from "./machine-grace.ts";
+import { machineCause } from "./machine-cause.ts";
+import { stateLabel } from "./machines.ts";
 import { docCalls, docEdit, noEditsWhy } from "./use-layout-docs.ts";
 
 const noChange = (): null => null;
 
 test("a machine with no live document refuses an edit with why, instead of passing it off as one that no longer applies", async () => {
-  await expect(docEdit(undefined)(noChange)).rejects.toThrow("the machine is not connected");
+  await expect(docEdit(undefined)(noChange)).rejects.toThrow("the machine is offline");
   const changes: unknown[] = [];
   const live = { edit: (change: unknown) => (changes.push(change), Promise.resolve(true)) };
   expect(await docEdit(live)(noChange)).toBe(true);
@@ -130,15 +133,32 @@ test.each(["unavailable", "conflict", "machine_unknown"])(
 
 const listed = (id: string, state: string): MachineView => ({ ...machine(id, id), state });
 
+test("past the reconnect grace the edit reason agrees with the sidebar's offline state and notice (#2590)", () => {
+  const dropped = listed("m1", "unreachable");
+  const shown = graceViews([dropped], new Map([["m1", 1_000]]), 1_000 + OFFLINE_GRACE_MS);
+  const view = shown[0];
+  expect(view).toBeDefined();
+  if (view === undefined) return;
+  expect(stateLabel(view.state)).toBe("offline");
+  expect(machineCause({ ...view, name: "the machine" })?.title).toBe("the machine is offline");
+  expect(noEditsWhy("m1", shown)).toBe("the machine is offline");
+});
+
+test("inside the reconnect grace the edit reason agrees with the sidebar and does not say offline (#2590)", () => {
+  const shown = graceViews([listed("m1", "unreachable")], new Map([["m1", 1_000]]), 1_000 + OFFLINE_GRACE_MS - 1);
+  expect(shown.map((view) => stateLabel(view.state))).toEqual(["reconnecting"]);
+  expect(noEditsWhy("m1", shown)).toBe("the machine is reconnecting");
+});
+
 test("a machine held through a redial refuses its edits as reconnecting, as its row reads reconnecting (#918)", async () => {
   expect(noEditsWhy("m1", [listed("m1", "reconnecting")])).toBe("the machine is reconnecting");
-  expect(noEditsWhy("m1", [listed("m1", "connected")])).toBe("the machine is reconnecting");
+  expect(noEditsWhy("m1", [listed("m1", "connected")])).toBe("the layout is loading");
   await expect(docEdit(undefined, "the machine is reconnecting")(noChange)).rejects.toThrow(
     "The layout cannot take changes now: the machine is reconnecting",
   );
 });
 
-test("a machine that reads offline, or is not listed, is not connected", () => {
-  expect(noEditsWhy("m1", [listed("m1", "unreachable")])).toBe("the machine is not connected");
-  expect(noEditsWhy("m1", [])).toBe("the machine is not connected");
+test("a machine that reads offline, or is not listed, has the offline reason", () => {
+  expect(noEditsWhy("m1", [listed("m1", "unreachable")])).toBe("the machine is offline");
+  expect(noEditsWhy("m1", [])).toBe("the machine is offline");
 });

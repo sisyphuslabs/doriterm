@@ -106,11 +106,9 @@ describe("coreCompareAndSet (#896)", () => {
     const send = (method: string): unknown => {
       if (method === "doc.get") return { value: null, version: 1 };
       sets += 1;
-      throw new Error("doc.set failed: the machine is not connected");
+      throw new Error("doc.set failed: the machine is offline");
     };
-    expect(() => coreCompareAndSet(send, { name: DOC }, () => ({ kept: true }))).toThrow(
-      "the machine is not connected",
-    );
+    expect(() => coreCompareAndSet(send, { name: DOC }, () => ({ kept: true }))).toThrow("the machine is offline");
     expect(sets).toBe(1);
   });
 

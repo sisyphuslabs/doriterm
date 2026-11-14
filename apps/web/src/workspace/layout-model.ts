@@ -2,6 +2,7 @@ import type { JsonObject, Terminal } from "@doriface/protocol";
 import { addTab, freshId, type Node, panesOf, tabsOf, terminalBlock } from "@doriface/protocol/layout";
 import { spaceKey, tabKey, type View } from "../layout/view.ts";
 import { looseTerminals } from "./adoption.ts";
+import { offlineReason } from "./machine-state.ts";
 import { machineOf } from "./model.ts";
 import { placeOf } from "./placement.ts";
 import { type MachineIds, tabKey as terminalKey } from "./tab-keys.ts";
@@ -180,7 +181,7 @@ function looseTab(address: string, layouts: readonly MachineLayout[], ids: Machi
     root: { children: [terminalBlock(TRANSIENT, localOf(address))], id: "", type: "row" },
     pinned: false,
     panes: [{ id: TRANSIENT, address, mod: null }],
-    readOnly: owner?.readOnly ?? "the machine is not connected",
+    readOnly: owner?.readOnly ?? offlineReason(),
     transient: true,
   };
 }

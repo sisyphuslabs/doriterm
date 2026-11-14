@@ -3,6 +3,7 @@ import type { JsonObject, MachineView } from "@doriface/protocol";
 import { type DocEdit, type EditShown, type LayoutDoc, storedPins } from "@doriface/protocol/layout";
 import { docCalls } from "../roster/doc-calls.ts";
 import { useRoster } from "../roster/use-roster.ts";
+import { offlineReason } from "./machine-state.ts";
 
 export { docCalls };
 
@@ -26,23 +27,20 @@ export interface MachineLayout {
 /** Why a machine's layout takes no edits while it is still being read. */
 export const LAYOUT_LOADING = "the layout is loading";
 
-const NOT_CONNECTED = "the machine is not connected";
-
 /**
- * Why a machine with no live document takes no edits, in the words its row uses: one the page holds as connected
- * through a redial (the grace from #904) is reconnecting, and its edits are refused as reconnecting rather than as
- * disconnected while its row reads connected or reconnecting (#918); anything else is not connected. An edit is never
- * queued for later.
+ * Why a machine with no live document takes no edits, in the words its row uses: reconnecting only during the
+ * page's grace (#918), loading while connected, and offline once the grace ends. An edit is never queued for later.
  */
 export function noEditsWhy(id: string | null, shown: readonly MachineView[]): string {
   const view = shown.find((machine) => machine.id === id);
-  return view?.state === "connected" || view?.state === "reconnecting" ? "the machine is reconnecting" : NOT_CONNECTED;
+  if (view?.state === "reconnecting") return "the machine is reconnecting";
+  return view?.state === "connected" ? LAYOUT_LOADING : offlineReason();
 }
 
 /** A machine's edits: through its live document, or refused with `why` when it has none. */
 export function docEdit(
   live: Pick<LayoutDoc, "edit"> | undefined,
-  why: string = NOT_CONNECTED,
+  why: string = offlineReason(),
 ): (change: DocEdit, shown?: EditShown) => Promise<boolean> {
   if (live === undefined) return () => Promise.reject(new Error(`The layout cannot take changes now: ${why}`));
   return (change, shown) => live.edit(change, shown);

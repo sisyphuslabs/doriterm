@@ -1,4 +1,5 @@
 import { HC_VERSION_FLOOR, meetsHcFloor, type MachineView } from "@doriface/protocol";
+import { offlineReason } from "./machine-state.ts";
 
 /** What to tell a person about an added machine that needs them: what happened, then why and what to do. */
 export interface MachineCause {
@@ -96,5 +97,5 @@ export function machineCause(
     return { title: `${name} needs a login`, detail };
   }
   const fallback = `${name} isn't answering. Check that it's on and reachable from here. ${KEEPS_TRYING}`;
-  return { title: `${name} is offline`, detail: knownCause(name, view.why ?? "") ?? fallback };
+  return { title: offlineReason(name), detail: knownCause(name, view.why ?? "") ?? fallback };
 }
