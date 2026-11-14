@@ -7,10 +7,12 @@ import {
   LayoutDoc,
   laterRank,
   mergedOrders,
+  MOVED,
   type OrderRank,
   orderRank,
   readOrderDocument,
   stampOrder,
+  storedOrder,
 } from "@doriface/protocol/layout";
 
 type Ready = Extract<DocState, { readonly phase: "ready" }>;
@@ -37,6 +39,7 @@ export class SharedOrder {
   #state: DocState = { phase: "loading" };
   /** Whether machine.list has answered: until then the copies held are the routing core's only, not every machine's. */
   #listed = false;
+  #fresh: { readonly from: string; readonly rank: OrderRank; readonly doc: JsonObject } | null = null;
   #wasSettled = false;
 
   constructor(
@@ -206,6 +209,28 @@ export class SharedOrder {
       if (!this.#listed || [...this.#live.values()].some((doc) => doc.state.phase !== "ready")) return;
       rank = this.#rankAfter(null);
       target = stampOrder(target, rank);
+    } else {
+      // A machine that was offline at the one-time merge joins later with its own unstamped order: merged in, not
+      // overwritten (#2534 review).
+      const late = ready.filter(({ state: copy }) => orderRank(copy.doc) === null && storedOrder(copy.doc) !== null);
+      const merged = late.length === 0 ? null : mergedOrders([target, ...late.map(({ state: copy }) => copy.doc)]);
+      const grown = merged !== null && merged.length > (storedOrder(target) ?? []).length;
+      // An older client's move ranks only one past the write it was made on, so its next move would tie with copies of
+      // this one: it is stamped afresh, and every copy, the one it was made on too, is brought up (#2534 review).
+      if (grown || rank.by.startsWith(MOVED)) {
+        // Stamped once per order it starts from, so a bring-up run again before the writes land writes the same one.
+        const from = JSON.stringify([rank, grown ? merged : storedOrder(target)]);
+        if (this.#fresh?.from !== from) {
+          const fresh = this.#rankAfter(rank);
+          this.#fresh = {
+            from,
+            rank: fresh,
+            doc: stampOrder(grown ? { ...target, machine_order: [...merged] } : target, fresh),
+          };
+        }
+        rank = this.#fresh.rank;
+        target = this.#fresh.doc;
+      }
     }
     for (const { id, state: copy } of ready) {
       if (!laterRank(rank, orderRank(copy.doc)) || sameRank(this.#raising.get(id) ?? null, rank)) continue;

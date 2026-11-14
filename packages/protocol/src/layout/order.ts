@@ -78,6 +78,9 @@ const sameIds = (a: readonly string[], b: readonly string[]): boolean =>
  * written with: a copy whose order differs was moved since by a client that keeps the stamp it found without writing its
  * own (a version before the shared order), and ranks just above the write it was made on and below any later one.
  */
+/** The `by` of a rank a copy has when an older client moved it: what follows is the order it holds. */
+export const MOVED = "moved:";
+
 export function orderRank(doc: JsonObject | null): OrderRank | null {
   const stamp = doc?.[STAMP_FIELD];
   if (!isJsonObject(stamp)) return null;
@@ -87,7 +90,7 @@ export function orderRank(doc: JsonObject | null): OrderRank | null {
   if (sameIds(written, storedOrder(doc) ?? [])) return { n, at, by };
   // Two copies moved this way on top of the same write tie on n and at; the order itself breaks the tie, so every
   // device picks the same one whichever copy it reads first (#2534 review).
-  return { n: n + 1, at: 0, by: `moved:${(storedOrder(doc) ?? []).join(",")}` };
+  return { n: n + 1, at: 0, by: `${MOVED}${(storedOrder(doc) ?? []).join(",")}` };
 }
 
 /** `doc` as the write `rank` makes it: its order, stamped with the rank and the order it was written with. */

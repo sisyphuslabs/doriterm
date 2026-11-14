@@ -186,4 +186,32 @@ describe("the shared machine order, read from every core as one (#2531)", () => 
     await settled();
     expect(held.order("box")).toEqual(["routing", "box", "lab"]);
   });
+
+  test("an older client's second move holds: the copy it moved is stamped afresh, so the next move ranks above every copy (#2534 review)", async () => {
+    const base = stampOrder({ machine_order: ["routing", "box", "lab"] }, { n: 1, at: 1, by: "d2" });
+    const held = cores({ routing: base, box: base });
+    open(held.calls);
+    await settled();
+    held.write("routing", { ...base, machine_order: ["box", "routing", "lab"] });
+    const shared = open(held.calls);
+    await settled();
+    expect(held.order("box")).toEqual(["box", "routing", "lab"]);
+    const second = held.doc("routing") ?? {};
+    held.write("routing", { ...second, machine_order: ["box", "lab", "routing"] });
+    shared.sync(new Set<string | null>([null, "box"]), true, true);
+    await settled();
+    expect(held.order("routing")).toEqual(["box", "lab", "routing"]);
+    expect(held.order("box")).toEqual(["box", "lab", "routing"]);
+  });
+
+  test("a machine offline at the one-time merge has its own order merged in when it joins, not overwritten (#2534 review)", async () => {
+    const held = cores({ routing: { machine_order: ["routing", "box"] }, box: { machine_order: ["box", "routing"] } });
+    const shared = open(held.calls);
+    await settled();
+    held.write("lab", { machine_order: ["lab", "box", "routing"] });
+    shared.sync(new Set<string | null>([null, "box", "lab"]), false, true);
+    await settled();
+    expect(held.order("lab")).toEqual(["routing", "box", "lab"]);
+    expect(held.order("routing")).toEqual(["routing", "box", "lab"]);
+  });
 });

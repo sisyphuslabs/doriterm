@@ -47,6 +47,7 @@ export {
   laterRank,
   mergedOrders,
   moveInOrder,
+  MOVED,
   movedOrder,
   ORDER_DOC,
   orderRank,
