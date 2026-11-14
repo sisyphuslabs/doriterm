@@ -75,10 +75,28 @@ export interface MachineState {
   /** The machines as machine.list last said, with no grace: for checks that must not act on a held state. */
   readonly heard: readonly MachineView[];
   readonly retry: (machine: string) => Promise<void>;
-  /** Removes the machine, then reads machine.list again before it settles, so this page drops it at once; rejects as hc refused. */
+  /** Removes the machine and reads machine.list again before it settles, so this page drops it at once (`removeThenRead`). */
   readonly remove: (machine: string) => Promise<void>;
   /** How many machine.list reads have come back: a tab waits one read before taking a gone terminal as removed. */
   readonly listed: number;
+}
+
+/**
+ * Runs hc's `machine.rm` and settles on its answer alone: rejects as hc refused, resolves once it removed the machine.
+ * The machine.list read after it, so the page drops the machine at once, is best effort and waited for either way; a
+ * read that fails goes to `readFailed`, so a machine that was removed is never reported "not removed" and hc's
+ * refusal is never replaced by the read's error (#2503 review).
+ */
+export async function removeThenRead(
+  rm: () => Promise<unknown>,
+  read: () => Promise<void>,
+  readFailed: (cause: unknown) => void,
+): Promise<void> {
+  try {
+    await rm();
+  } finally {
+    await read().catch(readFailed);
+  }
 }
 
 /** The shared roster's machines as this page shows them: hc's last answer with the redial grace (#904) laid over it. */
@@ -108,13 +126,12 @@ export function useMachines(connection: HcConnection, terminals: readonly Termin
     [connection, refresh],
   );
   const remove = useCallback(
-    async (machine: string) => {
-      try {
-        await connection.call("machine.rm", { machine });
-      } finally {
-        await roster.refreshMachines();
-      }
-    },
+    (machine: string) =>
+      removeThenRead(
+        () => connection.call("machine.rm", { machine }),
+        () => roster.refreshMachines(),
+        (cause) => console.error(`read machine.list after removing ${machine}: ${String(cause)}`),
+      ),
     [connection, roster],
   );
   return {

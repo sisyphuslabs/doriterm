@@ -12,6 +12,7 @@ import {
   switchOn,
   switchTo,
 } from "./machine-switch.ts";
+import { pressShortcut } from "./platform-keys.ts";
 import { readSavedEnv } from "./saved-env.ts";
 
 // A machine added by hand is removed from the app (#2456): one Remove entry where its problem is seen (its offline
@@ -88,6 +89,23 @@ test.describe("removing a machine added by hand", () => {
     await expect(dialog).toBeHidden();
     expect(machineState()).toBe("connected");
     await expect(group(page)).toBeVisible();
+  });
+
+  test("its header menu offers Remove while the sidebar is filtered, where the group cannot move (#2503 review)", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
+    await pressShortcut(page, "layout.filter:sidebar");
+    await page.getByRole("searchbox", { name: "Filter sidebar" }).fill(MACHINE_NAME);
+    await expect(group(page)).not.toHaveAttribute("data-drag-id");
+    await headerHandle(page).click({ button: "right" });
+    await page.getByRole("menuitem", { name: `Remove ${MACHINE_NAME}…` }).click();
+    const dialog = page.getByRole("dialog", { name: QUESTION });
+    await expect(dialog).toContainText(SAYS);
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toBeHidden();
+    expect(machineState()).toBe("connected");
   });
 
   test("its Settings, Machines row offers Remove, and the row leaves once confirmed", async ({ page }) => {
