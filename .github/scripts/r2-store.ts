@@ -93,7 +93,9 @@ export class R2Store implements ObjectStore {
   }
 
   async get(key: string): Promise<StoredItem | null> {
-    const response = await this.send("GET", key, null, {});
+    // An identity read: for a client that accepts gzip, Cloudflare's edge compresses a JSON object and answers with a
+    // weak ETag, which If-Match never matches, so every replace over it would fail with 412.
+    const response = await this.send("GET", key, null, { "accept-encoding": "identity" });
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`R2 GET ${key} answered ${response.status}`);
     return { body: new Uint8Array(await response.arrayBuffer()), etag: response.headers.get("etag") ?? "" };
