@@ -11,7 +11,7 @@ import {
   terminalBlock,
 } from "@doriface/protocol/layout";
 import { loadView, rememberSeen, saveView, tabKey, type Seen, type View } from "../layout/view.ts";
-import { type PaneAt, splitWrite, transientSplitWrite, viewInstead } from "./pane-writes.ts";
+import { type PaneAt, splitWrite, transientSplitWrite, viewInstead, written } from "./pane-writes.ts";
 import {
   buildTabs,
   landingPane,
@@ -32,7 +32,7 @@ import { splitLanding } from "./split-landing.ts";
 import type { TabMove } from "./tab-order.ts";
 import type { Leaving } from "./use-drop-pane.ts";
 import { useTabClose } from "./use-tab-close.ts";
-import { useTabOpening, written } from "./use-tab-opening.ts";
+import { useTabOpening } from "./use-tab-opening.ts";
 import { useTabMoves } from "./use-tab-moves.ts";
 import { LAYOUT_LOADING, type MachineLayout } from "./use-layout-docs.ts";
 
