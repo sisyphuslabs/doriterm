@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import type { DirectReason } from "../connection/direct-attempt.ts";
 import { canForwardPlainWs } from "../connection/direct-forward.ts";
 import { hostFailure } from "../connection/host-failure.ts";
-import { staysOnThisComputer } from "../connection/settings.ts";
+import { type ConnectionSettings, staysOnThisComputer } from "../connection/settings.ts";
 import { connectionStore, useConnection } from "../connection/store.ts";
 import { useOnline } from "../pwa/use-online.ts";
 import { useMachineLine } from "../terminal/use-machine-line.ts";
@@ -33,6 +33,19 @@ export interface ConnectionNotice {
   readonly offline: boolean;
 }
 
+/**
+ * The machine the workspace reconnects to, named while it reaches more than one (#2464): a paired member that drops is
+ * said by name, and the view stays on it. One host has no other to be told apart from, so it is not named.
+ */
+export const reconnectingTo = (settings: Pick<ConnectionSettings, "members" | "hostName">): string =>
+  settings.members.length > 1 ? settings.hostName : "";
+
+/** The short words while the link is redialed: `Reconnecting to studio in 4 s`, or without a name or a countdown. */
+export function reconnectingLabel(machine: string, seconds: number | null): string {
+  const to = machine === "" ? "" : ` to ${machine}`;
+  return seconds === null ? `Reconnecting${to}…` : `Reconnecting${to} in ${seconds} s`;
+}
+
 /** What to say about the workspace's connection while it is not usable, or null while it is. */
 export function useConnectionNotice(): ConnectionNotice | null {
   const state = useConnection();
@@ -46,11 +59,16 @@ export function useConnectionNotice(): ConnectionNotice | null {
   if (state.phase === "open" && state.resuming === true) {
     const why =
       state.resumeFailure === undefined ? "the session carries on where it was." : hostFailure(state.resumeFailure);
-    return { label: "Reconnecting…", detail: `Reconnecting: ${why}`, offline: false };
+    const to = reconnectingTo(connectionStore.settings);
+    return {
+      label: reconnectingLabel(to, null),
+      detail: `Reconnecting${to === "" ? "" : ` to ${to}`}: ${why}`,
+      offline: false,
+    };
   }
   if (state.phase === "open" || state.phase === "unconfigured" || state.phase === "host-failed" || state.stale === null)
     return null;
-  const label = seconds === null ? "Reconnecting…" : `Reconnecting in ${seconds} s`;
+  const label = reconnectingLabel(reconnectingTo(connectionStore.settings), seconds);
   if (failed === null) return { label, detail: label, offline: false };
   const why = failed.settling === true ? failed.error.message : hostFailure(failed.error);
   return { label, detail: `${label}. ${why}`, offline: false };

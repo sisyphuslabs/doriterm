@@ -19,6 +19,8 @@ export interface PaneProps {
   readonly connection: HcConnection;
   readonly terminal: Session;
   readonly focused: boolean;
+  /** On screen: its tab is the selected one and no zoom hides it. A hidden tab's panes stay mounted. */
+  readonly shown: boolean;
   /** This screen asked for this pane: its terminal takes the keyboard as it starts (#332). */
   readonly claimed: boolean;
   /** True when the tab holds more than one pane: unfocused-split-opacity dims only those, and each gets a header. */
@@ -96,6 +98,7 @@ export function Pane(props: PaneProps) {
     connection,
     terminal,
     focused,
+    shown,
     claimed,
     split,
     zoomed,
@@ -111,9 +114,10 @@ export function Pane(props: PaneProps) {
   } = props;
   const title = terminalTitle(terminal);
   const machine = machineOf(terminal.address);
-  // Watched for every pane on screen, so a drop is noticed within a line read, focused or not. Past the grace the pane
-  // body says the machine is offline, and the header no longer says it reconnects.
-  const away = useMachineLine(connection, terminal.address, terminal.offline !== true);
+  // Watched for every pane on screen, so a drop is noticed within a line read, focused or not; a pane in a hidden tab or
+  // behind a zoom has the roster read nothing for it (#2505 review). Past the grace the pane body says the machine is
+  // offline, and the header no longer says it reconnects.
+  const away = useMachineLine(connection, terminal.address, shown && terminal.offline !== true);
   return (
     <section
       aria-label={`${title} terminal`}
