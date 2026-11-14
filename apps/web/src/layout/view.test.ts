@@ -184,3 +184,15 @@ test("a loose tab's key is the same terminal through either core (#2538 review)"
   expect(viewOn(stored, "m").active).toBe("loose:id:c/t7");
   expect(viewOn(stored, "c")).toEqual(throughC);
 });
+
+test("a third machine's tab and space keys are the same through either core (#2538 review)", () => {
+  const throughC: View = {
+    ...NO_VIEW,
+    active: "x/tb-3",
+    focused: { "x/tb-3": "p3" },
+    spaces: { "space:x/s3": "x/tb-3" },
+  };
+  const stored = storedView(throughC, "c");
+  expect(stored).toEqual(throughC);
+  expect(viewOn(stored, "m")).toEqual(throughC);
+});
