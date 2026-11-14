@@ -110,3 +110,29 @@ test("a line read down is dated from the first read that found it down, until it
   lines.heard(connection, [{ name: "rack", state: "connected" }]);
   expect(lines.downSince(connection, "rack")).toBeUndefined();
 });
+
+test("a drop is dated from when a view watches it again, not from a drop before the last view stopped (#2505 review)", () => {
+  let now = 1_000;
+  let machines: { name: string; state: string; why?: string }[] = [{ name: "rack", state: "unreachable" }];
+  const roster = {
+    subscribe: () => () => undefined,
+    get snapshot() {
+      return { machines: { views: machines } };
+    },
+    watchLines: () => () => undefined,
+  };
+  const lines = new MachineLines(
+    () => roster as never,
+    () => now,
+  );
+  const connection = {} as never;
+  const stop = lines.watch(connection);
+  expect(lines.downSince(connection, "rack")).toBe(1_000);
+  stop();
+  // Unwatched, the machine came back and dropped again; the next view must count its grace from now.
+  machines = [{ name: "rack", state: "unreachable" }];
+  now = 60_000;
+  const again = lines.watch(connection);
+  expect(lines.downSince(connection, "rack")).toBe(60_000);
+  again();
+});
