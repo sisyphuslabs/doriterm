@@ -1,5 +1,5 @@
 import type { HcConnection } from "@doriface/client";
-import { compareHcVersions } from "@doriface/protocol";
+import { compareHcVersions, type MachineView } from "@doriface/protocol";
 import { machineOf } from "../workspace/model.ts";
 import { useMachinesContext } from "../workspace/use-machines.ts";
 
@@ -16,13 +16,13 @@ export const REPAINTS_PRIMARY_FROM = "0.1.21";
  * the only copy of the output above the program's command, so the primary screen is left as it is. A core from 0.1.21
  * draws the primary screen again before it enters the alternate one, so the view leaves the alternate screen and clears
  * the primary one too; otherwise each reconnect scrolls one more copy into history and the program's exit shows the
- * redrawn one besides (#2514). An unknown version is read as an older core, which keeps the output rather than doubling
- * it.
+ * redrawn one besides (#2514). Only a plain release (major.minor.patch) counts: an unknown, pre-release or malformed version
+ * is read as an older core, which keeps the output rather than erasing its only copy.
  */
 export function reattachClear(coreVersion: string | undefined): string {
   const version = coreVersion?.replace(/^hc /, "");
   const repaintsPrimary =
-    version !== undefined && /^\d+\.\d+/.test(version) && compareHcVersions(version, REPAINTS_PRIMARY_FROM) >= 0;
+    version !== undefined && /^\d+\.\d+\.\d+$/.test(version) && compareHcVersions(version, REPAINTS_PRIMARY_FROM) >= 0;
   return repaintsPrimary ? "\u001b[?1049l\u001b[H\u001b[J" : "\u001b[H\u001b[J";
 }
 
@@ -30,9 +30,18 @@ export function reattachClear(coreVersion: string | undefined): string {
  * The version of the core that repaints the terminal at `address`: this core's own for its terminals, the added
  * machine's as machine.list last reported it for one of that machine's; undefined while that machine is not listed.
  */
+export function repaintingCore(
+  address: string,
+  ownVersion: string,
+  views: readonly Pick<MachineView, "name" | "version">[],
+): string | undefined {
+  const machine = machineOf(address);
+  if (machine === undefined) return ownVersion;
+  return views.find((view) => view.name === machine)?.version;
+}
+
+/** repaintingCore for a view on this connection, with the machines as the workspace lists them. */
 export function useRepaintingCore(connection: HcConnection, address: string): string | undefined {
   const { views } = useMachinesContext();
-  const machine = machineOf(address);
-  if (machine === undefined) return connection.hello.version;
-  return views.find((view) => view.name === machine)?.version ?? undefined;
+  return repaintingCore(address, connection.hello.version, views);
 }
