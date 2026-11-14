@@ -74,6 +74,8 @@ async function expectDocumentScrolls(page: Page, slot: string, first: RegExp): P
   const { room, listRoom } = await scrolling(page, slot);
   expect(room, "the document scrolls the list").toBeGreaterThan(300);
   expect(listRoom, "the list's own box does not scroll").toBe(0);
+  // The page does not bounce at its ends, so the pinned header and bars stay still there.
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).overscrollBehaviorY)).toBe("none");
   await scrollTo(page, room);
   expect((await view(page, first)).headerTop, "the header stays at the top while the list scrolls").toBe(0);
   expect((await view(page, first)).firstShows).toBe(false);
