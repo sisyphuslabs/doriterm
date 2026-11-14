@@ -45,6 +45,14 @@ function linuxContext(root: string, answer: Answer = () => undefined, options: S
 
 const tools = (root: string) => ({ bun: join(root, "bun"), hc: join(root, "hc"), shell: "/bin/bash" });
 
+/** A system that names the user `dori-user` and where that user does not linger, whatever the tool tries. */
+const notLingering: Answer = (command) =>
+  command.join(" ") === "id -un"
+    ? { stdout: "dori-user\n" }
+    : command[0] === "loginctl" && command.includes("show-user")
+      ? { stdout: "no\n" }
+      : undefined;
+
 const systemctl = (commands: readonly string[]) =>
   commands.filter((command) => command.startsWith("systemctl --user ") && !command.includes("show-environment"));
 
@@ -134,6 +142,31 @@ describe("ensureService's restart rules (#821)", () => {
       "systemctl --user is-active --quiet doriface-host.service",
       "systemctl --user restart doriface-host.service",
     ]);
+  });
+
+  test("lingering is turned on for the user the system names, with the same command as the installer", async () => {
+    const root = home();
+    const paths = setupPaths("linux", root, {}, tools(root));
+    const { context, commands } = linuxContext(root, notLingering);
+    await ensureService(context, paths, false);
+    expect(commands.filter((command) => command.startsWith("loginctl"))).toEqual([
+      "loginctl show-user dori-user -p Linger --value",
+      "loginctl --no-ask-password enable-linger dori-user",
+      "loginctl show-user dori-user -p Linger --value",
+    ]);
+  });
+
+  test("where lingering cannot be turned on, the warning names the command an admin's account can run", async () => {
+    const root = home();
+    const paths = setupPaths("linux", root, {}, tools(root));
+    const { context } = linuxContext(root, notLingering);
+    const warnings: string[] = [];
+    const report: SetupContext["report"] = (step, status, detail) => {
+      if (step === "linger" && status === "warn") warnings.push(detail);
+    };
+    await ensureService({ ...context, report }, paths, false);
+    expect(warnings).toHaveLength(1);
+    expect(warnings.join("\n")).toContain("sudo loginctl enable-linger dori-user");
   });
 
   test("a re-run that changes nothing on a running service reloads and restarts nothing", async () => {

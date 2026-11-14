@@ -35,7 +35,7 @@ What it writes:
 
 Keep the checkout where it is: the host starts other machines' mesh lines through a launcher in its state dir that runs this checkout.
 
-On Linux, a user service stops when you log out unless linger is on. `install` turns it on with `loginctl enable-linger` and says so; if your system asks for an admin, run `sudo loginctl enable-linger $USER` once. `install` also needs a systemd user manager, which a login over ssh or a console session gives you (most containers have none).
+On Linux, a user service stops when you log out unless linger is on. `install` turns it on with `loginctl enable-linger` and says so; if it warns that linger is off, run the command the warning names once (`sudo loginctl enable-linger <user>`). `install` also needs a systemd user manager, which a login over ssh or a console session gives you (most containers have none).
 
 On macOS the LaunchAgent starts at login and restarts the host if it stops.
 
