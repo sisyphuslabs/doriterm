@@ -299,7 +299,10 @@ test.describe("the phone's switch sheet", () => {
     await page.goto("/?v=spaces");
     await page.getByText(name, { exact: true }).click({ timeout: STATE_BOUND_MS });
     await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
-    await page.getByRole("region", { name: "Tabs", exact: true }).getByRole("button", { name: new RegExp(name) }).click();
+    await page
+      .getByRole("region", { name: "Tabs", exact: true })
+      .getByRole("button", { name: new RegExp(name) })
+      .click();
     await page.getByRole("button", { name: /^Switch tab, / }).click({ timeout: STATE_BOUND_MS });
     const sheet = page.getByRole("dialog", { name: "Switch", exact: true });
     await sheet.getByRole("group", { name: "Show" }).getByRole("button", { name: "All spaces", exact: true }).click();

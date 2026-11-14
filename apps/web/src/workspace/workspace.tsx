@@ -17,6 +17,7 @@ import { Palette } from "./palette.tsx";
 import { SessionContext, type SessionAsk } from "./session-context.ts";
 import { SessionDialogs } from "./session-dialogs.tsx";
 import { SpaceClose } from "./space-close-dialog.tsx";
+import { newTabRefusal } from "./space-close.ts";
 import { SpaceRename } from "./space-rename-dialog.tsx";
 import { availableActions } from "./shell-actions.ts";
 import { someoneElseNeedsYou } from "./attention.ts";
@@ -251,6 +252,7 @@ export function Workspace({ connection }: WorkspaceProps) {
     showOnPhone(address);
   };
   const newTabIn = (key: string): void => {
+    if (newTabRefusal(layouts, key) !== null) return;
     const space = spaces.find((each) => each.id === key);
     const near = terminals.find((terminal) => terminal.state === "live" && space?.addresses.includes(terminal.address));
     // The terminal being started holds the keyboard (use-type-ahead): the space's tab in view must not claim it.
