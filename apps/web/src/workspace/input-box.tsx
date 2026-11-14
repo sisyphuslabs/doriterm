@@ -26,7 +26,6 @@ const MAX_HEIGHT_PX = 112;
  */
 export function InputBox({ onSend, draftKey, className, style }: InputBoxProps) {
   const [text, setTextState] = useState(() => drafts.get(draftKey) ?? "");
-  const [focused, setFocused] = useState(false);
   const field = useRef<HTMLTextAreaElement | null>(null);
   const composing = useRef(false);
   const setText = (next: string): void => {
@@ -34,7 +33,8 @@ export function InputBox({ onSend, draftKey, className, style }: InputBoxProps) 
     else drafts.set(draftKey, next);
     setTextState(next);
   };
-  const active = focused || text !== "";
+  // An empty field keeps its pill height, focused or not, so opening Chat does not move it (#2604).
+  const active = text !== "";
   // The field in use is as tall as its wrapped text, up to MAX_HEIGHT_PX; an idle field keeps its pill height (h-11).
   useLayoutEffect(() => {
     const element = field.current;
@@ -82,8 +82,6 @@ export function InputBox({ onSend, draftKey, className, style }: InputBoxProps) 
         aria-label="Type into the terminal"
         onChange={(event) => setText(event.target.value)}
         onKeyDown={onKeyDown}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
         onCompositionStart={() => {
           composing.current = true;
         }}

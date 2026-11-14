@@ -48,14 +48,16 @@ test("the pad and the modifiers send the bytes a hardware keyboard would", async
   // cat -v prints every byte it reads, control bytes as ^X, once a line ends.
   await page.keyboard.type("cat -v\r");
   await key(page, "Arrow keys").click();
-  await key(page, "Up arrow").click();
+  // The pad's own arrows; the same keys also sit fixed beside the keyboard toggle (#2604).
+  const pad = page.getByRole("group", { name: "Arrow keys" });
+  await pad.getByRole("button", { name: "Up arrow" }).click();
   await key(page, "Control").click();
-  await key(page, "Left arrow").click();
+  await pad.getByRole("button", { name: "Left arrow" }).click();
   await key(page, "Shift").click();
   await key(page, "Tab").click();
   await key(page, "Control").click();
   await key(page, "Shift").click();
-  await key(page, "Right arrow").click();
+  await pad.getByRole("button", { name: "Right arrow" }).click();
   await key(page, "Clear screen").click();
   await key(page, "Escape").click();
   await page.keyboard.type("ab");

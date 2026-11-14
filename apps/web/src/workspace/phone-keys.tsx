@@ -1,6 +1,7 @@
-import { DirectionPad, ExtraKeysBar, KeyboardButton, Menu, MenuItem } from "@doriface/ui";
-import { TextSelect } from "lucide-react";
-import { type CSSProperties, type RefObject, useCallback, useRef, useState } from "react";
+import { DirectionPad, ExtraKeysBar, KeyboardButton, keepFocus, Menu, MenuItem } from "@doriface/ui";
+import { Plus, TextSelect, X } from "lucide-react";
+import { type CSSProperties, type RefObject, useCallback, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { activeEntries, specialEntries } from "../keybar/entries.ts";
 import { toExtra } from "../keybar/render.tsx";
 import { useKeyBarSettings } from "../keybar/store.ts";
@@ -15,10 +16,10 @@ export function keysBottom(inset: number): string {
 }
 
 /**
- * The keys bar's own height at rest, which the terminal keeps clear until the bar reports its drawn one: two 2.75rem rows
- * with 0.25rem between them, the panel's 0.25rem padding and 1px border, and 0.25rem above and below it (#1551).
+ * The keys bar's own height at rest, which the terminal keeps clear until the bar reports its drawn one: its one row of
+ * keys in a 3.25rem pill, and 0.25rem above and below it (#2604).
  */
-export const KEYS_BAR_HEIGHT = "6.875rem";
+export const KEYS_BAR_HEIGHT = "3.75rem";
 
 /** How far up from the terminal's bottom the round keyboard button reaches: its 3rem and the gap below it. */
 export const KEYBOARD_BUTTON_CLEARANCE = "calc(max(1rem, calc(var(--safe-bottom) + 0.5rem)) + 3rem)";
@@ -141,12 +142,70 @@ export function PhoneKeys(props: PhoneKeysProps) {
     onKeys?.(true);
     port.current?.focus();
   };
+  // Chat swaps the keys for the composer and takes its field inside the tap, so a phone raises its keyboard for it (#2604).
+  const [chat, setChat] = useState(false);
+  // The pad's left edge, so its middle sits over the Arrow keys button; held inside the screen.
+  const [padAt, setPadAt] = useState<CSSProperties>({ right: 12 });
+  useLayoutEffect(() => {
+    if (!pad) return;
+    const toggle = document.querySelector<HTMLElement>('[aria-label="Terminal keys"] [aria-label="Arrow keys"]');
+    const holder = toggle?.closest<HTMLElement>("[data-keys-place]");
+    if (toggle === null || toggle === undefined || holder === null || holder === undefined) return;
+    const PAD_WIDTH = 168;
+    const box = toggle.getBoundingClientRect();
+    const frame = holder.getBoundingClientRect();
+    const middle = box.left + box.width / 2 - frame.left;
+    setPadAt({ left: Math.max(8, Math.min(frame.width - PAD_WIDTH - 8, middle - PAD_WIDTH / 2)) });
+  }, [pad, open]);
+  const files = useRef<HTMLInputElement | null>(null);
+  const openChat = (): void => {
+    flushSync(() => setChat(true));
+    document.querySelector<HTMLTextAreaElement>('[data-slot="chat-composer"] textarea')?.focus();
+  };
+  const composer = (
+    <div ref={barRef} role="group" aria-label="Chat" data-slot="chat-composer" className="px-1.5 py-1">
+      <div className="flex flex-col gap-1 rounded-[1.625rem] border border-border bg-chrome/95 p-1 shadow-lg backdrop-blur-md">
+        <InputBox className="w-full p-0" draftKey={current} onSend={(text) => port.current?.send(`${text}\r`)} />
+        <div className="flex items-center">
+          <input
+            ref={files}
+            type="file"
+            multiple
+            hidden
+            onChange={(event) => {
+              const picked = [...(event.currentTarget.files ?? [])];
+              event.currentTarget.value = "";
+              if (picked.length > 0) port.current?.pasteFiles(picked);
+            }}
+          />
+          <button
+            type="button"
+            aria-label="Attach files"
+            onMouseDown={keepFocus}
+            onClick={() => files.current?.click()}
+            className="flex size-11 items-center justify-center rounded-full text-foreground outline-none active:bg-selected focus-visible:outline-2 focus-visible:outline-ring [&_svg]:size-5"
+          >
+            <Plus />
+          </button>
+          <button
+            type="button"
+            aria-label="Close chat"
+            onMouseDown={keepFocus}
+            onClick={() => setChat(false)}
+            className="flex size-11 items-center justify-center rounded-full text-foreground outline-none active:bg-selected focus-visible:outline-2 focus-visible:outline-ring [&_svg]:size-5"
+          >
+            <X />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
   const panel = (
     <ExtraKeysBar
       ref={barRef}
-      // Two rows, typing or not (#1551): the Type field and Send across the top, the keys under them.
-      inputActive
+      // One row of keys, with the keyboard up or down; Chat swaps it for the composer (#2604).
       keyboardDown={!open}
+      onChat={openChat}
       onShowKeyboard={raise}
       onShowKeyboardStart={letGo}
       keys={own.map(toExtra)}
@@ -157,9 +216,6 @@ export function PhoneKeys(props: PhoneKeysProps) {
       padOpen={pad}
       onPad={() => onPad(!pad)}
       onPaste={sticky.paste}
-      inputField={
-        <InputBox className="w-full p-0" draftKey={current} onSend={(text) => port.current?.send(`${text}\r`)} />
-      }
       {...(onKeys === undefined
         ? { onHideKeyboard: hideKeyboard }
         : { hideLabel: "Hide keys", onHideKeyboard: () => onKeys(false) })}
@@ -202,17 +258,22 @@ export function PhoneKeys(props: PhoneKeysProps) {
       )}
     />
   );
-  const visible = open || docked !== null;
+  const visible = open || chat || docked !== null;
   // One element in both places, so the Type field keeps its focus and draft as the keyboard comes and goes (#2499).
-  const place: { className: string; style: CSSProperties } = open
+  // The composer rides on the keyboard its field raised, as the keys do (#2604).
+  const riding = open || (chat && inset > 0);
+  const place: { className: string; style: CSSProperties } = riding
     ? { className: "absolute inset-x-0 z-10", style: { bottom: keysBottom(inset) } }
     : { className: "relative z-10 shrink-0", style: { paddingBottom: docked ?? undefined } };
   return (
     <>
       {visible ? (
-        <div className={place.className} style={place.style}>
-          {pad ? <DirectionPad onKey={sticky.press} className="absolute right-3 bottom-full z-10 mb-2" /> : null}
-          {panel}
+        <div data-keys-place className={place.className} style={place.style}>
+          {pad && !chat ? (
+            // The pad floats over the row, centred on its own button (#2604).
+            <DirectionPad onKey={sticky.press} className="absolute bottom-full z-10 mb-2" style={padAt} />
+          ) : null}
+          {chat ? composer : panel}
         </div>
       ) : null}
       {open || onBrowse === undefined ? null : (

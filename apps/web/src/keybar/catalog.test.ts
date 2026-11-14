@@ -60,27 +60,21 @@ const defaultRowOn = (host: "mac" | "other"): readonly string[] => {
   return DEFAULT_KEY_IDS.filter((id) => allowed.has(id)).map((id) => specialKey(id)?.name ?? id);
 };
 
-test("the default bar opens on the same three keys on either host: no gap where a host has no Command", () => {
-  // A Mac hides nothing, so its row starts Control, Command, Shift; a Linux host has no Command key, and the next real
-  // key fills its place rather than Option taking the slot.
-  expect(defaultRowOn("mac").slice(0, 3)).toEqual(["Control", "Command", "Shift"]);
-  expect(defaultRowOn("other").slice(0, 3)).toEqual(["Control", "Shift", "Tab"]);
+test("the default bar opens on Control, Shift, Tab and Escape on either host, as the owner's row has them (#2604)", () => {
+  expect(defaultRowOn("mac").slice(0, 4)).toEqual(["Control", "Shift", "Tab", "Escape"]);
+  expect(defaultRowOn("other").slice(0, 4)).toEqual(["Control", "Shift", "Tab", "Escape"]);
 });
 
-test("the default bar is the modifiers through ^C and Enter (#1551), the arrows, then the keys behind the old swipe", () => {
+test("the default bar is Control, Shift, Tab, Escape, the other modifiers through ^C and Enter, then the keys behind the old swipe: the arrows open from the pad (#2604)", () => {
   expect(DEFAULT_KEY_IDS).toEqual([
     "ctrl",
-    "cmd",
     "shift",
     "tab",
-    "alt",
     "esc",
+    "cmd",
+    "alt",
     "interrupt",
     "enter",
-    "left",
-    "up",
-    "down",
-    "right",
     "tilde",
     "pipe",
     "slash",

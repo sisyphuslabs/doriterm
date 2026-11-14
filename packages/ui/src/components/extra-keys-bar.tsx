@@ -1,17 +1,17 @@
-import { ClipboardPaste, GamepadDirectional, Keyboard, KeyboardOff, List, TextCursorInput } from "lucide-react";
 import {
-  type CSSProperties,
-  type ReactElement,
-  type ReactNode,
-  type Ref,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+  ClipboardPaste,
+  GamepadDirectional,
+  Keyboard,
+  KeyboardOff,
+  List,
+  MessageCircle,
+  TextCursorInput,
+} from "lucide-react";
+import type { CSSProperties, ReactElement, ReactNode, Ref } from "react";
 import { cn } from "../lib/cn.ts";
 import { DEFAULT_EXTRA_KEYS } from "./extra-keys-defaults.tsx";
 import { idleKey, keepFocus, KeyButton, keyTarget as key, latchedKey } from "./extra-key-button.tsx";
+import { useKeyRow } from "./extra-keys-scroll.ts";
 
 export { keepFocus };
 
@@ -27,36 +27,6 @@ export interface ExtraKey {
 const divider = (height: string): ReactElement => (
   <span aria-hidden className={cn("mx-1 w-px shrink-0 bg-border", height)} />
 );
-
-type Fade = "none" | "start" | "end" | "both";
-
-function fadeOf(el: HTMLElement): Fade {
-  const start = el.scrollLeft > 1;
-  const end = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
-  return start && end ? "both" : start ? "start" : end ? "end" : "none";
-}
-
-function useEdgeFade(): [Fade, (el: HTMLDivElement | null) => void] {
-  const [fade, setFade] = useState<Fade>("none");
-  const node = useRef<HTMLDivElement | null>(null);
-  const ref = useCallback((el: HTMLDivElement | null) => {
-    node.current = el;
-    if (el !== null) setFade(fadeOf(el));
-  }, []);
-  useEffect(() => {
-    const el = node.current;
-    if (el === null) return undefined;
-    const update = (): void => setFade(fadeOf(el));
-    el.addEventListener("scroll", update, { passive: true });
-    const observer = new ResizeObserver(update);
-    observer.observe(el);
-    return () => {
-      el.removeEventListener("scroll", update);
-      observer.disconnect();
-    };
-  }, []);
-  return [fade, ref];
-}
 
 export interface ExtraKeysBarProps {
   /**
@@ -91,12 +61,17 @@ export interface ExtraKeysBarProps {
   readonly hideLabel?: string;
   /**
    * The soft keyboard is down while the bar stays on screen (#2499): the slot that hides the keyboard reads Show keyboard
-   * and raises it instead, and nothing else about the bar changes.
+   * and raises it instead.
    */
   readonly keyboardDown?: boolean;
   readonly onShowKeyboard?: () => void;
   /** Show keyboard's press as it lands (a primary pointerdown), a task before `onShowKeyboard` (#2048). */
   readonly onShowKeyboardStart?: (button: HTMLButtonElement, pointerId: number) => void;
+  /**
+   * Opens the composer: a field with Send in place of the keys, for a line written whole before it goes (#2604). Unset
+   * where the bar has none (the Settings preview).
+   */
+  readonly onChat?: () => void;
   /** Wraps the Switch session button, e.g. in the menu it opens. */
   readonly renderSessions?: (trigger: ReactElement) => ReactNode;
   readonly className?: string;
@@ -105,8 +80,8 @@ export interface ExtraKeysBarProps {
 
 /**
  * The phone's terminal keys, one rounded pill riding on the soft keyboard. Everything that scrolls sits in the row on
- * the left: the active pack's keys, the person's own keys behind a divider, the arrow-pad toggle, Switch session and
- * Paste. The two slots on the right never scroll: the input field and the keyboard's toggle. Every key is
+ * the left: the active pack's keys, the person's own keys behind a divider, and Paste. The slots on the right never
+ * scroll: the arrow pad's toggle, Switch session, Chat and the keyboard's toggle (#2604). Every key is
  * a 44 pt target, and pressing one leaves the text focus (and so the keyboard) where it was. A latched modifier inverts
  * to solid ink with a bar under its label, so it reads as on in both themes.
  */
@@ -123,7 +98,7 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
     keyboardDown = false,
   } = props;
   const { onShowKeyboardStart } = props;
-  const [fade, scroller] = useEdgeFade();
+  const keyRow = useKeyRow();
   const textKey = (entry: ExtraKey) => (
     <KeyButton
       key={entry.id}
@@ -157,42 +132,32 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
             : "flex h-[3.25rem] items-center rounded-full",
         )}
       >
-        <div
-          ref={scroller}
-          data-slot="terminal-keys-scroll"
-          data-fade={fade}
-          className={cn(
-            inputActive && "col-start-1 row-start-2 h-11",
-            "flex min-w-0 flex-1 items-center overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-            "data-[fade=end]:[mask-image:linear-gradient(to_right,black_calc(100%-0.75rem),transparent)]",
-            "data-[fade=start]:[mask-image:linear-gradient(to_left,black_calc(100%-0.75rem),transparent)]",
-            "data-[fade=both]:[mask-image:linear-gradient(to_right,transparent,black_0.75rem,black_calc(100%-0.75rem),transparent)]",
-          )}
-        >
-          {packKeys.map(textKey)}
-          {packKeys.length > 0 ? divider("h-5") : null}
-          {keys.map(textKey)}
-          {divider("h-5")}
-          <button
-            type="button"
-            aria-label="Arrow keys"
-            aria-pressed={padOpen}
-            onMouseDown={keepFocus}
-            onClick={props.onPad}
-            className={cn(key, padOpen ? latchedKey : idleKey)}
+        <div className={cn("flex min-w-0 flex-1", inputActive && "col-start-1 row-start-2")}>
+          <div
+            ref={keyRow.row}
+            data-slot="terminal-keys-scroll"
+            data-fade={keyRow.fade}
+            className={cn(
+              inputActive && "h-11",
+              "flex min-w-0 items-center overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+              "data-[fade=end]:[mask-image:linear-gradient(to_right,black_calc(100%-0.75rem),transparent)]",
+              "data-[fade=start]:[mask-image:linear-gradient(to_left,black_calc(100%-0.75rem),transparent)]",
+              "data-[fade=both]:[mask-image:linear-gradient(to_right,transparent,black_0.75rem,black_calc(100%-0.75rem),transparent)]",
+            )}
           >
-            <GamepadDirectional />
-          </button>
-          {props.renderSessions === undefined ? sessions : props.renderSessions(sessions)}
-          <button
-            type="button"
-            aria-label="Paste"
-            onMouseDown={keepFocus}
-            onClick={props.onPaste}
-            className={cn(key, idleKey)}
-          >
-            <ClipboardPaste />
-          </button>
+            {packKeys.map(textKey)}
+            {packKeys.length > 0 ? divider("h-5") : null}
+            {keys.map(textKey)}
+            <button
+              type="button"
+              aria-label="Paste"
+              onMouseDown={keepFocus}
+              onClick={props.onPaste}
+              className={cn(key, idleKey)}
+            >
+              <ClipboardPaste />
+            </button>
+          </div>
         </div>
         {inputActive ? null : divider("h-6")}
         <div className={inputActive ? "contents" : "flex shrink-0 items-center"}>
@@ -209,23 +174,49 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
               <TextCursorInput />
             </button>
           )}
-          <button
-            type="button"
-            aria-label={keyboardDown ? "Show keyboard" : (props.hideLabel ?? "Hide keyboard")}
-            onPointerDown={
-              !keyboardDown || onShowKeyboardStart === undefined
-                ? undefined
-                : (event) => {
-                    if (event.button !== 0 || !event.isPrimary) return;
-                    onShowKeyboardStart(event.currentTarget, event.pointerId);
-                  }
-            }
-            onMouseDown={keepFocus}
-            onClick={keyboardDown ? props.onShowKeyboard : props.onHideKeyboard}
-            className={cn(key, idleKey, inputActive && "col-start-2 row-start-2")}
-          >
-            {keyboardDown ? <Keyboard /> : <KeyboardOff />}
-          </button>
+          <div className={cn("flex items-center", inputActive && "col-start-2 row-start-2")}>
+            {/* The same divider the single row draws before its fixed slots, so the keys keep their width (#2604). */}
+            {inputActive ? divider("h-6") : null}
+            <button
+              type="button"
+              aria-label="Arrow keys"
+              aria-pressed={padOpen}
+              onMouseDown={keepFocus}
+              onClick={props.onPad}
+              className={cn(key, padOpen ? latchedKey : idleKey)}
+            >
+              <GamepadDirectional />
+            </button>
+            {props.renderSessions === undefined ? sessions : props.renderSessions(sessions)}
+            {props.onChat === undefined ? null : (
+              <button
+                type="button"
+                aria-label="Chat"
+                onMouseDown={keepFocus}
+                onClick={props.onChat}
+                className={cn(key, idleKey)}
+              >
+                <MessageCircle />
+              </button>
+            )}
+            <button
+              type="button"
+              aria-label={keyboardDown ? "Show keyboard" : (props.hideLabel ?? "Hide keyboard")}
+              onPointerDown={
+                !keyboardDown || onShowKeyboardStart === undefined
+                  ? undefined
+                  : (event) => {
+                      if (event.button !== 0 || !event.isPrimary) return;
+                      onShowKeyboardStart(event.currentTarget, event.pointerId);
+                    }
+              }
+              onMouseDown={keepFocus}
+              onClick={keyboardDown ? props.onShowKeyboard : props.onHideKeyboard}
+              className={cn(key, idleKey)}
+            >
+              {keyboardDown ? <Keyboard /> : <KeyboardOff />}
+            </button>
+          </div>
         </div>
       </div>
     </div>
