@@ -9,6 +9,7 @@ import { RegionBoundary } from "../crash/region-boundary.tsx";
 import type { TerminalEnd } from "../terminal/terminal-end.ts";
 import type { TerminalPort } from "../terminal/terminal-port.ts";
 import { TerminalView } from "../terminal/terminal-view.tsx";
+import { useMachineLine } from "../terminal/use-machine-line.ts";
 import { MachineOffline } from "./machine-offline.tsx";
 import { machineOf, type Session, terminalTitle } from "./model.ts";
 import { picksPane } from "./pane-focus.ts";
@@ -110,6 +111,8 @@ export function Pane(props: PaneProps) {
   } = props;
   const title = terminalTitle(terminal);
   const machine = machineOf(terminal.address);
+  // Watched for every pane on screen, so a drop is noticed within a line read, focused or not.
+  const away = useMachineLine(connection, terminal.address, terminal.offline !== true);
   return (
     <section
       aria-label={`${title} terminal`}
@@ -142,6 +145,12 @@ export function Pane(props: PaneProps) {
               <h2 title={title} className="min-w-0 truncate">
                 {title}
               </h2>
+              {/* Each pane says its own machine reconnects, in its header, never over its output (#2464 review). */}
+              {away === null ? null : (
+                <span role="status" className="shrink-0 text-muted-foreground">
+                  Reconnecting…
+                </span>
+              )}
               <PaneButtons zoomed={zoomed} onSplit={onSplit} onZoom={onZoom} onClose={onClose} />
             </header>
           }

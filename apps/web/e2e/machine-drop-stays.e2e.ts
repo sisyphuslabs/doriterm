@@ -3,6 +3,7 @@
 // same place with one way on. A drop never moves the person to another tab.
 import type { Locator, Page } from "@playwright/test";
 import { agentRow } from "./agents.ts";
+import { routeHcSocket } from "./hc-socket.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import {
@@ -80,10 +81,12 @@ async function remoteInView(page: Page): Promise<string> {
 
 test.describe("the terminal in view when its machine drops (#2464)", () => {
   let remote = "";
+  let split = "";
   test.afterEach(() => {
     reconnect();
-    if (remote !== "") hcOn("machine", ["kill", remote.slice(MACHINE_NAME.length + 1)]);
+    for (const address of [remote, split]) if (address !== "") hcOn("machine", ["kill", address.slice(MACHINE_NAME.length + 1)]);
     remote = "";
+    split = "";
   });
 
   test("a two-second drop keeps its tab in view and says Reconnecting beside the terminal", async ({ page }) => {
@@ -157,5 +160,53 @@ test.describe("the terminal in view when its machine drops (#2464)", () => {
     await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(1);
     await expect(status).toHaveCount(0);
     await capture(page, "offline-phone");
+  });
+
+  test("an unfocused split pane says its machine reconnects in its own header, not over its output", async ({ page }) => {
+    test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    remote = await remoteInView(page);
+    await page.getByRole("button", { name: "Split right" }).first().click();
+    const other = page.locator('[data-split="true"][data-focused="true"] [data-terminal]');
+    await expect(other).not.toHaveAttribute("data-terminal", remote, { timeout: 15_000 });
+    split = (await other.getAttribute("data-terminal")) ?? "";
+    const unfocused = page.locator('section[data-split="true"][data-focused="false"]');
+    await expect(unfocused.locator(`[data-terminal="${remote}"]`)).toBeVisible();
+
+    blip(2_000);
+    const said = unfocused.locator("header").getByRole("status").filter({ hasText: "Reconnecting" });
+    await expect(said).toBeVisible({ timeout: STATE_BOUND_MS });
+    expect(await overlap(said, unfocused.locator(`[data-terminal="${remote}"]`))).toBe(false);
+    await capture(page, "split-reconnecting-desktop");
+    reconnect();
+    await expect(said).toHaveCount(0, { timeout: STATE_BOUND_MS });
+  });
+});
+
+test.describe("the host link in view stays down past its grace (#2464 review)", () => {
+  test("it says why as text beside one Try again, and the workspace stays", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const socket = await routeHcSocket(page);
+    await page.goto("/");
+    const terminal = await openNewTerminal(page);
+    await socket.drop(true);
+    const bar = page.getByRole("contentinfo");
+    const help = bar.locator("[data-host-down]");
+    await expect(help).toContainText("Your host", { timeout: 15_000 });
+    await expect(bar.getByRole("button", { name: "Try again" })).toHaveCount(1);
+    await expect(bar.getByRole("status").filter({ hasText: "Reconnecting" })).toBeVisible();
+    await expect(terminal).toBeVisible();
+    await capture(page, "host-down-desktop");
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const line = page.locator("[data-host-down]").filter({ visible: true });
+    await expect(line).toContainText("Your host");
+    await expect(line.getByRole("button", { name: "Try again" })).toHaveCount(1);
+    await capture(page, "host-down-phone");
+
+    socket.restore();
+    await expect(page.locator("[data-host-down]")).toHaveCount(0, { timeout: 15_000 });
   });
 });

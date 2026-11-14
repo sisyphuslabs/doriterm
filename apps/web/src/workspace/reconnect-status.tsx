@@ -10,6 +10,7 @@ import { connectionStore, useConnection } from "../connection/store.ts";
 import { useOnline } from "../pwa/use-online.ts";
 import { useMachineLine } from "../terminal/use-machine-line.ts";
 import { HistoryGapLine } from "./history-gap-status.tsx";
+import { HostDownHelp } from "./host-down-help.tsx";
 import { PHONE_LINE, PHONE_LINE_TEXT } from "./phone-line.ts";
 import { RetryButton } from "./retry-button.tsx";
 
@@ -201,7 +202,14 @@ export function ConnectionLine({
   readonly connection?: HcConnection;
 }) {
   const notice = useConnectionNotice();
-  if (notice !== null) return <NoticeLine notice={notice} />;
+  if (notice !== null) {
+    return (
+      <>
+        <NoticeLine notice={notice} />
+        <HostDownHelp phone />
+      </>
+    );
+  }
   if (address === undefined) return null;
   if (connection === undefined) return <HistoryGapLine address={address} />;
   return <TerminalLine connection={connection} address={address} />;
