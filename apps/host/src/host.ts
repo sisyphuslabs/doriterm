@@ -4,6 +4,7 @@ import { lanUrlsFor } from "./lan-urls.ts";
 import { endSweeper } from "./end-sweeper.ts";
 import { createGateway } from "./gateway.ts";
 import { HC_VERSION_FLOOR, meetsHcFloor } from "./hc-install.ts";
+import { watchRevocations } from "./e2ee/revocation-watch.ts";
 import { SpeculativeHello } from "./e2ee/speculative-hello.ts";
 import { HcPipe, readHcVersion } from "./hc-pipe.ts";
 import { openControl } from "./host-control.ts";
@@ -83,6 +84,11 @@ async function serve(
       ? undefined
       : e2eeDeps(stateDir, identity, options.pairingSlots ?? uplink, options, proofs);
   if (e2ee !== undefined) started("mesh sync", () => e2ee.sync.stop());
+  if (e2ee !== undefined && stateDir !== undefined)
+    started(
+      "revocation watch",
+      watchRevocations(stateDir, () => e2ee.sessions.closeRevoked(), options.log),
+    );
   const push =
     stateDir === undefined || e2ee === undefined
       ? undefined

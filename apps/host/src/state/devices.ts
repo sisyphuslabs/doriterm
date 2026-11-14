@@ -1,9 +1,10 @@
 import { base64urlDecode, base64urlEncode, fingerprintOf } from "@doriface/crypto";
 import { join } from "node:path";
-import { ensureStateDir, isRecord, readJson, stringField, writePrivateJson } from "./files.ts";
+import { ensureStateDir, fileStamp, isRecord, readJson, stringField, writePrivateJson } from "./files.ts";
 import { withStateLock } from "./lock.ts";
 
 const FILE = "devices.json";
+export const DEVICES_FILE = FILE;
 
 export interface PairedDevice {
   /** base64url of the device's X25519 static public key. */
@@ -27,6 +28,7 @@ export class DeviceStore {
   readonly #dir: string;
   readonly #path: string;
   readonly #lockTimeoutMs: number | undefined;
+  #paired: { readonly stamp: string; readonly keys: ReadonlySet<string> } | undefined;
 
   constructor(stateDir: string, options: { readonly lockTimeoutMs?: number } = {}) {
     this.#dir = ensureStateDir(stateDir);
@@ -48,6 +50,18 @@ export class DeviceStore {
         pairedAt: stringField(entry, "pairedAt", FILE),
       };
     });
+  }
+
+  /**
+   * The paired keys, for a check on every request: re-read only when devices.json changed on disk, so a revoke written by
+   * another process (`doriface-host devices revoke`) is seen by the next check, at the cost of one stat.
+   */
+  pairedKeys(): ReadonlySet<string> {
+    const stamp = fileStamp(this.#path);
+    if (stamp !== undefined && this.#paired?.stamp === stamp) return this.#paired.keys;
+    const keys = new Set(this.list().map((device) => device.clientStaticPub));
+    this.#paired = stamp === undefined ? undefined : { stamp, keys };
+    return keys;
   }
 
   has(clientStaticPub: Uint8Array): boolean {
