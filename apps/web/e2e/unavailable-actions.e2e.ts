@@ -1,6 +1,7 @@
 // An action that cannot happen now is offered disabled, with its reason, and comes back by itself: never offered and then
 // refused (Q, doriterm qa). A space on a machine that went offline can be neither closed nor renamed until it is back.
 import { devices, type Page } from "@playwright/test";
+import { GUIDE_KEY } from "../src/pair/first-run-guide.ts";
 import { expect, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { seedLayout, seedSpaces } from "./layout-doc.ts";
@@ -147,8 +148,9 @@ test("the first-run guide's Start a terminal is offered disabled while New tab i
   const name = "guide-waits";
   seedMachineSpace(name);
   // The guide is running, at its agent step: its Start a terminal is one more New tab (#2519 review).
-  await page.addInitScript(() =>
-    localStorage.setItem("doriface.firstRunGuide", JSON.stringify({ status: "active", opened: false, key: null })),
+  await page.addInitScript(
+    (key) => localStorage.setItem(key, JSON.stringify({ status: "active", opened: false, key: null })),
+    GUIDE_KEY,
   );
   await routeHcSocket(page);
   await page.goto("/");
@@ -236,14 +238,19 @@ test.describe("the phone's empty terminal list", () => {
     // A saved empty tab keeps its machine selected without a live terminal. PhoneShell shows PhoneEmpty only once
     // terminal.list has answered with no live terminals, on the Agents list rather than a space or terminal screen.
     seedLayout([{ id: "tb-phone-empty", name: "phone-empty", root: [] }], "/tmp", MACHINE_NAME);
-    const socket = await routeHcSocket(page);
+    // A completed layout read proves the saved remote tab is available to be the active tab before the drop.
+    const layoutRead = Promise.withResolvers<void>();
+    await routeHcSocket(page, {
+      received: (frame) => {
+        if (frame.includes("tb-phone-empty")) layoutRead.resolve();
+      },
+    });
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Agents", exact: true })).toBeVisible();
     await expect(page.getByText("No terminals yet", { exact: true })).toBeVisible({ timeout: STATE_BOUND_MS });
     const newTerminal = page.getByRole("button", { name: "New terminal", exact: true });
     const newTab = page.getByRole("button", { name: "New tab", exact: true });
-    // A completed layout read proves the saved remote tab is available to be the active tab before the drop.
-    await expect.poll(() => socket.received().some((frame) => frame.includes("tb-phone-empty"))).toBe(true);
+    await layoutRead.promise;
     await expect(newTerminal).toBeEnabled();
     try {
       switchTo("drop");
