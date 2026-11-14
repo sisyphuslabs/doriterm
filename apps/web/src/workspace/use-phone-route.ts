@@ -2,7 +2,7 @@ import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef } from "react";
 import { guideStore } from "../pair/first-run-guide.ts";
 import { hasLaunchNotice, hasPendingNotice, useLaunchTapPending } from "../push/notice-open.ts";
-import { keepsPlace, loadPhonePlace, placeStart, savePhonePlace } from "./phone-place.ts";
+import { keepsPlace, loadPhonePlace, placeStart, rekeyPlace, savePhonePlace } from "./phone-place.ts";
 import {
   PHONE_LIST,
   type PhoneRoute,
@@ -13,8 +13,7 @@ import {
   phoneRoute,
   rememberOpenKey,
 } from "./phone-route.ts";
-import { spaceKeyOn, storedSpaceKey } from "../layout/view-keys.ts";
-import { type MachineIds, storedTerminalKey, tabAddress, tabKey, terminalKeyOn } from "./tab-keys.ts";
+import { type MachineIds, tabAddress, tabKey } from "./tab-keys.ts";
 
 /** The phone's navigation: what it shows, from the route, and the moves between its screens. */
 export interface PhoneNavigation {
@@ -81,6 +80,8 @@ const ENTRY_INDEX = "__TSR_index";
 declare module "@tanstack/react-router" {
   interface HistoryState {
     readonly phoneUnder?: string;
+    /** The core this page went through when it made the entry: its `?s=`/`?t=` are keyed for it (#2588). */
+    readonly phoneCore?: string;
   }
 }
 
@@ -127,23 +128,31 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
       // A push records the place it leaves, the entry now under it; a replace keeps the record of the entry it replaces,
       // because what sits under it has not changed.
       const below = replace ? under : path === "/" ? phoneHref(listed) : null;
-      void navigate({ href: phoneHref(next), replace, state: () => (below === null ? {} : { phoneUnder: below }) });
+      const made = ids.core ?? "";
+      void navigate({
+        href: phoneHref(next),
+        replace,
+        state: () => ({
+          ...(below === null ? {} : { phoneUnder: below }),
+          ...(made === "" ? {} : { phoneCore: made }),
+        }),
+      });
     },
-    [listed, navigate, path, under],
+    [ids.core, listed, navigate, path, under],
   );
-  // The open space and terminal in the address are keyed for the core the page goes through: when the route moves
-  // mid-session the address is re-keyed in place (replaced, no new entry), as the view is (#2538 review).
+  // The open space and terminal in the address are keyed for the core the page went through when the entry was made
+  // (its own history state, or the route this load started on): an entry made through another core - this one after a
+  // mid-session route move, or an earlier one Back lands on - is re-keyed in place, replaced, no new entry (#2588).
   const routedFor = useRef(ids.core ?? "");
+  const entryCore = useRouterState({ select: (state) => state.location.state.phoneCore ?? null });
   useEffect(() => {
-    const was = routedFor.current;
+    const was = entryCore ?? routedFor.current;
     const now = ids.core ?? "";
     routedFor.current = now;
-    if (was === now || was === "" || now === "" || path !== "/") return;
-    const rekeyedSpace = route.space === null ? null : spaceKeyOn(storedSpaceKey(route.space, was), now);
-    const rekeyedTerminal = route.terminal === null ? null : terminalKeyOn(storedTerminalKey(route.terminal, was), now);
-    if (rekeyedSpace !== route.space || rekeyedTerminal !== route.terminal)
-      go({ ...route, space: rekeyedSpace, terminal: rekeyedTerminal }, true);
-  }, [go, ids.core, path, route]);
+    if (path !== "/") return;
+    const rekeyed = rekeyPlace(route, was, now);
+    if (rekeyed.space !== route.space || rekeyed.terminal !== route.terminal) go(rekeyed, true);
+  }, [entryCore, go, ids.core, path, route]);
   const back = useCallback(() => {
     // Popping is right when this page pushed the entry in this load, and also when the entry under this one is the very
     // screen Back goes to - which a reload forgets in `landed` but not in the entry's own state (#1153).

@@ -1,6 +1,6 @@
 import { guardedLocalStorage, type StorageLike } from "../storage/guarded.ts";
 import { spaceKeyOn, storedSpaceKey } from "../layout/view-keys.ts";
-import { PHONE_LIST, type PhoneRoute, phoneRoute } from "./phone-route.ts";
+import { PHONE_LIST, type PhoneRoute, phoneHref, phoneRoute } from "./phone-route.ts";
 import { storedTerminalKey, terminalKeyOn } from "./tab-keys.ts";
 
 export const PHONE_PLACE_KEY = "doriface.phone-place";
@@ -55,6 +55,22 @@ export function placeStart(facts: PlaceStartFacts): "restore" | "stay" | "wait" 
  * whatever the route lands on next (the restored place, or a notice opened over it) is kept, so saving never stalls.
  */
 export const keepsPlace = (place: string, restoring: boolean): boolean => !(restoring && place === "/");
+
+/** A place made through core `from` as the page keys it through core `to` (#2588): the same space and terminal. */
+export function rekeyPlace(route: PhoneRoute, from: string, to: string): PhoneRoute {
+  if (from === "" || to === "" || from === to) return route;
+  return {
+    ...route,
+    space: route.space === null ? null : spaceKeyOn(storedSpaceKey(route.space, from), to),
+    terminal: route.terminal === null ? null : terminalKeyOn(storedTerminalKey(route.terminal, from), to),
+  };
+}
+
+/** An address (`/?s=...&t=...`) made through core `from`, as it reads through core `to`. */
+export function rekeyPlaceHref(href: string, from: string, to: string): string {
+  const search = Object.fromEntries(new URL(href, "http://x").searchParams);
+  return phoneHref(rekeyPlace(phoneRoute(search), from, to));
+}
 
 /** Keeps the phone's place for the next cold start on `/`; the sheet is left out. */
 export function savePhonePlace(route: PhoneRoute, core: string, storage: StorageLike = guardedLocalStorage()): void {
