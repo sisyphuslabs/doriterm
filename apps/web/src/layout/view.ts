@@ -1,6 +1,6 @@
 import { isJsonObject } from "@doriface/protocol";
 import { browserStorage, guardedLocalStorage } from "../storage/guarded.ts";
-import { storedView, viewOn } from "./view-keys.ts";
+import { storedSeen, storedView, viewOn } from "./view-keys.ts";
 
 /** A terminal's address to the moment of a finish this screen has shown: herdr-app's seen attention (`view.json`). */
 export type Seen = Readonly<Record<string, string>>;
@@ -50,14 +50,65 @@ function parsedView(text: string | null): View | null {
   };
 }
 
+/** The per-host views saved before #2537 (`doriface.view.<core id>`), by the core each was saved through. */
+export function perHostViews(
+  storage: Pick<Storage, "getItem" | "key" | "length"> | undefined = Reflect.get(globalThis, "localStorage"),
+): readonly string[] {
+  const cores: string[] = [];
+  try {
+    for (let at = 0; at < (storage?.length ?? 0); at += 1) {
+      const key = storage?.key(at);
+      if (key?.startsWith(`${VIEW_KEY}.`) === true) cores.push(key.slice(VIEW_KEY.length + 1));
+    }
+  } catch {
+    return [];
+  }
+  return cores;
+}
+
+/** An old per-host view in the stored form: its bare keys, seen marks included, are the core it was saved through. */
+function fromPerHost(view: View, core: string): View {
+  const stored = storedView(view, core);
+  return { ...stored, seen: storedSeen(view.seen, core, { byName: new Map(), byId: new Map() }) };
+}
+
 /**
- * This device's view, keyed as this page keys it when it goes through `core`. A device that has only the per-host view
- * saved before #2537 starts from the one it kept for this host, whose bare keys are this host's.
+ * This device's view, keyed as this page keys it when it goes through `core` (seen marks stay in the stored form, see
+ * `seenOn`). A device with only the per-host views saved before #2537 starts from all of them merged, the one it kept
+ * for this host winning where they overlap.
  */
-export function loadView(core: string, storage: Pick<Storage, "getItem"> = guardedLocalStorage()): View {
+export function loadView(
+  core: string,
+  storage: Pick<Storage, "getItem"> = guardedLocalStorage(),
+  oldCores: readonly string[] = perHostViews(),
+): View {
   const stored = parsedView(storage.getItem(VIEW_KEY));
   if (stored !== null) return viewOn(stored, core);
-  return parsedView(storage.getItem(perHostKey(core))) ?? NO_VIEW;
+  const merged = [...oldCores.filter((old) => old !== core), core].reduce<View>((into, old) => {
+    const view = parsedView(storage.getItem(perHostKey(old)));
+    if (view === null) return into;
+    const kept = fromPerHost(view, old);
+    return {
+      active: old === core ? kept.active : into.active,
+      focused: { ...into.focused, ...kept.focused },
+      zoomed: { ...into.zoomed, ...kept.zoomed },
+      spaces: { ...into.spaces, ...kept.spaces },
+      seen: { ...into.seen, ...kept.seen },
+    };
+  }, NO_VIEW);
+  return viewOn(merged, core);
+}
+
+/** Drops the per-host views once the device's one view is saved; a storage that refuses leaves them, unread. */
+export function dropPerHostViews(
+  oldCores: readonly string[] = perHostViews(),
+  storage: Pick<Storage, "removeItem"> = browserStorage("localStorage"),
+): void {
+  try {
+    for (const old of oldCores) storage.removeItem(perHostKey(old));
+  } catch {
+    // Left behind, they are never read again: the one view is what loads.
+  }
 }
 
 /**

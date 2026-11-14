@@ -79,10 +79,31 @@ export function colorsOn(saved: Readonly<Record<string, AvatarColor>>, core: str
 const storedColors = (colors: Readonly<Record<string, AvatarColor>>, core: string): Record<string, AvatarColor> =>
   Object.fromEntries(Object.entries(colors).map(([key, color]) => [storedSpaceKey(key, core), color]));
 
+/**
+ * The colours saved before #2537 (space keys bare for the host the page went through, `space:s1`) rewritten by
+ * permanent id as the host this page goes through now, or null when none is left. Read the first time a page knows its
+ * core, so an old space keeps its colour through a later route change.
+ */
+export function colorsByCore(
+  saved: Readonly<Record<string, AvatarColor>>,
+  core: string,
+): Record<string, AvatarColor> | null {
+  const bare = Object.keys(saved).filter((key) => storedSpaceKey(key, core) !== key);
+  if (core === "" || bare.length === 0) return null;
+  return Object.fromEntries(Object.entries(saved).map(([key, color]) => [storedSpaceKey(key, core), color]));
+}
+
 /** Each listed space's colour; a new space gets one (and the choice is saved) the first time it is listed. */
 export function useSpaceColors(ids: readonly string[], core: string): Readonly<Record<string, AvatarColor>> {
   const saved = useSyncExternalStore(sidebarPrefs.subscribe, () => sidebarPrefs.value.colors);
-  const shown = colorsOn(saved, core);
+  const migrated = colorsByCore(saved, core);
+  if (migrated !== null) {
+    queueMicrotask(() => {
+      const again = colorsByCore(sidebarPrefs.value.colors, core);
+      if (again !== null) sidebarPrefs.update({ colors: again });
+    });
+  }
+  const shown = colorsOn(migrated ?? saved, core);
   if (ids.every((id) => shown[id] !== undefined)) return shown;
   // Until the page knows the host it goes through, nothing can be saved by permanent id.
   if (core === "") return assignColors(shown, ids);
