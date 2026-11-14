@@ -12,7 +12,10 @@ import { installShellForwarder, type ShellForwarder } from "./direct-forward.tes
 import { DEFAULT_SETTINGS } from "./settings.ts";
 
 const CLI = join(import.meta.dir, "..", "..", "..", "host", "src", "cli.ts");
-/** How long this fixture's core takes to answer, so the framed hello is still in flight when the direct budget runs out. */
+/**
+ * How long this fixture's core takes to answer, so the framed hello is still in flight when the direct budget runs out.
+ * Every call to it stalls, the relay session's own hello included, so a correct client takes about one stall (#2614).
+ */
 const STALL_MS = 3_000;
 const stateDir = mkdtempSync(join(tmpdir(), "dw-direct-budget-"));
 const scriptDir = mkdtempSync(join(tmpdir(), "dw-direct-budget-bin-"));
@@ -92,6 +95,7 @@ test("the desktop shell's host that proves its key and then stalls the hello is 
   const elapsed = performance.now() - started;
   expect(opened.path).toBe("relay");
   expect(opened.directReason).toBe("no-answer");
-  expect(elapsed).toBeLessThan(STALL_MS + 2_000);
+  // The relay's own hello stalls once; a client that also waited for the stalled direct hello takes two stalls or more.
+  expect(elapsed).toBeLessThan(2 * STALL_MS);
   opened.connection.close();
 }, 60_000);
