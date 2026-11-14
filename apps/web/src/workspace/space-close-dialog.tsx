@@ -4,6 +4,7 @@ import { Button, Dialog, Notice } from "@doriface/ui";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { ListedSpace } from "./model.ts";
 import { NotNowLine } from "./not-now-line.tsx";
+import { linkDownWhy, useConnectionNotice } from "./reconnect-status.tsx";
 import { closeCounts, closeRefusal, closeSpace, type SpaceCloseDrops, newTabRefusal } from "./space-close.ts";
 import { SpaceCloseContext, type SpaceClosing } from "./space-close-context.ts";
 import { sessionCalls } from "./session-actions.ts";
@@ -60,9 +61,15 @@ export function SpaceClose({
   const latest = useRef({ terminals, layouts, spaces });
   latest.current = { terminals, layouts, spaces };
   // From this render's layouts, so the menu's Close follows the machine going and coming back.
+  // While this device's link is down nothing can start a terminal in any space either (#2574 review).
+  const linkWhy = linkDownWhy(useConnectionNotice(), connection.hello.core.name);
   const closing = useMemo<SpaceClosing>(
-    () => ({ ask: onAsk, refusal: (id) => closeRefusal(layouts, id), newRefusal: (id) => newTabRefusal(layouts, id) }),
-    [onAsk, layouts],
+    () => ({
+      ask: onAsk,
+      refusal: (id) => closeRefusal(layouts, id),
+      newRefusal: (id) => linkWhy ?? newTabRefusal(layouts, id),
+    }),
+    [onAsk, layouts, linkWhy],
   );
   // A question opened before the machine went away cannot close it now: Close waits, disabled, and comes back by itself.
   const refused = ask === null || busy ? null : closeRefusal(layouts, ask);

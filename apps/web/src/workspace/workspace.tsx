@@ -8,6 +8,7 @@ import { ShortcutsHelp } from "../keys/shortcuts-dialog.tsx";
 import type { Axis } from "@doriface/protocol/layout";
 import { closesTab, type TerminalEnd } from "../terminal/terminal-end.ts";
 import { CloseTabDialog } from "./close-tab-dialog.tsx";
+import { linkDownWhy, useConnectionNotice } from "./reconnect-status.tsx";
 import { stillClosing } from "./close-set.ts";
 import { AddMachineDialog } from "./add-machine-dialog.tsx";
 import { guideStore } from "../pair/first-run-guide.ts";
@@ -142,11 +143,13 @@ export function Workspace({ connection }: WorkspaceProps) {
   useAdoptLoose(connection, layouts, fed.loaded ? terminals : null, failed);
   const narrow = useNarrow();
   const ids = useMemo(() => machineIds(views), [views]);
+  // While this device's own link is down (the Reconnecting or Offline notice), nothing can start a terminal: New tab waits.
+  const linkWhy = linkDownWhy(useConnectionNotice(), connection.hello.core.name);
   // New tab starts on the machine of the tab in view and waits only while that machine is past its reconnect grace.
   // A reachable machine whose layout takes no edits still starts a terminal, kept on this screen by keepHere (#2569).
-  const newDisabled = layout.active?.offline ?? false;
+  const newDisabled = linkWhy !== null || (layout.active?.offline ?? false);
   // Why, beside every control that starts one: the tab's own refusal, the one source every reason line reads.
-  const newWhy = newDisabled ? (layout.active?.readOnly ?? "the machine is not connected") : null;
+  const newWhy = linkWhy ?? (newDisabled ? (layout.active?.readOnly ?? "the machine is not connected") : null);
   const phone = usePhoneRoute(narrow, ids);
   const { open: phoneOpen, show: showOnPhone } = phone;
   const phoneTab = phoneOpen === null ? null : findTerminal(layout.tabs, phoneOpen);

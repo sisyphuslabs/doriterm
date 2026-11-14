@@ -29,6 +29,12 @@ export interface ConnectionNotice {
   readonly offline: boolean;
 }
 
+/** Why nothing can start on this device's core while its link is down, or null while the link is up (#2574 review). */
+export function linkDownWhy(notice: ConnectionNotice | null, core: string): string | null {
+  if (notice === null) return null;
+  return notice.offline ? "this device is offline" : `${core} is reconnecting`;
+}
+
 /** What to say about the workspace's connection while it is not usable, or null while it is. */
 export function useConnectionNotice(): ConnectionNotice | null {
   const state = useConnection();
