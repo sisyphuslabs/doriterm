@@ -7,9 +7,16 @@ import type { MachineLayout } from "./use-layout-docs.ts";
 
 /** Why space `id` cannot be closed now: its layout takes no edits (or it is gone); null when it can. */
 export function closeRefusal(layouts: readonly MachineLayout[], id: string): string | null {
-  const place = spacePlace(layouts, id);
-  if (place === undefined) return "This space is no longer in the layout.";
-  const { readOnly } = place.layout;
+  if (spacePlace(layouts, id) === undefined) return "This space is no longer in the layout.";
+  return editWait(layouts, id);
+}
+
+/**
+ * Why space `id`'s layout takes no edits now (its machine cannot take them), or null: the wait that comes back by
+ * itself. A space no longer in the layout is no such wait, so this is null for it (#2466 review).
+ */
+export function editWait(layouts: readonly MachineLayout[], id: string): string | null {
+  const readOnly = spacePlace(layouts, id)?.layout.readOnly ?? null;
   return readOnly === null ? null : `The layout cannot take changes now: ${readOnly}`;
 }
 

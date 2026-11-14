@@ -26,6 +26,7 @@ import type { SessionVerb } from "./use-app-actions.ts";
 import { useMachineRuns } from "./use-machine-runs.ts";
 import { PIN_LABEL, spacesInOrder } from "./sidebar-model.ts";
 import { PinContext, type PinTerminal } from "./use-pin.ts";
+import { machineGone } from "./machine-grace.ts";
 import { MachinesContext, useMachines } from "./use-machines.ts";
 import { runParamsFor } from "./new-terminal.ts";
 import { useNarrow } from "./use-narrow.ts";
@@ -147,9 +148,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   const activeMachine = layout.active?.machine ?? null;
   const activeView =
     activeMachine === null ? undefined : views.find((v) => v.name === activeMachine || v.id === activeMachine);
-  const newDisabled =
-    (layout.active?.readOnly ?? null) !== null ||
-    (activeView !== undefined && activeView.state !== "connected" && activeView.state !== "reconnecting");
+  const newDisabled = (layout.active?.readOnly ?? null) !== null || machineGone(activeView?.state);
   const phone = usePhoneRoute(narrow, ids);
   const { open: phoneOpen, show: showOnPhone } = phone;
   const phoneTab = phoneOpen === null ? null : findTerminal(layout.tabs, phoneOpen);

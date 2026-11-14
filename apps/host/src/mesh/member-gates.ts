@@ -19,7 +19,10 @@ export interface Gate {
    * delivered until it returns.
    */
   readonly cause: "reconnecting" | "offline" | "rate-limited" | "refused";
-  /** In a row: refusals in the grace while reconnecting, refused handshakes while refused, probes missed offline. */
+  /**
+   * In a row: refusals in the grace while reconnecting, refused handshakes since it was last reached while refused,
+   * probes missed offline.
+   */
   readonly misses: number;
   readonly nextAt: number;
   /** When the last dial that set this gate failed: return from this host's own outage drops gates set during it. */
@@ -46,6 +49,11 @@ export class MemberGates {
   readonly #firstMiss = new Map<string, number>();
   /** Members a dial or a session reached and no dial has since found offline. */
   readonly #reached = new Set<string>();
+  /**
+   * Each revoked member's refused handshakes since it was last reached: the step of its long backoff (#2449). A plain
+   * miss between two refusals keeps it, so the backoff goes on from there rather than starting over at 1 h.
+   */
+  readonly #refusals = new Map<string, number>();
 
   constructor(clock: Clock, limits: GateLimits, onProbeDue: (member: string) => void) {
     this.#clock = clock;
@@ -65,6 +73,7 @@ export class MemberGates {
   reached(member: string): void {
     this.#gates.delete(member);
     this.#firstMiss.delete(member);
+    this.#refusals.delete(member);
     this.#reached.add(member);
   }
 
@@ -83,7 +92,14 @@ export class MemberGates {
     }
     this.#reached.delete(member);
     const misses = probesMissed(gate);
-    const wait = Math.min(this.#limits.probeFirstMs * 2 ** misses, this.#limits.probeMaxMs);
+    // A revoked member that refused its handshake and now does not answer at all still owes the same revoke: it waits
+    // its long backoff's step again, not the 30 s..5 min probe wait, so one that is often off is not dialed between
+    // refusals on the offline schedule (#2454 review).
+    const refusals = this.#refusals.get(member);
+    const wait =
+      refusals === undefined
+        ? Math.min(this.#limits.probeFirstMs * 2 ** misses, this.#limits.probeMaxMs)
+        : this.#refusedWait(refusals - 1);
     this.#set(member, { cause: "offline", misses: misses + 1, nextAt: now + wait, lastMissAt: now });
   }
 
@@ -97,11 +113,20 @@ export class MemberGates {
   /** A revoked member answered and refused the handshake: gated on its own long backoff until presence (#2449). */
   refused(member: string): void {
     const now = this.#clock.now();
-    const gate = this.#gates.get(member);
-    const refusals = gate?.cause === "refused" ? gate.misses : 0;
-    const wait = Math.min(this.#limits.refusedFirstMs * 2 ** refusals, this.#limits.refusedMaxMs);
+    const refusals = this.#refusals.get(member) ?? 0;
+    this.#refusals.set(member, refusals + 1);
     this.#reached.delete(member);
-    this.#set(member, { cause: "refused", misses: refusals + 1, nextAt: now + wait, lastMissAt: now });
+    this.#set(member, {
+      cause: "refused",
+      misses: refusals + 1,
+      nextAt: now + this.#refusedWait(refusals),
+      lastMissAt: now,
+    });
+  }
+
+  /** The long backoff's wait after `refusals` earlier refused handshakes: 1 h, doubling to the 6 h cap. */
+  #refusedWait(refusals: number): number {
+    return Math.min(this.#limits.refusedFirstMs * 2 ** refusals, this.#limits.refusedMaxMs);
   }
 
   /** This host was itself offline since `downSince`: what its dials met meanwhile says nothing about the members. */

@@ -177,6 +177,31 @@ describe("a reached member that refuses a dial is reconnecting before it is offl
   });
 });
 
+describe("a revoked member that refuses its handshake and then does not answer at all (#2454 review)", () => {
+  const HOUR_MS = DIAL_LIMITS.refusedFirstMs;
+
+  test("the miss keeps the long backoff's step, and the next refusal doubles it instead of starting at 1 h", async () => {
+    const { clock, dials, due } = policy();
+    dials.report("r", "refused");
+    await clock.advance(HOUR_MS);
+    dials.report("r", 4404);
+    expect(dials.gate("r")).toMatchObject({ cause: "offline", nextAt: 2 * HOUR_MS });
+    await clock.advance(HOUR_MS);
+    dials.report("r", "refused");
+    expect(dials.gate("r")).toMatchObject({ cause: "refused", misses: 2, nextAt: 4 * HOUR_MS });
+    expect(probes(due)).toEqual([HOUR_MS, 2 * HOUR_MS]);
+  });
+
+  test("a member reached again starts its next refusals over at 1 h", () => {
+    const { dials } = policy();
+    dials.report("r", "refused");
+    dials.report("r", "refused");
+    dials.presence("r");
+    dials.report("r", "refused");
+    expect(dials.gate("r")).toMatchObject({ cause: "refused", misses: 1, nextAt: HOUR_MS });
+  });
+});
+
 describe("settle after this host's own outage (S-6)", () => {
   test("lines to members without presence wait 10-20 s; a member that showed presence is dialed at once", async () => {
     const { clock, dials, due } = policy();

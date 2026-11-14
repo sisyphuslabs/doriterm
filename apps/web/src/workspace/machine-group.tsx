@@ -69,10 +69,28 @@ export function MachineGroup({ core, name, reorder, header, onRemove, children }
   const [removing, setRemoving] = useState(false);
   const overrides = useOverrides();
   const keymap = useMemo(() => resolveKeymap(currentPlatform(), overrides), [overrides]);
+  const removeDialog =
+    onRemove === undefined ? null : (
+      <RemoveMachineDialog name={removing ? name : null} onClose={() => setRemoving(false)} onRemove={onRemove} />
+    );
   if (reorder === undefined) {
+    // A filtered list or the icon rail cannot move the group, but its header's menu still offers Remove (#2503 review).
     return (
       <section aria-label={name} className="flex flex-col gap-px">
-        {header(undefined)}
+        {onRemove === undefined ? (
+          header(undefined)
+        ) : (
+          <ContextMenu
+            trigger={
+              <div data-machine-row className="select-none">
+                {header(undefined)}
+              </div>
+            }
+          >
+            <RemoveItem name={name} ask={() => setRemoving(true)} />
+          </ContextMenu>
+        )}
+        {removeDialog}
         {children}
       </section>
     );
@@ -130,9 +148,7 @@ export function MachineGroup({ core, name, reorder, header, onRemove, children }
         keymap={keymap}
         {...(onRemove === undefined ? {} : { remove: { name, ask: () => setRemoving(true) } })}
       />
-      {onRemove === undefined ? null : (
-        <RemoveMachineDialog name={removing ? name : null} onClose={() => setRemoving(false)} onRemove={onRemove} />
-      )}
+      {removeDialog}
       {children}
     </section>
   );
@@ -169,11 +185,17 @@ function GroupMenu({ handle, reorder, button, keymap, remove }: GroupMenuProps) 
       {remove === undefined ? null : (
         <>
           <MenuSeparator />
-          <MenuItem icon={<Trash2 />} destructive onClick={remove.ask}>
-            {removeLabel(remove.name)}
-          </MenuItem>
+          <RemoveItem name={remove.name} ask={remove.ask} />
         </>
       )}
     </ContextMenu>
+  );
+}
+
+function RemoveItem({ name, ask }: { readonly name: string; readonly ask: () => void }) {
+  return (
+    <MenuItem icon={<Trash2 />} destructive onClick={ask}>
+      {removeLabel(name)}
+    </MenuItem>
   );
 }
