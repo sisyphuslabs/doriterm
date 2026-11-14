@@ -97,7 +97,10 @@ export function PhoneSpace({ space, terminals, host, arrive, from, onOpen, onBac
               </SidebarSection>
             </div>
           </div>
-          <div data-pinned="bottom" className="sticky bottom-0 z-10 flex shrink-0 flex-col gap-2 bg-sidebar px-4 pt-2 pb-[max(1rem,calc(var(--safe-bottom)+0.5rem))]">
+          <div
+            data-pinned="bottom"
+            className="sticky bottom-0 z-10 flex shrink-0 flex-col gap-2 bg-sidebar px-4 pt-2 pb-[max(1rem,calc(var(--safe-bottom)+0.5rem))]"
+          >
             {waiting === null ? null : <NotNowLine action="New tab" why={waiting} />}
             <Button
               variant="primary"
@@ -156,23 +159,23 @@ function SpaceFrame(props: {
         className="motion-arrive flex min-h-dvh min-w-0 flex-col bg-sidebar pr-(--safe-right) pl-(--safe-left) [--arrive-from:translateX(1.5rem)]"
       >
         <div data-pinned="top" className="sticky top-0 z-10 bg-sidebar">
-        <header
-          data-titlebar
-          className="flex min-h-[calc(3rem+var(--safe-top))] shrink-0 items-center gap-2 border-b border-border pt-(--safe-top) pr-4 pl-[var(--titlebar-inset-start,0.375rem)]"
-        >
-          <Button
-            variant="ghost"
-            aria-label={`Back to ${props.from}`}
-            className="gap-0.5 px-1.5 text-foreground"
-            onClick={props.onBack}
+          <header
+            data-titlebar
+            className="flex min-h-[calc(3rem+var(--safe-top))] shrink-0 items-center gap-2 border-b border-border pt-(--safe-top) pr-4 pl-[var(--titlebar-inset-start,0.375rem)]"
           >
-            <ChevronLeft aria-hidden />
-            {props.from === "agents" ? "Agents" : "Spaces"}
-          </Button>
-          <div className="flex min-w-0 flex-1 flex-col py-1">{props.title}</div>
-          {props.actions}
-        </header>
-        <ConnectionLine />
+            <Button
+              variant="ghost"
+              aria-label={`Back to ${props.from}`}
+              className="gap-0.5 px-1.5 text-foreground"
+              onClick={props.onBack}
+            >
+              <ChevronLeft aria-hidden />
+              {props.from === "agents" ? "Agents" : "Spaces"}
+            </Button>
+            <div className="flex min-w-0 flex-1 flex-col py-1">{props.title}</div>
+            {props.actions}
+          </header>
+          <ConnectionLine />
         </div>
         <main className="flex min-w-0 flex-1 flex-col">{props.children}</main>
       </div>

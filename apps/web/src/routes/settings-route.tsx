@@ -376,7 +376,13 @@ export function SettingsRoute() {
  * phone a box in the page's flow that the document scrolls (#2533). It is the same element either way, so a resize across
  * the breakpoint keeps the fields in it, their focus and what is half-typed in them (#859, #1160).
  */
-function SettingsBody({ documentScroll, children }: { readonly documentScroll: boolean; readonly children: ReactNode }) {
+function SettingsBody({
+  documentScroll,
+  children,
+}: {
+  readonly documentScroll: boolean;
+  readonly children: ReactNode;
+}) {
   return (
     <ScrollArea
       slot="settings-body"

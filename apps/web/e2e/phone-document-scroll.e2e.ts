@@ -91,7 +91,10 @@ test("at 390, the Agents list, the Spaces list and a space's tabs scroll the doc
     await expect(page.getByRole("button", { name: /doc24/ }).first()).toBeVisible({ timeout: 20_000 });
     await expectDocumentScrolls(page, "agents-list", /^\s*doc\d\d/);
 
-    await page.getByRole("navigation", { name: "Sections" }).getByRole("button", { name: "Spaces", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Sections" })
+      .getByRole("button", { name: "Spaces", exact: true })
+      .click();
     await expect(page.getByRole("heading", { level: 1, name: "Spaces", exact: true })).toBeVisible();
     const space = page.getByRole("button", { name: new RegExp(`^${SPACE}\\b`) }).first();
     await expect(space).toBeVisible({ timeout: 20_000 });
@@ -107,7 +110,10 @@ test("at 390, the Agents list, the Spaces list and a space's tabs scroll the doc
 test("at 390, Settings scrolls the document too, under its pinned title and tabs (#2533)", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
-  await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: /^Settings/ }).click();
+  await page
+    .getByRole("navigation", { name: "Sections" })
+    .getByRole("link", { name: /^Settings/ })
+    .click();
   await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible();
   // The longest section, so the page runs well past one screen.
   await page.getByRole("tab", { name: "Keybindings", exact: true }).click();
@@ -118,7 +124,10 @@ test("at 390, Settings scrolls the document too, under its pinned title and tabs
   const bodyTopUnderPin = () =>
     body.evaluate((el) => {
       const pin = document.querySelector('[data-pinned="top"]')?.getBoundingClientRect();
-      return { pinTop: Math.round(pin?.top ?? -1), bodyShows: el.getBoundingClientRect().top >= (pin?.bottom ?? 0) - 1 };
+      return {
+        pinTop: Math.round(pin?.top ?? -1),
+        bodyShows: el.getBoundingClientRect().top >= (pin?.bottom ?? 0) - 1,
+      };
     });
   await scrollTo(page, room);
   expect(await bodyTopUnderPin()).toEqual({ pinTop: 0, bodyShows: false });

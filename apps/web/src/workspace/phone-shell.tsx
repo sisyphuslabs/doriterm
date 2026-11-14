@@ -125,59 +125,61 @@ export function PhoneShell(props: PhoneShellProps) {
       <div className="flex min-h-dvh min-w-0 flex-col bg-sidebar pr-(--safe-right) pl-(--safe-left)">
         <div data-pinned="top" className="sticky top-0 z-10 bg-sidebar">
           <header
-          data-titlebar
-          className="flex h-[calc(3rem+var(--safe-top))] shrink-0 items-center gap-1 pt-(--safe-top) pr-4 pl-[var(--titlebar-inset-start,1rem)]"
-        >
-          <h1 className="flex-1 text-xl font-semibold text-foreground">{section === "agents" ? "Agents" : "Spaces"}</h1>
-          <IconButton label="Command palette" icon={<Search />} size="md" onClick={onPalette} />
-          {machines.terminalsLoaded && section === "agents" ? <PhoneSortMenu terminals={terminals} /> : null}
-          <IconButton label={NEW_TAB.label} icon={<Plus />} size="md" disabled={props.newDisabled} onClick={onNew} />
+            data-titlebar
+            className="flex h-[calc(3rem+var(--safe-top))] shrink-0 items-center gap-1 pt-(--safe-top) pr-4 pl-[var(--titlebar-inset-start,1rem)]"
+          >
+            <h1 className="flex-1 text-xl font-semibold text-foreground">
+              {section === "agents" ? "Agents" : "Spaces"}
+            </h1>
+            <IconButton label="Command palette" icon={<Search />} size="md" onClick={onPalette} />
+            {machines.terminalsLoaded && section === "agents" ? <PhoneSortMenu terminals={terminals} /> : null}
+            <IconButton label={NEW_TAB.label} icon={<Plus />} size="md" disabled={props.newDisabled} onClick={onNew} />
           </header>
           <ConnectionLine />
         </div>
         {/* The page's one main landmark: the list, under the header (#1378). */}
         <main data-slot="agents-list" className="flex min-w-0 flex-1 flex-col">
-            <FirstRunGuideCard listVisible live={live} ids={ids} onNew={onNew} />
-            {section === "spaces" ? (
-              <RovingLists>
-                <PhoneSpaceLists onOpen={onOpen} />
-              </RovingLists>
-            ) : machines.terminalsLoaded ? (
-              <>
-                {empty ? (
-                  <PhoneEmpty host={connection.hello.core.name} onNew={onNew} onAddMachine={machines.openAddMachine} />
-                ) : null}
-                {empty && onlyThisMachine(machines.entries) ? null : (
-                  <RovingLists>
-                    <AgentLists terminals={terminals} active={null} onOpen={onOpen} heading={false} />
-                  </RovingLists>
-                )}
-              </>
-            ) : machines.terminalsError !== null ? (
-              <TerminalsLoadError cause={machines.terminalsError} onRetry={machines.retryTerminals} />
-            ) : (
-              <PhoneListLoading />
-            )}
+          <FirstRunGuideCard listVisible live={live} ids={ids} onNew={onNew} />
+          {section === "spaces" ? (
+            <RovingLists>
+              <PhoneSpaceLists onOpen={onOpen} />
+            </RovingLists>
+          ) : machines.terminalsLoaded ? (
+            <>
+              {empty ? (
+                <PhoneEmpty host={connection.hello.core.name} onNew={onNew} onAddMachine={machines.openAddMachine} />
+              ) : null}
+              {empty && onlyThisMachine(machines.entries) ? null : (
+                <RovingLists>
+                  <AgentLists terminals={terminals} active={null} onOpen={onOpen} heading={false} />
+                </RovingLists>
+              )}
+            </>
+          ) : machines.terminalsError !== null ? (
+            <TerminalsLoadError cause={machines.terminalsError} onRetry={machines.retryTerminals} />
+          ) : (
+            <PhoneListLoading />
+          )}
         </main>
         {/*
           The machines' list carries how this device reaches them: the core, the path (Relay or Direct) and a reconnect in
           progress. The agents list leaves that to the connection line under its header.
         */}
         <div data-pinned="bottom" className="sticky bottom-0 z-10 bg-sidebar">
-        {section === "spaces" ? (
-          <StatusBar
-            start={
-              <>
-                <StatusBarItem icon={<Monitor aria-hidden />}>
-                  {`${connection.hello.core.name} · ${connectionStore.settings.mode === "relay" ? "relay" : "loopback"}`}
-                </StatusBarItem>
-                <ConnectionPathItem />
-                <ReconnectStatus compact />
-              </>
-            }
-          />
-        ) : null}
-        <PhoneTabBar section={section} terminals={terminals} onSection={onSection} />
+          {section === "spaces" ? (
+            <StatusBar
+              start={
+                <>
+                  <StatusBarItem icon={<Monitor aria-hidden />}>
+                    {`${connection.hello.core.name} · ${connectionStore.settings.mode === "relay" ? "relay" : "loopback"}`}
+                  </StatusBarItem>
+                  <ConnectionPathItem />
+                  <ReconnectStatus compact />
+                </>
+              }
+            />
+          ) : null}
+          <PhoneTabBar section={section} terminals={terminals} onSection={onSection} />
         </div>
       </div>
     );
