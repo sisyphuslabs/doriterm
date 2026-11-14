@@ -70,13 +70,13 @@ export function perHostViews(storage?: Pick<Storage, "getItem" | "key" | "length
 const NO_IDS: MachineIds = { byName: new Map(), byId: new Map() };
 
 /**
- * An old per-host view in the stored form: its bare keys, seen marks included, are the core it was saved through, and
- * its `<name>/t2` marks name machines as that core named them. With that core's `ids` they are kept by id; a name not
- * found there is route-relative and dropped, never kept by a name another route gives another machine (#2588).
+ * Another core's old per-host view in the stored form: its bare keys, seen marks included, are the core it was saved
+ * through. Its `<name>/t2` marks name machines as that core named them, which this route cannot know, so they are
+ * dropped rather than kept by a name another route gives another machine (#2588).
  */
-export function fromPerHost(view: View, core: string, ids: MachineIds = NO_IDS): View {
+export function fromPerHost(view: View, core: string): View {
   const stored = storedView(view, core);
-  const kept = storedSeen(view.seen, core, ids);
+  const kept = storedSeen(view.seen, core, NO_IDS);
   return { ...stored, seen: Object.fromEntries(Object.entries(kept).filter(([key]) => key.startsWith("@"))) };
 }
 

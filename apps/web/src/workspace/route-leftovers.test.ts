@@ -12,9 +12,7 @@ test("a phone history entry made through core c reads back as the same space and
   expect(rekeyPlaceHref(href("space:s1", null), "c", "c")).toBe(href("space:s1", null));
 });
 
-test("a seen mark carried over from core c's old view is kept by id with c's machine names, else dropped (#2588)", () => {
-  const view = { active: null, focused: {}, zoomed: {}, spaces: {}, seen: { "box/t2": "5", t1: "4", "lab/t9": "1" } };
-  const ids = { byName: new Map([["box", "b-id"]]), byId: new Map([["b-id", "box"]]) };
-  expect(fromPerHost(view, "c", ids).seen).toEqual({ "@b-id/t2": "5", "@c/t1": "4" });
+test("a seen mark carried over from another core's old view is kept by id for that core's own terminals and dropped when it names a machine by that core's name (#2588)", () => {
+  const view = { active: null, focused: {}, zoomed: {}, spaces: {}, seen: { "box/t2": "5", t1: "4" } };
   expect(fromPerHost(view, "c").seen).toEqual({ "@c/t1": "4" });
 });
