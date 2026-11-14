@@ -143,7 +143,7 @@ export class MeshConnections {
 
   /** Takes new settings and keeps the roster: an edit to how this app dials, not a choice of what it dials. */
   update(settings: ConnectionSettings): void {
-    this.#apply(settings);
+    this.#apply(settings, undefined, true);
   }
 
   /**
@@ -151,7 +151,7 @@ export class MeshConnections {
    * the shown machine and the roster move on their own meanwhile, and a stale copy would restore them (#1006).
    */
   edit(fields: Partial<ConnectionSettings>): void {
-    this.#apply({ ...this.#settings, ...fields });
+    this.#apply({ ...this.#settings, ...fields }, undefined, true);
   }
 
   /**
@@ -175,9 +175,12 @@ export class MeshConnections {
     this.#apply({ ...settings, hostName: "", members: roster }, opened);
   }
 
-  /** `opened` is a session to the selected member that pairing already proved: its store runs on it instead of dialing. */
-  #apply(settings: ConnectionSettings, opened?: OpenConnection): void {
-    this.#selection = undefined;
+  /**
+   * `opened` is a session to the selected member that pairing already proved: its store runs on it instead of dialing.
+   * `keepShown`: an edit to how this app dials keeps a machine shown for one that is down, unless it chooses another (#2535).
+   */
+  #apply(settings: ConnectionSettings, opened?: OpenConnection, keepShown = false): void {
+    if (!keepShown || settings.hostId !== this.#settings.hostId) this.#selection = undefined;
     this.#settings = normalizeSettings(settings);
     saveSettings(this.#settings);
     // A settings change is the app asking to dial with them, which is how the boot path replaces a stale saved port. Members that
@@ -185,6 +188,7 @@ export class MeshConnections {
     // endpoint never changed and nothing else would start it (review of #994).
     this.#running = true;
     this.#sync(opened);
+    if (this.#selection !== undefined && !this.#targets.has(this.#selection)) this.#selection = undefined;
     this.#startAll();
     this.#notify();
   }
@@ -192,7 +196,8 @@ export class MeshConnections {
   /** Shows another member's connection without touching any connection: the others stay open while this app looks elsewhere. */
   select(hostId: string): void {
     if (this.#targets.has(hostId)) this.#picked = hostId;
-    if (hostId === this.settings.hostId || !this.#targets.has(hostId)) return;
+    // Compared with the saved machine: one a failover shows is not saved yet, so opening it on purpose saves it (#2535).
+    if ((hostId === this.#settings.hostId && this.#selection === undefined) || !this.#targets.has(hostId)) return;
     const target = this.#targets.get(hostId);
     if (target === undefined) return;
     if (!this.#settings.members.some((member) => member.hostId === hostId)) {

@@ -101,8 +101,9 @@ class FakeConnection implements MemberConnection {
 
   hostStartFailed(): void {}
 
-  fail(): void {
-    this.#state = { phase: "failed", error: new Error(`down`), retryInMs: 1_000, retryAt: 0, stale: null };
+  /** `retryInMs` null is a failure no retry can help. */
+  fail(retryInMs: number | null = 1_000): void {
+    this.#state = { phase: "failed", error: new Error(`down`), retryInMs, retryAt: 0, stale: null };
     this.rename(`renamed`);
     this.#emit();
   }
@@ -427,6 +428,32 @@ describe("one connection per member", () => {
     made[1]?.fail();
     expect(mesh.settings.hostId).toBe("b");
     expect(mesh.state.phase).toBe("failed");
+  });
+
+  it("a final failure still moves a start off its machine, though the address names a place on it (#2535 review)", () => {
+    const { mesh, made } = harness(settingsWith([member("a"), member("b")], "a"), () => true);
+    made[0]?.connecting();
+    made[1]?.start();
+    made[0]?.fail(null);
+    expect(mesh.settings.hostId).toBe("b");
+  });
+
+  it("an edit to how the app dials keeps the machine a failover shows, not the one that is down (#2535 review)", () => {
+    const { mesh, made } = harness(settingsWith([member("a"), member("b")], "a"));
+    made[1]?.start();
+    made[0]?.fail();
+    expect(mesh.settings.hostId).toBe("b");
+    mesh.edit({});
+    expect(mesh.settings.hostId).toBe("b");
+  });
+
+  it("opening, on purpose, the machine a failover shows saves it (#2535 review)", () => {
+    storing(settingsWith([member("a"), member("b")], "a"));
+    const { mesh, made } = harness(settingsWith([member("a"), member("b")], "a"));
+    made[1]?.start();
+    made[0]?.fail();
+    mesh.select("b");
+    expect(loadSettings().hostId).toBe("b");
   });
 
   it("does not move off a machine that is only connecting", () => {
