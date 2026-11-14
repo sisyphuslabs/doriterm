@@ -3,11 +3,12 @@
 // still a visible step from the same control enabled.
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
-import { measure } from "./painted-contrast.ts";
+import { measure, tokenStep } from "./painted-contrast.ts";
 
 /**
  * A disabled button's glyph measured against the same button with its disabled marks lifted, which paints the enabled
- * glyph, as a control at its bound sits beside its enabled neighbour: the step is the Button spec's 1.7 (#1241).
+ * glyph, as a control at its bound sits beside its enabled neighbour: the step is the one the tokens hold (--muted-foreground
+ * to --disabled-glyph), the Button spec's 1.7 where the glyph floor leaves room and less where it does not (#1241, #2513).
  */
 async function disabledGlyph(page: Page, button: Locator): ReturnType<typeof measure> {
   const marks = await button.evaluate((element) =>
@@ -75,14 +76,14 @@ for (const theme of ["day", "night"] as const) {
       await expect(increase).toBeDisabled();
       const glyph = await disabledGlyph(page, increase);
       expect(glyph.ratio, glyph.label).toBeGreaterThanOrEqual(3);
-      expect(glyph.step, glyph.label).toBeGreaterThanOrEqual(1.7);
+      expect(glyph.step, glyph.label).toBeGreaterThanOrEqual((await tokenStep(page)) * 0.97);
 
       // A ghost icon button (IconButton's default), disabled with the settings: its icon paints --disabled-glyph (#1897).
       const add = page.getByRole("button", { name: /^Add / }).first();
       await expect(add).toBeDisabled();
       const icon = await disabledGlyph(page, add);
       expect(icon.ratio, icon.label).toBeGreaterThanOrEqual(3);
-      expect(icon.step, icon.label).toBeGreaterThanOrEqual(1.7);
+      expect(icon.step, icon.label).toBeGreaterThanOrEqual((await tokenStep(page)) * 0.97);
       const value = await measure(page, page.getByRole("textbox", { name: "font-size", exact: true }), {
         part: { selector: "", paint: "color" },
       });

@@ -25,10 +25,10 @@ function expectDisabledGlyph(disabled: Rgb, muted: Rgb, surface: Rgb): void {
   if (stepReachable(muted, surface)) expect(contrast(disabled, muted)).toBeGreaterThanOrEqual(DISABLED_STEP);
 }
 
-test("a muted glyph just above 5.1:1 whose 1% path holds no stop with both keeps the 3:1 floor (#1896)", () => {
-  const muted = 0x7e7e7e;
+test("a muted glyph just above the floor times the step whose 1% path holds no stop with both keeps the floor (#1896)", () => {
+  const muted = 0x898989;
   const surface = 0x000000;
-  expect(contrast(muted, surface)).toBeGreaterThanOrEqual(AA_GRAPHIC * DISABLED_STEP);
+  expect(contrast(muted, surface)).toBeGreaterThanOrEqual(DISABLED_GLYPH_FLOOR * DISABLED_STEP);
   expect(stepReachable(muted, surface)).toBe(false);
   const disabled = parseRgba(disabledGlyph(muted, surface, [surface]))?.rgb;
   if (disabled === undefined) throw new Error("no disabled glyph");
@@ -73,6 +73,15 @@ describe.each(Object.entries(BUILTIN_PALETTES))("%s meets WCAG 2.2 AA", (_, pale
     const disabled = parseRgba(role("disabled-glyph"))?.rgb;
     if (raised === undefined || muted === undefined || disabled === undefined) throw new Error("missing role");
     expectDisabledGlyph(disabled, muted, raised);
+  });
+
+  test("--disabled-glyph dims as far as its floor allows: the full step from --muted-foreground, or within 3% of the floor on its worst surface", () => {
+    const muted = parseRgba(role("muted-foreground"))?.rgb;
+    const disabled = parseRgba(role("disabled-glyph"))?.rgb;
+    if (muted === undefined || disabled === undefined) throw new Error("missing role");
+    const worst = worstContrast(role("disabled-glyph"), opaque);
+    expect(contrast(disabled, muted) >= DISABLED_STEP || worst <= DISABLED_GLYPH_FLOOR * 1.03).toBe(true);
+    expect(contrast(disabled, muted)).toBeGreaterThan(1.3);
   });
 
   test("--disabled-glyph reads 3.5:1 on every opaque surface, so a thin 1x stroke still clears 3:1 once antialiased (visual QA)", () => {

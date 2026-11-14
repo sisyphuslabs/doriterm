@@ -1,5 +1,6 @@
 // How a control's ink composites onto its fill, as the browser paints it, for the disabled-contrast specs (#1031, #1034).
 import type { Locator, Page } from "@playwright/test";
+import { contrast as tokenContrast, parseRgb } from "@doriface/ui/theme";
 
 export type Rgb = [number, number, number];
 
@@ -148,3 +149,15 @@ export async function measure(page: Page, button: Locator, ask: Ask = {}): Promi
 
 /** Every surface a filled Button sits on: the page, a card or panel, the sidebar, a raised control, a dialog or menu. */
 export const SURFACES = ["background", "surface", "chrome", "raised", "popover"] as const;
+
+/** How far the tokens dim a disabled glyph from the enabled one: --muted-foreground against --disabled-glyph, as themed. */
+export async function tokenStep(page: Page): Promise<number> {
+  const [muted, disabled] = await page.evaluate(() => {
+    const style = getComputedStyle(document.documentElement);
+    return [style.getPropertyValue("--muted-foreground").trim(), style.getPropertyValue("--disabled-glyph").trim()];
+  });
+  const from = parseRgb(muted);
+  const to = parseRgb(disabled);
+  if (from === undefined || to === undefined) throw new Error(`unreadable tokens: ${muted} / ${disabled}`);
+  return tokenContrast(from, to);
+}
