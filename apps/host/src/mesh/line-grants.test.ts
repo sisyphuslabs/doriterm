@@ -58,6 +58,17 @@ describe("line grants (section 7.2)", () => {
     });
   });
 
+  test("a member that was reached and refuses one dial is named as reconnecting, not offline (#2448)", async () => {
+    const { policy, lines: grants } = lines({ members: [a, b], revoked: [] }, () => Promise.resolve(closingLink()));
+    policy.report(b.signPub, "connected");
+    policy.report(b.signPub, 4404);
+    expect(await grants.grant(b.hostId)).toEqual({
+      ok: false,
+      code: 4404,
+      reason: "b is reconnecting; next try in 2 s",
+    });
+  });
+
   test("a line dial refused for its pass (4412) gates nothing, unlike an offline member (4404)", async () => {
     const refusedFor = (code: number) =>
       lines({ members: [a, b], revoked: [] }, () => Promise.reject(new RelayCloseError(code, "closed")));
