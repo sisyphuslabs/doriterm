@@ -60,3 +60,33 @@ test("a session on a machine that just dropped shows the didn't-open screen, and
   await page.keyboard.type("echo again-$((40+2))\r");
   await expect(terminal).toContainText("again-42", { timeout: 15_000 });
 });
+
+test("Try again that attaches before the page hears the machine is back keeps the terminal it opened (#2621)", async ({
+  page,
+}) => {
+  const socket = await routeHcSocket(page);
+  await page.goto("/");
+  await expect(page.locator(`[data-terminal="${MACHINE_NAME}/${anchor}"]`)).toHaveAttribute("data-ready", "true", {
+    timeout: 20_000,
+  });
+  remote = startShell("machine", "fin");
+  await expect(agentRow(page, "fin", true)).toBeVisible({ timeout: 20_000 });
+  const release = socket.hold("machine.list");
+  switchTo("drop");
+  await expect.poll(() => hcOn("host", ["machine", "ls"]), { timeout: 25_000 }).toContain("unreachable");
+  await agentRow(page, "fin", true).click();
+  const pane = page.locator('[data-focused="true"]');
+  await expect(pane.getByRole("heading", { name: "This terminal didn't open" })).toBeVisible({ timeout: 20_000 });
+
+  // The machine is back and Try again attaches while the page still holds the list from before the drop; the list that
+  // says the machine is connected arrives only after the terminal is open, as a slow page can see it.
+  reconnect();
+  await expect.poll(() => hcOn("host", ["machine", "ls"]), { timeout: 25_000 }).not.toContain("unreachable");
+  await pane.getByRole("button", { name: "Try again" }).click();
+  const terminal = pane.locator(`[data-terminal="${MACHINE_NAME}/${remote}"]`);
+  await expect(terminal).toContainText("$", { timeout: 15_000 });
+  release();
+  await terminal.click();
+  await page.keyboard.type("echo kept-$((40+2))\r");
+  await expect(terminal).toContainText("kept-42", { timeout: 15_000 });
+});
