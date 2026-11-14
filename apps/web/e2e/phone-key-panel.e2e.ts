@@ -134,14 +134,16 @@ test("at 390 the keys are one panel with the keyboard down and up: the same stru
 });
 
 for (const motion of ["no-preference", "reduce"] as const) {
-  test(`at 390 the riding panel eases as the keyboard moves, unless motion is reduced (${motion}, #2539)`, async ({ page }) => {
+  test(`at 390 the riding panel eases as the keyboard moves, unless motion is reduced (${motion}, #2539)`, async ({
+    page,
+  }) => {
     await page.emulateMedia({ reducedMotion: motion });
     await openPhoneTerminal(page);
     await expect(key(page, "Hide keyboard")).toBeVisible();
     // The element that carries the panel's `bottom` is the one that has to transition it.
     const carrier = await keysBar(page).evaluate((bar) => {
-      let el: HTMLElement | null = bar;
-      while (el !== null && el.style.bottom === "") el = el.parentElement;
+      let el: Element | null = bar;
+      while (el !== null && !(el instanceof HTMLElement && el.style.bottom !== "")) el = el.parentElement;
       if (el === null) return null;
       const css = getComputedStyle(el);
       return { property: css.transitionProperty, duration: css.transitionDuration };
