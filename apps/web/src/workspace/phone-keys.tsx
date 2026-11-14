@@ -258,9 +258,11 @@ export function PhoneKeys(props: PhoneKeysProps) {
       )}
     />
   );
-  const visible = open || docked !== null;
+  const visible = open || chat || docked !== null;
   // One element in both places, so the Type field keeps its focus and draft as the keyboard comes and goes (#2499).
-  const place: { className: string; style: CSSProperties } = open
+  // The composer rides on the keyboard its field raised, as the keys do (#2604).
+  const riding = open || (chat && inset > 0);
+  const place: { className: string; style: CSSProperties } = riding
     ? { className: "absolute inset-x-0 z-10", style: { bottom: keysBottom(inset) } }
     : { className: "relative z-10 shrink-0", style: { paddingBottom: docked ?? undefined } };
   return (

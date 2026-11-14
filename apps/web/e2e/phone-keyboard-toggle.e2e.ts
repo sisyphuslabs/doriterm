@@ -207,7 +207,7 @@ test.describe("a finger on a phone", () => {
     await key(page, "Chat").tap();
     await expect(field).toBeFocused();
     await expect(input).not.toBeFocused();
-    await expectUp(page);
+    await expect(page.getByRole("group", { name: "Chat" })).toBeVisible();
     expect(
       await field.evaluate((el) => el.closest("[data-terminal]") === null && el.getAttribute("inputmode") !== "none"),
     ).toBe(true);
