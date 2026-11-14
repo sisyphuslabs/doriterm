@@ -16,6 +16,8 @@ export interface MachineLayout {
   readonly loaded: boolean;
   /** Why edits are refused now, or null when they are taken. */
   readonly readOnly: string | null;
+  /** The machine is past its reconnect grace, independent of whether its layout takes edits. */
+  readonly offline?: boolean;
   readonly edit: (change: DocEdit, shown?: EditShown) => Promise<boolean>;
   /** The ids of its pinned tabs (#1561), from the machine's own pins document, never from herdr-app's. */
   readonly pins?: ReadonlySet<string>;
@@ -89,6 +91,7 @@ export function useLayoutDocs(
       doc: state?.phase === "ready" ? state.doc : (kept ?? null),
       loaded: state?.phase === "ready" || kept !== undefined,
       readOnly,
+      offline: gone,
       edit: docEdit(live, why),
       pins: storedPins(roster.pins.kept(machineId) ?? null),
       editPins: docEdit(livePins, why),

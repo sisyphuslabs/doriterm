@@ -29,6 +29,7 @@ export interface LayoutTab {
   readonly pinned: boolean;
   readonly panes: readonly LayoutPane[];
   readonly readOnly: string | null;
+  readonly offline?: boolean;
   /** Not in any document (the first live terminal shown alone, or a loose tab); written once it is split. */
   readonly transient: boolean;
   /** The key its panel is mounted under, when that is not `key` (see `keepMounts`). */
@@ -163,6 +164,7 @@ function docTabs(layout: MachineLayout): LayoutTab[] {
       mod: pane.mod,
     })),
     readOnly: layout.readOnly,
+    offline: layout.offline ?? false,
     transient: false,
   }));
 }
@@ -181,6 +183,7 @@ function looseTab(address: string, layouts: readonly MachineLayout[], ids: Machi
     pinned: false,
     panes: [{ id: TRANSIENT, address, mod: null }],
     readOnly: owner?.readOnly ?? "the machine is not connected",
+    offline: owner?.offline ?? true,
     transient: true,
   };
 }

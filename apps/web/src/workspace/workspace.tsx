@@ -142,14 +142,9 @@ export function Workspace({ connection }: WorkspaceProps) {
   useAdoptLoose(connection, layouts, fed.loaded ? terminals : null, failed);
   const narrow = useNarrow();
   const ids = useMemo(() => machineIds(views), [views]);
-  // New tab starts its terminal on the machine of the tab in view: offered disabled while that machine is past its
-  // reconnect grace, or its layout takes no edits, never offered and then refused (#2455).
-  const activeMachine = layout.active?.machine ?? null;
-  const activeView =
-    activeMachine === null ? undefined : views.find((v) => v.name === activeMachine || v.id === activeMachine);
-  const newDisabled =
-    (layout.active?.readOnly ?? null) !== null ||
-    (activeView !== undefined && activeView.state !== "connected" && activeView.state !== "reconnecting");
+  // New tab starts on the machine of the tab in view and waits only while that machine is past its reconnect grace.
+  // A reachable machine whose layout takes no edits still starts a terminal, kept on this screen by keepHere (#2569).
+  const newDisabled = layout.active?.offline ?? false;
   const phone = usePhoneRoute(narrow, ids);
   const { open: phoneOpen, show: showOnPhone } = phone;
   const phoneTab = phoneOpen === null ? null : findTerminal(layout.tabs, phoneOpen);
@@ -230,6 +225,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   const inView = narrow ? phoneOpen : (layout.focused?.address ?? null);
   // A new tab goes to the selected space (openTerminal), so it starts where that space is when no terminal is in focus.
   const newTerminal = (template?: string): void => {
+    if (newDisabled) return;
     runs.start(
       {
         ...runParamsFor(
