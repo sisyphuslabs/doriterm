@@ -26,21 +26,30 @@ export function hostDownWhy(state: ConnectionState, downFor: number | null): str
   return null;
 }
 
+/**
+ * When the workspace's link went down, kept once for the page: a view that mounts during the outage (the phone's line
+ * after a resize, a screen opened meanwhile) counts the grace from the drop, not from its own mount.
+ */
+let downSince: number | null = linkDown(connectionStore.state) ? Date.now() : null;
+connectionStore.subscribe(() => {
+  const down = linkDown(connectionStore.state);
+  if (!down) downSince = null;
+  else downSince ??= Date.now();
+});
+
 /** hostDownWhy for the workspace's connection as it is now; null while the network itself is what is missing. */
 export function useHostDownWhy(): string | null {
   const state = useConnection();
   const online = useOnline();
-  const down = linkDown(state);
-  const [since, setSince] = useState<number | null>(null);
+  const since = linkDown(state) ? downSince : null;
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
-    if (!down) return setSince(null);
-    const start = Date.now();
-    setSince(start);
-    setNow(start);
-    const timer = setTimeout(() => setNow(Date.now()), HOST_DOWN_GRACE_MS);
+    if (since === null) return undefined;
+    const left = since + HOST_DOWN_GRACE_MS - Date.now();
+    if (left <= 0) return setNow(Date.now());
+    const timer = setTimeout(() => setNow(Date.now()), left);
     return () => clearTimeout(timer);
-  }, [down]);
+  }, [since]);
   if (!online && !staysOnThisComputer(connectionStore.settings)) return null;
-  return hostDownWhy(state, since === null ? null : Math.max(0, now - since));
+  return hostDownWhy(state, since === null ? null : Math.max(0, Math.max(now, Date.now()) - since));
 }

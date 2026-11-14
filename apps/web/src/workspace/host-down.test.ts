@@ -12,11 +12,18 @@ const failed: ConnectionState = {
   retryAt: 0,
   stale,
 };
-const CANNOT_REACH = "Your host isn't connected right now. Check that its computer is awake and doriface-host is running.";
+const CANNOT_REACH =
+  "Your host isn't connected right now. Check that its computer is awake and doriface-host is running.";
 
 test("a host that stays down past the grace says why in the words Settings uses (#2464, #2426)", () => {
   expect(hostDownWhy(failed, HOST_DOWN_GRACE_MS)).toBe(CANNOT_REACH);
-  const resuming: ConnectionState = { phase: "open", connection: stale, path: "relay", resuming: true, resumeFailure: refused };
+  const resuming: ConnectionState = {
+    phase: "open",
+    connection: stale,
+    path: "relay",
+    resuming: true,
+    resumeFailure: refused,
+  };
   expect(hostDownWhy(resuming, HOST_DOWN_GRACE_MS + 1)).toBe(CANNOT_REACH);
 });
 

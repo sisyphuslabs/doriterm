@@ -84,7 +84,8 @@ test.describe("the terminal in view when its machine drops (#2464)", () => {
   let split = "";
   test.afterEach(() => {
     reconnect();
-    for (const address of [remote, split]) if (address !== "") hcOn("machine", ["kill", address.slice(MACHINE_NAME.length + 1)]);
+    for (const address of [remote, split])
+      if (address !== "") hcOn("machine", ["kill", address.slice(MACHINE_NAME.length + 1)]);
     remote = "";
     split = "";
   });
@@ -162,7 +163,9 @@ test.describe("the terminal in view when its machine drops (#2464)", () => {
     await capture(page, "offline-phone");
   });
 
-  test("an unfocused split pane says its machine reconnects in its own header, not over its output", async ({ page }) => {
+  test("an unfocused split pane says its machine reconnects in its own header, not over its output", async ({
+    page,
+  }) => {
     test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
     await page.emulateMedia({ colorScheme: "dark" });
     await page.setViewportSize({ width: 1440, height: 900 });
