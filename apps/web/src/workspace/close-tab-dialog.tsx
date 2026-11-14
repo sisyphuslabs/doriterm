@@ -7,6 +7,7 @@ import { single } from "../ghostty/config.ts";
 import { terminalInput } from "./focus-targets.ts";
 import type { LayoutTab } from "./layout-model.ts";
 import { asksBeforeClosing } from "./model.ts";
+import { titleAndProgram, useShown } from "./use-shown.ts";
 import { routedPendingEnds } from "./pending-ends.ts";
 import { recordedEnd } from "./resume-ends.ts";
 import { sessionCalls } from "./session-actions.ts";
@@ -73,7 +74,10 @@ export function CloseTabDialog({
   const backTo = (): HTMLElement | true =>
     opener instanceof HTMLElement && opener !== document.body && opener.isConnected ? true : (terminalInput() ?? true);
   const shown = new Set(tab.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])));
-  const live = terminals.filter((terminal) => shown.has(terminal.address) && terminal.state === "live");
+  const live = useShown(
+    terminals.filter((terminal) => shown.has(terminal.address) && terminal.state === "live"),
+    titleAndProgram,
+  );
   const count = live.length;
   const asks = asksBeforeClosing(single(useTerminalConfig(), "confirm-close-surface"), live);
   const quiet = space === undefined && !asks;

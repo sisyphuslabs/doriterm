@@ -1,6 +1,7 @@
 import type { HcConnection } from "@doriface/client";
+import type { Terminal as TerminalEntry } from "@doriface/protocol";
 import { type AgentStatus, cn, IconButton, TabBar, useToastManager, type WorkspaceTab } from "@doriface/ui";
-import { Bot, Columns2, PanelLeft, Rows2, SquareTerminal, Terminal } from "lucide-react";
+import { Columns2, PanelLeft, Rows2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { actionChosen } from "../keys/dispatcher.ts";
 import { useActionKeys } from "../keys/use-action-keys.ts";
@@ -22,6 +23,8 @@ import { SessionMenu } from "./session-menu.tsx";
 import { Sidebar } from "./sidebar.tsx";
 import { sidebarFilter } from "./sidebar-filter-field.tsx";
 import { SkipLinks } from "./skip-links.tsx";
+import { frontIcon, PROGRAM_ICON, Titled } from "./tab-live.tsx";
+import { useShown } from "./use-shown.ts";
 import { useAppActions, type SessionVerb } from "./use-app-actions.ts";
 import { useArrivalReady, workspaceSettled } from "./use-arrival-ready.ts";
 import { behindModal, useFocusSidebar } from "./use-focus-sidebar.ts";
@@ -37,13 +40,6 @@ import type { TerminalEnd } from "../terminal/terminal-end.ts";
 /** A tab's glyph: the state that most needs the person among its panes, as the sidebar sections rank them. */
 const URGENCY: readonly AgentStatus[] = ["blocked", "done", "working", "idle", "unknown"];
 
-/** herdr-app's program icons for what a tab runs: an agent, a shell, or another program (its `defaults/icons`). */
-const PROGRAM_ICON = {
-  agent: <Bot aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />,
-  shell: <Terminal aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />,
-  program: <SquareTerminal aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />,
-};
-
 /**
  * A tab as the strip draws it: its name, else its agent's title (#1541), else its place in its space (1, 2, ...), with the icon of its agent,
  * else of its first pane's program, and the state that most needs the person among its panes. No machine label: the bar
@@ -54,9 +50,9 @@ function tabEntry(tab: LayoutTab, position: number, byAddress: ReadonlyMap<strin
     const terminal = pane.address === null ? undefined : byAddress.get(pane.address);
     return terminal === undefined ? [] : [terminal];
   });
-  const kinds = shown.map(programKind);
-  const kind = kinds.includes("agent") ? "agent" : kinds[0];
-  const agent = shown[kinds.indexOf("agent")];
+  const agent = shown.find((terminal) => programKind(terminal) === "agent");
+  const first = shown[0];
+  const icon = agent !== undefined ? PROGRAM_ICON.agent : first === undefined ? undefined : frontIcon(first);
   const statuses = new Set(shown.map(agentStatus));
   const status = URGENCY.find((each) => statuses.has(each));
   return {
@@ -64,7 +60,7 @@ function tabEntry(tab: LayoutTab, position: number, byAddress: ReadonlyMap<strin
     title: tabTitle(tab.name, position, agent),
     controls: panelId(tab.key),
     pinned: tab.pinned,
-    ...(kind === undefined ? {} : { icon: PROGRAM_ICON[kind] }),
+    ...(icon === undefined ? {} : { icon }),
     ...(status === undefined ? {} : { status }),
   };
 }
@@ -101,6 +97,9 @@ export interface DesktopShellProps {
   readonly onPalette: () => void;
   readonly onSession: SessionVerb;
 }
+
+const agentTitle = (terminal: TerminalEntry): string =>
+  programKind(terminal) === "agent" ? terminalTitle(terminal) : "";
 
 const viewKey = (address: string, pid: number | null): string => `${address}#${pid ?? ""}`;
 
@@ -156,7 +155,9 @@ export function DesktopShell(props: DesktopShellProps) {
   }, []);
   const showsEnded = (terminal: { readonly address: string; readonly pid?: number | null }): boolean =>
     endedViews.has(viewKey(terminal.address, terminal.pid ?? null));
-  const byAddress = new Map(terminals.map((terminal) => [terminal.address, terminal]));
+  // An agent's tab is named after it, so its title as it stands; every other terminal's title stays out of the shell (#2607).
+  const named = useShown(terminals, agentTitle);
+  const byAddress = new Map(named.map((terminal) => [terminal.address, terminal]));
   const tabList: WorkspaceTab[] = layout.shown.map((tab, position) => tabEntry(tab, position, byAddress));
   const tabRename = useTabRename(layout, tabList);
   useAppActions({
@@ -321,10 +322,14 @@ export function DesktopShell(props: DesktopShellProps) {
           trailing={
             <>
               {focusedTerminal === undefined || nothingToType ? null : (
-                <DictateButton voice={voice} target={terminalTitle(focusedTerminal)} size="sm" ref={mic} />
+                <Titled terminal={focusedTerminal}>
+                  {(title) => <DictateButton voice={voice} target={title} size="sm" ref={mic} />}
+                </Titled>
               )}
               {focusedTerminal === undefined ? null : (
-                <SessionMenu address={focusedTerminal.address} title={terminalTitle(focusedTerminal)} />
+                <Titled terminal={focusedTerminal}>
+                  {(title) => <SessionMenu address={focusedTerminal.address} title={title} />}
+                </Titled>
               )}
               {split}
             </>
@@ -350,16 +355,20 @@ export function DesktopShell(props: DesktopShellProps) {
             sends={sends}
             dock={
               focusedTerminal === undefined || nothingToType ? null : (
-                <VoiceDock
-                  voice={voice}
-                  target={terminalTitle(focusedTerminal)}
-                  onType={(text) => {
-                    sends.type(focusedTerminal.address, text);
-                    document.querySelector<HTMLElement>(FOCUSED_TERMINAL_INPUT)?.focus();
-                  }}
-                  onClose={() => mic.current?.focus()}
-                  className="pb-2"
-                />
+                <Titled terminal={focusedTerminal}>
+                  {(title) => (
+                    <VoiceDock
+                      voice={voice}
+                      target={title}
+                      onType={(text) => {
+                        sends.type(focusedTerminal.address, text);
+                        document.querySelector<HTMLElement>(FOCUSED_TERMINAL_INPUT)?.focus();
+                      }}
+                      onClose={() => mic.current?.focus()}
+                      className="pb-2"
+                    />
+                  )}
+                </Titled>
               )
             }
           />

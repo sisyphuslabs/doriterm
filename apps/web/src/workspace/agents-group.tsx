@@ -21,6 +21,7 @@ import { useAgentPlaces } from "./use-agent-places.ts";
 import { usePin } from "./use-pin.ts";
 import { useNow } from "./use-now.ts";
 import { useTodoOf } from "./todo-progress.ts";
+import { useShown } from "./use-shown.ts";
 
 export interface AgentsGroupProps {
   readonly terminals: readonly Terminal[];
@@ -186,11 +187,22 @@ function useSteadyAgents(groups: readonly AgentGroup[]): readonly AgentGroup[] {
  * The agents, first in the sidebar: Pinned, then Needs you, Working, Idle, Done and Offline with counts (or one group
  * per space), each its own list. On the rail the rows are glyphs and the group titles are left to their labels.
  */
-export function AgentsGroup({ terminals, active, onOpen, rail = false, heading = true, query = "" }: AgentsGroupProps) {
+export function AgentsGroup({
+  terminals: listed,
+  active,
+  onOpen,
+  rail = false,
+  heading = true,
+  query = "",
+}: AgentsGroupProps) {
+  const terminals = useShown(listed);
   const now = useNow();
   const [sort] = useAgentSort();
   const todoOf = useTodoOf();
-  const places = useAgentPlaces(terminals);
+  // A row's place follows its state, never its title, so it is read from the list as shaped.
+  const places = useAgentPlaces(listed);
+  // One element for the life of the list: a renamed row leaves the sort menu as drawn (#2607).
+  const sortMenu = useMemo(() => <SortMenu />, []);
   const opener = useRef(onOpen);
   opener.current = onOpen;
   const open = useCallback((address: string) => opener.current(address), []);
@@ -239,7 +251,7 @@ export function AgentsGroup({ terminals, active, onOpen, rail = false, heading =
       </section>
     );
   return (
-    <SidebarSection title="Agents" {...(rail ? { className: "[&>header]:sr-only" } : { action: <SortMenu /> })}>
+    <SidebarSection title="Agents" {...(rail ? { className: "[&>header]:sr-only" } : { action: sortMenu })}>
       {list}
     </SidebarSection>
   );

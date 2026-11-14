@@ -48,6 +48,8 @@ import { useAttention } from "./use-attention.ts";
 import { orderNotSaved } from "./machine-order.ts";
 import { useMachineOrder } from "./use-machine-order.ts";
 import { useTerminals } from "./use-terminals.ts";
+import { LiveTerminalsContext } from "./use-shown.ts";
+import { rosterFor } from "../roster/roster.ts";
 import { useForgetEndedHistoryGaps } from "../terminal/history-gap-notice.ts";
 import { useResumeEnds } from "./resume-ends.ts";
 import { useRedrawNotice } from "./use-redraw-notice.ts";
@@ -64,6 +66,16 @@ export interface WorkspaceProps {
 
 /** The live terminals of one core: the desktop shell from `md` up, the phone navigation below. */
 export function Workspace({ connection }: WorkspaceProps) {
+  // What each terminal shows is read where it is shown, so the workspace renders only for a change of shape (#2607).
+  const live = useMemo(() => rosterFor(connection).live, [connection]);
+  return (
+    <LiveTerminalsContext value={live}>
+      <WorkspaceScreen connection={connection} />
+    </LiveTerminalsContext>
+  );
+}
+
+function WorkspaceScreen({ connection }: WorkspaceProps) {
   const fed = useTerminals(connection);
   useRedrawNotice(connection);
   useForgetEndedHistoryGaps(fed.loaded, fed.terminals);

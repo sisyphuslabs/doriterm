@@ -9,6 +9,7 @@ import { currentPlatform } from "../keys/trigger.ts";
 import { useOverlayActive } from "../keys/use-overlay-active.ts";
 import { choiceOf, paletteCommands, spaceNameOf } from "./palette-commands.ts";
 import type { ListedSpace } from "./model.ts";
+import { useShown } from "./use-shown.ts";
 import type { ShellAction } from "./shell-actions.ts";
 import { useOverlayFocus } from "./use-overlay-focus.ts";
 
@@ -24,7 +25,8 @@ export interface PaletteProps {
 }
 
 /** The palette over the dimmed workspace, near the top; Escape or the backdrop closes it. */
-export function Palette({ terminals, host, route, actions, spaces, onOpenTerminal, onClose }: PaletteProps) {
+export function Palette({ terminals: listed, host, route, actions, spaces, onOpenTerminal, onClose }: PaletteProps) {
+  const terminals = useShown(listed);
   const active = useOverlayActive(onClose);
   const navigate = useNavigate();
   const overrides = useOverrides();

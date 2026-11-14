@@ -6,6 +6,7 @@ import { useTerminalConfig } from "../ghostty/config-store.ts";
 import { single } from "../ghostty/config.ts";
 import { terminalInput } from "./focus-targets.ts";
 import { asksBeforeClosing, terminalTitle } from "./model.ts";
+import { titleAndProgram, useShown } from "./use-shown.ts";
 import { RenameDialog } from "./rename-dialog.tsx";
 import { routedPendingEnds } from "./pending-ends.ts";
 import { recordedEnd } from "./resume-ends.ts";
@@ -47,7 +48,8 @@ export function SessionDialogs({ connection, views, terminals, ask, onDone, onDr
   // The question open now: an action settles into the question that started it, never into a later one.
   const askNow = useRef(ask);
   askNow.current = ask;
-  const terminal = ask === null ? undefined : terminals.find((entry) => entry.address === ask.address);
+  const listed = ask === null ? undefined : terminals.find((entry) => entry.address === ask.address);
+  const [terminal] = useShown(listed === undefined ? [] : [listed], titleAndProgram);
   const live = terminal?.state === "live";
   const current = terminal === undefined ? null : terminalTitle(terminal);
   // Read while the question renders, before it takes focus: the element it gives focus back to when it closes, and the

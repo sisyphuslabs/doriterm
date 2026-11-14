@@ -2,6 +2,7 @@ import { AgentRow, Button, IconButton, SegmentedControl, Sheet, SidebarSection }
 import { Plus, X } from "lucide-react";
 import { type ReactElement, type ReactNode, useState } from "react";
 import { type ListedSpace, type Session, spaceOfAddress, toAgent } from "./model.ts";
+import { useShown } from "./use-shown.ts";
 import { rowDetail, switchTabRows } from "./phone-space-rows.ts";
 import { needsYouCount } from "./phone-tab-bar.tsx";
 import { useSpaceSelection } from "./space-selection.ts";
@@ -70,7 +71,8 @@ function SwitchList(props: {
   readonly onNewInSpace: (key: string) => void;
   readonly onCloseTab: (address: string) => void;
 }) {
-  const { terminals, active, onPick, onNewInSpace, onCloseTab } = props;
+  const { active, onPick, onNewInSpace, onCloseTab } = props;
+  const terminals = useShown(props.terminals);
   // The layout documents' spaces, as the sidebar lists them (#404).
   const { spaces } = useSpaceSelection();
   const now = useNow();
