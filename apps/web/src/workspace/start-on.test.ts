@@ -12,16 +12,16 @@ describe("startTerminal on an added machine", () => {
     expect(await startTerminal(run, { on: "build-box" }, "studio")).toEqual({ ok: true, address: "build-box/t4" });
   });
 
-  test.each(["unavailable", "machine_unknown"])(
-    "terminal.run's %s refusal comes back as that kind, with advice naming the machine",
-    async (kind) => {
-      const started = await startTerminal(refusing(kind, "raw"), { on: "build-box" }, "studio");
-      if (started.ok) throw new Error("expected a refusal");
-      expect([started.failure.kind, started.failure.machine]).toEqual([kind, "build-box"]);
-      expect(started.failure.message).toContain("build-box");
-      expect(started.failure.message).not.toBe("raw");
-    },
-  );
+  test.each([
+    ["unavailable", "build-box is offline"],
+    ["machine_unknown", "build-box is no longer added here"],
+  ])("terminal.run's %s refusal comes back as that kind, with advice naming the machine", async (kind, advice) => {
+    const started = await startTerminal(refusing(kind, "raw"), { on: "build-box" }, "studio");
+    if (started.ok) throw new Error("expected a refusal");
+    expect([started.failure.kind, started.failure.machine]).toEqual([kind, "build-box"]);
+    expect(started.failure.message).toBe(advice);
+    expect(started.failure.message).not.toBe("raw");
+  });
 
   test("another refusal keeps hc's own message", async () => {
     expect(await startTerminal(refusing("spawn_failed", "no shell"), { on: "build-box" }, "studio")).toEqual({
@@ -48,9 +48,9 @@ describe("startTerminal", () => {
 });
 
 describe("failureNotice", () => {
-  const failure = { machine: "build-box", kind: "unavailable", message: "build-box is not connected" };
+  const failure = { machine: "build-box", kind: "unavailable", message: "build-box is offline" };
   test("names the machine's own reason while connected", () => {
-    expect(failureNotice(failure, false, "studio").description).toBe("build-box is not connected");
+    expect(failureNotice(failure, false, "studio").description).toBe("build-box is offline");
   });
   test("names the reconnect while the link is down", () => {
     expect(failureNotice(failure, true, "studio").description).toBe(

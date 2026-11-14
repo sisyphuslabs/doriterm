@@ -22,11 +22,11 @@ const FIRST = { views: [], at: undefined };
 const shown = (list: readonly MachineView[], held: Held, now: number) =>
   graceViews(list, held, now).map((view) => [view.name, view.state]);
 
-test("an unreachable host is not labelled connected while creation correctly reports not connected", async () => {
+test("a machine past its grace reads offline and a refused New terminal reports offline", async () => {
   const dropped = [machine("rack", "unreachable", 1_000)];
   const held = stepHeld(NONE, { views: [machine("rack", "connected")], at: 0 }, dropped, 1_050);
 
-  const visible = graceViews(dropped, held, 1_050);
+  const visible = graceViews(dropped, held, 1_000 + OFFLINE_GRACE_MS);
   const entries = machineEntries({ id: "local", name: "local" }, visible, []);
   const created = await startTerminal(
     () =>
@@ -37,9 +37,9 @@ test("an unreachable host is not labelled connected while creation correctly rep
 
   expect(created).toEqual({
     ok: false,
-    failure: { machine: "rack", kind: "unavailable", message: "rack is not connected" },
+    failure: { machine: "rack", kind: "unavailable", message: "rack is offline" },
   });
-  expect(entries.find((entry) => entry.name === "rack")?.state).toBe("reconnecting");
+  expect(entries.find((entry) => entry.name === "rack")?.state).toBe("unreachable");
 });
 
 test("a connected machine whose line is redialing reads reconnecting until the grace ends, then offline", () => {

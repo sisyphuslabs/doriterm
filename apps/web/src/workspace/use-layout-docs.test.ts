@@ -137,7 +137,8 @@ test.each([
   ["unreachable", "offline", "build-box is offline"],
   ["needs_login", "needs login", "build-box needs login"],
   ["connecting", "connecting", "build-box is connecting"],
-])("a %s machine's edit reason names it with its row's %s state (#2595 L1)", (state, label, reason) => {
+  ["reconnecting", "reconnecting", "build-box is reconnecting"],
+])("a %s machine's edit reason names it with its row's %s state (#2595, #2600)", (state, label, reason) => {
   const view = { ...machine("build-box"), state };
   expect(stateLabel(state)).toBe(label);
   expect(noEditsWhy(view.id, [view])).toBe(reason);

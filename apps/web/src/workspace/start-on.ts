@@ -1,4 +1,5 @@
 import { HcRpcError, type TerminalRunParams } from "@doriface/protocol";
+import { offlineReason } from "./machine-state.ts";
 
 export interface RunFailure {
   readonly machine: string;
@@ -11,7 +12,7 @@ export type Started =
   | { readonly ok: false; readonly failure: RunFailure };
 
 const ADVICE: Readonly<Record<string, (machine: string) => string>> = {
-  unavailable: (machine) => `${machine} is not connected`,
+  unavailable: offlineReason,
   machine_unknown: (machine) => `${machine} is no longer added here`,
 };
 

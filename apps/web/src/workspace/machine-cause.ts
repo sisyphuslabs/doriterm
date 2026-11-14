@@ -89,7 +89,7 @@ export function machineCause(
   const { name, state } = view;
   if (state === "connected") return coreTooOld(name, view.version);
   if (state === "reconnecting") {
-    return { title: `Reconnecting to ${name}`, detail: `${stateReason(state, name)}; try again once it is back.` };
+    return { title: stateReason(state, name), detail: `${stateReason(state, name)}; try again once it is back.` };
   }
   if (state === "connecting") return { title: stateReason(state, name), detail: `${name} is being reached now.` };
   if (state === "needs_login") {

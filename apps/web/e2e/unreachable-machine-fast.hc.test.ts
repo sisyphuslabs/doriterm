@@ -61,7 +61,7 @@ test("a New terminal on an added machine that is not connected fails from its st
     const elapsed = performance.now() - startedAt;
     expect(started).toEqual({
       ok: false,
-      failure: { machine: spec.name, kind: "unavailable", message: `${spec.name} is not connected` },
+      failure: { machine: spec.name, kind: "unavailable", message: `${spec.name} is offline` },
     });
     expect(elapsed).toBeLessThan(FAST_MS);
   } finally {
