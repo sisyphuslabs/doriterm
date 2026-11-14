@@ -175,6 +175,16 @@ describe("verified view members", () => {
     expect(made[1]?.stopped).toBe(1);
   });
 
+  it("settings built while a learned member is shown keep the person's machines paired, not viewed (#2535 follow-up)", () => {
+    const { mesh, made } = running(settingsWith([member("a")]));
+    mesh.setViewMembers([member("b", "beta")]);
+    mesh.select("b");
+    expect(mesh.settings.viewMember).toBe(true);
+    // As Start this computer does: the shown settings with a new loopback address.
+    mesh.update({ ...mesh.settings, mode: "loopback", loopbackUrl: "ws://127.0.0.1:7766/v1/hc", token: "t" });
+    expect(made[0]?.settings.viewMember).not.toBe(true);
+  });
+
   it("a paired key wins over another key in the view for the same host", () => {
     const paired = { ...member("a"), directUrl: "https://paired.invalid" };
     const { mesh, made } = running({ ...settingsWith([paired]), directUrl: paired.directUrl });

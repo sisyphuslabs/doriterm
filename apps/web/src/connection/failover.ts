@@ -24,7 +24,8 @@ export function failOverTo(
 /**
  * Settings a caller built from what is shown (`MeshConnections.settings`, e.g. Start this computer), with the machine put back
  * to the saved one when they name the machine a failover only shows: that one is not the person's choice, so it is never
- * saved (#2535 review L6).
+ * saved (#2535 review L6). A shown learned member also marks them `viewMember`, which is not the person's machines' (#2535
+ * follow-up): it is put back too.
  */
 export function withoutShownMachine(
   settings: ConnectionSettings,
@@ -32,8 +33,9 @@ export function withoutShownMachine(
   shown: string | undefined,
 ): ConnectionSettings {
   if (shown === undefined || settings.hostId !== shown) return settings;
-  const { hostId, hostName, hostKey, directUrl } = saved;
-  return { ...settings, hostId, hostName, hostKey, directUrl };
+  const { hostId, hostName, hostKey, directUrl, viewMember } = saved;
+  const { viewMember: _shownView, ...rest } = settings;
+  return { ...rest, hostId, hostName, hostKey, directUrl, ...(viewMember === undefined ? {} : { viewMember }) };
 }
 
 /** Whether the page's address names a place on the shown machine: a phone's space screen or open terminal (`?s=`, `?t=`). */
