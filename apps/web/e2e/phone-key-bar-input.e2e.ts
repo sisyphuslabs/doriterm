@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { E2E_HOST_ENV } from "./config.ts";
 import { expect, test } from "./fixtures.ts";
-import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
+import { key, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 import { readSavedEnv } from "./saved-env.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE });
@@ -169,7 +169,7 @@ test("Switch session lists the terminals and opens the one picked", async ({ pag
   ).toBeVisible({ timeout: 15_000 });
   await expect(page.locator("[data-terminal]")).toHaveAttribute("data-terminal", firstAddress);
   // The picked session opens with the keyboard down: only the keyboard button raises it.
-  await expect(keysBar(page)).toHaveCount(0);
+  await expect(key(page, "Hide keyboard")).toHaveCount(0);
   await key(page, "Show keyboard").click();
-  await expect(keysBar(page)).toBeVisible();
+  await expect(key(page, "Hide keyboard")).toBeVisible();
 });

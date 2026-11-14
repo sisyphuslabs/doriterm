@@ -5,13 +5,15 @@ import { RetryButton } from "./retry-button.tsx";
 import { useMachinesContext } from "./use-machines.ts";
 
 /**
- * A machine's problem under its header, including why creation is unavailable during its reconnect grace, with Try
- * again and, for a machine added by hand, Remove beside it (#2456).
+ * A machine's problem under its header, with Try again and, for a machine added by hand, Remove beside it (#2456). A
+ * routine redial raises no alarm (#1686, #2464): inside its reconnect grace the header alone reads reconnecting; the
+ * notice with why and its actions comes once the grace is over and it reads offline.
  */
 export function MachineNotice({ name }: { readonly name: string }) {
   const { views, retry, remove } = useMachinesContext();
   const view = views.find((one) => one.name === name);
-  const cause = view === undefined || view.state === "connecting" ? undefined : machineCause(view);
+  const cause =
+    view === undefined || view.state === "connecting" || view.state === "reconnecting" ? undefined : machineCause(view);
   if (cause === undefined) return null;
   const retryable = cause.retryless !== true;
   const canRemove = removable(view);

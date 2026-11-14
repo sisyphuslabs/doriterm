@@ -109,6 +109,79 @@ async function seedsListed(hc: string, env: Record<string, string | undefined>, 
   }
 }
 
+/** How long a core told to stop may take to exit; past it the stop throws, naming the process. */
+const CORE_EXIT_BOUND_MS = 20_000;
+
+/** How long a core sent SIGKILL may take to leave the process table. */
+const KILLED_EXIT_BOUND_MS = 2_000;
+
+/** Whether a process with that pid is running (one owned by another user counts: it is there). */
+export function running(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return Reflect.get(Object(error), "code") === "EPERM";
+  }
+}
+
+/**
+ * The `pid` of the reply with `id` in hc connect's output (one JSON-RPC reply per line); undefined when it has none.
+ * A line that is not JSON (hc's own words on a failed connect) is no reply and is passed over.
+ */
+export function replyPid(output: string, id: number): number | undefined {
+  for (const line of output.split("\n")) {
+    if (line.trim() === "") continue;
+    let reply: unknown;
+    try {
+      reply = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (Reflect.get(Object(reply), "id") !== id) continue;
+    const pid: unknown = Reflect.get(Object(Reflect.get(Object(reply), "result")), "pid");
+    return typeof pid === "number" ? pid : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Resolves once `pid` has exited. hc answers server.stop before its core has exited, and a core that is not this
+ * process's child gives no exit event, so the process table is asked until it is gone or the bound runs out (#2525).
+ */
+async function exitOf(pid: number, withinMs: number): Promise<void> {
+  if (await gone(pid, withinMs)) return;
+  // Killed before the throw, so a teardown that stops at the error leaves no core behind it (#2527 review). A core
+  // that exited between the last look and the kill needs none; any other refusal is named with the timeout.
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch (error) {
+    if (Reflect.get(Object(error), "code") !== "ESRCH") {
+      throw new Error(`the machine's core (pid ${pid}) did not exit within ${withinMs} ms and could not be killed`, {
+        cause: error,
+      });
+    }
+  }
+  // The stop settles only once the core is gone, on this path too (#2525): the kill is waited out, briefly.
+  if (!(await gone(pid, KILLED_EXIT_BOUND_MS))) {
+    throw new Error(
+      `the machine's core (pid ${pid}) did not exit within ${withinMs} ms, nor ${KILLED_EXIT_BOUND_MS} ms after SIGKILL`,
+    );
+  }
+  throw new Error(`the machine's core (pid ${pid}) did not exit within ${withinMs} ms, so it was killed`);
+}
+
+/** Whether `pid` leaves the process table within `withinMs`, asking it once per round. */
+async function gone(pid: number, withinMs: number): Promise<boolean> {
+  const deadline = Date.now() + withinMs;
+  while (running(pid)) {
+    if (Date.now() > deadline) return false;
+    // oxlint-disable-next-line no-await-in-loop -- one look at the process table per round, until the core is gone
+    await Bun.sleep(25);
+  }
+  return true;
+}
+
 /** Starts the second core (with its demo terminals when `withSeeds`) and adds it; resolves with its stop. */
 export async function addMachine(
   hc: string,
@@ -137,12 +210,22 @@ export async function addMachine(
   const stop = async (): Promise<void> => {
     rmSync(spec.dir, { recursive: true, force: true });
     const control = Bun.spawn([hc, "connect", "--session", session], { env: there, stdin: "pipe", stdout: "pipe" });
-    // Drained, as above: the core's reply is read and dropped so a stopped core can never wait on a full pipe.
-    void new Response(control.stdout).text();
-    control.stdin.write('{"jsonrpc":"2.0","id":1,"method":"server.stop"}\n');
+    // Read while it runs, so a stopping core can never wait on a full pipe; the status reply names the core's pid.
+    const replies = new Response(control.stdout).text();
+    control.stdin.write(
+      '{"jsonrpc":"2.0","id":1,"method":"server.status"}\n{"jsonrpc":"2.0","id":2,"method":"server.stop"}\n',
+    );
     await control.stdin.flush();
     void control.stdin.end();
     await control.exited;
+    // The stop resolves once the core has exited, not once it has answered: a check right after it, or a dial that
+    // follows, then never meets a core still on its way out (#2525).
+    const output = await replies;
+    const pid = replyPid(output, 1);
+    // hc connect starts a core that is not running, so a status reply without a pid is a failed call, not a missing core.
+    if (pid === undefined)
+      throw new Error(`the machine's core did not name its pid, so its exit cannot be awaited: ${output}`);
+    await exitOf(pid, CORE_EXIT_BOUND_MS);
   };
   try {
     writeFileSync(join(spec.dir, "env.json"), JSON.stringify({ hc, env: own }));
@@ -160,7 +243,18 @@ export async function addMachine(
     if (code !== 0) throw new Error(`hc machine add for the second core failed (exit ${code}): ${why}`);
     if (withSeeds) await seedsListed(hc, env, spec);
   } catch (error) {
-    await stop();
+    try {
+      await stop();
+    } catch (stopError) {
+      // The setup's error stays first in the list: it is what went wrong; the stop's failure is kept beside it (#2527 review).
+      throw new AggregateError(
+        [error, stopError],
+        `the second core's setup failed, and so did its stop: ${String(error)}`,
+        {
+          cause: stopError,
+        },
+      );
+    }
     throw error;
   }
   return stop;
