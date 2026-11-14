@@ -10,17 +10,22 @@ const STATUSES = ["working", "blocked", "done", "idle", "unknown"] as const;
 const CHIP_ALPHA = 0x26 / 255;
 /** How far a disabled glyph steps from the same glyph enabled: the Button spec's visible step (#1241). */
 export const DISABLED_STEP = 1.7;
+/**
+ * What a disabled glyph keeps on every surface it sits on: 3:1 is the WCAG floor for a graphic, but an icon's thin stroke
+ * drawn at 1x loses about a fifth of its contrast to antialiasing, so the colour aims at 3.5:1 to read 3:1 as rendered.
+ */
+export const DISABLED_GLYPH_FLOOR = 3.5;
 
 /**
- * A glyph drawn in `muted` on `surface`, disabled: moved toward the surface in 1% steps until it is `DISABLED_STEP` from
- * `muted`, but never below 3:1 on the surface. A theme whose muted text is too close to the surface for both keeps the
- * floor.
+ * A glyph drawn in `muted`, disabled: moved toward `toward` in 1% steps until it is `DISABLED_STEP` from `muted`, but
+ * never below `DISABLED_GLYPH_FLOOR` on any of `surfaces` (the strip, the page, the stepper). A theme whose muted text is
+ * too close to its surfaces for both keeps the floor.
  */
-export function disabledGlyph(muted: Rgb, surface: Rgb): string {
+export function disabledGlyph(muted: Rgb, toward: Rgb, surfaces: readonly Rgb[]): string {
   let kept = muted;
   for (let step = 1; step <= 100; step += 1) {
-    const candidate = mix(muted, surface, step / 100);
-    if (contrast(candidate, surface) < AA_GRAPHIC) break;
+    const candidate = mix(muted, toward, step / 100);
+    if (surfaces.some((surface) => contrast(candidate, surface) < DISABLED_GLYPH_FLOOR)) break;
     kept = candidate;
     if (contrast(candidate, muted) >= DISABLED_STEP) break;
   }
@@ -91,7 +96,13 @@ export function themeVariables(theme: ResolvedTheme): CssVariables {
     "secondary-foreground": r.foreground,
     muted: r.raised,
     "muted-foreground": muted,
-    "disabled-glyph": disabledGlyph(rgb(muted), flatten(r.raised, base)),
+    "disabled-glyph": disabledGlyph(rgb(muted), flatten(r.raised, base), [
+      base,
+      canvas,
+      chrome,
+      popover,
+      flatten(r.raised, base),
+    ]),
     "disabled-ink": disabledInk(rgb(muted), flatten(r.raised, base), [
       base,
       canvas,

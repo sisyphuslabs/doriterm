@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { BUILTIN_PALETTES } from "./builtins.ts";
 import { contrast, mix, parseRgba, type Rgb } from "./color.ts";
-import { DISABLED_STEP, disabledGlyph, themeVariables } from "./css.ts";
+import { DISABLED_GLYPH_FLOOR, DISABLED_STEP, disabledGlyph, themeVariables } from "./css.ts";
 import { AA_GRAPHIC, AA_TEXT, flatten, worstContrast } from "./guard.ts";
 import { resolveTheme } from "./resolve.ts";
 
@@ -13,15 +13,15 @@ import { resolveTheme } from "./resolve.ts";
 function stepReachable(muted: Rgb, surface: Rgb): boolean {
   for (let step = 1; step <= 100; step += 1) {
     const candidate = mix(muted, surface, step / 100);
-    if (contrast(candidate, surface) < AA_GRAPHIC) return false;
+    if (contrast(candidate, surface) < DISABLED_GLYPH_FLOOR) return false;
     if (contrast(candidate, muted) >= DISABLED_STEP) return true;
   }
   return false;
 }
 
-/** The disabled glyph's two requirements: always 3:1 on its surface, and the full step wherever the path reaches it. */
+/** The disabled glyph's two requirements: always the floor on its surface, and the full step wherever the path reaches it. */
 function expectDisabledGlyph(disabled: Rgb, muted: Rgb, surface: Rgb): void {
-  expect(contrast(disabled, surface)).toBeGreaterThanOrEqual(AA_GRAPHIC);
+  expect(contrast(disabled, surface)).toBeGreaterThanOrEqual(DISABLED_GLYPH_FLOOR);
   if (stepReachable(muted, surface)) expect(contrast(disabled, muted)).toBeGreaterThanOrEqual(DISABLED_STEP);
 }
 
@@ -30,7 +30,7 @@ test("a muted glyph just above 5.1:1 whose 1% path holds no stop with both keeps
   const surface = 0x000000;
   expect(contrast(muted, surface)).toBeGreaterThanOrEqual(AA_GRAPHIC * DISABLED_STEP);
   expect(stepReachable(muted, surface)).toBe(false);
-  const disabled = parseRgba(disabledGlyph(muted, surface))?.rgb;
+  const disabled = parseRgba(disabledGlyph(muted, surface, [surface]))?.rgb;
   if (disabled === undefined) throw new Error("no disabled glyph");
   expectDisabledGlyph(disabled, muted, surface);
 });
@@ -67,12 +67,16 @@ describe.each(Object.entries(BUILTIN_PALETTES))("%s meets WCAG 2.2 AA", (_, pale
     },
   );
 
-  test("--disabled-glyph holds 3:1 on its raised stepper and steps 1.7 from --muted-foreground where that leaves room", () => {
+  test("--disabled-glyph holds its floor on its raised stepper and steps 1.7 from --muted-foreground where that leaves room", () => {
     const raised = opaque[4];
     const muted = parseRgba(role("muted-foreground"))?.rgb;
     const disabled = parseRgba(role("disabled-glyph"))?.rgb;
     if (raised === undefined || muted === undefined || disabled === undefined) throw new Error("missing role");
     expectDisabledGlyph(disabled, muted, raised);
+  });
+
+  test("--disabled-glyph reads 3.5:1 on every opaque surface, so a thin 1x stroke still clears 3:1 once antialiased (visual QA)", () => {
+    expect(worstContrast(role("disabled-glyph"), opaque)).toBeGreaterThanOrEqual(DISABLED_GLYPH_FLOOR);
   });
 
   test("--disabled-ink holds 4.5:1 on every surface a label with no fill sits on (#2510)", () => {
