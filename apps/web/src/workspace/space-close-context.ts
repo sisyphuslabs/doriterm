@@ -4,9 +4,11 @@ import { createContext, useContext } from "react";
 export interface SpaceClosing {
   /** Opens the Close space question for space `id` (a `spaceKey`). */
   readonly ask: (id: string) => void;
+  /** Why space `id` cannot be closed now (its layout takes no edits), or null when it can: the menu offers it disabled. */
+  readonly refusal: (id: string) => string | null;
 }
 
-const NOT_PROVIDED: SpaceClosing = { ask: () => undefined };
+const NOT_PROVIDED: SpaceClosing = { ask: () => undefined, refusal: () => null };
 
 export const SpaceCloseContext = createContext<SpaceClosing>(NOT_PROVIDED);
 

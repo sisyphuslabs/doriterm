@@ -11,15 +11,18 @@ test("a New tab that fails says so with the sidebar hidden, where the machine li
   await openNewTerminal(page);
   await page.getByRole("button", { name: "Hide sidebar" }).click();
   await expect(page.getByRole("complementary", { name: "Workspace" })).toBeHidden();
-  await socket.drop(true);
-  await expect(page.getByRole("status").filter({ hasText: "Reconnecting" })).toBeVisible();
+  // New tab is pressed while the link is up (while it is down it is offered disabled, #2455); the link answers late and
+  // drops with the run in flight, so the run fails.
+  socket.delay(60_000);
   await pressNewTab(page.getByRole("button", { name: "New tab", exact: true }));
+  await socket.drop(true);
   const notice = page.getByRole("heading", { name: "Could not open a new tab" });
   await expect(notice).toHaveCount(1);
   await expect(page.getByText(/try again once it is back/)).toBeVisible();
   // A duplicate that renders later in this step is caught here; one that renders after it is not, so this narrows the
   // window rather than closing it (#1343).
   await expect(notice).toHaveCount(1);
+  socket.delay(0);
   socket.restore();
 });
 
@@ -41,11 +44,13 @@ test("one New tab asks the core once, so a failure has one cause to report", asy
   socket.restore();
 });
 
-test("a New tab whose answer the link lost still opened, so only the press while down reports", async ({ page }) => {
+test("a New tab whose answer the link lost still opened, so it reports nothing, and New tab waits disabled while down", async ({
+  page,
+}) => {
   // The run reaches the core and the feed lists its terminal before its answer does, as on a busy host. Its answer is
-  // held here, so the tab opens first and the link drops before the answer lands: the press did open a tab, and only
-  // the press made while reconnecting is a failure to report. Without that, the two failing asks show two identical
-  // notices for what a person made out as one failure (#1343).
+  // held here, so the tab opens first and the link drops before the answer lands: the press did open a tab, so its lost
+  // answer is no failure to report (#1343). While the link is down New tab cannot start a terminal, so it is offered
+  // disabled rather than pressed and refused (#2455), and it comes back with the link.
   let asked: string | undefined;
   let answer: (() => void) | undefined;
   const socket = await routeHcSocket(page, {
@@ -65,15 +70,15 @@ test("a New tab whose answer the link lost still opened, so only the press while
   await expect(page.locator('[data-focused="true"] [data-terminal]')).toHaveAttribute("data-terminal", /./, {
     timeout: 15_000,
   });
-  // The second press is made once the page says the link is down, so it cannot reach the core. Pressed while the link
-  // was still up, its run could reach the core and the feed before the drop, and then it rightly opened a tab too.
+  const newTab = page.getByRole("button", { name: "New tab", exact: true });
   await socket.drop(true);
   await expect(page.getByRole("status").filter({ hasText: "Reconnecting" })).toBeVisible();
-  await pressNewTab(page.getByRole("button", { name: "New tab", exact: true }));
-  await expect(page.getByRole("heading", { name: "Could not open a new tab" })).toHaveCount(1);
-  await expect(page.getByText(/try again once it is back/)).toBeVisible();
+  await expect(newTab).toBeDisabled();
   answer?.();
   socket.restore();
+  // Back on the link, New tab is offered again; the lost answer, settled at the drop, left no notice behind.
+  await expect(newTab).toBeEnabled({ timeout: 20_000 });
+  await expect(page.getByRole("heading", { name: "Could not open a new tab" })).toHaveCount(0);
 });
 
 test("New terminal on an added machine that fails reports in the same place as New tab", async ({ page }) => {

@@ -23,9 +23,45 @@ const MAX_REQUEST_BYTES = 4096;
 
 interface ConnectionState {
   buffer: string;
+  /** Decodes the connection's bytes as one stream, so a character split across two chunks arrives whole. */
+  readonly decoder: TextDecoder;
   readonly closed: AbortController;
   started: boolean;
   answer: ((line: string) => void) | undefined;
+  readonly out: Outgoing;
+}
+
+/**
+ * What a control connection still owes its peer. A Bun socket takes only what fits its send buffer and keeps none of the
+ * rest, so a reply past it (about 8 KB on macOS) was cut short and the socket never closed (#2387): the rest waits here
+ * for `drain`, in order.
+ */
+interface Outgoing {
+  readonly queue: Uint8Array[];
+  ending: boolean;
+}
+
+const encoder = new TextEncoder();
+
+/** Writes what the socket takes now, and ends it once everything queued is out and an end was asked for. */
+function flushOut<T>(socket: Socket<T>, out: Outgoing): void {
+  for (let head = out.queue[0]; head !== undefined; head = out.queue[0]) {
+    const taken = Math.max(0, socket.write(head));
+    if (taken < head.byteLength) {
+      out.queue[0] = head.subarray(taken);
+      return;
+    }
+    out.queue.shift();
+  }
+  if (out.ending) socket.end();
+}
+
+/** Sends one JSON line after anything still queued; `end` closes the connection once all of it is written. */
+function sendLine<T>(socket: Socket<T>, out: Outgoing, value: unknown, end = false): void {
+  if (out.ending) return;
+  out.queue.push(encoder.encode(`${JSON.stringify(value)}\n`));
+  out.ending = end;
+  flushOut(socket, out);
 }
 
 export interface ControlListener {
@@ -48,20 +84,29 @@ export async function controlIsLive(stateDir: string): Promise<boolean> {
 export function listenControl(stateDir: string, handle: ControlHandler): ControlListener {
   const unix = controlSocketPath(stateDir);
   rmSync(unix, { force: true });
-  const reply = (socket: Socket<ConnectionState>, value: unknown): void => {
-    socket.end(`${JSON.stringify(value)}\n`);
-  };
+  const reply = (socket: Socket<ConnectionState>, value: unknown): void =>
+    sendLine(socket, socket.data.out, value, true);
   const listener: UnixSocketListener<ConnectionState> = Bun.listen<ConnectionState>({
     unix,
     socket: {
       open(socket) {
-        socket.data = { buffer: "", closed: new AbortController(), started: false, answer: undefined };
+        socket.data = {
+          buffer: "",
+          decoder: new TextDecoder(),
+          closed: new AbortController(),
+          started: false,
+          answer: undefined,
+          out: { queue: [], ending: false },
+        };
+      },
+      drain(socket) {
+        flushOut(socket, socket.data.out);
       },
       close(socket) {
         socket.data.closed.abort(new Error("the control connection closed"));
       },
       data(socket, chunk) {
-        socket.data.buffer += chunk.toString();
+        socket.data.buffer += socket.data.decoder.decode(chunk, { stream: true });
         const lines = socket.data.buffer.split("\n");
         socket.data.buffer = lines.pop() ?? "";
         if (socket.data.buffer.length > MAX_REQUEST_BYTES || lines.some((line) => line.length > MAX_REQUEST_BYTES)) {
@@ -101,7 +146,7 @@ export function listenControl(stateDir: string, handle: ControlHandler): Control
                 };
                 socket.data.closed.signal.addEventListener("abort", stop, { once: true });
                 if (socket.data.closed.signal.aborted) stop();
-                else socket.write(`${JSON.stringify({ state: "code", code })}\n`);
+                else sendLine(socket, socket.data.out, { state: "code", code });
                 return answer.promise;
               });
             })
@@ -130,16 +175,21 @@ export async function requestControl(
 ): Promise<unknown> {
   const { promise, resolve, reject } = Promise.withResolvers<string>();
   let text = "";
+  const decoder = new TextDecoder();
   let asked = false;
+  const out: Outgoing = { queue: [], ending: false };
   try {
     await Bun.connect({
       unix: controlSocketPath(stateDir),
       socket: {
         open(socket) {
-          socket.write(`${JSON.stringify(request)}\n`);
+          sendLine(socket, out, request);
+        },
+        drain(socket) {
+          flushOut(socket, out);
         },
         data(socket, chunk) {
-          text += chunk.toString();
+          text += decoder.decode(chunk, { stream: true });
           const end = text.indexOf("\n");
           if (end === -1 || asked || request.op !== "mesh-join") return;
           try {
@@ -149,7 +199,7 @@ export async function requestControl(
             asked = true;
             text = text.slice(end + 1);
             void (confirm?.(line.code) ?? Promise.resolve(false)).then(
-              (answer) => socket.write(`${JSON.stringify({ confirm: answer })}\n`),
+              (answer) => sendLine(socket, out, { confirm: answer }),
               (error: unknown) => {
                 socket.end();
                 reject(error);
@@ -161,7 +211,7 @@ export async function requestControl(
           }
         },
         close() {
-          resolve(text);
+          resolve(text + decoder.decode());
         },
         error(_, error) {
           reject(error);
