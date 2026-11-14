@@ -85,9 +85,10 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
       if (border.display === "inline" && !horizontalLtr) throw unreadable;
       const box =
         (border.display === "inline" ? block.getClientRects()[0] : undefined) ?? block.getBoundingClientRect();
-      // An absolute layer in a scrolled container moves with its content, by the block's scroll offset in its own units;
-      // a fixed one stays put.
-      const scrolled = style.position === "absolute";
+      // A layer moves with its block's content, by the block's scroll offset in its own units: an absolute one, and a fixed
+      // one too, since only a transformed block holds a fixed layer and it scrolls it with its content. The root's scroll
+      // offset is the viewport's, which the root's own box already moved by, so it is not counted twice (#2472 review).
+      const scrolled = block !== document.documentElement;
       origin = {
         left: box.left + (Number.parseFloat(border.borderLeftWidth) - (scrolled ? block.scrollLeft : 0)) * sx,
         top: box.top + (Number.parseFloat(border.borderTopWidth) - (scrolled ? block.scrollTop : 0)) * sy,

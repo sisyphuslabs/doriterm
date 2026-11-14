@@ -68,6 +68,26 @@ test("a static button's absolute hit layer is read against its nearest positione
     await page.evaluate(() => document.getElementById("box")?.scrollTo(0, 50));
     expect(await page.evaluate(appRegionAt, { x: 210, y: 50 })).toBe("no-drag");
     expect(await page.evaluate(appRegionAt, { x: 210, y: 150 })).toBe("drag");
+    // A fixed layer under a transformed scroll container is that container's, so it scrolls with its content too.
+    await page.setContent(
+      SCROLLED.replace("position: relative; overflow: auto;", "transform: translateX(0); overflow: auto;").replace(
+        "#box button::after { content: \"\"; position: absolute;",
+        "#box button::after { content: \"\"; position: fixed;",
+      ),
+    );
+    await page.evaluate(() => document.getElementById("box")?.scrollTo(0, 50));
+    expect(await page.evaluate(appRegionAt, { x: 105, y: 25 })).toBe("no-drag");
+    expect(await page.evaluate(appRegionAt, { x: 105, y: 75 })).toBe("drag");
+    // With the root itself the containing block, the page's scroll moves the root's box once, not twice: a layer at
+    // top 200 in a page scrolled by 100 sits at y 100..110.
+    await page.setContent(`<!doctype html><style>
+      html { position: relative; } body { margin: 0; height: 2000px; -webkit-app-region: drag; }
+      #tall { display: block; width: 40px; height: 40px; -webkit-app-region: drag; }
+      #tall::after { content: ""; position: absolute; left: 100px; top: 200px; width: 20px; height: 10px; -webkit-app-region: no-drag; }
+    </style><button id="tall">tall</button>`);
+    await page.evaluate(() => window.scrollTo(0, 100));
+    expect(await page.evaluate(appRegionAt, { x: 105, y: 105 })).toBe("no-drag");
+    expect(await page.evaluate(appRegionAt, { x: 105, y: 205 })).toBe("drag");
     await page.setContent(SCALED);
     // The page lists no region of its own, so a point beside the layer reads none; read unscaled, the layer would sit at
     // x 0..20, y 50..70 instead.
