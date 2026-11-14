@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { MachineView } from "@doriface/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MachineNotice } from "../workspace/spaces-group.tsx";
+import { MachineNotice } from "../workspace/machine-notice.tsx";
 import { MachinesContext, useMachinesContext } from "../workspace/use-machines.ts";
 import { AddedMachine } from "./machines-section.tsx";
 
@@ -17,7 +17,20 @@ const listed = (version: string): MachineView => ({
 });
 
 const row = (view: MachineView): string =>
-  renderToStaticMarkup(<AddedMachine view={view} now={1_800_000_000_000} onRetry={async () => undefined} />);
+  renderToStaticMarkup(
+    <AddedMachine
+      view={view}
+      now={1_800_000_000_000}
+      onRetry={async () => undefined}
+      onRemove={async () => undefined}
+    />,
+  );
+
+/** The same machine reached as a mesh member: its line is the pinned via form a mesh reconciler adds (groups.ts). */
+const member = (view: MachineView): MachineView => ({
+  ...view,
+  target: `'/opt/doriface/bin/doriface-host' connect --mesh --state-dir '/var/lib/doriface' ${"a".repeat(25)}q`,
+});
 
 test("an added machine's row says to update hc there when machine.list reports its core below the floor (#2285)", () => {
   const html = row(listed("0.1.16"));
@@ -44,4 +57,13 @@ test("the sidebar notice for an old core says to update hc there and offers no T
   // A machine whose line is down still gets its Try again.
   const down = renderToStaticMarkup(<Notice view={{ ...listed("0.1.20"), state: "unreachable", why: "(4404)" }} />);
   expect(down).toContain("Try again");
+});
+
+test("a machine added by hand offers Remove in its row and beside Try again; a mesh member offers neither (#2456)", () => {
+  const down: MachineView = { ...listed("0.1.20"), state: "unreachable", why: "(4404)" };
+  expect(row(listed("0.1.20"))).toContain("Remove box\u2026");
+  expect(renderToStaticMarkup(<Notice view={down} />)).toContain("Remove box\u2026");
+  expect(row(member(down))).not.toContain("Remove box");
+  expect(row(member(down))).toContain("Try again");
+  expect(renderToStaticMarkup(<Notice view={member(down)} />)).not.toContain("Remove box");
 });
