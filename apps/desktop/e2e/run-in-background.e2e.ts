@@ -41,7 +41,7 @@ test.afterAll(async () => {
 });
 
 const profileArg = (): string => `--user-data-dir=${profile}`;
-const launch = (): Promise<ElectronApplication> => electron.launch({ ...launchOptions([profileArg()]), env });
+const launch = async (): Promise<ElectronApplication> => electron.launch(await launchOptions([profileArg()], { env }));
 const windowCount = (app: ElectronApplication): Promise<number> =>
   app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);
 const dockVisible = (app: ElectronApplication): Promise<boolean | null> =>

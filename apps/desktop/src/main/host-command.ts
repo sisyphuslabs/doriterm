@@ -41,6 +41,34 @@ export function hostCommand(context: HostContext): HostCommand {
   };
 }
 
+/**
+ * The host script or binary a command runs: the first argument when the command is an interpreter plus a script
+ * (a checkout runs `bun host/src/cli.ts`), the file itself otherwise (a packaged app's bundled binary).
+ */
+export function hostCliOf(command: HostCommand): string {
+  return command.args.length > 0 ? (command.args[0] ?? command.file) : command.file;
+}
+
+/**
+ * The env a launch's host child takes: the very object given when no e2e override is active (a production launch
+ * never reaches the resolution branch), or the same env carrying the host the app itself resolved when an e2e
+ * run replaced the host binary with its guard wrapper (#2399) - the one bundled beside this app, or the
+ * checkout's source.
+ */
+export function hostChildEnv(
+  context: HostContext,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): Readonly<Record<string, string | undefined>> {
+  const override = context.env["DORIFACE_HOST_BIN"];
+  if (override === undefined || override === "") return env;
+  return {
+    ...env,
+    DORIFACE_HOST_RESOLVED: hostCliOf(
+      hostCommand({ ...context, env: { ...context.env, DORIFACE_HOST_BIN: undefined } }),
+    ),
+  };
+}
+
 /** Where herdr-core usually lands when PATH does not say. */
 export function usualHcDirs(context: HostContext): readonly string[] {
   const home = [join(context.home, ".local", "bin"), join(context.home, ".cargo", "bin")];

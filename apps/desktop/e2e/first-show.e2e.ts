@@ -45,10 +45,9 @@ test("the window shows within its deadline while the GPU process is still loadin
       }).filter((entry): entry is [string, string] => entry[1] !== undefined),
     );
     // With the GPU process on, as a user's launch has it; the other e2e runs pass --disable-gpu.
-    const app = await electron.launch({
-      ...launchOptions([`--user-data-dir=${join(dir, "profile")}`], { gpu: true }),
-      env,
-    });
+    const app = await electron.launch(
+      await launchOptions([`--user-data-dir=${join(dir, "profile")}`], { gpu: true, env }),
+    );
     try {
       const after = await visibleAfter(app, FIRST_SHOW_DEADLINE_MS + 15_000);
       console.log(`first-show: visible ${after === null ? "never" : `${after} ms`} after the main process started`);
@@ -73,10 +72,9 @@ test("a launch whose GPU process is ready shows the window on its first frame, b
         (entry): entry is [string, string] => entry[1] !== undefined,
       ),
     );
-    const app = await electron.launch({
-      ...launchOptions([`--user-data-dir=${join(dir, "profile")}`], { gpu: true }),
-      env,
-    });
+    const app = await electron.launch(
+      await launchOptions([`--user-data-dir=${join(dir, "profile")}`], { gpu: true, env }),
+    );
     try {
       const after = await visibleAfter(app, 30_000);
       console.log(`first-show: visible ${after === null ? "never" : `${after} ms`} after the main process started`);

@@ -27,7 +27,7 @@ test("booting with a saved This computer link and no herdr-core shows Retry and 
       XDG_STATE_HOME: join(dir, "state"),
     }).filter((entry): entry is [string, string] => entry[1] !== undefined),
   );
-  const launch = () => electron.launch({ ...launchOptions([`--user-data-dir=${join(dir, "profile")}`]), env });
+  const launch = async () => electron.launch(await launchOptions([`--user-data-dir=${join(dir, "profile")}`], { env }));
   try {
     // The first launch saves the link, as choosing This computer would have.
     const first = await launch();
