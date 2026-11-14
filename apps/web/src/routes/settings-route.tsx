@@ -33,6 +33,7 @@ import { useCloseSettings } from "../settings/use-close-settings.ts";
 import { useSettingsInDialog } from "../settings/settings-dialog.tsx";
 import { VoiceSection } from "../settings/voice-section.tsx";
 import { useBrowserMembership } from "../mesh/membership-state.ts";
+import { useNarrow } from "../workspace/use-narrow.ts";
 import { desktopBridge } from "../desktop/bridge.ts";
 import { BrowserInvite } from "../settings/browser-invite.tsx";
 import { CONNECT_GROUP, SECTIONS, sectionFromLink, type SectionId } from "../settings/settings-sections.tsx";
@@ -166,6 +167,13 @@ export function SettingsRoute() {
   // In the dialog its header is not the window's titlebar: it neither moves the window nor makes room for its controls.
   const dialog = useSettingsInDialog();
   const titlebar = dialog ? {} : { "data-titlebar": "" };
+  // The phone's sheet scrolls the document, so a tap on iOS's status bar takes it to the top (#2533): its title row and
+  // tabs stick to the top, and it opens at its own top rather than where the list under it was scrolled.
+  const narrow = useNarrow();
+  const documentScroll = !dialog && narrow;
+  useLayoutEffect(() => {
+    if (documentScroll) window.scrollTo({ top: 0, behavior: "instant" });
+  }, [documentScroll]);
   // The full-screen sheet takes focus as it opens, as the dialog does, unless something in it already has it (#1495).
   const view = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -184,12 +192,19 @@ export function SettingsRoute() {
       ref={view}
       tabIndex={-1}
       className={cn(
-        "flex h-full min-h-0 flex-col bg-background outline-none md:flex-row",
-        !dialog && "pt-(--safe-top) pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left)",
+        "flex flex-col bg-background outline-none md:flex-row",
+        documentScroll ? "min-h-dvh" : "h-full min-h-0",
+        !dialog && "pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left)",
+        !dialog && !documentScroll && "pt-(--safe-top)",
       )}
     >
       <CrashProbe region="settings" />
-      <Tabs value={section} onValueChange={(value: SectionId) => setSection(value)} className="md:hidden">
+      <Tabs
+        value={section}
+        onValueChange={(value: SectionId) => setSection(value)}
+        {...(documentScroll ? { "data-pinned": "top" } : {})}
+        className={cn("md:hidden", documentScroll && "sticky top-0 z-10 bg-background pt-(--safe-top)")}
+      >
         <div {...titlebar} className="flex items-center gap-1 pt-3 pr-2 pb-1 pl-[var(--titlebar-inset-start,0.5rem)]">
           {back}
           <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
@@ -248,7 +263,7 @@ export function SettingsRoute() {
           </div>
         </ScrollArea>
       </nav>
-      <ScrollArea slot="settings-body" className="flex-1">
+      <SettingsBody documentScroll={documentScroll}>
         <div ref={body} className="flex max-w-2xl flex-col gap-8 px-4 py-6 md:px-8">
           {hits.length === 0 ? null : <SettingHits hits={hits} onOpen={open} onLeave={() => field.current?.focus()} />}
           {/* The Update row fails alone: a throw there must not take every section with it. */}
@@ -354,7 +369,26 @@ export function SettingsRoute() {
             )}
           </RegionBoundary>
         </div>
-      </ScrollArea>
+      </SettingsBody>
     </div>
+  );
+}
+
+/**
+ * The sections' body: a scroller of its own in the dialog and on a short wide screen, and in the page's flow on a phone,
+ * where the document scrolls it (#2533). Either way it is the `settings-body` slot.
+ */
+function SettingsBody({ documentScroll, children }: { readonly documentScroll: boolean; readonly children: ReactNode }) {
+  if (documentScroll) {
+    return (
+      <div data-slot="settings-body" className="flex-1">
+        {children}
+      </div>
+    );
+  }
+  return (
+    <ScrollArea slot="settings-body" className="flex-1">
+      {children}
+    </ScrollArea>
   );
 }

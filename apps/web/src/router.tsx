@@ -12,6 +12,7 @@ import { JoinLanding } from "./pair/join-landing.tsx";
 import { SettingsRoute } from "./routes/settings-route.tsx";
 import { SettingsDialog, SettingsInDialog, useSettingsSheet } from "./settings/settings-dialog.tsx";
 import { WorkspaceRoute } from "./routes/workspace-route.tsx";
+import { useNarrow } from "./workspace/use-narrow.ts";
 
 /** Where the settings body was scrolled to when its frame was taken out of the page, and which element scrolled. */
 interface KeptScroll {
@@ -69,6 +70,10 @@ function Root() {
   const settings = path === "/settings";
   const asSheet = useSettingsSheet();
   const sheet = settings && asSheet;
+  // On a phone the sheet scrolls the document, as the phone's lists do, so a tap on iOS's status bar takes it to the top
+  // (#2533): it sits in the page's flow, and the workspace under it is held to the screen, out of the flow.
+  const narrow = useNarrow();
+  const phoneSheet = sheet && narrow;
   const [frame] = useState(() => Object.assign(document.createElement("div"), { className: "h-full" }));
   const refocus = useRef<HTMLElement | null>(null);
   const scroll = useRef<KeptScroll | null>(null);
@@ -93,7 +98,7 @@ function Root() {
           aria-modal="true"
           aria-label="Settings"
           data-settings-sheet
-          className="fixed inset-0 bg-background"
+          className={phoneSheet ? "relative min-h-dvh bg-background" : "fixed inset-0 bg-background"}
         >
           <SettingsSlot frame={frame} refocus={refocus} scroll={scroll} />
         </div>
@@ -107,7 +112,13 @@ function Root() {
           the dialog is read (aria-modal). */}
       <div
         data-workspace
-        className={sheet ? "invisible contents [&_*]:invisible!" : "contents"}
+        className={
+          phoneSheet
+            ? "invisible fixed inset-0 overflow-hidden [&_*]:invisible!"
+            : sheet
+              ? "invisible contents [&_*]:invisible!"
+              : "contents"
+        }
         inert={settings}
         aria-hidden={settings || undefined}
       >

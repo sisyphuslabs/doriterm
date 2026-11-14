@@ -103,3 +103,25 @@ test("at 390, the Agents list, the Spaces list and a space's tabs scroll the doc
     addresses.forEach((address) => endAgent("host", address));
   }
 });
+
+test("at 390, Settings scrolls the document too, under its pinned title and tabs (#2533)", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: /^Settings/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible();
+  // The longest section, so the page runs well past one screen.
+  await page.getByRole("tab", { name: "Keybindings", exact: true }).click();
+  const { room, listRoom } = await scrolling(page, "settings-body");
+  expect(room, "the document scrolls Settings").toBeGreaterThan(300);
+  expect(listRoom, "the sections' body does not scroll by itself").toBe(0);
+  const body = page.locator('[data-slot="settings-body"]');
+  const bodyTopUnderPin = () =>
+    body.evaluate((el) => {
+      const pin = document.querySelector('[data-pinned="top"]')?.getBoundingClientRect();
+      return { pinTop: Math.round(pin?.top ?? -1), bodyShows: el.getBoundingClientRect().top >= (pin?.bottom ?? 0) - 1 };
+    });
+  await scrollTo(page, room);
+  expect(await bodyTopUnderPin()).toEqual({ pinTop: 0, bodyShows: false });
+  await scrollTo(page, 0);
+  expect(await bodyTopUnderPin()).toEqual({ pinTop: 0, bodyShows: true });
+});

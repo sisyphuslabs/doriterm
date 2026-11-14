@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef } from "react";
+import { use, useLayoutEffect, useRef } from "react";
+import { ActionsPaused } from "../keys/dispatcher.ts";
 
 /** The last offset of each phone list screen, by the screen's key; it lasts as long as the page (#1553). */
 const offsets = new Map<string, number>();
@@ -33,9 +34,11 @@ export function keepScroll(
  *
  * The list scrolls the document itself, not a box inside it: iOS scrolls only the document to the top when the status bar
  * is tapped (#2533). The listener is attached and taken off in layout effects, so the scroll the browser makes as the
- * document shrinks under a terminal (back to 0) is never filed under the list that just left.
+ * document shrinks under a terminal (back to 0) is never filed under the list that just left. While Settings is open over
+ * the workspace the document is Settings', so the list neither records nor restores until Settings closes.
  */
-export function useKeptDocumentScroll(key: string, ready: boolean): void {
+export function useKeptDocumentScroll(key: string, screenReady: boolean): void {
+  const ready = screenReady && !use(ActionsPaused);
   const restored = useRef<string | null>(null);
   const current = useRef(key);
   useLayoutEffect(() => {
