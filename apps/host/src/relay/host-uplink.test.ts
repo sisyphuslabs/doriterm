@@ -1,4 +1,4 @@
-import { afterAll, expect, test } from "bun:test";
+import { afterAll, expect, setSystemTime, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -49,6 +49,28 @@ test.each([
     (await answered.promise).close(4408, reason);
     expect(await closed.promise).toMatch(new RegExp(`^relay: uplink closed \\(${shown.replaceAll("?", "\\?")}\\); `));
   } finally {
+    await uplink.stop();
+  }
+});
+
+test("a stable uplink's quick redial is logged as the whole line, its wait under a second as now or in milliseconds", async () => {
+  answered = Promise.withResolvers();
+  const closed = Promise.withResolvers<string>();
+  const uplink = new HostUplink({
+    relayUrl: `http://127.0.0.1:${relay.port}`,
+    identity,
+    log: (line) => {
+      if (line.startsWith("relay: uplink closed")) closed.resolve(line);
+    },
+  });
+  await uplink.start({ onSession: () => {}, onConnected: () => {} });
+  try {
+    const ws = await answered.promise;
+    setSystemTime(new Date(Date.now() + 30_000));
+    ws.terminate();
+    expect(await closed.promise).toMatch(/^relay: uplink closed \(1006\); reconnecting (now|in [1-9][0-9]{0,2} ms)$/);
+  } finally {
+    setSystemTime();
     await uplink.stop();
   }
 });
