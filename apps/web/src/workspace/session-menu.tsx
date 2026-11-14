@@ -14,13 +14,17 @@ export interface SessionMenuProps {
  * then behind the statement, on whatever is still on the page (#590, #2362). So it asks whether a dialog is up, not
  * whether one has focus. Only a modal one counts: a toast is a dialog too (#2380). Once the question is dismissed,
  * the menu's exit may still be pending: it must not take focus from a terminal or another control chosen meanwhile
- * (#2521). Supplying finalFocus opts out of Base UI's default check that focus has moved outside the menu.
+ * (#2521). Only the closing menu counts as "still has focus": a menu that is open (Base UI marks it data-open) was
+ * opened meanwhile and keeps its focus (#2547). Supplying finalFocus opts out of Base UI's default check that focus has
+ * moved outside the menu.
  */
 export function menuReturnsFocus(): boolean {
   if (document.querySelector('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]') !== null)
     return false;
   const active = document.activeElement;
-  return active === null || active === document.body || active.closest('[role="menu"]') !== null;
+  if (active === null || active === document.body) return true;
+  const menu = active.closest('[role="menu"]');
+  return menu !== null && !menu.hasAttribute("data-open");
 }
 
 /** What can be done with a terminal's session: its "..." menu and a split pane header's right-click hold the same items. */

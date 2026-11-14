@@ -8,7 +8,13 @@ afterEach(() => {
 });
 
 // The focus policy reads the browser's current focus and modal presence when an exit finishes.
-const menu = { closest: () => menu };
+// A menu popup carries data-open while open (Base UI); the closing one has lost it.
+const popup = (open: boolean) => {
+  const element = { closest: () => element, hasAttribute: (name: string) => open && name === "data-open" };
+  return element;
+};
+const menu = popup(false);
+const otherOpenMenu = popup(true);
 const terminal = { closest: () => null };
 const button = { closest: () => null };
 const body = { closest: () => null };
@@ -19,6 +25,7 @@ test.each([
   ["nothing has focus", null, false, true],
   ["the terminal took focus after Cancel", terminal, false, false],
   ["another control took focus", button, false, false],
+  ["another menu opened meanwhile has focus", otherOpenMenu, false, false],
   ["a modal is open while focus is between layers", body, true, false],
   ["a modal is open while the menu still has focus", menu, true, false],
 ] as const)("session menu focus return: %s", (_name, activeElement, modal, expected) => {
