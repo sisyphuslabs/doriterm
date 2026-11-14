@@ -21,6 +21,8 @@ static const double kSilenceSeconds = 1.5;
 static const double kNoSpeechSeconds = 8.0;
 static const double kMaxSeconds = 60.0;
 static const double kFinalGraceSeconds = 5.0;
+/** Input changes before any speech that capture follows onto the new input; one more ends the session (#869). */
+static const NSUInteger kMaxRestarts = 3;
 
 typedef struct {
   int64_t session;
@@ -66,6 +68,7 @@ static void CallJs(napi_env env, napi_value callback, void *context, void *data)
 @property(nonatomic) BOOL audioEnded;
 @property(nonatomic) BOOL ended;
 @property(nonatomic) NSUInteger silenceMark;
+@property(nonatomic) NSUInteger restarts;
 @property(nonatomic, strong) id configObserver;
 @end
 
@@ -137,6 +140,32 @@ static void EndAudio(DFSession *session) {
                  dispatch_get_main_queue(), ^{
                    Finish(session, NULL);
                  });
+}
+
+/**
+ * Taps the engine's input at its current format into the session's request and starts the engine. AVFoundation raises
+ * NSException (a device or format change between the read and the tap); it must never cross the Node-API boundary,
+ * where it would abort the app, so any failure answers NO.
+ */
+static BOOL StartCapture(DFSession *session) {
+  SFSpeechAudioBufferRecognitionRequest *request = session.request;
+  @try {
+    AVAudioInputNode *input = session.engine.inputNode;
+    AVAudioFormat *format = [input outputFormatForBus:0];
+    if (format.sampleRate <= 0 || format.channelCount == 0) return NO;
+    [input installTapOnBus:0
+                bufferSize:1024
+                    format:format
+                     block:^(AVAudioPCMBuffer *buffer, AVAudioTime *when) {
+                       [request appendAudioPCMBuffer:buffer];
+                     }];
+    session.tapped = YES;
+    [session.engine prepare];
+    NSError *failure = nil;
+    return [session.engine startAndReturnError:&failure];
+  } @catch (NSException *exception) {
+    return NO;
+  }
 }
 
 static void ArmSilence(DFSession *session) {
@@ -380,42 +409,26 @@ static napi_value Start(napi_env env, napi_callback_info info) {
 
   napi_value result;
   napi_create_int64(env, session.identifier, &result);
-  // AVFoundation raises NSException (a device or format change between the read and the tap); it must never cross
-  // the Node-API boundary, where it would abort the app. Any failure here ends the session as audio-capture.
-  BOOL started = NO;
-  @try {
-    AVAudioInputNode *input = session.engine.inputNode;
-    AVAudioFormat *format = [input outputFormatForBus:0];
-    if (format.sampleRate > 0 && format.channelCount > 0) {
-      [input installTapOnBus:0
-                  bufferSize:1024
-                      format:format
-                       block:^(AVAudioPCMBuffer *buffer, AVAudioTime *when) {
-                         [request appendAudioPCMBuffer:buffer];
-                       }];
-      session.tapped = YES;
-      [session.engine prepare];
-      NSError *failure = nil;
-      started = [session.engine startAndReturnError:&failure];
-    }
-  } @catch (NSException *exception) {
-    started = NO;
-  }
-  if (!started) {
+  if (!StartCapture(session)) {
     dispatch_async(dispatch_get_main_queue(), ^{
       Finish(session, "audio-capture");
     });
     return result;
   }
   // The input device changed (AirPods connected, a mic unplugged): the engine stops on its own. End the audio so the
-  // words heard so far still arrive, or say the microphone went away when nothing was heard yet.
+  // words heard so far still arrive. When nothing was heard yet (a Bluetooth headset switching profile just after the
+  // start), listen on through the new input instead, as the same session with its timers; the microphone went away
+  // only when the new input cannot be started, or keeps changing (#869).
   session.configObserver = [[NSNotificationCenter defaultCenter]
       addObserverForName:AVAudioEngineConfigurationChangeNotification
                   object:session.engine
                    queue:[NSOperationQueue mainQueue]
               usingBlock:^(NSNotification *note) {
-                if (session.heard) EndAudio(session);
-                else Finish(session, "audio-capture");
+                if (session.ended || session.audioEnded) return;
+                if (session.heard) return EndAudio(session);
+                session.restarts += 1;
+                StopAudio(session);
+                if (session.restarts > kMaxRestarts || !StartCapture(session)) Finish(session, "audio-capture");
               }];
 
   session.task = [recognizer
