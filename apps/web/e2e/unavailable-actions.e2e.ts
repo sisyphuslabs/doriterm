@@ -250,7 +250,14 @@ test.describe("the phone's empty terminal list", () => {
     await expect(page.getByText("No terminals yet", { exact: true })).toBeVisible({ timeout: STATE_BOUND_MS });
     const newTerminal = page.getByRole("button", { name: "New terminal", exact: true });
     const newTab = page.getByRole("button", { name: "New tab", exact: true });
-    await layoutRead.promise;
+    // Bounded and named: a layout read that never arrives fails here, not as a generic test timeout (#2578 review).
+    const late = AbortSignal.timeout(STATE_BOUND_MS);
+    await Promise.race([
+      layoutRead.promise,
+      new Promise<never>((_, reject) =>
+        late.addEventListener("abort", () => reject(new Error("the layout read naming tb-phone-empty never arrived"))),
+      ),
+    ]);
     await expect(newTerminal).toBeEnabled();
     try {
       switchTo("drop");
