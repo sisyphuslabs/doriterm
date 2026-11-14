@@ -161,7 +161,9 @@ test("the first-run guide's Start a terminal is offered disabled while New tab i
   await expect(start).toBeEnabled();
   try {
     switchTo("drop");
-    await expect(page.getByRole("button", { name: "New tab", exact: true })).toBeDisabled({ timeout: OFFLINE_BOUND_MS });
+    await expect(page.getByRole("button", { name: "New tab", exact: true })).toBeDisabled({
+      timeout: OFFLINE_BOUND_MS,
+    });
     await expect(start).toBeDisabled();
   } finally {
     reconnect();
