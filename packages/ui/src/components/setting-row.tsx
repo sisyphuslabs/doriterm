@@ -33,8 +33,9 @@ interface DisabledSettingRow extends SettingRowBase {
 export type SettingRowProps = EnabledSettingRow | DisabledSettingRow;
 
 /**
- * Whether React renders `node` as nothing: no node, a boolean (`cond && <X/>`, `cond || <X/>`), an empty string, or a list
- * of only such values (#2520, #2571 reviews).
+ * Whether `node` is a value React renders as nothing before any rendering: no node, a boolean (`cond && <X/>`,
+ * `cond || <X/>`), an empty string, or an array of only such values (#2520, #2571 reviews). An empty fragment, an empty
+ * non-array iterable or a component that returns null still gets a slot: telling those apart would mean rendering them.
  */
 function rendersNothing(node: ReactNode): boolean {
   if (node === null || node === undefined || typeof node === "boolean" || node === "") return true;
