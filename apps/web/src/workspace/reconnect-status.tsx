@@ -11,7 +11,7 @@ import { useOnline } from "../pwa/use-online.ts";
 import { useMachineLine } from "../terminal/use-machine-line.ts";
 import { HistoryGapLine } from "./history-gap-status.tsx";
 import { HostDownHelp } from "./host-down-help.tsx";
-import { MachineDownHelp } from "./machine-down.tsx";
+import { MachineDownHelp, useMachineDownWhy } from "./machine-down.tsx";
 import { PHONE_LINE, PHONE_LINE_TEXT } from "./phone-line.ts";
 import { RetryButton } from "./retry-button.tsx";
 
@@ -237,12 +237,15 @@ export function ConnectionLine({
 function TerminalLine({ connection, address }: { readonly connection: HcConnection; readonly address: string }) {
   const away = useMachineLine(connection, address, true);
   if (away === null) return <HistoryGapLine address={address} />;
-  return (
-    <>
-      <NoticeLine notice={machineNotice(away)} />
-      <MachineDownHelp phone connection={connection} machine={away} />
-    </>
-  );
+  return <AwayLine connection={connection} machine={away} />;
+}
+
+/** The phone's line while the terminal's machine is down: it reconnects, then, past the grace, why with Try again in its place. */
+function AwayLine({ connection, machine }: { readonly connection: HcConnection; readonly machine: string }) {
+  const why = useMachineDownWhy(connection, machine);
+  // The reason ends saying Doriterm keeps trying, so it replaces the reconnect line rather than stacking under it (#2599).
+  if (why === null) return <NoticeLine notice={machineNotice(machine)} />;
+  return <MachineDownHelp phone connection={connection} machine={machine} />;
 }
 
 function NoticeLine({ notice }: { readonly notice: ConnectionNotice }) {
