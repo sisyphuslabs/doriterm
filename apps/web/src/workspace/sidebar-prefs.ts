@@ -3,6 +3,7 @@ import { AVATAR_COLORS } from "@doriface/ui";
 import { useSyncExternalStore } from "react";
 import { assignColors, type AgentSort } from "./sidebar-model.ts";
 import { guardedLocalStorage } from "../storage/guarded.ts";
+import { spaceKeyOn, storedSpaceKey } from "../layout/view-keys.ts";
 
 /** The sidebar's own choices that outlive a reload: how agents sort, and each space's avatar colour. */
 export interface SidebarPrefs {
@@ -66,12 +67,57 @@ export function useAgentSort(): readonly [AgentSort, (sort: AgentSort) => void] 
   return [sort, (next) => sidebarPrefs.update({ sort: next })];
 }
 
+/**
+ * The saved colours keyed as this page keys spaces when it goes through `core`. They are saved by permanent machine id
+ * (#2537), so a space keeps its colour whichever host the page goes through; a key saved before that, bare, was this
+ * host's.
+ */
+export function colorsOn(saved: Readonly<Record<string, AvatarColor>>, core: string): Record<string, AvatarColor> {
+  return Object.fromEntries(Object.entries(saved).map(([key, color]) => [spaceKeyOn(key, core), color]));
+}
+
+const storedColors = (colors: Readonly<Record<string, AvatarColor>>, core: string): Record<string, AvatarColor> =>
+  Object.fromEntries(Object.entries(colors).map(([key, color]) => [storedSpaceKey(key, core), color]));
+
+/**
+ * The colours saved before #2537 (space keys bare for the host the page went through, `space:s1`) rewritten by
+ * permanent id as the host this page goes through now, or null when none is left. Read the first time a page knows its
+ * core, so an old space keeps its colour through a later route change.
+ */
+export function colorsByCore(
+  saved: Readonly<Record<string, AvatarColor>>,
+  core: string,
+): Record<string, AvatarColor> | null {
+  const bare = Object.keys(saved).filter((key) => storedSpaceKey(key, core) !== key);
+  if (core === "" || bare.length === 0) return null;
+  return Object.fromEntries(Object.entries(saved).map(([key, color]) => [storedSpaceKey(key, core), color]));
+}
+
 /** Each listed space's colour; a new space gets one (and the choice is saved) the first time it is listed. */
-export function useSpaceColors(ids: readonly string[]): Readonly<Record<string, AvatarColor>> {
+export function useSpaceColors(ids: readonly string[], core: string): Readonly<Record<string, AvatarColor>> {
   const saved = useSyncExternalStore(sidebarPrefs.subscribe, () => sidebarPrefs.value.colors);
-  const next = assignColors(saved, ids);
-  if (next !== saved)
-    queueMicrotask(() => sidebarPrefs.update({ colors: assignColors(sidebarPrefs.value.colors, ids) }));
+  const migrated = colorsByCore(saved, core);
+  if (migrated !== null) {
+    queueMicrotask(() => {
+      const again = colorsByCore(sidebarPrefs.value.colors, core);
+      if (again !== null) sidebarPrefs.update({ colors: again });
+    });
+  }
+  const shown = colorsOn(migrated ?? saved, core);
+  if (ids.every((id) => shown[id] !== undefined)) return shown;
+  // Until the page knows the host it goes through, nothing can be saved by permanent id.
+  if (core === "") return assignColors(shown, ids);
+  // Only a space listed without a colour is written, so a colour kept for a machine not listed now is never dropped
+  // and the save settles after one write.
+  const next = assignColors(shown, ids);
+  queueMicrotask(() => {
+    const now = colorsOn(sidebarPrefs.value.colors, core);
+    const added = Object.fromEntries(
+      ids.flatMap((id) => (now[id] === undefined && next[id] !== undefined ? [[id, next[id]]] : [])),
+    );
+    if (Object.keys(added).length > 0)
+      sidebarPrefs.update({ colors: { ...sidebarPrefs.value.colors, ...storedColors(added, core) } });
+  });
   return next;
 }
 

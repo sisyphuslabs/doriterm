@@ -17,15 +17,15 @@ describe("the phone's remembered place", () => {
   test("a section, space and terminal round-trip, and the sheet is never kept", () => {
     const storage = memory();
     const place = { section: "spaces", space: "space:local/spc-web", terminal: "local/tb-1", sheet: true } as const;
-    savePhonePlace(place, storage);
-    expect(loadPhonePlace(storage)).toEqual({ ...place, sheet: false });
+    savePhonePlace(place, "", storage);
+    expect(loadPhonePlace("", storage)).toEqual({ ...place, sheet: false });
   });
 
   test("nothing kept, junk, or a value of the wrong shape is the agents list", () => {
-    expect(loadPhonePlace(memory())).toEqual(PHONE_LIST);
-    expect(loadPhonePlace(memory({ [PHONE_PLACE_KEY]: "{not json" }))).toEqual(PHONE_LIST);
-    expect(loadPhonePlace(memory({ [PHONE_PLACE_KEY]: "7" }))).toEqual(PHONE_LIST);
-    expect(loadPhonePlace(memory({ [PHONE_PLACE_KEY]: JSON.stringify({ v: 1, s: "", t: ["x"] }) }))).toEqual(
+    expect(loadPhonePlace("", memory())).toEqual(PHONE_LIST);
+    expect(loadPhonePlace("", memory({ [PHONE_PLACE_KEY]: "{not json" }))).toEqual(PHONE_LIST);
+    expect(loadPhonePlace("", memory({ [PHONE_PLACE_KEY]: "7" }))).toEqual(PHONE_LIST);
+    expect(loadPhonePlace("", memory({ [PHONE_PLACE_KEY]: JSON.stringify({ v: 1, s: "", t: ["x"] }) }))).toEqual(
       PHONE_LIST,
     );
   });
@@ -59,8 +59,32 @@ describe("the phone's remembered place", () => {
 
   test("the bare agents list is kept as one, so a later cold start opens on it", () => {
     const storage = memory();
-    savePhonePlace({ section: "agents", space: "s1", terminal: null, sheet: false }, storage);
-    savePhonePlace(PHONE_LIST, storage);
-    expect(loadPhonePlace(storage)).toEqual(PHONE_LIST);
+    savePhonePlace({ section: "agents", space: "s1", terminal: null, sheet: false }, "", storage);
+    savePhonePlace(PHONE_LIST, "", storage);
+    expect(loadPhonePlace("", storage)).toEqual(PHONE_LIST);
+  });
+});
+
+describe("the phone's place across a route change (#2537)", () => {
+  test("a place kept going through one host is the same space and terminal going through another", () => {
+    const saved = new Map<string, string>();
+    const storage = {
+      getItem: (k: string) => saved.get(k) ?? null,
+      setItem: (k: string, s: string) => void saved.set(k, s),
+      removeItem: (k: string) => void saved.delete(k),
+    };
+    savePhonePlace({ section: "spaces", space: "space:s1", terminal: "local:t7", sheet: false }, "c", storage);
+    expect(loadPhonePlace("m", storage)).toEqual({
+      section: "spaces",
+      space: "space:c/s1",
+      terminal: "id:c/t7",
+      sheet: false,
+    });
+    expect(loadPhonePlace("c", storage)).toEqual({
+      section: "spaces",
+      space: "space:s1",
+      terminal: "local:t7",
+      sheet: false,
+    });
   });
 });

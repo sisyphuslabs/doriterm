@@ -13,7 +13,17 @@ import {
   placePinned,
   terminalBlock,
 } from "@doriface/protocol/layout";
-import { loadView, rememberSeen, saveView, spaceKey, tabKey, type Seen, type View } from "../layout/view.ts";
+import {
+  dropPerHostViews,
+  loadView,
+  rememberSeen,
+  saveView,
+  spaceKey,
+  tabKey,
+  type Seen,
+  type View,
+} from "../layout/view.ts";
+import { seenOn, storedSeen, storedView, viewOn } from "../layout/view-keys.ts";
 import { apartWrite, newTabWrite, type PaneAt, splitWrite, transientSplitWrite, viewInstead } from "./pane-writes.ts";
 import {
   buildTabs,
@@ -33,7 +43,7 @@ import {
 } from "./layout-model.ts";
 import { machineOf } from "./model.ts";
 import { placeOf } from "./placement.ts";
-import { tabAddress, tabKey as terminalKey } from "./tab-keys.ts";
+import { type MachineIds, storedTerminalKey, tabAddress, tabKey as terminalKey, terminalKeyOn } from "./tab-keys.ts";
 import { usePaneMoves, type PaneMoves } from "./use-pane-moves.ts";
 import { splitLanding } from "./split-landing.ts";
 import type { TabMove } from "./tab-order.ts";
@@ -160,31 +170,62 @@ export function useLayout(
   machinesListed = true,
 ): Layout {
   const [view, setView] = useState<View>(() => loadView(core));
+  const idsNow = useRef<MachineIds>({ byName: new Map(), byId: new Map() });
   const [fresh, setFresh] = useState<string | null>(null);
   const [claimed, setClaimed] = useState<string | null>(null);
   // A finish this screen has shown is noted with what it asked from (its turn, or when it finished), so the agent stops
   // asking here and the next finish asks again; one already noted is not written, so looking at an agent stops there.
-  const remember = useCallback((marks: Seen): void => setView((prev) => rememberSeen(prev, marks)), []);
+  // Marks are kept by machine id (#2537): `idsNow` names the machines as this page addresses them when a mark is made.
+  const remember = useCallback(
+    (marks: Seen): void => setView((prev) => rememberSeen(prev, storedSeen(marks, core, idsNow.current))),
+    [core],
+  );
   // Read through a ref: the toast it raises re-renders the workspace, which must not count as another write.
   const tellUnsaved = useRef(unsaved);
   tellUnsaved.current = unsaved;
   const refused = useRef(false);
+  const dropped = useRef(false);
+  // The route can move mid-session (a drop that reconnects through another host): the view in memory is keyed for the
+  // core it was loaded through, so it is re-keyed for the new one before anything is saved under it (#2538 review).
+  // Re-keyed during render, not in an effect: no render (and no effect of it) ever sees the old route's keys.
+  const [keyedFor, setKeyedFor] = useState(core);
+  if (keyedFor !== core) {
+    setKeyedFor(core);
+    setView((prev) => viewOn(storedView(prev, keyedFor), core));
+  }
   useEffect(() => {
+    if (keyedFor !== core) return;
     const reason = saveView(core, view);
     if (reason === null) {
+      // The per-host views read at load are dropped once the one view has been saved (#2537).
+      if (!dropped.current) dropPerHostViews();
+      dropped.current = true;
       refused.current = false;
     } else if (!refused.current) {
       refused.current = true;
       tellUnsaved.current(reason);
     }
-  }, [core, view]);
+  }, [core, view, keyedFor]);
   // Terminals opened while their machine's layout took no edits; this screen shows them as tabs of its own. Each is kept
   // by what its terminal is remembered by (tab-keys.ts), as a document tab is, so a machine rename moves it to the new
   // address instead of leaving it on one that no longer exists (#459). `setLoose` takes and gives addresses.
   const [looseKeys, setLooseKeys] = useState<readonly string[]>([]);
+  // Loose tabs are kept by terminal key, `local:` only on the route through their core: re-keyed with the view (#2538 review).
+  const [looseFor, setLooseFor] = useState(core);
+  if (looseFor !== core) {
+    setLooseFor(core);
+    setLooseKeys((keys) => keys.map((key) => terminalKeyOn(storedTerminalKey(key, looseFor), core)));
+  }
   const ids = useMemo(() => layoutIds(layouts), [layouts]);
-  const idsNow = useRef(ids);
   idsNow.current = ids;
+  const seen = useMemo(() => seenOn(view.seen, core, ids), [view.seen, core, ids]);
+  // A mark made before its machine was named kept its address; once the list names it, it is kept by id (#2538 review).
+  useEffect(() => {
+    setView((prev) => {
+      const kept = storedSeen(prev.seen, core, ids);
+      return JSON.stringify(kept) === JSON.stringify(prev.seen) ? prev : { ...prev, seen: kept };
+    });
+  }, [core, ids]);
   const loose = useMemo(
     () =>
       looseKeys.flatMap((key) => {
@@ -566,7 +607,7 @@ export function useLayout(
     closeTab,
     fresh,
     claimed,
-    seen: view.seen,
+    seen,
     remember,
     ...moves,
     moveTab,

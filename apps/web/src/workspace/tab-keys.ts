@@ -1,15 +1,18 @@
 import type { MachineView } from "@doriface/protocol";
 
-/** hc's permanent machine ids by the names this core gives them now, both ways. */
+/** hc's permanent machine ids by the names this core gives them now, both ways, and this core's own id. */
 export interface MachineIds {
   readonly byName: ReadonlyMap<string, string>;
   readonly byId: ReadonlyMap<string, string>;
+  /** The permanent id of the core this page goes through; empty until its hello is known. */
+  readonly core?: string;
 }
 
-export function machineIds(machines: readonly MachineView[]): MachineIds {
+export function machineIds(machines: readonly MachineView[], core = ""): MachineIds {
   return {
     byName: new Map(machines.map((machine) => [machine.name, machine.id])),
     byId: new Map(machines.map((machine) => [machine.id, machine.name])),
+    core,
   };
 }
 
@@ -26,6 +29,19 @@ export function tabKey(address: string, ids: MachineIds): string {
   if (slash === -1) return LOCAL + address;
   const id = ids.byName.get(address.slice(0, slash));
   return id === undefined ? NAME + address : ID + id + address.slice(slash);
+}
+
+/**
+ * A terminal key as it is kept across loads (#2537): `local:t7` names the core this page goes through, so it is kept as
+ * `id:<that core's id>/t7`, and read back bare only through that core. Without the core's id it is kept as it is.
+ */
+export function storedTerminalKey(key: string, core: string): string {
+  return core !== "" && key.startsWith(LOCAL) ? `${ID}${core}/${key.slice(LOCAL.length)}` : key;
+}
+
+export function terminalKeyOn(key: string, core: string): string {
+  const own = `${ID}${core}/`;
+  return core !== "" && key.startsWith(own) ? LOCAL + key.slice(own.length) : key;
 }
 
 /** The address the tab's terminal has now; undefined while its machine is not in the list. */

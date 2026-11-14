@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { guardedLocalStorage, type StorageLike } from "../storage/guarded.ts";
-import { type MachineIds, tabAddress, tabKey } from "../workspace/tab-keys.ts";
+import { type MachineIds, storedTerminalKey, tabAddress, tabKey, terminalKeyOn } from "../workspace/tab-keys.ts";
 
 /**
  * The first run on a newly paired device (#668): pair, then start or pick an agent, then see it in the agents list.
@@ -72,7 +72,8 @@ export class GuideStore {
 
   /** This device started or opened the terminal at `address` (`ids`: the machines as now named); counts only while the guide runs. */
   opened(address: string, ids: MachineIds): void {
-    const key = tabKey(address, ids);
+    // Kept by permanent id (#2537): a terminal of the host this page goes through is `local:` only on this route.
+    const key = storedTerminalKey(tabKey(address, ids), ids.core ?? "");
     if (this.#value.status === "active" && this.#value.key !== key) this.#set({ ...this.#value, opened: true, key });
   }
 
@@ -118,7 +119,8 @@ export interface GuideFacts {
 export function guideSteps(state: GuideState, facts: GuideFacts): readonly GuideStep[] {
   // The list step is about the terminal this device opened, not any live one the host already had (#834). A record
   // from before #834 names none, so for it any live terminal still counts.
-  const address = state.key === null ? undefined : tabAddress(state.key, facts.ids);
+  const address =
+    state.key === null ? undefined : tabAddress(terminalKeyOn(state.key, facts.ids.core ?? ""), facts.ids);
   const listed = state.key === null ? facts.live.length > 0 : address !== undefined && facts.live.includes(address);
   const done = [true, state.opened, state.opened && facts.listVisible && listed];
   const current = done.indexOf(false);

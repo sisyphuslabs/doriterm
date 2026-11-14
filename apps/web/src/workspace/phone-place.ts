@@ -1,5 +1,7 @@
 import { guardedLocalStorage, type StorageLike } from "../storage/guarded.ts";
+import { spaceKeyOn, storedSpaceKey } from "../layout/view-keys.ts";
 import { PHONE_LIST, type PhoneRoute, phoneRoute } from "./phone-route.ts";
+import { storedTerminalKey, terminalKeyOn } from "./tab-keys.ts";
 
 export const PHONE_PLACE_KEY = "doriface.phone-place";
 
@@ -8,7 +10,7 @@ export const PHONE_PLACE_KEY = "doriface.phone-place";
  * showed. The switch sheet is not a place (a reopened app never starts on a sheet). Junk, or storage that refuses the
  * read, is the bare agents list.
  */
-export function loadPhonePlace(storage: StorageLike = guardedLocalStorage()): PhoneRoute {
+export function loadPhonePlace(core: string, storage: StorageLike = guardedLocalStorage()): PhoneRoute {
   let parsed: unknown;
   try {
     parsed = JSON.parse(storage.getItem(PHONE_PLACE_KEY) ?? "null");
@@ -16,7 +18,13 @@ export function loadPhonePlace(storage: StorageLike = guardedLocalStorage()): Ph
     return PHONE_LIST;
   }
   if (typeof parsed !== "object" || parsed === null) return PHONE_LIST;
-  return phoneRoute({ v: Reflect.get(parsed, "v"), s: Reflect.get(parsed, "s"), t: Reflect.get(parsed, "t") });
+  const kept = phoneRoute({ v: Reflect.get(parsed, "v"), s: Reflect.get(parsed, "s"), t: Reflect.get(parsed, "t") });
+  // Kept by permanent machine id (#2537): read back as this page keys them when it goes through `core`.
+  return {
+    ...kept,
+    space: kept.space === null ? null : spaceKeyOn(kept.space, core),
+    terminal: kept.terminal === null ? null : terminalKeyOn(kept.terminal, core),
+  };
 }
 
 export interface PlaceStartFacts {
@@ -49,9 +57,8 @@ export function placeStart(facts: PlaceStartFacts): "restore" | "stay" | "wait" 
 export const keepsPlace = (place: string, restoring: boolean): boolean => !(restoring && place === "/");
 
 /** Keeps the phone's place for the next cold start on `/`; the sheet is left out. */
-export function savePhonePlace(route: PhoneRoute, storage: StorageLike = guardedLocalStorage()): void {
-  storage.setItem(
-    PHONE_PLACE_KEY,
-    JSON.stringify({ v: route.section === "spaces" ? "spaces" : null, s: route.space, t: route.terminal }),
-  );
+export function savePhonePlace(route: PhoneRoute, core: string, storage: StorageLike = guardedLocalStorage()): void {
+  const s = route.space === null || core === "" ? route.space : storedSpaceKey(route.space, core);
+  const t = route.terminal === null ? null : storedTerminalKey(route.terminal, core);
+  storage.setItem(PHONE_PLACE_KEY, JSON.stringify({ v: route.section === "spaces" ? "spaces" : null, s, t }));
 }
