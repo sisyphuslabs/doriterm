@@ -4,6 +4,7 @@ import type { HostStartFailure } from "../desktop/bridge.ts";
 import type { LocalHostStarter } from "./store.ts";
 import type { ConnectionSettings, MemberTarget, Saver } from "./settings.ts";
 import { normalizeSettings, saveSettings } from "./settings.ts";
+import { failOverTo, placeInAddress } from "./failover.ts";
 
 /**
  * What the mesh needs from one member's connection. `ConnectionStore` satisfies it structurally; declaring it here keeps this
@@ -69,6 +70,9 @@ export class MeshConnections {
   readonly #stores = new Map<string, MemberConnection>();
   readonly #targets = new Map<string, MemberTarget>();
   readonly #lastSeen = new Map<string, number>();
+  readonly #holdsPlace: () => boolean;
+  /** The machine the person picked in this session: a failover never moves off it (#2532). Held here only, never saved. */
+  #picked: string | undefined;
   readonly #listeners = new Set<() => void>();
   readonly #unsubscribes = new Map<string, () => void>();
   /**
@@ -93,9 +97,10 @@ export class MeshConnections {
    */
   #snapshot: readonly MemberEntry[] = [];
 
-  constructor(settings: ConnectionSettings, make: StoreFactory) {
+  constructor(settings: ConnectionSettings, make: StoreFactory, holdsPlace: () => boolean = () => placeInAddress()) {
     this.#settings = normalizeSettings(settings);
     this.#make = make;
+    this.#holdsPlace = holdsPlace;
     this.#sync();
     this.#refresh();
   }
@@ -186,6 +191,7 @@ export class MeshConnections {
 
   /** Shows another member's connection without touching any connection: the others stay open while this app looks elsewhere. */
   select(hostId: string): void {
+    if (this.#targets.has(hostId)) this.#picked = hostId;
     if (hostId === this.settings.hostId || !this.#targets.has(hostId)) return;
     const target = this.#targets.get(hostId);
     if (target === undefined) return;
@@ -376,16 +382,11 @@ export class MeshConnections {
   #failOver(): void {
     const current = this.selected;
     if (current === undefined) return;
-    const phase = current.state.phase;
-    if (phase === "open" || phase === "connecting") return;
-    const shown = [...this.#stores.entries()].find(([, store]) => store === current)?.[0];
-    if (shown !== undefined && this.#lastSeen.has(shown)) return;
-    const live = [...this.#stores.entries()].find(([, store]) => store.state.phase === "open");
-    if (live === undefined) return;
-    const [hostId] = live;
-    const target = this.#targets.get(hostId);
-    if (target === undefined || hostId === this.settings.hostId) return;
-    this.select(hostId);
+    const kept = (id: string): boolean => this.#lastSeen.has(id) || id === this.#picked;
+    const hostId = failOverTo(this.#stores, current, kept, this.#holdsPlace());
+    if (hostId === undefined || !this.#targets.has(hostId) || hostId === this.settings.hostId) return;
+    // Shown, never saved: the machine the person chose stays the one a later start opens (#2532).
+    this.#selection = hostId;
   }
 
   #adoptName(hostId: string, store: MemberConnection): void {
