@@ -2,9 +2,11 @@ import { AgentRow, Button, IconButton, SegmentedControl, Sheet, SidebarSection }
 import { Plus, X } from "lucide-react";
 import { type ReactElement, type ReactNode, useState } from "react";
 import { type ListedSpace, type Session, spaceOfAddress, toAgent } from "./model.ts";
+import { NotNowLine } from "./not-now-line.tsx";
 import { rowDetail, switchTabRows } from "./phone-space-rows.ts";
 import { needsYouCount } from "./phone-tab-bar.tsx";
 import { useSpaceSelection } from "./space-selection.ts";
+import { useSpaceClosing } from "./space-close-context.ts";
 import { useNow } from "./use-now.ts";
 
 /** What the switch sheet lists: the open terminal's space, every tab that needs the person, or every space. */
@@ -73,8 +75,10 @@ function SwitchList(props: {
   const { terminals, active, onPick, onNewInSpace, onCloseTab } = props;
   // The layout documents' spaces, as the sidebar lists them (#404).
   const { spaces } = useSpaceSelection();
+  const closing = useSpaceClosing();
   const now = useNow();
   const here = spaceOfAddress(spaces, active);
+  const newWaiting = here === undefined ? null : closing.newRefusal(here.id);
   const [shown, setShown] = useState<Shown>(here === undefined ? "all" : "space");
   const needs = needsYouCount(terminals);
   const options = [
@@ -99,6 +103,7 @@ function SwitchList(props: {
               <Button
                 variant="ghost"
                 className="h-11 justify-start gap-2 px-2 text-muted-foreground"
+                disabled={closing.newRefusal(space.id) !== null}
                 onClick={() => onNewInSpace(space.id)}
               >
                 <Plus aria-hidden />
@@ -121,10 +126,18 @@ function SwitchList(props: {
         <div className="flex flex-col gap-4">{sections}</div>
       )}
       {here === undefined ? null : (
-        <Button variant="secondary" className="h-11 w-full gap-2" onClick={() => onNewInSpace(here.id)}>
-          <Plus aria-hidden />
-          <span className="min-w-0 truncate">{`New tab in ${here.name}`}</span>
-        </Button>
+        <>
+          {newWaiting === null ? null : <NotNowLine action="New tab" why={newWaiting} />}
+          <Button
+            variant="secondary"
+            className="h-11 w-full gap-2"
+            disabled={newWaiting !== null}
+            onClick={() => onNewInSpace(here.id)}
+          >
+            <Plus aria-hidden />
+            <span className="min-w-0 truncate">{`New tab in ${here.name}`}</span>
+          </Button>
+        </>
       )}
     </div>
   );

@@ -1,8 +1,10 @@
 // An action that cannot happen now is offered disabled, with its reason, and comes back by itself: never offered and then
 // refused (Q, doriterm qa). A space on a machine that went offline can be neither closed nor renamed until it is back.
-import type { Page } from "@playwright/test";
+import { devices, type Page } from "@playwright/test";
+import { GUIDE_KEY } from "../src/pair/first-run-guide.ts";
 import { expect, test } from "./fixtures.ts";
-import { seedSpaces } from "./layout-doc.ts";
+import { routeHcSocket } from "./hc-socket.ts";
+import { seedLayout, seedSpaces } from "./layout-doc.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import {
   hcOn,
@@ -14,6 +16,7 @@ import {
   STATE_BOUND_MS,
   switchTo,
 } from "./machine-switch.ts";
+import { pressShortcut } from "./platform-keys.ts";
 
 /** The added machine's own list of spaces in the sidebar, under its header. */
 const group = (page: Page) => page.getByRole("region", { name: MACHINE_NAME });
@@ -136,4 +139,194 @@ test("on a phone, an offline machine's space offers New tab disabled with why, a
   }
   await expect(newTab).toBeEnabled({ timeout: STATE_BOUND_MS });
   await expect(page.getByText(/comes back by itself/)).toHaveCount(0);
+});
+
+test("the first-run guide's Start a terminal is offered disabled while New tab is, and comes back with it", async ({
+  page,
+}) => {
+  test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
+  const name = "guide-waits";
+  seedMachineSpace(name);
+  // The guide is running, at its agent step: its Start a terminal is one more New tab (#2519 review).
+  await page.addInitScript(
+    (key) => localStorage.setItem(key, JSON.stringify({ status: "active", opened: false, key: null })),
+    GUIDE_KEY,
+  );
+  await routeHcSocket(page);
+  await page.goto("/");
+  await expect(machineRow(page)).toContainText("connected", { timeout: 20_000 });
+  const row = group(page).getByRole("button", { name: new RegExp(`^${name}\\b`) });
+  await expect(row).toBeVisible({ timeout: 20_000 });
+  await row.click();
+  const start = page.getByRole("region", { name: "Getting started" }).getByRole("button", { name: "Start a terminal" });
+  await expect(start).toBeEnabled();
+  try {
+    switchTo("drop");
+    await expect(page.getByRole("button", { name: "New tab", exact: true })).toBeDisabled({
+      timeout: OFFLINE_BOUND_MS,
+    });
+    await expect(start).toBeDisabled();
+    // Disabled and explained: the card says why, in the words every reason line uses.
+    const guideCard = page.getByRole("region", { name: "Getting started" });
+    const reason = guideCard.getByText(
+      /the machine is not connected\. Start a terminal comes back by itself once the machine can take it/,
+    );
+    await expect(reason).toBeVisible();
+  } finally {
+    reconnect();
+  }
+  await expect(start).toBeEnabled({ timeout: STATE_BOUND_MS });
+  // Back on the link, the reason leaves with the wait.
+  await expect(page.getByText(/Start a terminal comes back by itself/)).toHaveCount(0);
+});
+
+/** Seeds a space into the added machine's own layout, with one tab on a terminal there. */
+function seedMachineSpace(name: string): void {
+  const address = String(
+    Reflect.get(JSON.parse(hcOn("machine", ["run", "--bg", "--name", name, "--", "env", "PS1=$ ", "sh"])), "address"),
+  );
+  seedSpaces(
+    [{ id: `spc-${name}`, name, folder: "/tmp", tabs: [{ id: `tb-${name}`, name, terminal: address }] }],
+    MACHINE_NAME,
+  );
+}
+
+test("a Close question left open as its machine drops waits with Close disabled and why, and the New tab key asks nothing while it is down", async ({
+  page,
+}) => {
+  test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
+  const name = "close-waits";
+  seedMachineSpace(name);
+  const socket = await routeHcSocket(page);
+  await page.goto("/");
+  await expect(machineRow(page)).toContainText("connected", { timeout: 20_000 });
+  const row = group(page).getByRole("button", { name: new RegExp(`^${name}\\b`) });
+  await expect(row).toBeVisible({ timeout: 20_000 });
+  // The space's tab is the one in view, so New tab and its key aim at the machine about to drop.
+  await row.click();
+  await row.hover();
+  await page.getByRole("button", { name: `More for ${name}` }).click();
+  await page.getByRole("menuitem", { name: /^Close space/ }).click();
+  const question = page.getByRole("dialog", { name: "Close space?" });
+  const close = question.getByRole("button", { name: "Close" });
+  await expect(close).toBeEnabled();
+  try {
+    switchTo("drop");
+    await expect(close).toBeDisabled({ timeout: OFFLINE_BOUND_MS });
+    await expect(question.getByText(/Close comes back by itself once the machine can take it/)).toBeVisible();
+    await expect(question.getByText("The space was not closed")).toHaveCount(0);
+    await question.getByRole("button", { name: "Cancel" }).click();
+    await expect(question).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "New tab", exact: true })).toBeDisabled({
+      timeout: OFFLINE_BOUND_MS,
+    });
+    // The key does what the disabled button does: nothing. Keys are handled in order, so once the palette (asked for
+    // after it) is open, a New tab the key started has already sent its run to the core.
+    const runs = (): number => socket.sent().filter((frame) => frame.includes('"method":"terminal.run"')).length;
+    const before = runs();
+    await pressShortcut(page, "tab.new");
+    await pressShortcut(page, "app.palette");
+    await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
+    expect(runs(), "the New tab key asks the core nothing while New tab is disabled").toBe(before);
+    await page.keyboard.press("Escape");
+  } finally {
+    reconnect();
+  }
+  await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
+});
+
+test.describe("the phone's empty terminal list", () => {
+  const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
+  test.use({ ...phone, serviceWorkers: "block" });
+
+  test("New terminal is offered disabled while the active tab's machine is offline, and comes back after reconnect", async ({
+    page,
+  }) => {
+    test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
+    // A saved empty tab keeps its machine selected without a live terminal. PhoneShell shows PhoneEmpty only once
+    // terminal.list has answered with no live terminals, on the Agents list rather than a space or terminal screen.
+    seedLayout([{ id: "tb-phone-empty", name: "phone-empty", root: [] }], "/tmp", MACHINE_NAME);
+    // A completed layout read proves the saved remote tab is available to be the active tab before the drop.
+    const layoutRead = Promise.withResolvers<void>();
+    await routeHcSocket(page, {
+      received: (frame) => {
+        if (frame.includes("tb-phone-empty")) layoutRead.resolve();
+      },
+    });
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Agents", exact: true })).toBeVisible();
+    await expect(page.getByText("No terminals yet", { exact: true })).toBeVisible({ timeout: STATE_BOUND_MS });
+    const newTerminal = page.getByRole("button", { name: "New terminal", exact: true });
+    const newTab = page.getByRole("button", { name: "New tab", exact: true });
+    // Bounded and named: a layout read that never arrives fails here, not as a generic test timeout (#2578 review).
+    const late = AbortSignal.timeout(STATE_BOUND_MS);
+    await Promise.race([
+      layoutRead.promise,
+      new Promise<never>((_, reject) =>
+        late.addEventListener("abort", () => reject(new Error("the layout read naming tb-phone-empty never arrived"))),
+      ),
+    ]);
+    await expect(newTerminal).toBeEnabled();
+    try {
+      switchTo("drop");
+      await expect(newTab).toBeDisabled({ timeout: OFFLINE_BOUND_MS });
+      await expect(newTerminal).toBeDisabled();
+      await expect(
+        page.getByText(/the machine is not connected\. New terminal comes back by itself once the machine can take it/),
+      ).toBeVisible();
+    } finally {
+      reconnect();
+    }
+    await expect(newTab).toBeEnabled({ timeout: STATE_BOUND_MS });
+    await expect(newTerminal).toBeEnabled();
+    // Back on the link, the reason leaves and the list says again what it offers.
+    await expect(page.getByText(/New terminal comes back by itself/)).toHaveCount(0);
+    await expect(page.getByText(/^Start a shell on /)).toBeVisible();
+  });
+});
+
+test.describe("the phone's switch sheet", () => {
+  const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
+  test.use({ ...phone, serviceWorkers: "block" });
+
+  test("both New tab actions wait with why while the space's machine is offline, and return after reconnect", async ({
+    page,
+  }) => {
+    test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
+    const name = "switch-waits";
+    seedMachineSpace(name);
+    await routeHcSocket(page);
+    await page.goto("/?v=spaces");
+    await page.getByText(name, { exact: true }).click({ timeout: STATE_BOUND_MS });
+    await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+    await page
+      .getByRole("region", { name: "Tabs", exact: true })
+      .getByRole("button", { name: new RegExp(name) })
+      .click();
+    await page.getByRole("button", { name: /^Switch tab, / }).click({ timeout: STATE_BOUND_MS });
+    const sheet = page.getByRole("dialog", { name: "Switch", exact: true });
+    await sheet.getByRole("group", { name: "Show" }).getByRole("button", { name: "All spaces", exact: true }).click();
+    const inSpace = sheet.getByRole("button", { name: `New tab in ${name}`, exact: true });
+    const perSpace = sheet
+      .getByRole("region", { name: `${MACHINE_NAME} · ${name}`, exact: true })
+      .getByRole("button", { name: "New tab", exact: true });
+    const reason = sheet.getByText(
+      /the machine is not connected\. New tab comes back by itself once the machine can take it/,
+    );
+    await expect(inSpace).toBeEnabled();
+    await expect(perSpace).toBeEnabled();
+    try {
+      switchTo("drop");
+      await Promise.all([
+        expect(inSpace).toBeDisabled({ timeout: OFFLINE_BOUND_MS }),
+        expect(perSpace).toBeDisabled({ timeout: OFFLINE_BOUND_MS }),
+        expect(reason).toBeVisible({ timeout: OFFLINE_BOUND_MS }),
+      ]);
+    } finally {
+      reconnect();
+    }
+    await expect(inSpace).toBeEnabled({ timeout: STATE_BOUND_MS });
+    await expect(perSpace).toBeEnabled({ timeout: STATE_BOUND_MS });
+    await expect(reason).toHaveCount(0);
+  });
 });
