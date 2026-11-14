@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { JsonObject } from "@doriface/protocol";
 import { panesOf, tabsOf } from "@doriface/protocol/layout";
+import { tabKey } from "../layout/view.ts";
 import { act, type SetStateAction } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { MachineLayout } from "./use-layout-docs.ts";
@@ -88,8 +89,9 @@ describe("useTabOpening (#2470 review)", () => {
     await act(async () => openTerminal("t7"));
     const doc = seen.written[0];
     const tab = doc === null || doc === undefined ? undefined : tabsOf(doc)[0];
-    expect(tab === undefined ? [] : panesOf(tab.root).map((pane) => pane.terminal)).toEqual(["t7"]);
-    expect(seen.shown).toHaveLength(1);
+    const panes = tab === undefined ? [] : panesOf(tab.root);
+    expect(panes.map((pane) => pane.terminal)).toEqual(["t7"]);
+    expect(seen.shown).toEqual([{ key: `${tabKey(null, tab?.id ?? "")}`, pane: panes[0]?.id ?? null }]);
     expect(seen.keptHere).toEqual([]);
     expect(seen.loose).toEqual([]);
   });
