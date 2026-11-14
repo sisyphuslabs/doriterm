@@ -64,11 +64,11 @@ export interface PhoneKeysProps {
    * soft keyboard and the bar's key puts it down.
    */
   readonly onKeys?: (shown: boolean) => void;
-  /** The bar's height in px as it is drawn (taller while the field has a row of its own); 0 while it is closed. */
+  /** The panel's height in px as it is drawn, riding on the keyboard or docked under the terminal; 0 while it is gone. */
   readonly onBarHeight?: (px: number) => void;
   /** The terminal is browsed read-only (browse-mode.ts); the keys are closed and the browse button reads pressed. */
   readonly browsing?: boolean;
-  /** Set on a touch device: a round Read-only button beside the keyboard button turns browsing on and off. */
+  /** Set on a touch device: a round Read-only button at the corner turns browsing on and off. */
   readonly onBrowse?: (on: boolean) => void;
 }
 
@@ -96,7 +96,8 @@ function hideKeyboard(): void {
 /**
  * The phone terminal's keys (after t3code's terminal screen): the active pack's keys, then the person's own from Settings
  * > Keyboard, then the controls that never move (the arrow pad, Switch session, Paste, and the fixed slots). With the soft
- * keyboard up the bar rides on it; with it down, only a round keyboard button stays, at the bottom right.
+ * keyboard up the panel rides on it; with it down, the same panel sits under the terminal and its last key raises the
+ * keyboard (#2499).
  */
 export function PhoneKeys(props: PhoneKeysProps) {
   const {
@@ -205,7 +206,12 @@ export function PhoneKeys(props: PhoneKeysProps) {
   const visible = open || docked !== null;
   // One element in both places, so the Type field keeps its focus and draft as the keyboard comes and goes (#2499).
   const place: { className: string; style: CSSProperties } = open
-    ? { className: "absolute inset-x-0 z-10", style: { bottom: keysBottom(inset) } }
+    ? {
+        // The bottom follows the keyboard's inset, so it eases as the keyboard moves, as the bar itself once did.
+        className:
+          "absolute inset-x-0 z-10 transition-[bottom] duration-(--duration-standard) ease-out motion-reduce:transition-none motion-reduce:duration-0",
+        style: { bottom: keysBottom(inset) },
+      }
     : { className: "relative z-10 shrink-0", style: { paddingBottom: docked ?? undefined } };
   return (
     <>
