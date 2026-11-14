@@ -56,7 +56,7 @@ test("a New terminal on an added machine that is not connected fails from its st
     const started = await startTerminal(
       (params) => core.call("terminal.run", params),
       { argv: ["true"], on: spec.name },
-      "this-machine",
+      { name: "this-machine", shown: () => [] },
     );
     const elapsed = performance.now() - startedAt;
     expect(started).toEqual({

@@ -219,7 +219,7 @@ export function Workspace({ connection }: WorkspaceProps) {
     [toasts],
   );
   const typeAhead = useTypeAhead(notSent);
-  const runs = useMachineRuns(connection, opened, refresh, typeAhead, terminals);
+  const runs = useMachineRuns(connection, opened, refresh, typeAhead, { terminals, views });
   const [splits] = useState(() => new SplitChain());
   // A split key reads focus from the last render; the chain hands a landed split's pane on until this render shows it.
   const shownTab = layout.active?.key;

@@ -1,7 +1,33 @@
 import { expect, openNewTerminal, terminalCount, test, pressNewTab } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
+import { MACHINE_NAME } from "./machine.ts";
+import { machineRow, newOn as newSpaceOn, reconnect, STATE_BOUND_MS, switchTo } from "./machine-switch.ts";
 
 test.use({ serviceWorkers: "block" });
+
+test("a delayed New terminal refusal uses the row's reconnect grace (#2600 M1)", async ({ page }, testInfo) => {
+  const socket = await routeHcSocket(page);
+  await page.goto("/");
+  await expect(newSpaceOn(page)).toBeEnabled({ timeout: 30_000 });
+  const release = socket.hold("terminal.run");
+  try {
+    await newSpaceOn(page).click();
+    await expect.poll(() => socket.sent().some((frame) => frame.includes('"method":"terminal.run"'))).toBe(true);
+    switchTo("drop");
+    await expect(machineRow(page)).toContainText("reconnecting", { timeout: STATE_BOUND_MS });
+    release();
+    const notice = page.getByRole("heading", { name: "Could not open a new tab" });
+    await expect(notice).toBeVisible();
+    await expect(notice.locator("..")).toContainText(`${MACHINE_NAME} is reconnecting`);
+    await notice.hover();
+    await page.screenshot({ path: testInfo.outputPath("refusal-reconnecting-desktop.png") });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: testInfo.outputPath("refusal-reconnecting-phone.png") });
+  } finally {
+    release();
+    reconnect();
+  }
+});
 
 test("a New tab that fails says so with the sidebar hidden, where the machine list cannot show it", async ({
   page,
@@ -89,9 +115,13 @@ test("New terminal on an added machine that fails reports in the same place as N
   const newOn = machines.getByRole("button", { name: /^New space on build-box/ });
   // An earlier spec may have taken the machine offline; it is back once its button is enabled again.
   await expect(newOn).toBeEnabled({ timeout: 30_000 });
-  // Hold the core's reply, so the link drops while the run is in flight and the run fails.
-  socket.delay(60_000);
+  // Keep the run before the core: losing only its reply can leave a successfully started remote terminal behind.
+  const before = socket.sent().filter((frame) => frame.includes('"method":"terminal.run"')).length;
+  socket.hold("terminal.run");
   await newOn.click();
+  await expect
+    .poll(() => socket.sent().filter((frame) => frame.includes('"method":"terminal.run"')).length)
+    .toBe(before + 1);
   await socket.drop(true);
   await expect(page.getByText("Could not open a new tab")).toBeVisible();
   await expect(machines.getByText(/No new terminal on/)).toHaveCount(0);

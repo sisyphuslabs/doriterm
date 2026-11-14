@@ -22,24 +22,27 @@ const FIRST = { views: [], at: undefined };
 const shown = (list: readonly MachineView[], held: Held, now: number) =>
   graceViews(list, held, now).map((view) => [view.name, view.state]);
 
-test("a machine past its grace reads offline and a refused New terminal reports offline", async () => {
+test.each([
+  [1_050, "reconnecting", "rack is reconnecting"],
+  [1_000 + OFFLINE_GRACE_MS, "unreachable", "rack is offline"],
+] as const)("at %d a refused New terminal follows the row's %s state (#2600 M1)", async (now, state, reason) => {
   const dropped = [machine("rack", "unreachable", 1_000)];
   const held = stepHeld(NONE, { views: [machine("rack", "connected")], at: 0 }, dropped, 1_050);
 
-  const visible = graceViews(dropped, held, 1_000 + OFFLINE_GRACE_MS);
+  const visible = graceViews(dropped, held, now);
   const entries = machineEntries({ id: "local", name: "local" }, visible, []);
   const created = await startTerminal(
     () =>
       Promise.reject(new HcRpcError({ code: -32000, message: "rack is unreachable", data: { kind: "unavailable" } })),
     { on: "rack" },
-    "local",
+    { name: "local", shown: () => visible },
   );
 
   expect(created).toEqual({
     ok: false,
-    failure: { machine: "rack", kind: "unavailable", message: "rack is offline" },
+    failure: { machine: "rack", kind: "unavailable", message: reason },
   });
-  expect(entries.find((entry) => entry.name === "rack")?.state).toBe("unreachable");
+  expect(entries.find((entry) => entry.name === "rack")?.state).toBe(state);
 });
 
 test("a connected machine whose line is redialing reads reconnecting until the grace ends, then offline", () => {
