@@ -419,12 +419,19 @@ export function Workspace({ connection }: WorkspaceProps) {
   const counted = useSteady(
     useMemo(() => (narrow ? phoneSpaces(spaces, sessions) : spaces), [narrow, spaces, sessions]),
   );
+  const readCores = useMemo(
+    () =>
+      layouts.flatMap((one) =>
+        one.readOnly !== null ? [] : [one.machineId ?? connection.hello.core.id].filter((id) => id !== ""),
+      ),
+    [layouts, connection],
+  );
   const spaceSelection = useMemo(
     () =>
       narrow
-        ? { spaces: counted, selected: null, select: showSpace, move: moveSpace }
-        : { spaces: counted, selected: selectedSpace, select: selectSpace, move: moveSpace },
-    [narrow, counted, selectedSpace, selectSpace, showSpace, moveSpace],
+        ? { spaces: counted, selected: null, select: showSpace, move: moveSpace, readCores }
+        : { spaces: counted, selected: selectedSpace, select: selectSpace, move: moveSpace, readCores },
+    [narrow, counted, selectedSpace, selectSpace, showSpace, moveSpace, readCores],
   );
   // A space is known once the terminals and every layout document are read; until then its screen says it is loading.
   const spacesRead = fed.loaded && layout.restored;

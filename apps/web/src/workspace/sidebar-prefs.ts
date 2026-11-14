@@ -93,9 +93,43 @@ export function colorsByCore(
   return Object.fromEntries(Object.entries(saved).map(([key, color]) => [storedSpaceKey(key, core), color]));
 }
 
+/**
+ * The saved colours without those of spaces deleted from a machine whose layout is read now: `read` maps such a
+ * machine's permanent id to the stored keys of the spaces it lists. A machine not read now (offline, or not reached)
+ * keeps every colour (#2583). The same record comes back when nothing is dropped.
+ */
+export function prunedColors(
+  saved: Readonly<Record<string, AvatarColor>>,
+  read: ReadonlyMap<string, readonly string[]>,
+): Readonly<Record<string, AvatarColor>> {
+  const gone = Object.keys(saved).filter((key) => {
+    const machine = key.startsWith("space:") ? key.slice("space:".length).split("/")[0] : undefined;
+    const listed = machine === undefined ? undefined : read.get(machine);
+    return listed !== undefined && key.includes("/") && !listed.includes(key);
+  });
+  return gone.length === 0 ? saved : Object.fromEntries(Object.entries(saved).filter(([key]) => !gone.includes(key)));
+}
+
 /** Each listed space's colour; a new space gets one (and the choice is saved) the first time it is listed. */
-export function useSpaceColors(ids: readonly string[], core: string): Readonly<Record<string, AvatarColor>> {
+export function useSpaceColors(
+  ids: readonly string[],
+  core: string,
+  readCores: readonly string[] = [],
+): Readonly<Record<string, AvatarColor>> {
   const saved = useSyncExternalStore(sidebarPrefs.subscribe, () => sidebarPrefs.value.colors);
+  // Spaces gone from a machine whose layout is read now lose their colour, once, by permanent id (#2583).
+  if (core !== "" && readCores.length > 0) {
+    const stored = ids.map((id) => storedSpaceKey(id, core));
+    const read = new Map(
+      readCores.map((machine) => [machine, stored.filter((key) => key.startsWith(`space:${machine}/`))]),
+    );
+    if (prunedColors(saved, read) !== saved) {
+      queueMicrotask(() => {
+        const now = prunedColors(sidebarPrefs.value.colors, read);
+        if (now !== sidebarPrefs.value.colors) sidebarPrefs.update({ colors: { ...now } });
+      });
+    }
+  }
   const migrated = colorsByCore(saved, core);
   if (migrated !== null) {
     queueMicrotask(() => {
