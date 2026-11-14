@@ -133,10 +133,12 @@ export async function startWorkerHost(): Promise<() => Promise<void>> {
     }
     child.kill("SIGTERM");
     // Told to stop, the host exits 0; anything else is a teardown step of its own that failed, such as its machine's
-    // stop, whose core it already killed (#2594 review).
+    // stop, whose core it already killed, or a doriface-host that had stopped by itself before (#2594 review).
     const code = await exited;
-    if (code !== 0)
-      failures.push(`the e2e host (${WHERE}) exited ${code} when told to stop; its stderr ended with:\n${stderr()}`);
+    if (code !== 0) {
+      const how = code === null ? `signal ${String(child.signalCode)}` : `exit ${code}`;
+      failures.push(`the e2e host (${WHERE}) did not stop cleanly (${how}); its stderr ended with:\n${stderr()}`);
+    }
     const left = await coresLeftUnder(dir);
     record({ kind: "cores", where: WHERE, left });
     if (left.length > 0) failures.push(`hc processes left by the e2e host (${WHERE}):\n  ${left.join("\n  ")}`);
