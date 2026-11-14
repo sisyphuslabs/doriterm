@@ -1,6 +1,6 @@
 import { DirectionPad, ExtraKeysBar, KeyboardButton, Menu, MenuItem } from "@doriface/ui";
-import { Plus, TextSelect, X } from "lucide-react";
-import { type CSSProperties, type RefObject, useCallback, useRef, useState } from "react";
+import { LockOpen, Plus, TextSelect, X } from "lucide-react";
+import { type CSSProperties, type RefObject, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { activeEntries, specialEntries } from "../keybar/entries.ts";
 import { toExtra } from "../keybar/render.tsx";
@@ -144,6 +144,19 @@ export function PhoneKeys(props: PhoneKeysProps) {
   };
   // Chat swaps the keys for the composer and takes its field inside the tap, so a phone raises its keyboard for it (#2604).
   const [chat, setChat] = useState(false);
+  // The pad's left edge, so its middle sits over the Arrow keys button; held inside the screen.
+  const [padAt, setPadAt] = useState<CSSProperties>({ right: 12 });
+  useLayoutEffect(() => {
+    if (!pad) return;
+    const toggle = document.querySelector<HTMLElement>('[aria-label="Terminal keys"] [aria-label="Arrow keys"]');
+    const holder = toggle?.closest<HTMLElement>("[data-keys-place]");
+    if (toggle === null || toggle === undefined || holder === null || holder === undefined) return;
+    const PAD_WIDTH = 168;
+    const box = toggle.getBoundingClientRect();
+    const frame = holder.getBoundingClientRect();
+    const middle = box.left + box.width / 2 - frame.left;
+    setPadAt({ left: Math.max(8, Math.min(frame.width - PAD_WIDTH - 8, middle - PAD_WIDTH / 2)) });
+  }, [pad, open]);
   const files = useRef<HTMLInputElement | null>(null);
   const openChat = (): void => {
     flushSync(() => setChat(true));
@@ -251,8 +264,17 @@ export function PhoneKeys(props: PhoneKeysProps) {
   return (
     <>
       {visible ? (
-        <div className={place.className} style={place.style}>
-          {pad ? <DirectionPad onKey={sticky.press} className="absolute right-3 bottom-full z-10 mb-2" /> : null}
+        <div data-keys-place className={place.className} style={place.style}>
+          {pad && !chat ? (
+            // The pad floats over the row, centred on its own button, with the grabber and lock it moves by (#2604).
+            <div className="absolute bottom-full z-10 mb-2 flex flex-col items-center gap-1" style={padAt}>
+              <div aria-hidden className="flex items-center gap-2 text-muted-foreground">
+                <span className="h-1 w-10 rounded-full bg-muted-foreground/60" />
+                <LockOpen className="size-3.5" />
+              </div>
+              <DirectionPad onKey={sticky.press} />
+            </div>
+          ) : null}
           {chat ? composer : panel}
         </div>
       ) : null}

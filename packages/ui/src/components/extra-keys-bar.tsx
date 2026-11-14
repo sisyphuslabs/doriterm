@@ -124,12 +124,11 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
             : "flex h-[3.25rem] items-center rounded-full",
         )}
       >
-        <div ref={keyRow.slot} className={cn("flex min-w-0 flex-1", inputActive && "col-start-1 row-start-2")}>
+        <div className={cn("flex min-w-0 flex-1", inputActive && "col-start-1 row-start-2")}>
           <div
             ref={keyRow.row}
             data-slot="terminal-keys-scroll"
             data-fade={keyRow.fade}
-            style={keyRow.style}
             className={cn(
               inputActive && "h-11",
               "flex min-w-0 items-center overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
