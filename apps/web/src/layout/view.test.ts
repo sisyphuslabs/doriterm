@@ -56,6 +56,14 @@ describe("loadView", () => {
   });
 });
 
+const memory = () => {
+  const saved = new Map<string, string>();
+  return {
+    saved,
+    storage: { getItem: (k: string) => saved.get(k) ?? null, setItem: (k: string, s: string) => void saved.set(k, s) },
+  };
+};
+
 describe("one view per device, whichever host the page goes through (#2537)", () => {
   const view: View = {
     active: "tb-1",
