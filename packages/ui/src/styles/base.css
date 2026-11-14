@@ -21,8 +21,11 @@
        (a path, a hash, a name with no space) still breaks anywhere rather than overflow. */
     word-break: keep-all;
     overflow-wrap: anywhere;
-    /* A phone's lists scroll the page (#2533): no bounce at either end, so the pinned header and bars stay still, as
-       they did when each list scrolled its own box. */
+  }
+
+  /* A phone screen that scrolls the page under a pinned header (#2533) does not bounce at either end, so the header and
+     the bars stay still, as they did when each list scrolled its own box. Other pages keep the browser's own overscroll. */
+  html:has([data-pinned="top"]) {
     overscroll-behavior-y: none;
   }
 

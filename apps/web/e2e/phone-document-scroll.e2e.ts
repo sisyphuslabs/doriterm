@@ -136,3 +136,37 @@ test("at 390, Settings scrolls the document too, under its pinned title and tabs
   await scrollTo(page, 0);
   expect(await bodyTopUnderPin()).toEqual({ pinTop: 0, bodyShows: true });
 });
+
+test("at 390, a list scrolled before Settings opens is where it was once Settings closes, by its button or by Back (#2533)", async ({
+  page,
+}) => {
+  const addresses = seed();
+  try {
+    // Both closes are a history Back, which the browser would answer by putting the window's scroll back itself; with
+    // that off, only the list's own keeping can bring the offset back.
+    await page.addInitScript(() => {
+      history.scrollRestoration = "manual";
+    });
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: /doc24/ }).first()).toBeVisible({ timeout: 20_000 });
+    const { room } = await scrolling(page, "agents-list");
+    const kept = Math.round(room / 2);
+    await scrollTo(page, kept);
+    // Settings opens over the list and closes by its own button, then by the browser's Back.
+    const roundTrip = async (close: "button" | "back") => {
+      await page
+        .getByRole("navigation", { name: "Sections" })
+        .getByRole("link", { name: /^Settings/ })
+        .click();
+      await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible();
+      if (close === "button") await page.getByRole("button", { name: "Close settings" }).first().click();
+      else await page.goBack();
+      await expect(page.getByRole("heading", { level: 1, name: "Agents" })).toBeVisible();
+      await expect.poll(() => page.evaluate(() => Math.round(window.scrollY)), { message: close }).toBe(kept);
+    };
+    await roundTrip("button");
+    await roundTrip("back");
+  } finally {
+    addresses.forEach((address) => endAgent("host", address));
+  }
+});
