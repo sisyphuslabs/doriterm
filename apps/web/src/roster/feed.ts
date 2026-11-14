@@ -16,7 +16,8 @@ export interface FeedSink {
 
 export type Schedule = (run: () => void, inMs: number) => () => void;
 
-const timers: Schedule = (run, inMs) => {
+/** Real timers: what a Schedule is outside tests. */
+export const timers: Schedule = (run, inMs) => {
   const timer = setTimeout(run, inMs);
   return () => clearTimeout(timer);
 };

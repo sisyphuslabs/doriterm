@@ -22,6 +22,7 @@ const here: MachineLayout = {
   machineId: null,
   doc: null,
   loaded: true,
+  unread: null,
   readOnly: null,
   edit: () => Promise.resolve(true),
 };

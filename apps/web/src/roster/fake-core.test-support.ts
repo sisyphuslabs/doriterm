@@ -64,6 +64,8 @@ export class FakeCore {
   terminals: readonly Terminal[] = [];
   /** How many of the next `events.subscribe` calls fail, as a reopen against a core that is restarting would. */
   failSubscribes = 0;
+  /** How many of the next `doc.get` calls fail, as a read past its deadline on a loaded host does. */
+  failDocGets = 0;
   /** Whether `machine.list` fails, as it does while hc cannot reach the machine table. */
   failMachineList = false;
   /** While set, `machine.list` answers only once it settles, as a stalled link would. */
@@ -132,6 +134,10 @@ export class FakeCore {
         return { machines: this.machines } satisfies HcResult<"machine.list">;
       case "doc.get":
         this.#known(on);
+        if (this.failDocGets > 0) {
+          this.failDocGets -= 1;
+          throw refused("timeout", "doc.get did not answer in time");
+        }
         return this.doc(name, on);
       case "doc.set": {
         this.#known(on);

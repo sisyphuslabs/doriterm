@@ -65,5 +65,6 @@ export const layout: Layout = {
   pinTab: () => Promise.resolve(),
   closeSetOf: () => [],
   restored: true,
+  unread: null,
   lastMove: null,
 };
