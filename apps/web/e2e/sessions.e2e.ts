@@ -113,3 +113,31 @@ test("Close in the close prompt is styled destructive like End session, and Ente
   await expect(page.getByRole("contentinfo")).toContainText(`${before} terminal`);
   await expect(page.getByRole("tab", { selected: true })).toBeVisible();
 });
+
+test("a session menu finishing after Cancel leaves the keyboard in the terminal (#2521)", async ({ page }) => {
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  // Keep the menu's exit pending until after the question is dismissed and the terminal takes focus.
+  // Finishing the paused animation below chooses the order without waiting for a duration.
+  await page.addStyleTag({
+    content:
+      "@keyframes held-session-exit { from { opacity: 1; } to { opacity: 0; } } [role='menu'][data-ending-style] { animation: held-session-exit 1s linear paused !important; }",
+  });
+  await sessionMenu(page, "End session…");
+  const confirm = page.getByRole("dialog", { name: /^End / });
+  await confirm.getByRole("button", { name: "Cancel" }).click();
+  await expect(confirm).toHaveCount(0);
+  const input = terminal.getByRole("textbox");
+  await input.focus();
+  await expect(input).toBeFocused();
+  const closingMenu = page.getByRole("menu", { includeHidden: true });
+  await expect(closingMenu).toHaveCount(1);
+  await closingMenu.evaluate((menu) => {
+    const exit = menu.getAnimations().find((animation) => animation instanceof CSSAnimation);
+    if (exit === undefined) throw new Error("The session menu has no held exit animation");
+    exit.finish();
+  });
+  await expect(closingMenu).toHaveCount(0);
+  await expect(input).toBeFocused();
+  await runSleep(page, terminal);
+});
