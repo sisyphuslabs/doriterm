@@ -74,7 +74,7 @@ test("CONTRIBUTING.md's from-zero path installs the tools, clones, checks and ru
   for (const wanted of [
     "https://bun.sh/install",
     "bun-v1.4.4",
-    "https://releases.herdr.dev/core/0.1.20/herdr-core-linux-x86_64.tar.gz",
+    "https://releases.herdr.dev/core/0.1.21/herdr-core-linux-x86_64.tar.gz",
     "sha256sum --check",
     CLONE_LINE,
     "bun install --frozen-lockfile",

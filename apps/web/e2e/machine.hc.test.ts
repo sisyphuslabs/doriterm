@@ -45,9 +45,15 @@ async function dialOnce(hc: string, via: string): Promise<number> {
     stdout: "ignore",
     stderr: "ignore",
   });
-  line.stdin.write('{"jsonrpc":"2.0","id":0,"method":"hello","params":{}}\n');
-  await line.stdin.flush();
-  void line.stdin.end();
+  // A refused line can stop reading before the hello is written. The pipe is closed then (EPIPE), and the line's exit
+  // code is still the answer (#2402).
+  try {
+    line.stdin.write('{"jsonrpc":"2.0","id":0,"method":"hello","params":{}}\n');
+    await line.stdin.flush();
+    await line.stdin.end();
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "EPIPE")) throw error;
+  }
   return line.exited;
 }
 
@@ -62,6 +68,12 @@ async function corePid(hc: string, env: Readonly<Record<string, string | undefin
   return replyPid(await replies, 1);
 }
 
+test("a line of hc connect's output that is not JSON is no reply, so the pid is still read from the reply after it", () => {
+  const output = 'error: socket path is too long\n{"jsonrpc":"2.0","id":1,"result":{"pid":4242}}\n';
+  expect(replyPid(output, 1)).toBe(4242);
+  expect(replyPid('{"error":"socket path is too long"}\n', 1)).toBeUndefined();
+});
+
 test("the machine's stop resolves once its core has exited, not once it has answered (#2525)", async () => {
   dialer = createHcSession("machine-stop-exit");
   root = mkdtempSync(join(tmpdir(), "dw-machine-"));
@@ -72,6 +84,8 @@ test("the machine's stop resolves once its core has exited, not once it has answ
   };
   const pid = await corePid(dialer.hc, { ...dialer.env, ...own });
   expect(pid).toBeNumber();
+  // The teardown's order (fake-relay-host.ts): the dialing core first, so nothing dials the machine back up after it.
+  await dialer.dispose();
   await stop();
   // Read the moment the stop resolves: a core still on its way out is what a check or a late dial would then meet.
   expect(pid === undefined ? true : running(pid)).toBe(false);

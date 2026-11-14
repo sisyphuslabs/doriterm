@@ -1,4 +1,5 @@
 import { HC_VERSION_FLOOR, meetsHcFloor, type MachineView } from "@doriface/protocol";
+import { offlineReason, stateReason } from "./machine-state.ts";
 
 /** What to tell a person about an added machine that needs them: what happened, then why and what to do. */
 export interface MachineCause {
@@ -88,13 +89,13 @@ export function machineCause(
   const { name, state } = view;
   if (state === "connected") return coreTooOld(name, view.version);
   if (state === "reconnecting") {
-    return { title: `Reconnecting to ${name}`, detail: `${name} is reconnecting; try again once it is back.` };
+    return { title: `Reconnecting to ${name}`, detail: `${stateReason(state, name)}; try again once it is back.` };
   }
-  if (state === "connecting") return { title: `Connecting to ${name}`, detail: `${name} is being reached now.` };
+  if (state === "connecting") return { title: stateReason(state, name), detail: `${name} is being reached now.` };
   if (state === "needs_login") {
     const detail = `It turned down this machine's login. Run hc machine login ${name} here, then try again.`;
-    return { title: `${name} needs a login`, detail };
+    return { title: stateReason(state, name), detail };
   }
   const fallback = `${name} isn't answering. Check that it's on and reachable from here. ${KEEPS_TRYING}`;
-  return { title: `${name} is offline`, detail: knownCause(name, view.why ?? "") ?? fallback };
+  return { title: offlineReason(name), detail: knownCause(name, view.why ?? "") ?? fallback };
 }

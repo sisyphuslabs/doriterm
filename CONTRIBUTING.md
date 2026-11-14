@@ -18,12 +18,12 @@ export PATH="$HOME/.bun/bin:$PATH"
 bun --version
 ```
 
-Install herdr-core 0.1.20 as `hc`, checking the archive first:
+Install herdr-core 0.1.21 as `hc`, checking the archive first:
 
 ```sh from-zero
 mkdir -p "$HOME/.local/bin"
-curl -fsSL https://releases.herdr.dev/core/0.1.20/herdr-core-linux-x86_64.tar.gz -o herdr-core.tar.gz
-echo "ac6b86890c451a37584620aaa438b71bc0d0bd430a2e7c1d7e095f052c414e74  herdr-core.tar.gz" | sha256sum --check --strict
+curl -fsSL https://releases.herdr.dev/core/0.1.21/herdr-core-linux-x86_64.tar.gz -o herdr-core.tar.gz
+echo "78424755c10a40dde38a0bdb55c20ac19706e9ae05ed68fc2acf1fcff0d941c1  herdr-core.tar.gz" | sha256sum --check --strict
 tar -xzf herdr-core.tar.gz -C "$HOME/.local/bin" herdr-core
 ln -sf herdr-core "$HOME/.local/bin/hc"
 export PATH="$HOME/.local/bin:$PATH"
