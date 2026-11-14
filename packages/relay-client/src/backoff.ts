@@ -6,3 +6,18 @@ export function backoffDelay(attempt: number, random: () => number = Math.random
   const ceiling = Math.min(BACKOFF_MAX_MS, BACKOFF_MIN_MS * 2 ** (attempt + 1));
   return Math.round(BACKOFF_MIN_MS + random() * (ceiling - BACKOFF_MIN_MS));
 }
+
+/**
+ * The delay before redialing a closed uplink. One that had been stable redials within one backoff floor, jittered so
+ * hosts dropped together do not redial in the same tick (#2498); a rate-limited close, or an uplink that was not
+ * stable, waits `backoffDelay(step)`.
+ */
+export function redialDelay(
+  stable: boolean,
+  rateLimited: boolean,
+  step: number,
+  random: () => number = Math.random,
+): number {
+  if (stable && !rateLimited) return Math.round(random() * BACKOFF_MIN_MS);
+  return backoffDelay(step, random);
+}

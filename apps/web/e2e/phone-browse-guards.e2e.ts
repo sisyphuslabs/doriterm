@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { reportedRows, reportRowOf, startMouseTracking, stopMouseTracking } from "./mouse-tracking.ts";
-import { key, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
+import { key, openPhoneTerminal, PHONE, settledGrid } from "./phone-key-bar.ts";
 import { pointOnRowStart } from "./terminal-points.ts";
 import { Touch } from "./touch.ts";
 
@@ -43,7 +43,9 @@ test("browsing read-only, a wheel over the rows reaches nothing the program read
 
   await browse(page).click();
   await expect(browse(page)).toHaveAttribute("aria-pressed", "false");
-  // A tap after browsing is reported; anything the wheel sent would have been echoed before it.
+  // A tap after browsing is reported; anything the wheel sent would have been echoed before it. It is aimed once the
+  // grid fits again: leaving browse mode brings the keys panel back under the terminal (#2499).
+  await settledGrid(page, terminal);
   const touch = await Touch.on(page);
   const before = (await reportedRows(terminal)).length;
   await touch.tap(await pointOnRowStart(terminal, "alpha beta gamma"));
