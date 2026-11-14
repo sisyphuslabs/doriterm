@@ -13,7 +13,8 @@ import {
   phoneRoute,
   rememberOpenKey,
 } from "./phone-route.ts";
-import { type MachineIds, tabAddress, tabKey } from "./tab-keys.ts";
+import { spaceKeyOn, storedSpaceKey } from "../layout/view-keys.ts";
+import { type MachineIds, storedTerminalKey, tabAddress, tabKey, terminalKeyOn } from "./tab-keys.ts";
 
 /** The phone's navigation: what it shows, from the route, and the moves between its screens. */
 export interface PhoneNavigation {
@@ -130,6 +131,18 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     },
     [listed, navigate, path, under],
   );
+  // The open space and terminal in the address are keyed for the core the page goes through: when the route moves
+  // mid-session the address is re-keyed in place (replaced, no new entry), as the view is (#2538 review).
+  const routedFor = useRef(ids.core ?? "");
+  useEffect(() => {
+    const was = routedFor.current;
+    const now = ids.core ?? "";
+    routedFor.current = now;
+    if (was === now || was === "" || now === "" || path !== "/") return;
+    const space = route.space === null ? null : spaceKeyOn(storedSpaceKey(route.space, was), now);
+    const terminal = route.terminal === null ? null : terminalKeyOn(storedTerminalKey(route.terminal, was), now);
+    if (space !== route.space || terminal !== route.terminal) go({ ...route, space, terminal }, true);
+  }, [go, ids.core, path, route]);
   const back = useCallback(() => {
     // Popping is right when this page pushed the entry in this load, and also when the entry under this one is the very
     // screen Back goes to - which a reload forgets in `landed` but not in the entry's own state (#1153).
