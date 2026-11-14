@@ -97,7 +97,7 @@ test("a browser that shrinks the layout viewport for the keyboard shows the bar 
   // The keyboard button raises it: the page itself is 336 px shorter, and the visual viewport is all of it (#1375).
   await key(page, "Show keyboard").click();
   await page.setViewportSize({ width: 390, height: 844 - 336 });
-  await expect(bar).toBeVisible();
+  await expect(key(page, "Hide keyboard")).toBeVisible();
   const box = await bar.boundingBox();
   expect(Math.round((box?.y ?? 0) + (box?.height ?? 0))).toBe(844 - 336);
 

@@ -45,10 +45,12 @@ test("rotating with the keyboard up keeps the key bar up, until the keyboard clo
   await key(page, "Show keyboard").click();
   await page.setViewportSize({ width: PORTRAIT.width, height: PORTRAIT.height - KEYBOARD });
   const bar = keysBar(page);
-  await expect(bar).toBeVisible();
+  // The keys are on screen in both states (#2499): the toggle says which. Waiting on it here also keeps the rotation
+  // below from landing in the same resize as the keyboard, which the page would then never see come up.
+  await expect(key(page, "Hide keyboard")).toBeVisible();
 
   await page.setViewportSize({ width: LANDSCAPE.width, height: LANDSCAPE.height - LANDSCAPE_KEYBOARD });
-  await expect(bar).toBeVisible();
+  await expect(key(page, "Hide keyboard")).toBeVisible();
   await expect(input).toBeFocused();
 
   // It closes by its own key: the page grows back, the bar stays with only the keyboard gone (#2499), and the terminal
