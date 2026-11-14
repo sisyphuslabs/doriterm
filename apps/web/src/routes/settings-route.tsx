@@ -109,7 +109,8 @@ function SearchSettings({
         id={id}
         className={cn(inline && "min-w-0 flex-1")}
         type="search"
-        placeholder="e.g. theme or relay"
+        // The phone's field shares the title row, so its hint is short enough to show whole there (#2575).
+        placeholder={inline ? "theme, relay" : "e.g. theme or relay"}
         value={query}
         onValueChange={onQuery}
         onKeyDown={onKeyDown}
