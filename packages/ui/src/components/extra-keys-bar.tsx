@@ -1,15 +1,4 @@
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  ClipboardPaste,
-  GamepadDirectional,
-  Keyboard,
-  KeyboardOff,
-  List,
-  TextCursorInput,
-} from "lucide-react";
+import { ClipboardPaste, Keyboard, KeyboardOff, List, MessageCircle, Move, TextCursorInput } from "lucide-react";
 import type { CSSProperties, ReactElement, ReactNode, Ref } from "react";
 import { cn } from "../lib/cn.ts";
 import { DEFAULT_EXTRA_KEYS } from "./extra-keys-defaults.tsx";
@@ -30,16 +19,6 @@ export interface ExtraKey {
 const divider = (height: string): ReactElement => (
   <span aria-hidden className={cn("mx-1 w-px shrink-0 bg-border", height)} />
 );
-
-export type ArrowId = "left" | "up" | "down" | "right";
-
-/** The fixed arrow keys, in the order a hardware keyboard's sit: Left, Up, Down, Right. */
-const ARROWS: readonly { readonly id: ArrowId; readonly name: string; readonly icon: ReactNode }[] = [
-  { id: "left", name: "Left arrow", icon: <ArrowLeft /> },
-  { id: "up", name: "Up arrow", icon: <ArrowUp /> },
-  { id: "down", name: "Down arrow", icon: <ArrowDown /> },
-  { id: "right", name: "Right arrow", icon: <ArrowRight /> },
-];
 
 export interface ExtraKeysBarProps {
   /**
@@ -81,10 +60,10 @@ export interface ExtraKeysBarProps {
   /** Show keyboard's press as it lands (a primary pointerdown), a task before `onShowKeyboard` (#2048). */
   readonly onShowKeyboardStart?: (button: HTMLButtonElement, pointerId: number) => void;
   /**
-   * The arrow keys, fixed beside the keyboard's toggle so they never scroll away (#2604), by the direction pad's ids.
-   * Unset where the bar has no terminal cursor to move (the Settings preview).
+   * Opens the composer: a field with Send in place of the keys, for a line written whole before it goes (#2604). Unset
+   * where the bar has none (the Settings preview).
    */
-  readonly onArrow?: (id: ArrowId) => void;
+  readonly onChat?: () => void;
   /** Wraps the Switch session button, e.g. in the menu it opens. */
   readonly renderSessions?: (trigger: ReactElement) => ReactNode;
   readonly className?: string;
@@ -93,8 +72,8 @@ export interface ExtraKeysBarProps {
 
 /**
  * The phone's terminal keys, one rounded pill riding on the soft keyboard. Everything that scrolls sits in the row on
- * the left: the active pack's keys, the person's own keys behind a divider, the arrow-pad toggle, Switch session and
- * Paste. The slots on the right never scroll: the input field, the arrow keys and the keyboard's toggle. Every key is
+ * the left: the active pack's keys, the person's own keys behind a divider, and Paste. The slots on the right never
+ * scroll: the arrow pad's toggle, Switch session, Chat and the keyboard's toggle (#2604). Every key is
  * a 44 pt target, and pressing one leaves the text focus (and so the keyboard) where it was. A latched modifier inverts
  * to solid ink with a bar under its label, so it reads as on in both themes.
  */
@@ -162,18 +141,6 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
             {packKeys.map(textKey)}
             {packKeys.length > 0 ? divider("h-5") : null}
             {keys.map(textKey)}
-            {divider("h-5")}
-            <button
-              type="button"
-              aria-label="Arrow keys"
-              aria-pressed={padOpen}
-              onMouseDown={keepFocus}
-              onClick={props.onPad}
-              className={cn(key, padOpen ? latchedKey : idleKey)}
-            >
-              <GamepadDirectional />
-            </button>
-            {props.renderSessions === undefined ? sessions : props.renderSessions(sessions)}
             <button
               type="button"
               aria-label="Paste"
@@ -203,20 +170,28 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
           <div className={cn("flex items-center", inputActive && "col-start-2 row-start-2")}>
             {/* The same divider the single row draws before its fixed slots, so the keys keep their width (#2604). */}
             {inputActive ? divider("h-6") : null}
-            {props.onArrow === undefined
-              ? null
-              : ARROWS.map((arrow) => (
-                  <button
-                    key={arrow.id}
-                    type="button"
-                    aria-label={arrow.name}
-                    onMouseDown={keepFocus}
-                    onClick={() => props.onArrow?.(arrow.id)}
-                    className={cn(key, idleKey)}
-                  >
-                    {arrow.icon}
-                  </button>
-                ))}
+            <button
+              type="button"
+              aria-label="Arrow keys"
+              aria-pressed={padOpen}
+              onMouseDown={keepFocus}
+              onClick={props.onPad}
+              className={cn(key, padOpen ? latchedKey : idleKey)}
+            >
+              <Move />
+            </button>
+            {props.renderSessions === undefined ? sessions : props.renderSessions(sessions)}
+            {props.onChat === undefined ? null : (
+              <button
+                type="button"
+                aria-label="Chat"
+                onMouseDown={keepFocus}
+                onClick={props.onChat}
+                className={cn(key, idleKey)}
+              >
+                <MessageCircle />
+              </button>
+            )}
             <button
               type="button"
               aria-label={keyboardDown ? "Show keyboard" : (props.hideLabel ?? "Hide keyboard")}

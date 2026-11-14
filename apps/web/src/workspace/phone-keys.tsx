@@ -1,6 +1,7 @@
 import { DirectionPad, ExtraKeysBar, KeyboardButton, Menu, MenuItem } from "@doriface/ui";
-import { TextSelect } from "lucide-react";
+import { Plus, TextSelect, X } from "lucide-react";
 import { type CSSProperties, type RefObject, useCallback, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { activeEntries, specialEntries } from "../keybar/entries.ts";
 import { toExtra } from "../keybar/render.tsx";
 import { useKeyBarSettings } from "../keybar/store.ts";
@@ -141,14 +142,55 @@ export function PhoneKeys(props: PhoneKeysProps) {
     onKeys?.(true);
     port.current?.focus();
   };
+  // Chat swaps the keys for the composer and takes its field inside the tap, so a phone raises its keyboard for it (#2604).
+  const [chat, setChat] = useState(false);
+  const files = useRef<HTMLInputElement | null>(null);
+  const openChat = (): void => {
+    flushSync(() => setChat(true));
+    document.querySelector<HTMLTextAreaElement>('[data-slot="chat-composer"] textarea')?.focus();
+  };
+  const composer = (
+    <div ref={barRef} role="group" aria-label="Chat" data-slot="chat-composer" className="px-1.5 py-1">
+      <div className="flex flex-col gap-1 rounded-[1.625rem] border border-border bg-chrome/95 p-1 shadow-lg backdrop-blur-md">
+        <InputBox className="w-full p-0" draftKey={current} onSend={(text) => port.current?.send(`${text}\r`)} />
+        <div className="flex items-center">
+          <input
+            ref={files}
+            type="file"
+            multiple
+            hidden
+            onChange={(event) => {
+              const picked = [...(event.currentTarget.files ?? [])];
+              event.currentTarget.value = "";
+              if (picked.length > 0) port.current?.pasteFiles(picked);
+            }}
+          />
+          <button
+            type="button"
+            aria-label="Attach files"
+            onClick={() => files.current?.click()}
+            className="flex size-11 items-center justify-center rounded-full text-foreground outline-none active:bg-selected focus-visible:outline-2 focus-visible:outline-ring [&_svg]:size-5"
+          >
+            <Plus />
+          </button>
+          <button
+            type="button"
+            aria-label="Close chat"
+            onClick={() => setChat(false)}
+            className="flex size-11 items-center justify-center rounded-full text-foreground outline-none active:bg-selected focus-visible:outline-2 focus-visible:outline-ring [&_svg]:size-5"
+          >
+            <X />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
   const panel = (
     <ExtraKeysBar
       ref={barRef}
-      // With the keyboard up, two rows: the Type field and Send across the top, the keys under them (#1551). With it down,
-      // the keys alone: there is nothing to type into the field with (#2604).
-      inputActive={open}
+      // One row of keys, with the keyboard up or down; Chat swaps it for the composer (#2604).
       keyboardDown={!open}
-      onArrow={sticky.press}
+      onChat={openChat}
       onShowKeyboard={raise}
       onShowKeyboardStart={letGo}
       keys={own.map(toExtra)}
@@ -159,13 +201,6 @@ export function PhoneKeys(props: PhoneKeysProps) {
       padOpen={pad}
       onPad={() => onPad(!pad)}
       onPaste={sticky.paste}
-      {...(open
-        ? {
-            inputField: (
-              <InputBox className="w-full p-0" draftKey={current} onSend={(text) => port.current?.send(`${text}\r`)} />
-            ),
-          }
-        : {})}
       {...(onKeys === undefined
         ? { onHideKeyboard: hideKeyboard }
         : { hideLabel: "Hide keys", onHideKeyboard: () => onKeys(false) })}
@@ -218,7 +253,7 @@ export function PhoneKeys(props: PhoneKeysProps) {
       {visible ? (
         <div className={place.className} style={place.style}>
           {pad ? <DirectionPad onKey={sticky.press} className="absolute right-3 bottom-full z-10 mb-2" /> : null}
-          {panel}
+          {chat ? composer : panel}
         </div>
       ) : null}
       {open || onBrowse === undefined ? null : (
