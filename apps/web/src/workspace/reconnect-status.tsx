@@ -11,6 +11,7 @@ import { useOnline } from "../pwa/use-online.ts";
 import { useMachineLine } from "../terminal/use-machine-line.ts";
 import { HistoryGapLine } from "./history-gap-status.tsx";
 import { HostDownHelp } from "./host-down-help.tsx";
+import { MachineDownHelp } from "./machine-down.tsx";
 import { PHONE_LINE, PHONE_LINE_TEXT } from "./phone-line.ts";
 import { RetryButton } from "./retry-button.tsx";
 
@@ -235,7 +236,13 @@ export function ConnectionLine({
 
 function TerminalLine({ connection, address }: { readonly connection: HcConnection; readonly address: string }) {
   const away = useMachineLine(connection, address, true);
-  return away === null ? <HistoryGapLine address={address} /> : <NoticeLine notice={machineNotice(away)} />;
+  if (away === null) return <HistoryGapLine address={address} />;
+  return (
+    <>
+      <NoticeLine notice={machineNotice(away)} />
+      <MachineDownHelp phone connection={connection} machine={away} />
+    </>
+  );
 }
 
 function NoticeLine({ notice }: { readonly notice: ConnectionNotice }) {

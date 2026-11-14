@@ -1,5 +1,6 @@
 import { connectionStore } from "../connection/store.ts";
 import { useHostDownWhy } from "./host-down.ts";
+import { firstSentence } from "./first-sentence.ts";
 import { PHONE_LINE, PHONE_LINE_TEXT } from "./phone-line.ts";
 import { RetryButton } from "./retry-button.tsx";
 
@@ -23,9 +24,9 @@ export function HostDownHelp({ phone = false }: { readonly phone?: boolean }) {
     );
   }
   return (
-    <span data-host-down className="flex min-w-0 items-center gap-2">
-      <span className="min-w-0 truncate text-xs text-foreground" title={why}>
-        {why}
+    <span data-host-down className="flex shrink-0 items-center gap-2">
+      <span className="text-xs whitespace-nowrap text-foreground" title={why} aria-label={why}>
+        {firstSentence(why)}
       </span>
       <RetryButton size="sm" onRetry={tryNow} />
     </span>

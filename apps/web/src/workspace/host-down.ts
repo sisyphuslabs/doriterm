@@ -3,9 +3,10 @@ import { hostFailure } from "../connection/host-failure.ts";
 import { staysOnThisComputer } from "../connection/settings.ts";
 import { type ConnectionState, connectionStore, useConnection } from "../connection/store.ts";
 import { useOnline } from "../pwa/use-online.ts";
+import { ACTION_GRACE_MS } from "./machine-grace.ts";
 
 /** How long the host's link may be down before the page says why and offers to try now: the host's own grace (#2448). */
-export const HOST_DOWN_GRACE_MS = 5_000;
+export const HOST_DOWN_GRACE_MS = ACTION_GRACE_MS;
 
 /** Whether the workspace on screen is still shown while its host's link is down: the drop the grace is counted from. */
 export const linkDown = (state: ConnectionState): boolean =>

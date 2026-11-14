@@ -90,3 +90,23 @@ test("two views on one connection share one line read, which ends with the last 
   second();
   expect(periods()).toEqual([]);
 });
+
+test("a line read down is dated from the first read that found it down, until it reads up again (#2464 review)", () => {
+  let now = 1_000;
+  const lines = new MachineLines(
+    () => {
+      throw new Error("not watched");
+    },
+    () => now,
+  );
+  const connection = {} as never;
+  lines.heard(connection, [{ name: "rack", state: "connected" }]);
+  expect(lines.downSince(connection, "rack")).toBeUndefined();
+  lines.heard(connection, [{ name: "rack", state: "unreachable", why: "(4404)" }]);
+  now = 4_000;
+  lines.heard(connection, [{ name: "rack", state: "connecting", why: "(4404)" }]);
+  expect(lines.downSince(connection, "rack")).toBe(1_000);
+  expect(lines.line(connection, "rack")?.why).toBe("(4404)");
+  lines.heard(connection, [{ name: "rack", state: "connected" }]);
+  expect(lines.downSince(connection, "rack")).toBeUndefined();
+});
