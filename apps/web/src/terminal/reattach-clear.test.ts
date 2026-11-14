@@ -42,6 +42,14 @@ test("build metadata is read past; a dirty build or an uppercase hash keeps the 
   expect(reattachClear("0.1.21-rc.1+build.1")).toBe(SCREEN_ONLY);
   expect(reattachClear("0.1.21-4-gabc1234-dirty")).toBe(SCREEN_ONLY);
   expect(reattachClear("0.1.21-4-gABC1234")).toBe(SCREEN_ONLY);
+  expect(reattachClear("0.1.22-dirty")).toBe(PRIMARY_TOO);
+});
+
+test("a version with leading zeros is malformed and keeps the output (#2526 review)", () => {
+  expect(reattachClear("0.1.021")).toBe(SCREEN_ONLY);
+  expect(reattachClear("00.1.21")).toBe(SCREEN_ONLY);
+  expect(reattachClear("0.1.0")).toBe(SCREEN_ONLY);
+  expect(reattachClear("0.10.0")).toBe(PRIMARY_TOO);
 });
 
 test("a terminal on an added machine is repainted by that machine's core, as machine.list reports it (#2516 review)", () => {

@@ -19,12 +19,16 @@ export const REPAINTS_PRIMARY_FROM = "0.1.21";
  * redrawn one besides (#2514). A pre-release counts by its release number only when that is past 0.1.21 (a 0.1.21
  * pre-release may predate the change); a build past a tag, as git describe names it (`0.1.21-4-gabc1234`), holds that
  * release and counts as it, while a bare `-4` is a pre-release, which git describe never prints. Build metadata
- * (`+build.1`) does not change the version under semver, so it is read past. A `-dirty` build, an uppercase hash, or an
- * unknown or malformed version is read as an older core, which keeps the output rather than erasing its only copy.
+ * (`+build.1`) does not change the version under semver, so it is read past. Any other suffix (a `-dirty` build, an
+ * uppercase hash) counts like a pre-release: only past 0.1.21. An unknown or malformed version, leading zeros included,
+ * is read as an older core, which keeps the output rather than erasing its only copy.
  */
 export function reattachClear(coreVersion: string | undefined): string {
   const version = coreVersion?.replace(/^hc /, "");
-  const match = version === undefined ? null : /^(\d+\.\d+\.\d+)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/.exec(version);
+  const match =
+    version === undefined
+      ? null
+      : /^((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/.exec(version);
   const release = match?.[1];
   const order = release === undefined ? -1 : compareHcVersions(release, REPAINTS_PRIMARY_FROM);
   const suffix = match?.[2];
