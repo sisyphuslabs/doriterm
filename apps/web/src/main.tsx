@@ -34,7 +34,7 @@ import { router } from "./router.tsx";
 import { guardedSessionStorage } from "./storage/guarded.ts";
 import { reloadIntoWaitingWorker, resumeUpdate } from "./update/reload-into-waiting.ts";
 import { updateStore } from "./update/update-store.ts";
-import { stepTerminalFont, takesTextSizeKey } from "./workspace/use-app-actions.ts";
+import { stepTerminalFont } from "./workspace/use-app-actions.ts";
 import { restoreMembership } from "./mesh/membership-state.ts";
 import { followRoster } from "./mesh/roster-refresh.ts";
 
@@ -109,12 +109,12 @@ function paintWindow(): void {
 
 onDesktopNavigate((path) => router.history.push(path));
 onDesktopUpdateReady((version) => updateStore.set({ apply: "restart", version, run: () => installDesktopUpdate() }));
-// Screens with no workspace (Settings, pairing) handle no text-size action, so the text-size keys (and the desktop
-// app's View menu) step the terminal text from here, as Settings > Appearance hints, in a browser too (#859); the window
-// itself is never zoomed (#388). The workspace and Settings take these keys themselves, so in a browser this fallback is
-// reached only where no screen shows what a step changes, and there the page zooms (#1162).
+// The workspace and Settings take the text-size keys themselves (#859, #1651). A screen that does not reaches this
+// fallback: pairing, first run, a host that failed to start, a removed membership, connecting before any connection. In
+// the desktop app it steps the terminal text, since the window itself is never zoomed (#388); in a browser it leaves
+// the key to the page's own zoom, as no screen there shows what a step would change (#1162).
 for (const action of ["app.zoom_in", "app.zoom_out", "app.zoom_reset"]) {
-  setActionFallback(action, () => (takesTextSizeKey(desktop !== null) ? stepTerminalFont(action) : false));
+  setActionFallback(action, () => (desktop !== null ? stepTerminalFont(action) : false));
 }
 if (desktopBridge() !== null) {
   // The desktop app's Close Window leaves Cmd+W to the keymap; with no pane, tab or Settings to close, it closes the window.

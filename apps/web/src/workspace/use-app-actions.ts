@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { terminalConfigStore } from "../ghostty/config-store.ts";
 import { single, withValues, withoutKey, type TerminalConfig } from "../ghostty/config.ts";
 import { KEY_BY_NAME } from "../ghostty/keys.ts";
-import { actionChosen, useActionHandler, type ActionHandler } from "../keys/dispatcher.ts";
+import { useActionHandler, type ActionHandler } from "../keys/dispatcher.ts";
 import { toggleShortcuts } from "../keys/shortcuts-store.ts";
 import type { Direction } from "../layout/neighbor.ts";
 import type { Axis } from "@doriface/protocol/layout";
@@ -42,6 +42,7 @@ export interface AppActionTargets {
 
 export type SessionVerb = (verb: "rename" | "end" | "rename-space") => boolean;
 
+/** The verbs both shells handle the same way; the text-size actions step the terminal text here, for every screen that takes them. */
 function sessionAction(action: string, onSession: SessionVerb): boolean {
   if (action === "session.rename") return onSession("rename");
   if (action === "session.end") return onSession("end");
@@ -79,15 +80,6 @@ export function stepTerminalFont(action: string): boolean {
   return true;
 }
 
-const isTextSize = (action: string): boolean => FONT_DELTA[action] !== undefined;
-
-/**
- * Whether a text-size key here steps the saved terminal text size, rather than being left to the browser's own zoom.
- * The workspace and Settings take it through their app handler, since the terminals or Appearance's hint are on screen
- * (#859, #1162); the desktop window is never zoomed, so its fallback steps the text on every screen (#388).
- */
-export const takesTextSizeKey = (desktop: boolean): boolean => desktop;
-
 /** Whether selecting the address does anything: a null target or the active tab leaves the key unhandled. */
 export function shouldSelect(address: string | null, active: string | null): boolean {
   return address !== null && address !== active;
@@ -111,8 +103,6 @@ export function phoneActions(
     if (action === "tab.new") return (onNew(), true);
     if (action === "voice.dictate") return onDictate();
     if (action === "app.settings") return (openSettings(), true);
-    // The size it steps is on this screen (#1162).
-    if (FONT_DELTA[action] !== undefined) return stepTerminalFont(action);
     return sessionAction(action, onSession);
   };
 }
@@ -190,9 +180,6 @@ export function desktopActions(
   openSettings: () => void,
 ): ActionHandler {
   return (action, programReceives = true) => {
-    // An action chosen from the palette or the Shell menu is one the person asked for, so the size it steps is all
-    // it needs; the browser keeps a key pressed on a screen that shows nothing (#1162).
-    if (actionChosen() && isTextSize(action)) return stepTerminalFont(action);
     const live = terminals.filter((terminal) => terminal.state === "live").map((terminal) => terminal.address);
     // The tab bar's tabs: the selected space's (#404).
     const keys = layout.shown.map((tab) => tab.key);
@@ -267,10 +254,6 @@ export function desktopActions(
       case "layout.filter":
         onFilterSidebar();
         return true;
-      case "app.zoom_in":
-      case "app.zoom_out":
-      case "app.zoom_reset":
-        return stepTerminalFont(action);
       case "app.settings":
         openSettings();
         return true;
