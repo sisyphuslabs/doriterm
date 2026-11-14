@@ -1,13 +1,22 @@
 import type { Locator, Page } from "@playwright/test";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
 
-const LAST = 400;
-/** History above the screen, then a program that says so whenever its terminal is resized, until it is ended. */
-const HISTORY_THEN_WATCH = `seq -f line-%g 1 ${LAST}; bash -c 'trap "echo WINCH" WINCH; while sleep 0.1; do :; done'`;
+const FIRST = 400;
+const LAST = 800;
+/** A wide line, so the output the hidden tab gathers is many frames' worth of bytes. */
+const WIDE = `line-%g ${"=".repeat(90)}`;
+/**
+ * History above the screen, then a program that says so whenever its terminal is resized (RESIZED, written so that the
+ * command line itself cannot contain it), and prints the rest of the history once `$GO` appears, writing `$DONE` after.
+ */
+const HISTORY_THEN_WATCH = `seq -f '${WIDE}' 1 ${FIRST}; bash -c 'trap "echo RE""SIZED" WINCH; while sleep 0.1; do if [ -e "$GO" ]; then rm "$GO"; seq -f "${WIDE}" ${FIRST + 1} ${LAST}; : > "$DONE"; fi; done'`;
 
 /**
  * Records, for every frame as painted, whether the terminal is laid out and the highest `line-N` among its rows that are
@@ -54,39 +63,55 @@ async function startVisibleLineSampler(terminal: Locator): Promise<void> {
 const sampledFrames = (page: Page): Promise<{ shown: boolean; last: number }[]> =>
   page.evaluate(() => (Reflect.get(window, "__visibleLines") as () => { shown: boolean; last: number }[])());
 
-test("switching back to a tab paints its current screen at the end of its history in the first frame, and never resizes its program (#1588)", async ({
+test("switching back to a tab draws the output it gathered while hidden at once, never climbing through it, and never resizes its program (#1588)", async ({
   page,
 }) => {
-  await page.goto("/");
-  const first = await openNewTerminal(page);
-  await first.getByRole("textbox").focus();
-  await page.keyboard.type(HISTORY_THEN_WATCH);
-  await page.keyboard.press("Enter");
-  await expect(first.locator(".term-row").filter({ hasText: `line-${LAST}` })).not.toHaveCount(0, { timeout: 30_000 });
+  const dir = mkdtempSync(join(tmpdir(), "doriface-tab-switch-"));
+  const go = join(dir, "go");
+  const done = join(dir, "done");
+  try {
+    await page.goto("/");
+    const first = await openNewTerminal(page);
+    await first.getByRole("textbox").focus();
+    await page.keyboard.type(`export GO=${go} DONE=${done}; ${HISTORY_THEN_WATCH}`);
+    await page.keyboard.press("Enter");
+    await expect(first.locator(".term-row").filter({ hasText: `line-${FIRST} ` })).not.toHaveCount(0, {
+      timeout: 30_000,
+    });
 
-  // A second tab hides the first one, which stays mounted with its stream.
-  await openNewTerminal(page);
-  await expect(first).toBeHidden();
+    // A second tab hides the first one, which stays mounted with its stream.
+    await openNewTerminal(page);
+    await expect(first).toBeHidden();
+    // While it is out of view its program prints the rest of its history: a backlog of many frames' worth, which the tab
+    // holds until it shows (#1588).
+    writeFileSync(go, "");
+    await expect.poll(() => existsSync(done), { timeout: 30_000 }).toBe(true);
 
-  await startVisibleLineSampler(first);
-  await page.getByRole("tablist", { name: "Tabs" }).getByRole("tab").first().click();
-  await expect(first).toBeVisible();
-  // Sixty painted frames after it shows: a switch that paints in steps, or a resize its program answers, shows by then.
-  await expect
-    .poll(() => page.evaluate(() => (Reflect.get(window, "__shownFrames") as () => number)()), { timeout: 20_000 })
-    .toBeGreaterThanOrEqual(60);
-  const frames = await sampledFrames(page);
-  const shown = frames.filter((frame) => frame.shown);
-  console.log(`tab-switch frames: ${JSON.stringify(shown.map((frame) => frame.last))}`);
+    await startVisibleLineSampler(first);
+    await page.getByRole("tablist", { name: "Tabs" }).getByRole("tab").first().click();
+    await expect(first).toBeVisible();
+    // Sixty painted frames after it shows: a switch that paints in steps, or a resize its program answers, shows by then.
+    await expect
+      .poll(() => page.evaluate(() => (Reflect.get(window, "__shownFrames") as () => number)()), { timeout: 20_000 })
+      .toBeGreaterThanOrEqual(60);
+    const frames = await sampledFrames(page);
+    const shown = frames.filter((frame) => frame.shown);
+    console.log(`tab-switch frames: ${JSON.stringify(shown.map((frame) => frame.last))}`);
 
-  expect(shown.length).toBeGreaterThan(0);
-  // Every frame it is on screen shows the end of its history, the first one included: no climb from the top.
-  expect(shown.map((frame) => frame.last)).toEqual(shown.map(() => LAST));
-  // Hiding a tab is not a resize: its program was never told its terminal changed size.
-  await expect(first).not.toContainText("WINCH");
+    expect(shown.length).toBeGreaterThan(0);
+    // What it gathered while hidden is written at once, not paced into view: no frame shows a line between where it was
+    // hidden and the end, and it ends at the end. It can still paint its screen from before for a frame or two (#2391).
+    const lasts = shown.map((frame) => frame.last);
+    expect(lasts.filter((last) => last > FIRST && last < LAST)).toEqual([]);
+    expect(lasts.at(-1)).toBe(LAST);
+    // Hiding a tab is not a resize: its program was never told its terminal changed size.
+    await expect(first).not.toContainText("RESIZED");
 
-  await first.getByRole("textbox").focus();
-  await page.keyboard.press("Control+C");
+    await first.getByRole("textbox").focus();
+    await page.keyboard.press("Control+C");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 const LONG = 1500;
