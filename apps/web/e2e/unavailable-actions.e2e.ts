@@ -207,6 +207,9 @@ test("a Close question left open as its machine drops waits with Close disabled 
     await expect(question.getByText("The space was not closed")).toHaveCount(0);
     await question.getByRole("button", { name: "Cancel" }).click();
     await expect(question).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "New tab", exact: true })).toBeDisabled({
+      timeout: OFFLINE_BOUND_MS,
+    });
     // The key does what the disabled button does: nothing. Keys are handled in order, so once the palette (asked for
     // after it) is open, a New tab the key started has already sent its run to the core.
     const runs = (): number => socket.sent().filter((frame) => frame.includes('"method":"terminal.run"')).length;
