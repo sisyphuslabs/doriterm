@@ -112,7 +112,16 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     forward.current = index > lastIndex.current;
     lastIndex.current = index;
   }
-  const route = phoneRoute(search);
+  // The core this load first went through: entries without a phoneCore (the landing entry, made before any push) are
+  // keyed for it. Set once, never moved (#2589 review).
+  const loadCore = useRef("");
+  if (loadCore.current === "" && ids.core !== undefined) loadCore.current = ids.core;
+  const entryCore = useRouterState({ select: (state) => state.location.state.phoneCore ?? null });
+  const entryKeyedFor = entryCore ?? loadCore.current;
+  // The address's space and terminal are read keyed for the core the page goes through now, so nothing downstream ever
+  // sees an entry's keys for another core; the effect below writes the re-keyed address in place (#2588).
+  const addressed = phoneRoute(search);
+  const route = rekeyPlace(addressed, entryKeyedFor, ids.core ?? "");
   const listed = path === "/" ? route : PHONE_LIST;
   // Settings and pairing are routes with no terminal or space in them: they say nothing about either, so the last ones
   // the list had stay open under them (the workspace is kept mounted there, #607).
@@ -140,23 +149,17 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     },
     [ids.core, listed, navigate, path, under],
   );
+  // An entry made through another core (Back after a route move, or the route moved while it was open) is rewritten in
+  // place with the re-keyed place and the entry under it, so Back still pops (#2588, #2589 review).
+  useEffect(() => {
+    if (path !== "/" || (route.space === addressed.space && route.terminal === addressed.terminal)) return;
+    const now = ids.core ?? "";
+    go(route, true, under === null ? null : rekeyPlaceHref(under, entryKeyedFor, now));
+  }, [addressed, entryKeyedFor, go, ids.core, path, route, under]);
   // The open space and terminal in the address are keyed for the core the page went through when the entry was made
   // (its own history state, or the route this load started on): an entry made through another core - this one after a
   // mid-session route move, or an earlier one Back lands on - is re-keyed in place, replaced, no new entry (#2588).
-  // The core this load first went through: entries without a phoneCore (the landing entry, made before any push) are
-  // keyed for it. Set once, never moved (#2589 review).
-  const loadCore = useRef("");
-  if (loadCore.current === "" && ids.core !== undefined) loadCore.current = ids.core;
-  const entryCore = useRouterState({ select: (state) => state.location.state.phoneCore ?? null });
-  useEffect(() => {
-    const was = entryCore ?? loadCore.current;
-    const now = ids.core ?? "";
-    if (path !== "/") return;
-    const rekeyed = rekeyPlace(route, was, now);
-    if (rekeyed.space === route.space && rekeyed.terminal === route.terminal) return;
-    // The entry under it is re-keyed with it, so Back still finds it and pops instead of adding a second copy.
-    go(rekeyed, true, under === null ? null : rekeyPlaceHref(under, was, now));
-  }, [entryCore, go, ids.core, path, route, under]);
+
   const back = useCallback(() => {
     // Popping is right when this page pushed the entry in this load, and also when the entry under this one is the very
     // screen Back goes to - which a reload forgets in `landed` but not in the entry's own state (#1153).
