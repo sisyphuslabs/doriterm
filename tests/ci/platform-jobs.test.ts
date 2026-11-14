@@ -27,16 +27,19 @@ function isPlatformJob(id: string, job: Job): boolean {
 
 const platformJobs = Object.entries(ci.jobs).filter(([id, job]) => isPlatformJob(id, job));
 
-test("the desktop, Windows and macOS jobs run only on a push to dev", () => {
+// A push to dev, or a maintainer's dispatch at a pull request's head (#1886); never a pull_request or merge_group run (#613).
+test("the desktop, Windows and macOS jobs run only on a push to dev or a dispatch", () => {
   expect(ci.on.push?.branches).toEqual(["dev"]);
   expect(platformJobs.map(([id]) => id)).toEqual(
     expect.arrayContaining(["desktop", "desktop-macos", "windows-private-state"]),
   );
   for (const [id, job] of platformJobs) {
     const condition = job.if ?? "";
+    const dispatch = "github.event_name == 'workflow_dispatch'";
     const onlyOnPush =
       condition.includes("github.event_name == 'push'") &&
-      !condition.includes("||") &&
+      condition.includes(dispatch) &&
+      !condition.replace(`|| ${dispatch}`, "").includes("||") &&
       !/pull_request|merge_group/.test(condition);
     expect({ id, onlyOnPush }).toEqual({ id, onlyOnPush: true });
   }
