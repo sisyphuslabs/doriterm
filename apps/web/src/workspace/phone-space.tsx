@@ -158,7 +158,9 @@ function SpaceFrame(props: {
         {...(props.arrive ? {} : { "data-arrived": "" })}
         className="motion-arrive flex min-h-dvh min-w-0 flex-col bg-sidebar pr-(--safe-right) pl-(--safe-left) [--arrive-from:translateX(1.5rem)]"
       >
-        <div data-pinned="top" className="sticky top-0 z-10 bg-sidebar">
+        {/* Clipped to its own box: a button's 44 pt hit area may not reach past the header onto the list's first row, which
+            the header now paints over as it sticks (#2533). */}
+        <div data-pinned="top" className="sticky top-0 z-10 overflow-clip bg-sidebar">
           <header
             data-titlebar
             className="flex min-h-[calc(3rem+var(--safe-top))] shrink-0 items-center gap-2 border-b border-border pt-(--safe-top) pr-4 pl-[var(--titlebar-inset-start,0.375rem)]"

@@ -123,7 +123,9 @@ export function PhoneShell(props: PhoneShellProps) {
       // The list scrolls the document, so a tap on iOS's status bar takes it to the top (#2533); the header and the bars
       // under the list stay put by sticking to the viewport's edges.
       <div className="flex min-h-dvh min-w-0 flex-col bg-sidebar pr-(--safe-right) pl-(--safe-left)">
-        <div data-pinned="top" className="sticky top-0 z-10 bg-sidebar">
+        {/* Clipped to its own box: a button's 44 pt hit area may not reach past the header onto the list's first row, which
+            the header now paints over as it sticks (#2533). */}
+        <div data-pinned="top" className="sticky top-0 z-10 overflow-clip bg-sidebar">
           <header
             data-titlebar
             className="flex h-[calc(3rem+var(--safe-top))] shrink-0 items-center gap-1 pt-(--safe-top) pr-4 pl-[var(--titlebar-inset-start,1rem)]"

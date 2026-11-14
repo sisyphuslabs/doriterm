@@ -200,7 +200,7 @@ export function SettingsRoute() {
         value={section}
         onValueChange={(value: SectionId) => setSection(value)}
         {...(documentScroll ? { "data-pinned": "top" } : {})}
-        className={cn("md:hidden", documentScroll && "sticky top-0 z-10 bg-background pt-(--safe-top)")}
+        className={cn("md:hidden", documentScroll && "sticky top-0 z-10 overflow-clip bg-background pt-(--safe-top)")}
       >
         <div {...titlebar} className="flex items-center gap-1 pt-3 pr-2 pb-1 pl-[var(--titlebar-inset-start,0.5rem)]">
           {back}
