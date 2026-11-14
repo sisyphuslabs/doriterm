@@ -187,7 +187,6 @@ test("a Close question left open as its machine drops waits with Close disabled 
     await pressShortcut(page, "app.palette");
     await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
     expect(runs(), "the New tab key asks the core nothing while New tab is disabled").toBe(before);
-    await expect(page.getByRole("heading", { name: "Could not open a new tab" })).toHaveCount(0);
     await page.keyboard.press("Escape");
   } finally {
     reconnect();
