@@ -1,0 +1,43 @@
+name: Probe a channel pointer's ETag
+
+# A read-only probe for #2609: two signed GETs of channels/<channel>.json in the production release bucket, one with
+# fetch's default headers and one with a signed accept-encoding: identity, printing only each answer's status, ETag,
+# content-encoding and content-length. It runs by hand from dev in the production mirror's environment, the only place
+# holding the bucket's R2 key pair, so the key never leaves GitHub. It never writes; it holds no signing key.
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Which channel's pointer
+        type: choice
+        options: [stable, beta]
+        default: stable
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: 1.4.4
+
+jobs:
+  probe:
+    name: Probe channels/${{ inputs.channel }}.json
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release-mirror
+    env:
+      CHANNEL: ${{ inputs.channel }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Read the pointer twice
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: bun .github/scripts/r2-pointer-probe.ts --bucket doriterm-releases --channel "$CHANNEL"
