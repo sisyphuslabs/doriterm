@@ -7,6 +7,7 @@ import { agentStatus, nextNeedingYou } from "./attention.ts";
 import { machineOf, type Session, spaceName } from "./model.ts";
 import { HistoryGapStatus } from "./history-gap-status.tsx";
 import { HostDownHelp } from "./host-down-help.tsx";
+import { MachineDownHelp } from "./machine-down.tsx";
 import {
   ConnectedStatus,
   ConnectionPathItem,
@@ -91,6 +92,7 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
           <HostDownHelp />
           {/* Past its grace the pane says the machine is offline in place, so the bar no longer says it reconnects. */}
           {reconnecting || away === null ? null : <MachineLineStatus machine={away} />}
+          {reconnecting || away === null ? null : <MachineDownHelp connection={connection} machine={away} />}
           {offline === undefined ? null : <MachineOfflineStatus machine={offline} />}
           {/* One connection item at a time: the focused terminal's machine, when it is down, takes Connected's place. */}
           {away === null && offline === undefined ? <ConnectedStatus /> : null}

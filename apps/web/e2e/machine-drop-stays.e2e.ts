@@ -2,9 +2,10 @@
 // beside the terminal, never over its output, and comes back by itself; a machine that stays gone reads offline in the
 // same place with one way on. A drop never moves the person to another tab.
 import type { Locator, Page } from "@playwright/test";
-import { agentRow } from "./agents.ts";
+import { agentRow, startShell } from "./agents.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { ACTION_GRACE_MS } from "../src/workspace/machine-grace.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import {
   blip,
@@ -15,6 +16,7 @@ import {
   OFFLINE_BOUND_MS,
   OFFLINE_TEST_TIMEOUT_MS,
   reconnect,
+  REDIAL_BOUND_MS,
   STATE_BOUND_MS,
   switchTo,
 } from "./machine-switch.ts";
@@ -60,6 +62,13 @@ async function overlap(a: Locator, b: Locator): Promise<boolean> {
   return (
     one.x < two.x + two.width && two.x < one.x + one.width && one.y < two.y + two.height && two.y < one.y + one.height
   );
+}
+
+/** The element is drawn whole inside the window: a one-line bar item that overflows it would lose its end. */
+async function shownWhole(element: Locator): Promise<boolean> {
+  const box = await element.boundingBox();
+  const width = element.page().viewportSize()?.width ?? 0;
+  return box !== null && box.x >= 0 && box.x + box.width <= width;
 }
 
 /** The page as it is now, for the pull request's before and after. */
@@ -125,15 +134,23 @@ test.describe("the terminal in view when its machine drops (#2464)", () => {
     const status = page.getByRole("status").filter({ hasText: `Reconnecting to ${MACHINE_NAME}` });
     await expect(status.first()).toBeVisible({ timeout: STATE_BOUND_MS });
     await capture(page, "reconnecting-desktop");
-    await expect(page.getByRole("contentinfo")).not.toContainText("Connected");
-    // Inside the grace nothing is offered that cannot help yet: no warning, no Try again anywhere (#1686).
-    await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(0);
-    const pane = page.locator('[data-focused="true"]');
-    await expect(pane.getByText(`${MACHINE_NAME} is offline`)).toBeVisible({ timeout: OFFLINE_BOUND_MS });
-    await expect(pane.getByRole("button")).toHaveCount(1);
-    await expect(pane.getByRole("button", { name: "Try again" })).toBeVisible();
-    // The page's own link is up, but beside the machine's name the bar speaks for the machine: it is offline.
     const bar = page.getByRole("contentinfo");
+    await expect(bar).not.toContainText("Connected");
+    // Past the 5 s grace the bar says why, beside one Try again, while hc keeps redialing (the 2464 review): no warning
+    // is raised (#1686), and the machine reads offline only once its redial grace is over (#904).
+    const down = bar.locator("[data-machine-down]");
+    await expect(down).toContainText(MACHINE_NAME, { timeout: ACTION_GRACE_MS + STATE_BOUND_MS });
+    await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(1);
+    expect(await shownWhole(down)).toBe(true);
+    const pane = page.locator('[data-focused="true"]');
+    await expect(pane.getByText(`${MACHINE_NAME} is offline`)).toHaveCount(0);
+    await capture(page, "machine-down-desktop");
+    await expect(pane.getByText(`${MACHINE_NAME} is offline`)).toBeVisible({ timeout: OFFLINE_BOUND_MS });
+    // One way to try now; a machine added by hand also offers Remove beside it (#2456), which is not a retry.
+    await expect(pane.getByRole("button", { name: "Try again" })).toHaveCount(1);
+    await expect(pane.getByRole("button")).toHaveText(["Try again", /^Remove/]);
+    // The page's own link is up, but beside the machine's name the bar speaks for the machine: it is offline.
+    await expect(down).toHaveCount(0);
     await expect(bar).toContainText(`${MACHINE_NAME} is offline`);
     await expect(bar).not.toContainText("Connected");
     await capture(page, "offline-desktop");
@@ -144,9 +161,13 @@ test.describe("the terminal in view when its machine drops (#2464)", () => {
 
   test("on a phone, the open terminal says Reconnecting under its header, then offline in place", async ({ page }) => {
     test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
-    remote = await remoteInView(page);
+    // Its own named shell on the machine, opened from the phone's list by that name: no state from an earlier spec (a
+    // desktop page, a title hc gave a shell after a redial) decides which row it opens.
+    await expect.poll(machineState, { timeout: REDIAL_BOUND_MS }).toBe("connected");
+    remote = `${MACHINE_NAME}/${startShell("machine", "stays")}`;
     await page.setViewportSize({ width: 390, height: 844 });
-    await agentRow(page, "sh", true).click();
+    await page.goto("/");
+    await agentRow(page, "stays", true).click();
     const terminal = page.locator(`[data-terminal="${remote}"]`);
     await expect(terminal).toBeVisible({ timeout: 15_000 });
 
@@ -157,6 +178,12 @@ test.describe("the terminal in view when its machine drops (#2464)", () => {
     await capture(page, "reconnecting-phone");
     const overlaps = await Promise.all((await status.all()).map((shown) => overlap(shown, terminal)));
     expect(overlaps).not.toContain(true);
+    // Past the 5 s grace the line under the header says why, beside one Try again, still not over the terminal.
+    const down = page.locator("[data-machine-down]");
+    await expect(down).toContainText(MACHINE_NAME, { timeout: ACTION_GRACE_MS + STATE_BOUND_MS });
+    await expect(down.getByRole("button", { name: "Try again" })).toHaveCount(1);
+    expect(await overlap(down, terminal)).toBe(false);
+    await capture(page, "machine-down-phone");
     await expect(page.getByText(`${MACHINE_NAME} is offline`)).toBeVisible({ timeout: OFFLINE_BOUND_MS });
     await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(1);
     await expect(status).toHaveCount(0);
@@ -200,6 +227,7 @@ test.describe("the host link in view stays down past its grace (#2464 review)", 
     const bar = page.getByRole("contentinfo");
     const help = bar.locator("[data-host-down]");
     await expect(help).toContainText("Your host", { timeout: 15_000 });
+    expect(await shownWhole(help)).toBe(true);
     await expect(bar.getByRole("button", { name: "Try again" })).toHaveCount(1);
     await expect(bar.getByRole("status").filter({ hasText: "Reconnecting" })).toBeVisible();
     await expect(terminal).toBeVisible();

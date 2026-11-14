@@ -65,13 +65,25 @@ export class ResumableSessions {
     for (const session of kept) if (session.detached) session.close(code, reason);
   }
 
-  /** Answers a resume request (the first message on `wire`) from the session it names; false when it cannot. */
-  accept(wire: E2eeWire, request: Uint8Array, pending: readonly Uint8Array[]): boolean {
+  /**
+   * Answers a resume request (the first message on `wire`) from the session it names; false when it cannot, or when
+   * `allows` says the session's key is no longer authorized (a revoke written while it was detached, #2530).
+   */
+  accept(
+    wire: E2eeWire,
+    request: Uint8Array,
+    pending: readonly Uint8Array[],
+    allows: (session: SecureSession) => boolean,
+  ): boolean {
     const id = resumeRequestId(request);
     if (id === undefined) return false;
     const session = this.#sessions.get(base64urlEncode(id));
     if (session === undefined) {
       this.#log("resume refused: no such session");
+      return false;
+    }
+    if (!allows(session)) {
+      this.#log("resume refused: the session's key is no longer authorized");
       return false;
     }
     const accepted = session.accept(wire, request, pending);
