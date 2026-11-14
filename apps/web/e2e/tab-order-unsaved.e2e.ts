@@ -18,7 +18,9 @@ test("a storage that refuses this screen's view says its tab selection was not s
   await page.addInitScript((title) => {
     const setItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function (key: string, value: string) {
-      if (key.startsWith("doriface.view.")) throw new DOMException("the quota has been exceeded", "QuotaExceededError");
+      // The device's one view (#2537) and the per-host views before it.
+      if (key === "doriface.view" || key.startsWith("doriface.view."))
+        throw new DOMException("the quota has been exceeded", "QuotaExceededError");
       setItem.call(this, key, value);
     };
     Reflect.set(window, "notSavedCount", 0);

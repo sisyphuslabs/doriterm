@@ -43,7 +43,7 @@ import {
 } from "./layout-model.ts";
 import { machineOf } from "./model.ts";
 import { placeOf } from "./placement.ts";
-import { type MachineIds, tabAddress, tabKey as terminalKey } from "./tab-keys.ts";
+import { type MachineIds, storedTerminalKey, tabAddress, tabKey as terminalKey, terminalKeyOn } from "./tab-keys.ts";
 import { usePaneMoves, type PaneMoves } from "./use-pane-moves.ts";
 import { splitLanding } from "./split-landing.ts";
 import type { TabMove } from "./tab-order.ts";
@@ -210,9 +210,22 @@ export function useLayout(
   // by what its terminal is remembered by (tab-keys.ts), as a document tab is, so a machine rename moves it to the new
   // address instead of leaving it on one that no longer exists (#459). `setLoose` takes and gives addresses.
   const [looseKeys, setLooseKeys] = useState<readonly string[]>([]);
+  // Loose tabs are kept by terminal key, `local:` only on the route through their core: re-keyed with the view (#2538 review).
+  const [looseFor, setLooseFor] = useState(core);
+  if (looseFor !== core) {
+    setLooseFor(core);
+    setLooseKeys((keys) => keys.map((key) => terminalKeyOn(storedTerminalKey(key, looseFor), core)));
+  }
   const ids = useMemo(() => layoutIds(layouts), [layouts]);
   idsNow.current = ids;
   const seen = useMemo(() => seenOn(view.seen, core, ids), [view.seen, core, ids]);
+  // A mark made before its machine was named kept its address; once the list names it, it is kept by id (#2538 review).
+  useEffect(() => {
+    setView((prev) => {
+      const kept = storedSeen(prev.seen, core, ids);
+      return JSON.stringify(kept) === JSON.stringify(prev.seen) ? prev : { ...prev, seen: kept };
+    });
+  }, [core, ids]);
   const loose = useMemo(
     () =>
       looseKeys.flatMap((key) => {
