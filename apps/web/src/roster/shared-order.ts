@@ -232,25 +232,54 @@ export class SharedOrder {
         target = this.#fresh.doc;
       }
     }
-    for (const { id, state: copy } of ready) {
-      if (!laterRank(rank, orderRank(copy.doc)) || sameRank(this.#raising.get(id) ?? null, rank)) continue;
-      const doc = this.#live.get(id);
-      if (doc === undefined) continue;
-      const goal = rank;
-      const value = target;
-      const seen = JSON.stringify(copy.doc);
-      this.#raising.set(id, goal);
-      // Written only over the copy as it was read: a write that landed since (an older client's move included) is read
-      // first and ranked again, never overwritten by a rank it was not compared with (#2534 review).
-      void doc
-        .edit(
-          (current) => (JSON.stringify(current) === seen && laterRank(goal, orderRank(current)) ? value : null),
-          "once saved",
-        )
-        .catch(() => undefined)
-        .finally(() => {
-          if (sameRank(this.#raising.get(id) ?? null, goal)) this.#raising.delete(id);
-        });
+    const goal = rank;
+    const value = target;
+    const behind = ready.filter(
+      ({ id, state: copy }) => laterRank(goal, orderRank(copy.doc)) && !sameRank(this.#raising.get(id) ?? null, goal),
+    );
+    // A fresh stamp is made from one copy's order: that copy is written first, and the others only once it took the
+    // write unchanged, so an older client's move landing there meanwhile is read and ranked again instead of being
+    // outranked by a stamp made without it (#2534 review).
+    const read = JSON.stringify(state.doc);
+    const origin =
+      state.doc === target ? undefined : ready.find(({ state: copy }) => JSON.stringify(copy.doc) === read);
+    // While that copy's write is on its way (a bring-up run again as another copy is read), the others wait for it.
+    if (origin !== undefined && sameRank(this.#raising.get(origin.id) ?? null, goal)) return;
+    const source = origin === undefined ? undefined : behind.find((entry) => entry.id === origin.id);
+    const rest = behind.filter((entry) => entry !== source);
+    if (source === undefined) for (const entry of rest) void this.#raise(entry, goal, value);
+    else void this.#raiseAfter(source, rest, goal, value);
+  }
+
+  async #raiseAfter(
+    source: { readonly id: string | null; readonly state: Ready },
+    rest: readonly { readonly id: string | null; readonly state: Ready }[],
+    goal: OrderRank,
+    value: JsonObject,
+  ): Promise<void> {
+    if (!(await this.#raise(source, goal, value))) return;
+    for (const entry of rest) void this.#raise(entry, goal, value);
+  }
+
+  /** Writes `value` over one copy only as it was read: a write that landed since is read first and ranked again. */
+  async #raise(
+    { id, state: copy }: { readonly id: string | null; readonly state: Ready },
+    goal: OrderRank,
+    value: JsonObject,
+  ): Promise<boolean> {
+    const doc = this.#live.get(id);
+    if (doc === undefined) return false;
+    const seen = JSON.stringify(copy.doc);
+    this.#raising.set(id, goal);
+    try {
+      return await doc.edit(
+        (current) => (JSON.stringify(current) === seen && laterRank(goal, orderRank(current)) ? value : null),
+        "once saved",
+      );
+    } catch {
+      return false;
+    } finally {
+      if (sameRank(this.#raising.get(id) ?? null, goal)) this.#raising.delete(id);
     }
   }
 }
