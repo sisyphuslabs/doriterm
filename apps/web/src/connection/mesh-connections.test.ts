@@ -508,3 +508,14 @@ describe("one connection per member", () => {
     expect(second.find((entry) => entry.target.hostId === "a")?.state.phase).toBe("failed");
   });
 });
+
+describe("the route a start takes (#2531)", () => {
+  it("goes through the first member that answers while the paired one still dials, and saves nothing", () => {
+    const { mesh, made, saved } = harness(settingsWith([member("a"), member("b")]));
+    made[0]?.connecting();
+    made[1]?.start();
+    expect(mesh.selected).toBe(made[1]);
+    expect(saved.some((settings) => settings.hostId === "b")).toBe(false);
+    expect(loadSettings().hostId).not.toBe("b");
+  });
+});
