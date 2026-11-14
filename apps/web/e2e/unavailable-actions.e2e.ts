@@ -168,13 +168,16 @@ test("the first-run guide's Start a terminal is offered disabled while New tab i
     await expect(start).toBeDisabled();
     // Disabled and explained: the card says why, in the words every reason line uses.
     const guideCard = page.getByRole("region", { name: "Getting started" });
-    await expect(
-      guideCard.getByText(/Start a terminal comes back by itself once the machine can take it/),
-    ).toBeVisible();
+    const reason = guideCard.getByText(
+      /the machine is not connected\. Start a terminal comes back by itself once the machine can take it/,
+    );
+    await expect(reason).toBeVisible();
   } finally {
     reconnect();
   }
   await expect(start).toBeEnabled({ timeout: STATE_BOUND_MS });
+  // Back on the link, the reason leaves with the wait.
+  await expect(page.getByText(/Start a terminal comes back by itself/)).toHaveCount(0);
 });
 
 /** Seeds a space into the added machine's own layout, with one tab on a terminal there. */
@@ -268,11 +271,16 @@ test.describe("the phone's empty terminal list", () => {
       switchTo("drop");
       await expect(newTab).toBeDisabled({ timeout: OFFLINE_BOUND_MS });
       await expect(newTerminal).toBeDisabled();
-      await expect(page.getByText(/New terminal comes back by itself once the machine can take it/)).toBeVisible();
+      await expect(
+        page.getByText(/the machine is not connected\. New terminal comes back by itself once the machine can take it/),
+      ).toBeVisible();
     } finally {
       reconnect();
     }
     await expect(newTab).toBeEnabled({ timeout: STATE_BOUND_MS });
     await expect(newTerminal).toBeEnabled();
+    // Back on the link, the reason leaves and the list says again what it offers.
+    await expect(page.getByText(/New terminal comes back by itself/)).toHaveCount(0);
+    await expect(page.getByText(/^Start a shell on /)).toBeVisible();
   });
 });
