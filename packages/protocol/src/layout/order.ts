@@ -73,14 +73,14 @@ export function laterRank(a: OrderRank | null, b: OrderRank | null): boolean {
 const sameIds = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((id, index) => id === b[index]);
 
+/** The `by` of a rank a copy has when an older client moved it: what follows is the order it holds. */
+export const MOVED = "moved:";
+
 /**
  * The rank of the write a copy holds, or null for a copy no stamped write reached. The stamp records the order it was
  * written with: a copy whose order differs was moved since by a client that keeps the stamp it found without writing its
  * own (a version before the shared order), and ranks just above the write it was made on and below any later one.
  */
-/** The `by` of a rank a copy has when an older client moved it: what follows is the order it holds. */
-export const MOVED = "moved:";
-
 export function orderRank(doc: JsonObject | null): OrderRank | null {
   const stamp = doc?.[STAMP_FIELD];
   if (!isJsonObject(stamp)) return null;

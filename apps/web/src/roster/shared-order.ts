@@ -238,9 +238,15 @@ export class SharedOrder {
       if (doc === undefined) continue;
       const goal = rank;
       const value = target;
+      const seen = JSON.stringify(copy.doc);
       this.#raising.set(id, goal);
+      // Written only over the copy as it was read: a write that landed since (an older client's move included) is read
+      // first and ranked again, never overwritten by a rank it was not compared with (#2534 review).
       void doc
-        .edit((current) => (laterRank(goal, orderRank(current)) ? value : null), "once saved")
+        .edit(
+          (current) => (JSON.stringify(current) === seen && laterRank(goal, orderRank(current)) ? value : null),
+          "once saved",
+        )
         .catch(() => undefined)
         .finally(() => {
           if (sameRank(this.#raising.get(id) ?? null, goal)) this.#raising.delete(id);

@@ -214,4 +214,17 @@ describe("the shared machine order, read from every core as one (#2531)", () => 
     expect(held.order("lab")).toEqual(["routing", "box", "lab"]);
     expect(held.order("routing")).toEqual(["routing", "box", "lab"]);
   });
+
+  test("bring-up never writes over a copy that changed after it was read: an older client's later move is read and kept (#2534 review)", async () => {
+    const base = stampOrder({ machine_order: ["routing", "box", "lab"] }, { n: 1, at: 1, by: "d2" });
+    const moved = { ...base, machine_order: ["box", "routing", "lab"] };
+    const held = cores({ routing: moved, box: base });
+    const shared = open(held.calls);
+    held.write("routing", { ...base, machine_order: ["box", "lab", "routing"] });
+    await settled();
+    shared.sync(new Set<string | null>([null, "box"]), true, true);
+    await settled();
+    expect(held.order("routing")).toEqual(["box", "lab", "routing"]);
+    expect(held.order("box")).toEqual(["box", "lab", "routing"]);
+  });
 });
