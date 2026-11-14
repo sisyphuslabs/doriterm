@@ -170,4 +170,20 @@ describe("the shared machine order, read from every core as one (#2531)", () => 
     expect(held.order("box")).toEqual(["routing", "box", "lab"]);
     expect(held.order("routing")).toEqual(["routing", "box", "lab"]);
   });
+
+  test("before the first stamped write, a move waits for a copy whose read failed instead of stamping an order without it (#2534 review)", async () => {
+    const failing = new Set(["box"]);
+    const held = cores(
+      { routing: { machine_order: ["routing", "box"] }, box: { machine_order: ["lab", "box", "routing"] } },
+      failing,
+    );
+    const shared = open(held.calls);
+    await settled();
+    await expect(shared.edit(moveInOrder(LIVE, "box", 0))).rejects.toThrow("doc.get failed");
+    expect(orderRank(held.doc("routing"))).toBeNull();
+    failing.delete("box");
+    shared.sync(new Set<string | null>([null, "box"]), true, true);
+    await settled();
+    expect(held.order("box")).toEqual(["routing", "box", "lab"]);
+  });
 });

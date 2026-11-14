@@ -107,8 +107,15 @@ export class SharedOrder {
   async edit(change: DocEdit): Promise<boolean> {
     const state = this.#state;
     // A copy that cannot be read is never written over on a guess: the move waits until it is fixed or gone.
-    const refused = [...this.#live.values()].map((doc) => doc.state).find((copy) => copy.phase === "unreadable");
-    const blocked = refused ?? (state.phase === "ready" ? undefined : state);
+    const copies0 = [...this.#live.values()].map((doc) => doc.state);
+    const refused = copies0.find((copy) => copy.phase === "unreadable");
+    // Before the first stamped write, every core's order is still to be merged: a move made while one copy is not read
+    // would stamp an order without it and later overwrite that copy unmerged (#2534 review), so it waits too.
+    const unmerged =
+      state.phase === "ready" && orderRank(state.doc) === null
+        ? copies0.find((copy) => copy.phase !== "ready")
+        : undefined;
+    const blocked = refused ?? unmerged ?? (state.phase === "ready" ? undefined : state);
     if (blocked !== undefined) {
       const detail = blocked.phase === "loading" ? "it is still loading" : blocked.reason;
       throw new DocWriteError("unwritable", detail, `The layout cannot take changes now: ${detail}`);
