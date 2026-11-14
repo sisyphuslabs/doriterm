@@ -176,3 +176,11 @@ test("a storage whose getter refuses leaves no old per-host views to read, and d
     else Object.defineProperty(globalThis, "localStorage", had);
   }
 });
+
+test("a loose tab's key is the same terminal through either core (#2538 review)", () => {
+  const throughC: View = { ...NO_VIEW, active: "loose:local:t7", focused: { "loose:local:t7": "p1" } };
+  const stored = storedView(throughC, "c");
+  expect(stored.active).toBe("loose:id:c/t7");
+  expect(viewOn(stored, "m").active).toBe("loose:id:c/t7");
+  expect(viewOn(stored, "c")).toEqual(throughC);
+});

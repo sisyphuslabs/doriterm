@@ -12,8 +12,18 @@ import type { Seen, View } from "./view.ts";
 const SPACE = "space:";
 const SEEN = "@";
 
-const absolute = (key: string, core: string): string => (key.includes("/") ? key : `${core}/${key}`);
-const relative = (key: string, core: string): string => (key.startsWith(`${core}/`) ? key.slice(core.length + 1) : key);
+// A loose tab's key names its terminal as tab-keys.ts does: `loose:local:t7` only on the route through its core, so it is
+// kept as `loose:id:<core>/t7` and read back as `loose:local:t7` only through that core (#2538 review).
+const LOOSE_LOCAL = "loose:local:";
+const looseId = (core: string): string => `loose:id:${core}/`;
+const absolute = (key: string, core: string): string => {
+  if (key.startsWith(LOOSE_LOCAL)) return looseId(core) + key.slice(LOOSE_LOCAL.length);
+  return key.includes("/") || key.startsWith("loose:") ? key : `${core}/${key}`;
+};
+const relative = (key: string, core: string): string => {
+  if (key.startsWith(looseId(core))) return LOOSE_LOCAL + key.slice(looseId(core).length);
+  return key.startsWith(`${core}/`) ? key.slice(core.length + 1) : key;
+};
 
 type Rekey = (key: string, core: string) => string;
 

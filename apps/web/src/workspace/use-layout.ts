@@ -187,14 +187,14 @@ export function useLayout(
   const dropped = useRef(false);
   // The route can move mid-session (a drop that reconnects through another host): the view in memory is keyed for the
   // core it was loaded through, so it is re-keyed for the new one before anything is saved under it (#2538 review).
-  const keyedFor = useRef(core);
+  // Re-keyed during render, not in an effect: no render (and no effect of it) ever sees the old route's keys.
+  const [keyedFor, setKeyedFor] = useState(core);
+  if (keyedFor !== core) {
+    setKeyedFor(core);
+    setView((prev) => viewOn(storedView(prev, keyedFor), core));
+  }
   useEffect(() => {
-    if (keyedFor.current !== core) {
-      const was = keyedFor.current;
-      keyedFor.current = core;
-      setView((prev) => viewOn(storedView(prev, was), core));
-      return;
-    }
+    if (keyedFor !== core) return;
     const reason = saveView(core, view);
     if (reason === null) {
       // The per-host views read at load are dropped once the one view has been saved (#2537).
@@ -205,7 +205,7 @@ export function useLayout(
       refused.current = true;
       tellUnsaved.current(reason);
     }
-  }, [core, view]);
+  }, [core, view, keyedFor]);
   // Terminals opened while their machine's layout took no edits; this screen shows them as tabs of its own. Each is kept
   // by what its terminal is remembered by (tab-keys.ts), as a document tab is, so a machine rename moves it to the new
   // address instead of leaving it on one that no longer exists (#459). `setLoose` takes and gives addresses.
