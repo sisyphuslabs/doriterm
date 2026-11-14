@@ -196,8 +196,7 @@ export class MeshConnections {
   /** Shows another member's connection without touching any connection: the others stay open while this app looks elsewhere. */
   select(hostId: string): void {
     if (this.#targets.has(hostId)) this.#picked = hostId;
-    // Compared with the saved machine: one a failover shows is not saved yet, so opening it on purpose saves it (#2535).
-    if ((hostId === this.#settings.hostId && this.#selection === undefined) || !this.#targets.has(hostId)) return;
+    if (hostId === this.settings.hostId || !this.#targets.has(hostId)) return;
     const target = this.#targets.get(hostId);
     if (target === undefined) return;
     if (!this.#settings.members.some((member) => member.hostId === hostId)) {

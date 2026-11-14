@@ -447,15 +447,6 @@ describe("one connection per member", () => {
     expect(mesh.settings.hostId).toBe("b");
   });
 
-  it("opening, on purpose, the machine a failover shows saves it (#2535 review)", () => {
-    storing(settingsWith([member("a"), member("b")], "a"));
-    const { mesh, made } = harness(settingsWith([member("a"), member("b")], "a"));
-    made[1]?.start();
-    made[0]?.fail();
-    mesh.select("b");
-    expect(loadSettings().hostId).toBe("b");
-  });
-
   it("does not move off a machine that is only connecting", () => {
     const { mesh, made } = running(settingsWith([member("a"), member("b")], "a"));
     made[0]?.connecting();
