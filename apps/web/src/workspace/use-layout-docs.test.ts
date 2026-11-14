@@ -174,11 +174,11 @@ test("inside the reconnect grace the edit reason agrees with the sidebar and doe
   expect(noEditsWhy("m1", shown)).toBe("m1 is reconnecting");
 });
 
-test("a machine held through a redial refuses its edits as reconnecting, as its row reads reconnecting (#918)", async () => {
+test("a machine held through a redial refuses its edits as its row reads it, reconnecting; a connected one waits for its layout (#918, #2595)", async () => {
   expect(noEditsWhy("m1", [listed("m1", "reconnecting")])).toBe("m1 is reconnecting");
   expect(noEditsWhy("m1", [listed("m1", "connected")])).toBe("the layout is loading");
-  await expect(docEdit(undefined, "the machine is reconnecting")(noChange)).rejects.toThrow(
-    "The layout cannot take changes now: the machine is reconnecting",
+  await expect(docEdit(undefined, noEditsWhy("m1", [listed("m1", "reconnecting")]))(noChange)).rejects.toThrow(
+    "The layout cannot take changes now: m1 is reconnecting",
   );
 });
 
