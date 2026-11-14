@@ -3,7 +3,7 @@ import type { JsonObject, MachineView } from "@doriface/protocol";
 import { type DocEdit, type EditShown, type LayoutDoc, storedPins } from "@doriface/protocol/layout";
 import { docCalls } from "../roster/doc-calls.ts";
 import { useRoster } from "../roster/use-roster.ts";
-import { offlineReason } from "./machine-state.ts";
+import { offlineReason, stateReason } from "./machine-state.ts";
 
 export { docCalls };
 
@@ -27,14 +27,22 @@ export interface MachineLayout {
 /** Why a machine's layout takes no edits while it is still being read. */
 export const LAYOUT_LOADING = "the layout is loading";
 
+/** Connected layouts must answer before restoration finishes; an unavailable layout need not hold the page up. */
+export function layoutsRestored(
+  machinesListed: boolean,
+  layouts: readonly Pick<MachineLayout, "loaded" | "readOnly">[],
+): boolean {
+  return machinesListed && layouts.every((layout) => layout.loaded || layout.readOnly !== LAYOUT_LOADING);
+}
+
 /**
- * Why a machine with no live document takes no edits, in the words its row uses: reconnecting only during the
- * page's grace (#918), loading while connected, and offline once the grace ends. An edit is never queued for later.
+ * Why a machine with no live document takes no edits: a connected machine waits for its layout, while any other
+ * machine is named with its row's state, including reconnecting only during the page's grace (#918).
  */
 export function noEditsWhy(id: string | null, shown: readonly MachineView[]): string {
   const view = shown.find((machine) => machine.id === id);
-  if (view?.state === "reconnecting") return "the machine is reconnecting";
-  return view?.state === "connected" ? LAYOUT_LOADING : offlineReason();
+  if (view === undefined) return offlineReason();
+  return view.state === "connected" ? LAYOUT_LOADING : stateReason(view.state, view.name);
 }
 
 /** A machine's edits: through its live document, or refused with `why` when it has none. */

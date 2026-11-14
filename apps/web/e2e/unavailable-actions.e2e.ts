@@ -82,7 +82,7 @@ test("a space on a machine that went offline offers Close and Rename disabled, a
     await expect(question.getByRole("button", { name: "Rename" })).toBeDisabled();
     await expect(
       question.getByText(
-        "The layout cannot take changes now: the machine is offline. Rename comes back by itself once the machine can take it.",
+        `The layout cannot take changes now: ${MACHINE_NAME} is offline. Rename comes back by itself once the machine can take it.`,
         { exact: true },
       ),
     ).toBeVisible();
@@ -140,7 +140,7 @@ test("on a phone, an offline machine's space offers New tab disabled with why, a
     // The button can wait during the grace too; the offline reason is due only once that grace has ended.
     await expect(
       page.getByText(
-        "The layout cannot take changes now: the machine is offline. New tab comes back by itself once the machine can take it.",
+        `The layout cannot take changes now: ${MACHINE_NAME} is offline. New tab comes back by itself once the machine can take it.`,
         { exact: true },
       ),
     ).toBeVisible({ timeout: OFFLINE_BOUND_MS });

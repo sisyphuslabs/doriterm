@@ -40,7 +40,7 @@ import type { TabMove } from "./tab-order.ts";
 import type { Leaving } from "./use-drop-pane.ts";
 import { useTabClose } from "./use-tab-close.ts";
 import { useTabMoves } from "./use-tab-moves.ts";
-import { LAYOUT_LOADING, type MachineLayout } from "./use-layout-docs.ts";
+import { layoutsRestored, type MachineLayout } from "./use-layout-docs.ts";
 
 export interface Layout extends PaneMoves {
   /** Every tab of every machine's document, and this screen's own. */
@@ -574,6 +574,6 @@ export function useLayout(
     pinTab,
     closeSetOf,
     lastMove,
-    restored: machinesListed && layouts.every((layout) => layout.loaded || layout.readOnly !== LAYOUT_LOADING),
+    restored: layoutsRestored(machinesListed, layouts),
   };
 }
