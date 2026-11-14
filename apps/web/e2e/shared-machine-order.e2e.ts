@@ -101,6 +101,19 @@ test("orders each host kept before the shared one become one order, the opening 
   await expect.poll(async () => order(two), { timeout: 15_000 }).toEqual(["second", "first"]);
 });
 
+test("with nothing focused, neither status line names the host the page goes through", async ({ browser }) => {
+  const desk = await device(browser, secondUrl);
+  await expect(desk.getByRole("contentinfo")).toContainText("terminal", { timeout: 20_000 });
+  await expect(desk.getByRole("contentinfo").locator("[data-status-machine]")).toHaveCount(0);
+  const phone = await device(browser, secondUrl);
+  await phone.setViewportSize({ width: 390, height: 844 });
+  await phone.goto("/?v=spaces");
+  const line = phone.getByRole("contentinfo");
+  await expect(line).toContainText("Loopback", { timeout: 20_000 });
+  await expect(line).not.toContainText(SECOND_OWN);
+  await expect(line).not.toContainText(FIRST);
+});
+
 test("Settings names no host as the one this device is attached to", async ({ browser }) => {
   const two = await device(browser, secondUrl);
   await two.goto("/settings");
