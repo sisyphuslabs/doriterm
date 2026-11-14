@@ -142,6 +142,11 @@ test("at 390, a list scrolled before Settings opens is where it was once Setting
 }) => {
   const addresses = seed();
   try {
+    // Both closes are a history Back, which the browser would answer by putting the window's scroll back itself; with
+    // that off, only the list's own keeping can bring the offset back.
+    await page.addInitScript(() => {
+      history.scrollRestoration = "manual";
+    });
     await page.goto("/");
     await expect(page.getByRole("button", { name: /doc24/ }).first()).toBeVisible({ timeout: 20_000 });
     const { room } = await scrolling(page, "agents-list");
