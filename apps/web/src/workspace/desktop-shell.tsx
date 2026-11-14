@@ -89,6 +89,8 @@ export interface DesktopShellProps {
   readonly onNew: () => void;
   /** New tab cannot start a terminal now (its machine is unreachable or its layout takes no edits). */
   readonly newDisabled: boolean;
+  /** Why New tab is disabled, or null while it is offered. */
+  readonly newWhy: string | null;
   /** Starts an hc template (an agent) as a new tab, from the New tab menu. */
   readonly onNewAgent: (template: string) => void;
   readonly onNewSpace: () => void;
@@ -241,6 +243,7 @@ export function DesktopShell(props: DesktopShellProps) {
         ids={ids}
         onNew={onNew}
         newDisabled={props.newDisabled}
+        newWhy={props.newWhy}
       />
       {sidebar ? (
         <Sidebar terminals={terminals} active={focusedAddress} onOpen={openTerminal} onPalette={onPalette} />
