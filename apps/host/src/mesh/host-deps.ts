@@ -79,6 +79,7 @@ export function meshDeps(options: MeshDepsOptions) {
     hooks,
     hostMesh,
     resumeKey: (key: string) => hostMesh.resumeKey(key),
+    removedRosterHeld: (key: string) => hostMesh.removedRosterHeld(key),
     sync,
     meshStream: (secure: SecureLink) => hostMesh.serve(secure),
     rosterStream: (secure: SecureLink) => hostMesh.roster(secure),
