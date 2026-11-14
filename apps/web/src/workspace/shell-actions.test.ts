@@ -257,3 +257,16 @@ describe("space keys, as herdr-app binds them", () => {
     expect(calls).toEqual([]);
   });
 });
+
+describe("a layout that takes no edits", () => {
+  test("lists New tab, Rename tab and Rename space as unavailable, with why, so none is offered and then refused", () => {
+    const why = "The layout cannot take changes now: the machine is not connected";
+    for (const shell of ["desktop", "phone"] as const) {
+      const blocked = availableActions(shell, true, why).filter(({ id }) =>
+        ["tab.new", "tab.rename", "space.rename"].includes(id),
+      );
+      expect(blocked.map(({ id }) => id)).toContain("tab.new");
+      expect(blocked.filter(({ unavailable }) => unavailable !== why)).toEqual([]);
+    }
+  });
+});
