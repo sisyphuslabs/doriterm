@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import {
@@ -9,6 +10,16 @@ import {
   OFFLINE_BOUND_MS,
   OFFLINE_TEST_TIMEOUT_MS,
 } from "./machine-switch.ts";
+
+/** The colour a theme token resolves to on this page, as getComputedStyle reports one. */
+const inkOf = (page: Page, token: string): Promise<string> =>
+  page.evaluate((name) => {
+    const probe = document.body.appendChild(document.createElement("span"));
+    probe.style.color = `var(${name})`;
+    const ink = getComputedStyle(probe).color;
+    probe.remove();
+    return ink;
+  }, token);
 
 test.describe("machines added with hc machine add", () => {
   test("an unreachable host stops advertising connected and creates again after recovery", async ({
@@ -95,6 +106,10 @@ test.describe("machines added with hc machine add", () => {
       switchTo("off");
       await expect(machineRow(page)).toContainText("offline", { timeout: OFFLINE_BOUND_MS });
       await expect(newOn(page)).toBeDisabled();
+      // Unavailable reads as unavailable: its + paints the disabled glyph ink at full opacity, a colour and not a fade (#1243).
+      const glyph = newOn(page).locator("svg");
+      await expect(glyph).toHaveCSS("opacity", "1");
+      await expect(glyph).toHaveCSS("color", await inkOf(page, "--disabled-glyph"));
       expect(errors).toEqual([]);
     } finally {
       // Dialed now, not after hc's redial backoff (up to 30 s): the next spec in this worker finds the machine connected.
