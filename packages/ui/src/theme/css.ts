@@ -36,6 +36,8 @@ export function disabledGlyph(muted: Rgb, toward: Rgb, surfaces: readonly Rgb[])
  * A label drawn in `muted` with no fill of its own, disabled (a ghost Button, a sidebar row, a menu item): moved toward
  * `toward` in 1% steps as far as it keeps 4.5:1 on every surface it can sit on, so it reads as unavailable at a glance and
  * stays legible (#2510). `muted` itself is the floor for a theme that leaves no room.
+ * Only the opaque surfaces are guarded: on a `--hover` or `--selected` wash it can fall below 4.5:1, so a highlighted or
+ * selected row draws `muted` instead (a disabled menu item does, #2513 review).
  */
 export function disabledInk(muted: Rgb, toward: Rgb, surfaces: readonly Rgb[]): string {
   let kept = muted;
