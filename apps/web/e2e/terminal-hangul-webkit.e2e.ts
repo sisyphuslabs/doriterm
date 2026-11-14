@@ -1,6 +1,15 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
-import { HANGEUL, type Keyboard, safariReplace, spaceThenJamo, typeHangul } from "./hangul-edits.ts";
+import {
+  GA_AFTER_GA,
+  HANGEUL,
+  type Keyboard,
+  keyThenSyllable,
+  RETURN,
+  safariReplace,
+  SPACE,
+  typeHangul,
+} from "./hangul-edits.ts";
 import { key, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE });
@@ -8,6 +17,9 @@ test.use({ serviceWorkers: "block", ...PHONE });
 // The shell reads one line and prints its bytes in hex, run together and ended by a mark, so a jamo sent on its own,
 // twice or out of order shows.
 const READ_LINE = "IFS= read -r l; printf '%s' \"$l\" | od -An -tx1 | tr -d ' \\n'; echo :end\r";
+// Two lines, each ended by its own mark, so what Return split them into shows.
+const READ_TWO_LINES =
+  "IFS= read -r l; printf '%s' \"$l\" | od -An -tx1 | tr -d ' \\n'; echo :end; IFS= read -r m; printf '%s' \"$m\" | od -An -tx1 | tr -d ' \\n'; echo :end2\r";
 
 async function openReader(page: Page): Promise<{ readonly terminal: Locator; readonly field: Locator }> {
   const terminal = await openPhoneTerminal(page);
@@ -81,7 +93,7 @@ for (const keyboard of ["iphone", "ipad"] satisfies Keyboard[]) {
     await expectRead(page, terminal, "78 ed 95 98");
   });
 
-  test(`${keyboard}: a space after a syllable reaches the field, so the next jamo starts a new syllable (#1508)`, async ({
+  test(`${keyboard}: a space after a syllable lands in the field, so the next syllable starts fresh (#1508)`, async ({
     page,
   }) => {
     const { terminal, field } = await openReader(page);
@@ -89,10 +101,25 @@ for (const keyboard of ["iphone", "ipad"] satisfies Keyboard[]) {
       ["ㄱ", "ㄱ"],
       ["ㅏ", "가"],
     ]);
-    // A keyboard that never saw its space would join ㄱ to 가 and put 각 in its place: 가, a deleted space, then 각.
-    expect(await spaceThenJamo(field, keyboard, { jamo: "ㄱ", alone: "ㄱ", withPrevious: "각" })).toBe(true);
-    await typeHangul(field, keyboard, [["ㅏ", "가"]]);
+    // A keyboard whose space never landed still holds 가: ㄱ joins it as 각, and ㅏ brings 가 back as 가가 over the space.
+    expect(await keyThenSyllable(field, keyboard, SPACE, GA_AFTER_GA)).toBe(true);
     await expectRead(page, terminal, "ea b0 80 20 ea b0 80");
+  });
+
+  test(`${keyboard}: Return after a syllable lands in the field: the syllable, Return, then a fresh syllable (#1508)`, async ({
+    page,
+  }) => {
+    const terminal = await openPhoneTerminal(page);
+    await page.keyboard.type(READ_TWO_LINES);
+    const field = terminal.getByRole("textbox");
+    await typeHangul(field, keyboard, [
+      ["ㄱ", "ㄱ"],
+      ["ㅏ", "가"],
+    ]);
+    expect(await keyThenSyllable(field, keyboard, RETURN, GA_AFTER_GA)).toBe(true);
+    await expect(terminal).toContainText(/(^|\s)eab080:end(\s|$)/, { timeout: 10_000 });
+    await page.keyboard.press("Enter");
+    await expect(terminal).toContainText(/(^|\s)eab080:end2/, { timeout: 10_000 });
   });
 
   test(`${keyboard}: a key-bar key sends the syllable still being typed first`, async ({ page }) => {
