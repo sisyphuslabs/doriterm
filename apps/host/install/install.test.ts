@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
   chmodSync,
   existsSync,
@@ -17,7 +17,8 @@ const SCRIPT = join(import.meta.dir, "install.sh");
 // Each case runs the real installer, about 50 stub processes (counted with strace: the lingering cases spawn 50 and 46).
 // A loaded macOS runner spent about 100 ms per spawn, so one case took 5.1 s and passed bun's 5 s default by nothing
 // it did wrong (#2487). 15 s is three times that measured worst case; the two ~340-spawn cases keep their 30 s (#2006).
-setDefaultTimeout(15_000);
+// Each case names its own: bun's setDefaultTimeout is the whole run's, so it would loosen every file run after this one.
+const INSTALL_MS = 15_000;
 // The name install.sh uses (`id -un`); userInfo() reads $USER first and answers "unknown" where it is unset (#2476).
 const USER = Bun.spawnSync(["id", "-un"]).stdout.toString().trim();
 
@@ -193,7 +194,7 @@ describe("install.sh on Linux", () => {
     expect(unit).not.toMatch(/^Nice=/m);
     expect(unit).toContain("WantedBy=default.target");
     expect(run.out).toContain("doriface://pair#h=fake");
-  });
+  }, INSTALL_MS);
 
   test("--join joins the mesh of the host that made the link once the service answers, instead of printing a pairing", () => {
     const r = rig("Linux");
@@ -203,7 +204,7 @@ describe("install.sh on Linux", () => {
     const state = join(r.home, ".local", "state", "doriface-host");
     expectJoinedFromFile(run.calls, `doriface-host mesh join --wait-host 60 --yes --state-dir ${state} --from-file `);
     expect(run.calls.some((call) => call.startsWith("doriface-host pair"))).toBe(false);
-  });
+  }, INSTALL_MS);
 
   test("--no-service --join hands mesh join the link in a file too, never on its command line (#1201)", () => {
     const r = rig("Linux");
@@ -213,7 +214,7 @@ describe("install.sh on Linux", () => {
     const state = join(r.home, ".local", "state", "doriface-host");
     const hc = join(r.home, ".local", "bin", "hc");
     expectJoinedFromFile(run.calls, `doriface-host mesh join --yes --hc ${hc} --state-dir ${state} --from-file `);
-  });
+  }, INSTALL_MS);
 
   test("DORIFACE_JOIN joins like --join, so the link can stay off the installer's own command line too (#1201)", () => {
     const r = rig("Linux");
@@ -222,7 +223,7 @@ describe("install.sh on Linux", () => {
     expect(run.code).toBe(0);
     const state = join(r.home, ".local", "state", "doriface-host");
     expectJoinedFromFile(run.calls, `doriface-host mesh join --wait-host 60 --yes --state-dir ${state} --from-file `);
-  });
+  }, INSTALL_MS);
 
   test("the service and the pairing use one state dir, the one this shell names, even with XDG_STATE_HOME set", () => {
     const r = rig("Linux");
@@ -233,7 +234,7 @@ describe("install.sh on Linux", () => {
     const unit = readFileSync(join(r.home, ".config", "systemd", "user", "doriface-host.service"), "utf8");
     expect(unit).toContain(`--state-dir "${dir}"`);
     expect(run.calls.at(-1)).toBe(`doriface-host pair --wait-host 60 --state-dir ${dir}`);
-  });
+  }, INSTALL_MS);
 
   test("a published install.sh installs its own release by default, and the repository copy the latest", () => {
     const script = readFileSync(SCRIPT, "utf8");
@@ -272,7 +273,7 @@ describe("install.sh on Linux", () => {
     expect(readFileSync(r.log, "utf8")).toContain(
       "curl https://github.com/sisyphuslabs/doriterm/releases/latest/download/doriface-host-linux-x64",
     );
-  });
+  }, INSTALL_MS);
 
   test("a path with a percent sign reaches systemd as itself, not as a specifier", () => {
     const r = rig("Linux");
@@ -282,7 +283,7 @@ describe("install.sh on Linux", () => {
     const unit = readFileSync(join(r.home, ".config", "systemd", "user", "doriface-host.service"), "utf8");
     expect(unit).toContain(`ExecStart="${join(r.root, "100%%bin", "doriface-host")}"`);
     expect(unit).not.toMatch(/100%bin/);
-  });
+  }, INSTALL_MS);
 
   test("a path with a dollar sign, a quote and a backslash reaches systemd as itself (#834)", () => {
     const r = rig("Linux");
@@ -293,7 +294,7 @@ describe("install.sh on Linux", () => {
     // ExecStart expands $VAR, so the $ is doubled there; Environment= gives $ no meaning, so it stays single.
     expect(unit).toContain(`ExecStart="${join(r.root, 'a$$HOME\\"q\\\\b', "doriface-host")}"`);
     expect(unit).toContain(`Environment="PATH=${r.root}/a$HOME\\"q\\\\b:`);
-  });
+  }, INSTALL_MS);
 
   test("a relative bin dir and state dir are written into the unit as absolute paths (#834)", () => {
     const r = rig("Linux");
@@ -303,7 +304,7 @@ describe("install.sh on Linux", () => {
     const unit = readFileSync(join(r.home, ".config", "systemd", "user", "doriface-host.service"), "utf8");
     expect(unit).toContain(`ExecStart="${join(here, "rel-bin", "doriface-host")}"`);
     expect(unit).toContain(`--state-dir "${join(here, "rel-state")}"`);
-  });
+  }, INSTALL_MS);
 
   test("keeps an hc already on PATH and runs the service with it", () => {
     const r = rig("Linux", "aarch64");
@@ -317,7 +318,7 @@ describe("install.sh on Linux", () => {
     const unit = readFileSync(join(r.home, ".config", "systemd", "user", "doriface-host.service"), "utf8");
     expect(unit).toContain(`--hc "${join(tools, "hc")}"`);
     expect(run.out).toContain("using herdr-core at");
-  });
+  }, INSTALL_MS);
 
   test("turns lingering on for a user who does not linger, so the service starts at boot without a login", () => {
     const r = rig("Linux");
@@ -327,7 +328,7 @@ describe("install.sh on Linux", () => {
     expect(enabledLinger(run.calls)).toEqual([`loginctl --no-ask-password enable-linger ${USER}`]);
     expect(run.out).toContain("it starts at boot");
     expect(run.out).not.toContain("sudo");
-  });
+  }, INSTALL_MS);
 
   test("where only an admin may turn lingering on, installs anyway and names the one command to run", () => {
     const r = rig("Linux");
@@ -337,14 +338,14 @@ describe("install.sh on Linux", () => {
     expect(run.calls).toContain("systemctl --user restart doriface-host.service");
     expect(run.out).toContain(`sudo loginctl enable-linger ${USER}`);
     expect(run.out).not.toContain("it starts at boot");
-  });
+  }, INSTALL_MS);
 
   test("leaves a user who lingers already alone", () => {
     const r = rig("Linux");
     const run = install(r, ["--no-pair"]);
     expect(enabledLinger(run.calls)).toEqual([]);
     expect(run.out).not.toContain("linger");
-  });
+  }, INSTALL_MS);
 
   test("a download that does not match SHA256SUMS.txt installs nothing and starts nothing", () => {
     const r = rig("Linux");
@@ -354,7 +355,7 @@ describe("install.sh on Linux", () => {
     expect(run.err).toContain("does not match SHA256SUMS.txt");
     expect(existsSync(join(r.home, ".local", "bin", "doriface-host"))).toBe(false);
     expect(run.calls).toEqual(["systemctl --user show-environment"]);
-  });
+  }, INSTALL_MS);
 
   test("without a systemd user manager it refuses before downloading, and --no-service installs only", () => {
     const r = rig("Linux");
@@ -369,7 +370,7 @@ describe("install.sh on Linux", () => {
     expect(existsSync(join(r.home, ".local", "bin", "doriface-host"))).toBe(true);
     expect(plain.out).toContain("start the host with:");
     expect(plain.calls.filter((call) => call.includes("daemon-reload"))).toEqual([]);
-  });
+  }, INSTALL_MS);
 
   test("an upgrade keeps the state dir the installed service names, so the host keeps its identity (#1966)", () => {
     const r = rig("Linux");
@@ -392,7 +393,7 @@ describe("install.sh on Linux", () => {
     const other = join(r.root, "other");
     expect(install(r, ["--no-pair", "--state-dir", other]).code).toBe(0);
     expect(readFileSync(unitFile, "utf8")).toContain(`--state-dir "${other}"`);
-  });
+  }, INSTALL_MS);
 
   test("--uninstall stops the service and removes it and the binary", () => {
     const r = rig("Linux");
@@ -403,7 +404,7 @@ describe("install.sh on Linux", () => {
     expect(run.calls).toContain("systemctl --user disable --now doriface-host.service");
     expect(existsSync(join(r.home, ".config", "systemd", "user", "doriface-host.service"))).toBe(false);
     expect(existsSync(join(r.home, ".local", "bin", "doriface-host"))).toBe(false);
-  });
+  }, INSTALL_MS);
 });
 
 describe("install.sh on macOS", () => {
@@ -429,7 +430,7 @@ describe("install.sh on macOS", () => {
     expect(run.err).toBe("");
     expect(run.code).toBe(0);
     expect(readFileSync(state, "utf8").trim()).toBe("loaded");
-  });
+  }, INSTALL_MS);
 
   // About 200 stub processes (101 `launchctl print`, 100 `sleep`): nothing is slept, but on a busy host the spawns alone
   // can pass bun's default 5 s, so the test gets a bound sized to them (#2006).
@@ -465,7 +466,7 @@ describe("install.sh on macOS", () => {
     expect(readFileSync(plistFile, "utf8")).toBe(before);
     expect(readFileSync(join(custom, "identity"), "utf8")).toBe("host A");
     expect(readFileSync(agent, "utf8").trim()).toBe("loaded");
-  });
+  }, INSTALL_MS);
 
   // As many stub processes as the never-unloads test (100 bootstrap attempts through the launchd stub, each running its
   // own `cat`, and 99 `sleep`), so the same bound (#2006).
@@ -500,12 +501,12 @@ describe("install.sh on macOS", () => {
     expect(plist).toContain("<key>KeepAlive</key><true/>");
     expect(plist).toContain("<key>ProcessType</key><string>Interactive</string>");
     expect(plist).not.toMatch(/LowPriority|<key>Nice<\/key>|Background/);
-  });
+  }, INSTALL_MS);
 });
 
 describe("install.sh elsewhere", () => {
   test("names the desktop app on Windows-like systems and refuses an unknown CPU", () => {
     expect(install(rig("MINGW64_NT" as "Linux")).err).toContain("install the desktop app");
     expect(install(rig("Linux", "riscv64")).err).toContain("no doriface-host build for CPU riscv64");
-  });
+  }, INSTALL_MS);
 });
