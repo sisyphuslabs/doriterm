@@ -12,7 +12,7 @@ import { TerminalView } from "../terminal/terminal-view.tsx";
 import { MachineOffline } from "./machine-offline.tsx";
 import { machineOf, type Session, terminalTitle } from "./model.ts";
 import { picksPane } from "./pane-focus.ts";
-import { menuReturnsFocus, SessionMenuItems } from "./session-menu.tsx";
+import { SessionMenuItems, useSessionMenuFocus } from "./session-menu.tsx";
 
 export interface PaneProps {
   readonly connection: HcConnection;
@@ -108,6 +108,7 @@ export function Pane(props: PaneProps) {
     onClose,
     onGrab,
   } = props;
+  const sessionMenuFocus = useSessionMenuFocus();
   const title = terminalTitle(terminal);
   const machine = machineOf(terminal.address);
   return (
@@ -125,7 +126,8 @@ export function Pane(props: PaneProps) {
         <ContextMenu
           // A split pane's header names its session, so its right-click opens the session's menu (#699), and a dialog an
           // item opened keeps the keyboard as the "..." menu leaves it (#590, #2362).
-          finalFocus={menuReturnsFocus}
+          popupRef={sessionMenuFocus.popupRef}
+          finalFocus={sessionMenuFocus.finalFocus}
           trigger={
             <header
               onPointerDown={onGrab}
