@@ -42,12 +42,19 @@ test("a row with no control is only its text: no empty control line under it", a
 });
 
 test.describe("an offline machine with a long name", () => {
+  let renamed = false;
   test.beforeEach(() => {
     hcOn("host", ["machine", "rename", MACHINE_NAME, LONG]);
+    renamed = true;
   });
+  // The machine answers again whatever the rename back does, so a failed cleanup never leaves it off for later specs.
   test.afterEach(() => {
-    hcOn("host", ["machine", "rename", LONG, MACHINE_NAME]);
-    reconnect();
+    try {
+      if (renamed) hcOn("host", ["machine", "rename", LONG, MACHINE_NAME]);
+    } finally {
+      renamed = false;
+      reconnect();
+    }
   });
 
   test("keeps Try again and Remove… inside the screen, under its description", async ({ page }) => {
