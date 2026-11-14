@@ -112,6 +112,9 @@ async function seedsListed(hc: string, env: Record<string, string | undefined>, 
 /** How long a core told to stop may take to exit; past it the stop throws, naming the process. */
 const CORE_EXIT_BOUND_MS = 20_000;
 
+/** How long a core sent SIGKILL may take to leave the process table. */
+const KILLED_EXIT_BOUND_MS = 2_000;
+
 /** Whether a process with that pid is running (one owned by another user counts: it is there). */
 export function running(pid: number): boolean {
   try {
@@ -147,16 +150,36 @@ export function replyPid(output: string, id: number): number | undefined {
  * process's child gives no exit event, so the process table is asked until it is gone or the bound runs out (#2525).
  */
 async function exitOf(pid: number, withinMs: number): Promise<void> {
+  if (await gone(pid, withinMs)) return;
+  // Killed before the throw, so a teardown that stops at the error leaves no core behind it (#2527 review). A core
+  // that exited between the last look and the kill needs none; any other refusal is named with the timeout.
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch (error) {
+    if (Reflect.get(Object(error), "code") !== "ESRCH") {
+      throw new Error(`the machine's core (pid ${pid}) did not exit within ${withinMs} ms and could not be killed`, {
+        cause: error,
+      });
+    }
+  }
+  // The stop settles only once the core is gone, on this path too (#2525): the kill is waited out, briefly.
+  if (!(await gone(pid, KILLED_EXIT_BOUND_MS))) {
+    throw new Error(
+      `the machine's core (pid ${pid}) did not exit within ${withinMs} ms, nor ${KILLED_EXIT_BOUND_MS} ms after SIGKILL`,
+    );
+  }
+  throw new Error(`the machine's core (pid ${pid}) did not exit within ${withinMs} ms, so it was killed`);
+}
+
+/** Whether `pid` leaves the process table within `withinMs`, asking it once per round. */
+async function gone(pid: number, withinMs: number): Promise<boolean> {
   const deadline = Date.now() + withinMs;
   while (running(pid)) {
-    if (Date.now() > deadline) {
-      // Killed before the throw, so a teardown that stops at the error leaves no core behind it (#2527 review).
-      process.kill(pid, "SIGKILL");
-      throw new Error(`the machine's core (pid ${pid}) did not exit within ${withinMs} ms, so it was killed`);
-    }
+    if (Date.now() > deadline) return false;
     // oxlint-disable-next-line no-await-in-loop -- one look at the process table per round, until the core is gone
     await Bun.sleep(25);
   }
+  return true;
 }
 
 /** Starts the second core (with its demo terminals when `withSeeds`) and adds it; resolves with its stop. */
