@@ -15,14 +15,24 @@ for (const type of ["foreground", "title"] as const) {
   test(`${type} in one of three panes paints next frame without rendering the shell (#2607)`, async ({ page }) => {
     await page.addInitScript(() => {
       const counts: number[] = [];
+      const freshCounts: number[] = [];
       const painted: boolean[] = [];
       Reflect.set(window, "__terminalRuns", counts);
+      Reflect.set(window, "__terminalFreshRuns", freshCounts);
       Reflect.set(window, "__terminalPainted", painted);
       let armed = false;
+      // A bailed-out subtree keeps its fibers and old PerformedWork flags; those functions did not run again.
+      let previous = new WeakSet<Fiber>();
+      let current = new WeakSet<Fiber>();
+      let fresh = 0;
       const walk = (fiber: Fiber | null): number => {
         let count = 0;
         for (let f = fiber; f !== null; f = f.sibling) {
-          if ([0, 11, 14, 15].includes(f.tag) && (f.flags & 1) !== 0) count += 1;
+          current.add(f);
+          if ([0, 11, 14, 15].includes(f.tag) && (f.flags & 1) !== 0) {
+            count += 1;
+            if (!previous.has(f)) fresh += 1;
+          }
           count += walk(f.child);
         }
         return count;
@@ -32,7 +42,14 @@ for (const type of ["foreground", "title"] as const) {
         renderers: new Map(),
         inject: () => 1,
         onCommitFiberRoot: (_id: number, root: { current: Fiber }) => {
-          if (armed) counts.push(walk(root.current.child));
+          current = new WeakSet<Fiber>();
+          fresh = 0;
+          const ran = walk(root.current.child);
+          previous = current;
+          if (armed) {
+            counts.push(ran);
+            freshCounts.push(fresh);
+          }
         },
         onCommitFiberUnmount: () => undefined,
         onPostCommitFiberRoot: () => undefined,
@@ -71,6 +88,7 @@ for (const type of ["foreground", "title"] as const) {
     await expect(page.locator("[data-terminal]")).toHaveCount(3);
     await page.locator("[data-terminal]").last().getByRole("textbox").focus();
     const channels = new Set<number>();
+    let cwd: string | undefined;
     for (const frame of socket.received()) {
       const payload = frame.slice(9).split("\n")[0]?.trim() ?? "";
       if (!payload.startsWith("{")) continue;
@@ -78,12 +96,22 @@ for (const type of ["foreground", "title"] as const) {
       const result = isJsonObject(reply) ? reply["result"] : undefined;
       if (isJsonObject(result) && typeof result["channel"] === "number" && "seq" in result)
         channels.add(result["channel"]);
+      const params = isJsonObject(reply) ? reply["params"] : undefined;
+      const data = isJsonObject(params) ? params["data"] : undefined;
+      if (
+        isJsonObject(params) &&
+        params["terminal"] === address &&
+        isJsonObject(data) &&
+        typeof data["cwd"] === "string"
+      )
+        cwd = data["cwd"];
     }
     expect(channels.size).toBe(1);
+    expect(cwd).toBeDefined();
     socket.holdFromHost('"method":"event"');
     for (let i = 0; i < 6; i += 1) {
       const marker = `render-proof-${i}`;
-      const data = type === "title" ? { title: marker } : { pid: 123 + i, name: marker, argv: [marker], cwd: "/work" };
+      const data = type === "title" ? { title: marker } : { pid: 123 + i, name: marker, argv: [marker], cwd };
       for (const channel of channels) {
         socket.sendFromHost(
           Buffer.from(
@@ -101,7 +129,8 @@ for (const type of ["foreground", "title"] as const) {
     }
     const evidence = await page.evaluate(() => ({
       painted: Reflect.get(window, "__terminalPainted"),
-      runs: Reflect.get(window, "__terminalRuns"),
+      retainedFlags: Reflect.get(window, "__terminalRuns"),
+      runs: Reflect.get(window, "__terminalFreshRuns"),
     }));
     console.log(`${type} render evidence ${JSON.stringify(evidence)}`);
     expect(evidence.painted).toEqual(Array.from({ length: 6 }, () => true));
