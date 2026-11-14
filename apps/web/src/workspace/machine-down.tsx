@@ -23,7 +23,7 @@ export function machineDownWhy(
 }
 
 /** machineDownWhy for a machine on that connection as its line is read now, moved on when the grace ends. */
-function useMachineDownWhy(connection: HcConnection, machine: string): string | null {
+export function useMachineDownWhy(connection: HcConnection, machine: string): string | null {
   const subscribe = useCallback((changed: () => void) => machineLines.subscribe(changed), []);
   const since = useSyncExternalStore(subscribe, () => machineLines.downSince(connection, machine));
   const line = useSyncExternalStore(subscribe, () => machineLines.line(connection, machine));
