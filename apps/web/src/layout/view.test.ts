@@ -72,17 +72,6 @@ describe("one view per device, whichever host the page goes through (#2537)", ()
     spaces: { "space:s1": "tb-1", "space:m/s2": "m/tb-2" },
     seen: { t1: "41", "box/t2": "77" },
   };
-  const memory = () => {
-    const saved = new Map<string, string>();
-    return {
-      saved,
-      storage: {
-        getItem: (k: string) => saved.get(k) ?? null,
-        setItem: (k: string, s: string) => void saved.set(k, s),
-      },
-    };
-  };
-
   test("saved going through core c and read going through core m, every tab, space and focus is the same one", () => {
     const { storage } = memory();
     expect(saveView("c", view, storage)).toBeNull();

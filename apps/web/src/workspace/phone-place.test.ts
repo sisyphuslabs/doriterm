@@ -71,6 +71,7 @@ describe("the phone's place across a route change (#2537)", () => {
     const storage = {
       getItem: (k: string) => saved.get(k) ?? null,
       setItem: (k: string, s: string) => void saved.set(k, s),
+      removeItem: (k: string) => void saved.delete(k),
     };
     savePhonePlace({ section: "spaces", space: "space:s1", terminal: "local:t7", sheet: false }, "c", storage);
     expect(loadPhonePlace("m", storage)).toEqual({
