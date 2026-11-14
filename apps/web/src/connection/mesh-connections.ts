@@ -4,7 +4,7 @@ import type { HostStartFailure } from "../desktop/bridge.ts";
 import type { LocalHostStarter } from "./store.ts";
 import type { ConnectionSettings, MemberTarget, Saver } from "./settings.ts";
 import { normalizeSettings, saveSettings } from "./settings.ts";
-import { failOverTo, placeInAddress } from "./failover.ts";
+import { failOverTo, placeInAddress, withoutShownMachine } from "./failover.ts";
 
 /**
  * What the mesh needs from one member's connection. `ConnectionStore` satisfies it structurally; declaring it here keeps this
@@ -143,7 +143,7 @@ export class MeshConnections {
 
   /** Takes new settings and keeps the roster: an edit to how this app dials, not a choice of what it dials. */
   update(settings: ConnectionSettings): void {
-    this.#apply(settings, undefined, true);
+    this.#apply(withoutShownMachine(settings, this.#settings, this.#selection), undefined, true);
   }
 
   /**

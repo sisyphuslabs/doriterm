@@ -447,6 +447,35 @@ describe("one connection per member", () => {
     expect(mesh.settings.hostId).toBe("b");
   });
 
+  it("an edit that names another machine stops showing the failover and shows that one (#2535 review)", () => {
+    const { mesh, made } = harness(settingsWith([member("a"), member("b"), member("c")], "a"));
+    made[1]?.start();
+    made[0]?.fail();
+    expect(mesh.settings.hostId).toBe("b");
+    mesh.edit({ ...member("c") });
+    expect(mesh.settings.hostId).toBe("c");
+  });
+
+  it("a failover whose machine leaves the roster is no longer shown (#2535 review)", () => {
+    const { mesh, made } = harness(settingsWith([member("a"), member("b")], "a"));
+    made[1]?.start();
+    made[0]?.fail();
+    expect(mesh.settings.hostId).toBe("b");
+    mesh.edit({ members: [member("a")] });
+    expect(mesh.settings.hostId).toBe("a");
+  });
+
+  it("settings built from what a failover shows save the person's machine, not the shown one (#2535 review)", () => {
+    storing(settingsWith([member("a"), member("b")], "a"));
+    const { mesh, made } = harness(settingsWith([member("a"), member("b")], "a"));
+    made[1]?.start();
+    made[0]?.fail();
+    // As Start this computer does: the shown settings with a new loopback address.
+    mesh.update({ ...mesh.settings, mode: "loopback", loopbackUrl: "ws://127.0.0.1:7766/v1/hc", token: "t" });
+    expect(loadSettings().hostId).toBe("a");
+    expect(mesh.settings.hostId).toBe("b");
+  });
+
   it("does not move off a machine that is only connecting", () => {
     const { mesh, made } = running(settingsWith([member("a"), member("b")], "a"));
     made[0]?.connecting();
