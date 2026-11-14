@@ -40,3 +40,10 @@ test("the grace counts from the drop of a workspace still on screen, not from a 
   expect(linkDown({ phase: "connecting", attempt: 0, stale: null })).toBe(false);
   expect(linkDown({ phase: "open", connection: stale, path: "relay" })).toBe(false);
 });
+
+test("a redial under way past the grace keeps the last failure's words, so the reason does not blink (#2505 review)", () => {
+  const redialing: ConnectionState = { phase: "connecting", attempt: 2, stale };
+  expect(hostDownWhy(redialing, HOST_DOWN_GRACE_MS, CANNOT_REACH)).toBe(CANNOT_REACH);
+  expect(hostDownWhy(redialing, HOST_DOWN_GRACE_MS, null)).toBeNull();
+  expect(hostDownWhy({ ...redialing, stale: null }, HOST_DOWN_GRACE_MS, CANNOT_REACH)).toBeNull();
+});

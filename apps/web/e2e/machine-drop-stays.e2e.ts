@@ -177,13 +177,15 @@ test.describe("the terminal in view when its machine drops (#2464)", () => {
     const unfocused = page.locator('section[data-split="true"][data-focused="false"]');
     await expect(unfocused.locator(`[data-terminal="${remote}"]`)).toBeVisible();
 
-    blip(2_000);
+    switchTo("drop");
     const said = unfocused.locator("header").getByRole("status").filter({ hasText: "Reconnecting" });
     await expect(said).toBeVisible({ timeout: STATE_BOUND_MS });
     expect(await overlap(said, unfocused.locator(`[data-terminal="${remote}"]`))).toBe(false);
     await capture(page, "split-reconnecting-desktop");
+    // Past the grace the pane says the machine is offline, and its header no longer says it reconnects (#2505 review).
+    await expect(unfocused.getByText(`${MACHINE_NAME} is offline`)).toBeVisible({ timeout: OFFLINE_BOUND_MS });
+    await expect(said).toHaveCount(0);
     reconnect();
-    await expect(said).toHaveCount(0, { timeout: STATE_BOUND_MS });
   });
 });
 

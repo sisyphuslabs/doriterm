@@ -111,7 +111,8 @@ export function Pane(props: PaneProps) {
   } = props;
   const title = terminalTitle(terminal);
   const machine = machineOf(terminal.address);
-  // Watched for every pane on screen, so a drop is noticed within a line read, focused or not.
+  // Watched for every pane on screen, so a drop is noticed within a line read, focused or not. Past the grace the pane
+  // body says the machine is offline, and the header no longer says it reconnects.
   const away = useMachineLine(connection, terminal.address, terminal.offline !== true);
   return (
     <section
@@ -146,7 +147,7 @@ export function Pane(props: PaneProps) {
                 {title}
               </h2>
               {/* Each pane says its own machine reconnects, in its header, never over its output (#2464 review). */}
-              {away === null ? null : (
+              {away === null || terminal.offline === true ? null : (
                 <span role="status" className="shrink-0 text-muted-foreground">
                   Reconnecting…
                 </span>
