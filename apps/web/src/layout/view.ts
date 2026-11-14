@@ -1,5 +1,6 @@
 import { isJsonObject } from "@doriface/protocol";
 import { browserStorage, guardedLocalStorage } from "../storage/guarded.ts";
+import { storedView, viewOn } from "./view-keys.ts";
 
 /** A terminal's address to the moment of a finish this screen has shown: herdr-app's seen attention (`view.json`). */
 export type Seen = Readonly<Record<string, string>>;
@@ -20,7 +21,9 @@ export interface View {
 
 export const NO_VIEW: View = { active: null, focused: {}, zoomed: {}, spaces: {}, seen: {} };
 
-const storageKey = (core: string): string => `doriface.view.${core}`;
+/** One view per device (#2537); before, one per host the page went through, which a route change lost. */
+export const VIEW_KEY = "doriface.view";
+const perHostKey = (core: string): string => `doriface.view.${core}`;
 
 function strings(value: unknown): Record<string, string> {
   if (!isJsonObject(value)) return {};
@@ -29,14 +32,14 @@ function strings(value: unknown): Record<string, string> {
   );
 }
 
-export function loadView(core: string, storage: Pick<Storage, "getItem"> = guardedLocalStorage()): View {
+function parsedView(text: string | null): View | null {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(storage.getItem(storageKey(core)) ?? "null");
+    parsed = JSON.parse(text ?? "null");
   } catch {
-    return NO_VIEW;
+    return null;
   }
-  if (!isJsonObject(parsed)) return NO_VIEW;
+  if (!isJsonObject(parsed)) return null;
   const active = parsed["active"];
   return {
     active: typeof active === "string" ? active : null,
@@ -45,6 +48,16 @@ export function loadView(core: string, storage: Pick<Storage, "getItem"> = guard
     spaces: strings(parsed["spaces"]),
     seen: strings(parsed["seen"]),
   };
+}
+
+/**
+ * This device's view, keyed as this page keys it when it goes through `core`. A device that has only the per-host view
+ * saved before #2537 starts from the one it kept for this host, whose bare keys are this host's.
+ */
+export function loadView(core: string, storage: Pick<Storage, "getItem"> = guardedLocalStorage()): View {
+  const stored = parsedView(storage.getItem(VIEW_KEY));
+  if (stored !== null) return viewOn(stored, core);
+  return parsedView(storage.getItem(perHostKey(core))) ?? NO_VIEW;
 }
 
 /**
@@ -57,7 +70,7 @@ export function saveView(
   storage: Pick<Storage, "setItem"> = browserStorage("localStorage"),
 ): string | null {
   try {
-    storage.setItem(storageKey(core), JSON.stringify(view));
+    storage.setItem(VIEW_KEY, JSON.stringify(storedView(view, core)));
     return null;
   } catch (error) {
     return error instanceof Error ? error.message : String(error);

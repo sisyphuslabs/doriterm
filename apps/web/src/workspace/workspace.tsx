@@ -141,7 +141,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   const { dropEnded, closing: closingSessions, kept, dropped } = useDropOnce(terminals, layout.dropPane);
   useAdoptLoose(connection, layouts, fed.loaded ? terminals : null, failed);
   const narrow = useNarrow();
-  const ids = useMemo(() => machineIds(views), [views]);
+  const ids = useMemo(() => machineIds(views, connection.hello.core.id), [views, connection.hello.core.id]);
   // New tab starts its terminal on the machine of the tab in view: offered disabled while that machine is past its
   // reconnect grace, or its layout takes no edits, never offered and then refused (#2455).
   const activeMachine = layout.active?.machine ?? null;

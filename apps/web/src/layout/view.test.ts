@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { loadView, NO_VIEW, rememberSeen, saveView, type View } from "./view.ts";
+import { loadView, NO_VIEW, rememberSeen, saveView, type View, VIEW_KEY } from "./view.ts";
 
-/** A storage holding one raw value for core "c", as a page would have left it. */
+/** A storage holding one raw value as the device's view, as a page would have left it. */
 const holding = (raw: string | null): Pick<Storage, "getItem"> => ({
-  getItem: (key) => (key === "doriface.view.c" ? raw : null),
+  getItem: (key) => (key === VIEW_KEY ? raw : null),
 });
 const loaded = (value: unknown): View => loadView("c", holding(JSON.stringify(value)));
 
@@ -53,6 +53,45 @@ describe("loadView", () => {
     expect(loadView("c", holding("{not json"))).toEqual(NO_VIEW);
     expect(loaded(["a"])).toEqual(NO_VIEW);
     expect(loaded("a")).toEqual(NO_VIEW);
+  });
+});
+
+describe("one view per device, whichever host the page goes through (#2537)", () => {
+  const view: View = {
+    active: "tb-1",
+    focused: { "tb-1": "p1", "m/tb-2": "p2" },
+    zoomed: {},
+    spaces: { "space:s1": "tb-1", "space:m/s2": "m/tb-2" },
+    seen: { t1: "41", "box/t2": "77" },
+  };
+  const memory = () => {
+    const saved = new Map<string, string>();
+    return {
+      saved,
+      storage: {
+        getItem: (k: string) => saved.get(k) ?? null,
+        setItem: (k: string, s: string) => void saved.set(k, s),
+      },
+    };
+  };
+
+  test("saved going through core c and read going through core m, every tab, space and focus is the same one", () => {
+    const { storage } = memory();
+    expect(saveView("c", view, storage)).toBeNull();
+    expect(loadView("m", storage)).toEqual({
+      active: "c/tb-1",
+      focused: { "c/tb-1": "p1", "tb-2": "p2" },
+      zoomed: {},
+      spaces: { "space:c/s1": "c/tb-1", "space:s2": "tb-2" },
+      seen: { "@c/t1": "41", "box/t2": "77" },
+    });
+    expect(loadView("c", storage)).toEqual(view);
+  });
+
+  test("a device with only the per-host view saved before starts from the one it kept for this host", () => {
+    const old = { getItem: (key: string) => (key === "doriface.view.c" ? JSON.stringify(view) : null) };
+    expect(loadView("c", old)).toEqual(view);
+    expect(loadView("m", old)).toEqual(NO_VIEW);
   });
 });
 

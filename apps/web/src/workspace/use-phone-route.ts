@@ -251,7 +251,7 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
   useEffect(() => {
     if (!narrow || path !== "/") return;
     if (!placeDecided) {
-      const remembered = loadPhonePlace();
+      const remembered = loadPhonePlace(ids.core ?? "");
       const start = placeStart({
         atBareList: place === "/",
         landedHere: landed === index,
@@ -272,7 +272,7 @@ export function usePhoneRoute(narrow: boolean, ids: MachineIds): PhoneNavigation
     restoring = null;
     if (place === saved) return;
     saved = place;
-    savePhonePlace(listed);
+    savePhonePlace(listed, ids.core ?? "");
   }, [go, index, launchPending, listed, narrow, path, place]);
   const dropSpace = useCallback(() => {
     if (path === "/" && listed.space !== null) go({ ...listed, space: null }, true);

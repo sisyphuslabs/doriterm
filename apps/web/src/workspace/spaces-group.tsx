@@ -102,7 +102,10 @@ function SpacesLists({
   const ownComputer = desktopBridge() !== null && settings.mode === "loopback";
   // The layout documents' spaces (#404): picking one shows it on the tab it showed last.
   const { spaces, selected, select, move } = useSpaceSelection();
-  const colors = useSpaceColors(useMemo(() => spaces.map((space) => space.id), [spaces]));
+  const colors = useSpaceColors(
+    useMemo(() => spaces.map((space) => space.id), [spaces]),
+    machines.entries.find((machine) => machine.local)?.core ?? "",
+  );
   const colored = spaces.map((space): Space => {
     const color = colors[space.id];
     return color === undefined ? space : Object.assign({}, space, { color });
