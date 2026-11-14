@@ -1,5 +1,6 @@
 import { IconButton, Menu, MenuItem } from "@doriface/ui";
 import { Ellipsis, Pencil, Power } from "lucide-react";
+import { type RefObject, useRef } from "react";
 import { useAskSession } from "./session-context.ts";
 
 export interface SessionMenuProps {
@@ -14,13 +15,26 @@ export interface SessionMenuProps {
  * then behind the statement, on whatever is still on the page (#590, #2362). So it asks whether a dialog is up, not
  * whether one has focus. Only a modal one counts: a toast is a dialog too (#2380). Once the question is dismissed,
  * the menu's exit may still be pending: it must not take focus from a terminal or another control chosen meanwhile
- * (#2521). Supplying finalFocus opts out of Base UI's default check that focus has moved outside the menu.
+ * (#2521). Only this menu's own popup counts as "still has focus", open or not (a menu removed while open still is):
+ * another menu opened meanwhile keeps its focus (#2547). Supplying finalFocus opts out of Base UI's default check that
+ * focus has moved outside the menu.
  */
-export function menuReturnsFocus(): boolean {
+export function menuReturnsFocus(own: Element | null): boolean {
   if (document.querySelector('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]') !== null)
     return false;
   const active = document.activeElement;
-  return active === null || active === document.body || active.closest('[role="menu"]') !== null;
+  if (active === null || active === document.body) return true;
+  const menu = active.closest('[role="menu"]');
+  return menu !== null && menu === own;
+}
+
+/** A session menu's popup ref and the finalFocus that reads it. */
+export function useSessionMenuFocus(): {
+  readonly popupRef: RefObject<HTMLDivElement | null>;
+  readonly finalFocus: () => boolean;
+} {
+  const popupRef = useRef<HTMLDivElement | null>(null);
+  return { popupRef, finalFocus: () => menuReturnsFocus(popupRef.current) };
 }
 
 /** What can be done with a terminal's session: its "..." menu and a split pane header's right-click hold the same items. */
@@ -41,10 +55,12 @@ export function SessionMenuItems({ address }: { readonly address: string }) {
 /** The actions on a terminal's session: rename it, or end its program. */
 export function SessionMenu({ address, title }: SessionMenuProps) {
   const label = `Session actions for ${title}`;
+  const { popupRef, finalFocus } = useSessionMenuFocus();
   return (
     <Menu
       align="end"
-      finalFocus={menuReturnsFocus}
+      popupRef={popupRef}
+      finalFocus={finalFocus}
       trigger={<IconButton label={label} icon={<Ellipsis />} className="size-6" />}
     >
       <SessionMenuItems address={address} />

@@ -2,6 +2,7 @@ import type { ByteLink } from "@doriface/crypto";
 import type { Socket, UnixSocketListener } from "bun";
 import { chmodSync, existsSync, rmSync } from "node:fs";
 import { isRecord } from "../state/files.ts";
+import { SocketWriter } from "../socket-writer.ts";
 import type { LineGrant } from "./line-grants.ts";
 
 export const LINE_SOCKET = "line.sock";
@@ -17,10 +18,9 @@ interface Connection {
   requested: boolean;
   early: Uint8Array[];
   earlyBytes: number;
-  queuedBytes: number;
   link: ByteLink | undefined;
   closed: boolean;
-  readonly outgoing: Uint8Array[];
+  readonly out: SocketWriter;
 }
 
 export interface LineSocket {
@@ -43,35 +43,20 @@ const concat = (a: Uint8Array, b: Uint8Array): Uint8Array => {
   return out;
 };
 
-/** Writes what the socket takes now; the rest waits for `drain`, in order. */
-function flush(socket: Socket<Connection>): void {
-  const queue = socket.data.outgoing;
-  for (let head = queue[0]; head !== undefined; head = queue[0]) {
-    const written = socket.write(head);
-    const taken = Math.max(0, written);
-    socket.data.queuedBytes -= Math.min(taken, head.byteLength);
-    if (taken < head.byteLength) {
-      queue[0] = head.subarray(taken);
-      return;
-    }
-    queue.shift();
-  }
-}
-
 function send(socket: Socket<Connection>, bytes: Uint8Array | string): void {
   const state = socket.data;
   if (state.closed) return;
   const chunk = typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes;
-  state.queuedBytes += chunk.byteLength;
-  if (state.queuedBytes > MAX_QUEUED_BYTES) return overflow(socket, "the bridge is not reading its line");
-  state.outgoing.push(chunk);
-  flush(socket);
+  if (state.out.queuedBytes + chunk.byteLength > MAX_QUEUED_BYTES) {
+    return overflow(socket, "the bridge is not reading its line");
+  }
+  state.out.send(socket, chunk);
 }
 
 function overflow(socket: Socket<Connection>, reason: string): void {
   const state = socket.data;
   state.closed = true;
-  state.outgoing.length = 0;
+  state.out.clear();
   state.early.length = 0;
   state.link?.close(1000, reason);
   socket.end();
@@ -148,10 +133,9 @@ export async function listenLineSocket(options: {
           requested: false,
           early: [],
           earlyBytes: 0,
-          queuedBytes: 0,
           link: undefined,
           closed: false,
-          outgoing: [],
+          out: new SocketWriter(),
         };
       },
       data(socket, chunk) {
@@ -175,7 +159,9 @@ export async function listenLineSocket(options: {
         }
         void respond(socket, hostId, options.grant, options.log);
       },
-      drain: flush,
+      drain(socket) {
+        socket.data.out.flush(socket);
+      },
       close(socket) {
         socket.data.closed = true;
         socket.data.link?.close();

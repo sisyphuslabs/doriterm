@@ -48,7 +48,6 @@ import { useTerminalCore } from "./use-terminal-core.ts";
 import { useTerminalInput } from "./use-terminal-input.ts";
 import { usePaneVisibility } from "./use-pane-visibility.ts";
 import { type PaintHold, useTerminalAttach } from "./use-terminal-attach.ts";
-import { useMachineLine } from "./use-machine-line.ts";
 import { useKeyboardClaim } from "./use-keyboard-claim.ts";
 
 /**
@@ -209,7 +208,6 @@ export function TerminalView(props: TerminalViewProps) {
   }, [wt]);
   const shown = usePaneVisibility(wt, pacer);
   useTerminalActions(wt, input, focused, shown, openFind);
-  const away = useMachineLine(connection, address, shown);
   useFocusAfterSelect(wt, options.trimCopy);
   useLongPressSelect(wt, setSelectAt);
   useTouchWheel(wt);
@@ -311,15 +309,6 @@ export function TerminalView(props: TerminalViewProps) {
       {attachment.opening ? (
         <QuietBusy label="Opening terminal" text="Opening…" className="absolute inset-0 z-10 bg-term-bg" />
       ) : null}
-      {away === null ? null : (
-        // Keys typed now wait for the machine (HeldInput, #1489); the line overlays the top row and takes no room.
-        <p
-          role="status"
-          className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-muted/95 px-3 py-1 text-center text-prose text-muted-foreground"
-        >
-          Reconnecting to {away}. Your typing will be sent.
-        </p>
-      )}
       {wt === null ? null : (
         <>
           <TerminalScrollbar wt={wt} scroll={scroll} />

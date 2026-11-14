@@ -2,6 +2,7 @@ import type { HcConnection } from "@doriface/client";
 import { HcRpcError, type MachineView } from "@doriface/protocol";
 import { type DocCalls, LAYOUT_DOC } from "@doriface/protocol/layout";
 import { openingAttachesAnswered } from "../terminal/opening-attach.ts";
+import { offlineReason } from "../workspace/machine-state.ts";
 
 /** Documents use permanent ids; only the RPC address uses a name, which may change before the feed tells this page. */
 export function docCalls(
@@ -11,7 +12,7 @@ export function docCalls(
 ): DocCalls {
   const addressed = async <T>(id: string | null, call: (on: string | null) => Promise<T>): Promise<T> => {
     const on = id === null ? null : machines().find((machine) => machine.id === id)?.name;
-    if (on === undefined) throw new Error("The layout cannot take changes now: the machine is not connected");
+    if (on === undefined) throw new Error(`The layout cannot take changes now: ${offlineReason()}`);
     try {
       return await call(on);
     } catch (cause) {

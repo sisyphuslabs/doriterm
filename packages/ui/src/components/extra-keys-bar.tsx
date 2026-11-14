@@ -89,6 +89,14 @@ export interface ExtraKeysBarProps {
   readonly onHideKeyboard?: () => void;
   /** The hide button's name: Hide keyboard by default; Hide keys where the bar shows without a soft keyboard. */
   readonly hideLabel?: string;
+  /**
+   * The soft keyboard is down while the bar stays on screen (#2499): the slot that hides the keyboard reads Show keyboard
+   * and raises it instead, and nothing else about the bar changes.
+   */
+  readonly keyboardDown?: boolean;
+  readonly onShowKeyboard?: () => void;
+  /** Show keyboard's press as it lands (a primary pointerdown), a task before `onShowKeyboard` (#2048). */
+  readonly onShowKeyboardStart?: (button: HTMLButtonElement, pointerId: number) => void;
   /** Wraps the Switch session button, e.g. in the menu it opens. */
   readonly renderSessions?: (trigger: ReactElement) => ReactNode;
   readonly className?: string;
@@ -112,7 +120,9 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
     padOpen = false,
     inputBox = false,
     inputActive = false,
+    keyboardDown = false,
   } = props;
+  const { onShowKeyboardStart } = props;
   const [fade, scroller] = useEdgeFade();
   const textKey = (entry: ExtraKey) => (
     <KeyButton
@@ -201,12 +211,20 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
           )}
           <button
             type="button"
-            aria-label={props.hideLabel ?? "Hide keyboard"}
+            aria-label={keyboardDown ? "Show keyboard" : (props.hideLabel ?? "Hide keyboard")}
+            onPointerDown={
+              !keyboardDown || onShowKeyboardStart === undefined
+                ? undefined
+                : (event) => {
+                    if (event.button !== 0 || !event.isPrimary) return;
+                    onShowKeyboardStart(event.currentTarget, event.pointerId);
+                  }
+            }
             onMouseDown={keepFocus}
-            onClick={props.onHideKeyboard}
+            onClick={keyboardDown ? props.onShowKeyboard : props.onHideKeyboard}
             className={cn(key, idleKey, inputActive && "col-start-2 row-start-2")}
           >
-            <KeyboardOff />
+            {keyboardDown ? <Keyboard /> : <KeyboardOff />}
           </button>
         </div>
       </div>

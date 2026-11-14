@@ -1,15 +1,16 @@
 import { HELLO_REQUEST_LINE } from "@doriface/client";
 import { base64urlEncode, type ByteLink, CloseCode, generateX25519, rawStaticKey, secureLink } from "@doriface/crypto";
 import { parsePolicy } from "@doriface/policy";
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateToken } from "./auth.ts";
 import { type Host, startHost } from "./host.ts";
+import { LiveSessions } from "./e2ee/sessions.ts";
 import { DeviceStore } from "./state/devices.ts";
 import { loadHostIdentity } from "./state/host-keys.ts";
-import { openE2eeClient } from "./testing/e2ee-client.ts";
+import { type E2eeClient, openE2eeClient } from "./testing/e2ee-client.ts";
 import { createHcSession, type HcSession, rpcFrame } from "./testing/hc-session.ts";
 
 // Admission of an early-hello session against a real host and hc, under a plan of one session (#1271): what a captured
@@ -178,5 +179,50 @@ describe("early-hello admission (#1271)", () => {
     expect(await closed).toBe(CloseCode.UnknownDevice);
     const replies = new TextDecoder().decode(Buffer.concat(answers));
     expect(replies.includes('"id":1')).toBe(false);
+  });
+
+  test("a device revoked after admission before its first RPC gets no answer (#2530)", async () => {
+    const key = generateX25519();
+    const devices = new DeviceStore(stateDir);
+    devices.add(key.publicKey, "revoked-after-admission");
+    const admitted = Promise.withResolvers<void>();
+    const admitHc = LiveSessions.prototype.admitHc;
+    const admission = spyOn(LiveSessions.prototype, "admitHc").mockImplementation(function (
+      this: LiveSessions,
+      secure,
+      policy,
+    ) {
+      const accepted = admitHc.call(this, secure, policy);
+      if (accepted && base64urlEncode(secure.remoteStatic) === base64urlEncode(key.publicKey)) admitted.resolve();
+      return accepted;
+    });
+    let client: E2eeClient | undefined;
+    try {
+      client = await openE2eeClient(url(), {
+        hostId: identity().hostId,
+        staticKey: rawStaticKey(key),
+        remoteStatic: identity().noise.publicKey,
+        early: HELLO_LINE,
+      });
+      // Hold the first RPC until the host has admitted this exact key, then revoke
+      // before releasing it. Neither the hello's timing nor a sleep orders this.
+      await admitted.promise;
+      const answered = Promise.withResolvers<void>();
+      const answers: Uint8Array[] = [];
+      client.link.onData((bytes) => {
+        answers.push(bytes);
+        if (new TextDecoder().decode(bytes).includes('"id":1')) answered.resolve();
+      });
+      expect(devices.revoke(base64urlEncode(key.publicKey))).toHaveLength(1);
+      client.link.send(rpcFrame(1, "terminal.list"));
+      await Promise.race([client.closed, answered.promise]);
+      const replies = new TextDecoder().decode(Buffer.concat(answers));
+      expect(replies.includes('"id":1')).toBe(false);
+      expect(await client.closed).toBe(CloseCode.UnknownDevice);
+    } finally {
+      admission.mockRestore();
+      client?.link.close();
+      await client?.closed;
+    }
   });
 });

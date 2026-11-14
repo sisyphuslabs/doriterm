@@ -264,7 +264,7 @@ Out of scope: a compromised host or client at runtime, keystroke timing (no padd
 
 | Job                                                     | Steps                                                                                                                                                                         | Cite |
 | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
-| `check` (ubuntu, 15 min)                                | setup bun 1.4.4, install herdr-core 0.1.20 linux-x86_64 with sha256 check, `bun install --frozen-lockfile`, typecheck, lint, fmt:check, test, build `apps/web`                |
+| `check` (ubuntu, 15 min)                                | setup bun 1.4.4, install herdr-core 0.1.21 linux-x86_64 with sha256 check, `bun install --frozen-lockfile`, typecheck, lint, fmt:check, test, build `apps/web`                |
 | `relay-e2e` (ubuntu, 25 min)                            | the same setup, then `tests/relay` against the private relay at `relay-pin.json`'s commit (fetched with a read-only token); a run without the token fails, except from a fork |
 | `web-e2e` (ubuntu, 30 min)                              | the same setup + Chromium, Playwright e2e against the real `hc`, then two e2e runs at once on their own ports (#37)                                                           |
 | `desktop` (ubuntu, 20 min)                              | package with `electron-builder --dir`, check the tree is clean after install and pack, launch the packaged app                                                                |
