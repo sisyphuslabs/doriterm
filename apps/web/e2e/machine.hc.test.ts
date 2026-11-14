@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHcSession, type HcSession } from "@doriface/host/testing";
 import { stopLeftUnder } from "@doriface/host/testing/run-dir";
-import { addMachine, DEMO_MACHINE, replyPid, running, viaCommand } from "./machine.ts";
+import { addMachine, DEMO_MACHINE, exitOf, replyPid, running, viaCommand } from "./machine.ts";
 
 let dialer: HcSession | undefined;
 let root: string | undefined;
@@ -67,6 +67,19 @@ test("a line of hc connect's output that is not JSON is no reply, so the pid is 
   expect(replyPid(output, 1)).toBe(4242);
   expect(replyPid('{"error":"socket path is too long"}\n', 1)).toBeUndefined();
 });
+
+test("a core that misses its exit bound is killed, waited out and named, so the stop leaves nothing behind (#2594 review)", async () => {
+  const core = Bun.spawn(["bun", "-e", "setInterval(() => {}, 1000)"], { stdout: "ignore", stderr: "ignore" });
+  try {
+    await expect(exitOf(core.pid, 100)).rejects.toThrow(
+      `the machine's core (pid ${core.pid}) did not exit within 100 ms, so it was killed`,
+    );
+    await core.exited;
+    expect(running(core.pid)).toBe(false);
+  } finally {
+    core.kill("SIGKILL");
+  }
+}, 30_000);
 
 test("the machine's stop resolves once its core has exited, not once it has answered (#2525)", async () => {
   dialer = createHcSession("machine-stop-exit");

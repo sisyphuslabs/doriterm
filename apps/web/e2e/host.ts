@@ -1,7 +1,7 @@
 // Starts doriface-host in loopback dev mode on a scratch hc session; stops the core and deletes its state on exit.
 // `bun e2e/host.ts layout` starts the layout spec's host instead: long names, titles and paths on another port.
 import { recordLeft, stopRunProcesses } from "@doriface/host/testing/run-cores";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -103,9 +103,14 @@ async function stopLeftovers(): Promise<void> {
 
 let stopping = false;
 let stopMachine: (() => Promise<void>) | undefined;
-/** Exits 0 only when told to stop; a setup that failed or a doriface-host that stopped by itself exits non-zero (#1279). */
+/**
+ * Exits 0 only when told to stop; a setup that failed, a doriface-host that stopped by itself (#1279) or a machine stop
+ * that failed (#2586 review) exits non-zero.
+ */
 async function shutdown(code = 0): Promise<void> {
   if (stopping) return;
+  let exitCode = code;
+  let machineStop: string | undefined;
   stopping = true;
   host.kill("SIGTERM");
   await host.exited;
@@ -113,18 +118,28 @@ async function shutdown(code = 0): Promise<void> {
   try {
     await stopMachine?.();
   } catch (error) {
-    // The rest of the teardown still runs: the leftovers check, the stopped word and the run dir's removal (#2527 review).
+    // The rest of the teardown still runs: the leftovers check, the stopped word and the run dir's removal (#2527
+    // review). The stop's failure still fails the run (#2586 review): a layout host says so in its stopped word, a worker
+    // host by its exit code, which worker-host.ts reads (#2594 review).
     console.error(error);
+    exitCode = exitCode === 0 ? 1 : exitCode;
+    machineStop = String(error);
   }
   if (layout) {
     await stopLeftovers();
     // The run's teardown waits for this rather than for a fixed time: the host's own word that its cores are stopped,
     // what it left is recorded, and it is about to exit (#1412).
-    writeFileSync(E2E_LAYOUT_STOPPED, JSON.stringify({ pid: process.pid }));
+    // A machine stop that failed rides in it too, so the run's teardown fails the run on it, not only this exit code,
+    // which nothing reads (#2594 review).
+    // Written whole and then renamed into place: the teardown takes the file's appearance as the host's exit and reads it
+    // at once, so it may never meet the file created but still empty (#2594 review).
+    const word = `${E2E_LAYOUT_STOPPED}.${process.pid}.tmp`;
+    writeFileSync(word, JSON.stringify({ pid: process.pid, ...(machineStop === undefined ? {} : { machineStop }) }));
+    renameSync(word, E2E_LAYOUT_STOPPED);
   }
   rmSync(savedEnv, { force: true });
   rmSync(dir, { recursive: true, force: true });
-  process.exit(code);
+  process.exit(exitCode);
 }
 process.once("SIGTERM", () => void shutdown());
 process.once("SIGINT", () => void shutdown());

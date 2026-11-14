@@ -205,3 +205,58 @@ test("a layout host that leaves a process behind still fails the run, naming it 
     if (leftover > 0) process.kill(leftover, "SIGKILL");
   }
 }, 120_000);
+
+/**
+ * A layout host whose machine stop failed, as e2e/host.ts reports one: it still finishes its teardown (nothing left, the
+ * stopped word written) but says in that word that the machine's stop threw.
+ */
+async function failedMachineStopHost(): Promise<number> {
+  const ready = join(store(), "ready");
+  const child = Bun.spawn(
+    [
+      "bun",
+      "-e",
+      [
+        'const { renameSync, writeFileSync } = require("node:fs");',
+        'process.on("SIGTERM", () => {',
+        '  writeFileSync(process.env.LEFT_FILE, "[]");',
+        "  // Written whole and renamed into place, as e2e/host.ts writes it: the teardown reads it the moment it appears.",
+        '  const word = process.env.STOPPED_FILE + ".tmp";',
+        '  writeFileSync(word, JSON.stringify({ pid: process.pid, machineStop: "core exited late" }));',
+        "  renameSync(word, process.env.STOPPED_FILE);",
+        "  process.exit(1);",
+        "});",
+        'writeFileSync(process.env.READY_LOG, "ready");',
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    ],
+    {
+      env: { ...process.env, LEFT_FILE: E2E_LAYOUT_LEFT, READY_LOG: ready, STOPPED_FILE: E2E_LAYOUT_STOPPED },
+      stdout: "ignore",
+      stderr: "inherit",
+    },
+  );
+  for (let waited = 0; !existsSync(ready) && waited < READY_WITHIN_MS; waited += 20) {
+    // oxlint-disable-next-line no-await-in-loop -- the fixture is inert until its handlers are in; nothing else waits
+    await Bun.sleep(20);
+  }
+  if (!existsSync(ready)) throw new Error(`the failing host was not ready within ${READY_WITHIN_MS} ms`);
+  return child.pid;
+}
+
+test("a layout host whose machine stop failed fails the run, naming the failure (#2594 review)", async () => {
+  savedLayoutHost(await failedMachineStopHost(), RUN);
+  const errors = spyOn(console, "error").mockImplementation(() => undefined);
+  let thrown: unknown;
+  try {
+    await leftoverHosts(CONFIG, { withinMs: 30_000 });
+  } catch (error) {
+    thrown = error;
+  } finally {
+    errors.mockRestore();
+  }
+  expect(thrown).toBeInstanceOf(Error);
+  expect(thrown instanceof Error ? thrown.message : "").toContain(
+    "the layout host's machine stop failed: core exited late",
+  );
+}, 120_000);
