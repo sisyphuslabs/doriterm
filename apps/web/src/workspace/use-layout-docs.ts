@@ -28,7 +28,11 @@ export interface MachineLayout {
  * known to be gone when not listed. Loading, unavailable, unreadable and not-connected machines are left out (#2583).
  */
 export function readCoresOf(layouts: readonly MachineLayout[], core: string): readonly string[] {
-  return layouts.flatMap((one) => (one.readOnly !== null ? [] : [one.machineId ?? core].filter((id) => id !== "")));
+  // An empty document (none published yet, e.g. a core restarted before herdr-app writes its model back) says nothing
+  // about which spaces are gone, so it does not count as read (#2585 review).
+  return layouts.flatMap((one) =>
+    one.readOnly !== null || one.doc === null ? [] : [one.machineId ?? core].filter((id) => id !== ""),
+  );
 }
 
 /** Why a machine's layout takes no edits while it is still being read. */
