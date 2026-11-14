@@ -70,22 +70,19 @@ export function specialKeysOn(host: HostPlatform): readonly SpecialKey[] {
 }
 
 /**
- * The keys the bar carries before the person changes anything: the modifiers through ^C and Enter (#1551), the four
- * arrows, then the characters that used to sit behind a swipe (#195, #667).
+ * The keys the bar carries before the person changes anything: Escape first, so it stays in view beside the arrows that
+ * sit fixed at the bar's end (#2604), then the modifiers through ^C and Enter (#1551), then the characters that used to
+ * sit behind a swipe (#195, #667). The arrows are not among them: the bar keeps all four beside the keyboard's toggle.
  */
 export const DEFAULT_KEY_IDS: readonly string[] = [
+  "esc",
   "ctrl",
   "cmd",
   "shift",
   "tab",
   "alt",
-  "esc",
   "interrupt",
   "enter",
-  "left",
-  "up",
-  "down",
-  "right",
   "tilde",
   "pipe",
   "slash",

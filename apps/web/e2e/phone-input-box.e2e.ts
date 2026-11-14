@@ -68,11 +68,11 @@ test("the field stays inside the keys bar, and the keyboard's own key takes both
   expect((box?.y ?? 0) + (box?.height ?? Infinity)).toBeLessThanOrEqual((bar?.y ?? 0) + (bar?.height ?? 0));
   expect((term?.y ?? 0) + (term?.height ?? 0)).toBeLessThanOrEqual((bar?.y ?? 0) + 1);
 
-  // Putting the keyboard down keeps the panel, the field's row included (#2499).
+  // Putting the keyboard down keeps the panel and takes the field's row away with the keyboard (#2499, #2604).
   await key(page, "Hide keyboard").click();
   await expect(key(page, "Hide keyboard")).toHaveCount(0);
   await expect(keysBar(page)).toBeVisible();
-  await expect(field(page)).toBeVisible();
+  await expect(field(page)).toHaveCount(0);
   await key(page, "Show keyboard").click();
   await expect(keysBar(page)).toBeVisible();
   await expect(field(page)).toBeVisible();
@@ -169,10 +169,10 @@ test("what is typed in the field is still there after the keyboard closes and op
   await openPhoneTerminal(page);
   await field(page).click();
   await page.keyboard.type("git commit -m 초안");
-  // The field stays on screen with the keyboard down (#2499), holding what was typed.
+  // The field goes with the keyboard (#2604) and comes back with it, holding what was typed.
   await key(page, "Hide keyboard").click();
   await expect(key(page, "Hide keyboard")).toHaveCount(0);
-  await expect(field(page)).toHaveValue("git commit -m 초안");
+  await expect(field(page)).toHaveCount(0);
   await key(page, "Show keyboard").click();
   await expect(field(page)).toHaveValue("git commit -m 초안");
 });

@@ -86,12 +86,12 @@ for (const { name, shape } of SHAPES) {
     await expect(field(page)).toHaveValue("echo typed-above-the-keyboard");
     await expectAboveKeyboard(page);
 
-    // Down, the field stays in the keys panel under the terminal (#2499), what was typed still in it.
+    // Down, the field goes with the keyboard (#2604); raised again, it is back with what was typed still in it.
     await key(page, "Hide keyboard").click();
     await expect(key(page, "Hide keyboard")).toHaveCount(0);
-    await expect(field(page)).toHaveValue("echo typed-above-the-keyboard");
+    await expect(field(page)).toHaveCount(0);
     await pressShowKeyboard(page);
-    await expect(field(page)).toBeVisible();
+    await expect(field(page)).toHaveValue("echo typed-above-the-keyboard");
     await expectAboveKeyboard(page);
   });
 }

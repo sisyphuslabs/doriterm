@@ -38,7 +38,7 @@ for (const width of [390, 320]) {
     await expect(input).toBeFocused();
 
     await row(page).getByRole("button", { name: "Escape", exact: true }).tap();
-    await row(page).getByRole("button", { name: "Arrow up", exact: true }).tap();
+    await row(page).getByRole("button", { name: "Up arrow", exact: true }).tap();
     await page.keyboard.press("Enter");
     await expect(terminal).toContainText("^[^[[A", { timeout: 10_000 });
     await expect(input).toBeFocused();

@@ -5,14 +5,14 @@ import { expectTouchTargets, key, keysBar, openPhoneTerminal, PHONE, showKeyboar
 test.use({ serviceWorkers: "block", ...PHONE });
 
 const BAR_KEYS = [
+  "Escape",
   "Control",
   "Shift",
   "Tab",
-  "Escape",
-  "Arrow left",
-  "Arrow up",
-  "Arrow down",
-  "Arrow right",
+  "Left arrow",
+  "Up arrow",
+  "Down arrow",
+  "Right arrow",
   "Arrow keys",
   "Paste",
   "Switch session",
@@ -20,8 +20,8 @@ const BAR_KEYS = [
   "Hide keyboard",
 ];
 const PAD_KEYS = ["Delete", "Up arrow", "Clear screen", "Left arrow", "Return", "Right arrow", "Down arrow"];
-/** Send belongs to the fixed input column; the keyboard key has its own column. */
-const FIXED_KEYS = ["Send", "Hide keyboard"];
+/** Send belongs to the fixed input row; the arrows and the keyboard key sit fixed at the key row's end (#2604). */
+const FIXED_KEYS = ["Send", "Left arrow", "Up arrow", "Down arrow", "Right arrow", "Hide keyboard"];
 const SCROLL_KEYS = BAR_KEYS.length - FIXED_KEYS.length;
 const names = (scope: Locator) =>
   scope.getByRole("button").evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label") ?? ""));
@@ -39,14 +39,20 @@ for (const width of [390, 320]) {
         .filter((button) => button.getBoundingClientRect().right <= edge.right + 1)
         .map((button) => button.getAttribute("aria-label"));
     });
-    // The fixed input leaves room for the first three keys at 390; the rest are reached by swiping.
-    if (width === 390) {
-      // The keys in the row's own order, of which the first few fit: the row swipes for the rest (#195).
-      expect(shown.slice(0, 3)).toEqual(
-        process.platform === "darwin" ? ["Control", "Command", "Shift"] : ["Control", "Shift", "Tab"],
+    // Beside the fixed arrows the row shows its first keys, Escape leading, and the edge of the next as the cue that it
+    // swipes for the rest (#195, #2604).
+    expect(shown[0]).toBe("Escape");
+    expect(shown.length).toBeGreaterThanOrEqual(width === 390 ? 3 : 1);
+    expect(shown.length).toBeLessThan(SCROLL_KEYS);
+    const cue = await page.locator('[data-slot="terminal-keys-scroll"]').evaluate((el) => {
+      const edge = el.getBoundingClientRect();
+      const next = [...el.querySelectorAll("button")].find(
+        (button) => button.getBoundingClientRect().right > edge.right + 1,
       );
-      expect(shown.length).toBeLessThan(SCROLL_KEYS);
-    }
+      const box = next?.getBoundingClientRect();
+      return box === undefined ? 0 : Math.round(edge.right - box.left);
+    });
+    expect(cue, "a part of the next key shows at the row's edge").toBeGreaterThanOrEqual(8);
     const box = await bar.boundingBox();
     // With the keyboard up the header stays above the bar: the terminal keeps the room between them.
     const head = await page.getByRole("banner").boundingBox();

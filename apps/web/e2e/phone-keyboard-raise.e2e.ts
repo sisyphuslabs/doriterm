@@ -110,7 +110,7 @@ test("closing Switch session gives the terminal the focus inside the closing tap
   }
 });
 
-test("the keyboard stays down under the keys and their Type field until the keyboard button is tapped, which raises it focused", async ({
+test("the keyboard stays down under the keys until the keyboard button is tapped, which raises it focused with the Type field", async ({
   page,
 }) => {
   const shell = startShell("host", "kbdfresh");
@@ -119,10 +119,9 @@ test("the keyboard stays down under the keys and their Type field until the keyb
     await recordFocusAfterTaps(page, { buttonsTakeFocus: true });
     await openTerminal(page, /kbdfresh/);
     const field = page.getByLabel("Type into the terminal");
-    // The panel is there with the keyboard down (#2499), its field unfocused.
+    // The panel is there with the keyboard down (#2499), without its Type field (#2604).
     await expect(keysBar(page)).toBeVisible();
-    await expect(field).toBeVisible();
-    await expect(field).not.toBeFocused();
+    await expect(field).toHaveCount(0);
     await expect(key(page, "Hide keyboard")).toHaveCount(0);
     await expect(page.locator("[data-terminal] textarea")).not.toBeFocused();
 

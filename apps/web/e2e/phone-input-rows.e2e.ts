@@ -26,15 +26,15 @@ for (const width of [390, 320]) {
     expect(input.y + input.height).toBeLessThanOrEqual(scroll.y + 1);
     expect(send.y + send.height).toBeLessThanOrEqual(scroll.y + 1);
     expect(input.width).toBeGreaterThan(box.width * 0.6);
-    // The key row shows several keys at once, Esc among the first at 390.
     const shown = await page.locator('[data-slot="terminal-keys-scroll"]').evaluate((el) => {
       const edge = el.getBoundingClientRect();
       return [...el.querySelectorAll("button")]
         .filter((button) => button.getBoundingClientRect().right <= edge.right + 1)
         .map((button) => button.getAttribute("aria-label"));
     });
-    expect(shown.length).toBeGreaterThanOrEqual(width === 390 ? 6 : 5);
-    if (width === 390) expect(shown).toContain("Escape");
+    // Beside the arrows fixed at the row's end (#2604) it shows its first keys, Escape leading.
+    expect(shown.length).toBeGreaterThanOrEqual(width === 390 ? 3 : 1);
+    expect(shown[0]).toBe("Escape");
     const screen = await terminal.boundingBox();
     if (screen === null) throw new Error("no terminal box");
     expect(screen.y + screen.height).toBeLessThanOrEqual(box.y + 1);

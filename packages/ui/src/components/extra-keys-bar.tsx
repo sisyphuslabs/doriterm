@@ -236,6 +236,8 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
             </button>
           )}
           <div className={cn("flex items-center", inputActive && "col-start-2 row-start-2")}>
+            {/* The same divider the single row draws before its fixed slots, so the keys keep their width (#2604). */}
+            {inputActive ? divider("h-6") : null}
             {props.onArrow === undefined
               ? null
               : ARROWS.map((arrow) => (
