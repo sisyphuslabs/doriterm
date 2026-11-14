@@ -1,4 +1,4 @@
-import { AgentRow, Button, EmptyState, IconButton, Menu, ScrollArea, SidebarSection } from "@doriface/ui";
+import { AgentRow, Button, EmptyState, IconButton, Menu, SidebarSection } from "@doriface/ui";
 import { ChevronLeft, Ellipsis, Plus, SquareTerminal } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ListedSpace, Session } from "./model.ts";
@@ -10,7 +10,7 @@ import { ConnectionLine } from "./reconnect-status.tsx";
 import { useSpaceClosing } from "./space-close-context.ts";
 import { SpaceMenuItems } from "./space-actions.tsx";
 import { useNow } from "./use-now.ts";
-import { useKeptScroll } from "./kept-scroll.ts";
+import { useKeptDocumentScroll } from "./kept-scroll.ts";
 import { NotNowLine, notNowText } from "./not-now-line.tsx";
 
 export interface PhoneSpaceProps {
@@ -40,7 +40,7 @@ export function PhoneSpace({ space, terminals, host, arrive, from, onOpen, onBac
   // with why, and come back by themselves (#2455).
   const waiting = closing.refusal(space.id);
   // Back from a terminal opened here mounts this screen anew: its tabs come back where they were (#1553).
-  const tabsViewport = useKeptScroll(`space:${space.id}`, rows.length > 0);
+  useKeptDocumentScroll(`space:${space.id}`, rows.length > 0);
   return (
     <SpaceFrame
       arrive={arrive}
@@ -88,7 +88,7 @@ export function PhoneSpace({ space, terminals, host, arrive, from, onOpen, onBac
         />
       ) : (
         <>
-          <ScrollArea slot="space-tabs" className="flex-1" viewportRef={tabsViewport}>
+          <div data-slot="space-tabs" className="flex-1">
             <div className="px-2 pt-2 pb-3">
               <SidebarSection title="Tabs" count={rows.length}>
                 {rows.map((agent) => (
@@ -96,8 +96,11 @@ export function PhoneSpace({ space, terminals, host, arrive, from, onOpen, onBac
                 ))}
               </SidebarSection>
             </div>
-          </ScrollArea>
-          <div className="flex shrink-0 flex-col gap-2 px-4 pt-2 pb-[max(1rem,calc(var(--safe-bottom)+0.5rem))]">
+          </div>
+          <div
+            data-pinned="bottom"
+            className="sticky bottom-0 z-10 flex shrink-0 flex-col gap-2 bg-sidebar px-4 pt-2 pb-[max(1rem,calc(var(--safe-bottom)+0.5rem))]"
+          >
             {waiting === null ? null : <NotNowLine action="New tab" why={waiting} />}
             <Button
               variant="primary"
@@ -129,7 +132,7 @@ export function PhoneSpaceLoading(props: {
   return (
     <SpaceFrame arrive={false} from={props.from} onBack={props.onBack} title={<h1 className="sr-only">Space</h1>}>
       {props.error === null ? (
-        <QuietBusy label="Loading the space" text="Loading the space…" className="h-full" />
+        <QuietBusy label="Loading the space" text="Loading the space…" className="flex-1" />
       ) : (
         <TerminalsLoadError cause={props.error} onRetry={props.onRetry} />
       )}
@@ -147,31 +150,36 @@ function SpaceFrame(props: {
   readonly actions?: ReactNode;
   readonly children: ReactNode;
 }) {
-  // The clip keeps the slide's first frames inside the screen: no sideways scroll or pan while it arrives.
+  // The clip keeps the slide's first frames inside the screen: no sideways scroll or pan while it arrives. The screen
+  // scrolls the document, so a tap on iOS's status bar takes its list to the top (#2533); the header sticks to the top.
   return (
-    <div className="h-dvh overflow-x-clip">
+    <div className="min-h-dvh overflow-x-clip">
       <div
         {...(props.arrive ? {} : { "data-arrived": "" })}
-        className="motion-arrive flex h-dvh min-h-0 min-w-0 flex-col bg-sidebar pr-(--safe-right) pl-(--safe-left) [--arrive-from:translateX(1.5rem)]"
+        className="motion-arrive flex min-h-dvh min-w-0 flex-col bg-sidebar pr-(--safe-right) pl-(--safe-left) [--arrive-from:translateX(1.5rem)]"
       >
-        <header
-          data-titlebar
-          className="flex min-h-[calc(3rem+var(--safe-top))] shrink-0 items-center gap-2 border-b border-border pt-(--safe-top) pr-4 pl-[var(--titlebar-inset-start,0.375rem)]"
-        >
-          <Button
-            variant="ghost"
-            aria-label={`Back to ${props.from}`}
-            className="gap-0.5 px-1.5 text-foreground"
-            onClick={props.onBack}
+        {/* Clipped to its own box: a button's 44 pt hit area may not reach past the header onto the list's first row, which
+            the header now paints over as it sticks (#2533). */}
+        <div data-pinned="top" className="sticky top-0 z-10 overflow-clip bg-sidebar">
+          <header
+            data-titlebar
+            className="flex min-h-[calc(3rem+var(--safe-top))] shrink-0 items-center gap-2 border-b border-border pt-(--safe-top) pr-4 pl-[var(--titlebar-inset-start,0.375rem)]"
           >
-            <ChevronLeft aria-hidden />
-            {props.from === "agents" ? "Agents" : "Spaces"}
-          </Button>
-          <div className="flex min-w-0 flex-1 flex-col py-1">{props.title}</div>
-          {props.actions}
-        </header>
-        <ConnectionLine />
-        <main className="flex min-h-0 flex-1 flex-col">{props.children}</main>
+            <Button
+              variant="ghost"
+              aria-label={`Back to ${props.from}`}
+              className="gap-0.5 px-1.5 text-foreground"
+              onClick={props.onBack}
+            >
+              <ChevronLeft aria-hidden />
+              {props.from === "agents" ? "Agents" : "Spaces"}
+            </Button>
+            <div className="flex min-w-0 flex-1 flex-col py-1">{props.title}</div>
+            {props.actions}
+          </header>
+          <ConnectionLine />
+        </div>
+        <main className="flex min-w-0 flex-1 flex-col">{props.children}</main>
       </div>
     </div>
   );

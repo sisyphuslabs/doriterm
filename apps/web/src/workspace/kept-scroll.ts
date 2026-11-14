@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { use, useLayoutEffect, useRef } from "react";
+import { ActionsPaused } from "../keys/dispatcher.ts";
 
 /** The last offset of each phone list screen, by the screen's key; it lasts as long as the page (#1553). */
 const offsets = new Map<string, number>();
@@ -17,12 +18,13 @@ export function keepScroll(
   scroller: KeptScroller,
   currentKey: () => string,
   store: Map<string, number> = offsets,
+  events: EventTarget = scroller,
 ): () => void {
   const keep = (): void => {
     store.set(currentKey(), scroller.scrollTop);
   };
-  scroller.addEventListener("scroll", keep, { passive: true });
-  return () => scroller.removeEventListener("scroll", keep);
+  events.addEventListener("scroll", keep, { passive: true });
+  return () => events.removeEventListener("scroll", keep);
 }
 
 /**
@@ -30,20 +32,29 @@ export function keepScroll(
  * (recorded on every scroll) and puts it back before the first paint once the screen's rows are there (`ready`), so Back,
  * the app's or the system's, lands where the reader was. A key the screen has not been at before starts at the top.
  *
- * The result is a ref for the element that scrolls. It follows that element, not the component: the agents list comes
- * and goes under a shell that stays mounted while a terminal is open.
+ * The list scrolls the document itself, not a box inside it: iOS scrolls only the document to the top when the status bar
+ * is tapped (#2533). The listener is attached and taken off in layout effects, so the scroll the browser makes as the
+ * document shrinks under a terminal (back to 0) is never filed under the list that just left. While Settings is open over
+ * the workspace the document is Settings', so the list neither records nor restores until Settings closes.
  */
-export function useKeptScroll(key: string, ready: boolean): (element: HTMLDivElement | null) => void {
-  const [element, setElement] = useState<HTMLDivElement | null>(null);
-  const restored = useRef<{ readonly element: HTMLDivElement; readonly key: string } | null>(null);
+export function useKeptDocumentScroll(key: string, screenReady: boolean): void {
+  const ready = screenReady && !use(ActionsPaused);
+  const restored = useRef<string | null>(null);
   const current = useRef(key);
   useLayoutEffect(() => {
     current.current = key;
-    if (element === null || !ready) return;
-    if (restored.current?.element === element && restored.current.key === key) return;
-    restored.current = { element, key };
-    element.scrollTop = offsets.get(key) ?? 0;
-  }, [element, key, ready]);
-  useEffect(() => (element === null ? undefined : keepScroll(element, () => current.current)), [element]);
-  return setElement;
+    if (!ready) {
+      restored.current = null;
+      return;
+    }
+    if (restored.current === key) return;
+    restored.current = key;
+    documentScroller().scrollTop = offsets.get(key) ?? 0;
+  }, [key, ready]);
+  useLayoutEffect(
+    () => (ready ? keepScroll(documentScroller(), () => current.current, offsets, window) : undefined),
+    [ready],
+  );
 }
+
+const documentScroller = (): Element => document.scrollingElement ?? document.documentElement;

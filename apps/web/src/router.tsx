@@ -12,6 +12,7 @@ import { JoinLanding } from "./pair/join-landing.tsx";
 import { SettingsRoute } from "./routes/settings-route.tsx";
 import { SettingsDialog, SettingsInDialog, useSettingsSheet } from "./settings/settings-dialog.tsx";
 import { WorkspaceRoute } from "./routes/workspace-route.tsx";
+import { useNarrow } from "./workspace/use-narrow.ts";
 
 /** Where the settings body was scrolled to when its frame was taken out of the page, and which element scrolled. */
 interface KeptScroll {
@@ -29,10 +30,13 @@ function SettingsSlot({
   frame,
   refocus,
   scroll,
+  documentScroll = false,
 }: {
   readonly frame: HTMLElement;
   readonly refocus: RefObject<HTMLElement | null>;
   readonly scroll: RefObject<KeptScroll | null>;
+  /** The phone's sheet, which the document scrolls rather than its body (#2533). */
+  readonly documentScroll?: boolean;
 }) {
   const slot = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -41,8 +45,11 @@ function SettingsSlot({
     scroll.current = null;
     // Taking the frame out of the page drops the offset of whatever scrolls in it, so the reader's place is put back
     // before the frame is painted in its other home (#1161). A viewport from an earlier Settings is gone with it, and
-    // a fresh one starts at the top as it always has.
-    if (kept !== null && frame.contains(kept.viewport)) kept.viewport.scrollTop = kept.top;
+    // a fresh one starts at the top as it always has. On a phone the document is what scrolls, and it opens at its top
+    // rather than where the list under it was.
+    const top = kept !== null && frame.contains(kept.viewport) ? kept.top : 0;
+    if (documentScroll) window.scrollTo({ top, behavior: "instant" });
+    else if (kept !== null && frame.contains(kept.viewport)) kept.viewport.scrollTop = kept.top;
     const held = refocus.current;
     refocus.current = null;
     if (held !== null && frame.contains(held) && document.activeElement !== held) held.focus({ preventScroll: true });
@@ -51,9 +58,10 @@ function SettingsSlot({
       refocus.current = active instanceof HTMLElement && frame.contains(active) ? active : null;
       // Read before the frame leaves the page: once it is out, its viewport has forgotten where it was (#1161).
       const viewport = frame.querySelector<HTMLElement>('[data-slot="settings-body"]');
-      scroll.current = viewport === null ? null : { viewport, top: viewport.scrollTop };
+      const leftAt = documentScroll ? Math.round(window.scrollY) : (viewport?.scrollTop ?? 0);
+      scroll.current = viewport === null ? null : { viewport, top: leftAt };
     };
-  }, [frame, refocus, scroll]);
+  }, [frame, refocus, scroll, documentScroll]);
   return <div ref={slot} className="contents" />;
 }
 
@@ -69,6 +77,10 @@ function Root() {
   const settings = path === "/settings";
   const asSheet = useSettingsSheet();
   const sheet = settings && asSheet;
+  // On a phone the sheet scrolls the document, as the phone's lists do, so a tap on iOS's status bar takes it to the top
+  // (#2533): it sits in the page's flow, and the workspace under it is held to the screen, out of the flow.
+  const narrow = useNarrow();
+  const phoneSheet = sheet && narrow;
   const [frame] = useState(() => Object.assign(document.createElement("div"), { className: "h-full" }));
   const refocus = useRef<HTMLElement | null>(null);
   const scroll = useRef<KeptScroll | null>(null);
@@ -93,9 +105,9 @@ function Root() {
           aria-modal="true"
           aria-label="Settings"
           data-settings-sheet
-          className="fixed inset-0 bg-background"
+          className={phoneSheet ? "relative min-h-dvh bg-background" : "fixed inset-0 bg-background"}
         >
-          <SettingsSlot frame={frame} refocus={refocus} scroll={scroll} />
+          <SettingsSlot frame={frame} refocus={refocus} scroll={scroll} documentScroll={phoneSheet} />
         </div>
       ) : null}
       {/* The view on screen is #root's first child: the desktop window waits for `#root > *` to paint, and the
@@ -107,7 +119,13 @@ function Root() {
           the dialog is read (aria-modal). */}
       <div
         data-workspace
-        className={sheet ? "invisible contents [&_*]:invisible!" : "contents"}
+        className={
+          phoneSheet
+            ? "invisible fixed inset-0 overflow-hidden [&_*]:invisible!"
+            : sheet
+              ? "invisible contents [&_*]:invisible!"
+              : "contents"
+        }
         inert={settings}
         aria-hidden={settings || undefined}
       >

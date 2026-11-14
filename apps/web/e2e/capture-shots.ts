@@ -67,8 +67,12 @@ const section = async (page: Page, label: string) => {
     .click();
   await expect(page.getByRole("heading", { name: label, level: 2 }).first()).toBeVisible();
 };
+// Settings' body scrolls on a desktop, the page on a phone (#2533): both go to the end, whichever owns the scroll.
 const scrollToEnd = (page: Page) =>
-  page.locator("[data-slot=settings-body]").evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+  page.locator("[data-slot=settings-body]").evaluate((el) => {
+    el.scrollTo({ top: el.scrollHeight });
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
+  });
 const typeCode = async (page: Page) => {
   await page.goto("/pair");
   await page.getByLabel("Invite link or code").fill(PAIR_CODE);
