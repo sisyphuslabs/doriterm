@@ -152,7 +152,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
           )
           .toBe(true);
         release(true);
-        const notice = cold.getByRole("alert").filter({ hasText: "Could not load the agents" });
+        const notice = cold.getByRole("alert").filter({ hasText: "Could not load the space" });
         await expect(notice).toBeVisible({ timeout: 15_000 });
         await expect(cold.getByRole("button", { name: "Back to spaces" })).toBeVisible();
         link.hold();
