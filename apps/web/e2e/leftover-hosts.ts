@@ -59,6 +59,22 @@ export interface LayoutStop {
   readonly left: readonly string[];
   /** Why this run could not confirm the layout host stopped, in the host's own terms: infrastructure, not a test. */
   readonly infra: readonly string[];
+  /** A step of the layout host's own teardown that failed, as the host reported it (a machine stop that threw). */
+  readonly failed: readonly string[];
+}
+
+/** The machine stop the layout host reported as failed in `stoppedFile` (e2e/host.ts), if it did (#2594 review). */
+function machineStopFailure(stoppedFile: string): string[] {
+  if (!existsSync(stoppedFile)) return [];
+  let word: unknown;
+  try {
+    word = JSON.parse(readFileSync(stoppedFile, "utf8"));
+  } catch {
+    // A stopped word that is not JSON (an older host, a test fixture) reports nothing beyond the stop itself.
+    return [];
+  }
+  const machineStop: unknown = Reflect.get(Object(word), "machineStop");
+  return typeof machineStop === "string" ? [`the layout host's machine stop failed: ${machineStop}`] : [];
 }
 
 export interface LayoutStopOptions {
@@ -123,28 +139,31 @@ export async function stopLayoutHost(
   options: LayoutStopOptions = {},
 ): Promise<LayoutStop> {
   const host = readSavedEnvIfWhole(envFile);
-  if (host?.run !== E2E_RUN_ID) return { left: [], infra: [] };
+  if (host?.run !== E2E_RUN_ID) return { left: [], infra: [], failed: [] };
   const withinMs = options.withinMs ?? LAYOUT_STOP_WITHIN_MS;
+  const stoppedFile = options.stoppedFile ?? E2E_LAYOUT_STOPPED;
   const pid = host.pid;
   if (pid !== undefined && alive(pid)) {
     process.kill(pid, "SIGTERM");
-    if (!(await exited(pid, options.stoppedFile ?? E2E_LAYOUT_STOPPED, withinMs))) {
+    if (!(await exited(pid, stoppedFile, withinMs))) {
       return {
         left: [],
         infra: [
           `the layout host (pid ${pid}) did not exit within ${withinMs} ms of SIGTERM, so this run could not check ` +
             "what it left behind; this is infrastructure, and test results are reported separately",
         ],
+        failed: [],
       };
     }
   }
+  const failed = machineStopFailure(stoppedFile);
   if (!existsSync(leftFile)) {
-    if (pid === undefined) return { left: [], infra: [] };
-    return { left: [`pid ${pid}: the layout host stopped without its check`], infra: [] };
+    if (pid === undefined) return { left: [], infra: [], failed };
+    return { left: [`pid ${pid}: the layout host stopped without its check`], infra: [], failed };
   }
   const left = JSON.parse(readFileSync(leftFile, "utf8")) as { pid: number; command: string }[];
   rmSync(leftFile, { force: true });
-  return { left: left.map((one) => `pid ${one.pid}: ${one.command}`), infra: [] };
+  return { left: left.map((one) => `pid ${one.pid}: ${one.command}`), infra: [], failed };
 }
 
 /**
@@ -154,8 +173,10 @@ export async function stopLayoutHost(
  */
 export function layoutStopFailures(report: LayoutStop): string[] {
   for (const line of report.infra) console.error(`E2E_INFRA_TIMEOUT: ${line}`);
-  if (report.left.length === 0) return [];
-  return [`hc processes left by the layout host (now stopped):\n  ${report.left.join("\n  ")}`];
+  const failures = [...report.failed];
+  if (report.left.length > 0)
+    failures.push(`hc processes left by the layout host (now stopped):\n  ${report.left.join("\n  ")}`);
+  return failures;
 }
 
 export default async function leftoverHosts(config: FullConfig, options: LayoutStopOptions = {}): Promise<void> {

@@ -149,7 +149,7 @@ export function replyPid(output: string, id: number): number | undefined {
  * Resolves once `pid` has exited. hc answers server.stop before its core has exited, and a core that is not this
  * process's child gives no exit event, so the process table is asked until it is gone or the bound runs out (#2525).
  */
-async function exitOf(pid: number, withinMs: number): Promise<void> {
+export async function exitOf(pid: number, withinMs: number): Promise<void> {
   if (await gone(pid, withinMs)) return;
   // Killed before the throw, so a teardown that stops at the error leaves no core behind it (#2527 review).
   try {

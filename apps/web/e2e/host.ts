@@ -110,6 +110,7 @@ let stopMachine: (() => Promise<void>) | undefined;
 async function shutdown(code = 0): Promise<void> {
   if (stopping) return;
   let exitCode = code;
+  let machineStop: string | undefined;
   stopping = true;
   host.kill("SIGTERM");
   await host.exited;
@@ -121,12 +122,18 @@ async function shutdown(code = 0): Promise<void> {
     // review). The stop's failure still fails the run (#2586 review).
     console.error(error);
     exitCode = exitCode === 0 ? 1 : exitCode;
+    machineStop = String(error);
   }
   if (layout) {
     await stopLeftovers();
     // The run's teardown waits for this rather than for a fixed time: the host's own word that its cores are stopped,
     // what it left is recorded, and it is about to exit (#1412).
-    writeFileSync(E2E_LAYOUT_STOPPED, JSON.stringify({ pid: process.pid }));
+    // A machine stop that failed rides in it too, so the run's teardown fails the run on it, not only this exit code,
+    // which nothing reads (#2594 review).
+    writeFileSync(
+      E2E_LAYOUT_STOPPED,
+      JSON.stringify({ pid: process.pid, ...(machineStop === undefined ? {} : { machineStop }) }),
+    );
   }
   rmSync(savedEnv, { force: true });
   rmSync(dir, { recursive: true, force: true });
