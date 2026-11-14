@@ -102,7 +102,9 @@ function MachineRows({ connection }: { readonly connection: HcConnection }) {
           // The machine the page reaches is one row among the others, in the person's order (#2531).
           const view = views.find((each) => each.id === entry.core);
           if (!entry.local && view !== undefined) {
-            return <AddedMachine key={entry.id} view={view} now={now} onRetry={() => retry(view.name)} onRemove={remove} />;
+            return (
+              <AddedMachine key={entry.id} view={view} now={now} onRetry={() => retry(view.name)} onRemove={remove} />
+            );
           }
           return (
             <li key={entry.id}>
