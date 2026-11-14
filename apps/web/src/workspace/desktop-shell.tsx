@@ -183,8 +183,9 @@ export function DesktopShell(props: DesktopShellProps) {
     },
     focusedTab,
   });
+  // With nothing focused the bar names no machine: the core this page goes through is not the person's (#2531).
   const focusedMachine =
-    (focusedAddress === null ? undefined : machineOf(focusedAddress)) ?? connection.hello.core.name;
+    focusedAddress === null ? undefined : (machineOf(focusedAddress) ?? connection.hello.core.name);
   const focusedTerminal = focusedAddress === null ? undefined : byAddress.get(focusedAddress);
   // As on the phone: a focused terminal that is gone, whose machine is offline, or whose view showed it had ended has
   // nothing to type into, so a dictation under way ends (its recognizer aborted) and no mic or bound key starts one (#254, #258).

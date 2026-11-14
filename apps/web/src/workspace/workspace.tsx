@@ -615,7 +615,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                 terminals={sessions}
                 spaces={spaces}
                 host={connection.hello.core.name}
-                route={connectionStore.settings.mode === "relay" ? "relay" : "loopback"}
+                machines={order.entries.map((entry) => entry.name)}
                 actions={availableActions(
                   narrow ? "phone" : "desktop",
                   inView !== null,

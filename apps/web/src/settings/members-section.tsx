@@ -1,8 +1,8 @@
-import { Button, Notice, SettingRow, cn } from "@doriface/ui";
-import { Monitor, Server } from "lucide-react";
+import { Notice, SettingRow, cn } from "@doriface/ui";
+import { Server } from "lucide-react";
 import type { ReactNode } from "react";
 import type { MemberEntry } from "../connection/mesh-connections.ts";
-import { connectionStore, useConnectionSettings, useMeshMembers } from "../connection/store.ts";
+import { connectionStore, useMeshMembers } from "../connection/store.ts";
 import { RetryButton } from "../workspace/retry-button.tsx";
 
 const WORDS: Readonly<Record<MemberEntry["state"]["phase"], string>> = {
@@ -35,13 +35,12 @@ export function summarizeMembers(entries: readonly MemberEntry[]): MembersSummar
 }
 
 /**
- * What a member's row offers (#1296): a machine in trouble offers Retry, which is what brings it back; any other machine
- * than the one this app is attached to offers Switch to this machine; the attached one offers nothing. Decided away from
- * React so the rule the row renders is the rule the tests pin.
+ * What a member's row offers (#1296): a machine in trouble offers Retry, which is what brings it back; any other offers
+ * nothing. Which machine carries this app's traffic is not the person's choice, so no row offers to switch to it (#2531).
+ * Decided away from React so the rule the row renders is the rule the tests pin.
  */
-export function rowAction(entry: MemberEntry, selectedHostId: string): "retry" | "switch" | null {
-  if (PROBLEMS.has(entry.state.phase)) return "retry";
-  return entry.target.hostId === selectedHostId ? null : "switch";
+export function rowAction(entry: MemberEntry): "retry" | null {
+  return PROBLEMS.has(entry.state.phase) ? "retry" : null;
 }
 
 function title(icon: ReactNode, name: string) {
@@ -68,25 +67,19 @@ function stateLine(entry: MemberEntry): ReactNode {
 }
 
 /** The connection rows, apart from the screen that decides to show them, so a two-machine list can be rendered (#1170). */
-export function MemberConnections({
-  members,
-  selectedHostId,
-}: {
-  readonly members: readonly MemberEntry[];
-  readonly selectedHostId: string;
-}) {
+export function MemberConnections({ members }: { readonly members: readonly MemberEntry[] }) {
   return (
     // Named so a screen reader can tell this list from the Machines list under it (#1170).
     <ul aria-label="Connections" className="flex flex-col divide-y divide-border">
       {members.map((entry) => {
-        const action = rowAction(entry, selectedHostId);
+        const action = rowAction(entry);
         return (
           <li key={entry.target.hostId}>
             <SettingRow
               className="border-b-0"
               inline
               title={title(
-                entry.target.hostId === selectedHostId ? <Monitor aria-hidden /> : <Server aria-hidden />,
+                <Server aria-hidden />,
                 entry.target.hostName === "" ? entry.target.hostId : entry.target.hostName,
               )}
               description={stateLine(entry)}
@@ -98,17 +91,7 @@ export function MemberConnections({
                       connectionStore.retry(entry.target.hostId);
                     }}
                   />
-                ) : action === null ? null : (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => {
-                      connectionStore.select(entry.target.hostId);
-                    }}
-                  >
-                    Switch to this machine
-                  </Button>
-                )
+                ) : null
               }
             />
           </li>
@@ -127,12 +110,11 @@ export function MemberConnections({
  */
 export function MembersSection() {
   const members = useMeshMembers();
-  const selectedHostId = useConnectionSettings().hostId;
   const summary = summarizeMembers(members);
   if (!summary.listed) return null;
   return (
     <div className="flex flex-col gap-3">
-      <MemberConnections members={members} selectedHostId={selectedHostId} />
+      <MemberConnections members={members} />
       {summary.open === summary.total ? null : (
         <Notice tone="info" title="One machine down is one machine down">
           Each machine has its own connection, so the others stay usable while one is away.

@@ -26,8 +26,8 @@ export interface DesktopStatusBarProps {
   readonly loaded: boolean;
   readonly focusedAddress: string | null;
   readonly focusedTerminal: Session | undefined;
-  /** The focused terminal's machine, else the connected core's. */
-  readonly focusedMachine: string;
+  /** The focused terminal's machine; undefined with nothing focused (#2531). */
+  readonly focusedMachine: string | undefined;
   /** Opens a terminal as the sidebar's row does. */
   readonly onOpen: (address: string) => void;
   readonly onPalette: () => void;
@@ -51,12 +51,14 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
       start={
         <>
           {/* A terminal on another machine shows its full hc address (build-box/t3): what hc commands take. */}
-          <span data-status-machine className="flex min-w-0">
-            <span className="sr-only">Machine: </span>
-            <StatusBarItem icon={<Monitor aria-hidden />}>
-              {focusedAddress !== null && machineOf(focusedAddress) !== undefined ? focusedAddress : focusedMachine}
-            </StatusBarItem>
-          </span>
+          {focusedMachine === undefined ? null : (
+            <span data-status-machine className="flex min-w-0">
+              <span className="sr-only">Machine: </span>
+              <StatusBarItem icon={<Monitor aria-hidden />}>
+                {focusedAddress !== null && machineOf(focusedAddress) !== undefined ? focusedAddress : focusedMachine}
+              </StatusBarItem>
+            </span>
+          )}
           {focusedTerminal === undefined ? null : (
             // The space gives way first, so a long name never pushes the terminal count out of the bar.
             <span data-status-space className="-ml-2.5 flex max-w-48 min-w-0 items-center gap-1.5">

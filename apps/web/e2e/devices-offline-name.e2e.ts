@@ -53,7 +53,7 @@ for (const width of [1440, 390]) {
       const hostId = (JSON.parse(await stored(page)) as { hostId?: string }).hostId ?? "";
       expect(name).not.toBe("");
       expect(name).not.toBe("This browser");
-      expect(name).toMatch(/^Connected through /);
+      expect(name).toMatch(/^Paired with /);
       expect(hostId.length).toBeGreaterThan(0);
       expect(name).not.toContain(hostId);
       await page.screenshot({ path: test.info().outputPath("legacy-browser-host.png"), fullPage: true });

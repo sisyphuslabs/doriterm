@@ -122,10 +122,8 @@ export function MembershipMachines() {
         entries={entries}
         ownComputer={undefined}
         retry={(hostId) => connectionStore.retry(hostId)}
-        openMember={(hostId) => {
-          connectionStore.select(hostId);
-          void navigate({ to: "/" });
-        }}
+        // Every machine is in the one workspace, whichever host carries the traffic (#2531): opening one only goes there.
+        openMember={() => void navigate({ to: "/" })}
       />
       {observer?.state.phase === "open" ? (
         <ObservedBrowserMembers

@@ -8,7 +8,7 @@ import { guardedLocalStorage } from "../storage/guarded.ts";
 export interface SidebarPrefs {
   readonly sort: AgentSort;
   readonly colors: Readonly<Record<string, AvatarColor>>;
-  /** Machines (by id) whose spaces are folded under their header. */
+  /** Machines (by permanent core id) whose spaces are folded under their header. */
   readonly collapsed: readonly string[];
 }
 
@@ -75,9 +75,32 @@ export function useSpaceColors(ids: readonly string[]): Readonly<Record<string, 
   return next;
 }
 
-/** Whether a machine's spaces are folded, and the toggle; the choice outlives a reload. */
-export function useCollapsed(): readonly [readonly string[], (id: string) => void] {
-  const collapsed = useSyncExternalStore(sidebarPrefs.subscribe, () => sidebarPrefs.value.collapsed);
+/**
+ * The folded machines with the keys saved before #2531 replaced by permanent core ids, or null when none is left: those
+ * named the machine this page reached `local` and the others `machine:<name>`, so a fold followed the routing host.
+ */
+export function collapsedByCore(
+  collapsed: readonly string[],
+  machines: readonly { readonly id: string; readonly core: string }[],
+): readonly string[] | null {
+  const byOldKey = new Map(machines.map((machine) => [machine.id, machine.core]));
+  if (!collapsed.some((key) => byOldKey.has(key) && byOldKey.get(key) !== key)) return null;
+  return [...new Set(collapsed.map((key) => byOldKey.get(key) ?? key))];
+}
+
+/** Whether a machine's spaces are folded (by permanent core id), and the toggle; the choice outlives a reload. */
+export function useCollapsed(
+  machines: readonly { readonly id: string; readonly core: string }[],
+): readonly [readonly string[], (core: string) => void] {
+  const saved = useSyncExternalStore(sidebarPrefs.subscribe, () => sidebarPrefs.value.collapsed);
+  const migrated = collapsedByCore(saved, machines);
+  if (migrated !== null) {
+    queueMicrotask(() => {
+      const again = collapsedByCore(sidebarPrefs.value.collapsed, machines);
+      if (again !== null) sidebarPrefs.update({ collapsed: again });
+    });
+  }
+  const collapsed = migrated ?? saved;
   const toggle = (id: string): void => {
     const now = sidebarPrefs.value.collapsed;
     sidebarPrefs.update({ collapsed: now.includes(id) ? now.filter((one) => one !== id) : [...now, id] });

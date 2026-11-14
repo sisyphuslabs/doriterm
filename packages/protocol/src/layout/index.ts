@@ -42,6 +42,19 @@ export {
   terminalBlock,
 } from "./tree.ts";
 export type { Edge, PaneRef } from "./tree.ts";
-export { arrangeIds, moveInOrder, movedOrder, ORDER_DOC, readOrderDocument, storedOrder } from "./order.ts";
+export {
+  arrangeIds,
+  laterRank,
+  mergedOrders,
+  moveInOrder,
+  MOVED,
+  movedOrder,
+  ORDER_DOC,
+  orderRank,
+  readOrderDocument,
+  stampOrder,
+  storedOrder,
+} from "./order.ts";
+export type { OrderRank } from "./order.ts";
 export { DocWriteError, LayoutDoc } from "./sync.ts";
 export type { DocCalls, DocEdit, DocState, EditShown } from "./sync.ts";

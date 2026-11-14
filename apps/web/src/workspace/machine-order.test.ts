@@ -12,7 +12,7 @@ const machine = (core: string, name: string, local = false): MachineEntry => ({
   first: undefined,
 });
 
-// The default order, as machineEntries gives it: this machine first, then the added ones by name.
+// A default order as the arranging gets it; machineEntries sorts every machine by name (#2531), this is any given list.
 const STUDIO = machine("c-studio", "studio", true);
 const ALPHA = machine("c-alpha", "alpha");
 const BUILD = machine("c-build", "build");

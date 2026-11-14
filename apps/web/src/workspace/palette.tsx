@@ -15,7 +15,8 @@ import { useOverlayFocus } from "./use-overlay-focus.ts";
 export interface PaletteProps {
   readonly terminals: readonly Terminal[];
   readonly host: string;
-  readonly route: string;
+  /** Every machine, in the person's order. */
+  readonly machines: readonly string[];
   readonly actions: readonly ShellAction[];
   /** The spaces as the sidebar lists them, to name an agent's space the same way. */
   readonly spaces: readonly ListedSpace[];
@@ -24,7 +25,7 @@ export interface PaletteProps {
 }
 
 /** The palette over the dimmed workspace, near the top; Escape or the backdrop closes it. */
-export function Palette({ terminals, host, route, actions, spaces, onOpenTerminal, onClose }: PaletteProps) {
+export function Palette({ terminals, host, machines, actions, spaces, onOpenTerminal, onClose }: PaletteProps) {
   const active = useOverlayActive(onClose);
   const navigate = useNavigate();
   const overrides = useOverrides();
@@ -33,13 +34,13 @@ export function Palette({ terminals, host, route, actions, spaces, onOpenTermina
     return paletteCommands({
       terminals,
       host,
-      route,
+      machines,
       actions,
       platform,
       keymap: resolveKeymap(platform, overrides),
       spaceOf: spaceNameOf(spaces),
     });
-  }, [terminals, host, route, actions, spaces, overrides]);
+  }, [terminals, host, machines, actions, spaces, overrides]);
   const frame = useRef<HTMLDivElement>(null);
   useOverlayFocus(frame, '[role="combobox"]');
   const run = (id: string): void => {

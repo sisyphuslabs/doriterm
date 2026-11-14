@@ -126,7 +126,7 @@ export interface MachineGroup {
 export const tabsIn = (spaces: readonly Space[]): number => spaces.reduce((sum, space) => sum + space.tabs, 0);
 
 /**
- * Spaces under their machine, in the machines' own order (this one first, then as the person ordered them), once more
+ * Spaces under their machine, in the machines' own order (as the person ordered them, by name before that), once more
  * than one machine is known; with one machine there is nothing to group and this returns undefined. A machine counts
  * its spaces' tabs, never its terminals: a sub-agent, a terminal in no tab and a split tab's other panes are in no row
  * under it, and an offline machine's rows still count the tabs last read from it.
