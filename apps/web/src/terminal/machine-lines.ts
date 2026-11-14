@@ -21,6 +21,8 @@ export class MachineLines {
   readonly #lines = new WeakMap<HcConnection, ReadonlyMap<string, Line>>();
   /** When (this page's clock) each machine's line was first read down, while it stays down. */
   readonly #downSince = new WeakMap<HcConnection, ReadonlyMap<string, number>>();
+  /** How many views watch each connection's lines: with none, a drop is not seen, so its date is forgotten. */
+  readonly #watchers = new WeakMap<HcConnection, number>();
   readonly #listeners = new Set<Changed>();
   readonly #rosterOf: (connection: HcConnection) => LineRoster;
 
@@ -72,11 +74,16 @@ export class MachineLines {
     const read = (): void => this.heard(connection, roster.snapshot.machines.views);
     const unsubscribe = roster.subscribe(read);
     const unwatch = roster.watchLines();
+    this.#watchers.set(connection, (this.#watchers.get(connection) ?? 0) + 1);
     read();
     let stopped = false;
     return () => {
       if (stopped) return;
       stopped = true;
+      const left = (this.#watchers.get(connection) ?? 1) - 1;
+      this.#watchers.set(connection, left);
+      // Unwatched, the line may come back and drop again unseen: the next view dates its drop from its own first read.
+      if (left === 0) this.#downSince.delete(connection);
       unwatch();
       unsubscribe();
     };
