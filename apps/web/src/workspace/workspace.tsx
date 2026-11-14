@@ -8,7 +8,7 @@ import { ShortcutsHelp } from "../keys/shortcuts-dialog.tsx";
 import type { Axis } from "@doriface/protocol/layout";
 import { closesTab, type TerminalEnd } from "../terminal/terminal-end.ts";
 import { CloseTabDialog } from "./close-tab-dialog.tsx";
-import { stillClosing } from "./close-set.ts";
+import { useCloseSet } from "./close-set.ts";
 import { AddMachineDialog } from "./add-machine-dialog.tsx";
 import { guideStore } from "../pair/first-run-guide.ts";
 import { usePhoneRoute } from "./use-phone-route.ts";
@@ -205,7 +205,7 @@ export function Workspace({ connection }: WorkspaceProps) {
     [openInLayout, showOnPhone],
   );
   const [closingTab, setClosingTab] = useState<string | null>(null);
-  const [closingSet, setClosingSet] = useState<readonly string[]>([]);
+  const closeSet = useCloseSet(layout.tabs);
   const notSent = useCallback(
     (reason: DropReason) =>
       toasts.add({
@@ -309,7 +309,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   const closeTabs = (keys: readonly string[]): void => {
     const closing = layout.tabs.filter((tab) => keys.includes(tab.key));
     const running = closing.some((tab) => tab.panes.some((pane) => pane.address !== null));
-    if (running) setClosingSet(closing.map((tab) => tab.key));
+    if (running) closeSet.open(closing.map((tab) => tab.key));
     else for (const tab of closing) layout.closeTab(tab.key);
   };
   const onEnd = (address: string, end: TerminalEnd): void => {
@@ -324,7 +324,7 @@ export function Workspace({ connection }: WorkspaceProps) {
   };
   const closing = layout.tabs.find((tab) => tab.key === closingTab);
   // The tabs a close-to-the-right or close-others takes, as one tab of all their panes for the one question it asks.
-  const closingTabs = stillClosing(layout.tabs, closingSet);
+  const closingTabs = closeSet.closing;
   const [firstClosing] = closingTabs;
   const closingSetTab =
     firstClosing === undefined ? undefined : { ...firstClosing, panes: closingTabs.flatMap((tab) => tab.panes) };
@@ -595,7 +595,7 @@ export function Workspace({ connection }: WorkspaceProps) {
             )}
             {closingTabs.length === 0 || closingSetTab === undefined ? null : (
               <CloseTabDialog
-                key={closingSet.join(" ")}
+                key={closeSet.key}
                 connection={connection}
                 views={views}
                 terminals={terminals}
@@ -605,7 +605,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                   closingSessions(closingSetTab.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])));
                   for (const tab of closingTabs) layout.closeTab(tab.key);
                 }}
-                onDone={() => setClosingSet([])}
+                onDone={closeSet.done}
                 onKept={kept}
               />
             )}
