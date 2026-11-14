@@ -2,7 +2,13 @@ import type { HcConnection } from "@doriface/client";
 import { useSyncExternalStore } from "react";
 import type { HostStartFailure } from "../desktop/bridge.ts";
 import { AttemptBudget, AttemptTimeoutError } from "./attempt-budget.ts";
-import { connect, DeviceNotPairedError, type ConnectionPath, type OpenConnection } from "./connect.ts";
+import {
+  connect,
+  DeviceNotPairedError,
+  LoopbackTokenError,
+  type ConnectionPath,
+  type OpenConnection,
+} from "./connect.ts";
 import type { DirectReason } from "./direct-attempt.ts";
 import { helloName } from "./hello-name.ts";
 import { isFinal } from "./host-failure.ts";
@@ -378,7 +384,9 @@ export class ConnectionStore {
     const settling =
       this.#settings.viewMember === true &&
       (error instanceof DeviceNotPairedError || ("code" in error && error.code === 4401));
-    if (isFinal(error) && !settling) {
+    // The desktop app's own host is asked for its current token before each retry (#515), so a refused one is not final.
+    const asksForToken = error instanceof LoopbackTokenError && this.#localHost !== null;
+    if (isFinal(error) && !settling && !asksForToken) {
       this.#stale = null;
       this.#set({ phase: "failed", error, retryInMs: null, retryAt: null, stale: null });
       return;

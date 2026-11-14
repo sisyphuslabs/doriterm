@@ -10,7 +10,7 @@ import { BROWSER_DEPS, deviceKeyFor, type RelayDeps } from "./relay-deps.ts";
 import type { ResumableSession } from "./session-resume.ts";
 import type { ConnectionSettings } from "./settings.ts";
 import { loopbackOnly } from "./loopback-address.ts";
-import { openWebSocketLink } from "./ws-link.ts";
+import { LinkAbortedError, LinkCloseError, openWebSocketLink } from "./ws-link.ts";
 
 const SUBPROTOCOL = "doriface.v1";
 const TOKEN_PREFIX = "doriface.token.";
@@ -20,6 +20,17 @@ export class DeviceNotPairedError extends Error {
   override readonly name = "DeviceNotPairedError";
   constructor() {
     super("The host does not know this device anymore. Pair it again.");
+  }
+}
+
+/**
+ * This computer's host is there and turned this page's loopback token down: it was started again with a new one. Dialing
+ * again with the same token cannot help; the new token can (#2003).
+ */
+export class LoopbackTokenError extends Error {
+  override readonly name = "LoopbackTokenError";
+  constructor() {
+    super("This computer's host no longer accepts this page's token. Set the token it prints now in Settings.");
   }
 }
 
@@ -120,11 +131,15 @@ async function openOnPath(
   options: OpenOptions,
 ): Promise<OpenConnection> {
   if (settings.mode === "loopback") {
+    const url = loopbackOnly(settings.loopbackUrl, "hc");
     const link = await openWebSocketLink(
-      loopbackOnly(settings.loopbackUrl, "hc"),
+      url,
       [SUBPROTOCOL, TOKEN_PREFIX + settings.token],
       signal === undefined ? {} : { signal },
-    );
+    ).catch(async (error: unknown) => {
+      if (refusedWithoutCode(error) && (await answersWithoutToken(url, signal))) throw new LoopbackTokenError();
+      throw error;
+    });
     return { connection: await HcConnection.open(link, signal === undefined ? {} : { signal }), path: "loopback" };
   }
   const direct = await openDirect(settings, signal, deps, options);
@@ -138,6 +153,36 @@ async function openOnPath(
     session: { secure: relayed, redial: (again) => dialRelay(settings, again) },
     ...(direct.reason === undefined ? {} : { directReason: direct.reason }),
   };
+}
+
+/**
+ * A failure before the socket opened that says nothing of its own: an HTTP refusal of the upgrade (the gateway's 401 for
+ * a wrong token) reaches the page as an abnormal close (1006) or as a socket that closed before opening. A close with a
+ * code the host or relay chose (4404, 4408, 4400) already says why, and a cancelled attempt says nothing at all.
+ */
+function refusedWithoutCode(error: unknown): boolean {
+  if (error instanceof LinkAbortedError) return false;
+  return !(error instanceof LinkCloseError) || error.code === 1006;
+}
+
+/** How long the probe below waits for the host's tokenless route; a host that is there answers on loopback at once. */
+const PROBE_MS = 2_000;
+
+/**
+ * Whether a host listens at `url`'s port though its `/v1/hc` did not open: the page cannot read the 401 a wrong token
+ * gets before the upgrade (#2003), but `/v1/e2ee` on the same port takes no token, so its opening tells a refused token
+ * from a host that is not there. Nothing is sent on it, and it is closed at once.
+ */
+async function answersWithoutToken(url: string, signal: AbortSignal | undefined): Promise<boolean> {
+  const probe = new URL(url);
+  probe.pathname = "/v1/e2ee";
+  try {
+    const link = await openWebSocketLink(probe.toString(), [], { timeoutMs: PROBE_MS, signal });
+    link.close();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 type DirectOutcome =
