@@ -6,6 +6,7 @@ import { terminalConfigStore } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
 import { CursorResets } from "./cursor-reset.ts";
 import { readDisplay } from "./display.ts";
+import { reattachClear, useRepaintingCore } from "./reattach-clear.ts";
 import { clearHistoryGap, noteHistoryGap } from "./history-gap-notice.ts";
 import { type EndHolder, fromEndOf, holdFromEnd, readerInputOn } from "./hold-view-from-end.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
@@ -29,17 +30,6 @@ const encoder = new TextEncoder();
 
 /** What holds a terminal's paint: an attach replay settling (D5), or a synchronized update still coming in (#2040). */
 export type PaintHold = "replay" | "update";
-/**
- * Cursor home, then erase to the end of the screen (ED 0): clears the screen in use and leaves the scrollback alone. The
- * core's repaint starts with ESC[2J, which Ghostty answers over a prompt marked with OSC 133 (fish 4, shell integration)
- * by scrolling the screen into history; over a screen already blank there is nothing to scroll. Under a full-screen
- * program (vim, less, htop) this clears the alternate screen only: the repaint leaves it, and its ESC[2J scrolls the
- * primary screen behind it into history once when that screen ends at an OSC 133-marked prompt. The repaint does not draw
- * the primary screen again, so that is the only copy of the output above the program's command, and the primary screen
- * must not be erased here. Over an unmarked prompt the core's repaint erases that screen with no copy; that loss is the
- * core's, and belongs with the resume-cursor work in #2033.
- */
-const CLEAR_SCREEN = "\u001b[H\u001b[J";
 
 interface AttachSources {
   readonly connection: HcConnection;
@@ -100,6 +90,9 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
   const { connection, address, pid, live, shown, wt, setWt, stream, pending, pacer, output } = sources;
   const { isFocused, focusWhenFree, onEnd, onEnded, onStream, holdPaint } = sources;
   const toasts = useToastManager();
+  // Read when a reattach is answered: the core's version as it is then, not when the effect last ran.
+  const repaintingCore = useRef<string | undefined>(undefined);
+  repaintingCore.current = useRepaintingCore(connection, address);
   const [restarting, setRestarting] = useState(false);
   const [ended, setEnded] = useState(false);
   /** Counts the streams the core ended with the program still running; each is re-attached by the effect below. */
@@ -269,7 +262,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           // already noted as the line went down (below).
           if (keepsHistory) {
             noteHistoryGap(address, sameConnection ? "stream" : "reconnect");
-            ready.write(CLEAR_SCREEN);
+            ready.write(reattachClear(repaintingCore.current));
           }
           // The repaint lands where the reader was: at the end for one who was following, in history for one who was not.
           endHold.current?.stop();

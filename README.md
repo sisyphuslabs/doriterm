@@ -244,7 +244,7 @@ after that, with a ChaCha20-Poly1305 record layer that rekeys every 2^20 message
 - **No plaintext listener.** `/v1/hc` is loopback-only unless you pass `--unsafe-listen`, and its token is compared in constant
   time. The LAN listener serves `/v1/e2ee` and never plaintext `/v1/hc`.
 - **No telemetry in the default build.** The reference relay keeps anonymous daily counts and, as its only per-host rows,
-  the current month's mesh pool pseudonyms, and sends numbers only to its operator's product analytics ([`docs/transport.md`](docs/transport.md), Relay passes).
+  each month's mesh pool pseudonyms (kept until day 7 of the following month), and sends numbers only to its operator's product analytics ([`docs/transport.md`](docs/transport.md), Relay passes).
 - **Out of scope:** a host or a client compromised while it runs, and keystroke timing — traffic is not padded.
 
 The boundaries, and the citation for each, are in [docs/architecture.md §12](docs/architecture.md#12-security-model).

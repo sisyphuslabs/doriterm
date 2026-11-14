@@ -6,25 +6,29 @@ export interface GateLimits {
   readonly probeMaxMs: number;
   readonly reconnectRetryMs: number;
   readonly reconnectGraceMs: number;
+  /** A revoked member that answers but refuses the handshake waits this long for its revoke, doubling (#2449). */
+  readonly refusedFirstMs: number;
+  readonly refusedMaxMs: number;
 }
 
 export interface Gate {
   /**
    * A refused dial (4404, or a dial that failed) to a member that was reached says it is reconnecting, and offline
    * once that has lasted the grace; to a member never reached it says offline at once. A 4429 says the relay limited
-   * this host.
+   * this host. `refused` says a revoked member answered but refused the handshake, so its owed revoke cannot be
+   * delivered until it returns.
    */
-  readonly cause: "reconnecting" | "offline" | "rate-limited";
-  /** Refusals in a row: inside the grace while reconnecting, probes missed once offline. */
+  readonly cause: "reconnecting" | "offline" | "rate-limited" | "refused";
+  /** In a row: refusals in the grace while reconnecting, refused handshakes while refused, probes missed offline. */
   readonly misses: number;
   readonly nextAt: number;
   /** When the last dial that set this gate failed: return from this host's own outage drops gates set during it. */
   readonly lastMissAt: number;
 }
 
-/** The probes a gate has missed: a reconnecting member's refusals inside its grace are not probes. */
+/** The probes a gate has missed: a reconnecting member's refusals, or a revoked one's refused handshakes, are not. */
 const probesMissed = (gate: Gate | undefined): number =>
-  gate === undefined || gate.cause === "reconnecting" ? 0 : gate.misses;
+  gate === undefined || gate.cause === "reconnecting" || gate.cause === "refused" ? 0 : gate.misses;
 
 /**
  * Each member's gate and what set it. A host's relay connection is cut now and then and is back in about a second
@@ -99,6 +103,16 @@ export class MemberGates {
     const now = this.#clock.now();
     const misses = probesMissed(this.#gates.get(member));
     this.#set(member, { cause: "rate-limited", misses, nextAt: now + this.#limits.probeFirstMs, lastMissAt: now });
+  }
+
+  /** A revoked member answered and refused the handshake: gated on its own long backoff until presence (#2449). */
+  refused(member: string): void {
+    const now = this.#clock.now();
+    const gate = this.#gates.get(member);
+    const refusals = gate?.cause === "refused" ? gate.misses : 0;
+    const wait = Math.min(this.#limits.refusedFirstMs * 2 ** refusals, this.#limits.refusedMaxMs);
+    this.#reached.delete(member);
+    this.#set(member, { cause: "refused", misses: refusals + 1, nextAt: now + wait, lastMissAt: now });
   }
 
   /** This host was itself offline since `downSince`: what its dials met meanwhile says nothing about the members. */

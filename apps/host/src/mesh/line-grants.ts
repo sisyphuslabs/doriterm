@@ -176,6 +176,9 @@ export class LineGrants {
     }
     if (grant.reason === "reconnecting")
       return { ok: false, code: 4404, reason: `${member.name} is reconnecting; next try in ${next} s` };
+    if (grant.reason === "refused") {
+      return { ok: false, code: 4404, reason: `${member.name} refused this host's handshake; next try in ${next} s` };
+    }
     return {
       ok: false,
       code: 4404,

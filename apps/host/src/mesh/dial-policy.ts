@@ -8,6 +8,9 @@ export const DIAL_LIMITS = {
   halvedForMs: 600_000,
   probeFirstMs: 30_000,
   probeMaxMs: 300_000,
+  /** A revoked member that answers but refuses the handshake waits this long for its revoke, doubling (#2449). */
+  refusedFirstMs: 3_600_000,
+  refusedMaxMs: 21_600_000,
   reconnectRetryMs: 2_000,
   reconnectGraceMs: 5_000,
   presenceJitterMs: 2_000,
@@ -33,6 +36,7 @@ export type Grant =
   | { readonly ok: false; readonly reason: "reconnecting"; readonly nextInMs: number }
   | { readonly ok: false; readonly reason: "offline"; readonly misses: number; readonly nextInMs: number }
   | { readonly ok: false; readonly reason: "rate-limited"; readonly nextInMs: number }
+  | { readonly ok: false; readonly reason: "refused"; readonly nextInMs: number }
   | { readonly ok: false; readonly reason: "settling"; readonly nextInMs: number }
   | { readonly ok: false; readonly reason: "budget" };
 
@@ -152,6 +156,7 @@ export class DialPolicy {
       const nextInMs = gate.nextAt - now;
       if (gate.cause === "rate-limited") return { ok: false, reason: "rate-limited", nextInMs };
       if (gate.cause === "reconnecting") return { ok: false, reason: "reconnecting", nextInMs };
+      if (gate.cause === "refused") return { ok: false, reason: "refused", nextInMs };
       return { ok: false, reason: "offline", misses: gate.misses, nextInMs };
     }
     if (purpose === "line" && !this.#present.has(member) && now < this.#settleUntil) {
@@ -206,12 +211,17 @@ export class DialPolicy {
    * reached is first reconnecting for 5 s, #2448), it refused this host as revoked (4401), which gates it the same way
    * with no reconnect grace, or the relay refused this host's pass (4412, contract v1.6), which says nothing about the
    * member: no gate, no halving, and the member is due again once a new pass arrives, or after the first probe wait
-   * (30 s) if none does.
+   * (30 s) if none does. `refused`: a revoked member answered and refused the handshake; it is gated on its own backoff
+   * (1 h doubling to 6 h) and tried again when that is due, since a revoked member shows no presence (#2449).
    */
-  report(member: string, outcome: "connected" | 4401 | 4404 | 4412 | 4429): void {
+  report(member: string, outcome: "connected" | 4401 | 4404 | 4412 | 4429 | "refused"): void {
     const now = this.#clock.now();
     if (outcome === "connected") {
       this.#members.reached(member);
+      return;
+    }
+    if (outcome === "refused") {
+      this.#members.refused(member);
       return;
     }
     if (outcome === 4412) {
