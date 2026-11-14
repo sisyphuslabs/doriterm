@@ -132,7 +132,7 @@ test("the D-pad toggle lays a 3x3 pad over the terminal", async ({ page }) => {
   expect(await names(pad)).toEqual(PAD_KEYS);
   await expectTouchTargets(pad);
   // Pressing pad keys keeps the keyboard up: the terminal keeps focus.
-  await key(page, "Up arrow").click();
+  await pad.getByRole("button", { name: "Up arrow" }).click();
   await expect(page.locator("[data-terminal] textarea")).toBeFocused();
   await toggle.click();
   await expect(pad).toHaveCount(0);

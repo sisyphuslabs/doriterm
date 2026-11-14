@@ -144,9 +144,11 @@ export function PhoneKeys(props: PhoneKeysProps) {
   const panel = (
     <ExtraKeysBar
       ref={barRef}
-      // Two rows, typing or not (#1551): the Type field and Send across the top, the keys under them.
-      inputActive
+      // With the keyboard up, two rows: the Type field and Send across the top, the keys under them (#1551). With it down,
+      // the keys alone: there is nothing to type into the field with (#2604).
+      inputActive={open}
       keyboardDown={!open}
+      onArrow={sticky.press}
       onShowKeyboard={raise}
       onShowKeyboardStart={letGo}
       keys={own.map(toExtra)}
@@ -157,9 +159,13 @@ export function PhoneKeys(props: PhoneKeysProps) {
       padOpen={pad}
       onPad={() => onPad(!pad)}
       onPaste={sticky.paste}
-      inputField={
-        <InputBox className="w-full p-0" draftKey={current} onSend={(text) => port.current?.send(`${text}\r`)} />
-      }
+      {...(open
+        ? {
+            inputField: (
+              <InputBox className="w-full p-0" draftKey={current} onSend={(text) => port.current?.send(`${text}\r`)} />
+            ),
+          }
+        : {})}
       {...(onKeys === undefined
         ? { onHideKeyboard: hideKeyboard }
         : { hideLabel: "Hide keys", onHideKeyboard: () => onKeys(false) })}

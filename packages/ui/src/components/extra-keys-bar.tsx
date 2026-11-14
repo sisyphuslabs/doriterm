@@ -1,4 +1,15 @@
-import { ClipboardPaste, GamepadDirectional, Keyboard, KeyboardOff, List, TextCursorInput } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  ClipboardPaste,
+  GamepadDirectional,
+  Keyboard,
+  KeyboardOff,
+  List,
+  TextCursorInput,
+} from "lucide-react";
 import {
   type CSSProperties,
   type ReactElement,
@@ -58,6 +69,16 @@ function useEdgeFade(): [Fade, (el: HTMLDivElement | null) => void] {
   return [fade, ref];
 }
 
+export type ArrowId = "left" | "up" | "down" | "right";
+
+/** The fixed arrow keys, in the order a hardware keyboard's sit: Left, Up, Down, Right. */
+const ARROWS: readonly { readonly id: ArrowId; readonly name: string; readonly icon: ReactNode }[] = [
+  { id: "left", name: "Left arrow", icon: <ArrowLeft /> },
+  { id: "up", name: "Up arrow", icon: <ArrowUp /> },
+  { id: "down", name: "Down arrow", icon: <ArrowDown /> },
+  { id: "right", name: "Right arrow", icon: <ArrowRight /> },
+];
+
 export interface ExtraKeysBarProps {
   /**
    * The person's keys, in their order. Unset falls back to `DEFAULT_EXTRA_KEYS`, the row this bar drew before keys
@@ -91,12 +112,17 @@ export interface ExtraKeysBarProps {
   readonly hideLabel?: string;
   /**
    * The soft keyboard is down while the bar stays on screen (#2499): the slot that hides the keyboard reads Show keyboard
-   * and raises it instead, and nothing else about the bar changes.
+   * and raises it instead.
    */
   readonly keyboardDown?: boolean;
   readonly onShowKeyboard?: () => void;
   /** Show keyboard's press as it lands (a primary pointerdown), a task before `onShowKeyboard` (#2048). */
   readonly onShowKeyboardStart?: (button: HTMLButtonElement, pointerId: number) => void;
+  /**
+   * The arrow keys, fixed beside the keyboard's toggle so they never scroll away (#2604), by the direction pad's ids.
+   * Unset where the bar has no terminal cursor to move (the Settings preview).
+   */
+  readonly onArrow?: (id: ArrowId) => void;
   /** Wraps the Switch session button, e.g. in the menu it opens. */
   readonly renderSessions?: (trigger: ReactElement) => ReactNode;
   readonly className?: string;
@@ -106,7 +132,7 @@ export interface ExtraKeysBarProps {
 /**
  * The phone's terminal keys, one rounded pill riding on the soft keyboard. Everything that scrolls sits in the row on
  * the left: the active pack's keys, the person's own keys behind a divider, the arrow-pad toggle, Switch session and
- * Paste. The two slots on the right never scroll: the input field and the keyboard's toggle. Every key is
+ * Paste. The slots on the right never scroll: the input field, the arrow keys and the keyboard's toggle. Every key is
  * a 44 pt target, and pressing one leaves the text focus (and so the keyboard) where it was. A latched modifier inverts
  * to solid ink with a bar under its label, so it reads as on in both themes.
  */
@@ -209,23 +235,39 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
               <TextCursorInput />
             </button>
           )}
-          <button
-            type="button"
-            aria-label={keyboardDown ? "Show keyboard" : (props.hideLabel ?? "Hide keyboard")}
-            onPointerDown={
-              !keyboardDown || onShowKeyboardStart === undefined
-                ? undefined
-                : (event) => {
-                    if (event.button !== 0 || !event.isPrimary) return;
-                    onShowKeyboardStart(event.currentTarget, event.pointerId);
-                  }
-            }
-            onMouseDown={keepFocus}
-            onClick={keyboardDown ? props.onShowKeyboard : props.onHideKeyboard}
-            className={cn(key, idleKey, inputActive && "col-start-2 row-start-2")}
-          >
-            {keyboardDown ? <Keyboard /> : <KeyboardOff />}
-          </button>
+          <div className={cn("flex items-center", inputActive && "col-start-2 row-start-2")}>
+            {props.onArrow === undefined
+              ? null
+              : ARROWS.map((arrow) => (
+                  <button
+                    key={arrow.id}
+                    type="button"
+                    aria-label={arrow.name}
+                    onMouseDown={keepFocus}
+                    onClick={() => props.onArrow?.(arrow.id)}
+                    className={cn(key, idleKey)}
+                  >
+                    {arrow.icon}
+                  </button>
+                ))}
+            <button
+              type="button"
+              aria-label={keyboardDown ? "Show keyboard" : (props.hideLabel ?? "Hide keyboard")}
+              onPointerDown={
+                !keyboardDown || onShowKeyboardStart === undefined
+                  ? undefined
+                  : (event) => {
+                      if (event.button !== 0 || !event.isPrimary) return;
+                      onShowKeyboardStart(event.currentTarget, event.pointerId);
+                    }
+              }
+              onMouseDown={keepFocus}
+              onClick={keyboardDown ? props.onShowKeyboard : props.onHideKeyboard}
+              className={cn(key, idleKey)}
+            >
+              {keyboardDown ? <Keyboard /> : <KeyboardOff />}
+            </button>
+          </div>
         </div>
       </div>
     </div>

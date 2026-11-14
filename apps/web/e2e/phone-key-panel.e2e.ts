@@ -2,16 +2,16 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { fakeSoftKeyboard, key, keysBar, PHONE } from "./phone-key-bar.ts";
 
-// A touch phone's keys are one panel whether the soft keyboard is up or down (#2499): the Type field with Send in a row
-// of its own, then the keys in one flat row that ends in the keyboard's own toggle. Putting the keyboard down only puts
-// the keyboard down; the panel keeps its structure, its keys' order and their look.
+// A touch phone's keys are one panel whether the soft keyboard is up or down (#2499): the keys in one flat row that ends
+// in the arrow keys and the keyboard's own toggle, the same structure, order and look in both states. The Type field
+// with Send takes a row of its own above them only while the keyboard is up (#2604).
 test.use({ serviceWorkers: "block", ...PHONE });
 
 /** The keyboard's toggle at the row's end: Hide keyboard while it is up, Show keyboard while it is down. */
 const TOGGLES = new Set(["Hide keyboard", "Show keyboard"]);
 
 interface Panel {
-  /** Every element under the panel, outside the icons' own drawing: its depth, tag, role and slot. */
+  /** Every element under the key row's scroller, outside the icons' own drawing: its depth, tag, role and slot. */
   readonly structure: readonly string[];
   /** The panel's controls in document order, the toggle by its slot rather than its state's name. */
   readonly order: readonly string[];
@@ -21,7 +21,7 @@ interface Panel {
   readonly typeRow: readonly string[];
   /** The Type row is drawn above the key row: the field's and Send's bottoms against the key row's top. */
   readonly typeAbove: boolean;
-  /** The panel's and the key row's drawn size, rounded to the px. */
+  /** The key row's drawn size, rounded to the px. */
   readonly size: string;
 }
 
@@ -41,10 +41,10 @@ async function panel(page: Page): Promise<Panel> {
         if (el.tagName.toLowerCase() === "svg") return;
         for (const child of el.children) walk(child, depth + 1);
       };
-      walk(bar, 0);
+      const scroller = bar.querySelector("[data-slot=terminal-keys-scroll]");
+      if (scroller !== null) walk(scroller, 0);
       const controls = [...bar.querySelectorAll("button, textarea, input")];
-      const keys = [...bar.querySelectorAll("[data-slot=terminal-keys-scroll] button")];
-      const toggle = [...bar.querySelectorAll("button")].find((button) => toggles.includes(button.ariaLabel ?? ""));
+      const keys = [...bar.querySelectorAll("button")].filter((button) => button.ariaLabel !== "Send");
       const look = (el: Element): string => {
         const css = getComputedStyle(el);
         const box = el.getBoundingClientRect();
@@ -74,20 +74,18 @@ async function panel(page: Page): Promise<Panel> {
         typeRow: [field, send].map((el) => (el === null || el === undefined ? "missing" : look(el))),
         structure,
         order: controls.map((el) => (el.tagName.toLowerCase() === "button" ? name(el) : el.tagName.toLowerCase())),
-        styles: [...keys, ...(toggle === undefined ? [] : [toggle])].map(look),
-        size: [bar, bar.querySelector("[data-slot=terminal-keys-scroll]")]
-          .map((el) => {
-            const box = el?.getBoundingClientRect();
-            return box === undefined ? "none" : `${Math.round(box.width)}x${Math.round(box.height)}`;
-          })
-          .join(", "),
+        styles: keys.map(look),
+        size: (() => {
+          const box = scroller?.getBoundingClientRect();
+          return box === undefined ? "none" : `${Math.round(box.width)}x${Math.round(box.height)}`;
+        })(),
       };
     },
     [...TOGGLES],
   );
 }
 
-test("at 390 the keys are one panel with the keyboard down and up: the same structure, order and look (#2499)", async ({
+test("at 390 the keys are one panel with the keyboard down and up, the Type row only while it is up (#2499, #2604)", async ({
   page,
 }) => {
   await fakeSoftKeyboard(page);
@@ -113,21 +111,22 @@ test("at 390 the keys are one panel with the keyboard down and up: the same stru
   expect(screen.y + screen.height).toBeLessThanOrEqual(bar.y + 1);
   expect(bar.y + bar.height).toBeLessThanOrEqual(below.y + 1);
 
-  // Up: the same panel rides on the keyboard.
+  // Down: no Type row, the keys alone, ending in the arrow keys and the toggle.
+  expect(down.typeRow).toEqual(["missing", "missing"]);
+  expect(down.order.slice(-5)).toEqual(["Left arrow", "Up arrow", "Down arrow", "Right arrow", "keyboard toggle"]);
+
+  // Up: the same keys ride on the keyboard, under the Type field and Send.
   await keysBar(page).getByRole("button", { name: "Show keyboard", exact: true }).click();
   await expect(keysBar(page).getByRole("button", { name: "Hide keyboard", exact: true })).toBeVisible();
   const up = await panel(page);
   expect(up.structure).toEqual(down.structure);
-  expect(up.order).toEqual(down.order);
+  expect(up.order.filter((control) => control !== "textarea" && control !== "Send")).toEqual(down.order);
   expect(up.styles).toEqual(down.styles);
-  expect(up.typeRow).toEqual(down.typeRow);
   expect(up.size).toEqual(down.size);
-  // The Type field and Send across the top, the keys under them, the toggle last.
-  expect(down.typeAbove).toBe(true);
-  expect(up.order).toEqual(expect.arrayContaining(["textarea", "Send"]));
-  expect(up.order.at(-1)).toBe("keyboard toggle");
+  expect(up.typeAbove).toBe(true);
+  expect(up.typeRow).not.toContain("missing");
 
-  // Down again: only the keyboard went.
+  // Down again: the keyboard and its Type row went, nothing else.
   await keysBar(page).getByRole("button", { name: "Hide keyboard", exact: true }).click();
   await expect(keysBar(page).getByRole("button", { name: "Show keyboard", exact: true })).toBeVisible();
   expect(await panel(page)).toEqual(down);
