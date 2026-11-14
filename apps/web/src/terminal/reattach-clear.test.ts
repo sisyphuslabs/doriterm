@@ -35,6 +35,15 @@ test("a build past a tag, named by git describe, counts as that release (#2526 r
   expect(reattachClear("0.1.20-9-gabc1234")).toBe(SCREEN_ONLY);
 });
 
+test("build metadata is read past; a dirty build or an uppercase hash keeps the output (#2526 review)", () => {
+  expect(reattachClear("0.1.21+build.1")).toBe(PRIMARY_TOO);
+  expect(reattachClear("0.1.21-4-gabc1234+build.1")).toBe(PRIMARY_TOO);
+  expect(reattachClear("0.1.20+build.1")).toBe(SCREEN_ONLY);
+  expect(reattachClear("0.1.21-rc.1+build.1")).toBe(SCREEN_ONLY);
+  expect(reattachClear("0.1.21-4-gabc1234-dirty")).toBe(SCREEN_ONLY);
+  expect(reattachClear("0.1.21-4-gABC1234")).toBe(SCREEN_ONLY);
+});
+
 test("a terminal on an added machine is repainted by that machine's core, as machine.list reports it (#2516 review)", () => {
   const views = [
     { name: "build-box", version: "0.1.21" },

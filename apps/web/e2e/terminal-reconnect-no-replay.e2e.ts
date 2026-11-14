@@ -251,8 +251,8 @@ const screenText = (terminal: Locator): Promise<string> =>
  * repaint leaves the alternate screen and starts with ESC[2J on the primary one, which over the marked prompt scrolls that
  * screen into history. herdr-core before 0.1.21 does not draw the primary screen again, so the history is then the only
  * place that output is and the view must not erase the primary screen first; from 0.1.21 the repaint draws it again, so
- * the view clears it too, or it would be kept twice (#2514, reattach-clear.ts). Either way a second reconnect adds
- * nothing to the history and every line shows once after the program exits.
+ * the view clears it too, or it would be kept twice (#2514, reattach-clear.ts). This test runs the path of the core CI
+ * pins (.github/workflows/ci.yml); reattach-clear.test.ts covers the clear the view writes for either core.
  */
 test("a reconnect under a full-screen program keeps the output behind it, once (#1997)", async ({ page }) => {
   const link = await routeHcSocket(page);
