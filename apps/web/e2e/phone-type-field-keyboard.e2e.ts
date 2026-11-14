@@ -90,7 +90,9 @@ for (const { name, shape } of SHAPES) {
     await chatComposer(page).getByRole("button", { name: "Close chat" }).click();
     await expect(field(page)).toHaveCount(0);
     await expect(keysBar(page)).toBeVisible();
+    // Closing went back to rest, keyboard down (#2604); the tap on Chat raises it again, as a phone's tap on a field does.
     await key(page, "Chat").click();
+    await showKeyboard(page, 336);
     await expect(field(page)).toHaveValue("echo typed-above-the-keyboard");
     await expectAboveKeyboard(page);
   });
