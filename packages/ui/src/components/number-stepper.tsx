@@ -26,16 +26,16 @@ export function NumberStepper({ label, className, ...props }: NumberStepperProps
     <NumberField.Root {...props} className={cn("inline-flex", className)}>
       <NumberField.Group className="inline-flex items-center overflow-hidden rounded-md border border-input bg-raised data-disabled:border-border">
         <NumberField.Decrement aria-label={`Decrease ${label}`} className={stepButton}>
-          {/* An exact 2 px stroke on the 14 px glyph lands on whole pixels, so at 1x it paints its token colour, not an
+          {/* An exact 2 px stroke on the 14 px glyph (absoluteStrokeWidth scales by `size`, so it must be the drawn 14) lands on whole pixels, so at 1x it paints its token colour, not an
               antialiased half-pixel line much fainter than it (#2513, visual QA: "-" read 1.79:1 at 1x). */}
-          <Minus absoluteStrokeWidth strokeWidth={2} />
+          <Minus size={14} absoluteStrokeWidth strokeWidth={2} />
         </NumberField.Decrement>
         <NumberField.Input
           aria-label={label}
           className="h-(--control) w-12 border-x border-border bg-transparent text-center text-base text-foreground outline-none tabular-nums data-disabled:text-muted-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring"
         />
         <NumberField.Increment aria-label={`Increase ${label}`} className={stepButton}>
-          <Plus absoluteStrokeWidth strokeWidth={2} />
+          <Plus size={14} absoluteStrokeWidth strokeWidth={2} />
         </NumberField.Increment>
       </NumberField.Group>
     </NumberField.Root>
