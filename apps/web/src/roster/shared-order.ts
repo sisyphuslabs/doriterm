@@ -258,7 +258,9 @@ export class SharedOrder {
     value: JsonObject,
   ): Promise<void> {
     if (!(await this.#raise(source, goal, value))) return;
-    for (const entry of rest) void this.#raise(entry, goal, value);
+    // The source's write lands as a publish that runs bring-up again, which may already be raising these copies.
+    for (const entry of rest)
+      if (!sameRank(this.#raising.get(entry.id) ?? null, goal)) void this.#raise(entry, goal, value);
   }
 
   /** Writes `value` over one copy only as it was read: a write that landed since is read first and ranked again. */
