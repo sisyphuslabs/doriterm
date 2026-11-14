@@ -44,7 +44,9 @@ test("a pointer read for a replace gets the stored object's strong ETag, so the 
   const pointer = await store.get("channels/stable.json");
   expect(pointer?.etag).toBe(stored);
   const body = new TextEncoder().encode("{}");
-  expect(await store.put("channels/stable.json", body, { replace: pointer?.etag ?? "" }, "application/json")).toBe(true);
+  expect(await store.put("channels/stable.json", body, { replace: pointer?.etag ?? "" }, "application/json")).toBe(
+    true,
+  );
 });
 
 test("a write signs its body's hash and its condition, and a 412 or a 404 is an answer, not an error", async () => {
