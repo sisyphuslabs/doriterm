@@ -70,11 +70,11 @@ test("at 390 Chat swaps the row for a composer that sends a line, and closes bac
 for (const state of ["rest", "keyboard"] as const) {
   test(`at 390 the arrow pad pops up over the row at ${state}, centred on its button (#2604)`, async ({ page }) => {
     const terminal = await openPhoneTerminal(page);
+    await page.keyboard.type("cat -v\r");
     if (state === "rest") {
       await key(page, "Hide keyboard").click();
       await expect(key(page, "Show keyboard")).toBeVisible();
     }
-    await page.keyboard.type("cat -v\r");
     const toggle = key(page, "Arrow keys");
     await toggle.click();
     const pad = page.getByRole("group", { name: "Arrow keys" });

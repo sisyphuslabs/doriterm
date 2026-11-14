@@ -1,4 +1,4 @@
-import { DirectionPad, ExtraKeysBar, KeyboardButton, Menu, MenuItem } from "@doriface/ui";
+import { DirectionPad, ExtraKeysBar, KeyboardButton, keepFocus, Menu, MenuItem } from "@doriface/ui";
 import { Plus, TextSelect, X } from "lucide-react";
 import { type CSSProperties, type RefObject, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -16,10 +16,10 @@ export function keysBottom(inset: number): string {
 }
 
 /**
- * The keys bar's own height at rest, which the terminal keeps clear until the bar reports its drawn one: two 2.75rem rows
- * with 0.25rem between them, the panel's 0.25rem padding and 1px border, and 0.25rem above and below it (#1551).
+ * The keys bar's own height at rest, which the terminal keeps clear until the bar reports its drawn one: its one row of
+ * keys in a 3.25rem pill, and 0.25rem above and below it (#2604).
  */
-export const KEYS_BAR_HEIGHT = "6.875rem";
+export const KEYS_BAR_HEIGHT = "3.75rem";
 
 /** How far up from the terminal's bottom the round keyboard button reaches: its 3rem and the gap below it. */
 export const KEYBOARD_BUTTON_CLEARANCE = "calc(max(1rem, calc(var(--safe-bottom) + 0.5rem)) + 3rem)";
@@ -181,6 +181,7 @@ export function PhoneKeys(props: PhoneKeysProps) {
           <button
             type="button"
             aria-label="Attach files"
+            onMouseDown={keepFocus}
             onClick={() => files.current?.click()}
             className="flex size-11 items-center justify-center rounded-full text-foreground outline-none active:bg-selected focus-visible:outline-2 focus-visible:outline-ring [&_svg]:size-5"
           >
@@ -189,6 +190,7 @@ export function PhoneKeys(props: PhoneKeysProps) {
           <button
             type="button"
             aria-label="Close chat"
+            onMouseDown={keepFocus}
             onClick={() => setChat(false)}
             className="flex size-11 items-center justify-center rounded-full text-foreground outline-none active:bg-selected focus-visible:outline-2 focus-visible:outline-ring [&_svg]:size-5"
           >

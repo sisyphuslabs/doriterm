@@ -85,7 +85,7 @@ async function panel(page: Page): Promise<Panel> {
   );
 }
 
-test("at 390 the keys are one panel with the keyboard down and up, the Type row only while it is up (#2499, #2604)", async ({
+test("at 390 the keys are one panel with the keyboard down and up, with no Type row in either (#2499, #2604)", async ({
   page,
 }) => {
   await fakeSoftKeyboard(page);
@@ -113,20 +113,19 @@ test("at 390 the keys are one panel with the keyboard down and up, the Type row 
 
   // Down: no Type row, the keys alone, ending in the arrow keys and the toggle.
   expect(down.typeRow).toEqual(["missing", "missing"]);
-  expect(down.order.slice(-5)).toEqual(["Left arrow", "Up arrow", "Down arrow", "Right arrow", "keyboard toggle"]);
+  expect(down.order.slice(-4)).toEqual(["Arrow keys", "Switch session", "Chat", "keyboard toggle"]);
 
   // Up: the same keys ride on the keyboard, under the Type field and Send.
   await keysBar(page).getByRole("button", { name: "Show keyboard", exact: true }).click();
   await expect(keysBar(page).getByRole("button", { name: "Hide keyboard", exact: true })).toBeVisible();
   const up = await panel(page);
   expect(up.structure).toEqual(down.structure);
-  expect(up.order.filter((control) => control !== "textarea" && control !== "Send")).toEqual(down.order);
+  expect(up.order).toEqual(down.order);
   expect(up.styles).toEqual(down.styles);
   expect(up.size).toEqual(down.size);
-  expect(up.typeAbove).toBe(true);
-  expect(up.typeRow).not.toContain("missing");
+  expect(up.typeRow).toEqual(["missing", "missing"]);
 
-  // Down again: the keyboard and its Type row went, nothing else.
+  // Down again: only the keyboard went.
   await keysBar(page).getByRole("button", { name: "Hide keyboard", exact: true }).click();
   await expect(keysBar(page).getByRole("button", { name: "Show keyboard", exact: true })).toBeVisible();
   expect(await panel(page)).toEqual(down);

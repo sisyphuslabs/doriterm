@@ -1,19 +1,17 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
-import { openPhoneTerminal, panViewport, PHONE } from "./phone-key-bar.ts";
+import { openChat, openPhoneTerminal, panViewport, PHONE } from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE });
 
 const field = (page: Page) => page.getByLabel("Type into the terminal");
-const bar = (page: Page) => page.getByRole("toolbar", { name: "Terminal keys" });
+const bar = (page: Page) => page.getByRole("group", { name: "Chat" });
 const focusedLabel = (page: Page) =>
   page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.tagName ?? null);
 
 async function typeFieldUp(page: Page): Promise<void> {
-  const terminal = await openPhoneTerminal(page);
-  await terminal.tap();
-  await field(page).tap();
-  await expect(field(page)).toBeFocused();
+  await openPhoneTerminal(page);
+  await openChat(page);
 }
 
 for (const px of [120, 336]) {

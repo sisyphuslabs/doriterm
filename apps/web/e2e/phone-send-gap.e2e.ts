@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { join } from "node:path";
 import { expect, test } from "./fixtures.ts";
-import { key, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
+import { key, openChat, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 // No clipboard permissions here: WebKit refuses them, and this spec has to run there too (iOS is the phone it guards).
 test.use({ serviceWorkers: "block", ...PHONE });
@@ -48,9 +48,8 @@ for (const theme of ["day", "night"] as const) {
     await page.addInitScript((chosen) => {
       localStorage.setItem("doriface.appearance", JSON.stringify({ theme: chosen, custom: [] }));
     }, theme);
-    const terminal = await openPhoneTerminal(page);
-    await terminal.click();
-    await expect(field(page)).toBeVisible();
+    await openPhoneTerminal(page);
+    await openChat(page);
     await expect.poll(async () => (await field(page).boundingBox())?.height).toBe(44);
     const idle = await measure(page);
     // 0.5rem: what the phone chrome leaves between two pressable controls (the round buttons' 3.5rem slot is a 3rem

@@ -1,47 +1,37 @@
 import type { Page } from "@playwright/test";
 import { KEYS_BAR_HEIGHT } from "../src/workspace/phone-keys.tsx";
 import { expect, test } from "./fixtures.ts";
-import { expectTouchTargets, key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
+import { chatComposer, expectTouchTargets, key, keysBar, openChat, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
-// With the soft keyboard up the keys bar is two rows in one panel: the Type field across the width with Send at its end,
-// then the keys with the hide-keyboard key at the row's end (#1551). Enter is one of the default keys.
+// The keys are one row (#2604); Chat swaps them for a composer whose field spans the width with Send at its end (#1551).
+// Enter is one of the default keys.
 test.use({ serviceWorkers: "block", ...PHONE });
 
-const field = (page: Page) => keysBar(page).getByRole("textbox");
+const field = (page: Page) => chatComposer(page).getByRole("textbox");
 
 for (const width of [390, 320]) {
-  test(`at ${width} the Type field and Send take a row of their own above the keys`, async ({ page }) => {
+  test(`at ${width} Chat's field and Send span the composer, above the terminal's bottom`, async ({ page }) => {
     const terminal = await openPhoneTerminal(page, width);
-    const bar = keysBar(page);
+    await openChat(page);
+    const bar = chatComposer(page);
     await expect(bar).toBeVisible();
     await expectTouchTargets(bar);
-    const [box, input, send, scroll] = await Promise.all([
+    const [box, input, send] = await Promise.all([
       bar.boundingBox(),
       field(page).boundingBox(),
       key(page, "Send").boundingBox(),
-      page.locator('[data-slot="terminal-keys-scroll"]').boundingBox(),
     ]);
-    if (box === null || input === null || send === null || scroll === null) throw new Error("no box");
-    // The field row sits above the key row and the field takes most of the bar's width.
-    expect(input.y + input.height).toBeLessThanOrEqual(scroll.y + 1);
-    expect(send.y + send.height).toBeLessThanOrEqual(scroll.y + 1);
+    if (box === null || input === null || send === null) throw new Error("no box");
+    // The field and Send share one row, and the field takes most of the composer's width.
+    expect(Math.abs(input.y + input.height / 2 - (send.y + send.height / 2))).toBeLessThanOrEqual(2);
     expect(input.width).toBeGreaterThan(box.width * 0.6);
-    const shown = await page.locator('[data-slot="terminal-keys-scroll"]').evaluate((el) => {
-      const edge = el.getBoundingClientRect();
-      return [...el.querySelectorAll("button")]
-        .filter((button) => button.getBoundingClientRect().right <= edge.right + 1)
-        .map((button) => button.getAttribute("aria-label"));
-    });
-    // Beside the arrows fixed at the row's end (#2604) it shows its first keys, Escape leading.
-    expect(shown.length).toBeGreaterThanOrEqual(width === 390 ? 3 : 1);
-    expect(shown[0]).toBe("Escape");
     const screen = await terminal.boundingBox();
     if (screen === null) throw new Error("no terminal box");
     expect(screen.y + screen.height).toBeLessThanOrEqual(box.y + 1);
   });
 }
 
-test("the height the terminal keeps clear before the bar reports its own is the two-row bar's (#1555)", async ({
+test("the height the terminal keeps clear before the bar reports its own is the one-row bar's (#1555, #2604)", async ({
   page,
 }) => {
   await openPhoneTerminal(page);

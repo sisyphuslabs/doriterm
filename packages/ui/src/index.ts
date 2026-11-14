@@ -21,6 +21,7 @@ export { DirectionPad, type DirectionPadProps } from "./components/direction-pad
 export {
   ExtraKeysBar,
   KeyboardButton,
+  keepFocus,
   type ExtraKey,
   type ExtraKeysBarProps,
   type KeyboardButtonProps,
