@@ -91,7 +91,7 @@ describe("useTabOpening (#2470 review)", () => {
     const tab = doc === null || doc === undefined ? undefined : tabsOf(doc)[0];
     const panes = tab === undefined ? [] : panesOf(tab.root);
     expect(panes.map((pane) => pane.terminal)).toEqual(["t7"]);
-    expect(seen.shown).toEqual([{ key: `${tabKey(null, tab?.id ?? "")}`, pane: panes[0]?.id ?? null }]);
+    expect(seen.shown).toEqual([{ key: tabKey(null, tab?.id ?? ""), pane: panes[0]?.id ?? null }]);
     expect(seen.keptHere).toEqual([]);
     expect(seen.loose).toEqual([]);
   });
