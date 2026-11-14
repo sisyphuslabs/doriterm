@@ -133,8 +133,11 @@ export class SharedOrder {
     const ready = [...this.#live].flatMap(([id, doc]) =>
       doc.state.phase === "ready" ? [{ id, state: doc.state }] : [],
     );
-    this.#state = this.#merged(ready);
-    this.#changed(this.#state);
+    const next = this.#merged(ready);
+    // Readers are told only when the order they read changes: a copy dropped or read again with the same order is not news.
+    const same = JSON.stringify(next) === JSON.stringify(this.#state);
+    this.#state = next;
+    if (!same) this.#changed(next);
     this.#bringUp(ready);
   }
 
