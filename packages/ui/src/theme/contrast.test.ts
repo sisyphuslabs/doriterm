@@ -79,6 +79,11 @@ describe.each(Object.entries(BUILTIN_PALETTES))("%s meets WCAG 2.2 AA", (_, pale
     expect(worstContrast(role("disabled-ink"), opaque)).toBeGreaterThanOrEqual(AA_TEXT);
   });
 
+  test("--muted-foreground holds 4.5:1 on the hover wash, where a highlighted disabled menu item draws it (#2513 review)", () => {
+    const washed = [canvasRgb, surfaceRgb, chromeRgb, popoverRgb].map((under) => flatten(role("hover"), under));
+    expect(worstContrast(role("muted-foreground"), washed)).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
   test("primary button label", () => {
     expect(worstContrast(role("primary-foreground"), [flatten(role("primary"), base)])).toBeGreaterThanOrEqual(AA_TEXT);
   });

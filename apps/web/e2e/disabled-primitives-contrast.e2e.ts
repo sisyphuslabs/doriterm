@@ -114,6 +114,11 @@ for (const theme of ["day", "night"] as const) {
       await page.getByRole("menu").screenshot({ path: test.info().outputPath(`${theme}-menu.png`) });
       expect(disabled.ratio, disabled.label).toBeGreaterThanOrEqual(4.5);
       expect(disabled.step, disabled.label).toBeGreaterThanOrEqual(1.5);
+      // A disabled item stays reachable by the arrow keys (Base UI keeps it focusable), and highlighted it sits on the
+      // row's hover wash: its label still holds 4.5:1 there (#2513 review).
+      await item.evaluate((element) => element.setAttribute("data-highlighted", ""));
+      const highlighted = await measure(page, item);
+      expect(highlighted.ratio, `highlighted ${highlighted.label}`).toBeGreaterThanOrEqual(4.5);
     });
   });
 }

@@ -202,6 +202,9 @@ export function MenuItem({ icon, keys, destructive = false, children, ...props }
         "data-highlighted:bg-hover [&_svg:not([data-slot=spinner])]:size-3.5 [&_svg]:text-muted-foreground",
         destructive && "text-destructive [&_svg]:text-destructive",
         "data-disabled:text-disabled-ink data-disabled:[&_svg]:text-disabled-ink",
+        // Highlighted (a disabled item stays reachable by the keys), it sits on the hover wash, where only the muted ink keeps
+        // 4.5:1 in every theme (#2513 review).
+        "data-disabled:data-highlighted:text-muted-foreground data-disabled:data-highlighted:[&_svg]:text-muted-foreground",
       )}
     >
       {icon}
