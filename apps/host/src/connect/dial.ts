@@ -42,17 +42,34 @@ export interface Dialed {
   readonly held: HeldLink;
 }
 
+/**
+ * Reaching the host failed: the relay, the handshake, or the host's answer (as against a refusal this machine makes
+ * itself before dialing: not paired, no fingerprint, a saved host that needs --replace). The command exits 255 on
+ * it, as ssh does when the connection itself fails (exit-code.ts).
+ */
+export class HostUnreachableError extends Error {
+  override readonly name = "HostUnreachableError";
+
+  constructor(cause: Error) {
+    super(cause.message, { cause });
+  }
+}
+
 /** Pairs first when the target is a link or code (again, if this machine paired before), then opens an IK session. */
 export async function dial(target: ConnectTarget, options: DialOptions): Promise<Dialed> {
   const host = await resolveHost(target, options);
   const relayUrl = options.relayUrl ?? host.relayUrl;
-  const link = await connectRelayClient({ relayUrl, hostId: host.hostId, ...socketOf(options) });
   try {
-    const held = new HeldLink(link);
-    const secure = await secureLink(held, initiator(host, options.device));
-    return { secure, link, held };
+    const link = await connectRelayClient({ relayUrl, hostId: host.hostId, ...socketOf(options) });
+    try {
+      const held = new HeldLink(link);
+      const secure = await secureLink(held, initiator(host, options.device));
+      return { secure, link, held };
+    } catch (error) {
+      throw refusal(host.hostId, error);
+    }
   } catch (error) {
-    throw refusal(host.hostId, error);
+    throw new HostUnreachableError(error instanceof Error ? error : new Error(String(error)));
   }
 }
 
