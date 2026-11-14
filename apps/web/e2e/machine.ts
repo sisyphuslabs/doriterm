@@ -122,11 +122,19 @@ export function running(pid: number): boolean {
   }
 }
 
-/** The `pid` of the reply with `id` in hc connect's output (one JSON-RPC reply per line); undefined when it has none. */
+/**
+ * The `pid` of the reply with `id` in hc connect's output (one JSON-RPC reply per line); undefined when it has none.
+ * A line that is not JSON (hc's own words on a failed connect) is no reply and is passed over.
+ */
 export function replyPid(output: string, id: number): number | undefined {
   for (const line of output.split("\n")) {
     if (line.trim() === "") continue;
-    const reply: unknown = JSON.parse(line);
+    let reply: unknown;
+    try {
+      reply = JSON.parse(line);
+    } catch {
+      continue;
+    }
     if (Reflect.get(Object(reply), "id") !== id) continue;
     const pid: unknown = Reflect.get(Object(Reflect.get(Object(reply), "result")), "pid");
     return typeof pid === "number" ? pid : undefined;
@@ -141,7 +149,11 @@ export function replyPid(output: string, id: number): number | undefined {
 async function exitOf(pid: number, withinMs: number): Promise<void> {
   const deadline = Date.now() + withinMs;
   while (running(pid)) {
-    if (Date.now() > deadline) throw new Error(`the machine's core (pid ${pid}) did not exit within ${withinMs} ms`);
+    if (Date.now() > deadline) {
+      // Killed before the throw, so a teardown that stops at the error leaves no core behind it (#2527 review).
+      process.kill(pid, "SIGKILL");
+      throw new Error(`the machine's core (pid ${pid}) did not exit within ${withinMs} ms, so it was killed`);
+    }
     // oxlint-disable-next-line no-await-in-loop -- one look at the process table per round, until the core is gone
     await Bun.sleep(25);
   }
@@ -185,8 +197,12 @@ export async function addMachine(
     await control.exited;
     // The stop resolves once the core has exited, not once it has answered: a check right after it, or a dial that
     // follows, then never meets a core still on its way out (#2525).
-    const pid = replyPid(await replies, 1);
-    if (pid !== undefined) await exitOf(pid, CORE_EXIT_BOUND_MS);
+    const output = await replies;
+    const pid = replyPid(output, 1);
+    // hc connect starts a core that is not running, so a status reply without a pid is a failed call, not a missing core.
+    if (pid === undefined)
+      throw new Error(`the machine's core did not name its pid, so its exit cannot be awaited: ${output}`);
+    await exitOf(pid, CORE_EXIT_BOUND_MS);
   };
   try {
     writeFileSync(join(spec.dir, "env.json"), JSON.stringify({ hc, env: own }));
@@ -204,7 +220,18 @@ export async function addMachine(
     if (code !== 0) throw new Error(`hc machine add for the second core failed (exit ${code}): ${why}`);
     if (withSeeds) await seedsListed(hc, env, spec);
   } catch (error) {
-    await stop();
+    try {
+      await stop();
+    } catch (stopError) {
+      // The setup's error stays first in the list: it is what went wrong; the stop's failure is kept beside it (#2527 review).
+      throw new AggregateError(
+        [error, stopError],
+        `the second core's setup failed, and so did its stop: ${String(error)}`,
+        {
+          cause: stopError,
+        },
+      );
+    }
     throw error;
   }
   return stop;
