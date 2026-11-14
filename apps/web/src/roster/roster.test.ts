@@ -1,4 +1,4 @@
-import { LAYOUT_DOC, ORDER_DOC, PINS_DOC, storedPins } from "@doriface/protocol/layout";
+import { LAYOUT_DOC, ORDER_DOC, PINS_DOC, stampOrder, storedPins } from "@doriface/protocol/layout";
 import { describe, expect, test } from "bun:test";
 import type { RosterChange } from "./changes.ts";
 import { FakeCore, machine, space, terminal } from "./fake-core.test-support.ts";
@@ -287,7 +287,12 @@ describe("a doc event is never lost to a machine list that is behind it (#1876 r
 
     core.machines = [{ ...machine("rivendell"), id: "rohan-id" }];
     core.setDoc(ORDER_DOC, { machine_order: ["rohan-id"] }, "rivendell", true);
-    core.setDoc(ORDER_DOC, { machine_order: ["rohan-id", "core"] }, "rivendell");
+    // Another device's later write: stamped past whatever this page's first read stamped.
+    core.setDoc(
+      ORDER_DOC,
+      stampOrder({ machine_order: ["rohan-id", "core"] }, { n: 99, at: 1, by: "other" }),
+      "rivendell",
+    );
 
     await until(
       roster,
