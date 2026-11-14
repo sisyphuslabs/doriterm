@@ -20,7 +20,15 @@ import { createPrivateJson, ensureStateDir, readJson, writePrivateJson } from ".
 import { KnownHosts } from "./known-hosts.ts";
 import { SubscriptionStore } from "../push/subscriptions.ts";
 import { DEFAULT_LOCK_TIMEOUT_MS, withStateLock } from "./lock.ts";
-import { MESH_FILE, type MeshFile, meshFileJson, newMeshFile, parseMeshFile, writeVersionOf } from "./mesh-file.ts";
+import {
+  MESH_FILE,
+  type MeshFile,
+  meshFileJson,
+  newMeshFile,
+  parseMeshFile,
+  sessionTimes,
+  writeVersionOf,
+} from "./mesh-file.ts";
 import { type MergeResult, type MeshTx, ownN, Transaction } from "./mesh-tx.ts";
 
 export { CounterBehindError, type MergeResult, type MeshTx } from "./mesh-tx.ts";
@@ -276,14 +284,8 @@ export class MeshStore {
 
   #indexed(file: MeshFile, view = this.#evaluate(file.records)): MeshFile {
     const index = indexOf(file.records, view, file.generation);
-    const previous = this.read();
-    const seen = new Map(
-      (previous?.meshId === file.meshId ? (previous.index?.members ?? []) : []).flatMap((member) =>
-        member.kind === "client" && member.lastSessionAt !== undefined
-          ? [[member.signPub, member.lastSessionAt] as const]
-          : [],
-      ),
-    );
+    // Read from the saved file, not the parsed index: an index under other rules parses as absent (#1483).
+    const seen = this.read()?.meshId === file.meshId ? sessionTimes(readJson(this.#path)) : new Map<string, number>();
     const members = index.members.map((member) => {
       const lastSessionAt = member.kind === "client" ? seen.get(member.signPub) : undefined;
       return lastSessionAt === undefined ? member : { ...member, lastSessionAt };
