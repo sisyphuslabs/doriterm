@@ -94,21 +94,24 @@ test.describe("phone", () => {
     await expect(tabs.getByRole("tab")).toHaveCount(1);
   });
 
-  test("the phone's search field shows its whole hint beside the title (#2575)", async ({ page }) => {
-    await page.goto("/settings");
-    await expect(field(page)).toBeVisible();
-    // The hint's width in the field's own font, against the room the field leaves for text.
-    const fit = await field(page).evaluate((input: HTMLInputElement) => {
-      const style = getComputedStyle(input);
-      const context = document.createElement("canvas").getContext("2d");
-      if (context === null) return { hint: -1, room: 0 };
-      context.font = style.font;
-      const padding = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
-      return { hint: Math.ceil(context.measureText(input.placeholder).width), room: input.clientWidth - padding };
+  for (const width of [320, 360, 390]) {
+    test(`at ${width} the phone's search field shows its whole hint beside the title (#2575)`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto("/settings");
+      await expect(field(page)).toBeVisible();
+      // The hint's width in the field's own font, against the room the field leaves for text.
+      const fit = await field(page).evaluate((input: HTMLInputElement) => {
+        const style = getComputedStyle(input);
+        const context = document.createElement("canvas").getContext("2d");
+        if (context === null) return { hint: -1, room: 0 };
+        context.font = style.font;
+        const padding = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
+        return { hint: Math.ceil(context.measureText(input.placeholder).width), room: input.clientWidth - padding };
+      });
+      expect(fit.hint).toBeGreaterThan(0);
+      expect(fit.hint, `the hint takes ${fit.hint}px of the ${fit.room}px it has`).toBeLessThanOrEqual(fit.room);
     });
-    expect(fit.hint).toBeGreaterThan(0);
-    expect(fit.hint, `the hint takes ${fit.hint}px of the ${fit.room}px it has`).toBeLessThanOrEqual(fit.room);
-  });
+  }
 
   test("a tapped match opens its section with that row in view (#1528)", async ({ page }) => {
     await page.goto("/settings");
