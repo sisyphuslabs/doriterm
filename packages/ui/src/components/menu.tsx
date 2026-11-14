@@ -28,6 +28,8 @@ export interface MenuProps {
   readonly finalFocus?: ComponentProps<typeof BaseMenu.Popup>["finalFocus"];
   /** false: the page stays live while it is open, so what an item starts can take the keyboard at once. */
   readonly modal?: boolean;
+  /** The trigger cannot open the menu now: Base UI's trigger owns the button's disabled state, so it is set here. */
+  readonly disabled?: boolean;
 }
 
 /**
@@ -52,6 +54,7 @@ export function Menu(props: MenuProps) {
     fixedSide = false,
     finalFocus,
     modal,
+    disabled = false,
   } = props;
   const popup = useRef<HTMLDivElement | null>(null);
   return (
@@ -61,7 +64,7 @@ export function Menu(props: MenuProps) {
       {...(onOpenChange === undefined ? {} : { onOpenChange: (open: boolean) => onOpenChange(open) })}
       onOpenChangeComplete={(open) => open && revealCurrent(popup.current)}
     >
-      <BaseMenu.Trigger render={trigger} />
+      <BaseMenu.Trigger render={trigger} disabled={disabled} />
       <BaseMenu.Portal>
         <BaseMenu.Positioner
           {...(fixedSide ? { collisionAvoidance: { side: "none" } } : {})}
