@@ -27,6 +27,13 @@ test("a pre-release of a version past 0.1.21 repaints the primary screen like it
   expect(reattachClear("0.2.0-rc.1")).toBe(PRIMARY_TOO);
 });
 
+test("a build past a tag, named by git describe, counts as that release (#2526 review)", () => {
+  expect(reattachClear("0.1.21-4")).toBe(PRIMARY_TOO);
+  expect(reattachClear("hc 0.1.21-4-gabc1234")).toBe(PRIMARY_TOO);
+  expect(reattachClear("0.1.20-9")).toBe(SCREEN_ONLY);
+  expect(reattachClear("0.1.20-9-gabc1234")).toBe(SCREEN_ONLY);
+});
+
 test("a terminal on an added machine is repainted by that machine's core, as machine.list reports it (#2516 review)", () => {
   const views = [
     { name: "build-box", version: "0.1.21" },

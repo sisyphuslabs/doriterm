@@ -17,7 +17,8 @@ export const REPAINTS_PRIMARY_FROM = "0.1.21";
  * draws the primary screen again before it enters the alternate one, so the view leaves the alternate screen and clears
  * the primary one too; otherwise each reconnect scrolls one more copy into history and the program's exit shows the
  * redrawn one besides (#2514). A pre-release counts by its release number only when that is past 0.1.21 (a 0.1.21
- * pre-release may predate the change); an unknown or malformed version is read as an older core, which keeps the output
+ * pre-release may predate the change); a build past a tag, as git describe names it (`0.1.21-4`, `0.1.21-4-gabc1234`),
+ * holds that release and counts as it; an unknown or malformed version is read as an older core, which keeps the output
  * rather than erasing its only copy.
  */
 export function reattachClear(coreVersion: string | undefined): string {
@@ -25,7 +26,9 @@ export function reattachClear(coreVersion: string | undefined): string {
   const match = version === undefined ? null : /^(\d+\.\d+\.\d+)(-[0-9A-Za-z.-]+)?$/.exec(version);
   const release = match?.[1];
   const order = release === undefined ? -1 : compareHcVersions(release, REPAINTS_PRIMARY_FROM);
-  const repaintsPrimary = match?.[2] === undefined ? order >= 0 : order > 0;
+  const suffix = match?.[2];
+  const asRelease = suffix === undefined || /^-\d+(-g[0-9a-f]+)?$/.test(suffix);
+  const repaintsPrimary = asRelease ? order >= 0 : order > 0;
   return repaintsPrimary ? "\u001b[?1049l\u001b[H\u001b[J" : "\u001b[H\u001b[J";
 }
 
