@@ -519,4 +519,17 @@ describe("the route a start takes (#2531)", () => {
     expect(mesh.selected).toBe(made[1]);
     expect(loadSettings().hostId).toBe("a");
   });
+
+  it("goes through a member that answers when the paired one is down at a cold start, and saves nothing (desktop, no place in the address)", () => {
+    const paired = settingsWith([member("a"), member("b")]);
+    storing(paired);
+    const { mesh, made } = harness(paired);
+    made[0]?.fail();
+    made[1]?.start();
+    expect(mesh.selected).toBe(made[1]);
+    expect(loadSettings().hostId).toBe("a");
+    // Once it answers again the route stays where the session went: it is sticky, never a jump back.
+    made[0]?.start();
+    expect(mesh.selected).toBe(made[1]);
+  });
 });
