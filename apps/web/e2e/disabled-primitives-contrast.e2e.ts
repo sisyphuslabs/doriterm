@@ -3,11 +3,12 @@
 // still a visible step from the same control enabled.
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
-import { measure } from "./painted-contrast.ts";
+import { measure, screenGlyph, tokenStep } from "./painted-contrast.ts";
 
 /**
  * A disabled button's glyph measured against the same button with its disabled marks lifted, which paints the enabled
- * glyph, as a control at its bound sits beside its enabled neighbour: the step is the Button spec's 1.7 (#1241).
+ * glyph, as a control at its bound sits beside its enabled neighbour: the step is the one the tokens hold (--muted-foreground
+ * to --disabled-glyph), the Button spec's 1.7 where the glyph floor leaves room and less where it does not (#1241, #2513).
  */
 async function disabledGlyph(page: Page, button: Locator): ReturnType<typeof measure> {
   const marks = await button.evaluate((element) =>
@@ -75,14 +76,14 @@ for (const theme of ["day", "night"] as const) {
       await expect(increase).toBeDisabled();
       const glyph = await disabledGlyph(page, increase);
       expect(glyph.ratio, glyph.label).toBeGreaterThanOrEqual(3);
-      expect(glyph.step, glyph.label).toBeGreaterThanOrEqual(1.7);
+      expect(glyph.step, glyph.label).toBeGreaterThanOrEqual((await tokenStep(page)) * 0.97);
 
       // A ghost icon button (IconButton's default), disabled with the settings: its icon paints --disabled-glyph (#1897).
       const add = page.getByRole("button", { name: /^Add / }).first();
       await expect(add).toBeDisabled();
       const icon = await disabledGlyph(page, add);
       expect(icon.ratio, icon.label).toBeGreaterThanOrEqual(3);
-      expect(icon.step, icon.label).toBeGreaterThanOrEqual(1.7);
+      expect(icon.step, icon.label).toBeGreaterThanOrEqual((await tokenStep(page)) * 0.97);
       const value = await measure(page, page.getByRole("textbox", { name: "font-size", exact: true }), {
         part: { selector: "", paint: "color" },
       });
@@ -95,6 +96,27 @@ for (const theme of ["day", "night"] as const) {
         toggles.map((toggle) => measure(page, toggle, { part: { selector: "span", paint: "background" } })),
       );
       for (const thumb of thumbs) expect(thumb.ratio, thumb.label).toBeGreaterThanOrEqual(3);
+    });
+
+    test("the disabled stepper's glyphs hold 3:1 as painted at 1x, not only by their colour", async ({ page }) => {
+      await page.addInitScript({ content: BROKEN_STORAGE });
+      await page.goto("/settings");
+      await page
+        .getByRole("tab", { name: "Terminal" })
+        .or(page.getByRole("button", { name: "Terminal" }))
+        .first()
+        .click();
+      await expect(page.getByRole("alert").filter({ hasText: "Terminal settings could not be read" })).toBeVisible();
+      expect(await page.evaluate(() => devicePixelRatio)).toBe(1);
+      // A 14 px glyph drawn with a 1.17 px stroke on half pixels painted 1.79:1 here though its colour held 3.5:1 (#2513).
+      for (const name of ["Decrease font-size", "Increase font-size"]) {
+        const button = page.getByRole("button", { name });
+        // oxlint-disable-next-line no-await-in-loop -- one button scrolled into view and read at a time
+        await expect(button).toBeDisabled();
+        // oxlint-disable-next-line no-await-in-loop -- as above
+        const glyph = await screenGlyph(page, button, theme === "night");
+        expect(glyph.ratio, `${name}: ${glyph.label}`).toBeGreaterThanOrEqual(3);
+      }
     });
 
     test("a disabled menu item's label stays legible on the menu", async ({ page }) => {
@@ -114,6 +136,11 @@ for (const theme of ["day", "night"] as const) {
       await page.getByRole("menu").screenshot({ path: test.info().outputPath(`${theme}-menu.png`) });
       expect(disabled.ratio, disabled.label).toBeGreaterThanOrEqual(4.5);
       expect(disabled.step, disabled.label).toBeGreaterThanOrEqual(1.5);
+      // A disabled item stays reachable by the arrow keys (Base UI keeps it focusable), and highlighted it sits on the
+      // row's hover wash: its label still holds 4.5:1 there (#2513 review).
+      await item.evaluate((element) => element.setAttribute("data-highlighted", ""));
+      const highlighted = await measure(page, item);
+      expect(highlighted.ratio, `highlighted ${highlighted.label}`).toBeGreaterThanOrEqual(4.5);
     });
   });
 }
