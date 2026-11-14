@@ -107,6 +107,19 @@
   animation: none !important;
 }
 
+/* The cursor blinks by data-cursor-off, flipped twice a second (cursor-blink.ts), never by wterm's CSS animation: a running
+   animation makes Chromium recalculate style and paint every frame, so an idle terminal cost its renderer 60 frames a
+   second. The off phase draws what wterm's keyframes drew at 50%: the cell as it is, no bar, underline or outline. */
+.wterm .term-cursor {
+  animation: none !important;
+}
+.wterm[data-cursor-off]:is(.focused, :active) .term-cursor {
+  background: var(--term-cell-bg, transparent);
+  color: var(--term-cell-fg, inherit);
+  box-shadow: none;
+  outline-color: transparent;
+}
+
 /* Predicted cells (use-prediction-overlay.ts) sit over the grid in their own layer, in the terminal's colours, opaque
    over the cell they cover; underlined while the link is slow or glitching, mosh's flagging (design D8). */
 .wterm .term-prediction {

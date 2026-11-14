@@ -49,6 +49,7 @@ import { useTerminalInput } from "./use-terminal-input.ts";
 import { usePaneVisibility } from "./use-pane-visibility.ts";
 import { type PaintHold, useTerminalAttach } from "./use-terminal-attach.ts";
 import { useKeyboardClaim } from "./use-keyboard-claim.ts";
+import { useCursor } from "./use-cursor.ts";
 
 /**
  * Gives a focus event's focus back to the element that had it, unless that sits in a pane no longer focused (focus
@@ -117,8 +118,7 @@ export function TerminalView(props: TerminalViewProps) {
 
   const { isFocused, focusWhenFree } = useKeyboardClaim(handle, focused, claimed, softKeyboard);
 
-  // The default cursor shape is the terminal's own state, set locally; programs still override it.
-  useEffect(() => handle.current?.write(options.cursorSequence), [wt, options.cursorSequence]);
+  useCursor(wt, handle, options.cursorSequence);
 
   // After the stylesheet or the system's light/dark changes, tell libghostty and the core the colors programs
   // may query. The colors set last are inline on the element and would shadow the page's new ones, so they go first.
