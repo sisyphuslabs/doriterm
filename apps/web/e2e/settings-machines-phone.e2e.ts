@@ -49,11 +49,17 @@ test.describe("an offline machine with a long name", () => {
   });
   // The machine answers again whatever the rename back does, so a failed cleanup never leaves it off for later specs.
   test.afterEach(() => {
+    // Reconnected under the name it has: still LONG when the rename back fails (#2552 review).
+    let name = MACHINE_NAME;
     try {
-      if (renamed) hcOn("host", ["machine", "rename", LONG, MACHINE_NAME]);
+      if (renamed) {
+        name = LONG;
+        hcOn("host", ["machine", "rename", LONG, MACHINE_NAME]);
+        name = MACHINE_NAME;
+      }
     } finally {
       renamed = false;
-      reconnect();
+      reconnect(name);
     }
   });
 
