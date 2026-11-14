@@ -59,6 +59,14 @@ test("the sidebar notice for an old core says to update hc there and offers no T
   expect(down).toContain("Try again");
 });
 
+test("the sidebar raises no notice and no Try again while a machine is inside its reconnect grace (#1686, #2464)", () => {
+  const held = renderToStaticMarkup(<Notice view={{ ...listed("0.1.20"), state: "reconnecting" }} />);
+  expect(held).toBe("");
+  // Past the grace it reads offline: then the notice says why, with its one Try again.
+  const gone = renderToStaticMarkup(<Notice view={{ ...listed("0.1.20"), state: "unreachable", why: "(4404)" }} />);
+  expect(gone).toContain("Try again");
+});
+
 test("a machine added by hand offers Remove in its row and beside Try again; a mesh member offers neither (#2456)", () => {
   const down: MachineView = { ...listed("0.1.20"), state: "unreachable", why: "(4404)" };
   expect(row(listed("0.1.20"))).toContain("Remove box\u2026");

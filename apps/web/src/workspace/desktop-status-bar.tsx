@@ -1,12 +1,24 @@
+import type { HcConnection } from "@doriface/client";
 import { Button, Kbd, StatusBar, StatusBarItem } from "@doriface/ui";
 import { Monitor } from "lucide-react";
 import { useActionKeys } from "../keys/use-action-keys.ts";
+import { useMachineLine } from "../terminal/use-machine-line.ts";
 import { agentStatus, nextNeedingYou } from "./attention.ts";
 import { machineOf, type Session, spaceName } from "./model.ts";
 import { HistoryGapStatus } from "./history-gap-status.tsx";
-import { ConnectedStatus, ConnectionPathItem, ReconnectStatus, useConnectionNotice } from "./reconnect-status.tsx";
+import { HostDownHelp } from "./host-down-help.tsx";
+import { MachineDownHelp } from "./machine-down.tsx";
+import {
+  ConnectedStatus,
+  ConnectionPathItem,
+  MachineLineStatus,
+  MachineOfflineStatus,
+  ReconnectStatus,
+  useConnectionNotice,
+} from "./reconnect-status.tsx";
 
 export interface DesktopStatusBarProps {
+  readonly connection: HcConnection;
   readonly terminals: readonly Session[];
   /** The live terminals on reachable machines: what the bar counts. */
   readonly live: readonly Session[];
@@ -23,12 +35,17 @@ export interface DesktopStatusBarProps {
 
 /** The desktop's footer: where the focused terminal is, how many there are and who needs you, and the palette. */
 export function DesktopStatusBar(props: DesktopStatusBarProps) {
-  const { terminals, live, loaded, focusedAddress, focusedTerminal, focusedMachine, onOpen, onPalette } = props;
+  const { connection, terminals, live, loaded, focusedAddress, focusedTerminal, focusedMachine, onOpen, onPalette } =
+    props;
   const paletteKeys = useActionKeys("app.palette");
   const blocked = live.filter((terminal) => agentStatus(terminal) === "blocked").length;
   const next = nextNeedingYou(terminals, focusedAddress);
   // Until the connection is back nothing is known to be missing yet: the bar says it reconnects, as the phone line does.
   const reconnecting = useConnectionNotice() !== null;
+  const watched = focusedTerminal?.offline === true ? null : focusedAddress;
+  // The focused terminal's machine past its grace: the bar says so, never the page's own Connected beside its name.
+  const offline = focusedTerminal?.offline === true && focusedAddress !== null ? machineOf(focusedAddress) : undefined;
+  const away = useMachineLine(connection, watched ?? "", watched !== null);
   return (
     <StatusBar
       start={
@@ -72,7 +89,13 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
             </span>
           ) : null}
           <ReconnectStatus />
-          <ConnectedStatus />
+          <HostDownHelp />
+          {/* Past its grace the pane says the machine is offline in place, so the bar no longer says it reconnects. */}
+          {reconnecting || away === null ? null : <MachineLineStatus machine={away} />}
+          {reconnecting || away === null ? null : <MachineDownHelp connection={connection} machine={away} />}
+          {offline === undefined ? null : <MachineOfflineStatus machine={offline} />}
+          {/* One connection item at a time: the focused terminal's machine, when it is down, takes Connected's place. */}
+          {away === null && offline === undefined ? <ConnectedStatus /> : null}
           {reconnecting ? null : <HistoryGapStatus address={focusedAddress} />}
           <ConnectionPathItem />
         </>

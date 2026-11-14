@@ -1,12 +1,17 @@
+import type { HcConnection } from "@doriface/client";
 import { Spinner, StatusBarItem } from "@doriface/ui";
 import { Cable, Globe, WifiOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { DirectReason } from "../connection/direct-attempt.ts";
 import { canForwardPlainWs } from "../connection/direct-forward.ts";
-import { staysOnThisComputer } from "../connection/settings.ts";
+import { hostFailure } from "../connection/host-failure.ts";
+import { type ConnectionSettings, staysOnThisComputer } from "../connection/settings.ts";
 import { connectionStore, useConnection } from "../connection/store.ts";
 import { useOnline } from "../pwa/use-online.ts";
+import { useMachineLine } from "../terminal/use-machine-line.ts";
 import { HistoryGapLine } from "./history-gap-status.tsx";
+import { HostDownHelp } from "./host-down-help.tsx";
+import { MachineDownHelp } from "./machine-down.tsx";
 import { PHONE_LINE, PHONE_LINE_TEXT } from "./phone-line.ts";
 import { RetryButton } from "./retry-button.tsx";
 
@@ -29,6 +34,19 @@ export interface ConnectionNotice {
   readonly offline: boolean;
 }
 
+/**
+ * The machine the workspace reconnects to, named while it reaches more than one (#2464): a paired member that drops is
+ * said by name, and the view stays on it. One host has no other to be told apart from, so it is not named.
+ */
+export const reconnectingTo = (settings: Pick<ConnectionSettings, "members" | "hostName">): string =>
+  settings.members.length > 1 ? settings.hostName : "";
+
+/** The short words while the link is redialed: `Reconnecting to studio in 4 s`, or without a name or a countdown. */
+export function reconnectingLabel(machine: string, seconds: number | null): string {
+  const to = machine === "" ? "" : ` to ${machine}`;
+  return seconds === null ? `Reconnecting${to}…` : `Reconnecting${to} in ${seconds} s`;
+}
+
 /** What to say about the workspace's connection while it is not usable, or null while it is. */
 export function useConnectionNotice(): ConnectionNotice | null {
   const state = useConnection();
@@ -38,13 +56,33 @@ export function useConnectionNotice(): ConnectionNotice | null {
   if (!online && !staysOnThisComputer(connectionStore.settings))
     return { label: "Offline", detail: "Offline. Reconnects when the network is back.", offline: true };
   // The session's socket dropped and the session is carried on over a new one: the workspace stays as it is meanwhile.
-  if (state.phase === "open" && state.resuming === true)
-    return { label: "Reconnecting…", detail: "Reconnecting: the session carries on where it was.", offline: false };
+  // A dial that failed meanwhile says why and what to do, in the words Settings uses (#2426), never a socket's message.
+  if (state.phase === "open" && state.resuming === true) {
+    const why =
+      state.resumeFailure === undefined ? "the session carries on where it was." : hostFailure(state.resumeFailure);
+    const to = reconnectingTo(connectionStore.settings);
+    return {
+      label: reconnectingLabel(to, null),
+      detail: `Reconnecting${to === "" ? "" : ` to ${to}`}: ${why}`,
+      offline: false,
+    };
+  }
   if (state.phase === "open" || state.phase === "unconfigured" || state.phase === "host-failed" || state.stale === null)
     return null;
-  const label = seconds === null ? "Reconnecting…" : `Reconnecting in ${seconds} s`;
-  return { label, detail: failed === null ? label : `${label}: ${failed.error.message}`, offline: false };
+  const label = reconnectingLabel(reconnectingTo(connectionStore.settings), seconds);
+  if (failed === null) return { label, detail: label, offline: false };
+  const why = failed.settling === true ? failed.error.message : hostFailure(failed.error);
+  return { label, detail: `${label}. ${why}`, offline: false };
 }
+
+/**
+ * The added machine the terminal in view runs on, while its line is down: keys typed meanwhile wait for it (HeldInput,
+ * #1489). Said beside the terminal, in the status bar or the phone's line, never drawn over its output (#2464).
+ */
+const machineNotice = (machine: string): ConnectionNotice => {
+  const sentence = `Reconnecting to ${machine}. Your typing will be sent.`;
+  return { label: sentence, detail: sentence, offline: false };
+};
 
 const glyph = (notice: ConnectionNotice, box: "size-3.5" | "size-4") => (
   <span className={`flex shrink-0 items-center justify-center ${box}`}>
@@ -77,6 +115,30 @@ export function ReconnectStatus({ compact = false }: { readonly compact?: boolea
         <span className="text-foreground">{notice.offline ? notice.detail : notice.label}</span>
       </StatusBarItem>
       {notice.offline ? <RetryButton size="sm" onRetry={() => Promise.resolve(connectionStore.retryNow())} /> : null}
+    </span>
+  );
+}
+
+/** The status bar item while the focused terminal's machine line is down (useMachineLine names that machine). */
+export function MachineLineStatus({ machine }: { readonly machine: string }) {
+  const notice = machineNotice(machine);
+  return (
+    <span role="status" className="flex min-w-0" title={notice.detail}>
+      <StatusBarItem icon={glyph(notice, "size-3.5")}>
+        <span className="text-foreground">{notice.label}</span>
+      </StatusBarItem>
+    </span>
+  );
+}
+
+/** The status bar item while the focused terminal's machine is offline; its pane offers Try again in place. */
+export function MachineOfflineStatus({ machine }: { readonly machine: string }) {
+  const notice: ConnectionNotice = { label: `${machine} is offline`, detail: `${machine} is offline`, offline: true };
+  return (
+    <span role="status" data-machine-offline className="flex min-w-0" title={notice.detail}>
+      <StatusBarItem icon={glyph(notice, "size-3.5")}>
+        <span className="text-foreground">{notice.label}</span>
+      </StatusBarItem>
     </span>
   );
 }
@@ -148,11 +210,42 @@ export function ConnectionPathItem() {
 /**
  * The phone has no status bar: the same notice as one line under a screen's header, only while there is one. On a
  * terminal's screen (`address`), once connected, the line says when that terminal may have lost output (#2033, #2257),
- * until dismissed; noted as the line went down, it takes the notice's place in the same render, at its height.
+ * until dismissed; noted as the line went down, it takes the notice's place in the same render, at its height. While
+ * that terminal's machine line is down (`connection` given), the line says it reconnects to that machine instead.
  */
-export function ConnectionLine({ address }: { readonly address?: string }) {
+export function ConnectionLine({
+  address,
+  connection,
+}: {
+  readonly address?: string;
+  readonly connection?: HcConnection;
+}) {
   const notice = useConnectionNotice();
-  if (notice === null) return address === undefined ? null : <HistoryGapLine address={address} />;
+  if (notice !== null) {
+    return (
+      <>
+        <NoticeLine notice={notice} />
+        <HostDownHelp phone />
+      </>
+    );
+  }
+  if (address === undefined) return null;
+  if (connection === undefined) return <HistoryGapLine address={address} />;
+  return <TerminalLine connection={connection} address={address} />;
+}
+
+function TerminalLine({ connection, address }: { readonly connection: HcConnection; readonly address: string }) {
+  const away = useMachineLine(connection, address, true);
+  if (away === null) return <HistoryGapLine address={address} />;
+  return (
+    <>
+      <NoticeLine notice={machineNotice(away)} />
+      <MachineDownHelp phone connection={connection} machine={away} />
+    </>
+  );
+}
+
+function NoticeLine({ notice }: { readonly notice: ConnectionNotice }) {
   return (
     <div className={PHONE_LINE}>
       <p
