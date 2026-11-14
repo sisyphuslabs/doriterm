@@ -120,7 +120,7 @@ export class LineGrants {
       }
       if (reserved) this.#dropReserved(member.signPub);
       const code = error instanceof Error ? closeCodeOf(error) : undefined;
-      policy.report(member.signPub, code === 4429 || code === 4412 ? code : 4404);
+      policy.report(member.signPub, code === 4429 || code === 4412 || code === 4401 ? code : 4404);
       return {
         ok: false,
         code: code ?? 4404,

@@ -175,6 +175,32 @@ describe("a reached member that refuses a dial is reconnecting before it is offl
     dials.report("m", 4404);
     expect(dials.gate("m")).toMatchObject({ cause: "offline", misses: 1, nextAt: 60_000 });
   });
+
+  test("a reached member whose first refusal follows a rate limit still gets the grace (#2507)", async () => {
+    const { clock, dials } = policy();
+    dials.report("m", "connected");
+    dials.report("m", 4429);
+    await clock.advance(30_000);
+    dials.report("m", 4404);
+    expect(dials.gate("m")).toMatchObject({ cause: "reconnecting", misses: 1, nextAt: 32_000 });
+  });
+
+  test("two refusals at once keep the retry 2 s after the first (#2507)", async () => {
+    const { clock, dials, due } = policy();
+    dials.report("m", "connected");
+    dials.report("m", 4404);
+    dials.report("m", 4404);
+    expect(dials.gate("m")).toMatchObject({ cause: "reconnecting", nextAt: 2_000 });
+    await clock.advance(2_000);
+    expect(probes(due)).toEqual([2_000]);
+  });
+
+  test("a reached member that refuses this host as revoked (4401) gets no grace (#2507)", () => {
+    const { dials } = policy();
+    dials.report("m", "connected");
+    dials.report("m", 4401);
+    expect(dials.gate("m")).toMatchObject({ cause: "offline", misses: 1, nextAt: 30_000 });
+  });
 });
 
 describe("settle after this host's own outage (S-6)", () => {
@@ -218,5 +244,15 @@ describe("a line refused for the budget (section 8.2, H-D1)", () => {
     expect(due.filter((entry) => entry.reason === "budget")).toEqual([
       { member: "late", reason: "budget", at: DIAL_LIMITS.windowMs },
     ]);
+  });
+});
+
+describe("a revoked member that refuses the handshake (#2449)", () => {
+  test("its refused gate is cleared by presence, should it show any (#2517 review)", () => {
+    const { dials } = policy();
+    dials.report("m", "refused");
+    expect(dials.gate("m")?.cause).toBe("refused");
+    dials.presence("m");
+    expect(dials.gate("m")).toBeUndefined();
   });
 });

@@ -103,11 +103,15 @@ describe("an owed revoke to a revoked member that answers but refuses the handsh
     expect(logs).toHaveLength(1);
   });
 
-  test("its return ungates it at once, so the revoke stays owed until it is taken", async () => {
-    const { policy, dialer } = dialerFailingWith(handshakeRefused(), true);
+  test("is dialed again only when its backoff is due, since a revoked member shows no presence (#2454 review)", async () => {
+    const { clock, dialer, dials } = dialerFailingWith(handshakeRefused(), true);
     await dialer.sync(m, "revoke-push");
-    policy.presence(m.signPub);
-    expect(policy.gate(m.signPub)).toBeUndefined();
+    await clock.advance(30 * 60_000);
+    expect(await dialer.sync(m, "probe")).toBe(false);
+    expect(dials()).toBe(1);
+    await clock.advance(30 * 60_000);
+    await dialer.sync(m, "probe");
+    expect(dials()).toBe(2);
   });
 
   test("its 4401 does not say this host may be revoked; a live member's 4401 still does", async () => {
@@ -140,5 +144,14 @@ describe("a sync dial's close code reaches the dial policy (section 8.2, contrac
     const offline = dialerRefusedWith(4404);
     await offline.dialer.sync(m, "push");
     expect(offline.policy.gate(m.signPub)?.misses).toBe(1);
+  });
+});
+
+describe("a live member's 4401 reaches the dial policy as itself (#2517)", () => {
+  test("a reached member that refuses this host as revoked is gated offline with no reconnect grace", async () => {
+    const { policy, dialer } = dialerRefusedWith(4401);
+    policy.report(m.signPub, "connected");
+    expect(await dialer.sync(m, "push")).toBe(false);
+    expect(policy.gate(m.signPub)).toMatchObject({ cause: "offline", misses: 1 });
   });
 });
