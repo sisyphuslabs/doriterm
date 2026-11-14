@@ -40,9 +40,29 @@ export function loadSidebarPrefs(storage: Pick<Storage, "getItem"> = guardedLoca
   };
 }
 
-class SidebarPrefsStore {
-  #value = loadSidebarPrefs();
+/**
+ * What this tab changed in the colours since its last read (`was` -> `next`), made on what storage holds now: a key
+ * another open tab removed stays removed, one it added is kept (#2602).
+ */
+function mergedColors(
+  stored: Readonly<Record<string, AvatarColor>>,
+  was: Readonly<Record<string, AvatarColor>>,
+  next: Readonly<Record<string, AvatarColor>>,
+): Record<string, AvatarColor> {
+  const merged = { ...stored };
+  for (const key of Object.keys(was)) if (next[key] === undefined) delete merged[key];
+  for (const [key, color] of Object.entries(next)) if (was[key] !== color) merged[key] = color;
+  return merged;
+}
+
+export class SidebarPrefsStore {
+  readonly #storage: Pick<Storage, "getItem" | "setItem">;
+  #value: SidebarPrefs;
   #listeners = new Set<() => void>();
+  constructor(storage: Pick<Storage, "getItem" | "setItem"> = guardedLocalStorage()) {
+    this.#storage = storage;
+    this.#value = loadSidebarPrefs(storage);
+  }
   get value(): SidebarPrefs {
     return this.#value;
   }
@@ -51,9 +71,13 @@ class SidebarPrefsStore {
     return () => this.#listeners.delete(listener);
   };
   update(patch: Partial<SidebarPrefs>): void {
-    this.#value = { ...this.#value, ...patch };
+    // Another open tab may have written since this one read: its changes are kept, this tab's are made on top (#2602).
+    const stored = loadSidebarPrefs(this.#storage);
+    const colors =
+      patch.colors === undefined ? stored.colors : mergedColors(stored.colors, this.#value.colors, patch.colors);
+    this.#value = { ...stored, ...patch, colors };
     try {
-      guardedLocalStorage().setItem(SIDEBAR_KEY, JSON.stringify(this.#value));
+      this.#storage.setItem(SIDEBAR_KEY, JSON.stringify(this.#value));
     } finally {
       for (const listener of this.#listeners) listener();
     }
