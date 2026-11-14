@@ -1,0 +1,4 @@
+### Machines
+
+- While New tab is offered disabled (the tab in view is on a machine that cannot take it), its key does nothing either,
+  instead of trying and then reporting that it could not open a new tab.
