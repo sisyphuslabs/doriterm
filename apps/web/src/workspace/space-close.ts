@@ -13,6 +13,16 @@ export function closeRefusal(layouts: readonly MachineLayout[], id: string): str
   return readOnly === null ? null : `The layout cannot take changes now: ${readOnly}`;
 }
 
+/**
+ * Why New tab cannot start a terminal in space `id` now: only while its machine is offline (#2569). A reachable
+ * machine whose layout takes no edits still starts one (kept on this screen by keepHere); closing the space still waits.
+ */
+export function newTabRefusal(layouts: readonly MachineLayout[], id: string): string | null {
+  const place = spacePlace(layouts, id);
+  if (place === undefined) return "This space is no longer in the layout.";
+  return place.layout.offline === true ? closeRefusal(layouts, id) : null;
+}
+
 /** How a space close reports what it did to the page's drop-once rule (use-drop-once.ts). */
 export interface SpaceCloseDrops {
   /** Records these sessions as dropped by a close that writes their whole space out in one edit, before their Ends report them. */

@@ -36,9 +36,10 @@ export function PhoneSpace({ space, terminals, host, arrive, from, onOpen, onBac
   const now = useNow();
   const closing = useSpaceClosing();
   const rows = spaceTabRows(space, terminals, now);
-  // A space whose layout takes no edits (its machine is offline) can take no new tab and no close: both wait, disabled,
-  // with why, and come back by themselves (#2455).
+  // A space whose layout takes no edits cannot be closed; one whose machine is offline cannot take a new tab either. Both
+  // wait, disabled, with why, and come back by themselves (#2455); a reachable machine still takes a new tab (#2569).
   const waiting = closing.refusal(space.id);
+  const newWaiting = closing.newRefusal(space.id);
   // Back from a terminal opened here mounts this screen anew: its tabs come back where they were (#1553).
   const tabsViewport = useKeptScroll(`space:${space.id}`, rows.length > 0);
   return (
@@ -70,14 +71,16 @@ export function PhoneSpace({ space, terminals, host, arrive, from, onOpen, onBac
           description={
             waiting === null
               ? "Its last tab ended. Start a shell or an agent here, or close the space."
-              : notNowText(
-                  waiting,
-                  "New tab here and Close space come back by themselves once the machine can take them.",
-                )
+              : newWaiting === null
+                ? notNowText(waiting, "Close space comes back by itself once the machine can take it.")
+                : notNowText(
+                    newWaiting,
+                    "New tab here and Close space come back by themselves once the machine can take them.",
+                  )
           }
           actions={
             <>
-              <Button variant="primary" disabled={waiting !== null} onClick={onNew}>
+              <Button variant="primary" disabled={newWaiting !== null} onClick={onNew}>
                 New tab here
               </Button>
               <Button disabled={waiting !== null} onClick={() => closing.ask(space.id)}>
@@ -98,12 +101,12 @@ export function PhoneSpace({ space, terminals, host, arrive, from, onOpen, onBac
             </div>
           </ScrollArea>
           <div className="flex shrink-0 flex-col gap-2 px-4 pt-2 pb-[max(1rem,calc(var(--safe-bottom)+0.5rem))]">
-            {waiting === null ? null : <NotNowLine action="New tab" why={waiting} />}
+            {newWaiting === null ? null : <NotNowLine action="New tab" why={newWaiting} />}
             <Button
               variant="primary"
               size="lg"
               className="w-full [&>span]:min-w-0"
-              disabled={waiting !== null}
+              disabled={newWaiting !== null}
               onClick={onNew}
             >
               <Plus aria-hidden />

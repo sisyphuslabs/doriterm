@@ -624,6 +624,7 @@ export function Workspace({ connection }: WorkspaceProps) {
                     active: layout.active?.key ?? null,
                   },
                   someoneElseNeedsYou(sessions, inView),
+                  newWhy,
                 )}
                 onOpenTerminal={opened}
                 onClose={() => setPalette(false)}
