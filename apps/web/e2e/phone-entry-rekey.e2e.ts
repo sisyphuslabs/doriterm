@@ -9,7 +9,7 @@ test("Back to an entry made through another core re-keys its space and terminal 
   page,
 }) => {
   await page.goto("/?v=spaces");
-  await expect(page.getByRole("heading", { name: "Spaces" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("heading", { name: "Spaces" }).first()).toBeVisible({ timeout: 20_000 });
   // Every replace the router makes is recorded, so a re-key is seen even if a later effect moves on from it.
   await page.evaluate(() => {
     const replaced: string[] = [];
