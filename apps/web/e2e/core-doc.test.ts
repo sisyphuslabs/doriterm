@@ -42,6 +42,13 @@ const conflict = (at: number, asked: unknown): HcRpcError =>
     data: { kind: "conflict" },
   });
 
+/** A clock the test moves: each pause advances it, so a time bound is reached without waiting (#2409). */
+const testClock = () => {
+  let now = 0;
+  const paused: number[] = [];
+  return { paused, wait: { now: () => now, pause: (ms: number) => void (paused.push(ms), (now += ms)) } };
+};
+
 const layout = (spaces: readonly unknown[]): Record<string, unknown> => ({ spaces });
 
 describe("coreCompareAndSet (#896)", () => {
@@ -114,7 +121,7 @@ describe("coreCompareAndSet (#896)", () => {
     expect(sets).toBe(1);
   });
 
-  test("a core that refuses every write: the fifth refusal is thrown, and there is no sixth attempt", () => {
+  test("a core that refuses every write still fails, and within its time bound: it never hangs (#2409)", () => {
     const refusals: HcRpcError[] = [];
     const send = (method: string): unknown => {
       if (method === "doc.get") return { value: null, version: refusals.length + 1 };
@@ -122,14 +129,35 @@ describe("coreCompareAndSet (#896)", () => {
       refusals.push(refusal);
       throw refusal;
     };
+    const { paused, wait } = testClock();
     let thrown: unknown;
     try {
-      coreCompareAndSet(send, { name: DOC }, () => ({ kept: true }));
+      coreCompareAndSet(send, { name: DOC }, () => ({ kept: true }), wait);
     } catch (cause) {
       thrown = cause;
     }
-    expect(refusals).toHaveLength(5);
-    expect(thrown).toBe(refusals[4]);
+    expect(thrown).toBe(refusals.at(-1));
+    expect(paused.reduce((sum, ms) => sum + ms, 0)).toBeLessThanOrEqual(5_000);
+  });
+
+  test("a document another client keeps writing for a while is still written, past five refusals (#2409)", () => {
+    // The fixture's layout reset races a page that has not stopped writing yet: on a loaded runner it lost five instant
+    // retries in a row (hosted Web e2e, sidebar-toggle-region.e2e.ts:62). Six bumps, then the other client stops.
+    const core = fakeCore(layout([]));
+    let bumps = 0;
+    const send = (method: string, params: unknown): unknown => {
+      if (method === "doc.set" && bumps < 6) {
+        bumps += 1;
+        core.otherClient(layout([`other-${bumps}`]));
+      }
+      return core.send(method, params);
+    };
+    const { paused, wait } = testClock();
+    coreCompareAndSet(send, { name: DOC }, () => layout([]), wait);
+    expect(core.writes).toEqual([layout([])]);
+    expect(paused.length).toBeGreaterThanOrEqual(6);
+    for (const [index, ms] of paused.entries())
+      if (index > 0) expect(ms).toBeGreaterThanOrEqual(paused[index - 1] ?? 0);
   });
 
   test("a failure that is not a conflict is not retried, even worded like one", () => {

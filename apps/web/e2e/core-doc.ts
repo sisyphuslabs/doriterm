@@ -66,18 +66,40 @@ export function coreDoc(name: string): unknown {
 
 /**
  * Compare-and-set against the version the core reports, retrying a lost race on a fresh read: the app writes these documents
- * too, so a write can land between the read and its set and the core refuses it as a `conflict` (#896). Bounded to five
- * attempts, and only for that refusal, told by its kind as the app tells it (#1355) -- any other failure is thrown as it came.
+ * too, so a write can land between the read and its set and the core refuses it as a `conflict` (#896). Bounded in time
+ * (CAS_BOUND_MS, growing pauses, #2409), and only for that refusal, told by its kind as the app tells it (#1355) -- any other failure is thrown as it came.
  *
  * `next` is called once per attempt with that attempt's read, so an update derived from the document is recomputed from the
  * document the core reports NOW instead of clobbering a write that landed in between.
  */
+/**
+ * How long a write keeps retrying a document another client is still writing (#2409). A page that has not settled can move
+ * the document for a while after its test; five instant retries lost that race on a loaded runner. Pauses grow (25 ms,
+ * doubling, at most 400 ms) so the other writer can finish, and a core that never accepts still fails within this bound.
+ */
+const CAS_BOUND_MS = 5_000;
+
+/** A blocking pause: the helper is synchronous (execFileSync), as agents.ts and terminal-guard.ts wait. */
+const REAL_WAIT: CasWait = {
+  now: () => Date.now(),
+  pause: (ms) => void Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms),
+};
+
+/** How the retry waits: the real clock and a blocking pause, or a clock a test moves. */
+export interface CasWait {
+  readonly now: () => number;
+  readonly pause: (ms: number) => void;
+}
+
 export function coreCompareAndSet(
   send: (method: string, params: unknown) => unknown,
   where: Readonly<Record<string, unknown>>,
   next: (current: unknown) => unknown,
+  wait?: CasWait,
 ): void {
-  for (let attempt = 0; ; attempt += 1) {
+  const clock = wait ?? REAL_WAIT;
+  const deadline = clock.now() + CAS_BOUND_MS;
+  for (let pause = 25; ; pause = Math.min(pause * 2, 400)) {
     const read = send("doc.get", where);
     const reply = typeof read === "object" && read !== null ? (read as Record<string, unknown>) : {};
     try {
@@ -88,8 +110,9 @@ export function coreCompareAndSet(
       });
       return;
     } catch (cause) {
-      if (attempt >= 4 || !(cause instanceof HcRpcError && cause.kind === "conflict")) throw cause;
+      if (!(cause instanceof HcRpcError && cause.kind === "conflict") || clock.now() + pause > deadline) throw cause;
     }
+    clock.pause(pause);
   }
 }
 
