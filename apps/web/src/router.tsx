@@ -58,8 +58,8 @@ function SettingsSlot({
       refocus.current = active instanceof HTMLElement && frame.contains(active) ? active : null;
       // Read before the frame leaves the page: once it is out, its viewport has forgotten where it was (#1161).
       const viewport = frame.querySelector<HTMLElement>('[data-slot="settings-body"]');
-      const top = documentScroll ? Math.round(window.scrollY) : (viewport?.scrollTop ?? 0);
-      scroll.current = viewport === null ? null : { viewport, top };
+      const leftAt = documentScroll ? Math.round(window.scrollY) : (viewport?.scrollTop ?? 0);
+      scroll.current = viewport === null ? null : { viewport, top: leftAt };
     };
   }, [frame, refocus, scroll, documentScroll]);
   return <div ref={slot} className="contents" />;
