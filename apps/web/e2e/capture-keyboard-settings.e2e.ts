@@ -50,11 +50,18 @@ for (const theme of ["day", "night"] as const) {
         await expect(page.getByRole("button", { name: "Done", exact: true })).toBeVisible();
         await settled(page);
         await page.screenshot({ path: join(OUT, `keyboard-settings-${width}-${theme}-edit.png`) });
+        // The body scrolls on a desktop, the page on a phone (#2533): both go to the end, whichever owns the scroll.
         const body = page.locator(BODY);
-        await body.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+        await body.evaluate((element) => {
+          element.scrollTo(0, element.scrollHeight);
+          window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
+        });
         await settled(page);
         await page.screenshot({ path: join(OUT, `keyboard-settings-${width}-${theme}-edit-end.png`) });
-        await body.evaluate((element) => element.scrollTo(0, 0));
+        await body.evaluate((element) => {
+          element.scrollTo(0, 0);
+          window.scrollTo({ top: 0, behavior: "instant" });
+        });
         await page.getByRole("button", { name: "Done", exact: true }).click();
         await captureSheet(page, /^Keys/, "Add keys", width, theme);
         await captureSheet(page, /^Packs/, "Packs", width, theme);
