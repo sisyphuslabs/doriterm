@@ -74,8 +74,12 @@ test("an agent another agent started (hc records its parent) gets its own tab in
   await openNewTerminal(page);
   const lead = startOutside("host", "lead-lane", "lanes");
   await expect.poll(() => spacesShowing(lead), { timeout: 20_000 }).toEqual(["lanes"]);
+  const count = spaceRow(page, "lanes").getByLabel(/^\d+ tabs$/);
+  await expect(count).toHaveText("1");
   const worker = startOutside("host", "worker-lane", "lanes", lead);
   await expect.poll(() => spacesShowing(worker), { timeout: 20_000 }).toEqual(["lanes"]);
+  // The space's count follows without anyone clicking the worker's row in the Agents list.
+  await expect(count).toHaveText("2");
 });
 
 test("an agent opened from the Agents list before it has a tab goes to the space its label names", async ({ page }) => {
