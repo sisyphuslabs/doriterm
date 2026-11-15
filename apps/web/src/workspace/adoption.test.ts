@@ -41,7 +41,7 @@ const docOf = (tabs: readonly (readonly string[])[]): JsonObject => ({
 });
 
 describe("looseTerminals (#2122)", () => {
-  test("a live terminal no pane shows is loose; a shown, a finished and a sub-agent's one are not", () => {
+  test("a live terminal no pane shows is loose, also one another terminal started; a shown and a finished one are not", () => {
     const loose = looseTerminals(docOf([["t1"], ["t2", "t3"]]), [
       terminal("t1"),
       terminal("t3"),
@@ -49,7 +49,7 @@ describe("looseTerminals (#2122)", () => {
       terminal("t5", { state: "finished" }),
       terminal("t6", { parent: "t1" }),
     ]);
-    expect(loose.map((each) => each.address)).toEqual(["t4"]);
+    expect(loose.map((each) => each.address)).toEqual(["t4", "t6"]);
   });
 
   test("an added machine's terminal is matched by the address its own document names it by", () => {
