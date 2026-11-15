@@ -157,7 +157,7 @@ test("a dictation under way ends when its terminal's machine drops: the recogniz
   }
 });
 
-test("an ended program's tab offers no dictation: its tab goes, no mic, no strip, and a bound Dictate key starts nothing (#258)", async ({
+test("an ended program's tab offers no dictation: its tab goes, and nothing offers to dictate into it (#258)", async ({
   page,
 }) => {
   test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
@@ -189,9 +189,8 @@ test("an ended program's tab offers no dictation: its tab goes, no mic, no strip
     // An ended program's tab goes once the machine is back (the tabs follow the core): nothing is left to dictate into.
     await expect(terminal).toHaveCount(0, { timeout: OFFLINE_BOUND_MS });
 
-    await expect(page.getByRole("button", { name: /^Dictate into/ })).toHaveCount(0);
-    await expect(page.locator("[data-voice-strip]")).toHaveCount(0);
-    await page.keyboard.press("Control+Alt+Shift+D");
+    // Another tab may be in view now and offer its own Dictate; none is offered for the ended terminal.
+    await expect(page.getByRole("button", { name: "Dictate into dictate-ended" })).toHaveCount(0);
     await expect(page.locator("[data-voice-strip]")).toHaveCount(0);
     expect(await speech.started()).toEqual([]);
   } finally {

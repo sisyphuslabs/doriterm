@@ -1,6 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import { HcRpcError, type MachineView, type Terminal } from "@doriface/protocol";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { LayoutTab } from "./layout-model.ts";
 import { machineOf } from "./model.ts";
 
@@ -12,12 +12,30 @@ export const endedForGood = (terminal: Pick<Terminal, "state" | "reason">): bool
   terminal.state === "finished" && FINAL.has(terminal.reason ?? "");
 
 /**
- * The terminals no pane is asked about: the live ones. A pane whose terminal is over goes whether or not it is in view,
- * as herdr-app's `checked_closed` removes it: the tabs mirror the core's terminals (Q, 2026-11-15), superseding the
- * in-view "This session ended" pane of #164 and #1593.
+ * How long a terminal that ended keeps its pane from when it started, as herdr-app's `just_born` waits before it asks
+ * about a pane: a program that fails at launch shows its pane, and how it ended, for that long.
  */
-export function settledPanes(terminals: readonly Pick<Terminal, "address" | "state">[]): Set<string> {
-  return new Set(terminals.flatMap((terminal) => (terminal.state === "live" ? [terminal.address] : [])));
+export const JUST_BORN_MS = 5_000;
+
+/**
+ * The terminals no pane is asked about at `now`: the live ones, and one that ended within JUST_BORN_MS of its start
+ * until that grace is over (`wake`: the earliest such end, when to look again). Every other pane whose terminal is
+ * over goes, in view or not, as herdr-app's `checked_closed` removes it: the tabs mirror the core's terminals (Q,
+ * 2026-11-15), superseding the in-view "This session ended" pane of #164 and #1593.
+ */
+export function settledPanes(
+  terminals: readonly Pick<Terminal, "address" | "state" | "created_ms">[],
+  now: number,
+): { readonly settled: Set<string>; readonly wake: number | undefined } {
+  const young = terminals.filter((terminal) => terminal.state !== "live" && now < terminal.created_ms + JUST_BORN_MS);
+  return {
+    settled: new Set(
+      terminals.flatMap((terminal) =>
+        terminal.state === "live" || young.includes(terminal) ? [terminal.address] : [],
+      ),
+    ),
+    wake: young.length === 0 ? undefined : Math.min(...young.map((terminal) => terminal.created_ms + JUST_BORN_MS)),
+  };
 }
 
 /** The terminals this core's document panes show that are not settled (`listed`), each once; panels have none. */
@@ -90,7 +108,8 @@ export function stepMissing(
 
 /**
  * Keeps the panes to the core's terminals, as herdr-app's `reconcile` does on every listing: once the feed is loaded,
- * each pane whose terminal is not live there is asked about once, and it is dropped, in view or not, when the core says
+ * each pane whose terminal is not live there (past its just-born grace, `settledPanes`) is asked about once, and it is
+ * dropped, in view or not, when the core says
  * not_found (removed, as by `hc rm`) or that its program exited or was killed. Any other answer (a terminal the feed
  * lists a moment later, a machine that is offline, a lost holder) keeps it. A terminal that is live again is asked
  * about again if it goes later.
@@ -109,14 +128,16 @@ export function useDeadPanes(
 ): void {
   const asked = useRef(new Set<string>());
   const missing = useRef<ReadonlyMap<string, Missing>>(new Map());
+  // A look repeated when a young terminal's grace ends, with no feed event to bring one.
+  const [looks, lookAgain] = useState(0);
   useEffect(() => {
     asked.current = new Set();
     missing.current = new Map();
   }, [connection]);
   useEffect(() => {
-    if (terminals === null) return;
+    if (terminals === null) return undefined;
     const feed = new Set(terminals.map((terminal) => terminal.address));
-    const settled = settledPanes(terminals);
+    const { settled, wake } = settledPanes(terminals, Date.now());
     for (const address of asked.current) if (settled.has(address)) asked.current.delete(address);
     const step = stepMissing(missing.current, absentRemotePanes(tabs, settled, machines, feed), reads);
     missing.current = step.missing;
@@ -133,5 +154,9 @@ export function useDeadPanes(
         },
       );
     }
-  }, [connection, tabs, terminals, machines, reads, drop]);
+    if (wake === undefined) return undefined;
+    // No feed event may come when a young terminal's grace ends, so the look is repeated then.
+    const timer = setTimeout(() => lookAgain((count) => count + 1), Math.max(0, wake - Date.now()));
+    return () => clearTimeout(timer);
+  }, [connection, tabs, terminals, machines, reads, drop, looks]);
 }

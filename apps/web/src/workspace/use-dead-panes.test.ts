@@ -5,6 +5,7 @@ import {
   absentPanes,
   absentRemotePanes,
   endedForGood,
+  JUST_BORN_MS,
   type Missing,
   settledPanes,
   stepMissing,
@@ -78,26 +79,40 @@ test("while the feed still names a machine machine.list no longer does, no added
   ]);
 });
 
-const listed = (address: string, state: string) => ({ address, state });
+const NOW = 1_000_000;
+const born = (address: string, created: number) => ({ address, state: "finished", created_ms: created });
+const listed = (address: string, state: string) => ({ address, state, created_ms: 0 });
 
 test("a pane whose terminal the feed lists as finished is asked about like an absent one, in view or not (Q, 2026-11-15)", () => {
   const terminals = [listed("t1", "live"), listed("t2", "finished"), listed("t3", "finished")];
   const tabs = [tab("a", ["t1"]), tab("b", ["t2"]), tab("c", ["t3"]), tab("d", ["t9"])];
-  expect(absentPanes(tabs, settledPanes(terminals))).toEqual(["t2", "t3", "t9"]);
+  expect(absentPanes(tabs, settledPanes(terminals, NOW).settled)).toEqual(["t2", "t3", "t9"]);
+});
+
+test("a terminal that ended within its first seconds keeps its pane for the just-born grace, so its failure shows", () => {
+  const tabs = [tab("a", ["t1"]), tab("b", ["t2"])];
+  const early = settledPanes([born("t1", NOW - 1_000), born("t2", NOW - JUST_BORN_MS)], NOW);
+  expect(absentPanes(tabs, early.settled)).toEqual(["t2"]);
+  expect(early.wake).toBe(NOW - 1_000 + JUST_BORN_MS);
+  const later = settledPanes([born("t1", NOW - 1_000)], NOW - 1_000 + JUST_BORN_MS);
+  expect(absentPanes(tabs, later.settled)).toEqual(["t1", "t2"]);
+  expect(later.wake).toBeUndefined();
 });
 
 test("an added machine's finished terminal waits like an absent one, and the rename check still reads the whole feed (#2122)", () => {
   const terminals = [listed("box/t4", "finished"), listed("box/t5", "live")];
   const tabs = [tab("box-a", ["box/t4", "box/t5"], false, "box")];
   const feed = new Set(terminals.map((terminal) => terminal.address));
-  expect([...absentRemotePanes(tabs, settledPanes(terminals), [machine("box", "connected")], feed)]).toEqual([
-    ["box/t4", "id-box"],
-  ]);
+  expect([
+    ...absentRemotePanes(tabs, settledPanes(terminals, NOW).settled, [machine("box", "connected")], feed),
+  ]).toEqual([["box/t4", "id-box"]]);
   // The feed still lists the machine under its old name, with finished terminals only: nothing is asked about.
   const renamed = [tab("new-a", ["new/t4"], false, "new")];
   const stale = [listed("old/t4", "finished")];
   const staleFeed = new Set(stale.map((terminal) => terminal.address));
-  expect(absentRemotePanes(renamed, settledPanes(stale), [machine("new", "connected")], staleFeed).size).toBe(0);
+  expect(
+    absentRemotePanes(renamed, settledPanes(stale, NOW).settled, [machine("new", "connected")], staleFeed).size,
+  ).toBe(0);
 });
 
 test("only a program that exited or was killed is over for good; a lost holder, a stopped server and a live terminal are not (#2122)", () => {
