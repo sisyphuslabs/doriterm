@@ -17,6 +17,20 @@ export const endedForGood = (terminal: Pick<Terminal, "state" | "reason">): bool
  */
 export const JUST_BORN_MS = 5_000;
 
+/** How long a terminal started at `createdMs` still has of its just-born grace at `now`: 0 once it is over. */
+export const graceLeft = (createdMs: number, now: number): number => Math.max(0, createdMs + JUST_BORN_MS - now);
+
+/**
+ * Runs `then`, which takes a pane whose program ended away, once the terminal is past its just-born grace: at once for
+ * one that started JUST_BORN_MS ago or more, so a program that fails at launch shows how it ended for that long, as
+ * herdr-app keeps a just-born terminal's pane. A terminal the feed has not listed has no start to wait from.
+ */
+export function afterGrace(createdMs: number | undefined, then: () => void): void {
+  const wait = createdMs === undefined ? 0 : graceLeft(createdMs, Date.now());
+  if (wait === 0) then();
+  else setTimeout(then, wait);
+}
+
 /**
  * The terminals no pane is asked about at `now`: the live ones, and one that ended within JUST_BORN_MS of its start
  * until that grace is over (`wake`: the earliest such end, when to look again). Every other pane whose terminal is
@@ -27,7 +41,7 @@ export function settledPanes(
   terminals: readonly Pick<Terminal, "address" | "state" | "created_ms">[],
   now: number,
 ): { readonly settled: Set<string>; readonly wake: number | undefined } {
-  const young = terminals.filter((terminal) => terminal.state !== "live" && now < terminal.created_ms + JUST_BORN_MS);
+  const young = terminals.filter((terminal) => terminal.state !== "live" && graceLeft(terminal.created_ms, now) > 0);
   return {
     settled: new Set(
       terminals.flatMap((terminal) =>

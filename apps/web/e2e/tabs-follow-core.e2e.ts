@@ -8,6 +8,7 @@ import { type DocSpace, spaceRow, spacesShowing } from "./core-tabs.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { LAYOUT_DOC } from "./layout-doc.ts";
 import { MACHINE_NAME } from "./machine.ts";
+import { removeTerminal, stateOn } from "./ended-terminal.ts";
 import { hcOn, STATE_BOUND_MS } from "./machine-switch.ts";
 import { selectedPane, tabOf } from "./tab-strip.ts";
 
@@ -88,6 +89,28 @@ test("a tab in view whose terminal ended while no view was attached is gone afte
   await again.goto("/");
   await expect.poll(() => spacesShowing(address), { timeout: 20_000 }).toEqual([]);
   await expect(again.getByRole("heading", { name: "This session ended" })).toHaveCount(0);
+});
+
+/** herdr-app's just-born grace (`just_born`, window.rs), as use-dead-panes.ts keeps it. */
+const JUST_BORN_MS = 5_000;
+
+test("a program that fails at launch in the tab in view keeps its pane for the just-born grace, then its tab goes", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  const address = (await terminal.getAttribute("data-terminal")) ?? "";
+  try {
+    hcOn("host", ["send", address, "exit"]);
+    await expect.poll(() => stateOn("host", address), { timeout: 15_000 }).toBe("finished");
+    const record = JSON.parse(hcOn("host", ["get", address, "--json"])) as { created_ms: number; finished_ms: number };
+    // It ended well inside its grace, so a drop at the end of the stream would come before the grace is over.
+    expect(record.finished_ms - record.created_ms).toBeLessThan(JUST_BORN_MS - 2_000);
+    await expect.poll(() => spacesShowing(address), { timeout: 20_000 }).toEqual([]);
+    expect(Date.now()).toBeGreaterThanOrEqual(record.created_ms + JUST_BORN_MS);
+  } finally {
+    removeTerminal("host", address);
+  }
 });
 
 test("a terminal removed outside the app while its tab is out of view loses its tab", async ({ page }) => {

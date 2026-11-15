@@ -5,6 +5,7 @@ import {
   absentPanes,
   absentRemotePanes,
   endedForGood,
+  graceLeft,
   JUST_BORN_MS,
   type Missing,
   settledPanes,
@@ -87,6 +88,12 @@ test("a pane whose terminal the feed lists as finished is asked about like an ab
   const terminals = [listed("t1", "live"), listed("t2", "finished"), listed("t3", "finished")];
   const tabs = [tab("a", ["t1"]), tab("b", ["t2"]), tab("c", ["t3"]), tab("d", ["t9"])];
   expect(absentPanes(tabs, settledPanes(terminals, NOW).settled)).toEqual(["t2", "t3", "t9"]);
+});
+
+test("a terminal's just-born grace runs JUST_BORN_MS from its start and is over at once for an older one", () => {
+  expect(graceLeft(NOW - 1_000, NOW)).toBe(JUST_BORN_MS - 1_000);
+  expect(graceLeft(NOW - JUST_BORN_MS, NOW)).toBe(0);
+  expect(graceLeft(NOW - 60_000, NOW)).toBe(0);
 });
 
 test("a terminal that ended within its first seconds keeps its pane for the just-born grace, so its failure shows", () => {
