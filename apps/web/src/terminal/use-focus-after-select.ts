@@ -14,7 +14,8 @@ function keepsSelection(event: KeyboardEvent): boolean {
 
 /**
  * The chords WTerm itself reads as a copy while it has a selection: Cmd+C, or Ctrl+C where it is not the program's. On a
- * Mac Ctrl+C is always the program's ^C, as in every macOS terminal, so a held selection never swallows it (#2625).
+ * Mac Ctrl+C (with or without Shift) is always the program's, as in every macOS terminal, so a held selection never
+ * swallows it (#2625). The wterm patch reads the same keys as a copy, with the same Mac test.
  */
 function copies(event: KeyboardEvent): boolean {
   const copyKey = event.metaKey || (event.ctrlKey && currentPlatform() !== "mac");
