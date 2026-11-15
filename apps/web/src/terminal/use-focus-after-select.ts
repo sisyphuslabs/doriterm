@@ -1,5 +1,6 @@
 import type { WTerm } from "@wterm/react";
 import { useEffect } from "react";
+import { currentPlatform } from "../keys/trigger.ts";
 import { copiedText } from "./copied-text.ts";
 import { heldSelection, holdSelection, releaseSelection } from "./held-selection.ts";
 import { longPressed } from "./long-press.ts";
@@ -11,9 +12,13 @@ function keepsSelection(event: KeyboardEvent): boolean {
   return copies(event);
 }
 
-/** The chords WTerm itself reads as a copy while it has a selection: Cmd+C, or Ctrl+C where it is not the program's. */
+/**
+ * The chords WTerm itself reads as a copy while it has a selection: Cmd+C, or Ctrl+C where it is not the program's. On a
+ * Mac Ctrl+C is always the program's ^C, as in every macOS terminal, so a held selection never swallows it (#2625).
+ */
 function copies(event: KeyboardEvent): boolean {
-  return (event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "c";
+  const copyKey = event.metaKey || (event.ctrlKey && currentPlatform() !== "mac");
+  return copyKey && !event.altKey && event.key.toLowerCase() === "c";
 }
 
 /**

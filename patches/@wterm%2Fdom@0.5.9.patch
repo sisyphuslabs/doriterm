@@ -23,7 +23,7 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 78a86ffd96eec03222777f40e9db6a0561684c3f..453711b1d0921012e42077278fc2d9123b42022d 100644
+index 78a86ffd96eec03222777f40e9db6a0561684c3f..b4f30793a5e4984ae601c7aa79002eb2922e77ee 100644
 --- a/dist/input.js
 +++ b/dist/input.js
 @@ -67,9 +67,48 @@ const FIXED_KEYS = {
@@ -179,7 +179,19 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..453711b1d0921012e42077278fc2d912
          const bridge = this.getBridge();
          const kittyFlags = bridge?.kittyKeyboardFlags?.() ?? 0;
          const kittyOwnsModifier = physicalModifier && Boolean(kittyFlags & KITTY_REPORT_ALL);
-@@ -345,6 +432,9 @@ export class InputHandler {
+@@ -320,8 +407,10 @@ export class InputHandler {
+             this.selectionActions.clearSelection();
+             return;
+         }
++        // On a Mac copy is Cmd+C, and a plain Ctrl+C is the program's ^C with or without a selection, as in every macOS
++        // terminal: a selection left on screen must not swallow the interrupt (#2625).
+         if (!delivered &&
+-            (e.metaKey || e.ctrlKey) &&
++            (e.metaKey || (e.ctrlKey && (e.shiftKey || !/mac|iphone|ipad/i.test(navigator.platform)))) &&
+             !e.altKey &&
+             e.key.toLowerCase() === "c") {
+             const sel = window.getSelection();
+@@ -345,6 +434,9 @@ export class InputHandler {
              this.suppressedKeyUps.add(keyId);
              if (e.key === "Backspace") {
                  e.preventDefault();
@@ -189,7 +201,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..453711b1d0921012e42077278fc2d912
                  this.selectionActions?.clearSelection();
                  this.onData("\x15");
              }
-@@ -371,6 +461,8 @@ export class InputHandler {
+@@ -371,6 +463,8 @@ export class InputHandler {
          if (kittyFlags !== 0) {
              const seq = encodeKittyKey(e, kittyFlags, e.repeat ? "repeat" : "press", this.pressedModifiers, bridge?.cursorKeysApp?.() ?? false);
              if (seq) {
@@ -198,7 +210,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..453711b1d0921012e42077278fc2d912
                  if (!physicalModifier)
                      this.selectionActions?.clearSelection();
                  if (nativeTouchDelete)
-@@ -385,6 +477,7 @@ export class InputHandler {
+@@ -385,6 +479,7 @@ export class InputHandler {
          }
          const seq = this.keyToSequence(e);
          if (seq) {
@@ -206,7 +218,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..453711b1d0921012e42077278fc2d912
              this.selectionActions?.clearSelection();
              if (nativeTouchDelete)
                  this.suppressNextTouchDeleteInput = true;
-@@ -395,6 +488,7 @@ export class InputHandler {
+@@ -395,6 +490,7 @@ export class InputHandler {
          }
      }
      handleKeyUp(e) {
@@ -214,7 +226,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..453711b1d0921012e42077278fc2d912
          const keyId = e.code || e.key;
          this.pressedModifiers.delete(e.code);
          const delivered = this.deliveredKeys.delete(keyId);
-@@ -421,6 +515,9 @@ export class InputHandler {
+@@ -421,6 +517,9 @@ export class InputHandler {
          this.recentCompositionCommit = null;
          this.suppressNextTouchDeleteInput = false;
          const text = e.clipboardData?.getData("text");
@@ -224,7 +236,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..453711b1d0921012e42077278fc2d912
          // Some mobile browsers leave clipboardData empty but insert the paste
          // into the textarea. Let that input event carry the text instead.
          if (!text)
-@@ -462,6 +559,8 @@ export class InputHandler {
+@@ -462,6 +561,8 @@ export class InputHandler {
      }
      handleCompositionStart() {
          this.tabExitArmed = false;
@@ -233,7 +245,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..453711b1d0921012e42077278fc2d912
          this.prepareComposition();
          this.composing = true;
          this.recentCompositionCommit = null;
-@@ -472,11 +571,22 @@ export class InputHandler {
+@@ -472,11 +573,22 @@ export class InputHandler {
          this.positionTextarea();
          const s = this.textarea.style;
          s.opacity = "1";
@@ -259,7 +271,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..453711b1d0921012e42077278fc2d912
          this.composing = false;
          this.hideComposition();
          this.resetInputValue();
-@@ -485,6 +595,44 @@ export class InputHandler {
+@@ -485,6 +597,44 @@ export class InputHandler {
              this.onData(e.data);
          }
      }
@@ -304,7 +316,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..453711b1d0921012e42077278fc2d912
      hideComposition() {
          this.compositionWidth = 0;
          const s = this.textarea.style;
-@@ -502,7 +650,7 @@ export class InputHandler {
+@@ -502,7 +652,7 @@ export class InputHandler {
          if (!bridge || !cellSize || !firstRow || !bridge.getCursor) {
              this.textarea.style.left = "0px";
              this.textarea.style.top = "0px";
@@ -313,7 +325,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..453711b1d0921012e42077278fc2d912
                  this.textarea.style.width = `${Math.max(1, this.compositionWidth)}px`;
                  this.textarea.style.height = `${cellSize?.rowHeight ?? 17}px`;
              }
-@@ -519,7 +667,7 @@ export class InputHandler {
+@@ -519,7 +669,7 @@ export class InputHandler {
          const s = this.textarea.style;
          s.left = `${rowRect.left - hostRect.left - this.element.clientLeft + this.element.scrollLeft + col * charWidth}px`;
          s.top = `${rowRect.top - hostRect.top - this.element.clientTop + this.element.scrollTop + row * rowHeight}px`;
@@ -322,7 +334,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..453711b1d0921012e42077278fc2d912
              s.width = `${Math.min((bridge.getCols() - col) * charWidth, Math.max(charWidth, this.compositionWidth))}px`;
              s.height = `${rowHeight}px`;
          }
-@@ -528,14 +676,86 @@ export class InputHandler {
+@@ -528,14 +678,86 @@ export class InputHandler {
          const charWidth = this.getCellSize()?.charWidth;
          if (!charWidth || charWidth <= 0)
              return;
@@ -414,7 +426,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..453711b1d0921012e42077278fc2d912
      resetInputValue() {
          this.textarea.value = this.touchPrimary ? TOUCH_INPUT_PLACEHOLDER : "";
          if (this.touchPrimary)
-@@ -556,6 +776,7 @@ export class InputHandler {
+@@ -556,6 +778,7 @@ export class InputHandler {
      }
      handleInput(event) {
          this.tabExitArmed = false;
@@ -422,7 +434,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..453711b1d0921012e42077278fc2d912
          if (this.composing) {
              this.sizeComposition();
              return;
-@@ -565,6 +786,36 @@ export class InputHandler {
+@@ -565,6 +788,36 @@ export class InputHandler {
          const value = this.touchPrimary && rawValue.startsWith(TOUCH_INPUT_PLACEHOLDER)
              ? rawValue.slice(TOUCH_INPUT_PLACEHOLDER.length)
              : rawValue;
@@ -459,7 +471,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..453711b1d0921012e42077278fc2d912
          this.resetInputValue();
          const recent = this.recentCompositionCommit;
          this.recentCompositionCommit = null;
-@@ -821,7 +1072,7 @@ export class InputHandler {
+@@ -821,7 +1074,7 @@ export class InputHandler {
                  return other;
          }
          if (e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -468,7 +480,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..453711b1d0921012e42077278fc2d912
              if (control !== null)
                  return control;
              if (e.key === "Backspace")
-@@ -855,6 +1106,24 @@ export class InputHandler {
+@@ -855,6 +1108,24 @@ export class InputHandler {
          return null;
      }
  }
