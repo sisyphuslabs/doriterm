@@ -35,6 +35,8 @@ test("a pointer read for a replace gets the stored object's strong ETag, so the 
     fetcher: async (_url, init) => {
       const headers = new Headers(init.headers);
       if (init.method === "GET") {
+        // Sent, but not signed: a proxy that normalises Accept-Encoding must not turn every pointer read into a 403.
+        expect(headers.get("authorization")).not.toContain("accept-encoding");
         const identity = headers.get("accept-encoding") === "identity";
         return new Response("{}", { status: 200, headers: { etag: identity ? stored : `W/${stored}` } });
       }
@@ -84,4 +86,22 @@ test("a write signs its body's hash and its condition, and a 412 or a 404 is an 
   );
   expect(replace?.headers.get("if-match")).toBe('"e0"');
   expect(replace?.headers.get("if-none-match")).toBeNull();
+});
+
+test("a replace over a weak ETag is refused before anything is sent: it could never match, so it would read as a race", async () => {
+  const sent: string[] = [];
+  const store = new R2Store({
+    endpoint: "https://acct.r2.cloudflarestorage.com",
+    bucket: "doriterm-releases",
+    accessKeyId: "id",
+    secretAccessKey: "secret",
+    fetcher: async (url) => {
+      sent.push(url);
+      return new Response(null, { status: 412 });
+    },
+  });
+  await expect(
+    store.put("channels/stable.json", new Uint8Array(), { replace: 'W/"5f1c"' }, "application/json"),
+  ).rejects.toThrow("weak ETag");
+  expect(sent).toEqual([]);
 });

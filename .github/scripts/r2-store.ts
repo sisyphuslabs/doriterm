@@ -77,7 +77,14 @@ export class R2Store implements ObjectStore {
     this.options = options;
   }
 
-  private async send(method: string, key: string, body: Uint8Array | null, extra: Record<string, string>) {
+  /** `unsigned` headers go out beside the signed ones: a proxy may rewrite them without breaking the signature. */
+  private async send(
+    method: string,
+    key: string,
+    body: Uint8Array | null,
+    extra: Record<string, string>,
+    unsigned: Record<string, string> = {},
+  ) {
     const { endpoint, bucket, accessKeyId, secretAccessKey, fetcher = fetch, now = () => new Date() } = this.options;
     const url = new URL(`${endpoint}/${encodeSegment(bucket)}/${key.split("/").map(encodeSegment).join("/")}`);
     const headers: Record<string, string> = {
@@ -89,13 +96,13 @@ export class R2Store implements ObjectStore {
       "x-amz-content-sha256": body === null ? sha256Hex("") : sha256Hex(body),
     };
     headers["authorization"] = authorization({ method, url, headers, accessKeyId, secretAccessKey, region: "auto" });
-    return fetcher(url.href, { method, headers, ...(body === null ? {} : { body }) });
+    return fetcher(url.href, { method, headers: { ...headers, ...unsigned }, ...(body === null ? {} : { body }) });
   }
 
   async get(key: string): Promise<StoredItem | null> {
     // An identity read: for a client that accepts gzip, Cloudflare's edge compresses a JSON object and answers with a
     // weak ETag, which If-Match never matches, so every replace over it would fail with 412.
-    const response = await this.send("GET", key, null, { "accept-encoding": "identity" });
+    const response = await this.send("GET", key, null, {}, { "accept-encoding": "identity" });
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`R2 GET ${key} answered ${response.status}`);
     return { body: new Uint8Array(await response.arrayBuffer()), etag: response.headers.get("etag") ?? "" };
@@ -104,7 +111,13 @@ export class R2Store implements ObjectStore {
   async put(key: string, body: Uint8Array, condition: PutCondition, contentType: string): Promise<boolean> {
     const extra: Record<string, string> = { "content-type": contentType };
     if ("create" in condition) extra["if-none-match"] = "*";
-    if ("replace" in condition) extra["if-match"] = condition.replace;
+    if ("replace" in condition) {
+      // If-Match compares strongly, so a weak validator could never match: refuse it here rather than let the 412 read
+      // as another run having moved the key.
+      if (condition.replace.startsWith("W/"))
+        throw new Error(`R2 PUT ${key} cannot replace over a weak ETag ${condition.replace}`);
+      extra["if-match"] = condition.replace;
+    }
     const response = await this.send("PUT", key, body, extra);
     if (response.status === 412) return false;
     if (!response.ok) throw new Error(`R2 PUT ${key} answered ${response.status}`);
