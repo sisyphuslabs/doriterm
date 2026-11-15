@@ -2,12 +2,21 @@ import type { Page } from "@playwright/test";
 import { fitAgents } from "./capture-fit-agents.ts";
 import { BAD_LINK, fakeRelay, MESH_LINK, PAIR_CODE, PAIR_LINK } from "./capture-relay.ts";
 import { expect } from "./fixtures.ts";
-import { agentRow, endAgent, startAgent } from "./agents.ts";
+import { agentRow, endAgent, startAgent, startShell } from "./agents.ts";
 import { SPACE_CLOSE_SHOTS } from "./capture-space-close-shots.ts";
 import { SPACE_RENAME_SHOTS } from "./capture-space-rename-shots.ts";
 import { VOICE_SHOTS } from "./capture-voice-shots.ts";
 import { seedSpaces } from "./layout-doc.ts";
-import { hcOn, machineRow, STATE_BOUND_MS } from "./machine-switch.ts";
+import { MACHINE_NAME } from "./machine.ts";
+import {
+  hcOn,
+  machineRow,
+  OFFLINE_BOUND_MS,
+  OFFLINE_TEST_TIMEOUT_MS,
+  reconnect,
+  STATE_BOUND_MS,
+  switchTo,
+} from "./machine-switch.ts";
 import { resetMeshDocs } from "./mesh-reset.ts";
 
 export type Width = "1440" | "390";
@@ -86,6 +95,9 @@ const meshLoaded = async (page: Page) => {
 
 /** The agent the attention shot starts to finish where that screen is not looking, ended once the shot is taken. */
 let verify = "";
+
+/** The terminal the session-ended shot started on the added machine, by its address there. */
+let ended = "";
 
 export const SHOTS: readonly Shot[] = [
   {
@@ -336,6 +348,30 @@ export const SHOTS: readonly Shot[] = [
     cleanup: () => {
       endAgent("host", verify);
       verify = "";
+    },
+  },
+  {
+    // A phone session whose program ended while its machine was offline. On a phone the open session stays on screen
+    // and says it ended (phone-shell.tsx); on a desktop its tab now goes (#2628), so this view exists on a phone only.
+    name: "session-ended",
+    start: "connected",
+    only: "390",
+    timeoutMs: OFFLINE_TEST_TIMEOUT_MS,
+    run: async (page) => {
+      ended = startShell("machine", "nightly-build");
+      await page.goto("/");
+      await agentRow(page, "nightly-build", true).click();
+      const terminal = page.locator(`[data-terminal="${MACHINE_NAME}/${ended}"]`);
+      await expect(terminal).toContainText("$", { timeout: 15_000 });
+      switchTo("drop");
+      await expect(terminal).toHaveCount(0, { timeout: OFFLINE_BOUND_MS });
+      hcOn("machine", ["kill", ended]);
+      reconnect();
+      await expect(page.getByRole("heading", { name: "This session ended" })).toBeVisible({ timeout: STATE_BOUND_MS });
+    },
+    cleanup: () => {
+      reconnect();
+      hcOn("machine", ["rm", ended]);
     },
   },
 ];
