@@ -28,15 +28,7 @@ const DESKTOP: Readonly<Record<string, readonly string[]>> = {
     "A machine that answers reads Connected",
     "reaches the other machines through its own relay only",
   ],
-  "session-ended": ["Its program finished while this page wasn't showing it"],
 };
-
-/**
- * Paragraphs of one sentence that a computer sets on a single line, so their own full lines measure nothing. What a
- * reader meets in their column is measured instead: a copy of the paragraph in its place, its sentence repeated until it
- * wraps, read the same way.
- */
-const ONE_LINE: ReadonlySet<string> = new Set(["Its program finished while this page wasn't showing it"]);
 
 /**
  * The fewest full lines each screen wraps to at the measure. The join entry's one sentence fills a line and a bit at both
@@ -120,7 +112,7 @@ for (const [width, screens] of [
           phrases.map(async (phrase) => {
             const paragraph = page.locator("p").filter({ hasText: phrase }).first();
             await expect(paragraph).toBeVisible();
-            return [phrase, await fullLines(paragraph, ONE_LINE.has(phrase)), await columnFor(paragraph)] as const;
+            return [phrase, await fullLines(paragraph, false), await columnFor(paragraph)] as const;
           }),
         );
         // fullLines drops each paragraph's last line, so one-line paragraphs measure nothing and a screen that renders

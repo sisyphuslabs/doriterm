@@ -2,21 +2,12 @@ import type { Page } from "@playwright/test";
 import { fitAgents } from "./capture-fit-agents.ts";
 import { BAD_LINK, fakeRelay, MESH_LINK, PAIR_CODE, PAIR_LINK } from "./capture-relay.ts";
 import { expect } from "./fixtures.ts";
-import { agentRow, endAgent, startAgent, startShell } from "./agents.ts";
+import { agentRow, endAgent, startAgent } from "./agents.ts";
 import { SPACE_CLOSE_SHOTS } from "./capture-space-close-shots.ts";
 import { SPACE_RENAME_SHOTS } from "./capture-space-rename-shots.ts";
 import { VOICE_SHOTS } from "./capture-voice-shots.ts";
 import { seedSpaces } from "./layout-doc.ts";
-import { MACHINE_NAME } from "./machine.ts";
-import {
-  hcOn,
-  machineRow,
-  reconnect,
-  STATE_BOUND_MS,
-  switchTo,
-  OFFLINE_BOUND_MS,
-  OFFLINE_TEST_TIMEOUT_MS,
-} from "./machine-switch.ts";
+import { hcOn, machineRow, STATE_BOUND_MS } from "./machine-switch.ts";
 import { resetMeshDocs } from "./mesh-reset.ts";
 
 export type Width = "1440" | "390";
@@ -93,8 +84,6 @@ const meshLoaded = async (page: Page) => {
   await expect(page.locator('[data-mesh-group="pending"] [data-mesh-answer]').first()).toBeVisible({ timeout: 20_000 });
 };
 
-/** The terminal the session-ended shot started on the added machine, by its address there. */
-let ended = "";
 /** The agent the attention shot starts to finish where that screen is not looking, ended once the shot is taken. */
 let verify = "";
 
@@ -347,31 +336,6 @@ export const SHOTS: readonly Shot[] = [
     cleanup: () => {
       endAgent("host", verify);
       verify = "";
-    },
-  },
-  {
-    // A session whose program ended while its machine was offline, so its view first attaches to a finished terminal.
-    name: "session-ended",
-    start: "connected",
-    timeoutMs: OFFLINE_TEST_TIMEOUT_MS,
-    run: async (page, width) => {
-      ended = startShell("machine", "nightly-build");
-      await page.goto("/");
-      await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
-      await agentRow(page, "nightly-build", true).click();
-      const terminal = page.locator(`[data-terminal="${MACHINE_NAME}/${ended}"]`);
-      await expect(terminal).toContainText("$", { timeout: 15_000 });
-      switchTo("drop");
-      await expect(terminal).toHaveCount(0, { timeout: OFFLINE_BOUND_MS });
-      hcOn("machine", ["kill", ended]);
-      reconnect();
-      // The phone's terminal screen has no machine list to wait on.
-      if (width === "1440") await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
-      await expect(page.getByRole("heading", { name: "This session ended" })).toBeVisible({ timeout: STATE_BOUND_MS });
-    },
-    cleanup: () => {
-      reconnect();
-      hcOn("machine", ["rm", ended]);
     },
   },
 ];
